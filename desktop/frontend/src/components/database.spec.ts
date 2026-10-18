@@ -118,7 +118,7 @@ describe("Creating a database", () => {
 describe("Viewing a database", () => {
   it("lists its values and masks the connection string until revealed", async () => {
     store.selectedItem = createDatabaseItem();
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="database-summary"]').text()).toBe("PostgreSQL · db.example.com:5432/app");
     expect(wrapper.find('[data-testid="database-Engine"]').text()).toBe("PostgreSQL");
     expect(wrapper.find('[data-testid="database-Host"]').text()).toBe("db.example.com");
@@ -140,14 +140,14 @@ describe("Viewing a database", () => {
 
   it("shows no connection string for an engine Hisar does not know", () => {
     store.selectedItem = createDatabaseItem({ database: { ...createDatabaseItem().database!, engine: "DB2", engineName: "DB2", connectionString: "" } });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="database-connection-string"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="database-Engine"]').text()).toBe("DB2");
   });
 
   it("warns under a port that is not a number from 1 to 65535", () => {
     store.selectedItem = createDatabaseItem({ database: { ...createDatabaseItem().database!, port: "70000", portWarning: "The port is not a number from 1 to 65535" } });
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="database-port-warning"]').text()).toBe("The port is not a number from 1 to 65535");
   });
 

@@ -23,11 +23,11 @@ jobs:
     timeout-minutes: 5
     outputs:
       isDesktopChanged: ${{ steps.changes.outputs.isDesktopChanged }}
+      isAdminChanged: ${{ steps.changes.outputs.isAdminChanged }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
-      # A manual run builds everything; a pull request builds the desktop app only when it changes desktop/, cli/, core/ or go.work.
       - name: Compare the pull request with its base
         id: changes
         env:
@@ -57,6 +57,12 @@ jobs:
         with:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
+      - name: Set up Node for make build, which builds the admin dashboard
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
       - name: Check gofmt
         run: |
           allUnformatted=$(gofmt -l $(git ls-files "*.go"))
@@ -135,6 +141,7 @@ jobs:
           rootfs/usr/local/bin/hisar-server migrate status | tee status.log
           if grep -q pending status.log; then exit 1; fi
           rootfs/usr/local/bin/hisar-server invite --email ci@example.com --role admin | grep -q "/invite/"
+          curl -sf http://127.0.0.1:8080/admin | grep -q "<title>Hisar admin dashboard</title>"
       - name: Show server log
         if: always()
         run: cat server.log || true
@@ -227,3 +234,33 @@ jobs:
           cache: npm
           cache-dependency-path: extension/package-lock.json
       - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-share-link-page
+
+  admin:
+    name: Admin dashboard tests and Chromium end-to-end tests against the server
+    needs: changes
+    if: needs.changes.outputs.isAdminChanged == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: hisar
+          POSTGRES_DB: hisar
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - name: Install git and make
+        run: apt-get update -qq && apt-get install -y -qq git make >/dev/null
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: admin/package-lock.json
+      - run: make test-admin
+      - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-admin-end-to-end

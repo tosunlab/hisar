@@ -65,7 +65,7 @@ jobs:
           push: true
           tags: ${{ steps.imageTag.outputs.allImageTag }}
           labels: |
-            org.opencontainers.image.source=https://github.com/tosunlab/hisarapp-core
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
             org.opencontainers.image.revision=${{ steps.imageTag.outputs.commit }}
             org.opencontainers.image.title=hisar-server
       - name: Check that both architectures were pushed

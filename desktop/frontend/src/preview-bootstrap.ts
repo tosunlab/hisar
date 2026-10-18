@@ -6,6 +6,7 @@ import {
   openTextShareLinkDialog,
   openImport,
   openSharing,
+  openOrganization,
   openVaultDialog,
   selectFavoriteItem,
   selectFavorites,
@@ -118,7 +119,53 @@ async function applySettingsParameter(parameter: URLSearchParams): Promise<void>
   if (deviceID) {
     await clickElement(`[data-testid="revoke-device-${deviceID}"]`);
   }
+  await applyOrganizationParameter(parameter);
   await waitForElement('[data-testid="people-section"]');
+}
+
+const allOrganizationDialogSelector: Record<string, string> = {
+  "rename-organization": '[data-testid="rename-organization"]',
+  "delete-organization": '[data-testid="delete-organization"]',
+  leave: '[data-testid="leave-organization"]',
+  "new-team": '[data-testid="new-team"]',
+  "rename-team": '[data-testid^="rename-team-"]',
+  "delete-team": '[data-testid^="delete-team-"]',
+  "give-vault": '[data-testid^="give-vault-"]',
+  "remove-member": '[data-testid^="remove-organization-member-"]',
+};
+
+// applyOrganizationParameter: &organization=<id> opens it in Settings → Organizations; &organizationDialog=<kind> opens one
+// of its dialogs (rename-organization, delete-organization, leave, new-team, rename-team, delete-team, give-vault,
+// remove-member; team and member dialogs use the first one); &addTeamMember=1 opens the first team's member picker.
+async function applyOrganizationParameter(parameter: URLSearchParams): Promise<void> {
+  const organizationID = parameter.get("organization");
+  if (!organizationID) {
+    return;
+  }
+  await waitForUnlocked();
+  await openOrganization(organizationID);
+  const dialogSelector = allOrganizationDialogSelector[parameter.get("organizationDialog") ?? ""];
+  if (dialogSelector) {
+    await clickElement(dialogSelector);
+  }
+  if (parameter.get("addTeamMember") === "1") {
+    await clickElement('[data-testid^="add-team-member-"]');
+  }
+}
+
+// applyNewVaultParameter opens the new-vault form; &newVault=<organization>/<team> picks that team in Where.
+async function applyNewVaultParameter(parameter: URLSearchParams): Promise<void> {
+  await waitForUnlocked();
+  await clickElement('[data-testid="new-vault"]');
+  await typeIntoInput('input[name="vaultName"]', "Release signing");
+  const teamKey = parameter.get("newVault") ?? "";
+  if (teamKey.includes("/")) {
+    await waitForElement(`[data-testid="new-vault-where"] option[value="${teamKey}"]`);
+    const whereSelect = (await waitForElement('[data-testid="new-vault-where"]')) as HTMLSelectElement;
+    whereSelect.value = teamKey;
+    whereSelect.dispatchEvent(new Event("change"));
+    await nextTick();
+  }
 }
 
 // applySharingParameter opens the sharing panel; &code=<account> expands a security code, &remove=<account> asks to remove.
@@ -197,7 +244,13 @@ export async function applyPreviewParameter(): Promise<void> {
     store.isTouchIDOfferShown = true;
   }
   if (parameter.get("settings") === "1") {
-    const sectionID = parameter.get("invite") ? "people" : parameter.get("revoke") ? "devices" : parameter.get("settingsSection");
+    const sectionID = parameter.get("invite")
+      ? "people"
+      : parameter.get("revoke")
+        ? "devices"
+        : parameter.get("organization")
+          ? "organizations"
+          : parameter.get("settingsSection");
     if (isSettingsSectionID(sectionID)) {
       saveSelectedSectionID(sectionID);
     }
@@ -221,6 +274,15 @@ export async function applyPreviewParameter(): Promise<void> {
   }
   if (parameter.get("newItemMenu") === "1") {
     waitForUnlocked().then(() => clickElement('button[aria-label="New item"]'));
+  }
+  if (parameter.get("newVault")) {
+    applyNewVaultParameter(parameter);
+  }
+  if (parameter.get("organizationAlert") === "1") {
+    store.organizationAlert = {
+      title: "Take back",
+      message: "Nobody who can open this vault would be its owner. Give owner access to a team whose members already have the vault first.",
+    };
   }
   if (parameter.get("approvalDetails") === "1") {
     clickElement('[data-testid="approval-key"]');

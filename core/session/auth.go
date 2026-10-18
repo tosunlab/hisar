@@ -86,7 +86,7 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Cli
 	}
 	apiClient.Token = sessionResponse.Token
 
-	newSession := &Session{Client: apiClient, AccountID: accountID, Email: email, Name: name, Keyset: credential.keyset}
+	newSession := &Session{Client: apiClient, AccountID: accountID, DeviceID: sessionResponse.DeviceID, Email: email, Name: name, Keyset: credential.keyset}
 	if _, err := newSession.CreateVault(ctx, "Personal", apitypes.VaultPersonal); err != nil {
 		clear(credential.accountUnlockKey)
 		return nil, secretKey, nil, fmt.Errorf("create personal vault: %w", err)
@@ -130,7 +130,12 @@ func LogIn(ctx context.Context, apiClient *apiclient.Client, email string, passw
 	if sessionResponse.AccountID != secretKey.AccountID {
 		return nil, ErrBadCredentials
 	}
-	return UnlockWithAccountUnlockKey(ctx, apiClient, nil, derivedKeys.AccountUnlockKey, secretKey.AccountID)
+	signedIn, err := UnlockWithAccountUnlockKey(ctx, apiClient, nil, derivedKeys.AccountUnlockKey, secretKey.AccountID)
+	if err != nil {
+		return nil, err
+	}
+	signedIn.DeviceID = sessionResponse.DeviceID
+	return signedIn, nil
 }
 
 // deriveAccountKeys fetches the account, from accountCache when the server is unreachable, and derives its keys; the caller wipes them.

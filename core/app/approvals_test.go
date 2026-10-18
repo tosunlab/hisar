@@ -51,6 +51,32 @@ func TestPhoneApprovalSwitchIsSavedAndKeptOnSignOut(t *testing.T) {
 	}
 }
 
+func TestSSHRememberIsAnHourByDefaultAndKeptOnSignOut(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
+	preference := NewApprovalPreference(service)
+	if seconds := preference.GetSSHRememberSeconds(); seconds != 3600 {
+		t.Errorf("SSH approvals are remembered for %d seconds by default", seconds)
+	}
+	if err := preference.SetSSHRememberSeconds(600); err == nil {
+		t.Error("an unlisted duration was accepted")
+	}
+	if err := preference.SetSSHRememberSeconds(SSHRememberUntilLock); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SignOut(); err != nil {
+		t.Fatal(err)
+	}
+	reloaded, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())
+	reloadedPreference := NewApprovalPreference(reloaded)
+	if seconds := reloadedPreference.GetSSHRememberSeconds(); seconds != SSHRememberUntilLock {
+		t.Errorf("kept %d seconds", seconds)
+	}
+	if err := reloadedPreference.SetSSHRememberSeconds(3600); err != nil || reloadedPreference.GetSSHRememberSeconds() != 3600 {
+		t.Errorf("back to 1 hour: %v", err)
+	}
+}
+
 func TestSigningRememberIsOffByDefaultAndKeptOnSignOut(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	service, _, _ := createTestService(t, statePath, createMemorySecretKeyStore())

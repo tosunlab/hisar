@@ -1,8 +1,12 @@
 package session
 
 import (
+	"context"
+
 	"github.com/bytemare/opaque"
 
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/pake"
 )
@@ -41,6 +45,23 @@ func (login *opaqueLogin) finish(keyExchange2 []byte, accountID string) ([]byte,
 
 func (login *opaqueLogin) clear() {
 	login.client.ClearState()
+}
+
+func proveCredentials(ctx context.Context, client *apiclient.Client, authKey []byte, accountID string, registrationRequest []byte) (proof apitypes.ReauthenticationProof, registrationResponse []byte, err error) {
+	login, keyExchange1, err := startOpaqueLogin(authKey)
+	if err != nil {
+		return apitypes.ReauthenticationProof{}, nil, err
+	}
+	defer login.clear()
+	reauthentication, err := client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1, RegistrationRequest: registrationRequest})
+	if err != nil {
+		return apitypes.ReauthenticationProof{}, nil, err
+	}
+	keyExchange3, err := login.finish(reauthentication.KE2, accountID)
+	if err != nil {
+		return apitypes.ReauthenticationProof{}, nil, err
+	}
+	return apitypes.ReauthenticationProof{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3}, reauthentication.RegistrationResponse, nil
 }
 
 // registerOpaque encrypts the keyset and runs OPAQUE registration through register, which sends the request and returns the server's response.

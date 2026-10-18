@@ -187,6 +187,90 @@ final class HisarKitBackend: VaultBackend {
         try decode([RemovedVaultNotice]?.self, from: callReturningText { hisar.listAllRemovedVault($0) }) ?? []
     }
 
+    func listAllOrganization() throws -> Organizations {
+        try decode(Organizations.self, from: callReturningText { hisar.listAllOrganization($0) })
+    }
+
+    func getOrganization(organizationID: String) throws -> Organization {
+        try decode(Organization.self, from: callReturningText { hisar.getOrganization(organizationID, error: $0) })
+    }
+
+    func createOrganization(name: String) throws -> OrganizationSummary {
+        try decode(OrganizationSummary.self, from: callReturningText { hisar.createOrganization(name, error: $0) })
+    }
+
+    func renameOrganization(organizationID: String, name: String) throws {
+        try callReturningNothing { try hisar.renameOrganization(organizationID, name: name) }
+    }
+
+    func deleteOrganization(organizationID: String) throws {
+        try callReturningNothing { try hisar.deleteOrganization(organizationID) }
+    }
+
+    func inviteToOrganization(organizationID: String, email: String, role: String) throws {
+        try callReturningNothing { try hisar.invite(toOrganization: organizationID, email: email, role: role) }
+    }
+
+    func cancelOrganizationInvitation(organizationID: String, invitationID: String) throws {
+        try callReturningNothing { try hisar.cancelOrganizationInvitation(organizationID, invitationID: invitationID) }
+    }
+
+    func acceptOrganizationInvitation(invitationID: String) throws {
+        try callReturningNothing { try hisar.acceptOrganizationInvitation(invitationID) }
+    }
+
+    func declineOrganizationInvitation(invitationID: String) throws {
+        try callReturningNothing { try hisar.declineOrganizationInvitation(invitationID) }
+    }
+
+    func setOrganizationMemberRole(organizationID: String, accountID: String, role: String) throws {
+        try callReturningNothing { try hisar.setOrganizationMemberRole(organizationID, accountID: accountID, role: role) }
+    }
+
+    func removeOrganizationMember(organizationID: String, accountID: String) throws {
+        try callReturningNothing { try hisar.removeOrganizationMember(organizationID, accountID: accountID) }
+    }
+
+    func leaveOrganization(organizationID: String) throws {
+        try callReturningNothing { try hisar.leaveOrganization(organizationID) }
+    }
+
+    func createTeam(organizationID: String, name: String) throws -> Team {
+        try decode(Team.self, from: callReturningText { hisar.createTeam(organizationID, name: name, error: $0) })
+    }
+
+    func renameTeam(organizationID: String, teamID: String, name: String) throws {
+        try callReturningNothing { try hisar.renameTeam(organizationID, teamID: teamID, name: name) }
+    }
+
+    func deleteTeam(organizationID: String, teamID: String) throws {
+        try callReturningNothing { try hisar.deleteTeam(organizationID, teamID: teamID) }
+    }
+
+    func addTeamMember(organizationID: String, teamID: String, accountID: String) throws {
+        try callReturningNothing { try hisar.addTeamMember(organizationID, teamID: teamID, accountID: accountID) }
+    }
+
+    func removeTeamMember(organizationID: String, teamID: String, accountID: String) throws {
+        try callReturningNothing { try hisar.removeTeamMember(organizationID, teamID: teamID, accountID: accountID) }
+    }
+
+    func giveVaultToTeam(organizationID: String, teamID: String, vaultID: String, role: String) throws {
+        try callReturningNothing { try hisar.giveVault(toTeam: organizationID, teamID: teamID, vaultID: vaultID, role: role) }
+    }
+
+    func takeVaultFromTeam(organizationID: String, teamID: String, vaultID: String) throws {
+        try callReturningNothing { try hisar.takeVault(fromTeam: organizationID, teamID: teamID, vaultID: vaultID) }
+    }
+
+    func createOrganizationVault(organizationID: String, teamID: String, name: String) throws -> VaultSummary {
+        try decode(VaultSummary.self, from: callReturningText { hisar.createOrganizationVault(organizationID, teamID: teamID, name: name, error: $0) })
+    }
+
+    func listAllWaitingVaultKey() throws -> WaitingVaultKeys {
+        try decode(WaitingVaultKeys.self, from: callReturningText { hisar.listAllWaitingVaultKey($0) })
+    }
+
     func getExportOptions() throws -> ExportOptions {
         try decode(ExportOptions.self, from: callReturningText { hisar.getExportOptions($0) })
     }
@@ -370,6 +454,27 @@ final class HisarKitBackend: VaultBackend {
 
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         try callReturningNothing { try hisar.setMacApprovalAllowed(isAllowed) }
+    }
+
+    func prepareItemIcon(_ image: Data) throws -> Data {
+        let encoded = try callReturningText { hisar.prepareItemIcon(image, error: $0) }
+        guard let prepared = Data(base64Encoded: encoded) else {
+            throw BackendError(message: "Hisar could not read the answer from its backend.")
+        }
+        return prepared
+    }
+
+    func getWebsiteIcon(url: String) throws -> Data? {
+        let encoded = try callReturningText { hisar.getWebsiteIcon(url, error: $0) }
+        return encoded.isEmpty ? nil : Data(base64Encoded: encoded)
+    }
+
+    func isWebsiteIconsEnabled() -> Bool {
+        hisar.isWebsiteIconsEnabled()
+    }
+
+    func setWebsiteIconsEnabled(_ isEnabled: Bool) throws {
+        try callReturningNothing { try hisar.setWebsiteIconsEnabled(isEnabled) }
     }
 
     func getTheme() -> VaultTheme {

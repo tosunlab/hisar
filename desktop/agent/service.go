@@ -23,10 +23,12 @@ type Status struct {
 	IsCompactApproval      bool   `json:"isCompactApproval"`
 	IsPhoneApproval        bool   `json:"isPhoneApproval"`
 	SigningRememberSeconds int    `json:"signingRememberSeconds"`
+	SSHRememberSeconds     int    `json:"sshRememberSeconds"`
 	BackupPath             string `json:"backupPath"`
 }
 
-// ApprovalPreference stores the "Compact SSH approvals", "Allow approvals from my iPhone" and "Remember commit signing" settings.
+// ApprovalPreference stores the "Compact SSH approvals", "Allow approvals from my iPhone", "Remember commit signing"
+// and "Remember SSH approvals" settings; SSH remember seconds below 0 mean until Hisar locks.
 type ApprovalPreference interface {
 	IsCompactSSHApproval() bool
 	SetCompactSSHApproval(isCompact bool) error
@@ -34,6 +36,19 @@ type ApprovalPreference interface {
 	SetPhoneApproval(isEnabled bool) error
 	GetSigningRememberSeconds() int
 	SetSigningRememberSeconds(seconds int) error
+	GetSSHRememberSeconds() int
+	SetSSHRememberSeconds(seconds int) error
+}
+
+// GetSSHRememberDuration converts the "Remember SSH approvals" setting to the agent's approval lifetime: 0 keeps approvals until Hisar locks.
+func GetSSHRememberDuration(seconds int) time.Duration {
+	if seconds < 0 {
+		return 0
+	}
+	if seconds == 0 {
+		return sshagent.DefaultApprovalLifetime
+	}
+	return time.Duration(seconds) * time.Second
 }
 
 type Config struct {
@@ -83,7 +98,15 @@ func NewService(config Config) *Service {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
-	return &Service{config: config}
+	service := &Service{config: config}
+	service.applySSHRemember()
+	return service
+}
+
+func (s *Service) applySSHRemember() {
+	if s.config.Server != nil && s.config.ApprovalPreference != nil {
+		s.config.Server.SetApprovalLifetime(GetSSHRememberDuration(s.config.ApprovalPreference.GetSSHRememberSeconds()))
+	}
 }
 
 func (s *Service) buildStatus() Status {
@@ -108,8 +131,19 @@ func (s *Service) buildStatus() Status {
 	status.IsPhoneApproval = s.config.ApprovalPreference != nil && s.config.ApprovalPreference.IsPhoneApproval()
 	if s.config.ApprovalPreference != nil {
 		status.SigningRememberSeconds = s.config.ApprovalPreference.GetSigningRememberSeconds()
+		status.SSHRememberSeconds = s.config.ApprovalPreference.GetSSHRememberSeconds()
 	}
 	return status
+}
+
+// SetSSHRemember stores "Remember SSH approvals" (3600 seconds, or -1 for until Hisar locks) and applies it to the agent's remembered approvals.
+func (s *Service) SetSSHRemember(seconds int) (Status, error) {
+	if s.config.ApprovalPreference == nil {
+		return s.buildStatus(), errors.New("remembering SSH approvals cannot be changed here")
+	}
+	err := s.config.ApprovalPreference.SetSSHRememberSeconds(seconds)
+	s.applySSHRemember()
+	return s.buildStatus(), err
 }
 
 // SetSigningRemember stores "Remember commit signing" (0, 600 or 3600 seconds) and forgets every remembered signature.

@@ -9,6 +9,10 @@ const (
 	NotOwnerDeleteReason      = "Only an owner of this vault can delete it. You can leave it instead."
 	PersonalVaultLeaveReason  = "You can't leave your Personal vault."
 	OnlyOwnerLeaveReason      = "You are its only owner. Delete the vault, or make someone else an owner first."
+	// NotOrganizationVaultOwnerDeleteReason has no "leave instead": organization vaults can't be left.
+	NotOrganizationVaultOwnerDeleteReason = "Only an owner of this vault can delete it."
+	// OrganizationVaultLeaveReason: an organization vault's members get it through its teams (§5.11).
+	OrganizationVaultLeaveReason = "You have this vault through your teams in its organization. To give up access, ask an organization admin to change them."
 )
 
 // VaultPermissions says whether the user may rename, delete or leave a vault, and why not.
@@ -27,6 +31,8 @@ func GetVaultPermissions(vaultType, role string, vaultCount, ownerCount int) Vau
 	switch {
 	case vaultType == apitypes.VaultPersonal:
 		permissions.DeleteBlockedReason = PersonalVaultDeleteReason
+	case role != apitypes.VaultOwner && vaultType == apitypes.VaultOrganization:
+		permissions.DeleteBlockedReason = NotOrganizationVaultOwnerDeleteReason
 	case role != apitypes.VaultOwner:
 		permissions.DeleteBlockedReason = NotOwnerDeleteReason
 	case vaultCount <= 1:
@@ -37,6 +43,8 @@ func GetVaultPermissions(vaultType, role string, vaultCount, ownerCount int) Vau
 	switch {
 	case vaultType == apitypes.VaultPersonal:
 		permissions.LeaveBlockedReason = PersonalVaultLeaveReason
+	case vaultType == apitypes.VaultOrganization:
+		permissions.LeaveBlockedReason = OrganizationVaultLeaveReason
 	case role == apitypes.VaultOwner && ownerCount <= 1:
 		permissions.LeaveBlockedReason = OnlyOwnerLeaveReason
 	default:

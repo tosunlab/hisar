@@ -147,7 +147,7 @@ func (s *Service) applyPasskeySignal(ctx context.Context, signalType string, req
 		if err != nil {
 			return result, err
 		}
-		if _, err := s.unlockedSession.SaveItem(ctx, vault, &pendingSave.vaultItem); err != nil {
+		if err := s.saveSessionItem(ctx, vault, &pendingSave.vaultItem); err != nil {
 			return result, convertError(err)
 		}
 		s.replaceCachedItem(pendingSave.vaultID, pendingSave.vaultItem)

@@ -28,7 +28,7 @@ func TestDeleteVaultRules(t *testing.T) {
 	liveItem := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte("o"), Details: []byte("d"), UpdatedBy: "AAAAAA"}
 	deletedItem := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Deleted: true, Overview: []byte("o"), Details: []byte("d"), UpdatedBy: "AAAAAA"}
 	for _, vaultItem := range []*Item{liveItem, deletedItem} {
-		if _, err := database.PutItem(ctx, onlyVaultID, "", vaultItem); err != nil {
+		if _, err := database.PutItem(ctx, onlyVaultID, "", 0, vaultItem); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -80,13 +80,13 @@ func TestLeaveVault(t *testing.T) {
 	if err := database.LeaveVault(ctx, vaultID, "AAAAAA"); err != nil {
 		t.Errorf("an owner leaves while another remains: %v", err)
 	}
-	if err := database.RenameVault(ctx, vaultID, []byte("renamed")); err != nil {
+	if err := database.RenameVault(ctx, vaultID, []byte("renamed"), 0); err != nil {
 		t.Fatal(err)
 	}
 	if vaults, _ := database.ListVaults(ctx, "BBBBBB"); len(vaults) != 1 || string(vaults[0].EncName) != "renamed" {
 		t.Errorf("after leave and rename: %+v", vaults)
 	}
-	if err := database.RenameVault(ctx, uuid.NewString(), []byte("x")); !errors.Is(err, ErrNotFound) {
+	if err := database.RenameVault(ctx, uuid.NewString(), []byte("x"), 0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("renaming a missing vault: %v", err)
 	}
 }

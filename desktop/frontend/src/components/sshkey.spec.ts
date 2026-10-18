@@ -181,7 +181,7 @@ describe("SSH key detail", () => {
   });
 
   it("shows the key type, fingerprint, public key and notes", () => {
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.text()).toContain("Ed25519");
     expect(wrapper.find('[data-testid="fingerprint"]').text()).toBe("SHA256:hisarTestFingerprint");
     expect(wrapper.find('[data-testid="fingerprint"]').classes()).toContain("monospace");
@@ -196,7 +196,7 @@ describe("SSH key detail", () => {
 
   it("copies the public key through the backend", async () => {
     api.copyField.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     await wrapper.find('[data-testid="copy-public-key"]').trigger("click");
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledWith("personal", "ssh-1", "public key");
@@ -205,7 +205,7 @@ describe("SSH key detail", () => {
 
   it("shows the commands for commit signing with copy buttons, without running them", async () => {
     api.copyText.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="commit-signing-steps"]').exists()).toBe(false);
     await wrapper.find('[data-testid="set-up-commit-signing"]').trigger("click");
     const allCommand = wrapper.findAll('[data-testid="commit-signing-command"] code').map((code) => code.text());
@@ -230,7 +230,7 @@ describe("SSH key detail", () => {
   it("copies the public key and opens GitHub or GitLab", async () => {
     api.copyField.mockResolvedValue(undefined);
     api.openURL.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", isShared: false } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="commit-signing-panel"]').text()).toContain("Signing Key");
     await wrapper.find('[data-testid="add-to-github"]').trigger("click");
     await flushPromises();
@@ -322,6 +322,27 @@ describe("Settings SSH agent section", () => {
     await flushPromises();
     expect(api.setPhoneApproval).toHaveBeenLastCalledWith(true);
     expect(store.noticeMessage).toBe("Your iPhone can now approve requests");
+  });
+
+  it("lets SSH approvals be remembered until Hisar locks", async () => {
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    const sshRemember = wrapper.find('[data-testid="ssh-remember"]');
+    expect((sshRemember.element as HTMLSelectElement).value).toBe("3600");
+    expect(sshRemember.findAll("option").map((option) => option.text())).toEqual(["Up to 1 hour", "Until Hisar locks"]);
+    expect(wrapper.find('[data-testid="ssh-remember-setting"]').text()).toContain("Locking Hisar always forgets it");
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("skip asking for an hour");
+    await sshRemember.setValue("-1");
+    await flushPromises();
+    expect(api.setSSHRemember).toHaveBeenCalledWith(-1);
+    expect((wrapper.find('[data-testid="ssh-remember"]').element as HTMLSelectElement).value).toBe("-1");
+    expect(store.noticeMessage).toBe("Remembered SSH approvals now last until Hisar locks");
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("skip asking until Hisar locks");
+    api.setSSHRemember.mockResolvedValueOnce(createSSHAgentStatus({ sshRememberSeconds: 3600 }));
+    await wrapper.find('[data-testid="ssh-remember"]').setValue("3600");
+    await flushPromises();
+    expect(api.setSSHRemember).toHaveBeenLastCalledWith(3600);
+    expect(store.noticeMessage).toBe("Remembered SSH approvals now last 1 hour");
   });
 
   it("lets commit signing be remembered only after choosing a duration", async () => {

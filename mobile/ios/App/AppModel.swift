@@ -42,14 +42,23 @@ final class AppModel: ObservableObject {
     @Published var selectedTab: Tab = .vaults
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
+    @Published private(set) var isWebsiteIconsEnabled = true
+    /// Website icons by domain for this unlock; nil while one loads or when the website has none.
+    @Published private(set) var websiteIconByDomain: [String: Data] = [:]
+    /// The domains asked during this unlock, finished or not, so a website without an icon is asked once.
+    private var websiteIconTaskByDomain: [String: Task<Void, Never>] = [:]
     @Published private(set) var theme = VaultTheme.standard
     @Published private(set) var allReceivedInvitation: [ReceivedShareInvitation] = []
     @Published private(set) var allWaitingInvitation: [WaitingShareInvitation] = []
     @Published private(set) var allShareAwaitingUnlock: [ShareAwaitingUnlock] = []
     @Published private(set) var remoteChangeCount = 0
     @Published private(set) var allRemovedVaultNotice: [RemovedVaultNotice] = []
+    @Published private(set) var allOrganization: [OrganizationSummary] = []
+    @Published private(set) var allOrganizationInvitation: [OrganizationInvitation] = []
+    @Published private(set) var waitingVaultKeys = WaitingVaultKeys()
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
+    var organizationInvitationCount: Int { allOrganizationInvitation.count }
 
     var autoLockInterval: TimeInterval { TimeInterval(status.autoLockSeconds) }
 
@@ -77,6 +86,7 @@ final class AppModel: ObservableObject {
             let backend = try createBackend()
             self.backend = backend
             isMacApprovalAllowed = backend.isMacApprovalAllowed()
+            isWebsiteIconsEnabled = backend.isWebsiteIconsEnabled()
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
             if status.isUnlocked {
@@ -136,8 +146,12 @@ final class AppModel: ObservableObject {
             allReceivedInvitation = []
             allWaitingInvitation = []
             allRemovedVaultNotice = []
+            allOrganization = []
+            allOrganizationInvitation = []
+            waitingVaultKeys = WaitingVaultKeys()
             selectedTab = .vaults
             clearAllApproval()
+            forgetWebsiteIcons()
         }
         if newStatus.state != VaultStatus.stateLocked {
             allShareAwaitingUnlock = []
@@ -150,6 +164,11 @@ final class AppModel: ObservableObject {
     private func applyShareInvitations(_ shareInvitations: ShareInvitations) {
         allReceivedInvitation = shareInvitations.allReceived
         allWaitingInvitation = shareInvitations.allWaiting
+    }
+
+    private func applyOrganizations(_ organizations: Organizations) {
+        allOrganization = organizations.allOrganization
+        allOrganizationInvitation = organizations.allInvitation
     }
 
     // The lock screen's banner: shares people accepted that only this unlocked app can finish. Failures stay silent.
@@ -324,13 +343,17 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // Listing the share invitations also completes the shares people accepted, as the Mac's sync does.
+    // Listing the share invitations also completes the shares people accepted, and listing the waiting vault keys gives
+    // team members the keys of the organization vaults this user owns, as the Mac's sync does. Both run before the vaults
+    // are listed, so a vault rotated meanwhile is listed with its new key.
     func refreshAll() async {
         guard status.isUnlocked else { return }
         isRefreshing = true
         defer { isRefreshing = false }
-        guard let result = await perform(isBusyShown: false, { backend -> ([VaultSummary], [String: [ItemDetail]], [StoredPasskey], ShareInvitations?, [RemovedVaultNotice]) in
+        guard let result = await perform(isBusyShown: false, { backend -> RefreshResult in
             let shareInvitations = try? backend.listAllShareInvitation()
+            let waitingVaultKeys = try? backend.listAllWaitingVaultKey()
+            let organizations = try? backend.listAllOrganization()
             let allVault = try backend.listAllVault()
             let allRemovedVault = (try? backend.listAllRemovedVault()) ?? []
             // Reads the favorites again, so the lists below mark them even when the event stream missed a change.
@@ -339,7 +362,10 @@ final class AppModel: ObservableObject {
             for vault in allVault {
                 allItemByVaultID[vault.id] = try backend.listAllItem(vaultID: vault.id)
             }
-            return (allVault, allItemByVaultID, (try? backend.listAllPasskey()) ?? [], shareInvitations, allRemovedVault)
+            return RefreshResult(
+                allVault: allVault, allItemByVaultID: allItemByVaultID, allPasskey: (try? backend.listAllPasskey()) ?? [],
+                shareInvitations: shareInvitations, allRemovedVault: allRemovedVault, organizations: organizations, waitingVaultKeys: waitingVaultKeys
+            )
         }) else {
             refreshStatus()
             return
@@ -348,14 +374,31 @@ final class AppModel: ObservableObject {
         // them back, nor put a signed-out account's logins back into AutoFill. A lock keeps what AutoFill already has.
         refreshStatus()
         guard status.isUnlocked else { return }
-        allVault = result.0.sorted { Self.sortVault($0, $1) }
-        allItemByVaultID = result.1
-        allPasskey = result.2
-        if let shareInvitations = result.3 {
+        allVault = result.allVault.sorted { Self.sortVault($0, $1) }
+        allItemByVaultID = result.allItemByVaultID
+        allPasskey = result.allPasskey
+        if let shareInvitations = result.shareInvitations {
             applyShareInvitations(shareInvitations)
         }
-        addAllRemovedVaultNotice(result.4)
+        // Offline both fail; the last organizations keep naming the vault groups.
+        if let organizations = result.organizations {
+            applyOrganizations(organizations)
+        }
+        if let waitingVaultKeys = result.waitingVaultKeys {
+            self.waitingVaultKeys = waitingVaultKeys
+        }
+        addAllRemovedVaultNotice(result.allRemovedVault)
         await publishAllCredentialIdentity()
+    }
+
+    private struct RefreshResult {
+        var allVault: [VaultSummary]
+        var allItemByVaultID: [String: [ItemDetail]]
+        var allPasskey: [StoredPasskey]
+        var shareInvitations: ShareInvitations?
+        var allRemovedVault: [RemovedVaultNotice]
+        var organizations: Organizations?
+        var waitingVaultKeys: WaitingVaultKeys?
     }
 
     func handleRemoteChange() {
@@ -431,11 +474,15 @@ final class AppModel: ObservableObject {
 
     func createVault(name: String) async -> VaultSummary? {
         guard let vault = await perform({ try $0.createVault(name: name) }) else { return nil }
+        addVault(vault)
+        return vault
+    }
+
+    private func addVault(_ vault: VaultSummary) {
         allVault.removeAll { $0.id == vault.id }
         allVault.append(vault)
         allVault.sort { Self.sortVault($0, $1) }
         allItemByVaultID[vault.id] = []
-        return vault
     }
 
     func loadAllPerson() async -> [Member]? {
@@ -558,6 +605,157 @@ final class AppModel: ObservableObject {
 
     static func describeItemCount(_ count: Int) -> String {
         count == 1 ? "1 item" : "\(count) items"
+    }
+
+    // Organizations (§5.11). A change that fails leaves the server's sentence in errorMessage, which the screens show in an
+    // alert; changes that move access reload the vaults through the event stream, like any other remote change.
+    @discardableResult
+    func loadOrganizations() async -> Organizations? {
+        guard let organizations = await perform(isBusyShown: false, { try $0.listAllOrganization() }) else { return nil }
+        applyOrganizations(organizations)
+        return organizations
+    }
+
+    func loadOrganization(organizationID: String) async -> Organization? {
+        await perform(isBusyShown: false) { try $0.getOrganization(organizationID: organizationID) }
+    }
+
+    /// The organization screen's load. Gone only when the organizations no longer list it; otherwise a failure, also of
+    /// that list, leaves GetOrganization's sentence in errorMessage for the screen's alert.
+    func loadOrganizationScreen(organizationID: String) async -> OrganizationLoad {
+        if let organization = await loadOrganization(organizationID: organizationID) {
+            return .loaded(organization)
+        }
+        let sentence = errorMessage
+        if let organizations = await loadOrganizations(), !organizations.allOrganization.contains(where: { $0.id == organizationID }) {
+            return .gone
+        }
+        errorMessage = sentence
+        return .failed
+    }
+
+    func createOrganization(name: String) async -> OrganizationSummary? {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let organization = await perform({ try $0.createOrganization(name: name) }) else { return nil }
+        allOrganization.removeAll { $0.id == organization.id }
+        allOrganization.append(organization)
+        allOrganization.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        return organization
+    }
+
+    @discardableResult
+    func renameOrganization(organizationID: String, name: String) async -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard await perform({ try $0.renameOrganization(organizationID: organizationID, name: name) }) != nil else { return false }
+        if let index = allOrganization.firstIndex(where: { $0.id == organizationID }) {
+            allOrganization[index].name = name
+        }
+        return true
+    }
+
+    @discardableResult
+    func deleteOrganization(organizationID: String) async -> Bool {
+        guard await perform({ try $0.deleteOrganization(organizationID: organizationID) }) != nil else { return false }
+        allOrganization.removeAll { $0.id == organizationID }
+        return true
+    }
+
+    @discardableResult
+    func inviteToOrganization(organizationID: String, email: String, role: String) async -> Bool {
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return await perform({ try $0.inviteToOrganization(organizationID: organizationID, email: email, role: role) }) != nil
+    }
+
+    @discardableResult
+    func cancelOrganizationInvitation(organizationID: String, invitationID: String) async -> Bool {
+        await perform({ try $0.cancelOrganizationInvitation(organizationID: organizationID, invitationID: invitationID) }) != nil
+    }
+
+    @discardableResult
+    func acceptOrganizationInvitation(invitationID: String) async -> Bool {
+        guard await perform({ try $0.acceptOrganizationInvitation(invitationID: invitationID) }) != nil else { return false }
+        allOrganizationInvitation.removeAll { $0.id == invitationID }
+        await loadOrganizations()
+        return true
+    }
+
+    @discardableResult
+    func declineOrganizationInvitation(invitationID: String) async -> Bool {
+        guard await perform({ try $0.declineOrganizationInvitation(invitationID: invitationID) }) != nil else { return false }
+        allOrganizationInvitation.removeAll { $0.id == invitationID }
+        return true
+    }
+
+    @discardableResult
+    func setOrganizationMemberRole(organizationID: String, accountID: String, role: String) async -> Bool {
+        await perform({ try $0.setOrganizationMemberRole(organizationID: organizationID, accountID: accountID, role: role) }) != nil
+    }
+
+    @discardableResult
+    func removeOrganizationMember(organizationID: String, accountID: String) async -> Bool {
+        await perform({ try $0.removeOrganizationMember(organizationID: organizationID, accountID: accountID) }) != nil
+    }
+
+    // Leaving takes the organization's vaults from this user at once, so the vaults are listed again.
+    @discardableResult
+    func leaveOrganization(organizationID: String) async -> Bool {
+        let organizationName = allOrganization.first { $0.id == organizationID }?.name ?? "the organization"
+        guard await perform({ try $0.leaveOrganization(organizationID: organizationID) }) != nil else { return false }
+        allOrganization.removeAll { $0.id == organizationID }
+        await refreshAll()
+        showNotice("You left \(organizationName).")
+        return true
+    }
+
+    func createTeam(organizationID: String, name: String) async -> Team? {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return await perform { try $0.createTeam(organizationID: organizationID, name: name) }
+    }
+
+    @discardableResult
+    func renameTeam(organizationID: String, teamID: String, name: String) async -> Bool {
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return await perform({ try $0.renameTeam(organizationID: organizationID, teamID: teamID, name: name) }) != nil
+    }
+
+    @discardableResult
+    func deleteTeam(organizationID: String, teamID: String) async -> Bool {
+        await perform({ try $0.deleteTeam(organizationID: organizationID, teamID: teamID) }) != nil
+    }
+
+    @discardableResult
+    func addTeamMember(organizationID: String, teamID: String, accountID: String) async -> Bool {
+        await perform({ try $0.addTeamMember(organizationID: organizationID, teamID: teamID, accountID: accountID) }) != nil
+    }
+
+    @discardableResult
+    func removeTeamMember(organizationID: String, teamID: String, accountID: String) async -> Bool {
+        await perform({ try $0.removeTeamMember(organizationID: organizationID, teamID: teamID, accountID: accountID) }) != nil
+    }
+
+    @discardableResult
+    func giveVaultToTeam(organizationID: String, teamID: String, vaultID: String, role: String) async -> Bool {
+        await perform({ try $0.giveVaultToTeam(organizationID: organizationID, teamID: teamID, vaultID: vaultID, role: role) }) != nil
+    }
+
+    @discardableResult
+    func takeVaultFromTeam(organizationID: String, teamID: String, vaultID: String) async -> Bool {
+        await perform({ try $0.takeVaultFromTeam(organizationID: organizationID, teamID: teamID, vaultID: vaultID) }) != nil
+    }
+
+    func createOrganizationVault(organizationID: String, teamID: String, name: String) async -> VaultSummary? {
+        guard let vault = await perform({ try $0.createOrganizationVault(organizationID: organizationID, teamID: teamID, name: name) }) else { return nil }
+        addVault(vault)
+        return vault
+    }
+
+    /// The new vault's Where choices: a shared vault and each team the user is in. Nil, with the sentence in errorMessage,
+    /// when the teams could not be listed: a failed lookup never stands for having no teams.
+    func loadVaultLocations() async -> [VaultLocation]? {
+        await perform(isBusyShown: false) { backend -> [VaultLocation] in
+            let allOrganization = try backend.listAllOrganization().allOrganization.map { try backend.getOrganization(organizationID: $0.id) }
+            return OrganizationLogic.listAllVaultLocation(allOrganization)
+        }
     }
 
     func loadExportOptions() async -> ExportOptions? {
@@ -788,6 +986,71 @@ final class AppModel: ObservableObject {
         theme = savedTheme
     }
 
+    /// loadWebsiteIcon asks the backend once per domain for the icon of a login's website; tiles read websiteIconByDomain.
+    func loadWebsiteIcon(url: String) {
+        guard isWebsiteIconsEnabled, let backend, let domain = Self.getWebsiteIconDomain(url),
+              websiteIconByDomain[domain] == nil, websiteIconTaskByDomain[domain] == nil else { return }
+        websiteIconTaskByDomain[domain] = Task { [weak self] in
+            let icon = try? await runInBackground { try backend.getWebsiteIcon(url: url) }
+            guard let self, !Task.isCancelled else { return }
+            if let icon {
+                self.websiteIconByDomain[domain] = icon
+            }
+        }
+    }
+
+    func getWebsiteIcon(url: String) -> Data? {
+        Self.getWebsiteIconDomain(url).flatMap { websiteIconByDomain[$0] }
+    }
+
+    nonisolated static func getWebsiteIconDomain(_ url: String) -> String? {
+        guard let components = URLComponents(string: url.trimmingCharacters(in: .whitespaces)), components.scheme?.lowercased() == "https",
+              let host = components.host?.lowercased(), !host.isEmpty else { return nil }
+        return host
+    }
+
+    private func forgetWebsiteIcons() {
+        websiteIconTaskByDomain.values.forEach { $0.cancel() }
+        websiteIconTaskByDomain = [:]
+        websiteIconByDomain = [:]
+    }
+
+    func setWebsiteIconsEnabled(_ isEnabled: Bool) async {
+        guard await perform(isBusyShown: false, { try $0.setWebsiteIconsEnabled(isEnabled) }) != nil else { return }
+        isWebsiteIconsEnabled = isEnabled
+        forgetWebsiteIcons()
+    }
+
+    static let unreadablePhotoMessage = "Hisar can't read this photo. Choose another one."
+
+    /// prepareItemIcon turns a chosen photo into the icon image an item keeps, or shows why it can't. Photos come as the
+    /// library keeps them (HEIC from the camera, TIFF, PNG…), which the backend does not all read, so the phone decodes
+    /// and shrinks the photo first and hands it a PNG or JPEG.
+    func prepareItemIcon(_ photo: Data) async -> Data? {
+        guard let upload = Self.convertPhotoForIcon(photo) else {
+            errorMessage = Self.unreadablePhotoMessage
+            return nil
+        }
+        return await perform { try $0.prepareItemIcon(upload) }
+    }
+
+    /// convertPhotoForIcon decodes any image UIKit reads, applies its orientation, scales it down to maxSide and encodes
+    /// it as PNG when it has transparency, else as JPEG. It returns nil for data that is no image.
+    nonisolated static func convertPhotoForIcon(_ photo: Data, maxSide: CGFloat = 512) -> Data? {
+        guard let image = UIImage(data: photo), image.size.width > 0, image.size.height > 0 else { return nil }
+        let scale = min(1, maxSide / max(image.size.width, image.size.height))
+        let size = CGSize(width: max(1, (image.size.width * scale).rounded()), height: max(1, (image.size.height * scale).rounded()))
+        let alphaInfo = image.cgImage?.alphaInfo
+        let hasAlpha = [.first, .last, .premultipliedFirst, .premultipliedLast].contains(alphaInfo)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = !hasAlpha
+        let resized = UIGraphicsImageRenderer(size: size, format: format).image { _ in
+            image.draw(in: CGRect(origin: .zero, size: size))
+        }
+        return hasAlpha ? resized.pngData() : resized.jpegData(compressionQuality: 0.9)
+    }
+
     @discardableResult
     func setMacApprovalAllowed(_ isAllowed: Bool) async -> Bool {
         guard await perform(isBusyShown: false, { try $0.setMacApprovalAllowed(isAllowed) }) != nil else { return false }
@@ -807,6 +1070,8 @@ final class AppModel: ObservableObject {
     func refreshReceivedInvitationCount() async {
         guard let invitations = await perform(isBusyShown: false, { try $0.listAllShareInvitation() }) else { return }
         applyShareInvitations(invitations)
+        guard let backend, let organizations = try? await runInBackground({ try backend.listAllOrganization() }), status.isUnlocked else { return }
+        applyOrganizations(organizations)
     }
 
     func generatePassword(length: Int, isDigitIncluded: Bool, isSymbolIncluded: Bool) async -> String? {
@@ -944,9 +1209,9 @@ final class AppModel: ObservableObject {
     }
 
     // Approve asks for Face ID; when the master password is needed instead, the request's sheet opens and asks for it.
-    // The Vaults card has no remember switch, so it approves once.
-    func approve(_ approval: PhoneApproval, isRemembered: Bool = false) async {
-        let isApprovalRemembered = approval.isRememberable && isRemembered
+    // The Vaults card has no remember switch, so it approves as the switch starts: remembered when the Mac's checkbox would be.
+    func approve(_ approval: PhoneApproval, isRemembered: Bool? = nil) async {
+        let isApprovalRemembered = approval.resolveRememberChoice(isRemembered)
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApproval(requestID: requestID, isRemembered: isApprovalRemembered)
         }

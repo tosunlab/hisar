@@ -85,6 +85,9 @@ func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, erro
 	if cliprotocol.IsAgentRequest(request.Type) {
 		return bridge.answerAgentRequest(request)
 	}
+	if result, isHandled, err := bridge.answerOrganizationRequest(request); isHandled {
+		return result, err
+	}
 	s := bridge.service
 	switch request.Type {
 	case cliprotocol.TypeAccount:
@@ -323,7 +326,7 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	favoriteItemIDs := []string{}
 	for _, vaultItem := range importedItems {
 		vaultItem.ID, vaultItem.Revision = "", ""
-		_, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem)
+		err := s.saveSessionItem(ctx, vault, &vaultItem)
 		if isImportStoppingError(err) {
 			return result, convertError(err)
 		}
@@ -362,7 +365,7 @@ func (s *Service) getCommandLineVaultActions(vaultID string) (cliprotocol.VaultA
 }
 
 func convertToCommandLineVault(summary VaultSummary) cliprotocol.Vault {
-	return cliprotocol.Vault{ID: summary.ID, Name: summary.Name, Type: summary.Type, Role: summary.Role, ItemCount: summary.ItemCount}
+	return cliprotocol.Vault{ID: summary.ID, Name: summary.Name, Type: summary.Type, Role: summary.Role, ItemCount: summary.ItemCount, OrganizationID: summary.OrganizationID}
 }
 
 func convertToCommandLineSummary(detail ItemDetail) cliprotocol.Item {

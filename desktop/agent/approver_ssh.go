@@ -45,6 +45,9 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 		event.IsRememberable = false
 	}
 	event.IsRememberedByDefault = event.IsRememberable
+	if event.IsRememberable {
+		event.RememberPeriod = describeRememberPeriod(approver.getSSHRememberDuration())
+	}
 	approver.setUnlockState(&event)
 	event.IsCompact = approver.config.IsCompactApproval != nil && approver.config.IsCompactApproval() &&
 		event.IsTouchIDApproval && !event.IsUnlockRequired && !event.IsForwarded
@@ -126,12 +129,27 @@ func (approver *Approver) buildSSHPhoneDescription(event ApprovalEvent, signingR
 	}
 	if event.IsRememberable {
 		description.IsRememberedByDefault = event.IsRememberedByDefault
-		description.RememberLabel = fmt.Sprintf("Also allows %s for 1 hour", describeRememberedRequester(event))
+		description.RememberLabel = fmt.Sprintf("Also allows %s %s", describeRememberedRequester(event), event.RememberPeriod)
 		if event.Purpose == PurposeSignCommit {
 			description.RememberLabel = fmt.Sprintf("Also allows %s to sign commits in %s for %s", event.AppName, event.RepositoryPath, formatRememberDuration(signingRememberDuration))
 		}
 	}
 	return description
+}
+
+func (approver *Approver) getSSHRememberDuration() time.Duration {
+	if approver.config.GetSSHRememberDuration == nil {
+		return sshagent.DefaultApprovalLifetime
+	}
+	return approver.config.GetSSHRememberDuration()
+}
+
+// describeRememberPeriod ends the checkbox sentence: "for 1 hour", or "until Hisar locks" without a time limit.
+func describeRememberPeriod(duration time.Duration) string {
+	if duration <= 0 {
+		return "until Hisar locks"
+	}
+	return "for " + formatRememberDuration(duration)
 }
 
 // describeRememberedRequester is who a remembered approval covers, as the dialog's checkbox names it.

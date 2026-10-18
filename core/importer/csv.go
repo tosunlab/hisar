@@ -141,6 +141,8 @@ func detectCSVFormat(content []byte) (string, error) {
 		return FormatBitwardenCSV, nil
 	case normalized["archived"] && normalized["otpauth"] && normalized["title"]:
 		return FormatOnePasswordCSV, nil
+	case normalized["extra"] && normalized["grouping"] && normalized["url"]:
+		return FormatLastPassCSV, nil
 	}
 	if _, err := buildCSVLayout(columnNames); err != nil {
 		return "", ErrUnknownFormat
@@ -199,6 +201,18 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 			return item.Item{}, fmt.Sprintf("Bitwarden %s items are not supported in Hisar yet", entryType)
 		}
 	}
+	// LastPass's vault export has an http://group row for each folder; it is not an entry, and an empty item is dropped.
+	if format == FormatLastPassCSV && strings.EqualFold(strings.TrimSpace(getValue(columnURL)), "http://group") {
+		return item.Item{}, ""
+	}
+	if format == FormatLastPassCSV && isLastPassSecureNoteURL(getValue(columnURL)) && isLastPassTypedNote(getValue(columnNotes)) {
+		vaultItem, reason := convertLastPassNote(getValue(columnTitle), getValue(columnNotes))
+		if reason == "" {
+			vaultItem.IsFavorite = isCSVTrue(getValue(columnFavorite))
+			vaultItem.Overview.Tags = splitCSVTags(getValue(columnTags), format)
+		}
+		return vaultItem, reason
+	}
 	vaultItem := item.Item{
 		Overview: item.Overview{Title: getValue(columnTitle), Username: getValue(columnUsername)},
 		Details:  item.Details{Password: getValue(columnPassword), Notes: getValue(columnNotes)},
@@ -211,13 +225,7 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 	vaultItem.IsFavorite = isCSVTrue(getValue(columnFavorite))
 	vaultItem.Overview.URLs = splitURLs(getValue(columnURL), format)
 	addOneTimePassword(&vaultItem, "One-time password", strings.TrimSpace(getValue(columnOTP)))
-	if tagText := getValue(columnTags); tagText != "" {
-		if format == FormatBitwardenCSV {
-			vaultItem.Overview.Tags = []string{tagText}
-		} else {
-			vaultItem.Overview.Tags = strings.FieldsFunc(tagText, func(character rune) bool { return character == ',' || character == ';' })
-		}
-	}
+	vaultItem.Overview.Tags = splitCSVTags(getValue(columnTags), format)
 	if format == FormatBitwardenCSV {
 		vaultItem.Details.Fields = append(vaultItem.Details.Fields, parseBitwardenCSVFields(getValue(columnFields))...)
 	}
@@ -227,6 +235,23 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 		}
 	}
 	return vaultItem, ""
+}
+
+// splitCSVTags reads the tags column. A Bitwarden folder is one tag, and so is a LastPass folder, whose nested folders
+// LastPass joins with backslashes (Work\Servers becomes Work/Servers) and older LastPass files name "(none)" for no folder;
+// other exports list tags with commas or semicolons.
+func splitCSVTags(text, format string) []string {
+	switch {
+	case strings.TrimSpace(text) == "":
+		return nil
+	case format == FormatBitwardenCSV:
+		return []string{text}
+	case format == FormatLastPassCSV && strings.EqualFold(strings.TrimSpace(text), "(none)"):
+		return nil
+	case format == FormatLastPassCSV:
+		return []string{strings.ReplaceAll(text, "\\", "/")}
+	}
+	return strings.FieldsFunc(text, func(character rune) bool { return character == ',' || character == ';' })
 }
 
 // isCSVTrue reads a flag column: 1Password writes true, Bitwarden and LastPass 1.

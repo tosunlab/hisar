@@ -39,12 +39,15 @@ const (
 	FeatureFavorites = "favorites"
 	// FeatureTags: items.list and items.get return each item's tags, and items.save takes ItemChange.Tags.
 	FeatureTags = "tags"
+	// FeatureOrganizations: the organizations.*, teams.* requests, vaults.give-to-team, vaults.take-from-team and
+	// vaults.create-organization-vault, and Vault.OrganizationID.
+	FeatureOrganizations = "organizations"
 )
 
 // ListFeatures returns the features this build of the app announces in hello, then every launcher request type, so a
 // launcher checks the exact request it is about to send.
 func ListFeatures() []string {
-	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases}
+	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations}
 	return append(features, ListLauncherRequestTypes()...)
 }
 
@@ -111,6 +114,29 @@ const (
 	TypeListFavorite   = "favorites.list"
 	TypeAddFavorite    = "favorites.add"
 	TypeRemoveFavorite = "favorites.remove"
+
+	// The organization requests need FeatureOrganizations.
+	TypeListOrganization              = "organizations.list"
+	TypeGetOrganization               = "organizations.get"
+	TypeCreateOrganization            = "organizations.create"
+	TypeRenameOrganization            = "organizations.rename"
+	TypeDeleteOrganization            = "organizations.delete"
+	TypeInviteToOrganization          = "organizations.invite"
+	TypeCancelOrganizationInvitation  = "organizations.cancel-invitation"
+	TypeAcceptOrganizationInvitation  = "organizations.accept"
+	TypeDeclineOrganizationInvitation = "organizations.decline"
+	TypeSetOrganizationRole           = "organizations.set-role"
+	TypeRemoveOrganizationMember      = "organizations.remove-member"
+	TypeLeaveOrganization             = "organizations.leave"
+	TypeCompleteOrganizationKeys      = "organizations.complete-keys"
+	TypeCreateTeam                    = "teams.create"
+	TypeRenameTeam                    = "teams.rename"
+	TypeDeleteTeam                    = "teams.delete"
+	TypeAddTeamMember                 = "teams.add-member"
+	TypeRemoveTeamMember              = "teams.remove-member"
+	TypeGiveVaultToTeam               = "vaults.give-to-team"
+	TypeTakeVaultFromTeam             = "vaults.take-from-team"
+	TypeCreateOrganizationVault       = "vaults.create-organization-vault"
 )
 
 const (

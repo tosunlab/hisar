@@ -72,6 +72,13 @@ type ReauthenticateResponse struct {
 	RegistrationResponse []byte `json:"registrationResponse,omitempty"`
 }
 
+// ReauthenticationProof is a finished re-authentication: the OPAQUE KE3 for the server's ReauthenticationID. The server
+// accepts it once, for the one change that carries it.
+type ReauthenticationProof struct {
+	ReauthenticationID string `json:"reauthenticationId"`
+	KE3                []byte `json:"ke3"`
+}
+
 type ChangeCredentialsRequest struct {
 	ReauthenticationID string             `json:"reauthenticationId"`
 	KE3                []byte             `json:"ke3"`

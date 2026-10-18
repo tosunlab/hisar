@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
@@ -47,6 +48,101 @@ type VaultSummary struct {
 	Type      string `json:"type"`
 	Role      string `json:"role"`
 	ItemCount int    `json:"itemCount"`
+	// OrganizationID is set for organization vaults only.
+	OrganizationID string `json:"organizationId,omitempty"`
+}
+
+type OrganizationSummary struct {
+	ID          string `json:"id"`
+	Name        string `json:"name"`
+	Role        string `json:"role"`
+	MemberCount int    `json:"memberCount"`
+}
+
+// OrganizationInvitation is an invitation to this user's email; ExpiresAt is RFC 3339.
+type OrganizationInvitation struct {
+	ID               string `json:"id"`
+	OrganizationID   string `json:"organizationId"`
+	OrganizationName string `json:"organizationName"`
+	Role             string `json:"role"`
+	InvitedByName    string `json:"invitedByName"`
+	InvitedByEmail   string `json:"invitedByEmail"`
+	ExpiresAt        string `json:"expiresAt"`
+}
+
+type Organizations struct {
+	Organizations []OrganizationSummary    `json:"organizations"`
+	Invitations   []OrganizationInvitation `json:"invitations"`
+}
+
+// OrganizationMember: SecurityCode and IsKeyChanged as for Person.
+type OrganizationMember struct {
+	AccountID     string `json:"accountId"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	Role          string `json:"role"`
+	SecurityCode  string `json:"securityCode"`
+	IsCurrentUser bool   `json:"isCurrentUser"`
+	IsKeyChanged  bool   `json:"isKeyChanged"`
+}
+
+type TeamMember struct {
+	AccountID     string `json:"accountId"`
+	Name          string `json:"name"`
+	Email         string `json:"email"`
+	IsCurrentUser bool   `json:"isCurrentUser"`
+}
+
+// TeamVault is a vault the team was given. Vault names are encrypted, so Name is empty when CanOpen is false:
+// this user has no key for it (yet).
+type TeamVault struct {
+	VaultID string `json:"vaultId"`
+	Name    string `json:"name"`
+	Role    string `json:"role"`
+	CanOpen bool   `json:"canOpen"`
+}
+
+type Team struct {
+	ID      string       `json:"id"`
+	Name    string       `json:"name"`
+	Members []TeamMember `json:"members"`
+	Vaults  []TeamVault  `json:"vaults"`
+}
+
+// SentOrganizationInvitation is a pending invitation to the organization; only admins see them. Times are RFC 3339.
+type SentOrganizationInvitation struct {
+	ID        string `json:"id"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
+	CreatedAt string `json:"createdAt"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// Organization is what its members see of it; Invitations is empty unless IsAdmin.
+type Organization struct {
+	ID          string                       `json:"id"`
+	Name        string                       `json:"name"`
+	Role        string                       `json:"role"`
+	IsAdmin     bool                         `json:"isAdmin"`
+	Members     []OrganizationMember         `json:"members"`
+	Teams       []Team                       `json:"teams"`
+	Invitations []SentOrganizationInvitation `json:"invitations"`
+}
+
+// WaitingVaultKey is an organization vault this user's teams give them that no owner's app has delivered yet.
+type WaitingVaultKey struct {
+	VaultID          string `json:"vaultId"`
+	OrganizationID   string `json:"organizationId"`
+	OrganizationName string `json:"organizationName"`
+	Role             string `json:"role"`
+}
+
+// WaitingVaultKeys: DeliveryError and RotationError say why this app could not deliver a key to someone or rotate a
+// vault it owns, e.g. a changed signing key.
+type WaitingVaultKeys struct {
+	Waiting       []WaitingVaultKey `json:"waiting"`
+	DeliveryError string            `json:"deliveryError"`
+	RotationError string            `json:"rotationError"`
 }
 
 // Person is the user or someone they share a vault with. SecurityCode is derived from their signing key; IsKeyChanged
@@ -181,6 +277,17 @@ type ItemDetail struct {
 	// Database holds a database's engine, host, port, name and options, stored as named custom fields; its username and
 	// password are the item's own. Summaries keep only the engine, host, port and name.
 	Database *ItemDatabase `json:"database,omitempty"`
+	// Icon is the icon the user chose, or nil for the automatic one: a login's website icon (GetWebsiteIcon), else the
+	// category's icon or the initials.
+	Icon *ItemIcon `json:"icon,omitempty"`
+}
+
+// ItemIcon is a preset glyph (an item.IconPresets ID) in one of item.IconColors, or a PNG image (PrepareItemIcon),
+// which wins.
+type ItemIcon struct {
+	Preset string `json:"preset,omitempty"`
+	Color  string `json:"color,omitempty"`
+	Image  []byte `json:"image,omitempty"`
 }
 
 // ItemDatabase is a database's values besides its login data. Engine is the ID of a known engine (postgresql, mysql,
@@ -366,8 +473,14 @@ type Config struct {
 	FileSaver FileSaver
 	// FileOpener asks which file to open; it returns "" when the user cancels.
 	FileOpener FileOpener
+	// WebsiteIconFetcher fetches website icons; nil uses itemicon.NewFetcher, which asks the websites themselves.
+	WebsiteIconFetcher WebsiteIconFetcher
 	// OnUpdateRequired runs on its own goroutine when the server starts refusing this version.
 	OnUpdateRequired func(requirement UpdateRequirement)
+}
+
+type WebsiteIconFetcher interface {
+	Fetch(ctx context.Context, rawURL string) ([]byte, error)
 }
 
 type FileSaver interface {

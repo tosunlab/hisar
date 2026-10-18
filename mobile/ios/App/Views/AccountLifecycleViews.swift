@@ -345,6 +345,14 @@ struct DeleteAccountView: View {
                 }
             }
         }
+        if !preview.allOrganization.isEmpty {
+            Section("Organizations") {
+                ForEach(preview.allOrganization) { organization in
+                    Text(AccountLifecycleLogic.describeOrganization(organization))
+                        .accessibilityIdentifier("deletion-organization-\(organization.name)")
+                }
+            }
+        }
         Section("Also") {
             ForEach(AccountLifecycleLogic.describeAllOtherConsequence(preview), id: \.self) { consequence in
                 Text(consequence)

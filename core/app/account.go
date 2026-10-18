@@ -40,6 +40,16 @@ type AccountDeletionPreview struct {
 	SentInvitationCount     int             `json:"sentInvitationCount"`
 	ReceivedInvitationCount int             `json:"receivedInvitationCount"`
 	DeviceCount             int             `json:"deviceCount"`
+	// Organizations: IsDeleted when the user is its last member; NewAdminName is who becomes admin when the user is its
+	// last admin. Omitted when the user is in none.
+	Organizations []DeletionOrganization `json:"organizations,omitempty"`
+}
+
+type DeletionOrganization struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	IsDeleted    bool   `json:"isDeleted"`
+	NewAdminName string `json:"newAdminName"`
 }
 
 func convertAccountError(err error) error {
@@ -135,6 +145,12 @@ func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
 		SentInvitationCount:     preview.SentInvitationCount,
 		ReceivedInvitationCount: preview.ReceivedInvitationCount,
 		DeviceCount:             preview.DeviceCount,
+		Organizations:           make([]DeletionOrganization, 0, len(preview.Organizations)),
+	}
+	for _, organization := range preview.Organizations {
+		result.Organizations = append(result.Organizations, DeletionOrganization{
+			ID: organization.OrganizationID, Name: organization.Name, IsDeleted: organization.IsDeleted, NewAdminName: organization.NewAdminName,
+		})
 	}
 	return result, nil
 }

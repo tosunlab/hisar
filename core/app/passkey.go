@@ -105,7 +105,7 @@ func (s *Service) DeletePasskey(vaultID, itemID, credentialID string) (ItemDetai
 		return ItemDetail{}, fmt.Errorf("passkey %w", ErrNotFound)
 	}
 	item.UpdatePasskeyOverview(&vaultItem)
-	if _, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem); err != nil {
+	if err := s.saveSessionItem(ctx, vault, &vaultItem); err != nil {
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
@@ -347,7 +347,7 @@ func (s *Service) savePasskey(ctx context.Context, save passkeySave, createCrede
 	if err != nil {
 		return savedPasskey{}, err
 	}
-	if _, err := s.unlockedSession.SaveItem(ctx, vault, &vaultItem); err != nil {
+	if err := s.saveSessionItem(ctx, vault, &vaultItem); err != nil {
 		return savedPasskey{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)

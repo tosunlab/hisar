@@ -96,7 +96,7 @@ func (access *standaloneBackend) listVaults(ctx context.Context) ([]cliprotocol.
 	}
 	vaults := []cliprotocol.Vault{}
 	for _, vault := range access.vaultsByID {
-		vaults = append(vaults, cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role})
+		vaults = append(vaults, cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role, OrganizationID: vault.OrganizationID})
 	}
 	slices.SortFunc(vaults, func(first, second cliprotocol.Vault) int {
 		if (first.Type == apitypes.VaultPersonal) != (second.Type == apitypes.VaultPersonal) {
@@ -162,8 +162,15 @@ func (access *standaloneBackend) saveItem(ctx context.Context, vaultID string, v
 	if err != nil {
 		return err
 	}
+	var base *item.Item
+	if vaultItem.Revision != "" {
+		if cached, cacheErr := access.getItem(ctx, vaultID, vaultItem.ID); cacheErr == nil && cached != vaultItem {
+			copied := *cached
+			base = &copied
+		}
+	}
 	delete(access.itemsByVaultID, vaultID)
-	_, err = access.unlockedSession.SaveItem(ctx, vault, vaultItem)
+	_, err = access.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
 	return err
 }
 
@@ -552,4 +559,264 @@ func (access *standaloneBackend) revokeDevice(ctx context.Context, deviceID stri
 		return err
 	}
 	return authedClient.RevokeDevice(ctx, deviceID)
+}
+
+var (
+	errOrganizationNotFound  = errors.New("that organization, team, person or vault was not found, or you are no longer in the organization")
+	errOrganizationAdminOnly = errors.New("only an admin of this organization can do that")
+	errNotInTeam             = errors.New("only members of the team can create a vault for it")
+)
+
+// convertOrganizationError says what the server refused as the app does; 400 and 409 carry the server's own sentence.
+func convertOrganizationError(err error) error {
+	var apiError *apiclient.APIError
+	switch {
+	case apiclient.IsStatus(err, http.StatusNotFound):
+		return errOrganizationNotFound
+	case apiclient.IsStatus(err, http.StatusForbidden):
+		return errOrganizationAdminOnly
+	case (apiclient.IsStatus(err, http.StatusBadRequest) || apiclient.IsStatus(err, http.StatusConflict)) && errors.As(err, &apiError):
+		return errors.New(apiError.Message)
+	}
+	return err
+}
+
+func (access *standaloneBackend) listOrganizations(ctx context.Context) (cliprotocol.OrganizationListResult, error) {
+	_, authedClient, err := access.getSignedInClient()
+	if err != nil {
+		return cliprotocol.OrganizationListResult{}, err
+	}
+	organizationList, err := authedClient.ListOrganizations(ctx)
+	if err != nil {
+		return cliprotocol.OrganizationListResult{}, convertOrganizationError(err)
+	}
+	result := cliprotocol.OrganizationListResult{Organizations: []cliprotocol.OrganizationSummary{}, Invitations: []cliprotocol.OrganizationInvitation{}}
+	for _, organization := range organizationList.Organizations {
+		result.Organizations = append(result.Organizations, convertToCommandLineOrganizationSummary(organization))
+	}
+	slices.SortFunc(result.Organizations, func(first, second cliprotocol.OrganizationSummary) int {
+		return strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name))
+	})
+	for _, invitation := range organizationList.Invitations {
+		result.Invitations = append(result.Invitations, cliprotocol.OrganizationInvitation{
+			ID: invitation.ID, OrganizationID: invitation.OrganizationID, OrganizationName: invitation.OrganizationName, Role: invitation.Role,
+			InvitedByName: invitation.InvitedByName, InvitedByEmail: invitation.InvitedByEmail, ExpiresAt: invitation.ExpiresAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return result, nil
+}
+
+func convertToCommandLineOrganizationSummary(organization apitypes.OrganizationSummary) cliprotocol.OrganizationSummary {
+	return cliprotocol.OrganizationSummary{ID: organization.ID, Name: organization.Name, Role: organization.Role, MemberCount: organization.MemberCount}
+}
+
+// getOrganization names the team vaults this user can open only once a command unlocked (`org show` does), so changes
+// that name an organization never ask for the master password.
+func (access *standaloneBackend) getOrganization(ctx context.Context, organizationID string) (cliprotocol.Organization, error) {
+	currentState, authedClient, err := access.getSignedInClient()
+	if err != nil {
+		return cliprotocol.Organization{}, err
+	}
+	protoOrganization, err := authedClient.GetOrganization(ctx, organizationID)
+	if err != nil {
+		return cliprotocol.Organization{}, convertOrganizationError(err)
+	}
+	if access.unlockedSession != nil {
+		if err := access.loadVaults(ctx); err != nil {
+			return cliprotocol.Organization{}, err
+		}
+	}
+	organization := cliprotocol.Organization{
+		ID: protoOrganization.ID, Name: protoOrganization.Name, Role: protoOrganization.Role,
+		Members: []cliprotocol.OrganizationMember{}, Teams: []cliprotocol.Team{}, Invitations: []cliprotocol.SentOrganizationInvitation{},
+	}
+	membersByID := map[string]apitypes.OrganizationMember{}
+	for _, protoMember := range protoOrganization.Members {
+		membersByID[protoMember.AccountID] = protoMember
+		member := cliprotocol.OrganizationMember{
+			AccountID: protoMember.AccountID, Name: protoMember.Name, Email: protoMember.Email, Role: protoMember.Role,
+			IsCurrentUser: protoMember.AccountID == currentState.AccountID,
+		}
+		if len(protoMember.PublicKeys.Sign) > 0 {
+			member.SecurityCode = crypt.FormatKeyFingerprint(protoMember.PublicKeys.Sign)
+			member.IsKeyChanged = currentState.IsMemberKeyChanged(protoMember.AccountID, protoMember.PublicKeys.Sign)
+		}
+		organization.Members = append(organization.Members, member)
+	}
+	slices.SortStableFunc(organization.Members, func(first, second cliprotocol.OrganizationMember) int {
+		if (first.Role == apitypes.OrganizationRoleAdmin) != (second.Role == apitypes.OrganizationRoleAdmin) {
+			if first.Role == apitypes.OrganizationRoleAdmin {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(strings.ToLower(first.Name+first.Email), strings.ToLower(second.Name+second.Email))
+	})
+	for _, protoTeam := range protoOrganization.Teams {
+		organization.Teams = append(organization.Teams, access.convertToCommandLineTeam(protoTeam, membersByID))
+	}
+	slices.SortFunc(organization.Teams, func(first, second cliprotocol.Team) int {
+		return strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name))
+	})
+	for _, invitation := range protoOrganization.Invitations {
+		organization.Invitations = append(organization.Invitations, cliprotocol.SentOrganizationInvitation{
+			ID: invitation.ID, Email: invitation.Email, Role: invitation.Role, ExpiresAt: invitation.ExpiresAt.UTC().Format(time.RFC3339),
+		})
+	}
+	return organization, nil
+}
+
+func (access *standaloneBackend) convertToCommandLineTeam(protoTeam apitypes.Team, membersByID map[string]apitypes.OrganizationMember) cliprotocol.Team {
+	team := cliprotocol.Team{ID: protoTeam.ID, Name: protoTeam.Name, Members: []cliprotocol.TeamMember{}, Vaults: []cliprotocol.TeamVault{}}
+	for _, memberID := range protoTeam.MemberIDs {
+		member := membersByID[memberID]
+		team.Members = append(team.Members, cliprotocol.TeamMember{AccountID: memberID, Name: member.Name, Email: member.Email})
+	}
+	slices.SortFunc(team.Members, func(first, second cliprotocol.TeamMember) int {
+		return strings.Compare(strings.ToLower(first.Name+first.Email), strings.ToLower(second.Name+second.Email))
+	})
+	for _, protoVault := range protoTeam.Vaults {
+		teamVault := cliprotocol.TeamVault{VaultID: protoVault.VaultID, Role: protoVault.Role}
+		if vault, isFound := access.vaultsByID[protoVault.VaultID]; isFound {
+			teamVault.Name, teamVault.CanOpen = vault.Name, true
+		}
+		team.Vaults = append(team.Vaults, teamVault)
+	}
+	slices.SortStableFunc(team.Vaults, func(first, second cliprotocol.TeamVault) int {
+		return strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name))
+	})
+	return team
+}
+
+func (access *standaloneBackend) createOrganization(ctx context.Context, name string) (cliprotocol.OrganizationSummary, error) {
+	_, authedClient, err := access.getSignedInClient()
+	if err != nil {
+		return cliprotocol.OrganizationSummary{}, err
+	}
+	created, err := authedClient.CreateOrganization(ctx, &apitypes.CreateOrganizationRequest{Name: name})
+	if err != nil {
+		return cliprotocol.OrganizationSummary{}, convertOrganizationError(err)
+	}
+	return convertToCommandLineOrganizationSummary(*created), nil
+}
+
+func (access *standaloneBackend) createTeam(ctx context.Context, organizationID, name string) (cliprotocol.Team, error) {
+	_, authedClient, err := access.getSignedInClient()
+	if err != nil {
+		return cliprotocol.Team{}, err
+	}
+	created, err := authedClient.CreateTeam(ctx, organizationID, &apitypes.CreateTeamRequest{Name: name})
+	if err != nil {
+		return cliprotocol.Team{}, convertOrganizationError(err)
+	}
+	return access.convertToCommandLineTeam(*created, nil), nil
+}
+
+func (access *standaloneBackend) createOrganizationVault(ctx context.Context, organizationID, teamID, name string) (cliprotocol.Vault, error) {
+	if err := access.requireSession(ctx); err != nil {
+		return cliprotocol.Vault{}, err
+	}
+	vault, err := access.unlockedSession.CreateOrganizationVault(ctx, name, organizationID, teamID)
+	if apiclient.IsStatus(err, http.StatusForbidden) {
+		return cliprotocol.Vault{}, errNotInTeam
+	}
+	if err != nil {
+		return cliprotocol.Vault{}, convertOrganizationError(err)
+	}
+	if access.vaultsByID != nil {
+		access.vaultsByID[vault.ID] = vault
+	}
+	return cliprotocol.Vault{ID: vault.ID, Name: vault.Name, Type: vault.Type, Role: vault.Role, OrganizationID: vault.OrganizationID}, nil
+}
+
+func (access *standaloneBackend) changeOrganization(ctx context.Context, change cliprotocol.Request) error {
+	currentState, authedClient, err := access.getSignedInClient()
+	if err != nil {
+		return err
+	}
+	organizationID, teamID := change.OrganizationID, change.TeamID
+	switch change.Type {
+	case cliprotocol.TypeRenameOrganization:
+		err = authedClient.RenameOrganization(ctx, organizationID, &apitypes.RenameOrganizationRequest{Name: change.Name})
+	case cliprotocol.TypeDeleteOrganization:
+		err = authedClient.DeleteOrganization(ctx, organizationID)
+	case cliprotocol.TypeInviteToOrganization:
+		_, err = authedClient.InviteToOrganization(ctx, organizationID, &apitypes.OrganizationInvitationRequest{Email: change.Email, Role: change.Role})
+	case cliprotocol.TypeCancelOrganizationInvitation:
+		err = authedClient.CancelOrganizationInvitation(ctx, organizationID, change.InvitationID)
+	case cliprotocol.TypeAcceptOrganizationInvitation:
+		err = authedClient.AcceptOrganizationInvitation(ctx, change.InvitationID)
+	case cliprotocol.TypeDeclineOrganizationInvitation:
+		err = authedClient.DeclineOrganizationInvitation(ctx, change.InvitationID)
+	case cliprotocol.TypeSetOrganizationRole:
+		err = authedClient.SetOrganizationMemberRole(ctx, organizationID, change.AccountID, &apitypes.SetOrganizationRoleRequest{Role: change.Role})
+	case cliprotocol.TypeRemoveOrganizationMember:
+		err = authedClient.RemoveOrganizationMember(ctx, organizationID, change.AccountID)
+	case cliprotocol.TypeLeaveOrganization:
+		err = authedClient.RemoveOrganizationMember(ctx, organizationID, currentState.AccountID)
+	case cliprotocol.TypeRenameTeam:
+		err = authedClient.RenameTeam(ctx, organizationID, teamID, &apitypes.RenameTeamRequest{Name: change.Name})
+	case cliprotocol.TypeDeleteTeam:
+		err = authedClient.DeleteTeam(ctx, organizationID, teamID)
+	case cliprotocol.TypeAddTeamMember:
+		err = authedClient.AddTeamMember(ctx, organizationID, teamID, change.AccountID)
+	case cliprotocol.TypeRemoveTeamMember:
+		err = authedClient.RemoveTeamMember(ctx, organizationID, teamID, change.AccountID)
+	case cliprotocol.TypeGiveVaultToTeam:
+		err = authedClient.GiveVaultToTeam(ctx, organizationID, teamID, change.VaultID, &apitypes.GrantTeamVaultRequest{Role: change.Role})
+	case cliprotocol.TypeTakeVaultFromTeam:
+		err = authedClient.TakeVaultFromTeam(ctx, organizationID, teamID, change.VaultID)
+	default:
+		return fmt.Errorf("unknown organization change %q", change.Type)
+	}
+	if change.InvitationID != "" && apiclient.IsStatus(err, http.StatusNotFound) {
+		return errors.New("this invitation no longer exists")
+	}
+	return convertOrganizationError(err)
+}
+
+// completeOrganizationKeys does what the app does on every sync: deliver the keys team members wait for, rotate the
+// vaults someone lost, and list what this user waits for. A server without organizations has nothing to do.
+func (access *standaloneBackend) completeOrganizationKeys(ctx context.Context) (cliprotocol.OrganizationKeysResult, error) {
+	if err := access.requireSession(ctx); err != nil {
+		return cliprotocol.OrganizationKeysResult{}, err
+	}
+	result := cliprotocol.OrganizationKeysResult{Waiting: []cliprotocol.WaitingVaultKey{}}
+	deliveredKeys, err := access.unlockedSession.CompleteVaultKeyRequests(ctx)
+	if apiclient.IsStatus(err, http.StatusNotFound) {
+		return result, nil
+	}
+	if err != nil {
+		result.DeliveryError = err.Error()
+	}
+	rotatedVaults, err := access.unlockedSession.RotatePendingVaults(ctx)
+	if err != nil {
+		result.RotationError = err.Error()
+	}
+	result.DeliveredCount, result.RotatedCount = len(deliveredKeys), len(rotatedVaults)
+	if len(rotatedVaults) > 0 {
+		access.vaultsByID = nil
+		for _, rotatedVault := range rotatedVaults {
+			delete(access.itemsByVaultID, rotatedVault.ID)
+		}
+	}
+	requestList, err := access.unlockedSession.Client.ListVaultKeyRequests(ctx)
+	if err != nil {
+		return result, err
+	}
+	if len(requestList.Waiting) == 0 {
+		return result, nil
+	}
+	organizationNamesByID := map[string]string{}
+	if organizationList, err := access.unlockedSession.Client.ListOrganizations(ctx); err == nil {
+		for _, organization := range organizationList.Organizations {
+			organizationNamesByID[organization.ID] = organization.Name
+		}
+	}
+	for _, waiting := range requestList.Waiting {
+		result.Waiting = append(result.Waiting, cliprotocol.WaitingVaultKey{
+			VaultID: waiting.VaultID, OrganizationID: waiting.OrganizationID, OrganizationName: organizationNamesByID[waiting.OrganizationID], Role: waiting.Role,
+		})
+	}
+	return result, nil
 }

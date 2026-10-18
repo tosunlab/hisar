@@ -85,13 +85,13 @@ The server never sends credentials without TLS. The emails are plain text withou
 ## Desktop app updates
 
 The macOS app checks the server it is signed in to for updates (`docs/DESIGN.md` §9.1.1). The server reads the published
-`desktop-<version>` releases of `tosunlab/hisarapp-core` on GitHub and relays the appcast and the download, so apps never talk to
+`desktop-<version>` releases of `tosunlab/hisar` on GitHub and relays the appcast and the download, so apps never talk to
 GitHub. This needs no setup once the repository is public; while it is private, the server needs a read-only token:
 
 1. On GitHub, open **Settings → Developer settings → Personal access tokens → Fine-grained tokens** →
    **Generate new token**.
-2. Name it e.g. `hisar-server updates`, set an expiry date, choose the resource owner `hisarapp`, **Only select
-   repositories** → `tosunlab/hisarapp-core`, and under **Repository permissions** only **Contents: Read-only**. Create it and copy
+2. Name it e.g. `hisar-server updates`, set an expiry date, choose the resource owner `tosunlab`, **Only select
+   repositories** → `tosunlab/hisar`, and under **Repository permissions** only **Contents: Read-only**. Create it and copy
    the token.
 3. In `.env` on the server, uncomment and fill in:
 
@@ -100,13 +100,13 @@ GitHub. This needs no setup once the repository is public; while it is private, 
    ```
 
 4. `chmod 600 .env && docker compose up -d`. The log says
-   `desktop updates from the GitHub Releases of tosunlab/hisarapp-core, with a token`.
+   `desktop updates from the GitHub Releases of tosunlab/hisar, with a token`.
 
 Check it with a session token from a signed-in device (`desktop.json` in the app's state folder):
 `curl -H "Authorization: Bearer <token>" https://<domain>/api/v1/desktop/updates/appcast.xml`. The appcast is cached for
 10 minutes; if GitHub is unreachable or rate limits the server, the last appcast is served. Without a usable token for a
 private repository (missing or expired), update checks fail with "the update source is unreachable" and the log says
-`no repository tosunlab/hisarapp-core (a private repository needs a token)`. `HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY` reads another
+`no repository tosunlab/hisar (a private repository needs a token)`. `HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY` reads another
 repository (e.g. a fork with its own signed releases), and `HISAR_DESKTOP_UPDATE_GITHUB_REPOSITORY=off` turns updates off:
 the endpoints then answer 404 "updates are not configured on this server".
 
