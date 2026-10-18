@@ -207,7 +207,7 @@ private fun AutoFillListView(model: AutoFillModel) {
             title = { Text("Use ${login.title} in $serviceName?") },
             text = { Text("Hisar can fill this login in $serviceName from now on, or only this time.") },
             confirmButton = {
-                Column(horizontalAlignment = Alignment.End) {
+                Column(Modifier.exposeTestTags(), horizontalAlignment = Alignment.End) {
                     PlainButton("Always use for this app", { scope.launch { model.fillLoginToLink(isLinked = true) } }, testTag = "autofill-link-always")
                     PlainButton("Only this time", { scope.launch { model.fillLoginToLink(isLinked = false) } }, testTag = "autofill-link-once")
                     PlainButton("Cancel", model::dismissLoginToLink, testTag = "autofill-link-cancel")
