@@ -4,7 +4,6 @@
 package service
 
 import (
-	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"sync"
@@ -134,18 +133,6 @@ func New(database *store.Store, events *realtime.Broker, keys Keys, config Confi
 }
 
 func (s *Service) currentSettings() *settings.Settings { return s.instanceSettings.Current.Load() }
-
-// recordAudit keeps the trail of who changed what; a failure to record does not fail the request.
-func (s *Service) recordAudit(ctx context.Context, actor Actor, eventType string, detail any) {
-	var accountID, deviceID *string
-	if actor.AccountID != "" {
-		accountID = &actor.AccountID
-	}
-	if actor.DeviceID != "" {
-		deviceID = &actor.DeviceID
-	}
-	s.store.RecordAudit(ctx, accountID, deviceID, eventType, detail, actor.IP)
-}
 
 func (s *Service) computeMAC(parts ...string) []byte {
 	hmacHash := hmac.New(sha256.New, s.keys.HMACKey)

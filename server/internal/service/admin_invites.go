@@ -87,7 +87,7 @@ func (s *Service) CreateAdminInvite(ctx context.Context, actor Actor, request *a
 	if err != nil {
 		return nil, err
 	}
-	s.recordAudit(ctx, actor, "admin_invite_created", map[string]string{"email": email, "role": request.Role})
+	s.recordAudit(ctx, actor, auditAdminInviteCreated, map[string]string{"email": email, "role": request.Role})
 	return s.emailAdminInvite(ctx, inviter, created, token), nil
 }
 
@@ -102,7 +102,7 @@ func (s *Service) RevokeAdminInvite(ctx context.Context, actor Actor, inviteID s
 	} else if err != nil {
 		return err
 	}
-	s.recordAudit(ctx, actor, "admin_invite_revoked", map[string]string{"email": invite.Email, "role": invite.Role})
+	s.recordAudit(ctx, actor, auditAdminInviteRevoked, map[string]string{"email": invite.Email, "role": invite.Role})
 	return nil
 }
 
@@ -128,7 +128,7 @@ func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID s
 	if err != nil {
 		return nil, err
 	}
-	s.recordAudit(ctx, actor, "admin_invite_resent", map[string]string{"email": replaced.Email, "role": replaced.Role})
+	s.recordAudit(ctx, actor, auditAdminInviteResent, map[string]string{"email": replaced.Email, "role": replaced.Role})
 	return s.emailAdminInvite(ctx, inviter, replaced, token), nil
 }
 

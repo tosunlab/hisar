@@ -120,7 +120,7 @@ func provenAdmin(actor Actor, pending *pendingLogin) store.AdminActor {
 }
 
 // recordAdminAudit records an admin's change to another account, which detail.account names.
-func (s *Service) recordAdminAudit(ctx context.Context, actor Actor, eventType, accountID string, detail map[string]any) {
+func (s *Service) recordAdminAudit(ctx context.Context, actor Actor, eventType auditType, accountID string, detail map[string]any) {
 	if detail == nil {
 		detail = map[string]any{}
 	}
@@ -146,7 +146,7 @@ func (s *Service) SuspendAccount(ctx context.Context, actor Actor, accountID str
 		return convertAdminAccountError(err)
 	}
 	s.endAccountSessions(accountID)
-	s.recordAdminAudit(ctx, actor, "admin_account_suspended", accountID, nil)
+	s.recordAdminAudit(ctx, actor, auditAdminAccountSuspended, accountID, nil)
 	return nil
 }
 
@@ -159,7 +159,7 @@ func (s *Service) ReactivateAccount(ctx context.Context, actor Actor, accountID 
 	if err != nil || !reactivated {
 		return convertAdminAccountError(err)
 	}
-	s.recordAdminAudit(ctx, actor, "admin_account_reactivated", accountID, nil)
+	s.recordAdminAudit(ctx, actor, auditAdminAccountReactivated, accountID, nil)
 	return nil
 }
 
@@ -178,7 +178,7 @@ func (s *Service) ChangeAccountRole(ctx context.Context, actor Actor, accountID 
 	if err := s.store.SetAccountRole(ctx, provenAdmin(actor, pending), accountID, request.Role); err != nil {
 		return convertAdminAccountError(err)
 	}
-	s.recordAdminAudit(ctx, actor, "admin_role_changed", accountID, map[string]any{"role": request.Role})
+	s.recordAdminAudit(ctx, actor, auditAdminRoleChanged, accountID, map[string]any{"role": request.Role})
 	return nil
 }
 
@@ -203,7 +203,7 @@ func (s *Service) DeleteAccountAsAdmin(ctx context.Context, actor Actor, account
 	if err != nil {
 		return convertAdminAccountError(err)
 	}
-	s.recordAdminAudit(ctx, actor, "admin_account_deleted", accountID, map[string]any{"deletedVaults": deleted.DeletedVaultCount})
+	s.recordAdminAudit(ctx, actor, auditAdminAccountDeleted, accountID, map[string]any{"deletedVaults": deleted.DeletedVaultCount})
 	s.announceAccountDeletion(accountID, deleted, true)
 	return nil
 }
@@ -218,7 +218,7 @@ func (s *Service) SignOutAccount(ctx context.Context, actor Actor, accountID str
 		return convertAdminAccountError(err)
 	}
 	s.endAccountSessions(accountID)
-	s.recordAdminAudit(ctx, actor, "admin_signed_out", accountID, map[string]any{"signedOutDevices": revokedDeviceCount})
+	s.recordAdminAudit(ctx, actor, auditAdminSignedOut, accountID, map[string]any{"signedOutDevices": revokedDeviceCount})
 	return nil
 }
 
@@ -232,6 +232,6 @@ func (s *Service) RevokeAccountDevice(ctx context.Context, actor Actor, accountI
 		return convertAdminAccountError(err)
 	}
 	s.events.EndSessionStreams(accountID, endedTokenHashes)
-	s.recordAdminAudit(ctx, actor, "admin_device_revoked", accountID, map[string]any{"device": deviceID})
+	s.recordAdminAudit(ctx, actor, auditAdminDeviceRevoked, accountID, map[string]any{"device": deviceID})
 	return nil
 }

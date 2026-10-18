@@ -107,7 +107,7 @@ func (s *Service) CreateVault(ctx context.Context, actor Actor, request *apitype
 	if isOrganizationVault {
 		detail["organization"], detail["team"] = request.OrganizationID, request.TeamID
 	}
-	s.recordAudit(ctx, actor, "vault_created", detail)
+	s.recordAudit(ctx, actor, auditVaultCreated, detail)
 	s.publishVaultsChanged(actor.AccountID)
 	if change != nil {
 		s.publishOrganizationChange(change)
@@ -172,7 +172,7 @@ func (s *Service) SetAccess(ctx context.Context, actor Actor, vaultID, targetAcc
 	case err != nil:
 		return err
 	}
-	s.recordAudit(ctx, actor, "vault_access_set", map[string]string{"vault": vaultID, "account": targetAccountID, "role": request.Role})
+	s.recordAudit(ctx, actor, auditVaultAccessSet, map[string]string{"vault": vaultID, "account": targetAccountID, "role": request.Role})
 	s.publishVaultsChanged(targetAccountID)
 	if isNewMember {
 		if vaultType, err := s.store.GetVaultType(ctx, vaultID); err == nil && vaultType == apitypes.VaultShared {
@@ -202,7 +202,7 @@ func (s *Service) RemoveAccess(ctx context.Context, actor Actor, vaultID, target
 	case err != nil:
 		return err
 	}
-	s.recordAudit(ctx, actor, "vault_access_removed", map[string]string{"vault": vaultID, "account": targetAccountID})
+	s.recordAudit(ctx, actor, auditVaultAccessRemoved, map[string]string{"vault": vaultID, "account": targetAccountID})
 	s.publishVaultsChanged(targetAccountID)
 	return nil
 }
@@ -219,7 +219,7 @@ func (s *Service) leaveVault(ctx context.Context, actor Actor, vaultID string) e
 	case err != nil:
 		return err
 	}
-	s.recordAudit(ctx, actor, "vault_left", map[string]string{"vault": vaultID})
+	s.recordAudit(ctx, actor, auditVaultLeft, map[string]string{"vault": vaultID})
 	s.publishVaultsChanged(actor.AccountID)
 	s.publishVaultsChangedToMembers(ctx, vaultID)
 	return nil
@@ -358,7 +358,7 @@ func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID str
 	case err != nil:
 		return apitypes.MoveItemResponse{}, err
 	}
-	s.recordAudit(ctx, actor, "item_moved", map[string]string{"vault": vaultID, "item": itemID, "movedTo": request.TargetVaultID})
+	s.recordAudit(ctx, actor, auditItemMoved, map[string]string{"vault": vaultID, "item": itemID, "movedTo": request.TargetVaultID})
 	s.publishVaultChanged(ctx, vaultID, move.Tombstone.Seq)
 	s.publishVaultChanged(ctx, request.TargetVaultID, move.Moved.Seq)
 	return apitypes.MoveItemResponse{SourceSeq: move.Tombstone.Seq, TargetSeq: move.Moved.Seq}, nil
@@ -397,7 +397,7 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 	case err != nil:
 		return err
 	}
-	s.recordAudit(ctx, actor, "vault_renamed", map[string]string{"vault": vaultID})
+	s.recordAudit(ctx, actor, auditVaultRenamed, map[string]string{"vault": vaultID})
 	s.publishVaultsChangedToMembers(ctx, vaultID)
 	return nil
 }
@@ -466,7 +466,7 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 	} else if request.IsDeletingItems {
 		detail["itemsDeleted"] = "true"
 	}
-	s.recordAudit(ctx, actor, "vault_deleted", detail)
+	s.recordAudit(ctx, actor, auditVaultDeleted, detail)
 	s.publishVaultsChanged(formerMemberIDs...)
 	if request.MoveToVaultID != "" {
 		s.publishVaultChanged(ctx, request.MoveToVaultID, 0)
@@ -551,7 +551,7 @@ func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, 
 	if err != nil {
 		return err
 	}
-	s.recordAudit(ctx, actor, "vault_rotated", map[string]string{
+	s.recordAudit(ctx, actor, auditVaultRotated, map[string]string{
 		"vault": vaultID, "members": strconv.Itoa(len(members)), "items": strconv.Itoa(len(rotatedItems)),
 	})
 	previousAccountIDs := make([]string, 0, len(previousMembers))

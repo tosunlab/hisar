@@ -76,6 +76,6 @@ func (s *Service) RevokeDevice(ctx context.Context, actor Actor, deviceID string
 		return err
 	}
 	s.events.EndSessionStreams(actor.AccountID, endedTokenHashes)
-	s.recordAudit(ctx, actor, "device_revoked", map[string]string{"device": deviceID})
+	s.recordAudit(ctx, actor, auditDeviceRevoked, map[string]string{"device": deviceID})
 	return nil
 }

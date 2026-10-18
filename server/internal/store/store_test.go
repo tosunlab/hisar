@@ -98,8 +98,25 @@ func TestMigrations(t *testing.T) {
 	if countColumn(t, database, "accounts", "suspended_at") != 1 || countIndex(t, database, "devices_account_idx") != 1 {
 		t.Error("the account suspension migration is missing")
 	}
+	for _, indexName := range []string{"audit_events_created_idx", "audit_events_account_idx", "audit_events_type_idx"} {
+		if countIndex(t, database, indexName) != 1 {
+			t.Errorf("%s missing", indexName)
+		}
+	}
 	rolledBack, err := database.RollbackMigration(ctx)
 	if err != nil {
+		t.Fatal(err)
+	}
+	for _, indexName := range []string{"audit_events_created_idx", "audit_events_account_idx", "audit_events_type_idx"} {
+		if countIndex(t, database, indexName) != 0 {
+			t.Errorf("rolling back %s left %s", rolledBack.Source.Path, indexName)
+		}
+	}
+	if countColumn(t, database, "accounts", "suspended_at") != 1 {
+		t.Errorf("rolling back %s left the wrong schema", rolledBack.Source.Path)
+	}
+
+	if rolledBack, err = database.RollbackMigration(ctx); err != nil {
 		t.Fatal(err)
 	}
 	if countColumn(t, database, "accounts", "suspended_at") != 0 || countIndex(t, database, "devices_account_idx") != 0 || countTable(t, database, "instance_settings") != 1 {
@@ -180,7 +197,7 @@ func TestMigrations(t *testing.T) {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if results, err = database.Migrate(ctx); err != nil || len(results) != 10 {
+	if results, err = database.Migrate(ctx); err != nil || len(results) != 11 {
 		t.Fatalf("re-apply: %d %v", len(results), err)
 	}
 	for _, tableName := range recoveryTables {
@@ -190,9 +207,14 @@ func TestMigrations(t *testing.T) {
 	}
 	if countColumn(t, database, "vaults", "recovery_opt_out") != 0 || countTable(t, database, "share_invitations") != 1 || countTable(t, database, "share_links") != 1 ||
 		countTable(t, database, "account_preferences") != 1 || countTable(t, database, "organizations") != 1 || countTable(t, database, "instance_settings") != 1 ||
-		countColumn(t, database, "accounts", "suspended_at") != 1 {
+		countColumn(t, database, "accounts", "suspended_at") != 1 || countIndex(t, database, "audit_events_type_idx") != 1 {
 		t.Error("re-applying left the wrong schema")
 	}
+}
+
+func countIndex(t *testing.T, database *Store, indexName string) int {
+	t.Helper()
+	return countQueryRow(t, database, `SELECT count(*) FROM pg_indexes WHERE indexname = $1`, indexName)
 }
 
 func countConstraint(t *testing.T, database *Store, constraintName string) int {
@@ -222,11 +244,6 @@ func countColumn(t *testing.T, database *Store, tableName, columnName string) in
 	return columnCount
 }
 
-func countIndex(t *testing.T, database *Store, indexName string) int {
-	t.Helper()
-	return countQueryRow(t, database, `SELECT count(*) FROM pg_indexes WHERE indexname = $1`, indexName)
-}
-
 func countRow(t *testing.T, database *Store, tableName string) int {
 	t.Helper()
 	var rowCount int
@@ -242,7 +259,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
-	for range 7 {
+	for range 8 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}
@@ -261,7 +278,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		}
 	}
 
-	if results, err := database.Migrate(ctx); err != nil || len(results) != 7 {
+	if results, err := database.Migrate(ctx); err != nil || len(results) != 8 {
 		t.Fatalf("applied %d: %v", len(results), err)
 	}
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
@@ -280,7 +297,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		t.Fatalf("vault after the migration: %+v %v", vaults, err)
 	}
 
-	for range 7 {
+	for range 8 {
 		if _, err := database.RollbackMigration(ctx); err != nil {
 			t.Fatal(err)
 		}
