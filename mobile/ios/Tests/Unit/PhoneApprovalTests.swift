@@ -85,6 +85,26 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Lasts"])
         XCTAssertEqual(approval.allDetailRow.map(\.value), ["Raycast", "Until Hisar locks on MacBook Pro"])
         XCTAssertEqual(approval.detailLine, "Until Hisar locks on MacBook Pro", "the card says how long approving lasts, as there is no command")
+        XCTAssertEqual(approval.approvalNote, "Approving lets Raycast use Hisar until it locks on your Mac; it does not unlock Hisar there.")
+        XCTAssertFalse(approval.isRememberable)
+    }
+
+    func testLauncherShareLinkRequestIsApprovedOnce() throws {
+        let json = """
+        [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","createdAt":"2027-01-15T08:00:00.123Z","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"launcher","appName":"Raycast","purpose":"create a share link for “GitHub”","host":"","commandLine":"Expires in 7 days · 1 view",
+          "repositoryPath":"","keyName":"","isForwarded":false,"forwardedFromHost":"","terminalName":"","secrets":["username","password"],
+          "appIcon":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==",
+          "appWarning":"Anyone with the link can read these until it expires or its views run out."}]
+        """
+        let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
+        XCTAssertEqual(approval.summary, "Raycast wants to create a share link for “GitHub”")
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Secrets", "Link", "Warning"], "a share link lasts for this one request")
+        XCTAssertEqual(approval.allDetailRow.map(\.value), [
+            "Raycast", "username\npassword", "Expires in 7 days · 1 view", "Anyone with the link can read these until it expires or its views run out.",
+        ])
+        XCTAssertEqual(approval.approvalNote, "Approving lets this one request continue; it does not unlock Hisar on your Mac.")
+        XCTAssertEqual(approval.detailLine, "username, password", "the card names what the link shares")
         XCTAssertFalse(approval.isRememberable)
     }
 
