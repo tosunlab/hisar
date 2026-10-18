@@ -384,6 +384,15 @@ export interface ItemIdentity {
 }
 
 /**
+ * ItemLocation is the item a launcher asks the window to show, and whether to open its editor.
+ */
+export interface ItemLocation {
+    "vaultID": string;
+    "itemID": string;
+    "isEditing": boolean;
+}
+
+/**
  * ItemPasskey describes a stored passkey without its private key.
  */
 export interface ItemPasskey {

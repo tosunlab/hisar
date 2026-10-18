@@ -56,6 +56,7 @@ func main() {
 	var agentServer *sshagent.Server
 	var approver *agent.Approver
 	var showUpdateRequired func(requirement app.UpdateRequirement)
+	var showItem func(location app.ItemLocation)
 	vaultConfig := app.Config{
 		StatePath:             statePath,
 		CachePath:             cachePath,
@@ -82,6 +83,11 @@ func main() {
 		OnUpdateRequired: func(requirement app.UpdateRequirement) {
 			if showUpdateRequired != nil {
 				showUpdateRequired(requirement)
+			}
+		},
+		ShowItem: func(location app.ItemLocation) {
+			if showItem != nil {
+				showItem(location)
 			}
 		},
 	}
@@ -295,6 +301,10 @@ func main() {
 	})
 	showUpdateRequired = func(requirement app.UpdateRequirement) {
 		wailsApp.Event.Emit(eventUpdateRequired, requirement)
+		showWindow()
+	}
+	showItem = func(location app.ItemLocation) {
+		wailsApp.Event.Emit(eventShowItem, location)
 		showWindow()
 	}
 	wailsApp.Event.OnApplicationEvent(events.Common.ApplicationLaunchedWithUrl, func(event *application.ApplicationEvent) {
