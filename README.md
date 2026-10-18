@@ -232,8 +232,12 @@ publishes an existing prerelease by hand, through the same approval. Actions →
 pushes only `ghcr.io/tosunlab/hisar-server:sha-<commit>`, for testing.
 
 Repository secrets: `SPARKLE_PRIVATE_KEY`, the Sparkle EdDSA private key file's content (`gh secret set SPARKLE_PRIVATE_KEY --repo
-tosunlab/hisar < <key file>`), and `RELEASE_DEPLOY_KEY`, the private half of the deploy key "Release workflow tags" (write
-access, a bypass actor of the ruleset "tags: only maintainers create"). Images go to the GitHub Container Registry with the
+tosunlab/hisar < <key file>`); `RELEASE_DEPLOY_KEY`, the private half of the deploy key "Release workflow tags" (write
+access, a bypass actor of the ruleset "tags: only maintainers create"); and, for desktop releases, the team's Developer ID
+Application identity and the App Store Connect API key that notarizes the app: `MACOS_SIGNING_CERTIFICATE` (the identity as a
+base64 `.p12`: `base64 -i <identity.p12> | gh secret set MACOS_SIGNING_CERTIFICATE --repo tosunlab/hisar`),
+`MACOS_SIGNING_CERTIFICATE_PASSWORD` (its export password), `APPLE_NOTARY_KEY` (the base64 `.p8`), `APPLE_NOTARY_KEY_ID` and
+`APPLE_NOTARY_ISSUER_ID`. Images go to the GitHub Container Registry with the
 workflow's own `GITHUB_TOKEN`. The environments `publish-server`, `publish-cli`, `publish-desktop` and `publish-extension` have
 the required reviewers and accept only `main`.
 

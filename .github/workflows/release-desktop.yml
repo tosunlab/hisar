@@ -14,6 +14,16 @@ on:
     secrets:
       SPARKLE_PRIVATE_KEY:
         required: false
+      MACOS_SIGNING_CERTIFICATE:
+        required: false
+      MACOS_SIGNING_CERTIFICATE_PASSWORD:
+        required: false
+      APPLE_NOTARY_KEY:
+        required: false
+      APPLE_NOTARY_KEY_ID:
+        required: false
+      APPLE_NOTARY_ISSUER_ID:
+        required: false
 
 permissions:
   contents: read
@@ -67,7 +77,54 @@ jobs:
           echo "$RUNNER_TEMP/dmgbuild/bin" >> "$GITHUB_PATH"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           make install-wails
-      - name: Build the DMG
+      # The team's Developer ID Application identity (589NVZWDWZ), in a keychain that lives only for this job, and the
+      # App Store Connect API key that notarizes the app and the DMG. A team identity keeps the designated requirement the
+      # same across releases, so the Touch ID key in the login keychain stays readable after an update.
+      - name: Import the signing identity and the notary key
+        env:
+          MACOS_SIGNING_CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
+          MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+          APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          if [ -z "$MACOS_SIGNING_CERTIFICATE" ]; then
+            $IS_CUSTOM_BUILD || { echo "set the repository secrets MACOS_SIGNING_CERTIFICATE (base64 Developer ID .p12) and MACOS_SIGNING_CERTIFICATE_PASSWORD"; exit 1; }
+            echo "No MACOS_SIGNING_CERTIFICATE: this custom build is ad-hoc signed and not notarized"
+            exit 0
+          fi
+          if [ -z "$APPLE_NOTARY_KEY" ] || [ -z "$APPLE_NOTARY_KEY_ID" ] || [ -z "$APPLE_NOTARY_ISSUER_ID" ]; then
+            echo "set the repository secrets APPLE_NOTARY_KEY (base64 .p8), APPLE_NOTARY_KEY_ID and APPLE_NOTARY_ISSUER_ID"
+            exit 1
+          fi
+          umask 077
+          printf '%s' "$APPLE_NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
+          {
+            echo "HISAR_NOTARY_KEY=$RUNNER_TEMP/notary-key.p8"
+            echo "HISAR_NOTARY_KEY_ID=$APPLE_NOTARY_KEY_ID"
+            echo "HISAR_NOTARY_ISSUER_ID=$APPLE_NOTARY_ISSUER_ID"
+          } >> "$GITHUB_ENV"
+          keychain="$RUNNER_TEMP/signing.keychain-db"
+          keychainPassword=$(openssl rand -hex 32)
+          printf '%s' "$MACOS_SIGNING_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/signing.p12"
+          security create-keychain -p "$keychainPassword" "$keychain"
+          echo "SIGNING_KEYCHAIN=$keychain" >> "$GITHUB_ENV"
+          security set-keychain-settings -lut 3600 "$keychain"
+          security unlock-keychain -p "$keychainPassword" "$keychain"
+          security import "$RUNNER_TEMP/signing.p12" -k "$keychain" -f pkcs12 -P "$MACOS_SIGNING_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+          rm -f "$RUNNER_TEMP/signing.p12"
+          # The identity's issuer, so the chain verifies whether or not the .p12 export carried it.
+          curl -fsSL https://www.apple.com/certificateauthority/DeveloperIDG2CA.cer -o "$RUNNER_TEMP/DeveloperIDG2CA.cer"
+          security import "$RUNNER_TEMP/DeveloperIDG2CA.cer" -k "$keychain"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychainPassword" "$keychain" >/dev/null
+          # Keeps the runner's keychains searchable; their paths have no spaces. (macOS bash 3.2 has no mapfile.)
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "$keychain" $(security list-keychains -d user | tr -d '"')
+          # -v lists only identities whose chain verifies, so a missing intermediate certificate fails here.
+          identity=$(security find-identity -v -p codesigning "$keychain" | awk '/"Developer ID Application: .*\(589NVZWDWZ\)"/ {print $2; exit}')
+          test -n "$identity" || { security find-identity -p codesigning "$keychain"; echo "the .p12 has no valid Developer ID Application identity of team 589NVZWDWZ"; exit 1; }
+          echo "HISAR_SIGNING_IDENTITY=$identity" >> "$GITHUB_ENV"
+      - name: Build, notarize and staple the DMG
         run: bash scripts/package-desktop-dmg.sh "$VERSION"
       # The tag's annotation is the release notes; a lightweight tag gets "Hisar <version>".
       - name: Sign the Sparkle update
@@ -90,9 +147,11 @@ jobs:
           path: release-files/
           if-no-files-found: error
           retention-days: 7
-      - name: Remove the Sparkle key
+      - name: Remove the Sparkle key, the notary key and the signing keychain
         if: always()
-        run: rm -f "$RUNNER_TEMP/sparkle-private-key"
+        run: |
+          rm -f "$RUNNER_TEMP/sparkle-private-key" "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/notary-key.p8"
+          if [ -n "${SIGNING_KEYCHAIN:-}" ]; then security delete-keychain "$SIGNING_KEYCHAIN"; fi
 
   desktop-linux:
     name: Build the Linux .deb, .rpm and AppImage (${{ matrix.architecture }})
