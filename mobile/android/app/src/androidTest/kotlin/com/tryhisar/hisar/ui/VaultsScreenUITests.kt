@@ -125,6 +125,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             goBack()
 
             scrollTo("favorite-GitHub")
+            scrollTo("favorite-Netflix")
             composeRule.onNodeWithTag("favorite-Netflix").performTouchInput { swipeLeft() }
             tap("unfavorite-Netflix")
             composeRule.waitUntil(10_000) { !exists(hasTestTag("favorite-Netflix")) }
