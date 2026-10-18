@@ -5,6 +5,7 @@ import android.app.Activity;
 import android.credentials.CreateCredentialException;
 import android.credentials.CreateCredentialRequest;
 import android.credentials.CreateCredentialResponse;
+import android.credentials.Credential;
 import android.credentials.CredentialManager;
 import android.credentials.CredentialOption;
 import android.credentials.GetCredentialException;
@@ -15,23 +16,32 @@ import android.os.CancellationSignal;
 import android.os.OutcomeReceiver;
 import android.widget.FrameLayout;
 import android.widget.TextView;
+import java.util.ArrayList;
 
 /**
- * A native app asking Credential Manager for passkeys, in the test APK's own package and process. It is Java on the
- * platform's API, because that process has neither the Kotlin library nor androidx.credentials, which only Hisar's APK
- * carries. The bundles are the ones androidx.credentials writes. The outcome shows as the text of "caller-result".
+ * A native app asking Credential Manager for passkeys and passwords, in the test APK's own package and process. It is
+ * Java on the platform's API, because that process has neither the Kotlin library nor androidx.credentials, which only
+ * Hisar's APK carries. The bundles are the ones androidx.credentials writes. The outcome shows as the text of
+ * "caller-result".
  */
 @TargetApi(34)
-public class PasskeyCallerActivity extends Activity {
+public class CredentialCallerActivity extends Activity {
     public static final String EXTRA_MODE = "mode";
     public static final String EXTRA_REQUEST_JSON = "requestJson";
     public static final String EXTRA_USER_NAME = "userName";
+    public static final String MODE_CREATE_PASSKEY = "create";
+    public static final String MODE_GET_PASSKEY = "get";
+    public static final String MODE_GET_PASSWORD = "password";
 
     private static final String TYPE_PUBLIC_KEY_CREDENTIAL = "androidx.credentials.TYPE_PUBLIC_KEY_CREDENTIAL";
+    private static final String TYPE_PASSWORD_CREDENTIAL = "android.credentials.TYPE_PASSWORD_CREDENTIAL";
     private static final String KEY_SUBTYPE = "androidx.credentials.BUNDLE_KEY_SUBTYPE";
     private static final String KEY_REQUEST_JSON = "androidx.credentials.BUNDLE_KEY_REQUEST_JSON";
     private static final String KEY_REQUEST_DISPLAY_INFO = "androidx.credentials.BUNDLE_KEY_REQUEST_DISPLAY_INFO";
     private static final String KEY_USER_ID = "androidx.credentials.BUNDLE_KEY_USER_ID";
+    private static final String KEY_ALLOWED_USER_IDS = "androidx.credentials.BUNDLE_KEY_ALLOWED_USER_IDS";
+    private static final String KEY_ID = "androidx.credentials.BUNDLE_KEY_ID";
+    private static final String KEY_PASSWORD = "androidx.credentials.BUNDLE_KEY_PASSWORD";
     private static final String SUBTYPE_CREATE = "androidx.credentials.BUNDLE_VALUE_SUBTYPE_CREATE_PUBLIC_KEY_CREDENTIAL_REQUEST";
     private static final String SUBTYPE_GET = "androidx.credentials.BUNDLE_VALUE_SUBTYPE_GET_PUBLIC_KEY_CREDENTIAL_OPTION";
     private static final String KEY_REGISTRATION_RESPONSE_JSON = "androidx.credentials.BUNDLE_KEY_REGISTRATION_RESPONSE_JSON";
@@ -50,9 +60,10 @@ public class PasskeyCallerActivity extends Activity {
         layout.addView(result);
         setContentView(layout);
         if (savedInstanceState != null) return;
+        String mode = getIntent().getStringExtra(EXTRA_MODE);
         String requestJson = getIntent().getStringExtra(EXTRA_REQUEST_JSON);
         CredentialManager credentialManager = getSystemService(CredentialManager.class);
-        if ("create".equals(getIntent().getStringExtra(EXTRA_MODE))) {
+        if (MODE_CREATE_PASSKEY.equals(mode)) {
             Bundle data = buildBundle(SUBTYPE_CREATE, requestJson);
             Bundle displayInfo = new Bundle();
             displayInfo.putCharSequence(KEY_USER_ID, getIntent().getStringExtra(EXTRA_USER_NAME));
@@ -72,21 +83,33 @@ public class PasskeyCallerActivity extends Activity {
                     show("error " + error.getType() + " " + error.getMessage());
                 }
             });
-        } else {
-            CredentialOption option = new CredentialOption.Builder(TYPE_PUBLIC_KEY_CREDENTIAL, buildBundle(SUBTYPE_GET, requestJson), buildBundle(SUBTYPE_GET, requestJson)).build();
-            GetCredentialRequest request = new GetCredentialRequest.Builder(new Bundle()).addCredentialOption(option).build();
-            credentialManager.getCredential(this, request, new CancellationSignal(), getMainExecutor(), new OutcomeReceiver<GetCredentialResponse, GetCredentialException>() {
-                @Override
-                public void onResult(GetCredentialResponse response) {
-                    show("signed-in " + response.getCredential().getData().getString(KEY_AUTHENTICATION_RESPONSE_JSON));
-                }
-
-                @Override
-                public void onError(GetCredentialException error) {
-                    show("error " + error.getType() + " " + error.getMessage());
-                }
-            });
+            return;
         }
+        CredentialOption option;
+        if (MODE_GET_PASSWORD.equals(mode)) {
+            Bundle data = new Bundle();
+            data.putStringArrayList(KEY_ALLOWED_USER_IDS, new ArrayList<>());
+            option = new CredentialOption.Builder(TYPE_PASSWORD_CREDENTIAL, data, data).build();
+        } else {
+            option = new CredentialOption.Builder(TYPE_PUBLIC_KEY_CREDENTIAL, buildBundle(SUBTYPE_GET, requestJson), buildBundle(SUBTYPE_GET, requestJson)).build();
+        }
+        GetCredentialRequest request = new GetCredentialRequest.Builder(new Bundle()).addCredentialOption(option).build();
+        credentialManager.getCredential(this, request, new CancellationSignal(), getMainExecutor(), new OutcomeReceiver<GetCredentialResponse, GetCredentialException>() {
+            @Override
+            public void onResult(GetCredentialResponse response) {
+                Credential credential = response.getCredential();
+                if (TYPE_PASSWORD_CREDENTIAL.equals(credential.getType())) {
+                    show("password " + credential.getData().getString(KEY_ID) + " " + credential.getData().getString(KEY_PASSWORD));
+                } else {
+                    show("signed-in " + credential.getData().getString(KEY_AUTHENTICATION_RESPONSE_JSON));
+                }
+            }
+
+            @Override
+            public void onError(GetCredentialException error) {
+                show("error " + error.getType() + " " + error.getMessage());
+            }
+        });
     }
 
     private static Bundle buildBundle(String subtype, String requestJson) {
