@@ -47,6 +47,7 @@ desktop updates (the Mac app's Sparkle feed) and the newest server release for t
 minimum app versions (optional; empty leaves the dashboard's value, older apps get 426 Upgrade Required):
   HISAR_MINIMUM_VERSION_DESKTOP_MACOS  e.g. 0.1.6
   HISAR_MINIMUM_VERSION_IOS
+  HISAR_MINIMUM_VERSION_ANDROID
   HISAR_MINIMUM_VERSION_CLI
   HISAR_MINIMUM_VERSION_EXTENSION
 `, desktopupdate.DefaultGitHubRepository)

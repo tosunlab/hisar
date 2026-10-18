@@ -117,7 +117,7 @@ variables in `.env` override a field and lock it in the dashboard (any of the Em
 | Setting | Variable |
 |---|---|
 | Email | `HISAR_SMTP_HOST`, `HISAR_SMTP_PORT`, `HISAR_SMTP_USERNAME`, `HISAR_SMTP_PASSWORD`, `HISAR_SMTP_FROM` |
-| App versions | `HISAR_MINIMUM_VERSION_DESKTOP_MACOS`, `HISAR_MINIMUM_VERSION_IOS`, `HISAR_MINIMUM_VERSION_CLI`, `HISAR_MINIMUM_VERSION_EXTENSION` |
+| App versions | `HISAR_MINIMUM_VERSION_DESKTOP_MACOS`, `HISAR_MINIMUM_VERSION_IOS`, `HISAR_MINIMUM_VERSION_ANDROID`, `HISAR_MINIMUM_VERSION_CLI`, `HISAR_MINIMUM_VERSION_EXTENSION` |
 | Auth burst | `HISAR_AUTH_BURST` |
 
 Run one server process per database: each process reads the settings at start and after its own saves.

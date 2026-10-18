@@ -49,12 +49,13 @@ func sendVersionedRequest(t *testing.T, app *fiber.App, method, path, platform, 
 }
 
 func TestMinimumVersionPerPlatform(t *testing.T) {
-	app := createMinimumVersionApp(t, settings.MinimumVersions{DesktopMacOS: "0.1.6", IOS: "1.0.0", CLI: "1.0.0", Extension: "0.3.0"})
+	app := createMinimumVersionApp(t, settings.MinimumVersions{DesktopMacOS: "0.1.6", IOS: "1.0.0", Android: "1.1.0", CLI: "1.0.0", Extension: "0.3.0"})
 	for _, testCase := range []struct {
 		platform, oldVersion, currentVersion, updateURL string
 	}{
 		{apitypes.PlatformDesktopMacOS, "0.1.5", "0.1.6", "https://tryhisar.com/download"},
 		{apitypes.PlatformIOS, "0.9.9", "1.0.0", "https://tryhisar.com/download"},
+		{apitypes.PlatformAndroid, "1.0.0", "1.1.0", "https://tryhisar.com/download"},
 		{"linux/cli", "1.0.0-alpha-test", "1.0.1", "https://tryhisar.com/download"},
 		{"darwin/cli", "0.2.0", "1.0.0", "https://tryhisar.com/download"},
 		{apitypes.PlatformExtension, "0.2.0", "0.3.0-rc.1+build", "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf"},
