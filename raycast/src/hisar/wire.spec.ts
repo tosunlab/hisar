@@ -48,13 +48,7 @@ describe("every exchange of the contract", () => {
       ...golden.exchanges.map(({ request, result }) => [request.id, { id: request.id, ok: true, result }] as const),
       ...golden.errors.map((error) => [error.id, error] as const),
     ]);
-    app = await startFakeApp(directory.socketPath, (request) => {
-      const response = responseByID.get(request.id) as { result: object };
-      // The contract's hello predates launcher.items.open and launcher.items.share; this app announces every type.
-      if (request.type === "hello")
-        return { ...response, result: { ...response.result, features: golden.requestTypes } };
-      return response;
-    });
+    app = await startFakeApp(directory.socketPath, (request) => responseByID.get(request.id) as object);
     const hisar = new Hisar({ socketPath: directory.socketPath, clientVersion: "1.0.0" });
 
     expect(await hisar.isApproved()).toBe(true);
