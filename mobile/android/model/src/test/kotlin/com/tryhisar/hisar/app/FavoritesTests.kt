@@ -45,6 +45,15 @@ class FavoritesTests {
     }
 
     @Test
+    fun testADeletedFavoriteLeavesTheList() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.allFavoriteRecordID = mutableSetOf("personal/bank", "personal/github")
+        val model = harness.startUnlockedModel()
+        model.itemEditor.deleteItem("personal", "bank")
+        assertEquals(listOf("GitHub"), model.unlockedData.value.listAllFavoriteReference().map { it.item.title })
+    }
+
+    @Test
     fun testAFailedStarKeepsTheListAndShowsTheError() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()
