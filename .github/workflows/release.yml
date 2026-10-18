@@ -75,6 +75,8 @@ jobs:
     if: ${{ !inputs.dryRun && inputs.runTests && inputs.app == 'desktop' }}
     uses: ./.github/workflows/macos.yml
 
+  # Without a status check function in its condition, a job is skipped when any job before it in the needs chain was
+  # skipped, so every job after the optional CI names what it needs.
   # The deploy key in RELEASE_DEPLOY_KEY may create tags past the ruleset "tags: only maintainers create".
   tag:
     name: Push the tag
@@ -117,7 +119,7 @@ jobs:
   build-server:
     name: Build
     needs: [plan, tag]
-    if: inputs.app == 'server'
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'server' }}
     permissions:
       contents: read
       packages: write
@@ -128,7 +130,7 @@ jobs:
   build-cli:
     name: Build
     needs: [plan, tag]
-    if: inputs.app == 'cli'
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'cli' }}
     uses: ./.github/workflows/release-cli.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
@@ -136,7 +138,7 @@ jobs:
   build-desktop:
     name: Build
     needs: [plan, tag]
-    if: inputs.app == 'desktop'
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'desktop' }}
     uses: ./.github/workflows/release-desktop.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
@@ -146,7 +148,7 @@ jobs:
   build-extension:
     name: Build
     needs: [plan, tag]
-    if: inputs.app == 'extension'
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'extension' }}
     uses: ./.github/workflows/release-extension.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
@@ -197,7 +199,7 @@ jobs:
   publish:
     name: Publish
     needs: [plan, release]
-    if: needs.plan.outputs.isCustomBuild == 'false'
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.plan.outputs.isCustomBuild == 'false' }}
     permissions:
       contents: write
       packages: write
