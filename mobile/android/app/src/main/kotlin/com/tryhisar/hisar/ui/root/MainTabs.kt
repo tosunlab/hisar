@@ -59,6 +59,7 @@ val TabBarHeight = 84.dp
 @Composable
 fun MainTabs(model: AppModel, approvalBadgeCount: Int = 0) {
     val selectedTab by model.selectedTab.collectAsStateWithLifecycle()
+    val isSheetShown by model.navigation.isSheetShown.collectAsStateWithLifecycle()
     val stateHolder = rememberSaveableStateHolder()
     LaunchedEffect(selectedTab) { model.reportActivity() }
     BackHandler(enabled = selectedTab != Tab.VAULTS) { model.selectedTab.value = Tab.VAULTS }
@@ -71,7 +72,9 @@ fun MainTabs(model: AppModel, approvalBadgeCount: Int = 0) {
                 Tab.SEARCH -> SearchTab(model)
             }
         }
-        TabBar(selectedTab, approvalBadgeCount, onSelect = { model.selectedTab.value = it }, modifier = Modifier.align(Alignment.BottomCenter))
+        if (!isSheetShown) {
+            TabBar(selectedTab, approvalBadgeCount, onSelect = { model.selectedTab.value = it }, modifier = Modifier.align(Alignment.BottomCenter))
+        }
     }
 }
 

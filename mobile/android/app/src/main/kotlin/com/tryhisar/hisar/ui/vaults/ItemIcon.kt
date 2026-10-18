@@ -37,7 +37,7 @@ import androidx.compose.material.icons.outlined.ShoppingCart
 import androidx.compose.material.icons.outlined.SmartDisplay
 import androidx.compose.material.icons.outlined.SportsEsports
 import androidx.compose.material.icons.outlined.StarOutline
-import androidx.compose.material.icons.outlined.StickyNote2
+import androidx.compose.material.icons.automirrored.outlined.StickyNote2
 import androidx.compose.material.icons.outlined.Storage
 import androidx.compose.material.icons.outlined.Terminal
 import androidx.compose.material.icons.outlined.Verified
@@ -125,7 +125,7 @@ object ItemIconStyle {
     /** The symbol of a category that shows one; a login shows its initial. */
     fun getCategoryIcon(item: ItemDetail): ImageVector? = when {
         item.isSSHKey -> Icons.Outlined.Key
-        item.isSecureNote -> Icons.Outlined.StickyNote2
+        item.isSecureNote -> Icons.AutoMirrored.Outlined.StickyNote2
         item.isCreditCard -> Icons.Outlined.CreditCard
         item.isIdentity -> Icons.Outlined.Badge
         item.isAPICredential -> Icons.Outlined.DataObject
