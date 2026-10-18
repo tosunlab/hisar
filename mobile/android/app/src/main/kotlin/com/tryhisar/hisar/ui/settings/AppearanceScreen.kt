@@ -51,6 +51,7 @@ val ThemeColorName.label: String
 @Composable
 fun AppearanceScreen(model: AppModel, onBack: () -> Unit) {
     val theme by model.theme.collectAsStateWithLifecycle()
+    val isWebsiteIconsEnabled by model.isWebsiteIconsEnabled.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val choose: (VaultTheme) -> Unit = { scope.launch { model.settings.setTheme(it) } }
@@ -84,6 +85,16 @@ fun AppearanceScreen(model: AppModel, onBack: () -> Unit) {
                     leading = { Swatch { ColorSwatch(ThemePalettes.find(color)) } },
                 )
             }
+        }
+        FormSection(
+            footer = { Text("Logins without an icon of their own show their website's. This device asks each website for it directly, never a third party.") },
+        ) {
+            ToggleRow(
+                "Show website icons",
+                isOn = isWebsiteIconsEnabled,
+                onChange = { isOn -> scope.launch { model.websiteIcons.setWebsiteIconsEnabled(isOn) } },
+                testTag = "website-icons-switch",
+            )
         }
         errorMessage?.let { FormSection { ErrorBanner(it) } }
     }

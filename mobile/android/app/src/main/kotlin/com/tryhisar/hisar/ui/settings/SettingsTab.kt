@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
+import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Business
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Devices
@@ -58,6 +59,7 @@ import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.TabScaffold
+import com.tryhisar.hisar.ui.item.StandalonePasswordGeneratorScreen
 import com.tryhisar.hisar.ui.organizations.OrganizationsScreen
 import com.tryhisar.hisar.ui.root.TabBarHeight
 import com.tryhisar.hisar.ui.sharing.PeopleScreen
@@ -73,6 +75,7 @@ enum class SettingsDestination {
     APPEARANCE,
     MAC_APPROVALS,
     AUTOFILL,
+    PASSWORD_GENERATOR,
     PEOPLE,
     ORGANIZATIONS,
     DEVICES,
@@ -124,6 +127,7 @@ fun SettingsTab(model: AppModel) {
             SettingsDestination.DELETE_ACCOUNT -> DeleteAccountScreen(model, pop)
             SettingsDestination.EXPORT_DATA -> ExportDataScreen(model, pop)
             SettingsDestination.AUTOFILL -> SettingsScreen("AutoFill", onBack = pop) { AutoFillSettingsSections() }
+            SettingsDestination.PASSWORD_GENERATOR -> StandalonePasswordGeneratorScreen(model, pop)
             SettingsDestination.PEOPLE -> PeopleScreen(model, pop)
             SettingsDestination.ORGANIZATIONS -> OrganizationsScreen(model, pop)
         }
@@ -184,6 +188,8 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
                 "AutoFill", "open-autofill", { push(SettingsDestination.AUTOFILL) }, Icons.Outlined.Password,
                 value = if (isAutoFillOn) "On" else "Off",
             )
+            RowDivider()
+            NavigationRow("Password generator", "open-password-generator", { push(SettingsDestination.PASSWORD_GENERATOR) }, Icons.Outlined.AutoFixHigh)
         }
         FormSection {
             NavigationRow("Help", "open-help", { push(SettingsDestination.HELP) }, Icons.AutoMirrored.Outlined.HelpOutline)
