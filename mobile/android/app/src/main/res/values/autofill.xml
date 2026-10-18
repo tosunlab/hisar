@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
     <!-- Extra packages whose page addresses AutoFill trusts; the debug build adds its instrumented tests' web page. -->
-    <string-array name="autofill_test_browsers" />
+    <string-array name="autofill_test_browsers" tools:ignore="InconsistentArrays" />
 
     <style name="Theme.Hisar.AutoFill" parent="@android:style/Theme.Material.Light.NoActionBar">
         <item name="android:windowIsTranslucent">true</item>

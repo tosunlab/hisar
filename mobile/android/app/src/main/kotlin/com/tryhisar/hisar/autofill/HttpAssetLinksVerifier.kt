@@ -45,7 +45,7 @@ object HttpAssetLinksVerifier : AppWebsiteVerifier {
                 if (connection.responseCode != HttpURLConnection.HTTP_OK) {
                     ""
                 } else {
-                    val bytes = connection.inputStream.use { it.readNBytes(MAXIMUM_BYTES + 1) }
+                    val bytes = connection.inputStream.use { it.buffered().readBytesUpTo(MAXIMUM_BYTES + 1) }
                     if (bytes.size > MAXIMUM_BYTES) "" else bytes.decodeToString()
                 }
             } finally {
@@ -57,4 +57,15 @@ object HttpAssetLinksVerifier : AppWebsiteVerifier {
         answerByURL[url] = Answer(statementJSON, now)
         return statementJSON
     }
+}
+
+private fun java.io.InputStream.readBytesUpTo(limit: Int): ByteArray {
+    val output = java.io.ByteArrayOutputStream()
+    val buffer = ByteArray(8 * 1024)
+    while (output.size() < limit) {
+        val count = read(buffer, 0, minOf(buffer.size, limit - output.size()))
+        if (count < 0) break
+        output.write(buffer, 0, count)
+    }
+    return output.toByteArray()
 }

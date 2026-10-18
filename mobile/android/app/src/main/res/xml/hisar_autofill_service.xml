@@ -2,7 +2,9 @@
 <!-- Browsers that still need compatibility mode. Chrome, Brave and Vivaldi fill natively once the user picks
      "Autofill using another service" in their settings, so they are not listed. -->
 <autofill-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:supportsInlineSuggestions="true">
+    xmlns:tools="http://schemas.android.com/tools"
+    android:supportsInlineSuggestions="true"
+    tools:ignore="UnusedAttribute">
     <compatibility-package android:name="com.microsoft.emmx" android:maxLongVersionCode="10000000000" />
     <compatibility-package android:name="com.microsoft.emmx.beta" android:maxLongVersionCode="10000000000" />
     <compatibility-package android:name="com.microsoft.emmx.dev" android:maxLongVersionCode="10000000000" />
