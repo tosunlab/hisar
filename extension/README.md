@@ -1,6 +1,6 @@
 # Hisar Browser Extension
 
-MV3 extension for Chromium browsers that fills and saves logins, and fills addresses, through the Hisar desktop app over native messaging. The protocol, matching and frame rules are in [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3). The extension holds no keys and does no crypto.
+MV3 extension for Chromium browsers that fills and saves logins, fills cards, identities and addresses, and browses every vault from its popup, through the Hisar desktop app over native messaging. The protocol, matching and frame rules are in [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3). The extension holds no keys and does no crypto.
 
 The manifest's `key` gives the fixed ID `mmipiffoogblblocokimpemdopmdjghf`, both unpacked and from the store. The native host `com.tryhisar.hisar` allows only that ID.
 
@@ -11,14 +11,16 @@ public/manifest.json      MV3 manifest (version must equal package.json)
 popup.html, inline-menu.html, passkey-prompt.html
 src/background/           service worker: native port (native-client.ts), popup/content handlers (controller.ts, router.ts),
                           frame rule (frames.ts), save offers (save.ts), chrome.storage.local (storage.ts)
-src/content/              content script (all frames): form detection, fill, submit capture, save bar (closed shadow root)
+src/content/              content script (all frames): form detection, fill, submit capture, save bar (closed shadow root);
+                          payment forms (card-detection.ts, card-fill.ts), personal details (identity-detection.ts, identity-fill.ts)
 src/content/inline-menu/  inline icon and menu frame placement, eligibility, keyboard, clickjacking checks
 src/inline-menu/          the menu page shown in the iframe under a login field (inline-menu.html)
 src/content/passkey/      passkeys (DESIGN §9.8): the MAIN-world navigator.credentials wrapper with PRF, the signal methods
                           and getClientCapabilities (passkey-main.js), the isolated-world bridge and prompt frame (passkey-content.js)
 src/background/passkey*.ts  passkey requests: sender origin, option checks, prompt sessions over ports
 src/passkey-prompt/       the passkey prompt page shown in the iframe (passkey-prompt.html)
-src/popup/                Vue popup: pairing, desktop unavailable, signed out, locked, logins, generator, settings
+src/popup/                Vue popup: pairing, desktop unavailable, signed out, locked (master password), the vault (VaultView: search,
+                          categories, ItemDetail, NewItemView), cards, identities and addresses, generator, settings
 tools/                    fake native host, its registration script, packaging
 end-to-end/               Playwright tests and screenshot capture
 ```
@@ -67,6 +69,8 @@ npm run test:end-to-end     # builds, then runs the Playwright tests with the fa
 - creates a passkey with `prf.eval` and signs in twice with the same salt (same output) and once with another (a different one);
 - `signalUnknownCredential` with an `rpId` of another site rejects with `SecurityError`; with the site's `rpId` it removes the passkey (the login stays), and signing in no longer offers it;
 - `getClientCapabilities()` answers without starting the native host, and reports Hisar's capabilities once it is connected.
+
+`end-to-end/vault.spec.ts`, `unlock.spec.ts`, `card.spec.ts`, `identity.spec.ts` and `save.spec.ts` cover the popup's vault (search, a card's details, reveal and copy, favorites), unlocking with the master password, filling a card (lists included, never into the cross-origin payment frame, and no login offered for its security code), filling an identity with the address beside it, and saving a new login under a chosen title and vault, or creating one from the popup.
 
 `end-to-end/address.spec.ts` uses a checkout page with an address form, a same-origin frame and a cross-origin frame:
 
