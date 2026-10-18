@@ -22,6 +22,21 @@ const keyringService = "hisar"
 // SecretKeyEnvironmentVariable overrides the keychain, for headless machines and scripting.
 const SecretKeyEnvironmentVariable = "HISAR_SECRET_KEY"
 
+// ErrNoSecretService means Linux has no keyring to keep the Secret Key: no Secret Service on the session D-Bus.
+var ErrNoSecretService = errors.New("no keyring is running to keep the Secret Key: start GNOME Keyring or KWallet " +
+	"(any Secret Service), or set " + SecretKeyEnvironmentVariable + " to your Secret Key")
+
+// classifyKeyringError names a missing Secret Service, which go-keyring reports only as a D-Bus error.
+func classifyKeyringError(err error, checkSecretService func() error) error {
+	if err == nil || errors.Is(err, keyring.ErrNotFound) {
+		return err
+	}
+	if checkSecretService() != nil {
+		return fmt.Errorf("%w (%v)", ErrNoSecretService, err)
+	}
+	return err
+}
+
 type State struct {
 	Server    string            `json:"server"`
 	Email     string            `json:"email"`
@@ -173,6 +188,9 @@ func LoadSecretKey(accountID string) (crypt.SecretKey, error) {
 	if encodedSecretKey == "" {
 		var err error
 		if encodedSecretKey, err = keyring.Get(keyringService, accountID); err != nil {
+			if err := classifyKeyringError(err, checkSecretService); errors.Is(err, ErrNoSecretService) {
+				return crypt.SecretKey{}, err
+			}
 			return crypt.SecretKey{}, fmt.Errorf("Secret Key not found in keychain: %w", err)
 		}
 	}
@@ -190,7 +208,7 @@ func StoreSecretKey(secretKey crypt.SecretKey) error {
 	if os.Getenv(SecretKeyEnvironmentVariable) != "" {
 		return nil
 	}
-	return keyring.Set(keyringService, secretKey.AccountID, secretKey.Encode())
+	return classifyKeyringError(keyring.Set(keyringService, secretKey.AccountID, secretKey.Encode()), checkSecretService)
 }
 
 func DeleteSecretKey(accountID string) error {
@@ -201,5 +219,5 @@ func DeleteSecretKey(accountID string) error {
 	if errors.Is(err, keyring.ErrNotFound) {
 		return nil
 	}
-	return err
+	return classifyKeyringError(err, checkSecretService)
 }

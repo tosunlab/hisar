@@ -5,6 +5,7 @@ go 1.26.0
 require (
 	github.com/bytemare/opaque v0.18.0
 	github.com/go-webauthn/webauthn v0.18.2
+	github.com/godbus/dbus/v5 v5.2.2
 	github.com/google/uuid v1.6.0
 	github.com/signintech/gopdf v0.38.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
@@ -30,7 +31,6 @@ require (
 	github.com/fxamacker/cbor/v2 v2.9.4 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
 	github.com/go-webauthn/x v0.3.1 // indirect
-	github.com/godbus/dbus/v5 v5.2.2 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect
 	github.com/google/go-tpm v0.9.8 // indirect
 	github.com/gtank/ristretto255 v0.2.0 // indirect
