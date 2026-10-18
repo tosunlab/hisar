@@ -50,9 +50,16 @@ func SetAppVersion(s *Service, version string) {
 }
 
 func (s *Service) createClient(server string) *apiclient.Client {
-	apiClient := apiclient.New(server)
+	apiClient := s.createServerClient(server)
 	apiClient.Platform, apiClient.Version = s.config.Platform, s.config.AppVersion
 	apiClient.OnUpgradeRequired = s.recordUpdateRequired
+	return apiClient
+}
+
+// createServerClient is the client of every request to the Hisar server, with the roots SetTrustedCertificates chose.
+func (s *Service) createServerClient(server string) *apiclient.Client {
+	apiClient := apiclient.New(server)
+	apiClient.HTTP.Transport = s.serverTransport
 	return apiClient
 }
 
@@ -130,7 +137,7 @@ func (s *Service) checkClientVersion(platform, version string) *UpdateRequiremen
 	if server == "" {
 		return nil
 	}
-	apiClient := apiclient.New(server)
+	apiClient := s.createServerClient(server)
 	apiClient.Platform, apiClient.Version = platform, version
 	ctx, cancel := context.WithTimeout(context.Background(), clientVersionCheckTimeout)
 	defer cancel()

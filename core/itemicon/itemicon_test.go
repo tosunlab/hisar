@@ -3,6 +3,11 @@ package itemicon
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/binary"
 	"errors"
 	"image"
@@ -10,6 +15,7 @@ import (
 	"image/gif"
 	"image/jpeg"
 	"image/png"
+	"math/big"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -17,6 +23,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/item"
 )
@@ -289,7 +296,42 @@ func TestFetchRefusesARedirectToHTTP(t *testing.T) {
 	if _, err := fetcher.fetchImage(context.Background(), "https://example.com/favicon.ico"); !errors.Is(err, ErrRefusedURL) {
 		t.Errorf("redirect to http: %v", err)
 	}
-	if _, err := NewFetcher().Fetch(context.Background(), "https://10.0.0.1/"); !errors.Is(err, ErrRefusedURL) {
+	if _, err := NewFetcher(nil).Fetch(context.Background(), "https://10.0.0.1/"); !errors.Is(err, ErrRefusedURL) {
 		t.Errorf("IP literal: %v", err)
+	}
+}
+
+func TestNewFetcherTrustsOnlyTheGivenRoots(t *testing.T) {
+	var requests atomic.Int32
+	server := httptest.NewTLSServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		requests.Add(1)
+		writer.Write(encodeTestPNG(t, createTestImage(32, 32)))
+	}))
+	t.Cleanup(server.Close)
+	fetchTrusting := func(roots *x509.CertPool) ([]byte, error) {
+		fetcher := NewFetcher(roots)
+		// The real dialer refuses the loopback test server, so reach it as example.com would be reached.
+		fetcher.client.Transport.(*http.Transport).DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+			return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
+		}
+		return fetcher.Fetch(context.Background(), "https://example.com/")
+	}
+
+	otherKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	otherTemplate := &x509.Certificate{SerialNumber: big.NewInt(1), Subject: pkix.Name{CommonName: "Another root"}, NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), IsCA: true, BasicConstraintsValid: true, KeyUsage: x509.KeyUsageCertSign}
+	otherDER, err := x509.CreateCertificate(rand.Reader, otherTemplate, otherTemplate, &otherKey.PublicKey, otherKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherRoot, _ := x509.ParseCertificate(otherDER)
+	otherRoots := x509.NewCertPool()
+	otherRoots.AddCert(otherRoot)
+	if _, err := fetchTrusting(otherRoots); !errors.Is(err, ErrNoIcon) || requests.Load() != 0 {
+		t.Fatalf("a website outside the given roots: %v, %d requests", err, requests.Load())
+	}
+	serverRoots := x509.NewCertPool()
+	serverRoots.AddCert(server.Certificate())
+	if icon, err := fetchTrusting(serverRoots); err != nil || decodeTestPNG(t, icon).Bounds().Dx() != 32 {
+		t.Fatalf("a website under the given roots: %v", err)
 	}
 }

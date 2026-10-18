@@ -3,6 +3,7 @@
 package hisarkit
 
 import (
+	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -146,6 +147,18 @@ func (hisar *Hisar) Status() string {
 // SetAppVersion must run right after New, before any request: the server compares it with its minimum for iOS.
 func (hisar *Hisar) SetAppVersion(version string) {
 	app.SetAppVersion(hisar.service, version)
+}
+
+// SetTrustedCertificates takes the PEM certificates of the device's trust store, the system's and the user's, and makes
+// Hisar trust only those for the server and website icons. Android calls it right after New: Go cannot read every
+// root there, nor any the user installed.
+func (hisar *Hisar) SetTrustedCertificates(pemCertificates string) error {
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(pemCertificates)) {
+		return errors.New("hisarkit: no certificate in the trusted certificates")
+	}
+	app.SetTrustedCertificates(hisar.service, roots)
+	return nil
 }
 
 // CheckMinimumVersion asks the server whether it still accepts this version and returns app.Status as JSON.
