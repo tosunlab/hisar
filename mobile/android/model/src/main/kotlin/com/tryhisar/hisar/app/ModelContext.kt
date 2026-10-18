@@ -16,6 +16,7 @@ import com.tryhisar.hisar.model.VaultTheme
 import com.tryhisar.hisar.model.WaitingShareInvitation
 import com.tryhisar.hisar.model.WaitingVaultKeys
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -85,3 +86,9 @@ interface ModelContext {
     /** Called with the previous and the new status each time [applyStatus] publishes one, before anything else reacts. */
     fun addStatusListener(listener: (previous: VaultStatus, current: VaultStatus) -> Unit)
 }
+
+/**
+ * Runs [block] in the model's scope, so the screen that started it can leave, as unlocking leaves the lock screen,
+ * without cancelling the work that follows.
+ */
+suspend fun <Value> ModelContext.runInModel(block: suspend () -> Value): Value = scope.async { block() }.await()
