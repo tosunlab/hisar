@@ -71,4 +71,29 @@ class ItemDetailLogicTests {
         assertNull(VaultLogic.convertToOpenableURL(""))
         assertEquals("accounts.google.com", VaultLogic.extractHost("HTTPS://Accounts.Google.com/signin"))
     }
+
+    @Test
+    fun testDetailHeaderNamesTheCategoryOrItsSummary() {
+        assertEquals("Login", ItemDetail(title = "GitHub").categoryDescription)
+        assertEquals("SSH key", ItemDetail(category = ItemDetail.CATEGORY_SSH_KEY).categoryDescription)
+        assertEquals("Secure note", ItemDetail(category = ItemDetail.CATEGORY_SECURE_NOTE).categoryDescription)
+        assertEquals("Visa •••• 4242", ItemDetail(category = ItemDetail.CATEGORY_CREDIT_CARD, card = ItemCard(type = "Visa", last4 = "4242")).categoryDescription)
+        assertEquals("Credit card", ItemDetail(category = ItemDetail.CATEGORY_CREDIT_CARD).categoryDescription)
+        assertEquals("Springfield, US", ItemDetail(category = ItemDetail.CATEGORY_ADDRESS, address = ItemAddress(city = "Springfield", country = "US")).categoryDescription)
+        assertEquals("build.example.com:2222 · deploy", ItemDetail(category = ItemDetail.CATEGORY_SERVER, username = "deploy", server = ItemServer(host = "build.example.com", port = "2222")).categoryDescription)
+    }
+
+    @Test
+    fun testSecretReferenceButtonNamesTheFieldAScriptWants() {
+        assertEquals("password", ItemDetail(password = "p").referenceFieldName)
+        assertNull(ItemDetail(username = "alice").referenceFieldName, "a login without a password has nothing to reference")
+        assertEquals("password", ItemDetail(category = ItemDetail.CATEGORY_DATABASE, password = "p").referenceFieldName)
+        assertEquals("public key", ItemDetail(category = ItemDetail.CATEGORY_SSH_KEY).referenceFieldName)
+        assertEquals("notes", ItemDetail(category = ItemDetail.CATEGORY_SECURE_NOTE, notes = "n").referenceFieldName)
+        assertEquals(CardFieldName.NUMBER, ItemDetail(category = ItemDetail.CATEGORY_CREDIT_CARD, card = ItemCard(number = "4242")).referenceFieldName)
+        assertEquals(APICredentialFieldName.SECRET, ItemDetail(category = ItemDetail.CATEGORY_API_CREDENTIAL, apiCredential = ItemAPICredential(secret = "s")).referenceFieldName)
+        assertEquals(SoftwareLicenseFieldName.LICENSE_KEY, ItemDetail(category = ItemDetail.CATEGORY_SOFTWARE_LICENSE, softwareLicense = ItemSoftwareLicense(licenseKey = "k")).referenceFieldName)
+        assertNull(ItemDetail(category = ItemDetail.CATEGORY_IDENTITY, identity = ItemIdentity(passportNumber = "U1")).referenceFieldName)
+        assertNull(ItemDetail(category = ItemDetail.CATEGORY_ADDRESS).referenceFieldName)
+    }
 }
