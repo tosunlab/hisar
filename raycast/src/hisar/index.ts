@@ -3,7 +3,7 @@ import { HisarError } from "./errors";
 import { dialHisar, resolveSocketPath, systemLaunch, type LaunchSystem } from "./launch";
 import type { CopyReceipt, CopyableField, ItemList, ItemReference, OneTimeCode, PasswordOptions } from "./model";
 
-export { allErrorCode, HisarError, toHisarError, type ErrorCode } from "./errors";
+export { HisarError, toHisarError, type ErrorCode } from "./errors";
 export { openHisar, type LaunchSystem } from "./launch";
 export type * from "./model";
 
