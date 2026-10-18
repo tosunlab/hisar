@@ -32,6 +32,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Each test runs in its own process after its app data and Keystore keys are cleared, as -HisarResetState does on iOS.
+    testOptions {
+        execution = "ANDROIDX_TEST_ORCHESTRATOR"
+        animationsDisabled = true
+    }
+    defaultConfig.testInstrumentationRunnerArguments["clearPackageData"] = "true"
+    defaultConfig.testInstrumentationRunnerArguments["useTestStorageService"] = "true"
 }
 
 tasks.named("preBuild") {
@@ -56,5 +64,8 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     // Compose's ui-test brings Espresso 3.5, which calls InputManager.getInstance, gone on API 37.
     androidTestImplementation(libs.androidx.test.espresso.core)
+    androidTestImplementation(libs.androidx.test.services.storage)
+    androidTestUtil(libs.androidx.test.orchestrator)
+    androidTestUtil(libs.androidx.test.services)
     debugImplementation(libs.compose.ui.test.manifest)
 }

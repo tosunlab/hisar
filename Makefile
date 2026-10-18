@@ -132,8 +132,9 @@ build-android:
 test-android:
 	$(ANDROID_GRADLE) :model:test :app:testDebugUnitTest
 
-# The instrumented tests on the one booted emulator or device, or on ANDROID_SERIAL.
-test-android-ui:
+# The instrumented tests on the one booted emulator or device, or on ANDROID_SERIAL, against a server the script starts; needs
+# HISAR_DATABASE_URL pointing at an empty database. ANDROID_UI_TESTS=<names> or ANDROID_UI_TESTS=smoke runs a subset.
+test-android-ui: build-android-aar
 	./scripts/test-android-ui.sh
 
 test-extension:
