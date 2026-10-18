@@ -1,0 +1,1058 @@
+package com.tryhisar.hisar.model
+
+import java.io.File
+import java.util.UUID
+import kotlinx.io.bytestring.ByteString
+import kotlinx.io.bytestring.encodeToByteString
+
+/** An in-memory VaultBackend that answers as core/app does, the port of the iPhone tests' FakeBackend. */
+open class FakeBackend : VaultBackend {
+    private val callLock = Any()
+    private val approvalLock = Any()
+
+    // The JVM names keep these properties apart from VaultBackend's getStatus, getTheme and getExportOptions.
+    @get:JvmName("statusValue") @set:JvmName("statusValue")
+    var status = VaultStatus.signedOut
+    var allVault: MutableList<VaultSummary> = mutableListOf()
+    var allItemByVaultID: MutableMap<String, MutableList<ItemDetail>> = mutableMapOf()
+    /** Starred items as "vaultID/itemID"; the account keeps them apart from the items. */
+    var allFavoriteRecordID: MutableSet<String> = mutableSetOf()
+    var favoriteErrorMessage: String? = null
+    var isBiometricAvailable = true
+    var isBiometricSucceeding = true
+    var isOffline = false
+    val allCopiedField = mutableListOf<String>()
+    val allCallName = mutableListOf<String>()
+    var nextItemNumber = 1
+    var allPasskey: MutableList<StoredPasskey> = mutableListOf()
+    /**
+     * Runs when a refresh lists the passkeys, its last call, after the unlock check: a test can sign out or lock while a
+     * refresh that listed everything is still in flight.
+     */
+    var onListAllPasskey: (() -> Unit)? = null
+    var allMember: MutableList<Member> = mutableListOf()
+    var allVaultMemberByVaultID: MutableMap<String, MutableList<Member>> = mutableMapOf()
+    val allInvitedEmail = mutableListOf<String>()
+    var shareInvitations = ShareInvitations()
+    var allShareAwaitingUnlock: List<ShareAwaitingUnlock> = emptyList()
+    var isShareAwaitingUnlockFailing = false
+    val allAnsweredInvitation = mutableListOf<String>()
+    var allPendingApproval: MutableList<PhoneApproval> = mutableListOf()
+    val allApprovalAnswer = mutableListOf<String>()
+    var allDevice: MutableList<Device> = mutableListOf()
+    var isMacApprovalAllowedValue = true
+    var isWebsiteIconsEnabledValue = true
+    var websiteIconByURL: MutableMap<String, ByteString> = mutableMapOf()
+    var preparedIcon: ByteString? = null
+    @get:JvmName("themeValue") @set:JvmName("themeValue")
+    var theme = VaultTheme.standard
+    var isThemeSaveFailing = false
+    val allCopiedReference = mutableListOf<String>()
+    var allPendingRemovedVault: List<RemovedVaultNotice> = emptyList()
+    val allDeletionRequest = mutableListOf<VaultDeletionRequest>()
+    @get:JvmName("exportOptionsValue") @set:JvmName("exportOptionsValue")
+    var exportOptions = ExportOptions(isBiometricAvailable = true, minPassphraseLength = 10)
+    var currentPassword = PASSWORD
+    var currentSecretKey = SECRET_KEY
+    var deletionPreview = AccountDeletionPreview(email = "alice@example.com")
+    var isAccountDeleted = false
+    /** The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence. */
+    var allOrganization: MutableList<Organization> = mutableListOf()
+    var allOrganizationInvitation: MutableList<OrganizationInvitation> = mutableListOf()
+    var waitingVaultKeys = WaitingVaultKeys()
+    var organizationRefusal: String? = null
+    /** While set, listing the organizations or reading one fails with this sentence. */
+    var listAllOrganizationErrorMessage: String? = null
+    var getOrganizationErrorMessage: String? = null
+    /** The server's answer to the next version check; null means it accepts this version. */
+    var serverUpdateRequirement: UpdateRequirement? = null
+
+    fun <Value> withApprovalLock(operation: () -> Value): Value = synchronized(approvalLock, operation)
+
+    private fun record(name: String) {
+        synchronized(callLock) { allCallName += name }
+    }
+
+    fun seedSignedIn(state: String = VaultStatus.STATE_UNLOCKED) {
+        status = VaultStatus(
+            state = state, server = "http://127.0.0.1:18080", email = "alice@example.com", name = "Alice",
+            biometricAvailable = isBiometricAvailable, biometricEnabled = false, biometricReady = false, isOffline = isOffline,
+        )
+        allVault = mutableListOf(
+            VaultSummary(id = "family", name = "Family", type = "shared", role = "editor", itemCount = 1),
+            VaultSummary(id = "personal", name = "Personal", type = "personal", role = "owner", itemCount = 2),
+        )
+        allItemByVaultID = mutableMapOf(
+            "personal" to mutableListOf(
+                ItemDetail(
+                    id = "github", revision = "r1", category = "login", title = "GitHub", username = "alice", allURL = listOf("https://github.com"),
+                    password = "github-password", notes = "work account", allField = listOf(ItemField("PIN", "1234", concealed = true)),
+                    oneTimePassword = ONE_TIME_PASSWORD, hasOneTimePassword = true,
+                    allPasskey = listOf(ItemPasskey(gitHubPasskey.credentialID, "github.com", "alice", "Alice", "2026-10-09T12:00:00Z")),
+                ),
+                ItemDetail(
+                    id = "bank", revision = "r1", category = "login", title = "Bank", username = "alice@example.com",
+                    allURL = listOf("bank.example.com"), password = "bank-password",
+                ),
+            ),
+            "family" to mutableListOf(
+                ItemDetail(
+                    id = "netflix", revision = "r1", category = "login", title = "Netflix", username = "family@example.com",
+                    allURL = listOf("https://www.netflix.com/login"), password = "netflix-password",
+                ),
+            ),
+        )
+        allPasskey = mutableListOf(gitHubPasskey)
+        allMember = mutableListOf(
+            Member("alice-id", "Alice", "alice@example.com", Member.ROLE_ADMIN, "1111 2222", isCurrentUser = true),
+            Member("bob-id", "Bob", "bob@example.com", Member.ROLE_MEMBER, "3333 4444"),
+            Member("carol-id", "Carol", "carol@example.com", Member.ROLE_MEMBER, "5555 6666"),
+        )
+        allVaultMemberByVaultID = mutableMapOf(
+            "family" to mutableListOf(
+                Member("bob-id", "Bob", "bob@example.com", Member.VAULT_ROLE_OWNER, "3333 4444"),
+                Member("alice-id", "Alice", "alice@example.com", Member.VAULT_ROLE_EDITOR, "1111 2222", isCurrentUser = true),
+            ),
+        )
+    }
+
+    private val currentMember: Member? get() = allMember.firstOrNull { it.isCurrentUser }
+
+    private fun requireUnlocked() {
+        if (!status.isUnlocked) throw BackendError(if (status.isSignedIn) "Hisar is locked" else "Sign in first")
+    }
+
+    override fun createVault(name: String): VaultSummary {
+        record("createVault")
+        requireUnlocked()
+        val trimmedName = name.trimmingWhitespaces()
+        if (trimmedName.isEmpty()) throw BackendError("Enter a vault name")
+        val vault = VaultSummary(id = "vault-${allVault.size + 1}", name = trimmedName, type = "shared", role = Member.VAULT_ROLE_OWNER, itemCount = 0)
+        allVault += vault
+        allItemByVaultID[vault.id] = mutableListOf()
+        currentMember?.let { allVaultMemberByVaultID[vault.id] = mutableListOf(it.copy(role = Member.VAULT_ROLE_OWNER)) }
+        return vault
+    }
+
+    override fun listAllPerson(): List<Member> {
+        record("listAllPerson")
+        requireUnlocked()
+        val allSharedAccountID = allVaultMemberByVaultID.values.filter { members -> members.any { it.isCurrentUser } }
+            .flatMap { members -> members.map { it.accountID } }.toSet()
+        return allMember.filter { it.isCurrentUser || it.accountID in allSharedAccountID }
+    }
+
+    override fun invitePerson(email: String) {
+        record("invitePerson")
+        requireUnlocked()
+        if ("@" !in email) throw BackendError("Enter the email address of the person")
+        allInvitedEmail += email
+    }
+
+    override fun listAllShareInvitation(): ShareInvitations {
+        record("listAllShareInvitation")
+        requireUnlocked()
+        return shareInvitations
+    }
+
+    override fun listAllShareAwaitingUnlock(): List<ShareAwaitingUnlock> {
+        record("listAllShareAwaitingUnlock")
+        if (isShareAwaitingUnlockFailing) throw BackendError("cannot reach the Hisar server")
+        return if (status.state == VaultStatus.STATE_LOCKED) allShareAwaitingUnlock else emptyList()
+    }
+
+    override fun acceptShareInvitation(invitationID: String) {
+        record("acceptShareInvitation")
+        answerReceivedInvitation(invitationID, "accept")
+    }
+
+    override fun declineShareInvitation(invitationID: String) {
+        record("declineShareInvitation")
+        answerReceivedInvitation(invitationID, "decline")
+    }
+
+    private fun answerReceivedInvitation(invitationID: String, answer: String) {
+        requireUnlocked()
+        if (shareInvitations.allReceived.none { it.id == invitationID }) throw BackendError("This invitation no longer exists")
+        shareInvitations = shareInvitations.copy(allReceived = shareInvitations.allReceived.filter { it.id != invitationID })
+        allAnsweredInvitation += "$invitationID $answer"
+    }
+
+    override fun cancelShareInvitation(invitationID: String) {
+        record("cancelShareInvitation")
+        requireUnlocked()
+        if (shareInvitations.allSent.none { it.id == invitationID }) throw BackendError("This invitation no longer exists")
+        shareInvitations = shareInvitations.copy(allSent = shareInvitations.allSent.filter { it.id != invitationID })
+    }
+
+    override fun listAllVaultMember(vaultID: String): List<Member> {
+        record("listAllVaultMember")
+        requireUnlocked()
+        if (allVault.none { it.id == vaultID }) throw BackendError("Vault not found")
+        return allVaultMemberByVaultID[vaultID].orEmpty()
+    }
+
+    override fun getVaultSharing(vaultID: String): VaultSharing {
+        record("getVaultSharing")
+        requireUnlocked()
+        val vault = allVault.firstOrNull { it.id == vaultID } ?: throw BackendError("Vault not found")
+        if (vault.type != "shared") throw BackendError("Personal vaults are private and cannot be shared; create a shared vault instead")
+        val isOwner = vault.role == Member.VAULT_ROLE_OWNER
+        return VaultSharing(
+            vault = vault,
+            isOwner = isOwner,
+            allMember = allVaultMemberByVaultID[vaultID].orEmpty(),
+            allInvitation = if (isOwner) shareInvitations.allSent.filter { it.vaultID == vaultID } else emptyList(),
+            completionError = if (isOwner) shareInvitations.completionError else "",
+        )
+    }
+
+    private fun findSharableVault(vaultID: String): VaultSummary {
+        val vault = allVault.firstOrNull { it.id == vaultID } ?: throw BackendError("Vault not found")
+        if (vault.type != "shared") throw BackendError("Personal vaults are private and cannot be shared; create a shared vault instead")
+        if (vault.role != Member.VAULT_ROLE_OWNER) throw BackendError("Only owners of this vault can share it, change roles or remove members")
+        return vault
+    }
+
+    override fun shareVault(vaultID: String, email: String, role: String) {
+        record("shareVault")
+        requireUnlocked()
+        if (role !in Member.allVaultRole) throw BackendError("Choose owner, editor or reader")
+        val vault = findSharableVault(vaultID)
+        if ("@" !in email) throw BackendError("Enter the email address of the person")
+        if (email == currentMember?.email) throw BackendError("That is your own email; you already have access")
+        if (allVaultMemberByVaultID[vault.id].orEmpty().any { it.email == email }) throw BackendError("This person already has access to the vault")
+        val allSent = shareInvitations.allSent.filterNot { it.vaultID == vault.id && it.email == email }
+        val invitation = SentShareInvitation(
+            id = "invitation-${allSent.size + 1}", vaultID = vault.id, vaultName = vault.name, email = email, role = role,
+            state = "pending", expiresAt = "2027-01-22T08:00:00Z",
+        )
+        shareInvitations = shareInvitations.copy(allSent = allSent + invitation)
+    }
+
+    override fun changeVaultMemberRole(vaultID: String, accountID: String, role: String) {
+        record("changeVaultMemberRole")
+        requireUnlocked()
+        if (role !in Member.allVaultRole) throw BackendError("Choose owner, editor or reader")
+        val vault = findSharableVault(vaultID)
+        val allVaultMember = allVaultMemberByVaultID[vault.id]
+        val index = allVaultMember?.indexOfFirst { it.accountID == accountID } ?: -1
+        if (allVaultMember == null || index < 0) {
+            throw BackendError("This person no longer has access to the vault; share it with them again")
+        }
+        allVaultMember[index] = allVaultMember[index].copy(role = role)
+    }
+
+    override fun removeVaultMember(vaultID: String, accountID: String) {
+        record("removeVaultMember")
+        requireUnlocked()
+        if (accountID == currentMember?.accountID) throw BackendError("You cannot remove yourself from a vault you own")
+        val vault = findSharableVault(vaultID)
+        allVaultMemberByVaultID[vault.id]?.removeAll { it.accountID == accountID }
+    }
+
+    override fun getStatus(): VaultStatus {
+        record("getStatus")
+        return status
+    }
+
+    override fun checkMinimumVersion(): VaultStatus {
+        record("checkMinimumVersion")
+        status = status.copy(updateRequired = serverUpdateRequirement)
+        return status
+    }
+
+    override fun signIn(server: String, email: String, secretKey: String, password: String): VaultStatus {
+        record("signIn")
+        if (password != PASSWORD || secretKey != SECRET_KEY) throw BackendError("Incorrect email, master password or Secret Key")
+        seedSignedIn()
+        status = status.copy(server = server, email = email)
+        return status
+    }
+
+    override fun signUp(inviteLink: String, email: String, name: String, password: String): SignUpResult {
+        record("signUp")
+        if ("/invite/" !in inviteLink) throw BackendError("Invalid invite link")
+        seedSignedIn()
+        allItemByVaultID = mutableMapOf("personal" to mutableListOf(), "family" to mutableListOf())
+        status = status.copy(email = email, name = name)
+        return SignUpResult(status, SECRET_KEY)
+    }
+
+    override fun unlock(password: String): VaultStatus {
+        record("unlock")
+        if (password != PASSWORD) throw BackendError("Incorrect email, master password or Secret Key")
+        status = status.copy(state = VaultStatus.STATE_UNLOCKED, biometricReady = status.biometricReady || status.biometricEnabled)
+        return status
+    }
+
+    override fun unlockWithBiometric(): VaultStatus {
+        record("unlockWithBiometric")
+        if (!status.biometricReady) throw BackendError("Unlock with your master password first")
+        if (!isBiometricSucceeding) throw BackendError("Face ID was cancelled.")
+        status = status.copy(state = VaultStatus.STATE_UNLOCKED)
+        return status
+    }
+
+    override fun enableBiometricUnlock(password: String): VaultStatus {
+        record("enableBiometricUnlock")
+        requireUnlocked()
+        if (password != PASSWORD) throw BackendError("Incorrect email, master password or Secret Key")
+        status = status.copy(biometricEnabled = true, biometricReady = true)
+        return status
+    }
+
+    override fun enableNewAccountBiometricUnlock(): VaultStatus {
+        record("enableNewAccountBiometricUnlock")
+        requireUnlocked()
+        if (!isBiometricSucceeding) throw BackendError("Face ID was cancelled.")
+        status = status.copy(biometricEnabled = true, biometricReady = true)
+        return status
+    }
+
+    override fun forgetNewAccountSecretKey() {
+        record("forgetNewAccountSecretKey")
+    }
+
+    override fun disableBiometricUnlock(): VaultStatus {
+        record("disableBiometricUnlock")
+        status = status.copy(biometricEnabled = false, biometricReady = false)
+        return status
+    }
+
+    override fun lock(): VaultStatus {
+        record("lock")
+        if (status.isSignedIn) status = status.copy(state = VaultStatus.STATE_LOCKED)
+        return status
+    }
+
+    override fun signOut(): VaultStatus {
+        record("signOut")
+        // As the backend does, signing out keeps only the server, so the sign-in form opens on it.
+        status = VaultStatus.signedOut.copy(server = status.server)
+        return status
+    }
+
+    override fun reportActivity() {
+        record("reportActivity")
+    }
+
+    override fun listAllVault(): List<VaultSummary> {
+        record("listAllVault")
+        requireUnlocked()
+        return allVault.toList()
+    }
+
+    override fun listAllItem(vaultID: String): List<ItemDetail> {
+        record("listAllItem")
+        requireUnlocked()
+        return allItemByVaultID[vaultID].orEmpty().map { item ->
+            item.copy(
+                isFavorite = LoginMatch.buildRecordIdentifier(vaultID, item.id) in allFavoriteRecordID,
+                password = "",
+                notes = "",
+                allField = emptyList(),
+                oneTimePassword = "",
+            )
+        }
+    }
+
+    override fun getItem(vaultID: String, itemID: String): ItemDetail {
+        record("getItem")
+        requireUnlocked()
+        val item = allItemByVaultID[vaultID]?.firstOrNull { it.id == itemID } ?: throw BackendError("Item not found")
+        return item.copy(isFavorite = LoginMatch.buildRecordIdentifier(vaultID, itemID) in allFavoriteRecordID)
+    }
+
+    override fun saveItem(vaultID: String, item: ItemDetail): ItemDetail {
+        record("saveItem")
+        requireUnlocked()
+        if (item.title.trimmingWhitespaces().isEmpty()) throw BackendError("Enter a title")
+        val oneTimePassword = item.oneTimePassword.trimmingWhitespacesAndNewlines()
+        val isSecret = oneTimePassword.replace(" ", "").all { it.uppercaseChar() in "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567" }
+        if (oneTimePassword.isNotEmpty() && !oneTimePassword.startsWith("otpauth://totp/") && !isSecret) {
+            throw BackendError("The one-time password is not a valid secret or otpauth:// link")
+        }
+        var savedItem = item.copy(
+            oneTimePassword = when {
+                oneTimePassword.isEmpty() -> ""
+                oneTimePassword.startsWith("otpauth://") -> oneTimePassword
+                else -> "otpauth://totp/?secret=${oneTimePassword.uppercase().replace(" ", "")}"
+            },
+            hasOneTimePassword = oneTimePassword.isNotEmpty(),
+        )
+        if (savedItem.isCreditCard) {
+            val card = savedItem.card ?: ItemCard()
+            val description = describeCard(card.number, card.expiry)
+            savedItem = savedItem.copy(
+                card = card.copy(
+                    brand = description.brand,
+                    type = card.type.ifEmpty { description.brand },
+                    last4 = description.last4,
+                    numberWarning = description.numberWarning,
+                ),
+            )
+        }
+        if (savedItem.id.isEmpty()) {
+            savedItem = savedItem.copy(id = "new-$nextItemNumber")
+            nextItemNumber += 1
+        }
+        savedItem = savedItem.copy(revision = UUID.randomUUID().toString())
+        val allItem = allItemByVaultID.getOrPut(vaultID) { mutableListOf() }
+        val index = allItem.indexOfFirst { it.id == savedItem.id }
+        if (index >= 0) allItem[index] = savedItem else allItem += savedItem
+        return savedItem
+    }
+
+    /** A stand-in for core/item's checks: Visa by the first digit, and a number of 16 digits ending in 1 counts as valid. */
+    override fun describeCard(number: String, expiry: String): CardDescription {
+        record("describeCard")
+        val digits = number.filter { it.isNumber() }
+        val isValid = digits.length == 16 && digits.endsWith("1")
+        return CardDescription(
+            brand = if (digits.startsWith("4")) "Visa" else "",
+            last4 = digits.takeLast(4),
+            numberWarning = if (number.isEmpty() || isValid) "" else "This doesn't look like a valid card number",
+            expiryWarning = "",
+        )
+    }
+
+    override fun convertToSecureNote(vaultID: String, itemID: String): ItemDetail {
+        record("convertToSecureNote")
+        val item = getItem(vaultID, itemID)
+        if (!item.isLogin || item.username.isNotEmpty() || item.password.isNotEmpty() || item.allURL.isNotEmpty() ||
+            (item.notes.isEmpty() && item.allField.isEmpty())
+        ) {
+            throw BackendError("only a login with nothing but notes and custom fields can become a secure note")
+        }
+        val converted = item.copy(category = ItemDetail.CATEGORY_SECURE_NOTE, canConvertToSecureNote = false, revision = UUID.randomUUID().toString())
+        replaceItem(vaultID, converted)
+        return converted
+    }
+
+    override fun listAllFavoriteItem(): List<FavoriteItem> {
+        record("listAllFavoriteItem")
+        requireUnlocked()
+        return allVault.flatMap { vault ->
+            runCatching { listAllItem(vault.id) }.getOrDefault(emptyList()).filter { it.isFavorite }
+                .map { FavoriteItem(vault.id, vault.name, vault.type, it) }
+        }
+    }
+
+    override fun setItemFavorite(vaultID: String, itemID: String, isFavorite: Boolean) {
+        record("setItemFavorite")
+        requireUnlocked()
+        favoriteErrorMessage?.let { throw BackendError(it) }
+        val recordID = LoginMatch.buildRecordIdentifier(vaultID, itemID)
+        if (isFavorite) allFavoriteRecordID += recordID else allFavoriteRecordID -= recordID
+    }
+
+    override fun deleteItem(vaultID: String, itemID: String) {
+        record("deleteItem")
+        requireUnlocked()
+        allItemByVaultID[vaultID]?.removeAll { it.id == itemID }
+        allPasskey.removeAll { it.vaultID == vaultID && it.itemID == itemID }
+    }
+
+    override fun getOneTimeCode(vaultID: String, itemID: String): OneTimeCode {
+        record("getOneTimeCode")
+        if (!getItem(vaultID, itemID).hasOneTimePassword) throw BackendError("One-time password not found")
+        return oneTimeCode
+    }
+
+    override fun getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String): OneTimeCode {
+        record("getOneTimeCodeForService")
+        if (listAllLoginForService(serviceIdentifier).none { it.vaultID == vaultID && it.itemID == itemID }) {
+            throw BackendError("This login is not saved for this site")
+        }
+        return getOneTimeCode(vaultID, itemID)
+    }
+
+    override fun copyField(vaultID: String, itemID: String, fieldName: String) {
+        record("copyField")
+        val item = getItem(vaultID, itemID)
+        allCopiedField += "${item.id}.$fieldName"
+    }
+
+    override fun generatePassword(length: Int, isDigitIncluded: Boolean, isSymbolIncluded: Boolean): String {
+        record("generatePassword")
+        return (if (isSymbolIncluded) "!" else if (isDigitIncluded) "1" else "a").repeat(length)
+    }
+
+    override fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch> {
+        record("listAllLoginForService")
+        requireUnlocked()
+        val host = VaultLogic.extractHost(serviceIdentifier) ?: return emptyList()
+        return allVault.flatMap { vault ->
+            allItemByVaultID[vault.id].orEmpty().filter { item ->
+                item.allURL.any { url -> VaultLogic.extractHost(url)?.let { host.endsWith(it) || it.endsWith(host) } ?: false }
+            }.map { LoginMatch(vault.id, it.id, it.title, it.username, vault.name, it.hasOneTimePassword) }
+        }
+    }
+
+    override fun getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String): LoginCredential {
+        record("getLoginForService")
+        if (listAllLoginForService(serviceIdentifier).none { it.vaultID == vaultID && it.itemID == itemID }) {
+            throw BackendError("This login is not saved for this site")
+        }
+        val item = getItem(vaultID, itemID)
+        return LoginCredential(item.username, item.password, item.hasOneTimePassword)
+    }
+
+    override fun listAllPasskey(): List<StoredPasskey> {
+        record("listAllPasskey")
+        requireUnlocked()
+        onListAllPasskey?.invoke()
+        return allPasskey.toList()
+    }
+
+    override fun listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: List<ByteString>): List<StoredPasskey> {
+        record("listAllPasskeyForRelyingParty")
+        requireUnlocked()
+        val allAllowedID = allAllowedCredentialID.map(Base64URL::encode).toSet()
+        return allPasskey.filter { it.relyingPartyID == relyingPartyID && (allAllowedID.isEmpty() || it.credentialID in allAllowedID) }
+    }
+
+    override fun preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: List<ByteString>): PasskeyRegistrationOptions {
+        record("preparePasskeyRegistration")
+        val allLogin = listAllLoginForService("https://$relyingPartyID").filter { login ->
+            allVault.firstOrNull { it.id == login.vaultID }?.role != "reader"
+        }
+        return PasskeyRegistrationOptions(checkIsExcluded(relyingPartyID, allExcludedCredentialID), allLogin)
+    }
+
+    private fun checkIsExcluded(relyingPartyID: String, allExcludedCredentialID: List<ByteString>): Boolean {
+        val allExcludedID = allExcludedCredentialID.map(Base64URL::encode).toSet()
+        return allPasskey.any { it.relyingPartyID == relyingPartyID && it.credentialID in allExcludedID }
+    }
+
+    override fun createPasskey(request: PasskeyRegistrationRequest, vaultID: String, itemID: String): PasskeyRegistrationResult {
+        record("createPasskey")
+        requireUnlocked()
+        if (checkIsExcluded(request.relyingPartyID, request.allExcludedCredentialID)) {
+            throw BackendError("Hisar already has a passkey for this account")
+        }
+        if (request.clientDataHash.size != 32) throw BackendError("the request is not valid")
+        val targetVaultID: String
+        var item: ItemDetail
+        if (vaultID.isEmpty()) {
+            targetVaultID = "personal"
+            item = saveItem(
+                targetVaultID,
+                ItemDetail(title = request.relyingPartyID, username = request.userName, allURL = listOf("https://${request.relyingPartyID}")),
+            )
+        } else {
+            targetVaultID = vaultID
+            val isListed = preparePasskeyRegistration(request.relyingPartyID, emptyList()).allLogin.any { it.vaultID == vaultID && it.itemID == itemID }
+            if (!isListed) throw BackendError("this login is not saved for this site")
+            item = getItem(vaultID, itemID)
+        }
+        val userHandle = Base64URL.encode(request.userHandle)
+        val credentialID = Base64URL.encode(ByteString((allPasskey.size + 2).toByte(), 7, 7))
+        val replacedID = allPasskey.filter {
+            it.vaultID == targetVaultID && it.itemID == item.id && it.relyingPartyID == request.relyingPartyID && it.userHandle == userHandle
+        }.map { it.credentialID }.toSet()
+        allPasskey.removeAll { it.credentialID in replacedID }
+        allPasskey += StoredPasskey(credentialID, request.relyingPartyID, request.userName, "", userHandle, targetVaultID, item.id, item.title)
+        item = item.copy(
+            allPasskey = item.allPasskey.filter { it.credentialID !in replacedID } +
+                ItemPasskey(credentialID, request.relyingPartyID, request.userName),
+        )
+        replaceItem(targetVaultID, item)
+        return PasskeyRegistrationResult(
+            credentialID = credentialID,
+            attestationObject = Base64URL.encode("attestation for ${request.relyingPartyID}".encodeToByteString()),
+            authenticatorData = Base64URL.encode("authenticator data".encodeToByteString()),
+            vaultID = targetVaultID,
+            itemID = item.id,
+        )
+    }
+
+    private fun replaceItem(vaultID: String, item: ItemDetail) {
+        val allItem = allItemByVaultID[vaultID] ?: return
+        val index = allItem.indexOfFirst { it.id == item.id }
+        if (index >= 0) allItem[index] = item
+    }
+
+    override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString): PasskeyAssertionResult {
+        record("assertPasskey")
+        requireUnlocked()
+        if (clientDataHash.size != 32) throw BackendError("the request is not valid")
+        val passkey = allPasskey.firstOrNull { it.relyingPartyID == relyingPartyID && it.credentialID == Base64URL.encode(credentialID) }
+            ?: throw BackendError("passkey not found")
+        return PasskeyAssertionResult(
+            credentialID = passkey.credentialID,
+            authenticatorData = Base64URL.encode("authenticator data for $relyingPartyID".encodeToByteString()),
+            signature = Base64URL.encode(ByteString("signature over ".encodeToByteString().toByteArray() + clientDataHash.toByteArray())),
+            userHandle = passkey.userHandle,
+        )
+    }
+
+    override fun deletePasskey(vaultID: String, itemID: String, credentialID: String): ItemDetail {
+        record("deletePasskey")
+        val item = getItem(vaultID, itemID)
+        if (item.allPasskey.none { it.credentialID == credentialID }) throw BackendError("passkey not found")
+        val updated = item.copy(allPasskey = item.allPasskey.filter { it.credentialID != credentialID })
+        allPasskey.removeAll { it.credentialID == credentialID }
+        replaceItem(vaultID, updated)
+        return updated
+    }
+
+    // Phone approvals: the Mac's requests are seeded and answers recorded. Listing is not recorded, as it runs in the background.
+    override fun listAllPendingApproval(): List<PhoneApproval> {
+        requireUnlocked()
+        return withApprovalLock { allPendingApproval.toList() }
+    }
+
+    override fun approveApproval(requestID: String, isRemembered: Boolean) {
+        record("approveApproval")
+        requireUnlocked()
+        if (!isBiometricAvailable) throw BackendError("Face ID is not available; approve with your master password")
+        if (!isBiometricSucceeding) throw BackendError("Face ID was cancelled.")
+        answerApproval(requestID, if (isRemembered) "approve remembered" else "approve")
+    }
+
+    override fun approveApprovalWithPassword(requestID: String, password: String, isRemembered: Boolean) {
+        record("approveApprovalWithPassword")
+        requireUnlocked()
+        if (password != PASSWORD) throw BackendError("Incorrect master password.")
+        answerApproval(requestID, if (isRemembered) "approve remembered" else "approve")
+    }
+
+    override fun reconnectEvents() {
+        record("reconnectEvents")
+    }
+
+    override fun denyApproval(requestID: String) {
+        record("denyApproval")
+        requireUnlocked()
+        answerApproval(requestID, "deny")
+    }
+
+    private fun answerApproval(requestID: String, decision: String) = withApprovalLock {
+        if (allPendingApproval.none { it.requestID == requestID }) throw BackendError("This request is no longer waiting for an answer")
+        allPendingApproval.removeAll { it.requestID == requestID }
+        allApprovalAnswer += "$decision $requestID"
+    }
+
+    override fun setAutoLock(seconds: Int): VaultStatus {
+        record("setAutoLock")
+        if (seconds !in VaultStatus.allAutoLockSeconds) throw BackendError("choose 30 seconds, 1 minute, 5 minutes, 10 minutes or 1 hour")
+        status = status.copy(autoLockSeconds = seconds)
+        return status
+    }
+
+    override fun listAllDevice(): List<Device> {
+        record("listAllDevice")
+        requireUnlocked()
+        return allDevice.toList()
+    }
+
+    override fun revokeDevice(deviceID: String) {
+        record("revokeDevice")
+        requireUnlocked()
+        val device = allDevice.firstOrNull { it.id == deviceID } ?: throw BackendError("this device is already signed out")
+        if (device.isCurrent) throw BackendError("sign out this device instead")
+        allDevice.removeAll { it.id == deviceID }
+    }
+
+    override fun getVaultActions(vaultID: String): VaultActions {
+        record("getVaultActions")
+        requireUnlocked()
+        val vault = allVault.firstOrNull { it.id == vaultID } ?: throw BackendError("vault not found")
+        val actions = VaultActions(
+            vault = vault,
+            canRename = vault.role == Member.VAULT_ROLE_OWNER,
+            allMemberLosingAccess = allVaultMemberByVaultID[vaultID].orEmpty().filter { !it.isCurrentUser },
+        )
+        return when {
+            vault.type == "personal" -> actions.copy(
+                deleteBlockedReason = "Your Personal vault can't be deleted.",
+                leaveBlockedReason = "You can't leave your Personal vault.",
+            )
+            vault.role != Member.VAULT_ROLE_OWNER -> actions.copy(
+                deleteBlockedReason = "Only an owner of this vault can delete it. You can leave it instead.",
+                canLeave = true,
+            )
+            else -> actions.copy(
+                canDelete = true,
+                leaveBlockedReason = "You are its only owner.",
+                allTargetVault = allVault.filter { it.id != vaultID && it.role != Member.VAULT_ROLE_READER },
+            )
+        }
+    }
+
+    override fun renameVault(vaultID: String, name: String): VaultSummary {
+        record("renameVault")
+        requireUnlocked()
+        val trimmedName = name.trimmingWhitespaces()
+        if (trimmedName.isEmpty()) throw BackendError("Enter a vault name")
+        val index = allVault.indexOfFirst { it.id == vaultID }
+        if (index < 0 || allVault[index].role != Member.VAULT_ROLE_OWNER) throw BackendError("Only an owner of the vault can do that")
+        allVault[index] = allVault[index].copy(name = trimmedName)
+        return allVault[index]
+    }
+
+    override fun deleteVault(vaultID: String, request: VaultDeletionRequest): VaultDeletionResult {
+        record("deleteVault")
+        requireUnlocked()
+        allDeletionRequest += request
+        val vault = allVault.firstOrNull { it.id == vaultID } ?: throw BackendError("vault not found")
+        val allItem = allItemByVaultID[vaultID].orEmpty()
+        var result = VaultDeletionResult()
+        if (request.moveToVaultID.isNotEmpty()) {
+            val target = allVault.firstOrNull { it.id == request.moveToVaultID } ?: throw BackendError("vault not found")
+            allItemByVaultID.getOrPut(target.id) { mutableListOf() } += allItem
+            result = VaultDeletionResult(allItem.size, target.name)
+        } else if (request.isDeletingItems) {
+            if (request.confirmedName.trimmingWhitespaces() != vault.name) {
+                throw BackendError("Type the vault's name to delete it together with its items")
+            }
+        } else if (allItem.isNotEmpty()) {
+            throw BackendError("This vault has items")
+        }
+        allVault.removeAll { it.id == vaultID }
+        allItemByVaultID.remove(vaultID)
+        return result
+    }
+
+    override fun leaveVault(vaultID: String) {
+        record("leaveVault")
+        requireUnlocked()
+        allVault.removeAll { it.id == vaultID }
+        allItemByVaultID.remove(vaultID)
+    }
+
+    override fun listAllRemovedVault(): List<RemovedVaultNotice> {
+        record("listAllRemovedVault")
+        requireUnlocked()
+        val allNotice = allPendingRemovedVault
+        allPendingRemovedVault = emptyList()
+        return allNotice
+    }
+
+    override fun getExportOptions(): ExportOptions {
+        record("getExportOptions")
+        return exportOptions
+    }
+
+    override fun exportAllData(format: ExportFormat, passphrase: String, password: String, directory: File): ExportResult {
+        record("exportAllData")
+        requireUnlocked()
+        if (password.isEmpty()) {
+            if (!isBiometricSucceeding) throw BackendError("Face ID was cancelled.")
+        } else if (password != PASSWORD) {
+            throw BackendError("Incorrect email, master password or Secret Key")
+        }
+        directory.mkdirs()
+        val file = File(directory, if (format == ExportFormat.PLAIN) "Hisar export (not encrypted).json" else "Hisar export.hisar")
+        file.writeText("{}")
+        return ExportResult(file.path, allVault.size, allItemByVaultID.values.sumOf { it.size })
+    }
+
+    override fun exportEmergencyKit(password: String, directory: File): EmergencyKitExport {
+        record("exportEmergencyKit")
+        requireUnlocked()
+        if (password != PASSWORD) throw BackendError("Incorrect master password.")
+        return EmergencyKitExport(SECRET_KEY, writeEmergencyKit(directory).path)
+    }
+
+    private fun writeEmergencyKit(directory: File): File {
+        directory.mkdirs()
+        return File(directory, "Hisar Emergency Kit.pdf").apply { writeText("%PDF-1.7") }
+    }
+
+    override fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult {
+        record("changeMasterPassword")
+        requireUnlocked()
+        if (currentPassword != this.currentPassword) throw BackendError("The master password is not correct")
+        if (newPassword.length < 10) throw BackendError("Use a master password with at least 10 characters")
+        this.currentPassword = newPassword
+        return CredentialChangeResult(status, signedOutDeviceCount = 1)
+    }
+
+    override fun replaceSecretKey(password: String, directory: File): CredentialChangeResult {
+        record("replaceSecretKey")
+        requireUnlocked()
+        if (password != currentPassword) throw BackendError("The master password is not correct")
+        currentSecretKey = "H1-ABC123-ZZZZZ-YYYYY-XXXXX-WWWWW-VVVVVV"
+        val emergencyKit = writeEmergencyKit(directory)
+        return CredentialChangeResult(status, secretKey = currentSecretKey, signedOutDeviceCount = 2, emergencyKitPath = emergencyKit.path)
+    }
+
+    override fun previewAccountDeletion(): AccountDeletionPreview {
+        record("previewAccountDeletion")
+        requireUnlocked()
+        return deletionPreview
+    }
+
+    override fun deleteAccount(password: String, email: String): VaultStatus {
+        record("deleteAccount")
+        requireUnlocked()
+        if (email.trimmingWhitespaces().lowercase() != status.email.lowercase()) throw BackendError("Type the email of this account to confirm")
+        if (password != currentPassword) throw BackendError("The master password is not correct")
+        isAccountDeleted = true
+        status = VaultStatus.signedOut
+        return status
+    }
+
+    override fun dismissSignedOutReason(): VaultStatus {
+        record("dismissSignedOutReason")
+        status = status.copy(signedOutReason = "")
+        return status
+    }
+
+    override fun copySecretReference(vaultID: String, itemID: String, fieldName: String): String {
+        record("copySecretReference")
+        val item = getItem(vaultID, itemID)
+        val vaultName = allVault.firstOrNull { it.id == vaultID }?.name ?: vaultID
+        val reference = "hisar://$vaultName/${item.title}/$fieldName"
+        allCopiedReference += reference
+        return reference
+    }
+
+    override fun isMacApprovalAllowed(): Boolean = isMacApprovalAllowedValue
+
+    override fun setMacApprovalAllowed(isAllowed: Boolean) {
+        record("setMacApprovalAllowed")
+        isMacApprovalAllowedValue = isAllowed
+    }
+
+    override fun prepareItemIcon(image: ByteString): ByteString {
+        record("prepareItemIcon")
+        return preparedIcon ?: throw BackendError("choose a PNG, JPEG, GIF or WebP image")
+    }
+
+    override fun getWebsiteIcon(url: String): ByteString? {
+        record("getWebsiteIcon")
+        return if (isWebsiteIconsEnabledValue) websiteIconByURL[url] else null
+    }
+
+    override fun isWebsiteIconsEnabled(): Boolean = isWebsiteIconsEnabledValue
+
+    override fun setWebsiteIconsEnabled(isEnabled: Boolean) {
+        record("setWebsiteIconsEnabled")
+        isWebsiteIconsEnabledValue = isEnabled
+    }
+
+    override fun getTheme(): VaultTheme = theme
+
+    override fun setTheme(theme: VaultTheme): VaultTheme {
+        record("setTheme")
+        if (isThemeSaveFailing) throw BackendError("Could not save hisar.json")
+        this.theme = theme
+        return theme
+    }
+
+    // Organizations: the user's organizations with their members and teams; admins change them, members only read.
+    override fun listAllOrganization(): Organizations {
+        record("listAllOrganization")
+        requireUnlocked()
+        listAllOrganizationErrorMessage?.let { throw BackendError(it) }
+        return Organizations(
+            allOrganization = allOrganization.map { OrganizationSummary(it.id, it.name, it.role, it.allMember.size) },
+            allInvitation = allOrganizationInvitation.toList(),
+        )
+    }
+
+    override fun getOrganization(organizationID: String): Organization {
+        record("getOrganization")
+        requireUnlocked()
+        getOrganizationErrorMessage?.let { throw BackendError(it) }
+        val organization = allOrganization.firstOrNull { it.id == organizationID } ?: throw BackendError(ORGANIZATION_NOT_FOUND)
+        val withVaultNames = organization.copy(
+            allTeam = organization.allTeam.map { team ->
+                team.copy(
+                    allVault = team.allVault.map { teamVault ->
+                        val vault = allVault.firstOrNull { it.id == teamVault.vaultID }
+                        teamVault.copy(name = vault?.name ?: "", canOpen = vault != null)
+                    },
+                )
+            },
+        )
+        return if (withVaultNames.isAdmin) withVaultNames else withVaultNames.copy(allInvitation = emptyList())
+    }
+
+    override fun createOrganization(name: String): OrganizationSummary {
+        record("createOrganization")
+        requireUnlocked()
+        val currentMember = currentMember
+        if (!OrganizationLogic.isValidName(name) || currentMember == null) throw BackendError("Enter a name of 1 to 100 characters")
+        val organization = Organization(
+            id = "organization-${allOrganization.size + 1}", name = name, role = OrganizationRole.ADMIN, isAdmin = true,
+            allMember = listOf(currentMember.copy(role = OrganizationRole.ADMIN)),
+        )
+        allOrganization += organization
+        return OrganizationSummary(organization.id, name, organization.role, 1)
+    }
+
+    override fun renameOrganization(organizationID: String, name: String) {
+        record("renameOrganization")
+        changeOrganizationAsAdmin(organizationID) { it.copy(name = name) }
+    }
+
+    override fun deleteOrganization(organizationID: String) {
+        record("deleteOrganization")
+        changeOrganizationAsAdmin(organizationID) { it }
+        if (allVault.any { it.organizationID == organizationID }) throw BackendError("The organization still has vaults; delete them first")
+        allOrganization.removeAll { it.id == organizationID }
+    }
+
+    override fun inviteToOrganization(organizationID: String, email: String, role: String) {
+        record("inviteToOrganization")
+        changeOrganizationAsAdmin(organizationID) { organization ->
+            val invitation = SentOrganizationInvitation(
+                id = "organization-invitation-${organization.allInvitation.size + 1}", email = email, role = role,
+                createdAt = "2027-01-15T08:00:00Z", expiresAt = "2027-01-22T08:00:00Z",
+            )
+            organization.copy(allInvitation = organization.allInvitation + invitation)
+        }
+    }
+
+    override fun cancelOrganizationInvitation(organizationID: String, invitationID: String) {
+        record("cancelOrganizationInvitation")
+        changeOrganizationAsAdmin(organizationID) { organization ->
+            organization.copy(allInvitation = organization.allInvitation.filter { it.id != invitationID })
+        }
+    }
+
+    override fun acceptOrganizationInvitation(invitationID: String) {
+        record("acceptOrganizationInvitation")
+        requireUnlocked()
+        val invitation = allOrganizationInvitation.firstOrNull { it.id == invitationID }
+        val currentMember = currentMember
+        if (invitation == null || currentMember == null) throw BackendError("This invitation no longer exists")
+        allOrganizationInvitation.removeAll { it.id == invitationID }
+        allOrganization += Organization(
+            id = invitation.organizationID, name = invitation.organizationName, role = invitation.role,
+            isAdmin = invitation.role == OrganizationRole.ADMIN, allMember = listOf(currentMember.copy(role = invitation.role)),
+        )
+    }
+
+    override fun declineOrganizationInvitation(invitationID: String) {
+        record("declineOrganizationInvitation")
+        requireUnlocked()
+        if (allOrganizationInvitation.none { it.id == invitationID }) throw BackendError("This invitation no longer exists")
+        allOrganizationInvitation.removeAll { it.id == invitationID }
+    }
+
+    override fun setOrganizationMemberRole(organizationID: String, accountID: String, role: String) {
+        record("setOrganizationMemberRole")
+        changeOrganizationAsAdmin(organizationID) { organization ->
+            organization.copy(allMember = organization.allMember.map { if (it.accountID == accountID) it.copy(role = role) else it })
+        }
+    }
+
+    override fun removeOrganizationMember(organizationID: String, accountID: String) {
+        record("removeOrganizationMember")
+        changeOrganizationAsAdmin(organizationID) { organization ->
+            organization.copy(
+                allMember = organization.allMember.filter { it.accountID != accountID },
+                allTeam = organization.allTeam.map { team -> team.copy(allMember = team.allMember.filter { it.accountID != accountID }) },
+            )
+        }
+    }
+
+    override fun leaveOrganization(organizationID: String) {
+        record("leaveOrganization")
+        requireUnlocked()
+        allOrganization.removeAll { it.id == organizationID }
+        allVault.removeAll { it.organizationID == organizationID }
+    }
+
+    override fun createTeam(organizationID: String, name: String): Team {
+        record("createTeam")
+        val team = Team(id = "team-${name.lowercase()}", name = name)
+        changeOrganizationAsAdmin(organizationID) { it.copy(allTeam = it.allTeam + team) }
+        return team
+    }
+
+    override fun renameTeam(organizationID: String, teamID: String, name: String) {
+        record("renameTeam")
+        changeTeam(organizationID, teamID) { it.copy(name = name) }
+    }
+
+    override fun deleteTeam(organizationID: String, teamID: String) {
+        record("deleteTeam")
+        changeOrganizationAsAdmin(organizationID) { organization -> organization.copy(allTeam = organization.allTeam.filter { it.id != teamID }) }
+    }
+
+    override fun addTeamMember(organizationID: String, teamID: String, accountID: String) {
+        record("addTeamMember")
+        val member = allOrganization.firstOrNull { it.id == organizationID }?.allMember?.firstOrNull { it.accountID == accountID }
+            ?: throw BackendError(ORGANIZATION_NOT_FOUND)
+        changeTeam(organizationID, teamID) { it.copy(allMember = it.allMember + TeamMember(accountID, member.name, member.email, member.isCurrentUser)) }
+    }
+
+    override fun removeTeamMember(organizationID: String, teamID: String, accountID: String) {
+        record("removeTeamMember")
+        changeTeam(organizationID, teamID) { team -> team.copy(allMember = team.allMember.filter { it.accountID != accountID }) }
+    }
+
+    override fun giveVaultToTeam(organizationID: String, teamID: String, vaultID: String, role: String) {
+        record("giveVaultToTeam")
+        changeTeam(organizationID, teamID) { team ->
+            team.copy(allVault = team.allVault.filter { it.vaultID != vaultID } + TeamVault(vaultID, "", role, canOpen = false))
+        }
+    }
+
+    override fun takeVaultFromTeam(organizationID: String, teamID: String, vaultID: String) {
+        record("takeVaultFromTeam")
+        changeTeam(organizationID, teamID) { team -> team.copy(allVault = team.allVault.filter { it.vaultID != vaultID }) }
+    }
+
+    override fun createOrganizationVault(organizationID: String, teamID: String, name: String): VaultSummary {
+        record("createOrganizationVault")
+        requireUnlocked()
+        val team = allOrganization.firstOrNull { it.id == organizationID }?.allTeam?.firstOrNull { it.id == teamID }
+        if (team == null || !team.hasCurrentUser) throw BackendError("Only members of the team can create a vault for it")
+        val vault = VaultSummary(
+            id = "vault-${allVault.size + 1}", name = name, type = VaultSummary.TYPE_ORGANIZATION, role = Member.VAULT_ROLE_OWNER,
+            itemCount = 0, organizationID = organizationID,
+        )
+        allVault += vault
+        allItemByVaultID[vault.id] = mutableListOf()
+        changeTeam(organizationID, teamID, isAdminRequired = false) {
+            it.copy(allVault = it.allVault + TeamVault(vault.id, "", Member.VAULT_ROLE_OWNER, canOpen = false))
+        }
+        return vault
+    }
+
+    override fun listAllWaitingVaultKey(): WaitingVaultKeys {
+        record("listAllWaitingVaultKey")
+        requireUnlocked()
+        return waitingVaultKeys
+    }
+
+    private fun changeOrganizationAsAdmin(organizationID: String, isAdminRequired: Boolean = true, change: (Organization) -> Organization) {
+        requireUnlocked()
+        organizationRefusal?.let { refusal ->
+            organizationRefusal = null
+            throw BackendError(refusal)
+        }
+        val index = allOrganization.indexOfFirst { it.id == organizationID }
+        if (index < 0) throw BackendError(ORGANIZATION_NOT_FOUND)
+        if (!allOrganization[index].isAdmin && isAdminRequired) throw BackendError("Only an admin of this organization can do that")
+        allOrganization[index] = change(allOrganization[index])
+    }
+
+    private fun changeTeam(organizationID: String, teamID: String, isAdminRequired: Boolean = true, change: (Team) -> Team) {
+        changeOrganizationAsAdmin(organizationID, isAdminRequired) { organization ->
+            organization.copy(allTeam = organization.allTeam.map { if (it.id == teamID) change(it) else it })
+        }
+    }
+
+    companion object {
+        const val PASSWORD = "correct horse battery"
+        const val SECRET_KEY = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
+        const val ONE_TIME_PASSWORD = "otpauth://totp/GitHub:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
+        private const val ORGANIZATION_NOT_FOUND =
+            "That organization, team, person or vault was not found, or you are no longer in the organization"
+        val oneTimeCode = OneTimeCode(code = "287082", expiresAt = "2027-01-15T08:00:30Z", period = 30)
+        val gitHubPasskey = StoredPasskey(
+            credentialID = Base64URL.encode(ByteString(1, 1, 1)), relyingPartyID = "github.com", userName = "alice",
+            userDisplayName = "Alice", userHandle = Base64URL.encode("alice-handle".encodeToByteString()),
+            vaultID = "personal", itemID = "github", title = "GitHub",
+        )
+    }
+}
