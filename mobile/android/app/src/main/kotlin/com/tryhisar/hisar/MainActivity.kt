@@ -43,7 +43,6 @@ class MainActivity : FragmentActivity() {
         if (savedInstanceState == null) {
             openLink(intent)
             openAutoFillSettings(intent)
-            SavedLoginInbox.open(intent, viewModel.model, lifecycleScope)
         }
         setContent { RootScreen(viewModel.model, viewModel::copySecret) }
     }
@@ -52,7 +51,11 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         openLink(intent)
         openAutoFillSettings(intent)
-        SavedLoginInbox.open(intent, viewModel.model, lifecycleScope)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        SavedLoginInbox.open(viewModel.model, lifecycleScope)
     }
 
     private fun applyScreenshotSetting(isAllowed: Boolean) {

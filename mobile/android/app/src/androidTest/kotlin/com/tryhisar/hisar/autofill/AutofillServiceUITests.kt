@@ -4,6 +4,7 @@ import android.content.ClipboardManager
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Bitmap
+import android.os.Build
 import android.os.ParcelFileDescriptor
 import android.view.accessibility.AccessibilityEvent
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -111,13 +112,17 @@ class AutofillServiceUITests {
         findSuggestion("Search Hisar", By.res("username"))
         // Typed key by key, as a person types: WebView reports a value set through accessibility only when the form is
         // submitted, after the system has already decided there is nothing to save.
-        shell("input text new-user")
+        type("new-user", "username=new-user; password=0 characters")
         waitForObject(By.res("password")).click()
-        shell("input text new-password")
+        type("new-password", "username=new-user; password=12 characters")
         waitForObject(By.text("Sign in")).click()
         val save = device.wait(Until.findObject(By.text("Save")), 15_000) ?: error("the system offered no save sheet")
         saveScreenshot("autofill-service-save-prompt")
         save.click()
+        if (!saveSheetOpensHisar) {
+            device.wait(Until.gone(By.text("Save")), 10_000)
+            instrumentation.targetContext.startActivity(checkNotNull(instrumentation.targetContext.packageManager.getLaunchIntentForPackage(appPackage)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
         assertEquals("new-user", waitForObject(By.res("editor-username")).text)
         saveScreenshot("autofill-service-save-editor")
     }
@@ -153,6 +158,15 @@ class AutofillServiceUITests {
         assertTrue("the form reads ${device.findObject(By.textStartsWith("username="))?.text}, not $expected", isFilled)
     }
 
+    // The first key filters out every suggestion. On API 29 the dropdown then closes, and keys that arrive while its
+    // window goes away find the page without focus and are dropped, so the rest is typed once it has closed.
+    private fun type(text: String, expectedReport: String) {
+        shell("input text ${text.first()}")
+        device.wait(Until.gone(By.text("Search Hisar")), 5_000)
+        shell("input text ${text.drop(1)}")
+        waitForReport(expectedReport)
+    }
+
     // A toast is announced to accessibility but never appears in the window hierarchy UiAutomator searches.
     private fun waitForNotice(text: String, action: () -> Unit) {
         try {
@@ -178,5 +192,9 @@ class AutofillServiceUITests {
 
     private companion object {
         const val ONE_TIME_PASSWORD = "otpauth://totp/Example:user?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // gitleaks:allow, the RFC 6238 test secret
+
+        // Android 14 before QPR2 (March 2024) starts the save sheet's intent without letting the page's app lend its
+        // right to open an activity, so it never opens Hisar; the user then finds the login when they open Hisar.
+        val saveSheetOpensHisar = Build.VERSION.SDK_INT != Build.VERSION_CODES.UPSIDE_DOWN_CAKE || Build.VERSION.SECURITY_PATCH >= "2024-03-01"
     }
 }
