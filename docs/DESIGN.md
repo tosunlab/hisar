@@ -842,7 +842,7 @@ Differs:
 | `pair.finish` | `instanceID`, `code` | `token`. The code is valid for 2 minutes and 5 attempts |
 | `status` | — | `state`, `email`, `isOffline` |
 | `unlock` | — | `{}`; brings the desktop window forward (on the Touch ID screen when it is ready) |
-| `unlock.password` | `password` | `state`, `email`, `isOffline`; unlocks with the master password typed in the popup. `wrong-password` for a wrong one; after 5 wrong ones within 5 minutes from one paired browser, that browser waits out the 5 minutes |
+| `unlock.password` | `password` | `state`, `email`, `isOffline`; unlocks with the master password typed in the popup. `wrong-password` for a wrong one; after 5 wrong ones within 5 minutes from one paired browser, that browser waits out the 5 minutes (an attempt counts before its password is checked, so attempts sent at once over several connections cannot pass the limit) |
 | `logins.match` | `url` | `logins`: `[{vaultID, itemID, title, username, vaultName, hasOneTimePassword}]`, sorted by title |
 | `logins.fill` | `vaultID`, `itemID`, `url` | `username`, `password`, `hasOneTimePassword`; the desktop checks the URL match again |
 | `logins.code` | `vaultID`, `itemID`, `url` | `code`, `expiresAt` (RFC 3339), `period`; the same URL match as `logins.fill`. The secret never leaves the desktop; `not-found` when the item has no one-time password |

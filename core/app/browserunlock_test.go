@@ -3,6 +3,7 @@ package app
 import (
 	"slices"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -67,5 +68,26 @@ func TestBrowserUnlockWaitMessage(t *testing.T) {
 	result, _ := testBridge.sendRequest(browserprotocol.Request{Type: "hello", InstanceID: "chrome-1"})
 	if !slices.Contains(result.(browserprotocol.HelloResult).Features, browserprotocol.FeatureUnlockPassword) {
 		t.Errorf("hello = %+v", result)
+	}
+}
+
+// Attempts sent at once over several native connections all count: none of them sees a stale list of failures.
+func TestBrowserUnlockCountsConcurrentAttempts(t *testing.T) {
+	testBridge := createBrowserTestBridge(t)
+	service := testBridge.testService.service
+	prepareTestApprovalUnlock(t, testBridge.testService, "master password")
+	token := testBridge.pair(t, "chrome-1")
+	service.Lock()
+	var group sync.WaitGroup
+	for range 2 * browserUnlockMaxFailures {
+		group.Go(func() {
+			if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "unlock.password", Token: token, Password: "wrong password"}); code != browserprotocol.ErrorWrongPassword {
+				t.Errorf("concurrent wrong password = %s", code)
+			}
+		})
+	}
+	group.Wait()
+	if result, code := testBridge.sendRequest(browserprotocol.Request{Type: "unlock.password", Token: token, Password: "master password"}); code != browserprotocol.ErrorWrongPassword || service.GetStatus().State != StateLocked {
+		t.Fatalf("unlock.password after concurrent wrong ones = %+v %s, state %s", result, code, service.GetStatus().State)
 	}
 }
