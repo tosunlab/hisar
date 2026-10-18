@@ -80,11 +80,17 @@ func TestShareLinkApprovalUsesTheHandlersNames(t *testing.T) {
 	client.send(t, createShareLinkRequest())
 	textRequest := cliprotocol.Request{Type: cliprotocol.TypeCreateShareLink, ShareLink: &cliprotocol.ShareLinkChange{Text: "hello", ExpiresInSeconds: 3600, MaxViews: 0}}
 	client.send(t, textRequest)
-	first, second := fixture.approver.requests[0].ShareLink, fixture.approver.requests[1].ShareLink
+	itemWithText := createShareLinkRequest()
+	itemWithText.ShareLink.Text = "hello"
+	client.send(t, itemWithText)
+	first, second, third := fixture.approver.requests[0].ShareLink, fixture.approver.requests[1].ShareLink, fixture.approver.requests[2].ShareLink
 	if first.Title != "GitHub" || !slices.Equal(first.FieldLabels, []string{"password", "Recovery code"}) {
 		t.Errorf("item description %+v", first)
 	}
 	if second.Title != "Shared text" || !slices.Equal(second.FieldLabels, []string{"text"}) || second.Detail != "Expires in 1 hour · unlimited views" {
 		t.Errorf("text description %+v", second)
+	}
+	if third.Title != "GitHub" || !slices.Equal(third.FieldLabels, []string{"password", "Recovery code"}) {
+		t.Errorf("a request naming an item and text shares the item; described %+v", third)
 	}
 }

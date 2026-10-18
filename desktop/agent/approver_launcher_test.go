@@ -156,6 +156,66 @@ func TestLauncherApprovalDenyTimeoutAndDisconnect(t *testing.T) {
 	}
 }
 
+func startLauncherShareApproval(approver *Approver, title string) chan error {
+	request := createLauncherRequest()
+	request.ShareLink = &clisocket.ShareLinkDescription{Title: title, FieldLabels: []string{"username", "password"}, Detail: "Expires in 7 days · 1 view"}
+	resultChannel := make(chan error, 1)
+	go func() { resultChannel <- approver.ApproveLauncher(context.Background(), request) }()
+	return resultChannel
+}
+
+func TestLauncherShareApprovalNamesTheItemAndAsksEveryTime(t *testing.T) {
+	for _, testCase := range []struct{ title, action string }{
+		{"GitHub", "create a share link for “GitHub”"},
+		{"", "create a share link for an item"},
+	} {
+		biometric := &fakeBiometric{isAvailable: true}
+		emitter := createFakeEmitter()
+		approver := createLauncherApprover(emitter, biometric, &fakeUnlocker{}, nil, 0)
+		for attempt := range 2 {
+			resultChannel := startLauncherShareApproval(approver, testCase.title)
+			event := waitForApprovalEvent(t, emitter)
+			if event.Kind != ApprovalKindLauncher || event.AppName != "Raycast" || event.Purpose != "share-link" || event.Action != testCase.action ||
+				event.CommandLine != "Expires in 7 days · 1 view" || !slices.Equal(event.SecretNames, []string{"username", "password"}) ||
+				event.Warning != "Anyone with the link can read these until it expires or its views run out." || event.IsRememberable || event.IsCompact {
+				t.Errorf("%q attempt %d: event = %+v", testCase.title, attempt, event)
+			}
+			approver.Respond(event.RequestID, true, true)
+			if err := waitForCommandLineResult(t, resultChannel); err != nil {
+				t.Fatalf("%q attempt %d: %v", testCase.title, attempt, err)
+			}
+		}
+		reason := `allow "Raycast" to ` + testCase.action
+		if reasons := biometric.listReasons(); !slices.Equal(reasons, []string{reason, reason}) {
+			t.Errorf("Touch ID reasons = %q", reasons)
+		}
+	}
+}
+
+func TestLauncherShareOnThePhone(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createLauncherApprover(emitter, &fakeBiometric{isAvailable: true}, &fakeUnlocker{}, phone, 5*time.Second)
+	resultChannel := startLauncherShareApproval(approver, "GitHub")
+	waitForApprovalEvent(t, emitter)
+	want := approval.Description{
+		Kind:        approval.KindLauncher,
+		AppName:     "Raycast",
+		AppIcon:     []byte("Raycast PNG"),
+		Purpose:     "create a share link for “GitHub”",
+		Secrets:     []string{"username", "password"},
+		CommandLine: "Expires in 7 days · 1 view",
+		AppWarning:  "Anyone with the link can read these until it expires or its views run out.",
+	}
+	if description := phone.waitForStart(t); !reflect.DeepEqual(description, want) {
+		t.Errorf("share link on the phone = %+v", description)
+	}
+	phone.answer(false)
+	if err := waitForCommandLineResult(t, resultChannel); !errors.Is(err, clisocket.ErrDenied) {
+		t.Errorf("denied on the phone: %v", err)
+	}
+}
+
 func TestCommandLineApprovalSaysWhatItCovers(t *testing.T) {
 	for _, coverage := range []clisocket.ApprovalCoverage{clisocket.CoverageTerminalSession, clisocket.CoverageApp, clisocket.CoverageConnection} {
 		emitter := createFakeEmitter()

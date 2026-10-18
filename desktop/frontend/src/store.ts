@@ -31,6 +31,7 @@ import {
   type ImportPreview,
   type ImportProgress,
   type ItemDetail,
+  type ItemLocation,
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
@@ -638,6 +639,10 @@ export async function selectVault(vaultID: string): Promise<void> {
   store.searchQuery = "";
   store.selectedTag = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
+  // Another vault chosen meanwhile wins, such as a launcher's item while the unlock that preceded it opens Personal.
+  if (store.selectedVaultID !== vaultID) {
+    return;
+  }
   store.allItem = allItem ? sortAllItem(allItem) : [];
   updateSelectedVaultItemCount();
 }
@@ -804,6 +809,26 @@ export async function selectItem(itemID: string): Promise<void> {
   if (detail) {
     store.selectedItem = detail;
     store.editorMode = "view";
+  }
+}
+
+// showItem follows a launcher's Open in Hisar: the item in its vault, in its editor when asked and the vault allows it.
+// The window may not have heard yet about the unlock that came with the launcher's approval.
+export async function showItem(location: ItemLocation): Promise<void> {
+  if (store.status.state !== "unlocked") {
+    await loadStatus();
+  }
+  if (store.status.state !== "unlocked" || store.status.updateRequired) {
+    return;
+  }
+  store.isSettingsOpen = false;
+  store.isSharingOpen = false;
+  store.isShareLinksOpen = false;
+  await selectVault(location.vaultID);
+  await selectItem(location.itemID);
+  const canEdit = store.allVault.some((vault) => vault.id === location.vaultID && vault.role !== "reader");
+  if (location.isEditing && canEdit && store.selectedItem?.id === location.itemID) {
+    startEditingItem();
   }
 }
 

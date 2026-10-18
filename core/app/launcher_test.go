@@ -15,6 +15,7 @@ import (
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/sharelink"
 )
 
 // raycastPeerResolver is a caller without a terminal, in launchd's session like every Mac app.
@@ -25,21 +26,34 @@ func (raycastPeerResolver) GetTerminalSession(int) (clisocket.TerminalSession, e
 }
 
 type countingLauncherApprover struct {
-	mutex sync.Mutex
-	count int
+	mutex    sync.Mutex
+	requests []clisocket.LauncherApprovalRequest
+	result   error
 }
 
-func (approver *countingLauncherApprover) ApproveLauncher(context.Context, clisocket.LauncherApprovalRequest) error {
+func (approver *countingLauncherApprover) ApproveLauncher(_ context.Context, request clisocket.LauncherApprovalRequest) error {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	approver.count++
-	return nil
+	approver.requests = append(approver.requests, request)
+	return approver.result
 }
 
 func (approver *countingLauncherApprover) getCount() int {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	return approver.count
+	return len(approver.requests)
+}
+
+func (approver *countingLauncherApprover) setResult(result error) {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	approver.result = result
+}
+
+func (approver *countingLauncherApprover) getLastRequest() clisocket.LauncherApprovalRequest {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	return approver.requests[len(approver.requests)-1]
 }
 
 // launcherTest serves cli.sock to callers in a verified Raycast.app.
@@ -295,5 +309,115 @@ func TestLauncherLockLocksHisarAndEndsEveryApproval(t *testing.T) {
 	}
 	if failure := commandLine.send(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}, nil); !strings.HasPrefix(failure, cliprotocol.ErrorLocked) || test.approver.getCount() != 2 {
 		t.Errorf("command line after the lock: %q, %d command-line approvals", failure, test.approver.getCount())
+	}
+}
+
+func TestLauncherOpensTheItemInTheWindow(t *testing.T) {
+	test := createLauncherTest(t)
+	service := test.testService.service
+	var mutex sync.Mutex
+	var shown []ItemLocation
+	service.mutex.Lock()
+	service.config.ShowItem = func(location ItemLocation) {
+		mutex.Lock()
+		defer mutex.Unlock()
+		shown = append(shown, location)
+	}
+	service.mutex.Unlock()
+	personalID := test.testService.personalID
+	github := saveTestItem(t, service, personalID, ItemDetail{Title: "GitHub", Username: "alice", Password: "github-password"})
+	service.mutex.Lock()
+	clear(service.itemsByVaultID)
+	service.mutex.Unlock()
+	launcher := test.connectLauncher(t)
+
+	if failure := launcher.send(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherOpenItem, VaultID: personalID, ItemID: "missing"}, nil); failure != "not-found: item not found" {
+		t.Errorf("opening an unknown item: %q", failure)
+	}
+	launcher.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherOpenItem, VaultID: personalID, ItemID: github.ID}, nil)
+	launcher.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherOpenItem, VaultID: personalID, ItemID: github.ID, IsEditing: true}, nil)
+	mutex.Lock()
+	defer mutex.Unlock()
+	expected := []ItemLocation{{VaultID: personalID, ItemID: github.ID}, {VaultID: personalID, ItemID: github.ID, IsEditing: true}}
+	if !slices.Equal(shown, expected) {
+		t.Errorf("shown %+v; want %+v", shown, expected)
+	}
+}
+
+func TestLauncherCannotOpenItemsWithoutAWindow(t *testing.T) {
+	test := createLauncherTest(t)
+	github := saveTestItem(t, test.testService.service, test.testService.personalID, ItemDetail{Title: "GitHub", Password: "github-password"})
+	launcher := test.connectLauncher(t)
+	request := cliprotocol.Request{Type: cliprotocol.TypeLauncherOpenItem, VaultID: test.testService.personalID, ItemID: github.ID}
+	if failure := launcher.send(t, request, nil); failure != "invalid-request: this Hisar can't show items" {
+		t.Errorf("opening without a window: %q", failure)
+	}
+}
+
+func TestLauncherSharesAnItemAndAsksEveryTime(t *testing.T) {
+	test := createLauncherTest(t)
+	service := test.testService.service
+	api := serveShareLinkAPI(t, test.testService)
+	personalID := test.testService.personalID
+	github := saveTestItem(t, service, personalID, ItemDetail{
+		Title: "GitHub", Username: "alice", Password: "github-password", Fields: []ItemField{{Name: "Recovery code", Value: "a1b2", Concealed: true}},
+	})
+	launcher := test.connectLauncher(t)
+	launcher.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherListItem}, nil)
+	share := func(fields ...string) cliprotocol.Request {
+		return cliprotocol.Request{
+			Type: cliprotocol.TypeLauncherShareItem, VaultID: personalID, ItemID: github.ID,
+			ShareLink: &cliprotocol.ShareLinkChange{Fields: fields, ExpiresInSeconds: 604800, MaxViews: 1},
+		}
+	}
+
+	var created cliprotocol.ShareLinkResult
+	launcher.mustSend(t, share(), &created)
+	if created.ShareLink.URL == "" || created.ShareLink.Title != "GitHub" || !slices.Equal(created.ShareLink.FieldLabels, []string{"username", "password"}) || created.ShareLink.MaxViews != 1 {
+		t.Fatalf("created %+v", created.ShareLink)
+	}
+	description := test.launcherApprover.getLastRequest().ShareLink
+	if description == nil || description.Title != "GitHub" || !slices.Equal(description.FieldLabels, []string{"username", "password"}) || description.Detail != "Expires in 7 days · 1 view" {
+		t.Errorf("approval description %+v", description)
+	}
+	fetched, err := sharelink.Fetch(context.Background(), nil, created.ShareLink.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := fetched.Open(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if payload.Title != "GitHub" || len(payload.Fields) != 2 || payload.Fields[0].Value != "alice" || payload.Fields[1].Value != "github-password" {
+		t.Fatalf("payload %+v", payload)
+	}
+
+	launcher.mustSend(t, share("password", "recovery code"), &created)
+	if !slices.Equal(created.ShareLink.FieldLabels, []string{"password", "Recovery code"}) {
+		t.Errorf("chosen fields %v", created.ShareLink.FieldLabels)
+	}
+	if count := test.launcherApprover.getCount(); count != 3 {
+		t.Errorf("%d launcher approvals; every share link asks even while the launcher is approved", count)
+	}
+
+	for _, testCase := range []struct {
+		request cliprotocol.Request
+		failure string
+	}{
+		{cliprotocol.Request{Type: cliprotocol.TypeLauncherShareItem, VaultID: personalID, ItemID: "missing", ShareLink: share().ShareLink}, "not-found: item not found"},
+		{share("private key"), "never leave Hisar"},
+	} {
+		if failure := launcher.send(t, testCase.request, nil); !strings.Contains(failure, testCase.failure) {
+			t.Errorf("%+v: %q", testCase.request.ShareLink.Fields, failure)
+		}
+	}
+	test.launcherApprover.setResult(clisocket.ErrDenied)
+	if failure := launcher.send(t, share(), nil); !strings.HasPrefix(failure, cliprotocol.ErrorDenied) {
+		t.Errorf("denied share link: %q", failure)
+	}
+	api.mutex.Lock()
+	defer api.mutex.Unlock()
+	if api.createdCounter != 2 {
+		t.Errorf("%d links created; want the two approved", api.createdCounter)
 	}
 }

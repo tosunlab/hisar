@@ -437,7 +437,7 @@ describe("SSHApprovalWindow", () => {
       "See the titles, usernames and websites of the items in every vault",
       "Copy or paste their usernames, passwords and one-time codes",
     ]);
-    expect(wrapper.find('[data-testid="approval-launcher-note"] p').text()).toBe("It cannot change, share or export anything.");
+    expect(wrapper.find('[data-testid="approval-launcher-note"] p').text()).toBe("It cannot change or export anything, and every share link asks you first.");
     expect(wrapper.find('input[name="isRemembered"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="approval-duration"]').text()).toBe("You can revoke it sooner in Settings → Developer tools.");
     expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
@@ -451,6 +451,32 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves Raycast.");
     expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to unlock and approve");
+    wrapper.unmount();
+  });
+
+  it("asks once for a share link from Raycast, with the item, its fields, the link's limits and the warning", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent(
+      "ssh-approval",
+      createLauncherApprovalEvent({
+        purpose: "share-link",
+        action: "create a share link for “GitHub”",
+        commandLine: "Expires in 7 days · 1 view",
+        allSecretName: ["username", "password"],
+        warning: "Anyone with the link can read these until it expires or its views run out.",
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("Raycast wants to create a share link for “GitHub”");
+    expect(wrapper.find(".subtitle").text()).toBe("for this link only");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by Raycast Technologies Inc (A1B2C3D4E5)");
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["Expires in 7 days · 1 view"]);
+    expect(wrapper.findAll('[data-testid="approval-secrets"] li').map((line) => line.text())).toEqual(["username", "password"]);
+    expect(wrapper.find('[data-testid="approval-warning"]').text()).toBe("Anyone with the link can read these until it expires or its views run out.");
+    expect(wrapper.find('[data-testid="approval-launcher-note"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-duration"]').exists()).toBe(false);
+    expect(wrapper.find('input[name="isRemembered"]').exists()).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledWith("launcher-1", true, false);
     wrapper.unmount();
   });
 

@@ -928,6 +928,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
 
 // listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =signing (a commit signature), =cli (command-line tool),
 // =run (hisar run with secrets), =launcher (Raycast as a launcher; &cliLocked=1 or &cliPassword=1 lock Hisar first),
+// =launcher-share (a share link Raycast asks for),
 // plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
 // &phone=1 (the account's iPhone can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
@@ -938,29 +939,40 @@ function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
   if (previewParameter.get("approval") === "cli") {
     return [createPreviewCommandLineApproval()];
   }
-  if (previewParameter.get("approval") === "launcher") {
+  const approvalParameter = previewParameter.get("approval") ?? "";
+  if (approvalParameter === "launcher" || approvalParameter === "launcher-share") {
+    const launcherApproval: ApprovalEvent = {
+      ...createPreviewCommandLineApproval(),
+      requestID: "preview-launcher",
+      kind: "launcher",
+      requesterKind: "app",
+      appName: "Raycast",
+      appIconURL: "",
+      appPath: "/Applications/Raycast.app",
+      appSignature: "developer",
+      appSigner: "Signed by Raycast Technologies Inc (A1B2C3D4E5)",
+      appWarning: "",
+      allChainProcess: [{ name: "node", commandLine: "node --max-old-space-size=4096 --expose-gc" }],
+      clientName: "",
+      clientPath: "/Users/alper/Library/Application Support/com.raycast.macos/node/bin/node",
+      action: "search Hisar and copy or paste passwords and one-time codes",
+      terminalName: "",
+      coverage: "app",
+    };
+    if (approvalParameter === "launcher") {
+      return [launcherApproval];
+    }
     return [
       {
-        ...createPreviewCommandLineApproval(),
-        requestID: "preview-launcher",
-        kind: "launcher",
-        requesterKind: "app",
-        appName: "Raycast",
-        appIconURL: "",
-        appPath: "/Applications/Raycast.app",
-        appSignature: "developer",
-        appSigner: "Signed by Raycast Technologies Inc (A1B2C3D4E5)",
-        appWarning: "",
-        allChainProcess: [{ name: "node", commandLine: "node --max-old-space-size=4096 --expose-gc" }],
-        clientName: "",
-        clientPath: "/Users/alper/Library/Application Support/com.raycast.macos/node/bin/node",
-        action: "search Hisar and copy or paste passwords and one-time codes",
-        terminalName: "",
-        coverage: "app",
+        ...launcherApproval,
+        purpose: "share-link",
+        action: "create a share link for “GitHub”",
+        commandLine: "Expires in 7 days · 1 view",
+        allSecretName: ["username", "password"],
+        warning: "Anyone with the link can read these until it expires or its views run out.",
       },
     ];
   }
-  const approvalParameter = previewParameter.get("approval") ?? "";
   if (approvalParameter === "agent" || approvalParameter.startsWith("agent-")) {
     return [createPreviewAgentApproval(approvalParameter.replace(/^agent-?/, ""))];
   }

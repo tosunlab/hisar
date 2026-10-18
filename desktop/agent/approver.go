@@ -100,7 +100,8 @@ type ApprovalEvent struct {
 	// SecretNames lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
 	SecretNames     []string `json:"allSecretName"`
 	MoreSecretCount int      `json:"moreSecretCount"`
-	// Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal.
+	// Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal. A launcher's share
+	// link request has Purpose share-link.
 	AgentName             string `json:"agentName"`
 	WorkingDirectory      string `json:"workingDirectory"`
 	RememberLabel         string `json:"rememberLabel"`

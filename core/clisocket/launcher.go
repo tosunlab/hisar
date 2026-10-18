@@ -85,6 +85,8 @@ type launcherRule struct {
 	// isApprovalNeeded: the request reads the vaults or writes the clipboard, so it needs a signed-in Hisar and the
 	// launcher's approval, whose dialog unlocks a locked Hisar. Generating a password and locking reveal nothing.
 	isApprovalNeeded bool
+	// isAskedEveryTime: a share link hands secrets to people outside Hisar, so it asks even while the launcher is approved.
+	isAskedEveryTime bool
 	// check refuses a request of the wrong shape before any dialog opens; nil checks nothing.
 	check func(request *cliprotocol.Request) error
 }
@@ -94,10 +96,12 @@ func getLauncherRule(requestType string) (launcherRule, bool) {
 	switch requestType {
 	case cliprotocol.TypeLauncherListItem:
 		return launcherRule{isApprovalNeeded: true}, true
-	case cliprotocol.TypeLauncherGetCode, cliprotocol.TypeLauncherReadPassword:
+	case cliprotocol.TypeLauncherGetCode, cliprotocol.TypeLauncherReadPassword, cliprotocol.TypeLauncherOpenItem:
 		return launcherRule{isApprovalNeeded: true, check: checkLauncherItem}, true
 	case cliprotocol.TypeLauncherCopyField:
 		return launcherRule{isApprovalNeeded: true, check: checkLauncherCopy}, true
+	case cliprotocol.TypeLauncherShareItem:
+		return launcherRule{isApprovalNeeded: true, isAskedEveryTime: true, check: checkLauncherShare}, true
 	case cliprotocol.TypeLauncherGeneratePassword, cliprotocol.TypeLauncherLock:
 		return launcherRule{}, true
 	}
@@ -117,6 +121,19 @@ func checkLauncherCopy(request *cliprotocol.Request) error {
 	}
 	if !cliprotocol.IsLauncherField(request.Field) {
 		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "copy the username, password or one-time code")
+	}
+	return nil
+}
+
+func checkLauncherShare(request *cliprotocol.Request) error {
+	if err := checkLauncherItem(request); err != nil {
+		return err
+	}
+	if request.ShareLink == nil {
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the share link is missing")
+	}
+	if request.ShareLink.Text != "" {
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "a launcher shares an item's fields, not text")
 	}
 	return nil
 }
@@ -150,19 +167,26 @@ func (s *Server) answerLauncherRequest(ctx context.Context, client *connectionPe
 			return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there")
 		}
 		approvals := s.config.Approvals
-		if err := approvals.require(&approvals.launchers, client.scope, func() error { return s.askLauncherApproval(ctx, client) }); err != nil {
+		require := approvals.require
+		if rule.isAskedEveryTime {
+			require = approvals.requireAlways
+		}
+		if err := require(&approvals.launchers, client.scope, func() error { return s.askLauncherApproval(ctx, client, request) }); err != nil {
 			return nil, convertDenial(err)
 		}
 	}
 	return s.config.Handler.HandleRequest(ctx, request)
 }
 
-func (s *Server) askLauncherApproval(ctx context.Context, client *connectionPeer) error {
+func (s *Server) askLauncherApproval(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) error {
 	if s.config.LauncherApprover == nil {
 		return ErrDenied
 	}
-	request := LauncherApprovalRequest{App: client.scope.app, ClientPID: client.peer.PID}
-	request.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)
-	request.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
-	return s.config.LauncherApprover.ApproveLauncher(ctx, request)
+	approvalRequest := LauncherApprovalRequest{App: client.scope.app, ClientPID: client.peer.PID}
+	approvalRequest.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)
+	approvalRequest.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
+	if request.Type == cliprotocol.TypeLauncherShareItem {
+		approvalRequest.ShareLink = s.describeShareLink(request)
+	}
+	return s.config.LauncherApprover.ApproveLauncher(ctx, approvalRequest)
 }

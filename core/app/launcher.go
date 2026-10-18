@@ -17,7 +17,8 @@ import (
 
 // answerLauncherRequest answers a launcher such as Raycast. clisocket already refused every other request type on its
 // connection, checked each request's shape and asked for the launcher's approval where one is needed. Values leave only
-// through launcher.items.password and launcher.items.code, one per request; launcher.items.copy copies in the app.
+// through launcher.items.password and launcher.items.code, one per request; launcher.items.copy copies in the app, and
+// launcher.items.share returns a link the user approved in its own dialog.
 func (bridge *CommandLineBridge) answerLauncherRequest(request *cliprotocol.Request) (any, error) {
 	s := bridge.service
 	switch request.Type {
@@ -43,6 +44,10 @@ func (bridge *CommandLineBridge) answerLauncherRequest(request *cliprotocol.Requ
 			return nil, err
 		}
 		return cliprotocol.LauncherCopyResult{ClearAfterSeconds: int(s.config.ClipboardClearAfter / time.Second)}, nil
+	case cliprotocol.TypeLauncherOpenItem:
+		return nil, bridge.showLauncherItem(ItemLocation{VaultID: request.VaultID, ItemID: request.ItemID, IsEditing: request.IsEditing})
+	case cliprotocol.TypeLauncherShareItem:
+		return bridge.createShareLink(request)
 	case cliprotocol.TypeLauncherGeneratePassword:
 		return generateLauncherPassword(request.Generator)
 	case cliprotocol.TypeLauncherLock:
@@ -50,6 +55,25 @@ func (bridge *CommandLineBridge) answerLauncherRequest(request *cliprotocol.Requ
 		return nil, nil
 	}
 	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+}
+
+// ItemLocation is the item a launcher asks the window to show, and whether to open its editor.
+type ItemLocation struct {
+	VaultID   string `json:"vaultID"`
+	ItemID    string `json:"itemID"`
+	IsEditing bool   `json:"isEditing"`
+}
+
+func (bridge *CommandLineBridge) showLauncherItem(location ItemLocation) error {
+	showItem := bridge.service.config.ShowItem
+	if showItem == nil {
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "this Hisar can't show items")
+	}
+	if _, err := bridge.getItem(location.VaultID, location.ItemID); err != nil {
+		return err
+	}
+	showItem(location)
+	return nil
 }
 
 // listLauncherItems returns every item of every vault the user can open, and those vaults sorted by name: metadata and

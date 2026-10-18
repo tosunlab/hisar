@@ -38,6 +38,7 @@ export type {
     ItemField,
     ItemIcon,
     ItemIdentity,
+    ItemLocation,
     ItemPasskey,
     ItemServer,
     ItemSoftwareLicense,

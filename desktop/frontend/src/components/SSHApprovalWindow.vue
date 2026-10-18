@@ -43,6 +43,8 @@ const approval = computed(() => approvalStore.allApproval[0]);
 const isCommandLine = computed(() => approval.value?.kind === "command-line");
 const isAgent = computed(() => approval.value?.kind === "agent");
 const isLauncher = computed(() => approval.value?.kind === "launcher");
+// isLauncherShare is one share link a launcher asks for: the item's fields and the link's limits instead of the allowances.
+const isLauncherShare = computed(() => isLauncher.value && approval.value?.purpose === "share-link");
 const isForwarded = computed(() => approval.value?.isForwarded === true);
 const isSigning = computed(() => approval.value?.purpose === "sign-commit" || approval.value?.purpose === "sign-tag");
 const isCompactShown = computed(() => approval.value?.isCompact === true && !approvalStore.isExpanded);
@@ -108,15 +110,18 @@ const subtitle = computed(() => {
     return current.appName ? `via ${current.clientName} in ${inlineAppName.value}` : `via ${current.clientName}`;
   }
   if (current.kind === "launcher") {
-    return "until Hisar locks";
+    return isLauncherShare.value ? "for this link only" : "until Hisar locks";
   }
   return current.keyTitle ? `with your SSH key “${current.keyTitle}”` : "Unlock Hisar to use your SSH keys";
 });
 
 const allDetailLine = computed(() => {
   const current = approval.value;
-  if (!current || current.kind === "launcher") {
+  if (!current) {
     return [];
+  }
+  if (current.kind === "launcher") {
+    return isLauncherShare.value ? [current.commandLine] : [];
   }
   if (current.kind === "command-line") {
     const program = current.action ? current.commandLine : current.clientPath || current.clientName;
@@ -167,7 +172,7 @@ const unlockNote = computed(() => {
 
 const durationNote = computed(() => {
   if (isLauncher.value) {
-    return "You can revoke it sooner in Settings → Developer tools.";
+    return isLauncherShare.value ? "" : "You can revoke it sooner in Settings → Developer tools.";
   }
   return isCommandLine.value ? commandLineCoverage.value.note : "";
 });
@@ -420,14 +425,14 @@ onBeforeUnmount(() => {
             <code v-for="(line, index) in allDetailLine" :key="index" class="detail-line" :class="{ secondary: index > 0 }" :title="line">{{ line }}</code>
           </div>
 
-          <div v-if="isLauncher" class="launcher-allowance" data-testid="approval-launcher-note">
+          <div v-if="isLauncher && !isLauncherShare" class="launcher-allowance" data-testid="approval-launcher-note">
             <ul>
               <li v-for="allowance in allLauncherAllowance" :key="allowance.text"><AppIcon :name="allowance.icon" :size="14" /> {{ allowance.text }}</li>
             </ul>
-            <p class="muted">It cannot change, share or export anything.</p>
+            <p class="muted">It cannot change or export anything, and every share link asks you first.</p>
           </div>
 
-          <div v-if="(isCommandLine || isAgent) && allSecretName.length > 0" class="secret-list" data-testid="approval-secrets">
+          <div v-if="(isCommandLine || isAgent || isLauncherShare) && allSecretName.length > 0" class="secret-list" data-testid="approval-secrets">
             <p class="secret-heading">{{ allSecretName.length + approval.moreSecretCount === 1 ? "Secret" : "Secrets" }}</p>
             <ul>
               <li v-for="(name, index) in allSecretName" :key="index" :title="name"><AppIcon name="key" :size="12" /> {{ name }}</li>
