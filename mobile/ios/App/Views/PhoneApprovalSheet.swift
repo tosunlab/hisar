@@ -76,7 +76,7 @@ struct PhoneApprovalSheet: View {
                         }
                     }
                 } footer: {
-                    Label("End-to-end encrypted. Only your devices can read this request. Approving lets this one request continue; it does not unlock Hisar on your Mac.", systemImage: "lock.shield")
+                    Label("End-to-end encrypted. Only your devices can read this request. \(approval.approvalNote)", systemImage: "lock.shield")
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("phone-approval-encryption-note")
                 }

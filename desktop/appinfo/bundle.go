@@ -90,18 +90,26 @@ func (resolver *Resolver) getSignature(path string) Signature {
 	if resolver.system.GetSignature == nil {
 		return Signature{}
 	}
-	return resolver.getCachedSignature(resolver.signaturesByPath, path, resolver.system.GetSignature)
+	return resolver.getCachedSignature(resolver.signaturesByPath, path, resolver.system.GetSignature, resolver.system.GetModificationTime)
+}
+
+// GetStrictSignature verifies the bundle's sealed resources as well as its executable before granting an identity.
+func (resolver *Resolver) GetStrictSignature(bundlePath string) Signature {
+	if resolver.system.GetStrictSignature == nil {
+		return Signature{}
+	}
+	return resolver.getCachedSignature(resolver.strictSignaturesByPath, bundlePath, resolver.system.GetStrictSignature, resolver.system.GetBundleModificationTime)
 }
 
 // getTeamID reads the Team ID a file is signed with, without checking the signature.
 func (resolver *Resolver) getTeamID(path string) string {
 	return resolver.getCachedSignature(resolver.teamIDsByPath, path, func(path string) Signature {
 		return Signature{TeamID: resolver.system.GetTeamID(path)}
-	}).TeamID
+	}, resolver.system.GetModificationTime).TeamID
 }
 
-func (resolver *Resolver) getCachedSignature(cachedByPath map[string]cachedSignature, path string, read func(path string) Signature) Signature {
-	modificationTime, err := resolver.system.GetModificationTime(path)
+func (resolver *Resolver) getCachedSignature(cachedByPath map[string]cachedSignature, path string, read func(path string) Signature, getModificationTime func(path string) (time.Time, error)) Signature {
+	modificationTime, err := getModificationTime(path)
 	if err != nil {
 		return read(path)
 	}

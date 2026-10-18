@@ -2,7 +2,7 @@ MODULES := core server cli mobile
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64 windows/arm64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux test-extension test-extension-end-to-end build-extension test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui generate-themes
+.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux test-extension test-extension-end-to-end build-extension test-raycast test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui generate-themes
 
 build: build-admin
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -124,3 +124,7 @@ test-share-link-page:
 
 build-extension:
 	cd extension && npm ci --no-audit --no-fund && npm run build && npm run package
+
+# The Raycast extension; its build writes raycast/dist and never installs into Raycast (npm run dev does, for development).
+test-raycast:
+	cd raycast && npm ci --no-audit --no-fund && npm run typecheck && npm test && npm run lint && npm run build

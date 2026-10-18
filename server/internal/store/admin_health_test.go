@@ -38,6 +38,9 @@ func TestGetInstanceCounts(t *testing.T) {
 	if err := database.CreateInvite(ctx, []byte("expired"), "dave@example.com", "member", nil, -time.Minute); err != nil {
 		t.Fatal(err)
 	}
+	if err := database.CreateInvite(ctx, []byte("setup"), "", "admin", nil, time.Hour); err != nil {
+		t.Fatal(err)
+	}
 
 	counts, err := database.GetInstanceCounts(ctx)
 	if err != nil {

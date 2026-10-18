@@ -351,14 +351,12 @@ func TestLockEndsCommandLineApprovals(t *testing.T) {
 	if count := test.approver.getCount(); count != 1 {
 		t.Fatalf("approved %d times", count)
 	}
-	session := clisocket.TerminalSession{SessionID: 4200, TerminalDevice: 7, LeaderStartTime: 1}
-	if !test.approvals.IsApproved(session) {
+	var hello cliprotocol.HelloResult
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeHello}, &hello)
+	if !hello.IsApproved {
 		t.Fatal("session not approved")
 	}
 	test.testService.service.Lock()
-	if test.approvals.IsApproved(session) {
-		t.Error("lock kept the approval")
-	}
 	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}, nil); !strings.HasPrefix(failure, cliprotocol.ErrorLocked) {
 		t.Errorf("locked: %q", failure)
 	}

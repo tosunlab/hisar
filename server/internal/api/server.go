@@ -235,6 +235,7 @@ func (s *Server) CreateApp() *fiber.App {
 	s.registerAdminServerRoutes(adminGroup)
 	s.registerAdminSettingsRoutes(adminGroup)
 	s.registerAdminHealthRoutes(adminGroup)
+	s.registerAdminInvitesRoutes(adminGroup)
 	s.registerSetupRoutes(apiGroup, adminGroup)
 
 	return app

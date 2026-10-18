@@ -38,6 +38,15 @@ expect() { [[ "$2" == *"$3"* ]] || fail "$1: expected '$3', got '$2'"; echo "ok 
 
 PW='correct horse battery'
 hisar() { "$BIN/hisar" "$@"; }
+# in_terminal runs a command with a controlling terminal, as a user's shell has: Hisar approves hisar per terminal session,
+# while callers without a terminal (such as CI) are approved per app or per connection. util-linux and BSD script differ.
+in_terminal() {
+  if script --version >/dev/null 2>&1; then
+    script -qec "$(printf '%q ' "$@")" /dev/null
+  else
+    script -q /dev/null "$@"
+  fi
+}
 
 count_mail() { find "$MAIL" -name "*-$1.txt" 2>/dev/null | wc -l | tr -d ' '; }
 # wait_for_mail prints the newest email to $1 once there are more than $2.
@@ -426,7 +435,7 @@ LIFECYCLE_RESULT=$(HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_LIF
 expect "the Mac changes the master password and replaces the Secret Key, signing out its other device, then deletes the account" "$LIFECYCLE_RESULT" "--- PASS: TestIntegrationAccountLifecycle"
 
 COMMAND_LINE_INVITE=$("$BIN/hisar-server" invite --email cli@example.com </dev/null | tail -1)
-COMMAND_LINE_RESULT=$(HISAR_STANDALONE= HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_CLI_INVITE_LINK="$COMMAND_LINE_INVITE" HISAR_TEST_CLI_BINARY="$BIN/hisar" \
+COMMAND_LINE_RESULT=$(in_terminal env HISAR_STANDALONE= HISAR_TEST_SERVER_URL="http://127.0.0.1:$PORT" HISAR_TEST_CLI_INVITE_LINK="$COMMAND_LINE_INVITE" HISAR_TEST_CLI_BINARY="$BIN/hisar" \
   go -C "$ROOT/core" test -count=1 -v -run TestIntegrationCommandLineThroughApp ./app/ 2>&1 || true)
 expect "hisar through the desktop app backend" "$COMMAND_LINE_RESULT" "--- PASS: TestIntegrationCommandLineThroughApp"
 

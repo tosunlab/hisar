@@ -51,13 +51,32 @@ func (s *Service) resolveCommandLineItem(vaultNameOrID, query string) (string, i
 	return "", item.Item{}, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, builder.String())
 }
 
+// findShareLinkItem finds the item a share link request names: by its ID for a launcher, by vault and query as hisar get
+// does for hisar share-link. The approval window and the link both use it, so the dialog names the item that is shared.
+func (bridge *CommandLineBridge) findShareLinkItem(request *cliprotocol.Request) (string, item.Item, error) {
+	if request.Type != cliprotocol.TypeLauncherShareItem {
+		return bridge.service.resolveCommandLineItem(request.Vault, request.Query)
+	}
+	if _, err := bridge.getItem(request.VaultID, request.ItemID); err != nil {
+		return "", item.Item{}, err
+	}
+	s := bridge.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	vaultItem, err := s.findItem(request.VaultID, request.ItemID)
+	if err != nil {
+		return "", item.Item{}, err
+	}
+	return request.VaultID, *vaultItem, nil
+}
+
 // DescribeShareLink names the item and fields for the approval window; while locked it shows the request as written.
 func (bridge *CommandLineBridge) DescribeShareLink(request *cliprotocol.Request) (string, []string) {
 	names := append([]string{}, request.ShareLink.Fields...)
 	if bridge.service.GetStatus().State != StateUnlocked {
 		return request.Query, names
 	}
-	_, vaultItem, err := bridge.service.resolveCommandLineItem(request.Vault, request.Query)
+	_, vaultItem, err := bridge.findShareLinkItem(request)
 	if err != nil {
 		return request.Query, names
 	}
@@ -72,14 +91,15 @@ func (bridge *CommandLineBridge) DescribeShareLink(request *cliprotocol.Request)
 	return vaultItem.Overview.Title, labels
 }
 
+// createShareLink shares the fields of the item a launcher or hisar share-link names, or hisar's text.
 func (bridge *CommandLineBridge) createShareLink(request *cliprotocol.Request) (any, error) {
 	change := request.ShareLink
 	if change == nil {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the share link is missing")
 	}
 	shareLinkRequest := ShareLinkRequest{ExpiresInSeconds: int(change.ExpiresInSeconds), MaxViews: change.MaxViews, Passphrase: change.Passphrase, Title: change.Title, Text: change.Text}
-	if request.Query != "" {
-		vaultID, vaultItem, err := bridge.service.resolveCommandLineItem(request.Vault, request.Query)
+	if request.Type == cliprotocol.TypeLauncherShareItem || request.Query != "" {
+		vaultID, vaultItem, err := bridge.findShareLinkItem(request)
 		if err != nil {
 			return nil, err
 		}

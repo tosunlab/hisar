@@ -19,6 +19,8 @@ type fakePeerResolver struct {
 	mutex   sync.Mutex
 	peer    Peer
 	session TerminalSession
+	// app is what IdentifyApp verifies the caller runs in; the zero AppIdentity is none.
+	app AppIdentity
 }
 
 func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (Peer, error) {
@@ -43,6 +45,18 @@ func (resolver *fakePeerResolver) setSession(session TerminalSession) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
 	resolver.session = session
+}
+
+func (resolver *fakePeerResolver) setCaller(session TerminalSession, app AppIdentity) {
+	resolver.mutex.Lock()
+	defer resolver.mutex.Unlock()
+	resolver.session, resolver.app = session, app
+}
+
+func (resolver *fakePeerResolver) identifyApp(int) (AppIdentity, bool) {
+	resolver.mutex.Lock()
+	defer resolver.mutex.Unlock()
+	return resolver.app, resolver.app != AppIdentity{}
 }
 
 type fakeApprover struct {
@@ -102,32 +116,40 @@ func (handler *fakeHandler) setState(state string) {
 }
 
 type serverFixture struct {
-	server    *Server
-	resolver  *fakePeerResolver
-	approver  *fakeApprover
-	handler   *fakeHandler
-	approvals *SessionApprovals
-	now       time.Time
-	nowMutex  sync.Mutex
-	isEnabled atomic.Bool
+	server           *Server
+	resolver         *fakePeerResolver
+	approver         *fakeApprover
+	launcherApprover *fakeLauncherApprover
+	handler          *fakeHandler
+	approvals        *SessionApprovals
+	now              time.Time
+	nowMutex         sync.Mutex
+	isEnabled        atomic.Bool
 }
 
 func createServerFixture(t *testing.T) *serverFixture {
 	t.Helper()
 	fixture := &serverFixture{
-		resolver: &fakePeerResolver{peer: Peer{UID: os.Getuid(), PID: 1234}, session: TerminalSession{SessionID: 77, TerminalDevice: 5, LeaderStartTime: 99, TerminalName: "ttys003"}},
-		approver: &fakeApprover{},
-		handler:  &fakeHandler{state: cliprotocol.StateUnlocked, resultBy: map[string]any{cliprotocol.TypeListVault: cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "v1", Name: "Personal"}}}}},
-		now:      time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
+		resolver: &fakePeerResolver{
+			peer:    Peer{UID: os.Getuid(), PID: 1234},
+			session: TerminalSession{SessionID: 77, TerminalDevice: 5, LeaderStartTime: 99, TerminalName: "ttys003"},
+			app:     terminalApp,
+		},
+		approver:         &fakeApprover{},
+		launcherApprover: &fakeLauncherApprover{},
+		handler:          &fakeHandler{state: cliprotocol.StateUnlocked, resultBy: map[string]any{cliprotocol.TypeListVault: cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "v1", Name: "Personal"}}}}},
+		now:              time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
 	}
 	fixture.isEnabled.Store(true)
 	fixture.approvals = NewSessionApprovals(0, fixture.getNow)
 	fixture.server = NewServer(ServerConfig{
-		Handler:      fixture.handler,
-		Approver:     fixture.approver,
-		PeerResolver: fixture.resolver,
-		Approvals:    fixture.approvals,
-		IsEnabled:    fixture.isEnabled.Load,
+		Handler:          fixture.handler,
+		Approver:         fixture.approver,
+		LauncherApprover: fixture.launcherApprover,
+		IdentifyApp:      fixture.resolver.identifyApp,
+		PeerResolver:     fixture.resolver,
+		Approvals:        fixture.approvals,
+		IsEnabled:        fixture.isEnabled.Load,
 	})
 	return fixture
 }
@@ -173,6 +195,14 @@ func (client *testClient) send(t *testing.T, request cliprotocol.Request) clipro
 		t.Fatalf("response ID %q for request %q", response.ID, request.ID)
 	}
 	return response
+}
+
+// isApproved is what hello reports about the client's connection.
+func (client *testClient) isApproved(t *testing.T) bool {
+	t.Helper()
+	var hello cliprotocol.HelloResult
+	readResult(t, client.send(t, cliprotocol.Request{Type: cliprotocol.TypeHello}), &hello)
+	return hello.IsApproved
 }
 
 func getErrorCode(response cliprotocol.Response) string {
@@ -233,7 +263,8 @@ func TestApprovalIsReusedWithinTheSession(t *testing.T) {
 		t.Errorf("approval asked %d times for one session", count)
 	}
 	request := fixture.approver.requests[0]
-	if request.ClientPID != 1234 || request.ParentPID != 4321 || request.TerminalName != "ttys003" || request.ClientPath != "/Applications/Hisar.app/Contents/Helpers/hisar" {
+	if request.ClientPID != 1234 || request.ParentPID != 4321 || request.TerminalName != "ttys003" || request.ClientPath != "/Applications/Hisar.app/Contents/Helpers/hisar" ||
+		request.Coverage != CoverageTerminalSession {
 		t.Errorf("approval request: %+v", request)
 	}
 }
@@ -291,7 +322,7 @@ func TestApprovalDuringLockIsNotRemembered(t *testing.T) {
 	fixture.server.ClearApprovals()
 	close(fixture.approver.release)
 	<-done
-	if fixture.approvals.IsApproved(fixture.resolver.session) {
+	if client.isApproved(t) {
 		t.Error("an approval that finished after a lock was remembered")
 	}
 }
@@ -493,7 +524,7 @@ func TestRunnerServesPrivateSocketAndStops(t *testing.T) {
 	if _, err := os.Lstat(socketPath); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("socket left behind: %v", err)
 	}
-	if fixture.approvals.IsApproved(fixture.resolver.session) {
+	if fixture.connect(t).isApproved(t) {
 		t.Error("stopping kept the approvals")
 	}
 	if status := runner.GetStatus(); status.IsRunning {

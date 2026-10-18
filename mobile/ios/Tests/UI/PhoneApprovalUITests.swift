@@ -30,6 +30,38 @@ final class PhoneApprovalUITests: HisarUITestCase {
         checkResult("Denied preview-cli")
     }
 
+    func testApproveLauncherRequest() {
+        launchPreview("launcher")
+        waitFor(app.staticTexts["phone-approval-title"])
+        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Raycast wants to search Hisar and copy or paste passwords and one-time codes")
+        XCTAssertEqual(app.staticTexts["phone-approval-row-App"].label, "App, Raycast")
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Lasts"].label, "Lasts, Until Hisar locks on Alper's MacBook Pro")
+        XCTAssertFalse(app.staticTexts["phone-approval-row-Program"].exists)
+        XCTAssertFalse(app.staticTexts["phone-approval-row-Terminal"].exists)
+        XCTAssertFalse(app.switches["phone-approval-remember"].exists, "a launcher's approval always lasts until Hisar locks")
+        let note = app.descendants(matching: .any)["phone-approval-encryption-note"].label
+        XCTAssertTrue(note.contains("Approving lets Raycast use Hisar until it locks on your Mac"), note)
+        saveScreenshot("phone-approval-launcher")
+        app.buttons["phone-approval-approve"].tap()
+        checkResult("Approved preview-launcher with Face ID")
+    }
+
+    func testApproveLauncherShareRequest() {
+        launchPreview("launcher-share")
+        waitFor(app.staticTexts["phone-approval-title"])
+        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Raycast wants to create a share link for “GitHub”")
+        let secrets = app.staticTexts["phone-approval-row-Secrets"].label
+        XCTAssertTrue(secrets.contains("username") && secrets.contains("password"), secrets)
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Link"].label, "Link, Expires in 7 days · 1 view")
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Warning"].label, "Warning, Anyone with the link can read these until it expires or its views run out.")
+        XCTAssertFalse(app.staticTexts["phone-approval-row-Lasts"].exists, "a share link is approved once")
+        let note = app.descendants(matching: .any)["phone-approval-encryption-note"].label
+        XCTAssertTrue(note.contains("Approving lets this one request continue"), note)
+        saveScreenshot("phone-approval-launcher-share")
+        app.buttons["phone-approval-approve"].tap()
+        checkResult("Approved preview-launcher-share with Face ID")
+    }
+
     func testForwardedRequestWarns() {
         launchPreview("forwarded")
         let banner = app.descendants(matching: .any)["phone-approval-forwarded"]
@@ -62,24 +94,33 @@ final class PhoneApprovalUITests: HisarUITestCase {
         app.launch()
         let header = app.staticTexts["pending-approval-header"]
         waitFor(header)
-        XCTAssertEqual(header.label.uppercased(), "2 REQUESTS WAITING FOR YOUR APPROVAL")
+        XCTAssertEqual(header.label.uppercased(), "3 REQUESTS WAITING FOR YOUR APPROVAL")
         let sshSummary = app.buttons["pending-approval-preview-ssh"]
         XCTAssertTrue(sshSummary.label.contains("Alper's MacBook Pro · expires in 1:"), sshSummary.label)
         XCTAssertLessThan(sshSummary.frame.minY, app.staticTexts["Personal"].firstMatch.frame.minY, "the card is above the vaults")
         saveScreenshot("phone-approval-card")
 
         app.buttons["pending-approval-more"].tap()
+        let launcherRow = app.buttons["approval-row-preview-launcher"]
+        waitFor(launcherRow)
+        XCTAssertTrue(launcherRow.label.contains("Until Hisar locks on Alper's MacBook Pro"), launcherRow.label)
         saveScreenshot("phone-approval-list")
         app.buttons["approval-row-preview-cli"].tap()
         app.buttons["phone-approval-deny"].tap()
         let result = app.staticTexts["phone-approval-result"]
         waitFor(result)
         XCTAssertEqual(result.label, "Denied preview-cli")
-        XCTAssertFalse(app.buttons["pending-approval-more"].exists, "one request left, nothing more to show")
 
         app.buttons["pending-approval-approve-preview-ssh"].tap()
-        XCTAssertTrue(header.waitForNonExistence(timeout: 10), "no requests, no card")
+        let launcherSummary = app.buttons["pending-approval-preview-launcher"]
+        waitFor(launcherSummary)
         XCTAssertEqual(result.label, "Approved preview-ssh with Face ID")
+        XCTAssertFalse(app.buttons["pending-approval-more"].exists, "one request left, nothing more to show")
+        saveScreenshot("phone-approval-launcher-card")
+
+        app.buttons["pending-approval-approve-preview-launcher"].tap()
+        XCTAssertTrue(header.waitForNonExistence(timeout: 10), "no requests, no card")
+        XCTAssertEqual(result.label, "Approved preview-launcher with Face ID")
     }
 
     private func launchPreview(_ kind: String) {

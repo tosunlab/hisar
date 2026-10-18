@@ -38,6 +38,12 @@ export interface ApprovalEvent {
     "isTouchIDApproval": boolean;
     "timeoutAt": string;
     "terminalName": string;
+
+    /**
+     * Coverage is what approving a command-line or launcher request covers: clisocket's terminal-session, app or
+     * connection.
+     */
+    "coverage": string;
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
     "isPhoneApproval": boolean;
@@ -49,7 +55,8 @@ export interface ApprovalEvent {
     "moreSecretCount": number;
 
     /**
-     * Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal.
+     * Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal. A launcher's share
+     * link request has Purpose share-link.
      */
     "agentName": string;
     "workingDirectory": string;

@@ -41,15 +41,17 @@ type RunningApp struct {
 // System is what the resolver reads from the operating system; nil functions leave that step out.
 type System struct {
 	ProcessReader
-	GetResponsiblePID    func(pid int) (int, error)
-	ListProcessIDs       func() ([]int, error)
-	ListRunningApps      func() []RunningApp
-	GetSignature         func(path string) Signature
-	GetTeamID            func(path string) string
-	GetBundleDisplayName func(bundlePath string) string
-	GetBundleIconPNG     func(bundlePath string, size int) ([]byte, error)
-	GetSSHRemoteHost     func(pid int) (string, error)
-	GetModificationTime  func(path string) (time.Time, error)
+	GetResponsiblePID         func(pid int) (int, error)
+	ListProcessIDs            func() ([]int, error)
+	ListRunningApps           func() []RunningApp
+	GetSignature              func(path string) Signature
+	GetStrictSignature        func(path string) Signature
+	GetTeamID                 func(path string) string
+	GetBundleDisplayName      func(bundlePath string) string
+	GetBundleIconPNG          func(bundlePath string, size int) ([]byte, error)
+	GetSSHRemoteHost          func(pid int) (string, error)
+	GetModificationTime       func(path string) (time.Time, error)
+	GetBundleModificationTime func(path string) (time.Time, error)
 }
 
 // Requester is who a request comes from: the app responsible for it, or what stands in for one, and the process chain.
@@ -68,24 +70,29 @@ type cachedSignature struct {
 
 // Resolver finds the app responsible for a process; bundle names, icons and signatures are cached per bundle path.
 type Resolver struct {
-	system           System
-	mutex            sync.Mutex
-	iconsByKey       map[string][]byte
-	namesByPath      map[string]string
-	signaturesByPath map[string]cachedSignature
-	teamIDsByPath    map[string]cachedSignature
+	system                 System
+	mutex                  sync.Mutex
+	iconsByKey             map[string][]byte
+	namesByPath            map[string]string
+	signaturesByPath       map[string]cachedSignature
+	strictSignaturesByPath map[string]cachedSignature
+	teamIDsByPath          map[string]cachedSignature
 }
 
 func NewResolver(system System) *Resolver {
 	if system.GetModificationTime == nil {
 		system.GetModificationTime = getModificationTime
 	}
+	if system.GetBundleModificationTime == nil {
+		system.GetBundleModificationTime = system.GetModificationTime
+	}
 	return &Resolver{
-		system:           system,
-		iconsByKey:       map[string][]byte{},
-		namesByPath:      map[string]string{},
-		signaturesByPath: map[string]cachedSignature{},
-		teamIDsByPath:    map[string]cachedSignature{},
+		system:                 system,
+		iconsByKey:             map[string][]byte{},
+		namesByPath:            map[string]string{},
+		signaturesByPath:       map[string]cachedSignature{},
+		strictSignaturesByPath: map[string]cachedSignature{},
+		teamIDsByPath:          map[string]cachedSignature{},
 	}
 }
 

@@ -156,8 +156,7 @@ char *copyTeamID(const char *path) {
     }
 }
 
-// Resources are not hashed: checking every file of a large app would hold up the dialog for seconds.
-SignatureInfo checkSignature(const char *path) {
+SignatureInfo checkSignature(const char *path, int validateResources) {
     @autoreleasepool {
         SignatureInfo result = {signatureStatusUnsigned, NULL, NULL};
         SecStaticCodeRef code = createStaticCode(path);
@@ -165,7 +164,12 @@ SignatureInfo checkSignature(const char *path) {
             result.status = signatureStatusInvalid;
             return result;
         }
-        OSStatus validity = SecStaticCodeCheckValidityWithErrors(code, kSecCSDoNotValidateResources | kSecCSCheckAllArchitectures, NULL, NULL);
+        // Dialog display skips resource hashing; approval identities require the entire seal to verify.
+        SecCSFlags validationFlags = kSecCSCheckAllArchitectures;
+        if (!validateResources) {
+            validationFlags |= kSecCSDoNotValidateResources;
+        }
+        OSStatus validity = SecStaticCodeCheckValidityWithErrors(code, validationFlags, NULL, NULL);
         if (validity == errSecCSUnsigned) {
             CFRelease(code);
             return result;

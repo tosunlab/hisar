@@ -1,0 +1,132 @@
+{
+  "requestTypes": [
+    "launcher.hello",
+    "launcher.items.list",
+    "launcher.items.code",
+    "launcher.items.password",
+    "launcher.items.copy",
+    "launcher.items.open",
+    "launcher.items.share",
+    "launcher.passwords.generate",
+    "launcher.lock"
+  ],
+  "fields": ["username", "password", "one-time code"],
+  "errorCodes": [
+    "invalid-request",
+    "integration-disabled",
+    "signed-out",
+    "locked",
+    "denied",
+    "offline",
+    "not-found",
+    "internal",
+    "update-required"
+  ],
+  "exchanges": [
+    {
+      "request": {"id": "1", "type": "hello", "clientPlatform": "darwin/raycast", "clientVersion": "1.0.0"},
+      "resultType": "HelloResult",
+      "result": {
+        "protocolVersion": 1,
+        "state": "unlocked",
+        "email": "alice@example.com",
+        "server": "https://hisar.example.com",
+        "isApproved": false,
+        "features": ["favorites", "launcher.hello", "launcher.items.list", "launcher.items.code", "launcher.items.password", "launcher.items.copy", "launcher.items.open", "launcher.items.share", "launcher.passwords.generate", "launcher.lock"]
+      }
+    },
+    {
+      "request": {"id": "2", "type": "launcher.hello"},
+      "resultType": "LauncherHelloResult",
+      "result": {"isApproved": true}
+    },
+    {
+      "request": {"id": "3", "type": "launcher.items.list"},
+      "resultType": "LauncherItemListResult",
+      "result": {
+        "vaults": [{"id": "v-personal", "name": "Personal"}, {"id": "v-work", "name": "Work"}],
+        "items": [
+          {
+            "id": "i-github",
+            "vaultID": "v-personal",
+            "title": "GitHub",
+            "category": "login",
+            "username": "alice",
+            "urls": ["https://github.com"],
+            "tags": ["dev"],
+            "isFavorite": true,
+            "hasPassword": true,
+            "hasOneTimeCode": true,
+            "references": [
+              {"field": "username", "reference": "hisar://Personal/GitHub/username"},
+              {"field": "password", "reference": "hisar://Personal/GitHub/password"},
+              {"field": "one-time code", "reference": "hisar://Personal/GitHub/otp"}
+            ]
+          },
+          {
+            "id": "i-wifi",
+            "vaultID": "v-work",
+            "title": "Office Wi-Fi",
+            "category": "secure-note",
+            "username": "",
+            "urls": [],
+            "tags": [],
+            "isFavorite": false,
+            "hasPassword": false,
+            "hasOneTimeCode": false,
+            "references": [{"field": "notes", "reference": "hisar://Work/Office%20Wi-Fi/notes"}]
+          }
+        ]
+      }
+    },
+    {
+      "request": {"id": "4", "type": "launcher.items.code", "vaultID": "v-personal", "itemID": "i-github"},
+      "resultType": "CodeResult",
+      "result": {"code": "492039", "expiresAt": "2026-10-17T09:00:30Z", "period": 30}
+    },
+    {
+      "request": {"id": "5", "type": "launcher.items.password", "vaultID": "v-personal", "itemID": "i-github"},
+      "resultType": "LauncherPasswordResult",
+      "result": {"password": "correct horse battery staple"}
+    },
+    {
+      "request": {"id": "6", "type": "launcher.items.copy", "vaultID": "v-personal", "itemID": "i-github", "field": "password"},
+      "resultType": "LauncherCopyResult",
+      "result": {"clearAfterSeconds": 90}
+    },
+    {
+      "request": {"id": "7", "type": "launcher.passwords.generate", "generator": {"length": 20, "digits": true, "symbols": false}},
+      "resultType": "GeneratedPasswordResult",
+      "result": {"password": "Wq7tLmZ3pK9bRx2cVh8n"}
+    },
+    {
+      "request": {"id": "8", "type": "launcher.passwords.generate"},
+      "resultType": "GeneratedPasswordResult",
+      "result": {"password": "k4!Rz9#pW2@mXq7&Lb5$Tn8^"}
+    },
+    {
+      "request": {"id": "9", "type": "launcher.lock"},
+      "resultType": "Empty",
+      "result": {}
+    },
+    {
+      "request": {"id": "10", "type": "launcher.items.open", "vaultID": "v-personal", "itemID": "i-github"},
+      "resultType": "Empty",
+      "result": {}
+    },
+    {
+      "request": {"id": "11", "type": "launcher.items.open", "vaultID": "v-personal", "itemID": "i-github", "isEditing": true},
+      "resultType": "Empty",
+      "result": {}
+    },
+    {
+      "request": {"id": "12", "type": "launcher.items.share", "vaultID": "v-personal", "itemID": "i-github", "shareLink": {"fields": ["username", "password"], "expiresInSeconds": 604800, "maxViews": 1}},
+      "resultType": "ShareLinkResult",
+      "result": {"shareLink": {"id": "Rk3vQ9xT2mLp8sWz", "url": "https://hisar.example.com/s/Rk3vQ9xT2mLp8sWz#key", "title": "GitHub", "fieldLabels": ["username", "password"], "isText": false, "createdAt": "2026-10-17T09:00:00Z", "expiresAt": "2026-10-24T09:00:00Z", "maxViews": 1, "viewCount": 0, "hasPassphrase": false}}
+    }
+  ],
+  "errors": [
+    {"id": "13", "ok": false, "error": {"code": "denied", "message": "Hisar denied the request (it was declined)"}},
+    {"id": "14", "ok": false, "error": {"code": "not-found", "message": "“Office Wi-Fi” has no password"}}
+  ]
+}

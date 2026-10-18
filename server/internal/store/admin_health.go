@@ -52,15 +52,15 @@ func (cache *itemCountCache) get(ctx context.Context, count func(ctx context.Con
 	return items, nil
 }
 
-// GetInstanceCounts counts live items, share links that have not expired and sign-up invites that are neither used nor
-// expired. The item count may be up to itemCountMaxAge old.
+// GetInstanceCounts counts live items, share links that have not expired and sign-up invites with an email that are
+// neither used nor expired, the ones the dashboard's Invites lists. The item count may be up to itemCountMaxAge old.
 func (s *Store) GetInstanceCounts(ctx context.Context) (InstanceCounts, error) {
 	var counts InstanceCounts
 	err := s.pool.QueryRow(ctx, `
 		SELECT (SELECT count(*) FROM accounts),
 		       (SELECT count(*) FROM vaults),
 		       (SELECT count(*) FROM share_links WHERE expires_at > now()),
-		       (SELECT count(*) FROM invites WHERE used_at IS NULL AND expires_at > now()),
+		       (SELECT count(*) FROM invites WHERE used_at IS NULL AND expires_at > now() AND email <> ''),
 		       pg_database_size(current_database())`).
 		Scan(&counts.Accounts, &counts.Vaults, &counts.ShareLinks, &counts.PendingInvites, &counts.StorageBytes)
 	if err != nil {

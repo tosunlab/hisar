@@ -38,6 +38,13 @@ type Request struct {
 
 	ClientPlatform string `json:"clientPlatform,omitempty"`
 	ClientVersion  string `json:"clientVersion,omitempty"`
+
+	// Field is the field launcher.items.copy copies (IsLauncherField).
+	Field string `json:"field,omitempty"`
+	// Generator shapes launcher.passwords.generate; nil uses the app's defaults (24 characters, digits and symbols).
+	Generator *GeneratorChange `json:"generator,omitempty"`
+	// IsEditing makes launcher.items.open show the item's editor instead of its details.
+	IsEditing bool `json:"isEditing,omitempty"`
 }
 
 type Response struct {

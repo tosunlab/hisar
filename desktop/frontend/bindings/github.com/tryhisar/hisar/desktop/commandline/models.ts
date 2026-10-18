@@ -13,6 +13,17 @@ export interface Installation {
 }
 
 /**
+ * LauncherApp is an app approved as a launcher, as Settings → Developer tools → Command-line tool lists it; LastUsedAt
+ * is RFC 3339.
+ */
+export interface LauncherApp {
+    "name": string;
+    "path": string;
+    "iconURL": string;
+    "lastUsedAt": string;
+}
+
+/**
  * Status is Settings → Developer tools → Command-line tool: the installed hisar, the PATH, and the app integration.
  */
 export interface Status {

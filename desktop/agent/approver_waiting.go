@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/approval"
+	"github.com/tryhisar/hisar/core/clisocket"
 )
 
 // authorize unlocks a locked Hisar (Touch ID or the master password), or confirms with Touch ID or the master password.
@@ -113,6 +114,18 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 			return false
 		}
 	}
+}
+
+// waitForSocketApproval answers a request of the CLI socket: nil when approved, a clisocket.TimeoutError when nobody
+// answered before the deadline, clisocket.ErrDenied otherwise.
+func (approver *Approver) waitForSocketApproval(ctx context.Context, pending *pendingApproval) error {
+	if approver.waitForApproval(ctx, pending) {
+		return nil
+	}
+	if pending.timedOutAfter > 0 {
+		return clisocket.TimeoutError{Timeout: pending.timedOutAfter}
+	}
+	return clisocket.ErrDenied
 }
 
 func describeAuthorizeError(err error) string {

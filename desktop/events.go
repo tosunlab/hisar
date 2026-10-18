@@ -16,6 +16,7 @@ const (
 	eventRemoteChange      = "remote-change"
 	eventShareLinksChanged = "share-links-changed"
 	eventBrowserPairing    = "browser-pairing"
+	eventShowItem          = "show-item"
 )
 
 // init registers the typed events, so the generated bindings know their data.
@@ -27,4 +28,5 @@ func init() {
 	application.RegisterEvent[app.Theme](eventThemeChanged)
 	application.RegisterEvent[app.UpdateRequirement](eventUpdateRequired)
 	application.RegisterEvent[string](eventInviteLink)
+	application.RegisterEvent[app.ItemLocation](eventShowItem)
 }

@@ -53,6 +53,8 @@ func mainWindowOptions() application.WebviewWindowOptions {
 }
 
 // approvalWindowOptions is the window that asks to approve SSH, command-line and coding-agent requests; it is reused.
+// It is on every Space, so it shows on the one the user is on, and showing it never switches to the Space of the
+// main window.
 func approvalWindowOptions() application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:                "ssh-approval",
@@ -70,6 +72,7 @@ func approvalWindowOptions() application.WebviewWindowOptions {
 			InvisibleTitleBarHeight: 36,
 			Backdrop:                application.MacBackdropTranslucent,
 			TitleBar:                application.MacTitleBarHiddenInset,
+			CollectionBehavior:      application.MacWindowCollectionBehaviorCanJoinAllSpaces | application.MacWindowCollectionBehaviorFullScreenAuxiliary,
 		},
 		BackgroundColour: application.NewRGB(13, 14, 16),
 		URL:              "/?window=ssh-approval",

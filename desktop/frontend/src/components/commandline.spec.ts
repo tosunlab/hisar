@@ -1,8 +1,18 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
-import { createApiMock, createCommandLineStatus, createStatus } from "../testing";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
+import { createApiMock, createCommandLineStatus, createLauncherApp, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
+const allListener = vi.hoisted(() => new Map<string, () => void>());
+
+vi.mock("@wailsio/runtime", () => ({
+  Events: {
+    On: (name: string, listener: () => void) => {
+      allListener.set(name, listener);
+      return () => allListener.delete(name);
+    },
+  },
+}));
 
 vi.mock("../api", async () => {
   const { createApiMock: createMock } = await import("../testing");
@@ -18,6 +28,8 @@ const { store } = await import("../store");
 const CommandLineSection = (await import("./CommandLineSection.vue")).default;
 const api = apiMock.current;
 
+enableAutoUnmount(afterEach);
+
 const installedStatus = createCommandLineStatus({
   installedPath: "/opt/homebrew/bin/hisar",
   allInstallation: [{ path: "/opt/homebrew/bin/hisar", kind: "this-app", target: "/Applications/Hisar.app/Contents/Helpers/hisar", isSymlink: true, description: "this app's command-line tool" }],
@@ -28,6 +40,7 @@ const installedStatus = createCommandLineStatus({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  allListener.clear();
   Object.assign(store, {
     status: { ...createStatus("unlocked"), biometricAvailable: true },
     errorMessage: "",
@@ -35,8 +48,10 @@ beforeEach(() => {
     isBusy: false,
     commandLineStatus: null,
     commandLineErrorMessage: "",
+    allLauncherApp: [],
   });
   api.getCommandLineStatus.mockResolvedValue(createCommandLineStatus());
+  api.listAllLauncherApp.mockResolvedValue([]);
 });
 
 describe("CommandLineSection", () => {
@@ -160,5 +175,83 @@ describe("CommandLineSection", () => {
     const wrapper = mount(CommandLineSection);
     await flushPromises();
     expect(wrapper.find('[data-testid="command-line-integration"]').text()).toBe("Not available: another program listens on /Users/alice/.hisar/cli.sock");
+  });
+
+  it("says when no app is approved as a launcher", async () => {
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="command-line-launchers"] strong').text()).toBe("Launchers");
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').text()).toBe("No app is approved right now.");
+    expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(0);
+  });
+
+  it("shows a launcher approved while the section is open", async () => {
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').exists()).toBe(true);
+    api.listAllLauncherApp.mockResolvedValue([createLauncherApp()]);
+    allListener.get("ssh-approval-closed")?.();
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="launcher-app"] strong').map((name) => name.text())).toEqual(["Raycast"]);
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').exists()).toBe(false);
+  });
+
+  it("clears the launchers when Hisar locks", async () => {
+    api.listAllLauncherApp.mockResolvedValue([createLauncherApp()]);
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(1);
+    api.listAllLauncherApp.mockResolvedValue([]);
+    allListener.get("locked")?.();
+    await flushPromises();
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').exists()).toBe(true);
+    expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(0);
+  });
+
+  it("lists the apps approved as launchers and revokes one", async () => {
+    const alfred = createLauncherApp({ name: "Alfred 5", path: "/Applications/Alfred 5.app", iconURL: "", lastUsedAt: new Date(Date.now() - 3 * 3_600_000).toISOString() });
+    api.listAllLauncherApp.mockResolvedValue([createLauncherApp({ lastUsedAt: new Date().toISOString() }), alfred]);
+    api.revokeLauncherApp.mockResolvedValue([alfred]);
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').exists()).toBe(false);
+    const allRow = wrapper.findAll('[data-testid="launcher-app"]');
+    expect(allRow.map((row) => [row.find("strong").text(), row.find("p").text()])).toEqual([
+      ["Raycast", "Last used just now"],
+      ["Alfred 5", "Last used 3 hours ago"],
+    ]);
+    expect(allRow[0].find("img").attributes("src")).toBe("data:image/png;base64,Raycast");
+
+    await wrapper.find('[data-testid="revoke-launcher-Raycast"]').trigger("click");
+    await flushPromises();
+    expect(api.revokeLauncherApp).toHaveBeenCalledWith("/Applications/Raycast.app");
+    expect(store.noticeMessage).toBe("Raycast asks again the next time it uses Hisar");
+    expect(wrapper.findAll('[data-testid="launcher-app"] strong').map((name) => name.text())).toEqual(["Alfred 5"]);
+  });
+
+  it("keeps a launcher whose revoking failed and says why", async () => {
+    api.listAllLauncherApp.mockResolvedValue([createLauncherApp()]);
+    api.revokeLauncherApp.mockRejectedValue(new Error("Hisar could not reach the command-line socket"));
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    await wrapper.find('[data-testid="revoke-launcher-Raycast"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="command-line-error"]').text()).toBe("Hisar could not reach the command-line socket");
+    expect(store.noticeMessage).toBe("");
+    expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(1);
+  });
+
+  it("ends every launcher approval when the integration is turned off", async () => {
+    api.listAllLauncherApp.mockResolvedValue([createLauncherApp()]);
+    const wrapper = mount(CommandLineSection);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(1);
+
+    api.setCommandLineIntegration.mockResolvedValue(createCommandLineStatus({ isIntegrationEnabled: false, isServing: false }));
+    api.listAllLauncherApp.mockResolvedValue([]);
+    await wrapper.find('input[name="commandLineIntegration"]').setValue(false);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="launcher-app"]')).toHaveLength(0);
+    expect(wrapper.find('[data-testid="launcher-apps-empty"]').exists()).toBe(true);
   });
 });
