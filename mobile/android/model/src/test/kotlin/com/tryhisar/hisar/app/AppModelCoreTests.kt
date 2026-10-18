@@ -175,7 +175,7 @@ class AppModelCoreTests {
         val model = harness.startUnlockedModel()
         model.copyField("personal", "github", "password", "Password")
         assertEquals(listOf("github.password"), harness.backend.allCopiedField)
-        assertEquals("Password copied. It clears in 90 seconds.", model.notice.value)
+        assertEquals("Password copied. It clears in about 2 minutes.", model.notice.value)
     }
 
     @Test
@@ -188,6 +188,20 @@ class AppModelCoreTests {
         assertEquals(2, model.copyCount.value)
         assertEquals(listOf("hisar://Personal/GitHub/password"), harness.backend.allCopiedReference)
         assertEquals("Secret reference copied.", model.notice.value)
+    }
+
+    @Test
+    fun testCopyTextCopiesASecretAndPlainTextStaysPlain() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        model.copyText("https://github.com", "Website")
+        assertEquals(listOf("https://github.com"), harness.clipboard.allCopiedSecret)
+        assertEquals("Website copied. It clears in about 2 minutes.", model.notice.value)
+        model.copyPlainText("support@tryhisar.com", "Support address")
+        assertEquals(listOf("support@tryhisar.com"), harness.clipboard.allCopiedPlain)
+        assertEquals(listOf("https://github.com"), harness.clipboard.allCopiedSecret)
+        assertEquals("Support address copied", model.notice.value)
+        assertEquals(2, model.copyCount.value)
     }
 
     @Test

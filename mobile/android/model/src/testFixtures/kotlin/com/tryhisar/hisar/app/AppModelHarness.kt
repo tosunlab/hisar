@@ -15,9 +15,10 @@ import kotlinx.coroutines.test.TestScope
 class AppModelHarness(private val testScope: TestScope, val backend: FakeBackend = FakeBackend()) {
     var currentDate: Instant = Instant.ofEpochSecond(1_800_000_000)
     val events = MutableSharedFlow<BackendEvent>()
+    val clipboard = FakeTextClipboard()
 
     fun createModel(ioDispatcher: CoroutineDispatcher = StandardTestDispatcher(testScope.testScheduler)): AppModel =
-        AppModel(testScope.backgroundScope, ioDispatcher, events, now = { currentDate })
+        AppModel(testScope.backgroundScope, ioDispatcher, clipboard, events, now = { currentDate })
 
     suspend fun startModel(): AppModel = createModel().also { model -> model.start { backend } }
 
@@ -25,4 +26,14 @@ class AppModelHarness(private val testScope: TestScope, val backend: FakeBackend
         backend.seedSignedIn()
         return startModel().also { it.refreshAll() }
     }
+}
+
+/** A clipboard that keeps what the app copied, secret and plain apart. */
+class FakeTextClipboard : TextClipboard {
+    val allCopiedSecret = mutableListOf<String>()
+    val allCopiedPlain = mutableListOf<String>()
+
+    override fun copySecret(text: String): Boolean = allCopiedSecret.add(text)
+
+    override fun copyPlain(text: String): Boolean = allCopiedPlain.add(text)
 }

@@ -14,6 +14,7 @@ class HisarTestApplication : HisarApplication() {
     private var fakeBackend: FakeBackend? = null
     private val fakeEvents = MutableSharedFlow<BackendEvent>()
     val allCopiedSecret = mutableListOf<String>()
+    val allCopiedPlain = mutableListOf<String>()
 
     override val backend: VaultBackend
         get() = fakeBackend ?: super.backend
@@ -27,10 +28,17 @@ class HisarTestApplication : HisarApplication() {
         return true
     }
 
+    override fun copyPlain(text: String): Boolean {
+        if (fakeBackend == null) return super.copyPlain(text)
+        allCopiedPlain += text
+        return true
+    }
+
     override fun startBackend() {}
 
     fun installFakeBackend(backend: FakeBackend) {
         fakeBackend = backend
         allCopiedSecret.clear()
+        allCopiedPlain.clear()
     }
 }
