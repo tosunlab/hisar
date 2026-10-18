@@ -50,6 +50,8 @@ dependencies {
     implementation(libs.androidx.activity.compose)
     implementation(libs.kotlinx.coroutines.core)
 
+    testImplementation(testFixtures(project(":model")))
+    androidTestImplementation(testFixtures(project(":model")))
     androidTestImplementation(platform(libs.compose.bom))
     androidTestImplementation(libs.compose.ui.test.junit4)
     androidTestImplementation(libs.androidx.test.ext.junit)
