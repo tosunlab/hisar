@@ -3,7 +3,7 @@ name: macOS and iOS
 # macOS minutes are expensive, so each job runs only when the pull request changes what it builds: desktop/ and cli/ (the
 # Mac app), mobile/ios/, mobile/hisarkit/ and mobile/go.mod (the iPhone app), core/ and go.work (both), or this workflow;
 # scripts/detect-app-changes.sh decides.
-# The run-macos label, or a manual run, runs both anyway. The skip-ios label skips the iPhone job, for a pull request whose
+# The run-macos label, or a manual run, runs both anyway. The skip-ios label skips the iPhone jobs, for a pull request whose
 # iPhone build and tests already passed on a Mac (make build-ios-framework build-ios test-ios test-ios-ui); add it before
 # pushing, since a run reads the labels the pull request has when it starts. The Release workflow calls it for a desktop
 # release, which builds the Mac app and not the iPhone app.
@@ -113,21 +113,15 @@ jobs:
           path: desktop/bin/Hisar-macos.zip
           retention-days: 14
 
-  ios:
-    name: iPhone app build, unit tests and UI tests against the server (part ${{ matrix.part }} of 2)
+  ios-build:
+    name: iPhone app build and unit tests
     needs: changes
     if: needs.changes.outputs.isMobileChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-ios')
     runs-on: macos-26
-    timeout-minutes: 90
-    # Each part runs half of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator; the first also
-    # checks the generated project and runs the unit tests.
-    strategy:
-      fail-fast: false
-      matrix:
-        part: [1, 2]
+    timeout-minutes: 60
     env:
-      DATABASE_NAME: hisar_ios_${{ github.run_id }}_${{ github.run_attempt }}
-      # make build-ios builds the app and the tests once; the test steps run what it built.
+      IOS_DERIVED_DATA: ${{ github.workspace }}/DerivedData
+      # make build-ios builds the app and the tests once; the unit tests and the UI test jobs run what it built.
       IOS_TESTS_PREBUILT: "1"
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -137,32 +131,79 @@ jobs:
           cache-dependency-path: "**/go.sum"
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
-      # Booting takes a minute; it happens while HisarKit and the app build, and the tests then run on it as it is.
+      # Booting takes a minute; it happens while HisarKit and the app build, and the unit tests then run on it as it is.
       - name: Choose and boot the simulator
         run: |
           IOS_SIMULATOR_ID=$(mobile/ios/scripts/find-simulator.sh)
           echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$IOS_SIMULATOR_ID"
       - name: Install XcodeGen
-        if: matrix.part == 1
         run: |
           curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
           unzip -q -o "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/tools"
           echo "$RUNNER_TEMP/tools/xcodegen/bin" >> "$GITHUB_PATH"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - if: matrix.part == 1
-        run: make generate-ios-project
+      - run: make generate-ios-project
       - name: Check that the generated Xcode project is committed
-        if: matrix.part == 1
         run: git diff --exit-code -- mobile/ios
-      - run: make build-ios-framework
+      # HisarKit is built from the Go code alone, so a pull request whose push left that code as it was reuses the HisarKit
+      # its earlier run built. A pull request can only reuse what it or main saved, so its first run builds HisarKit.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: hisarkit
+        with:
+          path: mobile/build/HisarKit.xcframework
+          key: hisarkit-ios-${{ env.XCODE_PATH }}-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-framework.sh') }}
+      - if: steps.hisarkit.outputs.cache-hit != 'true'
+        run: make build-ios-framework
       - name: Check the HisarKit slices
         run: |
           test -d mobile/build/HisarKit.xcframework/ios-arm64/HisarKit.framework
           test -d mobile/build/HisarKit.xcframework/ios-arm64_x86_64-simulator/HisarKit.framework
       - run: make build-ios
-      - if: matrix.part == 1
-        run: make test-ios
+      - run: make test-ios
+      # A tar keeps the executable bits of the app, which an artifact's zip loses.
+      - name: Pack the app and the test bundles for the UI test jobs
+        run: tar -cf "$RUNNER_TEMP/ios-build.tar" -C "$IOS_DERIVED_DATA" Build/Products
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ios-build
+          path: ${{ runner.temp }}/ios-build.tar
+          retention-days: 1
+
+  ios:
+    name: iPhone UI tests against the server (part ${{ matrix.part }} of 2)
+    needs: [changes, ios-build]
+    runs-on: macos-26
+    timeout-minutes: 60
+    # Each part runs half of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator, with the app and
+    # tests ios-build built.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2]
+    env:
+      DATABASE_NAME: hisar_ios_${{ github.run_id }}_${{ github.run_attempt }}
+      IOS_DERIVED_DATA: ${{ github.workspace }}/DerivedData
+      IOS_TESTS_PREBUILT: "1"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - name: Select Xcode
+        run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
+      - name: Choose and boot the simulator
+        run: |
+          IOS_SIMULATOR_ID=$(mobile/ios/scripts/find-simulator.sh)
+          echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
+          xcrun simctl boot "$IOS_SIMULATOR_ID"
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: ios-build
+          path: ${{ runner.temp }}
+      - name: Unpack the app and the test bundles
+        run: mkdir -p "$IOS_DERIVED_DATA" && tar -xf "$RUNNER_TEMP/ios-build.tar" -C "$IOS_DERIVED_DATA"
       - name: Start Postgres
         run: |
           brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17

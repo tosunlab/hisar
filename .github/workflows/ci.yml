@@ -365,7 +365,15 @@ jobs:
         run: |
           scripts/install-android-sdk.sh --build-only
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
-      - run: make build-android-aar
+      # HisarKit.aar is built from the Go code alone, so a pull request whose push left that code as it was reuses the one its
+      # earlier run built. A pull request can only reuse what it or main saved, so its first run builds it.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: hisarkit
+        with:
+          path: mobile/build/HisarKit.aar
+          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'scripts/install-android-sdk.sh') }}
+      - if: steps.hisarkit.outputs.cache-hit != 'true'
+        run: make build-android-aar
       - name: Check that ThemePalettes.kt matches assets/themes/themes.json
         if: matrix.part == 1
         run: node scripts/themes/generate.ts && git diff --exit-code

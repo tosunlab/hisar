@@ -22,8 +22,8 @@ WORKERS=${IOS_UI_TEST_WORKERS:-1}
 PARALLEL=(-parallel-testing-enabled NO)
 if [ "$WORKERS" -gt 1 ]; then PARALLEL=(-parallel-testing-enabled YES -parallel-testing-worker-count "$WORKERS"); fi
 
-# Balanced by the classes' run times on a Mac (part 1 about 574 s, part 2 about 522 s).
-SECOND_PART=(OrganizationUITests SharingUITests AutoFillUITests FavoritesUITests AccountLifecycleUITests)
+# Balanced by the classes' run times on GitHub's runners (part 1 about 940 s, part 2 about 865 s).
+SECOND_PART=(OrganizationUITests SharingUITests AutoFillUITests AccountLifecycleUITests)
 case "${IOS_UI_TEST_PART:-}" in
   "") SELECTION=(-only-testing:"${IOS_UI_TESTS:-HisarUITests}") ;;
   1) SELECTION=(-only-testing:HisarUITests "${SECOND_PART[@]/#/-skip-testing:HisarUITests/}") ;;

@@ -186,7 +186,7 @@ and tests already passed locally with `make build-android-aar build-android test
 pushing).
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
-(HisarKit, Xcode project check, unit tests, UI tests against a local server, split over two jobs of about the same length) on
+(HisarKit, Xcode project check, unit tests, then UI tests against a local server in two jobs that run the one build) on
 GitHub's `macos-26` runners with Xcode 26.6. macOS
 minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
 branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
@@ -198,11 +198,12 @@ branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 - both, whatever changed, while the pull request has the label `run-macos`;
 - not the iPhone app while the pull request has the label `skip-ios`, for changes whose iPhone build, unit tests and UI tests
   already passed locally (`make build-ios-framework build-ios test-ios test-ios-ui`). Add the label before pushing: a run
-  reads the labels the pull request has when it starts. The job then reports as skipped;
+  reads the labels the pull request has when it starts. The jobs then report as skipped;
 - or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 
-A run takes roughly 15–25 minutes for the Mac app and 20–30 minutes for each of the two iPhone jobs, so about 150–250 included
-minutes for the Mac app alone and up to 850 with the iPhone app. A desktop release build costs about the same as the Mac app job.
+A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then 20 minutes of UI tests in
+two jobs, so about 150–250 included minutes for the Mac app alone and up to 850 with the iPhone app. A desktop release build costs
+about the same as the Mac app job.
 
 Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Each release is one run of
 Actions → Release → Run workflow (or `gh workflow run release.yml -f app=server -f type=minor`), on `main`:
