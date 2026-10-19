@@ -23,26 +23,48 @@ class HisarUITestCase: XCTestCase {
         return value
     }
 
+    // Screenshots are taken only for HISAR_UI_TEST_SCREENSHOT_DIRECTORY: a test run records the screen anyway, and on a busy
+    // simulator a screenshot can time out and fail the test.
     func saveScreenshot(_ name: String) {
+        guard let directory = ProcessInfo.processInfo.environment["HISAR_UI_TEST_SCREENSHOT_DIRECTORY"], !directory.isEmpty else {
+            return
+        }
         let screenshot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-        if let directory = ProcessInfo.processInfo.environment["HISAR_UI_TEST_SCREENSHOT_DIRECTORY"], !directory.isEmpty {
-            let url = URL(fileURLWithPath: directory).appendingPathComponent("ios-\(name).png")
-            try? screenshot.pngRepresentation.write(to: url)
-        }
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: directory).appendingPathComponent("ios-\(name).png"))
     }
 
     func waitFor(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(element.waitForExistence(timeout: timeout), "\(element) did not appear", file: file, line: line)
     }
 
+    // Waits until the element takes a tap: a row behind a closing sheet, or a button of a dialog still animating in, exists
+    // before it is hittable. iOS's Save Password sheet can come up seconds after a save, later than dismissSavePasswordPrompt
+    // looks for it, and cover the app; it is dismissed here too.
+    func waitForHittable(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.isHittable {
+                return
+            }
+            if let notNow = savePasswordNotNowButtons.first(where: { $0.exists && $0.isHittable }) {
+                notNow.tap()
+            }
+            _ = element.waitForExistence(timeout: 0.5)
+        }
+        XCTFail("\(element) did not become tappable", file: file, line: line)
+    }
+
+    private var savePasswordNotNowButtons: [XCUIElement] {
+        [app.buttons["Not Now"], XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Not Now"]]
+    }
+
     // iOS may show its Save Password sheet; on slow machines a tap during its animation is ignored, so tap until it is gone.
     func dismissSavePasswordPrompt(file: StaticString = #filePath, line: UInt = #line) {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let allCandidate = [app.buttons["Not Now"], springboard.buttons["Not Now"]]
+        let allCandidate = savePasswordNotNowButtons
         guard allCandidate.contains(where: { $0.waitForExistence(timeout: 2) }) else {
             return
         }
@@ -59,19 +81,24 @@ class HisarUITestCase: XCTestCase {
         XCTFail("the Save Password sheet did not go away", file: file, line: line)
     }
 
-    func goBack() {
+    // A tap while a late Save Password sheet covers the app is lost, so the button is tappable first.
+    func goBack(file: StaticString = #filePath, line: UInt = #line) {
         let backButton = app.navigationBars.buttons["BackButton"].exists ? app.navigationBars.buttons["BackButton"] : app.navigationBars.buttons.element(boundBy: 0)
+        waitForHittable(backButton, file: file, line: line)
         backButton.tap()
     }
 
-    func openTab(_ name: String) {
+    func openTab(_ name: String, file: StaticString = #filePath, line: UInt = #line) {
         let tabButton = app.tabBars.buttons[name].exists ? app.tabBars.buttons[name] : app.buttons[name].firstMatch
+        waitForHittable(tabButton, file: file, line: line)
         tabButton.tap()
     }
 
-    func openSettings(_ identifier: String) {
-        openTab("Settings")
-        app.buttons[identifier].tap()
+    func openSettings(_ identifier: String, file: StaticString = #filePath, line: UInt = #line) {
+        openTab("Settings", file: file, line: line)
+        let row = app.buttons[identifier]
+        waitForHittable(row, file: file, line: line)
+        row.tap()
     }
 
     // A confirmation dialog is a sheet or, on iOS 26, a popover next to its button.
@@ -86,7 +113,7 @@ class HisarUITestCase: XCTestCase {
     // `type` makes to find the editor presses whichever item it crosses. So the item is tapped until the menu is gone.
     func choose(_ item: String, from menu: String, file: StaticString = #filePath, line: UInt = #line) {
         let menuButton = app.buttons[menu]
-        waitFor(menuButton, file: file, line: line)
+        waitForHittable(menuButton, file: file, line: line)
         menuButton.tap()
         let itemButton = app.buttons[item]
         waitFor(itemButton, file: file, line: line)
@@ -115,12 +142,22 @@ class HisarUITestCase: XCTestCase {
         waitFor(element, file: file, line: line)
     }
 
-    func type(_ text: String, into element: XCUIElement) {
+    // On a slow simulator the keyboard focus comes a moment after the tap, and typing before it fails, so it waits for the focus
+    // and taps again if it does not come.
+    func type(_ text: String, into element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         if !element.waitForExistence(timeout: 5) || !element.isHittable {
             scrollTo(element)
         }
-        element.tap()
-        element.typeText(text)
+        let hasFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        for _ in 0..<3 {
+            element.tap()
+            if hasFocus.evaluate(with: element)
+                || XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: hasFocus, object: element)], timeout: 5) == .completed {
+                element.typeText(text)
+                return
+            }
+        }
+        XCTFail("\(element) did not take the keyboard focus", file: file, line: line)
     }
 
     // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.
@@ -158,6 +195,7 @@ class HisarUITestCase: XCTestCase {
     }
 
     func addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
+        waitForHittable(app.buttons["vault-Personal"])
         app.buttons["vault-Personal"].tap()
         choose("add-login", from: "add-item")
         type(title, into: app.textFields["editor-title"])

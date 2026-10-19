@@ -305,12 +305,12 @@ describe("Settings SSH agent section", () => {
     expect(wrapper.find('[data-testid="ssh-agent-section"] [role="alert"]').text()).toBe("could not save desktop.json");
   });
 
-  it("turns approvals from the iPhone off and on", async () => {
+  it("turns approvals from the smart device off and on", async () => {
     const wrapper = mount(SettingsPanel);
     await flushPromises();
     const phoneSwitch = wrapper.find('[data-testid="phone-approval-switch"]');
     expect((phoneSwitch.element as HTMLInputElement).checked).toBe(true);
-    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("Approve requests on my iPhone");
+    expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("Approve requests on my smart device");
     expect(wrapper.find('[data-testid="ssh-agent-section"]').text()).toContain("never unlocks this Mac");
     await phoneSwitch.setValue(false);
     await flushPromises();
@@ -321,7 +321,7 @@ describe("Settings SSH agent section", () => {
     await wrapper.find('[data-testid="phone-approval-switch"]').setValue(true);
     await flushPromises();
     expect(api.setPhoneApproval).toHaveBeenLastCalledWith(true);
-    expect(store.noticeMessage).toBe("Your iPhone can now approve requests");
+    expect(store.noticeMessage).toBe("Your smart device can now approve requests");
   });
 
   it("lets SSH approvals be remembered until Hisar locks", async () => {

@@ -8,12 +8,12 @@ The server stores only ciphertext. Keys are derived on your devices from your ma
 
 | Path | What |
 |---|---|
-| `core/` | Shared Go library: crypto, item model, sessions and sync, and `core/app`, the app backend of the Mac and the iPhone |
+| `core/` | Shared Go library: crypto, item model, sessions and sync, and `core/app`, the app backend of the Mac, the iPhone and Android |
 | `server/` | `hisar-server` sync server (Go + Postgres) |
 | `cli/` | `hisar` command-line client |
 | `desktop/` | Desktop app (Wails v3 + Vue), see [desktop/README.md](desktop/README.md) |
 | `extension/` | Browser extension |
-| `mobile/` | iOS and Android apps |
+| `mobile/` | iOS and Android apps, see [mobile/README.md](mobile/README.md) |
 | `docs/` | Design docs |
 
 Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
@@ -88,7 +88,7 @@ GITHUB_TOKEN=hisar://Personal/GitHub/API%20token hisar run -- gh release list
 hisar read hisar://Personal/GitHub/otp            # one value on stdout, for scripts
 ```
 
-`hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your iPhone) and shows the command
+`hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your smart device) and shows the command
 and the secrets it reads. The command gets the real values in its environment; nothing is written to disk. Every value it prints is
 replaced with `<concealed by hisar>`. That needs pipes, so use `--no-masking` for commands that need the terminal itself (colours,
 prompts, full-screen tools). Several `--env-file` options are applied in order; variables already in your environment win unless they
@@ -164,6 +164,9 @@ docker exec hisar-pg createdb -U postgres hisar_end_to_end
 HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_end_to_end?sslmode=disable" make test-end-to-end
 ```
 
+The phone apps build from `mobile/`: the iPhone app with Xcode on a Mac, and the Android app with the Android SDK and JDK 21
+on macOS or Linux (`make build-android-aar build-android test-android`). See [mobile/README.md](mobile/README.md).
+
 ### CI and releases
 
 GitHub Actions runs CI on pull requests, on manual runs (Actions → CI → Run workflow) and on a release that asks for it, never
@@ -173,26 +176,34 @@ on pushes to `main`: a merge was already tested as its pull request. A new push 
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
 binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
 (typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip),
-the share link page in Chromium against the server, and the admin dashboard (typecheck, tests, the `admin/src/themes.css`
+the share link page in Chromium against the server, the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
-`core/`, `go.work` or the workflow).
+`core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
+release APKs, lint, the JVM tests and the instrumented tests on x86_64 API 36 emulators against a local server, split over two
+jobs; only when the pull request changes `mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes,
+`core/`, `go.work` or the workflow, and not while the pull request has the label `skip-android`, for changes whose Android build
+and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before
+pushing).
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
-(HisarKit, Xcode project check, unit tests, UI tests against a local server) on GitHub's `macos-26` runners with Xcode 26.6. macOS
+(HisarKit, Xcode project check, unit tests, then UI tests against a local server in two jobs that run the one build) on
+GitHub's `macos-26` runners with Xcode 26.6. macOS
 minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
 branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
 
 - the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work`, its packaging scripts or the workflow
   changes (`scripts/app-paths.sh` lists them);
-- the iPhone app when `mobile/`, `core/`, `go.work` or the workflow changes;
+- the iPhone app when `mobile/ios/`, `mobile/hisarkit/`, `mobile/go.mod`, `mobile/build-framework.sh`, `core/`, `go.work` or the
+  workflow changes; an Android-only change does not run it;
 - both, whatever changed, while the pull request has the label `run-macos`;
 - not the iPhone app while the pull request has the label `skip-ios`, for changes whose iPhone build, unit tests and UI tests
   already passed locally (`make build-ios-framework build-ios test-ios test-ios-ui`). Add the label before pushing: a run
-  reads the labels the pull request has when it starts. The job then reports as skipped;
+  reads the labels the pull request has when it starts. The jobs then report as skipped;
 - or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 
-A run takes roughly 15–25 minutes for the Mac app and 40–60 minutes for the iPhone app, so about 150–250 included minutes for the Mac
-app alone and up to 850 with the iPhone app. A desktop release build costs about the same as the Mac app job.
+A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then 20 minutes of UI tests in
+two jobs, so about 150–250 included minutes for the Mac app alone and up to 850 with the iPhone app. A desktop release build costs
+about the same as the Mac app job.
 
 Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Each release is one run of
 Actions → Release → Run workflow (or `gh workflow run release.yml -f app=server -f type=minor`), on `main`:

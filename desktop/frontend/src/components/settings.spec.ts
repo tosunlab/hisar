@@ -179,7 +179,7 @@ describe("Settings search", () => {
 
     await search(settings, "ssh");
     expect(readAllSectionLabel(settings)).toEqual(["SSH & Git"]);
-    expect(findPage(settings, "ssh").text()).toContain("Approve requests on my iPhone");
+    expect(findPage(settings, "ssh").text()).toContain("Approve requests on my smart device");
   });
 
   it("finds the launchers row by searching raycast", async () => {

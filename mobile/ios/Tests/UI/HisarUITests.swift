@@ -171,7 +171,8 @@ final class HisarUITests: HisarUITestCase {
         goBack()
 
         app.buttons["open-devices"].tap()
-        waitFor(app.staticTexts["This iPhone"].exists ? app.staticTexts["This iPhone"] : app.staticTexts["THIS IPHONE"])
+        // iOS shows the section header as "This iPhone" or "THIS IPHONE"; the screen may still be opening, so both are awaited.
+        waitFor(app.staticTexts.matching(NSPredicate(format: "label ==[c] %@", "This iPhone")).firstMatch)
         saveScreenshot("devices")
         goBack()
 
@@ -240,6 +241,6 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertTrue(app.wait(for: .runningBackground, timeout: 10) || app.wait(for: .runningBackgroundSuspended, timeout: 10))
         app.activate()
         waitFor(app.segmentedControls["sign-in-mode"])
-        XCTAssertFalse(app.otherElements["privacy-cover"].exists, "the cover goes away once the app is active")
+        XCTAssertTrue(app.otherElements["privacy-cover"].waitForNonExistence(timeout: 5), "the cover goes away once the app is active")
     }
 }

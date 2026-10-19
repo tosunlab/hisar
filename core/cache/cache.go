@@ -9,8 +9,6 @@ import (
 	"fmt"
 	"os"
 
-	_ "modernc.org/sqlite"
-
 	"github.com/tryhisar/hisar/core/apitypes"
 )
 
@@ -37,7 +35,7 @@ func Open(path string) (*Cache, error) {
 		return nil, err
 	}
 	file.Close()
-	database, err := sql.Open("sqlite", "file:"+path+"?_pragma=busy_timeout(5000)")
+	database, err := sql.Open(sqliteDriver, buildSQLiteDataSource(path))
 	if err != nil {
 		return nil, err
 	}

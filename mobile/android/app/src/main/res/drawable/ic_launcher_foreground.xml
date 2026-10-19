@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The tower of assets/logo/hisar-ios-icon.svg. Its 32-unit square fills the 72 dp an adaptive icon's mask may show,
+    so the 108 dp layer is 48 units with the square in the middle.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="48"
+    android:viewportHeight="48">
+    <group
+        android:translateX="8"
+        android:translateY="8">
+        <path
+            android:fillColor="#0B0C0E"
+            android:pathData="M8 24.5V10.5h3V7.5h2.5v3h5V7.5H21v3h3v14h-6v-5a2 2 0 0 0-4 0v5z" />
+    </group>
+</vector>

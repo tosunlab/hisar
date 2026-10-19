@@ -19,15 +19,20 @@ final class FavoritesUITests: HisarUITestCase {
         app.buttons["editor-icon"].tap()
         app.buttons["icon-color-orange"].tap()
         app.buttons["icon-preset-cloud"].tap()
-        XCTAssertTrue(app.buttons["icon-preset-cloud"].isSelected)
+        let isCloudSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: app.buttons["icon-preset-cloud"])
+        XCTAssertEqual(XCTWaiter().wait(for: [isCloudSelected], timeout: 10), .completed, "the cloud preset is selected")
         saveScreenshot("item-icon-picker")
         app.buttons["icon-done"].tap()
         app.buttons["editor-save"].tap()
         dismissSavePasswordPrompt()
         waitFor(app.buttons["item-AWS Console"])
 
+        // The editor sheet is still closing over the list.
+        waitForHittable(app.buttons["item-GitHub"])
         app.buttons["item-GitHub"].tap()
-        app.buttons["favorite-item"].tap()
+        let star = app.buttons["favorite-item"]
+        waitForHittable(star)
+        star.tap()
         waitFor(app.staticTexts["Added to Favorites."], timeout: 10)
         saveScreenshot("favorites-item-starred")
         goBack()

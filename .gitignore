@@ -18,6 +18,16 @@ deploy/hisar.env
 /extension/.fake-host/
 /mobile/build/
 /mobile/ios/Configuration/Local.xcconfig
+/mobile/android/local.properties
+/mobile/android/.gradle/
+/mobile/android/.kotlin/
+/mobile/android/.idea/
+/mobile/android/captures/
+/mobile/android/**/build/
+/mobile/android/**/*.jks
+/mobile/android/**/*.keystore
+*.iml
+bugreport-*.zip
 xcuserdata/
 *.xcresult
 deploy/.env

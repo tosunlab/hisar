@@ -6,7 +6,7 @@ derived on devices from the master password and a Secret Key. Cryptography, prot
 
 ## Modules
 
-Five Go modules joined by `go.work`, plus four non-Go apps.
+Five Go modules joined by `go.work`, plus five non-Go apps.
 
 | Module | Builds | May import |
 |---|---|---|
@@ -14,11 +14,12 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 | `server/` | `hisar-server` and test fixtures | `core` |
 | `cli/` | `hisar` | `core` |
 | `desktop/` | The Wails app, `hisar-browser-host`, `hisar-update-key` | `core`; `cli/mcpserver` in tests only |
-| `mobile/` | `HisarKit.xcframework` (gomobile) for `mobile/ios` | `core`; `desktop` in one integration test only |
+| `mobile/` | `HisarKit.xcframework` (gomobile) for `mobile/ios` and `HisarKit.aar` for `mobile/android` | `core`; `desktop` in one integration test only |
 | `extension/` | The browser extension (TypeScript, MV3) | none |
 | `raycast/` | The Raycast extension (TypeScript), installed in Raycast's development mode; it talks to the desktop app on `cli.sock` as a launcher | none |
 | `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
 | `mobile/ios/` | The iOS app (Swift), on top of HisarKit | none |
+| `mobile/android/` | The Android app (Kotlin, Jetpack Compose, Gradle) on top of `HisarKit.aar`: `:model`, a JVM module with the app model and its tests, and `:app`, the Android app | none |
 
 `core` must never require `cli`, `desktop` or `server`: the server's Dockerfile copies only `core/`, `server/` and `admin/`.
 
@@ -33,11 +34,11 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 | `apitypes` | JSON wire types of `/api/v1`, event names, roles, platform headers, share-link limits, `IsValidVaultRole`, `NormalizeEmail` |
 | `apiclient` | Typed HTTP client of `/api/v1` and its event stream |
 | `session` | A signed-in account: sign-up, login, unlock, item sync and encryption, rotation, sharing, share links, organization vaults (`CompleteVaultKeyRequests`, `RotatePendingVaults`), account changes, `Reauthenticate` (the OPAQUE proof that account changes carry), the account preferences record with the favorites, `GetVaultPermissions` |
-| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), `LookupField`, the password generator |
+| `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), the Android apps a login fills into, stored among its URLs as `androidapp://<package>?sha256=<certificate>` so older apps keep them (`androidapp.go`), `LookupField`, the password generator |
 | `itemicon` | Icon images: normalizing uploads and website icons into small PNGs, and fetching website icons from public https sites only |
 | `cache` | The offline SQLite copy of the server's encrypted records, and the device's sealed website icons |
 | `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain (`ErrNoSecretService` when Linux has no keyring) |
-| `app` | The backend of the Mac and iPhone apps, bound to the UI (see below) |
+| `app` | The backend of the Mac, iPhone and Android apps, bound to the UI (see below) |
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |
 | `cliprotocol` | The CLI ↔ app protocol on `~/.hisar/cli.sock`: messages, results, framing, `Client` |
 | `clisocket` | The app side of that socket: server, approval scopes (terminal session, signed app, connection), coding-agent grants, launcher approvals, peer credentials |
@@ -49,18 +50,20 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 | `approval` | Phone approval requests and signed answers |
 | `sharelink` | Building, sealing and opening share links |
 | `secretreference` | `hisar://vault/item/field` references |
-| `export`, `importer` | Hisar's export format; importers for other password managers, and the Credential Exchange (CXF) data the iPhone receives from them (`credentialexchange.go`, the only source of imported passkeys) |
+| `export`, `importer` | Hisar's export format; importers for other password managers, and the Credential Exchange (CXF) data the iPhone and Android apps receive from them (`credentialexchange.go`, the only source of imported passkeys) |
 | `invitelink`, `appversion`, `totp`, `emergencykit` | Invite links, app versions, one-time codes, the Emergency Kit PDF |
 | `project` | `GitHubRepository`, the one place that names the GitHub repository (releases, desktop update feed, docs quote it) |
 
 **`core/app`** is one package because every feature shares the unlocked session and its caches under one mutex. Files:
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
-`invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching), `passkey*.go`,
+`invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching, for pages and Android apps), `androidapps.go` (linking logins to Android apps), `passkey*.go`,
 `platformpasskey.go` (iOS), `commandline*.go`, `codingagent.go` and `launcher.go` (the CLI socket handler), `approvals.go`,
-`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (iPhone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
+`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (phone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
 `browseritems.go` (the extension popup's vault: items, vaults, new items), `browserunlock.go` (the popup's master password unlock),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).
-Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`.
+Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`. `Config` (`types.go`) has
+`BiometricName`, the name Go's sentences give the biometric check: "Touch ID" on the Mac and in iOS hisarkit (Swift
+replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 
 ### server
 
@@ -102,8 +105,38 @@ Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_tes
 
 ### mobile
 
-`hisarkit` wraps `core/app` for gomobile: only strings, numbers, bools, `[]byte`, errors and interfaces cross into Swift,
-so rich values are JSON strings.
+`hisarkit` wraps `core/app` for gomobile: only strings, numbers, bools, `[]byte`, errors and interfaces cross into Swift
+and Kotlin, so rich values are JSON strings. `platform_android.go` and `platform_other.go` (`//go:build !android`) hold
+what differs between the phones: the platform the device registers with (`android/mobile`, `ios/mobile`), the
+`BiometricName` it passes to `core/app`, and two error sentences. `timezone_android.go` links `time/tzdata`. Entry points
+only Android calls:
+
+- `SetTimeZone(name)`, a package function, before `New`: Go on Android starts in UTC.
+- `SetTrustedCertificates(pem)`, right after `New`: every `AndroidCAStore` certificate, system and user-installed. Go
+  then trusts exactly those for the server and website icons.
+- `SetBiometricKeyPreparer(preparer)`, right after `New`: `PrepareStoreKey` and `PrepareLoadKey` build the cipher of the
+  per-use Keystore key, and the next `Biometric.Authenticate` puts it in the prompt.
+- `androidapps.go`: logins linked to Android apps (`ListAllLoginForAndroidApp`, `GetLoginForAndroidApp`,
+  `GetOneTimeCodeForAndroidApp`, `AddAndroidApp`, `RemoveAndroidApp`) and `ListAllLoginWebsite` for Digital Asset Links.
+- `BuildAndroidAppOrigin` and `BuildPasskeyClientData`, package functions for passkeys that a native app asks for.
+
+`cmd/hisar-ui-test-mac` plays the user's Mac in the Android phone approval UI test, which `scripts/test-android-ui.sh`
+starts it for: it signs up, sends the phone real approval requests, and saves each answer it verified in the Personal vault.
+
+### mobile/android
+
+| Package | What it holds |
+|---|---|
+| `:model` `com.tryhisar.hisar.model` | Plain JVM, no Android: `Models.kt` (HisarKit's JSON types, decoded with `backendJson`), `VaultBackend` (one method per HisarKit call, with the iPhone app's names and argument order), the logic the screens share (`VaultLogic`, `OrganizationLogic`, …), `theme/ThemePalettes.kt` (written by `make generate-themes`) |
+| `:model` `com.tryhisar.hisar.app` | The app model, the port of the iPhone app's `AppModel`. `AppModel` holds the status, the screen, `UnlockedData` (what an unlock loads), the lifecycle, events and notices; one area model per feature holds the rest (`SignInModel`, `LockModel`, `VaultsModel`, `ItemModel`, `ItemEditorModel`, `SharingModel`, `OrganizationsModel`, `SettingsModel`, `ApprovalsModel`, …). An area model takes the `ModelContext`, which `AppModel` implements, and `AppModel` creates it in one line (`val vaults = VaultsModel(this)`) |
+| `:model` `com.tryhisar.hisar.autofill` | AutoFill's logic: `FillRequestParser`, `LoginMatcher` (an app's linked logins first, then the sites that vouch for it), `AssetLinks`, `AutoFillModel`, `SavedLogin` |
+| `:model` `src/testFixtures` | `FakeBackend` and `AppModelHarness`, used by the JVM tests of both modules and by the instrumented tests |
+| `:app` `com.tryhisar.hisar` | `HisarApplication` (the process's one HisarKit backend, shared by the app and AutoFill), `MainActivity`, `AppViewModel` (owns `AppModel`, reports background and foreground), `ScreenshotSetting` |
+| `:app` `backend` | `HisarKitBackend`: `VaultBackend` over the AAR, never on the main thread, Go errors as `BackendError` |
+| `:app` `platform` | What Go calls back: `KeystoreSecretKeyStore`, `BiometricKeystore`, `ClipboardAdapter` with its clear alarm, `EventRelay`; and `StateDirectory`, `TrustedCertificates`, `ForegroundActivity` |
+| `:app` `ui/<area>` | Compose screens per area (`signin`, `lock`, `root`, `vaults`, `search`, `item`, `sharing`, `organizations`, `approvals`, `settings`), with `components` and `theme` (`HisarTheme` maps `ThemePalettes` onto Material 3, never dynamic color) |
+| `:app` `autofill` | `HisarAutofillService`, `AutofillActivity` and its screens, `Datasets`, `HttpAssetLinksVerifier`, `InstalledApps`, `SavedLoginInbox`, and the AutoFill sections of Settings |
+| `:app` `src/debug`, `src/androidTest` | `PreviewActivity` (debug-only AutoFill screens for UI tests); the instrumented tests, with `HisarUITestCase` (the base of the tests against a real `hisar-server`) and `HisarTestApplication`, which installs a `FakeBackend` for tests without a server |
 
 ### admin
 
@@ -121,14 +154,19 @@ so rich values are JSON strings.
 - **A new API endpoint:** the DTO in `core/apitypes`; the rule in a `server/internal/service` method that returns
   `*service.Error` for refusals; a thin handler and route in `server/internal/api`; the client method in `core/apiclient`;
   the session-level logic in `core/session` if apps need it.
-- **A new app feature (Mac and iPhone):** methods on `app.Service` in `core/app` for the UI, a package function taking
-  `*Service` for anything the UI must not call; then the Wails binding (regenerate) and the `hisarkit` wrapper.
+- **A new app feature (Mac, iPhone and Android):** methods on `app.Service` in `core/app` for the UI, a package function
+  taking `*Service` for anything the UI must not call; then the Wails binding (regenerate) and the `hisarkit` wrapper.
+  On Android, a new HisarKit call goes into `VaultBackend`, `HisarKitBackend` and `FakeBackend`.
+- **A new Android screen or area:** the area model in `:model` `com.tryhisar.hisar.app` with its JVM tests on
+  `FakeBackend` (`AppModelHarness`), one line in `AppModel` that creates it, and the screen in `:app` `ui/<area>`, whose
+  test tags are the Swift `accessibilityIdentifier`s. Port the iPhone test under the same name (or add a row to
+  `IosTestParityTest`'s `renamed` table) and delete its line from the expected-missing list in the same commit.
 - **A new CLI command:** a function `func(ctx, access backend, flags, args) error` in `cli/cmd/hisar`, a `withBackend`
   row in the command table, and the `backend` methods it needs in both implementations. Standalone-only commands use
   `run`. Update `testdata/usage.golden` with `go test ./cmd/hisar -run TestUsageGolden -update`.
 - **A new item type:** the category and its named-field schema in `core/item` (a record struct and its `NamedField` list,
   as `card.go` and `identity.go`: fields with fixed names, so older apps keep them), `Item.OmitsLoginData` if its form has no login data, its rules in `core/app` `applyCategory`, a row in the CLI's `itemTypes` table, a `cliprotocol`
-  feature in `GetCategoryFeature`, the importers, then the desktop and iPhone screens.
+  feature in `GetCategoryFeature`, the importers, then the desktop, iPhone and Android screens.
 - **A new CLI ↔ app request:** the type string and result in `core/cliprotocol`, the answer in `core/app/commandline.go`.
 - **A new desktop OS integration:** its own `desktop/<name>` package with platform files; wire it in `desktop/main.go`.
 - **A new crypto primitive or AAD label:** `core/crypt` only, with a vector in `vectors_test.go`.
@@ -145,7 +183,9 @@ so rich values are JSON strings.
 
 - Idiomatic names: `vaults`, `itemsByVaultID`, `ListVaults`, constructors `NewX`. Each package has a doc comment.
 - Platform files use the filename suffix (`_darwin.go`, `_linux.go`, `_windows.go`); cgo files also carry a `cgo` build
-  tag with a fallback file for the inverse.
+  tag with a fallback file for the inverse. `mobile/hisarkit` pairs `_android.go` with a `//go:build !android` file.
+- Android screens follow the iPhone app's layout, components and copy, with Hisar's palettes from
+  `assets/themes/themes.json`; Material 3 is only a restyled component layer, never dynamic color.
 - Errors: low-level packages prefix `pkg:`; domain packages return sentences a user can read. Wrap with `%w` and test
   with `errors.Is`/`errors.As`.
 - No mutable exported package variables for policy; use constants or functions.
@@ -161,7 +201,10 @@ so rich values are JSON strings.
   servers, old CLIs and existing files depend on them.
 - **HTTP routes and status codes, cliprotocol type strings and error codes, event names, `HISAR_*` variables, CLI
   commands and flags, `hisar-server serve|migrate|invite`.**
-- **`mobile/hisarkit`'s exported API**: Swift calls it by name (`listAllVault` and so on), so its names stay as they are.
+- **`mobile/hisarkit`'s exported API**: Swift and Kotlin call it by name (`listAllVault`, `Hisarkit.new_` and so on),
+  so its names stay as they are.
+- **The Android app link format** `androidapp://<package>?sha256=<64 lower-case hex>` among a login's URLs
+  (`core/item/androidapp.go`): it is stored in synced items, and released apps keep it because it is a URL.
 - **`core/crypt` formats**: `vectors_test.go` must pass unchanged.
 - **`main.version` in `cli/cmd/hisar`**: release scripts set it with `-X`.
 - **Embedded assets** move with the files that embed them (`server/internal/api/{invitepage,sharelinkpage}/`, legal pages,
@@ -189,9 +232,16 @@ make test-admin          # the admin dashboard's typecheck and unit tests; make 
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
 make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb, .rpm and AppImage (on Linux); package-desktop-flatpak VERSION=… for the Flatpak; scripts/test-desktop-linux-package.sh installs one and checks the app starts
 make build-ios-framework test-ios
+make install-android-sdk # the pinned SDK packages, NDK 30 and the emulators hisar-api29, hisar-api34, hisar-api37
+make build-android-aar build-android test-android # HisarKit.aar; the APKs, the test APK and lint; the JVM tests
+make test-android-ui     # instrumented tests on the one emulator or ANDROID_SERIAL; needs HISAR_DATABASE_URL to an empty database
 gofmt -l $(git ls-files '*.go')
 ```
 
+The Android targets need `ANDROID_HOME` (the SDK, with the command-line tools in `cmdline-tools/latest`),
+`ANDROID_NDK_HOME` (`$ANDROID_HOME/ndk/30.0.16248370`) and JDK 21 for the Gradle daemon
+(`gradle/gradle-daemon-jvm.properties`). `make generate-themes` writes `ThemePalettes.kt`, with the Swift palettes and
+the desktop and admin `themes.css`, from `assets/themes/themes.json`.
 ## Releases
 
 One run of Actions → Release per release (`gh workflow run release.yml -f app=<server|cli|desktop|extension> -f type=<patch|minor|major|custom> [-f version=X.Y.Z]`):
@@ -208,3 +258,13 @@ it plans the version (`scripts/plan-release.sh`), pushes the `<app>-X.Y.Z` tag (
   `HISAR_TEST_SERVER_URL` and invite links, and runs them by name, so keep those names.
 - CI fails on any `--- SKIP` outside `TestIntegration*` and `TestRecordOpenSSHFixture`.
 - The desktop root package needs cgo and the built frontend, so `make test` covers every other desktop package.
+- `IosTestParityTest` (`make test-android`) reads every `func test…` in `mobile/ios/Tests/Unit` and `Tests/UI` and every
+  `fun test…` in `mobile/android/*/src/test` and `src/androidTest`. Each iPhone test needs an Android test of the same
+  name, a row in its `renamed` table, or a reason in `notApplicable`. `model/src/test/resources/ios-test-parity-expected-missing.txt`
+  lists the iPhone tests not ported yet and only shrinks: a ported test fails the check until its line is deleted.
+- `make test-android-ui` (`scripts/test-android-ui.sh`) starts `hisar-server`, the SMTP sink and the sharing partner
+  through `scripts/ui-test-partner.sh`, which `make test-ios-ui` shares, plus `hisar-ui-test-mac` and
+  `answer_as_other_device`, the `hisar` CLI as the user's other device in `CrossDeviceSyncUITests`. Each test reads its
+  account as `HISAR_UI_TEST_<NAME>_INVITE_LINK` and `_EMAIL`, the iPhone's names; invites are single-use, so a new
+  server test adds a `ui_test_add_account` line. The test orchestrator runs each test in a new process with the app's
+  data cleared. `ANDROID_UI_TESTS=<class or test names>` or `ANDROID_UI_TESTS=smoke` runs a subset.

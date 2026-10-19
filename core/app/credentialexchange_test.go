@@ -8,6 +8,8 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/json"
+	"os"
+	"slices"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/browserprotocol"
@@ -135,5 +137,45 @@ func TestCredentialExchangeImportAddsPasskeysThatSignIn(t *testing.T) {
 	}
 	if progress, err := service.StartImport(personalID, true); err != nil || progress.TotalCount != 0 {
 		t.Errorf("second import = %+v %v", progress, err)
+	}
+}
+
+// The CXF Android's credential transfer hands over (core/importer's spec fixture) links its login to the scope's app, and
+// the imported passkey signs.
+func TestCredentialExchangeImportLinksAndroidApps(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	service, personalID := fixture.service, fixture.personalID
+	content, err := os.ReadFile("../importer/testdata/credential-exchange-android.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := PrepareCredentialExchangeImport(service, personalID, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if preview.FileName != "Example Exporter" || preview.ItemCount != 6 || preview.PasskeyCount != 2 || len(preview.Skipped) != 3 {
+		t.Fatalf("preview = %+v", preview)
+	}
+	if _, err := service.StartImport(personalID, true); err != nil {
+		t.Fatal(err)
+	}
+	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 6 || len(progress.Failed) != 0 {
+		t.Fatalf("progress = %+v", progress)
+	}
+
+	const certificate = "80:36:59:41:C9:DC:84:B8:D8:46:4C:E0:B7:EF:64:27:B1:DF:DE:34:F6:31:7B:58:FB:92:A9:03:E9:F8:2C:65"
+	example := listItemsByTitle(t, service, personalID)["Example"]
+	if !slices.Equal(example.URLs, []string{"https://login.example.com"}) ||
+		!slices.Equal(example.AndroidApps, []ItemAndroidApp{{PackageName: "com.example.app", CertificateSHA256: certificate}}) {
+		t.Errorf("Example: websites %q, apps %+v", example.URLs, example.AndroidApps)
+	}
+	logins, err := ListLoginsForAndroidApp(service, "com.example.app", certificate)
+	if err != nil || !slices.Equal(listLoginTitles(logins), []string{"Example"}) {
+		t.Errorf("logins for the app: %+v %v", logins, err)
+	}
+
+	clientDataHash := sha256.Sum256([]byte("client data"))
+	if _, err := SignPasskeyForRelyingParty(service, "login.example.com", "7eRKGgxZmQPuErE3IN4Lqg", encodeBase64URL(clientDataHash[:])); err != nil {
+		t.Errorf("the imported passkey does not sign: %v", err)
 	}
 }

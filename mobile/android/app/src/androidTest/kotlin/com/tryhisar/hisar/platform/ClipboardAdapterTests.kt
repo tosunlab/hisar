@@ -1,0 +1,123 @@
+package com.tryhisar.hisar.platform
+
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ComponentName
+import android.os.ParcelFileDescriptor
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
+import kotlin.concurrent.thread
+import kotlin.time.Duration.Companion.seconds
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+
+@RunWith(AndroidJUnit4::class)
+class ClipboardAdapterTests {
+    private val clipboardManager = targetContext.getSystemService(ClipboardManager::class.java)
+    private val scenario = launchFocusedActivity()
+
+    private val clipboardText: String?
+        get() = clipboardManager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+
+    @Before
+    fun setUp() {
+        clipboardManager.clearPrimaryClip()
+    }
+
+    @After
+    fun tearDown() {
+        ClipboardAdapter(targetContext).setText("")
+        scenario.close()
+    }
+
+    @Test
+    fun testCopiedTextIsReportedUntilReplaced() {
+        val clipboard = ClipboardAdapter(targetContext)
+        assertEquals("", clipboard.getText())
+        assertTrue(clipboard.setText("s3cret"))
+        assertEquals("s3cret", clipboardText)
+        assertEquals("s3cret", clipboard.getText())
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("Other", "something else"))
+        assertEquals("Hisar never reads text another app copied", "", clipboard.getText())
+    }
+
+    @Test
+    fun testEmptyTextClearsThePasteboard() {
+        val clipboard = ClipboardAdapter(targetContext)
+        clipboard.setText("s3cret")
+        clipboard.setText("")
+        assertEquals(null, clipboardText)
+    }
+
+    @Test
+    fun testSetTextFromABackgroundThread() {
+        val clipboard = ClipboardAdapter(targetContext)
+        var isSet = false
+        thread { isSet = clipboard.setText("from Go") }.join()
+        assertTrue(isSet)
+        assertEquals("from Go", clipboardText)
+    }
+
+    @Test
+    fun testCopyIsMarkedSensitive() {
+        ClipboardAdapter(targetContext).setText("s3cret")
+        val extras = clipboardManager.primaryClipDescription?.extras
+        assertTrue("keyboards and the copy overlay hide a sensitive clip", extras?.getBoolean("android.content.extra.IS_SENSITIVE") == true)
+    }
+
+    @Test
+    fun testPlainCopyIsNotSensitiveAndNeverCleared() {
+        val clipboard = ClipboardAdapter(targetContext, clearAfter = 10.seconds)
+        clipboard.setText("s3cret")
+        assertTrue("the secret's copy sets the alarm", isClearAlarmPending())
+        assertTrue(clipboard.setPlainText("support@tryhisar.com"))
+        assertEquals("support@tryhisar.com", clipboardText)
+        assertTrue(clipboardManager.primaryClipDescription?.extras?.getBoolean("android.content.extra.IS_SENSITIVE") != true)
+        assertEquals("Go never clears plain text", "", clipboard.getText())
+        assertFalse("the secret's alarm no longer clears the clipboard", isClearAlarmPending())
+    }
+
+    @Test
+    fun testAlarmClearsHisarsCopy() {
+        ClipboardAdapter(targetContext, clearAfter = 5.seconds).setText("s3cret")
+        assertEquals("s3cret", clipboardText)
+        waitUntil(60_000, "the alarm clears the copy") { clipboardText == null }
+    }
+
+    @Test
+    fun testAlarmKeepsANewerCopy() {
+        ClipboardAdapter(targetContext, clearAfter = 5.seconds).setText("s3cret")
+        clipboardManager.setPrimaryClip(ClipData.newPlainText("Other", "copied later"))
+        waitUntilTheAlarmRan()
+        assertEquals("the alarm, run while Hisar could see the newer copy, kept it", "copied later", clipboardText)
+    }
+
+    @Test
+    fun testExpiredCopyIsClearedWhenHisarReturns() {
+        val clipboard = ClipboardAdapter(targetContext, clearAfter = 5.seconds)
+        ForegroundActivity(application, clipboard::clearExpiredCopy)
+        clipboard.setText("s3cret")
+        UiDevice.getInstance(InstrumentationRegistry.getInstrumentation()).pressHome()
+        waitUntil(10_000, "the copy expires") { HisarClip.read(targetContext)?.let { System.currentTimeMillis() >= it.expiresAt } ?: true }
+        launchFocusedActivity().use {
+            waitUntil(5_000, "Hisar clears its expired copy when it is back in front") { clipboardText == null }
+        }
+    }
+
+    /** Every run of the alarm, whether it clears the copy or keeps a newer one, forgets Hisar's copy as its last step. */
+    private fun waitUntilTheAlarmRan() = waitUntil(60_000, "the alarm runs") { HisarClip.read(targetContext) == null }
+
+    /** Whether the system holds the clear alarm; AlarmManager can only be asked through dumpsys. */
+    private fun isClearAlarmPending(): Boolean {
+        val receiver = ComponentName(targetContext, ClipboardClearReceiver::class.java).flattenToShortString()
+        val dump = InstrumentationRegistry.getInstrumentation().uiAutomation.executeShellCommand("dumpsys alarm")
+        val allLine = ParcelFileDescriptor.AutoCloseInputStream(dump).bufferedReader().use { it.readLines() }
+        return allLine.any { it.trim().startsWith("tag=") && it.endsWith(receiver) }
+    }
+}

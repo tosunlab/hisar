@@ -573,6 +573,19 @@ function maskSecret(secret: string): string {
         </span>
       </div>
 
+      <div
+        v-for="androidApp in store.selectedItem.androidApps ?? []"
+        :key="`${androidApp.packageName} ${androidApp.certificateSha256}`"
+        class="field"
+        data-testid="android-app-row"
+      >
+        <span class="field-label">Android app</span>
+        <span class="field-value">
+          {{ androidApp.packageName }}
+          <span class="android-app-certificate monospace muted">SHA-256 {{ androidApp.certificateSha256 }}</span>
+        </span>
+      </div>
+
       <div v-for="field in store.selectedItem.fields" :key="field.name" class="field">
         <span class="field-label">{{ field.name }}</span>
         <span class="field-value" :class="{ monospace: field.concealed }">
@@ -599,6 +612,7 @@ function maskSecret(secret: string): string {
           store.selectedItem.urls.length === 0 &&
           store.selectedItem.fields.length === 0 &&
           (store.selectedItem.passkeys ?? []).length === 0 &&
+          (store.selectedItem.androidApps ?? []).length === 0 &&
           !server?.host &&
           !server?.port &&
           !server?.sshKeyId &&
@@ -771,6 +785,12 @@ h2 {
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
+}
+
+.android-app-certificate {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
 }
 
 .secret {

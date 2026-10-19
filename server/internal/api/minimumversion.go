@@ -17,6 +17,7 @@ const extensionStoreURL = "https://chromewebstore.google.com/detail/mmipiffoogbl
 var updateURLsByClient = map[string]string{
 	apitypes.ClientDesktopMacOS: downloadURL,
 	apitypes.ClientIOS:          downloadURL,
+	apitypes.ClientAndroid:      downloadURL,
 	apitypes.ClientCLI:          downloadURL,
 	apitypes.ClientExtension:    extensionStoreURL,
 }

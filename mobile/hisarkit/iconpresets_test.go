@@ -29,11 +29,12 @@ func readQuotedList(t *testing.T, path, marker, end string) []string {
 	return values
 }
 
-// TestIconPresetsMatchTheApps keeps the pickers of the Mac and iPhone apps on core/item's preset icons and colors.
+// TestIconPresetsMatchTheApps keeps the pickers of the Mac, iPhone and Android apps on core/item's preset icons and colors.
 func TestIconPresetsMatchTheApps(t *testing.T) {
 	for _, source := range []struct{ path, presets, colors, end string }{
 		{"../ios/Shared/Backend/Models.swift", "static let allPreset = [", "static let allColor = [", "]"},
 		{"../../desktop/frontend/src/util.ts", "export const allIconPreset = [", "export const allIconColor = [", "]"},
+		{"../android/model/src/main/kotlin/com/tryhisar/hisar/model/ChosenIcon.kt", "val allPreset = listOf(", "val allColor = listOf(", ")"},
 	} {
 		if got := readQuotedList(t, source.path, source.presets, source.end); !reflect.DeepEqual(got, item.IconPresets()) {
 			t.Errorf("%s presets = %v, want %v", source.path, got, item.IconPresets())

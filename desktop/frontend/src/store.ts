@@ -394,10 +394,20 @@ export async function lock(): Promise<void> {
   }
 }
 
-export function handleLocked(): void {
+// The backend also sends "locked" when the server signed this device out, so the screen follows the status it reports.
+export async function handleLocked(): Promise<void> {
   clearAllVaultData();
   store.status = { ...store.status, state: "locked" };
   store.errorMessage = "";
+  let status: Status | undefined;
+  try {
+    status = await api.getStatus();
+  } catch {
+    return;
+  }
+  if (status) {
+    await applyStatus(status);
+  }
 }
 
 export async function signOut(): Promise<void> {
@@ -1602,7 +1612,7 @@ export async function setCompactSSHApproval(isCompact: boolean): Promise<void> {
 }
 
 export async function setPhoneApproval(isEnabled: boolean): Promise<void> {
-  await changeSSHConfig(() => api.setPhoneApproval(isEnabled), isEnabled ? "Your iPhone can now approve requests" : "Requests are approved only on this Mac");
+  await changeSSHConfig(() => api.setPhoneApproval(isEnabled), isEnabled ? "Your smart device can now approve requests" : "Requests are approved only on this Mac");
 }
 
 export async function setSigningRemember(seconds: number): Promise<void> {

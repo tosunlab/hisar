@@ -201,7 +201,7 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 func convertToAgentItem(vault *session.Vault, vaultItem *item.Item, reference secretreference.Reference) cliprotocol.AgentItem {
 	agentItem := cliprotocol.AgentItem{
 		ID: vaultItem.ID, VaultID: vault.ID, VaultName: vault.Name, Title: vaultItem.Overview.Title, Type: vaultItem.Category(),
-		Username: vaultItem.Overview.Username, URLs: append([]string{}, vaultItem.Overview.URLs...), Tags: append([]string{}, vaultItem.Overview.Tags...),
+		Username: vaultItem.Overview.Username, URLs: vaultItem.Websites(), Tags: append([]string{}, vaultItem.Overview.Tags...),
 		HasNotes: strings.TrimSpace(vaultItem.Details.Notes) != "", HasOneTimePassword: vaultItem.Details.OneTimePassword != "",
 		Fields: []cliprotocol.AgentField{},
 	}

@@ -98,7 +98,7 @@ describe("vault menu", () => {
 
   it("explains that the Personal vault can't be deleted", async () => {
     store.selectedVaultID = "personal";
-    const reason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there.";
+    const reason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there.";
     api.getVaultActions.mockResolvedValue(createVaultActions({ vault: personalVault, canDelete: false, deleteBlockedReason: reason, canLeave: false, targetVaults: [] }));
     const wrapper = mount(MainView, { attachTo: document.body });
     await chooseFromMenu(wrapper, "delete");

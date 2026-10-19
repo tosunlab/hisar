@@ -2,6 +2,8 @@ package itemicon
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"io"
@@ -41,13 +43,14 @@ type Fetcher struct {
 	client *http.Client
 }
 
-// NewFetcher returns a fetcher that dials only public addresses.
-func NewFetcher() *Fetcher {
+// NewFetcher returns a fetcher that dials only public addresses and trusts roots, or the system's roots when nil.
+func NewFetcher(roots *x509.CertPool) *Fetcher {
 	dialer := &net.Dialer{Timeout: requestTimeout, Control: refusePrivateAddress}
 	transport := &http.Transport{
 		// No proxy: the address check must see the website's own address.
 		Proxy:                 nil,
 		DialContext:           dialer.DialContext,
+		TLSClientConfig:       &tls.Config{RootCAs: roots},
 		TLSHandshakeTimeout:   requestTimeout,
 		ResponseHeaderTimeout: requestTimeout,
 		MaxIdleConns:          8,

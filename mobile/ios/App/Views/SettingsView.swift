@@ -614,7 +614,7 @@ struct MacApprovalsView: View {
             } header: {
                 Text("How requests appear")
             } footer: {
-                Text("Approving answers one request and never unlocks Hisar on your Mac. The Mac sends requests only while “Approve requests on my iPhone” is on in its SSH agent settings.")
+                Text("Approving answers one request and never unlocks Hisar on your Mac. The Mac sends requests only while “Approve requests on my smart device” is on in its SSH agent settings.")
             }
         }
         .applyThemedListStyle()

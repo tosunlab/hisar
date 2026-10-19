@@ -53,6 +53,7 @@ export const settingGroups: readonly SettingGroup[] = [
     fields: [
       { name: "minimumVersions.desktopMacOS", label: "Mac app", kind: "text", placeholder: "No minimum" },
       { name: "minimumVersions.iOS", label: "iPhone app", kind: "text", placeholder: "No minimum" },
+      { name: "minimumVersions.android", label: "Android app", kind: "text", placeholder: "No minimum" },
       { name: "minimumVersions.cli", label: "Command-line tool", kind: "text", placeholder: "No minimum" },
       { name: "minimumVersions.extension", label: "Browser extension", kind: "text", placeholder: "No minimum" },
     ],

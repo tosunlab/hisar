@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- The camera only scans the Emergency Kit's QR code; without one, the sign-in form is typed. -->
+    <uses-feature
+        android:name="android.hardware.camera.any"
+        android:required="false" />
+
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.APPLICATION_PREFERENCES" />
+            <category android:name="android.intent.category.APP_BROWSER" />
+        </intent>
+        <!-- AutoFill reads the signing certificate and name of the app it fills. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".HisarApplication"
+        android:allowBackup="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Hisar">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.Hisar.Starting">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="hisar" />
+                <data android:host="sign-in" />
+                <data android:host="invite" />
+            </intent-filter>
+        </activity>
+        <!-- The system's Autofill service screen opens this for Hisar's settings; MainActivity shows Settings → AutoFill. -->
+        <activity-alias
+            android:name=".autofill.AutoFillSettingsActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity" />
+        <receiver
+            android:name=".platform.ClipboardClearReceiver"
+            android:exported="false" />
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.files"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/shared_files" />
+        </provider>
+        <service
+            android:name=".autofill.HisarAutofillService"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/hisar_autofill_service" />
+        </service>
+        <activity
+            android:name=".autofill.AutofillActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Hisar.AutoFill" />
+        <service
+            android:name=".passkey.HisarCredentialProviderService"
+            android:enabled="@bool/isCredentialProviderSupported"
+            android:exported="true"
+            android:label="@string/app_name"
+            android:permission="android.permission.BIND_CREDENTIAL_PROVIDER_SERVICE"
+            tools:targetApi="34">
+            <intent-filter>
+                <action android:name="android.service.credentials.CredentialProviderService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.credentials.provider"
+                android:resource="@xml/hisar_credential_provider" />
+        </service>
+        <activity
+            android:name=".passkey.CredentialActivity"
+            android:enabled="@bool/isCredentialProviderSupported"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:taskAffinity=""
+            android:theme="@style/Theme.Hisar.AutoFill"
+            tools:targetApi="34" />
+    </application>
+
+</manifest>

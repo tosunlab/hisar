@@ -13,7 +13,6 @@ import (
 )
 
 var (
-	ErrBiometricUnavailable  = errors.New("Touch ID is not available on this Mac")
 	ErrBiometricNotReady     = errors.New("unlock with your master password first")
 	ErrNoNewAccountUnlockKey = errors.New("turn it on in Settings with your master password")
 )
@@ -87,15 +86,26 @@ func (s *Service) EnableNewAccountBiometricUnlock() (Status, error) {
 	return status, err
 }
 
-// requireBiometricSetup runs with the mutex held and shows the Touch ID prompt.
+// requireBiometricSetup runs with the mutex held and shows the biometric prompt.
 func (s *Service) requireBiometricSetup() error {
 	if err := s.requireUnlocked(); err != nil {
 		return err
 	}
 	if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() {
-		return ErrBiometricUnavailable
+		return fmt.Errorf("%s unlock is not available on this device", s.config.BiometricName)
 	}
-	return s.config.Biometric.Authenticate("turn on Touch ID unlock for Hisar")
+	return s.authenticateToStoreBiometricKey(fmt.Sprintf("turn on %s unlock for Hisar", s.config.BiometricName))
+}
+
+// authenticateToStoreBiometricKey shows the prompt that guards StoreKey; a BiometricKeyPreparer first readies the store
+// that this prompt authorizes.
+func (s *Service) authenticateToStoreBiometricKey(reason string) error {
+	if preparer := s.config.BiometricKeyPreparer; preparer != nil {
+		if err := preparer.PrepareStoreKey(s.state.AccountID); err != nil {
+			return fmt.Errorf("could not create the biometric unlock key: %w", err)
+		}
+	}
+	return s.config.Biometric.Authenticate(reason)
 }
 
 func (s *Service) sealBiometricUnlock(accountUnlockKey []byte) (Status, error) {
@@ -106,7 +116,7 @@ func (s *Service) sealBiometricUnlock(accountUnlockKey []byte) (Status, error) {
 		return Status{}, err
 	}
 	if err := s.config.Biometric.StoreKey(s.state.AccountID, wrappingKey); err != nil {
-		return Status{}, fmt.Errorf("could not save the Touch ID key to the keychain: %w", err)
+		return Status{}, fmt.Errorf("could not save the %s key: %w", s.config.BiometricName, err)
 	}
 	s.state.BiometricUnlock = sealedUnlockKey
 	s.recordPasswordUnlock()
@@ -124,7 +134,7 @@ func (s *Service) UnlockWithBiometric() (Status, error) {
 	return s.unlockWithBiometric(func() error { return s.config.Biometric.Authenticate("unlock Hisar") })
 }
 
-// unlockWithBiometric runs authenticate as the Touch ID check, so the approval window can show it in its own window.
+// unlockWithBiometric runs authenticate as the biometric check, so the approval window can show it in its own window.
 func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error) {
 	s.mutex.Lock()
 	if !s.state.IsLoggedIn() {
@@ -137,19 +147,25 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 	}
 	server, token, accountID, sealedUnlockKey := s.state.Server, s.state.Token, s.state.AccountID, s.state.BiometricUnlock
 	accountCache := s.getCache()
+	preparer := s.config.BiometricKeyPreparer
 	s.mutex.Unlock()
 
+	if preparer != nil {
+		if err := preparer.PrepareLoadKey(accountID); err != nil {
+			return Status{}, s.resetBiometricAfterFailure(fmt.Errorf("the biometric unlock key can no longer be used: %w", err))
+		}
+	}
 	if err := authenticate(); err != nil {
 		return Status{}, err
 	}
 	wrappingKey, err := s.config.Biometric.LoadKey(accountID)
 	if err != nil {
-		return Status{}, s.resetBiometricAfterFailure(fmt.Errorf("the Touch ID key is missing from the keychain: %w", err))
+		return Status{}, s.resetBiometricAfterFailure(fmt.Errorf("the %s key is missing: %w", s.config.BiometricName, err))
 	}
 	defer clear(wrappingKey)
 	accountUnlockKey, err := crypt.Open(wrappingKey, sealedUnlockKey, buildBiometricContext(accountID))
 	if err != nil {
-		return Status{}, s.resetBiometricAfterFailure(errors.New("the Touch ID key does not match"))
+		return Status{}, s.resetBiometricAfterFailure(fmt.Errorf("the %s key does not match", s.config.BiometricName))
 	}
 	defer clear(accountUnlockKey)
 
@@ -181,5 +197,13 @@ func (s *Service) resetBiometricAfterFailure(cause error) error {
 	defer s.mutex.Unlock()
 	s.forgetBiometricUnlock()
 	s.state.Save()
-	return fmt.Errorf("%v; Touch ID unlock was turned off, unlock with your master password and turn it on again", cause)
+	return fmt.Errorf("%v; %s unlock was turned off, unlock with your master password and turn it on again", cause, s.config.BiometricName)
+}
+
+// SetBiometricKeyPreparer is for apps that create the preparer after the service (hisarkit); it must run right after
+// NewService. Not a method, so the UI cannot call it.
+func SetBiometricKeyPreparer(s *Service, preparer BiometricKeyPreparer) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.config.BiometricKeyPreparer = preparer
 }

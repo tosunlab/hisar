@@ -42,6 +42,13 @@ type Biometric interface {
 	DeleteKey(accountID string) error
 }
 
+// BiometricKeyPreparer is for platforms whose biometric prompt must carry the key operation itself (Android's per-use
+// Keystore key). Each Prepare readies one StoreKey or LoadKey for the account; the Authenticate after it authorizes it.
+type BiometricKeyPreparer interface {
+	PrepareStoreKey(accountID string) error
+	PrepareLoadKey(accountID string) error
+}
+
 type VaultSummary struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -252,6 +259,9 @@ type ItemDetail struct {
 	HasOneTimePassword bool   `json:"hasOneTimePassword"`
 
 	Passkeys []ItemPasskey `json:"passkeys"`
+	// AndroidApps are the Android apps a login fills into, which the item stores among its URLs; URLs holds only its
+	// websites. SaveItem keeps the stored ones; AddAndroidApp and RemoveAndroidApp change them.
+	AndroidApps []ItemAndroidApp `json:"androidApps"`
 	// CanConvertToSecureNote: a login with only notes and custom fields, which ConvertToSecureNote turns into a secure note.
 	CanConvertToSecureNote bool `json:"canConvertToSecureNote"`
 	// Card holds a credit card's values, which are stored as named custom fields; Fields then holds only the others.
@@ -451,12 +461,19 @@ type Config struct {
 	GetSystemIdleDuration func() (time.Duration, bool)
 	ClipboardClearAfter   time.Duration
 	Biometric             Biometric
-	// BiometricPasswordInterval is how long Touch ID may unlock before the master password is required again.
+	// BiometricName names the biometric check in messages, as in "turn on Touch ID unlock" and "the Touch ID key".
+	BiometricName string
+	// BiometricPasswordInterval is how long biometrics may unlock before the master password is required again.
 	BiometricPasswordInterval time.Duration
 	// IsBiometricAllowedAfterLaunch lets biometrics unlock before the first password unlock, for platforms whose
 	// keychain enforces the biometric check itself (iOS); the desktop keeps its launch rule.
 	IsBiometricAllowedAfterLaunch bool
-	Now                           func() time.Time
+	// BiometricKeyPreparer runs before each biometric prompt that guards StoreKey or LoadKey; nil where none is needed.
+	BiometricKeyPreparer BiometricKeyPreparer
+	Now                  func() time.Time
+	// SleepCountingClock reads, from a fixed origin, a clock that keeps counting while the device sleeps, which Go's
+	// timers do not (golang/go#24595); auto-lock measures idle time on it.
+	SleepCountingClock func() time.Duration
 	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
 	OnLock func()
 	// OnRemoteChange runs after the backend synced a change another device made; the UI refreshes.

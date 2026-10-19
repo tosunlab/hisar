@@ -13,6 +13,7 @@ function createSettings(): AdminSettings {
     invitePolicy: { value: "anyone", source: "default" },
     "minimumVersions.desktopMacOS": { value: "", source: "default", environmentVariable: "HISAR_MINIMUM_VERSION_DESKTOP_MACOS" },
     "minimumVersions.iOS": { value: "", source: "default", environmentVariable: "HISAR_MINIMUM_VERSION_IOS" },
+    "minimumVersions.android": { value: "", source: "default", environmentVariable: "HISAR_MINIMUM_VERSION_ANDROID" },
     "minimumVersions.cli": { value: "99.0.0", source: "environment", environmentVariable: "HISAR_MINIMUM_VERSION_CLI" },
     "minimumVersions.extension": { value: "", source: "default", environmentVariable: "HISAR_MINIMUM_VERSION_EXTENSION" },
     sessionLifetimeDays: { value: 30, source: "default" },

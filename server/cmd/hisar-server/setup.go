@@ -72,7 +72,7 @@ func logSettings(effective settings.Settings) {
 		log.Printf("email through %s port %d", effective.SMTP.Host, effective.SMTP.Port)
 	}
 	if minimumVersions := effective.MinimumVersions; minimumVersions != (settings.MinimumVersions{}) {
-		log.Printf("minimum app versions: macOS %q, iOS %q, CLI %q, extension %q", minimumVersions.DesktopMacOS, minimumVersions.IOS, minimumVersions.CLI, minimumVersions.Extension)
+		log.Printf("minimum app versions: macOS %q, iOS %q, Android %q, CLI %q, extension %q", minimumVersions.DesktopMacOS, minimumVersions.IOS, minimumVersions.Android, minimumVersions.CLI, minimumVersions.Extension)
 	}
 }
 

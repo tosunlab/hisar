@@ -30,6 +30,7 @@ import type {
   ImportSkippedEntry,
   ItemAPICredential,
   ItemAddress,
+  ItemAndroidApp,
   ItemCard,
   ItemDetail as BoundItemDetail,
   ItemIcon,
@@ -97,6 +98,7 @@ export type {
   ImportSkippedEntry,
   ItemAPICredential,
   ItemAddress,
+  ItemAndroidApp,
   ItemCard,
   ItemField,
   ItemIcon,
@@ -171,15 +173,23 @@ function normalizeShareLink(boundShareLink: BoundShareLink): ShareLink {
 }
 
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
-export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "tags" | "fields" | "passkeys"> {
+export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "tags" | "fields" | "passkeys" | "androidApps"> {
   urls: string[];
   tags: string[];
   fields: ItemField[];
   passkeys: ItemPasskey[];
+  androidApps: ItemAndroidApp[];
 }
 
 function normalizeItem(boundItem: BoundItemDetail): ItemDetail {
-  return { ...boundItem, urls: boundItem.urls ?? [], tags: boundItem.tags ?? [], fields: boundItem.fields ?? [], passkeys: boundItem.passkeys ?? [] };
+  return {
+    ...boundItem,
+    urls: boundItem.urls ?? [],
+    tags: boundItem.tags ?? [],
+    fields: boundItem.fields ?? [],
+    passkeys: boundItem.passkeys ?? [],
+    androidApps: boundItem.androidApps ?? [],
+  };
 }
 
 // FavoriteItem is one of the user's starred items with the vault it is in; item has no secrets.
@@ -543,6 +553,7 @@ export function createEmptyItem(): ItemDetail {
     oneTimePassword: "",
     hasOneTimePassword: false,
     passkeys: [],
+    androidApps: [],
     canConvertToSecureNote: false,
     isFavorite: false,
   };

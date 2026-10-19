@@ -10,8 +10,6 @@ import (
 
 const emergencyKitFileName = "Hisar Emergency Kit.pdf"
 
-var errMacApprovalDisabled = errors.New("approving Mac requests is turned off in Settings on this iPhone")
-
 // SetAutoLock takes 30, 60, 300, 600 or 3600 seconds and returns app.Status as JSON.
 func (hisar *Hisar) SetAutoLock(seconds int) (string, error) {
 	return encodeJSON(hisar.service.SetAutoLock(seconds))
@@ -22,7 +20,7 @@ func (hisar *Hisar) ListAllDevice() (string, error) {
 	return encodeJSON(hisar.service.ListDevices())
 }
 
-// RevokeDevice signs out another device; this iPhone signs out with SignOut.
+// RevokeDevice signs out another device; this phone signs out with SignOut.
 func (hisar *Hisar) RevokeDevice(deviceID string) error {
 	return hisar.service.RevokeDevice(deviceID)
 }
@@ -64,7 +62,7 @@ func (hisar *Hisar) SetMacApprovalAllowed(isAllowed bool) error {
 	return app.NewApprovalPreference(hisar.service).SetPhoneApproval(isAllowed)
 }
 
-// GetTheme returns this iPhone's app.Theme as JSON; the AutoFill extension reads the same state file.
+// GetTheme returns this phone's app.Theme as JSON; the AutoFill extension reads the same state file.
 func (hisar *Hisar) GetTheme() string {
 	theme, _ := encodeJSON(hisar.service.GetTheme(), nil)
 	return theme

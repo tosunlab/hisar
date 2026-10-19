@@ -1,6 +1,6 @@
 # Hisar copy glossary
 
-One name for each thing, the same on the Mac, the iPhone, the browser extension, the CLI and the server's pages and emails. Check here before adding or renaming user-facing text.
+One name for each thing, the same on the Mac, the iPhone, the Android app, the browser extension, the CLI and the server's pages and emails. Check here before adding or renaming user-facing text.
 
 ## Product
 
@@ -9,7 +9,7 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | End-to-end encrypted password, SSH key and secrets manager for developers. | self-hosted, family password manager | App descriptions, Info.plist, Linux `.desktop`, store listing, share link page |
 | Passwords, SSH keys and secrets for developers, end-to-end encrypted. | Two taglines, exclamation marks | The one tagline: Mac sign-in, iPhone About |
 | `api.tryhisar.com` | `tryhisar.com` (serves no page yet), `hisar.example.com` as a suggestion | Default server, links, privacy policy URL (`https://api.tryhisar.com/privacy`) |
-| Use a different server… | A required Server field | Sign in, Mac and iPhone |
+| Use a different server… | A required Server field | Sign in, Mac, iPhone and Android |
 | the Hisar server | your Hisar server, your family's server | Explanations |
 
 ## Accounts and secrets
@@ -19,13 +19,13 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | master password | password (when the master password is meant), passphrase |
 | Secret Key | secret key, account key |
 | Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
-| Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now | Biometrics, fingerprint unlock |
+| Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock |
 | Sign in, Sign out, Create account | Log in, Register |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |
 | "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
 | "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
-| "Export your items first in Settings → Export." (Mac), "… in Settings → Account → Export data." (iPhone), "… with `hisar export`" (CLI) | Back up your data |
+| "Export your items first in Settings → Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
 
 ## People and sharing
 
@@ -79,13 +79,13 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 | Rename…, Delete vault…, Leave vault… (the vault's menu; ⋯ is labelled "Vault actions") | Remove vault, Archive, Exit vault |
 | Delete “Work”? · These people lose access: · Move its N items to [vault] · Delete the vault and its N items · Type Work to confirm · Delete vault | Are you sure?, Destroy, Wipe |
 | Leave “Work”? · You lose access to its items on all your devices. An owner can invite you again. · Leave vault | Unsubscribe, Quit vault |
-| Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and the iPhone go there. | Cannot delete default vault |
+| Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there. | Cannot delete default vault |
 | “Work” is no longer available: it was deleted, or you no longer have access to it. | Vault removed by admin |
 | Moved N items to Personal and deleted Work. · Deleted Work. · You left Work. | — |
-| Export (Settings section on the Mac), Export data… (iPhone, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
+| Export (Settings section on the Mac), Export data… (iPhone and Android, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
 | encrypted export, export passphrase ("at least 10 characters"; Hisar can't recover it) | export password, backup key, master password (for the export's own passphrase) |
 | Plain JSON, with the warning "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done." | unencrypted backup, raw export |
-| Export with Touch ID… / Export with Face ID · Exported N items from M vaults to <path>. | — |
+| Export with Touch ID… / Export with Face ID / Export with biometrics (Android) · Exported N items from M vaults to <path>. | — |
 | that passphrase doesn't open this export | wrong password, decryption failed |
 | `.env` import: "Store N values in Personal › shop", "Kept as they are: PORT", "Run a command with them: hisar run --env-file .env -- <command>" | migrate, vault-ify |
 
@@ -95,7 +95,7 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 |---|---|
 | the hisar command-line tool (`hisar`) | the CLI (in app copy), the binary |
 | SSH agent, Use Hisar for SSH | key agent |
-| Approve requests on my iPhone (Mac) / Approve requests from my Mac (iPhone) | Allow approvals from my iPhone, Allow approving Mac requests |
+| Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
 | Approve, Deny | Allow, Reject |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 
@@ -105,8 +105,8 @@ One name for each thing, the same on the Mac, the iPhone, the browser extension,
 |---|---|---|
 | "Ada invited you to Hisar"; Download for Mac; Open in Hisar; invite code | sign-up token, registration link | Invite page and invite email |
 | This invite isn't valid | expired, already used, not found (never say which) | Invite page for any code that does not work |
-| Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. | Your app is outdated, unsupported version | Mac and iPhone blocking screen |
-| Update now (Mac, Sparkle); Install the latest Hisar (iPhone, until TestFlight or the App Store); Check again | Upgrade | Blocking screen buttons |
+| Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. (This device has 0.1.0. on Android) | Your app is outdated, unsupported version | Mac, iPhone and Android blocking screen |
+| Update now (Mac, Sparkle); Install the latest Hisar (iPhone and Android, until the stores have Hisar); Check again | Upgrade | Blocking screen buttons |
 | Hisar needs an update | update required error, 426 | What the SSH agent, the command-line tool, coding agents and the extension are told |
 | Update the Hisar extension | | Extension popup when the extension itself is too old |
 
@@ -129,7 +129,7 @@ The web page at `/admin` where admins of the Hisar server manage it. The apps ne
 | SMTP host, Port, Username, Password, Sender · "Saved; type to replace" (a saved password) · "Enter the password again: changing the host, port or username clears the saved one." (under Password) · Send test email…, Send to, Send, Sending…, Close · "Hisar sends one email with the saved settings." · "Test email sent to you@example.com." · "The test email was not sent: <the SMTP error>" · "Email is not set up. Save the SMTP settings first." · "Too many test emails. Wait a minute and try again." | Mail server, From address, Test connection | Settings → Email |
 | "Test email from Hisar" (subject) · "This is a test email from the Hisar server at <origin>. Email works: the server can send invites and sharing notifications." | — | The test email |
 | Who can invite people: Anyone with an account, Admins only · "Only admins can invite people to the Hisar server." (the apps show it when a member invites under Admins only) | Invite permission, Restrict invites | Settings → Sign-up; the apps' invite error |
-| Mac app, iPhone app, Command-line tool, Browser extension · No minimum | macOS client, CLI | Settings → App versions |
+| Mac app, iPhone app, Android app, Command-line tool, Browser extension · No minimum | macOS client, CLI | Settings → App versions |
 | Audit log · Account ("Email or account ID"), Type, From, To (the filters) · All events, All <group> (All admin actions) · Load more · Export CSV, Exporting… · Time, Event, Account, Details, IP address (the columns) · Deleted account, No account · "No events match these filters." · Loading… · 120 events, 1 event (how many are shown) · "Filter by one type or one group, not both." · "The start of the date range must be before its end." · "This page of the audit log is no longer valid. Load the audit log again." | Activity, History, Logs, Download | The Audit log section |
 | Signed in, Account suspended, Settings changed … (one label per audit event type, from `auditTypes` in `server/internal/service/audit.go`) · Accounts and sign-in, Vaults and items, Sharing, Organizations and teams, Admin actions (the groups) | login, admin_account_suspended (the stored names) | Audit log, the Event column and the Type filter |
 | Session lifetime, Auth burst, Keep item history, Keep the audit log, Keep expired invitations · Days, "Days, at least 30" (the audit log) | Session TTL, Rate limit, Retention policy | Settings → Security |
@@ -162,6 +162,22 @@ The web page at `/admin` where admins of the Hisar server manage it. The apps ne
 | Help (Settings section on the Mac, row on the iPhone) | About & support, Feedback |
 | Contact support, `support@tryhisar.com` | — |
 | Copy diagnostics: app version and build, OS version, server URL, this device's ID | Anything secret, item names, other people's emails |
+
+## Android
+
+The Android app uses the iPhone's copy with these changes. Shared sentences from Go take the word "biometric" from the app (`BiometricName`), so Kotlin needs no table of replacements.
+
+| Use | Not | Where |
+|---|---|---|
+| this device ("Sign out of Hisar on this device?", "…while Hisar is open and unlocked on this device.") | this iPhone | Everywhere |
+| biometrics, biometric unlock ("Unlock with biometrics", "Approve with biometrics", "Biometric unlock is on", "Biometrics are not available, so Hisar checks your master password instead.") | Face ID, Touch ID, fingerprint | Lock screen, the offer after the new Secret Key, Settings → Security, the approval sheet, export |
+| "<Field> copied. It clears in about 2 minutes." · "Hisar locks after this long without activity. Copied values are cleared after about 2 minutes." · "One-time code copied. It clears in about 2 minutes." | "It clears in 90 seconds.", "…cleared after 90 seconds." (the iPhone's copy) | Copy notices, Settings → Security footer, AutoFill. Android's clear alarm is inexact: measured on emulators, it lands 90 to about 160 seconds after the copy (DESIGN.md §9.3), so the copy never promises 90 seconds |
+| Approve requests on my smart device (the Mac's setting, which the phones' Mac approvals footers quote; see Developer tools) | Approve requests on my iPhone | Mac Settings → SSH & Git; Settings → Mac approvals on the phones |
+| Save Emergency Kit · Print Emergency Kit · Share Emergency Kit · Save Export · Share Export · Emergency Kit saved · Export saved | Save or Print Emergency Kit, Save or Share Export | Settings; Android saves through the system's file creator, prints through its print dialog and shares through its share sheet |
+| Open Settings (Settings → AutoFill before API 34, which opens the Settings app) | Open AutoFill & Passwords | Settings → AutoFill |
+| Allow screenshots · "Off, screenshots, screen recordings and the app switcher show nothing of Hisar." | Block screenshots, Secure mode | Settings → Security (Android only) |
+| Unlock Hisar · Sign in to Hisar · Search Hisar · "Fill a login for <site>" · Always use for this app, Only this time · Turn on Hisar AutoFill | Unlock vault, Log in, Remember this app | AutoFill suggestions, the AutoFill screen, Settings → AutoFill |
+| Autofill using another service (Chrome's own label, quoted as Chrome writes it) | AutoFill using another service | Settings → AutoFill, Chrome section |
 
 ## Style
 

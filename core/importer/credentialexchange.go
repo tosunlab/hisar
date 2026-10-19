@@ -2,6 +2,7 @@ package importer
 
 import (
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -18,8 +19,8 @@ import (
 )
 
 // FormatCredentialExchange is the FIDO Credential Exchange Format (CXF) 1.x, which another password manager hands over
-// through the platform (ASCredentialImportManager on iOS) instead of a file. Binary values are base64url, a TOTP secret
-// is base32, and times are seconds since 1970.
+// through the platform (ASCredentialImportManager on iOS, Credential Manager's credential transfer on Android) instead
+// of a file. Binary values are base64url, a TOTP secret is base32, and times are seconds since 1970.
 const FormatCredentialExchange = "credential-exchange"
 
 const credentialExchangeName = "Credential Exchange"
@@ -45,10 +46,33 @@ type credentialExchangeItem struct {
 	CreationAt float64 `json:"creationAt"`
 	Favorite   bool    `json:"favorite"`
 	Scope      *struct {
-		URLs []string `json:"urls"`
+		URLs        []string                       `json:"urls"`
+		AndroidApps []credentialExchangeAndroidApp `json:"androidApps"`
 	} `json:"scope"`
 	Tags        []string          `json:"tags"`
 	Credentials []json.RawMessage `json:"credentials"`
+}
+
+// credentialExchangeAndroidApp is CXF's AndroidAppId: the fingerprint is the hash of the app's signing certificate.
+type credentialExchangeAndroidApp struct {
+	BundleID    string `json:"bundleId"`
+	Certificate *struct {
+		Fingerprint   string `json:"fingerprint"`
+		HashAlgorithm string `json:"hashAlg"`
+	} `json:"certificate"`
+}
+
+// read returns the app as Hisar links it to a login, which needs the SHA-256 of its signing certificate.
+func (app credentialExchangeAndroidApp) read() (item.AndroidApp, bool) {
+	if app.Certificate == nil || !strings.EqualFold(strings.TrimSpace(app.Certificate.HashAlgorithm), "sha256") {
+		return item.AndroidApp{}, false
+	}
+	digest, err := decodeCredentialExchangeBinary(app.Certificate.Fingerprint)
+	if err != nil {
+		return item.AndroidApp{}, false
+	}
+	parsed, err := item.ParseAndroidApp(strings.TrimSpace(app.BundleID), hex.EncodeToString(digest))
+	return parsed, err == nil
 }
 
 // credentialExchangeField is CXF's EditableField.
@@ -272,9 +296,30 @@ func convertCredentialExchangeItem(entry credentialExchangeItem, exportedAt time
 		return items, builder.skipped
 	}
 	if finishItem(&vaultItem) {
+		if entry.Scope != nil {
+			builder.linkAndroidApps(&vaultItem, entry.Scope.AndroidApps)
+		}
 		items = append([]item.Item{vaultItem}, items...)
 	}
 	return items, builder.skipped
+}
+
+// linkAndroidApps links a login to the scope's Android apps after its websites, as Hisar's own app links are stored, so
+// AutoFill offers it in them. An app without its certificate's SHA-256, or on an item that does not fill logins, is
+// reported.
+func (builder *credentialExchangeItemBuilder) linkAndroidApps(vaultItem *item.Item, apps []credentialExchangeAndroidApp) {
+	for _, app := range apps {
+		packageName := describeEntry(strings.TrimSpace(app.BundleID))
+		parsed, isReadable := app.read()
+		switch {
+		case !vaultItem.OffersLoginFill():
+			builder.skip(fmt.Sprintf("its Android app %s was not linked; only logins fill into apps", packageName))
+		case !isReadable:
+			builder.skip(fmt.Sprintf("its Android app %s was not linked; Hisar needs the SHA-256 of the app's signing certificate", packageName))
+		default:
+			vaultItem.AddAndroidApp(parsed)
+		}
+	}
 }
 
 func (builder *credentialExchangeItemBuilder) addCredential(raw json.RawMessage) error {

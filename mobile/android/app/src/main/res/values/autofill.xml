@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Packages signed with Hisar's own certificate whose page addresses AutoFill trusts: the debug build's instrumented tests. -->
+    <string-array name="autofill_test_browsers" tools:ignore="InconsistentArrays" />
+
+    <style name="Theme.Hisar.AutoFill" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>

@@ -2,7 +2,7 @@ MODULES := core server cli mobile
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64 windows/arm64
 WAILS_VERSION := v3.0.0-beta.23
 
-.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end build-extension test-raycast test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui generate-themes
+.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end build-extension test-raycast test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui install-android-sdk build-android-aar build-android test-android test-android-ui generate-themes
 
 build: build-admin
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -57,7 +57,8 @@ docker:
 install-wails:
 	go install github.com/wailsapp/wails/v3/cmd/wails3@$(WAILS_VERSION)
 
-# Writes desktop/frontend/src/themes.css, admin/src/themes.css and mobile/ios/Shared/Views/ThemePalettes.swift from assets/themes/themes.json (Node 22.6 or later).
+# Writes desktop/frontend/src/themes.css, admin/src/themes.css, mobile/ios/Shared/Views/ThemePalettes.swift and
+# mobile/android/model/src/main/kotlin/com/tryhisar/hisar/model/theme/ThemePalettes.kt from assets/themes/themes.json (Node 22.6 or later).
 generate-themes:
 	node scripts/themes/generate.ts
 
@@ -111,9 +112,34 @@ test-ios:
 	xcodebuild $(if $(IOS_TESTS_PREBUILT),test-without-building -scheme Hisar,test -scheme HisarUnitTests) -only-testing:HisarTests \
 		-project $(IOS_PROJECT) -destination "id=$(IOS_SIMULATOR_ID)" $(IOS_DERIVED_DATA_FLAG)
 
-# Needs bin/hisar-server and bin/hisar (make build) and HISAR_DATABASE_URL pointing at an empty database.
+# Needs HISAR_DATABASE_URL pointing at an empty database; the script builds and starts the server (scripts/ui-test-partner.sh).
 test-ios-ui:
 	IOS_SIMULATOR_ID=$(IOS_SIMULATOR_ID) ./scripts/test-ios-ui.sh
+
+# The pinned Android SDK, NDK and emulator images in ANDROID_HOME, and the AVDs hisar-api29, hisar-api34 and hisar-api37.
+install-android-sdk:
+	./scripts/install-android-sdk.sh
+
+# mobile/build/HisarKit.aar for arm64-v8a and x86_64; needs ANDROID_HOME, ANDROID_NDK_HOME and JDK 21. The gomobile version
+# follows golang.org/x/mobile in mobile/go.mod.
+build-android-aar:
+	cd mobile && GOWORK=off go install golang.org/x/mobile/cmd/gomobile golang.org/x/mobile/cmd/gobind
+	./mobile/build-android-aar.sh
+
+ANDROID_GRADLE := cd mobile/android && ./gradlew --console=plain
+
+# The debug and release APKs, the instrumented test APK and Android lint; needs mobile/build/HisarKit.aar.
+build-android:
+	$(ANDROID_GRADLE) assembleDebug assembleDebugAndroidTest assembleRelease lint
+
+# The JVM tests, IosTestParityTest among them; needs mobile/build/HisarKit.aar.
+test-android:
+	$(ANDROID_GRADLE) :model:test :app:testDebugUnitTest
+
+# The instrumented tests on the one booted emulator or device, or on ANDROID_SERIAL, against a server the script starts; needs
+# HISAR_DATABASE_URL pointing at an empty database. ANDROID_UI_TESTS=<names> or ANDROID_UI_TESTS=smoke runs a subset.
+test-android-ui: build-android-aar
+	./scripts/test-android-ui.sh
 
 test-extension:
 	cd extension && npm ci --no-audit --no-fund && npm run typecheck && npm test

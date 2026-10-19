@@ -40,6 +40,30 @@ func IsURLMatch(itemURL, pageURL string, isExactHost bool) bool {
 	return savedErr == nil && pageErr == nil && savedSite == pageSite
 }
 
+// GetWebsiteDomain returns the host of an item URL that pages at https://host match, and the registrable domain that
+// host is under. ok is false for any other URL: another scheme, a port, an IP address, or a host with no registrable
+// domain, such as localhost or printer.local.
+func GetWebsiteDomain(itemURL string) (host, registrableDomain string, ok bool) {
+	itemURL = strings.TrimSpace(itemURL)
+	if !strings.Contains(itemURL, "://") {
+		itemURL = "https://" + itemURL
+	}
+	saved, err := url.Parse(itemURL)
+	if err != nil || (saved.Scheme != "https" && saved.Scheme != "http") || getPort(saved) != "" {
+		return "", "", false
+	}
+	host = normalizeHost(saved.Hostname())
+	// publicsuffix treats a top-level domain it does not list, such as local, as public.
+	if suffix, isICANN := publicsuffix.PublicSuffix(host); net.ParseIP(host) != nil || (!isICANN && !strings.Contains(suffix, ".")) {
+		return "", "", false
+	}
+	registrableDomain, err = publicsuffix.EffectiveTLDPlusOne(host)
+	if err != nil {
+		return "", "", false
+	}
+	return host, registrableDomain, true
+}
+
 // GetSiteName is the host without a leading "www.", used as the title of saved logins.
 func GetSiteName(pageURL string) string {
 	page, err := url.Parse(pageURL)

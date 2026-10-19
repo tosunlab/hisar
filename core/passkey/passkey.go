@@ -59,7 +59,7 @@ const (
 var aaguidBytes = [16]byte{0xfb, 0x04, 0x16, 0x79, 0x04, 0x2a, 0x49, 0xae, 0xb6, 0x16, 0x87, 0x79, 0xe2, 0xac, 0x14, 0xce}
 
 var (
-	ErrInvalidOrigin         = errors.New("passkey: the origin is not https or localhost")
+	ErrInvalidOrigin         = errors.New("passkey: the origin is not https, localhost or an Android app")
 	ErrInvalidRelyingPartyID = errors.New("passkey: the relying party ID does not belong to the origin")
 	ErrInvalidRequest        = errors.New("passkey: the request is not valid")
 )
@@ -84,6 +84,23 @@ func ParseOrigin(origin string) (*url.URL, error) {
 		return nil, ErrInvalidOrigin
 	}
 	return parsed, nil
+}
+
+// androidAppOriginPrefix starts a native Android app's origin; the SHA-256 of its signing certificate follows.
+const androidAppOriginPrefix = "android:apk-key-hash:"
+
+// BuildAndroidAppOrigin returns the origin Android passkey providers write in a native app's client data.
+func BuildAndroidAppOrigin(signingCertificateSHA256 []byte) (string, error) {
+	if len(signingCertificateSHA256) != sha256.Size {
+		return "", ErrInvalidOrigin
+	}
+	return androidAppOriginPrefix + base64.RawURLEncoding.EncodeToString(signingCertificateSHA256), nil
+}
+
+func isAndroidAppOrigin(origin string) bool {
+	encodedDigest, hasPrefix := strings.CutPrefix(origin, androidAppOriginPrefix)
+	digest, err := base64.RawURLEncoding.Strict().DecodeString(encodedDigest)
+	return hasPrefix && err == nil && len(digest) == sha256.Size
 }
 
 // ResolveRelyingPartyID: the host, or a suffix of it that is not a public suffix.
@@ -134,28 +151,42 @@ type ClientData struct {
 	Origin        string
 	TopOrigin     string
 	IsCrossOrigin bool
+	// AndroidPackageName goes with an Android app's origin, and only with it.
+	AndroidPackageName string
 }
 
 type clientDataJSON struct {
-	Type        string `json:"type"`
-	Challenge   string `json:"challenge"`
-	Origin      string `json:"origin"`
-	CrossOrigin bool   `json:"crossOrigin"`
-	TopOrigin   string `json:"topOrigin,omitempty"`
+	Type               string `json:"type"`
+	Challenge          string `json:"challenge"`
+	Origin             string `json:"origin"`
+	CrossOrigin        bool   `json:"crossOrigin"`
+	TopOrigin          string `json:"topOrigin,omitempty"`
+	AndroidPackageName string `json:"androidPackageName,omitempty"`
 }
 
+// BuildClientDataJSON takes a web origin, or an Android app's from BuildAndroidAppOrigin with its package name.
 func BuildClientDataJSON(clientData ClientData) ([]byte, error) {
 	if clientData.Type != TypeCreate && clientData.Type != TypeGet {
 		return nil, ErrInvalidRequest
 	}
-	if len(clientData.Challenge) == 0 || len(clientData.Challenge) > maxChallengeLength || len(clientData.Origin) > maxClientDataStringLength || len(clientData.TopOrigin) > maxClientDataStringLength {
+	if len(clientData.Challenge) == 0 || len(clientData.Challenge) > maxChallengeLength || len(clientData.Origin) > maxClientDataStringLength || len(clientData.TopOrigin) > maxClientDataStringLength || len(clientData.AndroidPackageName) > maxClientDataStringLength {
+		return nil, ErrInvalidRequest
+	}
+	if isAndroidAppOrigin(clientData.Origin) {
+		if clientData.AndroidPackageName == "" || clientData.IsCrossOrigin {
+			return nil, ErrInvalidRequest
+		}
+	} else if _, err := ParseOrigin(clientData.Origin); err != nil {
+		return nil, err
+	} else if clientData.AndroidPackageName != "" {
 		return nil, ErrInvalidRequest
 	}
 	encoded := clientDataJSON{
-		Type:        clientData.Type,
-		Challenge:   base64.RawURLEncoding.EncodeToString(clientData.Challenge),
-		Origin:      clientData.Origin,
-		CrossOrigin: clientData.IsCrossOrigin,
+		Type:               clientData.Type,
+		Challenge:          base64.RawURLEncoding.EncodeToString(clientData.Challenge),
+		Origin:             clientData.Origin,
+		CrossOrigin:        clientData.IsCrossOrigin,
+		AndroidPackageName: clientData.AndroidPackageName,
 	}
 	if clientData.IsCrossOrigin {
 		encoded.TopOrigin = clientData.TopOrigin

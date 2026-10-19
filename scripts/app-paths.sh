@@ -3,7 +3,8 @@
 # plan-release.sh and release-notes.sh (which commits a release has).
 #
 # The Go apps compile against core/ and go.work. The desktop app also counts cli/: its module requires it and the app
-# bundles the hisar CLI. The server image embeds the admin dashboard.
+# bundles the hisar CLI. The server image embeds the admin dashboard. The iPhone and Android apps share mobile/hisarkit
+# and mobile/go.mod; each also counts its own folder, so an Android-only change does not run the iPhone job.
 
 sharedGoPaths=(core/ go.work go.work.sum)
 serverPaths=(server/ admin/ deploy/Dockerfile "${sharedGoPaths[@]}")
@@ -11,7 +12,11 @@ cliPaths=(cli/ scripts/package-cli-release.sh "${sharedGoPaths[@]}")
 desktopPaths=(desktop/ cli/ scripts/download-sparkle.sh scripts/get-build-number.sh scripts/package-desktop-dmg.sh
   scripts/package-desktop-flatpak.sh scripts/package-desktop-linux.sh scripts/package-desktop-update.sh
   scripts/sign-desktop-app.sh scripts/test-desktop-linux-package.sh "${sharedGoPaths[@]}")
-mobilePaths=(mobile/ "${sharedGoPaths[@]}")
+phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh "${sharedGoPaths[@]}")
+mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${phonePaths[@]}")
+# The Android CI job runs its build and tests through Makefile recipes, so a Makefile change runs it too.
+androidPaths=(mobile/android/ mobile/build-android-aar.sh mobile/cmd/ scripts/install-android-sdk.sh scripts/test-android-ui.sh
+  assets/themes/ scripts/themes/ Makefile "${phonePaths[@]}")
 extensionPaths=(extension/)
 
 # A commit that only changes tests or documentation is not a reason to release.

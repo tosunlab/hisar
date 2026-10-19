@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The mark's tile, from assets/logo/README.md. -->
+    <color name="ic_launcher_background">#F2F3F5</color>
+    <!-- The iPhone app's LaunchBackground colour. -->
+    <color name="launch_background">#0D0E10</color>
+
+    <style name="Theme.Hisar" parent="@android:style/Theme.Material.Light.NoActionBar" />
+
+    <style name="Theme.Hisar.Starting" parent="Theme.SplashScreen.IconBackground">
+        <item name="windowSplashScreenBackground">@color/launch_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="windowSplashScreenIconBackgroundColor">@color/ic_launcher_background</item>
+        <item name="postSplashScreenTheme">@style/Theme.Hisar</item>
+    </style>
+</resources>
