@@ -1189,12 +1189,14 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     softwareLicenseCount: allPreviewImportItem.filter((detail) => detail.category === "software-license").length,
     serverCount: allPreviewImportItem.filter((detail) => detail.category === "server").length,
     databaseCount: allPreviewImportItem.filter((detail) => detail.category === "database").length,
+    passkeyCount: 0,
     allSkipped: allPreviewImportSkipped,
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({
       title: detail.title,
       username: detail.username,
       url: detail.urls[0] ?? "",
       detail: [detail.username, detail.urls[0] ? getDomain(detail.urls[0]) : ""].filter(Boolean).join(" · "),
+      passkeyCount: 0,
     })),
   };
 }

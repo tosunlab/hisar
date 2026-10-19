@@ -1,14 +1,9 @@
 package passkey
 
 import (
-	"crypto/ecdsa"
-	"crypto/elliptic"
 	"crypto/hkdf"
 	"crypto/hmac"
 	"crypto/sha256"
-	"crypto/x509"
-	"errors"
-	"fmt"
 )
 
 const (
@@ -32,17 +27,13 @@ type PRFOutput struct {
 
 // DerivePRFSecret: HKDF-SHA256 over the private scalar, empty salt, info "hisar passkey prf v1".
 func DerivePRFSecret(privateKeyDER []byte) ([]byte, error) {
-	parsedKey, err := x509.ParsePKCS8PrivateKey(privateKeyDER)
+	privateKey, err := parseES256Key(privateKeyDER)
 	if err != nil {
-		return nil, fmt.Errorf("passkey: stored key: %w", err)
-	}
-	privateKey, isECDSA := parsedKey.(*ecdsa.PrivateKey)
-	if !isECDSA || privateKey.Curve != elliptic.P256() {
-		return nil, errors.New("passkey: the stored key is not an ES256 key")
+		return nil, err
 	}
 	ecdhKey, err := privateKey.ECDH()
 	if err != nil || len(ecdhKey.Bytes()) != privateScalarByteSize {
-		return nil, errors.New("passkey: the stored key is not an ES256 key")
+		return nil, ErrUnsupportedKey
 	}
 	return hkdf.Key(sha256.New, ecdhKey.Bytes(), nil, PRFSecretInfo, PRFSecretLength)
 }
@@ -62,13 +53,18 @@ func EvaluatePRF(secret, input []byte) []byte {
 	return mac.Sum(nil)
 }
 
-func EvaluatePRFForPasskey(privateKeyDER []byte, input PRFInput) (PRFOutput, error) {
+// EvaluatePRFForPasskey evaluates with importedSecret when the passkey came with one (the hmac-secret credential another
+// authenticator exported), so a site gets the same outputs as before the import, and otherwise with DerivePRFSecret.
+func EvaluatePRFForPasskey(privateKeyDER, importedSecret []byte, input PRFInput) (PRFOutput, error) {
 	if len(input.First) > MaxPRFInputLength || len(input.Second) > MaxPRFInputLength {
 		return PRFOutput{}, ErrInvalidRequest
 	}
-	secret, err := DerivePRFSecret(privateKeyDER)
-	if err != nil {
-		return PRFOutput{}, err
+	secret := importedSecret
+	if len(secret) == 0 {
+		var err error
+		if secret, err = DerivePRFSecret(privateKeyDER); err != nil {
+			return PRFOutput{}, err
+		}
 	}
 	output := PRFOutput{First: EvaluatePRF(secret, input.First)}
 	if input.HasSecond {

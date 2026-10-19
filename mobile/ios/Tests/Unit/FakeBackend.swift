@@ -60,6 +60,15 @@ class FakeBackend: VaultBackend {
     /// While set, listing the organizations or reading one fails with this sentence.
     var listAllOrganizationErrorMessage: String?
     var getOrganizationErrorMessage: String?
+    /// The import prepareCredentialExchangeImport keeps, as the items it would save; nil when none is pending.
+    var allPendingImportTitle: [String]?
+    var pendingImportVaultID = ""
+    var allQueuedImportTitle: [String] = []
+    var importSavedCount = 0
+    var importBatchSize = 2
+    var allImportedCredentialData: [Data] = []
+    /// While set, the next continueImport fails with this sentence and saves nothing.
+    var continueImportErrorMessage: String?
     private let approvalLock = NSLock()
 
     func withApprovalLock<Value>(_ operation: () throws -> Value) rethrows -> Value {
@@ -746,6 +755,70 @@ extension FakeBackend {
         let path = directory.appendingPathComponent(format == .plain ? "Hisar export (not encrypted).json" : "Hisar export.hisar")
         try Data("{}".utf8).write(to: path)
         return ExportResult(path: path.path, vaultCount: allVault.count, itemCount: allItemByVaultID.values.map(\.count).reduce(0, +))
+    }
+
+    private func buildImportPreview(vaultID: String) throws -> ImportPreview {
+        guard let allTitle = allPendingImportTitle else { throw BackendError(message: "There is no import to continue") }
+        guard let vault = allVault.first(where: { $0.id == vaultID }) else { throw BackendError(message: "Vault not found") }
+        guard vault.type == VaultSummary.typePersonal || vault.role != Member.vaultRoleReader else { throw BackendError(message: "You can only view this vault") }
+        let allExistingTitle = Set((allItemByVaultID[vaultID] ?? []).map(\.title))
+        let allDuplicate = allTitle.filter { allExistingTitle.contains($0) }.map { ImportDuplicate(title: $0) }
+        return ImportPreview(fileName: "Other Manager", vaultID: vault.id, vaultName: vault.name, itemCount: allTitle.count, loginCount: allTitle.count, allDuplicate: allDuplicate)
+    }
+
+    func prepareCredentialExchangeImport(vaultID: String, credentialData: Data) throws -> ImportPreview {
+        record("prepareCredentialExchangeImport")
+        try requireUnlocked()
+        let exported = try JSONDecoder().decode([String].self, from: credentialData)
+        allImportedCredentialData.append(credentialData)
+        allPendingImportTitle = exported
+        return try buildImportPreview(vaultID: vaultID)
+    }
+
+    func previewImport(vaultID: String) throws -> ImportPreview {
+        record("previewImport")
+        try requireUnlocked()
+        return try buildImportPreview(vaultID: vaultID)
+    }
+
+    func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress {
+        record("startImport")
+        try requireUnlocked()
+        let preview = try buildImportPreview(vaultID: vaultID)
+        let allDuplicateTitle = Set(preview.allDuplicate.map(\.title))
+        allQueuedImportTitle = (allPendingImportTitle ?? []).filter { !isSkippingDuplicate || !allDuplicateTitle.contains($0) }
+        pendingImportVaultID = vaultID
+        importSavedCount = 0
+        return buildImportProgress()
+    }
+
+    func continueImport() throws -> ImportProgress {
+        record("continueImport")
+        try requireUnlocked()
+        guard allPendingImportTitle != nil else { throw BackendError(message: "There is no import to continue") }
+        if let continueImportErrorMessage {
+            self.continueImportErrorMessage = nil
+            throw BackendError(message: continueImportErrorMessage)
+        }
+        for title in allQueuedImportTitle.prefix(importBatchSize) {
+            allItemByVaultID[pendingImportVaultID, default: []].append(ItemDetail(id: "imported-\(nextItemNumber)", revision: "r1", category: "login", title: title))
+            nextItemNumber += 1
+            importSavedCount += 1
+        }
+        allQueuedImportTitle = Array(allQueuedImportTitle.dropFirst(importBatchSize))
+        return buildImportProgress()
+    }
+
+    private func buildImportProgress() -> ImportProgress {
+        let vaultName = allVault.first { $0.id == pendingImportVaultID }?.name ?? ""
+        return ImportProgress(fileName: "Other Manager", vaultID: pendingImportVaultID, vaultName: vaultName, savedCount: importSavedCount,
+                              totalCount: importSavedCount + allQueuedImportTitle.count, isDone: allQueuedImportTitle.isEmpty)
+    }
+
+    func cancelImport() {
+        record("cancelImport")
+        allPendingImportTitle = nil
+        allQueuedImportTitle = []
     }
 
     func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport {

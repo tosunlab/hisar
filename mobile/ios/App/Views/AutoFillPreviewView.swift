@@ -109,7 +109,7 @@ private final class AutoFillPreviewSession: ObservableObject {
             self?.copiedOneTimeCode = code
             _ = PasteboardClipboard().setText(code)
         },
-        cancelRequest: { [weak self] in self?.resultMessage = "Cancelled" },
+        cancelRequest: { [weak self] _ in self?.resultMessage = "Cancelled" },
         passkeyCompletion: AutoFillModel.PasskeyCompletion(
             completeAssertion: { [weak self] credential in
                 self?.allResultValue = [

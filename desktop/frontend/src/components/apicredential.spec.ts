@@ -192,6 +192,7 @@ describe("Importing API credentials", () => {
       softwareLicenseCount: 0,
       serverCount: 0,
       databaseCount: 0,
+      passkeyCount: 0,
       allSkipped: [],
       allDuplicate: [],
     };
@@ -221,10 +222,11 @@ describe("Importing API credentials", () => {
       softwareLicenseCount: 0,
       serverCount: 0,
       databaseCount: 0,
+      passkeyCount: 0,
       allSkipped: [],
       allDuplicate: [
-        { title: "Stripe", username: "", url: "", detail: "key_1" },
-        { title: "Stripe", username: "", url: "", detail: "key_2" },
+        { title: "Stripe", username: "", url: "", detail: "key_1", passkeyCount: 0 },
+        { title: "Stripe", username: "", url: "", detail: "key_2", passkeyCount: 0 },
       ],
     };
     store.importStep = "preview";

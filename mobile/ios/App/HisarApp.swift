@@ -1,3 +1,4 @@
+import AuthenticationServices
 import SwiftUI
 import UIKit
 
@@ -24,6 +25,12 @@ struct HisarApp: App {
                         model.pendingSignInLink = link
                     } else if let link = InviteLink.parse(url.absoluteString) {
                         model.openInviteLink(link)
+                    }
+                }
+                // Another password manager exporting to Hisar (Credential Exchange); the import waits for unlocked vaults.
+                .onContinueUserActivity(ASCredentialExchangeActivity) { activity in
+                    if let token = activity.userInfo?[ASCredentialImportToken] as? UUID {
+                        model.receiveCredentialExchange(token: token)
                     }
                 }
         }

@@ -1,23 +1,51 @@
+import AuthenticationServices
 import XCTest
 @testable import Hisar
+
+private final class FakeIdentityStore: CredentialIdentitySaving {
+    var allSaved: [CredentialIdentityRecord] = []
+    var allRemoved: [CredentialIdentityRecord] = []
+
+    func saveIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
+        allSaved += allIdentity
+    }
+
+    func removeIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
+        allRemoved += allIdentity
+    }
+}
+
+private final class FakeLocalAuthenticator: LocalAuthenticating {
+    var isSucceeding = true
+    var allReason: [String] = []
+
+    func authenticate(reason: String) async -> Bool {
+        allReason.append(reason)
+        return isSucceeding
+    }
+}
 
 @MainActor
 final class AutoFillModelTests: XCTestCase {
     private var backend: FakeBackend!
+    private var identityStore: FakeIdentityStore!
+    private var localAuthenticator: FakeLocalAuthenticator!
     private var allCompletedCredential: [LoginCredential] = []
     private var allCompletedCode: [String] = []
     private var allCopiedCode: [String] = []
-    private var cancelCount = 0
+    private var allCancelCode: [ASExtensionError.Code] = []
     private var allAssertion: [PasskeyAssertionCredential] = []
     private var allRegistration: [PasskeyRegistrationCredential] = []
     private var rejectedRegistrationCount = 0
 
     override func setUp() async throws {
         backend = FakeBackend()
+        identityStore = FakeIdentityStore()
+        localAuthenticator = FakeLocalAuthenticator()
         allCompletedCredential = []
         allCompletedCode = []
         allCopiedCode = []
-        cancelCount = 0
+        allCancelCode = []
         allAssertion = []
         allRegistration = []
         rejectedRegistrationCount = 0
@@ -29,12 +57,14 @@ final class AutoFillModelTests: XCTestCase {
             completeRequest: { [unowned self] in allCompletedCredential.append($0) },
             completeOneTimeCodeRequest: { [unowned self] in allCompletedCode.append($0) },
             copyOneTimeCode: { [unowned self] in allCopiedCode.append($0) },
-            cancelRequest: { [unowned self] in cancelCount += 1 },
+            cancelRequest: { [unowned self] in allCancelCode.append($0) },
             passkeyCompletion: AutoFillModel.PasskeyCompletion(
                 completeAssertion: { [unowned self] in allAssertion.append($0) },
                 completeRegistration: { [unowned self] in allRegistration.append($0) },
                 rejectExcludedRegistration: { [unowned self] in rejectedRegistrationCount += 1 }
-            )
+            ),
+            credentialIdentityStore: identityStore,
+            localAuthenticator: localAuthenticator
         )
     }
 
@@ -191,7 +221,7 @@ final class AutoFillModelTests: XCTestCase {
     func testCancel() {
         let model = createModel()
         model.cancel()
-        XCTAssertEqual(cancelCount, 1)
+        XCTAssertEqual(allCancelCode, [.userCanceled])
     }
 
     func testBiometricUnlock() async {
@@ -259,21 +289,53 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertTrue(allAssertion.isEmpty)
         await model.unlock(password: FakeBackend.password)
         XCTAssertEqual(allAssertion.map(\.credentialID), [Data([1, 1, 1])])
+        XCTAssertTrue(localAuthenticator.allReason.isEmpty, "the unlock in this request verified the user")
     }
 
-    func testChosenPasskeyOfAnotherSiteFallsBackToTheList() async {
+    func testChosenPasskeyInAnUnlockedExtensionAsksTheDeviceOwner() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash)
+        await model.prepareInterfaceToProvidePasskey(request: request, credentialID: Data([1, 1, 1]))
+        XCTAssertEqual(localAuthenticator.allReason, ["Use your passkey for github.com"])
+        XCTAssertEqual(allAssertion.map(\.credentialID), [Data([1, 1, 1])])
+    }
+
+    func testDeclinedDeviceOwnerCheckCancels() async {
+        backend.seedSignedIn()
+        localAuthenticator.isSucceeding = false
+        let model = createModel()
+        await model.prepareCredentialList(allServiceIdentifier: [], passkeyRequest: PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash))
+        guard let passkey = model.allMatchingPasskey.first else { return XCTFail("no passkey listed") }
+        await model.selectPasskey(passkey)
+        XCTAssertTrue(allAssertion.isEmpty)
+        XCTAssertEqual(allCancelCode, [.userCanceled])
+        XCTAssertFalse(backend.allCallName.contains("assertPasskey"))
+    }
+
+    func testDiscouragedUserVerificationSkipsTheDeviceOwnerCheck() async {
+        backend.seedSignedIn()
+        localAuthenticator.isSucceeding = false
+        let model = createModel()
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash, isUserVerificationDiscouraged: true)
+        await model.prepareInterfaceToProvidePasskey(request: request, credentialID: Data([1, 1, 1]))
+        XCTAssertTrue(localAuthenticator.allReason.isEmpty)
+        XCTAssertEqual(allAssertion.count, 1)
+    }
+
+    func testChosenPasskeyThatIsGoneCancels() async {
         backend.seedSignedIn()
         let model = createModel()
         await model.prepareInterfaceToProvidePasskey(request: PasskeyAssertionRequest(relyingPartyID: "evil.example", clientDataHash: clientDataHash), credentialID: Data([1, 1, 1]))
         XCTAssertTrue(allAssertion.isEmpty)
-        XCTAssertEqual(model.screen, .list)
-        XCTAssertTrue(model.allMatchingPasskey.isEmpty)
+        XCTAssertEqual(allCancelCode, [.credentialIdentityNotFound])
+        XCTAssertFalse(backend.allCallName.contains("assertPasskey"))
     }
 
     func testPasskeyWithoutInteractionNeedsAnUnlockedProcess() async {
         backend.seedSignedIn()
         let model = createModel()
-        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash)
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash, isUserVerificationDiscouraged: true)
         let beforeStart = await model.providePasskeyWithoutUserInteraction(request: request, credentialID: Data([1, 1, 1]))
         XCTAssertNil(beforeStart, "no backend exists yet in a fresh extension process")
         await model.prepareCredentialList(allServiceIdentifier: ["github.com"])
@@ -282,6 +344,16 @@ final class AutoFillModelTests: XCTestCase {
         _ = backend.lock()
         let whileLocked = await model.providePasskeyWithoutUserInteraction(request: request, credentialID: Data([1, 1, 1]))
         XCTAssertNil(whileLocked)
+    }
+
+    func testPasskeyWithoutInteractionNeedsDiscouragedUserVerification() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        await model.prepareCredentialList(allServiceIdentifier: ["github.com"])
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash)
+        let credential = await model.providePasskeyWithoutUserInteraction(request: request, credentialID: Data([1, 1, 1]))
+        XCTAssertNil(credential, "the controller then cancels with userInteractionRequired")
+        XCTAssertFalse(backend.allCallName.contains("assertPasskey"))
     }
 
     func testPasskeyRegistrationPreselectsTheMatchingLoginAndSaves() async {
@@ -294,6 +366,7 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.passkeyRegistrationOptions?.allLogin.map(\.title), ["GitHub", "GitHub Bob"])
         XCTAssertEqual(model.selectedRegistrationLoginID, "personal/github", "the login whose username equals the user name")
         await model.savePasskey()
+        XCTAssertEqual(localAuthenticator.allReason, ["Create a passkey for github.com"])
         XCTAssertEqual(allRegistration.count, 1)
         XCTAssertEqual(allRegistration.first?.relyingPartyID, "github.com")
         XCTAssertEqual(allRegistration.first?.clientDataHash, clientDataHash)
@@ -301,6 +374,29 @@ final class AutoFillModelTests: XCTestCase {
         let savedItem = try? backend.getItem(vaultID: "personal", itemID: "github")
         XCTAssertEqual(savedItem?.allPasskey.count, 1, "the passkey with the same user handle is replaced")
         XCTAssertEqual(savedItem?.allPasskey.first.flatMap { Base64URL.decode($0.credentialID) }, allRegistration.first?.credentialID)
+    }
+
+    func testPasskeyRegistrationUpdatesTheCredentialIdentities() async {
+        backend.seedSignedIn()
+        let model = createModel()
+        let userHandle = Data("alice-handle".utf8)
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "alice", userHandle: userHandle, clientDataHash: clientDataHash))
+        await model.savePasskey()
+        guard let credentialID = allRegistration.first?.credentialID else { return XCTFail("no passkey created") }
+        XCTAssertEqual(identityStore.allSaved, [CredentialIdentityRecord(kind: .passkey, host: "github.com", username: "alice", recordIdentifier: "personal/github", credentialID: credentialID, userHandle: userHandle)])
+        XCTAssertEqual(identityStore.allRemoved.map(\.credentialID), [Data([1, 1, 1])], "the passkey Hisar replaced is no longer offered")
+        XCTAssertEqual(identityStore.allRemoved.first?.recordIdentifier, "personal/github")
+    }
+
+    func testDeclinedDeviceOwnerCheckCancelsRegistration() async {
+        backend.seedSignedIn()
+        localAuthenticator.isSucceeding = false
+        let model = createModel()
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "shop.example", userName: "buyer", userHandle: Data([5]), clientDataHash: clientDataHash))
+        await model.savePasskey()
+        XCTAssertEqual(allCancelCode, [.userCanceled])
+        XCTAssertFalse(backend.allCallName.contains("createPasskey"))
+        XCTAssertTrue(identityStore.allSaved.isEmpty)
     }
 
     func testPasskeyRegistrationToANewLogin() async {
@@ -314,8 +410,10 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.passkeyRegistrationOptions?.allLogin, [])
         XCTAssertNil(model.selectedRegistrationLoginID, "New login is the only choice")
         await model.savePasskey()
+        XCTAssertTrue(localAuthenticator.allReason.isEmpty, "the unlock in this request verified the user")
         XCTAssertEqual(allRegistration.count, 1)
         XCTAssertTrue(backend.allItemByVaultID["personal"]?.contains { $0.title == "shop.example" && $0.allPasskey.count == 1 } ?? false)
+        XCTAssertTrue(identityStore.allRemoved.isEmpty)
     }
 
     func testExcludedPasskeyRegistrationIsRejected() async {
@@ -330,11 +428,11 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(rejectedRegistrationCount, 1)
     }
 
-    func testPasskeyRegistrationWithoutES256IsCancelled() async {
+    func testPasskeyRegistrationWithoutES256Fails() async {
         backend.seedSignedIn()
         let model = createModel()
         await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "alice", userHandle: Data([5]), clientDataHash: clientDataHash, allSupportedAlgorithm: [-8, -257]))
-        XCTAssertEqual(cancelCount, 1)
+        XCTAssertEqual(allCancelCode, [.failed])
         XCTAssertFalse(backend.allCallName.contains("preparePasskeyRegistration"))
     }
 
@@ -346,5 +444,6 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertTrue(allRegistration.isEmpty)
         XCTAssertEqual(model.errorMessage, "the request is not valid")
         XCTAssertEqual(model.screen, .passkeyRegistration)
+        XCTAssertTrue(identityStore.allSaved.isEmpty)
     }
 }

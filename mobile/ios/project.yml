@@ -75,6 +75,9 @@ targetTemplates:
             CFBundleURLSchemes: [hisar]
         HisarAppGroupIdentifier: $(HISAR_APP_GROUP_IDENTIFIER)
         HisarKeychainAccessGroup: $(HISAR_KEYCHAIN_ACCESS_GROUP)
+        # The SDK's ASCredentialExchangeActivity is "ASCredentialExchangeActivity"; Apple's documentation names
+        # "ASCredentialExchangeActivityType", so both are listed.
+        NSUserActivityTypes: [ASCredentialExchangeActivity, ASCredentialExchangeActivityType]
 
 targets:
   Hisar:
@@ -147,6 +150,8 @@ targets:
               ProvidesPasswords: true
               ProvidesPasskeys: true
               ProvidesOneTimeCodes: true
+              SupportsCredentialExchange: true
+              SupportedCredentialExchangeVersions: ["1.0"]
 
   HisarTests:
     templates: [IPhoneOnly]

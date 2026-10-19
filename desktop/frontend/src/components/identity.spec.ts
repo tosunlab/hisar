@@ -190,6 +190,7 @@ describe("Importing identities", () => {
       softwareLicenseCount: 0,
       serverCount: 0,
       databaseCount: 0,
+      passkeyCount: 0,
       allSkipped: [],
       allDuplicate: [],
     };

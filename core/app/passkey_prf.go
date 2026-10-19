@@ -24,12 +24,13 @@ func decodePRFInput(values *browserprotocol.PasskeyPRFValues) (passkey.PRFInput,
 	return input, nil
 }
 
-func evaluatePRFValues(values *browserprotocol.PasskeyPRFValues, privateKeyDER []byte) (*browserprotocol.PasskeyPRFValues, error) {
+// evaluatePRFValues uses importedSecret when the passkey came with one; see passkey.EvaluatePRFForPasskey.
+func evaluatePRFValues(values *browserprotocol.PasskeyPRFValues, privateKeyDER, importedSecret []byte) (*browserprotocol.PasskeyPRFValues, error) {
 	input, err := decodePRFInput(values)
 	if err != nil {
 		return nil, err
 	}
-	output, err := passkey.EvaluatePRFForPasskey(privateKeyDER, input)
+	output, err := passkey.EvaluatePRFForPasskey(privateKeyDER, importedSecret, input)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +52,7 @@ func evaluatePasskeyCreationPRF(request *browserprotocol.PasskeyPRFRequest, priv
 	}
 	result := &browserprotocol.PasskeyPRFResult{IsEnabled: true}
 	if request.Eval != nil {
-		results, err := evaluatePRFValues(request.Eval, privateKeyDER)
+		results, err := evaluatePRFValues(request.Eval, privateKeyDER, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -95,7 +96,7 @@ func evaluatePasskeyAssertionPRF(request *browserprotocol.PasskeyPRFRequest, all
 	if selected == nil {
 		return &browserprotocol.PasskeyPRFResult{}, nil
 	}
-	results, err := evaluatePRFValues(selected, storedPasskey.PrivateKey)
+	results, err := evaluatePRFValues(selected, storedPasskey.PrivateKey, storedPasskey.PRFSecret)
 	if err != nil {
 		return nil, err
 	}
