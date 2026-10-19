@@ -30,6 +30,8 @@ class IosTestParityTest {
         "testSaveNewItemAddsItWithoutSecretsAndUpdatesIdentities" to "testSaveNewItemAddsItWithoutSecrets",
         "testQuickTypeRequestUnlocksThenCompletes" to "testSuggestionRequestUnlocksThenCompletes",
         "testOneTimeCodeQuickTypeRequestUnlocksThenCompletes" to "testOneTimeCodeSuggestionRequestUnlocksThenCompletes",
+        "testTokenWaitsForUnlockAndPreparesOnce" to "testTransferWaitsForUnlockAndPreparesOnce",
+        "testTokenWhileSignedOutExplainsInstead" to "testImportWhileSignedOutExplainsInstead",
     )
 
     private val notApplicable = run {

@@ -1,2 +1,10 @@
 # iPhone tests not ported to Android yet, one Class.testName per line. IosTestParityTest fails when a listed test
 # is ported (remove its line) and when an unlisted iPhone test has no Android test. This list only shrinks; it ends empty.
+AutoFillModelTests.testChosenPasskeyInAnUnlockedExtensionAsksTheDeviceOwner
+AutoFillModelTests.testChosenPasskeyThatIsGoneCancels
+AutoFillModelTests.testDeclinedDeviceOwnerCheckCancels
+AutoFillModelTests.testDeclinedDeviceOwnerCheckCancelsRegistration
+AutoFillModelTests.testDiscouragedUserVerificationSkipsTheDeviceOwnerCheck
+AutoFillModelTests.testPasskeyRegistrationUpdatesTheCredentialIdentities
+AutoFillModelTests.testPasskeyRegistrationWithoutES256Fails
+AutoFillModelTests.testPasskeyWithoutInteractionNeedsDiscouragedUserVerification

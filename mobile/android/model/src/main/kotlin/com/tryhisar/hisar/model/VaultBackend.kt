@@ -65,6 +65,20 @@ interface VaultBackend {
     fun listAllWaitingVaultKey(): WaitingVaultKeys
     fun getExportOptions(): ExportOptions
     fun exportAllData(format: ExportFormat, passphrase: String, password: String, directory: File): ExportResult
+
+    /**
+     * Reads the Credential Exchange JSON another app handed over (the responseJson of Android's credential transfer) and
+     * keeps the items, in memory only, until the import starts or is cancelled.
+     */
+    fun prepareCredentialExchangeImport(vaultID: String, credentialData: ByteArray): ImportPreview
+
+    /** Shows the prepared import again for another vault, with that vault's duplicates. */
+    fun previewImport(vaultID: String): ImportPreview
+    fun startImport(vaultID: String, isSkippingDuplicate: Boolean): ImportProgress
+
+    /** Saves the next items; an error pauses the import, and calling it again continues. */
+    fun continueImport(): ImportProgress
+    fun cancelImport()
     fun listAllItem(vaultID: String): List<ItemDetail>
     fun getItem(vaultID: String, itemID: String): ItemDetail
     fun saveItem(vaultID: String, item: ItemDetail): ItemDetail

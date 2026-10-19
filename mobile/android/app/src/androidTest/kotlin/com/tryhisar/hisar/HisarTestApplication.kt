@@ -1,5 +1,7 @@
 package com.tryhisar.hisar
 
+import android.app.Activity
+import com.tryhisar.hisar.app.CredentialExchangeReceiver
 import com.tryhisar.hisar.autofill.AssetLinks
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FakeBackend
@@ -26,11 +28,20 @@ class HisarTestApplication : HisarApplication() {
         AssetLinks.isVouchingFor(statementByRelyingParty[relyingPartyID].orEmpty(), app)
     }
 
+    /** What the credential transfer answers in a test that drives the import from another app; null asks Android. */
+    var credentialExchangeReceiver: CredentialExchangeReceiver? = null
+
+    override fun createCredentialExchangeReceiver(activity: Activity): CredentialExchangeReceiver =
+        credentialExchangeReceiver ?: super.createCredentialExchangeReceiver(activity)
+
     override val backend: VaultBackend
         get() = fakeBackend ?: super.backend
 
     override val events: SharedFlow<BackendEvent>
         get() = if (fakeBackend != null) fakeEvents else super.events
+
+    /** Sends an event as HisarKit would, to the app on the fake backend. */
+    suspend fun sendEvent(event: BackendEvent) = fakeEvents.emit(event)
 
     override fun copySecret(text: String): Boolean {
         if (fakeBackend == null) return super.copySecret(text)
@@ -48,6 +59,7 @@ class HisarTestApplication : HisarApplication() {
 
     fun installFakeBackend(backend: FakeBackend) {
         fakeBackend = backend
+        credentialExchangeReceiver = null
         allCopiedSecret.clear()
         allCopiedPlain.clear()
     }
