@@ -1,9 +1,10 @@
 name: Release
 
-# One release per run: the app and how to choose its version. The run plans the version (scripts/plan-release.sh), runs
-# CI on the commit, pushes the annotated tag, builds the app, creates the GitHub prerelease with all its files at once, and
-# then waits in the environment publish-<app> until a reviewer approves publishing it (publish.yml). A custom build (a
-# version with a -label) stops at the prerelease. Re-run failed jobs to continue a run; a new run refuses a tag that exists.
+# One release per run: the app and how to choose its version. The run plans the version (scripts/plan-release.sh), pushes
+# the annotated tag, builds the app, creates the GitHub prerelease with all its files at once, and then waits in the
+# environment publish-<app> until a reviewer approves publishing it (publish.yml). CI and the macOS tests ran on the pull
+# requests already, so the run skips them unless runTests is set. A custom build (a version with a -label) stops at the
+# prerelease. Re-run failed jobs to continue a run; a new run refuses a tag that exists.
 run-name: Release ${{ inputs.app }} (${{ inputs.type == 'custom' && inputs.version || inputs.type }})${{ inputs.dryRun && ', dry run' || '' }}
 on:
   workflow_dispatch:
@@ -23,6 +24,10 @@ on:
         default: ""
       dryRun:
         description: Only show the plan
+        type: boolean
+        default: false
+      runTests:
+        description: Also run CI (and the macOS tests for the desktop app) on the commit before tagging it
         type: boolean
         default: false
 
@@ -59,7 +64,7 @@ jobs:
   ci:
     name: CI
     needs: plan
-    if: ${{ !inputs.dryRun }}
+    if: ${{ !inputs.dryRun && inputs.runTests }}
     uses: ./.github/workflows/ci.yml
     with:
       baseRef: ${{ needs.plan.outputs.previousTag }}
@@ -67,14 +72,16 @@ jobs:
   macos:
     name: macOS
     needs: plan
-    if: ${{ !inputs.dryRun && inputs.app == 'desktop' }}
+    if: ${{ !inputs.dryRun && inputs.runTests && inputs.app == 'desktop' }}
     uses: ./.github/workflows/macos.yml
 
+  # Without a status check function in its condition, a job is skipped when any job before it in the needs chain was
+  # skipped, so every job after the optional CI names what it needs.
   # The deploy key in RELEASE_DEPLOY_KEY may create tags past the ruleset "tags: only maintainers create".
   tag:
     name: Push the tag
     needs: [plan, ci, macos]
-    if: ${{ !cancelled() && needs.ci.result == 'success' && (needs.macos.result == 'success' || needs.macos.result == 'skipped') }}
+    if: ${{ !cancelled() && !inputs.dryRun && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -112,7 +119,7 @@ jobs:
   build-server:
     name: Build
     needs: [plan, tag]
-    if: inputs.app == 'server'
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'server' }}
     permissions:
       contents: read
       packages: write
@@ -123,7 +130,7 @@ jobs:
   build-cli:
     name: Build
     needs: [plan, tag]
-    if: inputs.app == 'cli'
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'cli' }}
     uses: ./.github/workflows/release-cli.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
@@ -131,17 +138,22 @@ jobs:
   build-desktop:
     name: Build
     needs: [plan, tag]
-    if: inputs.app == 'desktop'
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'desktop' }}
     uses: ./.github/workflows/release-desktop.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
     secrets:
       SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      MACOS_SIGNING_CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
+      MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+      APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+      APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+      APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
 
   build-extension:
     name: Build
     needs: [plan, tag]
-    if: inputs.app == 'extension'
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'extension' }}
     uses: ./.github/workflows/release-extension.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
@@ -192,7 +204,7 @@ jobs:
   publish:
     name: Publish
     needs: [plan, release]
-    if: needs.plan.outputs.isCustomBuild == 'false'
+    if: ${{ !cancelled() && needs.release.result == 'success' && needs.plan.outputs.isCustomBuild == 'false' }}
     permissions:
       contents: write
       packages: write

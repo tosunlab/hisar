@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Signs Hisar.app inside out: Sparkle's helpers, Sparkle.framework, the browser host, the hisar CLI, then the app.
 # Usage: sign-desktop-app.sh <path to Hisar.app>
-# HISAR_SIGNING_IDENTITY: a Developer ID identity (signs with the hardened runtime and a timestamp); default ad-hoc (-).
+# HISAR_SIGNING_IDENTITY: a team identity, by name or SHA-1 (Developer ID Application for releases; signs with the
+# hardened runtime and a timestamp); default ad-hoc (-).
 set -euo pipefail
 
 application=${1:?usage: sign-desktop-app.sh <path to Hisar.app>}
