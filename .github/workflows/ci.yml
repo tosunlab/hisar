@@ -362,15 +362,17 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
-      - name: Instrumented tests on an API 37 emulator
+      - name: Instrumented tests on an API 36 emulator
         env:
           HISAR_DATABASE_URL: postgres://postgres:hisar@127.0.0.1:5432/hisar?sslmode=disable
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
-          api-level: "37.0"
+          # The x86_64 API 37 image crash-loops on these runners: surfaceflinger aborts on "Assertion failed:
+          # !rcEnc->featureInfo()->hasReadColorBufferDma" about every 30 seconds with every GPU mode, so API 37 runs locally.
+          api-level: "36"
           target: google_apis
           arch: x86_64
-          # The action's default device has a low-memory profile on which Android 17 never comes online.
+          # The action's default device has a low-memory profile on which the emulator never comes online.
           profile: pixel_6
           cores: 4
           ram-size: 4096M

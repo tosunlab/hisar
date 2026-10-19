@@ -179,7 +179,7 @@ binaries, the server Docker image for amd64 and arm64 (built into a throwaway re
 the share link page in Chromium against the server, the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
-release APKs, lint, the JVM tests and the instrumented tests on an x86_64 API 37 emulator against a local server; only when the
+release APKs, lint, the JVM tests and the instrumented tests on an x86_64 API 36 emulator against a local server; only when the
 pull request changes `mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes, `core/`, `go.work`
 or the workflow).
 
