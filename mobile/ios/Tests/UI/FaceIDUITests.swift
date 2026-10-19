@@ -30,6 +30,23 @@ final class FaceIDUITests: HisarUITestCase {
         postNotification("com.apple.BiometricKit_Sim.pearl.match")
     }
 
+    // Face ID ignores a match posted before it asks, and its prompt is not an element the test can wait for, so the match
+    // repeats until the app goes on.
+    private func matchFace(until isDone: () -> Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(30)
+        repeat {
+            matchFace()
+            let retry = Date().addingTimeInterval(2)
+            while Date() < retry {
+                if isDone() {
+                    return
+                }
+                Thread.sleep(forTimeInterval: 0.2)
+            }
+        } while Date() < deadline
+        XCTFail("Face ID did not let the app go on", file: file, line: line)
+    }
+
     private func allowFaceIDIfAsked() {
         let allowButton = springboard.alerts.buttons["Allow"].exists ? springboard.alerts.buttons["Allow"] : app.alerts.buttons["Allow"]
         if allowButton.waitForExistence(timeout: 3) {
@@ -55,8 +72,7 @@ final class FaceIDUITests: HisarUITestCase {
         saveScreenshot("face-id-offer")
         app.buttons["biometric-offer-turn-on"].tap()
         allowFaceIDIfAsked()
-        sleep(1)
-        matchFace()
+        matchFace(until: { app.buttons["vault-Personal"].exists })
         waitFor(app.buttons["vault-Personal"], timeout: 20)
 
         openSettings("open-security")
@@ -75,16 +91,14 @@ final class FaceIDUITests: HisarUITestCase {
         passwordField.typeText(Self.masterPassword)
         app.alerts.buttons["Turn on"].tap()
         allowFaceIDIfAsked()
-        sleep(1)
-        matchFace()
+        matchFace(until: { toggle.value as? String == "1" })
         expectation(for: enabledPredicate, evaluatedWith: toggle)
         waitForExpectations(timeout: 20)
         sleep(2)
         saveScreenshot("settings-face-id")
         app.buttons["settings-lock-now"].tap()
         saveScreenshot("lock-face-id")
-        sleep(1)
-        matchFace()
+        matchFace(until: { app.buttons["vault-Personal"].exists })
         waitFor(app.buttons["vault-Personal"], timeout: 15)
         XCTAssertFalse(springboard.otherElements["Face ID"].exists, "one Face ID prompt unlocks: the keychain reuses the evaluated context")
     }
