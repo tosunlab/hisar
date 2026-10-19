@@ -128,6 +128,7 @@ class ItemEditorUITests {
             val bounds = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().firstOrNull()?.boundsInWindow
             val isStill = bounds != null && bounds == lastBounds
             lastBounds = bounds
+            // Still means two equal samples, so the samples need real time between them.
             if (!isStill) Thread.sleep(100)
             isStill
         }

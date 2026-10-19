@@ -272,6 +272,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
             val allTitle = backend.listAllItem(personalVault.id).map { it.title }
             if (title in allTitle) return
             check(System.currentTimeMillis() < deadline) { "the Mac never saved “$title”; the Personal vault holds $allTitle" }
+            // The Mac's save reaches this phone through the app's own sync, which gives the test nothing to wait on.
             Thread.sleep(500)
         }
     }

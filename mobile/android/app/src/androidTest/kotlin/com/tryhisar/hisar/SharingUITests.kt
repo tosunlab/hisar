@@ -1,5 +1,6 @@
 package com.tryhisar.hisar
 
+import android.content.res.Configuration
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -9,6 +10,8 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import java.util.UUID
 import org.junit.After
 import org.junit.Assert.assertFalse
@@ -31,13 +34,24 @@ class SharingUITests : HisarUITestCase() {
     /** Switching the appearance recreates the activity, which loads the sheet again: [readyTag] shows once it has. */
     private fun saveLightAndDarkScreenshot(name: String, readyTag: String) {
         saveScreenshot("$name-light")
-        setDarkMode(true)
-        Thread.sleep(1_500)
-        scrollTo(readyTag)
+        switchAppearance(isDark = true, readyTag)
         saveScreenshot("$name-dark")
-        setDarkMode(false)
-        Thread.sleep(1_500)
+        switchAppearance(isDark = false, readyTag)
+    }
+
+    private fun switchAppearance(isDark: Boolean, readyTag: String) {
+        setDarkMode(isDark)
+        composeRule.waitUntil("the activity is recreated ${if (isDark) "dark" else "light"}", 30_000) { isResumedActivityDark() == isDark }
         scrollTo(readyTag)
+    }
+
+    private fun isResumedActivityDark(): Boolean? {
+        var isDark: Boolean? = null
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            val activity = ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).firstOrNull() ?: return@runOnMainSync
+            isDark = activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+        }
+        return isDark
     }
 
     /** What a row reads as one element, as an XCUIElement's label. */
