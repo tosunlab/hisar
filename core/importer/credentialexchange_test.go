@@ -127,6 +127,82 @@ func describeFields(fields []item.Field) string {
 	return strings.Join(parts, ", ")
 }
 
+// testdata/credential-exchange-android.json follows CXF 1.0 as Android's credential transfer hands it over: integer
+// timestamps, unpadded base64url binaries, lower-case enumerations, scopes with Android apps, collections and the shared
+// extension, which Hisar ignores.
+func TestParseCredentialExchangeSpecPayload(t *testing.T) {
+	content, err := os.ReadFile("testdata/credential-exchange-android.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := ParseCredentialExchange(content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Source != "Example Exporter" || len(result.Items) != 6 {
+		t.Fatalf("result = %q, %d items", result.Source, len(result.Items))
+	}
+	exampleApp, _ := item.ParseAndroidApp("com.example.app", "80365941c9dc84b8d8464ce0b7ef6427b1dfde34f6317b58fb92a903e9f82c65")
+	bankApp, _ := item.ParseAndroidApp("com.bank.app", "80365941c9dc84b8d8464ce0b7ef6427b1dfde34f6317b58fb92a903e9f82c65")
+
+	example := findTestItem(t, result, "Example")
+	if !example.IsCategory(item.CategoryLogin) || example.Overview.Username != "alice" || example.Details.Password != "correct-horse" ||
+		!reflect.DeepEqual(example.Websites(), []string{"https://login.example.com"}) || !reflect.DeepEqual(example.AndroidApps(), []item.AndroidApp{exampleApp}) ||
+		!example.IsFavorite || !reflect.DeepEqual(example.Overview.Tags, []string{"work"}) || example.Details.Notes != "Recovery codes are in the safe." ||
+		example.Details.OneTimePassword != "otpauth://totp/Example:alice?issuer=Example&secret=JBSWY3DPEHPK3PXP" {
+		t.Errorf("Example = %+v %+v", example.Overview, example.Details)
+	}
+	if len(example.Details.Passkeys) != 1 {
+		t.Fatalf("Example passkeys = %+v", example.Details.Passkeys)
+	}
+	examplePasskey := example.Details.Passkeys[0]
+	wantCredentialID, _ := decodeCredentialExchangeBinary("7eRKGgxZmQPuErE3IN4Lqg")
+	wantPRFSecret, _ := decodeCredentialExchangeBinary("6j8nmKM4AShIBoYPPeAx0T2Xjdp6slviubOA75cX1yE")
+	if examplePasskey.RelyingPartyID != "login.example.com" || !bytes.Equal(examplePasskey.CredentialID, wantCredentialID) ||
+		examplePasskey.UserName != "alice" || examplePasskey.UserDisplayName != "Alice Example" ||
+		!examplePasskey.CreatedAt.Equal(time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)) || !bytes.Equal(examplePasskey.PRFSecret, wantPRFSecret) {
+		t.Errorf("Example passkey = %+v", examplePasskey)
+	}
+	if _, err := passkey.SignAssertionWithClientDataHash("login.example.com", examplePasskey.RelyingPartyID, make([]byte, 32), examplePasskey.PrivateKey); err != nil {
+		t.Errorf("the imported key does not sign: %v", err)
+	}
+
+	// A passkey's site is its login's website even when the scope names only an app; the app is linked after it.
+	bank := findTestItem(t, result, "Bank")
+	if bank.Overview.Username != "alice@bank.example" || !reflect.DeepEqual(bank.Websites(), []string{"https://bank.example"}) ||
+		!reflect.DeepEqual(bank.AndroidApps(), []item.AndroidApp{bankApp}) {
+		t.Errorf("Bank = %+v", bank.Overview)
+	}
+
+	lite := findTestItem(t, result, "Example Lite")
+	if lite.Overview.Username != "alice-lite" || len(lite.Overview.URLs) != 0 {
+		t.Errorf("Example Lite = %+v", lite.Overview)
+	}
+	visa := findTestItem(t, result, "Visa")
+	card, _ := item.ReadCard(&visa)
+	if !visa.IsCategory(item.CategoryCreditCard) || card.Number != "4111 1111 1111 1111" || card.Expiry != "04/30" || len(visa.Overview.URLs) != 0 ||
+		!strings.Contains(describeFields(visa.Details.Fields), "Valid from=2025-04") {
+		t.Errorf("Visa = %+v %+v %+v", card, visa.Overview, visa.Details.Fields)
+	}
+	if alarm := findTestItem(t, result, "Alarm"); !alarm.IsCategory(item.CategorySecureNote) || alarm.Details.Notes != "Code 2468, then the green button." {
+		t.Errorf("Alarm = %+v", alarm)
+	}
+	deployKey := findTestItem(t, result, "Deploy key")
+	if !deployKey.IsCategory(item.CategorySSHKey) || deployKey.Overview.KeyType != "ssh-ed25519" ||
+		!strings.HasPrefix(deployKey.Details.PrivateKey, "-----BEGIN OPENSSH PRIVATE KEY-----") {
+		t.Errorf("Deploy key = %+v", deployKey.Overview)
+	}
+
+	wantSkipped := []SkippedEntry{
+		{Title: "Example Lite", Reason: "its Android app com.example.lite was not linked; Hisar needs the SHA-256 of the app's signing certificate"},
+		{Title: "Example Lite", Reason: "its Android app com.example.unsigned was not linked; Hisar needs the SHA-256 of the app's signing certificate"},
+		{Title: "Visa", Reason: "its Android app com.example.app was not linked; only logins fill into apps"},
+	}
+	if !reflect.DeepEqual(result.Skipped, wantSkipped) {
+		t.Errorf("skipped = %+v", result.Skipped)
+	}
+}
+
 func TestParseCredentialExchangeRefusals(t *testing.T) {
 	if _, err := ParseCredentialExchange([]byte(`{"version":{"major":2,"minor":0},"accounts":[]}`)); !errors.Is(err, ErrCredentialExchangeVersion) {
 		t.Errorf("version 2: %v", err)
