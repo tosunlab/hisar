@@ -2,8 +2,9 @@ package hisarkit
 
 import "github.com/tryhisar/hisar/core/app"
 
-// PrepareCredentialExchangeImport reads the ASExportedCredentialData another app exported to Hisar, encoded by JSONEncoder
-// with dates as seconds since 1970 (the Credential Exchange JSON), and returns app.ImportPreview as JSON for vaultID.
+// PrepareCredentialExchangeImport reads the Credential Exchange JSON another app exported to Hisar (on iOS the
+// ASExportedCredentialData encoded by JSONEncoder with dates as seconds since 1970, on Android the responseJson of the
+// credential transfer) and returns app.ImportPreview as JSON for vaultID.
 func (hisar *Hisar) PrepareCredentialExchangeImport(vaultID string, credentialData []byte) (string, error) {
 	preview, err := app.PrepareCredentialExchangeImport(hisar.service, vaultID, credentialData)
 	clear(credentialData)

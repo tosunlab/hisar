@@ -1,9 +1,2 @@
 # iPhone tests not ported to Android yet, one Class.testName per line. IosTestParityTest fails when a listed test
 # is ported (remove its line) and when an unlisted iPhone test has no Android test. This list only shrinks; it ends empty.
-CredentialImportTests.testCancelDropsTheImport
-CredentialImportTests.testChoosingAnotherVaultPreviewsAgain
-CredentialImportTests.testImportContinuesUntilDoneAndRefreshes
-CredentialImportTests.testLockClosesTheImport
-CredentialImportTests.testPausedImportRetries
-CredentialImportTests.testTokenWaitsForUnlockAndPreparesOnce
-CredentialImportTests.testTokenWhileSignedOutExplainsInstead

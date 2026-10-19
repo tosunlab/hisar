@@ -70,6 +70,8 @@ dependencies {
     implementation(libs.zxing.core)
     implementation(libs.androidx.autofill)
     implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.providerevents)
+    implementation(libs.androidx.credentials.providerevents.play.services)
 
     testImplementation(testFixtures(project(":model")))
     testImplementation(libs.kotlin.test.junit)

@@ -13,6 +13,8 @@ import com.tryhisar.hisar.model.ExportFormat
 import com.tryhisar.hisar.model.ExportOptions
 import com.tryhisar.hisar.model.ExportResult
 import com.tryhisar.hisar.model.FavoriteItem
+import com.tryhisar.hisar.model.ImportPreview
+import com.tryhisar.hisar.model.ImportProgress
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.LoginMatch
@@ -266,6 +268,18 @@ class HisarKitBackend(
         directory.mkdirs()
         return decode(ExportResult.serializer(), call { exportAllData(format.id, passphrase, password, directory.path) })
     }
+
+    override fun prepareCredentialExchangeImport(vaultID: String, credentialData: ByteArray): ImportPreview =
+        decode(ImportPreview.serializer(), call { prepareCredentialExchangeImport(vaultID, credentialData) })
+
+    override fun previewImport(vaultID: String): ImportPreview = decode(ImportPreview.serializer(), call { previewImport(vaultID) })
+
+    override fun startImport(vaultID: String, isSkippingDuplicate: Boolean): ImportProgress =
+        decode(ImportProgress.serializer(), call { startImport(vaultID, isSkippingDuplicate) })
+
+    override fun continueImport(): ImportProgress = decode(ImportProgress.serializer(), call { continueImport() })
+
+    override fun cancelImport() = call { cancelImport() }
 
     override fun listAllItem(vaultID: String): List<ItemDetail> = decodeList(ItemDetail.serializer(), call { listAllItem(vaultID) })
 

@@ -37,6 +37,7 @@ import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.exposeTestTags
 import com.tryhisar.hisar.ui.components.performConfirmHaptic
 import com.tryhisar.hisar.ui.lock.LockScreen
+import com.tryhisar.hisar.ui.settings.CredentialImportScreen
 import com.tryhisar.hisar.ui.signin.BiometricOfferScreen
 import com.tryhisar.hisar.ui.signin.NewSecretKeyScreen
 import com.tryhisar.hisar.ui.signin.SignInScreen
@@ -45,8 +46,8 @@ import kotlinx.coroutines.launch
 
 /**
  * The app's one window: the screen the model's state asks for, with the overlays that sit above any screen: the cover
- * after sign-up, the open request from the Mac, the "Already signed in" alert, notices, and the privacy cover while the
- * app is not in front.
+ * after sign-up, the import from another app, the open request from the Mac, the "Already signed in" and import alerts,
+ * notices, and the privacy cover while the app is not in front.
  */
 @Composable
 fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
@@ -61,6 +62,8 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val isCheckingMinimumVersion by model.isCheckingMinimumVersion.collectAsStateWithLifecycle()
         val allPendingApproval by model.approvals.allPendingApproval.collectAsStateWithLifecycle()
         val presentedApproval by model.approvals.presentedApproval.collectAsStateWithLifecycle()
+        val credentialImportSheet by model.credentialImport.sheet.collectAsStateWithLifecycle()
+        val credentialImportMessage by model.credentialImport.message.collectAsStateWithLifecycle()
         val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
         val view = LocalView.current
         val scope = rememberCoroutineScope()
@@ -87,6 +90,10 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                 null -> Unit
             }
 
+            credentialImportSheet?.let { sheet ->
+                if (screen == Screen.Unlocked && newAccountStep == null) CredentialImportScreen(model, sheet)
+            }
+
             presentedApproval?.let { approval ->
                 if (screen == Screen.Unlocked && newAccountStep == null) PhoneApprovalSheet(model, approval)
             }
@@ -104,6 +111,15 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
             }
 
             if (!lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) PrivacyCover()
+        }
+
+        credentialImportMessage?.let { message ->
+            AlertDialog(
+                onDismissRequest = { model.credentialImport.message.value = null },
+                title = { Text("Import from another app") },
+                text = { Text(message) },
+                confirmButton = { PlainButton("OK", { model.credentialImport.message.value = null }, testTag = "credential-import-message-ok") },
+            )
         }
 
         inviteLinkMessage?.let { message ->

@@ -94,6 +94,7 @@ class AppModel(
     val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
+    val credentialImport = CredentialImportModel(this)
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)
     val websiteIcons = WebsiteIconModel(this)

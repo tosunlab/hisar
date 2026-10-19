@@ -1223,3 +1223,81 @@ data class WaitingVaultKeys(
     val deliveryError: String = "",
     val rotationError: String = "",
 )
+
+/** An item an import leaves out or failed to save, with why. */
+@Serializable
+data class ImportSkippedEntry(val title: String = "", val reason: String = "")
+
+/**
+ * An item the chosen vault already has. passkeyCount is how many of its passkeys the existing login lacks; skipping
+ * duplicates adds them to it.
+ */
+@Serializable
+data class ImportDuplicate(
+    val title: String = "",
+    val username: String = "",
+    val url: String = "",
+    val detail: String = "",
+    val passkeyCount: Int = 0,
+)
+
+/**
+ * What an import would bring into vaultID. For a Credential Exchange import fileName names the app the items came from
+ * and filePath is empty.
+ */
+@Serializable
+data class ImportPreview(
+    val fileName: String = "",
+    val filePath: String = "",
+    val format: String = FORMAT_CREDENTIAL_EXCHANGE,
+    val formatName: String = "Credential Exchange",
+    @SerialName("vaultId") val vaultID: String = "",
+    val vaultName: String = "",
+    val itemCount: Int = 0,
+    val loginCount: Int = 0,
+    val secureNoteCount: Int = 0,
+    val sshKeyCount: Int = 0,
+    val creditCardCount: Int = 0,
+    val identityCount: Int = 0,
+    val apiCredentialCount: Int = 0,
+    val addressCount: Int = 0,
+    val softwareLicenseCount: Int = 0,
+    val serverCount: Int = 0,
+    val databaseCount: Int = 0,
+    val passkeyCount: Int = 0,
+    val allSkipped: List<ImportSkippedEntry> = emptyList(),
+    val allDuplicate: List<ImportDuplicate> = emptyList(),
+) {
+    /** The preview's non-zero counts, as the import sheet lists them. */
+    val allCountRow: List<ImportCountRow>
+        get() = listOf(
+            ImportCountRow("Logins", loginCount), ImportCountRow("Passkeys", passkeyCount),
+            ImportCountRow("Secure notes", secureNoteCount), ImportCountRow("Cards", creditCardCount),
+            ImportCountRow("Identities", identityCount), ImportCountRow("SSH keys", sshKeyCount),
+            ImportCountRow("API credentials", apiCredentialCount), ImportCountRow("Addresses", addressCount),
+            ImportCountRow("Software licenses", softwareLicenseCount), ImportCountRow("Servers", serverCount),
+            ImportCountRow("Databases", databaseCount),
+        ).filter { it.count > 0 }
+
+    /** How many passkeys skipping the duplicates still adds to the logins the vault already has. */
+    val duplicatePasskeyCount: Int get() = allDuplicate.sumOf { it.passkeyCount }
+
+    companion object {
+        const val FORMAT_CREDENTIAL_EXCHANGE = "credential-exchange"
+    }
+}
+
+data class ImportCountRow(val label: String, val count: Int)
+
+/** A running import: continueImport saves the next items until isDone. */
+@Serializable
+data class ImportProgress(
+    val fileName: String = "",
+    val filePath: String = "",
+    @SerialName("vaultId") val vaultID: String = "",
+    val vaultName: String = "",
+    val savedCount: Int = 0,
+    val totalCount: Int = 0,
+    val isDone: Boolean = false,
+    val allFailed: List<ImportSkippedEntry> = emptyList(),
+)

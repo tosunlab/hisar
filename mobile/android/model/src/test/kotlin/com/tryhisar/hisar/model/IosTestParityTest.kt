@@ -33,6 +33,8 @@ class IosTestParityTest {
         "testChosenPasskeyInAnUnlockedExtensionAsksTheDeviceOwner" to "testChosenPasskeyWhileUnlockedAsksTheDeviceOwner",
         // Credential Manager asks the provider at request time, so the iPhone's identity save becomes the next request's offer.
         "testPasskeyRegistrationUpdatesTheCredentialIdentities" to "testCreatedPasskeyIsOfferedOnTheNextRequest",
+        "testTokenWaitsForUnlockAndPreparesOnce" to "testTransferWaitsForUnlockAndPreparesOnce",
+        "testTokenWhileSignedOutExplainsInstead" to "testImportWhileSignedOutExplainsInstead",
     )
 
     private val notApplicable = run {

@@ -157,8 +157,9 @@ func (s *Service) ChooseImportFile(vaultID, format string) (ImportPreview, error
 }
 
 // PrepareCredentialExchangeImport reads the Credential Exchange (CXF) JSON another password manager handed over, such
-// as ASExportedCredentialData from ASCredentialImportManager on iOS, and previews it for vaultID like a chosen file;
-// StartImport and ContinueImport then save it. Not a method, so the desktop UI cannot call it.
+// as ASExportedCredentialData from ASCredentialImportManager on iOS or the responseJson of Android's credential transfer,
+// and previews it for vaultID like a chosen file; StartImport and ContinueImport then save it. Not a method, so the
+// desktop UI cannot call it.
 func PrepareCredentialExchangeImport(s *Service, vaultID string, content []byte) (ImportPreview, error) {
 	if len(content) > maxImportFileSize {
 		return ImportPreview{}, errors.New("there are more than 100 MB of credentials; export fewer at a time")

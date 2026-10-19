@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui.settings
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Devices
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.PersonRemove
@@ -54,6 +56,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.tryhisar.hisar.HisarApplication
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.AccountLifecycleLogic
@@ -75,10 +78,11 @@ import kotlinx.coroutines.launch
 
 private const val SAVE_FAILED_MESSAGE = "Hisar could not save the file there. Choose another place."
 
-/** Settings → Account: who is signed in, where the Secret Key is, exporting, and deleting the account. */
+/** Settings → Account: who is signed in, where the Secret Key is, importing and exporting, and deleting the account. */
 @Composable
 fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: () -> Unit) {
     val status by model.status.collectAsStateWithLifecycle()
+    val activity = LocalActivity.current
     SettingsScreen("Account", onBack) {
         FormSection {
             LabeledRow("Name", status.name)
@@ -95,6 +99,23 @@ fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: 
             },
         ) {
             NavigationRow("Secret Key and Emergency Kit", "open-account-secret-key", { push(SettingsDestination.SECRET_KEY) }, Icons.Outlined.Description)
+        }
+        FormSection(
+            footer = {
+                Text("Passwords, passkeys, one-time codes and other items from another password manager on this device. You choose the app in the list Android shows.")
+            },
+        ) {
+            FormButtonRow(
+                "Import from another app…",
+                {
+                    if (activity != null) {
+                        model.credentialImport.start((activity.application as HisarApplication).createCredentialExchangeReceiver(activity))
+                    }
+                },
+                testTag = "open-credential-import",
+                icon = Icons.Outlined.Download,
+                color = HisarTheme.colors.tint,
+            )
         }
         FormSection(footer = { Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON.") }) {
             FormButtonRow("Export data…", { push(SettingsDestination.EXPORT_DATA) }, testTag = "open-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
