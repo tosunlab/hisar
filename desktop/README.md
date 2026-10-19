@@ -49,9 +49,9 @@ builds on a GitHub-hosted macOS runner and Linux runners. The GitHub prerelease 
 `Hisar-<version>.dmg`, `Hisar-<version>.zip`, `update-unpublished.json` and the Linux packages, a download for the team.
 Nobody gets it as an automatic update until the run's Publish job is approved, which renames the file to `update.json` and
 marks the release as the latest. A custom build such as `desktop-1.0.0-alpha-test` has no zip or update and can't be
-published. The build needs the repository secret `SPARKLE_PRIVATE_KEY`. The app is
-ad-hoc signed and not notarized until the Apple Developer membership is active, so the first launch needs right-click → Open
-(or `xattr -dr com.apple.quarantine /Applications/Hisar.app`).
+published. The build needs the repository secrets `SPARKLE_PRIVATE_KEY`; `MACOS_SIGNING_CERTIFICATE` (the team's
+Developer ID Application `.p12`, base64) and `MACOS_SIGNING_CERTIFICATE_PASSWORD`; and the App Store Connect API key that
+notarizes the app and the DMG: `APPLE_NOTARY_KEY` (the `.p8`, base64), `APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_ISSUER_ID`.
 
 ### Automatic updates
 
