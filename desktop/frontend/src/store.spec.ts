@@ -93,11 +93,23 @@ describe("store", () => {
     expect(store.selectedItem).toBeNull();
   });
 
-  it("handles the auto-lock event", () => {
+  it("handles the auto-lock event", async () => {
     store.status = createStatus("unlocked");
     store.selectedItem = createItem({ password: "secret" });
-    storeModule.handleLocked();
+    api.getStatus.mockResolvedValue(createStatus("locked"));
+    await storeModule.handleLocked();
     expect(store.status.state).toBe("locked");
+    expect(store.selectedItem).toBeNull();
+  });
+
+  it("shows sign-in with the reason when the server signed this device out", async () => {
+    store.status = createStatus("unlocked");
+    store.selectedItem = createItem({ password: "secret" });
+    const reason = "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one.";
+    api.getStatus.mockResolvedValue({ ...createStatus("signed-out"), email: "", signedOutReason: reason });
+    await storeModule.handleLocked();
+    expect(store.status.state).toBe("signed-out");
+    expect(store.status.signedOutReason).toBe(reason);
     expect(store.selectedItem).toBeNull();
   });
 
