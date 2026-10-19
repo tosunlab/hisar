@@ -20,6 +20,18 @@ const server = ref(getDisplayServer(store.status.server));
 // The server stays behind "Use a different server…" even when it is a remembered self-hosted one; the hint names it.
 const isServerShown = ref(false);
 const email = ref(store.status.email);
+// At launch this view opens before the backend's first status, which brings the remembered server and email.
+watch(
+  () => [store.status.server, store.status.email],
+  ([statusServer, statusEmail]) => {
+    if (!isServerShown.value) {
+      server.value = getDisplayServer(statusServer);
+    }
+    if (!email.value) {
+      email.value = statusEmail;
+    }
+  },
+);
 const secretKey = ref("");
 const password = ref("");
 const inviteCode = ref("");

@@ -198,6 +198,23 @@ describe("SignInView", () => {
     expect(api.signIn).toHaveBeenCalledWith("http://127.0.0.1:8080", "alice@example.com", "H1-KEY", "master password");
   });
 
+  it("names the remembered server when the first status arrives after the view opened", async () => {
+    store.status = { ...createStatus("signed-out"), server: "", email: "" };
+    api.signIn.mockResolvedValue(createStatus("unlocked"));
+    api.listAllVault.mockResolvedValue([]);
+    const wrapper = mount(SignInView);
+    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to api.tryhisar.com.");
+    store.status = { ...createStatus("signed-out"), server: "http://127.0.0.1:8080", email: "" };
+    await flushPromises();
+    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to http://127.0.0.1:8080.");
+    await wrapper.find('input[name="email"]').setValue("alice@example.com");
+    await wrapper.find('input[name="secretKey"]').setValue("H1-KEY");
+    await wrapper.find('input[name="password"]').setValue("master password");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.signIn).toHaveBeenCalledWith("http://127.0.0.1:8080", "alice@example.com", "H1-KEY", "master password");
+  });
+
   it("rates the new master password and blocks only clearly weak ones", async () => {
     const wrapper = mount(SignInView);
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
