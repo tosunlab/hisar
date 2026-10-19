@@ -190,13 +190,17 @@ STATUS=0
 (cd "$ROOT/mobile/android" && ./gradlew --console=plain connectedDebugAndroidTest "${GRADLE_ARGUMENTS[@]}") || STATUS=$?
 # Gradle passes a run whose test runner crashed before it found any test, or whose ANDROID_UI_TESTS matched none.
 if [ "$STATUS" = 0 ] && ! grep -rqsE '<testsuites? [^>]*tests="[1-9]' "$RESULTS"; then
-  echo "no test ran; see the device's logcat" >&2
+  echo "no test ran; see the device's log in $RESULTS/device-logcat.txt" >&2
   STATUS=1
 fi
 if [ -n "${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" ] && [ -d "$OUTPUT" ]; then
   find "$OUTPUT" -name 'android-*.png' -exec cp {} "$HISAR_UI_TEST_SCREENSHOT_DIRECTORY" \;
 fi
 if [ "$STATUS" != 0 ]; then
+  mkdir -p "$RESULTS"
+  "$ADB" logcat -d -b all >"$RESULTS/device-logcat.txt" 2>&1 || true
+  echo "--- device crash log" >&2
+  "$ADB" logcat -d -b crash 2>&1 | tail -n 80 >&2 || true
   ui_test_print_logs
   echo "--- hisar-ui-test-mac log" >&2
   cat "$T/mac.log" >&2
