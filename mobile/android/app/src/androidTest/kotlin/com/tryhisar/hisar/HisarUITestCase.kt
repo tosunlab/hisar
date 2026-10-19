@@ -109,16 +109,26 @@ abstract class HisarUITestCase {
         composeRule.waitUntil("the $menu menu closes after choosing $item", 10_000) { !exists(hasTestTag(item)) }
     }
 
-    /** A lazy list composes only the rows on screen, so a row further down does not exist until the list scrolls to it. */
+    /**
+     * A lazy list composes only the rows on screen, so a row further down does not exist until the list scrolls to it; a
+     * list still loading does not hold the row yet, so the list is scrolled again until it does.
+     */
     fun scrollTo(tag: String) {
         val node = hasTestTag(tag)
-        if (!exists(node) && exists(hasScrollToNodeAction())) {
-            composeRule.onAllNodes(hasScrollToNodeAction()).onLast().performScrollToNode(node)
-        }
-        waitFor(node)
+        composeRule.waitUntil("$tag appears", 30_000) { exists(node) || isScrolledInto(node) }
         if (exists(node and hasAnyAncestor(hasScrollAction()))) {
             composeRule.onNode(node).performScrollTo()
             scrollClearOfTabBar(node)
+        }
+    }
+
+    private fun isScrolledInto(node: SemanticsMatcher): Boolean {
+        if (!exists(hasScrollToNodeAction())) return false
+        return try {
+            composeRule.onAllNodes(hasScrollToNodeAction()).onLast().performScrollToNode(node)
+            exists(node)
+        } catch (_: AssertionError) {
+            false
         }
     }
 

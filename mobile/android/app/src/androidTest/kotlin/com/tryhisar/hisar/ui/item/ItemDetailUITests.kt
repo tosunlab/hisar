@@ -118,10 +118,11 @@ class ItemDetailUITests : HisarUITestCase() {
         saveScreenshot("item-detail-android-app")
         tap("remove-android-app-com.bank.app")
         confirm("Remove App", excludingTag = "remove-android-app-com.bank.app")
+        // The notice shows for 2.5 seconds, so it is read while it shows, not after the slower wait for the row.
+        waitFor(hasText("Android app removed."))
         composeRule.waitUntil("the app's row goes", 30_000) { !exists(hasTestTag("android-app-com.bank.app")) }
         assertEquals(emptyList<Any>(), backend.getItem(personalID, login.id).allAndroidApp)
         assertEquals(listOf("https://bank.example"), backend.getItem(personalID, login.id).allURL)
-        assertEquals("Android app removed.", host.model.notice.value)
     }
 
     @Test
