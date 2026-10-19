@@ -27,14 +27,26 @@ export ANDROID_SERIAL
 "$ADB" wait-for-device shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
 DEVICE_LOG=$ROOT/mobile/android/app/build/outputs/androidTest-results/device-logcat.txt
 SYSTEM_SERVER_AT_START=$("$ADB" shell pidof system_server | tr -d '\r')
+# adb waits forever on an emulator that hung, so the calls after a failed run give up after a while instead of holding the job
+# until its timeout. The timer's output goes to /dev/null so that $(...) does not wait for it.
+within() {
+  local seconds=$1 adb status=0
+  shift
+  "$ADB" "$@" &
+  adb=$!
+  (sleep "$seconds"; kill "$adb" 2>/dev/null) >/dev/null 2>&1 &
+  wait "$adb" || status=$?
+  kill $! 2>/dev/null || true
+  return "$status"
+}
 # A failed run keeps the device's whole log in the uploaded results, and says whether Android's framework restarted.
 save_device_log() {
   [ "$1" != 0 ] || return 0
   mkdir -p "$(dirname "$DEVICE_LOG")"
-  "$ADB" logcat -d -b all >"$DEVICE_LOG" 2>&1 || true
-  echo "--- system_server was process $SYSTEM_SERVER_AT_START at the start and is $("$ADB" shell pidof system_server | tr -d '\r') now; the device's log is in $DEVICE_LOG" >&2
+  within 120 logcat -d -b all >"$DEVICE_LOG" 2>&1 || true
+  echo "--- system_server was process $SYSTEM_SERVER_AT_START at the start and is $(within 20 shell pidof system_server | tr -d '\r') now; the device's log is in $DEVICE_LOG" >&2
   echo "--- device crash log" >&2
-  "$ADB" logcat -d -b crash 2>&1 | tail -n 80 >&2 || true
+  within 60 logcat -d -b crash 2>&1 | tail -n 80 >&2 || true
 }
 
 UI_TEST_PLATFORM_NAME=Android
@@ -131,7 +143,7 @@ if [[ "$ANDROID_SERIAL" == emulator-* ]] && [ -r "$HOME/.emulator_console_auth_t
   UI_TEST_VALUES+=("HISAR_UI_TEST_EMULATOR_CONSOLE_PORT=${ANDROID_SERIAL#emulator-}" "HISAR_UI_TEST_EMULATOR_CONSOLE_TOKEN=$(cat "$HOME/.emulator_console_auth_token")")
 fi
 "$ADB" reverse "tcp:$UI_TEST_PORT" "tcp:$UI_TEST_PORT" >/dev/null
-trap 'save_device_log $?; "$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; ui_test_stop "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE"' EXIT
+trap 'save_device_log $?; within 20 reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; ui_test_stop "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE"' EXIT
 
 # TrustedCertificatesTests serves HTTPS on the device with a certificate for 127.0.0.1 from a private CA made for this run
 # alone, and reads both from the test storage's input files.

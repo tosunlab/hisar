@@ -392,7 +392,8 @@ jobs:
           # The step before built mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
           script: ./scripts/test-android-ui.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
+        # A job stopped at its timeout is cancelled rather than failed; its reports explain why.
+        if: failure() || cancelled()
         with:
           name: android-reports-${{ matrix.shard }}
           path: |
