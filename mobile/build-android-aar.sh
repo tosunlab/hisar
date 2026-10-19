@@ -16,7 +16,8 @@ gomobile bind -target=android/arm64,android/amd64 -androidapi 29 -javapkg com.tr
 workDirectory=$(mktemp -d)
 trap 'rm -rf "$workDirectory"' EXIT
 unzip -p "$aar" classes.jar > "$workDirectory/classes.jar"
-unzip -Z1 "$workDirectory/classes.jar" | grep -qx com/tryhisar/hisarkit/Hisar.class || { echo "$aar has no com/tryhisar/hisarkit/Hisar.class"; exit 1; }
+# grep reads the whole listing: with -q it would stop at the match, and pipefail would then report unzip's SIGPIPE.
+unzip -Z1 "$workDirectory/classes.jar" | grep -x com/tryhisar/hisarkit/Hisar.class >/dev/null || { echo "$aar has no com/tryhisar/hisarkit/Hisar.class"; exit 1; }
 
 readelf=$(echo "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-readelf)
 for abi in arm64-v8a x86_64; do
