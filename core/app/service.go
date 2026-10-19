@@ -26,6 +26,7 @@ type Service struct {
 	itemsByVaultID               map[string][]item.Item
 	favorites                    *session.Preferences
 	lockTimer                    *time.Timer
+	lockDeadline                 time.Duration
 	clipboardClearTimer          *time.Timer
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
@@ -100,6 +101,9 @@ func NewService(config Config) (*Service, error) {
 	if config.Now == nil {
 		config.Now = time.Now
 	}
+	if config.SleepCountingClock == nil {
+		config.SleepCountingClock = readSleepCountingClock
+	}
 	state, err := localstate.Load(config.StatePath)
 	if err != nil {
 		return nil, err
@@ -140,7 +144,7 @@ func (s *Service) buildStatus() Status {
 		}
 	}
 	switch {
-	case s.unlockedSession != nil:
+	case s.isUnlocked():
 		status.State = StateUnlocked
 		status.IsOffline = s.unlockedSession.IsOffline()
 	case s.state.IsLoggedIn():

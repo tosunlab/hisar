@@ -228,6 +228,22 @@ class AutoFillModelTests {
     }
 
     @Test
+    fun testSuggestionAfterAutoLockAsksForTheUnlock() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        val github = LoginSource.Website("github.com")
+        model.prepare()
+        assertEquals("github-password", model.provideCredentialWithoutUserInteraction("personal/github", github)?.password)
+        backend.lock()
+        assertNull(model.provideCredentialWithoutUserInteraction("personal/github", github), "the backend answers locked once auto-lock is due")
+        model.prepareInterfaceToProvideCredential("personal/github", websites("github.com"), github)
+        assertEquals(AutoFillModel.Screen.Locked, model.screen.value)
+        assertTrue(allCompletedCredential.isEmpty())
+        model.unlock(FakeBackend.PASSWORD)
+        assertEquals(listOf("github-password"), allCompletedCredential.map { it.password })
+    }
+
+    @Test
     fun testCancel() = runTest {
         val model = createModel()
         model.cancel()

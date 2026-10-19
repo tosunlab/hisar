@@ -96,7 +96,7 @@ func convertToSentShareInvitation(sent apitypes.SentShareInvitation, vaultName s
 // It needs only the saved session; unlocked, signed out or offline, the list is empty.
 func (s *Service) ListSharesAwaitingUnlock() ([]ShareAwaitingUnlock, error) {
 	s.mutex.Lock()
-	isLocked := s.unlockedSession == nil && s.state.IsLoggedIn()
+	isLocked := !s.isUnlocked() && s.state.IsLoggedIn()
 	server, token := s.state.Server, s.state.Token
 	s.mutex.Unlock()
 	awaitingShares := []ShareAwaitingUnlock{}

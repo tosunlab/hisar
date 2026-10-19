@@ -115,7 +115,7 @@ func (s *Service) runPendingSyncs(ctx context.Context, pendingSyncs chan struct{
 func (s *Service) syncVaults(ctx context.Context) bool {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.unlockedSession == nil || ctx.Err() != nil {
+	if !s.isUnlocked() || ctx.Err() != nil {
 		return false
 	}
 	s.completeAcceptedShares(ctx)

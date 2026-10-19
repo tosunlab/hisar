@@ -65,7 +65,7 @@ func (s *Service) listLogins(ctx context.Context, isMatch func(*item.Item) bool)
 
 // requireUnlockedWithoutActivity checks the lock state like requireUnlocked but, like the SSH agent, does not postpone auto-lock.
 func (s *Service) requireUnlockedWithoutActivity() error {
-	if s.unlockedSession != nil {
+	if s.isUnlocked() {
 		return nil
 	}
 	if s.state.IsLoggedIn() {

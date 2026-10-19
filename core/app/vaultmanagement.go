@@ -232,7 +232,7 @@ func (s *Service) ListRemovedVaults() []RemovedVaultNotice {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	notices := []RemovedVaultNotice{}
-	if s.unlockedSession == nil {
+	if !s.isUnlocked() {
 		return notices
 	}
 	for _, removed := range s.unlockedSession.TakeRemovedVaults() {
