@@ -328,8 +328,8 @@ jobs:
     if: needs.changes.outputs.isAndroidChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-android')
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Each part runs half of the instrumented tests on its own emulator; the first also builds the release APK and runs lint
-    # and the JVM tests.
+    # Each part runs half of the instrumented tests on its own emulator; the first also runs the JVM tests and the second builds
+    # the release APK and runs lint, so both take about as long.
     strategy:
       fail-fast: false
       matrix:
@@ -369,7 +369,7 @@ jobs:
       - name: Check that ThemePalettes.kt matches assets/themes/themes.json
         if: matrix.part == 1
         run: node scripts/themes/generate.ts && git diff --exit-code
-      - if: matrix.part == 1
+      - if: matrix.part == 2
         run: make build-android
       - if: matrix.part == 1
         run: make test-android
