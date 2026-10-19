@@ -321,11 +321,17 @@ jobs:
       - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-admin-end-to-end
 
   android:
-    name: Android app build, JVM tests and instrumented tests
+    name: Android app build, JVM tests and instrumented tests (part ${{ matrix.shard }} of 2)
     needs: changes
     if: needs.changes.outputs.isAndroidChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 90
+    # Each part runs half of the instrumented tests on its own emulator; the first also builds the release APK and runs lint
+    # and the JVM tests.
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1]
     services:
       postgres:
         image: postgres:18
@@ -354,9 +360,12 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - run: make build-android-aar
       - name: Check that ThemePalettes.kt matches assets/themes/themes.json
+        if: matrix.shard == 0
         run: node scripts/themes/generate.ts && git diff --exit-code
-      - run: make build-android
-      - run: make test-android
+      - if: matrix.shard == 0
+        run: make build-android
+      - if: matrix.shard == 0
+        run: make test-android
       - name: Let the emulator use KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -365,6 +374,7 @@ jobs:
       - name: Instrumented tests on an API 36 emulator
         env:
           HISAR_DATABASE_URL: postgres://postgres:hisar@127.0.0.1:5432/hisar?sslmode=disable
+          ANDROID_UI_TEST_SHARD: ${{ matrix.shard }}/2
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           # The x86_64 API 37 image crash-loops on these runners: surfaceflinger aborts on "Assertion failed:
@@ -379,11 +389,13 @@ jobs:
           heap-size: 576M
           disk-size: 8192M
           emulator-boot-timeout: 900
-          script: make test-android-ui
+          # The step before built mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
+          script: ./scripts/test-android-ui.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
+        # A job stopped at its timeout is cancelled rather than failed; its reports explain why.
+        if: failure() || cancelled()
         with:
-          name: android-reports
+          name: android-reports-${{ matrix.shard }}
           path: |
             mobile/android/*/build/reports
             mobile/android/*/build/outputs/androidTest-results

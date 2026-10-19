@@ -114,11 +114,17 @@ jobs:
           retention-days: 14
 
   ios:
-    name: iPhone app build, unit tests and UI tests against the server
+    name: iPhone app build, unit tests and UI tests against the server (part ${{ matrix.part }} of 2)
     needs: changes
     if: needs.changes.outputs.isMobileChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-ios')
     runs-on: macos-26
     timeout-minutes: 90
+    # Each part runs half of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator; the first also
+    # checks the generated project and runs the unit tests.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2]
     env:
       DATABASE_NAME: hisar_ios_${{ github.run_id }}_${{ github.run_attempt }}
       # make build-ios builds the app and the tests once; the test steps run what it built.
@@ -129,12 +135,6 @@ jobs:
         with:
           go-version-file: go.work
           cache-dependency-path: "**/go.sum"
-      - name: Set up Node for make build, which builds the admin dashboard
-        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-          cache-dependency-path: admin/package-lock.json
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
       # Booting takes a minute; it happens while HisarKit and the app build, and the tests then run on it as it is.
@@ -144,13 +144,16 @@ jobs:
           echo "IOS_SIMULATOR_ID=$IOS_SIMULATOR_ID" >> "$GITHUB_ENV"
           xcrun simctl boot "$IOS_SIMULATOR_ID"
       - name: Install XcodeGen
+        if: matrix.part == 1
         run: |
           curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
           unzip -q -o "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP/tools"
           echo "$RUNNER_TEMP/tools/xcodegen/bin" >> "$GITHUB_PATH"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - run: make generate-ios-project
+      - if: matrix.part == 1
+        run: make generate-ios-project
       - name: Check that the generated Xcode project is committed
+        if: matrix.part == 1
         run: git diff --exit-code -- mobile/ios
       - run: make build-ios-framework
       - name: Check the HisarKit slices
@@ -158,8 +161,8 @@ jobs:
           test -d mobile/build/HisarKit.xcframework/ios-arm64/HisarKit.framework
           test -d mobile/build/HisarKit.xcframework/ios-arm64_x86_64-simulator/HisarKit.framework
       - run: make build-ios
-      - run: make test-ios
-      - run: make build
+      - if: matrix.part == 1
+        run: make test-ios
       - name: Start Postgres
         run: |
           brew list postgresql@17 >/dev/null 2>&1 || brew install postgresql@17
@@ -167,13 +170,13 @@ jobs:
           for _ in $(seq 30); do "$(brew --prefix postgresql@17)/bin/pg_isready" -h localhost && break; sleep 1; done
           "$(brew --prefix postgresql@17)/bin/createdb" -h localhost "$DATABASE_NAME"
       - name: iPhone UI tests
-        run: HISAR_DATABASE_URL="postgres://$(whoami)@localhost:5432/$DATABASE_NAME?sslmode=disable" IOS_RESULT_BUNDLE=$GITHUB_WORKSPACE/HisarUITests.xcresult make test-ios-ui
+        run: HISAR_DATABASE_URL="postgres://$(whoami)@localhost:5432/$DATABASE_NAME?sslmode=disable" IOS_RESULT_BUNDLE=$GITHUB_WORKSPACE/HisarUITests.xcresult IOS_UI_TEST_PART=${{ matrix.part }} make test-ios-ui
       - name: Drop the test database
         if: always()
         run: '"$(brew --prefix postgresql@17)/bin/dropdb" -h localhost --if-exists "$DATABASE_NAME" || true'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: failure()
+        if: failure() || cancelled()
         with:
-          name: HisarUITests.xcresult
+          name: HisarUITests-${{ matrix.part }}.xcresult
           path: HisarUITests.xcresult
           retention-days: 7

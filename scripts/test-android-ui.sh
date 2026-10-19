@@ -7,6 +7,7 @@
 # (testAccountItemLockAndSignInFlow) or both (HisarUITests#testAccountItemLockAndSignInFlow), or "smoke" for the set the
 # older Android versions run (a smoke test this checkout lacks is named and left out). A name that matches
 # no test, or a run in which no test ran, fails. HISAR_UI_TEST_SCREENSHOT_DIRECTORY receives the screenshots the tests save.
+# ANDROID_UI_TEST_SHARD=<index>/<count>, such as 0/2, runs one of count parts of those tests, as split by the test runner.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -26,14 +27,26 @@ export ANDROID_SERIAL
 "$ADB" wait-for-device shell 'while [ "$(getprop sys.boot_completed)" != 1 ]; do sleep 1; done'
 DEVICE_LOG=$ROOT/mobile/android/app/build/outputs/androidTest-results/device-logcat.txt
 SYSTEM_SERVER_AT_START=$("$ADB" shell pidof system_server | tr -d '\r')
+# adb waits forever on an emulator that hung, so the calls after a failed run give up after a while instead of holding the job
+# until its timeout. The timer's output goes to /dev/null so that $(...) does not wait for it.
+within() {
+  local seconds=$1 adb status=0
+  shift
+  "$ADB" "$@" &
+  adb=$!
+  (sleep "$seconds"; kill "$adb" 2>/dev/null) >/dev/null 2>&1 &
+  wait "$adb" || status=$?
+  kill $! 2>/dev/null || true
+  return "$status"
+}
 # A failed run keeps the device's whole log in the uploaded results, and says whether Android's framework restarted.
 save_device_log() {
   [ "$1" != 0 ] || return 0
   mkdir -p "$(dirname "$DEVICE_LOG")"
-  "$ADB" logcat -d -b all >"$DEVICE_LOG" 2>&1 || true
-  echo "--- system_server was process $SYSTEM_SERVER_AT_START at the start and is $("$ADB" shell pidof system_server | tr -d '\r') now; the device's log is in $DEVICE_LOG" >&2
+  within 120 logcat -d -b all >"$DEVICE_LOG" 2>&1 || true
+  echo "--- system_server was process $SYSTEM_SERVER_AT_START at the start and is $(within 20 shell pidof system_server | tr -d '\r') now; the device's log is in $DEVICE_LOG" >&2
   echo "--- device crash log" >&2
-  "$ADB" logcat -d -b crash 2>&1 | tail -n 80 >&2 || true
+  within 60 logcat -d -b crash 2>&1 | tail -n 80 >&2 || true
 }
 
 UI_TEST_PLATFORM_NAME=Android
@@ -130,7 +143,7 @@ if [[ "$ANDROID_SERIAL" == emulator-* ]] && [ -r "$HOME/.emulator_console_auth_t
   UI_TEST_VALUES+=("HISAR_UI_TEST_EMULATOR_CONSOLE_PORT=${ANDROID_SERIAL#emulator-}" "HISAR_UI_TEST_EMULATOR_CONSOLE_TOKEN=$(cat "$HOME/.emulator_console_auth_token")")
 fi
 "$ADB" reverse "tcp:$UI_TEST_PORT" "tcp:$UI_TEST_PORT" >/dev/null
-trap 'save_device_log $?; "$ADB" reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; ui_test_stop "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE"' EXIT
+trap 'save_device_log $?; within 20 reverse --remove "tcp:$UI_TEST_PORT" >/dev/null 2>&1 || true; ui_test_stop "$UI_TEST_MAC" "$UI_TEST_OTHER_DEVICE"' EXIT
 
 # TrustedCertificatesTests serves HTTPS on the device with a certificate for 127.0.0.1 from a private CA made for this run
 # alone, and reads both from the test storage's input files.
@@ -154,6 +167,11 @@ done
 
 # The Android Gradle plugin cuts each value at its first comma and hands the rest to the device's shell unquoted, inside
 # `am instrument -e NAME value`.
+if [ -n "${ANDROID_UI_TEST_SHARD:-}" ]; then
+  [[ "$ANDROID_UI_TEST_SHARD" =~ ^([0-9]+)/([1-9][0-9]*)$ ]] && [ "${BASH_REMATCH[1]}" -lt "${BASH_REMATCH[2]}" ] ||
+    { echo "ANDROID_UI_TEST_SHARD is <index>/<count> with index below count, such as 0/2" >&2; exit 1; }
+  UI_TEST_VALUES+=("numShards=${BASH_REMATCH[2]}" "shardIndex=${BASH_REMATCH[1]}")
+fi
 for VALUE in "${UI_TEST_VALUES[@]}"; do
   [[ "$VALUE" =~ ^[A-Za-z0-9_]+=[A-Za-z0-9@._:/+=-]*$ ]] || { echo "cannot pass $VALUE as an instrumentation argument" >&2; exit 1; }
 done
@@ -203,6 +221,15 @@ STATUS=0
 # Gradle passes a run whose test runner crashed before it found any test, or whose ANDROID_UI_TESTS matched none.
 if [ "$STATUS" = 0 ] && ! grep -rqsE '<testsuites? [^>]*tests="[1-9]' "$RESULTS"; then
   echo "no test ran" >&2
+  STATUS=1
+fi
+# The test orchestrator lists every test first (one logcat file each); a test whose own run never started reports nothing, and
+# Gradle still passes.
+MISSING=$(LC_ALL=C comm -23 \
+  <(find "$RESULTS" -name 'logcat-*.txt' | sed -E 's|.*/logcat-(.*)-(test[^-]*)\.txt$|\1#\2|' | LC_ALL=C sort -u) \
+  <(grep -rhoE '<testcase name="[^"]*" classname="[^"]*"' "$RESULTS" | sed -E 's/<testcase name="([^"]*)" classname="([^"]*)"/\2#\1/' | LC_ALL=C sort -u))
+if [ -n "$MISSING" ]; then
+  echo "these tests never reported a result:" $MISSING >&2
   STATUS=1
 fi
 if [ -n "${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" ] && [ -d "$OUTPUT" ]; then
