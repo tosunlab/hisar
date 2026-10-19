@@ -208,6 +208,7 @@ describe("Open in Hisar from a launcher", () => {
     api.getItem.mockImplementation(() => deploy.promise);
     sendEvent("show-item", { vaultID: "work", itemID: "deploy", isEditing: true });
     await flushPromises();
+    api.getStatus.mockResolvedValue(createStatus("locked"));
     sendEvent("locked", "");
     deploy.resolve(allItemByVaultID.work[0]);
     await flushPromises();

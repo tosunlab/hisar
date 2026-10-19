@@ -394,10 +394,15 @@ export async function lock(): Promise<void> {
   }
 }
 
-export function handleLocked(): void {
+// The backend also sends "locked" when the server signed this device out, so the screen follows the status it reports.
+export async function handleLocked(): Promise<void> {
   clearAllVaultData();
   store.status = { ...store.status, state: "locked" };
   store.errorMessage = "";
+  const status = await api.getStatus().catch(() => undefined);
+  if (status) {
+    await applyStatus(status);
+  }
 }
 
 export async function signOut(): Promise<void> {

@@ -77,6 +77,7 @@ describe("App", () => {
     const wrapper = mount(App);
     await flushPromises();
     expect(store.status.state).toBe("unlocked");
+    api.getStatus.mockResolvedValue(createStatus("locked"));
     lockedListener.current?.();
     await flushPromises();
     expect(wrapper.text()).toContain("Hisar is locked");
