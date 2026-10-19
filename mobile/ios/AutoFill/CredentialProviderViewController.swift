@@ -17,8 +17,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         copyOneTimeCode: { code in
             _ = PasteboardClipboard().setText(code)
         },
-        cancelRequest: { [weak self] in
-            self?.cancelRequest(code: .userCanceled)
+        cancelRequest: { [weak self] code in
+            self?.cancelRequest(code: code)
         },
         passkeyCompletion: AutoFillModel.PasskeyCompletion(
             completeAssertion: { [weak self] credential in
@@ -66,7 +66,8 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
     override func prepareCredentialList(for allRequestedServiceIdentifier: [ASCredentialServiceIdentifier], requestParameters: ASPasskeyCredentialRequestParameters) {
         let allServiceIdentifier = allRequestedServiceIdentifier.map(\.identifier)
         let passkeyRequest = PasskeyAssertionRequest(
-            relyingPartyID: requestParameters.relyingPartyIdentifier, clientDataHash: requestParameters.clientDataHash, allAllowedCredentialID: requestParameters.allowedCredentials
+            relyingPartyID: requestParameters.relyingPartyIdentifier, clientDataHash: requestParameters.clientDataHash, allAllowedCredentialID: requestParameters.allowedCredentials,
+            isUserVerificationDiscouraged: requestParameters.userVerificationPreference == .discouraged
         )
         Task { await model.prepareCredentialList(allServiceIdentifier: allServiceIdentifier, passkeyRequest: passkeyRequest) }
     }
@@ -146,7 +147,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         let request = PasskeyRegistrationRequest(
             relyingPartyID: identity.relyingPartyIdentifier, userName: identity.userName, userHandle: identity.userHandle,
             clientDataHash: passkeyRequest.clientDataHash, allSupportedAlgorithm: passkeyRequest.supportedAlgorithms.map(\.rawValue),
-            allExcludedCredentialID: allExcludedCredentialID
+            allExcludedCredentialID: allExcludedCredentialID, isUserVerificationDiscouraged: passkeyRequest.userVerificationPreference == .discouraged
         )
         Task { await model.prepareInterfaceForPasskeyRegistration(request) }
     }
@@ -159,7 +160,10 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         guard credentialRequest.type == .passkeyAssertion,
               let passkeyRequest = credentialRequest as? ASPasskeyCredentialRequest,
               let identity = passkeyRequest.credentialIdentity as? ASPasskeyCredentialIdentity else { return nil }
-        return (PasskeyAssertionRequest(relyingPartyID: identity.relyingPartyIdentifier, clientDataHash: passkeyRequest.clientDataHash), identity.credentialID)
+        return (PasskeyAssertionRequest(
+            relyingPartyID: identity.relyingPartyIdentifier, clientDataHash: passkeyRequest.clientDataHash,
+            isUserVerificationDiscouraged: passkeyRequest.userVerificationPreference == .discouraged
+        ), identity.credentialID)
     }
 
     private func completePasskeyAssertion(_ credential: PasskeyAssertionCredential) {

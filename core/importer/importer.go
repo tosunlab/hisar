@@ -69,8 +69,10 @@ type SkippedEntry struct {
 	Reason string `json:"reason"`
 }
 
+// Result: Source names the app the items came from when the format says so, as Credential Exchange does.
 type Result struct {
 	Format  string
+	Source  string
 	Items   []item.Item
 	Skipped []SkippedEntry
 }
@@ -94,6 +96,9 @@ type Summary struct {
 }
 
 func GetFormatName(format string) string {
+	if format == FormatCredentialExchange {
+		return credentialExchangeName
+	}
 	for _, info := range formats {
 		if info.ID == format {
 			return info.Name
@@ -336,17 +341,30 @@ func DescribeDuplicate(vaultItem item.Item) string {
 
 // FindDuplicateIndexes returns the positions in importedItems of items that existingItems already has.
 func FindDuplicateIndexes(importedItems, existingItems []item.Item) []int {
-	existingKeys := map[string]bool{}
-	for _, existing := range existingItems {
-		existingKeys[BuildDuplicateKey(existing)] = true
-	}
-	indexes := []int{}
-	for index, imported := range importedItems {
-		if existingKeys[BuildDuplicateKey(imported)] {
+	matches := FindDuplicateMatches(importedItems, existingItems)
+	indexes := make([]int, 0, len(matches))
+	for index := range importedItems {
+		if _, isDuplicate := matches[index]; isDuplicate {
 			indexes = append(indexes, index)
 		}
 	}
 	return indexes
+}
+
+// FindDuplicateMatches maps the position of each imported item that existingItems already has to the position of the
+// first existing item it matches.
+func FindDuplicateMatches(importedItems, existingItems []item.Item) map[int]int {
+	existingIndexes := map[string]int{}
+	for index := len(existingItems) - 1; index >= 0; index-- {
+		existingIndexes[BuildDuplicateKey(existingItems[index])] = index
+	}
+	matches := map[int]int{}
+	for index, imported := range importedItems {
+		if existingIndex, isFound := existingIndexes[BuildDuplicateKey(imported)]; isFound {
+			matches[index] = existingIndex
+		}
+	}
+	return matches
 }
 
 func normalizeURL(link string) string {
@@ -405,8 +423,7 @@ func finishItem(vaultItem *item.Item) bool {
 	if len(fields) > 0 {
 		vaultItem.Details.Fields = fields
 	}
-	hasContent := vaultItem.Overview.Username != "" || vaultItem.Details.Password != "" || len(vaultItem.Overview.URLs) > 0 ||
-		vaultItem.Details.Notes != "" || len(vaultItem.Details.Fields) > 0 || vaultItem.Details.PrivateKey != "" || vaultItem.Details.OneTimePassword != ""
+	hasContent := item.HasLoginData(vaultItem) || vaultItem.Details.Notes != "" || len(vaultItem.Details.Fields) > 0
 	if vaultItem.Overview.Title == "" {
 		if !hasContent {
 			return false

@@ -624,7 +624,9 @@ export function SignUp(invite: string, email: string, name: string, password: st
 }
 
 /**
- * StartImport queues the previewed items for vaultID; ContinueImport then saves them in batches.
+ * StartImport queues the previewed items for vaultID; ContinueImport then saves them in batches. A passkey the vault
+ * already has is left out, so importing again adds none twice. Skipping duplicates still adds a duplicate login's new
+ * passkeys to the login the vault has, so passkeys exported after their logins (Credential Exchange after a .1pux) arrive.
  */
 export function StartImport(vaultID: string, isSkippingDuplicate: boolean): $CancellablePromise<$models.ImportProgress> {
     return $Call.ByID(2540519962, vaultID, isSkippingDuplicate);

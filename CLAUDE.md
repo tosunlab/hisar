@@ -49,7 +49,7 @@ Five Go modules joined by `go.work`, plus four non-Go apps.
 | `approval` | Phone approval requests and signed answers |
 | `sharelink` | Building, sealing and opening share links |
 | `secretreference` | `hisar://vault/item/field` references |
-| `export`, `importer` | Hisar's export format; importers for other password managers |
+| `export`, `importer` | Hisar's export format; importers for other password managers, and the Credential Exchange (CXF) data the iPhone receives from them (`credentialexchange.go`, the only source of imported passkeys) |
 | `invitelink`, `appversion`, `totp`, `emergencykit` | Invite links, app versions, one-time codes, the Emergency Kit PDF |
 | `project` | `GitHubRepository`, the one place that names the GitHub repository (releases, desktop update feed, docs quote it) |
 

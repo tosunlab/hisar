@@ -56,6 +56,15 @@ protocol VaultBackend: AnyObject {
     func listAllWaitingVaultKey() throws -> WaitingVaultKeys
     func getExportOptions() throws -> ExportOptions
     func exportAllData(format: ExportFormat, passphrase: String, password: String, directory: URL) throws -> ExportResult
+    /// prepareCredentialExchangeImport reads the credentials another app exported to Hisar (ASExportedCredentialData as
+    /// JSON) and keeps them, in memory only, until the import starts or is cancelled.
+    func prepareCredentialExchangeImport(vaultID: String, credentialData: Data) throws -> ImportPreview
+    /// previewImport shows the prepared import again for another vault, with that vault's duplicates.
+    func previewImport(vaultID: String) throws -> ImportPreview
+    func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress
+    /// continueImport saves the next items; an error pauses the import, and calling it again continues.
+    func continueImport() throws -> ImportProgress
+    func cancelImport()
     func listAllItem(vaultID: String) throws -> [ItemDetail]
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail
     func saveItem(vaultID: String, item: ItemDetail) throws -> ItemDetail

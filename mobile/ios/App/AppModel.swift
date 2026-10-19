@@ -1,3 +1,4 @@
+import AuthenticationServices
 import Foundation
 import SwiftUI
 
@@ -56,6 +57,15 @@ final class AppModel: ObservableObject {
     @Published private(set) var allOrganization: [OrganizationSummary] = []
     @Published private(set) var allOrganizationInvitation: [OrganizationInvitation] = []
     @Published private(set) var waitingVaultKeys = WaitingVaultKeys()
+    /// A Credential Exchange import another app started (Settings → Export on the other app, Hisar chosen); the token
+    /// waits here until the vaults are unlocked.
+    @Published private(set) var pendingCredentialImportToken: UUID?
+    @Published private(set) var isCredentialImportShown = false
+    @Published private(set) var isReceivingCredentialImport = false
+    @Published private(set) var credentialImportPreview: ImportPreview?
+    @Published private(set) var credentialImportProgress: ImportProgress?
+    @Published private(set) var isImportingCredentials = false
+    @Published var credentialImportMessage: String?
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
@@ -66,6 +76,7 @@ final class AppModel: ObservableObject {
     private var allPasskey: [StoredPasskey] = []
     private let credentialIdentityStore: CredentialIdentityUpdating
     private let getCurrentDate: () -> Date
+    private let receiveExportedCredentials: @MainActor (UUID) async throws -> Data
     private var enteredBackgroundAt: Date?
     private var noticeTask: Task<Void, Never>?
     private var allFinishedApprovalID: Set<String> = []
@@ -76,9 +87,13 @@ final class AppModel: ObservableObject {
     private var isRefreshRequestedAgain = false
     static let approvalPollInterval: TimeInterval = 15
 
-    init(credentialIdentityStore: CredentialIdentityUpdating, getCurrentDate: @escaping () -> Date = Date.init) {
+    init(
+        credentialIdentityStore: CredentialIdentityUpdating, getCurrentDate: @escaping () -> Date = Date.init,
+        receiveExportedCredentials: @escaping @MainActor (UUID) async throws -> Data = { try await AppModel.importExportedCredentials(token: $0) }
+    ) {
         self.credentialIdentityStore = credentialIdentityStore
         self.getCurrentDate = getCurrentDate
+        self.receiveExportedCredentials = receiveExportedCredentials
     }
 
     func start(createBackend: () throws -> VaultBackend) {
@@ -152,6 +167,8 @@ final class AppModel: ObservableObject {
             selectedTab = .vaults
             clearAllApproval()
             forgetWebsiteIcons()
+            // Locking drops the prepared import in the backend too.
+            clearCredentialImport()
         }
         if newStatus.state != VaultStatus.stateLocked {
             allShareAwaitingUnlock = []
@@ -159,6 +176,7 @@ final class AppModel: ObservableObject {
         if !wasUnlocked && newStatus.isUnlocked && isInForeground && newStatus.updateRequired == nil {
             startApprovalPolling()
         }
+        handlePendingCredentialImport()
     }
 
     private func applyShareInvitations(_ shareInvitations: ShareInvitations) {
@@ -774,6 +792,152 @@ final class AppModel: ObservableObject {
 
     func removeExport(_ result: ExportResult) {
         try? FileManager.default.removeItem(at: URL(fileURLWithPath: result.path).deletingLastPathComponent())
+    }
+
+    // Credential Exchange (iOS 26): another password manager hands its logins and passkeys to Hisar. What it exported stays
+    // in memory only: the backend keeps the parsed items until the import starts, and cancelImport drops them.
+    static let signedOutCredentialImportMessage = "Sign in to Hisar, then export from the other app again."
+
+    /// importExportedCredentials asks the system for what the other app exported, encoded as the Credential Exchange JSON
+    /// the backend reads (dates as seconds since 1970).
+    static func importExportedCredentials(token: UUID) async throws -> Data {
+        let exported = try await ASCredentialImportManager().importCredentials(token: token)
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .secondsSince1970
+        return try encoder.encode(exported)
+    }
+
+    func receiveCredentialExchange(token: UUID) {
+        pendingCredentialImportToken = token
+        handlePendingCredentialImport()
+    }
+
+    /// The vaults an import can go to: the personal vault and those the user may edit.
+    var allCredentialImportVault: [VaultSummary] { allVault.filter(Self.isWritableVault) }
+
+    nonisolated static func isWritableVault(_ vault: VaultSummary) -> Bool {
+        vault.type == VaultSummary.typePersonal || vault.role != Member.vaultRoleReader
+    }
+
+    /// The vault an import starts in: the personal vault, else the first the user may edit.
+    nonisolated static func chooseCredentialImportVault(_ allVault: [VaultSummary]) -> VaultSummary? {
+        allVault.first { $0.type == VaultSummary.typePersonal } ?? allVault.first(where: isWritableVault)
+    }
+
+    // The token waits for unlocked vaults. Signed out it is dropped: tokens expire within minutes, so the user exports again.
+    private func handlePendingCredentialImport() {
+        guard let token = pendingCredentialImportToken, backend != nil else { return }
+        guard status.isSignedIn else {
+            pendingCredentialImportToken = nil
+            credentialImportMessage = Self.signedOutCredentialImportMessage
+            return
+        }
+        guard status.isUnlocked, status.updateRequired == nil, !isCredentialImportShown else { return }
+        pendingCredentialImportToken = nil
+        errorMessage = nil
+        isCredentialImportShown = true
+        isReceivingCredentialImport = true
+        Task { await receiveCredentialImport(token: token) }
+    }
+
+    private func receiveCredentialImport(token: UUID) async {
+        defer { isReceivingCredentialImport = false }
+        let credentialData: Data
+        do {
+            credentialData = try await receiveExportedCredentials(token)
+        } catch {
+            if isCredentialImportShown {
+                errorMessage = "Hisar couldn't receive the items from the other app. Export them again. (\(describeError(error)))"
+            }
+            return
+        }
+        let allKnownVault = allVault
+        let preview = await perform { backend -> ImportPreview in
+            let allVault = allKnownVault.isEmpty ? try backend.listAllVault() : allKnownVault
+            guard let vault = Self.chooseCredentialImportVault(allVault) else {
+                throw BackendError(message: "You have no vault you can add items to.")
+            }
+            return try backend.prepareCredentialExchangeImport(vaultID: vault.id, credentialData: credentialData)
+        }
+        guard isCredentialImportShown else {
+            // Closed or locked while preparing: drop what the backend just prepared, and any sentence about it.
+            if preview == nil { errorMessage = nil }
+            cancelBackendImport()
+            return
+        }
+        credentialImportPreview = preview
+    }
+
+    /// previewCredentialImport shows the import again for another vault, with that vault's duplicates.
+    func previewCredentialImport(vaultID: String) async {
+        guard credentialImportPreview != nil, credentialImportProgress == nil else { return }
+        guard let preview = await perform({ try $0.previewImport(vaultID: vaultID) }), isCredentialImportShown else { return }
+        credentialImportPreview = preview
+    }
+
+    func startCredentialImport(isSkippingDuplicate: Bool) async {
+        guard let preview = credentialImportPreview, credentialImportProgress == nil, !isImportingCredentials else { return }
+        isImportingCredentials = true
+        defer { isImportingCredentials = false }
+        guard let progress = await perform(isBusyShown: false, { try $0.startImport(vaultID: preview.vaultID, isSkippingDuplicate: isSkippingDuplicate) }),
+              isCredentialImportShown else { return }
+        credentialImportProgress = progress
+        await continueCredentialImportUntilDone()
+    }
+
+    /// continueCredentialImport is Retry: an error pauses the import where it was, and the backend continues from there.
+    func continueCredentialImport() async {
+        guard credentialImportProgress?.isDone == false, !isImportingCredentials else { return }
+        isImportingCredentials = true
+        defer { isImportingCredentials = false }
+        await continueCredentialImportUntilDone()
+    }
+
+    // The backend saves a batch per call. The finished import lists the vaults again, which also gives AutoFill the passkeys.
+    private func continueCredentialImportUntilDone() async {
+        guard let backend else { return }
+        errorMessage = nil
+        while isCredentialImportShown, let progress = credentialImportProgress, !progress.isDone {
+            do {
+                let nextProgress = try await runInBackground { try backend.continueImport() }
+                guard isCredentialImportShown else { return }
+                credentialImportProgress = nextProgress
+            } catch {
+                if isCredentialImportShown {
+                    errorMessage = describeError(error)
+                }
+                return
+            }
+        }
+        guard isCredentialImportShown, credentialImportProgress?.isDone == true else { return }
+        await refreshAll()
+    }
+
+    /// closeCredentialImport is Cancel and Done: it drops the import in the backend. Items a cancelled import already
+    /// saved stay, so the vaults are listed again.
+    func closeCredentialImport() {
+        guard isCredentialImportShown else { return }
+        let isPartlySaved = credentialImportProgress.map { !$0.isDone } ?? false
+        cancelBackendImport()
+        clearCredentialImport()
+        errorMessage = nil
+        if isPartlySaved {
+            Task { await refreshAll() }
+        }
+        handlePendingCredentialImport()
+    }
+
+    // A batch being saved holds the backend until it ends, so the import is dropped in the background.
+    private func cancelBackendImport() {
+        guard let backend else { return }
+        Task { try? await runInBackground { backend.cancelImport() } }
+    }
+
+    private func clearCredentialImport() {
+        isCredentialImportShown = false
+        isReceivingCredentialImport = false
+        credentialImportPreview = nil
+        credentialImportProgress = nil
     }
 
     func saveItem(vaultID: String, item: ItemDetail) async -> ItemDetail? {

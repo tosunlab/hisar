@@ -46,6 +46,11 @@
 	<string>Hisar uses the camera to scan the QR code on your Emergency Kit.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>Hisar uses Face ID to unlock your vaults.</string>
+	<key>NSUserActivityTypes</key>
+	<array>
+		<string>ASCredentialExchangeActivity</string>
+		<string>ASCredentialExchangeActivityType</string>
+	</array>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
 	<key>UILaunchScreen</key>

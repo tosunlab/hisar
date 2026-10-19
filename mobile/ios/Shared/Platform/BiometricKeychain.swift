@@ -140,3 +140,16 @@ final class BiometricKeychain: NSObject, HisarkitBiometricProtocol {
         SecItemDelete(query as CFDictionary)
     }
 }
+
+// LocalAuthenticating asks the device owner to confirm with Face ID, Touch ID or the passcode.
+protocol LocalAuthenticating: AnyObject {
+    func authenticate(reason: String) async -> Bool
+}
+
+final class DeviceOwnerAuthenticator: LocalAuthenticating {
+    func authenticate(reason: String) async -> Bool {
+        let context = LAContext()
+        defer { context.invalidate() }
+        return (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) ?? false
+    }
+}

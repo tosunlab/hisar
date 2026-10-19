@@ -65,7 +65,7 @@ func TestPasskeyPRF(t *testing.T) {
 		t.Fatalf("create with eval: %+v", creation.PRF)
 	}
 	storedPasskey := getCachedItem(t, service, personalID, creation.ItemID).Details.Passkeys[0]
-	expected, err := passkey.EvaluatePRFForPasskey(storedPasskey.PrivateKey, passkey.PRFInput{First: []byte("salt-a"), Second: []byte("salt-b"), HasSecond: true})
+	expected, err := passkey.EvaluatePRFForPasskey(storedPasskey.PrivateKey, nil, passkey.PRFInput{First: []byte("salt-a"), Second: []byte("salt-b"), HasSecond: true})
 	if err != nil {
 		t.Fatal(err)
 	}

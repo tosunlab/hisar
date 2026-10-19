@@ -38,15 +38,18 @@ type ImportSkippedEntry struct {
 }
 
 // ImportDuplicate: Detail is what matched besides the title, such as a login's username and website or an API
-// credential's key ID; see importer.DescribeDuplicate.
+// credential's key ID; see importer.DescribeDuplicate. PasskeyCount is how many of its passkeys the existing item lacks;
+// skipping duplicates adds them to it.
 type ImportDuplicate struct {
-	Title    string `json:"title"`
-	Username string `json:"username"`
-	URL      string `json:"url"`
-	Detail   string `json:"detail"`
+	Title        string `json:"title"`
+	Username     string `json:"username"`
+	URL          string `json:"url"`
+	Detail       string `json:"detail"`
+	PasskeyCount int    `json:"passkeyCount"`
 }
 
-// ImportPreview: an empty FileName means the user cancelled the file dialog.
+// ImportPreview: an empty FileName means the user cancelled the file dialog. A Credential Exchange import has no file:
+// FileName names the app the items came from and FilePath is empty.
 type ImportPreview struct {
 	FileName        string `json:"fileName"`
 	FilePath        string `json:"filePath"`
@@ -69,9 +72,11 @@ type ImportPreview struct {
 	// ServerCount counts the server items among ItemCount.
 	ServerCount int `json:"serverCount"`
 	// DatabaseCount counts the database items among ItemCount.
-	DatabaseCount int                  `json:"databaseCount"`
-	Skipped       []ImportSkippedEntry `json:"allSkipped"`
-	Duplicates    []ImportDuplicate    `json:"allDuplicate"`
+	DatabaseCount int `json:"databaseCount"`
+	// PasskeyCount counts the passkeys the items hold.
+	PasskeyCount int                  `json:"passkeyCount"`
+	Skipped      []ImportSkippedEntry `json:"allSkipped"`
+	Duplicates   []ImportDuplicate    `json:"allDuplicate"`
 }
 
 type ImportProgress struct {
@@ -85,9 +90,11 @@ type ImportProgress struct {
 	Failed     []ImportSkippedEntry `json:"allFailed"`
 }
 
-// pendingImport holds the parsed export between the preview and saving; locking drops it.
+// pendingImport holds the parsed export between the preview and saving; locking drops it. A Credential Exchange import
+// has no filePath; sourceName names the app it came from.
 type pendingImport struct {
 	filePath    string
+	sourceName  string
 	format      string
 	items       []item.Item
 	skipped     []importer.SkippedEntry
@@ -98,6 +105,13 @@ type pendingImport struct {
 	failed      []ImportSkippedEntry
 	// favoriteItemIDs are saved items the other password manager starred; they become favorites when the import ends.
 	favoriteItemIDs []string
+}
+
+func (pending *pendingImport) getName() string {
+	if pending.filePath == "" {
+		return pending.sourceName
+	}
+	return filepath.Base(pending.filePath)
 }
 
 func (s *Service) ListImportFormats() []ImportFormat {
@@ -139,6 +153,33 @@ func (s *Service) ChooseImportFile(vaultID, format string) (ImportPreview, error
 		return ImportPreview{}, err
 	}
 	s.pendingImport = &pendingImport{filePath: path, format: result.Format, items: result.Items, skipped: result.Skipped}
+	return s.buildImportPreview(vaultID)
+}
+
+// PrepareCredentialExchangeImport reads the Credential Exchange (CXF) JSON another password manager handed over, such
+// as ASExportedCredentialData from ASCredentialImportManager on iOS, and previews it for vaultID like a chosen file;
+// StartImport and ContinueImport then save it. Not a method, so the desktop UI cannot call it.
+func PrepareCredentialExchangeImport(s *Service, vaultID string, content []byte) (ImportPreview, error) {
+	if len(content) > maxImportFileSize {
+		return ImportPreview{}, errors.New("there are more than 100 MB of credentials; export fewer at a time")
+	}
+	if err := s.checkEditableVault(vaultID); err != nil {
+		return ImportPreview{}, err
+	}
+	result, err := importer.ParseCredentialExchange(content)
+	if err != nil {
+		return ImportPreview{}, err
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
+		return ImportPreview{}, err
+	}
+	sourceName := result.Source
+	if sourceName == "" {
+		sourceName = importer.GetFormatName(result.Format)
+	}
+	s.pendingImport = &pendingImport{sourceName: sourceName, format: result.Format, items: result.Items, skipped: result.Skipped}
 	return s.buildImportPreview(vaultID)
 }
 
@@ -214,7 +255,7 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 	pending := s.pendingImport
 	summary := importer.Summarize(pending.items)
 	preview := ImportPreview{
-		FileName:             filepath.Base(pending.filePath),
+		FileName:             pending.getName(),
 		FilePath:             pending.filePath,
 		Format:               pending.format,
 		FormatName:           importer.GetFormatName(pending.format),
@@ -234,23 +275,57 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 		Skipped:              []ImportSkippedEntry{},
 		Duplicates:           []ImportDuplicate{},
 	}
+	for _, vaultItem := range pending.items {
+		preview.PasskeyCount += len(vaultItem.Details.Passkeys)
+	}
 	for _, skipped := range pending.skipped {
 		preview.Skipped = append(preview.Skipped, ImportSkippedEntry{Title: skipped.Title, Reason: skipped.Reason})
 	}
+	existingPasskeyIDs := collectPasskeyCredentialIDs(existingItems)
+	duplicateMatches := importer.FindDuplicateMatches(pending.items, existingItems)
 	for _, index := range importer.FindDuplicateIndexes(pending.items, existingItems) {
 		duplicate := pending.items[index]
 		firstURL := ""
 		if len(duplicate.Overview.URLs) > 0 {
 			firstURL = duplicate.Overview.URLs[0]
 		}
+		passkeyCount := 0
+		if existing := existingItems[duplicateMatches[index]]; existing.IsCategory(item.CategoryLogin) {
+			passkeyCount = len(filterNewPasskeys(duplicate.Details.Passkeys, existingPasskeyIDs))
+		}
 		preview.Duplicates = append(preview.Duplicates, ImportDuplicate{
 			Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL, Detail: importer.DescribeDuplicate(duplicate),
+			PasskeyCount: passkeyCount,
 		})
 	}
 	return preview, nil
 }
 
-// StartImport queues the previewed items for vaultID; ContinueImport then saves them in batches.
+// collectPasskeyCredentialIDs returns the credential IDs of the passkeys items hold.
+func collectPasskeyCredentialIDs(items []item.Item) map[string]bool {
+	credentialIDs := map[string]bool{}
+	for _, vaultItem := range items {
+		for _, storedPasskey := range vaultItem.Details.Passkeys {
+			credentialIDs[string(storedPasskey.CredentialID)] = true
+		}
+	}
+	return credentialIDs
+}
+
+// filterNewPasskeys returns the passkeys whose credential ID is not in credentialIDs.
+func filterNewPasskeys(passkeys []item.Passkey, credentialIDs map[string]bool) []item.Passkey {
+	var newPasskeys []item.Passkey
+	for _, importedPasskey := range passkeys {
+		if !credentialIDs[string(importedPasskey.CredentialID)] {
+			newPasskeys = append(newPasskeys, importedPasskey)
+		}
+	}
+	return newPasskeys
+}
+
+// StartImport queues the previewed items for vaultID; ContinueImport then saves them in batches. A passkey the vault
+// already has is left out, so importing again adds none twice. Skipping duplicates still adds a duplicate login's new
+// passkeys to the login the vault has, so passkeys exported after their logins (Credential Exchange after a .1pux) arrive.
 func (s *Service) StartImport(vaultID string, isSkippingDuplicate bool) (ImportProgress, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -267,14 +342,40 @@ func (s *Service) StartImport(vaultID string, isSkippingDuplicate bool) (ImportP
 	if err != nil {
 		return ImportProgress{}, err
 	}
-	queuedItems := slices.Clone(pending.items)
+	duplicateMatches := map[int]int{}
 	if isSkippingDuplicate {
-		duplicateIndexes := importer.FindDuplicateIndexes(pending.items, existingItems)
-		queuedItems = queuedItems[:0]
-		for index, vaultItem := range pending.items {
-			if !slices.Contains(duplicateIndexes, index) {
-				queuedItems = append(queuedItems, vaultItem)
+		duplicateMatches = importer.FindDuplicateMatches(pending.items, existingItems)
+	}
+	existingPasskeyIDs := collectPasskeyCredentialIDs(existingItems)
+	queuedItems := make([]item.Item, 0, len(pending.items))
+	// mergedPositions maps an existing login that receives passkeys to its place in queuedItems, so two imported items
+	// that match it make one update.
+	mergedPositions := map[int]int{}
+	for index, vaultItem := range pending.items {
+		newPasskeys := filterNewPasskeys(vaultItem.Details.Passkeys, existingPasskeyIDs)
+		for _, newPasskey := range newPasskeys {
+			existingPasskeyIDs[string(newPasskey.CredentialID)] = true
+		}
+		existingIndex, isDuplicate := duplicateMatches[index]
+		switch {
+		case !isDuplicate:
+			vaultItem.Details.Passkeys = newPasskeys
+			item.UpdatePasskeyOverview(&vaultItem)
+			queuedItems = append(queuedItems, vaultItem)
+		case len(newPasskeys) == 0 || !existingItems[existingIndex].IsCategory(item.CategoryLogin):
+			// A plain duplicate is skipped.
+		default:
+			position, isMerged := mergedPositions[existingIndex]
+			if !isMerged {
+				merged := existingItems[existingIndex]
+				merged.Details.Passkeys, merged.IsFavorite = slices.Clone(merged.Details.Passkeys), false
+				position = len(queuedItems)
+				mergedPositions[existingIndex] = position
+				queuedItems = append(queuedItems, merged)
 			}
+			merged := &queuedItems[position]
+			merged.Details.Passkeys = append(merged.Details.Passkeys, newPasskeys...)
+			item.UpdatePasskeyOverview(merged)
 		}
 	}
 	pending.isStarted, pending.vaultID, pending.queuedItems, pending.items = true, vault.ID, queuedItems, nil
@@ -331,7 +432,7 @@ func isImportStoppingError(err error) bool {
 func (s *Service) buildImportProgress() ImportProgress {
 	pending := s.pendingImport
 	progress := ImportProgress{
-		FileName:   filepath.Base(pending.filePath),
+		FileName:   pending.getName(),
 		FilePath:   pending.filePath,
 		VaultID:    pending.vaultID,
 		SavedCount: pending.savedCount,
@@ -362,8 +463,10 @@ func (s *Service) DeleteImportFile() error {
 	if pending == nil || !pending.isStarted || len(pending.queuedItems) > 0 {
 		return ErrNoPendingImport
 	}
-	if err := os.Remove(pending.filePath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("could not delete %s; delete it in Finder", filepath.Base(pending.filePath))
+	if pending.filePath != "" {
+		if err := os.Remove(pending.filePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("could not delete %s; delete it in Finder", filepath.Base(pending.filePath))
+		}
 	}
 	s.pendingImport = nil
 	return nil
