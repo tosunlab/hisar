@@ -46,13 +46,13 @@ class EmulatorFingerprints {
         device.findObject(By.text(Pattern.compile("DONE", Pattern.CASE_INSENSITIVE))).click()
     }
 
-    /** Whether Hisar's biometric prompt shows within [timeoutMillis]. */
-    fun isPromptShown(timeoutMillis: Long): Boolean = device.wait(Until.hasObject(promptButton), timeoutMillis)
+    /** Whether [prompt], by default Hisar's unlock prompt, shows within [timeoutMillis]. */
+    fun isPromptShown(timeoutMillis: Long, prompt: BySelector = promptButton): Boolean = device.wait(Until.hasObject(prompt), timeoutMillis)
 
-    /** Plays finger [fingerID] on the prompt that is showing, and waits for it to close. */
-    fun touch(fingerID: Int = 1) {
+    /** Plays finger [fingerID] on [prompt], which is showing, and waits for it to close. */
+    fun touch(fingerID: Int = 1, prompt: BySelector = promptButton) {
         console.touchFinger(fingerID)
-        check(device.wait(Until.gone(promptButton), 10_000)) { "the biometric prompt stayed open after the finger" }
+        check(device.wait(Until.gone(prompt), 10_000)) { "the biometric prompt stayed open after the finger" }
     }
 
     /** Runs a backend call on another thread, as the app does, and answers each biometric prompt it shows with finger 1. */

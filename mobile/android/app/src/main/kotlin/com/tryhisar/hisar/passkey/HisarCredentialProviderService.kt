@@ -50,7 +50,7 @@ class HisarCredentialProviderService : CredentialProviderService() {
                 val caller = request.callingAppInfo?.let { CredentialCallers.read(this@HisarCredentialProviderService, it) }
                 val allOption = CredentialEntries.readOptions(request.beginGetCredentialOptions)
                 val offer = if (caller == null) CredentialOffer.Nothing else createAccess().offer(caller, allOption.map { it.second })
-                CredentialEntries.buildResponse(this@HisarCredentialProviderService, offer, allOption)
+                CredentialEntries.buildResponse(this@HisarCredentialProviderService, offer, allOption, isUserVerified = false)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {

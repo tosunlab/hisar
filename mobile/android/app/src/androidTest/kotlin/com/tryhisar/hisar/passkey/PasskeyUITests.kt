@@ -9,6 +9,7 @@ import androidx.test.filters.SdkSuppress
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import com.tryhisar.hisar.HisarTestApplication
@@ -16,6 +17,7 @@ import com.tryhisar.hisar.HisarUITestCase
 import com.tryhisar.hisar.autofill.AndroidApp
 import com.tryhisar.hisar.autofill.InstalledApps
 import com.tryhisar.hisar.autofill.testBackend
+import com.tryhisar.hisar.platform.EmulatorFingerprints
 import java.security.KeyFactory
 import java.security.MessageDigest
 import java.security.PublicKey
@@ -58,12 +60,15 @@ class PasskeyUITests : HisarUITestCase() {
         turnOnHisarForPasskeys()
         application.statementByRelyingParty[RELYING_PARTY_ID] = buildStatement(callerApp)
 
+        // This emulator has no screen lock, so only unlocking Hisar in the request itself verifies the user: Hisar would
+        // otherwise ask the device owner, and fail, before it creates or signs.
         val userHandle = "passkey-user-handle".toByteArray()
-        val registration = callCredentialManager(
-            CredentialCallerActivity.MODE_CREATE_PASSKEY,
-            """{"rp":{"id":"$RELYING_PARTY_ID","name":"Example"},"user":{"id":"${encode(userHandle)}","name":"passkey-user","displayName":"Passkey User"},"challenge":"$REGISTRATION_CHALLENGE","pubKeyCredParams":[{"type":"public-key","alg":-7}],"authenticatorSelection":{"residentKey":"required","userVerification":"preferred"}}""",
-        ) {
-            answerSheet("passkey-register-sheet", "Hisar") { device.hasObject(By.res("autofill-save-passkey")) }
+        testBackend.lock()
+        val registration = callCredentialManager(CredentialCallerActivity.MODE_CREATE_PASSKEY, buildCreateRequest(userHandle, "preferred")) {
+            answerSheet("passkey-register-sheet", "Hisar") { device.hasObject(By.res("unlock-password")) }
+            type(MASTER_PASSWORD, "unlock-password")
+            tap("unlock-submit")
+            waitFor("autofill-save-passkey")
             tap("autofill-passkey-new-login")
             saveScreenshot("passkey-save")
             tap("autofill-save-passkey")
@@ -80,10 +85,7 @@ class PasskeyUITests : HisarUITestCase() {
         val publicKey = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(decode(registrationResponse.getString("publicKey"))))
 
         testBackend.lock()
-        val assertion = callCredentialManager(
-            CredentialCallerActivity.MODE_GET_PASSKEY,
-            """{"rpId":"$RELYING_PARTY_ID","challenge":"$ASSERTION_CHALLENGE","allowCredentials":[{"type":"public-key","id":"${encode(credentialID)}"}],"userVerification":"preferred"}""",
-        ) {
+        val assertion = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(credentialID, "preferred")) {
             answerSheet("passkey-unlock-sheet", "Unlock Hisar.*") { device.hasObject(By.res("unlock-password")) }
             saveScreenshot("passkey-unlock")
             type(MASTER_PASSWORD, "unlock-password")
@@ -133,6 +135,100 @@ class PasskeyUITests : HisarUITestCase() {
         tap("confirm-delete-passkey")
         composeRule.waitUntil("the passkey leaves the item", 30_000) { !exists(hasTestTag("passkey-$RELYING_PARTY_ID")) }
         assertEquals("deleting the passkey keeps the login", "passkey-user", readText("username-value"))
+    }
+
+    /**
+     * With Hisar unlocked, using or creating a passkey asks the device owner first, by fingerprint here, unless the site
+     * discourages user verification or the user unlocked Hisar in this request; declining fails the request. API 37,
+     * where enrolling a fingerprint through Settings is known to work.
+     */
+    @Test
+    @SdkSuppress(minSdkVersion = 37)
+    fun testPasskeyAsksTheDeviceOwnerWhileUnlocked() {
+        val fingerprints = EmulatorFingerprints()
+        fingerprints.setPin()
+        try {
+            fingerprints.enroll(1)
+            launch()
+            signUp(readArgument("HISAR_UI_TEST_PASSKEY_UV_INVITE_LINK"), readArgument("HISAR_UI_TEST_PASSKEY_UV_EMAIL"), "Android Passkey UV", isBiometricOfferExpected = true)
+            tap("biometric-offer-turn-on")
+            composeRule.waitUntil("Hisar shows its biometric prompt", 20_000) { fingerprints.isPromptShown(100) }
+            fingerprints.touch()
+            waitFor("vault-Personal", 20_000)
+            closeApp()
+            turnOnHisarForPasskeys()
+            application.statementByRelyingParty[RELYING_PARTY_ID] = buildStatement(callerApp)
+
+            val createPrompt = By.text("Create a passkey for $RELYING_PARTY_ID")
+            val registration = callCredentialManager(CredentialCallerActivity.MODE_CREATE_PASSKEY, buildCreateRequest("uv-user-handle".toByteArray(), "preferred")) {
+                answerSheet("passkey-uv-register-sheet", "Hisar") { device.hasObject(By.res("autofill-save-passkey")) }
+                tap("autofill-passkey-new-login")
+                tap("autofill-save-passkey")
+                answerDeviceOwnerPrompt(fingerprints, createPrompt, "passkey-uv-create-prompt")
+            }
+            assertTrue(registration, registration.startsWith("registered "))
+            val registered = JSONObject(registration.removePrefix("registered ")).getJSONObject("response")
+            assertTrue("the creation says the user was verified", isUserVerifiedFlagSet(decode(registered.getString("authenticatorData"))))
+            val publicKey = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(decode(registered.getString("publicKey"))))
+
+            val signInPrompt = By.text("Use your passkey for $RELYING_PARTY_ID")
+            val assertion = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "preferred")) {
+                answerSheet("passkey-uv-sign-in-sheet", "passkey-user") { device.hasObject(signInPrompt) || device.hasObject(callerOutcome) }
+                answerDeviceOwnerPrompt(fingerprints, signInPrompt, "passkey-uv-sign-in-prompt")
+            }
+            checkSignedIn(assertion, publicKey)
+
+            val declined = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "preferred")) {
+                answerSheet("passkey-uv-decline-sheet", "passkey-user") { device.hasObject(signInPrompt) || device.hasObject(callerOutcome) }
+                check(device.hasObject(signInPrompt)) { "no device owner prompt to decline; ${dumpWindow("passkey-uv-decline")}" }
+                device.pressBack()
+            }
+            assertTrue("declining the device owner check cancels the request: $declined", declined.startsWith("error ") && "CANCEL" in declined.uppercase())
+
+            val discouraged = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "discouraged")) {
+                answerSheet("passkey-uv-discouraged-sheet", "passkey-user") { device.hasObject(callerOutcome) || device.hasObject(signInPrompt) }
+                assertFalse("a site that discourages user verification gets no device owner prompt", device.hasObject(signInPrompt))
+            }
+            saveScreenshot("passkey-uv-discouraged-signed-in")
+            checkSignedIn(discouraged, publicKey)
+
+            testBackend.lock()
+            val afterUnlock = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "preferred")) {
+                answerSheet("passkey-uv-unlock-sheet", "Unlock Hisar.*") { fingerprints.isPromptShown(100) }
+                fingerprints.touch()
+                answerSheet("passkey-uv-after-unlock-sheet", "passkey-user") { device.hasObject(callerOutcome) || device.hasObject(signInPrompt) }
+                assertFalse("the unlock in this request verified the user", device.hasObject(signInPrompt))
+            }
+            saveScreenshot("passkey-uv-after-unlock-signed-in")
+            checkSignedIn(afterUnlock, publicKey)
+        } finally {
+            fingerprints.clearPin()
+        }
+    }
+
+    // The prompt is a secure window, which screenshots show black, so a missing prompt saves the window hierarchy instead.
+    private fun answerDeviceOwnerPrompt(fingerprints: EmulatorFingerprints, prompt: BySelector, name: String) {
+        check(waitUntil(30_000) { device.hasObject(prompt) }) { "no device owner prompt; ${dumpWindow(name)}" }
+        fingerprints.touch(prompt = prompt)
+    }
+
+    private fun checkSignedIn(outcome: String, publicKey: PublicKey) {
+        assertTrue(outcome, outcome.startsWith("signed-in "))
+        val response = JSONObject(outcome.removePrefix("signed-in ")).getJSONObject("response")
+        val clientDataJSON = checkClientData(response, "webauthn.get", ASSERTION_CHALLENGE)
+        val signedData = decode(response.getString("authenticatorData")) + sha256(clientDataJSON)
+        assertTrue("the signature verifies with the registered key", verify(publicKey, signedData, decode(response.getString("signature"))))
+    }
+
+    // The flags byte follows the 32-byte RP ID hash; UV is bit 2.
+    private fun isUserVerifiedFlagSet(authenticatorData: ByteArray) = authenticatorData[32].toInt() and 0x04 != 0
+
+    private fun buildCreateRequest(userHandle: ByteArray, userVerification: String) =
+        """{"rp":{"id":"$RELYING_PARTY_ID","name":"Example"},"user":{"id":"${encode(userHandle)}","name":"passkey-user","displayName":"Passkey User"},"challenge":"$REGISTRATION_CHALLENGE","pubKeyCredParams":[{"type":"public-key","alg":-7}],"authenticatorSelection":{"residentKey":"required","userVerification":"$userVerification"}}"""
+
+    private fun buildGetRequest(credentialID: ByteArray?, userVerification: String): String {
+        val allowCredentials = credentialID?.let { """"allowCredentials":[{"type":"public-key","id":"${encode(it)}"}],""" }.orEmpty()
+        return """{"rpId":"$RELYING_PARTY_ID","challenge":"$ASSERTION_CHALLENGE",$allowCredentials"userVerification":"$userVerification"}"""
     }
 
     // The provider list of Settings > Passwords, passkeys & accounts, written as Settings writes it.
