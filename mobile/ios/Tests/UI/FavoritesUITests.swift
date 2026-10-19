@@ -26,6 +26,8 @@ final class FavoritesUITests: HisarUITestCase {
         dismissSavePasswordPrompt()
         waitFor(app.buttons["item-AWS Console"])
 
+        // The editor sheet is still closing over the list.
+        waitForHittable(app.buttons["item-GitHub"])
         app.buttons["item-GitHub"].tap()
         app.buttons["favorite-item"].tap()
         waitFor(app.staticTexts["Added to Favorites."], timeout: 10)

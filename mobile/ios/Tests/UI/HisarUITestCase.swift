@@ -39,10 +39,30 @@ class HisarUITestCase: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: timeout), "\(element) did not appear", file: file, line: line)
     }
 
+    // Waits until the element takes a tap: a row behind a closing sheet, or a button of a dialog still animating in, exists
+    // before it is hittable. iOS's Save Password sheet can come up seconds after a save, later than dismissSavePasswordPrompt
+    // looks for it, and cover the app; it is dismissed here too.
+    func waitForHittable(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists && element.isHittable {
+                return
+            }
+            if let notNow = savePasswordNotNowButtons.first(where: { $0.exists && $0.isHittable }) {
+                notNow.tap()
+            }
+            _ = element.waitForExistence(timeout: 0.5)
+        }
+        XCTFail("\(element) did not become tappable", file: file, line: line)
+    }
+
+    private var savePasswordNotNowButtons: [XCUIElement] {
+        [app.buttons["Not Now"], XCUIApplication(bundleIdentifier: "com.apple.springboard").buttons["Not Now"]]
+    }
+
     // iOS may show its Save Password sheet; on slow machines a tap during its animation is ignored, so tap until it is gone.
     func dismissSavePasswordPrompt(file: StaticString = #filePath, line: UInt = #line) {
-        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
-        let allCandidate = [app.buttons["Not Now"], springboard.buttons["Not Now"]]
+        let allCandidate = savePasswordNotNowButtons
         guard allCandidate.contains(where: { $0.waitForExistence(timeout: 2) }) else {
             return
         }

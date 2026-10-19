@@ -48,7 +48,9 @@ final class AccountLifecycleUITests: HisarUITestCase {
         saveScreenshot("account-life-deleted\(screenshotSuffix)")
     }
 
-    private func tapConfirmation(identifier: String) {
-        app.buttons[identifier].firstMatch.tap()
+    private func tapConfirmation(identifier: String, file: StaticString = #filePath, line: UInt = #line) {
+        let button = app.buttons[identifier].firstMatch
+        waitForHittable(button, file: file, line: line)
+        button.tap()
     }
 }
