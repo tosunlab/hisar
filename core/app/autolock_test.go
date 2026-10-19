@@ -1,9 +1,12 @@
 package app
 
 import (
+	"errors"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
 const testAutoLockAfter = 200 * time.Millisecond
@@ -115,5 +118,100 @@ func TestWithoutTheSystemIdleTimeActivityInHisarCounts(t *testing.T) {
 		if !isLocked(test) {
 			t.Error("never locked without activity")
 		}
+	}
+}
+
+type fakeSleepCountingClock struct {
+	mutex   sync.Mutex
+	reading time.Duration
+}
+
+func (clock *fakeSleepCountingClock) read() time.Duration {
+	clock.mutex.Lock()
+	defer clock.mutex.Unlock()
+	return clock.reading
+}
+
+// sleep moves only the clock that counts sleep, as a suspended device does: Go's lock timer does not fire.
+func (clock *fakeSleepCountingClock) sleep(duration time.Duration) {
+	clock.mutex.Lock()
+	defer clock.mutex.Unlock()
+	clock.reading += duration
+}
+
+type sleepTest struct {
+	unlockedTestService
+	clock   *fakeSleepCountingClock
+	loginID string
+}
+
+// startSleepTest unlocks with the 5-minute auto-lock and a GitHub login, on a sleep-counting clock the test moves.
+func startSleepTest(t *testing.T) sleepTest {
+	t.Helper()
+	test := sleepTest{unlockedTestService: createUnlockedTestService(t), clock: &fakeSleepCountingClock{}}
+	test.service.mutex.Lock()
+	test.service.config.SleepCountingClock = test.clock.read
+	test.service.mutex.Unlock()
+	if _, err := test.service.SetAutoLock(300); err != nil {
+		t.Fatal(err)
+	}
+	login, err := test.service.SaveItem(test.personalID, ItemDetail{Title: "GitHub", Username: "alice", Password: "github-password", URLs: []string{"https://github.com"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	test.loginID = login.ID
+	return test
+}
+
+func TestSleepPastTheAutoLockTimeLocksBeforeAnswering(t *testing.T) {
+	for name, isLockedAnswer := range map[string]func(test sleepTest) bool{
+		"status read": func(test sleepTest) bool { return test.service.GetStatus().State == StateLocked },
+		"login match": func(test sleepTest) bool {
+			logins, err := ListLoginsForURL(test.service, "https://github.com")
+			return len(logins) == 0 && getBrowserErrorCode(err) == browserprotocol.ErrorLocked
+		},
+		"password fill": func(test sleepTest) bool {
+			fill, err := GetLoginForURL(test.service, test.personalID, test.loginID, "https://github.com")
+			return fill.Password == "" && getBrowserErrorCode(err) == browserprotocol.ErrorLocked
+		},
+		"input in the app": func(test sleepTest) bool {
+			test.service.ReportActivity()
+			_, err := test.service.ListVaults()
+			return errors.Is(err, ErrLocked)
+		},
+	} {
+		test := startSleepTest(t)
+		test.clock.sleep(6 * time.Minute)
+		if !isLockedAnswer(test) {
+			t.Errorf("%s: answered from the unlocked session after sleeping past auto-lock", name)
+		}
+		if *test.lockedCount != 1 {
+			t.Errorf("%s: locked %d times", name, *test.lockedCount)
+		}
+		lockNotifier := test.service.config.LockNotifier.(*fakeLockNotifier)
+		for deadline := time.Now().Add(time.Second); lockNotifier.getLockedCount() == 0 && time.Now().Before(deadline); {
+			time.Sleep(10 * time.Millisecond)
+		}
+		if count := lockNotifier.getLockedCount(); count != 1 {
+			t.Errorf("%s: the window was told about %d locks", name, count)
+		}
+	}
+}
+
+func TestUseWithinTheAutoLockTimeKeepsHisarUnlocked(t *testing.T) {
+	test := startSleepTest(t)
+	for range 3 {
+		test.clock.sleep(4 * time.Minute)
+		if _, err := test.service.ListVaults(); err != nil {
+			t.Fatalf("locked within the auto-lock time of the last use: %v", err)
+		}
+	}
+	test.clock.sleep(4 * time.Minute)
+	if fill, err := GetLoginForURL(test.service, test.personalID, test.loginID, "https://github.com"); err != nil || fill.Password != "github-password" {
+		t.Fatalf("fill within the auto-lock time: %+v %v", fill, err)
+	}
+	test.clock.sleep(2 * time.Minute)
+	if state := test.service.GetStatus().State; state != StateLocked {
+		t.Errorf("a fill postponed auto-lock: %s", state)
 	}
 }

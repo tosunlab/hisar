@@ -152,7 +152,7 @@ func (source *SSHKeySource) ListKeys(ctx context.Context) ([]sshagent.Key, error
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.unlockedSession == nil {
+	if !s.isUnlocked() {
 		if s.state.IsLoggedIn() {
 			return nil, lockedKeySourceError{}
 		}

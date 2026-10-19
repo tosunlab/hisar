@@ -40,7 +40,7 @@ func ListPendingPhoneApprovals(s *Service) ([]PhoneApprovalRequest, error) {
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.unlockedSession == nil || s.unlockedSession.Client != apiClient {
+	if !s.isUnlocked() || s.unlockedSession.Client != apiClient {
 		return nil, ErrLocked
 	}
 	requests := []PhoneApprovalRequest{}
@@ -92,7 +92,7 @@ func AnswerPhoneApproval(s *Service, requestID string, isApproved, isRemembered 
 		decision = approval.DecisionApprove
 	}
 	s.mutex.Lock()
-	if s.unlockedSession == nil || s.unlockedSession.Client != apiClient {
+	if !s.isUnlocked() || s.unlockedSession.Client != apiClient {
 		s.mutex.Unlock()
 		return ErrLocked
 	}

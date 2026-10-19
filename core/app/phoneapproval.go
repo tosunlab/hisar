@@ -148,7 +148,7 @@ func (s *Service) getPhoneApprovalDeviceName() string {
 func (phoneApprover *PhoneApprover) IsPhoneApprovalAvailable() bool {
 	s := phoneApprover.service
 	s.mutex.Lock()
-	if s.unlockedSession == nil || s.state.IsPhoneApprovalDisabled {
+	if !s.isUnlocked() || s.state.IsPhoneApprovalDisabled {
 		s.mutex.Unlock()
 		return false
 	}
@@ -183,7 +183,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	relay.mutex.Lock()
 	ownDeviceID := relay.ownDeviceID
 	relay.mutex.Unlock()
-	if s.unlockedSession == nil || s.state.IsPhoneApprovalDisabled || ownDeviceID == "" {
+	if !s.isUnlocked() || s.state.IsPhoneApprovalDisabled || ownDeviceID == "" {
 		s.mutex.Unlock()
 		return func() {}
 	}
@@ -294,7 +294,7 @@ func (s *Service) acceptPhoneApprovalAnswer(apiClient *apiclient.Client, request
 		return
 	}
 	s.mutex.Lock()
-	if s.unlockedSession == nil || s.unlockedSession.Client != apiClient {
+	if !s.isUnlocked() || s.unlockedSession.Client != apiClient {
 		s.mutex.Unlock()
 		return
 	}
@@ -318,11 +318,8 @@ func (s *Service) acceptPhoneApprovalAnswer(apiClient *apiclient.Client, request
 func (s *Service) getUnlockedClient() (*apiclient.Client, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.unlockedSession == nil {
-		if s.state.IsLoggedIn() {
-			return nil, ErrLocked
-		}
-		return nil, ErrSignedOut
+	if err := s.requireUnlockedWithoutActivity(); err != nil {
+		return nil, err
 	}
 	return s.unlockedSession.Client, nil
 }

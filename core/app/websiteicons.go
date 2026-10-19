@@ -80,7 +80,7 @@ func (s *Service) GetWebsiteIcon(rawURL string) ([]byte, error) {
 		return nil, nil
 	}
 	s.mutex.Lock()
-	if s.unlockedSession == nil || s.state.IsWebsiteIconsDisabled {
+	if !s.isUnlocked() || s.state.IsWebsiteIconsDisabled {
 		s.mutex.Unlock()
 		return nil, nil
 	}

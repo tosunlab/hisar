@@ -39,18 +39,36 @@ func (s *Service) ReportActivity() {
 	s.noteActivity()
 }
 
+// resetLockTimer restarts the auto-lock countdown, unless it already ran out while the device slept.
 func (s *Service) resetLockTimer() {
-	if s.unlockedSession == nil {
-		return
+	if s.isUnlocked() {
+		s.scheduleLockTimer(s.getAutoLockAfter())
 	}
-	s.scheduleLockTimer(s.getAutoLockAfter())
 }
 
+// scheduleLockTimer sets when auto-lock is due on the sleep-counting clock, and a timer to lock then while awake.
 func (s *Service) scheduleLockTimer(after time.Duration) {
 	if s.lockTimer != nil {
 		s.lockTimer.Stop()
 	}
+	s.lockDeadline = s.config.SleepCountingClock() + after
 	s.lockTimer = time.AfterFunc(after, s.lockFromTimer)
+}
+
+// isUnlocked locks first when auto-lock is due: Go's timers stop while the device sleeps, so after a long sleep the
+// lock timer fires late, and nothing may answer from the session before it does. Locking takes the phone approval and
+// website icon mutexes, so callers must not hold them.
+func (s *Service) isUnlocked() bool {
+	if s.unlockedSession != nil && s.config.SleepCountingClock() >= s.lockDeadline {
+		s.lockWhenIdle()
+	}
+	return s.unlockedSession != nil
+}
+
+// readWallClock stands in for a sleep-counting clock where the system has none: the time of day counts sleep, but
+// setting it back postpones auto-lock and setting it forward brings auto-lock closer.
+func readWallClock() time.Duration {
+	return time.Duration(time.Now().UnixNano())
 }
 
 // noteActivity postpones auto-lock only without the system idle time: with it, input anywhere on the Mac counts,
@@ -76,16 +94,28 @@ func (s *Service) getRemainingSystemIdleTime() (time.Duration, bool) {
 
 func (s *Service) lockFromTimer() {
 	s.mutex.Lock()
-	if remaining, isMeasured := s.getRemainingSystemIdleTime(); isMeasured && remaining > 0 && s.unlockedSession != nil {
-		s.scheduleLockTimer(max(remaining, minimumLockRecheckInterval))
-		s.mutex.Unlock()
+	defer s.mutex.Unlock()
+	if s.unlockedSession == nil {
 		return
 	}
-	wasUnlocked := s.unlockedSession != nil
+	// Activity can move the deadline after this timer fired and before it got the mutex.
+	if remaining := s.lockDeadline - s.config.SleepCountingClock(); remaining > 0 {
+		s.scheduleLockTimer(max(remaining, minimumLockRecheckInterval))
+		return
+	}
+	s.lockWhenIdle()
+}
+
+// lockWhenIdle runs once auto-lock is due and locks, unless the Mac had input since: then it waits for the rest of the
+// idle time. The notifier runs on its own goroutine because callers hold the mutex.
+func (s *Service) lockWhenIdle() {
+	if remaining, isMeasured := s.getRemainingSystemIdleTime(); isMeasured && remaining > 0 {
+		s.scheduleLockTimer(max(remaining, minimumLockRecheckInterval))
+		return
+	}
 	s.lockSession()
-	s.mutex.Unlock()
-	if wasUnlocked && s.config.LockNotifier != nil {
-		s.config.LockNotifier.NotifyLocked()
+	if s.config.LockNotifier != nil {
+		go s.config.LockNotifier.NotifyLocked()
 	}
 }
 
@@ -133,12 +163,9 @@ func (s *Service) Lock() Status {
 }
 
 func (s *Service) requireUnlocked() error {
-	if s.unlockedSession != nil {
-		s.noteActivity()
-		return nil
+	if err := s.requireUnlockedWithoutActivity(); err != nil {
+		return err
 	}
-	if s.state.IsLoggedIn() {
-		return ErrLocked
-	}
-	return ErrSignedOut
+	s.noteActivity()
+	return nil
 }

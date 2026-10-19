@@ -89,7 +89,7 @@ func (bridge *CommandLineBridge) DescribeSecrets(references []string) []string {
 	defer cancel()
 	names := make([]string, 0, len(references))
 	for _, text := range references {
-		if s.unlockedSession != nil {
+		if s.isUnlocked() {
 			if resolved, err := secretreference.Locate(serviceSecretSource{service: s, ctx: ctx, isCacheOnly: true}, text); err == nil {
 				names = append(names, resolved.Describe())
 				continue
