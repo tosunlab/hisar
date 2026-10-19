@@ -321,7 +321,7 @@ jobs:
       - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-admin-end-to-end
 
   android:
-    name: Android app build, JVM tests and instrumented tests (part ${{ matrix.shard }} of 2)
+    name: Android app build, JVM tests and instrumented tests (part ${{ matrix.part }} of 2)
     needs: changes
     if: needs.changes.outputs.isAndroidChanged == 'true'
     runs-on: ubuntu-latest
@@ -331,7 +331,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1]
+        # shard is the test runner's 0-based ANDROID_UI_TEST_SHARD.
+        include:
+          - part: 1
+            shard: 0/2
+          - part: 2
+            shard: 1/2
     services:
       postgres:
         image: postgres:18
@@ -360,11 +365,11 @@ jobs:
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
       - run: make build-android-aar
       - name: Check that ThemePalettes.kt matches assets/themes/themes.json
-        if: matrix.shard == 0
+        if: matrix.part == 1
         run: node scripts/themes/generate.ts && git diff --exit-code
-      - if: matrix.shard == 0
+      - if: matrix.part == 1
         run: make build-android
-      - if: matrix.shard == 0
+      - if: matrix.part == 1
         run: make test-android
       - name: Let the emulator use KVM
         run: |
@@ -374,7 +379,7 @@ jobs:
       - name: Instrumented tests on an API 36 emulator
         env:
           HISAR_DATABASE_URL: postgres://postgres:hisar@127.0.0.1:5432/hisar?sslmode=disable
-          ANDROID_UI_TEST_SHARD: ${{ matrix.shard }}/2
+          ANDROID_UI_TEST_SHARD: ${{ matrix.shard }}
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           # The x86_64 API 37 image crash-loops on these runners: surfaceflinger aborts on "Assertion failed:
@@ -395,7 +400,7 @@ jobs:
         # A job stopped at its timeout is cancelled rather than failed; its reports explain why.
         if: failure() || cancelled()
         with:
-          name: android-reports-${{ matrix.shard }}
+          name: android-reports-${{ matrix.part }}
           path: |
             mobile/android/*/build/reports
             mobile/android/*/build/outputs/androidTest-results
