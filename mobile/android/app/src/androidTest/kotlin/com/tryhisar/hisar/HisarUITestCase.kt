@@ -109,16 +109,26 @@ abstract class HisarUITestCase {
         composeRule.waitUntil("the $menu menu closes after choosing $item", 10_000) { !exists(hasTestTag(item)) }
     }
 
-    /** A lazy list composes only the rows on screen, so a row further down does not exist until the list scrolls to it. */
+    /**
+     * A lazy list composes only the rows on screen, so a row further down does not exist until the list scrolls to it; a
+     * list still loading does not hold the row yet, so the list is scrolled again until it does.
+     */
     fun scrollTo(tag: String) {
         val node = hasTestTag(tag)
-        if (!exists(node) && exists(hasScrollToNodeAction())) {
-            composeRule.onAllNodes(hasScrollToNodeAction()).onLast().performScrollToNode(node)
-        }
-        waitFor(node)
+        composeRule.waitUntil("$tag appears", 30_000) { exists(node) || isScrolledInto(node) }
         if (exists(node and hasAnyAncestor(hasScrollAction()))) {
             composeRule.onNode(node).performScrollTo()
             scrollClearOfTabBar(node)
+        }
+    }
+
+    private fun isScrolledInto(node: SemanticsMatcher): Boolean {
+        if (!exists(hasScrollToNodeAction())) return false
+        return try {
+            composeRule.onAllNodes(hasScrollToNodeAction()).onLast().performScrollToNode(node)
+            exists(node)
+        } catch (_: AssertionError) {
+            false
         }
     }
 
@@ -145,7 +155,7 @@ abstract class HisarUITestCase {
 
     /** With [isBiometricOfferExpected], it stops at the biometric offer after the Secret Key; otherwise it declines any offer. */
     fun signUp(inviteLink: String, email: String, name: String, isBiometricOfferExpected: Boolean = false): String {
-        waitFor("sign-in-mode")
+        waitFor("sign-in-mode", APP_START_TIMEOUT)
         saveScreenshot("sign-in")
         composeRule.onNode(hasText("Create account") and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()
         type(inviteLink, "sign-up-invite-link")
@@ -156,7 +166,7 @@ abstract class HisarUITestCase {
         scrollTo("create-account-note")
         saveScreenshot("create-account")
         tap("sign-in-submit")
-        waitFor("new-secret-key", 60_000)
+        waitFor("new-secret-key", ACCOUNT_KEY_TIMEOUT)
         val secretKey = readText("new-secret-key")
         saveScreenshot("new-secret-key")
         tap("new-secret-key-done")
@@ -176,14 +186,14 @@ abstract class HisarUITestCase {
 
     /** Signs in to the harness server with an account another device created. */
     fun signIn(email: String, secretKey: String, password: String) {
-        waitFor("sign-in-use-different-server")
+        waitFor("sign-in-use-different-server", APP_START_TIMEOUT)
         tap("sign-in-use-different-server")
         composeRule.onNode(hasTestTag("sign-in-server")).performTextReplacement(readArgument("HISAR_UI_TEST_SERVER"))
         type(email, "sign-in-email")
         type(secretKey, "sign-in-secret-key")
         type(password, "sign-in-password")
         tap("sign-in-submit")
-        waitFor("vault-Personal", 60_000)
+        waitFor("vault-Personal", ACCOUNT_KEY_TIMEOUT)
     }
 
     fun addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
@@ -203,6 +213,16 @@ abstract class HisarUITestCase {
 
     companion object {
         const val MASTER_PASSWORD = "ui test master password"
+
+        /** From launching the app to its first screen, while the process and the Go backend start; over 30 seconds when loaded. */
+        const val APP_START_TIMEOUT = 60_000L
+
+        /**
+         * A step that derives the account key from the master password on the device (Argon2id) and talks to the server:
+         * signing up or in, changing the password or Secret Key, approving with the password. Up to 26 seconds on a loaded
+         * arm64 emulator, and CI's x86_64 emulator is up to five times slower.
+         */
+        const val ACCOUNT_KEY_TIMEOUT = 130_000L
 
         /** How far above the tab bar, in pixels, a tapped node ends up. */
         private const val TAB_BAR_CLEARANCE = 48f

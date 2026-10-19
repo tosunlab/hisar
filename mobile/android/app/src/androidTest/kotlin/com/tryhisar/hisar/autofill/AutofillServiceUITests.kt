@@ -154,7 +154,7 @@ class AutofillServiceUITests {
     }
 
     private fun waitForReport(expected: String) {
-        val isFilled = device.wait(Until.hasObject(By.text(expected)), 10_000)
+        val isFilled = device.wait(Until.hasObject(By.text(expected)), 20_000)
         assertTrue("the form reads ${device.findObject(By.textStartsWith("username="))?.text}, not $expected", isFilled)
     }
 
@@ -162,7 +162,7 @@ class AutofillServiceUITests {
     // window goes away find the page without focus and are dropped, so the rest is typed once it has closed.
     private fun type(text: String, expectedReport: String) {
         shell("input text ${text.first()}")
-        device.wait(Until.gone(By.text("Search Hisar")), 5_000)
+        device.wait(Until.gone(By.text("Search Hisar")), 10_000)
         shell("input text ${text.drop(1)}")
         waitForReport(expectedReport)
     }
