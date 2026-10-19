@@ -30,7 +30,9 @@ final class FavoritesUITests: HisarUITestCase {
         // The editor sheet is still closing over the list.
         waitForHittable(app.buttons["item-GitHub"])
         app.buttons["item-GitHub"].tap()
-        app.buttons["favorite-item"].tap()
+        let star = app.buttons["favorite-item"]
+        waitForHittable(star)
+        star.tap()
         waitFor(app.staticTexts["Added to Favorites."], timeout: 10)
         saveScreenshot("favorites-item-starred")
         goBack()

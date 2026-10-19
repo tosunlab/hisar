@@ -35,12 +35,7 @@ class HisarUITestCase: XCTestCase {
         }
     }
 
-    // waitForExistence first checks after a second, even for an element already on screen; most waits find it there, so they
-    // look first.
     func waitFor(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
-        if element.exists {
-            return
-        }
         XCTAssertTrue(element.waitForExistence(timeout: timeout), "\(element) did not appear", file: file, line: line)
     }
 
@@ -146,7 +141,7 @@ class HisarUITestCase: XCTestCase {
     }
 
     func type(_ text: String, into element: XCUIElement) {
-        if !(element.exists || element.waitForExistence(timeout: 5)) || !element.isHittable {
+        if !element.waitForExistence(timeout: 5) || !element.isHittable {
             scrollTo(element)
         }
         element.tap()
