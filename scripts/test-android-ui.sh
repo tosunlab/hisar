@@ -7,6 +7,7 @@
 # (testAccountItemLockAndSignInFlow) or both (HisarUITests#testAccountItemLockAndSignInFlow), or "smoke" for the set the
 # older Android versions run (a smoke test this checkout lacks is named and left out). A name that matches
 # no test, or a run in which no test ran, fails. HISAR_UI_TEST_SCREENSHOT_DIRECTORY receives the screenshots the tests save.
+# ANDROID_UI_TEST_SHARD=<index>/<count>, such as 0/2, runs one of count parts of those tests, as split by the test runner.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -154,6 +155,11 @@ done
 
 # The Android Gradle plugin cuts each value at its first comma and hands the rest to the device's shell unquoted, inside
 # `am instrument -e NAME value`.
+if [ -n "${ANDROID_UI_TEST_SHARD:-}" ]; then
+  [[ "$ANDROID_UI_TEST_SHARD" =~ ^([0-9]+)/([1-9][0-9]*)$ ]] && [ "${BASH_REMATCH[1]}" -lt "${BASH_REMATCH[2]}" ] ||
+    { echo "ANDROID_UI_TEST_SHARD is <index>/<count> with index below count, such as 0/2" >&2; exit 1; }
+  UI_TEST_VALUES+=("numShards=${BASH_REMATCH[2]}" "shardIndex=${BASH_REMATCH[1]}")
+fi
 for VALUE in "${UI_TEST_VALUES[@]}"; do
   [[ "$VALUE" =~ ^[A-Za-z0-9_]+=[A-Za-z0-9@._:/+=-]*$ ]] || { echo "cannot pass $VALUE as an instrumentation argument" >&2; exit 1; }
 done
