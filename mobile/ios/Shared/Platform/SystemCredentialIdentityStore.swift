@@ -6,16 +6,26 @@ protocol CredentialIdentityUpdating: AnyObject {
     func removeAllIdentity() async
 }
 
-final class SystemCredentialIdentityStore: CredentialIdentityUpdating {
+// The AutoFill extension adds or removes single identities, such as a passkey it just created, without listing the vault.
+protocol CredentialIdentitySaving: AnyObject {
+    func saveIdentity(_ allIdentity: [CredentialIdentityRecord]) async
+    func removeIdentity(_ allIdentity: [CredentialIdentityRecord]) async
+}
+
+final class SystemCredentialIdentityStore: CredentialIdentityUpdating, CredentialIdentitySaving {
     private let store = ASCredentialIdentityStore.shared
 
     private func checkIsEnabled() async -> Bool {
         await store.state().isEnabled
     }
 
-    func replaceAllIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
-        guard await checkIsEnabled() else { return }
-        let allSystemIdentity: [ASCredentialIdentity] = allIdentity.compactMap { identity in
+    private func checkIsUpdatable() async -> Bool {
+        let state = await store.state()
+        return state.isEnabled && state.supportsIncrementalUpdates
+    }
+
+    private func buildAllSystemIdentity(_ allIdentity: [CredentialIdentityRecord]) -> [ASCredentialIdentity] {
+        allIdentity.map { identity -> ASCredentialIdentity in
             let serviceIdentifier = ASCredentialServiceIdentifier(identifier: identity.host, type: .domain)
             switch identity.kind {
             case .password:
@@ -26,7 +36,21 @@ final class SystemCredentialIdentityStore: CredentialIdentityUpdating {
                 return ASPasskeyCredentialIdentity(relyingPartyIdentifier: identity.host, userName: identity.username, credentialID: identity.credentialID, userHandle: identity.userHandle, recordIdentifier: identity.recordIdentifier)
             }
         }
-        try? await store.replaceCredentialIdentities(allSystemIdentity)
+    }
+
+    func replaceAllIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
+        guard await checkIsEnabled() else { return }
+        try? await store.replaceCredentialIdentities(buildAllSystemIdentity(allIdentity))
+    }
+
+    func saveIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
+        guard !allIdentity.isEmpty, await checkIsUpdatable() else { return }
+        try? await store.saveCredentialIdentities(buildAllSystemIdentity(allIdentity))
+    }
+
+    func removeIdentity(_ allIdentity: [CredentialIdentityRecord]) async {
+        guard !allIdentity.isEmpty, await checkIsUpdatable() else { return }
+        try? await store.removeCredentialIdentities(buildAllSystemIdentity(allIdentity))
     }
 
     func removeAllIdentity() async {

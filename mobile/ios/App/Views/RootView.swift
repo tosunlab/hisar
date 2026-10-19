@@ -28,6 +28,11 @@ struct RootView: View {
         } message: {
             Text(model.inviteLinkMessage ?? "")
         }
+        .alert("Import from another app", isPresented: Binding(get: { model.credentialImportMessage != nil }, set: { if !$0 { model.credentialImportMessage = nil } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(model.credentialImportMessage ?? "")
+        }
         .overlay(alignment: .bottom) {
             if let noticeMessage = model.noticeMessage {
                 NoticeToast(message: noticeMessage)
@@ -95,6 +100,10 @@ struct MainTabView: View {
             }
         }
         .onChange(of: model.selectedTab) { _, _ in model.reportActivity() }
+        .sheet(isPresented: Binding(get: { model.isCredentialImportShown }, set: { if !$0 { model.closeCredentialImport() } })) {
+            CredentialImportView()
+                .environmentObject(model)
+        }
     }
 }
 

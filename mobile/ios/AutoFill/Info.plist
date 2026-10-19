@@ -41,6 +41,12 @@
 				<true/>
 				<key>ProvidesPasswords</key>
 				<true/>
+				<key>SupportedCredentialExchangeVersions</key>
+				<array>
+					<string>1.0</string>
+				</array>
+				<key>SupportsCredentialExchange</key>
+				<true/>
 			</dict>
 			<key>ASCredentialProviderExtensionShowsConfigurationUI</key>
 			<false/>

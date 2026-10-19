@@ -121,13 +121,15 @@ export interface FavoriteItem {
 
 /**
  * ImportDuplicate: Detail is what matched besides the title, such as a login's username and website or an API
- * credential's key ID; see importer.DescribeDuplicate.
+ * credential's key ID; see importer.DescribeDuplicate. PasskeyCount is how many of its passkeys the existing item lacks;
+ * skipping duplicates adds them to it.
  */
 export interface ImportDuplicate {
     "title": string;
     "username": string;
     "url": string;
     "detail": string;
+    "passkeyCount": number;
 }
 
 export interface ImportFormat {
@@ -136,7 +138,8 @@ export interface ImportFormat {
 }
 
 /**
- * ImportPreview: an empty FileName means the user cancelled the file dialog.
+ * ImportPreview: an empty FileName means the user cancelled the file dialog. A Credential Exchange import has no file:
+ * FileName names the app the items came from and FilePath is empty.
  */
 export interface ImportPreview {
     "fileName": string;
@@ -176,6 +179,11 @@ export interface ImportPreview {
      * DatabaseCount counts the database items among ItemCount.
      */
     "databaseCount": number;
+
+    /**
+     * PasskeyCount counts the passkeys the items hold.
+     */
+    "passkeyCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
 }

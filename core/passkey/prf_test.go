@@ -55,7 +55,7 @@ func TestPRFVectors(t *testing.T) {
 		}
 	}
 	secondKeyDER := createPrivateKeyDER(t, bytes.Repeat([]byte{0x42}, 32))
-	output, err := EvaluatePRFForPasskey(secondKeyDER, PRFInput{First: []byte("salt-a")})
+	output, err := EvaluatePRFForPasskey(secondKeyDER, nil, PRFInput{First: []byte("salt-a")})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -66,18 +66,18 @@ func TestPRFVectors(t *testing.T) {
 
 func TestEvaluatePRFForPasskey(t *testing.T) {
 	privateKeyDER := createPrivateKeyDER(t, countingScalar())
-	output, err := EvaluatePRFForPasskey(privateKeyDER, PRFInput{First: []byte("salt-a"), Second: []byte("salt-b"), HasSecond: true})
+	output, err := EvaluatePRFForPasskey(privateKeyDER, nil, PRFInput{First: []byte("salt-a"), Second: []byte("salt-b"), HasSecond: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	again, _ := EvaluatePRFForPasskey(privateKeyDER, PRFInput{First: []byte("salt-a"), Second: []byte("salt-b"), HasSecond: true})
+	again, _ := EvaluatePRFForPasskey(privateKeyDER, nil, PRFInput{First: []byte("salt-a"), Second: []byte("salt-b"), HasSecond: true})
 	if !bytes.Equal(output.First, again.First) || !bytes.Equal(output.Second, again.Second) {
 		t.Error("the same input gave different outputs")
 	}
 	if bytes.Equal(output.First, output.Second) || len(output.First) != 32 || len(output.Second) != 32 {
 		t.Errorf("first %x, second %x", output.First, output.Second)
 	}
-	emptySecond, _ := EvaluatePRFForPasskey(privateKeyDER, PRFInput{First: []byte("salt-a"), HasSecond: true})
+	emptySecond, _ := EvaluatePRFForPasskey(privateKeyDER, nil, PRFInput{First: []byte("salt-a"), HasSecond: true})
 	if hex.EncodeToString(emptySecond.Second) != "e930f5231ddef59dff8ce9008816fbfea98ad3ee9d006652c3f2f263410f92fb" {
 		t.Errorf("an empty second input = %x", emptySecond.Second)
 	}
@@ -87,19 +87,24 @@ func TestEvaluatePRFForPasskey(t *testing.T) {
 		t.Fatal(err)
 	}
 	otherKeyDER, _ := x509.MarshalPKCS8PrivateKey(otherKey)
-	other, _ := EvaluatePRFForPasskey(otherKeyDER, PRFInput{First: []byte("salt-a")})
+	other, _ := EvaluatePRFForPasskey(otherKeyDER, nil, PRFInput{First: []byte("salt-a")})
 	if bytes.Equal(other.First, output.First) {
 		t.Error("two credentials gave the same output")
 	}
 
-	if _, err := EvaluatePRFForPasskey(privateKeyDER, PRFInput{First: make([]byte, MaxPRFInputLength+1)}); !errors.Is(err, ErrInvalidRequest) {
+	if _, err := EvaluatePRFForPasskey(privateKeyDER, nil, PRFInput{First: make([]byte, MaxPRFInputLength+1)}); !errors.Is(err, ErrInvalidRequest) {
 		t.Errorf("long first input: %v", err)
 	}
-	if _, err := EvaluatePRFForPasskey(privateKeyDER, PRFInput{First: []byte{1}, Second: make([]byte, MaxPRFInputLength+1), HasSecond: true}); !errors.Is(err, ErrInvalidRequest) {
+	if _, err := EvaluatePRFForPasskey(privateKeyDER, nil, PRFInput{First: []byte{1}, Second: make([]byte, MaxPRFInputLength+1), HasSecond: true}); !errors.Is(err, ErrInvalidRequest) {
 		t.Errorf("long second input: %v", err)
 	}
-	if _, err := EvaluatePRFForPasskey([]byte("not a key"), PRFInput{First: []byte{1}}); err == nil {
+	if _, err := EvaluatePRFForPasskey([]byte("not a key"), nil, PRFInput{First: []byte{1}}); err == nil {
 		t.Error("evaluated with an invalid key")
+	}
+	importedSecret := bytes.Repeat([]byte{7}, 32)
+	imported, err := EvaluatePRFForPasskey(privateKeyDER, importedSecret, PRFInput{First: []byte("salt-a")})
+	if err != nil || !bytes.Equal(imported.First, EvaluatePRF(importedSecret, []byte("salt-a"))) || bytes.Equal(imported.First, output.First) {
+		t.Errorf("an imported secret was not used: %x %v", imported.First, err)
 	}
 	p384Key, _ := ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	p384DER, _ := x509.MarshalPKCS8PrivateKey(p384Key)

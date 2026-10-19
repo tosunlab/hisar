@@ -13,7 +13,6 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"net/url"
 	"strings"
@@ -383,13 +382,9 @@ func SignAssertionWithClientDataHash(requestedRelyingPartyID, credentialRelyingP
 }
 
 func signAuthenticatorData(relyingPartyID string, clientDataHash, privateKeyDER []byte) (Assertion, error) {
-	parsedKey, err := x509.ParsePKCS8PrivateKey(privateKeyDER)
+	privateKey, err := parseES256Key(privateKeyDER)
 	if err != nil {
-		return Assertion{}, fmt.Errorf("passkey: stored key: %w", err)
-	}
-	privateKey, isECDSA := parsedKey.(*ecdsa.PrivateKey)
-	if !isECDSA || privateKey.Curve != elliptic.P256() {
-		return Assertion{}, errors.New("passkey: the stored key is not an ES256 key")
+		return Assertion{}, err
 	}
 	authenticatorData := BuildAuthenticatorData(relyingPartyID, flagAssertion, nil)
 	signedData := sha256.Sum256(append(bytes.Clone(authenticatorData), clientDataHash...))

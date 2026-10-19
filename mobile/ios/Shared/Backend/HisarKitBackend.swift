@@ -282,6 +282,26 @@ final class HisarKitBackend: VaultBackend {
         })
     }
 
+    func prepareCredentialExchangeImport(vaultID: String, credentialData: Data) throws -> ImportPreview {
+        try decode(ImportPreview.self, from: callReturningText { hisar.prepareCredentialExchangeImport(vaultID, credentialData: credentialData, error: $0) })
+    }
+
+    func previewImport(vaultID: String) throws -> ImportPreview {
+        try decode(ImportPreview.self, from: callReturningText { hisar.previewImport(vaultID, error: $0) })
+    }
+
+    func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress {
+        try decode(ImportProgress.self, from: callReturningText { hisar.startImport(vaultID, isSkippingDuplicate: isSkippingDuplicate, error: $0) })
+    }
+
+    func continueImport() throws -> ImportProgress {
+        try decode(ImportProgress.self, from: callReturningText { hisar.continueImport($0) })
+    }
+
+    func cancelImport() {
+        hisar.cancelImport()
+    }
+
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
         try decode([ItemDetail]?.self, from: callReturningText { hisar.listAllItem(vaultID, error: $0) }) ?? []
     }

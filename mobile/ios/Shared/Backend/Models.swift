@@ -1129,6 +1129,8 @@ struct PasskeyAssertionRequest: Equatable {
     var relyingPartyID: String
     var clientDataHash: Data
     var allAllowedCredentialID: [Data] = []
+    // The site's userVerification is "discouraged": Hisar signs without asking the device owner again.
+    var isUserVerificationDiscouraged = false
 }
 
 struct PasskeyRegistrationRequest: Equatable {
@@ -1140,6 +1142,7 @@ struct PasskeyRegistrationRequest: Equatable {
     var clientDataHash: Data
     var allSupportedAlgorithm: [Int] = []
     var allExcludedCredentialID: [Data] = []
+    var isUserVerificationDiscouraged = false
 
     var isAlgorithmSupported: Bool {
         allSupportedAlgorithm.isEmpty || allSupportedAlgorithm.contains(Self.algorithmES256)
@@ -1560,6 +1563,173 @@ enum ExportFormat: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var label: String { self == .encrypted ? "Encrypted export" : "Plain JSON" }
+}
+
+/// ImportSkippedEntry is an item an import leaves out or failed to save, with why.
+struct ImportSkippedEntry: Codable, Hashable {
+    var title: String
+    var reason: String
+}
+
+/// ImportDuplicate is an item the chosen vault already has. passkeyCount is how many of its passkeys the existing login
+/// lacks; skipping duplicates adds them to it.
+struct ImportDuplicate: Codable, Hashable {
+    var title: String
+    var username: String
+    var url: String
+    var detail: String
+    var passkeyCount: Int
+
+    init(title: String, username: String = "", url: String = "", detail: String = "", passkeyCount: Int = 0) {
+        self.title = title
+        self.username = username
+        self.url = url
+        self.detail = detail
+        self.passkeyCount = passkeyCount
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
+        username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
+        url = try container.decodeIfPresent(String.self, forKey: .url) ?? ""
+        detail = try container.decodeIfPresent(String.self, forKey: .detail) ?? ""
+        passkeyCount = try container.decodeIfPresent(Int.self, forKey: .passkeyCount) ?? 0
+    }
+}
+
+/// ImportPreview is what an import would bring into vaultID. For a Credential Exchange import fileName names the app the
+/// items came from and filePath is empty.
+struct ImportPreview: Codable, Equatable {
+    static let formatCredentialExchange = "credential-exchange"
+
+    var fileName: String
+    var filePath: String = ""
+    var format: String = ""
+    var formatName: String = ""
+    var vaultID: String
+    var vaultName: String
+    var itemCount: Int = 0
+    var loginCount: Int = 0
+    var secureNoteCount: Int = 0
+    var sshKeyCount: Int = 0
+    var creditCardCount: Int = 0
+    var identityCount: Int = 0
+    var apiCredentialCount: Int = 0
+    var addressCount: Int = 0
+    var softwareLicenseCount: Int = 0
+    var serverCount: Int = 0
+    var databaseCount: Int = 0
+    var passkeyCount: Int = 0
+    var allSkipped: [ImportSkippedEntry] = []
+    var allDuplicate: [ImportDuplicate] = []
+
+    enum CodingKeys: String, CodingKey {
+        case fileName, filePath, format, formatName, vaultName, itemCount, loginCount, secureNoteCount, sshKeyCount
+        case creditCardCount, identityCount, apiCredentialCount, addressCount, softwareLicenseCount, serverCount
+        case databaseCount, passkeyCount, allSkipped, allDuplicate
+        case vaultID = "vaultId"
+    }
+
+    init(fileName: String, vaultID: String, vaultName: String, itemCount: Int = 0, loginCount: Int = 0, passkeyCount: Int = 0,
+         allSkipped: [ImportSkippedEntry] = [], allDuplicate: [ImportDuplicate] = []) {
+        self.fileName = fileName
+        self.format = Self.formatCredentialExchange
+        self.formatName = "Credential Exchange"
+        self.vaultID = vaultID
+        self.vaultName = vaultName
+        self.itemCount = itemCount
+        self.loginCount = loginCount
+        self.passkeyCount = passkeyCount
+        self.allSkipped = allSkipped
+        self.allDuplicate = allDuplicate
+    }
+
+    // Go writes empty lists as null.
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fileName = try container.decodeIfPresent(String.self, forKey: .fileName) ?? ""
+        filePath = try container.decodeIfPresent(String.self, forKey: .filePath) ?? ""
+        format = try container.decodeIfPresent(String.self, forKey: .format) ?? ""
+        formatName = try container.decodeIfPresent(String.self, forKey: .formatName) ?? ""
+        vaultID = try container.decodeIfPresent(String.self, forKey: .vaultID) ?? ""
+        vaultName = try container.decodeIfPresent(String.self, forKey: .vaultName) ?? ""
+        itemCount = try container.decodeIfPresent(Int.self, forKey: .itemCount) ?? 0
+        loginCount = try container.decodeIfPresent(Int.self, forKey: .loginCount) ?? 0
+        secureNoteCount = try container.decodeIfPresent(Int.self, forKey: .secureNoteCount) ?? 0
+        sshKeyCount = try container.decodeIfPresent(Int.self, forKey: .sshKeyCount) ?? 0
+        creditCardCount = try container.decodeIfPresent(Int.self, forKey: .creditCardCount) ?? 0
+        identityCount = try container.decodeIfPresent(Int.self, forKey: .identityCount) ?? 0
+        apiCredentialCount = try container.decodeIfPresent(Int.self, forKey: .apiCredentialCount) ?? 0
+        addressCount = try container.decodeIfPresent(Int.self, forKey: .addressCount) ?? 0
+        softwareLicenseCount = try container.decodeIfPresent(Int.self, forKey: .softwareLicenseCount) ?? 0
+        serverCount = try container.decodeIfPresent(Int.self, forKey: .serverCount) ?? 0
+        databaseCount = try container.decodeIfPresent(Int.self, forKey: .databaseCount) ?? 0
+        passkeyCount = try container.decodeIfPresent(Int.self, forKey: .passkeyCount) ?? 0
+        allSkipped = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allSkipped) ?? []
+        allDuplicate = try container.decodeIfPresent([ImportDuplicate].self, forKey: .allDuplicate) ?? []
+    }
+
+    /// The preview's non-zero counts, as the import sheet lists them.
+    var allCountRow: [ImportCountRow] {
+        [
+            ImportCountRow(label: "Logins", count: loginCount), ImportCountRow(label: "Passkeys", count: passkeyCount),
+            ImportCountRow(label: "Secure notes", count: secureNoteCount), ImportCountRow(label: "Cards", count: creditCardCount),
+            ImportCountRow(label: "Identities", count: identityCount), ImportCountRow(label: "SSH keys", count: sshKeyCount),
+            ImportCountRow(label: "API credentials", count: apiCredentialCount), ImportCountRow(label: "Addresses", count: addressCount),
+            ImportCountRow(label: "Software licenses", count: softwareLicenseCount), ImportCountRow(label: "Servers", count: serverCount),
+            ImportCountRow(label: "Databases", count: databaseCount),
+        ].filter { $0.count > 0 }
+    }
+
+    /// How many passkeys skipping the duplicates still adds to the logins the vault already has.
+    var duplicatePasskeyCount: Int { allDuplicate.map(\.passkeyCount).reduce(0, +) }
+}
+
+struct ImportCountRow: Hashable, Identifiable {
+    var label: String
+    var count: Int
+
+    var id: String { label }
+}
+
+/// ImportProgress is a running import: continueImport saves the next items until isDone.
+struct ImportProgress: Codable, Equatable {
+    var fileName: String
+    var filePath: String = ""
+    var vaultID: String
+    var vaultName: String
+    var savedCount: Int
+    var totalCount: Int
+    var isDone: Bool
+    var allFailed: [ImportSkippedEntry] = []
+
+    enum CodingKeys: String, CodingKey {
+        case fileName, filePath, vaultName, savedCount, totalCount, isDone, allFailed
+        case vaultID = "vaultId"
+    }
+
+    init(fileName: String, vaultID: String, vaultName: String, savedCount: Int, totalCount: Int, isDone: Bool, allFailed: [ImportSkippedEntry] = []) {
+        self.fileName = fileName
+        self.vaultID = vaultID
+        self.vaultName = vaultName
+        self.savedCount = savedCount
+        self.totalCount = totalCount
+        self.isDone = isDone
+        self.allFailed = allFailed
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        fileName = try container.decodeIfPresent(String.self, forKey: .fileName) ?? ""
+        filePath = try container.decodeIfPresent(String.self, forKey: .filePath) ?? ""
+        vaultID = try container.decodeIfPresent(String.self, forKey: .vaultID) ?? ""
+        vaultName = try container.decodeIfPresent(String.self, forKey: .vaultName) ?? ""
+        savedCount = try container.decodeIfPresent(Int.self, forKey: .savedCount) ?? 0
+        totalCount = try container.decodeIfPresent(Int.self, forKey: .totalCount) ?? 0
+        isDone = try container.decodeIfPresent(Bool.self, forKey: .isDone) ?? false
+        allFailed = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allFailed) ?? []
+    }
 }
 
 struct CredentialChangeResult: Codable, Equatable {

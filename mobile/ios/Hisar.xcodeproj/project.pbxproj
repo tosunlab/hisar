@@ -15,6 +15,7 @@
 		0D867B76B6AB8BC768789633 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDEDF97D4D5D844AB4DA42AD /* RootView.swift */; };
 		11F465CF048D4B7EACF71385 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA215E0ABDBB6E239127F971 /* SettingsView.swift */; };
 		14374DD058E143DF2B26B1C3 /* AccountLifecycleViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BAE818AB33EBE7BEE32E52C /* AccountLifecycleViews.swift */; };
+		14694E88C6EF151B9842335E /* CredentialImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0158729B27F998FBB7B0EF3F /* CredentialImportView.swift */; };
 		180EDCB93895A51FA8AA8123 /* AutoFillRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */; };
 		19267F53F064187E2BC2F2B7 /* ItemListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */; };
 		1BDECDA716425CA17E65D9B5 /* ApprovalsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D229776194136FF1A6650A2D /* ApprovalsView.swift */; };
@@ -60,6 +61,7 @@
 		545172F0BC0BA184895F99DD /* FavoritesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA213E40620F47F0F235DA0 /* FavoritesUITests.swift */; };
 		5807CCBF70BA02987A3B8671 /* UnlockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */; };
 		5A3A46DF41106F4DFB78C295 /* ItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47989259B86D2ABA32773725 /* ItemIcon.swift */; };
+		5E555F44D126AB82C96B9857 /* CredentialImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 485ED95656DCEAE23CB924CE /* CredentialImportTests.swift */; };
 		5F2B5FFC40071F1CAA638654 /* EmergencyKitScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */; };
 		5FAD076390F8BED3236B811C /* AppItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CAE9257D26523B30362ACC /* AppItemIcon.swift */; };
 		6384BDCCFB9C112662CE3350 /* NewSecretKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0912D6FEC796C6B4E10A87 /* NewSecretKeyView.swift */; };
@@ -145,6 +147,7 @@
 		DCAC536617685C2305C80C97 /* AutoFillModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */; };
 		DDBB66882EBDC57EC6E6F9F4 /* PhoneApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A128DD342FC95DBB54C289C6 /* PhoneApproval.swift */; };
 		E13D73A18E4FF3B92CC31E2A /* SharingUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F3BABA9BC4C53A440760BE78 /* SharingUITests.swift */; };
+		E295662EDC797088C52BCE2B /* CredentialImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0158729B27F998FBB7B0EF3F /* CredentialImportView.swift */; };
 		E2C2706032DD836C7339850B /* UpdateRequiredView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F297FE1735F4AB352B1A037C /* UpdateRequiredView.swift */; };
 		E67F2A28F8A2CB7524435DE9 /* OrganizationLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F212ED91E908E08BA7BE7C2 /* OrganizationLogic.swift */; };
 		E880D80D7D6F8765D3E15B0F /* IconPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170839CF56DF8848503FCD67 /* IconPickerView.swift */; };
@@ -201,6 +204,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		0158729B27F998FBB7B0EF3F /* CredentialImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialImportView.swift; sourceTree = "<group>"; };
 		01A3E7E65ACA85444F2E4830 /* OrganizationViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrganizationViews.swift; sourceTree = "<group>"; };
 		0832CF4AF5A266E6EA5E69F8 /* Hisar.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Hisar.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		0B64E7DAF2A114B62ED4B225 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -230,6 +234,7 @@
 		471AA1F2DD9D249D4D8BDF4B /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		477BEA6CA38721F987A7FA77 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		47989259B86D2ABA32773725 /* ItemIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemIcon.swift; sourceTree = "<group>"; };
+		485ED95656DCEAE23CB924CE /* CredentialImportTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialImportTests.swift; sourceTree = "<group>"; };
 		4BA436DB6EF0A7095AE9DFCE /* OrganizationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrganizationTests.swift; sourceTree = "<group>"; };
 		4FA213E40620F47F0F235DA0 /* FavoritesUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FavoritesUITests.swift; sourceTree = "<group>"; };
 		51192750875FAC5488F2567C /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
@@ -441,6 +446,7 @@
 				B5CAE9257D26523B30362ACC /* AppItemIcon.swift */,
 				D229776194136FF1A6650A2D /* ApprovalsView.swift */,
 				22698CECCF02525330145455 /* AutoFillPreviewView.swift */,
+				0158729B27F998FBB7B0EF3F /* CredentialImportView.swift */,
 				B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */,
 				CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */,
 				51192750875FAC5488F2567C /* HomeView.swift */,
@@ -476,6 +482,7 @@
 				DE18719EE21D2029B6FDFD85 /* AccountLifecycleTests.swift */,
 				0D54C09BE6FCF29F969C4E18 /* AppModelTests.swift */,
 				5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */,
+				485ED95656DCEAE23CB924CE /* CredentialImportTests.swift */,
 				7B2774C869B2E88A54905C78 /* FakeBackend.swift */,
 				D4E0374FBF44BF5778ED2846 /* FavoritesTests.swift */,
 				583B03B9AF903A2AFD45D820 /* ItemIconTests.swift */,
@@ -748,6 +755,7 @@
 				6E06BB3841ACDFDD3B3F6C76 /* AccountLifecycleTests.swift in Sources */,
 				641117B1BC86ED26F0DAF500 /* AppModelTests.swift in Sources */,
 				343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */,
+				5E555F44D126AB82C96B9857 /* CredentialImportTests.swift in Sources */,
 				BDD67F160CD76BD42407E230 /* FakeBackend.swift in Sources */,
 				3322F7AF5EC4923637DF5F93 /* FavoritesTests.swift in Sources */,
 				3E22B7C06A9CE05131DA05E4 /* ItemIconTests.swift in Sources */,
@@ -775,6 +783,7 @@
 				D56B02E1ABB457B9EA3EF575 /* AutoFillRootView.swift in Sources */,
 				B2393CCCFBDE641E9D29319E /* BackendFactory.swift in Sources */,
 				4113E21A404A66886093F774 /* BiometricKeychain.swift in Sources */,
+				14694E88C6EF151B9842335E /* CredentialImportView.swift in Sources */,
 				1C4C0438B2CF7BD2FB18DCC6 /* DevicesView.swift in Sources */,
 				5F2B5FFC40071F1CAA638654 /* EmergencyKitScanner.swift in Sources */,
 				8338CFA14AF89A9E862993F6 /* HisarApp.swift in Sources */,
@@ -833,6 +842,7 @@
 				B2D87CBBB8635681A36D3B76 /* AutoFillRootView.swift in Sources */,
 				BA6171A70EA73110EBB2B069 /* BackendFactory.swift in Sources */,
 				65FDAEF0EF071906451A6DBC /* BiometricKeychain.swift in Sources */,
+				E295662EDC797088C52BCE2B /* CredentialImportView.swift in Sources */,
 				236F343E99EBEB565B80E597 /* DevicesView.swift in Sources */,
 				92B9F53A4E1B60F74F0F6498 /* EmergencyKitScanner.swift in Sources */,
 				3FD4F052BD07559E2BE860C0 /* HisarApp.swift in Sources */,

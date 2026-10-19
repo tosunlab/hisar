@@ -50,7 +50,9 @@ type Details struct {
 	Passkeys []Passkey `json:"passkeys,omitempty"`
 }
 
-// Passkey is a WebAuthn credential; PrivateKey is the PKCS#8 DER of an ES256 key.
+// Passkey is a WebAuthn credential; PrivateKey is the PKCS#8 DER of an ES256 key. PRFSecret is the hmac-secret
+// credential (the one used with user verification) of a passkey imported from another authenticator: the PRF extension
+// evaluates with it, so sites get the outputs they got before the import. A passkey Hisar created has none.
 type Passkey struct {
 	CredentialID    []byte    `json:"credentialId"`
 	RelyingPartyID  string    `json:"relyingPartyId"`
@@ -58,6 +60,7 @@ type Passkey struct {
 	UserName        string    `json:"userName,omitempty"`
 	UserDisplayName string    `json:"userDisplayName,omitempty"`
 	PrivateKey      []byte    `json:"privateKey"`
+	PRFSecret       []byte    `json:"prfSecret,omitempty"`
 	CreatedAt       time.Time `json:"createdAt"`
 }
 
