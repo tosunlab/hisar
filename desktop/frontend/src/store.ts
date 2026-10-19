@@ -399,7 +399,12 @@ export async function handleLocked(): Promise<void> {
   clearAllVaultData();
   store.status = { ...store.status, state: "locked" };
   store.errorMessage = "";
-  const status = await api.getStatus().catch(() => undefined);
+  let status: Status | undefined;
+  try {
+    status = await api.getStatus();
+  } catch {
+    return;
+  }
   if (status) {
     await applyStatus(status);
   }
