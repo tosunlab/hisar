@@ -5,10 +5,12 @@ package com.tryhisar.hisar.autofill
  * runs on the JVM. Browsers and WebViews report a page's inputs at or below a node that carries [webDomain]: the form's
  * node, and on WebView 145 (API 37) each input too. For a page loaded with loadDataWithBaseURL the form's [webDomain] is
  * empty, so WebView 145 names the page only on its inputs and WebView 91 and 113 (API 29 and 34) name no page at all.
+ * [isFocused] marks the view the fill request is for.
  */
 data class FormNode<Id>(
     val autofillID: Id? = null,
     val isTextField: Boolean = false,
+    val isFocused: Boolean = false,
     val autofillHints: List<String> = emptyList(),
     val htmlTag: String? = null,
     val htmlAttributes: Map<String, String> = emptyMap(),
@@ -48,13 +50,18 @@ data class LoginForm<Id>(val source: AutofillSource, val username: Id?, val pass
  * then words in its view ID or hint text. A page's address counts only from an app [PrivilegedBrowsers] names by package
  * and signing certificate: any app can claim a web domain in its own views, and any app can take a browser's package name,
  * so another app's page goes through the app's own checks instead.
+ *
+ * A browser can put the fields of several pages in one structure, such as a bank's frame inside another site's page.
+ * Only the fields of one page are filled: the page of the focused field, or the only page there is. A form that spans
+ * several pages without a focused field among them is not filled, so no page's address ever names another page's field.
  */
 object FillRequestParser {
     /** [certificateSHA256] is the caller's signing certificate, null when it has several signers or cannot be read. */
     fun <Id> parse(allRoot: List<FormNode<Id>>, packageName: String, certificateSHA256: String?, browsers: PrivilegedBrowsers): LoginForm<Id>? {
-        val allWebField = allRoot.flatMap { listAllWebField(it, page = null) }
-        val webPage = allWebField.firstOrNull()?.second
-        val allField = allWebField.map { it.first }.ifEmpty { allRoot.flatMap(::listAllField) }
+        val fieldsByPage = allRoot.flatMap { listAllWebField(it, page = null) }.groupBy({ it.second }, { it.first })
+        val webPage = fieldsByPage.keys.singleOrNull() ?: fieldsByPage.keys.singleOrNull { page -> fieldsByPage.getValue(page).any { it.isFocused } }
+        if (fieldsByPage.isNotEmpty() && webPage == null) return null
+        val allField = webPage?.let(fieldsByPage::getValue) ?: allRoot.flatMap(::listAllField)
         val classified = allField.mapNotNull { node -> classify(node)?.let { node to it } }
         val password = classified.firstOrNull { it.second == FieldKind.PASSWORD }?.first
         val username = classified.firstOrNull { it.second == FieldKind.USERNAME }?.first ?: password?.let { findTextFieldBefore(allField, it) }
@@ -62,17 +69,16 @@ object FillRequestParser {
         if (username == null && password == null && oneTimeCode == null) return null
         val caller = certificateSHA256?.let { AndroidApp(packageName, it) }
         val source = when {
-            webPage != null && browsers.isNamingPages(caller) ->
-                AutofillSource.Web(webPage.webScheme?.lowercase()?.ifEmpty { null } ?: "https", webPage.webDomain!!.lowercase())
+            webPage != null && browsers.isNamingPages(caller) -> webPage
             browsers.isBrowser(caller) -> AutofillSource.UnknownPage(packageName)
             else -> AutofillSource.App(packageName)
         }
         return LoginForm(source, username?.autofillID, password?.autofillID, oneTimeCode?.autofillID)
     }
 
-    /** The text fields that are or lie below a node with a page address, each with the nearest such node. */
-    private fun <Id> listAllWebField(node: FormNode<Id>, page: FormNode<Id>?): List<Pair<FormNode<Id>, FormNode<Id>>> {
-        val nodePage = if (node.webDomain.isNullOrEmpty()) page else node
+    /** The text fields that are or lie below a node with a page address, each with the page of the nearest such node. */
+    private fun <Id> listAllWebField(node: FormNode<Id>, page: AutofillSource.Web?): List<Pair<FormNode<Id>, AutofillSource.Web>> {
+        val nodePage = node.webDomain?.ifEmpty { null }?.let { AutofillSource.Web(node.webScheme?.lowercase()?.ifEmpty { null } ?: "https", it.lowercase()) } ?: page
         val field = if (nodePage != null && node.isTextField && node.autofillID != null) listOf(node to nodePage) else emptyList()
         return field + node.children.flatMap { listAllWebField(it, nodePage) }
     }

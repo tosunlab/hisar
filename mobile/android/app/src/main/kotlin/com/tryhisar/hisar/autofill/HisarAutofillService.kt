@@ -30,13 +30,14 @@ class HisarAutofillService : AutofillService() {
     private val executor = Executors.newSingleThreadExecutor()
 
     override fun onFillRequest(request: FillRequest, cancellationSignal: CancellationSignal, callback: FillCallback) {
-        val structure = request.fillContexts.last().structure
+        val fillContext = request.fillContexts.last()
+        val structure = fillContext.structure
         val packageName = structure.activityComponent.packageName
         if (packageName == this.packageName) {
             callback.onSuccess(null)
             return
         }
-        val allRoot = structure.readFormNodes()
+        val allRoot = structure.readFormNodes(fillContext.focusedId)
         val task = executor.submit {
             val response = try {
                 val app = InstalledApps.readAndroidApp(this, packageName)
