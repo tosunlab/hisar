@@ -23,16 +23,18 @@ class HisarUITestCase: XCTestCase {
         return value
     }
 
+    // Screenshots are taken only for HISAR_UI_TEST_SCREENSHOT_DIRECTORY: a test run records the screen anyway, and on a busy
+    // simulator a screenshot can time out and fail the test.
     func saveScreenshot(_ name: String) {
+        guard let directory = ProcessInfo.processInfo.environment["HISAR_UI_TEST_SCREENSHOT_DIRECTORY"], !directory.isEmpty else {
+            return
+        }
         let screenshot = XCUIScreen.main.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-        if let directory = ProcessInfo.processInfo.environment["HISAR_UI_TEST_SCREENSHOT_DIRECTORY"], !directory.isEmpty {
-            let url = URL(fileURLWithPath: directory).appendingPathComponent("ios-\(name).png")
-            try? screenshot.pngRepresentation.write(to: url)
-        }
+        try? screenshot.pngRepresentation.write(to: URL(fileURLWithPath: directory).appendingPathComponent("ios-\(name).png"))
     }
 
     func waitFor(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
@@ -140,12 +142,22 @@ class HisarUITestCase: XCTestCase {
         waitFor(element, file: file, line: line)
     }
 
-    func type(_ text: String, into element: XCUIElement) {
+    // On a slow simulator the keyboard focus comes a moment after the tap, and typing before it fails, so it waits for the focus
+    // and taps again if it does not come.
+    func type(_ text: String, into element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
         if !element.waitForExistence(timeout: 5) || !element.isHittable {
             scrollTo(element)
         }
-        element.tap()
-        element.typeText(text)
+        let hasFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        for _ in 0..<3 {
+            element.tap()
+            if hasFocus.evaluate(with: element)
+                || XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: hasFocus, object: element)], timeout: 5) == .completed {
+                element.typeText(text)
+                return
+            }
+        }
+        XCTFail("\(element) did not take the keyboard focus", file: file, line: line)
     }
 
     // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.
