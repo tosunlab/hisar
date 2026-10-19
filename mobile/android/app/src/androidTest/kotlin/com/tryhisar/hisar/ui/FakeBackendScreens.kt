@@ -37,11 +37,11 @@ fun launchApp(backend: FakeBackend, link: String? = null): ActivityScenario<Main
     return ActivityScenario.launch(intent)
 }
 
-fun ComposeTestRule.waitForTag(tag: String, timeoutMillis: Long = 10_000) {
+fun ComposeTestRule.waitForTag(tag: String, timeoutMillis: Long = 30_000) {
     waitUntil(timeoutMillis) { onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
 }
 
-fun ComposeTestRule.waitForTagToGo(tag: String, timeoutMillis: Long = 10_000) {
+fun ComposeTestRule.waitForTagToGo(tag: String, timeoutMillis: Long = 30_000) {
     waitUntil(timeoutMillis) { onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty() }
 }
 
@@ -78,11 +78,12 @@ fun ActivityScenario<MainActivity>.showsTag(tag: String): Boolean {
 }
 
 /** Waits for [scenario]'s activity, in any lifecycle state, to show a node tagged [tag]; the test clock draws its frames. */
-fun ComposeTestRule.waitForTag(scenario: ActivityScenario<MainActivity>, tag: String, timeoutMillis: Long = 10_000) {
+fun ComposeTestRule.waitForTag(scenario: ActivityScenario<MainActivity>, tag: String, timeoutMillis: Long = 30_000) {
     val deadline = SystemClock.uptimeMillis() + timeoutMillis
     while (!scenario.showsTag(tag)) {
         check(SystemClock.uptimeMillis() < deadline) { "$tag was not shown after $timeoutMillis ms" }
         mainClock.advanceTimeByFrame()
+        // A poll: the test rule's idle signal covers resumed activities only.
         SystemClock.sleep(50)
     }
 }

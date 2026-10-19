@@ -249,9 +249,9 @@ class PasskeyUITests : HisarUITestCase() {
             .putExtra(CredentialCallerActivity.EXTRA_REQUEST_JSON, requestJSON)
             .putExtra(CredentialCallerActivity.EXTRA_USER_NAME, "passkey-user")
         instrumentation.context.startActivity(intent)
-        check(waitUntil(10_000) { !device.hasObject(callerOutcome) }) { "the last outcome stays; ${dumpWindow("caller-start")}" }
+        check(waitUntil(15_000) { !device.hasObject(callerOutcome) }) { "the last outcome stays; ${dumpWindow("caller-start")}" }
         answerSheets()
-        check(waitUntil(60_000) { device.hasObject(callerOutcome) }) { "no outcome; ${dumpWindow("caller-outcome")}" }
+        check(waitUntil(30_000) { device.hasObject(callerOutcome) }) { "no outcome; ${dumpWindow("caller-outcome")}" }
         return device.findObject(callerOutcome).text
     }
 

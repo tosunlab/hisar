@@ -58,7 +58,7 @@ class CrossDeviceSyncUITests : HisarUITestCase() {
         type(newPassword, "change-password-repeated")
         tap("change-password-submit")
         tap("change-password-confirm")
-        waitFor(hasText("Master password changed. 1 other device was signed out.") and hasAnyAncestor(hasTestTag("notice")), SYNC_TIMEOUT)
+        waitFor(hasText("Master password changed. 1 other device was signed out.") and hasAnyAncestor(hasTestTag("notice")), ACCOUNT_KEY_TIMEOUT)
         openTab("Vaults")
         tap("vault-Personal")
         waitFor("item-Signed out on the command line", SYNC_TIMEOUT)

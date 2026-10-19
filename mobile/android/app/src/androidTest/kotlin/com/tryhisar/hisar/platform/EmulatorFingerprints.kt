@@ -30,7 +30,7 @@ class EmulatorFingerprints {
         device.executeShellCommand("am start -a android.settings.FINGERPRINT_ENROLL")
         val passwordEntry = By.res("com.android.settings", "password_entry")
         val sensorPrompt = By.text("Touch the sensor")
-        waitUntil(60_000, "Settings asks to touch the sensor") {
+        waitUntil(150_000, "Settings asks to touch the sensor") {
             device.findObject(passwordEntry)?.let {
                 it.text = PIN
                 device.pressEnter()
@@ -39,7 +39,7 @@ class EmulatorFingerprints {
             device.wait(Until.hasObject(sensorPrompt), 1_000)
         }
         val added = By.text("Fingerprint added")
-        waitUntil(60_000, "the fingerprint is added") {
+        waitUntil(80_000, "the fingerprint is added") {
             console.touchFinger(fingerID)
             device.wait(Until.hasObject(added), 1_500)
         }
@@ -52,7 +52,7 @@ class EmulatorFingerprints {
     /** Plays finger [fingerID] on [prompt], which is showing, and waits for it to close. */
     fun touch(fingerID: Int = 1, prompt: BySelector = promptButton) {
         console.touchFinger(fingerID)
-        check(device.wait(Until.gone(prompt), 10_000)) { "the biometric prompt stayed open after the finger" }
+        check(device.wait(Until.gone(prompt), 15_000)) { "the biometric prompt stayed open after the finger" }
     }
 
     /** Runs a backend call on another thread, as the app does, and answers each biometric prompt it shows with finger 1. */

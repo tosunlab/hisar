@@ -36,7 +36,7 @@ class OrganizationUITests : HisarUITestCase() {
         tap("banner-accept-organization-invitation")
 
         waitFor("vault-Deploy", 120_000)
-        waitFor("vault-Audit", 60_000)
+        waitFor("vault-Audit")
         assertTrue(readRow("vault-Deploy"), readRow("vault-Deploy").contains("Organization · Editor"))
         assertTrue(readRow("vault-Audit"), readRow("vault-Audit").contains("Organization · Reader"))
         waitFor("organization-section-Northwind")
@@ -120,7 +120,7 @@ class OrganizationUITests : HisarUITestCase() {
         tap("new-vault-where-Contoso › Ops")
         saveScreenshot("new-vault-where")
         tap("new-vault-create")
-        waitFor("vault-search", 60_000)
+        waitFor("vault-search")
         waitFor(hasText("Runbooks"))
 
         choose("add-login", "add-item")

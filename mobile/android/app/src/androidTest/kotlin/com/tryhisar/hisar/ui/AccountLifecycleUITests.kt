@@ -20,14 +20,14 @@ class AccountLifecycleUITests : HisarUITestCase() {
         saveScreenshot("account-life-change-master-password")
         tap("change-password-submit")
         tap("change-password-confirm")
-        waitFor("open-replace-secret-key", 60_000)
+        waitFor("open-replace-secret-key", ACCOUNT_KEY_TIMEOUT)
 
         tap("open-replace-secret-key")
         type(NEW_MASTER_PASSWORD, "replace-secret-key-password")
         saveScreenshot("account-life-replace-secret-key")
         tap("replace-secret-key-submit")
         tap("replace-secret-key-confirm")
-        waitFor("new-secret-key-value", 60_000)
+        waitFor("new-secret-key-value", ACCOUNT_KEY_TIMEOUT)
         val newSecretKey = readText("new-secret-key-value")
         assertTrue(newSecretKey, newSecretKey.startsWith("H1-"))
         saveScreenshot("account-life-new-secret-key")
@@ -43,7 +43,7 @@ class AccountLifecycleUITests : HisarUITestCase() {
         saveScreenshot("account-life-delete-account")
         tap("delete-account-submit")
         tap("delete-account-confirm")
-        waitFor("sign-in-mode", 60_000)
+        waitFor("sign-in-mode", ACCOUNT_KEY_TIMEOUT)
         saveScreenshot("account-life-deleted")
     }
 

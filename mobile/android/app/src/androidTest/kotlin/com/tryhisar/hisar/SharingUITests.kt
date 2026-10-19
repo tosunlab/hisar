@@ -80,7 +80,7 @@ class SharingUITests : HisarUITestCase() {
         type("Deploy keys", "new-vault-name")
         composeRule.waitUntil("Create waits until Where is loaded", 30_000) { exists(hasTestTag("new-vault-create") and isEnabled()) }
         tap("new-vault-create")
-        waitFor("vault-search", 60_000)
+        waitFor("vault-search")
         waitForText("Deploy keys")
 
         tap("share-vault")
@@ -119,7 +119,7 @@ class SharingUITests : HisarUITestCase() {
         saveScreenshot("sharing-member-editor")
         tap("remove-member")
         tap("confirm-remove-member")
-        composeRule.waitUntil("the removed person leaves the members", 60_000) { !exists(hasTestTag(partnerRow)) }
+        composeRule.waitUntil("the removed person leaves the members", 30_000) { !exists(hasTestTag(partnerRow)) }
         tap("vault-sharing-done")
 
         goBack()

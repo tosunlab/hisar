@@ -211,14 +211,14 @@ class PhoneApprovalUITests : HisarUITestCase() {
         waitFor(hasTestTagPrefix("pending-approval-approve-"))
         composeRule.onNode(hasTestTagPrefix("pending-approval-approve-")).performClick()
         answerBiometricPromptWithThePassword()
-        waitFor("phone-approval-password", 60_000)
+        waitFor("phone-approval-password")
         type("not the password", "phone-approval-password")
         tap("phone-approval-approve-password")
-        waitFor(hasTestTag("error-message") and hasAnyDescendant(hasText("Incorrect master password.")), 60_000)
+        waitFor(hasTestTag("error-message") and hasAnyDescendant(hasText("Incorrect master password.")), ACCOUNT_KEY_TIMEOUT)
         saveScreenshot("phone-approval-real-password")
         type(password, "phone-approval-password")
         tap("phone-approval-approve-password")
-        waitFor(notice("Approved on your Mac"), 60_000)
+        waitFor(notice("Approved on your Mac"), ACCOUNT_KEY_TIMEOUT)
         waitForPersonalItem("SSH request: approve, remembered")
 
         waitFor("phone-approval", 120_000)
@@ -227,7 +227,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         assertEquals("/dev/ttys003", readText("phone-approval-row-Terminal"))
         saveScreenshot("phone-approval-real-cli")
         tap("phone-approval-deny")
-        waitFor(notice("Denied on your Mac"), 60_000)
+        waitFor(notice("Denied on your Mac"))
         waitForPersonalItem("Command-line request: deny")
     }
 
