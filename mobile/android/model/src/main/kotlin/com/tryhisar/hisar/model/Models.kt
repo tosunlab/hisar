@@ -764,10 +764,12 @@ data class PasskeyRegistrationOptions(
     @SerialName("logins") val allLogin: List<LoginMatch> = emptyList(),
 )
 
+/** [isUserVerificationDiscouraged] when the site's `userVerification` is `discouraged`; Hisar then signs without asking the device owner. */
 data class PasskeyAssertionRequest(
     val relyingPartyID: String,
     val clientDataHash: ByteString,
     val allAllowedCredentialID: List<ByteString> = emptyList(),
+    val isUserVerificationDiscouraged: Boolean = false,
 )
 
 data class PasskeyRegistrationRequest(
@@ -777,6 +779,7 @@ data class PasskeyRegistrationRequest(
     val clientDataHash: ByteString,
     val allSupportedAlgorithm: List<Int> = emptyList(),
     val allExcludedCredentialID: List<ByteString> = emptyList(),
+    val isUserVerificationDiscouraged: Boolean = false,
 ) {
     val isAlgorithmSupported: Boolean get() = isAlgorithmSupported(allSupportedAlgorithm)
 

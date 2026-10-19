@@ -48,6 +48,17 @@ class WebAuthnJsonTests {
     }
 
     @Test
+    fun testReadsDiscouragedUserVerification() {
+        assertEquals(false, WebAuthnJson.parseGetRequest("""{"challenge":"AQ","userVerification":"preferred"}""")?.isUserVerificationDiscouraged)
+        assertEquals(false, WebAuthnJson.parseGetRequest("""{"challenge":"AQ"}""")?.isUserVerificationDiscouraged, "WebAuthn's default is preferred")
+        assertEquals(true, WebAuthnJson.parseGetRequest("""{"challenge":"AQ","userVerification":"discouraged"}""")?.isUserVerificationDiscouraged)
+        val create = """{"rp":{"id":"example.com"},"challenge":"AQ","user":{"id":"AQ","name":"a"},"pubKeyCredParams":[]%s}"""
+        assertEquals(false, WebAuthnJson.parseCreateRequest(create.format(""))?.isUserVerificationDiscouraged)
+        assertEquals(false, WebAuthnJson.parseCreateRequest(create.format(""","authenticatorSelection":{"userVerification":"required"}"""))?.isUserVerificationDiscouraged)
+        assertEquals(true, WebAuthnJson.parseCreateRequest(create.format(""","authenticatorSelection":{"userVerification":"discouraged"}"""))?.isUserVerificationDiscouraged)
+    }
+
+    @Test
     fun testUnreadableRequestsAreRefused() {
         assertNull(WebAuthnJson.parseGetRequest("not json"))
         assertNull(WebAuthnJson.parseGetRequest("""{"rpId":"example.com"}"""), "no challenge")

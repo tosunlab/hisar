@@ -22,7 +22,8 @@ import kotlinx.io.bytestring.ByteString
 sealed interface CredentialPick {
     data object Unlock : CredentialPick
 
-    data class Passkey(val credentialID: ByteString) : CredentialPick
+    /** A passkey; [isUserVerified] when the entry came from the unlock action, whose unlock verified the user for this request. */
+    data class Passkey(val credentialID: ByteString, val isUserVerified: Boolean) : CredentialPick
 
     /** A login; its match is checked again against the caller before its password leaves. */
     data class Password(val recordIdentifier: String) : CredentialPick
@@ -33,10 +34,11 @@ sealed interface CredentialPick {
         private const val EXTRA_PICK = "com.tryhisar.hisar.passkey.PICK"
         private const val EXTRA_CREDENTIAL_ID = "com.tryhisar.hisar.passkey.CREDENTIAL_ID"
         private const val EXTRA_RECORD = "com.tryhisar.hisar.passkey.RECORD"
+        private const val EXTRA_USER_VERIFIED = "com.tryhisar.hisar.passkey.USER_VERIFIED"
 
         fun read(intent: Intent): CredentialPick? = when (intent.getStringExtra(EXTRA_PICK)) {
             "unlock" -> Unlock
-            "passkey" -> intent.getStringExtra(EXTRA_CREDENTIAL_ID)?.let(Base64URL::decode)?.let(::Passkey)
+            "passkey" -> intent.getStringExtra(EXTRA_CREDENTIAL_ID)?.let(Base64URL::decode)?.let { Passkey(it, intent.getBooleanExtra(EXTRA_USER_VERIFIED, false)) }
             "password" -> intent.getStringExtra(EXTRA_RECORD)?.let(::Password)
             "create" -> Create
             else -> null
@@ -45,6 +47,7 @@ sealed interface CredentialPick {
         private fun write(pick: CredentialPick, intent: Intent): Intent = when (pick) {
             Unlock -> intent.putExtra(EXTRA_PICK, "unlock")
             is Passkey -> intent.putExtra(EXTRA_PICK, "passkey").putExtra(EXTRA_CREDENTIAL_ID, Base64URL.encode(pick.credentialID))
+                .putExtra(EXTRA_USER_VERIFIED, pick.isUserVerified)
             is Password -> intent.putExtra(EXTRA_PICK, "password").putExtra(EXTRA_RECORD, pick.recordIdentifier)
             Create -> intent.putExtra(EXTRA_PICK, "create")
         }
@@ -73,7 +76,13 @@ object CredentialEntries {
         }
     }
 
-    fun buildResponse(context: Context, offer: CredentialOffer, allOption: List<Pair<BeginGetCredentialOption, CredentialOption>>): BeginGetCredentialResponse =
+    /** The sheet's entries; [isUserVerified] when the user just unlocked Hisar in this request's unlock action. */
+    fun buildResponse(
+        context: Context,
+        offer: CredentialOffer,
+        allOption: List<Pair<BeginGetCredentialOption, CredentialOption>>,
+        isUserVerified: Boolean,
+    ): BeginGetCredentialResponse =
         when (offer) {
             CredentialOffer.Nothing -> BeginGetCredentialResponse()
             CredentialOffer.Unlock -> BeginGetCredentialResponse(
@@ -85,7 +94,7 @@ object CredentialEntries {
                     PublicKeyCredentialEntry.Builder(
                         context,
                         passkey.userName.ifEmpty { passkey.userDisplayName.ifEmpty { passkey.title } },
-                        CredentialPick.buildPendingIntent(context, CredentialPick.Passkey(credentialID)),
+                        CredentialPick.buildPendingIntent(context, CredentialPick.Passkey(credentialID, isUserVerified)),
                         allOption[index].first as BeginGetPublicKeyCredentialOption,
                     ).setDisplayName(passkey.title).build()
                 } + offer.allLogin.map { (index, match) ->
