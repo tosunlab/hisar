@@ -67,21 +67,39 @@ class FillRequestParserTests {
     }
 
     // The structure WebView 113 on API 34 delivers for https://accounts.example.com/login, read in the service.
-    private fun webView113(formDomain: String, formScheme: String?) = FormNode(
+    private fun webView113(formDomain: String, formScheme: String?, focusedID: String? = null) = FormNode(
         autofillID = "webview",
         children = listOf(
             FormNode(
                 autofillID = "form", htmlTag = "form", htmlAttributes = mapOf("name" to ""), webDomain = formDomain, webScheme = formScheme,
                 children = listOf(
                     FormNode(
-                        autofillID = "u", isTextField = true, autofillHints = listOf("username"), htmlTag = "input", hint = "Email",
+                        autofillID = "u", isTextField = true, isFocused = focusedID == "u", autofillHints = listOf("username"), htmlTag = "input", hint = "Email",
                         htmlAttributes = mapOf("name" to "username", "type" to "text", "label" to "Email", "id" to "username", "computed-autofill-hints" to "HTML_TYPE_EMAIL"),
                     ),
                     FormNode(
-                        autofillID = "p", isTextField = true, autofillHints = listOf("current-password"), htmlTag = "input", hint = "Password",
+                        autofillID = "p", isTextField = true, isFocused = focusedID == "p", autofillHints = listOf("current-password"), htmlTag = "input", hint = "Password",
                         htmlAttributes = mapOf("name" to "password", "type" to "password", "label" to "Password", "id" to "password", "computed-autofill-hints" to "UNKNOWN_TYPE"),
                     ),
                 ),
+            ),
+        ),
+    )
+
+    // The form WebView 145 and Chrome 145 on API 37 deliver, with the page address on the form and on each input. Chrome
+    // fills forms across frames, so one form can hold an input whose address is another origin's frame.
+    private fun form145(formDomain: String, usernameDomain: String = formDomain, passwordDomain: String = formDomain, focusedID: String? = null) = FormNode(
+        autofillID = "form", htmlTag = "form", htmlAttributes = mapOf("name" to ""), webDomain = formDomain, webScheme = "https",
+        children = listOf(
+            FormNode(
+                autofillID = "u", isTextField = true, isFocused = focusedID == "u", autofillHints = listOf("username"), htmlTag = "input", hint = "Email",
+                htmlAttributes = mapOf("name" to "username", "type" to "text", "label" to "Email", "id" to "username", "computed-autofill-hints" to "USERNAME"),
+                webDomain = usernameDomain, webScheme = "https",
+            ),
+            FormNode(
+                autofillID = "p", isTextField = true, isFocused = focusedID == "p", autofillHints = listOf("current-password"), htmlTag = "input", hint = "Password",
+                htmlAttributes = mapOf("name" to "password", "type" to "password", "label" to "Password", "id" to "password", "computed-autofill-hints" to "PASSWORD"),
+                webDomain = passwordDomain, webScheme = "https",
             ),
         ),
     )
@@ -96,6 +114,40 @@ class FillRequestParserTests {
     fun testWebViewOnAPI34PageLoadedFromDataHasNoAddressSoItIsTheApp() {
         val form = parse(listOf(webView113("", null)), testApp)
         assertEquals(LoginForm(AutofillSource.App(testApp.packageName), "u", "p", null), form, "loadDataWithBaseURL names no page on WebView 113")
+    }
+
+    @Test
+    fun testOnePageFillsEveryFieldWhicheverIsFocused() {
+        val accounts = AutofillSource.Web("https", "accounts.example.com")
+        for (focusedID in listOf("u", "p")) {
+            val onAPI37 = parse(listOf(FormNode(autofillID = "webview", children = listOf(form145("accounts.example.com", focusedID = focusedID)))), testApp)
+            assertEquals(LoginForm(accounts, "u", "p", null), onAPI37, "WebView 145, $focusedID focused")
+            val onAPI34 = parse(listOf(webView113("accounts.example.com", "https", focusedID)), testApp)
+            assertEquals(LoginForm(accounts, "u", "p", null), onAPI34, "WebView 113, $focusedID focused")
+        }
+    }
+
+    @Test
+    fun testAnotherPagesFieldGetsNothingFromTheFramedBank() {
+        val bankFrameInAttackerPage = { focusedID: String ->
+            listOf(FormNode(children = listOf(chromeToolbar, form145("attacker.example", usernameDomain = "bank.example.com", focusedID = focusedID))))
+        }
+        val bankFocused = parse(bankFrameInAttackerPage("u"))
+        assertEquals(LoginForm(AutofillSource.Web("https", "bank.example.com"), "u", null, null), bankFocused, "only the bank's own field is filled with the bank's logins")
+        val attackerFocused = parse(bankFrameInAttackerPage("p"))
+        assertEquals(LoginForm(AutofillSource.Web("https", "attacker.example"), null, "p", null), attackerFocused, "the attacker's field is filled only as the attacker's page")
+    }
+
+    @Test
+    fun testFormSpanningSeveralPagesWithoutFocusIsNotFilled() {
+        val mixed = listOf(FormNode(children = listOf(chromeToolbar, form145("attacker.example", usernameDomain = "bank.example.com"))))
+        assertNull(parse(mixed))
+        val focusedOutsideThePages = listOf(
+            FormNode(children = listOf(chromeToolbar.copy(children = chromeToolbar.children.map { it.copy(isFocused = it.autofillID == "omnibox") }), mixed.single().children.last())),
+        )
+        assertNull(parse(focusedOutsideThePages), "a focused browser view names no page")
+        val sameHostOtherScheme = listOf(page(input("u", hints = listOf("username")), input("p", hints = listOf("password")).copy(webScheme = "https")))
+        assertNull(parse(sameHostOtherScheme), "http and https are different pages")
     }
 
     @Test

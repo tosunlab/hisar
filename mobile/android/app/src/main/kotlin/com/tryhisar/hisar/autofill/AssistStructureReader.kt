@@ -4,12 +4,14 @@ import android.app.assist.AssistStructure
 import android.view.View
 import android.view.autofill.AutofillId
 
-/** The views of a fill request as the JVM parser reads them. */
-fun AssistStructure.readFormNodes(): List<FormNode<AutofillId>> = (0 until windowNodeCount).map { readNode(getWindowNodeAt(it).rootViewNode) }
+/** The views of a fill request as the JVM parser reads them; [focusedID] is the view the request is for. */
+fun AssistStructure.readFormNodes(focusedID: AutofillId): List<FormNode<AutofillId>> =
+    (0 until windowNodeCount).map { readNode(getWindowNodeAt(it).rootViewNode, focusedID) }
 
-private fun readNode(node: AssistStructure.ViewNode): FormNode<AutofillId> = FormNode(
+private fun readNode(node: AssistStructure.ViewNode, focusedID: AutofillId): FormNode<AutofillId> = FormNode(
     autofillID = node.autofillId,
     isTextField = node.autofillType == View.AUTOFILL_TYPE_TEXT,
+    isFocused = node.autofillId == focusedID,
     autofillHints = node.autofillHints?.toList().orEmpty(),
     htmlTag = node.htmlInfo?.tag,
     htmlAttributes = node.htmlInfo?.attributes?.associate { it.first to it.second }.orEmpty(),
@@ -18,7 +20,7 @@ private fun readNode(node: AssistStructure.ViewNode): FormNode<AutofillId> = For
     hint = node.hint,
     webDomain = node.webDomain,
     webScheme = node.webScheme,
-    children = (0 until node.childCount).map { readNode(node.getChildAt(it)) },
+    children = (0 until node.childCount).map { readNode(node.getChildAt(it), focusedID) },
 )
 
 /** The text the user typed into each field, for the save prompt. */
