@@ -132,7 +132,12 @@ EC_KEY=(-newkey ec -pkeyopt ec_paramgen_curve:P-256 -pkeyopt ec_param_enc:named_
     openssl x509 -req -sha256 -CA "$PRIVATE_CA/ca.pem" -CAkey "$PRIVATE_CA/ca-key.pem" -set_serial 2 -days 2 -out "$PRIVATE_CA/server.pem" \
       -extfile <(printf 'subjectAltName=IP:127.0.0.1\nbasicConstraints=CA:FALSE\nkeyUsage=critical,digitalSignature\nextendedKeyUsage=serverAuth\n')
 } 2>"$PRIVATE_CA/openssl.log" || { cat "$PRIVATE_CA/openssl.log" >&2; exit 1; }
-"$ADB" shell mkdir -p /sdcard/googletest/test_runfiles/private-ca
+# A freshly booted emulator reports boot completed before its shared storage takes writes.
+for _ in $(seq 60); do
+  "$ADB" shell mkdir -p /sdcard/googletest/test_runfiles/private-ca 2>/dev/null && break
+  sleep 2
+done
+"$ADB" shell mkdir -p /sdcard/googletest/test_runfiles/private-ca || { echo "the device's shared storage never took the test CA" >&2; exit 1; }
 "$ADB" push "$PRIVATE_CA/ca.pem" "$PRIVATE_CA/server.pem" "$PRIVATE_CA/server-key.pem" /sdcard/googletest/test_runfiles/private-ca/ >/dev/null
 
 # The Android Gradle plugin cuts each value at its first comma and hands the rest to the device's shell unquoted, inside
