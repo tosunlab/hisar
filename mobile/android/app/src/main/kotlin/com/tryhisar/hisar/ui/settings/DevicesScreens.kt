@@ -190,7 +190,7 @@ private fun DeviceRow(device: Device, onClick: (() -> Unit)?) {
     val subtitle = when {
         device.isCurrent -> "${device.platformDescription} · Active now"
         lastSeenDate != null -> {
-            val lastSeen = DateUtils.getRelativeTimeSpanString(lastSeenDate.toEpochMilli(), System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS)
+            val lastSeen = DateUtils.getRelativeTimeSpanString(lastSeenDate.toEpochMilli(), System.currentTimeMillis(), DateUtils.SECOND_IN_MILLIS)
             "${device.platformDescription} · Last seen ${lastSeen.toString().replaceFirstChar { it.lowercase() }}"
         }
         else -> device.platformDescription
