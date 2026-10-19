@@ -9,9 +9,11 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
@@ -90,7 +92,11 @@ func main() {
 		log.Printf("saved %q", title)
 	}
 	log.Print("every request was answered")
-	select {}
+	// The harness stops this Mac when the tests end. Waiting on a bare select would crash once auto-lock left nothing else
+	// running ("all goroutines are asleep").
+	stop := make(chan os.Signal, 1)
+	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	<-stop
 }
 
 // waitForPhone waits for the phone's sign-in, then locks and unlocks: the Mac learned at sign-up that the account had no
