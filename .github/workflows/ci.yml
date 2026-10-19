@@ -323,7 +323,9 @@ jobs:
   android:
     name: Android app build, JVM tests and instrumented tests (part ${{ matrix.part }} of 2)
     needs: changes
-    if: needs.changes.outputs.isAndroidChanged == 'true'
+    # The skip-android label skips both parts, for a pull request whose Android build and tests already passed locally (make
+    # build-android-aar build-android test-android test-android-ui); a run reads the labels the pull request has when it starts.
+    if: needs.changes.outputs.isAndroidChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-android')
     runs-on: ubuntu-latest
     timeout-minutes: 90
     # Each part runs half of the instrumented tests on its own emulator; the first also builds the release APK and runs lint

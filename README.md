@@ -181,7 +181,9 @@ freshness check and Chromium end-to-end tests against the server; only when the 
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
 release APKs, lint, the JVM tests and the instrumented tests on x86_64 API 36 emulators against a local server, split over two
 jobs; only when the pull request changes `mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes,
-`core/`, `go.work` or the workflow).
+`core/`, `go.work` or the workflow, and not while the pull request has the label `skip-android`, for changes whose Android build
+and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before
+pushing).
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
 (HisarKit, Xcode project check, unit tests, UI tests against a local server, split over two jobs of about the same length) on
