@@ -35,7 +35,12 @@ class HisarUITestCase: XCTestCase {
         }
     }
 
+    // waitForExistence first checks after a second, even for an element already on screen; most waits find it there, so they
+    // look first.
     func waitFor(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
+        if element.exists {
+            return
+        }
         XCTAssertTrue(element.waitForExistence(timeout: timeout), "\(element) did not appear", file: file, line: line)
     }
 
@@ -79,19 +84,24 @@ class HisarUITestCase: XCTestCase {
         XCTFail("the Save Password sheet did not go away", file: file, line: line)
     }
 
-    func goBack() {
+    // A tap while a late Save Password sheet covers the app is lost, so the button is tappable first.
+    func goBack(file: StaticString = #filePath, line: UInt = #line) {
         let backButton = app.navigationBars.buttons["BackButton"].exists ? app.navigationBars.buttons["BackButton"] : app.navigationBars.buttons.element(boundBy: 0)
+        waitForHittable(backButton, file: file, line: line)
         backButton.tap()
     }
 
-    func openTab(_ name: String) {
+    func openTab(_ name: String, file: StaticString = #filePath, line: UInt = #line) {
         let tabButton = app.tabBars.buttons[name].exists ? app.tabBars.buttons[name] : app.buttons[name].firstMatch
+        waitForHittable(tabButton, file: file, line: line)
         tabButton.tap()
     }
 
-    func openSettings(_ identifier: String) {
-        openTab("Settings")
-        app.buttons[identifier].tap()
+    func openSettings(_ identifier: String, file: StaticString = #filePath, line: UInt = #line) {
+        openTab("Settings", file: file, line: line)
+        let row = app.buttons[identifier]
+        waitForHittable(row, file: file, line: line)
+        row.tap()
     }
 
     // A confirmation dialog is a sheet or, on iOS 26, a popover next to its button.
@@ -106,7 +116,7 @@ class HisarUITestCase: XCTestCase {
     // `type` makes to find the editor presses whichever item it crosses. So the item is tapped until the menu is gone.
     func choose(_ item: String, from menu: String, file: StaticString = #filePath, line: UInt = #line) {
         let menuButton = app.buttons[menu]
-        waitFor(menuButton, file: file, line: line)
+        waitForHittable(menuButton, file: file, line: line)
         menuButton.tap()
         let itemButton = app.buttons[item]
         waitFor(itemButton, file: file, line: line)
@@ -136,7 +146,7 @@ class HisarUITestCase: XCTestCase {
     }
 
     func type(_ text: String, into element: XCUIElement) {
-        if !element.waitForExistence(timeout: 5) || !element.isHittable {
+        if !(element.exists || element.waitForExistence(timeout: 5)) || !element.isHittable {
             scrollTo(element)
         }
         element.tap()
@@ -178,6 +188,7 @@ class HisarUITestCase: XCTestCase {
     }
 
     func addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
+        waitForHittable(app.buttons["vault-Personal"])
         app.buttons["vault-Personal"].tap()
         choose("add-login", from: "add-item")
         type(title, into: app.textFields["editor-title"])
