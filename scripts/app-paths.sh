@@ -14,8 +14,9 @@ desktopPaths=(desktop/ cli/ scripts/download-sparkle.sh scripts/get-build-number
   scripts/sign-desktop-app.sh scripts/test-desktop-linux-package.sh "${sharedGoPaths[@]}")
 phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh "${sharedGoPaths[@]}")
 mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${phonePaths[@]}")
+# The Android CI job runs its build and tests through Makefile recipes, so a Makefile change runs it too.
 androidPaths=(mobile/android/ mobile/build-android-aar.sh mobile/cmd/ scripts/install-android-sdk.sh scripts/test-android-ui.sh
-  assets/themes/ scripts/themes/ "${phonePaths[@]}")
+  assets/themes/ scripts/themes/ Makefile "${phonePaths[@]}")
 extensionPaths=(extension/)
 
 # A commit that only changes tests or documentation is not a reason to release.
