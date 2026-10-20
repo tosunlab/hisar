@@ -5,7 +5,7 @@ description: Use the user's secrets from Hisar (passwords, API tokens, keys) in 
 
 # Hisar
 
-Hisar keeps the user's secrets. This plugin connects omp to Hisar's MCP server, whose tools omp names `mcp__hisar_list_vaults`, `mcp__hisar_search_items` and `mcp__hisar_run_with_secrets`. None of them returns a secret value. A command gets the values in its environment or on its standard input, and Hisar masks them in what the command prints. Each use opens an approval window in the Hisar app, and the user decides there.
+Hisar keeps the user's secrets. This plugin connects omp to Hisar's MCP server, whose tools omp names `mcp__hisar_list_vaults`, `mcp__hisar_search_items` and `mcp__hisar_run_with_secrets`. omp may offer them as tool devices instead: write the JSON arguments to `xd://mcp__hisar_run_with_secrets` and so on. None of them returns a secret value. A command gets the values in its environment or on its standard input, and Hisar masks them in what the command prints. Each use opens an approval window in the Hisar app, and the user decides there.
 
 Never print a secret. The plugin blocks `hisar read`, `hisar get`, `hisar export` and `hisar run --no-masking`.
 
@@ -32,7 +32,7 @@ Then give the secrets in one or more of:
 
 ## Run it in the shell instead
 
-`run_with_secrets` gives the command no terminal and hands you its output when it ends. For a command whose live output you need to act on, one that asks for input, or one that needs the shell's own environment (variables set earlier, an activated virtualenv), run `hisar run` in `bash`:
+`run_with_secrets` gives the command no terminal, and omp shows nothing of its output until it ends. For a command whose live output you need to act on, one that asks for input, or one that needs the shell's own environment (variables set earlier, an activated virtualenv), run `hisar run` in `bash`:
 
 ```sh
 TOKEN=hisar://Agents/Deploy%20token/password hisar run -- ./deploy.sh
