@@ -216,7 +216,10 @@ func (server *toolServer) runWithSecrets(ctx context.Context, request *mcp.CallT
 	progress := newProgressReporter(request)
 	progress.report(ctx, "Waiting for approval in Hisar")
 	var result cliprotocol.ResolveSecretResult
-	appRequest := cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: prepared.references, CommandLine: prepared.arguments, WorkingDirectory: prepared.workingDirectory}
+	appRequest := cliprotocol.Request{
+		Type: cliprotocol.TypeAgentResolveSecret, References: prepared.references, CommandLine: prepared.arguments, WorkingDirectory: prepared.workingDirectory,
+		Stdin: prepared.stdin, Environment: prepared.fileEnvironment,
+	}
 	if err := server.call(ctx, request, appRequest, &result); err != nil {
 		return nil, RunOutput{}, err
 	}

@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/approval"
 	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/core/secretreference"
 )
 
 const (
@@ -146,7 +147,7 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 		}
 	}
 	if request.Kind == clisocket.AgentRequestRun {
-		event.CommandLine = formatCommandLine(request.CommandLine)
+		event.CommandLine = formatRunCommandLine(request)
 		event.WorkingDirectory = truncateText(describeDirectory(request.WorkingDirectory, approver.config.HomeDirectory), maximumDirectoryLength)
 	}
 	if len(request.SecretNames) > 0 {
@@ -166,6 +167,37 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 	}
 	approver.setUnlockState(&event)
 	return event
+}
+
+// formatRunCommandLine is the shell command that does what the approved run does: the env files' literal values set
+// through env, then the command, its standard input as a quoted here-document, or redirected from the secret's
+// reference. A here-document always ends its text with a newline.
+func formatRunCommandLine(request clisocket.AgentApprovalRequest) string {
+	commandLine := formatCommandLine(request.CommandLine)
+	if len(request.Environment) > 0 {
+		assignments := make([]string, len(request.Environment))
+		for index, assignment := range request.Environment {
+			name, value, _ := strings.Cut(assignment, "=")
+			assignments[index] = quoteArgument(name) + "=" + quoteArgument(value)
+		}
+		commandLine = "env " + strings.Join(assignments, " ") + " " + commandLine
+	}
+	switch {
+	case request.Stdin == "":
+	case secretreference.IsReference(request.Stdin):
+		commandLine += " < " + quoteArgument(request.Stdin)
+	default:
+		delimiter := "HISAR_STDIN"
+		for strings.Contains(request.Stdin, delimiter) {
+			delimiter += "_"
+		}
+		text := request.Stdin
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		commandLine += " <<'" + delimiter + "'\n" + text + delimiter
+	}
+	return strings.ToValidUTF8(commandLine, "�")
 }
 
 // describeAgentRequester is the agent with where it runs, e.g. "Claude Code (via hisar mcp) in Terminal".

@@ -62,7 +62,10 @@ type AgentApprovalRequest struct {
 	Kind             string
 	CommandLine      []string
 	WorkingDirectory string
-	SecretNames      []string
+	// Stdin and Environment are what a run's command reads besides its arguments (cliprotocol.Request).
+	Stdin       string
+	Environment []string
+	SecretNames []string
 	// RevealedName is "item › field" of a reveal request, or the item's title when it reveals the whole item;
 	// RevealedItem is the item's title, which a remembered reveal covers every field of.
 	RevealedName string
@@ -340,6 +343,7 @@ func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, k
 	approvalRequest.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
 	if kind == AgentRequestRun {
 		approvalRequest.CommandLine, approvalRequest.WorkingDirectory = request.CommandLine, request.WorkingDirectory
+		approvalRequest.Stdin, approvalRequest.Environment = request.Stdin, request.Environment
 	}
 	if kind != AgentRequestConnect {
 		approvalRequest.SecretNames, approvalRequest.RevealedName, approvalRequest.RevealedItem = describeAgentSecrets(request, secrets)

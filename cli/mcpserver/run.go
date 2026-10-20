@@ -98,6 +98,8 @@ type preparedCommand struct {
 	workingDirectory string
 	// variables is the whole environment; a value that is a reference becomes its secret.
 	variables []dotenv.Variable
+	// fileEnvironment is each NAME=value the env files set that is not a reference, which the approval shows.
+	fileEnvironment []string
 	// stdin is literal text or one reference.
 	stdin      string
 	references []string
@@ -150,6 +152,7 @@ func prepareCommand(input RunInput, defaultDirectory string, environ []string) (
 		return prepared, err
 	}
 	prepared.variables = variables
+	prepared.fileEnvironment = listFileEnvironment(variables, environ)
 	prepared.references = dotenv.ListReferences(variables)
 	if secretreference.IsReference(input.Stdin) && !slices.Contains(prepared.references, input.Stdin) {
 		prepared.references = append(prepared.references, input.Stdin)
@@ -231,6 +234,23 @@ func buildVariables(input RunInput, workingDirectory string, environ []string) (
 		return nil, errors.New(strings.Join(failures, "; "))
 	}
 	return variables, nil
+}
+
+// listFileEnvironment returns NAME=value for each variable the env files set to a literal value: every one that is
+// not a reference and not as environ has it, since the env mapping sets references only.
+func listFileEnvironment(variables []dotenv.Variable, environ []string) []string {
+	inherited := map[string]string{}
+	for _, variable := range dotenv.BuildEnvironment(environ, nil) {
+		inherited[variable.Name] = variable.Value
+	}
+	var fileEnvironment []string
+	for _, variable := range variables {
+		value, isInherited := inherited[variable.Name]
+		if !secretreference.IsReference(variable.Value) && (!isInherited || value != variable.Value) {
+			fileEnvironment = append(fileEnvironment, variable.Name+"="+variable.Value)
+		}
+	}
+	return fileEnvironment
 }
 
 // findDirenv returns direnv's path when it is installed and the user allowed the .envrc that applies to directory,

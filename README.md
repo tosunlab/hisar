@@ -127,7 +127,7 @@ The agent gets these tools:
 |---|---|---|
 | `list_vaults` | the vaults available to agents | once per agent connection |
 | `search_items` | items by title, username, URL or vault: metadata, field labels and `hisar://` references, never values or notes | once per agent connection |
-| `run_with_secrets` | runs a command, as an argument list or a `/bin/sh -c` command line, with secrets from `env` (variable → `hisar://` reference), `envFiles` (as `hisar run --env-file`) and `stdin` (text or one reference); through `direnv exec` when the directory has an allowed `.envrc`; output masked, at most 64 KiB per stream and streamed as progress to clients that ask, timeout up to 1 hour | every call, showing the command, directory and secrets; "Allow these secrets for this agent for 1 hour" |
+| `run_with_secrets` | runs a command, as an argument list or a `/bin/sh -c` command line, with secrets from `env` (variable → `hisar://` reference), `envFiles` (as `hisar run --env-file`) and `stdin` (text or one reference); through `direnv exec` when the directory has an allowed `.envrc`; output masked, at most 64 KiB per stream and streamed as progress to clients that ask, timeout up to 1 hour | every call, showing the command with the env files' plain values (`env NAME=value …`) and its stdin, the directory and secrets; "Allow these secrets for this agent for 1 hour" |
 | `get_one_time_code` | the current one-time code of an item | every call; can be allowed for 1 hour |
 | `get_secret` | reveals one value to the agent | every call, for that item; "Allow every field of “&lt;item&gt;” for this agent for 1 hour". `private key` is always refused |
 
