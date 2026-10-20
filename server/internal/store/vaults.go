@@ -30,6 +30,7 @@ type Vault struct {
 	OrganizationID string
 	KeyGeneration  int64
 	NeedsRotation  bool
+	AccessRevision int64
 	Role           string
 	WrappedKey     []byte
 }
@@ -70,7 +71,7 @@ func insertVault(ctx context.Context, transaction pgx.Tx, vault *Vault, ownerWra
 func (s *Store) ListVaults(ctx context.Context, accountID string) ([]Vault, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT v.id, v.type, v.enc_name, v.seq, v.created_by, v.created_at, coalesce(v.organization_id::text, ''), v.key_generation,
-			v.needs_rotation, a.role, a.wrapped_key
+			v.needs_rotation, a.role, a.wrapped_key, v.access_revision
 		FROM vaults v JOIN vault_access a ON a.vault_id = v.id
 		WHERE a.account_id = $1 ORDER BY v.created_at`, accountID)
 	if err != nil {
@@ -79,7 +80,7 @@ func (s *Store) ListVaults(ctx context.Context, accountID string) ([]Vault, erro
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Vault, error) {
 		var vault Vault
 		err := row.Scan(&vault.ID, &vault.Type, &vault.EncName, &vault.Seq, &vault.CreatedBy, &vault.CreatedAt, &vault.OrganizationID,
-			&vault.KeyGeneration, &vault.NeedsRotation, &vault.Role, &vault.WrappedKey)
+			&vault.KeyGeneration, &vault.NeedsRotation, &vault.Role, &vault.WrappedKey, &vault.AccessRevision)
 		return vault, err
 	})
 }
@@ -148,6 +149,8 @@ type lockedVault struct {
 	organizationID string
 	seq            int64
 	keyGeneration  int64
+	accessRevision int64
+	needsRotation  bool
 }
 
 // lockVault locks the vault's organization, when it has one, and then the vault: the order of every change to an
@@ -192,7 +195,7 @@ func lockVaultRow(ctx context.Context, transaction pgx.Tx, vaultID string) (*loc
 // is not in the result.
 func lockVaults(ctx context.Context, transaction pgx.Tx, vaultIDs []string) (map[string]*lockedVault, error) {
 	rows, err := transaction.Query(ctx, `
-		SELECT id::text, type, coalesce(organization_id::text, ''), seq, key_generation FROM vaults
+		SELECT id::text, type, coalesce(organization_id::text, ''), seq, key_generation, access_revision, needs_rotation FROM vaults
 		WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, vaultIDs)
 	if err != nil {
 		return nil, err
@@ -200,7 +203,7 @@ func lockVaults(ctx context.Context, transaction pgx.Tx, vaultIDs []string) (map
 	vaultsByID := map[string]*lockedVault{}
 	var vaultID string
 	var scanned lockedVault
-	_, err = pgx.ForEachRow(rows, []any{&vaultID, &scanned.vaultType, &scanned.organizationID, &scanned.seq, &scanned.keyGeneration}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&vaultID, &scanned.vaultType, &scanned.organizationID, &scanned.seq, &scanned.keyGeneration, &scanned.accessRevision, &scanned.needsRotation}, func() error {
 		vault := scanned
 		vaultsByID[vaultID] = &vault
 		return nil
@@ -284,15 +287,7 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 				return ErrNotEntitled
 			}
 		case isNewMember:
-			commandTag, err := transaction.Exec(ctx, `
-				DELETE FROM share_invitations i WHERE i.vault_id = $1 AND i.accepted_by = $2 AND i.state = 'accepted' AND `+isInvitedByOwner,
-				vaultID, member.AccountID)
-			if err != nil {
-				return err
-			}
-			if commandTag.RowsAffected() == 0 {
-				return ErrNoInvitation
-			}
+			return ErrNoInvitation
 		}
 		_, err = transaction.Exec(ctx, `
 			INSERT INTO vault_access (vault_id, account_id, wrapped_key, role, granted_by) VALUES ($1, $2, $3, $4, $5)

@@ -63,3 +63,17 @@ func (s *Server) handleCancelShareInvitation(c fiber.Ctx) error {
 	}
 	return c.SendStatus(fiber.StatusNoContent)
 }
+
+func (s *Server) handleCompleteSignedShare(c fiber.Ctx) error {
+	var request apitypes.CompleteShareRequest
+	if err := decodeBody(c, &request); err != nil {
+		return err
+	}
+	if request.Intent.Context.ID != c.Params("invitation") {
+		return fiber.ErrBadRequest
+	}
+	if err := s.service.CompleteSignedShare(c.Context(), s.getActor(c), &request); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}

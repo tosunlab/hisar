@@ -73,10 +73,12 @@ type vaultSharing struct {
 	IsOwner     bool                `json:"isOwner"`
 	Members     []sharingMember     `json:"members"`
 	Invitations []struct {
-		ID    string `json:"id"`
-		Email string `json:"email"`
-		Role  string `json:"role"`
-		State string `json:"state"`
+		ID                   string `json:"id"`
+		Email                string `json:"email"`
+		Role                 string `json:"role"`
+		State                string `json:"state"`
+		RequiresConfirmation bool   `json:"requiresConfirmation"`
+		ReviewToken          string `json:"reviewToken"`
 	} `json:"invitations"`
 	CompletionError string `json:"completionError"`
 }
@@ -176,10 +178,25 @@ func TestIntegrationMobileSharing(t *testing.T) {
 	if err := recipient.AcceptShareInvitation(invitation.ID); err != nil {
 		t.Fatal(err)
 	}
-	ownerRecorder.waitUntil(t, "the owner's iPhone completes the share on its own", func() bool {
-		members := decodeJSON[[]sharingMember](t)(owner.ListAllVaultMember(deployKeys.ID))
-		return slices.ContainsFunc(members, func(member sharingMember) bool { return member.Email == recipientEmail })
+	ownerRecorder.waitUntil(t, "the owner sees the concrete recipient for review", func() bool {
+		sharing = decodeJSON[vaultSharing](t)(owner.GetVaultSharing(deployKeys.ID))
+		for _, invitation := range sharing.Invitations {
+			if invitation.Email == recipientEmail && invitation.RequiresConfirmation {
+				return true
+			}
+		}
+		return false
 	})
+	if findVaultByName(t, recipient, "Deploy keys") != nil {
+		t.Fatal("unreviewed recipient received a key")
+	}
+	for _, invitation := range sharing.Invitations {
+		if invitation.Email == recipientEmail {
+			if err := owner.ConfirmShareRecipient(invitation.ID, invitation.ReviewToken); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	sharing = decodeJSON[vaultSharing](t)(owner.GetVaultSharing(deployKeys.ID))
 	if len(sharing.Members) != 2 || sharing.CompletionError != "" || len(sharing.Invitations) != 1 || sharing.Invitations[0].Email != "nobody-mobile-sharing@example.com" {
 		t.Fatalf("sharing after completing: %+v", sharing)
@@ -295,6 +312,14 @@ func checkShareWaitingForLockedOwner(t *testing.T, owner, recipient *Hisar, owne
 		t.Errorf("unlocked owner still has a lock screen banner: %+v", awaitingShares)
 	}
 	decodeJSON[waitingList](t)(owner.ListAllShareInvitation())
+	review := decodeJSON[vaultSharing](t)(owner.GetVaultSharing(releaseKeys.ID))
+	for _, invitation := range review.Invitations {
+		if invitation.RequiresConfirmation {
+			if err := owner.ConfirmShareRecipient(invitation.ID, invitation.ReviewToken); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	if waiting := decodeJSON[waitingList](t)(recipient.ListAllShareInvitation()).Waiting; len(waiting) != 0 {
 		t.Errorf("the recipient still waits after the owner unlocked: %+v", waiting)
 	}

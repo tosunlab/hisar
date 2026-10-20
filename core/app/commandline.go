@@ -245,6 +245,7 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request 
 		for _, sent := range invitations.Sent {
 			result.Sent = append(result.Sent, cliprotocol.SentInvitation{
 				ID: sent.ID, VaultID: sent.VaultID, VaultName: sent.VaultName, Email: sent.Email, Role: sent.Role, State: sent.State, ExpiresAt: sent.ExpiresAt,
+				RequiresConfirmation: sent.RequiresConfirmation, RecipientID: sent.RecipientID, SecurityCode: sent.SecurityCode, ReviewToken: sent.ReviewToken,
 			})
 		}
 		return result, nil
@@ -254,6 +255,8 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request 
 		return nil, s.DeclineShareInvitation(request.InvitationID)
 	case cliprotocol.TypeCancelInvitation:
 		return nil, s.CancelShareInvitation(request.InvitationID)
+	case cliprotocol.TypeConfirmShareRecipient:
+		return nil, s.ConfirmShareRecipient(request.InvitationID, request.ReviewToken)
 	case cliprotocol.TypeListDevice:
 		devices, err := s.ListDevices()
 		if err != nil {

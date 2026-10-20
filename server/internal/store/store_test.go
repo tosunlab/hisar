@@ -165,6 +165,13 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s missing", indexName)
 		}
 	}
+	if countColumn(t, database, "share_invitations", "intent") != 1 || countTable(t, database, "retired_share_invitations") != 1 {
+		t.Fatal("signed invitation migration is missing")
+	}
+	rollbackTestMigrationsTo(t, database, 11)
+	if countColumn(t, database, "share_invitations", "intent") != 0 || countTable(t, database, "retired_share_invitations") != 0 {
+		t.Fatal("signed invitation rollback kept its schema")
+	}
 	rolledBack, err := database.RollbackMigration(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -259,7 +266,7 @@ func TestMigrations(t *testing.T) {
 		t.Errorf("accounts table still exists after rolling back %s", rolledBack.Source.Path)
 	}
 
-	if results, err = database.Migrate(ctx); err != nil || len(results) != 11 {
+	if results, err = database.Migrate(ctx); err != nil || len(results) != len(statuses) {
 		t.Fatalf("re-apply: %d %v", len(results), err)
 	}
 	for _, tableName := range recoveryTables {
@@ -320,12 +327,12 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 	ctx := context.Background()
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
-	vaultID := createTestVault(t, database, "AAAAAA")
-	for range 8 {
-		if _, err := database.RollbackMigration(ctx); err != nil {
-			t.Fatal(err)
-		}
+	statuses, err := database.GetMigrationStatuses(ctx)
+	if err != nil {
+		t.Fatal(err)
 	}
+	vaultID := createTestVault(t, database, "AAAAAA")
+	rollbackTestMigrationsTo(t, database, 3)
 
 	for _, statement := range []string{
 		`INSERT INTO recovery_keyset (kem_pub, sign_pub, kem_sig, enc_keyset, created_by) VALUES ('\x01', '\x02', '\x03', '\x04', 'AAAAAA')`,
@@ -340,7 +347,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		}
 	}
 
-	if results, err := database.Migrate(ctx); err != nil || len(results) != 8 {
+	if results, err := database.Migrate(ctx); err != nil || len(results) != len(statuses)-3 {
 		t.Fatalf("applied %d: %v", len(results), err)
 	}
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
@@ -359,11 +366,7 @@ func TestRemoveRecoveryMigrationDeletesRecoveryData(t *testing.T) {
 		t.Fatalf("vault after the migration: %+v %v", vaults, err)
 	}
 
-	for range 8 {
-		if _, err := database.RollbackMigration(ctx); err != nil {
-			t.Fatal(err)
-		}
-	}
+	rollbackTestMigrationsTo(t, database, 3)
 	for _, tableName := range []string{"recovery_keyset", "vault_recovery", "recovery_tokens", "account_recovery"} {
 		if countRow(t, database, tableName) != 0 {
 			t.Errorf("%s has rows after rolling back", tableName)
@@ -717,9 +720,9 @@ func TestPruneExpiredInvitation(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "old@example.com", Role: "reader", InvitedBy: "AAAAAA"}, -40*24*time.Hour)
-	database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "live@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
-	acceptedID, _ := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
+	createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "old@example.com", Role: "reader", InvitedBy: "AAAAAA"}, -40*24*time.Hour)
+	createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "live@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
+	acceptedID, _ := createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
 	if _, _, err := database.AcceptShareInvitation(ctx, acceptedID, "BBBBBB", "b@example.com"); err != nil {
 		t.Fatal(err)
 	}

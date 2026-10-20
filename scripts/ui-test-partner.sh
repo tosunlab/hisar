@@ -112,6 +112,9 @@ answer_as_partner() {
     for INVITATION_ID in $(printf '%s\n' "$PARTNER_PASSWORD" | partner invitations 2>/dev/null | awk '/^RECEIVED/{isReceived=1; next} /^(SENT|$)/{isReceived=0} isReceived{print $1}'); do
       partner invitations accept "$INVITATION_ID" </dev/null >/dev/null 2>&1 || true
     done
+    for INVITATION_ID in $(partner_unlocked invitations 2>/dev/null | awk '/needs-review/{print $1}'); do
+      partner_unlocked invitations confirm "$INVITATION_ID" --yes >/dev/null 2>&1 || true
+    done
     # Listing the organizations also gives team members the keys of the vaults the partner owns, and rotates them.
     ORGANIZATIONS=$(partner_unlocked orgs 2>&1 || true)
     for INVITATION_ID in $(printf '%s\n' "$ORGANIZATIONS" | awk '/^INVITATION/{isInvitation=1; next} /^(Answer|$)/{isInvitation=0} isInvitation{print $1}'); do

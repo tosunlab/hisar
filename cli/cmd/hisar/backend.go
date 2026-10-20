@@ -51,6 +51,7 @@ type backend interface {
 	listInvitations(ctx context.Context) (cliprotocol.InvitationListResult, error)
 	// answerInvitation accepts, declines or cancels a share invitation.
 	answerInvitation(ctx context.Context, action, invitationID string) error
+	confirmInvitation(ctx context.Context, invitationID, reviewToken string) error
 	listShareLinks(ctx context.Context) ([]cliprotocol.ShareLink, error)
 	listDevices(ctx context.Context) ([]cliprotocol.Device, error)
 	revokeDevice(ctx context.Context, deviceID string) error

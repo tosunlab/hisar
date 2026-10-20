@@ -193,13 +193,17 @@ type ReceivedInvitation struct {
 }
 
 type SentInvitation struct {
-	ID        string `json:"id"`
-	VaultID   string `json:"vaultID"`
-	VaultName string `json:"vaultName"`
-	Email     string `json:"email"`
-	Role      string `json:"role"`
-	State     string `json:"state"`
-	ExpiresAt string `json:"expiresAt"`
+	ID                   string `json:"id"`
+	VaultID              string `json:"vaultID"`
+	VaultName            string `json:"vaultName"`
+	Email                string `json:"email"`
+	Role                 string `json:"role"`
+	State                string `json:"state"`
+	ExpiresAt            string `json:"expiresAt"`
+	RequiresConfirmation bool   `json:"requiresConfirmation,omitempty"`
+	RecipientID          string `json:"recipientID,omitempty"`
+	SecurityCode         string `json:"securityCode,omitempty"`
+	ReviewToken          string `json:"reviewToken,omitempty"`
 }
 
 type InvitationListResult struct {

@@ -61,6 +61,19 @@ class SharingTests {
     }
 
     @Test
+    fun testSharingConfirmationBindsReviewedRecipient() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val vault = assertNotNull(model.vaults.createVault("Team"))
+        val invitation = com.tryhisar.hisar.model.SentShareInvitation("accepted", vault.id, "Team", "new@example.com", "reader", "accepted", "2027-01-22T08:00:00Z", true, "new-account", "3333 4444", "reviewed-identity")
+        harness.backend.shareInvitations = ShareInvitations(allSent = listOf(invitation))
+        assertFalse(model.sharing.confirmShareRecipient(invitation.copy(reviewToken = "other-identity")))
+        assertEquals(1, harness.backend.shareInvitations.allSent.size)
+        assertTrue(model.sharing.confirmShareRecipient(invitation))
+        assertTrue(harness.backend.shareInvitations.allSent.isEmpty())
+    }
+
+    @Test
     fun testVaultSharingShowsMembersAndOnlyThisVaultsInvitations() = runTest {
         val model = AppModelHarness(this).startUnlockedModel()
         val streaming = assertNotNull(model.vaults.createVault("Streaming"))

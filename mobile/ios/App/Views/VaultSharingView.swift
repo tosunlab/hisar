@@ -50,7 +50,7 @@ struct VaultSharingView: View {
                 if isOwner, let allInvitation = sharing?.allInvitation, !allInvitation.isEmpty {
                     Section("Invited") {
                         ForEach(allInvitation) { invitation in
-                            SentInvitationRow(invitation: invitation, isVaultNameShown: false)
+                            SentInvitationRow(invitation: invitation, isVaultNameShown: false, onConfirmed: { await load() })
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button("Cancel", role: .destructive) { invitationToCancel = invitation }
                                 }

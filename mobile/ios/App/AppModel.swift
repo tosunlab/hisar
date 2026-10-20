@@ -578,6 +578,11 @@ final class AppModel: ObservableObject {
         await perform({ try $0.cancelShareInvitation(invitationID: invitationID) }) != nil
     }
 
+    @discardableResult
+    func confirmShareRecipient(_ invitation: SentShareInvitation) async -> Bool {
+        await perform({ try $0.confirmShareRecipient(invitationID: invitation.id, reviewToken: invitation.reviewToken ?? "") }) != nil
+    }
+
     func loadAllVaultMember(vaultID: String) async -> [Member]? {
         await perform(isBusyShown: false) { try $0.listAllVaultMember(vaultID: vaultID) }
     }

@@ -74,7 +74,7 @@ func (s *Service) ListVaults(ctx context.Context, actor Actor) ([]apitypes.Vault
 	for _, vault := range storedVaults {
 		vaults = append(vaults, apitypes.Vault{
 			ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey,
-			OrganizationID: vault.OrganizationID, NeedsRotation: vault.NeedsRotation, KeyGeneration: vault.KeyGeneration,
+			OrganizationID: vault.OrganizationID, NeedsRotation: vault.NeedsRotation, KeyGeneration: vault.KeyGeneration, AccessRevision: vault.AccessRevision,
 		})
 	}
 	return vaults, nil
@@ -118,7 +118,7 @@ func (s *Service) CreateVault(ctx context.Context, actor Actor, request *apitype
 	}
 	return apitypes.Vault{
 		ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Role: apitypes.VaultOwner, WrappedKey: request.WrappedKey,
-		OrganizationID: request.OrganizationID, KeyGeneration: 1,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1, AccessRevision: 2,
 	}, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
 	"github.com/tryhisar/hisar/server/internal/settings"
@@ -45,13 +46,34 @@ func TestCancelledInvitationsSendNoQueuedEmailOrSignUpToken(t *testing.T) {
 				var create func() error
 				var cancel func() error
 				if kind == "share" {
+					keyset, err := crypt.GenerateKeyset()
+					if err != nil {
+						t.Fatal(err)
+					}
+					defer keyset.Wipe()
+					actor.AccountID = crypt.GenerateAccountID()
+					keys := keyset.GetPublicKeys(actor.AccountID)
+					token := generateToken()
+					if err := service.store.CreateInvite(ctx, hashToken(token), "owner@example.com", apitypes.RoleAdmin, nil, time.Hour); err != nil {
+						t.Fatal(err)
+					}
+					account := &store.Account{ID: actor.AccountID, Email: "owner@example.com", Name: "Owner", Argon2Params: []byte(`{}`), Salt: []byte{1}, OpaqueRecord: []byte{1}, EncKeyset: []byte{1}, KEMPub: keys.KEM, SignPub: keys.Sign, KEMSig: keys.KEMSig}
+					device := &store.Device{ID: uuid.NewString(), AccountID: actor.AccountID, Name: "Owner", Platform: "go"}
+					if err := service.store.RedeemInvite(ctx, hashToken(token), account, device, &store.Session{TokenHash: hashToken(generateToken()), AccountID: actor.AccountID, DeviceID: device.ID}); err != nil {
+						t.Fatal(err)
+					}
 					vaultID := uuid.NewString()
 					if err := service.store.CreateVault(ctx, &store.Vault{ID: vaultID, Type: apitypes.VaultShared,
 						EncName: []byte{1}, CreatedBy: actor.AccountID}, []byte{1}); err != nil {
 						t.Fatal(err)
 					}
 					create = func() error {
-						return service.CreateShareInvitation(ctx, actor, vaultID, &apitypes.ShareInvitationRequest{Email: email, Role: "reader"})
+						vaults, err := service.store.ListVaults(ctx, actor.AccountID)
+						if err != nil {
+							return err
+						}
+						intent := crypt.ShareIntent{Version: 1, Origin: service.config.PublicURL, ID: uuid.NewString(), VaultID: vaultID, InvitedBy: actor.AccountID, Email: email, Role: "reader", KeyGeneration: vaults[0].KeyGeneration, AccessRevision: vaults[0].AccessRevision, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(time.Hour).Unix()}
+						return service.CreateShareInvitation(ctx, actor, vaultID, &apitypes.ShareInvitationRequest{Email: email, Role: "reader", Intent: &apitypes.SignedShareIntent{Context: intent, Signature: keyset.SignShareIntent(intent)}})
 					}
 					cancel = func() error {
 						invitations, err := service.store.ListSentShareInvitations(ctx, actor.AccountID)

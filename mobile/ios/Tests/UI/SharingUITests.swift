@@ -61,6 +61,10 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["share-vault-submit"].tap()
         waitFor(findText(containing: "Invitation sent to \(unknownEmail)"), timeout: 30)
 
+        let reviewRecipient = app.buttons["review-share-\(partnerEmail)"]
+        waitFor(reviewRecipient, timeout: 90)
+        reviewRecipient.tap()
+        app.buttons["confirm-share-recipient"].tap()
         app.swipeUp()
         let partnerRow = findElement("vault-member-\(partnerEmail)")
         waitFor(partnerRow, timeout: 90)

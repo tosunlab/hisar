@@ -61,7 +61,7 @@ struct PeopleView: View {
             if !shareInvitations.allSent.isEmpty || !shareInvitations.completionError.isEmpty {
                 Section {
                     ForEach(shareInvitations.allSent) { invitation in
-                        SentInvitationRow(invitation: invitation)
+                        SentInvitationRow(invitation: invitation, onConfirmed: { await load() })
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button("Cancel", role: .destructive) { invitationToCancel = invitation }
                             }
@@ -218,12 +218,17 @@ struct ReceivedInvitationRow: View {
 struct SentInvitationRow: View {
     var invitation: SentShareInvitation
     var isVaultNameShown = true
+    var onConfirmed: () async -> Void = {}
+    @EnvironmentObject private var model: AppModel
+    @State private var reviewed: SentShareInvitation?
 
     private var stateText: String {
-        invitation.state == SentShareInvitation.stateAccepted ? "Accepted, Hisar is finishing sharing" : "Waiting for them to accept"
+        if invitation.requiresConfirmation == true { return "Accepted, review recipient identity" }
+        return invitation.state == SentShareInvitation.stateAccepted ? "Accepted, Hisar is finishing sharing" : "Waiting for them to accept"
     }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
         Label {
             VStack(alignment: .leading, spacing: 2) {
                 Text(invitation.email)
@@ -236,6 +241,25 @@ struct SentInvitationRow: View {
         }
         .badge(Text(describeVaultRole(invitation.role)))
         .accessibilityElement(children: .combine)
+            if invitation.requiresConfirmation == true {
+                Button("Review recipient") { reviewed = invitation }
+                    .accessibilityIdentifier("review-share-\(invitation.email)")
+            }
+        }
+        .alert("Give this person access?", isPresented: Binding(get: { reviewed != nil }, set: { if !$0 { reviewed = nil } })) {
+            Button("Cancel", role: .cancel) { reviewed = nil }
+            Button("Give access") {
+                guard let snapshot = reviewed else { return }
+                Task {
+                    if await model.confirmShareRecipient(snapshot) { await onConfirmed() }
+                }
+            }
+            .accessibilityIdentifier("confirm-share-recipient")
+        } message: {
+            if let snapshot = reviewed {
+                Text("\(snapshot.email)\nVault \(snapshot.vaultName) · \(describeVaultRole(snapshot.role))\nAccount \(snapshot.recipientID ?? "")\nSecurity code \(snapshot.securityCode ?? "")\nCompare this code with the recipient over a channel you trust.")
+            }
+        }
     }
 }
 

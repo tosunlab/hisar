@@ -23,7 +23,7 @@ func TestNonPendingInvitationsMintNoSignUpToken(t *testing.T) {
 					invitation := &ShareInvitation{VaultID: createTestVault(t, database, "INVTER"),
 						Email: "recipient@example.com", Role: "reader", InvitedBy: "INVTER"}
 					var err error
-					invitation.ID, err = database.UpsertShareInvitation(ctx, invitation, time.Hour)
+					invitation.ID, err = createTestShareInvitation(t, database, ctx, invitation, time.Hour)
 					if err != nil {
 						t.Fatal(err)
 					}

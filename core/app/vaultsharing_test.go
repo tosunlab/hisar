@@ -35,6 +35,7 @@ func TestGetVaultSharingCompletesAcceptedSharesAndListsTheVaultOnly(t *testing.T
 		t.Fatalf("Family's invitations: %+v", sharing.Invitations)
 	}
 
+	authorizeInvitedRecipient(t, test, bob)
 	test.apiServer.acceptShareInvitation(t, bob)
 	sharing, err = GetVaultSharing(service, test.familyID)
 	if err != nil || sharing.CompletionError != "" {
@@ -59,13 +60,13 @@ func TestGetVaultSharingShowsARefusedChangedKeyOnlyForItsVault(t *testing.T) {
 	travelID := createSharedTestVault(t, service, "Travel")
 	shareThroughInvitation(t, test, test.familyID, bob, apitypes.VaultReader)
 
-	test.apiServer.replaceMemberKey(t, bob.AccountID)
 	if err := service.ShareVault(travelID, "b@example.com", apitypes.VaultReader); err != nil {
 		t.Fatal(err)
 	}
+	test.apiServer.replaceMemberKey(t, bob.AccountID)
 	test.apiServer.acceptShareInvitation(t, *test.apiServer.findMember(bob.AccountID))
 	travel, err := GetVaultSharing(service, travelID)
-	if err != nil || !strings.Contains(travel.CompletionError, "signing key of b@example.com changed") {
+	if err != nil || !strings.Contains(travel.CompletionError, "recipient identity changed") {
 		t.Fatalf("Travel after a key change: %+v %v", travel, err)
 	}
 	if len(travel.Invitations) != 1 || travel.Invitations[0].State != apitypes.ShareInvitationAccepted {

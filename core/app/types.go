@@ -176,15 +176,19 @@ type ReceivedShareInvitation struct {
 // SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share;
 // RecipientName and AcceptedAt (RFC 3339) are empty while pending.
 type SentShareInvitation struct {
-	ID            string `json:"id"`
-	VaultID       string `json:"vaultId"`
-	VaultName     string `json:"vaultName"`
-	Email         string `json:"email"`
-	RecipientName string `json:"recipientName"`
-	Role          string `json:"role"`
-	State         string `json:"state"`
-	ExpiresAt     string `json:"expiresAt"`
-	AcceptedAt    string `json:"acceptedAt"`
+	ID                   string `json:"id"`
+	VaultID              string `json:"vaultId"`
+	VaultName            string `json:"vaultName"`
+	Email                string `json:"email"`
+	RecipientName        string `json:"recipientName"`
+	Role                 string `json:"role"`
+	State                string `json:"state"`
+	ExpiresAt            string `json:"expiresAt"`
+	AcceptedAt           string `json:"acceptedAt"`
+	RequiresConfirmation bool   `json:"requiresConfirmation"`
+	RecipientID          string `json:"recipientId"`
+	SecurityCode         string `json:"securityCode"`
+	ReviewToken          string `json:"reviewToken"`
 }
 
 // WaitingShareInvitation is an invitation this user accepted that the owner's app has not completed yet; AcceptedAt is RFC 3339.

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"flag"
 	"fmt"
@@ -11,6 +12,8 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 const shortInvitationIDLength = 8
@@ -112,7 +115,11 @@ func printInvitationList(invitationList cliprotocol.InvitationListResult) error 
 			if vaultName == "" {
 				vaultName = shortenInvitationID(sent.VaultID)
 			}
-			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\n", shortenInvitationID(sent.ID), sent.Email, vaultName, sent.Role, sent.State, formatDate(sent.ExpiresAt))
+			state := sent.State
+			if sent.RequiresConfirmation {
+				state = "needs-review"
+			}
+			fmt.Fprintf(writer, "%s\t%s\t%s\t%s\t%s\t%s\n", shortenInvitationID(sent.ID), sent.Email, vaultName, sent.Role, state, formatDate(sent.ExpiresAt))
 		}
 	}
 	return writer.Flush()
@@ -158,6 +165,7 @@ var invitationActions = map[string]invitationAction{
 	"accept":  {name: "accept", confirmText: "Accepted. You get access once the owner's Hisar finishes sharing."},
 	"decline": {name: "decline", confirmText: "Declined."},
 	"cancel":  {name: "cancel", isSent: true, confirmText: "Cancelled."},
+	"confirm": {name: "confirm", isSent: true, confirmText: "Shared with the reviewed recipient."},
 }
 
 func parseInvitationArgument(positionals []string) (action *invitationAction, query string, err error) {
@@ -169,7 +177,7 @@ func parseInvitationArgument(positionals []string) (action *invitationAction, qu
 	}
 	found, ok := invitationActions[positionals[0]]
 	if !ok {
-		return nil, "", fmt.Errorf("unknown action %q: use accept, decline or cancel", positionals[0])
+		return nil, "", fmt.Errorf("unknown action %q: use accept, decline, cancel or confirm", positionals[0])
 	}
 	if len(positionals) == 2 {
 		query = positionals[1]
@@ -202,8 +210,14 @@ func convertToCommandLineInvitationList(invitationList *apitypes.ShareInvitation
 	for _, sent := range invitationList.Sent {
 		result.Sent = append(result.Sent, cliprotocol.SentInvitation{
 			ID: sent.ID, VaultID: sent.VaultID, VaultName: vaultNamesByID[sent.VaultID], Email: sent.Email, Role: sent.Role, State: sent.State,
-			ExpiresAt: sent.ExpiresAt.UTC().Format(time.RFC3339),
+			ExpiresAt:            sent.ExpiresAt.UTC().Format(time.RFC3339),
+			RequiresConfirmation: sent.State == apitypes.ShareInvitationAccepted && sent.Recipient != nil && (sent.Intent == nil || sent.Intent.Context.RecipientID == ""),
+			ReviewToken:          hex.EncodeToString(session.ShareInvitationReviewHash(sent)),
 		})
+		if sent.Recipient != nil {
+			result.Sent[len(result.Sent)-1].RecipientID = sent.Recipient.AccountID
+			result.Sent[len(result.Sent)-1].SecurityCode = crypt.FormatKeyFingerprint(sent.Recipient.PublicKeys.Sign)
+		}
 	}
 	return result
 }
@@ -281,6 +295,7 @@ func runInvite(ctx context.Context, access backend, flags *flag.FlagSet, args []
 }
 
 func runInvitations(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	yes := flags.Bool("yes", false, "confirm the displayed recipient without an interactive prompt")
 	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
@@ -299,6 +314,31 @@ func runInvitations(ctx context.Context, access backend, flags *flag.FlagSet, ar
 	invitationID, err := findInvitationID(collectInvitationID(invitationList, action.isSent), query, "hisar invitations")
 	if err != nil {
 		return err
+	}
+	if action.name == "confirm" {
+		for _, invitation := range invitationList.Sent {
+			if invitation.ID != invitationID {
+				continue
+			}
+			if !invitation.RequiresConfirmation || invitation.ReviewToken == "" {
+				return errors.New("This invitation has no recipient awaiting confirmation.")
+			}
+			fmt.Fprintf(standardError(), "Give %s access to %q as %s?\nAccount %s\nSecurity code %s\nCompare the code with the recipient over a trusted channel.\n", invitation.Email, invitation.VaultName, invitation.Role, invitation.RecipientID, invitation.SecurityCode)
+			if !*yes {
+				answer, err := prompt("Type share to give access", "")
+				if err != nil {
+					return err
+				}
+				if answer != "share" {
+					return errors.New("sharing cancelled")
+				}
+			}
+			if err := access.confirmInvitation(ctx, invitation.ID, invitation.ReviewToken); err != nil {
+				return err
+			}
+			fmt.Fprintln(standardError(), action.confirmText)
+			return nil
+		}
 	}
 	if err := access.answerInvitation(ctx, action.name, invitationID); err != nil {
 		return err

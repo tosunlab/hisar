@@ -101,10 +101,10 @@ func TestDeleteAccount(t *testing.T) {
 	if err := database.CreateShareLink(ctx, &ShareLink{ID: "link-alice", AccountID: aliceID, Ciphertext: []byte{1}, EncryptedLabel: []byte{1}}, time.Hour, 10); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.UpsertShareInvitation(ctx, &ShareInvitation{ID: uuid.NewString(), VaultID: soleVault, Email: "dave@example.com", Role: "reader", InvitedBy: aliceID}, time.Hour); err != nil {
+	if _, err := createTestShareInvitation(t, database, ctx, &ShareInvitation{ID: uuid.NewString(), VaultID: soleVault, Email: "dave@example.com", Role: "reader", InvitedBy: aliceID}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.UpsertShareInvitation(ctx, &ShareInvitation{ID: uuid.NewString(), VaultID: bobVault, Email: "alice@example.com", Role: "reader", InvitedBy: "BOB111"}, time.Hour); err != nil {
+	if _, err := createTestShareInvitation(t, database, ctx, &ShareInvitation{ID: uuid.NewString(), VaultID: bobVault, Email: "alice@example.com", Role: "reader", InvitedBy: "BOB111"}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
 	if err := database.CreateInvite(ctx, []byte("alice-sent"), "erin@example.com", "member", &aliceID, time.Hour); err != nil {

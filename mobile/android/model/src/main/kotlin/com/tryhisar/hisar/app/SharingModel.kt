@@ -25,6 +25,9 @@ class SharingModel(private val context: ModelContext, private val vaults: Vaults
 
     suspend fun cancelShareInvitation(invitationID: String): Boolean = context.perform { it.cancelShareInvitation(invitationID) } != null
 
+    suspend fun confirmShareRecipient(invitation: com.tryhisar.hisar.model.SentShareInvitation): Boolean =
+        context.perform { it.confirmShareRecipient(invitation.id, invitation.reviewToken) } != null
+
     suspend fun changeVaultMemberRole(vaultID: String, accountID: String, role: String): Boolean =
         context.perform { it.changeVaultMemberRole(vaultID, accountID, role) } != null
 

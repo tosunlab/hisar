@@ -628,6 +628,10 @@ export interface SentShareInvitation {
     "state": string;
     "expiresAt": string;
     "acceptedAt": string;
+    "requiresConfirmation": boolean;
+    "recipientId": string;
+    "securityCode": string;
+    "reviewToken": string;
 }
 
 /**

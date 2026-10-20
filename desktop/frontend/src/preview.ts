@@ -362,6 +362,7 @@ const previewShareInvitations: ShareInvitations =
             state: "pending",
             expiresAt: new Date(Date.now() + 5 * 24 * hourInMilliseconds).toISOString(),
             acceptedAt: "",
+            requiresConfirmation: false, recipientId: "", securityCode: "", reviewToken: "",
           },
           {
             id: "to-ops",
@@ -373,6 +374,7 @@ const previewShareInvitations: ShareInvitations =
             state: "accepted",
             expiresAt: new Date(Date.now() + 2 * 24 * hourInMilliseconds).toISOString(),
             acceptedAt: new Date(Date.now() - 2 * hourInMilliseconds).toISOString(),
+            requiresConfirmation: true, recipientId: "ADAOPS", securityCode: "3F2A 91C0 7B44 E1D8", reviewToken: "preview-recipient",
           },
         ],
         waiting: [
@@ -1560,6 +1562,7 @@ export const previewApi = {
         state: "pending",
         expiresAt: new Date(Date.now() + 7 * 24 * hourInMilliseconds).toISOString(),
         acceptedAt: "",
+        requiresConfirmation: false, recipientId: "", securityCode: "", reviewToken: "",
       },
     ];
     return resolveAfterDelay(undefined);
@@ -1586,6 +1589,12 @@ export const previewApi = {
   },
   cancelShareInvitation: (invitationID: string) => {
     previewShareInvitations.sent = previewShareInvitations.sent.filter((invitation) => invitation.id !== invitationID);
+    return resolveAfterDelay(undefined);
+  },
+  confirmShareRecipient: (invitationID: string, reviewToken: string) => {
+    const invitation = previewShareInvitations.sent.find((candidate) => candidate.id === invitationID && candidate.reviewToken === reviewToken);
+    if (!invitation) return Promise.reject(new Error("Review this invitation again before confirming the recipient."));
+    previewShareInvitations.sent = previewShareInvitations.sent.filter((candidate) => candidate.id !== invitationID);
     return resolveAfterDelay(undefined);
   },
   listAllOrganization: () => resolveAfterDelay({ organizations: listAllPreviewOrganizationSummary(), invitations: structuredClone(allPreviewOrganizationInvitation) }),

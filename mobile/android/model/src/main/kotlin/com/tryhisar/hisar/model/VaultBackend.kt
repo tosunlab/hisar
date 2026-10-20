@@ -31,6 +31,7 @@ interface VaultBackend {
     fun acceptShareInvitation(invitationID: String)
     fun declineShareInvitation(invitationID: String)
     fun cancelShareInvitation(invitationID: String)
+    fun confirmShareRecipient(invitationID: String, reviewToken: String)
     fun listAllShareAwaitingUnlock(): List<ShareAwaitingUnlock>
     fun listAllVaultMember(vaultID: String): List<Member>
     fun getVaultSharing(vaultID: String): VaultSharing

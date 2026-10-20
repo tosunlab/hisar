@@ -22,8 +22,26 @@ type CompletedShare struct {
 
 // InviteToVault sends a share invitation; the server answers the same whether or not the email has an account.
 func (s *Session) InviteToVault(ctx context.Context, vault *Vault, email, role string) error {
-	_, err := s.Client.CreateShareInvitation(ctx, vault.ID, &apitypes.ShareInvitationRequest{Email: email, Role: role})
-	return err
+	currentVault, err := s.currentSharingVault(ctx, vault.ID)
+	if err != nil {
+		return err
+	}
+	intent, err := s.newShareIntent(currentVault, email, role)
+	if err != nil {
+		return err
+	}
+	member, err := s.GetVerifiedMember(ctx, apitypes.NormalizeEmail(email))
+	if err == nil {
+		if err := s.trustedShareMember(member); err != nil {
+			return err
+		}
+		intent.Context.RecipientID = member.AccountID
+		intent.Context.RecipientKeyHash = crypt.ShareRecipientKeyHash(member.PublicKeys.Sign, member.PublicKeys.KEM)
+	} else if !errors.Is(err, ErrNotFound) {
+		return err
+	}
+	intent.Signature = s.Keyset.SignShareIntent(intent.Context)
+	return s.Client.CreateSignedShareInvitation(ctx, vault.ID, &apitypes.ShareInvitationRequest{Email: intent.Context.Email, Role: role, Intent: intent})
 }
 
 // CompleteAcceptedShares wraps the vault key for every recipient who accepted an invitation to a vault this account owns.
@@ -59,21 +77,20 @@ func (s *Session) CompleteAcceptedShares(ctx context.Context) ([]CompletedShare,
 		if !found {
 			continue
 		}
+		if err := s.verifyInvitation(ctx, vault, invitation); err != nil {
+			if !errors.Is(err, ErrShareReviewRequired) {
+				errs = append(errs, err)
+			}
+			continue
+		}
+		if invitation.Intent.Context.RecipientID == "" {
+			continue
+		}
 		recipient := *invitation.Recipient
 		if recipient.AccountID == s.AccountID {
 			continue
 		}
-		if err := recipient.PublicKeys.Verify(recipient.AccountID); err != nil {
-			errs = append(errs, fmt.Errorf("%s: %w", recipient.Email, err))
-			continue
-		}
-		if s.MemberVerifier != nil {
-			if err := s.MemberVerifier(&recipient); err != nil {
-				errs = append(errs, err)
-				continue
-			}
-		}
-		err := s.ShareVault(ctx, vault, &recipient, invitation.Role)
+		err := s.completeInvitation(ctx, vault, invitation, *invitation.Intent)
 		if apiclient.IsStatus(err, http.StatusConflict) {
 			continue
 		}

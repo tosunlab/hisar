@@ -1278,6 +1278,17 @@ export async function cancelShareInvitation(invitation: SentShareInvitation): Pr
   return cancelled === true;
 }
 
+export async function confirmShareRecipient(invitation: SentShareInvitation): Promise<boolean> {
+  const confirmed = await runAction(async () => {
+    await api.confirmShareRecipient(invitation.id, invitation.reviewToken);
+    return true;
+  });
+  await loadSharing();
+  await loadShareInvitationsQuietly();
+  if (confirmed) showNotice(`Shared ${invitation.vaultName} with ${invitation.email}`);
+  return confirmed === true;
+}
+
 export async function changeVaultMemberRole(member: VaultMember, role: VaultRole): Promise<boolean> {
   const vaultID = store.selectedVaultID;
   const changed = await runAction(async () => {

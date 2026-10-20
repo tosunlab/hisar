@@ -185,6 +185,17 @@ class FakeBackend: VaultBackend {
         shareInvitations.allSent.removeAll { $0.id == invitationID }
     }
 
+    func confirmShareRecipient(invitationID: String, reviewToken: String) throws {
+        record("confirmShareRecipient")
+        try requireUnlocked()
+        guard let invitation = shareInvitations.allSent.first(where: { $0.id == invitationID }),
+              invitation.requiresConfirmation == true, invitation.reviewToken == reviewToken, !reviewToken.isEmpty else {
+            throw BackendError(message: "Review this invitation again before confirming the recipient.")
+        }
+        _ = try findSharableVault(vaultID: invitation.vaultID)
+        shareInvitations.allSent.removeAll { $0.id == invitationID }
+    }
+
     func listAllVaultMember(vaultID: String) throws -> [Member] {
         record("listAllVaultMember")
         try requireUnlocked()

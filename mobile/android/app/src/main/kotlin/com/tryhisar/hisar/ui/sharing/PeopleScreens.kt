@@ -140,6 +140,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
                             SentInvitationRow(
                                 invitation, isVaultNameShown = true, testTag = "sent-invitation-${invitation.email}",
                                 onCancel = { invitationToCancel = invitation },
+                                onConfirm = { snapshot -> scope.launch { if (model.sharing.confirmShareRecipient(snapshot)) load() } },
                             )
                         }
                     }

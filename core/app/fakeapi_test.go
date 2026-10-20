@@ -134,7 +134,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		defer server.mutex.Unlock()
 		server.vaults = append(server.vaults, apitypes.Vault{
 			ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey,
-			OrganizationID: createRequest.OrganizationID, KeyGeneration: 1,
+			OrganizationID: createRequest.OrganizationID, KeyGeneration: 1, AccessRevision: 2,
 		})
 		server.itemsByVaultID[createRequest.ID] = map[string]apitypes.Item{}
 		server.accessesByVaultID[createRequest.ID] = []apitypes.RotatedAccess{{AccountID: server.accountID, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey}}
