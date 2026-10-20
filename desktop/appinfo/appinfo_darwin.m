@@ -210,6 +210,39 @@ SignatureInfo checkSignature(const char *path, int validateResources) {
     }
 }
 
+// copyProcessSignature reads the signature of the running process, not of its file: the kernel has checked every page
+// it loaded against the code directory, so only the directory's signature and certificate chain are verified here,
+// which takes milliseconds where hashing a large executable on disk takes seconds. Only a signature from a certificate
+// Apple issued counts; ad hoc and self-signed code gets no identity.
+SignatureInfo copyProcessSignature(int pid) {
+    @autoreleasepool {
+        SignatureInfo result = {signatureStatusInvalid, NULL, NULL, NULL};
+        NSDictionary *attributes = @{(__bridge NSString *)kSecGuestAttributePid: @(pid)};
+        SecCodeRef code = NULL;
+        if (SecCodeCopyGuestWithAttributes(NULL, (__bridge CFDictionaryRef)attributes, kSecCSDefaultFlags, &code) != errSecSuccess) {
+            return result;
+        }
+        SecRequirementRef requirement = NULL;
+        if (SecRequirementCreateWithString(CFSTR("anchor apple generic"), kSecCSDefaultFlags, &requirement) != errSecSuccess) {
+            CFRelease(code);
+            return result;
+        }
+        OSStatus validity = SecCodeCheckValidity(code, kSecCSDefaultFlags, requirement);
+        CFRelease(requirement);
+        CFDictionaryRef information = NULL;
+        if (validity != errSecSuccess || SecCodeCopySigningInformation(code, kSecCSSigningInformation, &information) != errSecSuccess || information == NULL) {
+            CFRelease(code);
+            return result;
+        }
+        CFRelease(code);
+        NSDictionary *dictionary = CFBridgingRelease(information);
+        result.status = signatureStatusDeveloper;
+        result.teamID = copyCString(dictionary[(__bridge NSString *)kSecCodeInfoTeamIdentifier]);
+        result.identifier = copyCString(dictionary[(__bridge NSString *)kSecCodeInfoIdentifier]);
+        return result;
+    }
+}
+
 static int formatSocketPeer(struct in_sockinfo *information, char *buffer, socklen_t size) {
     if (information->insi_vflag & INI_IPV4) {
         return inet_ntop(AF_INET, &information->insi_faddr.ina_46.i46a_addr4, buffer, size) != NULL ? 0 : -1;

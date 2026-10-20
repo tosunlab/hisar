@@ -36,6 +36,7 @@ func NewSystemResolver() *Resolver {
 			GetWorkingDirectory: GetProcessWorkingDirectory,
 		},
 		ReadInstance:              agentharness.ReadInstance,
+		GetProcessSignature:       getProcessSignature,
 		GetResponsiblePID:         getResponsiblePID,
 		ListProcessIDs:            listProcessIDs,
 		ListRunningApps:           listRunningApps,
@@ -121,6 +122,11 @@ func checkSignature(path string, validateResources bool) Signature {
 		Status: signatureStatuses[info.status], TeamID: takeCString(info.teamID), SignerName: cleanSignerName(takeCString(info.signerName)),
 		Identifier: takeCString(info.identifier),
 	}
+}
+
+func getProcessSignature(pid int) agentharness.Signature {
+	info := C.copyProcessSignature(C.int(pid))
+	return agentharness.Signature{Identifier: takeCString(info.identifier), TeamID: takeCString(info.teamID)}
 }
 
 // Change times include nested resource edits, removals and replacements, even when a writer restores modification times.

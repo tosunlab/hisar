@@ -34,6 +34,7 @@ type fakeSystem struct {
 	responsiblePIDs     map[int]int
 	teamIDs             map[string]string
 	signatures          map[string]Signature
+	processSignatures   map[int]agentharness.Signature
 	remoteHosts         map[int]string
 	signatureCheckCount map[string]int
 	iconRenderCount     map[string]int
@@ -46,6 +47,7 @@ func createFakeSystem(tree fakeProcessTree) *fakeSystem {
 		responsiblePIDs:     map[int]int{},
 		teamIDs:             map[string]string{},
 		signatures:          map[string]Signature{},
+		processSignatures:   map[int]agentharness.Signature{},
 		remoteHosts:         map[int]string{},
 		signatureCheckCount: map[string]int{},
 		iconRenderCount:     map[string]int{},
@@ -56,6 +58,9 @@ func (system *fakeSystem) createResolver() *Resolver {
 	return NewResolver(System{
 		ProcessReader: system.tree.createReader(),
 		ReadInstance:  system.tree.readInstance,
+		GetProcessSignature: func(pid int) agentharness.Signature {
+			return system.processSignatures[pid]
+		},
 		GetResponsiblePID: func(pid int) (int, error) {
 			if responsiblePID, isFound := system.responsiblePIDs[pid]; isFound {
 				return responsiblePID, nil
@@ -382,7 +387,7 @@ func createOmpInTernSystem() *fakeSystem {
 		1226:  {path: ompInTernPath, parentPID: 1217, startTime: 100, arguments: []string{"omp"}, workingDirectory: "/Users/developer/src/hisarapp-core"},
 		1217:  {path: "/Applications/Tern.app/Contents/MacOS/tern", parentPID: 1, startTime: 50, arguments: []string{"tern", "daemon"}},
 	})
-	system.signatures[ompInTernPath] = Signature{Status: SignatureStatusDeveloper, TeamID: "VTLHGQC72S", Identifier: "omp-darwin-arm64"}
+	system.processSignatures[1226] = agentharness.Signature{TeamID: "VTLHGQC72S", Identifier: "omp-darwin-arm64"}
 	return system
 }
 
@@ -400,7 +405,7 @@ func TestResolveAgentSessionThroughTern(t *testing.T) {
 	if session, isFound, _ := agentharness.Find(nameless.createResolver().ReadChain(39200)); !isFound || session.PID != 1226 {
 		t.Errorf("signature alone: %+v, %v", session, isFound)
 	}
-	nameless.signatures[ompInTernPath] = Signature{Status: SignatureStatusInvalid, TeamID: "VTLHGQC72S", Identifier: "omp-darwin-arm64"}
+	delete(nameless.processSignatures, 1226)
 	if session, isFound, _ := agentharness.Find(nameless.createResolver().ReadChain(39200)); isFound {
 		t.Errorf("a signature that does not verify matched: %+v", session)
 	}

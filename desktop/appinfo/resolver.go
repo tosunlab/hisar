@@ -46,7 +46,10 @@ type RunningApp struct {
 // ReadInstance makes every chain unknown.
 type System struct {
 	ProcessReader
-	ReadInstance              func(pid int) (agentharness.Instance, error)
+	ReadInstance func(pid int) (agentharness.Instance, error)
+	// GetProcessSignature is the signing identifier and team of a running process signed by a certificate Apple issued,
+	// as macOS verified it; the zero Signature for any other process.
+	GetProcessSignature       func(pid int) agentharness.Signature
 	GetResponsiblePID         func(pid int) (int, error)
 	ListProcessIDs            func() ([]int, error)
 	ListRunningApps           func() []RunningApp
@@ -143,8 +146,8 @@ func (resolver *Resolver) buildAppRequester(requester Requester, bundlePath stri
 	return requester
 }
 
-// ReadChain reads the process chain behind pid as a snapshot of process instances, with each executable's signing
-// identifier and team where its code signature verifies, for finding an agent harness in it.
+// ReadChain reads the process chain behind pid as a snapshot of process instances, with each running process's signing
+// identifier and team where its signature verifies, for finding an agent harness in it.
 func (resolver *Resolver) ReadChain(pid int) agentharness.Chain {
 	if resolver.system.ReadInstance == nil {
 		return agentharness.Chain{}
@@ -154,14 +157,6 @@ func (resolver *Resolver) ReadChain(pid int) agentharness.Chain {
 		GetPath:             resolver.system.GetPath,
 		ListArguments:       resolver.system.ListArguments,
 		GetWorkingDirectory: resolver.system.GetWorkingDirectory,
-		GetSignature:        resolver.getHarnessSignature,
+		GetSignature:        resolver.system.GetProcessSignature,
 	})
-}
-
-func (resolver *Resolver) getHarnessSignature(path string) agentharness.Signature {
-	signature := resolver.getSignature(path)
-	if signature.Status != SignatureStatusDeveloper && signature.Status != SignatureStatusApple {
-		return agentharness.Signature{}
-	}
-	return agentharness.Signature{Identifier: signature.Identifier, TeamID: signature.TeamID}
 }

@@ -19,5 +19,6 @@ int getResponsiblePID(int pid);
 RunningAppInfo *copyAllRunningApp(int *count);
 void freeAllRunningApp(RunningAppInfo *allRunningApp, int count);
 SignatureInfo checkSignature(const char *path, int validateResources);
+SignatureInfo copyProcessSignature(int pid);
 char *copyTeamID(const char *path);
 char *copySSHRemoteHost(int pid);

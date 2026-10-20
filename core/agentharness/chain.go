@@ -17,13 +17,14 @@ type Instance struct {
 
 // Reader reads the processes of a chain. ReadInstance must succeed for every process; the other reads may fail, and nil
 // functions leave their fields empty. A process whose path and arguments cannot be read belongs to another user, so it
-// cannot be the user's harness.
+// cannot be the user's harness. GetSignature reads the running process's signature; ReadChain reads every instance
+// again afterwards, so a signature read from a PID that was reused in between never reaches a known chain.
 type Reader struct {
 	ReadInstance        func(pid int) (Instance, error)
 	GetPath             func(pid int) (string, error)
 	ListArguments       func(pid int) ([]string, error)
 	GetWorkingDirectory func(pid int) (string, error)
-	GetSignature        func(path string) Signature
+	GetSignature        func(pid int) Signature
 }
 
 // ReadChain walks from pid to launchd or init, then reads every process again: a process that is gone, exited, has
@@ -70,7 +71,7 @@ func (reader Reader) readProcess(pid int, instance Instance) Process {
 		}
 	}
 	if reader.GetSignature != nil && process.Path != "" {
-		process.Signature = reader.GetSignature(process.Path)
+		process.Signature = reader.GetSignature(pid)
 	}
 	return process
 }

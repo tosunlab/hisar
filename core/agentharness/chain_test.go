@@ -14,6 +14,7 @@ type fakeProcess struct {
 	instance  Instance
 	path      string
 	arguments []string
+	signature Signature
 }
 
 // fakeSystem is a process table; changes run once each, after the read of their PID, to change the table mid-walk.
@@ -48,11 +49,10 @@ func (system *fakeSystem) createReader() Reader {
 			defer system.mutex.Unlock()
 			return system.processes[pid].arguments, nil
 		},
-		GetSignature: func(path string) Signature {
-			if path == ompPath {
-				return ompSignature
-			}
-			return Signature{}
+		GetSignature: func(pid int) Signature {
+			system.mutex.Lock()
+			defer system.mutex.Unlock()
+			return system.processes[pid].signature
 		},
 	}
 }
@@ -62,7 +62,7 @@ func createOmpInTernSystem() *fakeSystem {
 		processes: map[int]fakeProcess{
 			39200: {instance: Instance{StartTime: 300, ParentPID: 39136}, path: "/opt/homebrew/bin/hisar", arguments: []string{"hisar", "vaults"}},
 			39136: {instance: Instance{StartTime: 200, ParentPID: 1226}, path: "/bin/sh", arguments: []string{"sh", "-c", "hisar vaults"}},
-			1226:  {instance: Instance{StartTime: 100, ParentPID: 1217}, path: ompPath, arguments: []string{"omp"}},
+			1226:  {instance: Instance{StartTime: 100, ParentPID: 1217}, path: ompPath, arguments: []string{"omp"}, signature: ompSignature},
 			1217:  {instance: Instance{StartTime: 50, ParentPID: 1}, path: ternPath, arguments: []string{"tern", "daemon"}},
 		},
 		changes: map[int]func(map[int]fakeProcess){},
@@ -100,6 +100,12 @@ func TestChangeDuringTheWalkIsUnknown(t *testing.T) {
 			system.changes[39136] = func(processes map[int]fakeProcess) {
 				processes[1226] = fakeProcess{instance: Instance{StartTime: 400, ParentPID: 1217}, path: "/usr/bin/true"}
 			}
+		},
+		"omp's PID is reused by a signed omp while it is read": func(system *fakeSystem) {
+			system.changes[1226] = func(processes map[int]fakeProcess) {
+				processes[1226] = fakeProcess{instance: Instance{StartTime: 400, ParentPID: 1217}, path: ompPath, arguments: []string{"omp"}, signature: ompSignature}
+			}
+			system.processes[1226] = fakeProcess{instance: Instance{StartTime: 100, ParentPID: 1217}, path: "/usr/bin/true", arguments: []string{"true"}}
 		},
 		"omp exited and waits for Tern": func(system *fakeSystem) {
 			omp := system.processes[1226]
