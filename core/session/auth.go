@@ -215,8 +215,9 @@ func decryptAccountKeyset(account *apitypes.Account, apiClient *apiclient.Client
 		keyset.Wipe()
 		return nil, ErrKeyMismatch
 	}
-	if accountCache != nil && !isOffline {
-		accountCache.SaveAccount(account)
+	// A cache without this account's row would be refused at every later launch, so it stays online-only instead.
+	if accountCache != nil && !isOffline && accountCache.SaveAccount(account) != nil {
+		accountCache = nil
 	}
 	unlockedSession := &Session{Client: apiClient, AccountID: account.AccountID, Email: account.Email, Name: account.Name, Role: account.Role, Keyset: keyset, Cache: accountCache}
 	unlockedSession.verifiedAccount = account

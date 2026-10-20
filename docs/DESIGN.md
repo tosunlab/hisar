@@ -755,8 +755,9 @@ All clients use `core/` for crypto, the local store and sync.
   - Before use, the cache must contain only the signed-in account's account row, or no records at all. A foreign,
     mixed-account, or populated unbound cache is kept but never attached, including after restart if account-switch
     cleanup failed. Sign-in and sign-up log cleanup failures without suppressing the new Secret Key ceremony.
-  - A newly signed-in or registered session attaches its cache only after fetching and saving the account row succeeds.
-    A failed attachment leaves later vault reads online-only, so they cannot create populated unbound snapshots.
+  - A newly signed-in or registered session attaches its cache only after fetching and saving the account row succeeds,
+    and an online unlock keeps its cache only when saving the fetched account row succeeds. Otherwise the session's
+    vault reads stay online-only, so they cannot create populated unbound snapshots.
   - `session.Session.Cache`: listing vaults replaces the cached list and forgets vaults that disappeared (removed access). Listing items asks for changes since the cached `seq`, applies them page by page in one transaction each (tombstones delete the row), and decrypts from the cache. A `nextSeq` below the cached `seq` is a rollback (§7.5). A cached item that no longer decrypts makes the vault download from `seq` 0 once.
   - The server counts as unreachable on a connection error or a 502/503/504 from the reverse proxy (`client.IsUnreachable`). Then reads, unlock with the master password, Touch ID unlock and the master password check come from the cache, and the session reports `IsOffline`. Any other error, such as 401 for a revoked device, is never hidden by the cache.
   - Offline, the app shows an "Offline" notice and refuses changes with a clear message. Edits are not queued; that would need the merge of §7.4. Background sync runs every 60 s and when the window gets focus, and stays quiet while an item is being edited.

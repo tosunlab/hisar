@@ -523,3 +523,41 @@ func TestAttachCacheWaitsForSavedAccount(t *testing.T) {
 		t.Errorf("successful attachment did not cache vaults: %d, %v", len(vaults), err)
 	}
 }
+
+func TestUnlockKeepsTheCacheOnlyWhenItSavedTheAccount(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	testCache := openTestCache(t)
+	ctx := context.Background()
+	saveError := errors.New("database is locked")
+	accountCache := &failingAccountCache{Cache: testCache, saveError: saveError}
+	unlocked, err := Unlock(ctx, account.apiClient, accountCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unlocked.Cache != nil {
+		t.Error("a cache with no saved account was attached")
+	}
+	if _, err := unlocked.ListVaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	unlocked.Lock()
+	if err := testCache.CheckAccount(account.secretKey.AccountID); err != nil {
+		t.Fatalf("a failed account save left a cache later launches refuse: %v", err)
+	}
+
+	accountCache.saveError = nil
+	online, err := Unlock(ctx, account.apiClient, accountCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := online.ListVaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	online.Lock()
+	account.server.setUnreachable(true)
+	offline, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatalf("offline unlock after the account was saved: %v", err)
+	}
+	offline.Lock()
+}
