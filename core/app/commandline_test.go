@@ -81,7 +81,11 @@ func (test *commandLineTest) send(t *testing.T, request cliprotocol.Request, res
 	t.Helper()
 	test.nextID++
 	request.ID = "request-" + string(rune('a'+test.nextID))
-	test.connection.SetDeadline(time.Now().Add(10 * time.Second))
+	if deadline, ok := t.Deadline(); ok {
+		if err := test.connection.SetDeadline(deadline); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := cliprotocol.WriteJSON(test.connection, request); err != nil {
 		t.Fatal(err)
 	}
