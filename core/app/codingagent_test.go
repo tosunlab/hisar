@@ -415,6 +415,48 @@ func TestRevokeAgentSessionEndsItsSSHApprovals(t *testing.T) {
 	}
 }
 
+// ternSSHResolver resolves every SSH agent connection to ssh without a terminal in Tern, outside any harness: work omp
+// may have handed off once Tern is an agent host, as the desktop's resolver decides on every request.
+type ternSSHResolver struct {
+	server *clisocket.Server
+}
+
+func (resolver ternSSHResolver) ResolvePeer(net.Conn) (sshagent.Peer, error) {
+	return sshagent.Peer{
+		PeerInfo:          localsocket.PeerInfo{PID: 4242, Name: "ssh", Path: "/usr/bin/ssh", ApplicationPath: ternApp.Path},
+		IsNeverRemembered: func() bool { return resolver.server.IsAgentHost(ternApp) },
+	}, nil
+}
+
+// TestOpenSSHConnectionLosesAppApprovalWhenHostRecorded: an SSH connection from Tern stays open while omp's first
+// hisar request makes Tern an agent host. Its next signature asks again rather than reusing Tern's app approval.
+func TestOpenSSHConnectionLosesAppApprovalWhenHostRecorded(t *testing.T) {
+	test := createAgentSessionTest(t, true)
+	key := test.generateDeployKey(t)
+	approver := &recordingApprover{isAllowed: true, isRemembered: true}
+	resolver := ternSSHResolver{test.server}
+	peer, _ := resolver.ResolvePeer(nil)
+	client := sshagent.NewServer(NewSSHKeySource(test.testService.service), approver, resolver).CreateAgent(context.Background(), peer)
+	for range 2 {
+		if _, err := client.Sign(key, []byte("before")); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if count := approver.countRequest(); count != 1 {
+		t.Fatalf("%d approvals before Tern hosted omp; want the remembered one", count)
+	}
+	test.runDeploy(t, test.connect(t))
+	if !test.server.IsAgentHost(ternApp) {
+		t.Fatal("Tern was not recorded as an agent host")
+	}
+	if _, err := client.Sign(key, []byte("after")); err != nil {
+		t.Fatal(err)
+	}
+	if count := approver.countRequest(); count != 2 {
+		t.Errorf("the open connection reused Tern's app approval after Tern hosted omp; %d approvals, want 2", count)
+	}
+}
+
 func TestForgetAgentHostRestoresAppScope(t *testing.T) {
 	test := createAgentSessionTest(t, false)
 	service := test.testService.service

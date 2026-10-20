@@ -83,7 +83,7 @@ func TestPeerResolverFindsTheAgentSession(t *testing.T) {
 	if session := peer.AgentSession.Session; session.PID != 1217 || session.StartTime != 10 || session.Harness.Name != "omp" {
 		t.Errorf("session = %+v", session)
 	}
-	if peer.ApplicationPath != ternBundlePath || peer.Path != "/usr/bin/ssh" || peer.IsNeverRemembered {
+	if peer.ApplicationPath != ternBundlePath || peer.Path != "/usr/bin/ssh" || peer.IsNeverRemembered != nil {
 		t.Errorf("peer = %+v", peer)
 	}
 	if !test.agentHosts[ternIdentity] {
@@ -106,7 +106,8 @@ func TestAgentHostWithoutTerminalOrHarnessIsNeverRemembered(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		peer, err := testCase.test.createResolver().ResolvePeer(nil)
-		if err != nil || peer.AgentSession != nil || peer.IsNeverRemembered != testCase.wantIsNeverRemembered || peer.ApplicationPath != ternBundlePath {
+		isNeverRemembered := peer.IsNeverRemembered != nil && peer.IsNeverRemembered()
+		if err != nil || peer.AgentSession != nil || isNeverRemembered != testCase.wantIsNeverRemembered || peer.ApplicationPath != ternBundlePath {
 			t.Errorf("%s: peer = %+v, %v", testCase.name, peer, err)
 		}
 	}

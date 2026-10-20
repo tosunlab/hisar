@@ -52,7 +52,7 @@ func (resolver *fakePeerResolver) setTernPeer(session *agentharness.Session, isN
 	defer resolver.mutex.Unlock()
 	resolver.peer = Peer{
 		PeerInfo:          localsocket.PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh", ApplicationPath: ternPath},
-		IsNeverRemembered: isNeverRemembered,
+		IsNeverRemembered: func() bool { return isNeverRemembered },
 	}
 	resolver.agentSession = session
 }

@@ -16,11 +16,13 @@ const AgentSessionApprovalLifetime = time.Hour
 
 // Peer is the program on the other end of a connection and who an approval for it is remembered for: the live agent
 // session it runs inside, which the command-line socket shares, else its app or program. IsNeverRemembered outweighs
-// both: no remembered approval covers the program and none is remembered for it.
+// both: when it reports true, no remembered approval covers the program and none is remembered for it. It is asked on
+// every request, since the app a connection runs in can become an agent host while the connection stays open; nil is
+// never.
 type Peer struct {
 	localsocket.PeerInfo
 	AgentSession      *agentharness.LiveSession
-	IsNeverRemembered bool
+	IsNeverRemembered func() bool
 }
 
 type PeerResolver interface {

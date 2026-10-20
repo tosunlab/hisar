@@ -357,7 +357,7 @@ func (connection *connectionAgent) buildRequest() ApprovalRequest {
 		ClientPID:         connection.peer.PID,
 		ApplicationPath:   connection.peer.ApplicationPath,
 		AgentSession:      connection.peer.AgentSession,
-		IsNeverRemembered: connection.peer.IsNeverRemembered,
+		IsNeverRemembered: connection.peer.IsNeverRemembered != nil && connection.peer.IsNeverRemembered(),
 	}
 	connection.describeSessionBinding(&request)
 	return request

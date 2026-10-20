@@ -64,8 +64,9 @@ func (resolver PeerResolver) ResolvePeer(connection net.Conn) (sshagent.Peer, er
 		return peer, nil
 	}
 	if !resolver.HasTerminal(info.PID) {
-		app, isVerified := resolver.IdentifyApp(requester)
-		peer.IsNeverRemembered = isVerified && resolver.AgentHosts.IsAgentHost(app)
+		if app, isVerified := resolver.IdentifyApp(requester); isVerified {
+			peer.IsNeverRemembered = func() bool { return resolver.AgentHosts.IsAgentHost(app) }
+		}
 	}
 	return peer, nil
 }
