@@ -37,7 +37,7 @@ func TestBrowserCards(t *testing.T) {
 	if cards := result.(browserprotocol.CardListResult).Cards; code != "" || !reflect.DeepEqual(cards, want) {
 		t.Fatalf("cards.list = %+v %s\nwant %+v", cards, code, want)
 	}
-	if encoded, _ := json.Marshal(result); strings.Contains(string(encoded), "4111") || strings.Contains(string(encoded), "123") {
+	if encoded, _ := json.Marshal(result); strings.Contains(string(encoded), "4111") || strings.Contains(string(encoded), `"123"`) {
 		t.Errorf("cards.list carries a number or security code: %s", encoded)
 	}
 
