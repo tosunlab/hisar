@@ -20,8 +20,7 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-// startRefusingServer answers prelogin and login/start for one account like a Hisar server, and login/finish with 403
-// and the refusal once the proof is correct.
+// startRefusingServer accepts a correct OPAQUE login when refusal is empty, or returns that refusal with 403.
 func startRefusingServer(t *testing.T, accountID string, password []byte, secretKey crypt.SecretKey, refusal string) string {
 	t.Helper()
 	configuration := pake.NewConfig()
@@ -57,6 +56,22 @@ func startRefusingServer(t *testing.T, accountID string, password []byte, secret
 		t.Fatal(err)
 	}
 	var clientMAC []byte
+	var account *apitypes.Account
+	if refusal == "" {
+		keyset, err := crypt.GenerateKeyset()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer keyset.Wipe()
+		encryptedKeyset, err := keyset.Encrypt(derivedKeys.AccountUnlockKey, accountID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		account = &apitypes.Account{
+			AccountID: accountID, Email: "new@example.com", Name: "New",
+			Salt: salt, Argon2: crypt.MinArgon2Params(), EncKeyset: encryptedKeyset, PublicKeys: keyset.GetPublicKeys(accountID),
+		}
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /api/v1/auth/prelogin", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, apitypes.PreloginResponse{Salt: salt, Argon2: crypt.MinArgon2Params()})
@@ -86,7 +101,17 @@ func startRefusingServer(t *testing.T, accountID string, password []byte, secret
 			writeJSON(writer, http.StatusUnauthorized, apitypes.Error{Error: "login failed"})
 			return
 		}
+		if refusal == "" {
+			writeJSON(writer, http.StatusOK, apitypes.SessionResponse{Token: "new-token", AccountID: accountID})
+			return
+		}
 		writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: refusal})
+	})
+	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, http.StatusOK, account)
+	})
+	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, http.StatusOK, []apitypes.Vault{})
 	})
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)

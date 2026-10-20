@@ -214,16 +214,12 @@ func (s *Service) forgetLocalAccount() error {
 	if s.state.AccountID != "" {
 		secretKeyErr = s.config.SecretKeyStore.DeleteSecretKey(s.state.AccountID)
 	}
-	s.lockSession()
-	s.name = ""
-	s.forgetBiometricUnlock()
-	s.removeCache()
-	s.state.Reset()
+	cacheErr := s.resetAccount()
 	s.notifySessionChange()
 	if err := s.state.Save(); err != nil {
 		return err
 	}
-	return secretKeyErr
+	return errors.Join(secretKeyErr, cacheErr)
 }
 
 // lockSuspendedSession locks Hisar when the server refuses the session because an admin suspended the account. Unlike

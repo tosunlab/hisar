@@ -148,7 +148,7 @@ func (unlocker *ApprovalUnlocker) VerifyPassword(password string) error {
 		s.mutex.Unlock()
 		return err
 	}
-	apiClient, accountCache, accountID := s.unlockedSession.Client, s.unlockedSession.Cache, s.state.AccountID
+	apiClient, accountCache, accountID, epoch := s.unlockedSession.Client, s.unlockedSession.Cache, s.state.AccountID, s.sessionEpoch
 	s.mutex.Unlock()
 	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(accountID)
 	if err != nil {
@@ -166,7 +166,7 @@ func (unlocker *ApprovalUnlocker) VerifyPassword(password string) error {
 		return convertError(err)
 	}
 	clear(accountUnlockKey)
-	return nil
+	return s.checkSessionEpoch(epoch)
 }
 
 func (unlocker *ApprovalUnlocker) UnlockWithPassword(password string) error {

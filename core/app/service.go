@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"log"
 	"net/http"
 	"sync"
 	"time"
@@ -19,11 +20,20 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
+// Service may be a request-scoped view; callbacks and goroutines that outlive a request must retain only its shared state.
 type Service struct {
-	mutex                        sync.Mutex
-	config                       Config
-	state                        *localstate.State
-	unlockedSession              *session.Session
+	*serviceState
+	requestEpoch *uint64
+}
+
+// serviceState is shared by the app and request-scoped CLI views, including their mutex.
+type serviceState struct {
+	mutex           sync.Mutex
+	config          Config
+	state           *localstate.State
+	unlockedSession *session.Session
+	// sessionEpoch advances on session end and explicit lock intent, even while already locked.
+	sessionEpoch                 uint64
 	vaultsByID                   map[string]*session.Vault
 	itemsByVaultID               map[string][]item.Item
 	favorites                    *session.Preferences
@@ -33,6 +43,7 @@ type Service struct {
 	clearCopiedText              func()
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
+	biometricClock               biometricPasswordClock
 	newAccountSecretKey          *crypt.SecretKey
 	newAccountUnlockKey          []byte
 	localCache                   *cache.Cache
@@ -56,7 +67,7 @@ type Service struct {
 	commandLineApprovals *clisocket.SessionApprovals
 }
 
-// getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.
+// getCache opens the offline cache on first use and recreates it only after confirmed corruption.
 func (s *Service) getCache() session.Cache {
 	if s.config.CachePath == "" {
 		return nil
@@ -64,10 +75,23 @@ func (s *Service) getCache() session.Cache {
 	if s.localCache == nil {
 		openedCache, err := cache.Open(s.config.CachePath)
 		if err != nil {
-			cache.Remove(s.config.CachePath)
-			if openedCache, err = cache.Open(s.config.CachePath); err != nil {
+			if !cache.IsCorrupt(err) {
+				log.Printf("offline cache could not be opened; keeping the existing file: %v", err)
 				return nil
 			}
+			if err := cache.Remove(s.config.CachePath); err != nil {
+				log.Printf("corrupt offline cache could not be deleted: %v", err)
+				return nil
+			}
+			if openedCache, err = cache.Open(s.config.CachePath); err != nil {
+				log.Printf("offline cache could not be recreated: %v", err)
+				return nil
+			}
+		}
+		if err := openedCache.CheckAccount(s.state.AccountID); err != nil {
+			openedCache.Close()
+			log.Printf("offline cache cannot be used by this account; keeping the existing file: %v", err)
+			return nil
 		}
 		s.localCache = openedCache
 	}
@@ -122,7 +146,7 @@ func NewService(config Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{config: config, state: state, phoneApprovals: createPhoneApprovalRelay()}, nil
+	return &Service{serviceState: &serviceState{config: config, state: state, phoneApprovals: createPhoneApprovalRelay()}}, nil
 }
 
 // SetTrustedCertificates makes requests to the Hisar server and website icon fetches trust only roots, for platforms

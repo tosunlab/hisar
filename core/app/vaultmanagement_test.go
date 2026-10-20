@@ -389,13 +389,14 @@ func TestExportAllData(t *testing.T) {
 		t.Errorf("plain export: %v", err)
 	}
 
-	if _, err := service.writeExportFile(ExportFormatPlain, "", saver.path+".again"); err != nil {
+	epoch := service.sessionEpoch
+	if _, err := service.writeExportFile(ExportFormatPlain, "", saver.path+".again", epoch); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.writeExportFile(ExportFormatPlain, "", saver.path+".again"); !errors.Is(err, errExportFileExists) {
+	if _, err := service.writeExportFile(ExportFormatPlain, "", saver.path+".again", epoch); !errors.Is(err, errExportFileExists) {
 		t.Errorf("the command-line export replaced a file: %v", err)
 	}
-	if _, err := service.writeExportFile(ExportFormatPlain, "", "relative.json"); err == nil {
+	if _, err := service.writeExportFile(ExportFormatPlain, "", "relative.json", epoch); err == nil {
 		t.Error("a relative path was accepted")
 	}
 }

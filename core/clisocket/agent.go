@@ -138,20 +138,16 @@ func (approvals *SessionApprovals) getGeneration() int {
 	return approvals.generation
 }
 
-// approveAgent records an approval, and remembers the secrets, unless Hisar locked while the dialog was open. live is
-// the agent session of the scope, nil outside a harness. It returns false when that session ended while the dialog was
-// open, its harness exited or Settings revoked it: the request fails, and nothing reaches the session the harness's
-// next request starts.
+// approveAgent records an approval, and remembers the secrets. live is the agent session of the scope, nil outside a
+// harness. It returns false, and records nothing, when ClearAll ran while the dialog was open (Hisar locked, signed out
+// or switched accounts), or when that agent session ended meanwhile, its harness exited or Settings revoked it: the
+// request fails, and nothing reaches the session the harness's next request starts.
 func (approvals *SessionApprovals) approveAgent(scope approvalScope, live *agentharness.LiveSession, generation int, kind string, rememberedSecrets []AgentSecret) bool {
 	approvals.mutex.Lock()
 	isSession := live != nil
-	if isSession && live.Context().Err() != nil {
+	if generation != approvals.generation || isSession && live.Context().Err() != nil {
 		approvals.mutex.Unlock()
 		return false
-	}
-	if generation != approvals.generation {
-		approvals.mutex.Unlock()
-		return true
 	}
 	agent := approvals.getAgent(scope)
 	now := approvals.now()

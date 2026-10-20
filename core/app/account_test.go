@@ -233,10 +233,8 @@ func TestSignOutKeepsOnlyTheServerOfASessionFromBeforeLastServer(t *testing.T) {
 	secretKeyStore.StoreSecretKey(secretKey)
 	service, _, _ := createTestService(t, statePath, secretKeyStore)
 
-	status, err := service.SignOut()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Nothing answers on port 1, so the sign-out also reports that the server's session may still be open.
+	status, _ := service.SignOut()
 	if status.State != StateSignedOut || status.Server != "http://127.0.0.1:1" || status.Email != "" {
 		t.Errorf("signed-out status: %+v", status)
 	}

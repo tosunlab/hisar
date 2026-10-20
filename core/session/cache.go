@@ -29,7 +29,6 @@ func (s *Session) IsOffline() bool {
 
 // AttachCache starts caching a session created by SignUp or LogIn, including the account needed to unlock offline.
 func (s *Session) AttachCache(ctx context.Context, accountCache Cache) error {
-	s.Cache = accountCache
 	account, err := s.Client.GetAccount(ctx)
 	if err != nil {
 		return err
@@ -44,7 +43,11 @@ func (s *Session) AttachCache(ctx context.Context, accountCache Cache) error {
 	if !bytes.Equal(account.PublicKeys.KEM, publicKeys.KEM) || !bytes.Equal(account.PublicKeys.Sign, publicKeys.Sign) {
 		return ErrKeyMismatch
 	}
-	return accountCache.SaveAccount(account)
+	if err := accountCache.SaveAccount(account); err != nil {
+		return err
+	}
+	s.Cache = accountCache
+	return nil
 }
 
 // getAccount falls back to the cached account only when the server cannot be reached. The caller caches a fetched

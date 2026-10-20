@@ -24,6 +24,11 @@ func (s *Service) loadVaults(ctx context.Context) error {
 	for index := range vaults {
 		s.vaultsByID[vaults[index].ID] = &vaults[index]
 	}
+	for vaultID := range s.itemsByVaultID {
+		if _, isListed := s.vaultsByID[vaultID]; !isListed {
+			delete(s.itemsByVaultID, vaultID)
+		}
+	}
 	return nil
 }
 

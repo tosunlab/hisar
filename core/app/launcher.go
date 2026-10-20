@@ -51,8 +51,7 @@ func (bridge *CommandLineBridge) answerLauncherRequest(request *cliprotocol.Requ
 	case cliprotocol.TypeLauncherGeneratePassword:
 		return generateLauncherPassword(request.Generator)
 	case cliprotocol.TypeLauncherLock:
-		s.lockFromLauncher()
-		return nil, nil
+		return nil, s.lockFromLauncher()
 	}
 	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }
@@ -173,12 +172,20 @@ func generateLauncherPassword(generator *cliprotocol.GeneratorChange) (cliprotoc
 }
 
 // lockFromLauncher locks Hisar and tells the window, as an auto-lock does, since nobody locked it there.
-func (s *Service) lockFromLauncher() {
+func (s *Service) lockFromLauncher() error {
 	s.mutex.Lock()
+	if err := s.checkRequestEpoch(); err != nil {
+		s.mutex.Unlock()
+		return err
+	}
+	if s.unlockedSession == nil {
+		s.sessionEpoch++
+	}
 	wasUnlocked := s.unlockedSession != nil
 	s.lockSession()
 	s.mutex.Unlock()
 	if wasUnlocked && s.config.LockNotifier != nil {
 		s.config.LockNotifier.NotifyLocked()
 	}
+	return nil
 }

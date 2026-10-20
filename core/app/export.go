@@ -66,10 +66,11 @@ func (s *Service) ExportData(request ExportRequest) (ExportResult, error) {
 	if err := checkExportRequest(request.Format, request.Passphrase); err != nil {
 		return ExportResult{}, err
 	}
-	if err := s.authenticateExport(request.Password); err != nil {
+	epoch, err := s.authenticateExport(request.Password)
+	if err != nil {
 		return ExportResult{}, err
 	}
-	content, result, err := s.buildExport(request.Format, request.Passphrase)
+	content, result, err := s.buildExport(request.Format, request.Passphrase, epoch)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -81,6 +82,9 @@ func (s *Service) ExportData(request ExportRequest) (ExportResult, error) {
 	if err != nil || path == "" {
 		return ExportResult{}, err
 	}
+	if err := s.checkSessionEpoch(epoch); err != nil {
+		return ExportResult{}, err
+	}
 	if err := writeFileAtomically(path, content); err != nil {
 		return ExportResult{}, err
 	}
@@ -88,21 +92,23 @@ func (s *Service) ExportData(request ExportRequest) (ExportResult, error) {
 	return result, nil
 }
 
-func (s *Service) authenticateExport(password string) error {
+// authenticateExport returns the epoch of the session the user approved exporting.
+func (s *Service) authenticateExport(password string) (uint64, error) {
 	s.mutex.Lock()
 	err := s.requireUnlocked()
+	epoch := s.sessionEpoch
 	s.mutex.Unlock()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	switch {
 	case password != "":
-		_, err := s.loadVerifiedSecretKey(password)
-		return err
+		_, epoch, err := s.loadVerifiedSecretKey(password)
+		return epoch, err
 	case s.isTouchIDAvailable():
-		return s.config.Biometric.Authenticate("export your Hisar data")
+		return epoch, s.config.Biometric.Authenticate("export your Hisar data")
 	}
-	return errExportNeedsPassword
+	return 0, errExportNeedsPassword
 }
 
 // ExportDataToDirectory is for platforms that share the file themselves, such as the iPhone; a function rather than
@@ -111,10 +117,11 @@ func ExportDataToDirectory(s *Service, request ExportRequest, directory string) 
 	if err := checkExportRequest(request.Format, request.Passphrase); err != nil {
 		return ExportResult{}, err
 	}
-	if err := s.authenticateExport(request.Password); err != nil {
+	epoch, err := s.authenticateExport(request.Password)
+	if err != nil {
 		return ExportResult{}, err
 	}
-	content, result, err := s.buildExport(request.Format, request.Passphrase)
+	content, result, err := s.buildExport(request.Format, request.Passphrase, epoch)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -127,15 +134,16 @@ func ExportDataToDirectory(s *Service, request ExportRequest, directory string) 
 	return result, nil
 }
 
-// writeExportFile is for the command-line tool, whose approval dialog already asked: it never replaces a file.
-func (s *Service) writeExportFile(format, passphrase, path string) (ExportResult, error) {
+// writeExportFile is for the command-line tool, whose approval dialog already asked for the session of epoch: it never
+// replaces a file.
+func (s *Service) writeExportFile(format, passphrase, path string, epoch uint64) (ExportResult, error) {
 	if err := checkExportRequest(format, passphrase); err != nil {
 		return ExportResult{}, err
 	}
 	if !filepath.IsAbs(path) {
 		return ExportResult{}, errors.New("the export path must be absolute")
 	}
-	content, result, err := s.buildExport(format, passphrase)
+	content, result, err := s.buildExport(format, passphrase, epoch)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -159,12 +167,14 @@ func (s *Service) writeExportFile(format, passphrase, path string) (ExportResult
 	return result, nil
 }
 
-func (s *Service) buildExport(format, passphrase string) ([]byte, ExportResult, error) {
+// buildExport exports the session of epoch, never one that replaced it after the approval.
+func (s *Service) buildExport(format, passphrase string, epoch uint64) ([]byte, ExportResult, error) {
 	s.mutex.Lock()
-	if err := s.requireUnlocked(); err != nil {
+	if err := s.requireSessionEpoch(epoch); err != nil {
 		s.mutex.Unlock()
 		return nil, ExportResult{}, err
 	}
+	s.noteActivity()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	vaults, err := export.Collect(ctx, s.unlockedSession)

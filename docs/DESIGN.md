@@ -311,6 +311,7 @@ The device already has the Secret Key in the keychain and a local copy of `encKe
 Common to both:
 
 - The master password is still required after every app launch and at least every 14 days (`LastPasswordUnlockAt` in the state file).
+- While the process lives, the password interval also has a monotonic deadline. Backwards wall-clock observations more than five minutes below the process's highest observation and observed expiry require the password until the next password unlock. Smaller corrections do not move that highest observation or extend the deadline. Observed expiry clears the saved password-unlock timestamp. Between processes, the check still relies on the persisted password-unlock wall time rather than a persisted last-observed clock.
 - **In-window prompt**: like 1Password, the lock screen embeds Apple's `LAAuthenticationView` (`LocalAuthenticationEmbeddedUI`, macOS 12+) in Hisar's own window instead of the system dialog. The UI measures a slot on the lock screen and the app places the native view over it; "Use master password" cancels the evaluation (`LAContext.invalidate`).
 - Touch ID also approves SSH agent requests (§9.6). The iPhone unlocks with Face ID the same way, and Android with a strong biometric through `BiometricPrompt` (§9.3).
 
@@ -319,6 +320,10 @@ Common to both:
 - After OPAQUE, the server issues an opaque random session token (256 bits). The server stores only its SHA-256 hash, together with the device ID and expiry (30 days by default, sliding; the session lifetime of §8.3).
 - All API calls use `Authorization: Bearer <token>` over TLS.
 - Devices can be listed and revoked by their owner.
+- App authentication captures the local session epoch before remote work. Lock, including a lock requested while already locked, sign-out and account switches invalidate earlier authentication attempts. A late response cannot reopen the session. An account created before cancellation keeps its Secret Key in the keychain for recovery without installing its session. The interrupted sign-up error also includes the new Secret Key, since app bindings discard a result returned with an error.
+- The desktop store invalidates pending account responses when the session ends. Late sign-up and Secret Key replacement responses cannot restore unlocked status or expose an onboarding or replacement Secret Key after lock.
+- CLI dispatch uses a request-scoped service view with the original epoch and the same shared state and mutex as the app. The unlocked-session guard checks that epoch inside each operation's mutex hold, before selecting keys or performing account mutations. Wails method signatures do not change.
+  Callbacks and goroutines that outlive a request retain only shared state, never its request-scoped epoch. The auto-lock timer follows this rule.
 
 ### 5.6 Public key authenticity
 
@@ -745,6 +750,13 @@ All clients use `core/` for crypto, the local store and sync.
 - Local store: SQLite (`modernc.org/sqlite`, pure Go) holding the server's ciphertext as-is plus sync state. Nothing is stored decrypted on disk.
   - `core/cache` stores the account record (salt, Argon2 params, `encKeyset`, public keys), the vault list as the server returns it (wrapped keys, encrypted names), every live item's encrypted parts, each vault's `seq` and the sealed account preferences record with the favorites (§4.7). The file is `desktop-cache.db` next to `desktop.json`, mode 0600, and is deleted on sign-in, sign-up and sign-out.
   - Remotely fetched accounts replace the cache only after keyset verification. `AttachCache` also compares the fetched credential envelope with the one established by signup, unlock, or a committed credential change and checks public keys against the open keyset. A second account fetch cannot overwrite the last verified offline envelope with a forged one.
+  - An open failure replaces the file only when SQLite reports corruption or an invalid database format. Access, I/O,
+    and locking errors keep the snapshot and are logged. Hisar can continue online without that cache.
+  - Before use, the cache must contain only the signed-in account's account row, or no records at all. A foreign,
+    mixed-account, or populated unbound cache is kept but never attached, including after restart if account-switch
+    cleanup failed. Sign-in and sign-up log cleanup failures without suppressing the new Secret Key ceremony.
+  - A newly signed-in or registered session attaches its cache only after fetching and saving the account row succeeds.
+    A failed attachment leaves later vault reads online-only, so they cannot create populated unbound snapshots.
   - `session.Session.Cache`: listing vaults replaces the cached list and forgets vaults that disappeared (removed access). Listing items asks for changes since the cached `seq`, applies them page by page in one transaction each (tombstones delete the row), and decrypts from the cache. A `nextSeq` below the cached `seq` is a rollback (§7.5). A cached item that no longer decrypts makes the vault download from `seq` 0 once.
   - The server counts as unreachable on a connection error or a 502/503/504 from the reverse proxy (`client.IsUnreachable`). Then reads, unlock with the master password, Touch ID unlock and the master password check come from the cache, and the session reports `IsOffline`. Any other error, such as 401 for a revoked device, is never hidden by the cache.
   - Offline, the app shows an "Offline" notice and refuses changes with a clear message. Edits are not queued; that would need the merge of §7.4. Background sync runs every 60 s and when the window gets focus, and stays quiet while an item is being edited.
@@ -1249,6 +1261,12 @@ Go's garbage collector can copy memory and strings are immutable, so secrets can
 - Keys and secrets are `[]byte`, never `string`, inside `core/`.
 - Long-lived keys (AUK, keyset, vault keys) live in `memguard` enclaves and are opened only for the duration of an operation.
 - Plaintext item data is zeroed after use where possible, and the lock action drops all references.
+
+`Keyset.Wipe` clears the user key, both keyset seeds, the Ed25519 private key, and the derived seed exposed by the
+hybrid HPKE key's `Bytes` method. Lock also clears the app's vault keys, cached and pending-import passkey private keys
+and PRF secrets, and onboarding unlock material. Decrypted item strings, copies already returned to callers or UIs,
+and expanded ML-KEM and X25519 private state hidden inside Go's HPKE implementation cannot be cleared through these
+APIs. Dropping references does not guarantee physical erasure of those copies.
 
 ### 9.6 SSH agent (MVP)
 

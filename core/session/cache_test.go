@@ -473,3 +473,53 @@ func TestExisting128MiBAccountStillUnlocksOnlineAndOffline(t *testing.T) {
 	}
 	offline.Lock()
 }
+
+type failingAccountCache struct {
+	Cache
+	saveError error
+}
+
+func (accountCache *failingAccountCache) SaveAccount(account *apitypes.Account) error {
+	if accountCache.saveError != nil {
+		return accountCache.saveError
+	}
+	return accountCache.Cache.SaveAccount(account)
+}
+
+func TestAttachCacheWaitsForSavedAccount(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	testCache := openTestCache(t)
+	ctx := context.Background()
+	unlocked, err := Unlock(ctx, account.apiClient, nil, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlocked.Lock()
+	saveError := errors.New("account could not be saved")
+	accountCache := &failingAccountCache{Cache: testCache, saveError: saveError}
+	if err := unlocked.AttachCache(ctx, accountCache); !errors.Is(err, saveError) {
+		t.Fatalf("cache attachment error = %v", err)
+	}
+	if unlocked.Cache != nil {
+		t.Error("a cache with no saved account was attached")
+	}
+	if _, err := unlocked.ListVaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if vaults, err := testCache.ListVaults(); err != nil || len(vaults) != 0 {
+		t.Errorf("failed attachment wrote unbound vault rows: %d, %v", len(vaults), err)
+	}
+	accountCache.saveError = nil
+	if err := unlocked.AttachCache(ctx, accountCache); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := unlocked.ListVaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if cached, err := testCache.LoadAccount(account.secretKey.AccountID); err != nil || cached == nil {
+		t.Errorf("successful attachment did not save the account: %v", err)
+	}
+	if vaults, err := testCache.ListVaults(); err != nil || len(vaults) != 1 {
+		t.Errorf("successful attachment did not cache vaults: %d, %v", len(vaults), err)
+	}
+}

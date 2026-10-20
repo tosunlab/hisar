@@ -246,6 +246,9 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			}
 		}
 	})
+	mux.HandleFunc("POST /api/v1/auth/logout", func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	})
 	server.addSharingRoutes(mux)
 	server.addApprovalRoutes(mux)
 	server.addVaultManagementRoutes(mux)

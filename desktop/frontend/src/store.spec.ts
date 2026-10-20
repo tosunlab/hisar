@@ -1,3 +1,4 @@
+import type { CredentialChangeResult, SignUpResult } from "./api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   allTestVault,
@@ -109,6 +110,27 @@ describe("store", () => {
     api.changeMasterPassword.mockResolvedValue(result);
     expect(await storeModule.changeMasterPassword("old password", "new password")).toEqual(result);
     expect(store.errorMessage).toBe(result.localError);
+  });
+
+  it("hides the new account's Secret Key when Hisar locks before it was confirmed", async () => {
+    api.signUp.mockResolvedValue({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+    api.listAllVault.mockResolvedValue([allTestVault[0]]);
+    api.listAllItem.mockResolvedValue([]);
+    await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
+    api.getStatus.mockResolvedValue(createStatus("locked"));
+    await storeModule.handleLocked();
+    expect(store.pendingSecretKey).toBe("");
+  });
+
+  it("shows sign-in and the error when signing out could not reach the server", async () => {
+    store.status = createStatus("unlocked");
+    store.selectedItem = createItem({ password: "secret" });
+    api.signOut.mockRejectedValue(new Error("signed out here, but Hisar could not reach the server to end this device's session there"));
+    api.getStatus.mockResolvedValue(createStatus("signed-out"));
+    await storeModule.signOut();
+    expect(store.status.state).toBe("signed-out");
+    expect(store.selectedItem).toBeNull();
+    expect(store.errorMessage).toContain("could not reach the server");
   });
 
   it("drops all vault data when the backend reports it is locked", async () => {
@@ -446,4 +468,33 @@ describe("sharing, people and devices", () => {
     expect(store.shareInvitations).toEqual({ received: [], sent: [], completionError: "" });
     expect(store.allDevice).toEqual([]);
   });
+});
+
+it("judge refuses a sign-up Secret Key response that arrives after lock", async () => {
+  resetStore();
+  const { promise, resolve: finish } = Promise.withResolvers<SignUpResult>();
+  api.signUp.mockImplementation(() => promise);
+  api.listAllVault.mockResolvedValue([allTestVault[0]]);
+  api.listAllItem.mockResolvedValue([]);
+  const pending = storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
+  api.getStatus.mockResolvedValue(createStatus("locked"));
+  await storeModule.handleLocked();
+  finish({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+  await pending;
+  expect(store.pendingSecretKey).toBe("");
+  expect(store.status.state).toBe("locked");
+});
+
+it("refuses a replacement Secret Key response that arrives after lock", async () => {
+  resetStore();
+  store.status = createStatus("unlocked");
+  const { promise, resolve: finish } = Promise.withResolvers<CredentialChangeResult>();
+  api.replaceSecretKey.mockImplementation(() => promise);
+  const pending = storeModule.replaceSecretKey("password");
+  api.getStatus.mockResolvedValue(createStatus("locked"));
+  await storeModule.handleLocked();
+  finish({ status: createStatus("unlocked"), secretKey: "H1-REPLACEMENT", signedOutDeviceCount: 1, keychainError: "" });
+  expect(await pending).toBeUndefined();
+  expect(store.pendingSecretKey).toBe("");
+  expect(store.status.state).toBe("locked");
 });

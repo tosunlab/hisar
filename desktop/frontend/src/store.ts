@@ -173,7 +173,7 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
   } catch (error) {
     store.errorMessage = getErrorMessage(error);
     if (store.errorMessage === "Hisar is locked") {
-      clearAllVaultData();
+      clearLockedVaultData();
       store.status = { ...store.status, state: "locked" };
     }
     return undefined;
@@ -216,10 +216,22 @@ function clearAllVaultData(): void {
   store.selectedTag = "";
 }
 
+let sessionGeneration = 0;
+
+// clearLockedVaultData also hides a new Secret Key not yet confirmed: the session that made it ended.
+function clearLockedVaultData(): void {
+  sessionGeneration++;
+  store.pendingSecretKey = "";
+  store.isTouchIDOfferShown = false;
+  clearAllVaultData();
+}
+
 async function applyStatus(status: Status): Promise<void> {
   store.status = status;
   if (status.state === "unlocked" && !status.updateRequired) {
     await loadAllVault();
+  } else if (status.state !== "unlocked") {
+    clearLockedVaultData();
   } else {
     clearAllVaultData();
   }
@@ -275,7 +287,11 @@ export async function takePendingInviteQuietly(): Promise<void> {
 }
 
 export async function signIn(server: string, email: string, secretKey: string, password: string): Promise<boolean> {
+  const generation = ++sessionGeneration;
   const status = await runAction(() => api.signIn(server, email, secretKey, password));
+  if (generation !== sessionGeneration) {
+    return false;
+  }
   if (status) {
     await applyStatus(status);
   }
@@ -283,7 +299,11 @@ export async function signIn(server: string, email: string, secretKey: string, p
 }
 
 export async function signUp(invite: string, email: string, name: string, password: string): Promise<boolean> {
+  const generation = ++sessionGeneration;
   const result = await runAction(() => api.signUp(invite, email, name, password));
+  if (generation !== sessionGeneration) {
+    return false;
+  }
   if (result) {
     store.pendingSecretKey = result.secretKey;
     await applyStatus(result.status);
@@ -393,6 +413,7 @@ export async function disableBiometricUnlock(): Promise<void> {
 }
 
 export async function lock(): Promise<void> {
+  clearLockedVaultData();
   const status = await runAction(() => api.lock());
   if (status) {
     await applyStatus(status);
@@ -401,7 +422,7 @@ export async function lock(): Promise<void> {
 
 // The backend also sends "locked" when the server signed this device out, so the screen follows the status it reports.
 export async function handleLocked(): Promise<void> {
-  clearAllVaultData();
+  clearLockedVaultData();
   store.status = { ...store.status, state: "locked" };
   store.errorMessage = "";
   let status: Status | undefined;
@@ -416,15 +437,18 @@ export async function handleLocked(): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  clearLockedVaultData();
   const status = await runAction(() => api.signOut());
-  if (status) {
-    store.pendingSecretKey = "";
-    await applyStatus(status);
-  }
+  // A sign-out that reports an error still ended the session on this device.
+  await applyStatus(status ?? (await api.getStatus().catch(() => store.status)));
 }
 
 export async function changeMasterPassword(currentPassword: string, newPassword: string): Promise<CredentialChangeResult | undefined> {
+  const generation = sessionGeneration;
   const result = await runAction(() => api.changeMasterPassword(currentPassword, newPassword));
+  if (generation !== sessionGeneration) {
+    return undefined;
+  }
   if (result) {
     store.status = result.status;
     store.errorMessage = result.localError;
@@ -433,7 +457,11 @@ export async function changeMasterPassword(currentPassword: string, newPassword:
 }
 
 export async function replaceSecretKey(password: string): Promise<CredentialChangeResult | undefined> {
+  const generation = sessionGeneration;
   const result = await runAction(() => api.replaceSecretKey(password));
+  if (generation !== sessionGeneration) {
+    return undefined;
+  }
   if (result) {
     store.status = result.status;
     store.errorMessage = result.localError;
@@ -452,7 +480,6 @@ export async function loadAccountDeletionPreview(): Promise<AccountDeletionPrevi
 export async function deleteAccount(password: string, email: string): Promise<boolean> {
   const status = await runAction(() => api.deleteAccount(password, email));
   if (status) {
-    store.pendingSecretKey = "";
     await applyStatus(status);
     showNotice("Your account was deleted");
   }

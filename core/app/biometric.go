@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -21,6 +22,14 @@ func buildBiometricContext(accountID string) []byte {
 	return []byte("hisar/v1/biometric-unlock:" + accountID)
 }
 
+const biometricClockRollbackTolerance = 5 * time.Minute
+
+type biometricPasswordClock struct {
+	highestObserved time.Time
+	deadline        time.Time
+	isExpired       bool
+}
+
 // isBiometricReady requires a master password unlock since launch and within the configured interval.
 func (s *Service) isBiometricReady() bool {
 	if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() || len(s.state.BiometricUnlock) == 0 {
@@ -29,12 +38,31 @@ func (s *Service) isBiometricReady() bool {
 	if !s.hasPasswordUnlockSinceLaunch && !s.config.IsBiometricAllowedAfterLaunch {
 		return false
 	}
-	return s.config.Now().Sub(s.state.LastPasswordUnlockAt) < s.config.BiometricPasswordInterval
+	now := s.config.Now()
+	elapsed := now.Sub(s.state.LastPasswordUnlockAt)
+	clock := &s.biometricClock
+	if clock.deadline.IsZero() {
+		clock.deadline = now.Add(s.config.BiometricPasswordInterval - elapsed)
+	}
+	if (!clock.highestObserved.IsZero() && now.UTC().Before(clock.highestObserved.UTC().Add(-biometricClockRollbackTolerance))) ||
+		elapsed < 0 || elapsed >= s.config.BiometricPasswordInterval || !now.Before(clock.deadline) {
+		clock.isExpired = true
+	}
+	if now.UTC().After(clock.highestObserved.UTC()) {
+		clock.highestObserved = now
+	}
+	if clock.isExpired && !s.state.LastPasswordUnlockAt.IsZero() {
+		s.state.LastPasswordUnlockAt = time.Time{}
+		s.state.Save()
+	}
+	return !clock.isExpired
 }
 
 func (s *Service) recordPasswordUnlock() {
 	s.hasPasswordUnlockSinceLaunch = true
-	s.state.LastPasswordUnlockAt = s.config.Now().UTC()
+	now := s.config.Now()
+	s.biometricClock = biometricPasswordClock{highestObserved: now, deadline: now.Add(s.config.BiometricPasswordInterval)}
+	s.state.LastPasswordUnlockAt = now.UTC()
 	s.state.Save()
 }
 
@@ -146,13 +174,14 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 		return Status{}, ErrBiometricNotReady
 	}
 	server, token, accountID, sealedUnlockKey := s.state.Server, s.state.Token, s.state.AccountID, s.state.BiometricUnlock
+	epoch := s.sessionEpoch
 	accountCache := s.getCache()
 	preparer := s.config.BiometricKeyPreparer
 	s.mutex.Unlock()
 
 	if preparer != nil {
 		if err := preparer.PrepareLoadKey(accountID); err != nil {
-			return Status{}, s.resetBiometricAfterFailure(fmt.Errorf("the biometric unlock key can no longer be used: %w", err))
+			return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the biometric unlock key can no longer be used: %w", err))
 		}
 	}
 	if err := authenticate(); err != nil {
@@ -160,12 +189,12 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 	}
 	wrappingKey, err := s.config.Biometric.LoadKey(accountID)
 	if err != nil {
-		return Status{}, s.resetBiometricAfterFailure(fmt.Errorf("the %s key is missing: %w", s.config.BiometricName, err))
+		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key is missing: %w", s.config.BiometricName, err))
 	}
 	defer clear(wrappingKey)
 	accountUnlockKey, err := crypt.Open(wrappingKey, sealedUnlockKey, buildBiometricContext(accountID))
 	if err != nil {
-		return Status{}, s.resetBiometricAfterFailure(fmt.Errorf("the %s key does not match", s.config.BiometricName))
+		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, fmt.Errorf("the %s key does not match", s.config.BiometricName))
 	}
 	defer clear(accountUnlockKey)
 
@@ -179,7 +208,7 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 		return s.GetStatus(), nil
 	}
 	if errors.Is(err, session.ErrBadCredentials) {
-		return Status{}, s.resetBiometricAfterFailure(errors.New("your master password changed"))
+		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, errors.New("your master password changed"))
 	}
 	if err != nil {
 		return Status{}, convertError(err)
@@ -187,14 +216,20 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.lockSession()
-	s.openSession(unlocked)
+	if err := s.openUnlockedSession(unlocked, epoch); err != nil {
+		return s.buildStatus(), err
+	}
 	return s.buildStatus(), nil
 }
 
-func (s *Service) resetBiometricAfterFailure(cause error) error {
+// resetBiometricAfterFailure turns off the biometric unlock that failed, sealedUnlockKey of accountID, unless another
+// account or a newer setup replaced it meanwhile.
+func (s *Service) resetBiometricAfterFailure(accountID string, sealedUnlockKey []byte, cause error) error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if s.state.AccountID != accountID || !bytes.Equal(s.state.BiometricUnlock, sealedUnlockKey) {
+		return errUnlockInterrupted
+	}
 	s.forgetBiometricUnlock()
 	s.state.Save()
 	return fmt.Errorf("%v; %s unlock was turned off, unlock with your master password and turn it on again", cause, s.config.BiometricName)

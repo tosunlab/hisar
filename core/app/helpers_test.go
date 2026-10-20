@@ -2,19 +2,25 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/bytemare/opaque"
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -86,6 +92,38 @@ func (store *memorySecretKeyStore) DeleteSecretKey(accountID string) error {
 	defer store.mutex.Unlock()
 	delete(store.byAccountID, accountID)
 	return nil
+}
+
+// pause holds the first call that reaches it until the test resumes it, so the test can end or switch the session
+// while work that released the mutex is in flight.
+type pause struct {
+	isUsed  atomic.Bool
+	reached chan struct{}
+	resume  chan struct{}
+}
+
+func newPause() *pause {
+	return &pause{reached: make(chan struct{}), resume: make(chan struct{})}
+}
+
+func (p *pause) wait() {
+	if p.isUsed.Swap(true) {
+		return
+	}
+	close(p.reached)
+	<-p.resume
+}
+
+// pausingSecretKeyStore pauses right after it loads a Secret Key.
+type pausingSecretKeyStore struct {
+	SecretKeyStore
+	pause *pause
+}
+
+func (store pausingSecretKeyStore) LoadSecretKey(accountID string) (crypt.SecretKey, error) {
+	secretKey, err := store.SecretKeyStore.LoadSecretKey(accountID)
+	store.pause.wait()
+	return secretKey, err
 }
 
 type fakeFileSaver struct {
@@ -306,4 +344,66 @@ func getCachedItem(t *testing.T, service *Service, vaultID, itemID string) item.
 		t.Fatal(err)
 	}
 	return *cachedItem
+}
+
+func startRegistrationServerWithVaults(t *testing.T) string {
+	t.Helper()
+	configuration := pake.NewConfig()
+	privateKey, publicKey := configuration.KeyGen()
+	opaqueServer, err := configuration.Server()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := opaqueServer.SetKeyMaterial(&opaque.ServerKeyMaterial{
+		PrivateKey: privateKey, PublicKeyBytes: publicKey.Encode(),
+		OPRFGlobalSeed: configuration.GenerateOPRFSeed(), Identity: pake.ServerIdentity(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	api := &fakeAPIServer{
+		itemsByVaultID:    map[string]map[string]apitypes.Item{},
+		accessesByVaultID: map[string][]apitypes.RotatedAccess{},
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/", api.createHandler())
+	mux.HandleFunc("POST /api/v1/auth/register/start", func(writer http.ResponseWriter, request *http.Request) {
+		var startRequest apitypes.RegisterStartRequest
+		if err := json.NewDecoder(request.Body).Decode(&startRequest); err != nil {
+			t.Error(err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		registrationRequest, err := opaqueServer.Deserialize.RegistrationRequest(startRequest.Request)
+		if err != nil {
+			t.Error(err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		response, err := opaqueServer.RegistrationResponse(registrationRequest, []byte(startRequest.AccountID), nil)
+		if err != nil {
+			t.Error(err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		writeJSON(writer, http.StatusOK, apitypes.RegisterStartResponse{Response: response.Serialize()})
+	})
+	mux.HandleFunc("POST /api/v1/auth/register/finish", func(writer http.ResponseWriter, request *http.Request) {
+		var finishRequest apitypes.RegisterFinishRequest
+		if err := json.NewDecoder(request.Body).Decode(&finishRequest); err != nil {
+			t.Error(err)
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		api.mutex.Lock()
+		api.accountID = finishRequest.AccountID
+		api.account = &apitypes.Account{
+			AccountID: finishRequest.AccountID, Email: finishRequest.Email, Name: finishRequest.Name,
+			Salt: finishRequest.Salt, Argon2: finishRequest.Argon2, EncKeyset: finishRequest.EncKeyset, PublicKeys: finishRequest.PublicKeys,
+		}
+		api.mutex.Unlock()
+		writeJSON(writer, http.StatusOK, apitypes.SessionResponse{Token: "new-token", AccountID: finishRequest.AccountID})
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server.URL
 }
