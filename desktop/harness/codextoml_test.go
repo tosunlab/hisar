@@ -122,6 +122,7 @@ func TestSetCodexServerRefusesWhatItCannotRead(t *testing.T) {
 		{"a backslash that ends a key", "\"model\\", "Codex's config.toml is not valid TOML at line 1: a string that is not closed"},
 		{"a backslash that ends an array", "args = [\n\"mcp\\", "Codex's config.toml is not valid TOML at line 2: a string that is not closed"},
 		{"a backslash that ends a multi-line string", "notes = \"\"\"\nline\\", "Codex's config.toml is not valid TOML at line 2: a multi-line string that is not closed"},
+		{"a carriage return without a line feed", "model = 1\r", "Codex's config.toml is not valid TOML at line 1: unexpected '\\r'"},
 		{"a key without a value", "model\n", "Codex's config.toml is not valid TOML at line 1: a key without \"=\""},
 		{"text after a table name", "[mcp_servers] model\n", "Codex's config.toml is not valid TOML at line 1: unexpected 'm'"},
 		{"servers on one line", "mcp_servers = { github = { command = \"gh\" } }\n", errCodexLayout.Error()},
