@@ -49,7 +49,8 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 		peer.Name = localsocket.UnknownPeerName
 	}
 	if peer.AgentSession != nil {
-		s.joinAgentSession(ctx, *peer.AgentSession)
+		stopEndingWithSession := context.AfterFunc(peer.AgentSession.Context(), cancel)
+		defer stopEndingWithSession()
 	}
 	reader := localsocket.WatchConnectionClose(connection, cancel)
 	agent.ServeAgent(s.CreateAgent(connectionContext, peer), struct {

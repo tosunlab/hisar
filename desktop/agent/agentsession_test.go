@@ -28,14 +28,19 @@ func (hosts fakeAgentHosts) RecordAgentHost(app clisocket.AppIdentity) { hosts[a
 
 var ternIdentity = clisocket.AppIdentity{Path: ternBundlePath, TeamID: "VTLHGQC72S"}
 
-// sshPeerTest is ssh (PID 4242) in Tern, with the chain, terminal and agent hosts each case sets.
+// sshPeerTest is ssh (PID 4242) in Tern, with the chain, terminal and agent hosts each case sets; sessions are the live
+// agent sessions it joins.
 type sshPeerTest struct {
 	chain       agentharness.Chain
 	hasTerminal bool
 	agentHosts  fakeAgentHosts
+	sessions    *agentharness.Sessions
 }
 
 func (test *sshPeerTest) createResolver() PeerResolver {
+	if test.sessions == nil {
+		test.sessions = agentharness.NewSessions(nil)
+	}
 	return PeerResolver{
 		Base:        fixedPeerResolver{peer: localsocket.PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh"}},
 		Resolve:     func(int) appinfo.Requester { return createTernRequester(nil) },
@@ -44,7 +49,8 @@ func (test *sshPeerTest) createResolver() PeerResolver {
 		IdentifyApp: func(requester appinfo.Requester) (clisocket.AppIdentity, bool) {
 			return clisocket.AppIdentity{Path: requester.App.Path, TeamID: requester.App.Signature.TeamID}, requester.App.Path != ""
 		},
-		AgentHosts: test.agentHosts,
+		AgentHosts:    test.agentHosts,
+		AgentSessions: test.sessions,
 	}
 }
 
@@ -66,17 +72,25 @@ func createTernChain(isUnderOmp bool) agentharness.Chain {
 	return agentharness.Chain{Processes: processes, IsKnown: true}
 }
 
+// TestPeerResolverFindsTheAgentSession: ssh inside omp joins omp's live session, which Settings lists with the app it
+// runs in, as it lists a session that used the command-line socket.
 func TestPeerResolverFindsTheAgentSession(t *testing.T) {
 	test := &sshPeerTest{chain: createTernChain(true), agentHosts: fakeAgentHosts{}}
 	peer, err := test.createResolver().ResolvePeer(nil)
-	if err != nil || peer.AgentSession == nil || peer.AgentSession.PID != 1217 || peer.AgentSession.StartTime != 10 || peer.AgentSession.Harness.Name != "omp" {
+	if err != nil || peer.AgentSession == nil {
 		t.Fatalf("peer = %+v, %v", peer, err)
+	}
+	if session := peer.AgentSession.Session; session.PID != 1217 || session.StartTime != 10 || session.Harness.Name != "omp" {
+		t.Errorf("session = %+v", session)
 	}
 	if peer.ApplicationPath != ternBundlePath || peer.Path != "/usr/bin/ssh" || peer.IsNeverRemembered {
 		t.Errorf("peer = %+v", peer)
 	}
 	if !test.agentHosts[ternIdentity] {
 		t.Error("Tern was not recorded as an app that hosted an agent session")
+	}
+	if sessions := test.sessions.List(); len(sessions) != 1 || sessions[0] != peer.AgentSession || sessions[0].Host != ternBundlePath {
+		t.Errorf("live sessions %+v", sessions)
 	}
 }
 
@@ -111,7 +125,7 @@ func TestPeerResolverKeepsTheBaseError(t *testing.T) {
 }
 
 func TestMissingAgentKeyNotification(t *testing.T) {
-	title, text := DescribeMissingAgentKey(*ompInPaneA)
+	title, text := DescribeMissingAgentKey(ompInPaneA.Session)
 	if message := title + " " + text; message != "omp asked for an SSH key. No key is in a vault open to coding agents." {
 		t.Errorf("notification = %q", message)
 	}

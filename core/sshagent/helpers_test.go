@@ -52,9 +52,9 @@ func (resolver *fakePeerResolver) setTernPeer(session *agentharness.Session, isN
 	defer resolver.mutex.Unlock()
 	resolver.peer = Peer{
 		PeerInfo:          localsocket.PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh", ApplicationPath: ternPath},
-		AgentSession:      session,
 		IsNeverRemembered: isNeverRemembered,
 	}
+	resolver.agentSession = session
 }
 
 // setClock makes the agent read the time from the returned clock, which advance moves on.

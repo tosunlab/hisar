@@ -56,16 +56,23 @@ type fakeApprover struct {
 	isRemembered bool
 	requests     []ApprovalRequest
 	onApprove    func()
+	// cancelled, when set, holds every approval until its request is cancelled, then is closed.
+	cancelled chan struct{}
 }
 
 func (approver *fakeApprover) Approve(ctx context.Context, request ApprovalRequest) (ApprovalResult, error) {
 	approver.mutex.Lock()
 	approver.requests = append(approver.requests, request)
 	result := ApprovalResult{IsAllowed: approver.isApproving, IsRemembered: approver.isRemembered}
-	onApprove := approver.onApprove
+	onApprove, cancelled := approver.onApprove, approver.cancelled
 	approver.mutex.Unlock()
 	if onApprove != nil {
 		onApprove()
+	}
+	if cancelled != nil {
+		<-ctx.Done()
+		close(cancelled)
+		return ApprovalResult{}, ctx.Err()
 	}
 	return result, nil
 }
@@ -92,21 +99,29 @@ func (approver *fakeApprover) getLastRequest(t *testing.T) ApprovalRequest {
 	return approver.requests[len(approver.requests)-1]
 }
 
+// fakePeerResolver resolves every connection to peer, inside agentSession when it is set, joining it in sessions as the
+// desktop's resolver does.
 type fakePeerResolver struct {
-	mutex sync.Mutex
-	peer  Peer
+	mutex        sync.Mutex
+	peer         Peer
+	agentSession *agentharness.Session
+	sessions     *agentharness.Sessions
 }
 
 func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (Peer, error) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
-	return resolver.peer, nil
+	peer := resolver.peer
+	if resolver.agentSession != nil {
+		peer.AgentSession = resolver.sessions.Join(*resolver.agentSession, ternPath)
+	}
+	return peer, nil
 }
 
 func (resolver *fakePeerResolver) setPath(path string) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
-	resolver.peer = Peer{PeerInfo: localsocket.PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path)}}
+	resolver.peer, resolver.agentSession = Peer{PeerInfo: localsocket.PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path)}}, nil
 }
 
 type agentFixture struct {
@@ -139,7 +154,7 @@ func startAgent(t *testing.T, keys []Key) *agentFixture {
 	fixture := &agentFixture{
 		source:   &fakeKeySource{keys: keys},
 		approver: &fakeApprover{isApproving: true, isRemembered: true},
-		resolver: &fakePeerResolver{},
+		resolver: &fakePeerResolver{sessions: agentharness.NewSessions(nil)},
 		keys:     keys,
 	}
 	fixture.resolver.setPath("/usr/bin/ssh")
@@ -1016,7 +1031,7 @@ func TestAgentSessionApprovalCoversOnlyThatSession(t *testing.T) {
 	}
 	connect(nil, 1)
 	connect(&paneA, 2)
-	if request := fixture.approver.getLastRequest(t); request.AgentSession == nil || request.AgentSession.PID != paneA.PID || !request.IsRememberable {
+	if request := fixture.approver.getLastRequest(t); request.AgentSession == nil || request.AgentSession.Session.PID != paneA.PID || !request.IsRememberable {
 		t.Errorf("request = %+v, want remembered for omp in pane A", request)
 	}
 	connect(&paneA, 2)
@@ -1043,8 +1058,9 @@ func TestAgentSessionApprovalEndsWithTheHarness(t *testing.T) {
 	connect(1)
 	connect(1)
 	stop()
-	connect(2)
-	connect(3)
+	if err := fixture.connectSSH(t, address); err == nil {
+		t.Error("signed for omp after it exited")
+	}
 	deadline := time.Now().Add(5 * time.Second)
 	for fixture.countAgentSessionApprovals() != 0 {
 		if time.Now().After(deadline) {
@@ -1146,7 +1162,7 @@ func TestAgentSessionWithoutAgentKeyIsToldOnce(t *testing.T) {
 	list(nil, 1)
 	list(&paneA, 0)
 	list(&paneA, 0)
-	if _, err := fixture.server.CreateAgent(context.Background(), Peer{AgentSession: &paneA}).Sign(getPublicKey(t, key), []byte("data")); !errors.Is(err, ErrKeyNotFound) {
+	if _, err := fixture.server.CreateAgent(context.Background(), Peer{AgentSession: fixture.resolver.sessions.Join(paneA, ternPath)}).Sign(getPublicKey(t, key), []byte("data")); !errors.Is(err, ErrKeyNotFound) {
 		t.Errorf("omp signed with a key outside the vaults open to agents: %v", err)
 	}
 	list(&paneB, 0)

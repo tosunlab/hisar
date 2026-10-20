@@ -141,9 +141,12 @@ func createTerminalRequester(processes []appinfo.Process) appinfo.Requester {
 
 const ternBundlePath = "/Applications/Tern.app"
 
+// ompInPaneA and ompInPaneB are two live sessions of omp in Tern; their processes do not run, which the approver never
+// checks.
 var (
-	ompInPaneA = &agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1217, StartTime: 1_760_000_000_000_000}
-	ompInPaneB = &agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1388, StartTime: 1_760_000_100_000_000}
+	testAgentSessions = agentharness.NewSessions(nil)
+	ompInPaneA        = testAgentSessions.Join(agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1217, StartTime: 1_760_000_000_000_000}, ternBundlePath)
+	ompInPaneB        = testAgentSessions.Join(agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1388, StartTime: 1_760_000_100_000_000}, ternBundlePath)
 )
 
 func createTernRequester(processes []appinfo.Process) appinfo.Requester {

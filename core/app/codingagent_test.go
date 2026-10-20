@@ -5,16 +5,22 @@ import (
 	"errors"
 	"net"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
+	"golang.org/x/crypto/ssh"
+	sshprotocol "golang.org/x/crypto/ssh/agent"
+
 	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/core/sshagent"
 )
 
 func TestVaultAvailableToAgentsIsSavedAndOffByDefault(t *testing.T) {
@@ -202,13 +208,15 @@ func (resolver *ternResolver) setInsideOmp(isInsideOmp bool) {
 }
 
 // agentSessionTest is the app's CLI socket for callers in Tern, inside an omp that is this test process, so it keeps
-// running. Personal holds "Deploy token" and is available to agents.
+// running. Personal holds "Deploy token" and is available to agents. sessions are the live agent sessions the CLI
+// socket shares with an SSH agent.
 type agentSessionTest struct {
 	testService         unlockedTestService
 	server              *clisocket.Server
 	resolver            *ternResolver
 	agentApprover       *approvingAgentApprover
 	commandLineApprover *countingApprover
+	sessions            *agentharness.Sessions
 }
 
 const deployTokenReference = "hisar://Personal/Deploy%20token/password"
@@ -233,8 +241,9 @@ func createAgentSessionTest(t *testing.T, isRemembered bool) *agentSessionTest {
 	test := &agentSessionTest{
 		testService: testService, resolver: &ternResolver{omp: omp, isInsideOmp: true},
 		agentApprover: &approvingAgentApprover{isRemembered: isRemembered}, commandLineApprover: &countingApprover{},
+		sessions: agentharness.NewSessions(nil),
 	}
-	approvals := clisocket.NewSessionApprovals(0, nil, nil)
+	approvals := clisocket.NewSessionApprovals(0, nil, test.sessions)
 	bridge := NewCommandLineBridge(testService.service, approvals)
 	test.server = clisocket.NewServer(clisocket.ServerConfig{
 		Handler: bridge, Approver: test.commandLineApprover, AgentApprover: test.agentApprover, Approvals: approvals, AgentHosts: bridge,
@@ -319,6 +328,90 @@ func TestRevokeAgentSessionAsksAgain(t *testing.T) {
 	}
 	if sessions := service.ListAgentSessions(); len(sessions) != 1 || sessions[0].PID != omp.PID {
 		t.Errorf("the next request did not start a session: %+v", sessions)
+	}
+}
+
+// ompSSHResolver resolves every SSH agent connection to ssh inside omp, joining omp's live session as the desktop's
+// resolver does.
+type ompSSHResolver struct {
+	test *agentSessionTest
+}
+
+func (resolver ompSSHResolver) ResolvePeer(net.Conn) (sshagent.Peer, error) {
+	omp := resolver.test.resolver.omp
+	return sshagent.Peer{
+		PeerInfo:     localsocket.PeerInfo{PID: omp.PID, Name: "ssh", Path: "/usr/bin/ssh", ApplicationPath: ternApp.Path},
+		AgentSession: resolver.test.sessions.Join(omp, ternApp.Path),
+	}, nil
+}
+
+// startSSHAgent serves an SSH agent that shares the CLI socket's live agent sessions, and returns a function that signs
+// with the key over a new connection.
+func (test *agentSessionTest) startSSHAgent(t *testing.T, approver sshagent.Approver, resolver sshagent.PeerResolver, key ssh.PublicKey) func() error {
+	t.Helper()
+	server := sshagent.NewServer(NewSSHKeySource(test.testService.service), approver, resolver)
+	directory, err := os.MkdirTemp("/tmp", "hisar-app-ssh-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.RemoveAll(directory) })
+	listener, err := localsocket.ListenUnixSocket(filepath.Join(directory, "agent.sock"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	t.Cleanup(cancel)
+	go server.Serve(ctx, listener)
+	return func() error {
+		connection, err := net.Dial("unix", listener.Addr().String())
+		if err != nil {
+			return err
+		}
+		defer connection.Close()
+		_, err = sshprotocol.NewClient(connection).Sign(key, []byte("auth"))
+		return err
+	}
+}
+
+func (test *agentSessionTest) generateDeployKey(t *testing.T) ssh.PublicKey {
+	t.Helper()
+	generated, err := test.testService.service.GenerateSSHKey(test.testService.personalID, "Deploy key", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, _, _, _, err := ssh.ParseAuthorizedKey([]byte(generated.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return key
+}
+
+// TestRevokeAgentSessionEndsItsSSHApprovals: an omp that only used SSH is listed in Settings, and revoking it there
+// ends the SSH approval it remembered, as for the command line.
+func TestRevokeAgentSessionEndsItsSSHApprovals(t *testing.T) {
+	test := createAgentSessionTest(t, true)
+	service := test.testService.service
+	approver := &recordingApprover{isAllowed: true, isRemembered: true}
+	sign := test.startSSHAgent(t, approver, ompSSHResolver{test}, test.generateDeployKey(t))
+	for range 2 {
+		if err := sign(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if count := approver.countRequest(); count != 1 {
+		t.Fatalf("%d SSH approvals; the remembered one asked again", count)
+	}
+	omp := test.resolver.omp
+	if sessions := service.ListAgentSessions(); len(sessions) != 1 || sessions[0].PID != omp.PID || sessions[0].HostName != "Tern" {
+		t.Fatalf("Settings lists %+v for an omp that used SSH", sessions)
+	}
+
+	service.RevokeAgentSession(omp.PID, omp.StartTime)
+	if err := sign(); err != nil {
+		t.Fatal(err)
+	}
+	if count := approver.countRequest(); count != 2 {
+		t.Errorf("SSH reused a grant after Settings revoked its session; %d approvals, want 2", count)
 	}
 }
 

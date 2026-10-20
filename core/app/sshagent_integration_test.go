@@ -21,10 +21,11 @@ import (
 
 // recordingApprover stands in for the approval window; with unlock set, it unlocks Hisar for requests that need it.
 type recordingApprover struct {
-	mutex     sync.Mutex
-	isAllowed bool
-	unlock    func() error
-	requests  []sshagent.ApprovalRequest
+	mutex        sync.Mutex
+	isAllowed    bool
+	isRemembered bool
+	unlock       func() error
+	requests     []sshagent.ApprovalRequest
 }
 
 func (approver *recordingApprover) Approve(ctx context.Context, request sshagent.ApprovalRequest) (sshagent.ApprovalResult, error) {
@@ -36,7 +37,7 @@ func (approver *recordingApprover) Approve(ctx context.Context, request sshagent
 			return sshagent.ApprovalResult{}, err
 		}
 	}
-	return sshagent.ApprovalResult{IsAllowed: approver.isAllowed}, nil
+	return sshagent.ApprovalResult{IsAllowed: approver.isAllowed, IsRemembered: approver.isRemembered}, nil
 }
 
 func (approver *recordingApprover) getLastRequest() sshagent.ApprovalRequest {

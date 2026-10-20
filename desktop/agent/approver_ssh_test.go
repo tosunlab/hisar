@@ -56,11 +56,11 @@ func createOmpSSHChain() []appinfo.Process {
 	return []appinfo.Process{
 		createSSHProcess("-T", "git@github.com"),
 		{PID: 1300, Path: "/bin/sh", Arguments: []string{"/bin/sh", "-c", "ssh -T git@github.com"}, WorkingDirectory: testRepositoryPath},
-		{PID: ompInPaneA.PID, Path: "/Users/developer/Library/Application Support/Tern/omp/versions/18.12.3", Arguments: []string{"omp"}, WorkingDirectory: testRepositoryPath},
+		{PID: ompInPaneA.Session.PID, Path: "/Users/developer/Library/Application Support/Tern/omp/versions/18.12.3", Arguments: []string{"omp"}, WorkingDirectory: testRepositoryPath},
 	}
 }
 
-func createOmpRequest(session *agentharness.Session) sshagent.ApprovalRequest {
+func createOmpRequest(session *agentharness.LiveSession) sshagent.ApprovalRequest {
 	request := createTestRequest()
 	request.ApplicationPath, request.AgentSession = ternBundlePath, session
 	return request

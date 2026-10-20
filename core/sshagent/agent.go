@@ -67,8 +67,9 @@ type ApprovalRequest struct {
 	IsRememberable           bool
 	// IsAlwaysAskKey marks a key set to ask every time, which the approver must not remember either.
 	IsAlwaysAskKey bool
-	// AgentSession is the agent harness the client runs inside; an approval is then remembered for that session only.
-	AgentSession *agentharness.Session
+	// AgentSession is the live agent session the client runs inside; an approval is then remembered for that session
+	// only, and ends with it.
+	AgentSession *agentharness.LiveSession
 	// IsNeverRemembered marks a client that no remembered approval covers (Peer).
 	IsNeverRemembered bool
 }
@@ -87,17 +88,17 @@ type Approver interface {
 // SetApprovalLifetime changes it, and a lifetime of 0 keeps approvals until ClearApprovals.
 const DefaultApprovalLifetime = time.Hour
 
-// approvalCacheKey is what a remembered approval covers: a key with an agent session, or with the app bundle the client
-// runs in, or the program when there is none.
+// approvalCacheKey is what a remembered approval covers: a key with a live agent session (its ID), or with the app
+// bundle the client runs in, or the program when there is none.
 type approvalCacheKey struct {
 	fingerprint  string
 	scope        string
-	agentSession agentSessionKey
+	agentSession uint64
 }
 
 func getApprovalCacheKey(request ApprovalRequest) approvalCacheKey {
 	if request.AgentSession != nil {
-		return approvalCacheKey{fingerprint: request.Fingerprint, agentSession: getAgentSessionKey(*request.AgentSession)}
+		return approvalCacheKey{fingerprint: request.Fingerprint, agentSession: request.AgentSession.ID}
 	}
 	if request.ApplicationPath != "" {
 		return approvalCacheKey{fingerprint: request.Fingerprint, scope: request.ApplicationPath}
@@ -106,7 +107,7 @@ func getApprovalCacheKey(request ApprovalRequest) approvalCacheKey {
 }
 
 func (cacheKey approvalCacheKey) isAgentSession() bool {
-	return cacheKey.agentSession != agentSessionKey{}
+	return cacheKey.agentSession != 0
 }
 
 type Server struct {
@@ -120,8 +121,8 @@ type Server struct {
 	approvalEpoch    uint64
 	alwaysAskKeyIDs  map[string]bool
 	knownHostsPaths  []string
-	// agentSessions holds the agent sessions whose harness still runs, from their first connection on.
-	agentSessions    map[agentSessionKey]*agentSessionState
+	// agentSessions holds the live agent sessions this agent saw a connection from, by ID, until they end.
+	agentSessions    map[uint64]*agentSessionState
 	notifyNoAgentKey func(session agentharness.Session)
 }
 
@@ -134,7 +135,7 @@ func NewServer(keySource KeySource, approver Approver, peerResolver PeerResolver
 		approvalLifetime: DefaultApprovalLifetime,
 		getNow:           time.Now,
 		alwaysAskKeyIDs:  map[string]bool{},
-		agentSessions:    map[agentSessionKey]*agentSessionState{},
+		agentSessions:    map[uint64]*agentSessionState{},
 	}
 }
 
@@ -183,7 +184,8 @@ func (s *Server) GetApprovalLifetime() time.Duration {
 // (GetAgentSession), so the key source offers it only the keys agents may use.
 func (s *Server) CreateAgent(ctx context.Context, peer Peer) agent.ExtendedAgent {
 	if peer.AgentSession != nil {
-		ctx = context.WithValue(ctx, agentSessionContextKey{}, *peer.AgentSession)
+		s.joinAgentSession(peer.AgentSession)
+		ctx = context.WithValue(ctx, agentSessionContextKey{}, peer.AgentSession.Session)
 	}
 	return &connectionAgent{server: s, ctx: ctx, peer: peer}
 }
@@ -226,7 +228,7 @@ func (s *Server) remember(request ApprovalRequest, epoch uint64) {
 	cacheKey := getApprovalCacheKey(request)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.approvalEpoch != epoch || (cacheKey.isAgentSession() && s.agentSessions[cacheKey.agentSession] == nil) {
+	if s.approvalEpoch != epoch || (request.AgentSession != nil && request.AgentSession.Context().Err() != nil) {
 		return
 	}
 	s.approvedAt[cacheKey] = s.getNow()
@@ -238,14 +240,13 @@ func (s *Server) getApprovalEpoch() uint64 {
 	return s.approvalEpoch
 }
 
-// requestApproval asks unless a remembered approval covers the request; an agent session's approval covers it only
-// while the session's harness still runs, which the exit watch may not have seen yet.
+// requestApproval asks unless a remembered approval covers the request.
 func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) error {
 	s.setRememberable(&request)
 	s.mutex.Lock()
 	isApproved := request.IsRememberable && s.isApprovalCurrent(getApprovalCacheKey(request))
 	s.mutex.Unlock()
-	if isApproved && (request.AgentSession == nil || agentharness.IsRunning(*request.AgentSession)) {
+	if isApproved {
 		return nil
 	}
 	result, epoch, err := s.askApprover(ctx, request)
@@ -320,7 +321,7 @@ func (connection *connectionAgent) listResolvedKeys() ([]resolvedKey, error) {
 		resolvedKeys = append(resolvedKeys, resolvedKey{key: key, signer: signer})
 	}
 	if len(resolvedKeys) == 0 && connection.peer.AgentSession != nil {
-		connection.server.notifyNoAgentKeyOnce(*connection.peer.AgentSession)
+		connection.server.notifyNoAgentKeyOnce(connection.peer.AgentSession)
 	}
 	return resolvedKeys, nil
 }
@@ -413,6 +414,11 @@ func (connection *connectionAgent) SignWithFlags(publicKey ssh.PublicKey, data [
 		}
 	} else if err := connection.server.requestApproval(connection.ctx, request); err != nil {
 		return nil, err
+	}
+	// The harness may have exited, or Settings revoked its session, while the dialog was open or before the exit watch
+	// saw it: an ended agent session signs nothing.
+	if live := connection.peer.AgentSession; live != nil && !live.IsRunning() {
+		return nil, ErrDenied
 	}
 	return signWithFlags(match.signer, data, flags)
 }

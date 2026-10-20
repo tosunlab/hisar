@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"errors"
+	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -332,10 +333,19 @@ func startAgentVaultKeys(t *testing.T) (test unlockedTestService, deployKey, per
 	return test, deployKey, personalKey
 }
 
-var ompSession = agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 4242, StartTime: 1}
+// joinOmp starts the live session of an omp that is this test process, so it keeps running, in sessions.
+func joinOmp(t *testing.T, sessions *agentharness.Sessions) *agentharness.LiveSession {
+	t.Helper()
+	instance, err := agentharness.ReadInstance(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return sessions.Join(agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: os.Getpid(), StartTime: instance.StartTime}, ternApp.Path)
+}
 
 func TestAgentSessionSeesOnlyAgentVaultKeys(t *testing.T) {
 	test, _, _ := startAgentVaultKeys(t)
+	omp := joinOmp(t, agentharness.NewSessions(nil))
 	agentServer := sshagent.NewServer(NewSSHKeySource(test.service), &recordingApprover{isAllowed: true}, nil)
 	listTitles := func(peer sshagent.Peer) []string {
 		t.Helper()
@@ -352,13 +362,13 @@ func TestAgentSessionSeesOnlyAgentVaultKeys(t *testing.T) {
 	if titles := listTitles(sshagent.Peer{}); !slices.Equal(titles, []string{"Personal key", "Deploy key"}) {
 		t.Errorf("the user's own ssh-add -l lists %q", titles)
 	}
-	if titles := listTitles(sshagent.Peer{AgentSession: &ompSession}); !slices.Equal(titles, []string{"Deploy key"}) {
+	if titles := listTitles(sshagent.Peer{AgentSession: omp}); !slices.Equal(titles, []string{"Deploy key"}) {
 		t.Errorf("omp's ssh-add -l lists %q", titles)
 	}
 	if _, err := test.service.SetVaultAvailableToAgents(test.familyID, false); err != nil {
 		t.Fatal(err)
 	}
-	if titles := listTitles(sshagent.Peer{AgentSession: &ompSession}); len(titles) != 0 {
+	if titles := listTitles(sshagent.Peer{AgentSession: omp}); len(titles) != 0 {
 		t.Errorf("omp lists %q with no vault open to coding agents", titles)
 	}
 }
@@ -366,7 +376,8 @@ func TestAgentSessionSeesOnlyAgentVaultKeys(t *testing.T) {
 func TestAgentSessionCannotSignWithAPrivateVaultKey(t *testing.T) {
 	test, deployKey, personalKey := startAgentVaultKeys(t)
 	approver := &recordingApprover{isAllowed: true}
-	ompAgent := sshagent.NewServer(NewSSHKeySource(test.service), approver, nil).CreateAgent(context.Background(), sshagent.Peer{AgentSession: &ompSession})
+	omp := joinOmp(t, agentharness.NewSessions(nil))
+	ompAgent := sshagent.NewServer(NewSSHKeySource(test.service), approver, nil).CreateAgent(context.Background(), sshagent.Peer{AgentSession: omp})
 	if _, err := ompAgent.Sign(personalKey, []byte("data")); !errors.Is(err, sshagent.ErrKeyNotFound) {
 		t.Errorf("signing with the Personal key: %v, want the error of a key the agent does not hold", err)
 	}
@@ -377,7 +388,7 @@ func TestAgentSessionCannotSignWithAPrivateVaultKey(t *testing.T) {
 	if err != nil || deployKey.Verify([]byte("data"), signature) != nil {
 		t.Fatalf("signing with the Deploy key: %v", err)
 	}
-	if request := approver.getLastRequest(); request.KeyTitle != "Deploy key" || request.AgentSession == nil || request.AgentSession.PID != ompSession.PID {
+	if request := approver.getLastRequest(); request.KeyTitle != "Deploy key" || request.AgentSession != omp {
 		t.Errorf("request = %+v", request)
 	}
 }

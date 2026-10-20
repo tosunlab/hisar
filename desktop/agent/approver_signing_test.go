@@ -227,7 +227,7 @@ func TestRememberedSigningExpires(t *testing.T) {
 func TestCommitSigningMemoryIsPerAgentSession(t *testing.T) {
 	test := createSigningTest(t, 600, nil)
 	test.change(func(test *signingTest) { test.requester = createTernRequester(createRebaseChain(testRepositoryPath)) })
-	fromTern := func(session *agentharness.Session, isNeverRemembered bool) sshagent.ApprovalRequest {
+	fromTern := func(session *agentharness.LiveSession, isNeverRemembered bool) sshagent.ApprovalRequest {
 		request := createSigningRequest()
 		request.ApplicationPath, request.AgentSession, request.IsNeverRemembered = ternBundlePath, session, isNeverRemembered
 		return request
@@ -246,6 +246,10 @@ func TestCommitSigningMemoryIsPerAgentSession(t *testing.T) {
 	}
 	if test.isSignedWithoutAsking(t, fromTern(ompInPaneB, false)) {
 		t.Error("omp in pane A's remembered commit signing covered pane B")
+	}
+	testAgentSessions.Revoke(ompInPaneA.Session.PID, ompInPaneA.Session.StartTime)
+	if next := testAgentSessions.Join(ompInPaneA.Session, ternBundlePath); test.isSignedWithoutAsking(t, fromTern(next, false)) {
+		t.Error("omp's remembered commit signing outlived its session")
 	}
 	resultChannel := startApproval(test.approver, context.Background(), fromTern(nil, true))
 	event := waitForApprovalEvent(t, test.emitter)

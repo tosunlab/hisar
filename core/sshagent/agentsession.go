@@ -14,12 +14,12 @@ import (
 // otherwise last until Hisar locks.
 const AgentSessionApprovalLifetime = time.Hour
 
-// Peer is the program on the other end of a connection and who an approval for it is remembered for: the agent
-// session it runs inside, else its app or program. IsNeverRemembered outweighs both: no remembered approval covers the
-// program and none is remembered for it.
+// Peer is the program on the other end of a connection and who an approval for it is remembered for: the live agent
+// session it runs inside, which the command-line socket shares, else its app or program. IsNeverRemembered outweighs
+// both: no remembered approval covers the program and none is remembered for it.
 type Peer struct {
 	localsocket.PeerInfo
-	AgentSession      *agentharness.Session
+	AgentSession      *agentharness.LiveSession
 	IsNeverRemembered bool
 }
 
@@ -27,18 +27,7 @@ type PeerResolver interface {
 	ResolvePeer(connection net.Conn) (Peer, error)
 }
 
-// agentSessionKey is one harness process instance, so a PID the system reused is another session.
-type agentSessionKey struct {
-	pid       int
-	startTime int64
-}
-
-func getAgentSessionKey(session agentharness.Session) agentSessionKey {
-	return agentSessionKey{pid: session.PID, startTime: session.StartTime}
-}
-
-// agentSessionState is what the agent keeps for a session from its first connection until its harness exits, besides
-// the approvals remembered for it.
+// agentSessionState is what the agent keeps for a live session until it ends, besides the approvals remembered for it.
 type agentSessionState struct {
 	isNoKeyNotified bool
 }
@@ -68,33 +57,31 @@ func (s *Server) SetNoAgentKeyNotifier(notify func(session agentharness.Session)
 	s.notifyNoAgentKey = notify
 }
 
-// joinAgentSession keeps a session from its first connection until its harness exits, then forgets the approvals
-// remembered for it.
-func (s *Server) joinAgentSession(ctx context.Context, session agentharness.Session) {
-	key := getAgentSessionKey(session)
+// joinAgentSession keeps a live session from the first connection the agent sees from it until it ends, when its
+// harness exits or Settings revokes it, then forgets the approvals remembered for it.
+func (s *Server) joinAgentSession(live *agentharness.LiveSession) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.agentSessions[key] != nil {
+	if s.agentSessions[live.ID] != nil || live.Context().Err() != nil {
 		return
 	}
-	s.agentSessions[key] = &agentSessionState{}
-	go func() {
-		agentharness.WaitForExit(ctx, session)
+	s.agentSessions[live.ID] = &agentSessionState{}
+	context.AfterFunc(live.Context(), func() {
 		s.mutex.Lock()
 		defer s.mutex.Unlock()
-		delete(s.agentSessions, key)
-		maps.DeleteFunc(s.approvedAt, func(cacheKey approvalCacheKey, _ time.Time) bool { return cacheKey.agentSession == key })
-	}()
+		delete(s.agentSessions, live.ID)
+		maps.DeleteFunc(s.approvedAt, func(cacheKey approvalCacheKey, _ time.Time) bool { return cacheKey.agentSession == live.ID })
+	})
 }
 
-func (s *Server) notifyNoAgentKeyOnce(session agentharness.Session) {
+func (s *Server) notifyNoAgentKeyOnce(live *agentharness.LiveSession) {
 	s.mutex.Lock()
-	state, notify := s.agentSessions[getAgentSessionKey(session)], s.notifyNoAgentKey
+	state, notify := s.agentSessions[live.ID], s.notifyNoAgentKey
 	if state == nil || state.isNoKeyNotified || notify == nil {
 		s.mutex.Unlock()
 		return
 	}
 	state.isNoKeyNotified = true
 	s.mutex.Unlock()
-	notify(session)
+	notify(live.Session)
 }

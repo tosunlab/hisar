@@ -18,9 +18,9 @@ type AgentHosts interface {
 }
 
 // PeerResolver resolves the SSH agent's peers from their process chain: the app a peer runs in, so approvals are
-// remembered per app, and the agent session it runs inside, read as the command-line socket reads it. A peer without a
-// terminal in an app that hosted an agent session, whose chain has no harness or changed while it was read, may be work
-// an agent handed off, so no remembered approval covers it.
+// remembered per app, and the agent session it runs inside, read as the command-line socket reads it and joined in the
+// live sessions both sockets share. A peer without a terminal in an app that hosted an agent session, whose chain has
+// no harness or changed while it was read, may be work an agent handed off, so no remembered approval covers it.
 type PeerResolver struct {
 	Base localsocket.PeerResolver
 	// Resolve finds the app responsible for a process (appinfo.Resolver.Resolve).
@@ -32,6 +32,8 @@ type PeerResolver struct {
 	IdentifyApp func(requester appinfo.Requester) (clisocket.AppIdentity, bool)
 	// AgentHosts are the apps that hosted an agent session; a peer inside a session records its app.
 	AgentHosts AgentHosts
+	// AgentSessions are the live agent sessions the command-line socket shares (clisocket.NewSessionApprovals).
+	AgentSessions *agentharness.Sessions
 }
 
 func (resolver PeerResolver) ResolvePeer(connection net.Conn) (sshagent.Peer, error) {
@@ -43,10 +45,12 @@ func (resolver PeerResolver) ResolvePeer(connection net.Conn) (sshagent.Peer, er
 	requester := resolver.Resolve(info.PID)
 	peer.ApplicationPath = requester.App.Path
 	if session, isInside, _ := agentharness.Find(resolver.ReadChain(info.PID)); isInside {
-		peer.AgentSession = &session
+		host := ""
 		if app, isVerified := resolver.IdentifyApp(requester); isVerified {
 			resolver.AgentHosts.RecordAgentHost(app)
+			host = app.Path
 		}
+		peer.AgentSession = resolver.AgentSessions.Join(session, host)
 		return peer, nil
 	}
 	if !resolver.HasTerminal(info.PID) {

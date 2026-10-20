@@ -162,7 +162,8 @@ func main() {
 			return agent.GetSSHRememberDuration(approvalPreference.GetSSHRememberSeconds())
 		},
 	})
-	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil, nil)
+	agentSessions := agentharness.NewSessions(nil)
+	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil, agentSessions)
 	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
 	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *commandline.Service
@@ -191,7 +192,8 @@ func main() {
 		IdentifyApp: func(requester appinfo.Requester) (clisocket.AppIdentity, bool) {
 			return commandline.IdentifyApp(requester, requesterResolver)
 		},
-		AgentHosts: commandLineServer,
+		AgentHosts:    commandLineServer,
+		AgentSessions: agentSessions,
 	}
 	agentServer = sshagent.NewServer(app.NewSSHKeySource(vaultService), approver, sshPeerResolver)
 	systemNotifications := newSystemNotifications()

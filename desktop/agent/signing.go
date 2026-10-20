@@ -7,12 +7,11 @@ import (
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
-// signingScope is what a remembered commit signature covers: one agent session, or else one app bundle, with one
-// repository and one key. An agent session is one harness process instance, its PID with its start time.
+// signingScope is what a remembered commit signature covers: one live agent session (its ID), or else one app bundle,
+// with one repository and one key.
 type signingScope struct {
 	appPath        string
-	agentPID       int
-	agentStartTime int64
+	agentSession   uint64
 	repositoryPath string
 	fingerprint    string
 }
@@ -54,8 +53,8 @@ func findSigningScope(event ApprovalEvent, request sshagent.ApprovalRequest) (si
 	if event.RepositoryPath == "" || request.Fingerprint == "" {
 		return signingScope{}, false
 	}
-	if session := request.AgentSession; session != nil {
-		return signingScope{agentPID: session.PID, agentStartTime: session.StartTime, repositoryPath: event.RepositoryPath, fingerprint: request.Fingerprint}, true
+	if live := request.AgentSession; live != nil {
+		return signingScope{agentSession: live.ID, repositoryPath: event.RepositoryPath, fingerprint: request.Fingerprint}, true
 	}
 	if !isAppRequester(event) || event.AppPath == "" {
 		return signingScope{}, false
