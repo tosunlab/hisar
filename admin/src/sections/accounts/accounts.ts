@@ -114,10 +114,18 @@ export async function proveAdmin(secretKey: string, password: string): Promise<R
   return bridge.reauthenticate(session.token, email, secretKey, password);
 }
 
-// readAccountId returns the account ID in a path under /admin/accounts/, or "" for the list.
+// readAccountId returns the account ID in a path under /admin/accounts/, or "" for the list. A segment that is not valid
+// percent-encoding is taken as typed, so it names no account.
 export function readAccountId(pathname: string): string {
   const rest = pathname.replace(/\/+$/, "").slice(accountsPath.length + 1);
-  return pathname.startsWith(`${accountsPath}/`) && rest && !rest.includes("/") ? decodeURIComponent(rest) : "";
+  if (!pathname.startsWith(`${accountsPath}/`) || !rest || rest.includes("/")) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(rest);
+  } catch {
+    return rest;
+  }
 }
 
 const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium" });

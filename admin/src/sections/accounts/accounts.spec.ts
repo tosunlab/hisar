@@ -78,6 +78,11 @@ describe("readAccountId", () => {
     expect(readAccountId("/admin/accounts/ABC123/")).toBe("ABC123");
     expect(readAccountId("/admin/accounts/ABC123/devices")).toBe("");
   });
+
+  it("takes a malformed percent escape as typed instead of throwing", () => {
+    expect(readAccountId("/admin/accounts/%ZZ")).toBe("%ZZ");
+    expect(readAccountId("/admin/accounts/AB%43")).toBe("ABC");
+  });
 });
 
 describe("formatActivity", () => {

@@ -271,6 +271,7 @@
       showError("This link can't be opened safely", "The server sent something this page doesn't accept. Ask the sender for a new link.", false);
       return;
     }
+    window.history.replaceState(null, "", window.location.pathname);
     if (fetchedLink.passphraseParams) {
       showStep("passphrase");
       passphraseInput.focus();
