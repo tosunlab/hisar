@@ -8,6 +8,7 @@ import (
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -17,9 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/itemicon"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 func encodeTestIconPNG(t *testing.T, side int) []byte {
@@ -107,8 +110,11 @@ func (fetcher *fakeWebsiteIconFetcher) Fetch(ctx context.Context, rawURL string)
 }
 
 func TestGetWebsiteIconCachesAndRefreshes(t *testing.T) {
-	test := createUnlockedTestService(t)
-	service := test.service
+	service := createLockedUnlockableService(t).service
+	service.config.IsEventStreamDisabled = true
+	if _, err := service.Unlock(testMasterPassword); err != nil {
+		t.Fatal(err)
+	}
 	icon := encodeTestIconPNG(t, 64)
 	fetcher := &fakeWebsiteIconFetcher{icons: map[string][]byte{"https://github.com/": icon}}
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
@@ -161,6 +167,62 @@ func TestGetWebsiteIconCachesAndRefreshes(t *testing.T) {
 	service.Lock()
 	if got, _ := service.GetWebsiteIcon("https://github.com"); got != nil {
 		t.Error("an icon was returned while locked")
+	}
+}
+
+// A session whose cache failed to attach must not write icons into that cache: a cache with icons and no account is
+// refused at every later launch, so offline unlock would never work again.
+func TestWebsiteIconsStayOutOfACacheTheSessionDidNotAttach(t *testing.T) {
+	fixture := createLockedUnlockableService(t)
+	s := fixture.service
+	s.config.IsEventStreamDisabled = true
+	icon := encodeTestIconPNG(t, 32)
+	s.config.WebsiteIconFetcher = &fakeWebsiteIconFetcher{icons: map[string][]byte{"https://github.com/": icon}}
+	client := s.createClient(s.state.Server)
+	client.Token = s.state.Token
+	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(fixture.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlocked, err := session.Unlock(context.Background(), client, nil, []byte(testMasterPassword), secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.HTTP = &http.Client{Transport: failedAccountReadTransport{}}
+	s.mutex.Lock()
+	s.attachCache(context.Background(), unlocked)
+	s.openSession(unlocked)
+	isAttached := s.unlockedSession.Cache != nil
+	s.mutex.Unlock()
+	if isAttached {
+		t.Fatal("fixture: the cache was attached although the account read failed")
+	}
+	if got, err := s.GetWebsiteIcon("https://github.com"); err != nil || !bytes.Equal(got, icon) {
+		t.Errorf("GetWebsiteIcon without an attached cache = %d bytes, %v", len(got), err)
+	}
+	s.Lock()
+	s.mutex.Lock()
+	if s.localCache != nil {
+		s.localCache.Close()
+		s.localCache = nil
+	}
+	s.mutex.Unlock()
+	reopened, err := cache.Open(s.config.CachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.CheckAccount(fixture.accountID); err != nil {
+		t.Errorf("the icon left a cache later launches refuse: %v", err)
+	}
+	reopened.Close()
+	if _, err := s.Unlock(testMasterPassword); err != nil {
+		t.Fatal(err)
+	}
+	s.mutex.Lock()
+	isAttached = s.unlockedSession.Cache != nil
+	s.mutex.Unlock()
+	if !isAttached {
+		t.Error("the next unlock could not attach the offline copy")
 	}
 }
 

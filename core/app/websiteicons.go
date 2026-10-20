@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/itemicon"
 )
@@ -189,6 +190,16 @@ func (s *Service) forgetWebsiteIconKeys() {
 	icons.keys, icons.recordsByLookup, icons.failedAt, icons.fetchContext, icons.stopFetches = nil, nil, nil, nil, nil
 }
 
+// getWebsiteIconCache is the offline cache only while this session has it attached. An icon written to a cache that
+// failed to attach would leave rows without an account, a cache every later launch refuses. It needs s.mutex.
+func (s *Service) getWebsiteIconCache() *cache.Cache {
+	if s.unlockedSession == nil {
+		return nil
+	}
+	attachedCache, _ := s.unlockedSession.Cache.(*cache.Cache)
+	return attachedCache
+}
+
 // loadWebsiteIconRecord reads a record from memory, then from the offline cache. It needs s.mutex.
 func (s *Service) loadWebsiteIconRecord(keys *crypt.WebsiteIconKeys, lookup string) (websiteIconRecord, bool) {
 	icons := &s.websiteIcons
@@ -198,11 +209,11 @@ func (s *Service) loadWebsiteIconRecord(keys *crypt.WebsiteIconKeys, lookup stri
 	if isFound {
 		return record, true
 	}
-	s.getCache()
-	if s.localCache == nil {
+	attachedCache := s.getWebsiteIconCache()
+	if attachedCache == nil {
 		return websiteIconRecord{}, false
 	}
-	sealed, err := s.localCache.LoadWebsiteIcon(lookup)
+	sealed, err := attachedCache.LoadWebsiteIcon(lookup)
 	if err != nil || sealed == nil {
 		return websiteIconRecord{}, false
 	}
@@ -222,8 +233,8 @@ func (s *Service) saveWebsiteIconRecord(keys *crypt.WebsiteIconKeys, lookup stri
 	icons.mutex.Lock()
 	icons.recordsByLookup[lookup] = record
 	icons.mutex.Unlock()
-	s.getCache()
-	if s.localCache == nil {
+	attachedCache := s.getWebsiteIconCache()
+	if attachedCache == nil {
 		return
 	}
 	plaintext, err := json.Marshal(record)
@@ -231,7 +242,7 @@ func (s *Service) saveWebsiteIconRecord(keys *crypt.WebsiteIconKeys, lookup stri
 		return
 	}
 	if sealed, err := keys.Seal(lookup, plaintext); err == nil {
-		s.localCache.SaveWebsiteIcon(lookup, sealed)
+		attachedCache.SaveWebsiteIcon(lookup, sealed)
 	}
 }
 
