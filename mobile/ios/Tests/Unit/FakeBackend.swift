@@ -44,6 +44,10 @@ class FakeBackend: VaultBackend {
     var preparedIcon: Data?
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
+    /// The backend signs out on the phone even when it could not confirm everything, then reports that.
+    var signOutError: BackendError?
+    /// What the backend reports when the account is deleted but this phone's copy could not be removed.
+    var accountDeletionCleanupError: BackendError?
     var allCopiedReference: [String] = []
     var allPendingRemovedVault: [RemovedVaultNotice] = []
     var allDeletionRequest: [VaultDeletionRequest] = []
@@ -336,6 +340,7 @@ class FakeBackend: VaultBackend {
         let lastServer = status.server
         status = .signedOut
         status.server = lastServer
+        if let signOutError { throw signOutError }
         return status
     }
 
@@ -864,6 +869,7 @@ extension FakeBackend {
         guard password == currentPassword else { throw BackendError(message: "The master password is not correct") }
         isAccountDeleted = true
         status = .signedOut
+        if let accountDeletionCleanupError { throw accountDeletionCleanupError }
         return status
     }
 

@@ -67,6 +67,25 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.newSecretKey)
     }
 
+    func testLockHidesTheNewSecretKey() async {
+        let model = createModel()
+        await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        model.lock()
+        XCTAssertEqual(model.screen, .locked)
+        XCTAssertNil(model.newSecretKey)
+    }
+
+    func testAutoLockHidesTheBiometricOffer() async {
+        let model = createModel()
+        await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        model.finishNewSecretKey()
+        XCTAssertTrue(model.isBiometricOfferShown)
+        _ = backend.lock()
+        model.handleLockedEvent()
+        XCTAssertNil(model.newSecretKey)
+        XCTAssertFalse(model.isBiometricOfferShown)
+    }
+
     private func waitForCall(_ name: String) async {
         for _ in 0..<100 where !backend.allCallName.contains(name) {
             try? await Task.sleep(nanoseconds: 10_000_000)
@@ -211,6 +230,51 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(isSignedOut)
         XCTAssertEqual(model.screen, .signedOut)
         XCTAssertTrue(identityStore.allIdentity.isEmpty)
+    }
+
+    func testSignOutErrorStillShowsTheSignedOutScreen() async {
+        let model = await createUnlockedModel()
+        backend.signOutError = BackendError(message: "The server did not confirm the sign-out.")
+        let isSignedOut = await model.signOut()
+        XCTAssertFalse(isSignedOut)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertTrue(model.allVault.isEmpty)
+        XCTAssertEqual(model.errorMessage, "The server did not confirm the sign-out.")
+        await waitUntilIdentitiesAreCleared()
+    }
+
+    private let leftoverIdentity = CredentialIdentityRecord(host: "github.com", username: "alice", recordIdentifier: "personal/github")
+
+    private func waitUntilIdentitiesAreCleared() async {
+        for _ in 0..<100 where !identityStore.allIdentity.isEmpty {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertTrue(identityStore.allIdentity.isEmpty, "AutoFill still offers a signed-out account's logins")
+    }
+
+    func testSignedOutStartClearsLeftoverIdentities() async {
+        identityStore.allIdentity = [leftoverIdentity]
+        let model = createModel()
+        XCTAssertEqual(model.screen, .signedOut)
+        await waitUntilIdentitiesAreCleared()
+    }
+
+    func testForegroundWhileSignedOutClearsLeftoverIdentities() async {
+        let model = createModel()
+        await waitUntilIdentitiesAreCleared()
+        identityStore.allIdentity = [leftoverIdentity]
+        model.handleDidEnterBackground()
+        model.handleWillEnterForeground()
+        await waitUntilIdentitiesAreCleared()
+    }
+
+    func testLockedStartKeepsAutoFillIdentities() async {
+        backend.seedSignedIn(state: VaultStatus.stateLocked)
+        identityStore.allIdentity = [leftoverIdentity]
+        let model = createModel()
+        XCTAssertEqual(model.screen, .locked)
+        try? await Task.sleep(nanoseconds: 100_000_000)
+        XCTAssertEqual(identityStore.allIdentity, [leftoverIdentity])
     }
 
     func testRefreshPublishesCredentialIdentities() async {

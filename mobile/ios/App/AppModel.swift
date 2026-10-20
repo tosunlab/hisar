@@ -104,6 +104,7 @@ final class AppModel: ObservableObject {
             isWebsiteIconsEnabled = backend.isWebsiteIconsEnabled()
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
+            clearIdentitiesWhenSignedOut()
             if status.isUnlocked {
                 Task { await refreshAll() }
             }
@@ -164,6 +165,8 @@ final class AppModel: ObservableObject {
             allOrganization = []
             allOrganizationInvitation = []
             waitingVaultKeys = WaitingVaultKeys()
+            newSecretKey = nil
+            isBiometricOfferShown = false
             selectedTab = .vaults
             clearAllApproval()
             forgetWebsiteIcons()
@@ -309,7 +312,11 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func signOut() async -> Bool {
-        guard let newStatus = await perform({ try $0.signOut() }) else { return false }
+        // Signing out always finishes on this phone; an error says what it could not confirm, so the status still changes.
+        guard let newStatus = await perform({ try $0.signOut() }) else {
+            refreshStatus()
+            return false
+        }
         applyStatus(newStatus)
         await credentialIdentityStore.removeAllIdentity()
         return true
@@ -344,6 +351,7 @@ final class AppModel: ObservableObject {
         isInForeground = true
         defer {
             enteredBackgroundAt = nil
+            clearIdentitiesWhenSignedOut()
             if status.isUnlocked, status.updateRequired == nil, let backend {
                 backend.reconnectEvents()
                 startApprovalPolling()
@@ -436,6 +444,12 @@ final class AppModel: ObservableObject {
 
     private func publishAllCredentialIdentity() async {
         await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference(), allPasskey: allPasskey))
+    }
+
+    // A sign-out in the AutoFill extension, or a removal the system refused, leaves identities a signed-out app must not offer.
+    private func clearIdentitiesWhenSignedOut() {
+        guard !status.isSignedIn else { return }
+        Task { await credentialIdentityStore.removeAllIdentity() }
     }
 
     private static func sortVault(_ first: VaultSummary, _ second: VaultSummary) -> Bool {
@@ -1126,7 +1140,10 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func deleteAccount(password: String, email: String) async -> Bool {
-        guard let newStatus = await perform({ try $0.deleteAccount(password: password, email: email) }) else { return false }
+        guard let newStatus = await perform({ try $0.deleteAccount(password: password, email: email) }) else {
+            refreshStatus()
+            return false
+        }
         applyStatus(newStatus)
         await credentialIdentityStore.removeAllIdentity()
         newSecretKey = nil

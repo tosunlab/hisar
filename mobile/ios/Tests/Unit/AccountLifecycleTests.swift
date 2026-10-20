@@ -112,6 +112,16 @@ final class AccountLifecycleTests: XCTestCase {
         await waitUntil({ backend.allCallName.contains("forgetNewAccountSecretKey") }, "the new Secret Key was not forgotten")
     }
 
+    func testDeleteAccountCleanupErrorStillSignsOut() async {
+        let model = await createUnlockedModel()
+        backend.accountDeletionCleanupError = BackendError(message: "The offline copy could not be removed.")
+        let isDeleted = await model.deleteAccount(password: FakeBackend.password, email: "alice@example.com")
+        XCTAssertFalse(isDeleted)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertTrue(model.allVault.isEmpty)
+        XCTAssertEqual(model.errorMessage, "The offline copy could not be removed.")
+    }
+
     func testDeleteAccountSignsOutAndRemovesAutoFillIdentities() async {
         let model = await createUnlockedModel()
         XCTAssertFalse(identityStore.allIdentity.isEmpty)
