@@ -406,8 +406,8 @@ func TestResolveAgentSessionThroughTern(t *testing.T) {
 		t.Errorf("signature alone: %+v, %v", session, isFound)
 	}
 	delete(nameless.processSignatures, 1226)
-	if session, isFound, _ := agentharness.Find(nameless.createResolver().ReadChain(39200)); isFound {
-		t.Errorf("a signature that does not verify matched: %+v", session)
+	if session, isFound, _ := agentharness.Find(nameless.createResolver().ReadChain(39200)); !isFound || session.IsSigned {
+		t.Errorf("a signature that does not verify counts as none, so only Tern's folder names omp: %+v, %v", session, isFound)
 	}
 }
 

@@ -43,6 +43,10 @@ func TestFindOmpInTern(t *testing.T) {
 	}
 	otherTeam := createOmpInTernChain()
 	otherTeam.Processes[2].Arguments, otherTeam.Processes[2].Signature = []string{"18.12.3"}, Signature{Identifier: "omp-darwin-arm64", TeamID: "ABCDE12345"}
+	if session, isFound, _ := Find(otherTeam); !isFound || session.PID != 1226 || session.IsSigned {
+		t.Errorf("another team's signature counts as none, so only Tern's folder names omp: %+v, %v", session, isFound)
+	}
+	otherTeam.Processes[2].Path = "/Users/developer/Downloads/18.12.3"
 	if session, isFound, _ := Find(otherTeam); isFound {
 		t.Errorf("another team's signature matched: %+v", session)
 	}
@@ -237,6 +241,35 @@ func TestCodexAppServerIsTheSession(t *testing.T) {
 	}
 }
 
+// TestFindNativeInstallsStartedByPath: a native install started by its own path, as an MCP client or a script that
+// resolved the link does, has that path as its first argument too, so neither file name names the harness. hisar reads
+// no signature, so the folder or the file name of the install has to.
+func TestFindNativeInstallsStartedByPath(t *testing.T) {
+	for _, test := range []struct {
+		harnessID string
+		path      string
+		arguments []string
+	}{
+		{"claude-code", claudePath, []string{"mcp", "serve"}},
+		{"claude-code", "/home/developer/.local/share/claude/versions/2.1.302", []string{"-p", "Run hisar"}},
+		{"omp", ompPath, nil},
+		{"codex", "/opt/homebrew/Caskroom/codex/0.146.0/codex-aarch64-apple-darwin", []string{"exec", "Run hisar"}},
+		{"codex", "/usr/local/Caskroom/codex/0.146.0/codex-x86_64-apple-darwin", []string{"mcp-server"}},
+		{"codex", "/home/linuxbrew/.linuxbrew/Caskroom/codex/0.146.0/codex-x86_64-unknown-linux-musl", nil},
+		{"codex", "/home/developer/bin/codex-aarch64-unknown-linux-musl", nil},
+	} {
+		chain := Chain{IsKnown: true, Processes: []Process{
+			{PID: 700, ParentPID: 600, StartTime: 400, Path: "/opt/homebrew/bin/hisar", Arguments: []string{"hisar", "mcp", "--no-reveal"}},
+			{PID: 600, ParentPID: 400, StartTime: 300, Path: test.path, Arguments: append([]string{test.path}, test.arguments...), WorkingDirectory: "/Users/developer/src/web"},
+			{PID: 400, ParentPID: 300, StartTime: 200, Path: "/bin/zsh", Arguments: []string{"-zsh"}},
+			{PID: 300, ParentPID: 1, StartTime: 100, Path: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal", Arguments: []string{"Terminal"}},
+		}}
+		if session, isFound, _ := Find(chain); !isFound || session.Harness.ID != test.harnessID || session.PID != 600 || session.IsSigned {
+			t.Errorf("%s started as %q: %+v, %v", test.harnessID, chain.Processes[1].Arguments, session, isFound)
+		}
+	}
+}
+
 func TestFindNoClaudeCodeOrCodexByLookalikes(t *testing.T) {
 	for _, lookalike := range []Process{
 		{Path: "/usr/local/bin/claude-monitor", Arguments: []string{"claude-monitor"}},
@@ -245,6 +278,9 @@ func TestFindNoClaudeCodeOrCodexByLookalikes(t *testing.T) {
 		{Path: nodePath, Arguments: []string{"node", "/Users/developer/node_modules/@openai/codex-sdk/dist/index.js"}},
 		{Path: "/usr/local/bin/agent", Arguments: []string{"agent"}, Signature: Signature{Identifier: "com.anthropic.claude-code", TeamID: "ABCDE12345"}},
 		{Path: "/usr/local/bin/agent", Arguments: []string{"agent"}, Signature: Signature{Identifier: "codex", TeamID: "ABCDE12345"}},
+		{Path: "/Users/developer/src/notclaude/versions/1.0.0", Arguments: []string{"/Users/developer/src/notclaude/versions/1.0.0"}},
+		{Path: "/Users/developer/.local/share/claude/versions/2.1.302/helper", Arguments: []string{"helper"}},
+		{Path: "/opt/homebrew/Caskroom/codex/0.146.0/codex-aarch64-apple-darwin-helper", Arguments: []string{"helper"}},
 	} {
 		chain := createCodexChain()
 		lookalike.PID, lookalike.ParentPID, lookalike.StartTime = 97610, 400, 500
