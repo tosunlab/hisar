@@ -224,27 +224,35 @@ func insertDeviceSession(ctx context.Context, transaction pgx.Tx, device *Device
 	return err
 }
 
-// GetSessionByHash returns a live session and slides its expiry forward. Device activity is recorded separately so
-// its failure cannot fail authentication or hold a session lock while waiting for a device lock.
-// The session of a suspended account stays live, but is refused with ErrAccountSuspended until reactivation.
+// GetSessionByHash atomically slides a live session's expiry and records device activity, locking the device first.
+// Suspended accounts return ErrAccountSuspended without extending expiry or recording activity.
 func (s *Store) GetSessionByHash(ctx context.Context, tokenHash []byte, ttl time.Duration) (*Session, error) {
 	var session Session
 	var isSuspended bool
 	err := s.pool.QueryRow(ctx, `
-		UPDATE sessions s SET expires_at = CASE WHEN a.suspended_at IS NULL THEN now() + $2::interval ELSE s.expires_at END
-		FROM accounts a, devices d
-		WHERE s.token_hash = $1 AND s.expires_at > now()
-		  AND a.id = s.account_id AND d.id = s.device_id AND d.revoked_at IS NULL
-		RETURNING s.token_hash, s.account_id, s.device_id, a.role, s.expires_at, a.suspended_at IS NOT NULL`,
+		WITH device AS (
+			SELECT d.id FROM sessions s JOIN devices d ON d.id = s.device_id
+			WHERE s.token_hash = $1 AND s.expires_at > now() AND d.revoked_at IS NULL
+			FOR NO KEY UPDATE OF d
+		), live AS (
+			UPDATE sessions s SET expires_at = CASE WHEN a.suspended_at IS NULL THEN now() + $2::interval ELSE s.expires_at END
+			FROM accounts a, device d
+			WHERE s.token_hash = $1 AND s.expires_at > now()
+			  AND a.id = s.account_id AND d.id = s.device_id
+			RETURNING s.token_hash, s.account_id, s.device_id, a.role, s.expires_at, a.suspended_at IS NOT NULL AS is_suspended
+		), seen AS (
+			UPDATE devices SET last_seen_at = now() WHERE id IN (SELECT device_id FROM live WHERE NOT is_suspended)
+		)
+		SELECT token_hash, account_id, device_id, role, expires_at, is_suspended FROM live`,
 		tokenHash, ttl).Scan(&session.TokenHash, &session.AccountID, &session.DeviceID, &session.Role, &session.ExpiresAt, &isSuspended)
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			log.Printf("session lookup or device last-seen update failed: %v", err)
+		}
 		return nil, convertNoRowsToNotFound(err)
 	}
 	if isSuspended {
 		return nil, ErrAccountSuspended
-	}
-	if _, err := s.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() WHERE id = $1 AND revoked_at IS NULL`, session.DeviceID); err != nil {
-		log.Printf("device last-seen update failed: %v", err)
 	}
 	return &session, nil
 }

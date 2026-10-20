@@ -466,7 +466,7 @@ func TestSessions(t *testing.T) {
 	}
 }
 
-func TestSessionLookupRecordsLastSeenWithoutFailingAuthentication(t *testing.T) {
+func TestSessionLookupRecordsLastSeenAtomicallyOrFails(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
 	device, session := createTestAccount(t, database, "AAAAAA", "a@example.com")
@@ -493,13 +493,17 @@ func TestSessionLookupRecordsLastSeenWithoutFailingAuthentication(t *testing.T) 
 	log.SetOutput(&output)
 	t.Cleanup(func() { log.SetOutput(previousWriter) })
 	beforeFailedWrite := readLastSeen()
+	var beforeFailedExpiry time.Time
+	if err := database.pool.QueryRow(ctx, `SELECT expires_at FROM sessions WHERE token_hash = $1`, session.TokenHash).Scan(&beforeFailedExpiry); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := database.pool.Exec(ctx, `
 		CREATE FUNCTION refuse_last_seen() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'last seen refused'; END $$;
 		CREATE TRIGGER refuse_last_seen BEFORE UPDATE OF last_seen_at ON devices FOR EACH ROW EXECUTE FUNCTION refuse_last_seen()`); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.GetSessionByHash(ctx, session.TokenHash, 2*time.Hour); err != nil {
-		t.Fatalf("last-seen failure prevented authentication: %v", err)
+	if authenticated, err := database.GetSessionByHash(ctx, session.TokenHash, 2*time.Hour); err == nil || authenticated != nil {
+		t.Fatalf("last-seen failure returned an authenticated session: %+v %v", authenticated, err)
 	}
 	if !readLastSeen().Equal(beforeFailedWrite) {
 		t.Error("the refused last-seen update changed the timestamp")
@@ -511,8 +515,8 @@ func TestSessionLookupRecordsLastSeenWithoutFailingAuthentication(t *testing.T) 
 	if err := database.pool.QueryRow(ctx, `SELECT expires_at FROM sessions WHERE token_hash = $1`, session.TokenHash).Scan(&expiresAt); err != nil {
 		t.Fatal(err)
 	}
-	if time.Until(expiresAt) < 119*time.Minute {
-		t.Errorf("last-seen failure rolled back the session slide: %v", expiresAt)
+	if !expiresAt.Equal(beforeFailedExpiry) {
+		t.Errorf("last-seen failure changed the session expiry: %v, was %v", expiresAt, beforeFailedExpiry)
 	}
 }
 

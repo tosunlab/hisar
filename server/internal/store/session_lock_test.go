@@ -76,3 +76,55 @@ func TestSessionLookupDoesNotDeadlockDeviceRevocation(t *testing.T) {
 		t.Fatalf("revoked session still authenticates: %v", err)
 	}
 }
+
+func TestSessionLookupDoesNotDeadlockAccountDeletion(t *testing.T) {
+	for _, isByAdmin := range []bool{false, true} {
+		name := "self"
+		if isByAdmin {
+			name = "admin"
+		}
+		t.Run(name, func(t *testing.T) {
+			database := createTestStore(t)
+			ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+			defer cancel()
+			_, session := createTestAccount(t, database, "ALICE1", "alice@example.com")
+			createTestAccount(t, database, "ADMIN1", "admin@example.com")
+			setTestRole(t, database, "ADMIN1", "admin")
+			vaultID := createTestVault(t, database, "ALICE1")
+			barrier, err := database.pool.Begin(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer barrier.Rollback(context.Background())
+			if _, err := barrier.Exec(ctx, `SELECT 1 FROM vaults WHERE id = $1 FOR UPDATE`, vaultID); err != nil {
+				t.Fatal(err)
+			}
+			deleted := make(chan error, 1)
+			go func() {
+				var err error
+				if isByAdmin {
+					_, err = database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "ADMIN1"}, "ALICE1")
+				} else {
+					_, err = database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash())
+				}
+				deleted <- err
+			}()
+			waitForStoreLock(t, database, ctx, "%FROM vaults WHERE id IN (SELECT vault_id%")
+			lookupDone := make(chan error, 1)
+			go func() {
+				_, err := database.GetSessionByHash(ctx, session.TokenHash, time.Hour)
+				lookupDone <- err
+			}()
+			waitForStoreLock(t, database, ctx, "%FOR NO KEY UPDATE OF d%")
+			if err := barrier.Commit(ctx); err != nil {
+				t.Fatal(err)
+			}
+			if err := <-deleted; err != nil {
+				t.Errorf("account deletion: %v", err)
+			}
+			if err := <-lookupDone; !errors.Is(err, ErrNotFound) {
+				t.Errorf("lookup during account deletion: %v", err)
+			}
+		})
+	}
+}

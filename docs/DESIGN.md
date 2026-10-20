@@ -662,9 +662,10 @@ instance_settings (id = 1, settings jsonb, updated_at, updated_by)   -- one row,
 
 Phone approvals (§9.9) are not in Postgres: they live in the server process's memory for at most 4 minutes, like the event broker.
 
-Session lookups slide expiry before recording `devices.last_seen_at` in a separate statement. A failed activity write is
-logged without failing authentication. No session row lock is held while updating a device. Transactions that lock
-both devices and their sessions must lock devices first, matching device revocation.
+Session lookups slide expiry and record `devices.last_seen_at` in one statement, locking the device before its session.
+A failed activity write rolls back the expiry change, fails authentication with a database error, and is logged.
+Suspended sessions change neither expiry nor activity. Transactions that lock both devices and their sessions must
+lock devices first, matching device revocation and account deletion.
 
 ### 8.2 API surface (v1)
 
