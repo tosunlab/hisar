@@ -2,6 +2,8 @@ package agent
 
 import (
 	"context"
+	"errors"
+	"log"
 	"slices"
 	"time"
 
@@ -44,10 +46,19 @@ func (approver *Approver) authorize(pending *pendingApproval, response approvalR
 func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingApproval) bool {
 	phoneApprover := approver.config.PhoneApprover
 	pending.phoneChannel = make(chan approval.AcceptedAnswer, 1)
-	pending.event.IsPhoneApproval = phoneApprover != nil && !pending.event.IsUnlockRequired && phoneApprover.IsPhoneApprovalAvailable()
 	timeout := approver.config.Timeout
-	if pending.event.IsPhoneApproval {
-		timeout = max(timeout, approver.config.PhoneApprovalTimeout)
+	if phoneApprover != nil && !pending.event.IsUnlockRequired && phoneApprover.IsPhoneApprovalAvailable() {
+		phoneTimeout := max(timeout, approver.config.PhoneApprovalTimeout)
+		finishPhoneApproval, err := phoneApprover.StartPhoneApproval(pending.phoneRequest, pending.receivedAt.Add(phoneTimeout), func(answer approval.AcceptedAnswer) { approver.respondFromPhone(pending, answer) })
+		switch {
+		case err == nil:
+			defer finishPhoneApproval()
+			pending.event.IsPhoneApproval, timeout = true, phoneTimeout
+		case errors.Is(err, approval.ErrSealedTooLarge):
+			pending.event.IsTooLongForPhone = true
+		default:
+			log.Printf("phone approval: %v", err)
+		}
 	}
 	timeoutAt := pending.receivedAt.Add(timeout)
 	pending.event.TimeoutAt = timeoutAt.UTC().Format(time.RFC3339)
@@ -57,10 +68,6 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	approver.pendingRequests = append(approver.pendingRequests, pending)
 	isFirstCompact := approver.pendingRequests[0].event.IsCompact
 	approver.mutex.Unlock()
-	if pending.event.IsPhoneApproval {
-		finishPhoneApproval := phoneApprover.StartPhoneApproval(pending.phoneRequest, timeoutAt, func(answer approval.AcceptedAnswer) { approver.respondFromPhone(pending, answer) })
-		defer finishPhoneApproval()
-	}
 	defer approver.finishApproval(pending)
 
 	approver.emit(ApprovalEventName, pending.event)

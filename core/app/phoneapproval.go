@@ -23,7 +23,10 @@ const (
 	phoneApprovalPostRetryDelay        = 2 * time.Second
 )
 
-var errPhoneApprovalGone = errors.New("this request is no longer waiting for an answer")
+var (
+	errPhoneApprovalGone        = errors.New("this request is no longer waiting for an answer")
+	errPhoneApprovalUnavailable = errors.New("phone approval is not available")
+)
 
 // phoneApprovalRelay is the backend's part of phone approvals: the requests this device posted and what it knows about its devices.
 type phoneApprovalRelay struct {
@@ -175,8 +178,9 @@ func (relay *phoneApprovalRelay) getDeviceAvailability(now time.Time) (isAvailab
 }
 
 // StartPhoneApproval seals the dialog's request to the account and posts it; it stays answerable until the dialog's
-// deadline (at most approval.MaximumLifetime), and decide runs at most once, with a verified answer.
-func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) func() {
+// deadline (at most approval.MaximumLifetime), and decide runs at most once, with a verified answer. It sends nothing
+// and fails when phone approval is not available, and with approval.ErrSealedTooLarge when the request does not fit.
+func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) (func(), error) {
 	s := phoneApprover.service
 	s.mutex.Lock()
 	relay := s.phoneApprovals
@@ -185,7 +189,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	relay.mutex.Unlock()
 	if !s.isUnlocked() || s.state.IsPhoneApprovalDisabled || ownDeviceID == "" {
 		s.mutex.Unlock()
-		return func() {}
+		return nil, errPhoneApprovalUnavailable
 	}
 	now := s.config.Now()
 	lifetime := expiresAt.Sub(now)
@@ -197,8 +201,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 	apiClient := s.unlockedSession.Client
 	if err != nil {
 		s.mutex.Unlock()
-		log.Printf("phone approval: %v", err)
-		return func() {}
+		return nil, err
 	}
 	relay.mutex.Lock()
 	relay.tracker.Add(request.RequestID, sealedRequest, request.ExpiresAt)
@@ -229,7 +232,7 @@ func (phoneApprover *PhoneApprover) StartPhoneApproval(description approval.Desc
 				apiClient.ResolveApproval(ctx, request.RequestID)
 			}()
 		})
-	}
+	}, nil
 }
 
 // postPhoneApproval tries again after a failure, e.g. right after the Mac wakes; a duplicate ID means an earlier try arrived.

@@ -49,6 +49,11 @@ export interface ApprovalEvent {
     "isPhoneApproval": boolean;
 
     /**
+     * IsTooLongForPhone is set instead of IsPhoneApproval when a phone could answer but the request is too long to send.
+     */
+    "isTooLongForPhone": boolean;
+
+    /**
      * SecretNames lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
      */
     "allSecretName": string[] | null;

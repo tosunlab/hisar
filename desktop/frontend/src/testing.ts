@@ -296,6 +296,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     isCompact: false,
     isTouchIDApproval: true,
     isPhoneApproval: false,
+    isTooLongForPhone: false,
     timeoutAt: "2026-10-09T12:01:00Z",
     allSecretName: [],
     moreSecretCount: 0,

@@ -333,6 +333,21 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("says when a request is too long to approve on the phone", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ isTooLongForPhone: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("This request is too long to approve on your phone.");
+    sendEvent("ssh-approval-closed", "request-1");
+    await flushPromises();
+
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", isTooLongForPhone: true, isTouchIDApproval: false }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Approve");
+    expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("This request is too long to approve on your phone.");
+    wrapper.unmount();
+  });
+
   it("denies from the compact card without expanding it", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createSigningApprovalEvent({ isCompact: true }));

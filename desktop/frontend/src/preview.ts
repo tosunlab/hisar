@@ -853,6 +853,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
+    isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",
@@ -902,6 +903,7 @@ function createPreviewSSHApproval(): ApprovalEvent {
     isCompact: previewParameter.get("compact") === "1" && isTouchIDApproval && !isLocked && !isForwarded,
     isTouchIDApproval,
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
+    isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
     allSecretName: [],
     moreSecretCount: 0,
@@ -939,6 +941,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     isUnlockRequired: isLocked,
     isPasswordUnlock: isLocked,
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
+    isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
   };
   if (kind === "run") {
     return {

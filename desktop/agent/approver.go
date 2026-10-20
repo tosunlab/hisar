@@ -50,10 +50,11 @@ type Unlocker interface {
 }
 
 // PhoneApprover sends an open dialog to the account's phones; decide gets a verified answer at most once,
-// and finish withdraws the request when the dialog closes.
+// and finish withdraws the request when the dialog closes. StartPhoneApproval sends nothing when it fails, with
+// approval.ErrSealedTooLarge for a request too long for a phone.
 type PhoneApprover interface {
 	IsPhoneApprovalAvailable() bool
-	StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) (finish func())
+	StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) (finish func(), err error)
 }
 
 // ApprovalEvent is what the approval window shows; AppName and AppIconURL describe the app responsible for the request,
@@ -97,6 +98,8 @@ type ApprovalEvent struct {
 	IsUnlockRequired bool   `json:"isUnlockRequired"`
 	IsPasswordUnlock bool   `json:"isPasswordUnlock"`
 	IsPhoneApproval  bool   `json:"isPhoneApproval"`
+	// IsTooLongForPhone is set instead of IsPhoneApproval when a phone could answer but the request is too long to send.
+	IsTooLongForPhone bool `json:"isTooLongForPhone"`
 	// SecretNames lists the first secrets of a secrets.resolve request; MoreSecretCount counts the rest.
 	SecretNames     []string `json:"allSecretName"`
 	MoreSecretCount int      `json:"moreSecretCount"`
