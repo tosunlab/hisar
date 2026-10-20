@@ -21,6 +21,9 @@ type Harness struct {
 	Signatures []Signature
 	// ExecutableNames match the file name of the executable or of the process's first argument.
 	ExecutableNames []string
+	// VersionFolders match an executable or first argument directly inside a folder whose path ends in one of these: a
+	// native install that names each executable after its version.
+	VersionFolders []string
 	// Scripts match a runtime such as Bun running a script of that name.
 	Scripts []Script
 	// PackagePaths match an argument inside one of these packages.
@@ -42,17 +45,21 @@ type Script struct {
 	Name    string
 }
 
-// harnesses is every harness Hisar recognizes. omp in Tern is signed and lives in a folder named after its version, so
-// only its signature or its first argument names it; omp installed with Bun runs as bun with omp's bin link. Claude
-// Code's native install is a signed executable named after its version, started through a link named claude; installed
-// with npm it runs as node with its bin link or its package's script. Codex runs as node with its bin link, which starts
-// the signed native codex; the native process is nearer every command and hisar mcp, so it is the session.
+// harnesses is every harness Hisar recognizes. omp in Tern is signed and lives in Tern's folder of omp versions, named
+// after its version, so its signature, that folder or its first argument names it; omp installed with Bun runs as bun
+// with omp's bin link. Claude Code's native install is a signed executable in its folder of versions, started through a
+// link named claude; installed with npm it runs as node with its bin link or its package's script. Codex runs as node
+// with its bin link, which starts the signed native codex; the native process is nearer every command and hisar mcp, so
+// it is the session. Codex's release archives, which Homebrew's cask installed before 0.146.1, name the native codex
+// after its target. hisar reads no signature, so a native install started by its own path is found by its folder or
+// file name.
 var harnesses = []Harness{
 	{
 		ID:                   "omp",
 		Name:                 "omp",
 		Signatures:           []Signature{{Identifier: "omp-darwin-arm64", TeamID: "VTLHGQC72S"}},
 		ExecutableNames:      []string{"omp"},
+		VersionFolders:       []string{"Tern/omp/versions"},
 		Scripts:              []Script{{Runtime: "bun", Name: "omp"}},
 		PackagePaths:         []string{"@oh-my-pi/pi-coding-agent"},
 		WorkerArgumentPrefix: "__omp_worker_",
@@ -62,16 +69,20 @@ var harnesses = []Harness{
 		Name:            "Claude Code",
 		Signatures:      []Signature{{Identifier: "com.anthropic.claude-code", TeamID: "Q6L2SF6YDW"}},
 		ExecutableNames: []string{"claude"},
+		VersionFolders:  []string{"claude/versions"},
 		Scripts:         []Script{{Runtime: "node", Name: "claude"}},
 		PackagePaths:    []string{"@anthropic-ai/claude-code"},
 	},
 	{
-		ID:              "codex",
-		Name:            "Codex",
-		Signatures:      []Signature{{Identifier: "codex", TeamID: "2DC432GLL2"}},
-		ExecutableNames: []string{"codex"},
-		Scripts:         []Script{{Runtime: "node", Name: "codex"}},
-		PackagePaths:    []string{"@openai/codex"},
+		ID:         "codex",
+		Name:       "Codex",
+		Signatures: []Signature{{Identifier: "codex", TeamID: "2DC432GLL2"}},
+		ExecutableNames: []string{
+			"codex", "codex-aarch64-apple-darwin", "codex-x86_64-apple-darwin", "codex-aarch64-unknown-linux-musl",
+			"codex-x86_64-unknown-linux-musl",
+		},
+		Scripts:      []Script{{Runtime: "node", Name: "codex"}},
+		PackagePaths: []string{"@openai/codex"},
 	},
 }
 
@@ -144,8 +155,16 @@ func (harness Harness) matches(process Process) bool {
 	if harness.isSignedBy(process) {
 		return true
 	}
-	programNames := listProgramNames(process)
+	programPaths := listProgramPaths(process)
+	// Some installs of Bun keep ".exe" in the program's name.
+	programNames := make([]string, len(programPaths))
+	for i, path := range programPaths {
+		programNames[i] = strings.TrimSuffix(filepath.Base(path), ".exe")
+	}
 	if slices.ContainsFunc(harness.ExecutableNames, func(name string) bool { return slices.Contains(programNames, name) }) {
+		return true
+	}
+	if slices.ContainsFunc(programPaths, harness.isInVersionFolder) {
 		return true
 	}
 	if scriptName := getScriptName(process.Arguments); scriptName != "" {
@@ -162,17 +181,23 @@ func (harness Harness) matches(process Process) bool {
 	})
 }
 
-// listProgramNames names the program by its executable's file name and by its first argument, without ".exe", which
-// some installs of Bun keep.
-func listProgramNames(process Process) []string {
-	names := []string{}
+func (harness Harness) isInVersionFolder(path string) bool {
+	directory := filepath.ToSlash(filepath.Dir(path))
+	return slices.ContainsFunc(harness.VersionFolders, func(folder string) bool {
+		return strings.HasSuffix(directory, "/"+folder)
+	})
+}
+
+// listProgramPaths is the program's executable and its first argument.
+func listProgramPaths(process Process) []string {
+	paths := []string{}
 	if process.Path != "" {
-		names = append(names, strings.TrimSuffix(filepath.Base(process.Path), ".exe"))
+		paths = append(paths, process.Path)
 	}
 	if len(process.Arguments) > 0 && process.Arguments[0] != "" {
-		names = append(names, strings.TrimSuffix(filepath.Base(process.Arguments[0]), ".exe"))
+		paths = append(paths, process.Arguments[0])
 	}
-	return names
+	return paths
 }
 
 // getScriptName is the file name of the first argument after the program that is not an option.
