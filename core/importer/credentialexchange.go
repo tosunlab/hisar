@@ -7,6 +7,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"maps"
 	"math"
 	"net/url"
 	"slices"
@@ -16,6 +17,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/passkey"
+	"github.com/tryhisar/hisar/core/totp"
 )
 
 // FormatCredentialExchange is the FIDO Credential Exchange Format (CXF) 1.x, which another password manager hands over
@@ -82,11 +84,23 @@ type credentialExchangeField struct {
 	Label     string `json:"label"`
 }
 
+// read returns the field's value, or "" for a blank one; a secret keeps its exact bytes, and other values are trimmed.
 func (field *credentialExchangeField) read() string {
 	if field == nil {
 		return ""
 	}
+	if field.FieldType == "concealed-string" {
+		return field.Value
+	}
 	return strings.TrimSpace(field.Value)
+}
+
+// readSecret returns a value that is a secret whatever its field type says, such as a password, exactly.
+func (field *credentialExchangeField) readSecret() string {
+	if field == nil {
+		return ""
+	}
+	return field.Value
 }
 
 type credentialExchangeBasicAuth struct {
@@ -95,18 +109,19 @@ type credentialExchangeBasicAuth struct {
 }
 
 type credentialExchangePasskey struct {
-	CredentialID    string `json:"credentialId"`
-	RelyingPartyID  string `json:"rpId"`
-	Username        string `json:"username"`
-	UserDisplayName string `json:"userDisplayName"`
-	UserHandle      string `json:"userHandle"`
-	Key             string `json:"key"`
-	FIDO2Extensions *struct {
-		HMACCredentials *struct {
-			Algorithm        string `json:"algorithm"`
-			CredentialWithUV string `json:"credWithUV"`
-		} `json:"hmacCredentials"`
-	} `json:"fido2Extensions"`
+	CredentialID    string                     `json:"credentialId"`
+	RelyingPartyID  string                     `json:"rpId"`
+	Username        string                     `json:"username"`
+	UserDisplayName string                     `json:"userDisplayName"`
+	UserHandle      string                     `json:"userHandle"`
+	Key             string                     `json:"key"`
+	FIDO2Extensions map[string]json.RawMessage `json:"fido2Extensions"`
+}
+
+type credentialExchangeHMACCredentials struct {
+	Algorithm           string `json:"algorithm"`
+	CredentialWithUV    string `json:"credWithUV"`
+	CredentialWithoutUV string `json:"credWithoutUV"`
 }
 
 type credentialExchangeTOTP struct {
@@ -165,6 +180,12 @@ type credentialExchangeValue struct {
 	isConcealed      bool
 }
 
+// credentialExchangeSecretFields are the record fields that hold secrets, concealed and kept exactly whatever field type
+// the exporter gave them.
+var credentialExchangeSecretFields = map[string]bool{
+	"credit-card/number": true, "credit-card/verificationNumber": true, "credit-card/pin": true, "api-key/key": true, "wifi/passphrase": true,
+}
+
 func readCredentialExchangeRecord(kind string, raw json.RawMessage) (*credentialExchangeRecord, error) {
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &fields); err != nil {
@@ -180,8 +201,13 @@ func readCredentialExchangeRecord(kind string, raw json.RawMessage) (*credential
 		if err := json.Unmarshal(encoded, &field); err != nil {
 			return nil, err
 		}
-		if value := field.read(); value != "" {
-			record.values = append(record.values, credentialExchangeValue{key: names[0], name: names[1], value: value, isConcealed: field.FieldType == "concealed-string"})
+		isSecret := credentialExchangeSecretFields[kind+"/"+names[0]]
+		value := field.read()
+		if isSecret {
+			value = field.readSecret()
+		}
+		if value != "" {
+			record.values = append(record.values, credentialExchangeValue{key: names[0], name: names[1], value: value, isConcealed: isSecret || field.FieldType == "concealed-string"})
 		}
 	}
 	return record, nil
@@ -195,6 +221,13 @@ func (record *credentialExchangeRecord) take(key string) string {
 		}
 	}
 	return ""
+}
+
+// takeInto moves the value of key into target when target is empty; otherwise the value stays for remainingFields.
+func (record *credentialExchangeRecord) takeInto(target *string, key string) {
+	if *target == "" {
+		*target = record.take(key)
+	}
 }
 
 func (record *credentialExchangeRecord) remainingFields() []item.Field {
@@ -252,6 +285,8 @@ type credentialExchangeItemBuilder struct {
 	sshKeys     []credentialExchangeSSHKey
 	sshKeyItems []item.Item
 	skipped     []SkippedEntry
+	// isPasswordGenerated: the item's password came from a generated-password credential, which a basic-auth one replaces.
+	isPasswordGenerated bool
 }
 
 func (builder *credentialExchangeItemBuilder) skip(reason string) {
@@ -336,7 +371,12 @@ func (builder *credentialExchangeItemBuilder) addCredential(raw json.RawMessage)
 		if err := json.Unmarshal(raw, &credential); err != nil {
 			return err
 		}
-		username, password := credential.Username.read(), credential.Password.read()
+		username, password := credential.Username.read(), credential.Password.readSecret()
+		if builder.isPasswordGenerated && builder.vaultItem.Overview.Username == "" {
+			// The login's own password wins over a generated one listed before it, which stays a field.
+			details.Fields = append(details.Fields, item.Field{Name: "Generated password", Value: details.Password, Concealed: true})
+			details.Password, builder.isPasswordGenerated = "", false
+		}
 		if builder.vaultItem.Overview.Username == "" && details.Password == "" {
 			builder.vaultItem.Overview.Username, details.Password = username, password
 			return nil
@@ -350,7 +390,7 @@ func (builder *credentialExchangeItemBuilder) addCredential(raw json.RawMessage)
 			return err
 		}
 		if details.Password == "" {
-			details.Password = credential.Password
+			details.Password, builder.isPasswordGenerated = credential.Password, true
 			return nil
 		}
 		details.Fields = append(details.Fields, item.Field{Name: "Generated password", Value: credential.Password, Concealed: true})
@@ -365,7 +405,11 @@ func (builder *credentialExchangeItemBuilder) addCredential(raw json.RawMessage)
 		if err := json.Unmarshal(raw, &credential); err != nil {
 			return err
 		}
-		addOneTimePassword(&builder.vaultItem, "One-time password", buildCredentialExchangeTOTPURI(credential))
+		otpURI := buildCredentialExchangeTOTPURI(credential)
+		if _, err := totp.Normalize(otpURI); err != nil {
+			builder.skip("its one-time password uses settings Hisar cannot make codes with; it was kept as a concealed field")
+		}
+		addOneTimePassword(&builder.vaultItem, "One-time password", otpURI)
 	case "note":
 		var credential struct {
 			Content *credentialExchangeField `json:"content"`
@@ -435,12 +479,42 @@ func (builder *credentialExchangeItemBuilder) addPasskey(credential credentialEx
 		CredentialID: credentialID, RelyingPartyID: normalizedID, UserHandle: userHandle, UserName: strings.TrimSpace(credential.Username),
 		UserDisplayName: strings.TrimSpace(credential.UserDisplayName), PrivateKey: normalizedKey, CreatedAt: builder.createdAt,
 	}
-	if extensions := credential.FIDO2Extensions; extensions != nil && extensions.HMACCredentials != nil && extensions.HMACCredentials.Algorithm == "hmac-sha256" {
-		if secret, err := decodeCredentialExchangeBinary(extensions.HMACCredentials.CredentialWithUV); err == nil && len(secret) == passkey.PRFSecretLength {
-			storedPasskey.PRFSecret = secret
-		}
-	}
+	builder.addPasskeyExtensions(&storedPasskey, credential.FIDO2Extensions)
 	builder.vaultItem.Details.Passkeys = append(builder.vaultItem.Details.Passkeys, storedPasskey)
+}
+
+// The lengths of an hmac-secret credential Hisar keeps as a PRF secret: CXF asks for 32 bytes, and HMAC-SHA256 gives the
+// outputs the other authenticator gave for a shorter one too.
+const (
+	minimumPRFSecretLength = 16
+	maximumPRFSecretLength = 64
+)
+
+// addPasskeyExtensions keeps the hmac-secret credential used with user verification as the passkey's PRF secret, so
+// PRF gives sites the outputs it gave before, and reports extension data Hisar does not keep.
+func (builder *credentialExchangeItemBuilder) addPasskeyExtensions(storedPasskey *item.Passkey, extensions map[string]json.RawMessage) {
+	for _, name := range slices.Sorted(maps.Keys(extensions)) {
+		if name != "hmacCredentials" {
+			if value := strings.TrimSpace(string(extensions[name])); value != "null" && value != "false" {
+				builder.skip(fmt.Sprintf("its passkey for %s lost its %s extension data, which Hisar does not keep", storedPasskey.RelyingPartyID, name))
+			}
+			continue
+		}
+		var credentials credentialExchangeHMACCredentials
+		var secret []byte
+		err := json.Unmarshal(extensions[name], &credentials)
+		if credentials.CredentialWithoutUV != "" {
+			builder.skip(fmt.Sprintf("its passkey for %s lost its non-UV PRF secret, which Hisar does not keep", storedPasskey.RelyingPartyID))
+		}
+		if err == nil {
+			secret, err = decodeCredentialExchangeBinary(credentials.CredentialWithUV)
+		}
+		if err != nil || credentials.Algorithm != "hmac-sha256" || len(secret) < minimumPRFSecretLength || len(secret) > maximumPRFSecretLength {
+			builder.skip(fmt.Sprintf("its passkey for %s lost its PRF secret; sites that use PRF get other results from it in Hisar", storedPasskey.RelyingPartyID))
+			continue
+		}
+		storedPasskey.PRFSecret = secret
+	}
 }
 
 func buildCredentialExchangeTOTPURI(credential credentialExchangeTOTP) string {
@@ -472,11 +546,12 @@ func (builder *credentialExchangeItemBuilder) addSSHKey(credential credentialExc
 	}
 	privateKeyPEM := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateKey}))
 	clear(privateKey)
-	keyItem, reason := buildSSHKeyItem(builder.title, privateKeyPEM, builder.vaultItem.Details.Notes)
+	keyItem, reason := buildSSHKeyItem(builder.title, privateKeyPEM, builder.vaultItem.Details.Notes, &builder.skipped)
 	if reason != "" {
 		builder.skip(reason)
 		return
 	}
+	reportSSHCommentOmission(&builder.skipped, builder.title, credential.KeyComment)
 	keyItem.Overview.Tags = item.NormalizeTags(builder.vaultItem.Overview.Tags)
 	builder.sshKeyItems = append(builder.sshKeyItems, keyItem)
 }
@@ -549,7 +624,8 @@ func (builder *credentialExchangeItemBuilder) applyAddress(record *credentialExc
 	item.WriteAddress(&builder.vaultItem, address, append(record.remainingFields(), builder.vaultItem.Details.Fields...))
 }
 
-// applyIdentity joins a person's name, documents and first address into one identity.
+// applyIdentity joins a person's name, documents and first address into one identity. A value the identity already has,
+// such as a second document's number or a full name next to the person's name, stays a custom field.
 func (builder *credentialExchangeItemBuilder) applyIdentity() {
 	identity := item.Identity{}
 	var otherFields []item.Field
@@ -558,22 +634,26 @@ func (builder *credentialExchangeItemBuilder) applyIdentity() {
 		identity.LastName = joinNonEmpties([]string{name.take("surnamePrefix"), name.take("surname"), name.take("surname2")}, " ")
 		otherFields = append(otherFields, name.remainingFields()...)
 	}
+	hasName := identity.FirstName != "" || identity.LastName != ""
 	fullName := ""
 	for record := builder.takeRecord(credentialExchangeIdentityTypes...); record != nil; record = builder.takeRecord(credentialExchangeIdentityTypes...) {
-		fullName = getFirstNonEmpty(fullName, record.take("fullName"))
-		identity.BirthDate = getFirstNonEmpty(identity.BirthDate, record.take("birthDate"))
+		if !hasName {
+			record.takeInto(&fullName, "fullName")
+		}
+		record.takeInto(&identity.BirthDate, "birthDate")
 		switch record.kind {
 		case "passport":
-			identity.PassportNumber = getFirstNonEmpty(identity.PassportNumber, record.take("passportNumber"))
-			identity.NationalIDNumber = getFirstNonEmpty(identity.NationalIDNumber, record.take("nationalIdentificationNumber"))
+			record.takeInto(&identity.PassportNumber, "passportNumber")
+			record.takeInto(&identity.NationalIDNumber, "nationalIdentificationNumber")
 		case "drivers-license":
-			identity.DriversLicenseNumber = getFirstNonEmpty(identity.DriversLicenseNumber, record.take("licenseNumber"))
+			record.takeInto(&identity.DriversLicenseNumber, "licenseNumber")
 		case "identity-document":
-			identity.NationalIDNumber = getFirstNonEmpty(identity.NationalIDNumber, record.take("identificationNumber"), record.take("documentNumber"))
+			record.takeInto(&identity.NationalIDNumber, "identificationNumber")
+			record.takeInto(&identity.NationalIDNumber, "documentNumber")
 		}
 		otherFields = append(otherFields, record.remainingFields()...)
 	}
-	if identity.FirstName == "" && identity.LastName == "" {
+	if !hasName {
 		identity.FirstName, identity.LastName = splitFullName(fullName)
 	}
 	if address := builder.takeRecord("address"); address != nil {

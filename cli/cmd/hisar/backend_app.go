@@ -32,6 +32,8 @@ func (access appBackend) listItems(ctx context.Context, vaultID string) ([]item.
 	return listAppItems(ctx, access.client, vaultID)
 }
 
+func (appBackend) listsItemSummaries() bool { return true }
+
 func (access appBackend) getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error) {
 	return getAppItem(ctx, access.client, vaultID, itemID)
 }

@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/browserprotocol"
@@ -91,9 +92,8 @@ func TestCredentialExchangeImportAddsPasskeysThatSignIn(t *testing.T) {
 	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 2 || progress.FileName != "1Password" || len(progress.Failed) != 0 {
 		t.Fatalf("progress = %+v", progress)
 	}
-	if err := service.DeleteImportFile(); err != nil {
-		t.Errorf("finishing an import without a file: %v", err)
-	}
+	// Credential Exchange has no local export file; the source app still holds omitted non-UV material.
+	service.CancelImport()
 
 	// Skipping the duplicate added its passkey to the login the vault had, which keeps its password.
 	itemsByTitle := listItemsByTitle(t, service, personalID)
@@ -153,13 +153,16 @@ func TestCredentialExchangeImportLinksAndroidApps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.FileName != "Example Exporter" || preview.ItemCount != 6 || preview.PasskeyCount != 2 || len(preview.Skipped) != 3 {
+	if preview.FileName != "Example Exporter" || preview.ItemCount != 6 || preview.PasskeyCount != 2 || len(preview.Skipped) != 6 {
 		t.Fatalf("preview = %+v", preview)
+	}
+	if !strings.Contains(preview.Skipped[5].Reason, "SSH key comment") {
+		t.Errorf("missing SSH comment warning: %+v", preview.Skipped)
 	}
 	if _, err := service.StartImport(personalID, true); err != nil {
 		t.Fatal(err)
 	}
-	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 6 || len(progress.Failed) != 0 {
+	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 6 || len(progress.Failed) != 0 || progress.LeftBehindCount != 6 {
 		t.Fatalf("progress = %+v", progress)
 	}
 

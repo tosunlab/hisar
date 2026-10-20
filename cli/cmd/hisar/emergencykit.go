@@ -56,10 +56,5 @@ func writeNewPrivateFile(path string, content []byte) error {
 	if err != nil {
 		return err
 	}
-	if _, err := file.Write(content); err != nil {
-		file.Close()
-		os.Remove(path)
-		return err
-	}
-	return file.Close()
+	return finishNewFile(path, content, file)
 }

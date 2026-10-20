@@ -63,7 +63,7 @@ func (s *Service) getCardForFill(ctx context.Context, vaultID, itemID string) (b
 		return browserprotocol.CardFillResult{}, ErrNotFound
 	}
 	result := browserprotocol.CardFillResult{
-		Cardholder: card.Cardholder, Number: getCardNumberDigits(card.Number), SecurityCode: card.SecurityCode, Brand: item.GetCardBrand(card.Number),
+		Cardholder: card.Cardholder, Number: getCardNumberDigits(card.Number), SecurityCode: strings.TrimSpace(card.SecurityCode), Brand: item.GetCardBrand(card.Number),
 	}
 	if expiry, isValid := item.NormalizeExpiry(card.Expiry); isValid {
 		result.ExpiryMonth, result.ExpiryYear = expiry[:2], "20"+expiry[3:]

@@ -170,7 +170,8 @@ export function DeleteAccount(password: string, email: string): $CancellableProm
 }
 
 /**
- * DeleteImportFile removes the export file after a finished import, since it holds every password in plain text.
+ * DeleteImportFile removes the export file after a finished import, since it holds every password in plain text. It
+ * refuses while the file holds something Hisar did not save, an item that failed or an entry it skipped.
  */
 export function DeleteImportFile(): $CancellablePromise<void> {
     return $Call.ByID(3512713509);

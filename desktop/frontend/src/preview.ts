@@ -1336,6 +1336,7 @@ function buildPreviewImportProgress(): ImportProgress {
     vaultName: vault.name,
     savedCount: previewImportRun.savedCount,
     totalCount: previewImportRun.savedCount + previewImportRun.allQueued.length,
+    leftBehindCount: allPreviewImportSkipped.length,
     isDone: previewImportRun.allQueued.length === 0,
     allFailed: [],
   };

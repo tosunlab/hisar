@@ -113,7 +113,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <details class="how-to">
           <summary>How to export from your password manager</summary>
           <dl>
-            <div><dt>1Password</dt><dd>File → Export → choose the account, then the 1PUX format.</dd></div>
+            <div><dt>1Password</dt><dd>File → Export → choose the account, then the 1PUX format. 1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.</dd></div>
             <div><dt>Bitwarden</dt><dd>Tools → Export vault → File format “.json”, not the encrypted one.</dd></div>
             <div><dt>LastPass</dt><dd>Account options → Advanced → Export, then save the file as CSV.</dd></div>
             <div><dt>Chrome, Edge</dt><dd>Settings → Passwords → Export passwords.</dd></div>
@@ -151,6 +151,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <span class="muted">{{ countEntry.label }}</span>
           </div>
         </div>
+        <p v-if="store.importPreview.format === '1pux'" class="muted hint" data-testid="import-passkey-warning">
+          1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.
+        </p>
 
         <section v-if="store.importPreview.allDuplicate.length > 0" data-testid="import-duplicates">
           <p class="section-label">Already in {{ store.importPreview.vaultName }} · {{ store.importPreview.allDuplicate.length }}</p>
@@ -214,7 +217,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             </li>
           </ul>
         </section>
-        <div v-if="!store.isImportFileDeleted" class="confirm" data-testid="delete-import-file-offer">
+        <div v-if="!store.isImportFileDeleted && store.importProgress.leftBehindCount === 0" class="confirm" data-testid="delete-import-file-offer">
           <AppIcon name="warning" class="confirm-icon" />
           <div class="confirm-body">
             <p>
@@ -229,7 +232,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           </div>
         </div>
         <template v-else>
-          <p class="muted hint" data-testid="import-file-deleted">Deleted {{ store.importProgress.fileName }}.</p>
+          <p v-if="store.isImportFileDeleted" class="muted hint" data-testid="import-file-deleted">Deleted {{ store.importProgress.fileName }}.</p>
+          <p v-else class="muted hint">Keep the source file. Review the entries that were not imported before deleting it yourself.</p>
           <div class="row actions">
             <button class="primary" @click="closeImport">Done</button>
           </div>

@@ -78,8 +78,8 @@ func (identity Identity) FullName() string {
 	return strings.Join(slices.DeleteFunc([]string{identity.FirstName, identity.MiddleName, identity.LastName}, func(part string) bool { return part == "" }), " ")
 }
 
-// NormalizeIdentity trims an identity item's values, writes its birth date as YYYY-MM-DD when it is given year first,
-// tidies its address as NormalizeAddress does and puts its fields in order; other items are left alone.
+// NormalizeIdentity trims an identity item's display values, keeps its document numbers exact, writes its birth date as
+// YYYY-MM-DD when it is given year first, tidies its address and puts its fields in order; other items are left alone.
 func NormalizeIdentity(vaultItem *Item) {
 	if !vaultItem.IsCategory(CategoryIdentity) {
 		return

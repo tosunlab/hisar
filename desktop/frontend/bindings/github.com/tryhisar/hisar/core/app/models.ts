@@ -228,6 +228,7 @@ export interface ImportProgress {
     "vaultName": string;
     "savedCount": number;
     "totalCount": number;
+    "leftBehindCount": number;
     "isDone": boolean;
     "allFailed": ImportSkippedEntry[] | null;
 }

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
@@ -170,8 +169,8 @@ func (s *Service) writeEmergencyKit(kit emergencykit.Kit, epoch uint64) (string,
 	if err := s.checkSessionEpoch(epoch); err != nil {
 		return "", err
 	}
-	if err := os.WriteFile(path, document, 0o600); err != nil {
-		return "", fmt.Errorf("could not save the Emergency Kit: %w", err)
+	if err := writeFileAtomically(path, document); err != nil {
+		return "", err
 	}
 	return path, nil
 }

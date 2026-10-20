@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -80,14 +81,15 @@ type ImportPreview struct {
 }
 
 type ImportProgress struct {
-	FileName   string               `json:"fileName"`
-	FilePath   string               `json:"filePath"`
-	VaultID    string               `json:"vaultId"`
-	VaultName  string               `json:"vaultName"`
-	SavedCount int                  `json:"savedCount"`
-	TotalCount int                  `json:"totalCount"`
-	IsDone     bool                 `json:"isDone"`
-	Failed     []ImportSkippedEntry `json:"allFailed"`
+	FileName        string               `json:"fileName"`
+	FilePath        string               `json:"filePath"`
+	VaultID         string               `json:"vaultId"`
+	VaultName       string               `json:"vaultName"`
+	SavedCount      int                  `json:"savedCount"`
+	TotalCount      int                  `json:"totalCount"`
+	LeftBehindCount int                  `json:"leftBehindCount"`
+	IsDone          bool                 `json:"isDone"`
+	Failed          []ImportSkippedEntry `json:"allFailed"`
 }
 
 // pendingImport holds the parsed export between the preview and saving; locking drops it. A Credential Exchange import
@@ -105,6 +107,10 @@ type pendingImport struct {
 	failed      []ImportSkippedEntry
 	// favoriteItemIDs are saved items the other password manager starred; they become favorites when the import ends.
 	favoriteItemIDs []string
+}
+
+func (pending *pendingImport) countLeftBehind() int {
+	return importer.CountLeftBehind(len(pending.failed), pending.skipped)
 }
 
 func (pending *pendingImport) getName() string {
@@ -184,17 +190,22 @@ func PrepareCredentialExchangeImport(s *Service, vaultID string, content []byte)
 	return s.buildImportPreview(vaultID)
 }
 
+// readImportFile reads at most maxImportFileSize bytes: a pipe or a file that grows says nothing true about its size
+// beforehand.
 func readImportFile(path string) ([]byte, error) {
-	fileInfo, err := os.Stat(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("could not open %s", filepath.Base(path))
 	}
-	if fileInfo.Size() > maxImportFileSize {
-		return nil, errors.New("the file is larger than 100 MB; export without attachments and try again")
-	}
-	content, err := os.ReadFile(path)
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxImportFileSize+1))
 	if err != nil {
+		clear(content)
 		return nil, fmt.Errorf("could not read %s", filepath.Base(path))
+	}
+	if len(content) > maxImportFileSize {
+		clear(content)
+		return nil, errors.New("the file is larger than 100 MB; export without attachments and try again")
 	}
 	return content, nil
 }
@@ -291,11 +302,12 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 			firstURL = duplicate.Overview.URLs[0]
 		}
 		passkeyCount := 0
-		if existing := existingItems[duplicateMatches[index]]; existing.IsCategory(item.CategoryLogin) {
+		existing := existingItems[duplicateMatches[index]]
+		if existing.IsCategory(item.CategoryLogin) {
 			passkeyCount = len(filterNewPasskeys(duplicate.Details.Passkeys, existingPasskeyIDs))
 		}
 		preview.Duplicates = append(preview.Duplicates, ImportDuplicate{
-			Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL, Detail: importer.DescribeDuplicate(duplicate),
+			Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL, Detail: importer.DescribeDuplicateOf(duplicate, existing),
 			PasskeyCount: passkeyCount,
 		})
 	}
@@ -379,6 +391,13 @@ func (s *Service) StartImport(vaultID string, isSkippingDuplicate bool) (ImportP
 			item.UpdatePasskeyOverview(merged)
 		}
 	}
+	if len(mergedPositions) > 0 {
+		existingItems = slices.Clone(existingItems)
+		for existingIndex, position := range mergedPositions {
+			existingItems[existingIndex] = queuedItems[position]
+		}
+	}
+	pending.skipped = append(pending.skipped, importer.FindUnsavedDuplicates(pending.items, existingItems, duplicateMatches)...)
 	pending.isStarted, pending.vaultID, pending.queuedItems, pending.items = true, vault.ID, queuedItems, nil
 	pending.failed = []ImportSkippedEntry{}
 	return s.buildImportProgress(), nil
@@ -433,13 +452,14 @@ func isImportStoppingError(err error) bool {
 func (s *Service) buildImportProgress() ImportProgress {
 	pending := s.pendingImport
 	progress := ImportProgress{
-		FileName:   pending.getName(),
-		FilePath:   pending.filePath,
-		VaultID:    pending.vaultID,
-		SavedCount: pending.savedCount,
-		TotalCount: pending.savedCount + len(pending.failed) + len(pending.queuedItems),
-		IsDone:     len(pending.queuedItems) == 0,
-		Failed:     slices.Clone(pending.failed),
+		FileName:        pending.getName(),
+		FilePath:        pending.filePath,
+		VaultID:         pending.vaultID,
+		SavedCount:      pending.savedCount,
+		TotalCount:      pending.savedCount + len(pending.failed) + len(pending.queuedItems),
+		LeftBehindCount: pending.countLeftBehind(),
+		IsDone:          len(pending.queuedItems) == 0,
+		Failed:          slices.Clone(pending.failed),
 	}
 	if vault, found := s.vaultsByID[pending.vaultID]; found {
 		progress.VaultName = vault.Name
@@ -453,7 +473,8 @@ func (s *Service) CancelImport() {
 	s.pendingImport = nil
 }
 
-// DeleteImportFile removes the export file after a finished import, since it holds every password in plain text.
+// DeleteImportFile removes the export file after a finished import, since it holds every password in plain text. It
+// refuses while the file holds something Hisar did not save, an item that failed or an entry it skipped.
 func (s *Service) DeleteImportFile() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -463,6 +484,9 @@ func (s *Service) DeleteImportFile() error {
 	pending := s.pendingImport
 	if pending == nil || !pending.isStarted || len(pending.queuedItems) > 0 {
 		return ErrNoPendingImport
+	}
+	if leftCount := pending.countLeftBehind(); leftCount > 0 {
+		return fmt.Errorf("keep %s: %d of its entries are not in Hisar", pending.getName(), leftCount)
 	}
 	if pending.filePath != "" {
 		if err := os.Remove(pending.filePath); err != nil && !errors.Is(err, os.ErrNotExist) {

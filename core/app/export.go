@@ -155,16 +155,31 @@ func (s *Service) writeExportFile(format, passphrase, path string, epoch uint64)
 	if err != nil {
 		return ExportResult{}, fmt.Errorf("could not save the export: %w", err)
 	}
-	if _, err := file.Write(content); err != nil {
-		file.Close()
-		os.Remove(path)
-		return ExportResult{}, fmt.Errorf("could not save the export: %w", err)
-	}
-	if err := file.Close(); err != nil {
+	if err := finishNewExportFile(path, content, file); err != nil {
 		return ExportResult{}, fmt.Errorf("could not save the export: %w", err)
 	}
 	result.Path = path
 	return result, nil
+}
+
+type durableExportWriter interface {
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+func finishNewExportFile(path string, content []byte, file durableExportWriter) error {
+	_, err := file.Write(content)
+	if err == nil {
+		err = file.Sync()
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
+		os.Remove(path)
+	}
+	return err
 }
 
 // buildExport exports the session of epoch, never one that replaced it after the approval.
@@ -202,26 +217,27 @@ func buildExportFileName(format string, now time.Time) string {
 	return "Hisar export " + now.Format("2006-01-02") + ".hisar"
 }
 
+// writeFileAtomically replaces path with a new file only the user can read, so a file that was there keeps neither its
+// old content nor its permissions, and never holds half of content.
 func writeFileAtomically(path string, content []byte) error {
-	temporaryFile, err := os.CreateTemp(filepath.Dir(path), ".hisar-export-*")
+	temporaryFile, err := os.CreateTemp(filepath.Dir(path), ".hisar-save-*")
 	if err != nil {
-		return fmt.Errorf("could not save the export: %w", err)
+		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	temporaryPath := temporaryFile.Name()
 	defer os.Remove(temporaryPath)
-	if _, err := temporaryFile.Write(content); err != nil {
-		temporaryFile.Close()
-		return fmt.Errorf("could not save the export: %w", err)
+	_, err = temporaryFile.Write(content)
+	if err == nil {
+		err = temporaryFile.Sync()
 	}
-	if err := temporaryFile.Sync(); err != nil {
-		temporaryFile.Close()
-		return fmt.Errorf("could not save the export: %w", err)
+	if closeErr := temporaryFile.Close(); err == nil {
+		err = closeErr
 	}
-	if err := temporaryFile.Close(); err != nil {
-		return fmt.Errorf("could not save the export: %w", err)
+	if err == nil {
+		err = os.Rename(temporaryPath, path)
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("could not save the export: %w", err)
+	if err != nil {
+		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	return nil
 }

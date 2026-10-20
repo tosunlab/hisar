@@ -19,6 +19,8 @@ type backend interface {
 	listVaults(ctx context.Context) ([]cliprotocol.Vault, error)
 	createVault(ctx context.Context, name string) (cliprotocol.Vault, error)
 	listItems(ctx context.Context, vaultID string) ([]item.Item, error)
+	// listsItemSummaries reports whether listItems omits content needed for import duplicate comparisons.
+	listsItemSummaries() bool
 	getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error)
 	// saveItem creates an item without an ID, or updates its title, username, websites, password, notes and fields.
 	saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
@@ -144,10 +146,26 @@ func writeNewFile(path string, content []byte) error {
 	if err != nil {
 		return fmt.Errorf("could not create %s: %w", path, err)
 	}
-	if _, err := file.Write(content); err != nil {
-		file.Close()
+	return finishNewFile(path, content, file)
+}
+
+type durableFileWriter interface {
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+func finishNewFile(path string, content []byte, file durableFileWriter) error {
+	_, err := file.Write(content)
+	if err == nil {
+		err = file.Sync()
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
 		os.Remove(path)
 		return fmt.Errorf("could not write %s: %w", path, err)
 	}
-	return file.Close()
+	return nil
 }

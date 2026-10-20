@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -32,6 +34,7 @@ type dotenvImportOption struct {
 // dotenvPlan is what an import stores and how the file changes; nothing is written while it is only planned.
 type dotenvPlan struct {
 	path             string
+	source           dotenvSource
 	layout           *dotenv.Layout
 	storedVariables  []dotenv.LayoutVariable
 	keptNames        []string
@@ -39,6 +42,78 @@ type dotenvPlan struct {
 	itemTitle        string
 	existingItemID   string
 	referencesByName map[string]string
+}
+
+type dotenvSource struct {
+	targetPath string
+	info       os.FileInfo
+	digest     [sha256.Size]byte
+}
+
+func readDotenvSource(path string) ([]byte, dotenvSource, error) {
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return nil, dotenvSource{}, err
+	}
+	targetPath, err := filepath.EvalSymlinks(absolutePath)
+	if err != nil {
+		return nil, dotenvSource{}, err
+	}
+	file, err := os.Open(targetPath)
+	if err != nil {
+		return nil, dotenvSource{}, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, dotenvSource{}, err
+	}
+	if !info.Mode().IsRegular() {
+		return nil, dotenvSource{}, errors.New("choose a regular .env file")
+	}
+	content, err := io.ReadAll(io.LimitReader(file, maxImportFileSize+1))
+	if err != nil || len(content) > maxImportFileSize {
+		clear(content)
+		return nil, dotenvSource{}, errors.New("could not read the .env file within the 100 MB limit")
+	}
+	return content, dotenvSource{targetPath: targetPath, info: info, digest: sha256.Sum256(content)}, nil
+}
+
+func checkDotenvSource(path string, source dotenvSource) error {
+	absolutePath, err := filepath.Abs(path)
+	if err != nil {
+		return err
+	}
+	targetPath, err := filepath.EvalSymlinks(absolutePath)
+	if err != nil {
+		return err
+	}
+	if targetPath != source.targetPath {
+		return errors.New("the .env target changed since the import was planned; it was not rewritten")
+	}
+	file, err := os.Open(targetPath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Mode() != source.info.Mode() {
+		return errors.New("the .env file changed since the import was planned; it was not rewritten")
+	}
+	digest := sha256.New()
+	size, err := io.Copy(digest, io.LimitReader(file, maxImportFileSize+1))
+	if err != nil {
+		return err
+	}
+	var currentDigest [sha256.Size]byte
+	digest.Sum(currentDigest[:0])
+	if size > maxImportFileSize || currentDigest != source.digest {
+		return errors.New("the .env file changed since the import was planned; it was not rewritten")
+	}
+	return nil
 }
 
 func isDotenvFile(path, format string) bool {
@@ -229,10 +304,13 @@ func importDotenv(ctx context.Context, access backend, path string, option doten
 			return err
 		}
 	}
+	if err := checkDotenvSource(plan.path, plan.source); err != nil {
+		return err
+	}
 	if err := storeDotenvItem(ctx, access, plan); err != nil {
 		return err
 	}
-	if err := rewriteDotenvFile(plan.path, plan.layout.Render(plan.referencesByName)); err != nil {
+	if err := rewriteDotenvFile(plan.path, plan.layout.Render(plan.referencesByName), plan.source); err != nil {
 		return fmt.Errorf("the values are stored in %s › %s, but %s could not be rewritten: %w", plan.vault.Name, plan.itemTitle, path, err)
 	}
 	fmt.Fprintf(standardError(), "Stored %s in %s › %s and rewrote %s with secret references.\n", formatValueCount(len(plan.storedVariables)), plan.vault.Name, plan.itemTitle, path)
@@ -241,7 +319,7 @@ func importDotenv(ctx context.Context, access backend, path string, option doten
 }
 
 func planDotenvImport(ctx context.Context, access backend, path string, option dotenvImportOption) (*dotenvPlan, error) {
-	content, err := readImportFile(path)
+	content, source, err := readDotenvSource(path)
 	if err != nil {
 		return nil, err
 	}
@@ -266,7 +344,7 @@ func planDotenvImport(ctx context.Context, access backend, path string, option d
 			return nil, err
 		}
 	}
-	plan := &dotenvPlan{path: path, layout: layout, referencesByName: map[string]string{}}
+	plan := &dotenvPlan{path: path, source: source, layout: layout, referencesByName: map[string]string{}}
 	for _, variable := range storable {
 		if !chosenByName[variable.Name] {
 			plan.keptNames = append(plan.keptNames, variable.Name)
@@ -401,15 +479,11 @@ func storeDotenvItem(ctx context.Context, access backend, plan *dotenvPlan) erro
 }
 
 // rewriteDotenvFile replaces the file in one rename, keeping its mode; no copy of the old content is kept.
-func rewriteDotenvFile(path, content string) error {
-	targetPath, err := filepath.EvalSymlinks(path)
-	if err != nil {
+func rewriteDotenvFile(path, content string, source dotenvSource) error {
+	if err := checkDotenvSource(path, source); err != nil {
 		return err
 	}
-	fileInfo, err := os.Stat(targetPath)
-	if err != nil {
-		return err
-	}
+	targetPath := source.targetPath
 	temporaryFile, err := os.CreateTemp(filepath.Dir(targetPath), "."+filepath.Base(targetPath)+".hisar-*")
 	if err != nil {
 		return err
@@ -420,7 +494,7 @@ func rewriteDotenvFile(path, content string) error {
 		temporaryFile.Close()
 		return err
 	}
-	if err := temporaryFile.Chmod(fileInfo.Mode().Perm()); err != nil {
+	if err := temporaryFile.Chmod(source.info.Mode().Perm()); err != nil {
 		temporaryFile.Close()
 		return err
 	}
@@ -429,6 +503,9 @@ func rewriteDotenvFile(path, content string) error {
 		return err
 	}
 	if err := temporaryFile.Close(); err != nil {
+		return err
+	}
+	if err := checkDotenvSource(path, source); err != nil {
 		return err
 	}
 	return os.Rename(temporaryPath, targetPath)

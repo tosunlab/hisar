@@ -29,6 +29,7 @@ type exportedVaultPlan struct {
 	target           cliprotocol.Vault
 	isNewVault       bool
 	items            []item.Item
+	existingItems    []item.Item
 	duplicateIndexes []int
 }
 
@@ -89,6 +90,7 @@ func planHisarImport(ctx context.Context, access backend, document *export.Docum
 				return nil, err
 			}
 			plan.duplicateIndexes = importer.FindDuplicateIndexes(plan.items, existingItems)
+			plan.existingItems = existingItems
 		}
 		plans = append(plans, plan)
 	}
@@ -158,6 +160,10 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 	for _, plan := range plans {
 		duplicateCount += len(plan.duplicateIndexes)
 	}
+	canCompareContent := !access.listsItemSummaries()
+	if !canCompareContent && duplicateCount > 0 {
+		fmt.Fprintln(os.Stderr, "Duplicate contents could not be compared through the Hisar app. Skipped duplicates keep the source file.")
+	}
 	isSkippingDuplicate := !option.isIncludingDuplicate
 	if !option.isConfirmed && isSkippingDuplicate && duplicateCount > 0 {
 		isIncluding, err := confirm(fmt.Sprintf("Also import the %s already there?", formatItemCount(duplicateCount)))
@@ -165,6 +171,19 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 			return err
 		}
 		isSkippingDuplicate = !isIncluding
+	}
+	hasUncomparedDuplicates := !canCompareContent && isSkippingDuplicate && duplicateCount > 0
+	if hasUncomparedDuplicates {
+		fmt.Fprintf(standardError(), "Keep %s: %s skipped as duplicates could not be compared through the Hisar app.\n", path, formatItemCount(duplicateCount))
+	}
+	var skipped []importer.SkippedEntry
+	if canCompareContent && isSkippingDuplicate {
+		for _, plan := range plans {
+			if plan.isNewVault || len(plan.duplicateIndexes) == 0 {
+				continue
+			}
+			skipped = append(skipped, importer.FindUnsavedDuplicates(plan.items, plan.existingItems, importer.FindDuplicateMatches(plan.items, plan.existingItems))...)
+		}
 	}
 	queuedCount, newVaultCount := 0, 0
 	for index := range plans {
@@ -209,7 +228,11 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 		}
 	}
 	fmt.Fprintf(standardError(), "Imported %s.\n", formatItemCount(savedCount))
-	if format == export.FormatPlain {
+	leftCount := importer.CountLeftBehind(queuedCount-savedCount, skipped)
+	if leftCount > 0 {
+		fmt.Fprintf(standardError(), "Keep %s: %d of its entries are not in Hisar.\n", path, leftCount)
+	}
+	if format == export.FormatPlain && !hasUncomparedDuplicates && leftCount == 0 {
 		return offerToDeleteImportFile(path, option.isConfirmed)
 	}
 	return nil

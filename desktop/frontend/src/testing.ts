@@ -861,6 +861,7 @@ export function createImportProgress(overrides: Partial<ImportProgress> = {}): I
     vaultName: "Personal",
     savedCount: 0,
     totalCount: 11,
+    leftBehindCount: 0,
     isDone: false,
     allFailed: [],
     ...overrides,

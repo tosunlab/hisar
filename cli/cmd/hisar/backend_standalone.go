@@ -143,6 +143,8 @@ func (access *standaloneBackend) listItems(ctx context.Context, vaultID string) 
 	return items, nil
 }
 
+func (*standaloneBackend) listsItemSummaries() bool { return false }
+
 func (access *standaloneBackend) getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error) {
 	items, err := access.listItems(ctx, vaultID)
 	if err != nil {

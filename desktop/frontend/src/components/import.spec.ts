@@ -199,6 +199,7 @@ describe("Import panel", () => {
     ]);
     expect(wrapper.text()).toContain("From 1Password, Bitwarden, LastPass, or a CSV file from your browser");
     expect(wrapper.find(".how-to").text()).toContain("LastPassAccount options → Advanced → Export, then save the file as CSV.");
+    expect(wrapper.find(".how-to").text()).toContain("1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.");
     await wrapper.find('[data-testid="import-format"]').setValue("csv");
     api.chooseImportFile.mockResolvedValue(createImportPreview({ fileName: "" }));
     await wrapper.find('[data-testid="import-choose"]').trigger("submit");
@@ -253,14 +254,24 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-duplicates"]').exists()).toBe(false);
   });
 
+  it("shows the 1PUX passkey warning in the preview without opening instructions", async () => {
+    const wrapper = await openPreview({ format: "1pux" });
+    expect(wrapper.find('[data-testid="import-passkey-warning"]').text()).toContain("1Password desktop .1pux exports do not include passkeys");
+    expect(wrapper.find('[data-testid="import-passkey-warning"]').text()).toContain("Keep 1Password");
+  });
+
+  it("does not show a 1PUX passkey warning for other import formats", async () => {
+    const wrapper = await openPreview({ format: "bitwarden-json" });
+    expect(wrapper.find('[data-testid="import-passkey-warning"]').exists()).toBe(false);
+  });
+
   it("offers to delete the export file after the import", async () => {
-    const wrapper = await openPreview();
+    const wrapper = await openPreview({ allSkipped: [] });
     api.startImport.mockResolvedValue(createImportProgress());
-    api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 10, totalCount: 11, isDone: true, allFailed: [{ title: "Huge note", reason: "the item is too large" }] }));
+    api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 11, totalCount: 11, isDone: true }));
     await wrapper.find('[data-testid="start-import"]').trigger("click");
     await flushPromises();
-    expect(wrapper.find('[data-testid="import-result"]').text()).toBe("Imported 10 items into Personal");
-    expect(wrapper.find('[data-testid="import-failed"]').text()).toContain("the item is too large");
+    expect(wrapper.find('[data-testid="import-result"]').text()).toBe("Imported 11 items into Personal");
     const deleteOffer = wrapper.find('[data-testid="delete-import-file-offer"]');
     expect(deleteOffer.text()).toContain("bitwarden_export.json holds all these passwords in plain text");
     expect(deleteOffer.text()).toContain("/Users/alice/Downloads/bitwarden_export.json");
@@ -276,8 +287,34 @@ describe("Import panel", () => {
     expect(store.store.isImportOpen).toBe(false);
   });
 
+
+  it.each(["failed", "omitted", "different-password duplicate"])("keeps the source when entries were %s", async (kind) => {
+    const wrapper = await openPreview({ allSkipped: kind === "omitted" ? [{ title: "Login", reason: "its attachment was not imported" }] : [] });
+    api.startImport.mockResolvedValue(createImportProgress());
+    api.continueImport.mockResolvedValue(createImportProgress({
+      savedCount: 10,
+      totalCount: 11,
+      isDone: true,
+      leftBehindCount: 1,
+      allFailed: kind === "failed" ? [{ title: "Huge note", reason: "the item is too large" }] : [],
+    }));
+    await wrapper.find('[data-testid="start-import"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="delete-import-file"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("Keep the source file");
+  });
+
+  it("offers deletion when only exact in-file repeats were skipped", async () => {
+    const wrapper = await openPreview({ allSkipped: [{ title: "Login", reason: "the same entry appears earlier in this file" }] });
+    api.startImport.mockResolvedValue(createImportProgress());
+    api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 11, totalCount: 11, isDone: true, leftBehindCount: 0 }));
+    await wrapper.find('[data-testid="start-import"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="delete-import-file"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("Review the entries that were not imported");
+  });
   it("keeps the file when asked", async () => {
-    const wrapper = await openPreview();
+    const wrapper = await openPreview({ allSkipped: [] });
     api.startImport.mockResolvedValue(createImportProgress());
     api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 11, isDone: true }));
     await wrapper.find('[data-testid="start-import"]').trigger("click");

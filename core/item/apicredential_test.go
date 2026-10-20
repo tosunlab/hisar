@@ -25,7 +25,7 @@ func TestReadAndWriteAPICredential(t *testing.T) {
 	NormalizeAPICredential(&vaultItem)
 	wantFields := []Field{
 		{Name: FieldKeyID, Value: "key_1"},
-		{Name: FieldSecret, Value: "sk_live_123", Concealed: true},
+		{Name: FieldSecret, Value: " sk_live_123 ", Concealed: true},
 		{Name: FieldHost, Value: "api.stripe.com"},
 		{Name: FieldExpiry, Value: "2027-01-05"},
 		{Name: "Scope", Value: "read"},
