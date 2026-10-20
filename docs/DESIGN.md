@@ -1136,6 +1136,8 @@ Developers, scripts and coding agents name secrets instead of copying them: `.en
 - Touch ID, the master password and the iPhone (§9.9) answer these dialogs like the other approvals; the phone request is a `cli` request whose app is "Claude Code (via hisar mcp) in Terminal". Remembered secrets and items end when Hisar locks, signs out or quits, or when the connection closes.
 - A denial, Deny, Escape or the timeout fails the tool with "The user denied access in Hisar." (or "… did not answer Hisar's approval dialog in time."), which the model can relay.
 
+**Inside an agent harness.** When the process chain of a caller holds an agent harness (§9.4.4), the agent session, not the connection, keys the agent's approval and its remembered secrets and items: every `hisar mcp` connection and every ordinary `hisar` command inside the same harness process shares them, and they end when that process exits. The dialog then names the harness and its app ("omp in Tern wants to use 1 secret") instead of the MCP client's own name.
+
 **Activity log.** Hisar has no local activity or audit view yet, and the server's audit log (§8.3) must not learn which items an agent used, so agent requests are not recorded; an on-device activity log is a follow-up.
 
 **Limits.** "Use without seeing" holds only as far as the command allows: a command run with secrets has the real values and can write them to a file, send them over the network, or print them encoded, none of which masking catches. That is why every `run_with_secrets` dialog shows the command and its working directory: approve only commands you would run yourself. An agent with a shell can also run `hisar` itself in an approved terminal session (§9.4.1). Remembering secrets for an hour lets the agent run any command with them during that hour.
@@ -1180,6 +1182,34 @@ Developers, scripts and coding agents name secrets instead of copying them: `.en
 - Raycast runs every extension in one Node process without an OS sandbox, so once Raycast is approved any of its extensions can send these requests until Hisar locks. That Node runtime lives in Raycast's folder in `~/Library/Application Support`, outside the signed bundle, so the approval trusts the user's own account as much as Raycast does. App identity rests on the bundle's code signature on disk, not on the running process's.
 
 **Clipboard.** Every copy the Mac app makes, from its own windows and for launchers, is marked `org.nspasteboard.ConcealedType` and `org.nspasteboard.TransientType`, so clipboard managers skip it (`desktop/pasteboard`). The 90-second clear reads the pasteboard back only while it still holds Hisar's own copy (its change count), so it does not read what another app copied since; reading and clearing are two steps, so a copy made by another app in the instant between them can still be cleared. A paste needs the value in Raycast: the extension reads one password or code, closes its window and pastes. Generated passwords are copied by Raycast itself with `concealed`.
+
+#### 9.4.4 Agent harnesses
+
+An agent harness is a program that runs a coding agent and the commands it asks for, such as omp. A request from a process that descends from a harness gets agent rules (§9.4.2) on the CLI socket, whatever it is: `hisar mcp`, or an ordinary `hisar` command the agent runs in its shell. The rule covers those descendants only.
+
+**Finding the harness.** `core/agentharness` holds the table of harnesses. Each row names the harness and the ways to recognize its process: a code signature (signing identifier and team), an executable name (the executable's file name or the first argument), a script a runtime runs, or an argument inside a package. omp is signed `omp-darwin-arm64` by team `VTLHGQC72S` (Tern's), named `omp`, run by Bun through its `omp` bin link, or run from `@oh-my-pi/pi-coding-agent`. The app reads the caller's chain from the kernel (`desktop/appinfo`, with `kern.proc.pid` and `kern.procargs2` on macOS and `/proc` on Linux) as a snapshot of process instances: each with its PID, start time, parent, path, arguments, working directory and, on macOS, the signing identifier and team of a signature that verifies. After the walk it reads every process again; a process that is gone or exited, has another start time or parent, a parent that started after its child, or a walk longer than 64 processes makes the chain unknown. The nearest harness process is the agent session: its PID and start time, so a reused PID is another session, and its working directory as the project.
+
+**Scope.** The agent session comes first in the approval scope (§9.4), before the terminal session and the app. A caller whose chain is unknown is approved for its connection only.
+
+- *Ordinary commands inside a harness* get agent rules. `hisar run` (`secrets.resolve` with a command) asks for a use grant per secret; `hisar read` (`secrets.resolve` without one) and `hisar get` (`items.get`) ask for a reveal grant per item, with the reveal warning. `vaults.list` and `items.list` show only the vaults open to coding agents and need the agent's approval; a hidden vault fails like one that does not exist, and its references fail before any dialog. `hello` (`hisar status`) answers as before. Every other request fails with "omp can use secrets through hisar run. Change items in the Hisar app." (`denied`).
+- *Grants* are keyed by the agent session, so a second omp, or omp after a restart, asks again. They end at lock, sign-out and quit, and when the harness process exits: the app watches it (`kqueue` `NOTE_EXIT` on macOS, a pidfd on Linux, polling elsewhere), then drops its grants, cancels its open dialogs and closes its connections. It checks that the harness instance still runs before it reuses a grant and before it completes an approval.
+- *Launchers.* `launcher.hello` is refused inside a harness.
+- *Agent hosts.* The app a harness runs in (Tern, Terminal) becomes an agent host, kept in `desktop.json` (`agentHosts`, kept on sign-out). Recording it ends its app approvals of the command line and of launchers. From then on its callers without a terminal and without a harness in their chain are approved per connection, and none of them is a launcher.
+- *The CLI* reads its own chain with the same table (without signatures) before it would sign in on its own: inside a harness `--standalone`, `HISAR_STANDALONE=1`, and an app that does not answer fail with "hisar runs inside omp, so it uses the Hisar app only." `hisar status` still answers, with `mode: none (<why the app did not answer>)`.
+
+**Chains measured** with omp 18.12.3 in Tern 0.9.4 on macOS:
+
+- The `bash` tool: `hisar` ← `sh` ← omp (`…/Tern/omp/versions/18.12.3`, first argument `omp`, signed by `VTLHGQC72S`) ← `tern daemon` ← launchd. Children of omp have no controlling terminal.
+- A managed service: the command ← omp's worker broker (the same signed executable, first argument `…/versions/18.12.3 __omp_worker_daemon_broker`) ← omp ← `tern daemon`. The broker is the nearest harness process, so a service is its own agent session and does not share grants with the `bash` tool.
+- The PTY path and client terminals were not measured.
+- omp installed with `bun add` and started through its bin link runs as `bun ./node_modules/.bin/omp`; its executable is Bun's.
+
+**What the rule does not cover.**
+
+- *An approved secret is readable by the agent.* `hisar run` puts the value in its child's environment, where the agent's own command can print it encoded or send it anywhere; masking matches only literal values of 4 bytes or more (§9.4.1). The dialog shows the full command, so the user judges each use.
+- *Work handed to another program leaves the chain.* A double fork or a launchd job: inside an agent host the caller is approved per connection; elsewhere it resolves as a background process with connection scope. `tmux send-keys` into a pane the user owns, or AppleScript that types into a terminal: the command runs in the user's terminal session and can use its approval, and nothing tells it apart from the user's typing. `open -a`, `launchctl` or `ssh localhost`: the chain has no omp and belongs to the opened app, launchd or `sshd`. A script the agent writes and the user runs later runs with the user's own approvals.
+- *omp's subagents share one process*, so they share its grants.
+- *A harness that is renamed and re-signed* is not recognized; the table matches what omp ships as.
 
 ### 9.5 Go memory handling
 
