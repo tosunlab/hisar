@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"bytes"
 	"errors"
 	"slices"
 	"strings"
@@ -116,6 +117,11 @@ func TestSetCodexServerRefusesWhatItCannotRead(t *testing.T) {
 	}{
 		{"an array that is not closed", "model = \"o4\"\nargs = [\n\"mcp\",\n", "Codex's config.toml is not valid TOML at line 4: an array or table that is not closed"},
 		{"a string that is not closed", "model = \"o4\n", "Codex's config.toml is not valid TOML at line 1: a string that is not closed"},
+		{"a backslash that ends the file", "model = \"o4\\", "Codex's config.toml is not valid TOML at line 1: a string that is not closed"},
+		{"a backslash that ends a line", "model = \"o4\\\n\"\n", "Codex's config.toml is not valid TOML at line 1: a string that is not closed"},
+		{"a backslash that ends a key", "\"model\\", "Codex's config.toml is not valid TOML at line 1: a string that is not closed"},
+		{"a backslash that ends an array", "args = [\n\"mcp\\", "Codex's config.toml is not valid TOML at line 2: a string that is not closed"},
+		{"a backslash that ends a multi-line string", "notes = \"\"\"\nline\\", "Codex's config.toml is not valid TOML at line 2: a multi-line string that is not closed"},
 		{"a key without a value", "model\n", "Codex's config.toml is not valid TOML at line 1: a key without \"=\""},
 		{"text after a table name", "[mcp_servers] model\n", "Codex's config.toml is not valid TOML at line 1: unexpected 'm'"},
 		{"servers on one line", "mcp_servers = { github = { command = \"gh\" } }\n", errCodexLayout.Error()},
@@ -127,6 +133,65 @@ func TestSetCodexServerRefusesWhatItCannotRead(t *testing.T) {
 			}
 		})
 	}
+}
+
+// FuzzSetCodexServer: whatever config.toml holds, setCodexServer refuses it or returns it with Hisar's table added at the
+// end or put in place of Hisar's own, and every other byte as it was.
+func FuzzSetCodexServer(f *testing.F) {
+	for _, seed := range []string{
+		"",
+		hisarTable,
+		"model = \"o4\"",
+		"# servers\n" + hisarTable + "\n# GitHub\n[mcp_servers.github]\ncommand = \"gh\"\n",
+		"model = \"o4\"\r\n[mcp_servers.github]\r\ncommand = \"gh\"\r\n",
+		"[ mcp_servers . \"hisar\" ]\ntool_timeout_sec = 4200\ncommand = '" + testHisarPath + "'\nargs = ['mcp', '--no-reveal']\nstartup_timeout_sec = 15\n",
+		"notify = [\n  \"say\", # ]\n]\ninstructions = \"\"\"\n[mcp_servers.hisar]\n\"\"\"\npath = 'C:\\tools'\n",
+		hisarTable + "env_vars = [\"CUSTOM_VAR\"]\n",
+		"model = \"o4\\",
+		"\"model\\",
+		"notes = \"\"\"\nline\\",
+		"args = ['a', \"b\\",
+	} {
+		f.Add([]byte(seed))
+	}
+	serverPath := []string{"mcp_servers", mcpServerName}
+	f.Fuzz(func(t *testing.T, content []byte) {
+		edited, err := setCodexServer(content, testHisarPath)
+		if err != nil {
+			return
+		}
+		server, err := findCodexServer(edited, testHisarPath)
+		if err != nil || !server.isOurs {
+			t.Fatalf("the edited file holds no table of Hisar's: %+v, %v\n%q", server, err, edited)
+		}
+		table := string(edited[server.start:server.end])
+		if table != codexServerTable(testHisarPath, "\n") && table != codexServerTable(testHisarPath, "\r\n") {
+			t.Fatalf("Hisar's table = %q", table)
+		}
+		before, after := edited[:server.start], edited[server.end:]
+		if len(after) == 0 && bytes.HasPrefix(before, content) {
+			if separator := before[len(content):]; len(bytes.Trim(separator, "\r\n")) != 0 || len(separator) > 4 {
+				t.Fatalf("added %q before Hisar's table", separator)
+			}
+			return
+		}
+		if !bytes.HasPrefix(content, before) || !bytes.HasSuffix(content, after) || len(before)+len(after) > len(content) {
+			t.Fatalf("changed bytes outside Hisar's table:\n%q\nbecame\n%q", content, edited)
+		}
+		start, end := len(before), len(content)-len(after)
+		statements, err := parseTOML(content)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, statement := range statements {
+			isInside := statement.start >= start && statement.end <= end
+			isOutside := statement.end <= start || statement.start >= end
+			if !isInside && !isOutside || isInside && !hasPathPrefix(statement.path, serverPath) ||
+				statement.start == start && !(statement.isHeader && len(statement.path) == len(serverPath)) {
+				t.Fatalf("replaced %q, which is not Hisar's table, in\n%q", content[start:end], content)
+			}
+		}
+	})
 }
 
 func TestQuotedHisarPathReadsBack(t *testing.T) {
@@ -161,6 +226,7 @@ func TestParseTOMLStringArray(t *testing.T) {
 		{`["a", 1]`, nil, false},
 		{`["a"] x`, nil, false},
 		{`"a"`, nil, false},
+		{`["a\`, nil, false},
 	} {
 		got, isArray := parseTOMLStringArray(test.raw)
 		if isArray != test.isArray || !slices.Equal(got, test.want) {
