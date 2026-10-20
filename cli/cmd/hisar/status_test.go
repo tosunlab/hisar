@@ -72,4 +72,7 @@ func TestStatusJSON(t *testing.T) {
 	}
 	assertStatus(t, "app not running, standalone signed in", readStatusJSON(t, false), "standalone", "not-running", "bob@example.com")
 	assertStatus(t, "chosen standalone, signed in", readStatusJSON(t, true), "standalone", "locked", "bob@example.com")
+
+	runInsideOmp(t)
+	assertStatus(t, "app not running, inside omp", readStatusJSON(t, false), "none", "not-running", "")
 }

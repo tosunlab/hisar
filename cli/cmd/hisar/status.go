@@ -102,6 +102,9 @@ func runStatus(_ context.Context, flags *flag.FlagSet, args []string) error {
 		return err
 	}
 	if refusal := checkStandaloneAllowed(); refusal != nil {
+		if *isJSON {
+			return writeStatusJSON(os.Stdout, statusReport{Mode: "none", State: stateNotRunning})
+		}
 		writeRefusedStatus(os.Stdout, selectedMode, refusal)
 		return nil
 	}
