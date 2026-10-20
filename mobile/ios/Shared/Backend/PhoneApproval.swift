@@ -191,7 +191,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
             warningRow,
             DetailRow(label: "Project", value: projectPath, isMonospaced: true),
             DetailRow(label: kind == Self.kindCommandLine && secrets.isEmpty ? "Program" : "Command", value: commandLine, isMonospaced: true),
-            DetailRow(label: "Repository", value: repositoryPath, isMonospaced: true),
+            DetailRow(label: "Repository", value: isRepositoryTheProject ? "" : repositoryPath, isMonospaced: true),
             DetailRow(label: "Server", value: host, isMonospaced: true),
             DetailRow(label: "Key", value: keyName, isMonospaced: false),
             secretRow,
@@ -199,6 +199,12 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
             DetailRow(label: "Terminal", value: terminalName.isEmpty ? "" : "/dev/\(terminalName)", isMonospaced: true),
         ]
         return allCandidate.filter { !$0.value.isEmpty }
+    }
+
+    // A coding agent usually runs in its project's root, where the repository row would only repeat the project.
+    private var isRepositoryTheProject: Bool {
+        func trimSlash(_ path: String) -> Substring { path.hasSuffix("/") ? path.dropLast() : Substring(path) }
+        return !projectPath.isEmpty && trimSlash(repositoryPath) == trimSlash(projectPath)
     }
 
     func isExpired(at date: Date) -> Bool {

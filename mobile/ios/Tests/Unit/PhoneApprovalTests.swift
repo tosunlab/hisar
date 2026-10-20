@@ -82,6 +82,17 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(createApproval().projectPath, "", "a request from an older Mac has no project")
     }
 
+    func testCodingAgentRequestOmitsTheRepositoryThatIsItsProject() throws {
+        let json = """
+        [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+          "kind":"cli","appName":"omp in Tern (via hisar)","purpose":"use 1 secret","commandLine":"npm run db:migrate","repositoryPath":"~/src/acme-web/",
+          "projectPath":"~/src/acme-web","secrets":["Agents › Stripe › secret key"]}]
+        """
+        let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Project", "Command", "Secrets"])
+        XCTAssertEqual(approval.allDetailRow[1].value, "~/src/acme-web")
+    }
+
     func testLauncherRequestNamesTheAppAndHowLongItLasts() throws {
         let json = """
         [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","createdAt":"2027-01-15T08:00:00.123Z","expiresAt":"2027-01-15T08:01:00.123Z",

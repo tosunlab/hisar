@@ -117,6 +117,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
             assertEquals("omp in Tern (via hisar) wants to use 2 secrets", readText("phone-approval-summary"))
             assertEquals("~/src/acme-web", readText("phone-approval-row-Project"))
             assertEquals("npm run db:migrate", readText("phone-approval-row-Command"))
+            assertFalse("the agent runs in its project's root", exists(hasTestTag("phone-approval-row-Repository")))
             val secrets = readText("phone-approval-row-Secrets")
             assertTrue(secrets, "Agents › Staging Postgres › connection string" in secrets && "Agents › Stripe › secret key" in secrets)
             saveScreenshot("phone-approval-agent")

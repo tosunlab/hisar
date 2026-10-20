@@ -132,7 +132,7 @@ data class PhoneApproval(
                     warningRow,
                     DetailRow("Project", projectPath, true),
                     DetailRow(if (kind == KIND_COMMAND_LINE && secrets.isEmpty()) "Program" else "Command", commandLine, true),
-                    DetailRow("Repository", repositoryPath, true),
+                    DetailRow("Repository", if (isRepositoryTheProject) "" else repositoryPath, true),
                     DetailRow("Server", host, true),
                     DetailRow("Key", keyName, false),
                     secretRow,
@@ -142,6 +142,10 @@ data class PhoneApproval(
             }
             return allCandidate.filter { it.value.isNotEmpty() }
         }
+
+    // A coding agent usually runs in its project's root, where the repository row would only repeat the project.
+    private val isRepositoryTheProject: Boolean
+        get() = projectPath.isNotEmpty() && repositoryPath.removeSuffix("/") == projectPath.removeSuffix("/")
 
     fun isExpired(date: Instant): Boolean {
         val expiryDate = expiryDate ?: return true
