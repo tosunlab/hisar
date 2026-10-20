@@ -238,7 +238,8 @@ func (scanner *tomlScanner) skipString() error {
 			case scanner.isAtEnd():
 				return scanner.errorf("a multi-line string that is not closed")
 			case isBasic && scanner.peek(0) == '\\':
-				scanner.pos += 2
+				// The escaped byte, unless the backslash ends the file.
+				scanner.pos = min(scanner.pos+2, len(scanner.content))
 			case scanner.hasPrefix(delimiter):
 				// A multi-line string may end with one or two quotes of its own right before its delimiter.
 				run := 0
@@ -261,7 +262,11 @@ func (scanner *tomlScanner) skipString() error {
 		case scanner.isAtLineEnd():
 			return scanner.errorf("a string that is not closed")
 		case isBasic && scanner.peek(0) == '\\':
-			scanner.pos += 2
+			// A backslash escapes a byte of its line only: a single-line string ends with its line.
+			scanner.pos++
+			if !scanner.isAtLineEnd() {
+				scanner.pos++
+			}
 		case scanner.peek(0) == quote:
 			scanner.pos++
 			return nil
