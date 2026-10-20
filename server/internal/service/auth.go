@@ -17,6 +17,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -193,7 +194,7 @@ func isValidDevice(device apitypes.DeviceInfo) bool {
 // LoginStart answers an unknown email with a fake record, so it cannot tell which accounts exist.
 func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRequest) (apitypes.LoginStartResponse, error) {
 	email := apitypes.NormalizeEmail(request.Email)
-	keyExchange1, err := s.keys.OpaqueServer.Deserialize.KE1(request.KE1)
+	keyExchange1, err := s.keys.LoginServer.Deserialize.KE1(request.KE1)
 	if err != nil || email == "" {
 		return apitypes.LoginStartResponse{}, errInvalidLogin
 	}
@@ -218,11 +219,11 @@ func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRe
 		accountID, recordHash = account.ID, store.HashOpaqueRecord(account.OpaqueRecord)
 		clientRecord = &opaque.ClientRecord{RegistrationRecord: registrationRecord, CredentialIdentifier: []byte(account.ID), ClientIdentity: []byte(account.ID)}
 	}
-	keyExchange2, serverOutput, err := s.keys.OpaqueServer.GenerateKE2(keyExchange1, clientRecord)
+	keyExchange2, serverOutput, err := s.keys.LoginServer.GenerateKE2(keyExchange1, clientRecord)
 	if err != nil {
 		return apitypes.LoginStartResponse{}, errInvalidLogin
 	}
-	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC, recordHash: recordHash})
+	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC, recordHash: recordHash, purpose: pake.Login})
 	clear(serverOutput.SessionSecret)
 	return apitypes.LoginStartResponse{LoginID: loginID, KE2: keyExchange2.Serialize()}, nil
 }
@@ -232,11 +233,11 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 		return apitypes.SessionResponse{}, newError(KindInvalid, "invalid device")
 	}
 	pending := s.loginCache.take(request.LoginID)
-	if pending == nil || pending.accountID == "" || pending.sessionTokenHash != nil {
+	if pending == nil || pending.accountID == "" || pending.sessionTokenHash != nil || pending.purpose != pake.Login {
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
-	keyExchange3, err := s.keys.OpaqueServer.Deserialize.KE3(request.KE3)
-	if err != nil || s.keys.OpaqueServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
+	keyExchange3, err := s.keys.LoginServer.Deserialize.KE3(request.KE3)
+	if err != nil || s.keys.LoginServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
 	// Suspension is checked only now, after the proof, so the answer never tells someone without the password. A login
@@ -266,6 +267,7 @@ type pendingLogin struct {
 	// sessionTokenHash is set for a re-authentication, which never creates a session.
 	sessionTokenHash []byte
 	recordHash       []byte
+	purpose          pake.AuthPurpose
 }
 
 // loginCache holds the server side of logins between their two requests, for a short time.

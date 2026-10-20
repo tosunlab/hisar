@@ -209,14 +209,22 @@ func (c *Client) FinishRegistration(ctx context.Context, request *apitypes.Regis
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/register/finish", nil, request, &response, nil)
 }
 
+func (c *Client) sendAuthenticationRequest(ctx context.Context, path string, request, response any) error {
+	err := c.sendRequest(ctx, "POST", path, nil, request, response, nil)
+	if IsStatus(err, http.StatusNotFound) || IsStatus(err, http.StatusMethodNotAllowed) {
+		return fmt.Errorf("update your Hisar server to support origin-bound authentication: %w", err)
+	}
+	return err
+}
+
 func (c *Client) StartLogin(ctx context.Context, request *apitypes.LoginStartRequest) (*apitypes.LoginStartResponse, error) {
 	var response apitypes.LoginStartResponse
-	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/login/start", nil, request, &response, nil)
+	return &response, c.sendAuthenticationRequest(ctx, "/api/v1/auth/login/v2/start", request, &response)
 }
 
 func (c *Client) FinishLogin(ctx context.Context, request *apitypes.LoginFinishRequest) (*apitypes.SessionResponse, error) {
 	var response apitypes.SessionResponse
-	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/login/finish", nil, request, &response, nil)
+	return &response, c.sendAuthenticationRequest(ctx, "/api/v1/auth/login/v2/finish", request, &response)
 }
 
 func (c *Client) Logout(ctx context.Context) error {
@@ -373,7 +381,7 @@ func (c *Client) OpenPublicShareLink(ctx context.Context, shareLinkID string) (*
 
 func (c *Client) Reauthenticate(ctx context.Context, request *apitypes.ReauthenticateRequest) (*apitypes.ReauthenticateResponse, error) {
 	var response apitypes.ReauthenticateResponse
-	return &response, c.sendRequest(ctx, "POST", "/api/v1/account/reauthenticate", nil, request, &response, nil)
+	return &response, c.sendAuthenticationRequest(ctx, "/api/v1/account/reauthenticate/v2", request, &response)
 }
 
 func (c *Client) ChangeCredentials(ctx context.Context, request *apitypes.ChangeCredentialsRequest) (*apitypes.ChangeCredentialsResponse, error) {

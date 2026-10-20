@@ -12,6 +12,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
@@ -29,7 +30,7 @@ func (s *Service) Reauthenticate(ctx context.Context, actor Actor, request *apit
 	if !s.Limiters.Reauthentication.Allow(actor.AccountID) {
 		return apitypes.ReauthenticateResponse{}, newError(KindTooManyRequests, "too many attempts; wait a minute and try again")
 	}
-	keyExchange1, err := s.keys.OpaqueServer.Deserialize.KE1(request.KE1)
+	keyExchange1, err := s.keys.ReauthenticationServer.Deserialize.KE1(request.KE1)
 	if err != nil {
 		return apitypes.ReauthenticateResponse{}, errInvalidLogin
 	}
@@ -54,7 +55,7 @@ func (s *Service) Reauthenticate(ctx context.Context, actor Actor, request *apit
 		registrationResponse = response.Serialize()
 	}
 	clientRecord := &opaque.ClientRecord{RegistrationRecord: registrationRecord, CredentialIdentifier: []byte(account.ID), ClientIdentity: []byte(account.ID)}
-	keyExchange2, serverOutput, err := s.keys.OpaqueServer.GenerateKE2(keyExchange1, clientRecord)
+	keyExchange2, serverOutput, err := s.keys.ReauthenticationServer.GenerateKE2(keyExchange1, clientRecord)
 	if err != nil {
 		return apitypes.ReauthenticateResponse{}, errInvalidLogin
 	}
@@ -63,6 +64,7 @@ func (s *Service) Reauthenticate(ctx context.Context, actor Actor, request *apit
 		clientMAC:        serverOutput.ClientMAC,
 		sessionTokenHash: actor.TokenHash,
 		recordHash:       store.HashOpaqueRecord(account.OpaqueRecord),
+		purpose:          pake.Reauthenticate,
 	})
 	clear(serverOutput.SessionSecret)
 	return apitypes.ReauthenticateResponse{ReauthenticationID: reauthenticationID, KE2: keyExchange2.Serialize(), RegistrationResponse: registrationResponse}, nil
@@ -71,11 +73,11 @@ func (s *Service) Reauthenticate(ctx context.Context, actor Actor, request *apit
 // finishReauthentication accepts a proof only from the session that started it.
 func (s *Service) finishReauthentication(ctx context.Context, actor Actor, reauthenticationID string, encodedKeyExchange3 []byte) (*pendingLogin, error) {
 	pending := s.loginCache.take(reauthenticationID)
-	if pending == nil || pending.sessionTokenHash == nil || pending.accountID != actor.AccountID || !bytes.Equal(pending.sessionTokenHash, actor.TokenHash) {
+	if pending == nil || pending.purpose != pake.Reauthenticate || pending.sessionTokenHash == nil || pending.accountID != actor.AccountID || !bytes.Equal(pending.sessionTokenHash, actor.TokenHash) {
 		return nil, newError(KindForbidden, "the master password check expired; try again")
 	}
-	keyExchange3, err := s.keys.OpaqueServer.Deserialize.KE3(encodedKeyExchange3)
-	if err != nil || s.keys.OpaqueServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
+	keyExchange3, err := s.keys.ReauthenticationServer.Deserialize.KE3(encodedKeyExchange3)
+	if err != nil || s.keys.ReauthenticationServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
 		s.recordAudit(ctx, actor, auditReauthenticationFailed, nil)
 		return nil, errReauthenticationFailed
 	}

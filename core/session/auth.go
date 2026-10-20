@@ -9,6 +9,7 @@ import (
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/pake"
 )
 
 // accountCredential is what signup generates: a new Secret Key, salt, keyset and OPAQUE record.
@@ -119,7 +120,7 @@ func LogIn(ctx context.Context, apiClient *apiclient.Client, email string, passw
 	}
 	defer derivedKeys.Wipe()
 
-	login, keyExchange1, err := startOpaqueLogin(derivedKeys.AuthKey)
+	login, keyExchange1, err := startOpaqueLogin(derivedKeys.AuthKey, apiClient.BaseURL, pake.Login)
 	if err != nil {
 		return nil, err
 	}

@@ -43,10 +43,10 @@ func decodeJSON[T any](t *testing.T, body string) T {
 	return value
 }
 
-func getInviteToken(t *testing.T, link string) string {
+func getInviteToken(t *testing.T, baseURL, link string) string {
 	t.Helper()
 	match := inviteTokenPattern.FindStringSubmatch(link)
-	if match == nil || !strings.HasPrefix(link, "https://hisar.test/invite/") {
+	if match == nil || !strings.HasPrefix(link, baseURL+"/invite/") {
 		t.Fatalf("invite link %q", link)
 	}
 	return match[1]
@@ -74,11 +74,11 @@ func TestAdminInvitesCreateWithEachRole(t *testing.T) {
 			created.Invite.CreatedBy == nil || created.Invite.CreatedBy.AccountID != admin.AccountID || created.Invite.CreatedBy.Email != "admin@example.com" {
 			t.Errorf("created without email: %+v", created)
 		}
-		response, body := fetchInvitePage(t, baseURL, getInviteToken(t, created.Link))
+		response, body := fetchInvitePage(t, baseURL, getInviteToken(t, baseURL, created.Link))
 		if response.StatusCode != http.StatusOK || !strings.Contains(body, email) {
 			t.Errorf("invite page of %s: %d", email, response.StatusCode)
 		}
-		signedUp, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, created.Link), email)
+		signedUp, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, baseURL, created.Link), email)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -129,7 +129,7 @@ func TestAdminInvitesRevokeThenRedeemFails(t *testing.T) {
 	if pendingAfter := getPendingInviteCount(t, baseURL, admin.Client.Token); pendingAfter != pendingBefore-1 {
 		t.Errorf("Overview's pending invites %d, then %d", pendingBefore, pendingAfter)
 	}
-	token := getInviteToken(t, created.Link)
+	token := getInviteToken(t, baseURL, created.Link)
 	_, revokedPage := fetchInvitePage(t, baseURL, token)
 	unknownResponse, unknownPage := fetchInvitePage(t, baseURL, "never-issued-token")
 	if unknownResponse.StatusCode != http.StatusNotFound || revokedPage != unknownPage {
@@ -188,7 +188,7 @@ func TestAdminInvitesResendInvalidatesTheOldToken(t *testing.T) {
 	if status, _ := sendRawRequest(t, baseURL, admin.Client.Token, "POST", adminInvitesPath+"/"+listed[0].ID+"/resend", nil); status != http.StatusNotFound {
 		t.Errorf("resend the old invite again: %d", status)
 	}
-	carol, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, resent.Link), "carol@example.com")
+	carol, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, baseURL, resent.Link), "carol@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -289,7 +289,7 @@ func TestAdminInviteNeedsItsCreatorToStillBeAnActiveAdmin(t *testing.T) {
 		if status, _ := sendRawRequest(t, baseURL, second.session.Client.Token, "POST", adminInvitesPath+"/"+created.Invite.ID+"/resend", nil); status != http.StatusNotFound {
 			t.Errorf("resend unusable admin invite: %d", status)
 		}
-		token := getInviteToken(t, created.Link)
+		token := getInviteToken(t, baseURL, created.Link)
 		if response, _ := fetchInvitePage(t, baseURL, token); response.StatusCode != http.StatusNotFound {
 			t.Errorf("invite page of %s: %d", created.Invite.Email, response.StatusCode)
 		}
@@ -308,7 +308,7 @@ func TestAdminInviteNeedsItsCreatorToStillBeAnActiveAdmin(t *testing.T) {
 	if count := getPendingInviteCount(t, baseURL, second.session.Client.Token); count != 1 {
 		t.Errorf("pending invites after demotion: %d, want only the member invite", count)
 	}
-	if _, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, memberInvite.Link), "member-invitee@example.com"); err != nil {
+	if _, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, baseURL, memberInvite.Link), "member-invitee@example.com"); err != nil {
 		t.Errorf("a member invite of a demoted admin: %v", err)
 	}
 
@@ -319,7 +319,7 @@ func TestAdminInviteNeedsItsCreatorToStillBeAnActiveAdmin(t *testing.T) {
 	if count := getPendingInviteCount(t, baseURL, second.session.Client.Token); count != 1 {
 		t.Errorf("pending invites after promotion: %d, want revived admin invite", count)
 	}
-	revived, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, demotedInvite.Link), demotedInvite.Invite.Email)
+	revived, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, baseURL, demotedInvite.Link), demotedInvite.Invite.Email)
 	if err != nil {
 		t.Fatalf("revived admin invite: %v", err)
 	}

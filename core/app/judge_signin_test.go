@@ -36,7 +36,8 @@ func judgeLoginServer(t *testing.T, fixture unlockedTestService, secretKey crypt
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := server.SetKeyMaterial(&opaque.ServerKeyMaterial{PrivateKey: private, PublicKeyBytes: public.Encode(), OPRFGlobalSeed: config.GenerateOPRFSeed(), Identity: pake.ServerIdentity()}); err != nil {
+	keyMaterial := &opaque.ServerKeyMaterial{PrivateKey: private, PublicKeyBytes: public.Encode(), OPRFGlobalSeed: config.GenerateOPRFSeed(), Identity: pake.ServerIdentity()}
+	if err := server.SetKeyMaterial(keyMaterial); err != nil {
 		t.Fatal(err)
 	}
 	client, err := config.Client()
@@ -64,7 +65,7 @@ func judgeLoginServer(t *testing.T, fixture unlockedTestService, secretKey crypt
 	mux.HandleFunc("GET /api/v1/auth/prelogin", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, apitypes.PreloginResponse{Salt: account.Salt, Argon2: account.Argon2})
 	})
-	mux.HandleFunc("POST /api/v1/auth/login/start", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/auth/login/v2/start", func(w http.ResponseWriter, r *http.Request) {
 		var request apitypes.LoginStartRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
@@ -89,7 +90,7 @@ func judgeLoginServer(t *testing.T, fixture unlockedTestService, secretKey crypt
 		clear(output.SessionSecret)
 		writeJSON(w, http.StatusOK, apitypes.LoginStartResponse{LoginID: "login", KE2: ke2.Serialize()})
 	})
-	mux.HandleFunc("POST /api/v1/auth/login/finish", func(w http.ResponseWriter, r *http.Request) {
+	mux.HandleFunc("POST /api/v1/auth/login/v2/finish", func(w http.ResponseWriter, r *http.Request) {
 		var request apitypes.LoginFinishRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			t.Error(err)
@@ -116,7 +117,20 @@ func judgeLoginServer(t *testing.T, fixture unlockedTestService, secretKey crypt
 		loggedOut.Store(true)
 		w.WriteHeader(http.StatusNoContent)
 	})
-	httpServer := httptest.NewServer(mux)
+	httpServer := httptest.NewUnstartedServer(mux)
+	trustedOrigin := "http://" + httpServer.Listener.Addr().String()
+	authConfiguration, err := pake.NewAuthConfig(trustedOrigin, pake.Login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, err = authConfiguration.Server()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := server.SetKeyMaterial(keyMaterial); err != nil {
+		t.Fatal(err)
+	}
+	httpServer.Start()
 	t.Cleanup(httpServer.Close)
 	return httpServer.URL, loggedOut
 }

@@ -46,7 +46,7 @@ func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 	if !bytes.Equal(created.OpaqueKeyMaterial, reloaded.OpaqueKeyMaterial) || !bytes.Equal(created.HMACKey, reloaded.HMACKey) {
 		t.Error("secrets changed on reload")
 	}
-	if _, err := NewServer(nil, reloaded, Config{}); err != nil {
+	if _, err := NewServer(nil, reloaded, Config{Config: service.Config{PublicURL: "https://hisar.test"}}); err != nil {
 		t.Errorf("reloaded secrets unusable: %v", err)
 	}
 }
@@ -204,7 +204,7 @@ func TestInternalErrorLogLeavesCapabilitiesOut(t *testing.T) {
 }
 
 func TestPrivacyPolicyAndTerms(t *testing.T) {
-	server, err := NewServer(nil, generateSecrets(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -267,14 +267,14 @@ func TestLegalPagesLinkToEachOther(t *testing.T) {
 }
 
 func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
-	server, err := NewServer(nil, generateSecrets(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	server.limiter = ratelimit.New(rate.Inf, 1)
 	app := server.CreateApp()
 	largeBody := `{"email":"` + strings.Repeat("a", maxBody+1) + `"}`
-	request := httptest.NewRequest("POST", "/api/v1/auth/login/start", strings.NewReader(largeBody))
+	request := httptest.NewRequest("POST", "/api/v1/auth/login/v2/start", strings.NewReader(largeBody))
 	request.Header.Set("Content-Type", "application/json")
 	response, err := app.Test(request, fiber.TestConfig{Timeout: 10 * time.Second})
 	if err != nil {
@@ -286,7 +286,7 @@ func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
 }
 
 func TestHandlerContextEndsAtTheRequestTimeout(t *testing.T) {
-	server, err := NewServer(nil, generateSecrets(), Config{RequestTimeout: 50 * time.Millisecond})
+	server, err := NewServer(nil, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}, RequestTimeout: 50 * time.Millisecond})
 	if err != nil {
 		t.Fatal(err)
 	}

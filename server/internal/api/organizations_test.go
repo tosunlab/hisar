@@ -184,7 +184,7 @@ func TestOrganizationInvitationAndKeyDelivery(t *testing.T) {
 		t.Errorf("email to Bob: %+v", toBob)
 	}
 	toGhost, isToGhost := findEmail(messages, "ghost@example.com")
-	if !isToGhost || !strings.Contains(toGhost.Body, "https://hisar.test/invite/") || !strings.Contains(toGhost.Body, "hisar org accept") {
+	if !isToGhost || !strings.Contains(toGhost.Body, baseURL+"/invite/") || !strings.Contains(toGhost.Body, "hisar org accept") {
 		t.Errorf("email to the unknown address: %+v", toGhost)
 	}
 

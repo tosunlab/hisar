@@ -75,7 +75,7 @@ func TestInviteByEmail(t *testing.T) {
 	invite, found := findEmail(messages, "carol@example.com")
 	token := findInviteToken(t, server, recorder, "carol@example.com")
 	if !found || invite.Subject != "alice@example.com invited you to Hisar" ||
-		!strings.Contains(invite.Body, "https://hisar.test/invite/"+token) || !strings.Contains(invite.Body, "\n"+token+"\n") || !strings.Contains(invite.Body, "alice@example.com") {
+		!strings.Contains(invite.Body, baseURL+"/invite/"+token) || !strings.Contains(invite.Body, "\n"+token+"\n") || !strings.Contains(invite.Body, "alice@example.com") {
 		t.Errorf("invite email: %+v", invite)
 	}
 	carol, _, err := session.SignUp(ctx, apiclient.New(baseURL), token, "carol@example.com", "Carol", []byte("carol password"), testDevice)
@@ -144,7 +144,7 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 		t.Errorf("email to Bob: %+v", toBob)
 	}
 	toGhost, isToGhost := findEmail(messages, "ghost@example.com")
-	if !isToGhost || !strings.Contains(toGhost.Body, "https://hisar.test/invite/") || strings.Contains(toGhost.Body, "Family") {
+	if !isToGhost || !strings.Contains(toGhost.Body, baseURL+"/invite/") || strings.Contains(toGhost.Body, "Family") {
 		t.Errorf("email to the unknown address: %+v", toGhost)
 	}
 
