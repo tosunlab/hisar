@@ -27,6 +27,8 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     var host: String
     var commandLine: String
     var repositoryPath: String
+    // projectPath is the folder of the coding agent's harness, such as omp's project; empty from an older Mac.
+    var projectPath: String
     var keyName: String
     var isForwarded: Bool
     var forwardedFromHost: String
@@ -57,10 +59,10 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case requestID = "requestId"
-        case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning, rememberLabel, isRememberedByDefault
+        case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, projectPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning, rememberLabel, isRememberedByDefault
     }
 
-    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "", rememberLabel: String = "", isRememberedByDefault: Bool = false) {
+    init(requestID: String, requesterDeviceName: String, createdAt: String = "", expiresAt: String, kind: String, appName: String, purpose: String, host: String = "", commandLine: String = "", repositoryPath: String = "", projectPath: String = "", keyName: String = "", isForwarded: Bool = false, forwardedFromHost: String = "", terminalName: String = "", secrets: [String] = [], appIcon: Data? = nil, appWarning: String = "", rememberLabel: String = "", isRememberedByDefault: Bool = false) {
         self.requestID = requestID
         self.requesterDeviceName = requesterDeviceName
         self.createdAt = createdAt
@@ -71,6 +73,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         self.host = host
         self.commandLine = commandLine
         self.repositoryPath = repositoryPath
+        self.projectPath = projectPath
         self.keyName = keyName
         self.isForwarded = isForwarded
         self.forwardedFromHost = forwardedFromHost
@@ -94,6 +97,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         host = try container.decodeIfPresent(String.self, forKey: .host) ?? ""
         commandLine = try container.decodeIfPresent(String.self, forKey: .commandLine) ?? ""
         repositoryPath = try container.decodeIfPresent(String.self, forKey: .repositoryPath) ?? ""
+        projectPath = try container.decodeIfPresent(String.self, forKey: .projectPath) ?? ""
         keyName = try container.decodeIfPresent(String.self, forKey: .keyName) ?? ""
         isForwarded = try container.decodeIfPresent(Bool.self, forKey: .isForwarded) ?? false
         forwardedFromHost = try container.decodeIfPresent(String.self, forKey: .forwardedFromHost) ?? ""
@@ -185,6 +189,7 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         ] : [
             appRow,
             warningRow,
+            DetailRow(label: "Project", value: projectPath, isMonospaced: true),
             DetailRow(label: kind == Self.kindCommandLine && secrets.isEmpty ? "Program" : "Command", value: commandLine, isMonospaced: true),
             DetailRow(label: "Repository", value: repositoryPath, isMonospaced: true),
             DetailRow(label: "Server", value: host, isMonospaced: true),

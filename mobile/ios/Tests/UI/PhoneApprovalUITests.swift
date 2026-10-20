@@ -62,6 +62,19 @@ final class PhoneApprovalUITests: HisarUITestCase {
         checkResult("Approved preview-launcher-share with Face ID")
     }
 
+    func testCodingAgentRequestShowsProject() {
+        launchPreview("agent")
+        waitFor(app.staticTexts["phone-approval-title"])
+        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "omp in Tern (via hisar) wants to use 2 secrets")
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Project"].label, "Project, ~/src/acme-web")
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Command"].label, "Command, npm run db:migrate")
+        let secrets = app.staticTexts["phone-approval-row-Secrets"].label
+        XCTAssertTrue(secrets.contains("Agents › Staging Postgres › connection string") && secrets.contains("Agents › Stripe › secret key"), secrets)
+        saveScreenshot("phone-approval-agent")
+        app.buttons["phone-approval-deny"].tap()
+        checkResult("Denied preview-agent")
+    }
+
     func testForwardedRequestWarns() {
         launchPreview("forwarded")
         let banner = app.descendants(matching: .any)["phone-approval-forwarded"]
