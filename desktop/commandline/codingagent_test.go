@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -108,10 +109,10 @@ func createCodingAgentTest(t *testing.T) *codingAgentTest {
 		Handler: app.NewCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: test.approver,
 		PeerResolver: staticPeerResolver{}, Approvals: approvals,
 	})
-	dial := func(context.Context) (mcpserver.AppConnection, error) {
+	dial := func(ctx context.Context) (mcpserver.AppConnection, error) {
 		serverSide, clientSide := net.Pipe()
 		go server.ServeConnection(context.Background(), serverSide)
-		return mcpserver.NewSocketConnection(clientSide, 10*time.Second), nil
+		return mcpserver.NewSocketConnection(ctx, clientSide, 10*time.Second)
 	}
 	mcpServer, closeApp := mcpserver.NewServer(mcpserver.Config{Version: "test", Dial: dial, WorkingDirectory: t.TempDir(), Environment: []string{"PATH=" + os.Getenv("PATH")}})
 	t.Cleanup(closeApp)
@@ -317,6 +318,32 @@ func TestAgentRunsCommandsWithMaskedSecrets(t *testing.T) {
 	if request.Kind != clisocket.AgentRequestRun || request.Agent.Name != "claude-code" || request.WorkingDirectory != directory ||
 		!slices.Equal(request.CommandLine, []string{"sh", "-c", `echo "password=$GITHUB_PASSWORD"; echo "token=$GITHUB_TOKEN" >&2; exit 4`}) ||
 		!slices.Equal(request.SecretNames, []string{"Personal › GitHub › password", "Personal › GitHub › API token"}) || request.ClientPath != "/usr/local/bin/hisar" {
+		t.Errorf("run approval = %+v", request)
+	}
+}
+
+// TestAgentRunApprovalShowsTheCommandsInputs: the literal values of the env files and the standard input reach the
+// approval through the app's socket.
+func TestAgentRunApprovalShowsTheCommandsInputs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the command is a Unix shell")
+	}
+	test := createCodingAgentTest(t)
+	test.makePersonalAvailable(t)
+	directory := t.TempDir()
+	os.WriteFile(filepath.Join(directory, ".env"), []byte("GITHUB_PASSWORD=hisar://Personal/GitHub/password\nGREETING=hello from the file\n"), 0o600)
+	var runOutput mcpserver.RunOutput
+	test.mustCall(t, "run_with_secrets", map[string]any{
+		"command":          []string{"sh"},
+		"envFiles":         []string{".env"},
+		"stdin":            "echo \"$GREETING\"\n",
+		"workingDirectory": directory,
+	}, &runOutput)
+	if runOutput.Stdout != "hello from the file\n" {
+		t.Errorf("run = %+v", runOutput)
+	}
+	request := test.approver.getLastRequest()
+	if request.Stdin != "echo \"$GREETING\"\n" || !slices.Equal(request.Environment, []string{"GREETING=hello from the file"}) {
 		t.Errorf("run approval = %+v", request)
 	}
 }

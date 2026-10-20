@@ -27,6 +27,8 @@ type fakeApp struct {
 	dialError   error
 	answer      func(request cliprotocol.Request) (any, error)
 	isConnected bool
+	// features is what the app announces in hello; startTestServer makes nil this build's.
+	features []string
 }
 
 type fakeAppConnection struct {
@@ -55,6 +57,12 @@ func (connection *fakeAppConnection) Close() error {
 	defer connection.app.mutex.Unlock()
 	connection.app.closeCount++
 	return nil
+}
+
+func (connection *fakeAppConnection) HasFeature(feature string) bool {
+	connection.app.mutex.Lock()
+	defer connection.app.mutex.Unlock()
+	return slices.Contains(connection.app.features, feature)
 }
 
 func (app *fakeApp) dial(context.Context) (AppConnection, error) {
@@ -118,6 +126,9 @@ func startTestServer(t *testing.T, app *fakeApp, config Config) *testServer {
 	t.Helper()
 	if app.answer == nil {
 		app.answer = answerWithSecret
+	}
+	if app.features == nil {
+		app.features = cliprotocol.ListFeatures()
 	}
 	config.Version, config.Dial, config.KillDelay = "1.2.3", app.dial, 200*time.Millisecond
 	config.Now = func() time.Time { return time.Date(2026, 10, 11, 9, 0, 12, 500_000_000, time.UTC) }
