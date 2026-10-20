@@ -10,6 +10,7 @@ import type {
   LauncherApp,
   Status as BoundCommandLineStatus,
 } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import { Service as HarnessService } from "../bindings/github.com/tryhisar/hisar/desktop/harness";
 import { Service as LoginItemService } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type {
@@ -223,6 +224,9 @@ export interface CommandLineStatus extends Omit<BoundCommandLineStatus, "allInst
 function normalizeCommandLineStatus(boundStatus: BoundCommandLineStatus): CommandLineStatus {
   return { ...boundStatus, allInstallation: boundStatus.allInstallation ?? [] };
 }
+
+// The bound enum also has Go's zero value, which the service returns only with an error.
+export type OmpState = "not-installed" | "available" | "connected";
 
 export interface BrowserStatus extends Omit<BoundBrowserStatus, "allInstallation" | "allPairedBrowser"> {
   allInstallation: BrowserInstallation[];
@@ -468,6 +472,9 @@ const wailsApi = {
     normalizeCommandLineStatus(await CommandLineService.SetCommandLineIntegration(isEnabled)),
   listAllLauncherApp: async (): Promise<LauncherApp[]> => (await CommandLineService.ListLauncherApps()) ?? [],
   revokeLauncherApp: async (appPath: string): Promise<LauncherApp[]> => (await CommandLineService.RevokeLauncherApp(appPath)) ?? [],
+  getOmpState: async (): Promise<OmpState> => String(await HarnessService.GetState()) as OmpState,
+  connectOmp: async (): Promise<OmpState> => String(await HarnessService.Connect()) as OmpState,
+  disconnectOmp: async (): Promise<OmpState> => String(await HarnessService.Disconnect()) as OmpState,
   listAllAgentVaultID: async (): Promise<string[]> => (await Service.ListAgentVaultIDs()) ?? [],
   setVaultAvailableToAgents: async (vaultID: string, isAvailable: boolean): Promise<string[]> =>
     (await Service.SetVaultAvailableToAgents(vaultID, isAvailable)) ?? [],

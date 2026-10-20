@@ -21,6 +21,7 @@ import type {
   ItemDetail,
   LauncherApp,
   LoginItemStatus,
+  OmpState,
   PasswordConfig,
   ShareInvitations,
   ShareLink,
@@ -560,7 +561,10 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
   return detail;
 }
 
-let allPreviewAgentVaultID: string[] = ["work"];
+// agentVaults=none starts with every vault invisible to coding agents.
+let allPreviewAgentVaultID: string[] = previewParameter.get("agentVaults") === "none" ? [] : ["work"];
+// omp=not-installed | available | connected
+let previewOmpState = (previewParameter.get("omp") ?? "available") as OmpState;
 
 // agentSessions=1: two omp sessions in Tern and Tern as an agent host in Settings → Coding agents; &appIcon=<url> is Tern's icon.
 const isPreviewAgentSessionShown = previewParameter.get("agentSessions") === "1";
@@ -1766,6 +1770,15 @@ export const previewApi = {
   forgetAgentHost: (path: string, teamID: string) => {
     allPreviewAgentHost = allPreviewAgentHost.filter((host) => host.path !== path || host.teamID !== teamID);
     return resolveAfterDelay(structuredClone(allPreviewAgentHost));
+  },
+  getOmpState: () => resolveAfterDelay(previewOmpState),
+  connectOmp: () => {
+    previewOmpState = "connected";
+    return resolveAfterDelay(previewOmpState);
+  },
+  disconnectOmp: () => {
+    previewOmpState = "available";
+    return resolveAfterDelay(previewOmpState);
   },
   installCommandLineTool: () => {
     if (previewCommandLineMode === "conflict") {

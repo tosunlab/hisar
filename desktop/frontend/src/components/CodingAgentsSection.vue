@@ -6,6 +6,7 @@ import { forgetAgentHost, loadAgentSessions, loadAgentVaults, revokeAgentSession
 import { useSettingsRowVisibility } from "../settingsSections";
 import { describeAgentSession, formatCount, formatTimeAgo } from "../util";
 import AppIcon from "./AppIcon.vue";
+import OmpConnectCard from "./OmpConnectCard.vue";
 
 const isRowVisible = useSettingsRowVisibility();
 
@@ -42,6 +43,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
 <template>
   <section v-show="isRowVisible('coding-agents')" class="settings-block" data-testid="coding-agents-section">
     <p class="section-label">Coding agents</p>
+    <OmpConnectCard />
     <div class="settings-group">
       <div class="setting">
         <div class="setting-text">
