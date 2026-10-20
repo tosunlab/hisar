@@ -41,4 +41,10 @@ for sumFile in SHA256SUMS*; do
   [ -f "$sumFile" ] || continue
   if command -v sha256sum > /dev/null; then sha256sum -c --quiet "$sumFile"; else shasum -a 256 -c --quiet "$sumFile"; fi
 done
+# omp links to the plugin inside Hisar.app, so an update without it breaks every connected omp.
+ompPlugin=Hisar.app/Contents/Resources/omp-plugin/package.json
+if [ "$app" = desktop ] && ! $isCustomBuild && ! unzip -l "Hisar-$version.zip" "$ompPlugin" > /dev/null; then
+  echo "Hisar-$version.zip has no $ompPlugin" >&2
+  exit 1
+fi
 echo "$app $version: ${#allExpected[@]} files"
