@@ -142,12 +142,12 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 		event.HarnessName = request.Session.Harness.Name
 		if directory := request.Session.Directory; directory != "" {
 			event.ProjectName = truncateText(filepath.Base(directory), maximumAgentNameLength)
-			event.ProjectPath = truncateText(shortenHomePath(directory, approver.config.HomeDirectory), maximumDirectoryLength)
+			event.ProjectPath = truncateText(describeDirectory(directory, approver.config.HomeDirectory), maximumDirectoryLength)
 		}
 	}
 	if request.Kind == clisocket.AgentRequestRun {
 		event.CommandLine = formatCommandLine(request.CommandLine)
-		event.WorkingDirectory = truncateText(shortenHomePath(request.WorkingDirectory, approver.config.HomeDirectory), maximumDirectoryLength)
+		event.WorkingDirectory = truncateText(describeDirectory(request.WorkingDirectory, approver.config.HomeDirectory), maximumDirectoryLength)
 	}
 	if len(request.SecretNames) > 0 {
 		event.SecretNames, event.MoreSecretCount = limitSecretName(request.SecretNames)

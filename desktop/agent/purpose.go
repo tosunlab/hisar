@@ -290,6 +290,19 @@ func shortenHomePath(path, homeDirectory string) string {
 	return path
 }
 
+// describeDirectory shows a folder with its symlinks resolved, as the kernel reports a harness's working directory,
+// then $HOME as ~, so the project and a command's folder compare equal when they are the same folder (/tmp and
+// /private/tmp on macOS). A folder that cannot be resolved is shown as given.
+func describeDirectory(path, homeDirectory string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	if resolvedHome, err := filepath.EvalSymlinks(homeDirectory); err == nil {
+		homeDirectory = resolvedHome
+	}
+	return shortenHomePath(path, homeDirectory)
+}
+
 func formatHostAndPort(host string, port int) string {
 	if host == "" {
 		return ""

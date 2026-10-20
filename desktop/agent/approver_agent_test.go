@@ -3,6 +3,8 @@ package agent
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
@@ -306,6 +308,30 @@ func TestAgentPhoneRequestNamesTheHarnessProject(t *testing.T) {
 		approver.DenyAll()
 		waitForAgentResult(t, resultChannel)
 	}
+}
+
+func TestPhoneSeesOneFolderWhenTheCommandRunsInTheProjectThroughASymlink(t *testing.T) {
+	project, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(t.TempDir(), "acme-web")
+	if err := os.Symlink(project, link); err != nil {
+		t.Fatal(err)
+	}
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
+	request := createAgentRequest(clisocket.AgentRequestRun)
+	request.Session = &agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1226, StartTime: 100, Directory: project}
+	request.CommandLine, request.WorkingDirectory = []string{"npm", "run", "db:migrate"}, link
+	resultChannel := startAgentApproval(approver, request)
+	waitForApprovalEvent(t, emitter)
+	if description := phone.waitForStart(t); description.RepositoryPath != description.ProjectPath || description.ProjectPath != project {
+		t.Errorf("phone project %q, repository %q, want both %q", description.ProjectPath, description.RepositoryPath, project)
+	}
+	approver.DenyAll()
+	waitForAgentResult(t, resultChannel)
 }
 
 func TestCheckedNameOnlyForSignedHarness(t *testing.T) {
