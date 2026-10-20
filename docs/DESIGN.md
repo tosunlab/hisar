@@ -381,6 +381,8 @@ invitation-then-account sequence. The upgrade blocks new memberships through the
 The upgrade uses `NOWAIT`, so a newly arrived foreign-key holder cannot close a lock cycle.
 Final invitation deletes also lock their exact statement snapshot with `NOWAIT`, covering email-only invitations that
 arrive after the account upgrade without waiting on a concurrent acceptance's account foreign key.
+If the organization refresh finds a newly joined organization locked, deletion releases its locks and retries within
+the same three-attempt bound. The next attempt includes that organization in its initial lock set, where waiting is safe.
 If a membership committed during lock acquisition introduced another organization or vault, deletion releases its locks
 and restarts before making changes. It tries at most three times. Contention or repeated membership changes return 409,
 with no partial deletion, asking the caller to retry. The final classification therefore contains only locked vaults.

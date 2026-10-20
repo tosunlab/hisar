@@ -280,11 +280,13 @@ func (s *Store) deleteAccount(ctx context.Context, accountID string, lockAccount
 			organizationRows, err := transaction.Query(ctx, `
 			SELECT o.id::text FROM organizations o JOIN organization_members m ON m.organization_id = o.id
 			WHERE m.account_id = $1 ORDER BY o.id FOR UPDATE OF o NOWAIT`, accountID)
-			if err != nil {
-				return err
+			var organizationIDs []string
+			if err == nil {
+				organizationIDs, err = pgx.CollectRows(organizationRows, pgx.RowTo[string])
 			}
-			organizationIDs, err := pgx.CollectRows(organizationRows, pgx.RowTo[string])
 			if err != nil {
+				var postgresError *pgconn.PgError
+				restart = errors.As(err, &postgresError) && postgresError.Code == "55P03"
 				return err
 			}
 			// An admin's proof locks their devices, not the target's. Take these before deleting the target's sessions.
@@ -415,6 +417,9 @@ func (s *Store) deleteAccount(ctx context.Context, accountID string, lockAccount
 		if err != nil {
 			var postgresError *pgconn.PgError
 			if errors.As(err, &postgresError) && postgresError.Code == "55P03" {
+				if restart {
+					continue
+				}
 				return nil, ErrDeletionBusy
 			}
 			return nil, err

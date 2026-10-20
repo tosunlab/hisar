@@ -86,7 +86,7 @@ func TestGrantDuringDeletionLocksInvitationsBeforeAccountUpgrade(t *testing.T) {
 	}
 }
 
-func TestAdminDeletionStopsRestartingWhenTargetKeepsCreatingVaults(t *testing.T) {
+func TestAdminDeletionSucceedsWhenTargetKeepsCreatingVaults(t *testing.T) {
 	testAdminDeletionDuringCreations(t, func(ctx context.Context, database *Store) error {
 		return database.CreateVault(ctx, &Vault{ID: uuid.NewString(), Type: "shared", EncName: []byte{1}, CreatedBy: "ALICE1"}, []byte{1})
 	})
@@ -96,6 +96,69 @@ func TestAdminDeletionSucceedsWhenTargetKeepsCreatingOrganizations(t *testing.T)
 	testAdminDeletionDuringCreations(t, func(ctx context.Context, database *Store) error {
 		return database.CreateOrganization(ctx, uuid.NewString(), "Acme", "ALICE1")
 	})
+}
+
+func TestAdminDeletionRetriesAnOrganizationJoinedDuringDeletion(t *testing.T) {
+	database := createTestStore(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	createTestAccount(t, database, "ADMIN1", "admin@example.com")
+	createTestAccount(t, database, "ALICE1", "alice@example.com")
+	createTestAccount(t, database, "BOB111", "bob@example.com")
+	if _, err := database.pool.Exec(ctx, `UPDATE accounts SET role = 'admin' WHERE id = 'ADMIN1'`); err != nil {
+		t.Fatal(err)
+	}
+	organizationID := uuid.NewString()
+	if err := database.CreateOrganization(ctx, organizationID, "Acme", "BOB111"); err != nil {
+		t.Fatal(err)
+	}
+	invitationID, _, err := database.UpsertOrganizationInvitation(ctx, &OrganizationInvitation{
+		OrganizationID: organizationID, Email: "alice@example.com", Role: "member", InvitedBy: "BOB111",
+	}, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	accountBarrier, err := database.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer accountBarrier.Rollback(context.Background())
+	if _, err := accountBarrier.Exec(ctx, `SELECT 1 FROM accounts WHERE id = 'ALICE1' FOR SHARE`); err != nil {
+		t.Fatal(err)
+	}
+	deleted := make(chan error, 1)
+	go func() {
+		_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "ADMIN1"}, "ALICE1")
+		deleted <- err
+	}()
+	waitForStoreLock(t, database, ctx, "%ORDER BY id FOR NO KEY UPDATE%")
+	if _, _, err := database.AcceptOrganizationInvitation(ctx, invitationID, "ALICE1", "alice@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	organizationBarrier, err := database.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer organizationBarrier.Rollback(context.Background())
+	if _, err := organizationBarrier.Exec(ctx, `SELECT 1 FROM organizations WHERE id = $1 FOR UPDATE`, organizationID); err != nil {
+		t.Fatal(err)
+	}
+	if err := accountBarrier.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	waitForStoreLock(t, database, ctx, "%FROM organizations o JOIN organization_members m%")
+	if err := organizationBarrier.Commit(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := <-deleted; err != nil {
+		t.Fatalf("deletion after a newly joined organization was locked: %v", err)
+	}
+	if _, err := database.GetAccountByID(ctx, "ALICE1"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("deleted account: %v", err)
+	}
+	if countQueryRow(t, database, `SELECT count(*) FROM organization_members WHERE organization_id = $1 AND account_id = 'BOB111'`, organizationID) != 1 {
+		t.Error("deletion removed the other account's organization membership")
+	}
 }
 
 func testAdminDeletionDuringCreations(t *testing.T, create func(context.Context, *Store) error) {
