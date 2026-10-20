@@ -143,6 +143,27 @@ which masking does not catch, so approve only commands you would run yourself; a
 command with them for that hour. A value from `get_secret` is in the agent's transcript and logs. Details:
 [docs/DESIGN.md](docs/DESIGN.md) §9.4.2.
 
+### omp and Tern
+
+Hisar comes with a plugin for omp, the coding agent that also runs in Tern's panes. With it, omp runs commands with your secrets
+through `hisar run` without seeing them, and its status line shows whether Hisar is locked.
+
+1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults omp may use, as for
+   `hisar mcp` above.
+2. On the omp card in the same section, click **Connect**. Hisar finds omp on your PATH, in `~/bin`, in Tern
+   (`~/Library/Application Support/Tern/omp/bin`) or in `~/.bun/bin`, and runs `omp plugin link` with the plugin inside Hisar.app.
+   New omp sessions load Hisar; restart the ones already running. **Disconnect** runs `omp plugin uninstall @tryhisar/omp-plugin`.
+   On Linux, link the plugin from a checkout of this repository: `omp plugin link <checkout>/omp`.
+3. Start omp. Its status line says "Hisar locked" or "Hisar unlocked", `/hisar` shows Hisar's state, and the agent learns to put
+   `hisar://` references in a `.env` and run `hisar run --env-file .env -- <command>`.
+
+Every `hisar` command omp runs, in its shell or as `hisar mcp`, gets the coding-agent rules
+([docs/DESIGN.md](docs/DESIGN.md) §9.4.4): it sees only the vaults available to agents, `hisar run` asks once per secret for each omp
+session, `hisar read` and `hisar get` ask per item, and changes to items are refused. The approval names omp and the app it runs in
+("omp in Tern wants to use 1 secret"). Approvals end when that omp exits or Hisar locks. ssh and git inside omp get only the SSH
+keys in vaults available to agents. The app omp runs in, such as Tern, becomes an agent host: its other processes without a
+terminal then ask on every connection, and it can no longer be a launcher.
+
 ## Development
 
 Requires Go 1.26+, Docker (for Postgres) and Node 24 (`make build` runs `npm ci` and Vite to build the admin dashboard into
