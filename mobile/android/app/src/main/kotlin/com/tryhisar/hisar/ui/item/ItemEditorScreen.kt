@@ -145,7 +145,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                 FormSection(header = "Note") {
                     EditorField(
                         item.notes, { value -> draft = currentDraft.withItem { it.copy(notes = value) } }, "Recovery codes, door codes, account details…",
-                        "editor-notes", minLines = 8, maxLines = 30,
+                        "editor-notes", kind = FieldKind.NOTES, minLines = 8, maxLines = 30,
                     )
                 }
                 OtherFieldsSection(currentDraft, onChange)
@@ -183,7 +183,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
         }
         if (!item.isSecureNote) {
             FormSection(header = "Notes") {
-                EditorField(item.notes, { value -> draft = currentDraft.withItem { it.copy(notes = value) } }, "Notes", "editor-notes", minLines = 3, maxLines = 10)
+                EditorField(item.notes, { value -> draft = currentDraft.withItem { it.copy(notes = value) } }, "Notes", "editor-notes", kind = FieldKind.NOTES, minLines = 3, maxLines = 10)
             }
         }
         TagSection(currentDraft, onChange)

@@ -50,6 +50,7 @@ object AutoFillPreview {
             scope = activity.lifecycleScope,
             ioDispatcher = Dispatchers.IO,
             createBackend = { provider.backend },
+            events = provider.events,
             verifier = HttpAssetLinksVerifier,
             completeRequest = { credential ->
                 val copied = copiedOneTimeCode?.let { " and copied the one-time code $it" }.orEmpty()

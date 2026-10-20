@@ -111,6 +111,9 @@ interface VaultBackend {
     /** The relying party ID that a privileged browser's page at [origin] may use; throws when the origin may not use it. */
     fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String
 
+    /** The relying party ID a native app names, lower-cased; throws when it is not a domain name or is a public suffix. */
+    fun validatePasskeyRelyingPartyID(relyingPartyID: String): String
+
     /** The origin of a native app's client data: `android:apk-key-hash:` and the SHA-256 of its signing certificate. */
     fun buildAndroidAppOrigin(certificateSHA256: ByteString): String
 

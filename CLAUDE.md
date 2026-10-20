@@ -121,7 +121,8 @@ only Android calls:
   per-use Keystore key, and the next `Biometric.Authenticate` puts it in the prompt.
 - `androidapps.go`: logins linked to Android apps (`ListAllLoginForAndroidApp`, `GetLoginForAndroidApp`,
   `GetOneTimeCodeForAndroidApp`, `AddAndroidApp`, `RemoveAndroidApp`) and `ListAllLoginWebsite` for Digital Asset Links.
-- `BuildAndroidAppOrigin` and `BuildPasskeyClientData`, package functions for passkeys that a native app asks for.
+- `BuildAndroidAppOrigin`, `BuildPasskeyClientData` and `ValidatePasskeyRelyingPartyID`, package functions for passkeys
+  that a native app asks for.
 
 `cmd/hisar-ui-test-mac` plays the user's Mac in the Android phone approval UI test, which `scripts/test-android-ui.sh`
 starts it for: it signs up, sends the phone real approval requests, and saves each answer it verified in the Personal vault.
@@ -132,7 +133,7 @@ starts it for: it signs up, sends the phone real approval requests, and saves ea
 |---|---|
 | `:model` `com.tryhisar.hisar.model` | Plain JVM, no Android: `Models.kt` (HisarKit's JSON types, decoded with `backendJson`), `VaultBackend` (one method per HisarKit call, with the iPhone app's names and argument order), the logic the screens share (`VaultLogic`, `OrganizationLogic`, …), `theme/ThemePalettes.kt` (written by `make generate-themes`) |
 | `:model` `com.tryhisar.hisar.app` | The app model, the port of the iPhone app's `AppModel`. `AppModel` holds the status, the screen, `UnlockedData` (what an unlock loads), the lifecycle, events and notices; one area model per feature holds the rest (`SignInModel`, `LockModel`, `VaultsModel`, `ItemModel`, `ItemEditorModel`, `SharingModel`, `OrganizationsModel`, `SettingsModel`, `ApprovalsModel`, …). An area model takes the `ModelContext`, which `AppModel` implements, and `AppModel` creates it in one line (`val vaults = VaultsModel(this)`) |
-| `:model` `com.tryhisar.hisar.autofill` | AutoFill's logic: `FillRequestParser`, `LoginMatcher` (an app's linked logins first, then the sites that vouch for it), `AssetLinks`, `AutoFillModel`, `SavedLogin` |
+| `:model` `com.tryhisar.hisar.autofill` | AutoFill's logic: `FillRequestParser`, `LoginMatcher` (an app's linked logins first, then the sites that vouch for it), `AssetLinks`, `AssetLinksReader` (the password and native-passkey reader, with shared workers, at most 64 queued reads and 128 cached answers), `AutoFillModel`, `SavedLogin` |
 | `:model` `src/testFixtures` | `FakeBackend` and `AppModelHarness`, used by the JVM tests of both modules and by the instrumented tests |
 | `:app` `com.tryhisar.hisar` | `HisarApplication` (the process's one HisarKit backend, shared by the app and AutoFill), `MainActivity`, `AppViewModel` (owns `AppModel`, reports background and foreground), `ScreenshotSetting` |
 | `:app` `backend` | `HisarKitBackend`: `VaultBackend` over the AAR, never on the main thread, Go errors as `BackendError` |

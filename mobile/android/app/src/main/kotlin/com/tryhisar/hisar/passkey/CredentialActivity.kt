@@ -4,7 +4,6 @@ import android.app.Application
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -44,13 +43,13 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tryhisar.hisar.HisarApplication
-import com.tryhisar.hisar.ScreenshotSetting
 import com.tryhisar.hisar.autofill.AutoFillModel
 import com.tryhisar.hisar.autofill.AutoFillModel.CancelReason
 import com.tryhisar.hisar.autofill.AutoFillRoot
 import com.tryhisar.hisar.autofill.FillTarget
 import com.tryhisar.hisar.autofill.HttpAssetLinksVerifier
 import com.tryhisar.hisar.autofill.LoginMatcher
+import com.tryhisar.hisar.followScreenshotSetting
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.PasskeyAssertionCredential
 import com.tryhisar.hisar.model.PasskeyAssertionRequest
@@ -93,6 +92,7 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         scope = viewModelScope,
         ioDispatcher = Dispatchers.IO,
         createBackend = { hisar.backend },
+        events = hisar.events,
         verifier = HttpAssetLinksVerifier,
         completeRequest = ::completePassword,
         completeOneTimeCodeRequest = { cancel(CancelReason.USER_CANCELED) },
@@ -215,14 +215,17 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
     }
 
     private fun completeUnlock(isUserVerified: Boolean) {
+        val lockCount = model.lockCount.value
         viewModelScope.launch {
             val request = PendingIntentHandler.retrieveBeginGetCredentialRequest(intent) ?: return@launch refuse("Hisar did not make this request.")
-            val response = withContext(Dispatchers.IO) {
-                val caller = request.callingAppInfo?.let { CredentialCallers.read(getApplication(), it) }
-                val allOption = CredentialEntries.readOptions(request.beginGetCredentialOptions)
-                val offer = if (caller == null) CredentialOffer.Nothing else access.offer(caller, allOption.map { it.second })
-                CredentialEntries.buildResponse(getApplication(), offer, allOption, isUserVerified)
-            }
+            val response = model.withinUnlock(lockCount) {
+                withContext(Dispatchers.IO) {
+                    val caller = request.callingAppInfo?.let { CredentialCallers.read(getApplication(), it) }
+                    val allOption = CredentialEntries.readOptions(request.beginGetCredentialOptions)
+                    val offer = if (caller == null) CredentialOffer.Nothing else access.offer(caller, allOption.map { it.second })
+                    CredentialEntries.buildResponse(getApplication(), offer, allOption, isUserVerified)
+                }
+            } ?: return@launch
             finish { PendingIntentHandler.setBeginGetCredentialResponse(it, response) }
         }
     }
@@ -300,7 +303,7 @@ class CredentialActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (!ScreenshotSetting(this).isAllowed) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        followScreenshotSetting()
         lifecycleScope.launch {
             viewModel.isContentShown.first { it }
             setContent { AutoFillRoot(viewModel.model) }

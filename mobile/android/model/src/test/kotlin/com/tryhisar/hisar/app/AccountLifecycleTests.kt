@@ -134,4 +134,16 @@ class AccountLifecycleTests {
         assertTrue(model.unlockedData.value.allVault.isEmpty())
         assertEquals("Your Hisar account was deleted.", model.notice.value)
     }
+
+    @Test
+    fun testDeleteAccountCleanupErrorStillSignsOut() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        harness.backend.isCacheRemovalFailing = true
+        assertFalse(model.settings.deleteAccount(FakeBackend.PASSWORD, "alice@example.com"))
+        assertTrue(harness.backend.isAccountDeleted)
+        assertEquals(Screen.SignedOut, model.screen.value)
+        assertTrue(model.unlockedData.value.allVault.isEmpty())
+        assertEquals(FakeBackend.CACHE_REMOVAL_MESSAGE, model.errorMessage.value)
+    }
 }

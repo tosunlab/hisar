@@ -427,6 +427,12 @@ func ResolvePasskeyRelyingPartyID(origin, relyingPartyID string) (string, error)
 	return passkey.ResolveRelyingPartyID(origin, relyingPartyID)
 }
 
+// ValidatePasskeyRelyingPartyID returns the relying party ID a native Android app names, lower-cased, when it is a
+// domain name that is not a public suffix. It is checked before the app's Digital Asset Links are fetched from it.
+func ValidatePasskeyRelyingPartyID(relyingPartyID string) (string, error) {
+	return passkey.ValidateRelyingPartyID(relyingPartyID)
+}
+
 type passkeyClientData struct {
 	ClientDataJSON string `json:"clientDataJSON"`
 	ClientDataHash string `json:"clientDataHash"`

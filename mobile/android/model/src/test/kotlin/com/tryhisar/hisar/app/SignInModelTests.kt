@@ -39,6 +39,29 @@ class SignInModelTests {
     }
 
     @Test
+    fun testLockHidesTheNewSecretKey() = runTest {
+        val model = AppModelHarness(this).startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.lock()
+        assertEquals(Screen.Locked, model.screen.value)
+        assertNull(model.signIn.newAccountStep.value, "the new Secret Key stayed over the lock screen")
+    }
+
+    @Test
+    fun testAutoLockHidesTheBiometricOffer() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.signIn.finishNewSecretKey()
+        assertEquals(NewAccountStep.BiometricOffer, model.signIn.newAccountStep.value)
+        harness.backend.lock()
+        harness.events.emit(BackendEvent.Locked)
+        runCurrent()
+        assertEquals(Screen.Locked, model.screen.value)
+        assertNull(model.signIn.newAccountStep.value, "the offer stayed over the lock screen")
+    }
+
+    @Test
     fun testSecretKeyScreenOffersBiometricsAndTurnsThemOnInOneTap() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startModel()

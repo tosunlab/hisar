@@ -365,6 +365,9 @@ class HisarKitBackend(
     override fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String =
         callPackage { Hisarkit.resolvePasskeyRelyingPartyID(origin, relyingPartyID) }
 
+    override fun validatePasskeyRelyingPartyID(relyingPartyID: String): String =
+        callPackage { Hisarkit.validatePasskeyRelyingPartyID(relyingPartyID) }
+
     override fun buildAndroidAppOrigin(certificateSHA256: ByteString): String =
         callPackage { Hisarkit.buildAndroidAppOrigin(certificateSHA256.toByteArray()) }
 

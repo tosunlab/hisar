@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.autofill
 
+import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.Base64URL
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.ItemAndroidApp
@@ -20,11 +21,13 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.io.bytestring.ByteString
 import kotlinx.io.bytestring.encodeToByteString
@@ -44,6 +47,7 @@ class AutoFillModelTests {
     private val allUnlockCompletion = mutableListOf<Boolean>()
     private val allDeviceOwnerReason = mutableListOf<String>()
     private var isDeviceOwnerConfirming = true
+    private val events = MutableSharedFlow<BackendEvent>()
 
     private val bankApp = AndroidApp("com.example.bank", "AB:".repeat(31) + "AB")
     private val bankAppTarget = FillTarget.App(bankApp, "Example Bank")
@@ -52,6 +56,7 @@ class AutoFillModelTests {
         scope = backgroundScope,
         ioDispatcher = StandardTestDispatcher(testScheduler),
         createBackend = { backend },
+        events = events,
         verifier = { app, _ ->
             allVerifiedApp += app
             allVouchingWebsite
@@ -250,6 +255,25 @@ class AutoFillModelTests {
     }
 
     @Test
+    fun testOpenListHidesItsLoginsWhenHisarLocks() = runTest {
+        backend.seedSignedIn()
+        val model = createModel()
+        model.prepareCredentialList(websites("github.com"), passkeyRequest = PasskeyAssertionRequest("github.com", clientDataHash))
+        model.updateSearchText("bank")
+        model.loadAllOtherLogin()
+        assertTrue(model.allMatchingLogin.value.isNotEmpty())
+        assertTrue(model.allMatchingPasskey.value.isNotEmpty())
+        assertTrue(model.allOtherLogin.value.isNotEmpty())
+        backend.lock()
+        events.emit(BackendEvent.Locked)
+        model.screen.first { it == AutoFillModel.Screen.Locked }
+        assertTrue(model.allMatchingLogin.value.isEmpty() && model.allMatchingPasskey.value.isEmpty() && model.allOtherLogin.value.isEmpty())
+        assertEquals("", model.searchText.value)
+        model.unlock(FakeBackend.PASSWORD)
+        assertEquals(listOf("GitHub"), model.allMatchingLogin.value.map { it.title })
+    }
+
+    @Test
     fun testCancel() = runTest {
         val model = createModel()
         model.cancel()
@@ -342,7 +366,7 @@ class AutoFillModelTests {
             lockScreen.cancel()
         }
         lockScreen.join()
-        backgroundScope.coroutineContext.job.children.forEach { it.join() }
+        advanceUntilIdle()
         assertEquals(listOf("GitHub"), model.allMatchingLogin.value.map { it.title }, "the list loads though the screen that unlocked is gone")
         assertNull(model.errorMessage.value)
     }

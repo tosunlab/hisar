@@ -3,7 +3,6 @@ package com.tryhisar.hisar.autofill
 import android.app.Application
 import android.content.Intent
 import android.os.Bundle
-import android.view.WindowManager
 import android.view.autofill.AutofillId
 import android.view.autofill.AutofillManager
 import android.widget.Toast
@@ -17,7 +16,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tryhisar.hisar.BackendProvider
-import com.tryhisar.hisar.ScreenshotSetting
+import com.tryhisar.hisar.followScreenshotSetting
 import com.tryhisar.hisar.model.LoginCredential
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +44,7 @@ class AutofillViewModel(application: Application, val request: AutofillRequest, 
         scope = viewModelScope,
         ioDispatcher = Dispatchers.IO,
         createBackend = { provider.backend },
+        events = provider.events,
         verifier = HttpAssetLinksVerifier,
         completeRequest = ::completeLogin,
         completeOneTimeCodeRequest = ::fillOneTimeCode,
@@ -124,7 +124,7 @@ class AutofillActivity : FragmentActivity() {
             finish()
             return
         }
-        if (!ScreenshotSetting(this).isAllowed) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        followScreenshotSetting()
         lifecycleScope.launch {
             viewModel.isContentShown.first { it }
             setContent { AutoFillRoot(viewModel.model) }

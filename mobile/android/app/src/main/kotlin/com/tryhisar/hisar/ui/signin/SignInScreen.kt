@@ -70,9 +70,10 @@ fun SignInScreen(model: AppModel) {
     var server by rememberSaveable { mutableStateOf(status.server.ifEmpty { SignInModel.DEFAULT_SERVER }) }
     var isServerShown by rememberSaveable { mutableStateOf(false) }
     var email by rememberSaveable { mutableStateOf("") }
-    var inviteLink by rememberSaveable { mutableStateOf("") }
     var name by rememberSaveable { mutableStateOf("") }
-    // Secrets stay out of the saved instance state, which the system may write to disk.
+    // Secrets, and the invite link's single-use token, stay out of the saved instance state, which the system may write to
+    // disk.
+    var inviteLink by remember { mutableStateOf("") }
     var secretKey by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var repeatedPassword by remember { mutableStateOf("") }
