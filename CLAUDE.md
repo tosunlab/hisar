@@ -43,6 +43,7 @@ Five Go modules joined by `go.work`, plus six non-Go apps.
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |
 | `cliprotocol` | The CLI ↔ app protocol on `~/.hisar/cli.sock`: messages, results, framing, `Client` |
 | `clisocket` | The app side of that socket: server, approval scopes (terminal session, signed app, connection), coding-agent grants, launcher approvals, peer credentials |
+| `agentharness` | The table of coding agent harnesses (omp, Claude Code, Codex) and how each is recognized, the process chain snapshot and `Find`, and `Sessions`, the live agent sessions both sockets share. A new harness is a row in `harnesses` (`harness.go`) with a test from its measured chain |
 | `browserprotocol` | The extension ↔ app native-messaging protocol, `Handler`, `Answer`, URL matching |
 | `localsocket` | Unix sockets only the user can reach, and the process on the other end |
 | `sshagent` | The read-only SSH agent with approvals and session binding |
