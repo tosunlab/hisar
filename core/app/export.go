@@ -82,10 +82,7 @@ func (s *Service) ExportData(request ExportRequest) (ExportResult, error) {
 	if err != nil || path == "" {
 		return ExportResult{}, err
 	}
-	if err := s.checkSessionEpoch(epoch); err != nil {
-		return ExportResult{}, err
-	}
-	if err := writeFileAtomically(path, content); err != nil {
+	if err := s.saveFile(path, content, epoch); err != nil {
 		return ExportResult{}, err
 	}
 	result.Path = path
@@ -127,7 +124,7 @@ func ExportDataToDirectory(s *Service, request ExportRequest, directory string) 
 	}
 	defer clear(content)
 	path := filepath.Join(directory, buildExportFileName(request.Format, s.config.Now()))
-	if err := writeFileAtomically(path, content); err != nil {
+	if err := s.saveFile(path, content, epoch); err != nil {
 		return ExportResult{}, err
 	}
 	result.Path = path
@@ -148,15 +145,8 @@ func (s *Service) writeExportFile(format, passphrase, path string, epoch uint64)
 		return ExportResult{}, err
 	}
 	defer clear(content)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return ExportResult{}, errExportFileExists
-	}
-	if err != nil {
-		return ExportResult{}, fmt.Errorf("could not save the export: %w", err)
-	}
-	if err := finishNewExportFile(path, content, file); err != nil {
-		return ExportResult{}, fmt.Errorf("could not save the export: %w", err)
+	if err := s.saveNewFile(path, content, epoch); err != nil {
+		return ExportResult{}, err
 	}
 	result.Path = path
 	return result, nil
@@ -217,27 +207,48 @@ func buildExportFileName(format string, now time.Time) string {
 	return "Hisar export " + now.Format("2006-01-02") + ".hisar"
 }
 
-// writeFileAtomically replaces path with a new file only the user can read, so a file that was there keeps neither its
-// old content nor its permissions, and never holds half of content.
-func writeFileAtomically(path string, content []byte) error {
+// saveFile replaces path with content only the user can read, so a file that was there keeps neither its old content
+// nor its permissions, and never holds half of content. Nothing appears at path unless the session of epoch is still
+// the unlocked one when it does: the check and the rename share one hold of the mutex, so a lock, sign-out or account
+// switch while content was written leaves no file.
+func (s *Service) saveFile(path string, content []byte, epoch uint64) error {
+	if err := s.checkSessionEpoch(epoch); err != nil {
+		return err
+	}
 	temporaryFile, err := os.CreateTemp(filepath.Dir(path), ".hisar-save-*")
 	if err != nil {
 		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	temporaryPath := temporaryFile.Name()
-	defer os.Remove(temporaryPath)
-	_, err = temporaryFile.Write(content)
-	if err == nil {
-		err = temporaryFile.Sync()
+	if err := finishNewExportFile(temporaryPath, content, temporaryFile); err != nil {
+		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
-	if closeErr := temporaryFile.Close(); err == nil {
-		err = closeErr
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireSessionEpoch(epoch); err != nil {
+		os.Remove(temporaryPath)
+		return err
 	}
-	if err == nil {
-		err = os.Rename(temporaryPath, path)
+	if err := os.Rename(temporaryPath, path); err != nil {
+		os.Remove(temporaryPath)
+		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
+	}
+	return nil
+}
+
+// saveNewFile is saveFile for a path that must not exist: it claims path first, so it never replaces another file.
+func (s *Service) saveNewFile(path string, content []byte, epoch uint64) error {
+	claim, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if errors.Is(err, os.ErrExist) {
+		return errExportFileExists
 	}
 	if err != nil {
 		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
+	}
+	claim.Close()
+	if err := s.saveFile(path, content, epoch); err != nil {
+		os.Remove(path)
+		return err
 	}
 	return nil
 }

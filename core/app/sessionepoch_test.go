@@ -251,12 +251,13 @@ func TestEmergencyKitVerifiedBeforeAnAccountSwitchIsRefused(t *testing.T) {
 	keyLoaded := newPause()
 	service.config.SecretKeyStore = pausingSecretKeyStore{SecretKeyStore: service.config.SecretKeyStore, pause: keyLoaded}
 	type exported struct {
-		kit EmergencyKitExport
+		kit EmergencyKitFile
 		err error
 	}
 	result := make(chan exported, 1)
+	directory := t.TempDir()
 	go func() {
-		kit, err := ExportEmergencyKit(service, testMasterPassword)
+		kit, err := ExportEmergencyKitToDirectory(service, testMasterPassword, directory)
 		result <- exported{kit, err}
 	}()
 	<-keyLoaded.reached
@@ -265,6 +266,7 @@ func TestEmergencyKitVerifiedBeforeAnAccountSwitchIsRefused(t *testing.T) {
 	if got := <-result; got.err == nil {
 		t.Errorf("a kit of the old account's Secret Key %s was made while the new account is signed in", got.kit.SecretKey)
 	}
+	requireEmptyDirectory(t, directory)
 }
 
 func TestEmergencyKitSaveDialogOutlivingTheLockWritesNothing(t *testing.T) {
@@ -342,6 +344,135 @@ func TestExportSaveDialogOutlivingTheLockWritesNothing(t *testing.T) {
 	}
 	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
 		t.Errorf("the export file exists after the lock: %v", err)
+	}
+}
+
+// pauseNowOutsideTheMutex pauses the first Now called while nobody holds the mutex: in an export, the one right after
+// the vaults were collected, while the export is encoded and not yet saved.
+func pauseNowOutsideTheMutex(service *Service) *pause {
+	paused := newPause()
+	now := service.config.Now
+	service.config.Now = func() time.Time {
+		if service.mutex.TryLock() {
+			service.mutex.Unlock()
+			paused.wait()
+		}
+		return now()
+	}
+	return paused
+}
+
+// endSessionWays are the ways the session an export was approved for can end while it is encoded.
+var endSessionWays = []struct {
+	name string
+	end  func(t *testing.T, service *Service)
+}{
+	{"lock", func(t *testing.T, service *Service) { service.Lock() }},
+	{"account switch", func(t *testing.T, service *Service) { signInOtherAccount(t, service, createUnlockedTestService(t)) }},
+}
+
+func requireEmptyDirectory(t *testing.T, directory string) {
+	t.Helper()
+	entries, err := os.ReadDir(directory)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		content, _ := os.ReadFile(filepath.Join(directory, entry.Name()))
+		t.Errorf("%s (%d bytes) was left after the session ended", entry.Name(), len(content))
+	}
+}
+
+func TestPhoneExportFinishingAfterTheSessionEndedWritesNothing(t *testing.T) {
+	for _, way := range endSessionWays {
+		t.Run(way.name, func(t *testing.T) {
+			service := createVerifiableService(t).service
+			encoding := pauseNowOutsideTheMutex(service)
+			directory := t.TempDir()
+			exportErr := make(chan error, 1)
+			go func() {
+				_, err := ExportDataToDirectory(service, ExportRequest{Format: ExportFormatPlain, Password: testMasterPassword}, directory)
+				exportErr <- err
+			}()
+			<-encoding.reached
+			way.end(t, service)
+			close(encoding.resume)
+			if err := <-exportErr; err == nil {
+				t.Error("the export reported success after its session ended")
+			}
+			requireEmptyDirectory(t, directory)
+		})
+	}
+}
+
+func TestCommandLineExportFinishingAfterTheSessionEndedWritesNothing(t *testing.T) {
+	for _, way := range endSessionWays {
+		t.Run(way.name, func(t *testing.T) {
+			service := createUnlockedTestService(t).service
+			service.mutex.Lock()
+			epoch := service.sessionEpoch
+			service.mutex.Unlock()
+			encoding := pauseNowOutsideTheMutex(service)
+			directory := t.TempDir()
+			exportErr := make(chan error, 1)
+			go func() {
+				_, err := service.writeExportFile(ExportFormatPlain, "", filepath.Join(directory, "export.json"), epoch)
+				exportErr <- err
+			}()
+			<-encoding.reached
+			way.end(t, service)
+			close(encoding.resume)
+			if err := <-exportErr; err == nil {
+				t.Error("the export reported success after its session ended")
+			}
+			requireEmptyDirectory(t, directory)
+		})
+	}
+}
+
+// Every export and Emergency Kit writer publishes through saveFile or saveNewFile, which check the session while
+// holding the mutex they publish under.
+func TestFileOfAnEndedSessionIsNeverPublished(t *testing.T) {
+	service := createUnlockedTestService(t).service
+	service.mutex.Lock()
+	staleEpoch := service.sessionEpoch
+	service.mutex.Unlock()
+	service.Lock()
+	directory := t.TempDir()
+	if err := service.saveFile(filepath.Join(directory, "export.json"), []byte("private"), staleEpoch); err == nil {
+		t.Error("saveFile published for an ended session")
+	}
+	if err := service.saveNewFile(filepath.Join(directory, "export.json"), []byte("private"), staleEpoch); err == nil {
+		t.Error("saveNewFile published for an ended session")
+	}
+	requireEmptyDirectory(t, directory)
+}
+
+func TestCommandLineExportNeverReplacesAFile(t *testing.T) {
+	service := createUnlockedTestService(t).service
+	service.mutex.Lock()
+	epoch := service.sessionEpoch
+	service.mutex.Unlock()
+	directory := t.TempDir()
+	path := filepath.Join(directory, "export.json")
+	if err := os.WriteFile(path, []byte("someone else's file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.writeExportFile(ExportFormatPlain, "", path, epoch); !errors.Is(err, errExportFileExists) {
+		t.Errorf("export over an existing file: %v", err)
+	}
+	if content, err := os.ReadFile(path); err != nil || string(content) != "someone else's file" {
+		t.Errorf("the existing file changed: %q %v", content, err)
+	}
+	if entries, _ := os.ReadDir(directory); len(entries) != 1 {
+		t.Errorf("files left beside the existing one: %v", entries)
+	}
+	result, err := service.writeExportFile(ExportFormatPlain, "", filepath.Join(directory, "new.json"), epoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fileInfo, err := os.Stat(result.Path); err != nil || fileInfo.Mode().Perm() != 0o600 || fileInfo.Size() == 0 {
+		t.Errorf("new export: %v %v", fileInfo, err)
 	}
 }
 

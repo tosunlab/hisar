@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
@@ -66,44 +68,53 @@ func (s *Service) SaveEmergencyKit(password string) (string, error) {
 	return s.writeEmergencyKit(kit, epoch)
 }
 
-// EmergencyKitExport is for platforms that share the PDF themselves instead of choosing a save path.
-type EmergencyKitExport struct {
+// EmergencyKitFile is the kit saved for platforms that share the PDF themselves instead of choosing a save path; the
+// app deletes the file once it is shared.
+type EmergencyKitFile struct {
 	SecretKey string
-	Document  []byte
+	Path      string
 }
 
-// ExportEmergencyKit checks the master password, then returns the Secret Key and the Emergency Kit PDF.
+// ExportEmergencyKitToDirectory checks the master password, then saves the Emergency Kit PDF into directory.
 // A function rather than a method so the desktop UI, which saves the kit through SaveEmergencyKit, can't call it.
-func ExportEmergencyKit(s *Service, password string) (EmergencyKitExport, error) {
+func ExportEmergencyKitToDirectory(s *Service, password, directory string) (EmergencyKitFile, error) {
 	secretKey, epoch, err := s.loadVerifiedSecretKey(password)
 	if err != nil {
-		return EmergencyKitExport{}, err
+		return EmergencyKitFile{}, err
 	}
 	kit, err := s.buildVerifiedEmergencyKit(secretKey, epoch)
 	if err != nil {
-		return EmergencyKitExport{}, err
+		return EmergencyKitFile{}, err
 	}
-	document, err := emergencykit.Generate(kit)
-	if err != nil {
-		return EmergencyKitExport{}, err
-	}
-	return EmergencyKitExport{SecretKey: kit.SecretKey, Document: document}, nil
+	return s.saveEmergencyKitToDirectory(kit, directory, epoch)
 }
 
-// ExportNewSecretKeyEmergencyKit returns the kit of a Secret Key made moments ago, while it is still in memory.
-// A function rather than a method so the desktop UI can't call it.
-func ExportNewSecretKeyEmergencyKit(s *Service) (EmergencyKitExport, error) {
+// ExportNewSecretKeyEmergencyKitToDirectory saves the kit of a Secret Key made moments ago, while it is still in
+// memory, into directory. A function rather than a method so the desktop UI can't call it.
+func ExportNewSecretKeyEmergencyKitToDirectory(s *Service, directory string) (EmergencyKitFile, error) {
 	s.mutex.Lock()
 	kit, err := s.buildNewAccountEmergencyKit()
+	epoch := s.sessionEpoch
 	s.mutex.Unlock()
 	if err != nil {
-		return EmergencyKitExport{}, err
+		return EmergencyKitFile{}, err
 	}
+	return s.saveEmergencyKitToDirectory(kit, directory, epoch)
+}
+
+func (s *Service) saveEmergencyKitToDirectory(kit emergencykit.Kit, directory string, epoch uint64) (EmergencyKitFile, error) {
 	document, err := emergencykit.Generate(kit)
 	if err != nil {
-		return EmergencyKitExport{}, err
+		return EmergencyKitFile{}, err
 	}
-	return EmergencyKitExport{SecretKey: kit.SecretKey, Document: document}, nil
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return EmergencyKitFile{}, fmt.Errorf("could not save the Emergency Kit: %w", err)
+	}
+	path := filepath.Join(directory, emergencyKitFileName)
+	if err := s.saveFile(path, document, epoch); err != nil {
+		return EmergencyKitFile{}, err
+	}
+	return EmergencyKitFile{SecretKey: kit.SecretKey, Path: path}, nil
 }
 
 // loadVerifiedSecretKey also returns the epoch of the session whose account the Secret Key and password belong to.
@@ -166,10 +177,7 @@ func (s *Service) writeEmergencyKit(kit emergencykit.Kit, epoch uint64) (string,
 	if err != nil || path == "" {
 		return "", err
 	}
-	if err := s.checkSessionEpoch(epoch); err != nil {
-		return "", err
-	}
-	if err := writeFileAtomically(path, document); err != nil {
+	if err := s.saveFile(path, document, epoch); err != nil {
 		return "", err
 	}
 	return path, nil

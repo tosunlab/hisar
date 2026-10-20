@@ -301,11 +301,14 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if _, err := service.SaveEmergencyKit(password); err != nil {
 		t.Errorf("save kit from settings: %v", err)
 	}
-	if _, err := ExportEmergencyKit(service, "wrong password"); err == nil {
+	kitDirectory := filepath.Join(t.TempDir(), "kit")
+	if _, err := ExportEmergencyKitToDirectory(service, "wrong password", kitDirectory); err == nil {
 		t.Error("kit exported with a wrong master password")
 	}
-	if export, err := ExportEmergencyKit(service, password); err != nil || export.SecretKey != signUpResult.SecretKey || !strings.HasPrefix(string(export.Document), "%PDF-") {
-		t.Errorf("export kit: %q %d bytes %v", export.SecretKey, len(export.Document), err)
+	if kit, err := ExportEmergencyKitToDirectory(service, password, kitDirectory); err != nil || kit.SecretKey != signUpResult.SecretKey {
+		t.Errorf("export kit: %q %v", kit.SecretKey, err)
+	} else if document, err := os.ReadFile(kit.Path); err != nil || !strings.HasPrefix(string(document), "%PDF-") {
+		t.Errorf("exported kit is not a PDF: %v", err)
 	}
 	newAccountBiometric := service.config.Biometric.(*fakeBiometric)
 	newAccountBiometric.setAuthenticateError(errors.New("Touch ID was cancelled"))
