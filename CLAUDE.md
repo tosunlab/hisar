@@ -6,7 +6,7 @@ derived on devices from the master password and a Secret Key. Cryptography, prot
 
 ## Modules
 
-Five Go modules joined by `go.work`, plus five non-Go apps.
+Five Go modules joined by `go.work`, plus six non-Go apps.
 
 | Module | Builds | May import |
 |---|---|---|
@@ -17,6 +17,7 @@ Five Go modules joined by `go.work`, plus five non-Go apps.
 | `mobile/` | `HisarKit.xcframework` (gomobile) for `mobile/ios` and `HisarKit.aar` for `mobile/android` | `core`; `desktop` in one integration test only |
 | `extension/` | The browser extension (TypeScript, MV3) | none |
 | `raycast/` | The Raycast extension (TypeScript), installed in Raycast's development mode; it talks to the desktop app on `cli.sock` as a launcher | none |
+| `omp/` | The Hisar plugin for omp (TypeScript, Bun), which `omp plugin link` loads: an extension and the `hisar` skill; it runs `hisar` and never imports Hisar code | none |
 | `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
 | `mobile/ios/` | The iOS app (Swift), on top of HisarKit | none |
 | `mobile/android/` | The Android app (Kotlin, Jetpack Compose, Gradle) on top of `HisarKit.aar`: `:model`, a JVM module with the app model and its tests, and `:app`, the Android app | none |
@@ -149,6 +150,17 @@ starts it for: it signs up, sends the phone real approval requests, and saves ea
 | `src/views/`, `src/sections/<area>/` | The sign-in screen and `SetupView.vue`, the first-run setup at `/admin/setup` with its steps in `views/setup/`; one directory per section (`overview`, `accounts`, `invites`, `settings`, `audit`) |
 | `end-to-end/` | Playwright tests against `hisar-admin-page-fixture`; `perf.spec.ts` checks the size and sign-in time budget |
 
+### omp
+
+| Path | What it holds |
+|---|---|
+| `package.json` | The omp manifest (`omp.extensions`) and the `@oh-my-pi/pi-coding-agent` version the plugin typechecks against, the one Tern ships |
+| `src/index.ts` | The extension: `session_start` finds `hisar` and probes its state, `before_agent_start` adds the note, `tool_call` runs the bash guard, `tool_result` refreshes the state after a `hisar` command, and `/hisar` |
+| `src/bash.ts` | `classifyBashCommand`, the pure guard that blocks `hisar read`, `get`, `export` and `run --no-masking` in a `bash` call; it catches accidents, and the app's approvals are the enforcement |
+| `src/status.ts` | The probe, `HISAR_NO_LAUNCH=1 hisar status --json`, and the status line texts |
+| `src/locate.ts` | Finding `hisar` (`PATH`, then `Hisar.app` in `/Applications` and `~/Applications`) and the note's text |
+| `skills/hisar/SKILL.md` | The skill omp lists for the agent: references, `hisar run`, `--env-file`, approval timeouts |
+
 ## Where new code goes
 
 - **A new API endpoint:** the DTO in `core/apitypes`; the rule in a `server/internal/service` method that returns
@@ -197,8 +209,8 @@ starts it for: it signs up, sends the phone real approval requests, and saves ea
 
 ## Never break these
 
-- **JSON tags** of `apitypes`, `cliprotocol`, `localstate.State` (state.json), export documents and cache rows. Old
-  servers, old CLIs and existing files depend on them.
+- **JSON tags** of `apitypes`, `cliprotocol`, `localstate.State` (state.json), export documents, cache rows and
+  `hisar status --json`. Old servers, old CLIs, the omp plugin and existing files depend on them.
 - **HTTP routes and status codes, cliprotocol type strings and error codes, event names, `HISAR_*` variables, CLI
   commands and flags, `hisar-server serve|migrate|invite`.**
 - **`mobile/hisarkit`'s exported API**: Swift and Kotlin call it by name (`listAllVault`, `Hisarkit.new_` and so on),
@@ -228,6 +240,7 @@ make build build-cli-all # hisar-server with the admin dashboard (needs Node 24)
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
+make test-omp            # the omp plugin's typecheck, tests and format check (needs Bun)
 make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
 make build-desktop       # or package-desktop for Hisar.app; package-desktop-linux VERSION=… for the .deb, .rpm and AppImage (on Linux); package-desktop-flatpak VERSION=… for the Flatpak; scripts/test-desktop-linux-package.sh installs one and checks the app starts
