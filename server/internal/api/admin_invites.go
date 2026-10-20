@@ -14,11 +14,7 @@ func (s *Server) registerAdminInvitesRoutes(adminGroup fiber.Router) {
 }
 
 func (s *Server) handleListAdminInvites(c fiber.Ctx) error {
-	list, err := s.service.ListAdminInvites(c.Context())
-	if err != nil {
-		return err
-	}
-	return c.JSON(list)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleCreateAdminInvite(c fiber.Ctx) error {

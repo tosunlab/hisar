@@ -1,5 +1,6 @@
 import { auth, request } from "../../api";
 import { bridge, type ReauthenticationProof } from "../../bridge/bridge";
+import { readCollection } from "../../collections";
 
 export type AccountRole = "admin" | "member";
 
@@ -87,8 +88,15 @@ export function listAccounts(query: string, cursor = ""): Promise<AdminAccountPa
   return request("GET", `/admin/accounts${search}`);
 }
 
-export function getAccount(accountId: string): Promise<AdminAccountDetail> {
-  return request("GET", accountPath(accountId));
+export async function getAccount(accountId: string): Promise<AdminAccountDetail> {
+  const detail = await readCollection<{ account?: AdminAccount; devices: AdminDevice[] }>(accountPath(accountId), () => ({ devices: [] }), (result, record) => {
+    if (record.field === "account") result.account = record.value as AdminAccount;
+    else if (record.field === "devices") result.devices.push(record.value as AdminDevice);
+    else throw new Error("The server returned an unknown account detail record.");
+  });
+  if (!detail.account) throw new Error("The server returned no account summary.");
+  detail.devices.sort((a, b) => Number(a.revokedAt !== null) - Number(b.revokedAt !== null) || b.lastSeenAt.localeCompare(a.lastSeenAt));
+  return { account: detail.account, devices: detail.devices };
 }
 
 export function suspendAccount(accountId: string): Promise<void> {

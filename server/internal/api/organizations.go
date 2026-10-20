@@ -7,11 +7,7 @@ import (
 )
 
 func (s *Server) handleListOrganizations(c fiber.Ctx) error {
-	organizations, err := s.service.ListOrganizations(c.Context(), s.getActor(c))
-	if err != nil {
-		return err
-	}
-	return c.JSON(organizations)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleCreateOrganization(c fiber.Ctx) error {
@@ -27,11 +23,7 @@ func (s *Server) handleCreateOrganization(c fiber.Ctx) error {
 }
 
 func (s *Server) handleGetOrganization(c fiber.Ctx) error {
-	organization, err := s.service.GetOrganization(c.Context(), s.getActor(c), c.Params("organization"))
-	if err != nil {
-		return err
-	}
-	return c.JSON(organization)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleRenameOrganization(c fiber.Ctx) error {
@@ -165,9 +157,5 @@ func (s *Server) handleRevokeTeamVault(c fiber.Ctx) error {
 }
 
 func (s *Server) handleListVaultKeyRequests(c fiber.Ctx) error {
-	keyRequests, err := s.service.ListVaultKeyRequests(c.Context(), s.getActor(c))
-	if err != nil {
-		return err
-	}
-	return c.JSON(keyRequests)
+	return s.sendCollection(c)
 }

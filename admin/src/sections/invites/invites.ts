@@ -1,5 +1,6 @@
 import { request } from "../../api";
 import type { ReauthenticationProof } from "../../bridge/bridge";
+import { readCollection } from "../../collections";
 
 export type InviteRole = "member" | "admin";
 
@@ -47,7 +48,11 @@ export function describeDelivery(created: CreatedInvite): string {
 }
 
 export async function listInvites(): Promise<AdminInvite[]> {
-  return (await request<{ invites: AdminInvite[] }>("GET", "/admin/invites")).invites;
+  const list = await readCollection<{ invites: AdminInvite[] }>("/admin/invites", () => ({ invites: [] }), (result, record) => {
+    if (record.field !== "invites") throw new Error("The server returned an unknown invite record.");
+    result.invites.push(record.value as AdminInvite);
+  });
+  return list.invites.sort((a, b) => b.createdAt.localeCompare(a.createdAt) || a.id.localeCompare(b.id));
 }
 
 export function createInvite(email: string, role: InviteRole, proof?: ReauthenticationProof): Promise<CreatedInvite> {

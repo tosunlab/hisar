@@ -356,6 +356,9 @@ var statusByKind = map[service.Kind]int{
 // replaced answer 409 with apitypes.KeyChangedResponse, and a deletion whose plan changed with
 // apitypes.DeletionPlanChangedResponse.
 func handleError(c fiber.Ctx, err error) error {
+	if store.IsResourceBudget(err) {
+		return c.Status(fiber.StatusConflict).JSON(apitypes.Error{Error: "This collection has reached its resource growth budget. Existing data remains readable and exportable. Delete unneeded vaults or other objects, or wait for configured history retention, before adding more."})
+	}
 	var conflict *service.ItemConflictError
 	if errors.As(err, &conflict) {
 		return c.Status(fiber.StatusConflict).JSON(apitypes.ConflictResponse{Current: conflict.Current})

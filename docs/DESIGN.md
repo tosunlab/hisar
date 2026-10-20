@@ -760,6 +760,29 @@ lock devices first, matching device revocation and account deletion.
 
 All under `/api/v1`. JSON bodies, base64url for binary fields. There is no recovery API (§6). Outside `/api/v1` the server serves the pages `GET /s/{id}` (§5.9), `GET /invite/{code}` (§5.1), the admin dashboard `GET /admin` (§5.1), `GET /privacy` and `GET /terms` (§8.6).
 
+#### 8.2.1 Complete, bounded collection reads
+
+History, people, devices, vaults, vault members, share links and invitations, organization lists/details and vault-key requests, admin invitations/account details, and account-deletion previews support `Hisar-Collection-Pages: 1`. Replies repeat that version and contain `{version, records, nextCursor}`; deletion previews also bind a snapshot and retain their plan version. A page contains at most 100 records and 8 MiB of serialized JSON. Team membership and vault-grant edges are separate records: a team's nested arrays cannot force one oversized record. Individual legal-size encrypted items retain their existing limits.
+
+Cursors bind the account, device, route, ordered position and committed collection revisions. Each page uses a repeatable-read transaction. A concurrent relevant mutation answers 409 instead of continuing a mixed view. Revisions include entity incarnations, so deletion and recreation cannot reuse a cursor. The Go client and admin dashboard discard partial results and retry from the beginning at most three times; only a terminal complete result is published. Continuous writes may therefore cause an explicit conflict, never an infinite retry or a partial result presented as complete. The narrowly scoped public-directory revision is shared: an unrelated account profile, role or public-key change can invalidate a directory-derived traversal. It is not advanced by item writes, login credentials or device last-seen updates.
+
+New clients accept a complete ordinary response from an old server only within a 64 MiB transport bound. Claimed page responses must validate their version, ordering, progress and snapshot. A new server answers a caller without the page header with the complete old typed result only when it fits 8 MiB; otherwise it answers 428 with an upgrade instruction. It never silently returns the first page as the entire collection. The 8 MiB HTTP budget is separate from the browser native-messaging limit.
+
+#### 8.2.2 Transactional growth budgets
+
+Migration 00017 records existing counts without trimming data. Positive net growth is refused with an actionable 409 at these policy envelopes:
+
+| Scope | Growth budget |
+|---|---|
+| Creator | 1,024 vaults; 128 organizations |
+| Account | 256 active devices |
+| Organization | 1,024 teams; 4,096 members; 32,768 team memberships; 16,384 team-to-vault grants |
+| Vault | 4,096 access grants; 1 GiB of history charges |
+
+A history revision costs its encrypted overview and details plus 256 bytes. That fixed charge conservatively accounts for row/index overhead; it is not a claim about compressed disk usage. The counts and byte envelopes bound growth rather than measured production demand. There is no second independent item-count limit. Existing over-budget data remains readable through every page, exportable and removable. One live-to-deleted transition remains possible over the history budget and is charged; repeated tombstone revisions are not exempt. Rotation must pass the same before/after history-growth check, not gain a blanket exemption. Daily retention pruning locks eligible vaults without waiting and skips busy writers until the next prune, preserving each writer's stable history baseline.
+
+Entity triggers collect one transaction-private delta per affected scope, not one retained row per item. At commit a deferred flush applies quota locks in sorted resource/scope order, then collection-version locks in sorted scope order. No entity DML or new entity locks occur after these metadata locks. This prevents cross-vault rotations or cascades with shared recipients from introducing opposite metadata lock order. A refusal rolls back the whole transaction, including its queue, counters and versions, before events or mail are published. Deletions reclaim unused counter/version backing; incarnation IDs preserve stale-cursor detection when a scope is recreated.
+
 ### 8.3 Hardening
 
 - Rate limiting per IP and per email on `prelogin` and `login` endpoints. `prelogin` returns a deterministic fake salt for unknown emails so it doesn't reveal which accounts exist.

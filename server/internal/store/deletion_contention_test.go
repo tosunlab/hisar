@@ -235,7 +235,7 @@ func testAdminDeletionDuringCreations(t *testing.T, create func(context.Context,
 	}
 	stop()
 	for range 8 {
-		if err := <-finished; err != nil {
+		if err := <-finished; err != nil && !IsResourceBudget(err) {
 			t.Errorf("creation during deletion: %v", err)
 		}
 	}

@@ -15,19 +15,11 @@ func (s *Server) handleGetAccount(c fiber.Ctx) error {
 }
 
 func (s *Server) handleListMembers(c fiber.Ctx) error {
-	members, err := s.service.ListMembers(c.Context(), s.getActor(c))
-	if err != nil {
-		return err
-	}
-	return c.JSON(members)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleListDevices(c fiber.Ctx) error {
-	devices, err := s.service.ListDevices(c.Context(), s.getActor(c))
-	if err != nil {
-		return err
-	}
-	return c.JSON(devices)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleRevokeDevice(c fiber.Ctx) error {

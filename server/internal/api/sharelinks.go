@@ -26,11 +26,7 @@ func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
 }
 
 func (s *Server) handleListShareLinks(c fiber.Ctx) error {
-	links, err := s.service.ListShareLinks(c.Context(), s.getActor(c))
-	if err != nil {
-		return err
-	}
-	return c.JSON(links)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleRevokeShareLink(c fiber.Ctx) error {
