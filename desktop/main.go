@@ -213,8 +213,10 @@ func main() {
 		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
 			return commandline.IdentifyApp(requesterResolver.Resolve(pid), requesterResolver)
 		},
-		Approvals: commandLineApprovals,
-		IsEnabled: func() bool { return commandLineService.IsIntegrationEnabled() },
+		PeerResolver: commandline.PeerResolver{Resolver: requesterResolver},
+		Approvals:    commandLineApprovals,
+		AgentHosts:   commandLineBridge,
+		IsEnabled:    func() bool { return commandLineService.IsIntegrationEnabled() },
 	})
 	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
 	if commandLineSocketPath == "" {

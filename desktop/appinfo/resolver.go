@@ -4,6 +4,8 @@ import (
 	"errors"
 	"sync"
 	"time"
+
+	"github.com/tryhisar/hisar/core/agentharness"
 )
 
 const (
@@ -26,10 +28,12 @@ const (
 )
 
 // Signature is a code signature as macOS checked it; an empty Status means the platform cannot check signatures.
+// Identifier is the signing identifier, such as a bundle ID.
 type Signature struct {
 	Status     string
 	TeamID     string
 	SignerName string
+	Identifier string
 }
 
 type RunningApp struct {
@@ -38,9 +42,11 @@ type RunningApp struct {
 	IsRegular  bool
 }
 
-// System is what the resolver reads from the operating system; nil functions leave that step out.
+// System is what the resolver reads from the operating system; nil functions leave that step out, and a nil
+// ReadInstance makes every chain unknown.
 type System struct {
 	ProcessReader
+	ReadInstance              func(pid int) (agentharness.Instance, error)
 	GetResponsiblePID         func(pid int) (int, error)
 	ListProcessIDs            func() ([]int, error)
 	ListRunningApps           func() []RunningApp
@@ -135,4 +141,27 @@ func (resolver *Resolver) buildAppRequester(requester Requester, bundlePath stri
 	requester.Kind, requester.App, requester.ChainProcesses = RequesterKindApp, resolver.DescribeApp(bundlePath), chainProcesses
 	requester.Name = requester.App.Name
 	return requester
+}
+
+// ReadChain reads the process chain behind pid as a snapshot of process instances, with each executable's signing
+// identifier and team where its code signature verifies, for finding an agent harness in it.
+func (resolver *Resolver) ReadChain(pid int) agentharness.Chain {
+	if resolver.system.ReadInstance == nil {
+		return agentharness.Chain{}
+	}
+	return agentharness.ReadChain(pid, agentharness.Reader{
+		ReadInstance:        resolver.system.ReadInstance,
+		GetPath:             resolver.system.GetPath,
+		ListArguments:       resolver.system.ListArguments,
+		GetWorkingDirectory: resolver.system.GetWorkingDirectory,
+		GetSignature:        resolver.getHarnessSignature,
+	})
+}
+
+func (resolver *Resolver) getHarnessSignature(path string) agentharness.Signature {
+	signature := resolver.getSignature(path)
+	if signature.Status != SignatureStatusDeveloper && signature.Status != SignatureStatusApple {
+		return agentharness.Signature{}
+	}
+	return agentharness.Signature{Identifier: signature.Identifier, TeamID: signature.TeamID}
 }

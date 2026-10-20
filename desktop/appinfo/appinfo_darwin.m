@@ -158,7 +158,7 @@ char *copyTeamID(const char *path) {
 
 SignatureInfo checkSignature(const char *path, int validateResources) {
     @autoreleasepool {
-        SignatureInfo result = {signatureStatusUnsigned, NULL, NULL};
+        SignatureInfo result = {signatureStatusUnsigned, NULL, NULL, NULL};
         SecStaticCodeRef code = createStaticCode(path);
         if (code == NULL) {
             result.status = signatureStatusInvalid;
@@ -201,6 +201,7 @@ SignatureInfo checkSignature(const char *path, int validateResources) {
         CFRelease(code);
         result.status = isApple ? signatureStatusApple : signatureStatusDeveloper;
         result.teamID = copyCString(dictionary[(__bridge NSString *)kSecCodeInfoTeamIdentifier]);
+        result.identifier = copyCString(dictionary[(__bridge NSString *)kSecCodeInfoIdentifier]);
         CFStringRef summary = SecCertificateCopySubjectSummary((__bridge SecCertificateRef)allCertificate[0]);
         if (summary != NULL) {
             result.signerName = copyCString((__bridge_transfer NSString *)summary);

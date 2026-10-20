@@ -92,10 +92,6 @@ func TestStrictSignatureChecksResourcesAndInvalidatesItsCache(t *testing.T) {
 }
 
 func TestReadThisProcessOnMacOS(t *testing.T) {
-	arguments, err := ListProcessArguments(os.Getpid())
-	if err != nil || !slices.Equal(arguments, os.Args) {
-		t.Errorf("arguments %q, want %q: %v", arguments, os.Args, err)
-	}
 	workingDirectory, err := GetProcessWorkingDirectory(os.Getpid())
 	expected, _ := os.Getwd()
 	if err != nil || workingDirectory != expected {

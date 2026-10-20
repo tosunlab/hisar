@@ -8,6 +8,7 @@ typedef struct {
     int status;
     char *teamID;
     char *signerName;
+    char *identifier;
 } SignatureInfo;
 
 char *copyAppDisplayName(const char *bundlePath);

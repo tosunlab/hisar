@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/approval"
 	"github.com/tryhisar/hisar/core/clisocket"
 )
@@ -189,6 +190,45 @@ func TestAgentDialogLeavesOutTheAppWhenItIsTheAgent(t *testing.T) {
 	event := waitForApprovalEvent(t, emitter)
 	if event.AgentName != "hisar" || event.AppName != "" || describeAgentRequester(event) != "hisar (via hisar mcp)" {
 		t.Errorf("event = %+v", event)
+	}
+	approver.DenyAll()
+	waitForAgentResult(t, resultChannel)
+}
+
+func TestAgentDialogNamesTheHarnessAndItsHost(t *testing.T) {
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
+	request := createAgentRequest(clisocket.AgentRequestRun)
+	request.Agent, request.IsCommandLine = clisocket.AgentIdentity{}, true
+	request.Session = &agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1226, StartTime: 100}
+	request.CommandLine, request.SecretNames = []string{"true"}, []string{"Agents › Deploy token › password"}
+	resultChannel := startAgentApproval(approver, request)
+	event := waitForApprovalEvent(t, emitter)
+	if event.AgentName != "omp in Terminal" || event.Action != "use 1 secret" || event.ClientName != "hisar" || event.AppName != "Terminal" {
+		t.Errorf("event = %+v", event)
+	}
+	if description := phone.waitForStart(t); description.AppName != "omp in Terminal (via hisar)" || description.Purpose != "use 1 secret" {
+		t.Errorf("phone request = %+v", description)
+	}
+	phone.answer(true)
+	waitForAgentResult(t, resultChannel)
+
+	approver = createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)
+	request.SecretNames = append(request.SecretNames, "Agents › Stripe › api key")
+	resultChannel = startAgentApproval(approver, request)
+	if event := waitForApprovalEvent(t, emitter); event.Action != "use 2 secrets" {
+		t.Errorf("two secrets: %q", event.Action)
+	}
+	approver.DenyAll()
+	waitForAgentResult(t, resultChannel)
+
+	request.Kind, request.IsCommandLine, request.Agent = clisocket.AgentRequestReveal, false, clisocket.AgentIdentity{Name: "omp"}
+	request.RevealedName = "Deploy token › password"
+	resultChannel = startAgentApproval(approver, request)
+	event = waitForApprovalEvent(t, emitter)
+	if event.AgentName != "omp in Terminal" || event.ClientName != "hisar mcp" || event.Warning != "The value will be visible to omp in Terminal and can end up in its transcript and logs." {
+		t.Errorf("reveal through hisar mcp: %+v", event)
 	}
 	approver.DenyAll()
 	waitForAgentResult(t, resultChannel)
