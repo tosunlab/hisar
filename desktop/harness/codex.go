@@ -30,7 +30,9 @@ func (connector codexConnector) configPath() string {
 	return filepath.Join(directory, "config.toml")
 }
 
-// getState asks Codex, which reads its whole configuration, profiles and all.
+// getState asks Codex, which reads its whole configuration, profiles and all, how it runs the server named hisar. The
+// server is Hisar's only when Codex runs it as Hisar's table says and config.toml holds that table exactly as Connect
+// writes it, so Disconnect never removes a server the user changed.
 func (connector codexConnector) getState(codex program) (State, error) {
 	output, err := codex.run("mcp", "get", mcpServerName, "--json")
 	if err != nil {
@@ -46,17 +48,42 @@ func (connector codexConnector) getState(codex program) (State, error) {
 			Command string            `json:"command"`
 			Args    []string          `json:"args"`
 			Env     map[string]string `json:"env"`
+			EnvVars []string          `json:"env_vars"`
+			Cwd     *string           `json:"cwd"`
 		} `json:"transport"`
+		EnabledTools   []string `json:"enabled_tools"`
+		DisabledTools  []string `json:"disabled_tools"`
+		StartupTimeout *float64 `json:"startup_timeout_sec"`
+		ToolTimeout    *float64 `json:"tool_timeout_sec"`
 	}
 	if err := json.Unmarshal(output, &server); err != nil {
 		return "", errors.New("Codex listed its MCP servers in a form Hisar cannot read")
 	}
 	transport := server.Transport
-	if server.IsEnabled && transport.Type == "stdio" && connector.hisarPath != "" && transport.Command == connector.hisarPath &&
-		slices.Equal(transport.Args, mcpServerArguments) && len(transport.Env) == 0 {
-		return StateConnected, nil
+	if !server.IsEnabled || transport.Type != "stdio" || connector.hisarPath == "" || transport.Command != connector.hisarPath ||
+		!slices.Equal(transport.Args, mcpServerArguments) || len(transport.Env) != 0 || len(transport.EnvVars) != 0 ||
+		transport.Cwd != nil || server.EnabledTools != nil || server.DisabledTools != nil ||
+		!isNilOr(server.StartupTimeout, codexStartupTimeoutSeconds) || !isNilOr(server.ToolTimeout, codexToolTimeoutSeconds) {
+		return StateConflict, nil
 	}
-	return StateConflict, nil
+	config, err := readConfig(connector.configPath())
+	if err != nil {
+		return "", err
+	}
+	found, err := findCodexServer(config.content, connector.hisarPath)
+	if err != nil {
+		return "", err
+	}
+	if !found.isOurs {
+		return StateConflict, nil
+	}
+	return StateConnected, nil
+}
+
+// isNilOr is true for want and for no value: a Codex that does not report the timeouts, or one left unset, which the
+// check of config.toml's table catches.
+func isNilOr(value *float64, want float64) bool {
+	return value == nil || *value == want
 }
 
 func (connector codexConnector) connect(codex program) error {

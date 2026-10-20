@@ -151,7 +151,8 @@ claude mcp add --scope user --transport stdio hisar -- /Applications/Hisar.app/C
 
 That command is also the way to connect by hand. New Claude Code sessions load Hisar; restart the ones already running.
 **Disconnect** runs `claude mcp remove hisar --scope user`. If your settings already have a server named `hisar` that Hisar did not
-add, the card says "Claude Code already has a server named hisar. Remove it to connect Hisar." and Hisar never changes it.
+add, or Hisar's with a setting you added or changed, the card says "Claude Code already has a server named hisar. Remove it to
+connect Hisar." and Hisar never changes it.
 Commands Claude Code runs in its shell get the coding-agent rules, as omp's do (below).
 
 ### Codex
@@ -170,7 +171,8 @@ tool_timeout_sec = 4200
 
 To connect by hand, add the same table: `codex mcp add` cannot set the timeouts, and Codex's default of 60 seconds per tool call
 would end a `run_with_secrets` call while its approval is still open. New Codex sessions load Hisar; restart the ones already
-running. **Disconnect** runs `codex mcp remove hisar`. A `hisar` server that Hisar did not add is left alone, as for Claude Code.
+running. **Disconnect** runs `codex mcp remove hisar`. A `hisar` server that Hisar did not add, or this table with a key you added
+or changed, is left alone, as for Claude Code.
 Codex's sandbox blocks Unix sockets for the commands it runs, so `hisar run` in Codex's shell cannot reach the app; Codex uses
 your secrets through `run_with_secrets`, which runs outside the sandbox.
 

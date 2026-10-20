@@ -1,6 +1,7 @@
 package harness
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -23,6 +24,8 @@ func (connector claudeCodeConnector) configPath() string {
 }
 
 // getState reads the user settings: Claude Code's `mcp get` has no JSON and checks the server's health by starting it.
+// The server is Hisar's only with Hisar's command and arguments and no other setting but the stdio type and the empty
+// environment `claude mcp add` writes, so Disconnect never removes a server the user changed.
 func (connector claudeCodeConnector) getState(program) (State, error) {
 	path := connector.configPath()
 	content, err := os.ReadFile(path)
@@ -48,7 +51,9 @@ func (connector claudeCodeConnector) getState(program) (State, error) {
 		Args    []string          `json:"args"`
 		Env     map[string]string `json:"env"`
 	}
-	if json.Unmarshal(server, &stdio) == nil && (stdio.Type == "" || stdio.Type == "stdio") && stdio.Command == connector.hisarPath &&
+	decoder := json.NewDecoder(bytes.NewReader(server))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(&stdio) == nil && (stdio.Type == "" || stdio.Type == "stdio") && stdio.Command == connector.hisarPath &&
 		connector.hisarPath != "" && slices.Equal(stdio.Args, mcpServerArguments) && len(stdio.Env) == 0 {
 		return StateConnected, nil
 	}

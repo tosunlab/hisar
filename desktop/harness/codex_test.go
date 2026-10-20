@@ -146,7 +146,9 @@ func TestCodexLeavesACustomizedHisarServer(t *testing.T) {
 		{"tools turned off", func(table string) string { return table + "disabled_tools = [\"list_vaults\"]\n" }},
 		{"turned off", func(table string) string { return table + "enabled = false\n" }},
 		{"required", func(table string) string { return table + "required = true\n" }},
-		{"another tool timeout", func(table string) string { return strings.Replace(table, "tool_timeout_sec = 4200", "tool_timeout_sec = 60", 1) }},
+		{"another tool timeout", func(table string) string {
+			return strings.Replace(table, "tool_timeout_sec = 4200", "tool_timeout_sec = 60", 1)
+		}},
 		{"no startup timeout", func(table string) string { return strings.Replace(table, "startup_timeout_sec = 15\n", "", 1) }},
 		{"environment", func(table string) string { return table + "\n[mcp_servers.hisar.env]\nA = \"b\"\n" }},
 		{"a tool's settings", func(table string) string {

@@ -404,11 +404,17 @@ func quoteTOML(value string) string {
 	return quoted.String()
 }
 
-// codexServerKeys are the keys Hisar writes in its table; a table with any other key is the user's.
+// Hisar's table gives the app startup room to answer and a tool timeout past run_with_secrets' one hour, so an approval
+// and a long command are not cut off at Codex's default of 60 seconds.
+const (
+	codexStartupTimeoutSeconds = 15
+	codexToolTimeoutSeconds    = 4200
+)
+
+// codexServerKeys are the keys of Hisar's table. A table with another key, without one of them, or with another value
+// is the user's.
 var codexServerKeys = []string{"command", "args", "startup_timeout_sec", "tool_timeout_sec"}
 
-// codexServerTable is Hisar's table, with startup room for the app to answer and a tool timeout past run_with_secrets'
-// one hour, so an approval and a long command are not cut off at Codex's default of 60 seconds.
 func codexServerTable(hisarPath, newline string) string {
 	quotedArguments := make([]string, len(mcpServerArguments))
 	for i, argument := range mcpServerArguments {
@@ -418,25 +424,29 @@ func codexServerTable(hisarPath, newline string) string {
 		"[mcp_servers." + mcpServerName + "]",
 		"command = " + quoteTOML(hisarPath),
 		"args = [" + strings.Join(quotedArguments, ", ") + "]",
-		"startup_timeout_sec = 15",
-		"tool_timeout_sec = 4200",
+		fmt.Sprintf("startup_timeout_sec = %d", codexStartupTimeoutSeconds),
+		fmt.Sprintf("tool_timeout_sec = %d", codexToolTimeoutSeconds),
 	}
 	return strings.Join(lines, newline) + newline
 }
 
-// setCodexServer returns content with Hisar's [mcp_servers.hisar] table, added at the end or replacing Hisar's own;
-// every other byte stays. A server named hisar that Hisar did not write is errConflict.
-func setCodexServer(content []byte, hisarPath string) ([]byte, error) {
+// codexServer is the MCP server named hisar in config.toml: none, Hisar's own table at start:end, which holds exactly
+// what codexServerTable writes, or the user's.
+type codexServer struct {
+	isFound, isOurs bool
+	start, end      int
+}
+
+func findCodexServer(content []byte, hisarPath string) (codexServer, error) {
 	statements, err := parseTOML(content)
 	if err != nil {
-		return nil, err
+		return codexServer{}, err
 	}
 	serverPath := []string{"mcp_servers", mcpServerName}
-	var header *tomlStatement
-	tableEnd := 0
+	server := codexServer{}
 	values := map[string]string{}
 	isInServerTable := false
-	for i, statement := range statements {
+	for _, statement := range statements {
 		if statement.isHeader {
 			isInServerTable = false
 		}
@@ -444,36 +454,47 @@ func setCodexServer(content []byte, hisarPath string) ([]byte, error) {
 		case len(statement.path) < len(serverPath) && slices.Equal(statement.path, serverPath[:len(statement.path)]) &&
 			(statement.isArrayHeader || !statement.isHeader):
 			// mcp_servers = { … } or [[mcp_servers]]: no table can be added below it.
-			return nil, errCodexLayout
+			return codexServer{}, errCodexLayout
 		case !hasPathPrefix(statement.path, serverPath):
-		case statement.isHeader && !statement.isArrayHeader && len(statement.path) == len(serverPath) && header == nil:
-			header, isInServerTable, tableEnd = &statements[i], true, statement.end
+		case statement.isHeader && !statement.isArrayHeader && len(statement.path) == len(serverPath) && !server.isFound:
+			server, isInServerTable = codexServer{isFound: true, start: statement.start, end: statement.end}, true
 		case !statement.isHeader && isInServerTable && len(statement.path) == len(serverPath)+1:
 			values[statement.path[len(serverPath)]] = statement.value
-			tableEnd = statement.end
+			server.end = statement.end
 		default:
-			return nil, errConflict
+			return codexServer{isFound: true}, nil
 		}
+	}
+	server.isOurs = server.isFound && isCodexServerOurs(values, hisarPath)
+	return server, nil
+}
+
+// setCodexServer returns content with Hisar's [mcp_servers.hisar] table, added at the end or replacing Hisar's own;
+// every other byte stays. A server named hisar that Hisar did not write is errConflict.
+func setCodexServer(content []byte, hisarPath string) ([]byte, error) {
+	server, err := findCodexServer(content, hisarPath)
+	if err != nil {
+		return nil, err
+	}
+	if server.isFound && !server.isOurs {
+		return nil, errConflict
 	}
 	newline := "\n"
 	if index := bytes.IndexByte(content, '\n'); index > 0 && content[index-1] == '\r' {
 		newline = "\r\n"
 	}
 	table := codexServerTable(hisarPath, newline)
-	if header == nil {
-		edited := slices.Clone(content)
-		if len(edited) > 0 {
-			if !bytes.HasSuffix(edited, []byte("\n")) {
-				edited = append(edited, newline...)
-			}
+	if server.isOurs {
+		return slices.Concat(content[:server.start], []byte(table), content[server.end:]), nil
+	}
+	edited := slices.Clone(content)
+	if len(edited) > 0 {
+		if !bytes.HasSuffix(edited, []byte("\n")) {
 			edited = append(edited, newline...)
 		}
-		return append(edited, table...), nil
+		edited = append(edited, newline...)
 	}
-	if !isCodexServerOurs(values, hisarPath) {
-		return nil, errConflict
-	}
-	return slices.Concat(content[:header.start], []byte(table), content[tableEnd:]), nil
+	return append(edited, table...), nil
 }
 
 func isCodexServerOurs(values map[string]string, hisarPath string) bool {
@@ -484,7 +505,10 @@ func isCodexServerOurs(values map[string]string, hisarPath string) bool {
 	}
 	command, isCommand := parseTOMLString(values["command"])
 	arguments, isArguments := parseTOMLStringArray(values["args"])
-	return isCommand && command == hisarPath && isArguments && slices.Equal(arguments, mcpServerArguments)
+	startupTimeout, startupErr := strconv.ParseFloat(values["startup_timeout_sec"], 64)
+	toolTimeout, toolErr := strconv.ParseFloat(values["tool_timeout_sec"], 64)
+	return isCommand && command == hisarPath && isArguments && slices.Equal(arguments, mcpServerArguments) &&
+		startupErr == nil && startupTimeout == codexStartupTimeoutSeconds && toolErr == nil && toolTimeout == codexToolTimeoutSeconds
 }
 
 func hasPathPrefix(path, prefix []string) bool {
