@@ -59,7 +59,7 @@ func TestSigningInITermNamesITerm(t *testing.T) {
 	if event.AppName != "iTerm2" || event.RequesterKind != appinfo.RequesterKindApp || event.AppPath != iTermBundlePath || event.AppIconURL != "data:image/png;base64,iTerm" {
 		t.Errorf("app: %+v", event)
 	}
-	if event.AppSignature != appinfo.SignatureStatusDeveloper || event.AppSigner != "Signed by George Nachman (H7V7XYVQ7D)" || event.AppWarning != "" {
+	if event.AppSignature != appinfo.SignatureStatusDeveloper || event.AppSigner != "iTerm2 is signed by George Nachman (H7V7XYVQ7D)" || event.AppWarning != "" {
 		t.Errorf("signature %q %q %q", event.AppSignature, event.AppSigner, event.AppWarning)
 	}
 	names := []string{}
@@ -88,9 +88,9 @@ func TestUnsignedAppShowsAWarning(t *testing.T) {
 		wantSigner  string
 		wantWarning string
 	}{
-		{appinfo.SignatureStatusUnsigned, "Not signed", "iTerm2 is not signed"},
-		{appinfo.SignatureStatusInvalid, "Signature not valid", "The code signature of iTerm2 does not verify"},
-		{appinfo.SignatureStatusApple, "Signed by Apple", ""},
+		{appinfo.SignatureStatusUnsigned, "iTerm2 isn't signed", "iTerm2 is not signed"},
+		{appinfo.SignatureStatusInvalid, "iTerm2's signature isn't valid", "The code signature of iTerm2 does not verify"},
+		{appinfo.SignatureStatusApple, "iTerm2 is signed by Apple", ""},
 		{"", "", ""},
 	} {
 		requester := createITermSigningRequester()

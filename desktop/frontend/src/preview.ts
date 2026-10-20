@@ -700,7 +700,7 @@ function createPreviewTerminalRequester(): Pick<
     appIconURL: "",
     appPath: "/System/Applications/Utilities/Terminal.app",
     appSignature: "apple",
-    appSigner: "Signed by Apple",
+    appSigner: "Terminal is signed by Apple",
     appWarning: "",
     allChainProcess: [
       { name: "ssh", commandLine: "ssh git@git.tryhisar.com 'git-receive-pack '\\''hisar/core.git'\\''" },
@@ -729,7 +729,7 @@ function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
         appIconURL,
         appPath: "/Applications/iTerm.app",
         appSignature: "developer",
-        appSigner: "Signed by George Nachman (H7V7XYVQ7D)",
+        appSigner: "iTerm2 is signed by George Nachman (H7V7XYVQ7D)",
         allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }],
       };
     case "vscode":
@@ -739,7 +739,7 @@ function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
         appIconURL,
         appPath: "/Applications/Visual Studio Code.app",
         appSignature: "developer",
-        appSigner: "Signed by Microsoft Corporation (UBF8T346G9)",
+        appSigner: "Visual Studio Code is signed by Microsoft Corporation (UBF8T346G9)",
         allChainProcess: allPreviewSigningChain,
       };
     case "unsigned":
@@ -749,7 +749,7 @@ function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
         appIconURL,
         appPath: "/Users/developer/Downloads/iTerm.app",
         appSignature: "unsigned",
-        appSigner: "Not signed",
+        appSigner: "iTerm2 isn't signed",
         appWarning: "iTerm2 is not signed, so macOS cannot confirm who made it. Approve only if you started this yourself.",
         allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }],
       };
@@ -1021,7 +1021,7 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
     appIconURL: previewParameter.get("appIcon") ?? "",
     appPath: "/Applications/Tern.app",
     appSignature: "developer",
-    appSigner: "Signed by Can Boluk (VTLHGQC72S)",
+    appSigner: "Tern is signed by Can Boluk (VTLHGQC72S)",
     allChainProcess: [
       { name: "hisar", commandLine: "hisar run -- npm run deploy" },
       { name: "zsh", commandLine: "/bin/zsh -c npm run deploy" },
@@ -1071,7 +1071,7 @@ function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
       appIconURL: "",
       appPath: "/Applications/Raycast.app",
       appSignature: "developer",
-      appSigner: "Signed by Raycast Technologies Inc (A1B2C3D4E5)",
+      appSigner: "Raycast is signed by Raycast Technologies Inc (A1B2C3D4E5)",
       appWarning: "",
       allChainProcess: [{ name: "node", commandLine: "node --max-old-space-size=4096 --expose-gc" }],
       clientName: "",

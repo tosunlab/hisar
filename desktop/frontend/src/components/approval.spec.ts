@@ -447,7 +447,7 @@ describe("SSHApprovalWindow", () => {
     expect(wrapper.find(".subtitle").text()).toBe("until Hisar locks");
     expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,Raycast");
     expect(wrapper.find('[data-testid="approval-chain"]').text()).toBe("node");
-    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by Raycast Technologies Inc (A1B2C3D4E5)");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Raycast is signed by Raycast Technologies Inc (A1B2C3D4E5)");
     expect(wrapper.find('[data-testid="approval-details"]').exists()).toBe(false);
     expect(wrapper.findAll('[data-testid="approval-launcher-note"] li').map((line) => line.text())).toEqual([
       "See the titles, usernames and websites of the items in every vault",
@@ -485,7 +485,7 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find("#approval-title").text()).toBe("Raycast wants to create a share link for “GitHub”");
     expect(wrapper.find(".subtitle").text()).toBe("for this link only");
-    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by Raycast Technologies Inc (A1B2C3D4E5)");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Raycast is signed by Raycast Technologies Inc (A1B2C3D4E5)");
     expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["Expires in 7 days · 1 view"]);
     expect(wrapper.findAll('[data-testid="approval-secrets"] li').map((line) => line.text())).toEqual(["username", "password"]);
     expect(wrapper.find('[data-testid="approval-warning"]').text()).toBe("Anyone with the link can read these until it expires or its views run out.");
@@ -633,7 +633,7 @@ describe("SSHApprovalWindow app attribution", () => {
       appIconURL: "data:image/png;base64,iTerm",
       appPath: "/Applications/iTerm.app",
       appSignature: "developer",
-      appSigner: "Signed by George Nachman (H7V7XYVQ7D)",
+      appSigner: "iTerm2 is signed by George Nachman (H7V7XYVQ7D)",
       allChainProcess: allSigningChain,
       ...overrides,
     });
@@ -648,7 +648,7 @@ describe("SSHApprovalWindow app attribution", () => {
     const chain = wrapper.find('[data-testid="approval-chain"]');
     expect(chain.text()).toBe("ssh-keygen ← git ← zsh");
     expect(chain.attributes("title")).toBe(allSigningChain.map((process) => process.commandLine).join("\n"));
-    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by George Nachman (H7V7XYVQ7D)");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("iTerm2 is signed by George Nachman (H7V7XYVQ7D)");
     expect(wrapper.find('[data-testid="approval-signer"]').classes()).not.toContain("is-unverified");
     expect(wrapper.find('[data-testid="approval-app-warning"]').exists()).toBe(false);
     wrapper.unmount();
@@ -658,28 +658,28 @@ describe("SSHApprovalWindow app attribution", () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent(
       "ssh-approval",
-      createITermSigningEvent({ appName: "Visual Studio Code", appSigner: "Signed by Microsoft Corporation (UBF8T346G9)", allChainProcess: allSigningChain.slice(0, 2) }),
+      createITermSigningEvent({ appName: "Visual Studio Code", appSigner: "Visual Studio Code is signed by Microsoft Corporation (UBF8T346G9)", allChainProcess: allSigningChain.slice(0, 2) }),
     );
     await flushPromises();
     expect(wrapper.find("h1").text()).toBe("Visual Studio Code wants to sign a commit");
     expect(wrapper.find('[data-testid="approval-chain"]').text()).toBe("ssh-keygen ← git");
-    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by Microsoft Corporation (UBF8T346G9)");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Visual Studio Code is signed by Microsoft Corporation (UBF8T346G9)");
     wrapper.unmount();
   });
 
   it("warns about an app that is not signed, in the dialog and the compact card", async () => {
     const appWarning = "iTerm2 is not signed, so macOS cannot confirm who made it. Approve only if you started this yourself.";
     const wrapper = mount(SSHApprovalWindow);
-    sendEvent("ssh-approval", createITermSigningEvent({ appSignature: "unsigned", appSigner: "Not signed", appWarning }));
+    sendEvent("ssh-approval", createITermSigningEvent({ appSignature: "unsigned", appSigner: "iTerm2 isn't signed", appWarning }));
     await flushPromises();
-    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Not signed");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("iTerm2 isn't signed");
     expect(wrapper.find('[data-testid="approval-signer"]').classes()).toContain("is-unverified");
     expect(wrapper.find('[data-testid="approval-app-warning"]').text()).toBe(appWarning);
     sendEvent("ssh-approval-closed", "signing-1");
-    sendEvent("ssh-approval", createITermSigningEvent({ requestID: "compact-1", isCompact: true, appSignature: "invalid", appSigner: "Signature not valid", appWarning }));
+    sendEvent("ssh-approval", createITermSigningEvent({ requestID: "compact-1", isCompact: true, appSignature: "invalid", appSigner: "iTerm2's signature isn't valid", appWarning }));
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-compact-title"]').text()).toBe("iTerm2 · Sign a commit");
-    expect(wrapper.find('[data-testid="approval-app-warning"]').text()).toBe("Signature not valid — check this is the app you expect");
+    expect(wrapper.find('[data-testid="approval-app-warning"]').text()).toBe("iTerm2's signature isn't valid — check this is the app you expect");
     expect(wrapper.find('[data-testid="ssh-approval"]').attributes("title")).toBe("Show details\nssh-keygen ← git ← zsh");
     wrapper.unmount();
   });
@@ -709,7 +709,7 @@ describe("SSHApprovalWindow app attribution", () => {
         allSecretName: ["username", "password"],
         appName: "iTerm2",
         appIconURL: "data:image/png;base64,iTerm",
-        appSigner: "Signed by George Nachman (H7V7XYVQ7D)",
+        appSigner: "iTerm2 is signed by George Nachman (H7V7XYVQ7D)",
         allChainProcess: [
           { name: "hisar", commandLine: "hisar share-link GitHub" },
           { name: "zsh", commandLine: "-zsh" },
@@ -720,7 +720,7 @@ describe("SSHApprovalWindow app attribution", () => {
     expect(wrapper.find("#approval-title").text()).toBe("hisar in iTerm2 wants to create a share link for “GitHub”");
     expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,iTerm");
     expect(wrapper.find('[data-testid="approval-chain"]').text()).toBe("hisar ← zsh");
-    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("Signed by George Nachman (H7V7XYVQ7D)");
+    expect(wrapper.find('[data-testid="approval-signer"]').text()).toBe("iTerm2 is signed by George Nachman (H7V7XYVQ7D)");
     wrapper.unmount();
   });
 
