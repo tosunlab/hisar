@@ -50,13 +50,13 @@ model = "o4"
 		{"comments, strings that look like tables and other servers", userConfig, userConfig + "\n" + hisarTable},
 		{"no newline at the end", "model = \"o4\"", "model = \"o4\"\n\n" + hisarTable},
 		{
-			"Hisar's table with other timeouts, in the middle",
-			"# servers\n[mcp_servers.hisar]\ncommand = \"" + testHisarPath + "\"\nargs = [\n  \"mcp\",\n  \"--no-reveal\", # Hisar\n]\ntool_timeout_sec = 60\n\n# GitHub\n[mcp_servers.github]\ncommand = \"gh\"\n",
+			"Hisar's table in the middle, its arguments over lines",
+			"# servers\n[mcp_servers.hisar]\ncommand = \"" + testHisarPath + "\"\nargs = [\n  \"mcp\",\n  \"--no-reveal\", # Hisar\n]\nstartup_timeout_sec = 15\ntool_timeout_sec = 4200 # an hour and more\n\n# GitHub\n[mcp_servers.github]\ncommand = \"gh\"\n",
 			"# servers\n" + hisarTable + "\n# GitHub\n[mcp_servers.github]\ncommand = \"gh\"\n",
 		},
 		{
 			"Hisar's table with a quoted name and a literal string",
-			"[ mcp_servers . \"hisar\" ]\ncommand = '" + testHisarPath + "'\nargs = ['mcp', '--no-reveal']\n",
+			"[ mcp_servers . \"hisar\" ]\ntool_timeout_sec = 4200\ncommand = '" + testHisarPath + "'\nargs = ['mcp', '--no-reveal']\nstartup_timeout_sec = 15\n",
 			hisarTable,
 		},
 		{
@@ -87,14 +87,18 @@ func TestSetCodexServerLeavesAnotherHisarServer(t *testing.T) {
 		name  string
 		input string
 	}{
-		{"another command", "[mcp_servers.hisar]\ncommand = \"hisar\"\nargs = [\"mcp\", \"--no-reveal\"]\n"},
-		{"get_secret on", "[mcp_servers.hisar]\ncommand = \"" + testHisarPath + "\"\nargs = [\"mcp\"]\n"},
-		{"a key Hisar does not write", "[mcp_servers.hisar]\ncommand = \"" + testHisarPath + "\"\nargs = [\"mcp\", \"--no-reveal\"]\nenabled = false\n"},
-		{"environment variables", "[mcp_servers.hisar]\ncommand = \"" + testHisarPath + "\"\nargs = [\"mcp\", \"--no-reveal\"]\n\n[mcp_servers.hisar.env]\nA = \"b\"\n"},
+		{"another command", "[mcp_servers.hisar]\ncommand = \"hisar\"\nargs = [\"mcp\", \"--no-reveal\"]\nstartup_timeout_sec = 15\ntool_timeout_sec = 4200\n"},
+		{"get_secret on", "[mcp_servers.hisar]\ncommand = \"" + testHisarPath + "\"\nargs = [\"mcp\"]\nstartup_timeout_sec = 15\ntool_timeout_sec = 4200\n"},
+		{"a key Hisar does not write", hisarTable + "enabled = false\n"},
+		{"environment variables passed through", hisarTable + "env_vars = [\"CUSTOM_VAR\"]\n"},
+		{"a working folder", hisarTable + "cwd = \"/tmp\"\n"},
+		{"another tool timeout", strings.Replace(hisarTable, "tool_timeout_sec = 4200", "tool_timeout_sec = 60", 1)},
+		{"no timeouts", "[mcp_servers.hisar]\ncommand = \"" + testHisarPath + "\"\nargs = [\"mcp\", \"--no-reveal\"]\n"},
+		{"environment variables", hisarTable + "\n[mcp_servers.hisar.env]\nA = \"b\"\n"},
 		{"dotted keys at the top", "mcp_servers.hisar.command = \"" + testHisarPath + "\"\n"},
 		{"dotted keys in mcp_servers", "[mcp_servers]\nhisar.command = \"" + testHisarPath + "\"\n"},
 		{"an inline table in mcp_servers", "[mcp_servers]\nhisar = { command = \"" + testHisarPath + "\" }\n"},
-		{"dotted keys in the table", "[mcp_servers.hisar]\ncommand = \"" + testHisarPath + "\"\nenv.A = \"b\"\n"},
+		{"dotted keys in the table", hisarTable + "env.A = \"b\"\n"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			if _, err := setCodexServer([]byte(test.input), testHisarPath); !errors.Is(err, errConflict) {

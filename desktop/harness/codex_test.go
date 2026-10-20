@@ -133,6 +133,51 @@ func TestConnectCodexLeavesAnotherHisarServer(t *testing.T) {
 	}
 }
 
+// TestCodexLeavesACustomizedHisarServer: Hisar owns its table only as Connect writes it. A table with Hisar's command and
+// arguments and anything else that changes how Codex runs it is the user's, so Disconnect never removes it.
+func TestCodexLeavesACustomizedHisarServer(t *testing.T) {
+	for _, test := range []struct {
+		name   string
+		change func(table string) string
+	}{
+		{"environment variables passed through", func(table string) string { return table + "env_vars = [\"CUSTOM_VAR\"]\n" }},
+		{"a working folder", func(table string) string { return table + "cwd = \"/tmp\"\n" }},
+		{"tools turned on", func(table string) string { return table + "enabled_tools = [\"run_with_secrets\"]\n" }},
+		{"tools turned off", func(table string) string { return table + "disabled_tools = [\"list_vaults\"]\n" }},
+		{"turned off", func(table string) string { return table + "enabled = false\n" }},
+		{"required", func(table string) string { return table + "required = true\n" }},
+		{"another tool timeout", func(table string) string { return strings.Replace(table, "tool_timeout_sec = 4200", "tool_timeout_sec = 60", 1) }},
+		{"no startup timeout", func(table string) string { return strings.Replace(table, "startup_timeout_sec = 15\n", "", 1) }},
+		{"environment", func(table string) string { return table + "\n[mcp_servers.hisar.env]\nA = \"b\"\n" }},
+		{"a tool's settings", func(table string) string {
+			return table + "\n[mcp_servers.hisar.tools.run_with_secrets]\napproval_mode = \"approve\"\n"
+		}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			world := newFakeWorld(t)
+			world.installCodex(world.pathOnUserPath("codex"))
+			userConfig := "model = \"o4\"\n\n" + test.change(world.ourCodexTable())
+			world.writeFile(world.codexConfigPath(), userConfig, 0o600)
+			service := world.newService("")
+			if agent := getAgent(t, service, "codex"); agent.State != StateConflict || agent.Detail != codexConflict {
+				t.Fatalf("Codex = %+v; want the conflict", agent)
+			}
+			if _, err := service.Connect("codex"); err == nil || err.Error() != codexConflict {
+				t.Fatalf("Connect() error = %v; want %q", err, codexConflict)
+			}
+			if agent, err := service.Disconnect("codex"); err != nil || agent.State != StateConflict {
+				t.Fatalf("Disconnect() = %+v, %v; want the conflict left alone", agent, err)
+			}
+			if got := world.readFile(world.codexConfigPath()); got != userConfig {
+				t.Fatalf("config.toml =\n%s\nwant it unchanged", got)
+			}
+			if calls := world.readCalls(); slices.ContainsFunc(calls, func(call string) bool { return !strings.HasSuffix(call, " mcp get hisar --json") }) {
+				t.Fatalf("codex calls = %q; want only mcp get", calls)
+			}
+		})
+	}
+}
+
 func TestConnectCodexTakesItsTableOutWhenCodexReadsItWrong(t *testing.T) {
 	world := newFakeWorld(t)
 	world.installCodex(world.pathOnUserPath("codex"))

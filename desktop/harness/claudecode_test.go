@@ -41,6 +41,11 @@ func TestClaudeCodeStateReadsTheUserSettings(t *testing.T) {
 	ours := func(world *fakeWorld) string {
 		return `{"mcpServers":{"hisar":{"type":"stdio","command":"` + world.hisarPath + `","args":["mcp","--no-reveal"],"env":{}}}}`
 	}
+	oursWith := func(extra string) func(*fakeWorld) string {
+		return func(world *fakeWorld) string {
+			return `{"mcpServers":{"hisar":{"type":"stdio","command":"` + world.hisarPath + `","args":["mcp","--no-reveal"],` + extra + `}}}`
+		}
+	}
 	for _, test := range []struct {
 		name       string
 		settings   func(*fakeWorld) string
@@ -50,6 +55,16 @@ func TestClaudeCodeStateReadsTheUserSettings(t *testing.T) {
 		{name: "no settings yet", want: StateAvailable},
 		{name: "other servers", settings: func(*fakeWorld) string { return `{"mcpServers":{"github":{"command":"gh"}}}` }, want: StateAvailable},
 		{name: "Hisar's server", settings: ours, want: StateConnected},
+		{
+			name: "Hisar's server without a type or an environment",
+			settings: func(world *fakeWorld) string {
+				return `{"mcpServers":{"hisar":{"command":"` + world.hisarPath + `","args":["mcp","--no-reveal"]}}}`
+			},
+			want: StateConnected,
+		},
+		{name: "Hisar's server with an environment", settings: oursWith(`"env":{"A":"b"}`), want: StateConflict, wantDetail: claudeConflict},
+		{name: "Hisar's server with a working folder", settings: oursWith(`"env":{},"cwd":"/tmp"`), want: StateConflict, wantDetail: claudeConflict},
+		{name: "Hisar's server with a timeout", settings: oursWith(`"env":{},"timeout":5000`), want: StateConflict, wantDetail: claudeConflict},
 		{
 			name: "a hisar on the PATH",
 			settings: func(*fakeWorld) string {
@@ -125,6 +140,24 @@ func TestConnectClaudeCodeLeavesAnotherHisarServer(t *testing.T) {
 		t.Fatalf("Connect() error = %v; want %q", err, claudeConflict)
 	}
 	if agent, err := service.Disconnect("claude-code"); err != nil || agent.State != StateConflict {
+		t.Fatalf("Disconnect() = %+v, %v; want the conflict left alone", agent, err)
+	}
+	if calls := world.readCalls(); len(calls) != 0 {
+		t.Fatalf("claude calls = %q; want none", calls)
+	}
+	if got := world.readFile(world.pathInHome(".claude.json")); got != settings {
+		t.Fatalf(".claude.json = %s; want it unchanged", got)
+	}
+}
+
+// TestDisconnectClaudeCodeLeavesACustomizedServer: Hisar's command and arguments with a setting `claude mcp add` never
+// writes are the user's server, so Disconnect leaves it.
+func TestDisconnectClaudeCodeLeavesACustomizedServer(t *testing.T) {
+	world := newFakeWorld(t)
+	world.installClaude(world.pathOnUserPath("claude"))
+	settings := `{"mcpServers":{"hisar":{"type":"stdio","command":"` + world.hisarPath + `","args":["mcp","--no-reveal"],"env":{},"cwd":"/tmp"}}}`
+	world.writeFile(world.pathInHome(".claude.json"), settings, 0o600)
+	if agent, err := world.newService("").Disconnect("claude-code"); err != nil || agent.State != StateConflict {
 		t.Fatalf("Disconnect() = %+v, %v; want the conflict left alone", agent, err)
 	}
 	if calls := world.readCalls(); len(calls) != 0 {

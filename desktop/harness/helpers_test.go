@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -71,8 +72,9 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-// runFakeCodex answers `codex mcp get hisar --json` and `codex mcp remove hisar` from config.toml. With the state file
-// broken-hisar it reports Hisar's server with another command, as a Codex that read the table differently would.
+// runFakeCodex answers `codex mcp get hisar --json` in the shape Codex 0.162.1 does and `codex mcp remove hisar`, from
+// config.toml. With the state file broken-hisar it reports Hisar's server with another command, as a Codex that read the
+// table differently would.
 func runFakeCodex(arguments []string) int {
 	directory := os.Getenv("CODEX_HOME")
 	if directory == "" {
@@ -115,17 +117,36 @@ func runFakeCodex(arguments []string) int {
 	switch strings.Join(arguments, " ") {
 	case "mcp get hisar --json":
 		command, _ := parseTOMLString(values["command"])
-		args, _ := parseTOMLStringArray(values["args"])
 		if _, err := os.Stat(filepath.Join(os.Getenv("HISAR_FAKE_STATE"), "broken-hisar")); err == nil {
 			command = "/usr/bin/false"
+		}
+		readArray := func(key string) []string {
+			array, _ := parseTOMLStringArray(values[key])
+			return array
+		}
+		readNumber := func(key string) *float64 {
+			number, err := strconv.ParseFloat(values[key], 64)
+			if err != nil {
+				return nil
+			}
+			return &number
+		}
+		var cwd *string
+		if value, isString := parseTOMLString(values["cwd"]); isString {
+			cwd = &value
 		}
 		var env map[string]string
 		if hasEnv {
 			env = map[string]string{"A": "b"}
 		}
 		output, _ := json.Marshal(map[string]any{
-			"name": "hisar", "enabled": values["enabled"] != "false",
-			"transport": map[string]any{"type": "stdio", "command": command, "args": args, "env": env},
+			"name": "hisar", "enabled": values["enabled"] != "false", "disabled_reason": nil,
+			"transport": map[string]any{
+				"type": "stdio", "command": command, "args": append([]string{}, readArray("args")...), "env": env,
+				"env_vars": append([]string{}, readArray("env_vars")...), "cwd": cwd,
+			},
+			"enabled_tools": readArray("enabled_tools"), "disabled_tools": readArray("disabled_tools"),
+			"startup_timeout_sec": readNumber("startup_timeout_sec"), "tool_timeout_sec": readNumber("tool_timeout_sec"),
 		})
 		fmt.Println(string(output))
 	case "mcp remove hisar":
