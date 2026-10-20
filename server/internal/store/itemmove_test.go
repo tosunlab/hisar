@@ -133,8 +133,8 @@ func TestVaultChangesAreCheckedAgainstAccessRemovedMeanwhile(t *testing.T) {
 		t.Errorf("an owner removed meanwhile removes the other owner: %v", err)
 	}
 
-	if items, _, _ := database.ListChanges(ctx, vaultID, 0, 100); len(items) != 1 || items[0].Revision != liveItem.Revision {
-		t.Errorf("the vault's items: %+v", items)
+	if items, _, _, err := database.ListChanges(ctx, vaultID, 0, 100, 1<<20); err != nil || len(items) != 1 || items[0].Revision != liveItem.Revision {
+		t.Errorf("the vault's items: %+v %v", items, err)
 	}
 	if vaults, _ := database.ListVaults(ctx, "AAAAAA"); len(vaults) != 1 || string(vaults[0].EncName) != string([]byte{1}) || vaults[0].Role != "owner" {
 		t.Errorf("the remaining owner's vault: %+v", vaults)
