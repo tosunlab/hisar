@@ -191,6 +191,7 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent, reques
 		AppWarning:   event.AppWarning,
 		Purpose:      event.Action,
 		CommandLine:  event.CommandLine,
+		ProjectPath:  event.ProjectPath,
 		TerminalName: event.TerminalName,
 	}
 	if event.Purpose == clisocket.AgentRequestConnect {

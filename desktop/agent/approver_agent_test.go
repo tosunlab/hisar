@@ -278,6 +278,25 @@ func TestAgentDialogNamesTheHarnessAndItsHost(t *testing.T) {
 	waitForAgentResult(t, resultChannel)
 }
 
+func TestAgentPhoneRequestNamesTheHarnessProject(t *testing.T) {
+	for _, kind := range []string{clisocket.AgentRequestRun, clisocket.AgentRequestReveal, clisocket.AgentRequestCode, clisocket.AgentRequestConnect} {
+		emitter := createFakeEmitter()
+		phone := createFakePhone()
+		approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
+		request := createAgentRequest(kind)
+		request.Session = &agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1226, StartTime: 100, Directory: testHomeDirectory + "/src/acme-web"}
+		request.CommandLine, request.WorkingDirectory = []string{"npm", "run", "db:migrate"}, testHomeDirectory+"/src/acme-web/packages/db"
+		request.SecretNames, request.RevealedName = []string{"Agents › Stripe › secret key"}, "Stripe"
+		resultChannel := startAgentApproval(approver, request)
+		waitForApprovalEvent(t, emitter)
+		if description := phone.waitForStart(t); description.ProjectPath != "~/src/acme-web" {
+			t.Errorf("%s: phone project %q", kind, description.ProjectPath)
+		}
+		approver.DenyAll()
+		waitForAgentResult(t, resultChannel)
+	}
+}
+
 func TestCheckedNameOnlyForSignedHarness(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)

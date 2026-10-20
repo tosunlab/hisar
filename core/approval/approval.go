@@ -49,12 +49,14 @@ var (
 
 // Description is what the Mac's approval dialog shows; empty fields are lines the dialog does not have.
 type Description struct {
-	Kind              string `json:"kind"`
-	AppName           string `json:"appName"`
-	Purpose           string `json:"purpose"`
-	Host              string `json:"host"`
-	CommandLine       string `json:"commandLine"`
-	RepositoryPath    string `json:"repositoryPath"`
+	Kind           string `json:"kind"`
+	AppName        string `json:"appName"`
+	Purpose        string `json:"purpose"`
+	Host           string `json:"host"`
+	CommandLine    string `json:"commandLine"`
+	RepositoryPath string `json:"repositoryPath"`
+	// ProjectPath is the folder of the coding agent's harness, such as omp's project, for every agent request.
+	ProjectPath       string `json:"projectPath,omitempty"`
 	KeyName           string `json:"keyName"`
 	IsForwarded       bool   `json:"isForwarded"`
 	ForwardedFromHost string `json:"forwardedFromHost"`
