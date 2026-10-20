@@ -194,12 +194,16 @@ func describeRemoteGitCommand(remoteArguments []string) (string, bool) {
 	return "", false
 }
 
-var urlPasswordPattern = regexp.MustCompile(`(://[^/:@\s]*:)[^@/\s]+@`)
+// urlPasswordPattern masks the password of a URL. The password matches only characters that are no shell syntax, so a
+// mask never hides a command inside a script.
+var urlPasswordPattern = regexp.MustCompile(`(://[^/:@\s]*:)[A-Za-z0-9._~%+=-]+@`)
 var sensitiveConfigPattern = regexp.MustCompile(`(?i)^([^=]*(?:` + sensitiveConfigNamePieces + `)[^=]*=).+$`)
 
-func redactArgument(previousArgument, argument string) string {
+// redactArgument masks URL passwords, and the values of git's -c options named like secrets; for any other program
+// -c is no git option (sh -c takes a script), so its value stays whole.
+func redactArgument(program, previousArgument, argument string) string {
 	argument = urlPasswordPattern.ReplaceAllString(argument, "${1}"+redactedValue+"@")
-	if previousArgument == "-c" {
+	if program == "git" && previousArgument == "-c" {
 		argument = sensitiveConfigPattern.ReplaceAllString(argument, "${1}"+redactedValue)
 	}
 	return argument
@@ -218,16 +222,23 @@ func quoteArgument(argument string) string {
 	return argument
 }
 
-// formatCommandLine shows a process's arguments like a shell would, without secrets, cut to fit the dialog.
+// formatCommandLine shows every argument of a command like a shell would, without secrets. An approval to run a
+// command shows all of it: a shortened one could hide what the command does.
 func formatCommandLine(arguments []string) string {
 	if len(arguments) == 0 {
 		return ""
 	}
-	quoted := []string{quoteArgument(filepath.Base(arguments[0]))}
+	program := filepath.Base(arguments[0])
+	quoted := []string{quoteArgument(program)}
 	for index := 1; index < len(arguments); index++ {
-		quoted = append(quoted, quoteArgument(redactArgument(arguments[index-1], arguments[index])))
+		quoted = append(quoted, quoteArgument(redactArgument(program, arguments[index-1], arguments[index])))
 	}
-	return truncateText(strings.Join(quoted, " "), maximumCommandLineLength)
+	return strings.ToValidUTF8(strings.Join(quoted, " "), "�")
+}
+
+// formatShortCommandLine is formatCommandLine cut to one line of the dialog, for a process that only explains a request.
+func formatShortCommandLine(arguments []string) string {
+	return truncateText(formatCommandLine(arguments), maximumCommandLineLength)
 }
 
 func truncateText(text string, maximumLength int) string {
@@ -436,7 +447,7 @@ func DescribeRequest(processes []appinfo.Process, request sshagent.ApprovalReque
 		commandProcess = &peer
 	}
 	if commandProcess != nil {
-		description.CommandLine = formatCommandLine(commandProcess.Arguments)
+		description.CommandLine = formatShortCommandLine(commandProcess.Arguments)
 	}
 	return description
 }

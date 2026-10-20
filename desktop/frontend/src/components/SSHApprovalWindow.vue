@@ -152,6 +152,10 @@ const allDetailLine = computed(() => {
   return [current.commandLine || current.clientPath || current.clientName, location].filter(Boolean);
 });
 
+// isCommandShownWhole: the first detail line of a command-line or agent request may be a command it runs, so it wraps
+// and scrolls, never cut.
+const isCommandShownWhole = computed(() => approval.value?.kind === "command-line" || approval.value?.kind === "agent");
+
 const allSecretName = computed(() => approval.value?.allSecretName ?? []);
 const rememberLabel = computed(
   () =>
@@ -445,7 +449,14 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-if="allDetailLine.length > 0" class="detail-box" data-testid="approval-details">
-            <code v-for="(line, index) in allDetailLine" :key="index" class="detail-line" :class="{ secondary: index > 0 }" :title="line">{{ line }}</code>
+            <code
+              v-for="(line, index) in allDetailLine"
+              :key="index"
+              class="detail-line"
+              :class="{ secondary: index > 0, whole: index === 0 && isCommandShownWhole }"
+              :title="line"
+              >{{ line }}</code
+            >
           </div>
 
           <div v-if="isLauncher && !isLauncherShare" class="launcher-allowance" data-testid="approval-launcher-note">
@@ -803,6 +814,14 @@ h1 {
 
 .detail-line.secondary {
   color: var(--color-text-muted);
+}
+
+.detail-line.whole {
+  max-height: 9em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
 }
 
 .launcher-allowance {

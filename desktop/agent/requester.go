@@ -31,7 +31,7 @@ func buildChainProcesses(processes []appinfo.Process) []ChainProcess {
 		if name == "" {
 			continue
 		}
-		commandLine := formatCommandLine(process.Arguments)
+		commandLine := formatShortCommandLine(process.Arguments)
 		if commandLine == "" {
 			commandLine = process.Path
 		}
