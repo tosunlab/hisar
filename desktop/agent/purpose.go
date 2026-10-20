@@ -193,68 +193,33 @@ func describeRemoteGitCommand(remoteArguments []string) (string, bool) {
 	return "", false
 }
 
-// literalRun is a run of characters that are never shell syntax: no whitespace, quote, escape, expansion, separator,
-// operator or redirection. Glued to a credential's name or a URL's user, such a run is a literal piece of one word, so
-// masking it hides nothing a shell runs, in an sh -c script and in a program's own arguments alike; a credential that
-// goes on with shell syntax is masked up to it.
-const literalRun = `[^\s;&|()<>$\x60\\'"]+`
-
 var (
-	// urlPasswordPattern finds the password of a URL: https://user:password@host.
+	// urlPasswordPattern finds the password of a URL, https://user:password@host, made only of characters that are never
+	// shell syntax, so a mask never hides a command when git hands an argument to a shell (git bisect run, an alias).
 	urlPasswordPattern = regexp.MustCompile(`(://[^/?#@\s:]*:)[^\s;&|()<>$\x60\\'"/?#@]+(@)`)
-	// assignmentPattern finds NAME=value, --name=value and a URL's ?name=value; the name is a whole word, so a git
-	// config key such as alias.token never matches.
-	assignmentPattern = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])([A-Za-z0-9_-]+)=['"]?(` + literalRun + `)`)
-	// optionValuePattern finds a script's --name value; only spaces and tabs separate them, since a newline ends the
-	// command.
-	optionValuePattern = regexp.MustCompile(`(?:^|[ \t])--([A-Za-z0-9-]+)[ \t]+['"]?(` + literalRun + `)`)
-	optionPattern      = regexp.MustCompile(`^--([A-Za-z0-9-]+)$`)
-	leadingLiteral     = regexp.MustCompile(`^` + literalRun)
-	secretNamePattern  = regexp.MustCompile(`(?i)token|passw(?:or)?d|secret|api[_-]?key|auth`)
-	// commandNamePattern keeps the value of a name such as --password-command whole: it is a program to run, or a path.
-	commandNamePattern = regexp.MustCompile(`(?i)author|command|cmd|helper|program|exec|hook|script|process|plugin|file|path`)
+	// gitSecretConfigPattern matches the last part of a git config key that holds a credential, such as
+	// http.extraHeader or github.token.
+	gitSecretConfigPattern = regexp.MustCompile(`(?i)token|password|secret|header|auth`)
 )
 
-func isSecretName(name string) bool {
-	return secretNamePattern.MatchString(name) && !commandNamePattern.MatchString(name)
-}
-
-// redactArgument masks the literal values of credentials: URL passwords, values named like secrets (TOKEN=…,
-// --password=…, --api-key …) and git's -c values named like secrets. An alias runs, so its value stays whole.
-func redactArgument(program, previousArgument, argument string) string {
-	if program == "git" && previousArgument == "-c" {
-		key, _, hasValue := strings.Cut(argument, "=")
+// redactGitArgument hides the credentials git takes in its own arguments: the value of a -c option named like a
+// secret or a header, and the password of a URL. An alias runs, so its value stays whole, in -c alias.x=… and in
+// git config alias.x ….
+func redactGitArgument(previousArgument, argument string) string {
+	if strings.HasPrefix(strings.ToLower(previousArgument), "alias.") {
+		return argument
+	}
+	if previousArgument == "-c" {
+		key, value, _ := strings.Cut(argument, "=")
 		section, _, _ := strings.Cut(key, ".")
-		name := key[strings.LastIndex(key, ".")+1:]
-		if hasValue && !strings.EqualFold(section, "alias") && (isSecretName(name) || strings.Contains(strings.ToLower(name), "header")) {
+		if strings.EqualFold(section, "alias") {
+			return argument
+		}
+		if value != "" && gitSecretConfigPattern.MatchString(key[strings.LastIndex(key, ".")+1:]) {
 			return key + "=" + redactedValue
 		}
 	}
-	if option := optionPattern.FindStringSubmatch(previousArgument); option != nil && isSecretName(option[1]) {
-		argument = leadingLiteral.ReplaceAllLiteralString(argument, redactedValue)
-	}
-	argument = urlPasswordPattern.ReplaceAllString(argument, "${1}"+redactedValue+"${2}")
-	argument = maskNamedValues(argument, assignmentPattern)
-	return maskNamedValues(argument, optionValuePattern)
-}
-
-// maskNamedValues masks the value (the second group) of each match whose name (the first group) looks like a secret.
-func maskNamedValues(text string, pattern *regexp.Regexp) string {
-	var masked strings.Builder
-	end := 0
-	for _, match := range pattern.FindAllStringSubmatchIndex(text, -1) {
-		if !isSecretName(text[match[2]:match[3]]) {
-			continue
-		}
-		masked.WriteString(text[end:match[4]])
-		masked.WriteString(redactedValue)
-		end = match[5]
-	}
-	if end == 0 {
-		return text
-	}
-	masked.WriteString(text[end:])
-	return masked.String()
+	return urlPasswordPattern.ReplaceAllString(argument, "${1}"+redactedValue+"${2}")
 }
 
 func quoteArgument(argument string) string {
@@ -270,8 +235,9 @@ func quoteArgument(argument string) string {
 	return argument
 }
 
-// formatCommandLine shows every argument of a command like a shell would, without secrets. An approval to run a
-// command shows all of it: a shortened one could hide what the command does.
+// formatCommandLine shows every argument of a command like a shell would. Only git's own credentials are hidden: the
+// approval shows on the user's own Mac and phones, and any other literal in a command came from whoever wrote it, so
+// masking it would protect nothing and could hide what the command does.
 func formatCommandLine(arguments []string) string {
 	if len(arguments) == 0 {
 		return ""
@@ -279,7 +245,11 @@ func formatCommandLine(arguments []string) string {
 	program := filepath.Base(arguments[0])
 	quoted := []string{quoteArgument(program)}
 	for index := 1; index < len(arguments); index++ {
-		quoted = append(quoted, quoteArgument(redactArgument(program, arguments[index-1], arguments[index])))
+		argument := arguments[index]
+		if program == "git" {
+			argument = redactGitArgument(arguments[index-1], argument)
+		}
+		quoted = append(quoted, quoteArgument(argument))
 	}
 	return strings.ToValidUTF8(strings.Join(quoted, " "), "�")
 }

