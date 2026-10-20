@@ -26,6 +26,7 @@ on:
 permissions:
   contents: write
   packages: write
+  attestations: read
 
 env:
   APP: ${{ inputs.app }}
@@ -63,8 +64,11 @@ jobs:
           if [ -n "$publishedTag" ] && [ "$(printf '%s\n%s\n' "$version" "$publishedVersion" | sort -V | tail -n 1)" != "$version" ]; then
             echo "::error::$publishedTag is already published; publishing $TAG would go back to an older version"; exit 1
           fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          echo "PUBLISHED_TAG=$publishedTag" >> "$GITHUB_ENV"
+          {
+            echo "VERSION=$version"
+            echo "PUBLISHED_TAG=$publishedTag"
+            echo "SOURCE_SHA=$(git rev-parse "refs/tags/$TAG^{commit}")"
+          } >> "$GITHUB_ENV"
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
         if: inputs.app == 'server'
@@ -74,12 +78,20 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         if: inputs.app == 'server'
+        with:
+          driver-opts: image=moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+      - name: Download and verify the exact tested release before publishing
+        run: |
+          mkdir -p "$RUNNER_TEMP/release-files"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release-files"
+          python3 scripts/release-evidence.py verify "$APP" "$TAG" "$SOURCE_SHA" "$RUNNER_TEMP/release-files"
       - name: Point the latest and MAJOR.MINOR server image tags at the version
         if: inputs.app == 'server'
         run: |
-          docker buildx imagetools inspect "$SERVER_IMAGE:$VERSION" >/dev/null || { echo "::error::$SERVER_IMAGE:$VERSION does not exist; run Release for server"; exit 1; }
-          docker buildx imagetools create -t "$SERVER_IMAGE:${VERSION%.*}" -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE:$VERSION"
-          echo "Published $SERVER_IMAGE:$VERSION as latest and ${VERSION%.*}"
+          digest=$(jq -r .image.digest "$RUNNER_TEMP/release-files/release-evidence.json")
+          docker buildx imagetools inspect "$SERVER_IMAGE@$digest" >/dev/null
+          docker buildx imagetools create -t "$SERVER_IMAGE:${VERSION%.*}" -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE@$digest"
+          echo "Published $SERVER_IMAGE@$digest as latest and ${VERSION%.*}"
 
       # Apps are offered a desktop version only once its release has an asset named update.json.
       - name: Offer the desktop version as an automatic update

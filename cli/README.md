@@ -18,6 +18,9 @@ for it, and otherwise says "Hisar isn't running. Open the Hisar app and try agai
 (github.com/tosunlab/hisar → Releases): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
 `.zip` for Windows, and `SHA256SUMS`. Check the download before you run it, then put `hisar` on your `PATH`:
 
+For releases with `release-evidence.json`, also [verify the artifact attestation](../docs/RELEASING.md#verify-release-artifacts) before extraction.
+The checksum file detects corruption but is not independent proof of who built the archive.
+
 ```sh
 sha256sum -c --ignore-missing SHA256SUMS          # macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
 tar -xzf hisar-0.2.1-linux-amd64.tar.gz && sudo install hisar /usr/local/bin/

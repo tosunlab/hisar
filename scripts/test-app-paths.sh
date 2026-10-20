@@ -71,3 +71,26 @@ if [ -n "$(git diff --name-only "$base" "$head" -- "${releasePathspec[@]}")" ]; 
   exit 1
 fi
 echo 'Server, CLI and Makefile changes select the tests that run against them; release sets are unchanged.'
+
+assertReleaseInput() {
+  local path=$1 app=$2 selected
+  mkdir -p "$(dirname "$path")"
+  printf '%s\n' "$app" > "$path"
+  git add "$path"
+  git -c commit.gpgsign=false -c user.name=Test -c user.email=test@example.invalid commit -qm "Change $path"
+  head=$(git rev-parse HEAD)
+  setReleasePathspec "$app"
+  selected=$(git diff --name-only "$head^" "$head" -- "${releasePathspec[@]}")
+  [ "$selected" = "$path" ] || { echo "$path does not select a $app release" >&2; exit 1; }
+}
+for app in server cli desktop extension; do
+  for path in "${releasePaths[@]}" ".github/workflows/release-$app.yml"; do
+    assertReleaseInput "$path" "$app"
+  done
+done
+output=$(BASE_SHA='' HEAD_SHA=$head IS_FORCED=true WORKFLOW_FILE=.github/workflows/ci.yml GITHUB_OUTPUT=/dev/null \
+  bash "$scriptDirectory/detect-app-changes.sh")
+for area in Desktop Mobile Android Admin; do
+  [[ "$output" = *"is${area}Changed=true"* ]] || { echo "release did not force $area tests" >&2; exit 1; }
+done
+echo 'All release evidence inputs select their apps; releases force every CI area without a diff.'

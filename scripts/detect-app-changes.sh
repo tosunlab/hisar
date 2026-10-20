@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Tells the CI workflows whether a pull request changes the desktop app, the iPhone app, the Android app or the admin
 # dashboard, so their jobs run only then. Every run compares the pull request's head with its base, not only the newest
-# push: a run cancelled by a later push must not leave the app changes of the earlier push untested. For a release, the
-# base is the previous release's tag.
+# push: a run cancelled by a later push must not leave the app changes of the earlier push untested.
+# Releases force every job instead of relying on a diff against a previous tag.
 #
 # scripts/app-paths.sh says what each app is built from: core/ and go.work count for each, and the desktop app also counts
 # cli/ and omp/. The phone apps share mobile/hisarkit and mobile/go.mod; an Android-only change keeps off the macOS runner.

@@ -47,7 +47,7 @@ Hisar is one Go implementation of the crypto shared by a Mac and Linux app, a br
 
 ## Install
 
-Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/releases), one release per app. The CLI archives, the Linux packages and the Flatpak come with `SHA256SUMS` files to check them against; the Mac DMG is signed and notarized instead.
+Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/releases), one release per app. The CLI archives, the Linux packages and the Flatpak come with `SHA256SUMS` files to check them against; the Mac DMG is signed and notarized instead. A checksum file detects corruption but does not prove who built a file: releases with `release-evidence.json` also carry GitHub artifact attestations, and [docs/RELEASING.md](docs/RELEASING.md#verify-release-artifacts) shows how to verify them.
 
 | Platform | How to get it |
 |---|---|

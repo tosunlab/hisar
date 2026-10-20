@@ -11,25 +11,30 @@ isCustomBuild=false
 [ "$version" = "${version%%-*}" ] || isCustomBuild=true
 
 case "$app" in
-  server) allExpected=() ;;
-  cli) allExpected=(SHA256SUMS) ;;
+  server) allExpected=(release-evidence.json) ;;
+  cli)
+    allExpected=(release-evidence.json SHA256SUMS)
+    for architecture in amd64 arm64; do
+      allExpected+=("hisar-$version-linux-$architecture.tar.gz" "hisar-$version-darwin-$architecture.tar.gz"
+        "hisar-$version-windows-$architecture.zip")
+    done
+    ;;
   desktop)
-    allExpected=("Hisar-$version.dmg")
+    allExpected=(release-evidence.json "Hisar-$version.dmg")
     $isCustomBuild || allExpected+=("Hisar-$version.zip" update-unpublished.json)
+    if ! $isCustomBuild && [ -f "$directory/update.json" ]; then
+      allExpected=(release-evidence.json "Hisar-$version.dmg" "Hisar-$version.zip" update.json)
+    fi
     for architecture in amd64 arm64; do
       allExpected+=("Hisar-$version-linux-$architecture".{deb,rpm,AppImage,flatpak}
         "SHA256SUMS-linux-$architecture" "SHA256SUMS-flatpak-$architecture")
     done
     ;;
-  extension) allExpected=("hisar-extension-$version.zip") ;;
+  extension) allExpected=(release-evidence.json "hisar-extension-$version.zip") ;;
   *) echo "unknown app $app (server, cli, desktop or extension)" >&2; exit 1 ;;
 esac
 
 cd "$directory"
-# The CLI's archives are the ones its SHA256SUMS lists.
-if [ "$app" = cli ] && [ -f SHA256SUMS ]; then
-  while read -r _ fileName; do allExpected+=("$fileName"); done < SHA256SUMS
-fi
 allPresent=$(find . -type f | sed 's|^\./||' | sort)
 allExpectedSorted=$(printf '%s\n' ${allExpected[@]+"${allExpected[@]}"} | sed '/^$/d' | sort)
 if [ "$allPresent" != "$allExpectedSorted" ]; then

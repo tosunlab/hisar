@@ -1,8 +1,7 @@
 name: CI
 
-# A merge to main was already tested as its pull request, so pushes to main do not run CI. The Release workflow calls it
-# for the commit it releases, with baseRef the previous release's tag: the jobs that run only for some changes compare the
-# commit with it, and without a baseRef everything runs.
+# Pull requests and manual runs test their event commit. Release calls this workflow with an empty baseRef to run every
+# job on the exact release SHA, even when no files changed since the previous release.
 on:
   pull_request:
   workflow_dispatch:
@@ -44,6 +43,10 @@ jobs:
         run: bash scripts/check-go-toolchain.sh
       - name: Test release and CI input selection
         run: bash scripts/test-app-paths.sh
+      - name: Check immutable build image inputs
+        run: python3 scripts/check-build-images.py
+      - name: Test release evidence and publication gates
+        run: python3 scripts/test-release-evidence.py
       - name: Compare the pull request with its base
         id: changes
         env:
@@ -60,7 +63,7 @@ jobs:
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
@@ -110,14 +113,14 @@ jobs:
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
         ports: ["5432:5432"]
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
       registry:
-        image: registry:2
+        image: registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
         ports: ["5000:5000"]
     env:
       CHECK_IMAGE: localhost:5000/hisar-server:check
@@ -131,7 +134,9 @@ jobs:
         run: go install "github.com/google/go-containerregistry/cmd/crane@$CRANE_VERSION"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
-          driver-opts: network=host
+          driver-opts: |
+            image=moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+            network=host
       - name: Build the linux/amd64 and linux/arm64 image into a throwaway registry
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -185,7 +190,7 @@ jobs:
     if: needs.changes.outputs.isDesktopChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: node:24-trixie
+    container: node:24-trixie@sha256:ff054b356ab93ed540518ca23cfcd9840e5256dd04db5a8d8afc43f4ecc7c9f8
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install GTK 4 and WebKitGTK
@@ -225,7 +230,7 @@ jobs:
     timeout-minutes: 45
     # Flathub's builder image has flatpak-builder, Node and the GNOME 51 runtime and SDK; building sandboxes needs privileges.
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51@sha256:78d969b18225ae107ca29497bf09c4a3f791e5f1838a9a912a529d0024fb6210
       options: --privileged
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -240,7 +245,7 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install make and zip
@@ -289,10 +294,10 @@ jobs:
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
@@ -317,10 +322,10 @@ jobs:
     if: needs.changes.outputs.isAdminChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
@@ -364,7 +369,7 @@ jobs:
             shard: 1/2
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar

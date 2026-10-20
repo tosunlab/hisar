@@ -2,9 +2,9 @@ name: Release
 
 # One release per run: the app and how to choose its version. The run plans the version (scripts/plan-release.sh), pushes
 # the annotated tag, builds the app, creates the GitHub prerelease with all its files at once, and then waits in the
-# environment publish-<app> until a reviewer approves publishing it (publish.yml). CI and the macOS tests ran on the pull
-# requests already, so the run skips them unless runTests is set. A custom build (a version with a -label) stops at the
-# prerelease. Re-run failed jobs to continue a run; a new run refuses a tag that exists.
+# environment publish-<app> until a reviewer approves publishing it (publish.yml). CI tests the exact release commit.
+# Desktop releases also require the macOS tests. A custom build (a version with a -label) stops at the prerelease.
+# Re-run failed jobs to continue a run; a new run refuses a tag that exists.
 run-name: Release ${{ inputs.app }} (${{ inputs.type == 'custom' && inputs.version || inputs.type }})${{ inputs.dryRun && ', dry run' || '' }}
 on:
   workflow_dispatch:
@@ -24,10 +24,6 @@ on:
         default: ""
       dryRun:
         description: Only show the plan
-        type: boolean
-        default: false
-      runTests:
-        description: Also run CI (and the macOS tests for the desktop app) on the commit before tagging it
         type: boolean
         default: false
 
@@ -54,6 +50,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
       - id: plan
         env:
           APP: ${{ inputs.app }}
@@ -64,30 +61,29 @@ jobs:
   ci:
     name: CI
     needs: plan
-    if: ${{ !inputs.dryRun && inputs.runTests }}
+    if: ${{ !inputs.dryRun }}
     uses: ./.github/workflows/ci.yml
     with:
-      baseRef: ${{ needs.plan.outputs.previousTag }}
+      baseRef: ""
 
   macos:
     name: macOS
     needs: plan
-    if: ${{ !inputs.dryRun && inputs.runTests && inputs.app == 'desktop' }}
+    if: ${{ !inputs.dryRun && inputs.app == 'desktop' }}
     uses: ./.github/workflows/macos.yml
 
-  # Without a status check function in its condition, a job is skipped when any job before it in the needs chain was
-  # skipped, so every job after the optional CI names what it needs.
   # The deploy key in RELEASE_DEPLOY_KEY may create tags past the ruleset "tags: only maintainers create".
   tag:
     name: Push the tag
     needs: [plan, ci, macos]
-    if: ${{ !cancelled() && !inputs.dryRun && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') }}
+    if: ${{ !cancelled() && !inputs.dryRun && needs.ci.result == 'success' && (inputs.app != 'desktop' || needs.macos.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          ref: ${{ github.sha }}
       - name: Push the annotated tag
         env:
           TAG: ${{ needs.plan.outputs.tag }}
@@ -123,6 +119,8 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
     uses: ./.github/workflows/release-server.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
@@ -161,12 +159,15 @@ jobs:
 
   release:
     name: Create the GitHub prerelease
-    needs: [plan, build-server, build-cli, build-desktop, build-extension]
-    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') && (needs.build-server.result == 'success' || needs.build-cli.result == 'success' || needs.build-desktop.result == 'success' || needs.build-extension.result == 'success') }}
+    needs: [plan, ci, macos, tag, build-server, build-cli, build-desktop, build-extension]
+    if: ${{ !cancelled() && needs.tag.result == 'success' && needs.ci.result == 'success' && (inputs.app != 'desktop' || needs.macos.result == 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (needs.build-server.result == 'success' || needs.build-cli.result == 'success' || needs.build-desktop.result == 'success' || needs.build-extension.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
+      id-token: write
+      attestations: write
       contents: write
+      packages: read
     env:
       APP: ${{ inputs.app }}
       TAG: ${{ needs.plan.outputs.tag }}
@@ -179,19 +180,39 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          ref: ${{ github.sha }}
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         if: inputs.app != 'server'
         with:
           pattern: release-files-${{ inputs.app }}-*
           path: release-files
           merge-multiple: true
+      - name: Record exact-commit test and artifact evidence
+        env:
+          CI_RESULT: ${{ needs.ci.result }}
+          MACOS_RESULT: ${{ needs.macos.result }}
+          IMAGE_DIGEST: ${{ needs.build-server.outputs.digest }}
+        run: |
+          mkdir -p release-files
+          python3 scripts/release-evidence.py create "$APP" "$TAG" "$GITHUB_SHA" release-files
       - name: Check the files
         run: mkdir -p release-files && bash scripts/check-release-files.sh "$APP" "$VERSION" release-files
       - name: Check that the tag is still on the commit the files were built from
         run: |
           git fetch --force origin "+refs/tags/$TAG:refs/tags/$TAG"
-          tagCommit=$(git rev-parse "refs/tags/$TAG^{commit}")
-          [ "$tagCommit" = "$GITHUB_SHA" ] || { echo "::error::the tag $TAG moved to $tagCommit during the run; the files were built from $GITHUB_SHA"; exit 1; }
+          python3 scripts/release-evidence.py check-source "$GITHUB_SHA" "$TAG"
+      - name: Attest every delivered release file
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: release-files/*
+      - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: inputs.app == 'server'
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify attestations before creating the prerelease
+        run: python3 scripts/release-evidence.py verify "$APP" "$TAG" "$GITHUB_SHA" release-files
       - name: Create the prerelease with its notes and files
         run: |
           shopt -s nullglob
@@ -214,6 +235,7 @@ jobs:
     permissions:
       contents: write
       packages: write
+      attestations: read
     uses: ./.github/workflows/publish.yml
     with:
       app: ${{ inputs.app }}
