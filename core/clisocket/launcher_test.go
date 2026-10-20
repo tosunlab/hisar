@@ -212,12 +212,11 @@ func TestLauncherRefusedFromAgentSessionAndAgentHost(t *testing.T) {
 	if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar answers no launcher in an app that ran a coding agent" {
 		t.Errorf("in an agent host: %+v", response.Error)
 	}
-	fixture.launcherApprover.setResult(ErrDenied)
-	if code := getErrorCode(raycast.send(t, listLauncherItems)); code != cliprotocol.ErrorDenied {
-		t.Errorf("the launcher kept its approval after omp ran in its app: %q", code)
+	if response := raycast.send(t, listLauncherItems); getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar answers no launcher in an app that ran a coding agent" {
+		t.Errorf("the launcher kept working after omp ran in its app: %+v", response.Error)
 	}
-	if count := fixture.launcherApprover.requestCount.Load(); count != 2 {
-		t.Errorf("%d launcher approvals; want 2", count)
+	if count := fixture.launcherApprover.requestCount.Load(); count != 1 {
+		t.Errorf("%d launcher approvals; want 1", count)
 	}
 }
 

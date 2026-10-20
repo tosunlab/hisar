@@ -202,3 +202,43 @@ func TestAgentHostGetsConnectionScope(t *testing.T) {
 		t.Errorf("coverages %q", coverages)
 	}
 }
+
+func TestAppThatBecomesAnAgentHostLosesItsOpenConnectionsAndDialogs(t *testing.T) {
+	fixture := createServerFixture(t)
+	fixture.resolver.setCaller(launchdSession, ternApp)
+	approved := fixture.connect(t)
+	approved.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
+	waiting := fixture.connect(t)
+	if !waiting.isApproved(t) {
+		t.Fatal("Tern's second connection is not covered by its app approval")
+	}
+	launcher, _ := fixture.connectLauncher(t, ternApp)
+	launcher.mustSend(t, listLauncherItems)
+	fixture.approvals.ClearAll()
+	fixture.approver.release = make(chan struct{})
+	done := make(chan cliprotocol.Response)
+	go func() { done <- waiting.send(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}) }()
+	waitFor(t, "the dialog opens", func() bool { return fixture.approver.requestCount.Load() == 2 })
+
+	harness, _ := startHarness(t)
+	fixture.resolver.setAgentSession(harness)
+	fixture.connect(t).send(t, cliprotocol.Request{Type: cliprotocol.TypeHello})
+	close(fixture.approver.release)
+	if response := <-done; getErrorCode(response) != cliprotocol.ErrorDenied {
+		t.Errorf("the dialog answered after omp ran in Tern: %+v", response)
+	}
+	if fixture.approvals.isApproved(&fixture.approvals.commandLine, approvalScope{app: ternApp}) {
+		t.Fatal("the dialog answered after omp ran in Tern approved Tern")
+	}
+
+	approved.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
+	if request := fixture.approver.requests[len(fixture.approver.requests)-1]; request.Coverage != CoverageConnection {
+		t.Errorf("a connection opened before omp ran in Tern still asks for %q", request.Coverage)
+	}
+	if response := launcher.send(t, listLauncherItems); getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar answers no launcher in an app that ran a coding agent" {
+		t.Errorf("a launcher connected before omp ran in its app: %+v", response.Error)
+	}
+	if count := fixture.launcherApprover.requestCount.Load(); count != 1 {
+		t.Errorf("%d launcher approvals; want 1", count)
+	}
+}

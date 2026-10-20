@@ -150,7 +150,7 @@ func (s *Server) startLauncherConnection(client *connectionPeer, hello cliprotoc
 	case client.isInAgentSession():
 		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf("Hisar answers no launcher inside %s", client.agentSession.Harness.Name))
 	case client.isAgentHost:
-		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar answers no launcher in an app that ran a coding agent")
+		return nil, refuseAgentHostLauncher()
 	case client.scope.getCoverage() != CoverageApp:
 		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar answers launchers only in an app macOS can verify, outside a terminal")
 	}
@@ -158,7 +158,15 @@ func (s *Server) startLauncherConnection(client *connectionPeer, hello cliprotoc
 	return cliprotocol.LauncherHelloResult{IsApproved: s.isApproved(client, hello)}, nil
 }
 
+func refuseAgentHostLauncher() error {
+	return cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar answers no launcher in an app that ran a coding agent")
+}
+
+// answerLauncherRequest refuses a launcher whose app ran a coding agent after it connected (applyAgentHost).
 func (s *Server) answerLauncherRequest(ctx context.Context, client *connectionPeer, hello cliprotocol.HelloResult, request *cliprotocol.Request) (any, error) {
+	if client.isAgentHost {
+		return nil, refuseAgentHostLauncher()
+	}
 	rule, isKnown := getLauncherRule(request.Type)
 	if !isKnown {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))

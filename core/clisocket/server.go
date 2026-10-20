@@ -87,10 +87,11 @@ func getConnectionKind(requestType string) connectionKind {
 	return connectionCommandLine
 }
 
-// connectionPeer is one connection. Its scope is fixed when it connects; its kind changes once, on agent.hello or
-// launcher.hello, and agent is what an agent connection said about itself. agentSession is the harness the caller runs
-// inside when its scope is an agent session; isAgentHost is a caller outside any harness in an app that hosted one;
-// isChainUnknown is a caller whose process chain could not be read, so nobody knows whether a harness runs in it.
+// connectionPeer is one connection. Its scope is fixed when it connects, but for an app that becomes an agent host
+// later (applyAgentHost); its kind changes once, on agent.hello or launcher.hello, and agent is what an agent connection
+// said about itself. agentSession is the harness the caller runs inside when its scope is an agent session; isAgentHost
+// is a caller outside any harness in an app that hosted one; isChainUnknown is a caller whose process chain could not
+// be read, so nobody knows whether a harness runs in it.
 type connectionPeer struct {
 	peer           Peer
 	session        TerminalSession
@@ -251,6 +252,7 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	if !s.config.IsEnabled() {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorIntegrationDisabled, "the Hisar app does not let the command-line tool use it")
 	}
+	s.applyAgentHost(client)
 	hello := s.config.Handler.GetHello()
 	if request.Type == cliprotocol.TypeHello {
 		hello.ProtocolVersion = cliprotocol.ProtocolVersion
@@ -316,6 +318,15 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 // harness could run in it, so neither the command line's rules nor a launcher's apply. Reading it again usually works.
 func refuseUnknownChain() error {
 	return cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar couldn't check which program is asking. Try again.")
+}
+
+// applyAgentHost gives a connection whose app became an agent host after it connected what a new connection from that
+// app gets: no app scope, so it is approved on its own, and no launcher.
+func (s *Server) applyAgentHost(client *connectionPeer) {
+	if client.scope.app.Path == "" || !s.config.AgentHosts.IsAgentHost(client.scope.app) {
+		return
+	}
+	client.isAgentHost, client.scope = true, approvalScope{connectionID: client.connectionID}
 }
 
 // isApproved is what hello and launcher.hello report: Hisar is unlocked, and the memory of the connection's kind holds an
