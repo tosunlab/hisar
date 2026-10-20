@@ -8,6 +8,8 @@ import (
 	"flag"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -955,6 +957,48 @@ func TestNoStandaloneInsideAHarnessOrAnUnknownChain(t *testing.T) {
 			}
 			if types := app.listRequestTypes(); slices.Contains(types, cliprotocol.TypeListItem) {
 				t.Errorf("a refused command reached the app: %v", types)
+			}
+		})
+	}
+}
+
+// TestSignupInsideAHarnessReachesNoServer: a refused signup must not create the account first, or the invite is used
+// up and the Secret Key is never shown.
+func TestSignupInsideAHarnessReachesNoServer(t *testing.T) {
+	cases := []struct {
+		name     string
+		setChain func(t *testing.T)
+	}{
+		{"inside omp", runInsideOmp},
+		{"unknown chain", func(t *testing.T) { setOwnChain(t, agentharness.Session{}, false, agentharness.ErrUnknownChain) }},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCase.setChain(t)
+			var requestPaths []string
+			var mutex sync.Mutex
+			apiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				mutex.Lock()
+				requestPaths = append(requestPaths, request.URL.Path)
+				mutex.Unlock()
+				writer.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer apiServer.Close()
+			t.Setenv("HISAR_STATE", filepath.Join(t.TempDir(), "state.json"))
+			t.Setenv(standaloneEnvironment, "1")
+			for _, args := range [][]string{{"signup", apiServer.URL + "/invite/token"}, {"login"}} {
+				input := "a@example.com\nA\npw-long-enough\npw-long-enough\n"
+				if args[0] == "login" {
+					input = apiServer.URL + "\na@example.com\nA3-ABCDEF-ABCDEF-ABCDE-FGHIJ-KLMNO-PQRST\npw-long-enough\n"
+				}
+				if _, _, err := runCapturingOutput(t, false, input, args...); err == nil {
+					t.Errorf("%s ran inside a harness", args[0])
+				}
+			}
+			mutex.Lock()
+			defer mutex.Unlock()
+			if len(requestPaths) != 0 {
+				t.Errorf("the server got %q", requestPaths)
 			}
 		})
 	}
