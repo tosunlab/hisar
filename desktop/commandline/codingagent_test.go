@@ -103,7 +103,7 @@ func createCodingAgentTest(t *testing.T) *codingAgentTest {
 		t.Fatal(err)
 	}
 
-	approvals := clisocket.NewSessionApprovals(0, test.getNow)
+	approvals := clisocket.NewSessionApprovals(0, test.getNow, nil)
 	server := clisocket.NewServer(clisocket.ServerConfig{
 		Handler: app.NewCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: test.approver,
 		PeerResolver: staticPeerResolver{}, Approvals: approvals,

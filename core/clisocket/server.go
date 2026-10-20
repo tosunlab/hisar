@@ -88,9 +88,9 @@ func getConnectionKind(requestType string) connectionKind {
 
 // connectionPeer is one connection. Its scope is fixed when it connects, but for an app that becomes an agent host
 // later (applyAgentHost); its kind changes once, on agent.hello or launcher.hello, and agent is what an agent connection
-// said about itself. agentSession is the harness the caller runs inside when its scope is an agent session, and
-// agentHost the app that harness runs in; isAgentHost is a caller outside any harness in an app that hosted one;
-// isChainUnknown is a caller whose process chain could not be read, so nobody knows whether a harness runs in it.
+// said about itself. agentSession is the live agent session the caller runs inside, nil outside one; isAgentHost is a
+// caller outside any harness in an app that hosted one; isChainUnknown is a caller whose process chain could not be
+// read, so nobody knows whether a harness runs in it.
 type connectionPeer struct {
 	peer           Peer
 	session        TerminalSession
@@ -98,8 +98,7 @@ type connectionPeer struct {
 	scope          approvalScope
 	kind           connectionKind
 	agent          AgentIdentity
-	agentSession   agentharness.Session
-	agentHost      AppIdentity
+	agentSession   *agentharness.LiveSession
 	isAgentHost    bool
 	isChainUnknown bool
 }
@@ -109,7 +108,7 @@ func NewServer(config ServerConfig) *Server {
 		config.PeerResolver = SystemPeerResolver{}
 	}
 	if config.Approvals == nil {
-		config.Approvals = NewSessionApprovals(0, nil)
+		config.Approvals = NewSessionApprovals(0, nil, nil)
 	}
 	if config.IsEnabled == nil {
 		config.IsEnabled = func() bool { return true }
@@ -150,7 +149,8 @@ func (s *Server) Serve(ctx context.Context, socketPath string) error {
 }
 
 // identifyPeer asks IdentifyApp only about callers without a terminal and callers inside an agent harness, so a terminal
-// costs what it did before apps. An app that runs an agent session becomes an agent host.
+// costs what it did before apps. A caller inside a harness joins its live agent session, and the app the harness runs
+// in becomes an agent host.
 func (s *Server) identifyPeer(connection net.Conn, connectionID uint64) (connectionPeer, bool) {
 	peer, err := s.config.PeerResolver.ResolvePeer(connection)
 	if err != nil {
@@ -166,29 +166,28 @@ func (s *Server) identifyPeer(connection net.Conn, connectionID uint64) (connect
 		log.Printf("commandline: refused a connection without a known session: %v", err)
 		return connectionPeer{}, false
 	}
-	var agent agentLookup
-	agent.session, agent.isInside, err = s.config.PeerResolver.GetAgentSession(peer.PID)
-	if err != nil {
+	agentSession, isInside, err := s.config.PeerResolver.GetAgentSession(peer.PID)
+	isChainUnknown := err != nil
+	if isChainUnknown {
 		log.Printf("commandline: could not check the process chain of PID %d: %v", peer.PID, err)
-		agent = agentLookup{isUnknown: true}
 	}
 	var app AppIdentity
-	if !agent.isUnknown && (agent.isInside || !session.hasTerminal()) && s.config.IdentifyApp != nil {
+	if !isChainUnknown && (isInside || !session.hasTerminal()) && s.config.IdentifyApp != nil {
 		if identity, isVerified := s.config.IdentifyApp(peer.PID); isVerified {
 			app = identity
 		}
 	}
-	if agent.isInside && app.Path != "" {
-		s.RecordAgentHost(app)
-	}
-	client := connectionPeer{peer: peer, session: session, connectionID: connectionID, agentSession: agent.session, isChainUnknown: agent.isUnknown}
-	if agent.isInside {
-		client.agentHost = app
+	client := connectionPeer{peer: peer, session: session, connectionID: connectionID, isChainUnknown: isChainUnknown}
+	if isInside && !isChainUnknown {
+		if app.Path != "" {
+			s.RecordAgentHost(app)
+		}
+		client.agentSession = s.config.Approvals.agentSessions.Join(agentSession, app.Path)
 	}
 	if app.Path != "" && s.IsAgentHost(app) {
-		client.isAgentHost, app = !agent.isInside, AppIdentity{}
+		client.isAgentHost, app = !client.isInAgentSession(), AppIdentity{}
 	}
-	client.scope = getApprovalScope(agent, session, app, connectionID)
+	client.scope = getApprovalScope(agentLookup{live: client.agentSession, isUnknown: isChainUnknown}, session, app, connectionID)
 	return client, true
 }
 
@@ -204,9 +203,9 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 	}
 	defer s.config.Approvals.forgetConnection(client.connectionID)
 	if client.isInAgentSession() {
-		stopEndingWithSession := context.AfterFunc(s.joinAgentSession(ctx, &client), cancel)
+		stopEndingWithSession := context.AfterFunc(client.agentSession.Context(), cancel)
 		defer stopEndingWithSession()
-		connectionContext = context.WithValue(connectionContext, agentSessionContextKey{}, client.agentSession)
+		connectionContext = context.WithValue(connectionContext, agentSessionContextKey{}, client.agentSession.Session)
 	}
 	reader := localsocket.WatchConnectionClose(connection, cancel)
 	for {

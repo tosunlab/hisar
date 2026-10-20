@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
@@ -88,9 +89,9 @@ func newScopeApprovals(idleLifetime time.Duration) scopeApprovals {
 }
 
 // SessionApprovals remembers what the user approved on cli.sock. The command line and launchers have separate memories,
-// so approving one never approves the other, even for the same app; agents keep their own state per agent session, or
-// per connection outside a harness. One mutex and one generation cover all of it, so ClearAll (lock, sign-out, switch
-// off) ends everything, a dialog still open too.
+// so approving one never approves the other, even for the same app; agents keep their own state per live agent
+// session, or per connection outside a harness. One mutex and one generation cover all of it, so ClearAll (lock,
+// sign-out, switch off) ends everything, a dialog still open too.
 type SessionApprovals struct {
 	mutex    sync.Mutex
 	lifetime time.Duration
@@ -100,8 +101,8 @@ type SessionApprovals struct {
 	// launchers last until Hisar locks, the switch goes off, or Settings revokes them; their scope is always an app.
 	launchers     scopeApprovals
 	agentsByScope map[approvalScope]*agentState
-	// liveAgentSessions are the agent sessions whose harness runs; an agent session's grants are kept only while it does.
-	liveAgentSessions     map[agentSessionKey]*liveAgentSession
+	// agentSessions are the live agent sessions both sockets share; an agent session's grants end with it.
+	agentSessions         *agentharness.Sessions
 	onAgentSessionsChange func()
 	// agentHosts are the apps revokeApp ended, until ForgetAgentHost; an app approval for one of them is never recorded
 	// again, and a dialog answered after revokeApp is denied. ClearAll keeps them: they are no approval.
@@ -109,22 +110,29 @@ type SessionApprovals struct {
 	generation int
 }
 
-func NewSessionApprovals(lifetime time.Duration, now func() time.Time) *SessionApprovals {
+// NewSessionApprovals keeps approvals for lifetime after their scope's last request. agentSessions are the live agent
+// sessions the SSH agent shares; nil keeps sessions of these approvals' own, for Hisar without an SSH agent.
+func NewSessionApprovals(lifetime time.Duration, now func() time.Time, agentSessions *agentharness.Sessions) *SessionApprovals {
 	if lifetime == 0 {
 		lifetime = DefaultApprovalLifetime
 	}
 	if now == nil {
 		now = time.Now
 	}
-	return &SessionApprovals{
-		lifetime:          lifetime,
-		now:               now,
-		commandLine:       newScopeApprovals(lifetime),
-		launchers:         newScopeApprovals(0),
-		agentsByScope:     map[approvalScope]*agentState{},
-		liveAgentSessions: map[agentSessionKey]*liveAgentSession{},
-		agentHosts:        map[AppIdentity]bool{},
+	if agentSessions == nil {
+		agentSessions = agentharness.NewSessions(now)
 	}
+	approvals := &SessionApprovals{
+		lifetime:      lifetime,
+		now:           now,
+		commandLine:   newScopeApprovals(lifetime),
+		launchers:     newScopeApprovals(0),
+		agentsByScope: map[approvalScope]*agentState{},
+		agentSessions: agentSessions,
+		agentHosts:    map[AppIdentity]bool{},
+	}
+	agentSessions.Watch(approvals.followAgentSession)
+	return approvals
 }
 
 // revokeAppPath needs approvals.mutex.

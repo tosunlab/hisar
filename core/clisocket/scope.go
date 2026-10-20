@@ -1,9 +1,9 @@
 package clisocket
 
 // approvalScope is who one approval covers; exactly one part is set, and getApprovalScope is its only constructor.
-// Connection IDs start at 1, so the zero scope is never a real one.
+// Connection IDs and live agent session IDs start at 1, so the zero scope is never a real one.
 type approvalScope struct {
-	agentSession agentSessionKey
+	agentSession uint64
 	session      sessionKey
 	app          AppIdentity
 	connectionID uint64
@@ -20,8 +20,8 @@ func getApprovalScope(agent agentLookup, session TerminalSession, app AppIdentit
 	switch {
 	case agent.isUnknown:
 		return approvalScope{connectionID: connectionID}
-	case agent.isInside:
-		return approvalScope{agentSession: getAgentSessionKey(agent.session)}
+	case agent.live != nil:
+		return approvalScope{agentSession: agent.live.ID}
 	case session.hasTerminal():
 		return approvalScope{session: session.getKey()}
 	case app.Path != "":
@@ -32,7 +32,7 @@ func getApprovalScope(agent agentLookup, session TerminalSession, app AppIdentit
 
 func (scope approvalScope) getCoverage() ApprovalCoverage {
 	switch {
-	case scope.agentSession != agentSessionKey{}:
+	case scope.agentSession != 0:
 		return CoverageAgentSession
 	case scope.connectionID != 0:
 		return CoverageConnection

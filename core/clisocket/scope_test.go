@@ -76,8 +76,9 @@ func TestCallerWithoutTerminalIsApprovedPerApp(t *testing.T) {
 
 func TestAgentSessionComesBeforeTerminalAndApp(t *testing.T) {
 	terminalSession := TerminalSession{SessionID: 77, TerminalDevice: 5, LeaderStartTime: 99, TerminalName: "ttys003"}
-	inside := agentLookup{session: agentharness.Session{PID: 1226, StartTime: 100}, isInside: true}
-	expected := approvalScope{agentSession: agentSessionKey{pid: 1226, startTime: 100}}
+	live := agentharness.NewSessions(nil).Join(agentharness.Session{PID: 1226, StartTime: 100}, "")
+	inside := agentLookup{live: live}
+	expected := approvalScope{agentSession: live.ID}
 	for _, caller := range []struct {
 		session TerminalSession
 		app     AppIdentity

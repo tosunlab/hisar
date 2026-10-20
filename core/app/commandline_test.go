@@ -67,7 +67,7 @@ type commandLineTest struct {
 
 func createCommandLineTest(t *testing.T) *commandLineTest {
 	t.Helper()
-	test := &commandLineTest{testService: createUnlockedTestService(t), approvals: clisocket.NewSessionApprovals(0, nil), approver: &countingApprover{}}
+	test := &commandLineTest{testService: createUnlockedTestService(t), approvals: clisocket.NewSessionApprovals(0, nil, nil), approver: &countingApprover{}}
 	bridge := NewCommandLineBridge(test.testService.service, test.approvals)
 	server := clisocket.NewServer(clisocket.ServerConfig{Handler: bridge, Approver: test.approver, PeerResolver: staticPeerResolver{}, Approvals: test.approvals})
 	serverSide, clientSide := net.Pipe()

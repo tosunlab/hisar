@@ -434,8 +434,8 @@ func (s *Service) ListAgentSessions() []AgentSession {
 		if live.Session.Directory != "" {
 			listed.ProjectName = filepath.Base(live.Session.Directory)
 		}
-		if live.Host.Path != "" {
-			listed.HostName, listed.HostIconURL = s.describeApp(live.Host.Path)
+		if live.Host != "" {
+			listed.HostName, listed.HostIconURL = s.describeApp(live.Host)
 		}
 		for _, remembered := range live.RememberedSecrets {
 			listed.RememberedSecrets = append(listed.RememberedSecrets, RememberedAgentSecret{

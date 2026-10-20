@@ -23,7 +23,7 @@ func TestSocketApprovalUnlocksHisar(t *testing.T) {
 				fixture := createUnlockedTestService(t)
 				prepareTestApprovalUnlock(t, fixture, password)
 				service := fixture.service
-				approvals := clisocket.NewSessionApprovals(0, nil)
+				approvals := clisocket.NewSessionApprovals(0, nil, nil)
 				bridge := NewCommandLineBridge(service, approvals)
 				service.Lock()
 				var unlockCount, approvalCount atomic.Int32

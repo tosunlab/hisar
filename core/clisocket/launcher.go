@@ -148,7 +148,7 @@ func (s *Server) startLauncherConnection(client *connectionPeer, hello cliprotoc
 	case client.isChainUnknown:
 		return nil, refuseUnknownChain()
 	case client.isInAgentSession():
-		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf("Hisar answers no launcher inside %s", client.agentSession.Harness.Name))
+		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf("Hisar answers no launcher inside %s", client.agentSession.Session.Harness.Name))
 	case client.isAgentHost:
 		return nil, refuseAgentHostLauncher()
 	case client.scope.getCoverage() != CoverageApp:

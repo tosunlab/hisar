@@ -3,6 +3,7 @@ package clisocket
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"slices"
 	"strings"
 	"sync"
@@ -544,7 +545,11 @@ func TestHarnessExitDropsGrantsAndClosesConnections(t *testing.T) {
 	fixture.agentApprover.set(nil, true)
 	client := fixture.connectInside(t, harness, false)
 	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}, CommandLine: []string{"true"}})
-	scope := approvalScope{agentSession: getAgentSessionKey(harness)}
+	sessions := fixture.approvals.agentSessions.List()
+	if len(sessions) != 1 {
+		t.Fatalf("%d live sessions", len(sessions))
+	}
+	scope := approvalScope{agentSession: sessions[0].ID}
 	if !fixture.approvals.isAgentApproved(scope) {
 		t.Fatal("the session is not approved")
 	}
@@ -554,13 +559,57 @@ func TestHarnessExitDropsGrantsAndClosesConnections(t *testing.T) {
 	if _, err := client.connection.Read(make([]byte, 1)); err == nil {
 		t.Error("the connection stayed open after omp exited")
 	}
-	waitFor(t, "the session's approval ends", func() bool { return !fixture.approvals.isAgentApproved(scope) })
+	waitFor(t, "the session ends", func() bool { return len(fixture.approvals.ListAgentSessions()) == 0 })
 	fixture.approvals.mutex.Lock()
 	_, hasState := fixture.approvals.agentsByScope[scope]
-	_, isLive := fixture.approvals.liveAgentSessions[scope.agentSession]
 	fixture.approvals.mutex.Unlock()
-	if hasState || isLive {
-		t.Errorf("the session outlived omp: state %v, live %v", hasState, isLive)
+	if hasState {
+		t.Error("the session's approval outlived omp")
+	}
+}
+
+// TestRevokedSessionsApprovalNeverReachesTheNextSession: Settings revokes omp's session while its dialog is open, and
+// omp reconnects before the user answers. The old answer fails its request and gives the new session nothing, which
+// asks again.
+func TestRevokedSessionsApprovalNeverReachesTheNextSession(t *testing.T) {
+	fixture := createAgentFixture(t)
+	fixture.agentHandler.resultBy[cliprotocol.TypeResolveSecret] = cliprotocol.ResolveSecretResult{Values: []string{"value"}}
+	harness, _ := startHarness(t)
+	fixture.agentApprover.set(nil, true)
+	var replacement *testClient
+	fixture.agentApprover.onApprove = func() {
+		fixture.agentApprover.onApprove = nil
+		fixture.approvals.RevokeAgentSession(harness.PID, harness.StartTime)
+		replacement = fixture.connectInside(t, harness, false)
+		waitFor(t, "omp's next connection starts a session", func() bool { return len(fixture.approvals.ListAgentSessions()) == 1 })
+	}
+	fixture.resolver.setAgentSession(harness)
+	serverSide, revoked := net.Pipe()
+	defer revoked.Close()
+	isServed := make(chan struct{})
+	go func() {
+		fixture.server.ServeConnection(context.Background(), serverSide)
+		close(isServed)
+	}()
+	revoked.SetDeadline(time.Now().Add(5 * time.Second))
+	if err := cliprotocol.WriteJSON(revoked, cliprotocol.Request{ID: "1", Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}, CommandLine: []string{"make", "deploy"}}); err != nil {
+		t.Fatal(err)
+	}
+	var response cliprotocol.Response
+	if err := cliprotocol.ReadJSON(revoked, &response); err == nil && getErrorCode(response) != cliprotocol.ErrorDenied {
+		t.Errorf("the revoked session's request was answered: %+v", response)
+	}
+	<-isServed
+
+	if sessions := fixture.approvals.ListAgentSessions(); len(sessions) != 1 || len(sessions[0].RememberedSecrets) != 0 {
+		t.Errorf("the next session started with %+v", sessions)
+	}
+	fixture.agentApprover.set(ErrDenied, false)
+	if code := getErrorCode(replacement.send(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}, CommandLine: []string{"make", "deploy"}})); code != cliprotocol.ErrorDenied {
+		t.Errorf("the next session used the revoked session's approval: %q", code)
+	}
+	if count := fixture.agentApprover.getRequestCount(); count != 2 {
+		t.Errorf("%d approvals; the next session must ask again", count)
 	}
 }
 

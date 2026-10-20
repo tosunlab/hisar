@@ -185,7 +185,7 @@ func createServerFixture(t *testing.T) *serverFixture {
 		now:              time.Date(2026, 10, 11, 9, 0, 0, 0, time.UTC),
 	}
 	fixture.isEnabled.Store(true)
-	fixture.approvals = NewSessionApprovals(0, fixture.getNow)
+	fixture.approvals = NewSessionApprovals(0, fixture.getNow, nil)
 	fixture.server = NewServer(ServerConfig{
 		Handler:          fixture.handler,
 		Approver:         fixture.approver,

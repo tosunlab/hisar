@@ -72,7 +72,7 @@ func TestDescribeSecretsForTheApprovalWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	bridge := NewCommandLineBridge(service, clisocket.NewSessionApprovals(0, nil))
+	bridge := NewCommandLineBridge(service, clisocket.NewSessionApprovals(0, nil, nil))
 	references := []string{"hisar://" + testService.personalID + "/" + github.ID + "/PASSWORD", "hisar://Personal/Nothing/password", "hisar://Work/AWS%20prod/secret%20key", "not a reference"}
 	expectedValues := []string{"Personal › GitHub › password", "Personal › Nothing › password", "Work › AWS prod › secret key", "not a reference"}
 	if names := bridge.DescribeSecrets(references); !slices.Equal(names, expectedValues) {

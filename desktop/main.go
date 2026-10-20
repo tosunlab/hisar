@@ -162,7 +162,7 @@ func main() {
 			return agent.GetSSHRememberDuration(approvalPreference.GetSSHRememberSeconds())
 		},
 	})
-	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
+	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil, nil)
 	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
 	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *commandline.Service

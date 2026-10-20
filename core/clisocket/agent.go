@@ -135,12 +135,14 @@ func (approvals *SessionApprovals) getGeneration() int {
 	return approvals.generation
 }
 
-// approveAgent records an approval, and remembers the secrets, unless Hisar locked while the dialog was open. It
-// returns false when the agent session ended while the dialog was open: its harness exited, so the request fails.
-func (approvals *SessionApprovals) approveAgent(scope approvalScope, generation int, kind string, rememberedSecrets []AgentSecret) bool {
+// approveAgent records an approval, and remembers the secrets, unless Hisar locked while the dialog was open. live is
+// the agent session of the scope, nil outside a harness. It returns false when that session ended while the dialog was
+// open, its harness exited or Settings revoked it: the request fails, and nothing reaches the session the harness's
+// next request starts.
+func (approvals *SessionApprovals) approveAgent(scope approvalScope, live *agentharness.LiveSession, generation int, kind string, rememberedSecrets []AgentSecret) bool {
 	approvals.mutex.Lock()
-	isSession := scope.agentSession != (agentSessionKey{})
-	if _, isLive := approvals.liveAgentSessions[scope.agentSession]; isSession && !isLive {
+	isSession := live != nil
+	if isSession && live.Context().Err() != nil {
 		approvals.mutex.Unlock()
 		return false
 	}
@@ -257,7 +259,7 @@ func (s *Server) answerAgentRequest(ctx context.Context, client *connectionPeer,
 func (s *Server) answerAgentSessionRequest(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) (any, error) {
 	kind, isAllowed := getAgentSessionRequestKind(request)
 	if !isAllowed {
-		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf("%s can use secrets through hisar run. Change items in the Hisar app.", client.agentSession.Harness.Name))
+		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf("%s can use secrets through hisar run. Change items in the Hisar app.", client.agentSession.Session.Harness.Name))
 	}
 	return s.answerWithAgentRules(ctx, client, kind, request)
 }
@@ -314,7 +316,7 @@ func (s *Server) askAndApproveAgent(ctx context.Context, client *connectionPeer,
 			return err
 		}
 	}
-	if !client.isHarnessRunning() || !approvals.approveAgent(client.getAgentScope(), generation, kind, rememberedSecrets) {
+	if !client.isHarnessRunning() || !approvals.approveAgent(client.getAgentScope(), client.agentSession, generation, kind, rememberedSecrets) {
 		return convertDenial(ErrDenied)
 	}
 	return nil
@@ -331,7 +333,7 @@ func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, k
 		IsCommandLine:        client.kind == connectionCommandLine,
 	}
 	if client.isInAgentSession() {
-		session := client.agentSession
+		session := client.agentSession.Session
 		approvalRequest.Session = &session
 	}
 	approvalRequest.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)

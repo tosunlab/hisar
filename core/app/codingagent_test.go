@@ -95,7 +95,7 @@ func TestCommandLineInsideAnAgentSeesOnlyAgentVaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	approvals := clisocket.NewSessionApprovals(0, nil)
+	approvals := clisocket.NewSessionApprovals(0, nil, nil)
 	agentApprover := &approvingAgentApprover{}
 	commandLineApprover := &countingApprover{}
 	server := clisocket.NewServer(clisocket.ServerConfig{
@@ -153,7 +153,7 @@ func TestCommandLineInsideAnAgentSeesOnlyAgentVaults(t *testing.T) {
 
 func TestAgentHostsAreSavedInDesktopState(t *testing.T) {
 	testService := createUnlockedTestService(t)
-	bridge := NewCommandLineBridge(testService.service, clisocket.NewSessionApprovals(0, nil))
+	bridge := NewCommandLineBridge(testService.service, clisocket.NewSessionApprovals(0, nil, nil))
 	tern := clisocket.AppIdentity{Path: "/Applications/Tern.app", TeamID: "VTLHGQC72S"}
 	if bridge.IsAgentHost(tern) {
 		t.Fatal("an agent host before any agent ran")
@@ -234,7 +234,7 @@ func createAgentSessionTest(t *testing.T, isRemembered bool) *agentSessionTest {
 		testService: testService, resolver: &ternResolver{omp: omp, isInsideOmp: true},
 		agentApprover: &approvingAgentApprover{isRemembered: isRemembered}, commandLineApprover: &countingApprover{},
 	}
-	approvals := clisocket.NewSessionApprovals(0, nil)
+	approvals := clisocket.NewSessionApprovals(0, nil, nil)
 	bridge := NewCommandLineBridge(testService.service, approvals)
 	test.server = clisocket.NewServer(clisocket.ServerConfig{
 		Handler: bridge, Approver: test.commandLineApprover, AgentApprover: test.agentApprover, Approvals: approvals, AgentHosts: bridge,

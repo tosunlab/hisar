@@ -75,7 +75,7 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 	statePath := filepath.Join(socketDirectory, "standalone", "state.json")
 	unlockCount := 0
 	approver := &unlockingApprover{unlocker: NewApprovalUnlocker(service, func() { unlockCount++ }), password: password}
-	approvals := clisocket.NewSessionApprovals(0, nil)
+	approvals := clisocket.NewSessionApprovals(0, nil, nil)
 	runner := clisocket.NewRunner(clisocket.NewServer(clisocket.ServerConfig{
 		Handler: NewCommandLineBridge(service, approvals), Approver: approver, Approvals: approvals,
 	}), socketPath)
