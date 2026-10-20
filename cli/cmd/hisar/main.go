@@ -35,7 +35,7 @@ type command struct {
 }
 
 var commands = []command{
-	{name: "status", summary: "show whether hisar uses the Hisar app or its own sign-in, and the account", run: runStatus, runThroughApp: runStatusThroughApp},
+	{name: "status", argumentUsage: "[--json]", summary: "show whether hisar uses the Hisar app or its own sign-in, and the account; --json prints mode, state and account", run: runStatus, runThroughApp: runStatusThroughApp},
 	{name: "signup", argumentUsage: "<invite-link>", summary: "create your account from an invite", run: runSignup, appAlternative: "create the account in the Hisar app"},
 	{name: "login", summary: "sign in on this device", run: runLogin, appAlternative: "sign in to the Hisar app"},
 	{name: "logout", summary: "sign out on this device", run: runLogout, appAlternative: "sign out in the Hisar app"},
