@@ -7,12 +7,12 @@
 # apps share mobile/hisarkit and mobile/go.mod; each also counts its own folder, so an Android-only change does not run
 # the iPhone job.
 
-sharedGoPaths=(core/ go.work go.work.sum)
-serverPaths=(server/ admin/ deploy/Dockerfile "${sharedGoPaths[@]}")
+sharedGoPaths=(core/ go.work go.work.sum scripts/go-toolchain.sh)
+serverPaths=(server/ admin/ deploy/Dockerfile .dockerignore "${sharedGoPaths[@]}")
 cliPaths=(cli/ scripts/package-cli-release.sh "${sharedGoPaths[@]}")
 desktopPaths=(desktop/ cli/ omp/ scripts/download-sparkle.sh scripts/get-build-number.sh scripts/package-desktop-dmg.sh
   scripts/package-desktop-flatpak.sh scripts/package-desktop-linux.sh scripts/package-desktop-update.sh
-  scripts/sign-desktop-app.sh scripts/test-desktop-linux-package.sh "${sharedGoPaths[@]}")
+  scripts/sign-desktop-app.sh scripts/test-desktop-linux-package.sh scripts/test-download-sparkle.sh "${sharedGoPaths[@]}")
 phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh "${sharedGoPaths[@]}")
 mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${phonePaths[@]}")
 # The Android CI job runs its build and tests through Makefile recipes, so a Makefile change runs it too.

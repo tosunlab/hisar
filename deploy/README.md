@@ -26,10 +26,13 @@ docker login ghcr.io -u <GitHub user>     # paste the token as the password
 Copy `compose.yaml`, `.env.example` and `hisar.env.example` to the server (for example `/opt/hisar`), then:
 
 ```sh
-cp .env.example .env                # set HISAR_DOMAIN, pin HISAR_VERSION
-openssl rand -hex 32 | tr -d '\n' > db_password.txt
-sed "s/CHANGE_ME/$(cat db_password.txt)/" hisar.env.example > hisar.env
-chmod 600 db_password.txt hisar.env
+(
+  umask 077                         # only you may read the three files: they hold secrets
+  cp .env.example .env              # set HISAR_DOMAIN, pin HISAR_VERSION
+  openssl rand -hex 32 | tr -d '\n' > db_password.txt
+  sed "s/CHANGE_ME/$(cat db_password.txt)/" hisar.env.example > hisar.env
+)
+chmod 600 .env db_password.txt hisar.env
 docker compose up -d
 curl http://127.0.0.1:8080/healthz  # ok
 ```

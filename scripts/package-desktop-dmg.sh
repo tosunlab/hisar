@@ -9,6 +9,8 @@
 set -euo pipefail
 
 scriptDirectory="$(cd "$(dirname "$0")" && pwd)"
+GOTOOLCHAIN=$(bash "$scriptDirectory/go-toolchain.sh")
+export GOTOOLCHAIN
 cd "$scriptDirectory/../desktop"
 version=${1:-$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" build/darwin/Info.plist)}
 buildNumber=$("$scriptDirectory/get-build-number.sh" "$version")

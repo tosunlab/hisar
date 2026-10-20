@@ -33,6 +33,7 @@ xcuserdata/
 deploy/.env
 /.dmgbuild/
 /desktop/build/sparkle/
+/desktop/build/sparkle.tar.xz
 /admin/wasm/
 /admin/test-results/
 /admin/playwright-report/

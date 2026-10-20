@@ -257,6 +257,9 @@ make test-android-ui     # instrumented tests on the one emulator or ANDROID_SER
 gofmt -l $(git ls-files '*.go')
 ```
 
+Make selects the exact `go.work` toolchain even if `GOTOOLCHAIN` is set in your environment or Make arguments.
+The first use needs network access unless that release is already cached.
+
 The Android targets need `ANDROID_HOME` (the SDK, with the command-line tools in `cmdline-tools/latest`),
 `ANDROID_NDK_HOME` (`$ANDROID_HOME/ndk/30.0.16248370`) and JDK 21 for the Gradle daemon
 (`gradle/gradle-daemon-jvm.properties`). `make generate-themes` writes `ThemePalettes.kt`, with the Swift palettes and
@@ -269,6 +272,19 @@ it plans the version (`scripts/plan-release.sh`), pushes the `<app>-X.Y.Z` tag (
 `publish-<app>` before `publish.yml` publishes it. What an app is built from lives in `scripts/app-paths.sh`, shared with
 `scripts/detect-app-changes.sh`; a new build input of an app goes there. A release's install text is
 `.github/release-notes/<app>.md`, and `scripts/check-release-files.sh` lists the files each release must have.
+
+Local Make builds, packaging scripts, mobile bindings and direct Wails tasks select the exact `toolchain` release in
+`go.work` through `scripts/go-toolchain.sh`, even when the installed compiler is newer or mobile sets `GOWORK=off`.
+Docker and Flatpak pin the same release independently and disable automatic toolchain switching.
+CI runs `bash scripts/check-go-toolchain.sh` to reject drift from `go.work`.
+The CI changes job also runs `bash scripts/test-app-paths.sh` to check that a Docker-context-only change selects server
+releases and admin/image CI.
+
+Sparkle consumers run `scripts/download-sparkle.sh` before linking, copying the framework or signing an update.
+The downloader checks the archive SHA-256 on every use and compares extracted cache bytes, permissions and symlinks
+with a fresh extraction. Matching caches stay in place for concurrent universal builds. A failed Python comparison
+stops the build without replacing the cache. The macOS desktop job runs `bash scripts/test-download-sparkle.sh` to
+check cache repair, concurrent reuse and Python failures.
 
 ## Tests
 

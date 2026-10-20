@@ -142,8 +142,9 @@ jobs:
     uses: ./.github/workflows/release-desktop.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
+    # A custom build has no Sparkle update, so it never gets the key.
     secrets:
-      SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+      SPARKLE_PRIVATE_KEY: ${{ needs.plan.outputs.isCustomBuild == 'false' && secrets.SPARKLE_PRIVATE_KEY || '' }}
       MACOS_SIGNING_CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
       MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
       APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
@@ -186,6 +187,11 @@ jobs:
           merge-multiple: true
       - name: Check the files
         run: mkdir -p release-files && bash scripts/check-release-files.sh "$APP" "$VERSION" release-files
+      - name: Check that the tag is still on the commit the files were built from
+        run: |
+          git fetch --force origin "+refs/tags/$TAG:refs/tags/$TAG"
+          tagCommit=$(git rev-parse "refs/tags/$TAG^{commit}")
+          [ "$tagCommit" = "$GITHUB_SHA" ] || { echo "::error::the tag $TAG moved to $tagCommit during the run; the files were built from $GITHUB_SHA"; exit 1; }
       - name: Create the prerelease with its notes and files
         run: |
           shopt -s nullglob

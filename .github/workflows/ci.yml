@@ -38,6 +38,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Check packaging toolchain pins
+        run: bash scripts/check-go-toolchain.sh
+      - name: Test release and CI input selection
+        run: bash scripts/test-app-paths.sh
       - name: Compare the pull request with its base
         id: changes
         env:
@@ -75,7 +79,7 @@ jobs:
           cache-dependency-path: admin/package-lock.json
       - name: Check gofmt
         run: |
-          allUnformatted=$(gofmt -l $(git ls-files "*.go"))
+          allUnformatted=$(git ls-files -z "*.go" | xargs -0 gofmt -l)
           if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
       - name: go vet
         run: make vet
