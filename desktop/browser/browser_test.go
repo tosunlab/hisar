@@ -91,6 +91,30 @@ func TestInstallHostManifestForDiaAlone(t *testing.T) {
 	}
 }
 
+func TestInstallHostManifestNeverWritesThroughALinkBesideIt(t *testing.T) {
+	homeDirectory := t.TempDir()
+	manifestPath := filepath.Join(homeDirectory, "manifests", "com.tryhisar.hisar.json")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	victimPath := filepath.Join(homeDirectory, "victim")
+	if err := os.WriteFile(victimPath, []byte("victim"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victimPath, manifestPath+".partial"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileIfChanged(manifestPath, []byte("{}")); err != nil {
+		t.Fatal(err)
+	}
+	if content, _ := os.ReadFile(victimPath); string(content) != "victim" {
+		t.Errorf("victim = %q", content)
+	}
+	if fileInfo, err := os.Lstat(manifestPath); err != nil || !fileInfo.Mode().IsRegular() || fileInfo.Mode().Perm() != 0o644 {
+		t.Errorf("manifest: %v %v", fileInfo, err)
+	}
+}
+
 // readHostManifest checks the manifest at path names the host at hostPath for the extension alone, and returns its bytes.
 func readHostManifest(t *testing.T, path, hostPath string) []byte {
 	t.Helper()

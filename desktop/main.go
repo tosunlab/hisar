@@ -292,6 +292,7 @@ func main() {
 			application.NewService(harnessService),
 		},
 		OnShutdown: func() {
+			app.ClearCopiedText(vaultService)
 			commandLineRunner.Stop()
 			stopAgent()
 			// A pending Touch ID approval can keep a connection open; do not hold up quitting for it.

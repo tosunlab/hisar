@@ -48,7 +48,7 @@ func decodeHisarExport(format string, content []byte) (*export.Document, error) 
 		document, err := export.Decode(content, passphrase)
 		clear(passphrase)
 		if errors.Is(err, export.ErrWrongPassphrase) && attempt < attemptCount {
-			fmt.Fprintln(os.Stderr, "That passphrase doesn't open this export. Try again.")
+			fmt.Fprintln(standardError(), "That passphrase doesn't open this export. Try again.")
 			continue
 		}
 		return document, err
@@ -125,10 +125,10 @@ func printHisarImportPreview(fileName string, document *export.Document, format 
 	if format == export.FormatEncrypted {
 		formatName = "Hisar encrypted export"
 	}
-	fmt.Fprintf(os.Stderr, "File:    %s\n", fileName)
-	fmt.Fprintf(os.Stderr, "Format:  %s, made %s", formatName, document.ExportedAt.Local().Format("2 January 2006"))
+	fmt.Fprintf(standardError(), "File:    %s\n", fileName)
+	fmt.Fprintf(standardError(), "Format:  %s, made %s", formatName, document.ExportedAt.Local().Format("2 January 2006"))
 	if document.Account.Email != "" {
-		fmt.Fprintf(os.Stderr, " from %s", document.Account.Email)
+		fmt.Fprintf(standardError(), " from %s", document.Account.Email)
 	}
 	fmt.Fprintln(os.Stderr)
 	for _, plan := range plans {
@@ -140,7 +140,7 @@ func printHisarImportPreview(fileName string, document *export.Document, format 
 		if len(plan.duplicateIndexes) > 0 {
 			summary += fmt.Sprintf(", %d already there", len(plan.duplicateIndexes))
 		}
-		fmt.Fprintf(os.Stderr, "  %s → %s: %s\n", plan.exported.Name, target, summary)
+		fmt.Fprintf(standardError(), "  %s → %s: %s\n", plan.exported.Name, target, summary)
 	}
 }
 
@@ -175,7 +175,7 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 		}
 	}
 	if queuedCount == 0 && newVaultCount == 0 {
-		fmt.Fprintln(os.Stderr, "Nothing to import.")
+		fmt.Fprintln(standardError(), "Nothing to import.")
 		return nil
 	}
 	if !option.isConfirmed {
@@ -208,7 +208,7 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 			return err
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Imported %s.\n", formatItemCount(savedCount))
+	fmt.Fprintf(standardError(), "Imported %s.\n", formatItemCount(savedCount))
 	if format == export.FormatPlain {
 		return offerToDeleteImportFile(path, option.isConfirmed)
 	}

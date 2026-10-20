@@ -201,9 +201,10 @@ export class BackgroundController {
     return this.getOneTimeCode(vaultID, itemID, url);
   }
 
-  // copyOneTimeCodeAfterFill puts the code on the clipboard for the next step of the sign-in; the fill has already succeeded.
-  async copyOneTimeCodeAfterFill(credentials: Credentials, vaultID: string, itemID: string, url: string): Promise<boolean> {
-    if (!credentials.hasOneTimePassword) return false;
+  // copyOneTimeCodeAfterFill puts the code on the clipboard for the next step of the sign-in once the password is filled;
+  // after only a username the code is not needed yet.
+  async copyOneTimeCodeAfterFill(credentials: Credentials, outcome: { filledPassword: boolean }, vaultID: string, itemID: string, url: string): Promise<boolean> {
+    if (!credentials.hasOneTimePassword || !outcome.filledPassword) return false;
     try {
       const { code } = await this.getOneTimeCode(vaultID, itemID, url);
       await this.browser.writeToClipboard(code);
@@ -230,7 +231,7 @@ export class BackgroundController {
     });
     if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "No login form found on this page");
     await this.recordUse(vaultID, itemID);
-    await this.copyOneTimeCodeAfterFill(credentials, vaultID, itemID, target.url);
+    await this.copyOneTimeCodeAfterFill(credentials, outcome, vaultID, itemID, target.url);
     return outcome;
   }
 

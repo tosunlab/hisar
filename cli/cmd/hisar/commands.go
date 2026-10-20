@@ -9,7 +9,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
@@ -113,7 +112,7 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	}
 	defer clear(password)
 
-	fmt.Fprintln(os.Stderr, "Creating account...")
+	fmt.Fprintln(standardError(), "Creating account...")
 	currentSession, secretKey, err := session.SignUp(ctx, createClient(server), token, email, name, password, getDeviceInfo())
 	if currentSession == nil {
 		return err
@@ -121,7 +120,7 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	defer currentSession.Lock()
 
 	// The account exists, and nobody can sign in to it without this key: show it before anything else can fail.
-	fmt.Fprintf(os.Stderr, `
+	fmt.Fprintf(standardError(), `
 Account created. This is your Secret Key:
 
     %s
@@ -132,7 +131,7 @@ new device. A forgotten master password cannot be recovered by anyone,
 including Hisar.
 `, secretKey.Encode())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+		fmt.Fprintf(standardError(), "warning: %v\n", err)
 	}
 
 	currentState.Reset()
@@ -141,7 +140,7 @@ including Hisar.
 		return err
 	}
 	if err := localstate.StoreSecretKey(secretKey); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not save Secret Key to keychain: %v\n", err)
+		fmt.Fprintf(standardError(), "warning: could not save Secret Key to keychain: %v\n", err)
 	}
 	return nil
 }
@@ -203,9 +202,9 @@ func runLogin(ctx context.Context, flags *flag.FlagSet, args []string) error {
 		return err
 	}
 	if err := localstate.StoreSecretKey(secretKey); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not save Secret Key to keychain: %v\n", err)
+		fmt.Fprintf(standardError(), "warning: could not save Secret Key to keychain: %v\n", err)
 	}
-	fmt.Fprintf(os.Stderr, "Signed in as %s (%s).\n", currentSession.Name, currentSession.Email)
+	fmt.Fprintf(standardError(), "Signed in as %s (%s).\n", currentSession.Name, currentSession.Email)
 	return nil
 }
 
@@ -240,11 +239,18 @@ func addVaultFlag(flags *flag.FlagSet) *string {
 	return flags.String("v", "Personal", "vault name or ID")
 }
 
+// findItem matches the item's ID, else the first item with that exact title ignoring case, else a part of its title;
+// a part that names more than one item is refused with their IDs.
 func findItem(items []item.Item, query string) (*item.Item, error) {
+	for index := range items {
+		if items[index].ID == query {
+			return &items[index], nil
+		}
+	}
 	var matches []*item.Item
 	for index := range items {
 		vaultItem := &items[index]
-		if vaultItem.ID == query || strings.EqualFold(vaultItem.Overview.Title, query) {
+		if strings.EqualFold(vaultItem.Overview.Title, query) {
 			return vaultItem, nil
 		}
 		if strings.Contains(strings.ToLower(vaultItem.Overview.Title), strings.ToLower(query)) {
@@ -266,7 +272,7 @@ func findItem(items []item.Item, query string) (*item.Item, error) {
 }
 
 func writeItem(output io.Writer, vaultItem *item.Item) error {
-	writer := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(output)
 	fmt.Fprintf(writer, "title:\t%s\n", vaultItem.Overview.Title)
 	if vaultItem.Overview.Username != "" {
 		fmt.Fprintf(writer, "username:\t%s\n", vaultItem.Overview.Username)
@@ -438,7 +444,7 @@ func promptCard(vaultItem *item.Item) error {
 	description := item.DescribeCard(card.Number, card.Expiry, time.Now())
 	for _, warning := range []string{description.NumberWarning, description.ExpiryWarning} {
 		if warning != "" {
-			fmt.Fprintf(os.Stderr, "Note: %s.\n", warning)
+			fmt.Fprintf(standardError(), "Note: %s.\n", warning)
 		}
 	}
 	item.WriteCard(vaultItem, card, otherFields)
@@ -563,7 +569,7 @@ func promptServer(vaultItem *item.Item, vaultItems []item.Item) error {
 	item.WriteServer(vaultItem, server, otherFields)
 	item.NormalizeServer(vaultItem)
 	if warning := server.Normalize().PortWarning(); warning != "" {
-		fmt.Fprintln(os.Stderr, warning+".")
+		fmt.Fprintln(standardError(), warning+".")
 	}
 	return nil
 }
@@ -612,7 +618,7 @@ func promptDatabase(vaultItem *item.Item) error {
 	item.WriteDatabase(vaultItem, database, otherFields)
 	item.NormalizeDatabase(vaultItem)
 	if warning := database.Normalize().PortWarning(); warning != "" {
-		fmt.Fprintln(os.Stderr, warning+".")
+		fmt.Fprintln(standardError(), warning+".")
 	}
 	return nil
 }
@@ -658,9 +664,9 @@ func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 		case 1:
 			return matches[0].ID, nil
 		case 0:
-			fmt.Fprintf(os.Stderr, "This vault has no SSH key called %q.\n", answer)
+			fmt.Fprintf(standardError(), "This vault has no SSH key called %q.\n", answer)
 		default:
-			fmt.Fprintf(os.Stderr, "%d SSH keys are called %q; enter one's ID instead.\n", len(matches), answer)
+			fmt.Fprintf(standardError(), "%d SSH keys are called %q; enter one's ID instead.\n", len(matches), answer)
 		}
 	}
 }
@@ -692,7 +698,7 @@ func promptItem(vaultItem *item.Item) error {
 		if vaultItem.Details.Password, err = item.GeneratePassword(item.DefaultGeneratorConfig()); err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "Generated a new password.")
+		fmt.Fprintln(standardError(), "Generated a new password.")
 	case len(password) > 0:
 		vaultItem.Details.Password = string(password)
 	}
@@ -722,7 +728,7 @@ func runWhoami(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s <%s>\naccount: %s\nrole:    %s\nserver:  %s\n", account.Name, account.Email, account.AccountID, account.Role, account.Server)
+	fmt.Fprintf(terminalSafeWriter{output: os.Stdout}, "%s <%s>\naccount: %s\nrole:    %s\nserver:  %s\n", account.Name, account.Email, account.AccountID, account.Role, account.Server)
 	return nil
 }
 
@@ -734,7 +740,7 @@ func runListDevices(ctx context.Context, access backend, flags *flag.FlagSet, ar
 	if err != nil {
 		return err
 	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	fmt.Fprintln(writer, "NAME\tPLATFORM\tLAST SEEN\tID")
 	for _, device := range devices {
 		name := device.Name
@@ -761,6 +767,6 @@ func runRevokeDevice(ctx context.Context, access backend, flags *flag.FlagSet, a
 	if err := access.revokeDevice(ctx, positionals[0]); err != nil {
 		return err
 	}
-	fmt.Fprintln(os.Stderr, "Device signed out.")
+	fmt.Fprintln(standardError(), "Device signed out.")
 	return nil
 }

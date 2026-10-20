@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 	"unicode/utf8"
 
@@ -111,7 +110,7 @@ func promptShareLinkPassphrase(option *shareLinkOption) ([]byte, error) {
 			if !term.IsTerminal(int(os.Stdin.Fd())) {
 				return nil, sharelink.ErrPassphraseTooShort
 			}
-			fmt.Fprintf(os.Stderr, "Use at least %d characters.\n", sharelink.MinPassphraseLength)
+			fmt.Fprintf(standardError(), "Use at least %d characters.\n", sharelink.MinPassphraseLength)
 			continue
 		}
 		repeated, err := promptSecret("Repeat the passphrase")
@@ -125,13 +124,13 @@ func promptShareLinkPassphrase(option *shareLinkOption) ([]byte, error) {
 		if !term.IsTerminal(int(os.Stdin.Fd())) {
 			return nil, errors.New("the passphrases do not match")
 		}
-		fmt.Fprintln(os.Stderr, "The passphrases do not match.")
+		fmt.Fprintln(standardError(), "The passphrases do not match.")
 	}
 }
 
 func readShareText() (string, error) {
 	if term.IsTerminal(int(os.Stdin.Fd())) {
-		fmt.Fprintln(os.Stderr, "Type or paste the text to share, then press Ctrl-D:")
+		fmt.Fprintln(standardError(), "Type or paste the text to share, then press Ctrl-D:")
 	}
 	text, err := io.ReadAll(io.LimitReader(stdinReader, sharelink.MaxPayloadSize+1))
 	if err != nil {
@@ -161,7 +160,7 @@ func createShareLinkThroughApp(ctx context.Context, client *appClient, option *s
 	} else {
 		request.Vault, request.Query = option.vaultName, option.positionals[0]
 	}
-	fmt.Fprintln(os.Stderr, "Approve the share link in Hisar's approval window…")
+	fmt.Fprintln(standardError(), "Approve the share link in Hisar's approval window…")
 	var result cliprotocol.ShareLinkResult
 	if err := client.callWithTimeout(ctx, request, &result, appRequestTimeout); err != nil {
 		return err
@@ -250,16 +249,16 @@ func printCreatedShareLink(link cliprotocol.ShareLink) {
 	if link.HasPassphrase {
 		passphrase = "; send the passphrase another way"
 	}
-	fmt.Fprintf(os.Stderr, "Share link for %q (%s): expires %s, %s%s.\n", link.Title, strings.Join(link.FieldLabels, ", "), formatDateTime(link.ExpiresAt), views, passphrase)
+	fmt.Fprintf(standardError(), "Share link for %q (%s): expires %s, %s%s.\n", link.Title, strings.Join(link.FieldLabels, ", "), formatDateTime(link.ExpiresAt), views, passphrase)
 	fmt.Println(link.URL)
 }
 
 func printShareLinks(shareLinks []cliprotocol.ShareLink) error {
 	if len(shareLinks) == 0 {
-		fmt.Fprintln(os.Stderr, "No live share links.")
+		fmt.Fprintln(standardError(), "No live share links.")
 		return nil
 	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	fmt.Fprintln(writer, "ID\tTITLE\tSHARES\tVIEWS\tEXPIRES\tPASSPHRASE")
 	for _, link := range shareLinks {
 		passphrase := "no"
@@ -297,7 +296,7 @@ func revokeShareLink(ctx context.Context, shareLinkID string) error {
 			return err
 		}
 	}
-	fmt.Fprintln(os.Stderr, "Revoked the share link; it no longer opens.")
+	fmt.Fprintln(standardError(), "Revoked the share link; it no longer opens.")
 	return nil
 }
 
@@ -322,9 +321,9 @@ func openShareLink(ctx context.Context, link string) error {
 		if !errors.Is(err, sharelink.ErrWrongKey) || fetched.GetPassphraseParams() == nil || attempt >= maxPassphraseAttempt || !term.IsTerminal(int(os.Stdin.Fd())) {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "That passphrase doesn't open this link.")
+		fmt.Fprintln(standardError(), "That passphrase doesn't open this link.")
 	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	fmt.Fprintf(writer, "title:\t%s\n", payload.Title)
 	for _, field := range payload.Fields {
 		fmt.Fprintf(writer, "%s:\t%s\n", strings.ToLower(field.Label), field.Value)
@@ -334,13 +333,13 @@ func openShareLink(ctx context.Context, link string) error {
 	}
 	switch viewsLeft := fetched.Link.MaxViews - fetched.Link.ViewCount; {
 	case fetched.Link.MaxViews == 0:
-		fmt.Fprintf(os.Stderr, "The link works until %s.\n", fetched.Link.ExpiresAt.Local().Format("2006-01-02 15:04"))
+		fmt.Fprintf(standardError(), "The link works until %s.\n", fetched.Link.ExpiresAt.Local().Format("2006-01-02 15:04"))
 	case viewsLeft <= 0:
-		fmt.Fprintln(os.Stderr, "That was the last view: this link no longer works.")
+		fmt.Fprintln(standardError(), "That was the last view: this link no longer works.")
 	case viewsLeft == 1:
-		fmt.Fprintf(os.Stderr, "1 more view until %s.\n", fetched.Link.ExpiresAt.Local().Format("2006-01-02 15:04"))
+		fmt.Fprintf(standardError(), "1 more view until %s.\n", fetched.Link.ExpiresAt.Local().Format("2006-01-02 15:04"))
 	default:
-		fmt.Fprintf(os.Stderr, "%d more views until %s.\n", viewsLeft, fetched.Link.ExpiresAt.Local().Format("2006-01-02 15:04"))
+		fmt.Fprintf(standardError(), "%d more views until %s.\n", viewsLeft, fetched.Link.ExpiresAt.Local().Format("2006-01-02 15:04"))
 	}
 	return nil
 }

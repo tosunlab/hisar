@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"sync"
 	"testing"
@@ -190,6 +191,23 @@ type unlockedTestService struct {
 	personalID  string
 	familyID    string
 	lockedCount *int
+}
+
+// blockStateSaves puts a directory that is not empty where state.json is, so State.Save cannot rename its new file
+// over it; unblock removes it.
+func blockStateSaves(t *testing.T, statePath string) (unblock func()) {
+	t.Helper()
+	if err := os.RemoveAll(statePath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(statePath, "blocker"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	return func() {
+		if err := os.RemoveAll(statePath); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 // createUnlockedTestService opens a session against the in-memory API with a Personal and a Family vault.

@@ -4,7 +4,6 @@ import (
 	"context"
 	"flag"
 	"fmt"
-	"os"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
@@ -61,7 +60,7 @@ func createTeam(ctx context.Context, access backend, organization cliprotocol.Or
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Created team %q in %s. Add members with `hisar team add %q %q <email>`.\n", team.Name, organization.Name, organization.Name, team.Name)
+	fmt.Fprintf(standardError(), "Created team %q in %s. Add members with `hisar team add %q %q <email>`.\n", team.Name, organization.Name, organization.Name, team.Name)
 	return nil
 }
 
@@ -73,7 +72,7 @@ func renameTeam(ctx context.Context, access backend, organization cliprotocol.Or
 	if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeRenameTeam, OrganizationID: organization.ID, TeamID: team.ID, Name: name}); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Renamed team %q to %q.\n", team.Name, name)
+	fmt.Fprintf(standardError(), "Renamed team %q to %q.\n", team.Name, name)
 	return nil
 }
 
@@ -86,7 +85,7 @@ func deleteTeam(ctx context.Context, access backend, organization cliprotocol.Or
 	if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeDeleteTeam, OrganizationID: organization.ID, TeamID: team.ID}); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Deleted team %q.\n", team.Name)
+	fmt.Fprintf(standardError(), "Deleted team %q.\n", team.Name)
 	return nil
 }
 
@@ -95,7 +94,7 @@ func addTeamMember(ctx context.Context, access backend, organization cliprotocol
 	if err := access.changeOrganization(ctx, change); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Added %s to team %q. They get its vaults once an owner's Hisar gives them the keys, as `hisar orgs` does.\n", member.Email, team.Name)
+	fmt.Fprintf(standardError(), "Added %s to team %q. They get its vaults once an owner's Hisar gives them the keys, as `hisar orgs` does.\n", member.Email, team.Name)
 	return nil
 }
 
@@ -104,6 +103,6 @@ func removeTeamMember(ctx context.Context, access backend, organization cliproto
 	if err := access.changeOrganization(ctx, change); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Removed %s from team %q. Vaults they lose get a new key from an owner's Hisar, as `hisar orgs` does.\n", member.Email, team.Name)
+	fmt.Fprintf(standardError(), "Removed %s from team %q. Vaults they lose get a new key from an owner's Hisar, as `hisar orgs` does.\n", member.Email, team.Name)
 	return nil
 }

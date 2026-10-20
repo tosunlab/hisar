@@ -8,7 +8,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -134,6 +133,7 @@ func confirmChange(isConfirmed bool, question string) (bool, error) {
 }
 
 func printOrganizationKeys(output io.Writer, result cliprotocol.OrganizationKeysResult) {
+	output = terminalSafeWriter{output: output}
 	switch {
 	case result.DeliveredCount == 1:
 		fmt.Fprintln(output, "Gave 1 vault key to a team member.")
@@ -184,10 +184,10 @@ func completeOrganizationKeys(ctx context.Context, access backend) error {
 
 func printOrganizationList(organizationList cliprotocol.OrganizationListResult) error {
 	if len(organizationList.Organizations) == 0 && len(organizationList.Invitations) == 0 {
-		fmt.Fprintln(os.Stderr, "You are in no organization. Create one with `hisar org create <name>`.")
+		fmt.Fprintln(standardError(), "You are in no organization. Create one with `hisar org create <name>`.")
 		return nil
 	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	if len(organizationList.Organizations) > 0 {
 		fmt.Fprintln(writer, "NAME\tROLE\tMEMBERS\tID")
 		for _, organization := range organizationList.Organizations {
@@ -208,7 +208,7 @@ func printOrganizationList(organizationList cliprotocol.OrganizationListResult) 
 		return err
 	}
 	if len(organizationList.Invitations) > 0 {
-		fmt.Fprintln(os.Stderr, "Answer an invitation with `hisar org accept <invitation>` or `hisar org decline <invitation>`.")
+		fmt.Fprintln(standardError(), "Answer an invitation with `hisar org accept <invitation>` or `hisar org decline <invitation>`.")
 	}
 	return nil
 }
@@ -221,8 +221,9 @@ func describeTeamVault(vault cliprotocol.TeamVault) string {
 }
 
 func printOrganization(output io.Writer, organization cliprotocol.Organization) error {
+	output = terminalSafeWriter{output: output}
 	fmt.Fprintf(output, "%s (you are %s)\n\n", organization.Name, describeOrganizationRole(organization.Role))
-	writer := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(output)
 	fmt.Fprintln(writer, "MEMBER\tROLE\tSECURITY CODE")
 	for _, member := range organization.Members {
 		person := describePerson(member.Name, member.Email)
@@ -257,7 +258,7 @@ func printOrganization(output io.Writer, organization cliprotocol.Organization) 
 		return nil
 	}
 	fmt.Fprintln(output)
-	writer = tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	writer = newTableWriter(output)
 	fmt.Fprintln(writer, "INVITED\tROLE\tEXPIRES")
 	for _, invitation := range organization.Invitations {
 		fmt.Fprintf(writer, "%s\t%s\t%s\n", invitation.Email, invitation.Role, formatDate(invitation.ExpiresAt))
@@ -368,7 +369,7 @@ func createOrganization(ctx context.Context, access backend, name string) error 
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Created organization %q. Invite people with `hisar org invite %q <email>` and create teams with `hisar team create %q <team>`.\n",
+	fmt.Fprintf(standardError(), "Created organization %q. Invite people with `hisar org invite %q <email>` and create teams with `hisar team create %q <team>`.\n",
 		organization.Name, organization.Name, organization.Name)
 	return nil
 }
@@ -396,7 +397,7 @@ func renameOrganization(ctx context.Context, access backend, organization clipro
 	if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeRenameOrganization, OrganizationID: organization.ID, Name: name}); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Renamed organization %q to %q.\n", organization.Name, name)
+	fmt.Fprintf(standardError(), "Renamed organization %q to %q.\n", organization.Name, name)
 	return nil
 }
 
@@ -408,7 +409,7 @@ func deleteOrganization(ctx context.Context, access backend, organization clipro
 	if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeDeleteOrganization, OrganizationID: organization.ID}); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Deleted the organization %s.\n", organization.Name)
+	fmt.Fprintf(standardError(), "Deleted the organization %s.\n", organization.Name)
 	return nil
 }
 
@@ -421,7 +422,7 @@ func inviteToOrganization(ctx context.Context, access backend, organization clip
 	if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeInviteToOrganization, OrganizationID: organization.ID, Email: email, Role: role}); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Invitation sent to %s to join %s as %s.\nThey accept it with `hisar org accept`; someone without a Hisar account gets an invite to create one.\n",
+	fmt.Fprintf(standardError(), "Invitation sent to %s to join %s as %s.\nThey accept it with `hisar org accept`; someone without a Hisar account gets an invite to create one.\n",
 		email, organization.Name, role)
 	return nil
 }
@@ -435,7 +436,7 @@ func cancelOrganizationInvitation(ctx context.Context, access backend, organizat
 		if err := access.changeOrganization(ctx, change); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Cancelled the invitation of %s to %s.\n", invitation.Email, organization.Name)
+		fmt.Fprintf(standardError(), "Cancelled the invitation of %s to %s.\n", invitation.Email, organization.Name)
 		return nil
 	}
 	return fmt.Errorf("no pending invitation to %s in %s", strings.TrimSpace(email), organization.Name)
@@ -468,11 +469,11 @@ func answerOrganizationInvitation(ctx context.Context, access backend, isAccepti
 		return err
 	}
 	if isAccepting {
-		fmt.Fprintf(os.Stderr, "You joined %s as %s. You get its vaults once an admin adds you to a team and an owner's Hisar gives you their keys.\n",
+		fmt.Fprintf(standardError(), "You joined %s as %s. You get its vaults once an admin adds you to a team and an owner's Hisar gives you their keys.\n",
 			invitation.OrganizationName, describeOrganizationRole(invitation.Role))
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "Declined the invitation to %s.\n", invitation.OrganizationName)
+	fmt.Fprintf(standardError(), "Declined the invitation to %s.\n", invitation.OrganizationName)
 	return nil
 }
 
@@ -487,7 +488,7 @@ func setOrganizationRole(ctx context.Context, access backend, organization clipr
 	if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeSetOrganizationRole, OrganizationID: organization.ID, AccountID: member.AccountID, Role: role}); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "%s is now %s of %s.\n", member.Email, describeOrganizationRole(role), organization.Name)
+	fmt.Fprintf(standardError(), "%s is now %s of %s.\n", member.Email, describeOrganizationRole(role), organization.Name)
 	return nil
 }
 
@@ -506,7 +507,7 @@ func removeOrganizationMember(ctx context.Context, access backend, organization 
 	if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeRemoveOrganizationMember, OrganizationID: organization.ID, AccountID: member.AccountID}); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Removed %s from %s.\n", member.Email, organization.Name)
+	fmt.Fprintf(standardError(), "Removed %s from %s.\n", member.Email, organization.Name)
 	return nil
 }
 
@@ -518,6 +519,6 @@ func leaveOrganization(ctx context.Context, access backend, organization cliprot
 	if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeLeaveOrganization, OrganizationID: organization.ID}); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "You left %s.\n", organization.Name)
+	fmt.Fprintf(standardError(), "You left %s.\n", organization.Name)
 	return nil
 }

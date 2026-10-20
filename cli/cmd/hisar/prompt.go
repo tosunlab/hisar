@@ -24,9 +24,9 @@ func readLine() (string, error) {
 
 func prompt(label, defaultValue string) (string, error) {
 	if defaultValue != "" {
-		fmt.Fprintf(os.Stderr, "%s [%s]: ", label, defaultValue)
+		fmt.Fprintf(standardError(), "%s [%s]: ", label, defaultValue)
 	} else {
-		fmt.Fprintf(os.Stderr, "%s: ", label)
+		fmt.Fprintf(standardError(), "%s: ", label)
 	}
 	answer, err := readLine()
 	if err != nil {
@@ -42,9 +42,9 @@ func prompt(label, defaultValue string) (string, error) {
 // line keeps the current street.
 func promptStreet(label, current string) (string, error) {
 	if current != "" {
-		fmt.Fprintf(os.Stderr, "%s [%s] (a line at a time, then an empty line; empty to keep): ", label, strings.ReplaceAll(current, "\n", " / "))
+		fmt.Fprintf(standardError(), "%s [%s] (a line at a time, then an empty line; empty to keep): ", label, strings.ReplaceAll(current, "\n", " / "))
 	} else {
-		fmt.Fprintf(os.Stderr, "%s (a line at a time, then an empty line): ", label)
+		fmt.Fprintf(standardError(), "%s (a line at a time, then an empty line): ", label)
 	}
 	var lines []string
 	for {
@@ -66,7 +66,7 @@ func promptStreet(label, current string) (string, error) {
 // promptLines reads lines until one that is only "." or the end of the input, so blank lines stay in the text. Blank
 // lines at the start and end are dropped.
 func promptLines(label string) (string, error) {
-	fmt.Fprintf(os.Stderr, "%s:\n", label)
+	fmt.Fprintf(standardError(), "%s:\n", label)
 	var lines []string
 	for {
 		line, err := readLine()
@@ -86,13 +86,13 @@ func promptRequired(label, defaultValue string) (string, error) {
 		if err != nil || answer != "" {
 			return answer, err
 		}
-		fmt.Fprintf(os.Stderr, "%s is required\n", label)
+		fmt.Fprintf(standardError(), "%s is required\n", label)
 	}
 }
 
 // promptSecret reads without echo on a terminal, or a plain line when stdin is piped.
 func promptSecret(label string) ([]byte, error) {
-	fmt.Fprintf(os.Stderr, "%s: ", label)
+	fmt.Fprintf(standardError(), "%s: ", label)
 	stdinFD := int(os.Stdin.Fd())
 	if term.IsTerminal(stdinFD) {
 		secret, err := term.ReadPassword(stdinFD)
@@ -111,7 +111,7 @@ func promptNewPassword() ([]byte, error) {
 			return nil, err
 		}
 		if len(password) < 10 {
-			fmt.Fprintln(os.Stderr, "Use at least 10 characters.")
+			fmt.Fprintln(standardError(), "Use at least 10 characters.")
 			continue
 		}
 		repeatedPassword, err := promptSecret("Repeat master password")
@@ -122,7 +122,7 @@ func promptNewPassword() ([]byte, error) {
 			clear(repeatedPassword)
 			return password, nil
 		}
-		fmt.Fprintln(os.Stderr, "Passwords do not match.")
+		fmt.Fprintln(standardError(), "Passwords do not match.")
 	}
 }
 

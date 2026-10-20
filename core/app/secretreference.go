@@ -105,13 +105,15 @@ func (bridge *CommandLineBridge) DescribeSecrets(references []string) []string {
 }
 
 // nameCounts counts vault names or item titles as the resolver matches them (strings.EqualFold), so a reference can
-// tell a name that finds one vault or item from a name that finds several.
+// tell a name that finds one vault or item from a name that finds several. IDs count too: the resolver tries them
+// first, so a name that is another vault's or item's ID finds that one.
 type nameCounts map[string]int
 
 func countVaultNames(vaultsByID map[string]*session.Vault) nameCounts {
 	counts := nameCounts{}
 	for _, vault := range vaultsByID {
 		counts[foldName(vault.Name)]++
+		counts[foldName(vault.ID)]++
 	}
 	return counts
 }
@@ -120,6 +122,7 @@ func countItemTitles(items []item.Item) nameCounts {
 	counts := nameCounts{}
 	for index := range items {
 		counts[foldName(items[index].Overview.Title)]++
+		counts[foldName(items[index].ID)]++
 	}
 	return counts
 }

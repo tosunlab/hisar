@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -510,11 +509,7 @@ func TestCompletingAShareReportsPinsThatCouldNotBeSaved(t *testing.T) {
 		t.Fatal(err)
 	}
 	test.apiServer.acceptShareInvitation(t, bob)
-	// State.Save writes a temporary file next to state.json first; a directory in its place makes the save fail.
-	temporaryStatePath := test.service.config.StatePath + ".tmp"
-	if err := os.Mkdir(temporaryStatePath, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	unblockStateSaves := blockStateSaves(t, test.service.config.StatePath)
 
 	invitations, err := test.service.ListShareInvitations()
 	if err != nil || !strings.Contains(invitations.CompletionError, "could not save the pinned signing keys") {
@@ -528,9 +523,7 @@ func TestCompletingAShareReportsPinsThatCouldNotBeSaved(t *testing.T) {
 		t.Fatalf("a pass that pinned nothing forgot the unsaved pin: %+v %v", invitations, err)
 	}
 
-	if err := os.Remove(temporaryStatePath); err != nil {
-		t.Fatal(err)
-	}
+	unblockStateSaves()
 	if invitations, err := test.service.ListShareInvitations(); err != nil || invitations.CompletionError != "" {
 		t.Fatalf("after a save that works: %+v %v", invitations, err)
 	}

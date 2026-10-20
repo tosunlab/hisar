@@ -30,6 +30,7 @@ type Service struct {
 	lockTimer                    *time.Timer
 	lockDeadline                 time.Duration
 	clipboardClearTimer          *time.Timer
+	clearCopiedText              func()
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
 	newAccountSecretKey          *crypt.SecretKey

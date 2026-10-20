@@ -244,6 +244,23 @@ func TestDotenvImportThroughApp(t *testing.T) {
 	}
 }
 
+func TestDotenvReferencesNeverNameAnotherObjectsID(t *testing.T) {
+	startVaultDataApp(t)
+	setInteractiveTerminal(t, false)
+	envPath := filepath.Join(t.TempDir(), ".env")
+	os.WriteFile(envPath, []byte("TOKEN=abc12345\n"), 0o600)
+	if _, _, err := runCapturingOutput(t, false, "", "import", envPath, "--vault", "Work", "--item", "shop-id", "-y"); err == nil || !strings.Contains(err.Error(), "is the ID of another item") {
+		t.Errorf("an item named like another item's ID: %v", err)
+	}
+	vaults := []cliprotocol.Vault{{ID: "work-id", Name: "Work"}, {ID: "shadow-id", Name: "work-id"}}
+	if segment := buildReferenceVaultSegment(vaults, vaults[1]); segment != "shadow-id" {
+		t.Errorf("a vault named like another vault's ID: %q", segment)
+	}
+	if segment := buildReferenceVaultSegment(vaults, vaults[0]); segment != "Work" {
+		t.Errorf("a vault with a name of its own: %q", segment)
+	}
+}
+
 func TestDotenvImportWizard(t *testing.T) {
 	app := startVaultDataApp(t)
 	setInteractiveTerminal(t, true)

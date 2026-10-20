@@ -28,13 +28,18 @@ type Cache struct {
 	database *sql.DB
 }
 
-// Open creates the file with mode 0600 if needed; a file from another schema version is emptied.
+// Open creates the file with mode 0600 if needed, and makes an existing one 0600; a file from another schema version
+// is emptied.
 func Open(path string) (*Cache, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
 	}
+	err = file.Chmod(0o600)
 	file.Close()
+	if err != nil {
+		return nil, err
+	}
 	database, err := sql.Open(sqliteDriver, buildSQLiteDataSource(path))
 	if err != nil {
 		return nil, err

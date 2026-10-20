@@ -68,14 +68,19 @@ type backend interface {
 
 var errNoOneTimeCode = errors.New("the item has no one-time password")
 
-// findVaultByNameOrID matches the vault's ID, or else the first vault with that name, ignoring case.
+// findVaultByNameOrID matches the vault's ID, else the first vault with that name, ignoring case.
 func findVaultByNameOrID(ctx context.Context, access backend, nameOrID string) (cliprotocol.Vault, error) {
 	vaults, err := access.listVaults(ctx)
 	if err != nil {
 		return cliprotocol.Vault{}, err
 	}
 	for _, vault := range vaults {
-		if vault.ID == nameOrID || strings.EqualFold(vault.Name, nameOrID) {
+		if vault.ID == nameOrID {
+			return vault, nil
+		}
+	}
+	for _, vault := range vaults {
+		if strings.EqualFold(vault.Name, nameOrID) {
 			return vault, nil
 		}
 	}
@@ -100,6 +105,7 @@ func findBackendItem(ctx context.Context, access backend, vaultName, query strin
 	return vault, vaultItem, err
 }
 
+// findBackendVault matches the vault's ID, else its name ignoring case; a name more than one vault has is refused.
 func findBackendVault(ctx context.Context, access backend, nameOrID string) (cliprotocol.Vault, error) {
 	vaults, err := access.listVaults(ctx)
 	if err != nil {

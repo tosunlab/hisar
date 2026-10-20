@@ -27,6 +27,21 @@ func TestOpenCreatesPrivateFile(t *testing.T) {
 	}
 }
 
+func TestOpenMakesAnExistingFilePrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cache.db")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testCache, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testCache.Close()
+	if fileInfo, err := os.Stat(path); err != nil || fileInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("mode: %v %v", fileInfo, err)
+	}
+}
+
 func TestAccountRoundTrip(t *testing.T) {
 	testCache, _ := openTestCache(t)
 	if account, err := testCache.LoadAccount("ABC123"); err != nil || account != nil {

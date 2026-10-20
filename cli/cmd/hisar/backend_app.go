@@ -278,7 +278,7 @@ func importThroughApp(ctx context.Context, client *appClient, vaultID string, qu
 			return savedCount, fmt.Errorf("stopped after importing %d of %d items: %w", savedCount, len(queuedItems), err)
 		}
 		for _, failure := range importResult.Failures {
-			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", failure.Title, failure.Message)
+			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", failure.Title, escapeControlCharacters(failure.Message))
 		}
 		fmt.Fprintf(os.Stderr, "\rImported %d of %d", savedCount, len(queuedItems))
 	}

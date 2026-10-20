@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
@@ -50,7 +49,7 @@ func getInviteEmail(positionals []string) (string, error) {
 }
 
 func printShareSent(email, vaultName, role, completion string) {
-	fmt.Fprintf(os.Stderr, "Invitation sent to %s for %q as %s.\nThey accept it in Hisar (Settings → People) or with `hisar invitations accept`; %s\n", email, vaultName, role, completion)
+	fmt.Fprintf(standardError(), "Invitation sent to %s for %q as %s.\nThey accept it in Hisar (Settings → People) or with `hisar invitations accept`; %s\n", email, vaultName, role, completion)
 }
 
 func shortenInvitationID(invitationID string) string {
@@ -68,7 +67,7 @@ func formatDate(timestamp string) string {
 }
 
 func printPeople(people []cliprotocol.Person) error {
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	fmt.Fprintln(writer, "NAME\tEMAIL\tSECURITY CODE\tACCOUNT")
 	for _, person := range people {
 		name := person.Name
@@ -86,13 +85,13 @@ func printPeople(people []cliprotocol.Person) error {
 
 func printInvitationList(invitationList cliprotocol.InvitationListResult) error {
 	if invitationList.CompletionError != "" {
-		fmt.Fprintf(os.Stderr, "Could not finish sharing: %s\n", invitationList.CompletionError)
+		fmt.Fprintf(standardError(), "Could not finish sharing: %s\n", invitationList.CompletionError)
 	}
 	if len(invitationList.Received) == 0 && len(invitationList.Sent) == 0 {
-		fmt.Fprintln(os.Stderr, "No invitations.")
+		fmt.Fprintln(standardError(), "No invitations.")
 		return nil
 	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	if len(invitationList.Received) > 0 {
 		fmt.Fprintln(writer, "RECEIVED\tFROM\tROLE\tEXPIRES")
 		for _, received := range invitationList.Received {
@@ -261,7 +260,7 @@ func runUnshare(ctx context.Context, access backend, flags *flag.FlagSet, args [
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Removed %s from %q and rotated the vault key.\n", email, vault.Name)
+	fmt.Fprintf(standardError(), "Removed %s from %q and rotated the vault key.\n", email, vault.Name)
 	return nil
 }
 
@@ -277,7 +276,7 @@ func runInvite(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err := access.invite(ctx, strings.TrimSpace(email)); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Invitation sent to %s.\n", strings.TrimSpace(email))
+	fmt.Fprintf(standardError(), "Invitation sent to %s.\n", strings.TrimSpace(email))
 	return nil
 }
 
@@ -304,6 +303,6 @@ func runInvitations(ctx context.Context, access backend, flags *flag.FlagSet, ar
 	if err := access.answerInvitation(ctx, action.name, invitationID); err != nil {
 		return err
 	}
-	fmt.Fprintln(os.Stderr, action.confirmText)
+	fmt.Fprintln(standardError(), action.confirmText)
 	return nil
 }

@@ -73,6 +73,7 @@ export interface HarnessOptions {
   isHostMissing?: boolean;
   isMenuVisible?: boolean;
   isClipboardUnavailable?: boolean;
+  fillOutcome?: { filledUsername: boolean; filledPassword: boolean };
 }
 
 export function createHarness(options: HarnessOptions = {}) {
@@ -103,7 +104,7 @@ export function createHarness(options: HarnessOptions = {}) {
       const probe = allProbe[frameId];
       if (probe === "no-content-script") throw new Error("Could not establish connection. Receiving end does not exist.");
       if (message.type === "content.probe") return (probe ?? emptyProbe) as Result;
-      if (message.type === "content.fillLogin") return { filledUsername: true, filledPassword: true } as Result;
+      if (message.type === "content.fillLogin") return (options.fillOutcome ?? { filledUsername: true, filledPassword: true }) as Result;
       if (message.type === "content.isInlineMenuVisible") return (options.isMenuVisible ?? true) as Result;
       return true as Result;
     },

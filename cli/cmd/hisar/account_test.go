@@ -103,6 +103,17 @@ func TestPrintAccountDeletionPreview(t *testing.T) {
 	}
 }
 
+func TestAccountDeletionPreviewEscapesTheNextAdminsName(t *testing.T) {
+	var output bytes.Buffer
+	printAccountDeletionPreview(&output, &session.AccountDeletionPreview{
+		Organizations: []apitypes.DeletionOrganization{{Name: "Work", NewAdminName: hostileDisplayText}},
+	})
+	if text := output.String(); strings.ContainsAny(text, "\x1b\x07\u009b") ||
+		!strings.Contains(text, `You leave the organization "Work"; `+escapedDisplayText+" becomes its admin") {
+		t.Errorf("unsafe or missing next-admin preview: %q", text)
+	}
+}
+
 func TestConvertAccountError(t *testing.T) {
 	cases := map[string]struct {
 		err      error

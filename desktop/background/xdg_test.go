@@ -65,6 +65,31 @@ func TestXDGAutostartRegistersAndUnregisters(t *testing.T) {
 	}
 }
 
+func TestXDGAutostartNeverWritesThroughALinkBesideIt(t *testing.T) {
+	t.Setenv("XDG_CONFIG_HOME", "")
+	homeDirectory := t.TempDir()
+	autostart := NewXDGAutostart(homeDirectory, "/opt/Hisar/Hisar")
+	if err := os.MkdirAll(filepath.Dir(autostart.GetPath()), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	victimPath := filepath.Join(homeDirectory, "victim")
+	if err := os.WriteFile(victimPath, []byte("victim"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victimPath, autostart.GetPath()+".tmp"); err != nil {
+		t.Fatal(err)
+	}
+	if err := autostart.Register(); err != nil {
+		t.Fatal(err)
+	}
+	if content, _ := os.ReadFile(victimPath); string(content) != "victim" {
+		t.Errorf("victim = %q", content)
+	}
+	if fileInfo, err := os.Lstat(autostart.GetPath()); err != nil || !fileInfo.Mode().IsRegular() {
+		t.Errorf("entry: %v %v", fileInfo, err)
+	}
+}
+
 func TestXDGAutostartHonoursDisabledEntry(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "")
 	autostart := NewXDGAutostart(t.TempDir(), "/usr/bin/Hisar")

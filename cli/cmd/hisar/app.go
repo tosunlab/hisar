@@ -64,6 +64,7 @@ func checkStandaloneAllowed() error {
 
 // writeRefusedStatus is hisar status when the app did not answer and standalone mode is refused.
 func writeRefusedStatus(output io.Writer, mode commandMode, refusal error) {
+	output = terminalSafeWriter{output: output}
 	fmt.Fprintf(output, "mode:    none (%s)\n%v\n", mode.reason, refusal)
 }
 
@@ -125,10 +126,10 @@ func (client *appClient) showApprovalNotice() {
 	}
 	client.isApprovalNoticeShown = true
 	if client.hello.State == cliprotocol.StateLocked {
-		fmt.Fprintln(os.Stderr, "Unlock Hisar in its approval window to let hisar in this terminal use it…")
+		fmt.Fprintln(standardError(), "Unlock Hisar in its approval window to let hisar in this terminal use it…")
 		return
 	}
-	fmt.Fprintln(os.Stderr, "Approve hisar in this terminal in Hisar's approval window…")
+	fmt.Fprintln(standardError(), "Approve hisar in this terminal in Hisar's approval window…")
 }
 
 func (client *appClient) call(ctx context.Context, request cliprotocol.Request, result any) error {
@@ -139,19 +140,6 @@ func (client *appClient) call(ctx context.Context, request cliprotocol.Request, 
 func (client *appClient) callWithTimeout(ctx context.Context, request cliprotocol.Request, result any, timeout time.Duration) error {
 	request.ClientPlatform, request.ClientVersion = getPlatform(), getClientVersion()
 	return client.protocolClient.Call(ctx, request, result, timeout)
-}
-
-func findAppVault(ctx context.Context, client *appClient, nameOrID string) (cliprotocol.Vault, error) {
-	var vaultList cliprotocol.VaultListResult
-	if err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListVault}, &vaultList); err != nil {
-		return cliprotocol.Vault{}, err
-	}
-	for _, vault := range vaultList.Vaults {
-		if vault.ID == nameOrID || strings.EqualFold(vault.Name, nameOrID) {
-			return vault, nil
-		}
-	}
-	return cliprotocol.Vault{}, fmt.Errorf("vault %q: not found", nameOrID)
 }
 
 func listAppItems(ctx context.Context, client *appClient, vaultID string) ([]item.Item, error) {
@@ -173,24 +161,6 @@ func getAppItem(ctx context.Context, client *appClient, vaultID, itemID string) 
 	}
 	vaultItem := convertFromAppItem(itemResult.Item)
 	return &vaultItem, nil
-}
-
-// findAppItem finds the item among the vault's summaries, then fetches it with its secrets.
-func findAppItem(ctx context.Context, client *appClient, vaultName, query string) (cliprotocol.Vault, *item.Item, error) {
-	vault, err := findAppVault(ctx, client, vaultName)
-	if err != nil {
-		return vault, nil, err
-	}
-	items, err := listAppItems(ctx, client, vault.ID)
-	if err != nil {
-		return vault, nil, err
-	}
-	summary, err := findItem(items, query)
-	if err != nil {
-		return vault, nil, err
-	}
-	vaultItem, err := getAppItem(ctx, client, vault.ID, summary.ID)
-	return vault, vaultItem, err
 }
 
 func convertFromAppItem(appItem cliprotocol.Item) item.Item {

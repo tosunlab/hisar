@@ -280,3 +280,35 @@ func TestOrganizationsNeedAnAppThatKnowsThem(t *testing.T) {
 		}
 	}
 }
+
+func TestOrganizationTextCannotDriveTheTerminal(t *testing.T) {
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		if request.Type != cliprotocol.TypeGetOrganization {
+			return answerOrganizationRequest(request)
+		}
+		return cliprotocol.OrganizationResult{Organization: cliprotocol.Organization{
+			ID: request.OrganizationID, Name: hostileDisplayText, Role: "admin",
+			Members: []cliprotocol.OrganizationMember{{AccountID: "EVE111", Name: hostileDisplayText, Email: "eve@example.com", Role: "member"}},
+			Teams:   []cliprotocol.Team{{ID: "eng-id", Name: hostileDisplayText, Members: []cliprotocol.TeamMember{{AccountID: "EVE111", Name: hostileDisplayText, Email: "eve@example.com"}}}},
+		}}, nil
+	}
+	app.mutex.Unlock()
+	stdout, _, err := runCapturingOutput(t, false, "", "org", "show", "Acme")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.ContainsAny(stdout, "\x1b\x07\u009b") {
+		t.Errorf("organization view contains raw terminal controls: %q", stdout)
+	}
+	for _, expected := range []string{
+		escapedDisplayText + " (you are an admin)",
+		escapedDisplayText + " <eve@example.com>",
+		"Team " + escapedDisplayText + "\n  Members: " + escapedDisplayText + " <eve@example.com>\n",
+	} {
+		if !strings.Contains(stdout, expected) {
+			t.Errorf("organization view %q does not contain %q", stdout, expected)
+		}
+	}
+}

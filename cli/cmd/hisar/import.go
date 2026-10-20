@@ -60,6 +60,7 @@ func describeDuplicate(vaultItem item.Item) string {
 }
 
 func printImportPreview(writer io.Writer, fileName string, result *importer.Result, vaultName string, duplicateIndexes []int) {
+	writer = terminalSafeWriter{output: writer}
 	summary := importer.Summarize(result.Items)
 	fmt.Fprintf(writer, "File:            %s\n", fileName)
 	fmt.Fprintf(writer, "Format:          %s\n", importer.GetFormatName(result.Format))
@@ -118,7 +119,7 @@ func saveImportedItems(ctx context.Context, unlockedSession *session.Session, va
 			return savedCount, fmt.Errorf("stopped after importing %d of %d items: %w", savedCount, len(queuedItems), err)
 		}
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "\rcould not import %q: %v\n", vaultItem.Overview.Title, err)
+			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", vaultItem.Overview.Title, escapeControlCharacters(err.Error()))
 			continue
 		}
 		savedCount++
@@ -139,7 +140,7 @@ func addImportedFavorites(ctx context.Context, unlockedSession *session.Session,
 		return
 	}
 	if _, err := unlockedSession.UpdateFavorites(ctx, nil, session.FavoriteChange{AddItemIDs: itemIDs}); err != nil {
-		fmt.Fprintf(os.Stderr, "Could not add %d imported items to Favorites: %v\n", len(itemIDs), err)
+		fmt.Fprintf(standardError(), "Could not add %d imported items to Favorites: %v\n", len(itemIDs), err)
 	}
 }
 
@@ -222,7 +223,7 @@ func importOwnFormat(ctx context.Context, access backend, path string, option *i
 func offerToDeleteImportFile(path string, isConfirmed bool) error {
 	warning := fmt.Sprintf("%s holds these passwords in plain text.", path)
 	if isConfirmed {
-		fmt.Fprintf(os.Stderr, "%s Delete it and any other copies of the export.\n", warning)
+		fmt.Fprintf(standardError(), "%s Delete it and any other copies of the export.\n", warning)
 		return nil
 	}
 	isDeleting, err := confirm(warning + " Delete it now?")
@@ -232,7 +233,7 @@ func offerToDeleteImportFile(path string, isConfirmed bool) error {
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("could not delete %s; delete it yourself", path)
 	}
-	fmt.Fprintf(os.Stderr, "Deleted %s.\n", path)
+	fmt.Fprintf(standardError(), "Deleted %s.\n", path)
 	return nil
 }
 
@@ -285,7 +286,7 @@ func runImport(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	}
 	queuedItems := selectQueuedItems(result.Items, duplicateIndexes, isSkippingDuplicate)
 	if len(queuedItems) == 0 {
-		fmt.Fprintln(os.Stderr, "Nothing to import.")
+		fmt.Fprintln(standardError(), "Nothing to import.")
 		return nil
 	}
 	if !option.isConfirmed {
@@ -298,6 +299,6 @@ func runImport(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
+	fmt.Fprintf(standardError(), "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
 	return offerToDeleteImportFile(path, option.isConfirmed)
 }

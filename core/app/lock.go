@@ -148,6 +148,10 @@ func (s *Service) lockSession() {
 		s.config.OnLock()
 	}
 	if wasUnlocked {
+		// The clipboard may wait on the platform's main thread, so the clear runs without the mutex.
+		if clearCopiedText := s.takePendingClear(); clearCopiedText != nil {
+			go clearCopiedText()
+		}
 		for _, lockListener := range s.lockListeners {
 			lockListener()
 		}

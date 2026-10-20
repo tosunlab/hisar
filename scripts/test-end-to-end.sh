@@ -272,6 +272,21 @@ ALICE_ORGS=$(printf '%s\n' "$PW" | A orgs 2>/dev/null)
 echo "ok   the deleted organization is gone"
 
 expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$PW" | HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
+
+CONTROL_NAME=$'Eve\033]52;c;ZWNobyBoaQ==\007\302\233'
+CONTROL_INV=$("$BIN/hisar-server" invite --email terminal-controls@example.com </dev/null | tail -1)
+printf 'terminal-controls@example.com\n%s\n%s\n%s\n' "$CONTROL_NAME" "$PW" "$PW" |
+  HISAR_STATE=$T/terminal-signup.json HISAR_SECRET_KEY=- hisar signup "$CONTROL_INV" >"$T/terminal-signup.stdout" 2>"$T/terminal-signup.stderr"
+CONTROL_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/terminal-signup.stderr")
+expect "terminal-control account signup" "$CONTROL_SK" "H1-"
+printf 'http://127.0.0.1:%s\nterminal-controls@example.com\n%s\n%s\n' "$PORT" "$CONTROL_SK" "$PW" |
+  HISAR_STATE=$T/terminal-login.json HISAR_SECRET_KEY=- hisar login >"$T/terminal-login.stdout" 2>"$T/terminal-login.stderr"
+CONTROL_LOGIN=$(cat "$T/terminal-login.stderr")
+expect "login escapes the account name on stderr" "$CONTROL_LOGIN" 'Signed in as Eve\x1b]52;c;ZWNobyBoaQ==\x07\x9b'
+[[ "$CONTROL_LOGIN" != *$'\033'* && "$CONTROL_LOGIN" != *$'\007'* && "$CONTROL_LOGIN" != *$'\302\233'* ]] ||
+  fail "login stderr contains raw terminal controls"
+echo "ok   successful login stderr has no raw terminal controls"
+
 expect "wrong password" "$(printf 'nope\n' | A ls 2>&1 || true)" "incorrect email, password or Secret Key"
 expect "devices" "$(A devices)" "(this device)"
 expect "emergency kit" "$(printf '%s\n' "$PW" | A emergency-kit -o "$T/kit.pdf" 2>&1)" "Saved your Emergency Kit"

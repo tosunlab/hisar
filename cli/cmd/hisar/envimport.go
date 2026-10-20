@@ -107,7 +107,7 @@ func printDotenvChoice(storable []dotenv.LayoutVariable, chosenByName map[string
 		if chosenByName[variable.Name] {
 			mark, description = "x", "store in Hisar"
 		}
-		fmt.Fprintf(os.Stderr, "  [%s] %2d  %-*s  %s\n", mark, index+1, nameWidth, variable.Name, description)
+		fmt.Fprintf(standardError(), "  [%s] %2d  %-*s  %s\n", mark, index+1, nameWidth, variable.Name, description)
 	}
 }
 
@@ -125,7 +125,7 @@ func toggleDotenvChoice(storable []dotenv.LayoutVariable, chosenByName map[strin
 		for _, field := range strings.FieldsFunc(answer, func(character rune) bool { return character == ' ' || character == ',' }) {
 			number, err := strconv.Atoi(field)
 			if err != nil || number < 1 || number > len(storable) {
-				fmt.Fprintf(os.Stderr, "%s is not a number from 1 to %d.\n", field, len(storable))
+				fmt.Fprintf(standardError(), "%s is not a number from 1 to %d.\n", field, len(storable))
 				continue
 			}
 			name := storable[number-1].Name
@@ -145,9 +145,9 @@ func chooseDotenvVault(ctx context.Context, access backend) (cliprotocol.Vault, 
 	if len(writable) == 0 {
 		return cliprotocol.Vault{}, errors.New("you have no vault you can add items to")
 	}
-	fmt.Fprintln(os.Stderr, "Vault:")
+	fmt.Fprintln(standardError(), "Vault:")
 	for index, vault := range writable {
-		fmt.Fprintf(os.Stderr, "  %d) %s\n", index+1, vault.Name)
+		fmt.Fprintf(standardError(), "  %d) %s\n", index+1, vault.Name)
 	}
 	for {
 		answer, err := prompt("Choose", "1")
@@ -162,15 +162,20 @@ func chooseDotenvVault(ctx context.Context, access backend) (cliprotocol.Vault, 
 				return vault, nil
 			}
 		}
-		fmt.Fprintf(os.Stderr, "Enter a number from 1 to %d.\n", len(writable))
+		fmt.Fprintf(standardError(), "Enter a number from 1 to %d.\n", len(writable))
 	}
 }
 
+// buildReferenceVaultSegment names the vault, or gives its ID when the name would also find another vault: another
+// vault of that name, or one whose ID it is, since references try IDs first.
 func buildReferenceVaultSegment(vaults []cliprotocol.Vault, vault cliprotocol.Vault) string {
 	sameNameCount := 0
 	for _, candidate := range vaults {
 		if strings.EqualFold(candidate.Name, vault.Name) {
 			sameNameCount++
+		}
+		if candidate.ID == vault.Name && candidate.ID != vault.ID {
+			return vault.ID
 		}
 	}
 	if sameNameCount > 1 {
@@ -185,10 +190,16 @@ func findDotenvItem(ctx context.Context, access backend, vault cliprotocol.Vault
 		return "", err
 	}
 	matchIDs := []string{}
+	isAnotherItemsID := false
 	for _, vaultItem := range items {
 		if strings.EqualFold(vaultItem.Overview.Title, title) {
 			matchIDs = append(matchIDs, vaultItem.ID)
+		} else if vaultItem.ID == title {
+			isAnotherItemsID = true
 		}
+	}
+	if isAnotherItemsID {
+		return "", fmt.Errorf("%q is the ID of another item in %s; choose another item name", title, vault.Name)
 	}
 	if len(matchIDs) > 1 {
 		return "", fmt.Errorf("%d items in %s are titled %q; choose another item name", len(matchIDs), vault.Name, title)
@@ -206,7 +217,7 @@ func importDotenv(ctx context.Context, access backend, path string, option doten
 	}
 	printDotenvPlan(plan)
 	if option.isDryRun {
-		fmt.Fprintf(os.Stderr, "Dry run: nothing was stored and %s was not changed.\n", path)
+		fmt.Fprintf(standardError(), "Dry run: nothing was stored and %s was not changed.\n", path)
 		return nil
 	}
 	if !option.isConfirmed {
@@ -224,8 +235,8 @@ func importDotenv(ctx context.Context, access backend, path string, option doten
 	if err := rewriteDotenvFile(plan.path, plan.layout.Render(plan.referencesByName)); err != nil {
 		return fmt.Errorf("the values are stored in %s › %s, but %s could not be rewritten: %w", plan.vault.Name, plan.itemTitle, path, err)
 	}
-	fmt.Fprintf(os.Stderr, "Stored %s in %s › %s and rewrote %s with secret references.\n", formatValueCount(len(plan.storedVariables)), plan.vault.Name, plan.itemTitle, path)
-	fmt.Fprintf(os.Stderr, "Run a command with them:\n  hisar run --env-file %s -- <command>\n", quoteShellWord(path))
+	fmt.Fprintf(standardError(), "Stored %s in %s › %s and rewrote %s with secret references.\n", formatValueCount(len(plan.storedVariables)), plan.vault.Name, plan.itemTitle, path)
+	fmt.Fprintf(standardError(), "Run a command with them:\n  hisar run --env-file %s -- <command>\n", quoteShellWord(path))
 	return nil
 }
 
@@ -241,7 +252,7 @@ func planDotenvImport(ctx context.Context, access backend, path string, option d
 	}
 	storable, skippedDescriptions := dotenv.StorableVariables(layout.ListVariables())
 	if len(storable) == 0 {
-		fmt.Fprintf(os.Stderr, "%s has no values to store; it was not changed.\n", path)
+		fmt.Fprintf(standardError(), "%s has no values to store; it was not changed.\n", path)
 		return nil, nil
 	}
 	chosenByName, err := chooseDotenvVariable(storable, option.chosenKeys)
@@ -250,7 +261,7 @@ func planDotenvImport(ctx context.Context, access backend, path string, option d
 	}
 	isInteractive := isInteractiveTerminal()
 	if isInteractive && option.chosenKeys == nil {
-		fmt.Fprintf(os.Stderr, "Found %s in %s:\n", formatVariableCount(len(storable)), path)
+		fmt.Fprintf(standardError(), "Found %s in %s:\n", formatVariableCount(len(storable)), path)
 		if err := toggleDotenvChoice(storable, chosenByName); err != nil {
 			return nil, err
 		}
@@ -270,7 +281,7 @@ func planDotenvImport(ctx context.Context, access backend, path string, option d
 		plan.keptNames = append(plan.keptNames, description)
 	}
 	if len(plan.storedVariables) == 0 {
-		fmt.Fprintf(os.Stderr, "No variables chosen; %s was not changed.\n", path)
+		fmt.Fprintf(standardError(), "No variables chosen; %s was not changed.\n", path)
 		return nil, nil
 	}
 
@@ -324,20 +335,20 @@ func printDotenvPlan(plan *dotenvPlan) {
 	if plan.existingItemID != "" {
 		action = "the existing item"
 	}
-	fmt.Fprintf(os.Stderr, "Store %s in %s › %s (%s), as concealed fields:\n", formatValueCount(len(plan.storedVariables)), plan.vault.Name, plan.itemTitle, action)
+	fmt.Fprintf(standardError(), "Store %s in %s › %s (%s), as concealed fields:\n", formatValueCount(len(plan.storedVariables)), plan.vault.Name, plan.itemTitle, action)
 	for _, variable := range plan.storedVariables {
 		note := ""
 		if variable.OccurrenceCount > 1 && variable.HasOtherValue {
 			note = fmt.Sprintf(" (set %d times; the last value is stored, as hisar run reads it)", variable.OccurrenceCount)
 		}
-		fmt.Fprintf(os.Stderr, "  %s%s\n", variable.Name, note)
+		fmt.Fprintf(standardError(), "  %s%s\n", variable.Name, note)
 	}
-	fmt.Fprintf(os.Stderr, "Then rewrite %s:\n", plan.path)
+	fmt.Fprintf(standardError(), "Then rewrite %s:\n", plan.path)
 	for _, variable := range plan.storedVariables {
-		fmt.Fprintf(os.Stderr, "  %s=%s\n", variable.Name, plan.referencesByName[variable.Name])
+		fmt.Fprintf(standardError(), "  %s=%s\n", variable.Name, plan.referencesByName[variable.Name])
 	}
 	if len(plan.keptNames) > 0 {
-		fmt.Fprintf(os.Stderr, "Kept as they are: %s\n", strings.Join(plan.keptNames, ", "))
+		fmt.Fprintf(standardError(), "Kept as they are: %s\n", strings.Join(plan.keptNames, ", "))
 	}
 }
 
