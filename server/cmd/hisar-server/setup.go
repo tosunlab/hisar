@@ -11,12 +11,15 @@ import (
 	"github.com/tryhisar/hisar/server/internal/api"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
 	"github.com/tryhisar/hisar/server/internal/serverupdate"
-	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
 func setup(ctx context.Context) (*store.Store, *api.Server, error) {
+	resourceConfig, err := readResourceConfig()
+	if err != nil {
+		return nil, nil, err
+	}
 	databaseURL := os.Getenv("HISAR_DATABASE_URL")
 	if databaseURL == "" {
 		return nil, nil, errors.New("HISAR_DATABASE_URL is required")
@@ -45,7 +48,7 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		database.Close()
 		return nil, nil, fmt.Errorf("secrets: %w", err)
 	}
-	publicURL := getEnv("HISAR_PUBLIC_URL", "https://api.tryhisar.com")
+	publicURL := resourceConfig.PublicURL
 	desktopUpdates, err := createDesktopUpdateSource(publicURL)
 	if err != nil {
 		database.Close()
@@ -57,7 +60,7 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 		return nil, nil, fmt.Errorf("server updates: %w", err)
 	}
 	server, err := api.NewServer(database, secrets, api.Config{
-		Config:         service.Config{PublicURL: publicURL},
+		Config:         resourceConfig,
 		Environment:    os.Getenv,
 		TrustProxy:     getEnv("HISAR_TRUST_PROXY", "false") == "true",
 		DesktopUpdates: desktopUpdates,

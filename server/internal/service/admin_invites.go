@@ -80,6 +80,7 @@ func (s *Service) CreateAdminInvite(ctx context.Context, actor Actor, request *a
 		if err != nil {
 			return nil, err
 		}
+		defer pending.erase()
 		admin = provenAdmin(actor, pending)
 	}
 	inviter, err := s.store.GetAccountByID(ctx, actor.AccountID)
@@ -129,6 +130,7 @@ func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID s
 		if err != nil {
 			return nil, err
 		}
+		defer pending.erase()
 		admin = provenAdmin(actor, pending)
 	}
 	inviter, err := s.store.GetAccountByID(ctx, actor.AccountID)

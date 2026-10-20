@@ -4,6 +4,7 @@
 package service
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"sync"
@@ -33,7 +34,10 @@ type Actor struct {
 // Config is what the service reads on every request and never changes while it serves.
 type Config struct {
 	// PublicURL is the operator-approved authentication origin and the base URL of email links.
-	PublicURL string
+	PublicURL            string
+	PendingLoginCapacity int
+	LimiterKeyCapacity   int
+	LimiterTotalCapacity int
 }
 
 // InstanceSettings is where the service reads the settings an admin edits: Current is the snapshot a save replaces
@@ -69,17 +73,17 @@ const (
 	defaultShareAcceptedEmailDelay     = 2 * time.Minute
 )
 
-func newLimiters() Limiters {
+func newLimiters(factory *ratelimit.Factory) Limiters {
 	return Limiters{
-		InviteAccount:          ratelimit.NewDaily(invitePerAccountPerDay),
-		InviteIP:               ratelimit.NewDaily(invitePerIPPerDay),
-		ShareInvitationAccount: ratelimit.NewDaily(shareInvitationPerAccountPerDay),
-		ShareInvitationIP:      ratelimit.NewDaily(shareInvitationPerIPPerDay),
-		ShareAcceptedEmail:     ratelimit.NewDaily(shareAcceptedEmailPerInviterPerDay),
-		ShareLinkAccount:       ratelimit.NewDaily(shareLinkPerAccountPerDay),
-		Reauthentication:       NewReauthenticationLimiter(),
+		InviteAccount:          factory.Daily(invitePerAccountPerDay),
+		InviteIP:               factory.Daily(invitePerIPPerDay),
+		ShareInvitationAccount: factory.Daily(shareInvitationPerAccountPerDay),
+		ShareInvitationIP:      factory.Daily(shareInvitationPerIPPerDay),
+		ShareAcceptedEmail:     factory.Daily(shareAcceptedEmailPerInviterPerDay),
+		ShareLinkAccount:       factory.Daily(shareLinkPerAccountPerDay),
+		Reauthentication:       factory.New(rate.Every(30*time.Second), 5),
 		// An admin's test emails: a few at once, then five a minute, since each one connects to a host the admin chose.
-		TestEmail: ratelimit.New(rate.Every(time.Minute/testEmailPerAccountBurst), testEmailPerAccountBurst),
+		TestEmail: factory.New(rate.Every(time.Minute/testEmailPerAccountBurst), testEmailPerAccountBurst),
 	}
 }
 
@@ -118,19 +122,19 @@ type Service struct {
 	backgroundWork sync.WaitGroup
 }
 
-func New(database *store.Store, events *realtime.Broker, keys Keys, config Config, instanceSettings InstanceSettings) *Service {
+func New(database *store.Store, events *realtime.Broker, keys Keys, config Config, instanceSettings InstanceSettings, factory *ratelimit.Factory) *Service {
 	return &Service{
 		config:                  config,
 		instanceSettings:        instanceSettings,
 		store:                   database,
 		events:                  events,
 		keys:                    keys,
-		loginCache:              newLoginCache(time.Minute),
-		Limiters:                newLimiters(),
+		loginCache:              newLoginCache(time.Minute, config.PendingLoginCapacity),
+		Limiters:                newLimiters(factory),
 		InviteTTL:               defaultInviteTTL,
 		ShareAcceptedEmailDelay: defaultShareAcceptedEmailDelay,
 		NewMailer:               newSMTPMailer,
-		Approvals:               newApprovalRelay(),
+		Approvals:               newApprovalRelay(factory.New(rate.Every(approvalRateEvery), ApprovalRateBurst)),
 	}
 }
 
@@ -143,4 +147,33 @@ func (s *Service) computeMAC(parts ...string) []byte {
 		hmacHash.Write([]byte{0})
 	}
 	return hmacHash.Sum(nil)
+}
+
+// MaintainAuthenticationState expires pending exchanges and fully repaid idle limiter entries.
+func (s *Service) MaintainAuthenticationState() {
+	s.loginCache.maintain()
+	for _, limiter := range []*ratelimit.Limiter{
+		s.Limiters.InviteAccount, s.Limiters.InviteIP, s.Limiters.ShareInvitationAccount,
+		s.Limiters.ShareInvitationIP, s.Limiters.ShareAcceptedEmail, s.Limiters.ShareLinkAccount,
+		s.Limiters.Reauthentication, s.Limiters.TestEmail,
+	} {
+		limiter.Maintain()
+	}
+	s.Approvals.mutex.Lock()
+	s.Approvals.limiter.Maintain()
+	s.Approvals.mutex.Unlock()
+}
+
+// RunAuthenticationMaintenance retires bounded batches until shutdown, even without request traffic.
+func (s *Service) RunAuthenticationMaintenance(ctx context.Context) {
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.MaintainAuthenticationState()
+		}
+	}
 }

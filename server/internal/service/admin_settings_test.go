@@ -14,6 +14,7 @@ import (
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
 	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
@@ -67,7 +68,7 @@ func createSettingsService(t *testing.T, environment map[string]string) *Service
 	current.Store(&effective)
 	return New(database, realtime.NewBroker(), Keys{}, Config{PublicURL: "https://hisar.test"}, InstanceSettings{
 		Current: current, Defaults: settings.Defaults(), Environment: readEnvironment,
-	})
+	}, ratelimit.NewFactory(0, 0))
 }
 
 func updateSettings(service *Service, changes map[string]any) error {

@@ -1,71 +1,91 @@
-// Package ratelimit limits requests per key, an IP address or an account ID, with a token bucket for each key.
+// Package ratelimit limits requests per key without discarding outstanding rate-limit debt.
 package ratelimit
 
 import (
+	"github.com/tryhisar/hisar/server/internal/boundedstate"
+	"golang.org/x/time/rate"
 	"sync"
 	"time"
-
-	"golang.org/x/time/rate"
 )
 
-// Keys not seen for this long are forgotten once the limiter holds more than maximumKeyCount of them.
 const (
-	maximumKeyCount = 10000
-	idleKeyLifetime = 10 * time.Minute
+	// DefaultKeyCapacity bounds each map; DefaultTotalCapacity bounds all process maps combined.
+	DefaultKeyCapacity   = 65_536
+	DefaultTotalCapacity = 262_144
+	maximumKeyCount      = DefaultKeyCapacity
+	idleKeyLifetime      = 10 * time.Minute
+	maintenanceBatch     = 1024
 )
 
-// Limiter allows a burst of requests per key, refilled at a steady rate.
+var processBudget = boundedstate.NewBudget(DefaultTotalCapacity)
+
 type Limiter struct {
 	mutex   sync.Mutex
 	every   rate.Limit
 	burst   int
-	buckets map[string]*bucket
-	// sweepAt is the key count at which Allow next forgets idle keys: twice what the last sweep kept, so many keys
-	// that are all still fresh cost one sweep per doubling rather than one per request.
-	sweepAt int
-}
-
-type bucket struct {
-	limiter *rate.Limiter
-	seen    time.Time
+	buckets *boundedstate.Table[*rate.Limiter]
+	now     func() time.Time
 }
 
 func New(every rate.Limit, burst int) *Limiter {
-	return &Limiter{every: every, burst: burst, buckets: map[string]*bucket{}, sweepAt: maximumKeyCount}
+	return NewWithBudget(every, burst, DefaultKeyCapacity, processBudget)
 }
 
-// NewDaily allows count requests per key a day, all of them at once if the key has been quiet.
-func NewDaily(count int) *Limiter {
-	return New(rate.Every(24*time.Hour/time.Duration(count)), count)
+// NewWithBudget shares a key budget across a group of limiters. Unknown keys are refused at capacity.
+// Known keys keep their debt and remain usable. No overflow request gets a fresh bucket.
+func NewWithBudget(every rate.Limit, burst, capacity int, budget *boundedstate.Budget) *Limiter {
+	return &Limiter{every: every, burst: burst, buckets: boundedstate.New[*rate.Limiter](capacity, budget), now: time.Now}
 }
-
+func NewDaily(count int) *Limiter { return New(rate.Every(24*time.Hour/time.Duration(count)), count) }
+func (limiter *Limiter) expiry(now time.Time, bucket *rate.Limiter) time.Time {
+	if limiter.every == 0 && bucket.TokensAt(now) < float64(limiter.burst) {
+		return time.Date(9999, 12, 31, 0, 0, 0, 0, time.UTC)
+	}
+	expiry := now.Add(idleKeyLifetime)
+	if limiter.every > 0 && limiter.every != rate.Inf {
+		refill := time.Duration((float64(limiter.burst) - bucket.TokensAt(now)) / float64(limiter.every) * float64(time.Second))
+		expiry = maxTime(expiry, now.Add(refill+time.Nanosecond))
+	}
+	return expiry
+}
+func maxTime(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return b
+	}
+	return a
+}
 func (limiter *Limiter) Allow(key string) bool {
 	limiter.mutex.Lock()
 	defer limiter.mutex.Unlock()
-	now := time.Now()
-	if len(limiter.buckets) > limiter.sweepAt {
-		for bucketKey, entry := range limiter.buckets {
-			if now.Sub(entry.seen) > idleKeyLifetime {
-				delete(limiter.buckets, bucketKey)
-			}
+	now := limiter.now()
+	limiter.buckets.Expire(now, 32, nil)
+	hash := boundedstate.Key(key)
+	entry := limiter.buckets.Get(hash)
+	if entry == nil {
+		bucket := rate.NewLimiter(limiter.every, limiter.burst)
+		if !limiter.buckets.Insert(hash, bucket, now.Add(idleKeyLifetime)) {
+			return false
 		}
-		limiter.sweepAt = max(maximumKeyCount, 2*len(limiter.buckets))
+		entry = limiter.buckets.Get(hash)
 	}
-	entry, isFound := limiter.buckets[key]
-	if !isFound {
-		entry = &bucket{limiter: rate.NewLimiter(limiter.every, limiter.burst)}
-		limiter.buckets[key] = entry
-	}
-	entry.seen = now
-	return entry.limiter.Allow()
+	allowed := entry.Value.AllowN(now, 1)
+	limiter.buckets.Update(entry, limiter.expiry(now, entry.Value))
+	return allowed
 }
 
-// SetBurst changes the burst of every key, the ones seen so far included, without forgetting what they have used.
+// Maintain expires only fully refilled, idle keys. It also reclaims empty table backing storage.
+func (limiter *Limiter) Maintain() {
+	limiter.mutex.Lock()
+	defer limiter.mutex.Unlock()
+	limiter.buckets.Expire(limiter.now(), maintenanceBatch, nil)
+}
 func (limiter *Limiter) SetBurst(burst int) {
 	limiter.mutex.Lock()
 	defer limiter.mutex.Unlock()
 	limiter.burst = burst
-	for _, entry := range limiter.buckets {
-		entry.limiter.SetBurst(burst)
-	}
+	now := limiter.now()
+	limiter.buckets.Visit(func(entry *boundedstate.Entry[*rate.Limiter]) {
+		entry.Value.SetBurstAt(now, burst)
+		limiter.buckets.Update(entry, limiter.expiry(now, entry.Value))
+	})
 }

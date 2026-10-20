@@ -87,6 +87,9 @@ func (s *Service) Reauthenticate(ctx context.Context, actor Actor, request *apit
 		reauthenticationServer: reauthenticationServer,
 	})
 	clear(serverOutput.SessionSecret)
+	if reauthenticationID == "" {
+		return apitypes.ReauthenticateResponse{}, newError(KindTooManyRequests, "too many pending master password checks; try again shortly")
+	}
 	return apitypes.ReauthenticateResponse{ReauthenticationID: reauthenticationID, KE2: keyExchange2.Serialize(), RegistrationResponse: registrationResponse}, nil
 }
 
@@ -97,12 +100,19 @@ func (s *Service) finishReauthentication(ctx context.Context, actor Actor, reaut
 
 func (s *Service) finishScopedReauthentication(ctx context.Context, actor Actor, reauthenticationID string, encodedKeyExchange3 []byte, scope apitypes.ReauthenticationScope) (*pendingLogin, error) {
 	pending := s.loginCache.take(reauthenticationID)
+	if pending != nil {
+		defer clear(pending.clientMAC)
+	}
 	if pending == nil || pending.scope != scope || pending.purpose != pake.Reauthenticate || pending.reauthenticationServer == nil || pending.sessionTokenHash == nil || pending.accountID != actor.AccountID || !bytes.Equal(pending.sessionTokenHash, actor.TokenHash) {
+		if pending != nil {
+			pending.erase()
+		}
 		return nil, newError(KindForbidden, "the master password check expired; try again")
 	}
 	keyExchange3, err := pending.reauthenticationServer.Deserialize.KE3(encodedKeyExchange3)
 	if err != nil || pending.reauthenticationServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
 		s.recordAudit(ctx, actor, auditReauthenticationFailed, nil)
+		pending.erase()
 		return nil, errReauthenticationFailed
 	}
 	return pending, nil
@@ -124,6 +134,7 @@ func (s *Service) ChangeCredentials(ctx context.Context, actor Actor, request *a
 	if err != nil {
 		return apitypes.ChangeCredentialsResponse{}, err
 	}
+	defer pending.erase()
 	argon2ParamsJSON, _ := json.Marshal(request.Argon2)
 	signedOutDeviceCount, err := s.store.UpdateAccountCredentials(ctx, &store.CredentialUpdate{
 		AccountID:        actor.AccountID,
@@ -209,6 +220,7 @@ func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apity
 	if err != nil {
 		return err
 	}
+	defer pending.erase()
 	deleted, err := s.store.DeleteAccount(ctx, actor.AccountID, actor.TokenHash, pending.recordHash, request.PlanVersion)
 	switch {
 	case errors.Is(err, store.ErrDeletionPlanChanged):
