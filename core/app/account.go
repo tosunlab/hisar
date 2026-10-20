@@ -24,6 +24,12 @@ type CredentialChangeResult struct {
 	KeychainError string `json:"keychainError"`
 	// LocalError reports local finalization failures after the credentials have already changed.
 	LocalError string `json:"localError"`
+	identity   credentialChangeIdentity
+}
+
+type credentialChangeIdentity struct {
+	epoch     uint64
+	accountID string
 }
 
 type DeletionVault struct {
@@ -114,7 +120,10 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 		}
 	}
 
-	result := CredentialChangeResult{SignedOutDeviceCount: credentialChange.SignedOutDeviceCount}
+	result := CredentialChangeResult{
+		SignedOutDeviceCount: credentialChange.SignedOutDeviceCount,
+		identity:             credentialChangeIdentity{epoch: s.sessionEpoch, accountID: s.state.AccountID},
+	}
 	if credentialChange.SecretKey.Encode() != secretKey.Encode() {
 		newSecretKey := credentialChange.SecretKey
 		s.newAccountSecretKey = &newSecretKey

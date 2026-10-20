@@ -89,10 +89,19 @@ func ExportEmergencyKitToDirectory(s *Service, password, directory string) (Emer
 	return s.saveEmergencyKitToDirectory(kit, directory, epoch)
 }
 
-// ExportNewSecretKeyEmergencyKitToDirectory saves the kit of a Secret Key made moments ago, while it is still in
-// memory, into directory. A function rather than a method so the desktop UI can't call it.
-func ExportNewSecretKeyEmergencyKitToDirectory(s *Service, directory string) (EmergencyKitFile, error) {
+// ExportNewSecretKeyEmergencyKitToDirectory saves the kit only for the account and key in the committed replacement.
+// A function rather than a method so the desktop UI can't call it.
+func ExportNewSecretKeyEmergencyKitToDirectory(s *Service, replacement CredentialChangeResult, directory string) (EmergencyKitFile, error) {
 	s.mutex.Lock()
+	if err := s.requireSessionEpoch(replacement.identity.epoch); err != nil {
+		s.mutex.Unlock()
+		return EmergencyKitFile{}, err
+	}
+	if replacement.identity.accountID != s.state.AccountID || replacement.SecretKey == "" ||
+		s.newAccountSecretKey == nil || s.newAccountSecretKey.Encode() != replacement.SecretKey {
+		s.mutex.Unlock()
+		return EmergencyKitFile{}, errSessionEnded
+	}
 	kit, err := s.buildNewAccountEmergencyKit()
 	epoch := s.sessionEpoch
 	s.mutex.Unlock()

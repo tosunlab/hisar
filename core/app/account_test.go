@@ -104,7 +104,7 @@ func TestCredentialChangeReportsCacheDeletionFailureAndKeepsTheNewSecretKey(t *t
 	if visible.SecretKey != newSecretKey.Encode() || visible.Status.State != StateUnlocked {
 		t.Fatal("the app did not receive the replacement key and successful status")
 	}
-	kit, err := ExportNewSecretKeyEmergencyKitToDirectory(service, t.TempDir())
+	kit, err := ExportNewSecretKeyEmergencyKitToDirectory(service, result, t.TempDir())
 	if err != nil || kit.SecretKey != visible.SecretKey || kit.Path == "" {
 		t.Fatalf("the committed replacement's Emergency Kit is unavailable: %v", err)
 	}
@@ -172,7 +172,7 @@ func TestAccountChangesNeedAnUnlockedSession(t *testing.T) {
 			t.Errorf("%s while locked: %v", name, err)
 		}
 	}
-	if _, err := ExportNewSecretKeyEmergencyKitToDirectory(service, t.TempDir()); !errors.Is(err, ErrLocked) {
+	if _, err := ExportNewSecretKeyEmergencyKitToDirectory(service, CredentialChangeResult{}, t.TempDir()); !errors.Is(err, ErrLocked) {
 		t.Errorf("new kit while locked: %v", err)
 	}
 }

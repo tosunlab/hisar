@@ -117,7 +117,7 @@ func TestIntegrationAccountLifecycle(t *testing.T) {
 		if !strings.HasPrefix(newSecretKey, "H1-") || newSecretKey == signUpResult.SecretKey || result.SignedOutDeviceCount != 1 || result.KeychainError != "" {
 			t.Fatalf("result: %+v", result)
 		}
-		kit, err := ExportNewSecretKeyEmergencyKitToDirectory(mac, t.TempDir())
+		kit, err := ExportNewSecretKeyEmergencyKitToDirectory(mac, result, t.TempDir())
 		if err != nil || kit.SecretKey != newSecretKey {
 			t.Errorf("new Emergency Kit: %q %v", kit.SecretKey, err)
 		} else if document, err := os.ReadFile(kit.Path); err != nil || !strings.HasPrefix(string(document), "%PDF-") {
@@ -138,7 +138,7 @@ func TestIntegrationAccountLifecycle(t *testing.T) {
 		if _, err := mac.Unlock(newPassword); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := ExportNewSecretKeyEmergencyKitToDirectory(mac, t.TempDir()); err == nil {
+		if _, err := ExportNewSecretKeyEmergencyKitToDirectory(mac, result, t.TempDir()); err == nil {
 			t.Error("the new Secret Key stayed in memory after locking")
 		}
 	})
