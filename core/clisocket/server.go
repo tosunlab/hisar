@@ -62,7 +62,6 @@ type ServerConfig struct {
 type Server struct {
 	config           ServerConfig
 	lastConnectionID atomic.Uint64
-	agentSessions    agentSessionWatch
 }
 
 // connectionKind is what a connection said it is; the request types of its namespace are the only ones it may send.
@@ -89,9 +88,9 @@ func getConnectionKind(requestType string) connectionKind {
 
 // connectionPeer is one connection. Its scope is fixed when it connects, but for an app that becomes an agent host
 // later (applyAgentHost); its kind changes once, on agent.hello or launcher.hello, and agent is what an agent connection
-// said about itself. agentSession is the harness the caller runs inside when its scope is an agent session; isAgentHost
-// is a caller outside any harness in an app that hosted one; isChainUnknown is a caller whose process chain could not
-// be read, so nobody knows whether a harness runs in it.
+// said about itself. agentSession is the harness the caller runs inside when its scope is an agent session, and
+// agentHost the app that harness runs in; isAgentHost is a caller outside any harness in an app that hosted one;
+// isChainUnknown is a caller whose process chain could not be read, so nobody knows whether a harness runs in it.
 type connectionPeer struct {
 	peer           Peer
 	session        TerminalSession
@@ -100,6 +99,7 @@ type connectionPeer struct {
 	kind           connectionKind
 	agent          AgentIdentity
 	agentSession   agentharness.Session
+	agentHost      AppIdentity
 	isAgentHost    bool
 	isChainUnknown bool
 }
@@ -120,7 +120,7 @@ func NewServer(config ServerConfig) *Server {
 	if config.AgentHosts == nil {
 		config.AgentHosts = &memoryAgentHosts{apps: map[AppIdentity]bool{}}
 	}
-	return &Server{config: config, agentSessions: agentSessionWatch{contextsByKey: map[agentSessionKey]context.Context{}}}
+	return &Server{config: config}
 }
 
 func (s *Server) ClearApprovals() {
@@ -182,6 +182,9 @@ func (s *Server) identifyPeer(connection net.Conn, connectionID uint64) (connect
 		s.recordAgentHost(app)
 	}
 	client := connectionPeer{peer: peer, session: session, connectionID: connectionID, agentSession: agent.session, isChainUnknown: agent.isUnknown}
+	if agent.isInside {
+		client.agentHost = app
+	}
 	if app.Path != "" && s.config.AgentHosts.IsAgentHost(app) {
 		client.isAgentHost, app = !agent.isInside, AppIdentity{}
 	}
@@ -201,7 +204,7 @@ func (s *Server) ServeConnection(ctx context.Context, connection net.Conn) {
 	}
 	defer s.config.Approvals.forgetConnection(client.connectionID)
 	if client.isInAgentSession() {
-		stopEndingWithSession := context.AfterFunc(s.joinAgentSession(ctx, client.agentSession), cancel)
+		stopEndingWithSession := context.AfterFunc(s.joinAgentSession(ctx, &client), cancel)
 		defer stopEndingWithSession()
 		connectionContext = context.WithValue(connectionContext, agentSessionContextKey{}, client.agentSession)
 	}

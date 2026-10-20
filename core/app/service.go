@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cache"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/itemicon"
@@ -49,6 +50,8 @@ type Service struct {
 	websiteIcons                 websiteIcons
 	defaultWebsiteIconFetcher    WebsiteIconFetcher
 	serverTransport              http.RoundTripper
+	// commandLineApprovals are the CLI socket's approvals, set by NewCommandLineBridge; nil where Hisar has no socket.
+	commandLineApprovals *clisocket.SessionApprovals
 }
 
 // getCache opens the offline cache on first use; if it cannot be opened, even after starting it over, Hisar stays online-only.

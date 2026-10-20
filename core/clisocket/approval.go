@@ -101,9 +101,10 @@ type SessionApprovals struct {
 	launchers     scopeApprovals
 	agentsByScope map[approvalScope]*agentState
 	// liveAgentSessions are the agent sessions whose harness runs; an agent session's grants are kept only while it does.
-	liveAgentSessions map[agentSessionKey]bool
-	// agentHosts are the apps revokeApp ended; an app approval for one of them is never recorded again, and a dialog
-	// answered after revokeApp is denied. ClearAll keeps them: they are no approval.
+	liveAgentSessions     map[agentSessionKey]*liveAgentSession
+	onAgentSessionsChange func()
+	// agentHosts are the apps revokeApp ended, until ForgetAgentHost; an app approval for one of them is never recorded
+	// again, and a dialog answered after revokeApp is denied. ClearAll keeps them: they are no approval.
 	agentHosts map[AppIdentity]bool
 	generation int
 }
@@ -121,7 +122,7 @@ func NewSessionApprovals(lifetime time.Duration, now func() time.Time) *SessionA
 		commandLine:       newScopeApprovals(lifetime),
 		launchers:         newScopeApprovals(0),
 		agentsByScope:     map[approvalScope]*agentState{},
-		liveAgentSessions: map[agentSessionKey]bool{},
+		liveAgentSessions: map[agentSessionKey]*liveAgentSession{},
 		agentHosts:        map[AppIdentity]bool{},
 	}
 }
@@ -216,11 +217,12 @@ func (approvals *SessionApprovals) isOutdated(scope approvalScope, generation in
 // in progress is denied too.
 func (approvals *SessionApprovals) ClearAll() {
 	approvals.mutex.Lock()
-	defer approvals.mutex.Unlock()
 	clear(approvals.commandLine.lastUsedByScope)
 	clear(approvals.launchers.lastUsedByScope)
 	clear(approvals.agentsByScope)
 	approvals.generation++
+	approvals.mutex.Unlock()
+	approvals.notifyAgentSessions()
 }
 
 // revokeApp ends the command-line and launcher approvals of the app's path once the app hosted an agent session, and
@@ -231,6 +233,13 @@ func (approvals *SessionApprovals) revokeApp(app AppIdentity) {
 	approvals.commandLine.revokeAppPath(app.Path)
 	approvals.launchers.revokeAppPath(app.Path)
 	approvals.agentHosts[app] = true
+}
+
+// ForgetAgentHost lets the app's approvals be recorded again, once Settings forgot that the app hosted an agent session.
+func (approvals *SessionApprovals) ForgetAgentHost(app AppIdentity) {
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	delete(approvals.agentHosts, app)
 }
 
 // forgetConnection drops what only the closed connection could use: the agent state of a connection outside a harness

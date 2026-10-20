@@ -1,9 +1,12 @@
 package clisocket
 
 import (
+	"cmp"
 	"context"
 	"log"
+	"slices"
 	"sync"
+	"time"
 
 	"github.com/tryhisar/hisar/core/agentharness"
 )
@@ -33,35 +36,130 @@ func GetAgentSession(ctx context.Context) (agentharness.Session, bool) {
 	return session, isFound
 }
 
-// agentSessionWatch watches the harness of every agent session a connection came from. When the harness exits, the
-// session's approval and remembered secrets end, its dialogs still open are cancelled and its connections close.
-type agentSessionWatch struct {
-	mutex         sync.Mutex
-	contextsByKey map[agentSessionKey]context.Context
+// AgentSession is a live agent session as Settings lists it: the harness process, the app it runs in (zero when none
+// was verified), when its first request reached Hisar, and the secrets it remembers.
+type AgentSession struct {
+	Session           agentharness.Session
+	Host              AppIdentity
+	FirstRequestAt    time.Time
+	RememberedSecrets []RememberedAgentSecret
 }
 
-// joinAgentSession returns a context that ends when the session's harness exits, watching the harness from the
-// session's first connection until it exits or serverContext ends.
-func (s *Server) joinAgentSession(serverContext context.Context, session agentharness.Session) context.Context {
-	watch := &s.agentSessions
-	key := getAgentSessionKey(session)
-	watch.mutex.Lock()
-	defer watch.mutex.Unlock()
-	if sessionContext, isWatched := watch.contextsByKey[key]; isWatched {
-		return sessionContext
+// RememberedAgentSecret is a secret an agent may use (Kind run or code) or read (reveal) without asking until ExpiresAt.
+type RememberedAgentSecret struct {
+	Secret    AgentSecret
+	Kind      string
+	ExpiresAt time.Time
+}
+
+// liveAgentSession is an agent session whose harness runs. Its context ends when the harness exits, when Settings
+// revokes the session, or when the server stops; that cancels its open dialogs and closes its connections.
+type liveAgentSession struct {
+	session        agentharness.Session
+	host           AppIdentity
+	firstRequestAt time.Time
+	context        context.Context
+	end            context.CancelFunc
+}
+
+// joinAgentSession returns the context of the client's agent session, and watches the harness from the session's first
+// connection until the session ends.
+func (s *Server) joinAgentSession(serverContext context.Context, client *connectionPeer) context.Context {
+	live, isStarted := s.config.Approvals.joinAgentSession(serverContext, client.agentSession, client.agentHost)
+	if isStarted {
+		go func() {
+			agentharness.WaitForExit(live.context, live.session)
+			s.config.Approvals.endAgentSession(live)
+		}()
 	}
-	sessionContext, end := context.WithCancel(context.WithoutCancel(serverContext))
-	watch.contextsByKey[key] = sessionContext
-	s.config.Approvals.startAgentSession(key)
-	go func() {
-		agentharness.WaitForExit(serverContext, session)
-		watch.mutex.Lock()
-		delete(watch.contextsByKey, key)
-		watch.mutex.Unlock()
-		s.config.Approvals.endAgentSession(key)
-		end()
-	}()
-	return sessionContext
+	return live.context
+}
+
+func (approvals *SessionApprovals) joinAgentSession(serverContext context.Context, session agentharness.Session, host AppIdentity) (*liveAgentSession, bool) {
+	key := getAgentSessionKey(session)
+	approvals.mutex.Lock()
+	if live, isLive := approvals.liveAgentSessions[key]; isLive {
+		approvals.mutex.Unlock()
+		return live, false
+	}
+	live := &liveAgentSession{session: session, host: host, firstRequestAt: approvals.now()}
+	live.context, live.end = context.WithCancel(serverContext)
+	approvals.liveAgentSessions[key] = live
+	approvals.mutex.Unlock()
+	approvals.notifyAgentSessions()
+	return live, true
+}
+
+// endAgentSession drops the session's approval and remembered secrets and ends its context, unless it already ended.
+func (approvals *SessionApprovals) endAgentSession(live *liveAgentSession) {
+	key := getAgentSessionKey(live.session)
+	approvals.mutex.Lock()
+	isCurrent := approvals.liveAgentSessions[key] == live
+	if isCurrent {
+		delete(approvals.liveAgentSessions, key)
+		delete(approvals.agentsByScope, approvalScope{agentSession: key})
+	}
+	approvals.mutex.Unlock()
+	live.end()
+	if isCurrent {
+		approvals.notifyAgentSessions()
+	}
+}
+
+// RevokeAgentSession ends the agent session of the harness process instance as if it had exited: its approval and
+// remembered secrets end, its open dialogs are cancelled and its connections close. The harness's next request starts
+// a new session that asks again.
+func (approvals *SessionApprovals) RevokeAgentSession(pid int, startTime int64) {
+	approvals.mutex.Lock()
+	live, isLive := approvals.liveAgentSessions[agentSessionKey{pid: pid, startTime: startTime}]
+	approvals.mutex.Unlock()
+	if isLive {
+		approvals.endAgentSession(live)
+	}
+}
+
+// ListAgentSessions lists the live agent sessions in the order their first requests came, with the secrets each
+// remembers now.
+func (approvals *SessionApprovals) ListAgentSessions() []AgentSession {
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	now := approvals.now()
+	sessions := make([]AgentSession, 0, len(approvals.liveAgentSessions))
+	for key, live := range approvals.liveAgentSessions {
+		listed := AgentSession{Session: live.session, Host: live.host, FirstRequestAt: live.firstRequestAt, RememberedSecrets: []RememberedAgentSecret{}}
+		if agent, isFound := approvals.agentsByScope[approvalScope{agentSession: key}]; isFound {
+			for _, grant := range agent.grantsByKey {
+				if now.Before(grant.ExpiresAt) {
+					listed.RememberedSecrets = append(listed.RememberedSecrets, grant)
+				}
+			}
+		}
+		slices.SortFunc(listed.RememberedSecrets, func(first, second RememberedAgentSecret) int {
+			return cmp.Or(cmp.Compare(first.Secret.Describe(), second.Secret.Describe()), cmp.Compare(first.Kind, second.Kind))
+		})
+		sessions = append(sessions, listed)
+	}
+	slices.SortFunc(sessions, func(first, second AgentSession) int {
+		return cmp.Or(first.FirstRequestAt.Compare(second.FirstRequestAt), cmp.Compare(first.Session.PID, second.Session.PID))
+	})
+	return sessions
+}
+
+// WatchAgentSessions calls listener, outside the approvals' lock, whenever ListAgentSessions may answer differently: a
+// session started or ended, it remembered secrets, or Hisar locked.
+func (approvals *SessionApprovals) WatchAgentSessions(listener func()) {
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	approvals.onAgentSessionsChange = listener
+}
+
+func (approvals *SessionApprovals) notifyAgentSessions() {
+	approvals.mutex.Lock()
+	listener := approvals.onAgentSessionsChange
+	approvals.mutex.Unlock()
+	if listener != nil {
+		listener()
+	}
 }
 
 // AgentHosts remembers the apps that hosted an agent session. Their callers without a terminal and without a harness

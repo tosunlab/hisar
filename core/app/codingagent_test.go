@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -56,16 +57,18 @@ func (resolver insideOmpResolver) GetAgentSession(int) (agentharness.Session, bo
 	return resolver.session, true, nil
 }
 
+// approvingAgentApprover approves every agent request, remembering its secrets when isRemembered.
 type approvingAgentApprover struct {
-	mutex    sync.Mutex
-	requests []clisocket.AgentApprovalRequest
+	mutex        sync.Mutex
+	requests     []clisocket.AgentApprovalRequest
+	isRemembered bool
 }
 
 func (approver *approvingAgentApprover) ApproveAgent(_ context.Context, request clisocket.AgentApprovalRequest) (clisocket.AgentApprovalResult, error) {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	approver.requests = append(approver.requests, request)
-	return clisocket.AgentApprovalResult{}, nil
+	return clisocket.AgentApprovalResult{IsRemembered: approver.isRemembered}, nil
 }
 
 func (approver *approvingAgentApprover) getCount() int {
@@ -166,5 +169,190 @@ func TestAgentHostsAreSavedInDesktopState(t *testing.T) {
 	state, err := localstate.Load(testService.service.config.StatePath)
 	if err != nil || !slices.Equal(state.AgentHosts, []localstate.AgentHost{{Path: tern.Path, TeamID: tern.TeamID}}) {
 		t.Errorf("saved %+v, %v", state.AgentHosts, err)
+	}
+}
+
+var ternApp = clisocket.AppIdentity{Path: "/Applications/Tern.app", TeamID: "VTLHGQC72S"}
+
+// ternResolver places every caller in Tern without a terminal, inside omp while isInsideOmp.
+type ternResolver struct {
+	staticPeerResolver
+	mutex       sync.Mutex
+	omp         agentharness.Session
+	isInsideOmp bool
+}
+
+func (*ternResolver) GetTerminalSession(int) (clisocket.TerminalSession, error) {
+	return clisocket.TerminalSession{SessionID: 4200}, nil
+}
+
+func (resolver *ternResolver) GetAgentSession(int) (agentharness.Session, bool, error) {
+	resolver.mutex.Lock()
+	defer resolver.mutex.Unlock()
+	if !resolver.isInsideOmp {
+		return agentharness.Session{}, false, nil
+	}
+	return resolver.omp, true, nil
+}
+
+func (resolver *ternResolver) setInsideOmp(isInsideOmp bool) {
+	resolver.mutex.Lock()
+	defer resolver.mutex.Unlock()
+	resolver.isInsideOmp = isInsideOmp
+}
+
+// agentSessionTest is the app's CLI socket for callers in Tern, inside an omp that is this test process, so it keeps
+// running. Personal holds "Deploy token" and is available to agents.
+type agentSessionTest struct {
+	testService         unlockedTestService
+	server              *clisocket.Server
+	resolver            *ternResolver
+	agentApprover       *approvingAgentApprover
+	commandLineApprover *countingApprover
+}
+
+const deployTokenReference = "hisar://Personal/Deploy%20token/password"
+
+func createAgentSessionTest(t *testing.T, isRemembered bool) *agentSessionTest {
+	t.Helper()
+	testService := createUnlockedTestService(t)
+	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Title: "Deploy token", Password: "deploy-token-value"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testService.service.SetVaultAvailableToAgents(testService.personalID, true); err != nil {
+		t.Fatal(err)
+	}
+	instance, err := agentharness.ReadInstance(os.Getpid())
+	if err != nil {
+		t.Fatal(err)
+	}
+	omp := agentharness.Session{
+		Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: os.Getpid(), StartTime: instance.StartTime,
+		Directory: "/Users/alice/src/hisarapp-core", IsSigned: true,
+	}
+	test := &agentSessionTest{
+		testService: testService, resolver: &ternResolver{omp: omp, isInsideOmp: true},
+		agentApprover: &approvingAgentApprover{isRemembered: isRemembered}, commandLineApprover: &countingApprover{},
+	}
+	approvals := clisocket.NewSessionApprovals(0, nil)
+	bridge := NewCommandLineBridge(testService.service, approvals)
+	test.server = clisocket.NewServer(clisocket.ServerConfig{
+		Handler: bridge, Approver: test.commandLineApprover, AgentApprover: test.agentApprover, Approvals: approvals, AgentHosts: bridge,
+		PeerResolver: test.resolver, IdentifyApp: func(int) (clisocket.AppIdentity, bool) { return ternApp, true },
+	})
+	return test
+}
+
+func (test *agentSessionTest) connect(t *testing.T) *commandLineTest {
+	t.Helper()
+	serverSide, clientSide := net.Pipe()
+	go test.server.ServeConnection(context.Background(), serverSide)
+	t.Cleanup(func() { clientSide.Close() })
+	return &commandLineTest{connection: clientSide}
+}
+
+func (test *agentSessionTest) runDeploy(t *testing.T, connection *commandLineTest) {
+	t.Helper()
+	var values cliprotocol.ResolveSecretResult
+	connection.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{deployTokenReference}, CommandLine: []string{"make", "deploy"}}, &values)
+	if !slices.Equal(values.Values, []string{"deploy-token-value"}) {
+		t.Fatalf("values %q", values.Values)
+	}
+}
+
+func TestListAgentSessionsShowsRememberedSecrets(t *testing.T) {
+	test := createAgentSessionTest(t, true)
+	service := test.testService.service
+	if sessions := service.ListAgentSessions(); len(sessions) != 0 {
+		t.Fatalf("sessions before any request: %+v", sessions)
+	}
+	approvedAt := time.Now()
+	test.runDeploy(t, test.connect(t))
+
+	sessions := service.ListAgentSessions()
+	if len(sessions) != 1 {
+		t.Fatalf("sessions %+v", sessions)
+	}
+	omp := test.resolver.omp
+	listed := sessions[0]
+	if listed.PID != omp.PID || listed.StartTime != omp.StartTime || listed.HarnessName != "omp" || !listed.IsSigned || listed.HostName != "Tern" ||
+		listed.ProjectName != "hisarapp-core" || listed.ProjectPath != "/Users/alice/src/hisarapp-core" {
+		t.Errorf("session %+v", listed)
+	}
+	if firstRequestAt, err := time.Parse(time.RFC3339, listed.FirstRequestAt); err != nil || firstRequestAt.Before(approvedAt.Truncate(time.Second)) {
+		t.Errorf("first request at %q, %v", listed.FirstRequestAt, err)
+	}
+	if len(listed.RememberedSecrets) != 1 || listed.RememberedSecrets[0].Name != "Personal › Deploy token › password" || listed.RememberedSecrets[0].IsReveal {
+		t.Fatalf("remembered %+v", listed.RememberedSecrets)
+	}
+	if expiresAt, err := time.Parse(time.RFC3339, listed.RememberedSecrets[0].ExpiresAt); err != nil || expiresAt.Sub(approvedAt) < 59*time.Minute {
+		t.Errorf("expires at %q, %v", listed.RememberedSecrets[0].ExpiresAt, err)
+	}
+
+	service.Lock()
+	if sessions := service.ListAgentSessions(); len(sessions) != 1 || len(sessions[0].RememberedSecrets) != 0 {
+		t.Errorf("after lock: %+v", sessions)
+	}
+}
+
+func TestRevokeAgentSessionAsksAgain(t *testing.T) {
+	test := createAgentSessionTest(t, true)
+	service := test.testService.service
+	revoked := test.connect(t)
+	test.runDeploy(t, revoked)
+	test.runDeploy(t, revoked)
+	if count := test.agentApprover.getCount(); count != 1 {
+		t.Fatalf("the remembered secret asked again: %d approvals", count)
+	}
+
+	omp := test.resolver.omp
+	if left := service.RevokeAgentSession(omp.PID, omp.StartTime); len(left) != 0 {
+		t.Errorf("sessions after revoking: %+v", left)
+	}
+	revoked.connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := revoked.connection.Read(make([]byte, 1)); err == nil {
+		t.Error("the revoked session's connection stayed open")
+	}
+	test.runDeploy(t, test.connect(t))
+	if count := test.agentApprover.getCount(); count != 2 {
+		t.Errorf("after revoking, %d approvals; want a second one", count)
+	}
+	if sessions := service.ListAgentSessions(); len(sessions) != 1 || sessions[0].PID != omp.PID {
+		t.Errorf("the next request did not start a session: %+v", sessions)
+	}
+}
+
+func TestForgetAgentHostRestoresAppScope(t *testing.T) {
+	test := createAgentSessionTest(t, false)
+	service := test.testService.service
+	test.connect(t).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}, nil)
+	if hosts := service.ListAgentHosts(); !slices.Equal(hosts, []AgentHost{{Path: ternApp.Path, TeamID: ternApp.TeamID, Name: "Tern"}}) {
+		t.Fatalf("hosts %+v", hosts)
+	}
+
+	test.resolver.setInsideOmp(false)
+	for range 2 {
+		test.connect(t).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}, nil)
+	}
+	if count := test.commandLineApprover.getCount(); count != 2 {
+		t.Fatalf("an agent host's callers: %d approvals; want one per connection", count)
+	}
+
+	if hosts, err := service.ForgetAgentHost(ternApp.Path, ternApp.TeamID); err != nil || len(hosts) != 0 {
+		t.Fatalf("forget: %+v, %v", hosts, err)
+	}
+	for range 2 {
+		test.connect(t).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}, nil)
+	}
+	if count := test.commandLineApprover.getCount(); count != 3 {
+		t.Errorf("after forgetting Tern: %d approvals; want one for the app", count-2)
+	}
+	if state, err := localstate.Load(service.config.StatePath); err != nil || len(state.AgentHosts) != 0 {
+		t.Errorf("saved %+v, %v", state.AgentHosts, err)
+	}
+
+	service.Lock()
+	if _, err := service.ForgetAgentHost(ternApp.Path, ternApp.TeamID); !errors.Is(err, ErrLocked) {
+		t.Errorf("forget while locked: %v", err)
 	}
 }

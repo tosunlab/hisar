@@ -557,7 +557,7 @@ func TestHarnessExitDropsGrantsAndClosesConnections(t *testing.T) {
 	waitFor(t, "the session's approval ends", func() bool { return !fixture.approvals.isAgentApproved(scope) })
 	fixture.approvals.mutex.Lock()
 	_, hasState := fixture.approvals.agentsByScope[scope]
-	isLive := fixture.approvals.liveAgentSessions[scope.agentSession]
+	_, isLive := fixture.approvals.liveAgentSessions[scope.agentSession]
 	fixture.approvals.mutex.Unlock()
 	if hasState || isLive {
 		t.Errorf("the session outlived omp: state %v, live %v", hasState, isLive)
@@ -598,4 +598,29 @@ func TestApprovalCompletedAfterHarnessExitIsRefused(t *testing.T) {
 	if fixture.agentHandler.types != nil {
 		t.Errorf("handled %q for an exited omp", fixture.agentHandler.types)
 	}
+}
+
+// TestAgentSessionListFollowsTheHarness: the list and its listener follow a session from its first request through a
+// remembered secret to its harness's exit.
+func TestAgentSessionListFollowsTheHarness(t *testing.T) {
+	fixture := createAgentFixture(t)
+	fixture.agentHandler.resultBy[cliprotocol.TypeResolveSecret] = cliprotocol.ResolveSecretResult{Values: []string{"value"}}
+	var announcementCount atomic.Int32
+	fixture.approvals.WatchAgentSessions(func() { announcementCount.Add(1) })
+	harness, stop := startHarness(t)
+	fixture.agentApprover.set(nil, true)
+
+	fixture.connectInside(t, harness, false).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}, CommandLine: []string{"true"}})
+	sessions := fixture.approvals.ListAgentSessions()
+	if len(sessions) != 1 || sessions[0].Session.PID != harness.PID || sessions[0].Session.Directory != "/Users/alice/src/app" || len(sessions[0].RememberedSecrets) != 1 ||
+		sessions[0].RememberedSecrets[0].Secret.Describe() != "Work › Stripe › api key" || sessions[0].RememberedSecrets[0].Kind != AgentRequestRun {
+		t.Fatalf("sessions %+v", sessions)
+	}
+	if count := announcementCount.Load(); count != 2 {
+		t.Errorf("%d announcements for the start and the remembered secret", count)
+	}
+
+	stop()
+	waitFor(t, "the session leaves the list", func() bool { return len(fixture.approvals.ListAgentSessions()) == 0 })
+	waitFor(t, "the exit is announced", func() bool { return announcementCount.Load() == 3 })
 }

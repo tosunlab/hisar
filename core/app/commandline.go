@@ -18,10 +18,12 @@ type CommandLineBridge struct {
 	service *Service
 }
 
-// NewCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out.
+// NewCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out, and lets the Service list and
+// revoke the agent sessions they keep.
 func NewCommandLineBridge(service *Service, approvals *clisocket.SessionApprovals) *CommandLineBridge {
 	service.mutex.Lock()
 	service.lockListeners = append(service.lockListeners, approvals.ClearAll)
+	service.commandLineApprovals = approvals
 	service.mutex.Unlock()
 	return &CommandLineBridge{service: service}
 }

@@ -89,18 +89,18 @@ type AgentSecretLocator interface {
 }
 
 // agentState is an agent's approval and remembered secrets, kept per agent session, or per connection for an agent
-// outside a harness.
+// outside a harness. grantsByKey is keyed by AgentSecret.getGrantKey.
 type agentState struct {
-	isApproved         bool
-	lastRequestAt      time.Time
-	grantExpiriesByKey map[string]time.Time
+	isApproved    bool
+	lastRequestAt time.Time
+	grantsByKey   map[string]RememberedAgentSecret
 }
 
 // getAgent needs approvals.mutex.
 func (approvals *SessionApprovals) getAgent(scope approvalScope) *agentState {
 	agent, isFound := approvals.agentsByScope[scope]
 	if !isFound {
-		agent = &agentState{grantExpiriesByKey: map[string]time.Time{}}
+		agent = &agentState{grantsByKey: map[string]RememberedAgentSecret{}}
 		approvals.agentsByScope[scope] = agent
 	}
 	return agent
@@ -133,54 +133,46 @@ func (approvals *SessionApprovals) getGeneration() int {
 	return approvals.generation
 }
 
-// approveAgent records an approval unless Hisar locked while the dialog was open. It returns false when the agent
-// session ended while the dialog was open: its harness exited, so the request fails.
-func (approvals *SessionApprovals) approveAgent(scope approvalScope, generation int, grantKeys []string) bool {
+// approveAgent records an approval, and remembers the secrets, unless Hisar locked while the dialog was open. It
+// returns false when the agent session ended while the dialog was open: its harness exited, so the request fails.
+func (approvals *SessionApprovals) approveAgent(scope approvalScope, generation int, kind string, rememberedSecrets []AgentSecret) bool {
 	approvals.mutex.Lock()
-	defer approvals.mutex.Unlock()
-	if scope.agentSession != (agentSessionKey{}) && !approvals.liveAgentSessions[scope.agentSession] {
+	isSession := scope.agentSession != (agentSessionKey{})
+	if _, isLive := approvals.liveAgentSessions[scope.agentSession]; isSession && !isLive {
+		approvals.mutex.Unlock()
 		return false
 	}
 	if generation != approvals.generation {
+		approvals.mutex.Unlock()
 		return true
 	}
 	agent := approvals.getAgent(scope)
 	now := approvals.now()
 	agent.isApproved, agent.lastRequestAt = true, now
-	for _, key := range grantKeys {
-		agent.grantExpiriesByKey[key] = now.Add(AgentGrantLifetime)
+	for _, secret := range rememberedSecrets {
+		agent.grantsByKey[secret.getGrantKey(kind)] = RememberedAgentSecret{Secret: secret, Kind: kind, ExpiresAt: now.Add(AgentGrantLifetime)}
+	}
+	approvals.mutex.Unlock()
+	if isSession && len(rememberedSecrets) > 0 {
+		approvals.notifyAgentSessions()
 	}
 	return true
 }
 
-func (approvals *SessionApprovals) isAgentGranted(scope approvalScope, grantKeys []string) bool {
+func (approvals *SessionApprovals) isAgentGranted(scope approvalScope, kind string, secrets []AgentSecret) bool {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
 	agent := approvals.getAgent(scope)
 	now := approvals.now()
-	for _, key := range grantKeys {
-		expiresAt, isFound := agent.grantExpiriesByKey[key]
-		if !isFound || !now.Before(expiresAt) {
-			delete(agent.grantExpiriesByKey, key)
+	for _, secret := range secrets {
+		key := secret.getGrantKey(kind)
+		grant, isFound := agent.grantsByKey[key]
+		if !isFound || !now.Before(grant.ExpiresAt) {
+			delete(agent.grantsByKey, key)
 			return false
 		}
 	}
-	return len(grantKeys) > 0
-}
-
-// startAgentSession marks the session's harness as running, so approvals for it are recorded.
-func (approvals *SessionApprovals) startAgentSession(key agentSessionKey) {
-	approvals.mutex.Lock()
-	defer approvals.mutex.Unlock()
-	approvals.liveAgentSessions[key] = true
-}
-
-// endAgentSession drops the session's approval and remembered secrets when its harness exits.
-func (approvals *SessionApprovals) endAgentSession(key agentSessionKey) {
-	approvals.mutex.Lock()
-	defer approvals.mutex.Unlock()
-	delete(approvals.liveAgentSessions, key)
-	delete(approvals.agentsByScope, approvalScope{agentSession: key})
+	return len(secrets) > 0
 }
 
 func getAgentRequestKind(requestType string) (string, bool) {
@@ -289,7 +281,7 @@ func (s *Server) answerWithAgentRules(ctx context.Context, client *connectionPee
 	if err != nil {
 		return nil, err
 	}
-	if !isLocked && client.isHarnessRunning() && approvals.refreshAgent(scope) && approvals.isAgentGranted(scope, buildGrantKeys(kind, secrets)) {
+	if !isLocked && client.isHarnessRunning() && approvals.refreshAgent(scope) && approvals.isAgentGranted(scope, kind, secrets) {
 		return s.config.Handler.HandleRequest(ctx, request)
 	}
 	locateAfterUnlock := func() ([]AgentSecret, error) {
@@ -314,26 +306,16 @@ func (s *Server) askAndApproveAgent(ctx context.Context, client *connectionPeer,
 	if err != nil {
 		return err
 	}
-	var grantKeys []string
+	var rememberedSecrets []AgentSecret
 	if result.IsRemembered && locateRemembered != nil {
-		rememberedSecrets, err := locateRemembered()
-		if err != nil {
+		if rememberedSecrets, err = locateRemembered(); err != nil {
 			return err
 		}
-		grantKeys = buildGrantKeys(kind, rememberedSecrets)
 	}
-	if !client.isHarnessRunning() || !approvals.approveAgent(client.getAgentScope(), generation, grantKeys) {
+	if !client.isHarnessRunning() || !approvals.approveAgent(client.getAgentScope(), generation, kind, rememberedSecrets) {
 		return convertDenial(ErrDenied)
 	}
 	return nil
-}
-
-func buildGrantKeys(kind string, secrets []AgentSecret) []string {
-	keys := make([]string, 0, len(secrets))
-	for _, secret := range secrets {
-		keys = append(keys, secret.getGrantKey(kind))
-	}
-	return keys
 }
 
 // askAgentApproval names the secrets as found, or as the references are written while Hisar is locked.
