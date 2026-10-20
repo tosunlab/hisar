@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"syscall"
@@ -169,15 +168,25 @@ func finishNewExportFile(path string, content []byte, file durableExportWriter) 
 }
 
 func finishExportFile(path string, file durableExportWriter, write func() error) error {
-	owned, err := file.Stat()
-	if err == nil {
-		err = write()
-	}
+	err := write()
 	if err == nil {
 		err = file.Sync()
 	}
+	// FAT and exFAT may assign a different inode when the first write allocates a cluster.
+	owned, statErr := file.Stat()
+	if err == nil {
+		err = statErr
+	}
 	if closeErr := file.Close(); err == nil {
 		err = closeErr
+	}
+	if err == nil {
+		current, statErr := os.Lstat(path)
+		if statErr != nil {
+			err = statErr
+		} else if !os.SameFile(owned, current) {
+			err = errExportFileExists
+		}
 	}
 	if err != nil {
 		removeOwnedExportFile(path, owned)
@@ -244,12 +253,7 @@ func (s *Service) saveSessionFile(path string, content []byte, epoch uint64, pub
 		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	temporaryPath := temporaryFile.Name()
-	owned, err := temporaryFile.Stat()
-	if err != nil {
-		temporaryFile.Close()
-		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
-	}
-	defer removeOwnedExportFile(temporaryPath, owned)
+	defer os.Remove(temporaryPath)
 	if err := finishNewExportFile(temporaryPath, content, temporaryFile); err != nil {
 		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
@@ -269,47 +273,27 @@ func (s *Service) saveSessionFile(path string, content []byte, epoch uint64, pub
 
 // saveNewFile publishes without replacing a destination, even if another writer creates it during the save.
 func (s *Service) saveNewFile(path string, content []byte, epoch uint64) error {
-	return s.saveSessionFile(path, content, epoch, publishNewExportFile)
+	return s.saveSessionFile(path, content, epoch, func(temporaryPath, path string) error {
+		return publishNewExportFile(temporaryPath, path, content, os.Link)
+	})
 }
 
-func publishNewExportFile(temporaryPath, path string) error {
-	err := os.Link(temporaryPath, path)
+func publishNewExportFile(temporaryPath, path string, content []byte, link func(string, string) error) error {
+	err := link(temporaryPath, path)
 	if err == nil {
 		return nil
 	}
-	if !errors.Is(err, syscall.EPERM) && !errors.Is(err, syscall.ENOTSUP) && !errors.Is(err, syscall.EXDEV) {
+	if !errors.Is(err, syscall.EPERM) && !errors.Is(err, errors.ErrUnsupported) && !errors.Is(err, syscall.EXDEV) {
 		return err
 	}
-	// FAT and exFAT cannot link. Keep the session mutex through the copy, sync and close so lock cannot
-	// precede publication. Unlike a link, this fallback holds the mutex for the full file copy.
-	source, err := os.Open(temporaryPath)
-	if err != nil {
+	// The encoded bytes are still in memory. Free the temporary file before writing the destination
+	// so filesystems without hard links need space for only one copy.
+	if err := os.Remove(temporaryPath); err != nil {
 		return err
 	}
-	defer source.Close()
-	return copyNewExportFile(path, source)
-}
-
-func copyNewExportFile(path string, source io.Reader) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
 		return err
 	}
-	return finishExportFile(path, file, func() error {
-		if _, err := io.Copy(file, source); err != nil {
-			return err
-		}
-		owned, err := file.Stat()
-		if err != nil {
-			return err
-		}
-		current, err := os.Lstat(path)
-		if err != nil {
-			return err
-		}
-		if !os.SameFile(owned, current) {
-			return errExportFileExists
-		}
-		return nil
-	})
+	return finishNewExportFile(path, content, file)
 }
