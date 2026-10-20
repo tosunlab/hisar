@@ -145,17 +145,21 @@ command with them for that hour. A value from `get_secret` is in the agent's tra
 
 ### omp and Tern
 
-Hisar comes with a plugin for omp, the coding agent that also runs in Tern's panes. With it, omp runs commands with your secrets
-through `hisar run` without seeing them, and its status line shows whether Hisar is locked.
+Hisar comes with a plugin for omp, the coding agent that also runs in Tern's panes. Connecting it gives omp both the plugin and
+Hisar's MCP server as `hisar mcp --no-reveal`, so omp runs commands with your secrets without seeing them, and its status line
+shows whether Hisar is locked.
 
 1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults omp may use, as for
    `hisar mcp` above.
 2. On the omp card in the same section, click **Connect**. Hisar finds omp on your PATH, in `~/bin`, in Tern
    (`~/Library/Application Support/Tern/omp/bin`) or in `~/.bun/bin`, and runs `omp plugin link` with the plugin inside Hisar.app.
-   New omp sessions load Hisar; restart the ones already running. **Disconnect** runs `omp plugin uninstall @tryhisar/omp-plugin`.
+   The plugin starts the MCP server with the `hisar` inside Hisar.app. New omp sessions load Hisar; restart the ones already
+   running. **Disconnect** runs `omp plugin uninstall @tryhisar/omp-plugin`, which removes the MCP server too.
    On Linux, link the plugin from a checkout of this repository: `omp plugin link <checkout>/omp`.
-3. Start omp. Its status line says "Hisar locked" or "Hisar unlocked", `/hisar` shows Hisar's state, and the agent learns to put
-   `hisar://` references in a `.env` and run `hisar run --env-file .env -- <command>`.
+3. Start omp. Its status line says "Hisar locked" or "Hisar unlocked", and `/hisar` shows Hisar's state. The agent gets
+   `list_vaults`, `search_items` and `run_with_secrets`, never `get_secret` or `get_one_time_code`. omp shows nothing of a
+   `run_with_secrets` command's output until it ends, so for a long command, one that asks for input or one that needs the shell's
+   environment, the agent runs `hisar run --env-file .env -- <command>` in its shell instead.
 
 Every `hisar` command omp runs, in its shell or as `hisar mcp`, gets the coding-agent rules
 ([docs/DESIGN.md](docs/DESIGN.md) §9.4.4): it sees only the vaults available to agents, `hisar run` asks once per secret for each omp
