@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -159,14 +161,32 @@ func main() {
 			return agent.GetSSHRememberDuration(approvalPreference.GetSSHRememberSeconds())
 		},
 	})
-	peerResolver := agent.ApplicationPeerResolver{
-		Base: localsocket.SystemPeerResolver{},
-		FindApplicationPath: func(pid int) (string, bool) {
-			requester := requesterResolver.Resolve(pid)
-			return requester.App.Path, requester.App.Path != ""
+	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
+	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
+	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
+	sshPeerResolver := agent.PeerResolver{
+		Base:      localsocket.SystemPeerResolver{},
+		Resolve:   requesterResolver.Resolve,
+		ReadChain: requesterResolver.ReadChain,
+		HasTerminal: func(pid int) bool {
+			session, err := clisocket.SystemPeerResolver{}.GetTerminalSession(pid)
+			return err == nil && session.TerminalDevice != 0
 		},
+		IdentifyApp: func(requester appinfo.Requester) (clisocket.AppIdentity, bool) {
+			return commandline.IdentifyApp(requester, requesterResolver)
+		},
+		AgentHosts: commandLineBridge,
 	}
-	agentServer = sshagent.NewServer(app.NewSSHKeySource(vaultService), approver, peerResolver)
+	agentServer = sshagent.NewServer(app.NewSSHKeySource(vaultService), approver, sshPeerResolver)
+	systemNotifications := newSystemNotifications()
+	agentServer.SetNoAgentKeyNotifier(func(session agentharness.Session) {
+		title, text := agent.DescribeMissingAgentKey(session)
+		id := fmt.Sprintf("no-agent-ssh-key-%d-%d", session.PID, session.StartTime)
+		systemNotifications.show(id, title, text, func() {
+			showWindow()
+			wailsApp.Event.Emit("show-settings", "developer")
+		})
+	})
 	agentServer.SetKnownHostsPaths([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
 	socketPath := os.Getenv("HISAR_SSH_AGENT_SOCKET")
 	if socketPath == "" {
@@ -205,9 +225,6 @@ func main() {
 		browserServer.AllowHostOutsideSandbox()
 	}
 
-	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
-	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
-	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *commandline.Service
 	commandLineServer := clisocket.NewServer(clisocket.ServerConfig{
 		Handler:             commandLineBridge,

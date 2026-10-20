@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 )
@@ -221,6 +222,38 @@ func TestRememberedSigningExpires(t *testing.T) {
 	if test.isSignedWithoutAsking(t, createSigningRequest()) {
 		t.Error("used after it expired")
 	}
+}
+
+func TestCommitSigningMemoryIsPerAgentSession(t *testing.T) {
+	test := createSigningTest(t, 600, nil)
+	test.change(func(test *signingTest) { test.requester = createTernRequester(createRebaseChain(testRepositoryPath)) })
+	fromTern := func(session *agentharness.Session, isNeverRemembered bool) sshagent.ApprovalRequest {
+		request := createSigningRequest()
+		request.ApplicationPath, request.AgentSession, request.IsNeverRemembered = ternBundlePath, session, isNeverRemembered
+		return request
+	}
+	if event := test.approveInDialog(t, fromTern(nil, false), true); event.RememberLabel != "Don’t ask again for Tern in ~/src/core for 10 minutes" {
+		t.Fatalf("the user's own Tern pane: %+v", event)
+	}
+	if test.isSignedWithoutAsking(t, fromTern(ompInPaneA, false)) {
+		t.Fatal("the user's remembered commit signing covered omp")
+	}
+	if event := test.approveInDialog(t, fromTern(ompInPaneA, false), true); event.RememberLabel != "Don’t ask again for omp in Tern in ~/src/core for 10 minutes" {
+		t.Fatalf("omp in pane A: %+v", event)
+	}
+	if !test.isSignedWithoutAsking(t, fromTern(ompInPaneA, false)) {
+		t.Error("omp's remembered commit signing asked again in the same session")
+	}
+	if test.isSignedWithoutAsking(t, fromTern(ompInPaneB, false)) {
+		t.Error("omp in pane A's remembered commit signing covered pane B")
+	}
+	resultChannel := startApproval(test.approver, context.Background(), fromTern(nil, true))
+	event := waitForApprovalEvent(t, test.emitter)
+	if event.IsRememberable {
+		t.Errorf("a request handed off by an agent offers remembering: %+v", event)
+	}
+	test.approver.Respond(event.RequestID, false, false)
+	waitForResult(t, resultChannel)
 }
 
 func TestLockClearsRememberedSigning(t *testing.T) {

@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 )
@@ -136,6 +137,18 @@ const terminalBundlePath = "/System/Applications/Utilities/Terminal.app"
 func createTerminalRequester(processes []appinfo.Process) appinfo.Requester {
 	app := appinfo.App{Name: "Terminal", Path: terminalBundlePath, IconURL: "data:image/png;base64,AA==", Signature: appinfo.Signature{Status: appinfo.SignatureStatusApple}}
 	return appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "Terminal", App: app, Processes: processes, ChainProcesses: processes}
+}
+
+const ternBundlePath = "/Applications/Tern.app"
+
+var (
+	ompInPaneA = &agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1217, StartTime: 1_760_000_000_000_000}
+	ompInPaneB = &agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1388, StartTime: 1_760_000_100_000_000}
+)
+
+func createTernRequester(processes []appinfo.Process) appinfo.Requester {
+	app := appinfo.App{Name: "Tern", Path: ternBundlePath, Signature: appinfo.Signature{Status: appinfo.SignatureStatusDeveloper, TeamID: "VTLHGQC72S"}}
+	return appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "Tern", App: app, Processes: processes, ChainProcesses: processes}
 }
 
 type approveResult struct {

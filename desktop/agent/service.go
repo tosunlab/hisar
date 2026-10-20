@@ -3,7 +3,6 @@ package agent
 import (
 	"context"
 	"errors"
-	"net"
 	"path/filepath"
 	"sync"
 	"time"
@@ -60,23 +59,6 @@ type Config struct {
 	// FitApprovalWindow sizes the approval window to the page's content and places it, centered or at the top right.
 	FitApprovalWindow func(isCompact bool, height int)
 	Now               func() time.Time
-}
-
-// ApplicationPeerResolver adds the app a peer runs in, so approvals are remembered per app.
-type ApplicationPeerResolver struct {
-	Base                localsocket.PeerResolver
-	FindApplicationPath func(pid int) (string, bool)
-}
-
-func (resolver ApplicationPeerResolver) ResolvePeer(connection net.Conn) (localsocket.PeerInfo, error) {
-	peer, err := resolver.Base.ResolvePeer(connection)
-	if err != nil || peer.PID <= 0 || resolver.FindApplicationPath == nil {
-		return peer, err
-	}
-	if applicationPath, isFound := resolver.FindApplicationPath(peer.PID); isFound {
-		peer.ApplicationPath = applicationPath
-	}
-	return peer, nil
 }
 
 // Service is bound to the UI; Serve runs the agent itself.
