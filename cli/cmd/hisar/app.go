@@ -30,12 +30,14 @@ type appClient struct {
 	isApprovalNoticeShown bool
 }
 
-// commandMode is how this run reaches the vaults: through the app (client set) or standalone, and why.
+// commandMode is how this run reaches the vaults: through the app (client set) or standalone, and why. appError is why
+// the app did not answer when standalone mode should report it instead of its own failure: errAppNotRunning after hisar
+// started the app and it never answered, errSocketBlocked when a sandbox blocks the socket.
 type commandMode struct {
-	client          *appClient
-	reason          string
-	socketPath      string
-	isAppNotRunning bool
+	client     *appClient
+	reason     string
+	socketPath string
+	appError   error
 }
 
 var selectedMode commandMode
@@ -91,6 +93,9 @@ func chooseModeWithLaunch(isStandaloneForced, isLaunchAllowed bool) commandMode 
 
 func dialApp(socketPath string) (*appClient, error) {
 	connection, err := net.DialTimeout("unix", socketPath, appDialTimeout)
+	if errors.Is(err, os.ErrPermission) {
+		return nil, errSocketBlocked
+	}
 	if err != nil {
 		return nil, &appUnreachableError{socketPath: socketPath}
 	}
