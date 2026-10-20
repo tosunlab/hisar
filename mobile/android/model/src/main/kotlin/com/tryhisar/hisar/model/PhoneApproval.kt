@@ -32,6 +32,8 @@ data class PhoneApproval(
     val host: String = "",
     val commandLine: String = "",
     val repositoryPath: String = "",
+    /** The folder of the coding agent's harness, such as omp's project; empty from an older Mac. */
+    val projectPath: String = "",
     val keyName: String = "",
     val isForwarded: Boolean = false,
     val forwardedFromHost: String = "",
@@ -128,6 +130,7 @@ data class PhoneApproval(
                 listOf(
                     appRow,
                     warningRow,
+                    DetailRow("Project", projectPath, true),
                     DetailRow(if (kind == KIND_COMMAND_LINE && secrets.isEmpty()) "Program" else "Command", commandLine, true),
                     DetailRow("Repository", repositoryPath, true),
                     DetailRow("Server", host, true),
