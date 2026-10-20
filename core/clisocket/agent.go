@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/secretreference"
 )
@@ -27,7 +28,8 @@ type AgentIdentity struct {
 	Version string
 }
 
-// AgentSecret is one secret an agent request names, found among the agent-visible vaults.
+// AgentSecret is one secret an agent request names, found among the agent-visible vaults. A request for a whole item
+// (hisar get) names no field.
 type AgentSecret struct {
 	VaultID    string
 	ItemID     string
@@ -37,6 +39,9 @@ type AgentSecret struct {
 }
 
 func (secret AgentSecret) Describe() string {
+	if secret.FieldLabel == "" {
+		return secret.VaultName + " › " + secret.ItemTitle
+	}
 	return secret.VaultName + " › " + secret.ItemTitle + " › " + secret.FieldLabel
 }
 
@@ -58,10 +63,14 @@ type AgentApprovalRequest struct {
 	CommandLine      []string
 	WorkingDirectory string
 	SecretNames      []string
-	// RevealedName is "item › field" of a reveal request.
+	// RevealedName is "item › field" of a reveal request, or the item's title when it reveals the whole item.
 	RevealedName string
 	// IsConnectionApproval: approving also lets the agent list and search the agent-visible vaults.
 	IsConnectionApproval bool
+	// Session is the agent harness the client runs inside, which the system found in its process chain; nil outside one.
+	Session *agentharness.Session
+	// IsCommandLine: an ordinary hisar command inside Session sent the request, not hisar mcp.
+	IsCommandLine bool
 }
 
 type AgentApprovalResult struct {
@@ -79,40 +88,43 @@ type AgentSecretLocator interface {
 	LocateAgentSecrets(request *cliprotocol.Request) ([]AgentSecret, error)
 }
 
-type agentConnectionState struct {
+// agentState is an agent's approval and remembered secrets, kept per agent session, or per connection for an agent
+// outside a harness.
+type agentState struct {
 	isApproved         bool
 	lastRequestAt      time.Time
 	grantExpiriesByKey map[string]time.Time
 }
 
-func (approvals *SessionApprovals) getAgentConnection(connectionID uint64) *agentConnectionState {
-	connection, isFound := approvals.agentConnectionsByID[connectionID]
+// getAgent needs approvals.mutex.
+func (approvals *SessionApprovals) getAgent(scope approvalScope) *agentState {
+	agent, isFound := approvals.agentsByScope[scope]
 	if !isFound {
-		connection = &agentConnectionState{grantExpiriesByKey: map[string]time.Time{}}
-		approvals.agentConnectionsByID[connectionID] = connection
+		agent = &agentState{grantExpiriesByKey: map[string]time.Time{}}
+		approvals.agentsByScope[scope] = agent
 	}
-	return connection
+	return agent
 }
 
-// refreshAgentConnection tells whether the connection's approval is current and, if it is, extends it.
-func (approvals *SessionApprovals) refreshAgentConnection(connectionID uint64) bool {
+// refreshAgent tells whether the agent's approval is current and, if it is, extends it.
+func (approvals *SessionApprovals) refreshAgent(scope approvalScope) bool {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
-	connection := approvals.getAgentConnection(connectionID)
+	agent := approvals.getAgent(scope)
 	now := approvals.now()
-	if !connection.isApproved || now.Sub(connection.lastRequestAt) >= approvals.lifetime {
-		connection.isApproved = false
+	if !agent.isApproved || now.Sub(agent.lastRequestAt) >= approvals.lifetime {
+		agent.isApproved = false
 		return false
 	}
-	connection.lastRequestAt = now
+	agent.lastRequestAt = now
 	return true
 }
 
-func (approvals *SessionApprovals) IsAgentConnectionApproved(connectionID uint64) bool {
+func (approvals *SessionApprovals) isAgentApproved(scope approvalScope) bool {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
-	connection, isFound := approvals.agentConnectionsByID[connectionID]
-	return isFound && connection.isApproved && approvals.now().Sub(connection.lastRequestAt) < approvals.lifetime
+	agent, isFound := approvals.agentsByScope[scope]
+	return isFound && agent.isApproved && approvals.now().Sub(agent.lastRequestAt) < approvals.lifetime
 }
 
 func (approvals *SessionApprovals) getGeneration() int {
@@ -121,34 +133,54 @@ func (approvals *SessionApprovals) getGeneration() int {
 	return approvals.generation
 }
 
-// approveAgentConnection records an approval unless Hisar locked while the dialog was open.
-func (approvals *SessionApprovals) approveAgentConnection(connectionID uint64, generation int, grantKeys []string) {
+// approveAgent records an approval unless Hisar locked while the dialog was open. It returns false when the agent
+// session ended while the dialog was open: its harness exited, so the request fails.
+func (approvals *SessionApprovals) approveAgent(scope approvalScope, generation int, grantKeys []string) bool {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
+	if scope.agentSession != (agentSessionKey{}) && !approvals.liveAgentSessions[scope.agentSession] {
+		return false
+	}
 	if generation != approvals.generation {
-		return
+		return true
 	}
-	connection := approvals.getAgentConnection(connectionID)
+	agent := approvals.getAgent(scope)
 	now := approvals.now()
-	connection.isApproved, connection.lastRequestAt = true, now
+	agent.isApproved, agent.lastRequestAt = true, now
 	for _, key := range grantKeys {
-		connection.grantExpiriesByKey[key] = now.Add(AgentGrantLifetime)
+		agent.grantExpiriesByKey[key] = now.Add(AgentGrantLifetime)
 	}
+	return true
 }
 
-func (approvals *SessionApprovals) isAgentGranted(connectionID uint64, grantKeys []string) bool {
+func (approvals *SessionApprovals) isAgentGranted(scope approvalScope, grantKeys []string) bool {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
-	connection := approvals.getAgentConnection(connectionID)
+	agent := approvals.getAgent(scope)
 	now := approvals.now()
 	for _, key := range grantKeys {
-		expiresAt, isFound := connection.grantExpiriesByKey[key]
+		expiresAt, isFound := agent.grantExpiriesByKey[key]
 		if !isFound || !now.Before(expiresAt) {
-			delete(connection.grantExpiriesByKey, key)
+			delete(agent.grantExpiriesByKey, key)
 			return false
 		}
 	}
 	return len(grantKeys) > 0
+}
+
+// startAgentSession marks the session's harness as running, so approvals for it are recorded.
+func (approvals *SessionApprovals) startAgentSession(key agentSessionKey) {
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	approvals.liveAgentSessions[key] = true
+}
+
+// endAgentSession drops the session's approval and remembered secrets when its harness exits.
+func (approvals *SessionApprovals) endAgentSession(key agentSessionKey) {
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	delete(approvals.liveAgentSessions, key)
+	delete(approvals.agentsByScope, approvalScope{agentSession: key})
 }
 
 func getAgentRequestKind(requestType string) (string, bool) {
@@ -165,13 +197,33 @@ func getAgentRequestKind(requestType string) (string, bool) {
 	return "", false
 }
 
+// getAgentSessionRequestKind is what an ordinary hisar command inside an agent harness may do: list the agent-visible
+// vaults and items, use secrets with hisar run, and read a value with hisar read or hisar get.
+func getAgentSessionRequestKind(request *cliprotocol.Request) (string, bool) {
+	switch request.Type {
+	case cliprotocol.TypeListVault, cliprotocol.TypeListItem:
+		return AgentRequestConnect, true
+	case cliprotocol.TypeResolveSecret:
+		if len(request.CommandLine) > 0 {
+			return AgentRequestRun, true
+		}
+		return AgentRequestReveal, true
+	case cliprotocol.TypeGetItem:
+		return AgentRequestReveal, true
+	}
+	return "", false
+}
+
 func checkAgentRequest(kind string, request *cliprotocol.Request) error {
+	isItemRequest := request.Type == cliprotocol.TypeGetItem
 	switch {
 	case kind == AgentRequestRun && (len(request.References) == 0 || len(request.References) > cliprotocol.MaxAgentReferenceCount):
 		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send between 1 and %d secret references", cliprotocol.MaxAgentReferenceCount))
 	case kind == AgentRequestCode && len(request.References)+min(len(request.ItemID), 1) != 1:
 		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "send one secret reference or one item ID")
-	case kind == AgentRequestReveal && len(request.References) != 1:
+	case kind == AgentRequestReveal && isItemRequest && (request.VaultID == "" || request.ItemID == ""):
+		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "name the vault and the item")
+	case kind == AgentRequestReveal && !isItemRequest && len(request.References) != 1:
 		return cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "send one secret reference")
 	}
 	return nil
@@ -204,17 +256,31 @@ func (s *Server) answerAgentRequest(ctx context.Context, client *connectionPeer,
 	if !isKnown {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 	}
+	return s.answerWithAgentRules(ctx, client, kind, request)
+}
+
+// answerAgentSessionRequest answers an ordinary hisar command inside an agent harness as the agent's own request.
+func (s *Server) answerAgentSessionRequest(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) (any, error) {
+	kind, isAllowed := getAgentSessionRequestKind(request)
+	if !isAllowed {
+		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf("%s can use secrets through hisar run. Change items in the Hisar app.", client.agentSession.Harness.Name))
+	}
+	return s.answerWithAgentRules(ctx, client, kind, request)
+}
+
+// answerWithAgentRules asks per request, unless the agent's approval or a remembered secret covers it. What an agent
+// session remembered is used only while its harness process still runs.
+func (s *Server) answerWithAgentRules(ctx context.Context, client *connectionPeer, kind string, request *cliprotocol.Request) (any, error) {
 	if err := checkAgentRequest(kind, request); err != nil {
 		return nil, err
 	}
 	approvals := s.config.Approvals
+	scope := client.getAgentScope()
 	if kind == AgentRequestConnect {
-		if !approvals.refreshAgentConnection(client.connectionID) {
-			generation := approvals.getGeneration()
-			if _, err := s.askAgentApproval(ctx, client, kind, request, nil); err != nil {
+		if !client.isHarnessRunning() || !approvals.refreshAgent(scope) {
+			if err := s.askAndApproveAgent(ctx, client, kind, request, nil, nil); err != nil {
 				return nil, err
 			}
-			approvals.approveAgentConnection(client.connectionID, generation, nil)
 		}
 		return s.config.Handler.HandleRequest(ctx, request)
 	}
@@ -223,25 +289,43 @@ func (s *Server) answerAgentRequest(ctx context.Context, client *connectionPeer,
 	if err != nil {
 		return nil, err
 	}
-	if !isLocked && approvals.refreshAgentConnection(client.connectionID) && approvals.isAgentGranted(client.connectionID, buildGrantKeys(kind, secrets)) {
+	if !isLocked && client.isHarnessRunning() && approvals.refreshAgent(scope) && approvals.isAgentGranted(scope, buildGrantKeys(kind, secrets)) {
 		return s.config.Handler.HandleRequest(ctx, request)
 	}
+	locateAfterUnlock := func() ([]AgentSecret, error) {
+		if !isLocked {
+			return secrets, nil
+		}
+		secrets, _, err := s.locateAgentSecrets(request)
+		return secrets, err
+	}
+	if err := s.askAndApproveAgent(ctx, client, kind, request, secrets, locateAfterUnlock); err != nil {
+		return nil, err
+	}
+	return s.config.Handler.HandleRequest(ctx, request)
+}
+
+// askAndApproveAgent asks, then records the approval and, when the user chose to remember them, the secrets that
+// locateRemembered finds; it refuses a request whose harness exited while the dialog was open.
+func (s *Server) askAndApproveAgent(ctx context.Context, client *connectionPeer, kind string, request *cliprotocol.Request, secrets []AgentSecret, locateRemembered func() ([]AgentSecret, error)) error {
+	approvals := s.config.Approvals
 	generation := approvals.getGeneration()
 	result, err := s.askAgentApproval(ctx, client, kind, request, secrets)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	var grantKeys []string
-	if result.IsRemembered {
-		if isLocked {
-			if secrets, _, err = s.locateAgentSecrets(request); err != nil {
-				return nil, err
-			}
+	if result.IsRemembered && locateRemembered != nil {
+		rememberedSecrets, err := locateRemembered()
+		if err != nil {
+			return err
 		}
-		grantKeys = buildGrantKeys(kind, secrets)
+		grantKeys = buildGrantKeys(kind, rememberedSecrets)
 	}
-	approvals.approveAgentConnection(client.connectionID, generation, grantKeys)
-	return s.config.Handler.HandleRequest(ctx, request)
+	if !client.isHarnessRunning() || !approvals.approveAgent(client.getAgentScope(), generation, grantKeys) {
+		return convertDenial(ErrDenied)
+	}
+	return nil
 }
 
 func buildGrantKeys(kind string, secrets []AgentSecret) []string {
@@ -259,7 +343,12 @@ func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, k
 	}
 	approvalRequest := AgentApprovalRequest{
 		ClientPID: client.peer.PID, TerminalName: client.session.TerminalName, Agent: client.agent, Kind: kind,
-		IsConnectionApproval: !s.config.Approvals.IsAgentConnectionApproved(client.connectionID),
+		IsConnectionApproval: !s.config.Approvals.isAgentApproved(client.getAgentScope()),
+		IsCommandLine:        client.kind == connectionCommandLine,
+	}
+	if client.isInAgentSession() {
+		session := client.agentSession
+		approvalRequest.Session = &session
 	}
 	approvalRequest.ClientPath, _ = s.config.PeerResolver.GetProcessPath(client.peer.PID)
 	approvalRequest.ParentPID, _ = s.config.PeerResolver.GetParentPID(client.peer.PID)
@@ -280,9 +369,9 @@ func describeAgentSecrets(request *cliprotocol.Request, secrets []AgentSecret) (
 		for _, secret := range secrets {
 			names = append(names, secret.Describe())
 		}
-		revealedName = secrets[0].ItemTitle + " › " + secrets[0].FieldLabel
-		if request.Type == cliprotocol.TypeAgentGetCode {
-			revealedName = secrets[0].ItemTitle
+		revealedName = secrets[0].ItemTitle
+		if secrets[0].FieldLabel != "" && request.Type != cliprotocol.TypeAgentGetCode {
+			revealedName += " › " + secrets[0].FieldLabel
 		}
 		return names, revealedName
 	}

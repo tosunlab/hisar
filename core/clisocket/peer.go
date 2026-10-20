@@ -6,8 +6,11 @@ import (
 	"net"
 	"syscall"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/localsocket"
 )
+
+var errUnknownChain = errors.New("commandline: the process chain changed while it was read")
 
 type Peer struct {
 	UID int
@@ -40,8 +43,19 @@ func (session TerminalSession) hasTerminal() bool {
 type PeerResolver interface {
 	ResolvePeer(connection net.Conn) (Peer, error)
 	GetTerminalSession(pid int) (TerminalSession, error)
+	// GetAgentSession finds the agent harness a process runs inside; an error means its chain is unknown.
+	GetAgentSession(pid int) (agentharness.Session, bool, error)
 	GetProcessPath(pid int) (string, error)
 	GetParentPID(pid int) (int, error)
+}
+
+// FindAgentSession answers GetAgentSession from a process chain.
+func FindAgentSession(chain agentharness.Chain) (agentharness.Session, bool, error) {
+	if !chain.IsKnown {
+		return agentharness.Session{}, false, errUnknownChain
+	}
+	session, isFound := agentharness.Find(chain)
+	return session, isFound, nil
 }
 
 type SystemPeerResolver struct{}
@@ -77,6 +91,11 @@ func (SystemPeerResolver) GetTerminalSession(pid int) (TerminalSession, error) {
 	}
 	session.TerminalName = findTerminalName(session.TerminalDevice)
 	return session, nil
+}
+
+// GetAgentSession reads the chain with sysctl or /proc only, so it checks no code signature.
+func (SystemPeerResolver) GetAgentSession(pid int) (agentharness.Session, bool, error) {
+	return FindAgentSession(agentharness.ReadChain(pid, agentharness.SystemReader()))
 }
 
 func (SystemPeerResolver) GetProcessPath(pid int) (string, error) {

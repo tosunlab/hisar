@@ -11,6 +11,7 @@ import (
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/secretreference"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -263,11 +264,16 @@ func (s *Service) resolveAgentSecrets(request *cliprotocol.Request) ([]secretref
 	return resolvedReferences, err
 }
 
-// LocateAgentSecrets names the secrets of an agent request for the approval window without handing out values.
+// LocateAgentSecrets names the secrets of an agent request for the approval window without handing out values; for
+// hisar get inside an agent harness, the item it asks for.
 func (bridge *CommandLineBridge) LocateAgentSecrets(request *cliprotocol.Request) ([]clisocket.AgentSecret, error) {
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if request.Type == cliprotocol.TypeGetItem {
+		secret, err := s.locateAgentItem(request.VaultID, request.ItemID)
+		return []clisocket.AgentSecret{secret}, convertCommandLineError(err)
+	}
 	resolvedReferences, err := s.resolveAgentSecrets(request)
 	if err != nil {
 		return nil, convertCommandLineError(err)
@@ -279,6 +285,90 @@ func (bridge *CommandLineBridge) LocateAgentSecrets(request *cliprotocol.Request
 		})
 	}
 	return secrets, nil
+}
+
+// locateAgentItem finds an item in an agent-visible vault; an item elsewhere fails as not found. It needs s.mutex.
+func (s *Service) locateAgentItem(vaultID, itemID string) (clisocket.AgentSecret, error) {
+	if err := s.requireUnlocked(); err != nil {
+		return clisocket.AgentSecret{}, err
+	}
+	if !s.isAgentVault(vaultID) {
+		return clisocket.AgentSecret{}, fmt.Errorf("vault %w", ErrNotFound)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	vault, err := s.findVault(ctx, vaultID)
+	if err != nil {
+		return clisocket.AgentSecret{}, err
+	}
+	items, err := agentSecretSource{serviceSecretSource{service: s, ctx: ctx}}.ListItems(vaultID)
+	if err != nil {
+		return clisocket.AgentSecret{}, err
+	}
+	index := slices.IndexFunc(items, func(vaultItem item.Item) bool { return vaultItem.ID == itemID })
+	if index < 0 {
+		return clisocket.AgentSecret{}, fmt.Errorf("item %w", ErrNotFound)
+	}
+	return clisocket.AgentSecret{VaultID: vaultID, ItemID: itemID, VaultName: vault.Name, ItemTitle: items[index].Overview.Title}, nil
+}
+
+// answerAgentSessionRequest answers what clisocket lets an ordinary hisar command inside an agent harness send, among
+// the agent-visible vaults only: a hidden vault fails like one that does not exist.
+func (bridge *CommandLineBridge) answerAgentSessionRequest(request *cliprotocol.Request) (any, error) {
+	s := bridge.service
+	switch request.Type {
+	case cliprotocol.TypeListVault:
+		summaries, err := s.ListVaults()
+		if err != nil {
+			return nil, err
+		}
+		agentVaultIDs := s.ListAgentVaultIDs()
+		result := cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{}}
+		for _, summary := range summaries {
+			if slices.Contains(agentVaultIDs, summary.ID) {
+				result.Vaults = append(result.Vaults, convertToCommandLineVault(summary))
+			}
+		}
+		return result, nil
+	case cliprotocol.TypeListItem, cliprotocol.TypeGetItem:
+		if !slices.Contains(s.ListAgentVaultIDs(), request.VaultID) {
+			return nil, fmt.Errorf("vault %w", ErrNotFound)
+		}
+		return bridge.answerCommandLineRequest(request)
+	case cliprotocol.TypeResolveSecret:
+		s.mutex.Lock()
+		defer s.mutex.Unlock()
+		resolvedReferences, err := s.resolveAgentSecrets(request)
+		if err != nil {
+			return nil, err
+		}
+		result := cliprotocol.ResolveSecretResult{Values: make([]string, 0, len(resolvedReferences))}
+		for _, resolved := range resolvedReferences {
+			result.Values = append(result.Values, resolved.Value)
+		}
+		return result, nil
+	}
+	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+}
+
+// IsAgentHost and AddAgentHost keep the CLI socket's agent hosts in desktop.json (clisocket.AgentHosts).
+func (bridge *CommandLineBridge) IsAgentHost(app clisocket.AppIdentity) bool {
+	s := bridge.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return slices.Contains(s.state.AgentHosts, localstate.AgentHost{Path: app.Path, TeamID: app.TeamID})
+}
+
+func (bridge *CommandLineBridge) AddAgentHost(app clisocket.AppIdentity) error {
+	s := bridge.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	host := localstate.AgentHost{Path: app.Path, TeamID: app.TeamID}
+	if slices.Contains(s.state.AgentHosts, host) {
+		return nil
+	}
+	s.state.AgentHosts = append(s.state.AgentHosts, host)
+	return s.state.Save()
 }
 
 func (bridge *CommandLineBridge) answerAgentRequest(request *cliprotocol.Request) (any, error) {

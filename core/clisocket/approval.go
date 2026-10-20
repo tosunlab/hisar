@@ -88,8 +88,9 @@ func newScopeApprovals(idleLifetime time.Duration) scopeApprovals {
 }
 
 // SessionApprovals remembers what the user approved on cli.sock. The command line and launchers have separate memories,
-// so approving one never approves the other, even for the same app; agents keep their per-connection state. One mutex
-// and one generation cover all of it, so ClearAll (lock, sign-out, switch off) ends everything, a dialog still open too.
+// so approving one never approves the other, even for the same app; agents keep their own state per agent session, or
+// per connection outside a harness. One mutex and one generation cover all of it, so ClearAll (lock, sign-out, switch
+// off) ends everything, a dialog still open too.
 type SessionApprovals struct {
 	mutex    sync.Mutex
 	lifetime time.Duration
@@ -97,9 +98,11 @@ type SessionApprovals struct {
 	// commandLine approvals end lifetime after their scope's last request.
 	commandLine scopeApprovals
 	// launchers last until Hisar locks, the switch goes off, or Settings revokes them; their scope is always an app.
-	launchers            scopeApprovals
-	agentConnectionsByID map[uint64]*agentConnectionState
-	generation           int
+	launchers     scopeApprovals
+	agentsByScope map[approvalScope]*agentState
+	// liveAgentSessions are the agent sessions whose harness runs; an agent session's grants are kept only while it does.
+	liveAgentSessions map[agentSessionKey]bool
+	generation        int
 }
 
 func NewSessionApprovals(lifetime time.Duration, now func() time.Time) *SessionApprovals {
@@ -110,11 +113,21 @@ func NewSessionApprovals(lifetime time.Duration, now func() time.Time) *SessionA
 		now = time.Now
 	}
 	return &SessionApprovals{
-		lifetime:             lifetime,
-		now:                  now,
-		commandLine:          newScopeApprovals(lifetime),
-		launchers:            newScopeApprovals(0),
-		agentConnectionsByID: map[uint64]*agentConnectionState{},
+		lifetime:          lifetime,
+		now:               now,
+		commandLine:       newScopeApprovals(lifetime),
+		launchers:         newScopeApprovals(0),
+		agentsByScope:     map[approvalScope]*agentState{},
+		liveAgentSessions: map[agentSessionKey]bool{},
+	}
+}
+
+// revokeAppPath needs approvals.mutex.
+func (memory *scopeApprovals) revokeAppPath(appPath string) {
+	for scope := range memory.lastUsedByScope {
+		if scope.app.Path == appPath {
+			delete(memory.lastUsedByScope, scope)
+		}
 	}
 }
 
@@ -197,15 +210,23 @@ func (approvals *SessionApprovals) ClearAll() {
 	defer approvals.mutex.Unlock()
 	clear(approvals.commandLine.lastUsedByScope)
 	clear(approvals.launchers.lastUsedByScope)
-	clear(approvals.agentConnectionsByID)
+	clear(approvals.agentsByScope)
 	approvals.generation++
 }
 
-// forgetConnection drops what only the closed connection could use: its agent state and its connection-scoped approval
-// (only the command line has those).
+// revokeApp ends the command-line and launcher approvals of the app's path, once it hosted an agent session.
+func (approvals *SessionApprovals) revokeApp(app AppIdentity) {
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	approvals.commandLine.revokeAppPath(app.Path)
+	approvals.launchers.revokeAppPath(app.Path)
+}
+
+// forgetConnection drops what only the closed connection could use: the agent state of a connection outside a harness
+// and its connection-scoped approval (only the command line has those). An agent session's state outlives it.
 func (approvals *SessionApprovals) forgetConnection(connectionID uint64) {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
 	delete(approvals.commandLine.lastUsedByScope, approvalScope{connectionID: connectionID})
-	delete(approvals.agentConnectionsByID, connectionID)
+	delete(approvals.agentsByScope, approvalScope{connectionID: connectionID})
 }

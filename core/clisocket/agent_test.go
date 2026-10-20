@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
@@ -23,6 +24,15 @@ func (handler *fakeAgentHandler) LocateAgentSecrets(request *cliprotocol.Request
 	defer handler.mutex.Unlock()
 	if handler.state == cliprotocol.StateLocked {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorLocked, "locked")
+	}
+	if request.Type == cliprotocol.TypeGetItem {
+		for _, secret := range handler.secretsByReference {
+			if secret.VaultID == request.VaultID && secret.ItemID == request.ItemID {
+				secret.FieldLabel = ""
+				return []AgentSecret{secret}, nil
+			}
+		}
+		return nil, cliprotocol.NewError(cliprotocol.ErrorNotFound, "item not found")
 	}
 	var secrets []AgentSecret
 	for _, reference := range request.References {
@@ -416,5 +426,176 @@ func TestAgentDisconnectCancelsTheWaitingApproval(t *testing.T) {
 			t.Fatal("the agent approval kept waiting after hisar mcp disconnected")
 		}
 		time.Sleep(time.Millisecond)
+	}
+}
+
+// connectInside connects from inside the harness, with or without agent.hello.
+func (fixture *agentFixture) connectInside(t *testing.T, harness agentharness.Session, isAgentHello bool) *testClient {
+	t.Helper()
+	fixture.resolver.setAgentSession(harness)
+	if isAgentHello {
+		return fixture.connectAgent(t)
+	}
+	return fixture.connect(t)
+}
+
+func waitFor(t *testing.T, description string, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for !condition() {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting until %s", description)
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
+func TestCommandLineRequestsFromAnAgentUseAgentRules(t *testing.T) {
+	fixture := createAgentFixture(t)
+	fixture.agentHandler.resultBy[cliprotocol.TypeResolveSecret] = cliprotocol.ResolveSecretResult{Values: []string{"value"}}
+	harness, _ := startHarness(t)
+	client := fixture.connectInside(t, harness, false)
+	if client.isApproved(t) {
+		t.Error("hello reported an approval before any")
+	}
+
+	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
+	connect := fixture.agentApprover.getLastRequest()
+	if connect.Kind != AgentRequestConnect || !connect.IsCommandLine || connect.Session == nil || connect.Session.PID != harness.PID ||
+		connect.Session.Harness.Name != "omp" || connect.Agent != (AgentIdentity{}) || !connect.IsConnectionApproval {
+		t.Errorf("vaults.list asked %+v", connect)
+	}
+	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListItem, VaultID: "v2"})
+	if count := fixture.agentApprover.getRequestCount(); count != 1 || !client.isApproved(t) {
+		t.Errorf("listing asked again: %d approvals", count)
+	}
+
+	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}, CommandLine: []string{"npm", "test"}})
+	if run := fixture.agentApprover.getLastRequest(); run.Kind != AgentRequestRun || !slices.Equal(run.CommandLine, []string{"npm", "test"}) ||
+		!slices.Equal(run.SecretNames, []string{"Work › Stripe › api key"}) || run.IsConnectionApproval {
+		t.Errorf("hisar run asked %+v", run)
+	}
+	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}})
+	if read := fixture.agentApprover.getLastRequest(); read.Kind != AgentRequestReveal || read.RevealedName != "Stripe › api key" {
+		t.Errorf("hisar read asked %+v", read)
+	}
+	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeGetItem, VaultID: "v2", ItemID: "github"})
+	if get := fixture.agentApprover.getLastRequest(); get.Kind != AgentRequestReveal || get.RevealedName != "GitHub" || !slices.Equal(get.SecretNames, []string{"Work › GitHub"}) {
+		t.Errorf("hisar get asked %+v", get)
+	}
+
+	approvalCount := fixture.agentApprover.getRequestCount()
+	if response := client.send(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{"hisar://Private/Bank/password"}, CommandLine: []string{"true"}}); getErrorCode(response) != cliprotocol.ErrorNotFound {
+		t.Errorf("a hidden vault: %+v", response.Error)
+	}
+	for _, request := range []cliprotocol.Request{
+		{Type: cliprotocol.TypeSaveItem, VaultID: "v2", Item: &cliprotocol.ItemChange{Title: "New"}},
+		{Type: cliprotocol.TypeGetCode, VaultID: "v2", ItemID: "github"},
+		{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: cliprotocol.ExportFormatPlain, Path: "/tmp/all.json"}},
+		{Type: cliprotocol.TypeAccount},
+	} {
+		response := client.send(t, request)
+		if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "omp can use secrets through hisar run. Change items in the Hisar app." {
+			t.Errorf("%s: %+v", request.Type, response.Error)
+		}
+	}
+	if fixture.agentApprover.getRequestCount() != approvalCount || fixture.approver.requestCount.Load() != 0 {
+		t.Error("a refused request asked for an approval")
+	}
+	handler := fixture.agentHandler
+	if !slices.Equal(handler.types, []string{cliprotocol.TypeListVault, cliprotocol.TypeListItem, cliprotocol.TypeResolveSecret, cliprotocol.TypeResolveSecret, cliprotocol.TypeGetItem}) ||
+		slices.ContainsFunc(handler.agentSessionPIDs, func(pid int) bool { return pid != harness.PID }) {
+		t.Errorf("handled %q from %v", handler.types, handler.agentSessionPIDs)
+	}
+}
+
+func TestAgentSessionGrantsOutliveConnections(t *testing.T) {
+	fixture := createAgentFixture(t)
+	fixture.agentHandler.resultBy[cliprotocol.TypeResolveSecret] = cliprotocol.ResolveSecretResult{Values: []string{"value"}}
+	harness, _ := startHarness(t)
+	run := cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}, CommandLine: []string{"make", "deploy"}}
+
+	fixture.agentApprover.set(nil, true)
+	first := fixture.connectInside(t, harness, false)
+	first.mustSend(t, run)
+	first.connection.Close()
+	fixture.agentApprover.set(ErrDenied, false)
+
+	fixture.connectInside(t, harness, false).mustSend(t, run)
+	fixture.connectInside(t, harness, true).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: []string{stripeReference}, CommandLine: []string{"make"}})
+	if count := fixture.agentApprover.getRequestCount(); count != 1 {
+		t.Fatalf("the session's remembered secret asked again: %d approvals", count)
+	}
+
+	other, _ := startHarness(t)
+	if code := getErrorCode(fixture.connectInside(t, other, false).send(t, run)); code != cliprotocol.ErrorDenied {
+		t.Errorf("another omp used the remembered secret: %q", code)
+	}
+	fixture.resolver.setAgentSession(agentharness.Session{})
+	if code := getErrorCode(fixture.connectAgent(t).send(t, cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: []string{stripeReference}, CommandLine: []string{"make"}})); code != cliprotocol.ErrorDenied {
+		t.Errorf("hisar mcp outside omp used the remembered secret: %q", code)
+	}
+}
+
+func TestHarnessExitDropsGrantsAndClosesConnections(t *testing.T) {
+	fixture := createAgentFixture(t)
+	fixture.agentHandler.resultBy[cliprotocol.TypeResolveSecret] = cliprotocol.ResolveSecretResult{Values: []string{"value"}}
+	harness, stop := startHarness(t)
+	fixture.agentApprover.set(nil, true)
+	client := fixture.connectInside(t, harness, false)
+	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}, CommandLine: []string{"true"}})
+	scope := approvalScope{agentSession: getAgentSessionKey(harness)}
+	if !fixture.approvals.isAgentApproved(scope) {
+		t.Fatal("the session is not approved")
+	}
+
+	stop()
+	client.connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+	if _, err := client.connection.Read(make([]byte, 1)); err == nil {
+		t.Error("the connection stayed open after omp exited")
+	}
+	waitFor(t, "the session's approval ends", func() bool { return !fixture.approvals.isAgentApproved(scope) })
+	fixture.approvals.mutex.Lock()
+	_, hasState := fixture.approvals.agentsByScope[scope]
+	isLive := fixture.approvals.liveAgentSessions[scope.agentSession]
+	fixture.approvals.mutex.Unlock()
+	if hasState || isLive {
+		t.Errorf("the session outlived omp: state %v, live %v", hasState, isLive)
+	}
+}
+
+func TestHarnessExitCancelsPendingApproval(t *testing.T) {
+	fixture := createAgentFixture(t)
+	fixture.agentApprover.isWaitingForCancel = true
+	harness, stop := startHarness(t)
+	client := fixture.connectInside(t, harness, false)
+	if err := cliprotocol.WriteJSON(client.connection, cliprotocol.Request{ID: "1", Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}, CommandLine: []string{"sleep", "30"}}); err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "the server asks", func() bool { return fixture.agentApprover.getRequestCount() == 1 })
+	stop()
+	waitFor(t, "the approval is cancelled", func() bool { return fixture.agentApprover.cancelledCount.Load() == 1 })
+	if fixture.agentHandler.types != nil {
+		t.Errorf("handled %q after omp exited", fixture.agentHandler.types)
+	}
+}
+
+// TestApprovalCompletedAfterHarnessExitIsRefused: omp exits while its dialog is answered. The connection may close
+// before the refusal is sent; either way the request is not answered.
+func TestApprovalCompletedAfterHarnessExitIsRefused(t *testing.T) {
+	fixture := createAgentFixture(t)
+	harness, stop := startHarness(t)
+	fixture.agentApprover.onApprove = stop
+	client := fixture.connectInside(t, harness, false)
+	client.connection.SetDeadline(time.Now().Add(5 * time.Second))
+	if err := cliprotocol.WriteJSON(client.connection, cliprotocol.Request{ID: "1", Type: cliprotocol.TypeListVault}); err != nil {
+		t.Fatal(err)
+	}
+	var response cliprotocol.Response
+	if err := cliprotocol.ReadJSON(client.connection, &response); err == nil && getErrorCode(response) != cliprotocol.ErrorDenied {
+		t.Errorf("approved for an exited omp: %+v", response)
+	}
+	if fixture.agentHandler.types != nil {
+		t.Errorf("handled %q for an exited omp", fixture.agentHandler.types)
 	}
 }

@@ -6,12 +6,14 @@ import (
 	"errors"
 	"net"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
@@ -21,6 +23,10 @@ type fakePeerResolver struct {
 	session TerminalSession
 	// app is what IdentifyApp verifies the caller runs in; the zero AppIdentity is none.
 	app AppIdentity
+	// agentSession is the harness the caller runs inside when isInsideAgent; agentChainError makes its chain unknown.
+	agentSession    agentharness.Session
+	isInsideAgent   bool
+	agentChainError error
 }
 
 func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (Peer, error) {
@@ -40,6 +46,47 @@ func (resolver *fakePeerResolver) GetProcessPath(int) (string, error) {
 }
 
 func (resolver *fakePeerResolver) GetParentPID(int) (int, error) { return 4321, nil }
+
+func (resolver *fakePeerResolver) GetAgentSession(int) (agentharness.Session, bool, error) {
+	resolver.mutex.Lock()
+	defer resolver.mutex.Unlock()
+	return resolver.agentSession, resolver.isInsideAgent, resolver.agentChainError
+}
+
+// setAgentSession makes the next callers run inside the harness, or outside every harness for the zero Session.
+func (resolver *fakePeerResolver) setAgentSession(session agentharness.Session) {
+	resolver.mutex.Lock()
+	defer resolver.mutex.Unlock()
+	resolver.agentSession, resolver.isInsideAgent, resolver.agentChainError = session, session.PID != 0, nil
+}
+
+func (resolver *fakePeerResolver) setUnknownChain() {
+	resolver.mutex.Lock()
+	defer resolver.mutex.Unlock()
+	resolver.agentSession, resolver.isInsideAgent, resolver.agentChainError = agentharness.Session{}, false, errUnknownChain
+}
+
+// startHarness starts a process that stands in for omp, so the server watches a real process instance; stop ends it.
+func startHarness(t *testing.T) (session agentharness.Session, stop func()) {
+	t.Helper()
+	process := exec.Command("sleep", "60")
+	if err := process.Start(); err != nil {
+		t.Fatal(err)
+	}
+	var stopping sync.Once
+	stop = func() {
+		stopping.Do(func() {
+			process.Process.Kill()
+			process.Wait()
+		})
+	}
+	t.Cleanup(stop)
+	instance, err := agentharness.ReadInstance(process.Process.Pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: process.Process.Pid, StartTime: instance.StartTime, Directory: "/Users/alice/src/app"}, stop
+}
 
 func (resolver *fakePeerResolver) setSession(session TerminalSession) {
 	resolver.mutex.Lock()
@@ -91,6 +138,8 @@ type fakeHandler struct {
 	state    string
 	types    []string
 	resultBy map[string]any
+	// agentSessionPIDs is the harness PID each handled request came from inside, 0 for none.
+	agentSessionPIDs []int
 }
 
 func (handler *fakeHandler) GetHello() cliprotocol.HelloResult {
@@ -99,10 +148,12 @@ func (handler *fakeHandler) GetHello() cliprotocol.HelloResult {
 	return cliprotocol.HelloResult{State: handler.state, Email: "alice@example.com", Server: "https://hisar.example.com"}
 }
 
-func (handler *fakeHandler) HandleRequest(_ context.Context, request *cliprotocol.Request) (any, error) {
+func (handler *fakeHandler) HandleRequest(ctx context.Context, request *cliprotocol.Request) (any, error) {
 	handler.mutex.Lock()
 	defer handler.mutex.Unlock()
 	handler.types = append(handler.types, request.Type)
+	session, _ := GetAgentSession(ctx)
+	handler.agentSessionPIDs = append(handler.agentSessionPIDs, session.PID)
 	if request.Type == cliprotocol.TypeGetItem && request.ItemID == "missing" {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorNotFound, "item not found")
 	}
