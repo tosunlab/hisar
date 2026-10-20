@@ -155,7 +155,7 @@ func (s *Service) signPlatformPasskey(ctx context.Context, relyingPartyID, encod
 	if err != nil {
 		return PasskeyAssertion{}, err
 	}
-	storedPasskey, assertion, err := s.signWithPasskey(ctx, target.relyingPartyID, credentialID, nil, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
+	storedPasskey, assertion, err := s.signWithPasskey(ctx, target.relyingPartyID, credentialID, "", "", nil, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
 		return passkey.SignAssertionWithClientDataHash(target.relyingPartyID, storedPasskey.RelyingPartyID, clientDataHash, storedPasskey.PrivateKey)
 	})
 	if err != nil {

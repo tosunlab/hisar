@@ -603,6 +603,29 @@ describe("vault", () => {
     expect(wrapper.find('[data-testid="vault-view"]').isVisible()).toBe(true);
   });
 
+  it("drops what it shows once Hisar locks or another account signs in, asking only over an open connection", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    respondWithVault();
+    const wrapper = await mountApp({ statusIntervalMilliseconds: 1000 });
+    await wrapper.findAll('[data-testid="open-item"]')[1].trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="field-field:1"] [data-testid="reveal-field"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("4111 1111 1111 1111");
+
+    respondWithStateOverride({ email: "sam@example.com" });
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.getState", isOverOpenConnection: true });
+    expect(wrapper.text()).not.toContain("4111");
+    expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(false);
+
+    respondWithStateOverride({ view: "locked" });
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="unlocked-view"]').exists()).toBe(false);
+  });
+
   it("fills a suggested login from its details", async () => {
     respondWithVault({ "popup.getItem": () => ({ ...allItem[0], fields: [{ id: "username", label: "Username", kind: "text", value: "alex@example.com" }] }) });
     const wrapper = await mountApp();

@@ -111,6 +111,9 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 		if err != nil {
 			encoded, _ = json.Marshal(browserprotocol.Response{ID: response.ID, Error: browserprotocol.NewError(browserprotocol.ErrorInternal, err.Error())})
 		}
+		if len(encoded) > browserprotocol.MaxMessageSize {
+			encoded, _ = json.Marshal(browserprotocol.Response{ID: response.ID, Error: browserprotocol.NewError(browserprotocol.ErrorInternal, "this is too large to show in the browser; open it in Hisar")})
+		}
 		if err := browserprotocol.WriteMessage(connection, encoded); err != nil {
 			return
 		}

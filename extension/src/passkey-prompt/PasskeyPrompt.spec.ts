@@ -20,8 +20,8 @@ const chooseState: PasskeyPromptState = {
   relyingPartyID: "example.com",
   userName: "",
   allPasskey: [
-    { credentialId: "AQ", title: "Example", userName: "alex@example.com", userDisplayName: "Alex" },
-    { credentialId: "Ag", title: "Example (work)", userName: "alex@work.example", userDisplayName: "" },
+    { credentialId: "AQ", vaultID: "v1", itemID: "i1", title: "Example", userName: "alex@example.com", userDisplayName: "Alex" },
+    { credentialId: "Ag", vaultID: "v1", itemID: "i2", title: "Example (work)", userName: "alex@work.example", userDisplayName: "" },
   ],
   allLogin: [],
 };
@@ -75,7 +75,7 @@ describe("passkey prompt page", () => {
     expect(allChoice.map((choice) => choice.text())).toEqual(["Ealex@example.comExample", "Ealex@work.exampleExample (work)"]);
     await allChoice[1].trigger("click");
     await flushPromises();
-    expect(channel.allCall).toContainEqual({ method: "choosePasskey", credentialId: "Ag" });
+    expect(channel.allCall).toContainEqual({ method: "choosePasskey", credentialId: "Ag", vaultID: "v1", itemID: "i2" });
   });
 
   it("ignores untrusted clicks and clicks before the prompt was visible long enough", async () => {
@@ -167,10 +167,10 @@ describe("prompt channel", () => {
     let count = 0;
     const channel = createPromptChannel(port, "session-1", () => `call-${++count}`);
     const first = channel.call({ method: "getState" });
-    const second = channel.call({ method: "choosePasskey", credentialId: "AQ" });
+    const second = channel.call({ method: "choosePasskey", credentialId: "AQ", vaultID: "v1", itemID: "i1" });
     expect(port.allSent).toEqual([
       { method: "getState", callID: "call-1", sessionID: "session-1" },
-      { method: "choosePasskey", credentialId: "AQ", callID: "call-2", sessionID: "session-1" },
+      { method: "choosePasskey", credentialId: "AQ", vaultID: "v1", itemID: "i1", callID: "call-2", sessionID: "session-1" },
     ]);
     port.deliver({ callID: "call-2", ok: false, error: { code: "locked", message: "Hisar is locked" } });
     port.deliver({ callID: "call-1", ok: true, result: { view: "save" } });

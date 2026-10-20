@@ -8,8 +8,11 @@ export function decideSaveOffer(checkResult: CheckResult, isNeverOrigin: boolean
   return undefined;
 }
 
+// pairingToken binds an offer to the pairing it was made under: a browser paired again, as after another account signs
+// in to Hisar, never sends the earlier account's password.
 export interface SaveOffer {
   offerID: string;
+  pairingToken: string;
   tabId: number;
   url: string;
   host: string;
@@ -45,10 +48,10 @@ export class SaveOfferStore {
     this.allOfferByTab.set(offer.tabId, offer);
   }
 
-  getForTab(tabId: number): SaveOffer | undefined {
+  getForTab(tabId: number, pairingToken: string | undefined): SaveOffer | undefined {
     const offer = this.allOfferByTab.get(tabId);
     if (!offer) return undefined;
-    if (this.now() - offer.createdAt > this.lifetimeMilliseconds) {
+    if (offer.pairingToken !== pairingToken || this.now() - offer.createdAt > this.lifetimeMilliseconds) {
       this.allOfferByTab.delete(tabId);
       return undefined;
     }
@@ -56,7 +59,7 @@ export class SaveOfferStore {
   }
 
   take(tabId: number, offerID: string): SaveOffer | undefined {
-    const offer = this.getForTab(tabId);
+    const offer = this.allOfferByTab.get(tabId);
     if (!offer || offer.offerID !== offerID) return undefined;
     this.allOfferByTab.delete(tabId);
     return offer;
@@ -69,6 +72,7 @@ export class SaveOfferStore {
 
 interface RememberedUsername {
   origin: string;
+  pairingToken: string;
   username: string;
   createdAt: number;
 }
@@ -81,13 +85,13 @@ export class RememberedUsernameStore {
     private readonly lifetimeMilliseconds = 600000,
   ) {}
 
-  remember(tabId: number, origin: string, username: string): void {
-    this.allUsernameByTab.set(tabId, { origin, username, createdAt: this.now() });
+  remember(tabId: number, origin: string, username: string, pairingToken: string): void {
+    this.allUsernameByTab.set(tabId, { origin, pairingToken, username, createdAt: this.now() });
   }
 
-  recall(tabId: number, origin: string): string | undefined {
+  recall(tabId: number, origin: string, pairingToken: string): string | undefined {
     const remembered = this.allUsernameByTab.get(tabId);
-    if (!remembered || remembered.origin !== origin) return undefined;
+    if (!remembered || remembered.origin !== origin || remembered.pairingToken !== pairingToken) return undefined;
     if (this.now() - remembered.createdAt > this.lifetimeMilliseconds) {
       this.allUsernameByTab.delete(tabId);
       return undefined;

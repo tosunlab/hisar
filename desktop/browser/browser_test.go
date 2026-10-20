@@ -151,6 +151,8 @@ func (handler *recordingHandler) HandleRequest(ctx context.Context, request *bro
 		return nil, nil
 	case "logins.fill":
 		return nil, browserprotocol.NewError(browserprotocol.ErrorNoMatch, "this login is not for this site")
+	case "items.reveal":
+		return browserprotocol.RevealResult{Value: strings.Repeat("a", browserprotocol.MaxMessageSize)}, nil
 	}
 	return nil, errors.New("boom")
 }
@@ -262,6 +264,26 @@ func TestHostRelaysThroughServer(t *testing.T) {
 	}
 	if len(handler.requests) != 4 || handler.requests[0].Token != "secret" {
 		t.Errorf("handled requests: %+v", handler.requests)
+	}
+}
+
+func TestServerAnswersAnOversizedResultWithAnErrorAndKeepsTheConnection(t *testing.T) {
+	handler := &recordingHandler{}
+	socketPath := startTestServer(t, handler, nil, "")
+	input := encodeFrames(t, `{"id":"1","type":"items.reveal"}`, `{"id":"2","type":"status"}`)
+	var output bytes.Buffer
+	if err := RunHost(bytes.NewReader(input), &output, HostConfig{SocketPath: socketPath, ExtensionOrigin: browserprotocol.AllowedOrigin}); err != nil {
+		t.Fatal(err)
+	}
+	responses := decodeResponses(t, output.Bytes())
+	if len(responses) != 2 {
+		t.Fatalf("responses: %+v", responses)
+	}
+	if responses[0].ID != "1" || responses[0].OK || responses[0].Error == nil || responses[0].Error.Code != browserprotocol.ErrorInternal {
+		t.Errorf("oversized result: %+v", responses[0])
+	}
+	if responses[1].ID != "2" || !responses[1].OK {
+		t.Errorf("next request: %+v", responses[1])
 	}
 }
 

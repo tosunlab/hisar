@@ -110,8 +110,11 @@ export type BackgroundToContentPasskeyMessage =
 
 export type PasskeyPromptView = "locked" | "choose" | "no-passkeys" | "save" | "excluded";
 
+// PasskeyChoice names the login it is in: two logins, as one in a shared vault, may hold the same credential ID.
 export interface PasskeyChoice {
   credentialId: string;
+  vaultID: string;
+  itemID: string;
   title: string;
   userName: string;
   userDisplayName: string;
@@ -129,7 +132,7 @@ export interface PasskeyPromptState {
 export type PasskeyPromptCall =
   | { method: "getState" }
   | { method: "unlock" }
-  | { method: "choosePasskey"; credentialId: string }
+  | { method: "choosePasskey"; credentialId: string; vaultID: string; itemID: string }
   | { method: "savePasskey"; vaultID?: string; itemID?: string }
   | { method: "confirmExcluded" }
   | { method: "useOtherDevice" }
