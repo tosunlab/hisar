@@ -1,7 +1,7 @@
 {
   "name": "@tryhisar/omp-plugin",
   "version": "0.1.0",
-  "description": "Hisar in omp: hisar run for secrets, Hisar's state in the status line, and /hisar.",
+  "description": "Hisar in omp: Hisar's MCP server and hisar run for secrets, Hisar's state in the status line, and /hisar.",
   "private": true,
   "type": "module",
   "license": "UNLICENSED",

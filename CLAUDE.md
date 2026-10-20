@@ -17,7 +17,7 @@ Five Go modules joined by `go.work`, plus six non-Go apps.
 | `mobile/` | `HisarKit.xcframework` (gomobile) for `mobile/ios` and `HisarKit.aar` for `mobile/android` | `core`; `desktop` in one integration test only |
 | `extension/` | The browser extension (TypeScript, MV3) | none |
 | `raycast/` | The Raycast extension (TypeScript), installed in Raycast's development mode; it talks to the desktop app on `cli.sock` as a launcher | none |
-| `omp/` | The Hisar plugin for omp (TypeScript, Bun), which `omp plugin link` loads: an extension and the `hisar` skill; it runs `hisar` and never imports Hisar code | none |
+| `omp/` | The Hisar plugin for omp (TypeScript, Bun), which `omp plugin link` loads: an extension, the `hisar` skill and the `hisar mcp --no-reveal` MCP server; it runs `hisar` and never imports Hisar code | none |
 | `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
 | `mobile/ios/` | The iOS app (Swift), on top of HisarKit | none |
 | `mobile/android/` | The Android app (Kotlin, Jetpack Compose, Gradle) on top of `HisarKit.aar`: `:model`, a JVM module with the app model and its tests, and `:app`, the Android app | none |
@@ -155,11 +155,13 @@ starts it for: it signs up, sends the phone real approval requests, and saves ea
 | Path | What it holds |
 |---|---|
 | `package.json` | The omp manifest (`omp.extensions`) and the `@oh-my-pi/pi-coding-agent` version the plugin typechecks against, the one Tern ships |
-| `src/index.ts` | The extension: `session_start` finds `hisar` and probes its state, `before_agent_start` adds the note, `tool_call` runs the bash guard, `tool_result` refreshes the state after a `hisar` command, and `/hisar` |
+| `mcp.json` | The `hisar` MCP server omp starts for the plugin: `bin/run-hisar mcp --no-reveal`, with no client timeout so an approval can take its time. Its instructions reach the system prompt, so the extension adds no guidance of its own |
+| `bin/run-hisar` | Runs the `hisar` beside the plugin in `Hisar.app` (`Contents/Resources/omp-plugin`), else the first on `PATH`, else the one in `/Applications` or `~/Applications`; omp roots a `./` command at the plugin |
+| `src/index.ts` | The extension: `session_start` finds `hisar` and probes its state, `before_agent_start` names `hisar`'s full path when the shell's `PATH` lacks it, `tool_call` runs the bash guard, `tool_result` refreshes the state after a `hisar` command, and `/hisar` |
 | `src/bash.ts` | `classifyBashCommand`, the pure guard that blocks `hisar read`, `get`, `export` and `run --no-masking` in a `bash` call; it catches accidents, and the app's approvals are the enforcement |
 | `src/status.ts` | The probe, `HISAR_NO_LAUNCH=1 hisar status --json`, and the status line texts |
-| `src/locate.ts` | Finding `hisar` (`PATH`, then `Hisar.app` in `/Applications` and `~/Applications`) and the note's text |
-| `skills/hisar/SKILL.md` | The skill omp lists for the agent: references, `hisar run`, `--env-file`, approval timeouts |
+| `src/locate.ts` | Finding `hisar` for the shell (`PATH`, then `Hisar.app` in `/Applications` and `~/Applications`) and the path note |
+| `skills/hisar/SKILL.md` | The skill omp lists for the agent: `search_items`, `run_with_secrets` (`command` or `shell`, `env`, `envFiles`, `stdin`), `hisar run` in `bash` for live output, input or the shell's environment, approval timeouts |
 
 ## Where new code goes
 
