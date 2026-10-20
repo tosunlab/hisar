@@ -47,7 +47,7 @@ var commands = []command{
 	{name: "get", argumentUsage: "<item> [-f field] [-v vault]", summary: "show an item, or one field of it (e.g. -f password, -f code)", withBackend: runGet},
 	{name: "read", argumentUsage: "<hisar://vault/item/field> [--no-newline]", summary: "print one secret, for scripts", run: runRead, isLocal: true},
 	{name: "run", argumentUsage: "[--env-file f]... [--no-masking] -- <cmd>", summary: "run a command with the secrets its hisar:// references name, masked in its output", run: runRun, isLocal: true},
-	{name: "mcp", summary: "serve coding agents over MCP (stdio): they use secrets without seeing them, after you approve in the Hisar app", run: runMCP, isLocal: true},
+	{name: "mcp", argumentUsage: "[--no-reveal]", summary: "serve coding agents over MCP (stdio): they use secrets without seeing them, after you approve in the Hisar app", run: runMCP, isLocal: true},
 	{name: "add", argumentUsage: "[-v vault] [--type t]", summary: "add an item; --type is one of " + listItemTypeNames() + " (default login)", withBackend: runAdd},
 	{name: "edit", argumentUsage: "<item> [-v vault]", summary: "edit an item", withBackend: runEdit},
 	{name: "rm", argumentUsage: "<item> [-v vault]", summary: "delete an item", withBackend: runRemove},

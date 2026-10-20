@@ -28,6 +28,7 @@ func dialAppForAgent(context.Context) (mcpserver.AppConnection, error) {
 
 // runMCP serves MCP on stdin and stdout until the agent closes stdin; stdout carries only protocol messages.
 func runMCP(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	isRevealDisabled := flags.Bool("no-reveal", false, "leave out get_secret and get_one_time_code, the tools that return values")
 	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
@@ -38,7 +39,7 @@ func runMCP(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	if isStandaloneForcedByOption || isStandaloneRequested() {
 		return errMCPNeedsApp
 	}
-	server, closeApp := mcpserver.NewServer(mcpserver.Config{Version: version, Dial: dialAppForAgent})
+	server, closeApp := mcpserver.NewServer(mcpserver.Config{Version: version, Dial: dialAppForAgent, IsRevealDisabled: *isRevealDisabled})
 	defer closeApp()
 	err = server.Run(ctx, &mcp.StdioTransport{})
 	if errors.Is(err, io.EOF) || errors.Is(err, context.Canceled) {
