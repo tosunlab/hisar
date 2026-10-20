@@ -14,6 +14,7 @@ import (
 	"net"
 	netmail "net/mail"
 	"net/smtp"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -99,11 +100,37 @@ func IsLoopbackHost(host string) bool {
 	return ip != nil && ip.IsLoopback()
 }
 
+// Send sends one message. Its error never names the recipient, whom SMTP servers often quote when they refuse one, so a
+// logged failure does not say who was being emailed.
 func (m *SMTPMailer) Send(ctx context.Context, message Message) error {
 	recipient, err := ParseRecipient(message.To)
 	if err != nil {
 		return err
 	}
+	if err := m.send(ctx, recipient, message); err != nil {
+		return redactRecipient(err, recipient)
+	}
+	return nil
+}
+
+type redactedError struct {
+	message string
+	err     error
+}
+
+func (redacted *redactedError) Error() string { return redacted.message }
+
+func (redacted *redactedError) Unwrap() error { return redacted.err }
+
+func redactRecipient(err error, recipient string) error {
+	message := regexp.MustCompile(`(?i)`+regexp.QuoteMeta(recipient)).ReplaceAllString(err.Error(), "<recipient>")
+	if message == err.Error() {
+		return err
+	}
+	return &redactedError{message: message, err: err}
+}
+
+func (m *SMTPMailer) send(ctx context.Context, recipient string, message Message) error {
 	ctx, cancel := context.WithTimeout(ctx, m.config.Timeout)
 	defer cancel()
 	isImplicitTLS := m.isImplicitTLS

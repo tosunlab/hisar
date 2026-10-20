@@ -1,11 +1,18 @@
 package api
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/service"
 )
+
+// RunApprovalSweeps drops expired phone approvals from memory until ctx ends.
+func (s *Server) RunApprovalSweeps(ctx context.Context) {
+	s.service.Approvals.Run(ctx, service.ApprovalRetention)
+}
 
 func (s *Server) limitApprovalRate(c fiber.Ctx) error {
 	if !s.service.Approvals.Allow(getSession(c).AccountID) {

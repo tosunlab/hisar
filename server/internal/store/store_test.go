@@ -1,10 +1,13 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -405,6 +408,56 @@ func TestSessions(t *testing.T) {
 	}
 }
 
+func TestSessionLookupRecordsLastSeenWithoutFailingAuthentication(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	device, session := createTestAccount(t, database, "AAAAAA", "a@example.com")
+	readLastSeen := func() time.Time {
+		t.Helper()
+		var lastSeenAt time.Time
+		if err := database.pool.QueryRow(ctx, `SELECT last_seen_at FROM devices WHERE id = $1`, device.ID).Scan(&lastSeenAt); err != nil {
+			t.Fatal(err)
+		}
+		return lastSeenAt
+	}
+	if _, err := database.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() - interval '1 day' WHERE id = $1`, device.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetSessionByHash(ctx, session.TokenHash, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(readLastSeen()) > time.Minute {
+		t.Errorf("last seen not recorded: %v", readLastSeen())
+	}
+
+	var output bytes.Buffer
+	previousWriter := log.Writer()
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(previousWriter) })
+	beforeFailedWrite := readLastSeen()
+	if _, err := database.pool.Exec(ctx, `
+		CREATE FUNCTION refuse_last_seen() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'last seen refused'; END $$;
+		CREATE TRIGGER refuse_last_seen BEFORE UPDATE OF last_seen_at ON devices FOR EACH ROW EXECUTE FUNCTION refuse_last_seen()`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetSessionByHash(ctx, session.TokenHash, 2*time.Hour); err != nil {
+		t.Fatalf("last-seen failure prevented authentication: %v", err)
+	}
+	if !readLastSeen().Equal(beforeFailedWrite) {
+		t.Error("the refused last-seen update changed the timestamp")
+	}
+	if !strings.Contains(output.String(), "device last-seen update failed") {
+		t.Errorf("last-seen failure was not logged: %q", output.String())
+	}
+	var expiresAt time.Time
+	if err := database.pool.QueryRow(ctx, `SELECT expires_at FROM sessions WHERE token_hash = $1`, session.TokenHash).Scan(&expiresAt); err != nil {
+		t.Fatal(err)
+	}
+	if time.Until(expiresAt) < 119*time.Minute {
+		t.Errorf("last-seen failure rolled back the session slide: %v", expiresAt)
+	}
+}
+
 func TestPutItem(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
@@ -523,8 +576,11 @@ func TestPruneAudit(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
 	accountID := "AAAAAA"
-	database.RecordAudit(ctx, &accountID, nil, "login", nil, "192.0.2.1")
-	database.RecordAudit(ctx, &accountID, nil, "login", nil, "192.0.2.2")
+	for _, ip := range []string{"192.0.2.1", "192.0.2.2"} {
+		if err := database.RecordAudit(ctx, &accountID, nil, "login", nil, ip); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := database.pool.Exec(ctx, `UPDATE audit_events SET created_at = now() - interval '400 days' WHERE ip = '192.0.2.1'`); err != nil {
 		t.Fatal(err)
 	}

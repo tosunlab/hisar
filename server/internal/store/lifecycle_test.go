@@ -181,3 +181,18 @@ func TestDeleteAccount(t *testing.T) {
 		t.Error("the pending sign-up invite alice sent is still there")
 	}
 }
+
+func TestDeleteAccountForgetsItsSettingsSave(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	_, aliceSession := createTestAccount(t, database, "ALICE1", "alice@example.com")
+	if err := database.UpdateInstanceSettings(ctx, "ALICE1", func(document []byte) ([]byte, error) { return document, nil }); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DeleteAccount(ctx, "ALICE1", aliceSession.TokenHash, HashOpaqueRecord([]byte{1})); err != nil {
+		t.Fatal(err)
+	}
+	if count := countQueryRow(t, database, `SELECT count(*) FROM instance_settings WHERE updated_by = 'ALICE1'`); count != 0 {
+		t.Error("the settings row still names the deleted account")
+	}
+}

@@ -340,6 +340,7 @@ func (s *Store) deleteAccount(ctx context.Context, accountID string, lockAccount
 			{`DELETE FROM sessions WHERE account_id = $1`, []any{accountID}},
 			{`DELETE FROM devices WHERE account_id = $1`, []any{accountID}},
 			{`DELETE FROM vault_access WHERE account_id = $1`, []any{accountID}},
+			{`UPDATE instance_settings SET updated_by = NULL WHERE updated_by = $1`, []any{accountID}},
 			{`DELETE FROM accounts WHERE id = $1`, []any{accountID}},
 		} {
 			if _, err := transaction.Exec(ctx, statement.query, statement.arguments...); err != nil {

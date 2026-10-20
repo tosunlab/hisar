@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -193,8 +194,9 @@ func insertDeviceSession(ctx context.Context, transaction pgx.Tx, device *Device
 	return err
 }
 
-// GetSessionByHash returns a live session and slides its expiry forward. The session of a suspended account stays live,
-// so its device works again after reactivation, but is refused with ErrAccountSuspended until then.
+// GetSessionByHash returns a live session and slides its expiry forward. Device activity is recorded separately so
+// its failure cannot fail authentication or hold a session lock while waiting for a device lock.
+// The session of a suspended account stays live, but is refused with ErrAccountSuspended until reactivation.
 func (s *Store) GetSessionByHash(ctx context.Context, tokenHash []byte, ttl time.Duration) (*Session, error) {
 	var session Session
 	var isSuspended bool
@@ -211,7 +213,9 @@ func (s *Store) GetSessionByHash(ctx context.Context, tokenHash []byte, ttl time
 	if isSuspended {
 		return nil, ErrAccountSuspended
 	}
-	s.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() WHERE id = $1`, session.DeviceID)
+	if _, err := s.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() WHERE id = $1 AND revoked_at IS NULL`, session.DeviceID); err != nil {
+		log.Printf("device last-seen update failed: %v", err)
+	}
 	return &session, nil
 }
 
@@ -264,10 +268,11 @@ func collectTokenHashes(ctx context.Context, transaction pgx.Tx, query string, a
 	return pgx.CollectRows(rows, pgx.RowTo[[]byte])
 }
 
-func (s *Store) RecordAudit(ctx context.Context, accountID, deviceID *string, eventType string, detail any, ip string) {
-	s.pool.Exec(ctx,
+func (s *Store) RecordAudit(ctx context.Context, accountID, deviceID *string, eventType string, detail any, ip string) error {
+	_, err := s.pool.Exec(ctx,
 		`INSERT INTO audit_events (account_id, device_id, type, detail, ip) VALUES ($1, $2, $3, $4, $5)`,
 		accountID, deviceID, eventType, detail, ip)
+	return err
 }
 
 // PruneAudit deletes audit events older than maxAge.

@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -13,8 +15,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/time/rate"
 
@@ -489,5 +493,62 @@ func TestEveryAdminRouteNeedsAnAdmin(t *testing.T) {
 	}
 	if adminRouteCount == 0 {
 		t.Fatal("no /api/v1/admin routes registered")
+	}
+}
+
+func TestOnlySignedInRotationsMaySendRotationSizedBodies(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	member := signUpTestAccount(t, ctx, server, baseURL, "member@example.com", apitypes.RoleMember)
+	const bodySize = 8 << 20
+	rotationPath := "/api/v1/vaults/" + uuid.NewString() + "/rotate"
+	sendHeadersOnly := func(path string) int {
+		t.Helper()
+		connection := requireValue[net.Conn](t)(net.Dial("tcp", strings.TrimPrefix(baseURL, "http://")))
+		defer connection.Close()
+		fmt.Fprintf(connection, "POST %s HTTP/1.1\r\nHost: hisar.test\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n{", path, bodySize)
+		connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+		response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+		if err != nil {
+			t.Fatalf("%s: no answer before the body was sent: %v", path, err)
+		}
+		response.Body.Close()
+		return response.StatusCode
+	}
+	for _, path := range []string{"/api/v1/auth/login/start", rotationPath} {
+		if status := sendHeadersOnly(path); status != http.StatusRequestEntityTooLarge {
+			t.Errorf("signed out, %s: %d", path, status)
+		}
+	}
+
+	request := requireValue[*http.Request](t)(http.NewRequestWithContext(ctx, http.MethodPost, baseURL+rotationPath, bytes.NewReader(bytes.Repeat([]byte(" "), bodySize))))
+	request.Header.Set("Authorization", "Bearer "+member.Client.Token)
+	response := requireValue[*http.Response](t)(http.DefaultClient.Do(request))
+	response.Body.Close()
+	if response.StatusCode == http.StatusRequestEntityTooLarge || response.StatusCode == http.StatusUnauthorized {
+		t.Errorf("signed in, a rotation-sized body: %d", response.StatusCode)
+	}
+}
+
+func TestSignUpRefusesLongAndControlCharacterNames(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	signUp := func(email, name string) error {
+		invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, email, apitypes.RoleMember, nil))
+		_, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, email, name, []byte("fixture master password"), testDevice)
+		return err
+	}
+	for name, accountName := range map[string]string{
+		"101 characters":    strings.Repeat("ş", 101),
+		"a line break":      "Ada\nInvitation accepted",
+		"a terminal escape": "Ada\x1b[2J",
+	} {
+		var apiError *apiclient.APIError
+		if err := signUp(strings.ReplaceAll(name, " ", "-")+"@example.com", accountName); !errors.As(err, &apiError) || apiError.Status != http.StatusBadRequest {
+			t.Errorf("a name with %s: %v", name, err)
+		}
+	}
+	if err := signUp("long@example.com", "  "+strings.Repeat("ş", 100)+"  "); err != nil {
+		t.Errorf("a name of 100 characters: %v", err)
 	}
 }

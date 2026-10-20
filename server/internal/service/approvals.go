@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/hex"
 	"sort"
 	"sync"
@@ -95,6 +96,23 @@ func (relay *ApprovalRelay) removeExpired(now time.Time) {
 		if now.Sub(lastUsedTime) > 10*time.Minute {
 			delete(relay.limitersByAccount, accountID)
 			delete(relay.limiterLastUsedTimes, accountID)
+		}
+	}
+}
+
+// Run drops approvals past their retention every interval until ctx ends, so a sealed request does not stay in memory
+// for want of a new approval to sweep it.
+func (relay *ApprovalRelay) Run(ctx context.Context, interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			relay.mutex.Lock()
+			relay.removeExpired(relay.now())
+			relay.mutex.Unlock()
 		}
 	}
 }

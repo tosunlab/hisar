@@ -123,7 +123,7 @@ The server stores `encKeyset`, the KEM public key, the Ed25519 public key and th
 - Removing a member rotates `K_vault` (`session.RemoveVaultMember`, `POST /vaults/{id}/rotate`, owner only):
   - The owner's client generates a new key, re-encrypts the vault name and every item, including tombstones, under a new revision, and wraps the new key for each remaining member. A tombstone is sealed again with the empty content every deletion sends, without opening the old one: no app reads a tombstone's content, so one that does not open cannot block the rotation. Each member's signed KEM key is verified, and the client's `MemberVerifier` hook (key pinning in the CLI and the desktop app) must accept it.
   - The server applies it in one transaction. It returns 409 unless the submitted items match the stored items and revisions exactly, so concurrent edits are never lost; the client then retries, up to 3 times, reloading the vault's key before each attempt, since another owner may have rotated it. It also returns 409 unless the request's `keyGeneration` is the vault's current one (required for organization vaults, checked for any vault when sent), so two owners rotating from the same key cannot both succeed. It replaces all access grants, gives every item a new seq so all devices resync, and drops the vault's item history, because that history is encrypted with the old key.
-  - The rotating owner must keep owner access. Rotation requests may be up to 32 MiB; every other endpoint is limited to 2 MiB.
+  - The rotating owner must keep owner access. Rotation and vault deletion requests may be up to 32 MiB, and only with a live session; the server refuses any other body above 4 MiB from its headers, before reading it, and most endpoints accept at most 2 MiB.
   - Copies the removed member downloaded before the rotation stay readable to them; that is unavoidable.
 - Organization vaults (§5.11) use the same per-member wrapping: a team is a roster on the server, never a key. The server decides who is entitled to an organization vault from its teams; an owner's app wraps `K_vault` for each entitled account that has no wrapped key yet, and when an account loses its entitlement the server deletes its wrapped key at once and marks the vault for rotation, which an owner's app then performs as above, keeping every remaining member and role.
 
@@ -614,6 +614,10 @@ instance_settings (id = 1, settings jsonb, updated_at, updated_by)   -- one row,
 
 Phone approvals (§9.9) are not in Postgres: they live in the server process's memory for at most 4 minutes, like the event broker.
 
+Session lookups slide expiry before recording `devices.last_seen_at` in a separate statement. A failed activity write is
+logged without failing authentication. No session row lock is held while updating a device. Transactions that lock
+both devices and their sessions must lock devices first, matching device revocation.
+
 ### 8.2 API surface (v1)
 
 | Area | Endpoints |
@@ -700,7 +704,7 @@ The operator can require a minimum version per app, in the admin dashboard under
 
 - **Headers.** Every app sends `Hisar-Platform` and `Hisar-Version` with every request, the event stream included. The platform is the one the device registers with: `darwin/desktop` (Mac app), `ios/mobile` (iPhone app), `android/mobile` (Android app), `<os>/cli` (`hisar`, any OS); the desktop app checks the browser extension and an app-mode `hisar` on their behalf with `browser/extension` and `<os>/cli` (below). Development builds (`development`, or no bundle version) send neither header.
 - **Middleware.** `requireMinimumVersion` runs first on every `/api/v1` request, before rate limits, sessions and the handlers, so sign-in, sign-up and `GET /version-check` answer it too and a signed-out app knows. When the platform has a minimum and the version is below it, the answer is `426 Upgrade Required` with `{"error": "update required", "minimumVersion", "updateURL"}`; `updateURL` is `https://tryhisar.com/download` for the Mac, iPhone, Android and `hisar`, and the Chrome Web Store page for the extension.
-- **What passes:** requests without either header, from platforms without a minimum (Linux desktop, other callers), and versions that do not parse. So very old apps from before the headers, scripts and other callers keep working; only an app that says it is too old is refused. `/api/v1/desktop/updates/…` always passes, so a refused Mac app can still update itself through Sparkle.
+- **What passes:** requests without either header, from platforms without a minimum (Linux desktop, other callers), and versions that do not parse. So very old apps from before the headers, scripts and other callers keep working; only an app that says it is too old is refused. `/api/v1/desktop/updates/…` always passes, so a refused Mac app can still update itself through Sparkle. The headers are the caller's own claim, so the minimum only tells honest apps to update; it is never an access control, and a protocol fix that must hold for every caller is enforced by the server on the request itself.
 - **Versions** are semantic versions compared by `core/appversion` (also the updater's parser, `desktopupdate.GetBuildNumber`): a pre-release comes before its release (`1.0.0-alpha-test` < `1.0.0`; a custom build `1.2.3-label` is below a minimum of `1.2.3`), build metadata is ignored.
 - **Clients.** `core/apiclient` sends the headers when `Client.Version` is set and turns a 426 into `*apiclient.UpgradeRequiredError` (not "unreachable", so the offline cache never hides it), calling `Client.OnUpgradeRequired`.
   - **Mac app:** the backend records the requirement from any answer (`Status.updateRequired`: current version, minimum, update URL), stops the event stream and emits `update-required`, which shows the window. The app also asks `GET /version-check` at launch. The UI then shows only a blocking "Update required" screen: "This server needs Hisar 0.2.0 or later. This Mac has 0.1.0.", **Update now** (Sparkle when it is available and signed in, otherwise the download page) and **Check again** (any answer but 426 clears the requirement, e.g. after the operator lowered the minimum). Meanwhile the SSH agent (signing and listing keys, which also shows the screen), the command-line socket (every request but `hello`, coding agents included) and the browser bridge (every paired request) answer at once with "Hisar needs an update: the server requires version 0.2.0 or later…" instead of waiting.
@@ -1560,7 +1564,7 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 | `DELETE /approvals/{id}` | → 204, only from a session of the requesting device (403 otherwise); marks it resolved and sends `approval-resolved` |
 
 - Every endpoint needs a session and sees only the session's account. Each account has a token bucket of 2 requests per second with a burst of 60 across these endpoints (429).
-- A request is kept until 60 s after its expiry, so at most 4 minutes after it was posted, and is never served after that; every write drops the expired ones.
+- A request is kept until 60 s after its expiry, so at most 4 minutes after it was posted, and is never served after that; every new request, and a sweep every 60 s, drops the expired ones, so one stays in memory at most about 5 minutes.
 
 **Mac** (`core/app/phoneapproval.go`, `desktop/agent`)
 

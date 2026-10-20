@@ -217,7 +217,7 @@ func (s *Store) changeOrganization(ctx context.Context, organizationID string, i
 // among the team grants condition selects from team_vaults tv joined with team_members tm.
 func listEntitledRoles(ctx context.Context, database queryer, condition string, arguments ...any) (map[vaultAccountKey]string, error) {
 	rows, err := database.Query(ctx, `
-		SELECT tv.vault_id::text, tm.account_id, tv.role
+		SELECT DISTINCT tv.vault_id::text, tm.account_id, tv.role
 		FROM team_vaults tv JOIN team_members tm ON tm.team_id = tv.team_id
 		WHERE `+condition, arguments...)
 	if err != nil {
@@ -846,14 +846,17 @@ func (s *Store) CreateOrganizationVault(ctx context.Context, vault *Vault, owner
 // ListVaultKeyRequests returns the key requests of the organization vaults the account owns.
 func (s *Store) ListVaultKeyRequests(ctx context.Context, accountID string) ([]VaultKeyRequest, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT tv.vault_id::text, tv.role, v.key_generation, a.id, a.email, a.name, a.role, a.kem_pub, a.sign_pub, a.kem_sig
-		FROM vault_access mine
-		JOIN vaults v ON v.id = mine.vault_id
-		JOIN team_vaults tv ON tv.vault_id = mine.vault_id
-		JOIN team_members tm ON tm.team_id = tv.team_id
-		JOIN accounts a ON a.id = tm.account_id
-		WHERE mine.account_id = $1 AND mine.role = 'owner'
-			AND NOT EXISTS (SELECT 1 FROM vault_access other WHERE other.vault_id = tv.vault_id AND other.account_id = tm.account_id)`, accountID)
+		SELECT grants.vault_id::text, grants.role, v.key_generation, a.id, a.email, a.name, a.role, a.kem_pub, a.sign_pub, a.kem_sig
+		FROM (
+			SELECT DISTINCT tv.vault_id, tm.account_id, tv.role
+			FROM vault_access mine
+			JOIN team_vaults tv ON tv.vault_id = mine.vault_id
+			JOIN team_members tm ON tm.team_id = tv.team_id
+			WHERE mine.account_id = $1 AND mine.role = 'owner'
+				AND NOT EXISTS (SELECT 1 FROM vault_access other WHERE other.vault_id = tv.vault_id AND other.account_id = tm.account_id)
+		) grants
+		JOIN vaults v ON v.id = grants.vault_id
+		JOIN accounts a ON a.id = grants.account_id`, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -892,7 +895,7 @@ func (s *Store) ListVaultKeyRequests(ctx context.Context, accountID string) ([]V
 // ListWaitingVaultKeys returns the organization vaults the account's teams entitle it to and it has no key for.
 func (s *Store) ListWaitingVaultKeys(ctx context.Context, accountID string) ([]WaitingVaultKey, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT tv.vault_id::text, tv.organization_id::text, tv.role
+		SELECT DISTINCT tv.vault_id::text, tv.organization_id::text, tv.role
 		FROM team_members tm JOIN team_vaults tv ON tv.team_id = tm.team_id
 		WHERE tm.account_id = $1
 			AND NOT EXISTS (SELECT 1 FROM vault_access a WHERE a.vault_id = tv.vault_id AND a.account_id = $1)`, accountID)

@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/netip"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/fasthttp"
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
@@ -26,13 +29,17 @@ import (
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
-// The transport accepts rotation-sized bodies; decodeBody enforces maxBody everywhere else.
+// The transport refuses bodies above maxMoveBody, except for limitRequestBody's rotation-sized requests; decodeBody
+// enforces maxBody below that.
 const (
 	maxBody         = 2 << 20
 	maxRotationBody = 32 << 20
 	// maxMoveBody holds a moved item of the largest size, base64-encoded, and its small tombstone.
 	maxMoveBody = 4 << 20
 )
+
+// rotationPath matches the requests that carry a whole vault: its rotation and its deletion.
+var rotationPath = regexp.MustCompile(`^/api/v1/vaults/[^/]+/(rotate|delete)$`)
 
 type Config struct {
 	// Config holds what the service reads: the public URL.
@@ -46,6 +53,8 @@ type Config struct {
 	EventHeartbeatInterval time.Duration
 	// WriteTimeout limits writing one response; event streams extend it with every write.
 	WriteTimeout time.Duration
+	// RequestTimeout ends the context, and so the database work, of one request's handler.
+	RequestTimeout time.Duration
 	// DesktopUpdates is nil when the server has no update source.
 	DesktopUpdates *desktopupdate.Source
 	// Version is hisar-server's release version, for Overview.
@@ -95,6 +104,10 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	if config.WriteTimeout == 0 {
 		config.WriteTimeout = 30 * time.Second
 	}
+	// Apps give up on a request after 30 s, so work past this answers nobody.
+	if config.RequestTimeout == 0 {
+		config.RequestTimeout = time.Minute
+	}
 	opaqueConfiguration := pake.NewConfig()
 	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
 	if err != nil {
@@ -140,15 +153,17 @@ func (s *Server) WaitForBackgroundWork() { s.service.WaitForBackgroundWork() }
 func (s *Server) CreateApp() *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "hisar-server",
-		BodyLimit:    maxRotationBody,
+		BodyLimit:    maxMoveBody,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: s.config.WriteTimeout,
 		IdleTimeout:  120 * time.Second,
 		// fasthttp reuses request buffers after a handler returns.
-		Immutable:    true,
-		ErrorHandler: handleError,
+		Immutable:                    true,
+		DisablePreParseMultipartForm: true,
+		ErrorHandler:                 handleError,
 	})
-	app.Use(setSecurityHeaders)
+	app.Server().HeaderReceived = s.limitRequestBody
+	app.Use(setSecurityHeaders, s.limitRequestTime)
 	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("ok\n") })
 	app.Get("/privacy", sendPrivacyPolicy)
 	app.Get("/terms", sendTermsOfService)
@@ -243,6 +258,15 @@ func (s *Server) CreateApp() *fiber.App {
 	return app
 }
 
+// limitRequestTime gives the handlers a context that ends after RequestTimeout; fasthttp's own never ends, not even
+// when the client goes away. Streamed bodies are written after the handler returns, so they bring their own.
+func (s *Server) limitRequestTime(c fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.RequestTimeout)
+	defer cancel()
+	c.SetContext(ctx)
+	return c.Next()
+}
+
 // privacyPolicy is linked from the Chrome Web Store and App Store listings.
 //
 //go:embed privacy.html
@@ -301,7 +325,8 @@ func handleError(c fiber.Ctx, err error) error {
 	}
 	var fiberError *fiber.Error
 	if !errors.As(err, &fiberError) {
-		log.Printf("internal error: %s %s: %v", c.Method(), c.Path(), err)
+		// The route, not the path: invite tokens and share link IDs are capabilities.
+		log.Printf("internal error: %s %s: %v", c.Method(), c.Route().Path, err)
 		fiberError = fiber.NewError(fiber.StatusInternalServerError, "internal error")
 	}
 	message := fiberError.Message
@@ -366,12 +391,33 @@ func (s *Server) limitRate(c fiber.Ctx) error {
 	return c.Next()
 }
 
-// With TrustProxy, the last X-Forwarded-For entry is the one appended by our reverse proxy.
+// limitRequestBody runs once a request's headers are in, before its body is read: only a signed-in caller's rotation
+// or vault deletion may send up to maxRotationBody, so nobody else makes the server buffer that much.
+func (s *Server) limitRequestBody(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
+	path, _, _ := bytes.Cut(header.RequestURI(), []byte("?"))
+	if !header.IsPost() || !rotationPath.Match(path) {
+		return fasthttp.RequestConfig{}
+	}
+	token, ok := bytes.CutPrefix(header.Peek(fiber.HeaderAuthorization), []byte("Bearer "))
+	if !ok || len(token) == 0 {
+		return fasthttp.RequestConfig{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := s.service.Authenticate(ctx, string(token)); err != nil {
+		return fasthttp.RequestConfig{}
+	}
+	return fasthttp.RequestConfig{MaxRequestBodySize: maxRotationBody}
+}
+
+// With TrustProxy, the last X-Forwarded-For entry is the one appended by our reverse proxy. An entry that is not an IP
+// address is not the proxy's, so the peer's address counts instead.
 func (s *Server) getClientIP(c fiber.Ctx) string {
 	if s.config.TrustProxy {
-		if forwardedFor := c.Get("X-Forwarded-For"); forwardedFor != "" {
-			forwardedIPs := strings.Split(forwardedFor, ",")
-			return strings.TrimSpace(forwardedIPs[len(forwardedIPs)-1])
+		forwardedFor := c.Get("X-Forwarded-For")
+		lastEntry := strings.TrimSpace(forwardedFor[strings.LastIndexByte(forwardedFor, ',')+1:])
+		if address, err := netip.ParseAddr(lastEntry); err == nil {
+			return address.Unmap().WithZone("").String()
 		}
 	}
 	return c.RequestCtx().RemoteIP().String()
