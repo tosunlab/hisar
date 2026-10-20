@@ -493,7 +493,7 @@ it("refuses a replacement Secret Key response that arrives after lock", async ()
   const pending = storeModule.replaceSecretKey("password");
   api.getStatus.mockResolvedValue(createStatus("locked"));
   await storeModule.handleLocked();
-  finish({ status: createStatus("unlocked"), secretKey: "H1-REPLACEMENT", signedOutDeviceCount: 1, keychainError: "" });
+  finish({ status: createStatus("unlocked"), secretKey: "H1-REPLACEMENT", signedOutDeviceCount: 1, keychainError: "", localError: "" });
   expect(await pending).toBeUndefined();
   expect(store.pendingSecretKey).toBe("");
   expect(store.status.state).toBe("locked");
