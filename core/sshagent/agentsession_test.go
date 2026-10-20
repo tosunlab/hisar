@@ -3,7 +3,28 @@ package sshagent
 import (
 	"testing"
 	"time"
+
+	"github.com/tryhisar/hisar/core/agentharness"
 )
+
+// TestUnknownPeerGetsNoKeys: a peer the resolver cannot name, such as one whose process chain changed while it was
+// read, could run inside omp: it lists no keys and signs nothing.
+func TestUnknownPeerGetsNoKeys(t *testing.T) {
+	key := createTestKey(t, "id", "Deploy key", getTestMaterials()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	fixture.resolver.mutex.Lock()
+	fixture.resolver.err = agentharness.ErrUnknownChain
+	fixture.resolver.mutex.Unlock()
+	if keys, err := fixture.dialAgent(t).List(); err == nil || len(keys) != 0 {
+		t.Errorf("an unknown peer listed %d keys, %v", len(keys), err)
+	}
+	if signature, err := fixture.dialAgent(t).Sign(getPublicKey(t, key), []byte("data")); err == nil || signature != nil {
+		t.Error("an unknown peer got a signature")
+	}
+	if count := fixture.approver.countRequest(); count != 0 {
+		t.Errorf("an unknown peer asked %d times", count)
+	}
+}
 
 // TestSSHRefusesApprovalAfterHarnessExit: omp exits while its SSH dialog is answered, before the exit watch sees it. The
 // signature is refused.

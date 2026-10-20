@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -41,9 +42,12 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 	defer connection.Close()
 	peer := Peer{PeerInfo: localsocket.PeerInfo{Name: localsocket.UnknownPeerName}}
 	if s.peerResolver != nil {
-		if resolvedPeer, err := s.peerResolver.ResolvePeer(connection); err == nil {
-			peer = resolvedPeer
+		resolvedPeer, err := s.peerResolver.ResolvePeer(connection)
+		if err != nil {
+			log.Printf("sshagent: refused a connection whose program is unknown: %v", err)
+			return
 		}
+		peer = resolvedPeer
 	}
 	if peer.Name == "" {
 		peer.Name = localsocket.UnknownPeerName

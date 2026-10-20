@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"errors"
 	"net"
 
 	"github.com/tryhisar/hisar/core/agentharness"
@@ -36,15 +37,24 @@ type PeerResolver struct {
 	AgentSessions *agentharness.Sessions
 }
 
+// ResolvePeer fails for a peer whose process chain cannot be read, as the command-line socket refuses one: a harness
+// could run in it, so it must get neither the keys of every vault nor an app's remembered approval.
 func (resolver PeerResolver) ResolvePeer(connection net.Conn) (sshagent.Peer, error) {
 	info, err := resolver.Base.ResolvePeer(connection)
-	peer := sshagent.Peer{PeerInfo: info}
-	if err != nil || info.PID <= 0 {
-		return peer, err
+	if err != nil {
+		return sshagent.Peer{}, err
 	}
+	if info.PID <= 0 {
+		return sshagent.Peer{}, errors.New("agent: the peer's process is unknown")
+	}
+	peer := sshagent.Peer{PeerInfo: info}
 	requester := resolver.Resolve(info.PID)
 	peer.ApplicationPath = requester.App.Path
-	if session, isInside, _ := agentharness.Find(resolver.ReadChain(info.PID)); isInside {
+	session, isInside, err := agentharness.Find(resolver.ReadChain(info.PID))
+	if err != nil {
+		return sshagent.Peer{}, err
+	}
+	if isInside {
 		host := ""
 		if app, isVerified := resolver.IdentifyApp(requester); isVerified {
 			resolver.AgentHosts.RecordAgentHost(app)

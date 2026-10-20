@@ -106,11 +106,15 @@ type fakePeerResolver struct {
 	peer         Peer
 	agentSession *agentharness.Session
 	sessions     *agentharness.Sessions
+	err          error
 }
 
 func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (Peer, error) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
+	if resolver.err != nil {
+		return Peer{}, resolver.err
+	}
 	peer := resolver.peer
 	if resolver.agentSession != nil {
 		peer.AgentSession = resolver.sessions.Join(*resolver.agentSession, ternPath)

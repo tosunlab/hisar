@@ -95,15 +95,12 @@ func TestPeerResolverFindsTheAgentSession(t *testing.T) {
 }
 
 func TestAgentHostWithoutTerminalOrHarnessIsNeverRemembered(t *testing.T) {
-	unknownChain := createTernChain(true)
-	unknownChain.IsKnown = false
 	cases := []struct {
 		name                  string
 		test                  sshPeerTest
 		wantIsNeverRemembered bool
 	}{
 		{"a double fork in an agent host", sshPeerTest{chain: createTernChain(false), agentHosts: fakeAgentHosts{ternIdentity: true}}, true},
-		{"an unknown chain in an agent host", sshPeerTest{chain: unknownChain, agentHosts: fakeAgentHosts{ternIdentity: true}}, true},
 		{"the user's own pane in an agent host", sshPeerTest{chain: createTernChain(false), hasTerminal: true, agentHosts: fakeAgentHosts{ternIdentity: true}}, false},
 		{"an app that never hosted an agent", sshPeerTest{chain: createTernChain(false), agentHosts: fakeAgentHosts{}}, false},
 	}
@@ -111,6 +108,21 @@ func TestAgentHostWithoutTerminalOrHarnessIsNeverRemembered(t *testing.T) {
 		peer, err := testCase.test.createResolver().ResolvePeer(nil)
 		if err != nil || peer.AgentSession != nil || peer.IsNeverRemembered != testCase.wantIsNeverRemembered || peer.ApplicationPath != ternBundlePath {
 			t.Errorf("%s: peer = %+v, %v", testCase.name, peer, err)
+		}
+	}
+}
+
+// TestUnknownSSHChainIsRefused: a chain that changed while it was read could hold omp, so the peer is refused, in a
+// terminal or not, in an agent host or not, as the command-line socket refuses it.
+func TestUnknownSSHChainIsRefused(t *testing.T) {
+	for _, isUnderOmp := range []bool{true, false} {
+		for _, hasTerminal := range []bool{true, false} {
+			chain := createTernChain(isUnderOmp)
+			chain.IsKnown = false
+			test := &sshPeerTest{chain: chain, hasTerminal: hasTerminal, agentHosts: fakeAgentHosts{ternIdentity: true}}
+			if peer, err := test.createResolver().ResolvePeer(nil); err == nil {
+				t.Errorf("under omp %v, terminal %v: an unknown chain became peer %+v", isUnderOmp, hasTerminal, peer)
+			}
 		}
 	}
 }
