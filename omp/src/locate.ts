@@ -42,11 +42,9 @@ export function prependToPath(pathVariable: string | undefined, location: HisarL
   return [directory, ...entries].join(delimiter);
 }
 
-const baseNote =
-  "Hisar holds the user's secrets. Give one to a command with `NAME=hisar://<vault>/<item>/<field> hisar run -- <command>`, never by printing it. Read the `hisar` skill before using Hisar.";
-
-// describeNote is the note every prompt carries; omp's PTY shell keeps the PATH omp started with, so it names
-// hisar by its full path when that PATH lacks it.
-export function describeNote(location: HisarLocation): string {
-  return location.isOnInheritedPath ? baseNote : `${baseNote} Call hisar as \`${location.path}\`.`;
+// describePathNote names hisar's full path when omp's PTY shell, which keeps the PATH omp started with, lacks it.
+// The hisar MCP server's instructions carry the rest of the guidance into the prompt.
+export function describePathNote(location: HisarLocation): string | undefined {
+  if (location.isOnInheritedPath) return undefined;
+  return `Hisar's command-line tool is not on the shell's PATH; call hisar as \`${location.path}\`.`;
 }

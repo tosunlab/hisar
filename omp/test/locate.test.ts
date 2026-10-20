@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { describeNote, findHisar, prependToPath } from "../src/locate";
+import { describePathNote, findHisar, prependToPath } from "../src/locate";
 
 const appHelper = "/Applications/Hisar.app/Contents/Helpers/hisar";
 const homeHelper = "/Users/a/Applications/Hisar.app/Contents/Helpers/hisar";
@@ -46,23 +46,14 @@ describe("prependToPath", () => {
   });
 });
 
-describe("describeNote", () => {
-  test("names hisar run, hisar:// references and the hisar skill", () => {
-    const note = describeNote({ path: "/usr/bin/hisar", isOnInheritedPath: true });
-    expect(note).toContain("hisar run --");
-    expect(note).toContain("hisar://");
-    expect(note).toContain("`hisar` skill");
-    expect(note).not.toContain("/usr/bin/hisar");
+describe("describePathNote", () => {
+  test("adds nothing when the shell finds hisar on PATH", () => {
+    expect(describePathNote({ path: "/usr/bin/hisar", isOnInheritedPath: true })).toBeUndefined();
   });
 
-  test("carries the absolute path when hisar is not on the inherited PATH", () => {
-    expect(describeNote({ path: homeHelper, isOnInheritedPath: false })).toEndWith(`Call hisar as \`${homeHelper}\`.`);
-  });
-
-  // About 4 characters a token in English; the note with a long path stays well under 80 tokens.
-  test("stays under 80 tokens", () => {
-    const note = describeNote({ path: homeHelper, isOnInheritedPath: false });
-    expect(note.length / 4).toBeLessThan(80);
-    expect(note.split(/\s+/).length).toBeLessThan(55);
+  test("names hisar's full path when the shell's PATH lacks it", () => {
+    expect(describePathNote({ path: homeHelper, isOnInheritedPath: false })).toEndWith(
+      `call hisar as \`${homeHelper}\`.`,
+    );
   });
 });

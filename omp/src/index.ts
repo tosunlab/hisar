@@ -1,6 +1,6 @@
 import type { ExtensionAPI, ExtensionContext } from "@oh-my-pi/pi-coding-agent";
 import { classifyBashCommand, listHisarInvocations } from "./bash";
-import { describeNote, findHisar, type HisarLocation, prependToPath } from "./locate";
+import { describePathNote, findHisar, type HisarLocation, prependToPath } from "./locate";
 import { type HisarStatus, probeStatus, statusTexts } from "./status";
 
 const hisarBundleID = "com.tryhisar.hisar";
@@ -24,9 +24,8 @@ export default function hisar(pi: ExtensionAPI) {
   });
 
   pi.on("before_agent_start", (event) => {
-    if (!location) return;
-    const note = describeNote(location);
-    if (event.systemPrompt.includes(note)) return;
+    const note = location && describePathNote(location);
+    if (!note || event.systemPrompt.includes(note)) return;
     return { systemPrompt: [...event.systemPrompt, note] };
   });
 
