@@ -75,12 +75,14 @@ type Chain struct {
 	IsKnown   bool
 }
 
-// Session is one harness process instance and the folder it works in.
+// Session is one harness process instance and the folder it works in. IsSigned: the process matched its harness by
+// code signature, which no other program can copy, rather than by a name or a path any program can take.
 type Session struct {
 	Harness   Harness
 	PID       int
 	StartTime int64
 	Directory string
+	IsSigned  bool
 }
 
 // Find returns the session of the nearest harness in a chain, and ErrUnknownChain when the chain is unknown. A worker of
@@ -100,7 +102,10 @@ func Find(chain Chain) (Session, bool, error) {
 				index++
 				process = chain.Processes[index]
 			}
-			return Session{Harness: harness, PID: process.PID, StartTime: process.StartTime, Directory: process.WorkingDirectory}, true, nil
+			return Session{
+				Harness: harness, PID: process.PID, StartTime: process.StartTime, Directory: process.WorkingDirectory,
+				IsSigned: harness.isSignedBy(process),
+			}, true, nil
 		}
 	}
 	return Session{}, false, nil
@@ -112,8 +117,12 @@ func (harness Harness) isWorker(process Process) bool {
 	})
 }
 
+func (harness Harness) isSignedBy(process Process) bool {
+	return process.Signature != (Signature{}) && slices.Contains(harness.Signatures, process.Signature)
+}
+
 func (harness Harness) matches(process Process) bool {
-	if process.Signature != (Signature{}) && slices.Contains(harness.Signatures, process.Signature) {
+	if harness.isSignedBy(process) {
 		return true
 	}
 	programNames := listProgramNames(process)

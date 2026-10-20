@@ -27,18 +27,18 @@ func createOmpInTernChain() Chain {
 func TestFindOmpInTern(t *testing.T) {
 	session, isFound, _ := Find(createOmpInTernChain())
 	if !isFound || session.Harness.ID != "omp" || session.Harness.Name != "omp" || session.PID != 1226 || session.StartTime != 100 ||
-		session.Directory != "/Users/developer/src/hisarapp-core" {
+		session.Directory != "/Users/developer/src/hisarapp-core" || !session.IsSigned {
 		t.Fatalf("session = %+v, %v", session, isFound)
 	}
 
 	bySignature := createOmpInTernChain()
 	bySignature.Processes[2].Arguments = nil
-	if session, isFound, _ := Find(bySignature); !isFound || session.PID != 1226 {
+	if session, isFound, _ := Find(bySignature); !isFound || session.PID != 1226 || !session.IsSigned {
 		t.Errorf("signature alone: %+v, %v", session, isFound)
 	}
 	byName := createOmpInTernChain()
 	byName.Processes[2].Signature = Signature{}
-	if session, isFound, _ := Find(byName); !isFound || session.PID != 1226 {
+	if session, isFound, _ := Find(byName); !isFound || session.PID != 1226 || session.IsSigned {
 		t.Errorf("first argument alone: %+v, %v", session, isFound)
 	}
 	otherTeam := createOmpInTernChain()
@@ -59,7 +59,7 @@ func TestFindOmpRunByBun(t *testing.T) {
 		{PID: 46806, ParentPID: 1, StartTime: 100, Path: "/bin/bash", Arguments: []string{"/bin/bash", "-c", "sleep 8"}},
 	}}
 	session, isFound, _ := Find(chain)
-	if !isFound || session.PID != 46809 || session.Directory != "/private/tmp/ompbun" {
+	if !isFound || session.PID != 46809 || session.Directory != "/private/tmp/ompbun" || session.IsSigned {
 		t.Fatalf("bin link: %+v, %v", session, isFound)
 	}
 	chain.Processes[2].Arguments = []string{"bun", "--smol", "/Users/developer/.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"}
