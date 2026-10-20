@@ -4,8 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -156,10 +158,21 @@ type durableExportWriter interface {
 	Write([]byte) (int, error)
 	Sync() error
 	Close() error
+	Stat() (os.FileInfo, error)
 }
 
 func finishNewExportFile(path string, content []byte, file durableExportWriter) error {
-	_, err := file.Write(content)
+	return finishExportFile(path, file, func() error {
+		_, err := file.Write(content)
+		return err
+	})
+}
+
+func finishExportFile(path string, file durableExportWriter, write func() error) error {
+	owned, err := file.Stat()
+	if err == nil {
+		err = write()
+	}
 	if err == nil {
 		err = file.Sync()
 	}
@@ -167,9 +180,16 @@ func finishNewExportFile(path string, content []byte, file durableExportWriter) 
 		err = closeErr
 	}
 	if err != nil {
-		os.Remove(path)
+		removeOwnedExportFile(path, owned)
 	}
 	return err
+}
+
+func removeOwnedExportFile(path string, owned os.FileInfo) {
+	current, err := os.Lstat(path)
+	if err == nil && owned != nil && os.SameFile(owned, current) {
+		os.Remove(path)
+	}
 }
 
 // buildExport exports the session of epoch, never one that replaced it after the approval.
@@ -215,40 +235,81 @@ func (s *Service) saveFile(path string, content []byte, epoch uint64) error {
 	if err := s.checkSessionEpoch(epoch); err != nil {
 		return err
 	}
+	return s.saveSessionFile(path, content, epoch, os.Rename)
+}
+
+func (s *Service) saveSessionFile(path string, content []byte, epoch uint64, publish func(string, string) error) error {
 	temporaryFile, err := os.CreateTemp(filepath.Dir(path), ".hisar-save-*")
 	if err != nil {
 		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	temporaryPath := temporaryFile.Name()
+	owned, err := temporaryFile.Stat()
+	if err != nil {
+		temporaryFile.Close()
+		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
+	}
+	defer removeOwnedExportFile(temporaryPath, owned)
 	if err := finishNewExportFile(temporaryPath, content, temporaryFile); err != nil {
 		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireSessionEpoch(epoch); err != nil {
-		os.Remove(temporaryPath)
 		return err
 	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		os.Remove(temporaryPath)
+	if err := publish(temporaryPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return errExportFileExists
+		}
 		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	return nil
 }
 
-// saveNewFile is saveFile for a path that must not exist: it claims path first, so it never replaces another file.
+// saveNewFile publishes without replacing a destination, even if another writer creates it during the save.
 func (s *Service) saveNewFile(path string, content []byte, epoch uint64) error {
-	claim, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return errExportFileExists
+	return s.saveSessionFile(path, content, epoch, publishNewExportFile)
+}
+
+func publishNewExportFile(temporaryPath, path string) error {
+	err := os.Link(temporaryPath, path)
+	if err == nil {
+		return nil
 	}
-	if err != nil {
-		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
-	}
-	claim.Close()
-	if err := s.saveFile(path, content, epoch); err != nil {
-		os.Remove(path)
+	if !errors.Is(err, syscall.EPERM) && !errors.Is(err, syscall.ENOTSUP) && !errors.Is(err, syscall.EXDEV) {
 		return err
 	}
-	return nil
+	// FAT and exFAT cannot link. Keep the session mutex through the copy, sync and close so lock cannot
+	// precede publication. Unlike a link, this fallback holds the mutex for the full file copy.
+	source, err := os.Open(temporaryPath)
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+	return copyNewExportFile(path, source)
+}
+
+func copyNewExportFile(path string, source io.Reader) error {
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	return finishExportFile(path, file, func() error {
+		if _, err := io.Copy(file, source); err != nil {
+			return err
+		}
+		owned, err := file.Stat()
+		if err != nil {
+			return err
+		}
+		current, err := os.Lstat(path)
+		if err != nil {
+			return err
+		}
+		if !os.SameFile(owned, current) {
+			return errExportFileExists
+		}
+		return nil
+	})
 }
