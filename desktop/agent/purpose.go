@@ -29,15 +29,14 @@ const (
 	PurposeSignTag    = "sign-tag"
 	PurposeUseKey     = "use-key"
 
-	maximumCommandLineLength  = 160
-	maximumSubjectLength      = 100
-	maximumSignedPayloadSize  = 64 * 1024
-	maximumGitHeadSize        = 4 * 1024
-	defaultSSHPort            = 22
-	redactedValue             = "•••"
-	sshOptionLetterWithValue  = "BbcDEeFIiJLlmOoPpQRSWw"
-	gitGlobalOptionWithValue  = "|-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|"
-	sensitiveConfigNamePieces = "token|password|secret|header|auth"
+	maximumCommandLineLength = 160
+	maximumSubjectLength     = 100
+	maximumSignedPayloadSize = 64 * 1024
+	maximumGitHeadSize       = 4 * 1024
+	defaultSSHPort           = 22
+	redactedValue            = "•••"
+	sshOptionLetterWithValue = "BbcDEeFIiJLlmOoPpQRSWw"
+	gitGlobalOptionWithValue = "|-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|"
 )
 
 // RequestDescription is what the approval dialog says about a request: "<app> wants to <Action> <Target>".
@@ -194,19 +193,68 @@ func describeRemoteGitCommand(remoteArguments []string) (string, bool) {
 	return "", false
 }
 
-// urlPasswordPattern masks the password of a URL. The password matches only characters that are no shell syntax, so a
-// mask never hides a command inside a script.
-var urlPasswordPattern = regexp.MustCompile(`(://[^/:@\s]*:)[A-Za-z0-9._~%+=-]+@`)
-var sensitiveConfigPattern = regexp.MustCompile(`(?i)^([^=]*(?:` + sensitiveConfigNamePieces + `)[^=]*=).+$`)
+// literalRun is a run of characters that are never shell syntax: no whitespace, quote, escape, expansion, separator,
+// operator or redirection. Glued to a credential's name or a URL's user, such a run is a literal piece of one word, so
+// masking it hides nothing a shell runs, in an sh -c script and in a program's own arguments alike; a credential that
+// goes on with shell syntax is masked up to it.
+const literalRun = `[^\s;&|()<>$\x60\\'"]+`
 
-// redactArgument masks URL passwords, and the values of git's -c options named like secrets; for any other program
-// -c is no git option (sh -c takes a script), so its value stays whole.
+var (
+	// urlPasswordPattern finds the password of a URL: https://user:password@host.
+	urlPasswordPattern = regexp.MustCompile(`(://[^/?#@\s:]*:)[^\s;&|()<>$\x60\\'"/?#@]+(@)`)
+	// assignmentPattern finds NAME=value, --name=value and a URL's ?name=value; the name is a whole word, so a git
+	// config key such as alias.token never matches.
+	assignmentPattern = regexp.MustCompile(`(?:^|[^A-Za-z0-9_.-])([A-Za-z0-9_-]+)=['"]?(` + literalRun + `)`)
+	// optionValuePattern finds a script's --name value; only spaces and tabs separate them, since a newline ends the
+	// command.
+	optionValuePattern = regexp.MustCompile(`(?:^|[ \t])--([A-Za-z0-9-]+)[ \t]+['"]?(` + literalRun + `)`)
+	optionPattern      = regexp.MustCompile(`^--([A-Za-z0-9-]+)$`)
+	leadingLiteral     = regexp.MustCompile(`^` + literalRun)
+	secretNamePattern  = regexp.MustCompile(`(?i)token|passw(?:or)?d|secret|api[_-]?key|auth`)
+	// commandNamePattern keeps the value of a name such as --password-command whole: it is a program to run, or a path.
+	commandNamePattern = regexp.MustCompile(`(?i)author|command|cmd|helper|program|exec|hook|script|process|plugin|file|path`)
+)
+
+func isSecretName(name string) bool {
+	return secretNamePattern.MatchString(name) && !commandNamePattern.MatchString(name)
+}
+
+// redactArgument masks the literal values of credentials: URL passwords, values named like secrets (TOKEN=…,
+// --password=…, --api-key …) and git's -c values named like secrets. An alias runs, so its value stays whole.
 func redactArgument(program, previousArgument, argument string) string {
-	argument = urlPasswordPattern.ReplaceAllString(argument, "${1}"+redactedValue+"@")
 	if program == "git" && previousArgument == "-c" {
-		argument = sensitiveConfigPattern.ReplaceAllString(argument, "${1}"+redactedValue)
+		key, _, hasValue := strings.Cut(argument, "=")
+		section, _, _ := strings.Cut(key, ".")
+		name := key[strings.LastIndex(key, ".")+1:]
+		if hasValue && !strings.EqualFold(section, "alias") && (isSecretName(name) || strings.Contains(strings.ToLower(name), "header")) {
+			return key + "=" + redactedValue
+		}
 	}
-	return argument
+	if option := optionPattern.FindStringSubmatch(previousArgument); option != nil && isSecretName(option[1]) {
+		argument = leadingLiteral.ReplaceAllLiteralString(argument, redactedValue)
+	}
+	argument = urlPasswordPattern.ReplaceAllString(argument, "${1}"+redactedValue+"${2}")
+	argument = maskNamedValues(argument, assignmentPattern)
+	return maskNamedValues(argument, optionValuePattern)
+}
+
+// maskNamedValues masks the value (the second group) of each match whose name (the first group) looks like a secret.
+func maskNamedValues(text string, pattern *regexp.Regexp) string {
+	var masked strings.Builder
+	end := 0
+	for _, match := range pattern.FindAllStringSubmatchIndex(text, -1) {
+		if !isSecretName(text[match[2]:match[3]]) {
+			continue
+		}
+		masked.WriteString(text[end:match[4]])
+		masked.WriteString(redactedValue)
+		end = match[5]
+	}
+	if end == 0 {
+		return text
+	}
+	masked.WriteString(text[end:])
+	return masked.String()
 }
 
 func quoteArgument(argument string) string {
