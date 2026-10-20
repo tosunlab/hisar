@@ -59,6 +59,16 @@ export interface ApprovalEvent {
      * link request has Purpose share-link.
      */
     "agentName": string;
+
+    /**
+     * HarnessName is the agent harness the request comes from inside, such as omp, and AgentNameSource says how Hisar
+     * knows AgentName (AgentNameSignature, AgentNameProcess or AgentNameGiven). ProjectName is the folder the harness
+     * works in, the last part of ProjectPath.
+     */
+    "harnessName": string;
+    "agentNameSource": string;
+    "projectName": string;
+    "projectPath": string;
     "workingDirectory": string;
     "rememberLabel": string;
     "isRememberedByDefault": boolean;

@@ -81,6 +81,14 @@ const requesterName = computed(() => {
   return current.appName;
 });
 
+// harnessName is the agent harness an agent request comes from inside, such as omp; the title marks it as checked when
+// Hisar recognized it by its code signature, and names the app it runs in after it ("omp ✓ in Tern").
+const harnessName = computed(() => (approval.value?.kind === "agent" ? approval.value.harnessName : ""));
+const isHarnessSigned = computed(() => harnessName.value !== "" && approval.value?.agentNameSource === "signature");
+const harnessPlace = computed(() => (harnessName.value ? (approval.value?.agentName ?? "").slice(harnessName.value.length) : ""));
+const signedHarnessText = computed(() => `Hisar recognized ${harnessName.value} by its code signature`);
+const isAgentNameGiven = computed(() => approval.value?.kind === "agent" && approval.value.agentNameSource === "agent");
+
 const allChainProcess = computed(() => (approval.value?.isForwarded ? [] : (approval.value?.allChainProcess ?? [])));
 const chainText = computed(() => allChainProcess.value.map((process) => process.name).join(" ← "));
 const chainTitle = computed(() => allChainProcess.value.map((process) => process.commandLine || process.name).join("\n"));
@@ -107,6 +115,9 @@ const subtitle = computed(() => {
     return current.terminalName ? `from the terminal session ${current.terminalName}` : "from the command line";
   }
   if (current.kind === "agent") {
+    if (harnessName.value) {
+      return `via ${current.clientName}`;
+    }
     return current.appName ? `via ${current.clientName} in ${inlineAppName.value}` : `via ${current.clientName}`;
   }
   if (current.kind === "launcher") {
@@ -404,9 +415,21 @@ onBeforeUnmount(() => {
                 <AppIcon name="edit" :size="12" /> {{ approval.purpose === "sign-tag" ? "Sign a tag" : "Sign a commit" }}
               </span>
               <h1 id="approval-title">
-                <span data-testid="approval-app">{{ requesterName }}</span> wants to {{ purposeText }}
+                <span v-if="harnessName" data-testid="approval-app">
+                  {{ harnessName
+                  }}<span v-if="isHarnessSigned" class="checked-name" :title="signedHarnessText" :aria-label="signedHarnessText" data-testid="approval-harness-checked"
+                    ><AppIcon name="check" :size="10" /></span
+                  >{{ harnessPlace }}
+                </span>
+                <span v-else data-testid="approval-app">{{ requesterName }}</span> wants to {{ purposeText }}
               </h1>
               <p id="approval-subtitle" class="subtitle" :title="approval.fingerprint">{{ subtitle }}</p>
+              <p v-if="approval.projectName" class="agent-line" data-testid="approval-project">
+                <AppIcon name="folder" :size="12" /> <span class="agent-line-text" :title="approval.projectPath">{{ approval.projectName }}</span>
+              </p>
+              <p v-else-if="isAgentNameGiven" class="agent-line" data-testid="approval-agent-name-given">
+                <AppIcon name="tag" :size="12" /> <span class="agent-line-text">“{{ approval.agentName }}” is the name the agent gave</span>
+              </p>
               <p v-if="chainText || appSigner" class="requester-line" data-testid="approval-requester">
                 <span v-if="chainText" class="chain" :title="chainTitle" data-testid="approval-chain">{{ chainText }}</span>
                 <span v-if="appSigner" class="signer" :class="{ 'is-unverified': appWarning }" :title="approval.appPath" data-testid="approval-signer">
@@ -668,6 +691,39 @@ h1 {
   color: var(--color-text-secondary);
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+.checked-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 4px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--color-success);
+  color: var(--color-surface);
+}
+
+.agent-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.agent-line .icon {
+  flex: none;
+}
+
+.agent-line-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .requester-line {

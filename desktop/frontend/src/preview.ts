@@ -1,5 +1,7 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
 import type {
+  AgentHost,
+  AgentSession,
   CardDescription,
   ApprovalEvent,
   BrowserStatus,
@@ -560,6 +562,40 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
 
 let allPreviewAgentVaultID: string[] = ["work"];
 
+// agentSessions=1: two omp sessions in Tern and Tern as an agent host in Settings → Coding agents; &appIcon=<url> is Tern's icon.
+const isPreviewAgentSessionShown = previewParameter.get("agentSessions") === "1";
+let allPreviewAgentSession: AgentSession[] = isPreviewAgentSessionShown
+  ? [
+      {
+        pid: 1226,
+        startTime: 1_760_000_000_000_000,
+        harnessName: "omp",
+        isSigned: true,
+        hostName: "Tern",
+        hostIconURL: previewParameter.get("appIcon") ?? "",
+        projectName: "hisarapp-core",
+        projectPath: "/Users/alper/Chore/hisarapp-core",
+        firstRequestAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+        allRememberedSecret: [{ name: "Agents › Deploy token › password", isReveal: false, expiresAt: new Date(Date.now() + 48 * 60_000).toISOString() }],
+      },
+      {
+        pid: 4410,
+        startTime: 1_760_000_100_000_000,
+        harnessName: "omp",
+        isSigned: false,
+        hostName: "Tern",
+        hostIconURL: previewParameter.get("appIcon") ?? "",
+        projectName: "billing-api",
+        projectPath: "/Users/alper/src/billing-api",
+        firstRequestAt: new Date(Date.now() - 2 * 60_000).toISOString(),
+        allRememberedSecret: [],
+      },
+    ]
+  : [];
+let allPreviewAgentHost: AgentHost[] = isPreviewAgentSessionShown
+  ? [{ path: "/Applications/Tern.app", teamID: "VTLHGQC72S", name: "Tern", iconURL: previewParameter.get("appIcon") ?? "" }]
+  : [];
+
 function buildPreviewVaultSummary(vault: VaultSummary): VaultSummary {
   return { ...vault, itemCount: allPreviewItemByVaultID[vault.id]?.length ?? 0 };
 }
@@ -816,6 +852,10 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",
+    harnessName: "",
+    agentNameSource: "",
+    projectName: "",
+    projectPath: "",
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
@@ -862,6 +902,10 @@ function createPreviewSSHApproval(): ApprovalEvent {
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",
+    harnessName: "",
+    agentNameSource: "",
+    projectName: "",
+    projectPath: "",
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
@@ -880,6 +924,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     requestID: `preview-agent-${kind}`,
     kind: "agent",
     agentName: "Claude Code",
+    agentNameSource: "agent",
     clientName: "hisar mcp",
     clientPath: "/opt/homebrew/bin/hisar",
     purpose: "connect",
@@ -928,6 +973,51 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     };
   }
   return event;
+}
+
+// createPreviewHarnessApproval: &approval=omp (hisar run inside omp in Tern, recognized by its signature), =omp-unsigned (omp
+// recognized by its program name, as when Bun runs it), =omp-reveal (hisar read inside omp); &appIcon=<url> is Tern's icon.
+function createPreviewHarnessApproval(kind: string): ApprovalEvent {
+  const isReveal = kind === "reveal";
+  const event: ApprovalEvent = {
+    ...createPreviewAgentApproval(isReveal ? "reveal" : "run"),
+    requestID: `preview-omp-${kind}`,
+    agentName: "omp in Tern",
+    harnessName: "omp",
+    agentNameSource: kind === "unsigned" ? "process" : "signature",
+    projectName: "hisarapp-core",
+    projectPath: "~/Chore/hisarapp-core",
+    clientName: "hisar",
+    clientPath: "/Applications/Hisar.app/Contents/Helpers/hisar",
+    requesterKind: "app",
+    appName: "Tern",
+    appIconURL: previewParameter.get("appIcon") ?? "",
+    appPath: "/Applications/Tern.app",
+    appSignature: "developer",
+    appSigner: "Signed by Can Boluk (VTLHGQC72S)",
+    allChainProcess: [
+      { name: "hisar", commandLine: "hisar run -- npm run deploy" },
+      { name: "zsh", commandLine: "/bin/zsh -c npm run deploy" },
+      { name: "omp", commandLine: "omp" },
+    ],
+    terminalName: "",
+  };
+  if (isReveal) {
+    return {
+      ...event,
+      action: "read “Deploy token › password”",
+      allSecretName: ["Agents › Deploy token › password"],
+      warning: "The value will be visible to omp in Tern and can end up in its transcript and logs.",
+    };
+  }
+  return {
+    ...event,
+    action: "use 1 secret",
+    commandLine: "npm run deploy",
+    workingDirectory: "~/Chore/hisarapp-core",
+    allSecretName: ["Agents › Deploy token › password"],
+    rememberLabel: "Allow this secret for this agent for 1 hour",
+  };
 }
 
 // listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =signing (a commit signature), =cli (command-line tool),
@@ -979,6 +1069,9 @@ function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
   }
   if (approvalParameter === "agent" || approvalParameter.startsWith("agent-")) {
     return [createPreviewAgentApproval(approvalParameter.replace(/^agent-?/, ""))];
+  }
+  if (approvalParameter === "omp" || approvalParameter.startsWith("omp-")) {
+    return [createPreviewHarnessApproval(approvalParameter.replace(/^omp-?/, ""))];
   }
   if (previewParameter.get("approval") === "run") {
     return [
@@ -1663,6 +1756,16 @@ export const previewApi = {
       allPreviewAgentVaultID.push(vaultID);
     }
     return resolveAfterDelay([...allPreviewAgentVaultID]);
+  },
+  listAllAgentSession: () => resolveAfterDelay(structuredClone(allPreviewAgentSession)),
+  revokeAgentSession: (pid: number, startTime: number) => {
+    allPreviewAgentSession = allPreviewAgentSession.filter((session) => session.pid !== pid || session.startTime !== startTime);
+    return resolveAfterDelay(structuredClone(allPreviewAgentSession));
+  },
+  listAllAgentHost: () => resolveAfterDelay(structuredClone(allPreviewAgentHost)),
+  forgetAgentHost: (path: string, teamID: string) => {
+    allPreviewAgentHost = allPreviewAgentHost.filter((host) => host.path !== path || host.teamID !== teamID);
+    return resolveAfterDelay(structuredClone(allPreviewAgentHost));
   },
   installCommandLineTool: () => {
     if (previewCommandLineMode === "conflict") {

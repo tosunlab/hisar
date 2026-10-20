@@ -255,6 +255,14 @@ export function ExportData(request: $models.ExportRequest): $CancellablePromise<
 }
 
 /**
+ * ForgetAgentHost lets the app's command-line callers without a terminal share one approval again, and the app be a
+ * launcher again, until a coding agent harness runs in it again. It returns the hosts left.
+ */
+export function ForgetAgentHost(path: string, teamID: string): $CancellablePromise<$models.AgentHost[] | null> {
+    return $Call.ByID(2483385323, path, teamID);
+}
+
+/**
  * ForgetNewAccountSecretKey drops the sign-up Secret Key and account unlock key once onboarding is done.
  */
 export function ForgetNewAccountSecretKey(): $CancellablePromise<void> {
@@ -360,6 +368,20 @@ export function LeaveOrganization(organizationID: string): $CancellablePromise<v
 
 export function LeaveVault(vaultID: string): $CancellablePromise<void> {
     return $Call.ByID(3043050832, vaultID);
+}
+
+/**
+ * ListAgentHosts lists the apps a coding agent harness ran in, in the order Hisar first saw one there.
+ */
+export function ListAgentHosts(): $CancellablePromise<$models.AgentHost[] | null> {
+    return $Call.ByID(630524833);
+}
+
+/**
+ * ListAgentSessions lists the running coding agent harnesses that sent hisar requests, in the order they first did.
+ */
+export function ListAgentSessions(): $CancellablePromise<$models.AgentSession[] | null> {
+    return $Call.ByID(2683919315);
 }
 
 /**
@@ -544,6 +566,14 @@ export function ReplaceSecretKey(password: string): $CancellablePromise<$models.
  */
 export function ReportActivity(): $CancellablePromise<void> {
     return $Call.ByID(422149086);
+}
+
+/**
+ * RevokeAgentSession ends the session of the harness process (PID and StartTime from ListAgentSessions): its open
+ * approval windows close, it forgets its secrets, and its next request asks again. It returns the sessions left.
+ */
+export function RevokeAgentSession(pid: number, startTime: number): $CancellablePromise<$models.AgentSession[] | null> {
+    return $Call.ByID(311041440, pid, startTime);
 }
 
 /**

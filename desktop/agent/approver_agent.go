@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
@@ -18,6 +19,14 @@ const (
 	maximumAgentNameLength   = 60
 	maximumDirectoryLength   = 160
 	agentRevealRememberLabel = "Allow this item for 1 hour"
+)
+
+// How Hisar knows an agent's name, ApprovalEvent.AgentNameSource: the code signature of its harness, which the window
+// marks as checked; the harness's program name or path, which another program can take; or what the agent says.
+const (
+	AgentNameSignature = "signature"
+	AgentNameProcess   = "process"
+	AgentNameGiven     = "agent"
 )
 
 var knownAgentNamesByClientName = map[string]string{
@@ -88,8 +97,21 @@ func describeAgentRememberLabel(request clisocket.AgentApprovalRequest) string {
 	return ""
 }
 
+// getAgentNameSource says how Hisar knows the agent's name; "" for an MCP client that gave none.
+func getAgentNameSource(request clisocket.AgentApprovalRequest) string {
+	switch {
+	case request.Session != nil && request.Session.IsSigned:
+		return AgentNameSignature
+	case request.Session != nil:
+		return AgentNameProcess
+	case DescribeAgentName(request.Agent) != unknownAgentName:
+		return AgentNameGiven
+	}
+	return ""
+}
+
 // buildAgentEvent names the agent by the harness the system found it in, with the app the harness runs in ("omp in
-// Tern"), or else by what its MCP client says about itself.
+// Tern") and the folder it works in, or else by what its MCP client says about itself.
 func (approver *Approver) buildAgentEvent(requestID string, request clisocket.AgentApprovalRequest) ApprovalEvent {
 	agentName, clientName := DescribeAgentName(request.Agent), agentClientName
 	if request.Session != nil {
@@ -104,6 +126,7 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 		ClientName:           clientName,
 		ClientPath:           request.ClientPath,
 		AgentName:            agentName,
+		AgentNameSource:      getAgentNameSource(request),
 		TerminalName:         request.TerminalName,
 		Purpose:              request.Kind,
 		Action:               describeAgentAction(request),
@@ -114,6 +137,13 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 		TimeoutAt:            approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
 		SecretNames:          []string{},
 		ChainProcesses:       []ChainProcess{},
+	}
+	if request.Session != nil {
+		event.HarnessName = request.Session.Harness.Name
+		if directory := request.Session.Directory; directory != "" {
+			event.ProjectName = truncateText(filepath.Base(directory), maximumAgentNameLength)
+			event.ProjectPath = truncateText(shortenHomePath(directory, approver.config.HomeDirectory), maximumDirectoryLength)
+		}
 	}
 	if request.Kind == clisocket.AgentRequestRun {
 		event.CommandLine = formatCommandLine(request.CommandLine)

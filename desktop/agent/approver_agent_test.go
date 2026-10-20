@@ -233,3 +233,40 @@ func TestAgentDialogNamesTheHarnessAndItsHost(t *testing.T) {
 	approver.DenyAll()
 	waitForAgentResult(t, resultChannel)
 }
+
+func TestCheckedNameOnlyForSignedHarness(t *testing.T) {
+	emitter := createFakeEmitter()
+	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)
+	omp := agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1226, StartTime: 100, Directory: "/Users/alice/src/hisarapp-core"}
+	signedOmp, unsignedOmp := omp, omp
+	signedOmp.IsSigned = true
+	cases := []struct {
+		name           string
+		session        *agentharness.Session
+		agent          clisocket.AgentIdentity
+		expectedSource string
+		expectedName   string
+	}{
+		{"signed omp", &signedOmp, clisocket.AgentIdentity{}, AgentNameSignature, "omp in Terminal"},
+		{"omp found by its program name", &unsignedOmp, clisocket.AgentIdentity{}, AgentNameProcess, "omp in Terminal"},
+		{"hisar mcp inside signed omp, named otherwise", &signedOmp, clisocket.AgentIdentity{Name: "claude-code"}, AgentNameSignature, "omp in Terminal"},
+		{"hisar mcp named by its client", nil, clisocket.AgentIdentity{Name: "claude-code"}, AgentNameGiven, "Claude Code"},
+		{"hisar mcp without a name", nil, clisocket.AgentIdentity{}, "", "A coding agent"},
+	}
+	for _, testCase := range cases {
+		request := createAgentRequest(clisocket.AgentRequestRun)
+		request.Session, request.Agent, request.IsCommandLine = testCase.session, testCase.agent, testCase.session != nil
+		request.CommandLine, request.SecretNames = []string{"true"}, []string{"Agents › Deploy token › password"}
+		resultChannel := startAgentApproval(approver, request)
+		event := waitForApprovalEvent(t, emitter)
+		if event.AgentNameSource != testCase.expectedSource || event.AgentName != testCase.expectedName {
+			t.Errorf("%s: source %q, name %q", testCase.name, event.AgentNameSource, event.AgentName)
+		}
+		isInsideHarness := testCase.session != nil
+		if isInsideHarness != (event.HarnessName == "omp" && event.ProjectName == "hisarapp-core" && event.ProjectPath == "/Users/alice/src/hisarapp-core") {
+			t.Errorf("%s: harness %q, project %q at %q", testCase.name, event.HarnessName, event.ProjectName, event.ProjectPath)
+		}
+		approver.DenyAll()
+		waitForAgentResult(t, resultChannel)
+	}
+}

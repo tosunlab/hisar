@@ -15,9 +15,11 @@ import type * as agent$0 from "../../../../tryhisar/hisar/desktop/agent/models.j
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
+            "agent-sessions-changed": string;
             "invite-link": string;
             "locked": string;
             "show-item": app$0.ItemLocation;
+            "show-settings": string;
             "ssh-approval": agent$0.ApprovalEvent;
             "ssh-approval-closed": string;
             "theme-changed": app$0.Theme;

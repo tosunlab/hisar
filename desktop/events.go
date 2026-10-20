@@ -17,6 +17,10 @@ const (
 	eventShareLinksChanged = "share-links-changed"
 	eventBrowserPairing    = "browser-pairing"
 	eventShowItem          = "show-item"
+	// eventAgentSessionsChanged: Settings → Coding agents lists the agent sessions again.
+	eventAgentSessionsChanged = "agent-sessions-changed"
+	// eventShowSettings opens Settings at the section its data names, such as "developer" for Coding agents.
+	eventShowSettings = "show-settings"
 )
 
 // init registers the typed events, so the generated bindings know their data.
@@ -29,4 +33,6 @@ func init() {
 	application.RegisterEvent[app.UpdateRequirement](eventUpdateRequired)
 	application.RegisterEvent[string](eventInviteLink)
 	application.RegisterEvent[app.ItemLocation](eventShowItem)
+	application.RegisterEvent[string](eventAgentSessionsChanged)
+	application.RegisterEvent[string](eventShowSettings)
 }

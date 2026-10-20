@@ -54,6 +54,7 @@ func main() {
 	notifier := &appNotifier{}
 	fileSaver := &wailsFileSaver{}
 	fileOpener := &wailsFileOpener{}
+	requesterResolver := appinfo.NewSystemResolver()
 	var agentServer *sshagent.Server
 	var approver *agent.Approver
 	var showUpdateRequired func(requirement app.UpdateRequirement)
@@ -92,6 +93,10 @@ func main() {
 				showItem(location)
 			}
 		},
+		DescribeApp: func(bundlePath string) (string, string) {
+			described := requesterResolver.DescribeApp(bundlePath)
+			return described.Name, described.IconURL
+		},
 	}
 	vaultService, err := app.NewService(vaultConfig)
 	if err != nil {
@@ -128,7 +133,6 @@ func main() {
 		return approvalWindow.NativeWindow()
 	}, biometric.PromptSizeSmall)
 	approvalPreference := app.NewApprovalPreference(vaultService)
-	requesterResolver := appinfo.NewSystemResolver()
 	approver = agent.NewApprover(agent.ApproverConfig{
 		Biometric:       approvalTouchID,
 		CancelBiometric: approvalTouchID.CancelPrompt,
@@ -202,6 +206,7 @@ func main() {
 	}
 
 	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
+	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
 	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *commandline.Service
 	commandLineServer := clisocket.NewServer(clisocket.ServerConfig{

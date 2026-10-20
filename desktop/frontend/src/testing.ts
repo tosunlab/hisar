@@ -1,5 +1,7 @@
 import { vi } from "vitest";
 import type {
+  AgentHost,
+  AgentSession,
   ApprovalEvent,
   FavoriteItem,
   ShareLink,
@@ -298,6 +300,10 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",
+    harnessName: "",
+    agentNameSource: "",
+    projectName: "",
+    projectPath: "",
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
@@ -313,6 +319,7 @@ export function createAgentApprovalEvent(overrides: Partial<ApprovalEvent> = {})
     requestID: "agent-1",
     kind: "agent",
     agentName: "Claude Code",
+    agentNameSource: "agent",
     clientName: "hisar mcp",
     clientPath: "/opt/homebrew/bin/hisar",
     keyTitle: "",
@@ -358,6 +365,32 @@ export function createAgentRevealApprovalEvent(overrides: Partial<ApprovalEvent>
     rememberLabel: "Allow this item for 1 hour",
     isConnectionApproval: false,
     warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
+    ...overrides,
+  });
+}
+
+// createHarnessApprovalEvent is hisar run inside omp, recognized by its signature, in Tern.
+export function createHarnessApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createAgentRunApprovalEvent({
+    requestID: "harness-run-1",
+    agentName: "omp in Tern",
+    harnessName: "omp",
+    agentNameSource: "signature",
+    projectName: "hisarapp-core",
+    projectPath: "~/Chore/hisarapp-core",
+    clientName: "hisar",
+    clientPath: "/Applications/Hisar.app/Contents/Helpers/hisar",
+    appName: "Tern",
+    appIconURL: "data:image/png;base64,Tern",
+    appPath: "/Applications/Tern.app",
+    appSignature: "developer",
+    appSigner: "Signed by Stencil (VTLHGQC72S)",
+    terminalName: "",
+    action: "use 1 secret",
+    commandLine: "npm run deploy",
+    workingDirectory: "~/Chore/hisarapp-core",
+    allSecretName: ["Agents › Deploy token › password"],
+    rememberLabel: "Allow this secret for this agent for 1 hour",
     ...overrides,
   });
 }
@@ -451,6 +484,26 @@ export function createLauncherApprovalEvent(overrides: Partial<ApprovalEvent> = 
 
 export function createLauncherApp(overrides: Partial<LauncherApp> = {}): LauncherApp {
   return { name: "Raycast", path: "/Applications/Raycast.app", iconURL: "data:image/png;base64,Raycast", lastUsedAt: "2026-10-09T11:59:30Z", ...overrides };
+}
+
+export function createAgentSession(overrides: Partial<AgentSession> = {}): AgentSession {
+  return {
+    pid: 1226,
+    startTime: 1_760_000_000_000_000,
+    harnessName: "omp",
+    isSigned: true,
+    hostName: "Tern",
+    hostIconURL: "data:image/png;base64,Tern",
+    projectName: "hisarapp-core",
+    projectPath: "/Users/alice/Chore/hisarapp-core",
+    firstRequestAt: "2026-10-09T11:59:30Z",
+    allRememberedSecret: [{ name: "Agents › Deploy token › password", isReveal: false, expiresAt: "2026-10-09T12:59:30Z" }],
+    ...overrides,
+  };
+}
+
+export function createAgentHost(overrides: Partial<AgentHost> = {}): AgentHost {
+  return { path: "/Applications/Tern.app", teamID: "VTLHGQC72S", name: "Tern", iconURL: "data:image/png;base64,Tern", ...overrides };
 }
 
 export function createCommandLineStatus(overrides: Partial<CommandLineStatus> = {}): CommandLineStatus {
@@ -734,6 +787,10 @@ export function createApiMock() {
     setAutomaticUpdateCheck: vi.fn(),
     listAllAgentVaultID: vi.fn().mockResolvedValue([]),
     setVaultAvailableToAgents: vi.fn(),
+    listAllAgentSession: vi.fn().mockResolvedValue([]),
+    revokeAgentSession: vi.fn(),
+    listAllAgentHost: vi.fn().mockResolvedValue([]),
+    forgetAgentHost: vi.fn(),
     getLoginItemStatus: vi.fn().mockResolvedValue(createLoginItemStatus()),
     setOpenAtLogin: vi.fn(),
     openLoginItemSettings: vi.fn().mockResolvedValue(undefined),

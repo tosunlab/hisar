@@ -21,6 +21,34 @@ export interface AccountDeletionPreview {
     "organizations"?: DeletionOrganization[] | null;
 }
 
+/**
+ * AgentHost is an app a coding agent harness ran in, as Settings → Coding agents lists it.
+ */
+export interface AgentHost {
+    "path": string;
+    "teamID": string;
+    "name": string;
+    "iconURL": string;
+}
+
+/**
+ * AgentSession is a coding agent harness, such as omp, that sent hisar requests and still runs, as Settings → Coding
+ * agents lists it. PID and StartTime name it for RevokeAgentSession. IsSigned: the harness was recognized by its code
+ * signature. The host is the app it runs in, empty when Hisar could not verify one. FirstRequestAt is RFC 3339.
+ */
+export interface AgentSession {
+    "pid": number;
+    "startTime": number;
+    "harnessName": string;
+    "isSigned": boolean;
+    "hostName": string;
+    "hostIconURL": string;
+    "projectName": string;
+    "projectPath": string;
+    "firstRequestAt": string;
+    "allRememberedSecret": RememberedAgentSecret[] | null;
+}
+
 export interface BrowserPairingRequest {
     "browser": string;
     "code": string;
@@ -547,6 +575,16 @@ export interface ReceivedShareInvitation {
     "role": string;
     "invitedByName": string;
     "invitedByEmail": string;
+    "expiresAt": string;
+}
+
+/**
+ * RememberedAgentSecret is a secret an agent session uses, or reads when IsReveal, without asking until ExpiresAt (RFC
+ * 3339).
+ */
+export interface RememberedAgentSecret {
+    "name": string;
+    "isReveal": boolean;
     "expiresAt": string;
 }
 

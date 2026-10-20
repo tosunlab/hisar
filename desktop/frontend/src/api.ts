@@ -14,6 +14,9 @@ import { Service as LoginItemService } from "../bindings/github.com/tryhisar/his
 import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type {
   AccountDeletionPreview as BoundAccountDeletionPreview,
+  AgentHost,
+  AgentSession as BoundAgentSession,
+  RememberedAgentSecret,
   BrowserPairingRequest,
   CardDescription,
   CredentialChangeResult,
@@ -80,7 +83,9 @@ import type {
 } from "../bindings/github.com/tryhisar/hisar/core/app";
 
 export type {
+  AgentHost,
   ApprovalEvent,
+  RememberedAgentSecret,
   CardDescription,
   CredentialChangeResult,
   DeletionOrganization,
@@ -170,6 +175,14 @@ export interface ShareLink extends Omit<BoundShareLink, "fieldLabels"> {
 
 function normalizeShareLink(boundShareLink: BoundShareLink): ShareLink {
   return { ...boundShareLink, fieldLabels: boundShareLink.fieldLabels ?? [] };
+}
+
+export interface AgentSession extends Omit<BoundAgentSession, "allRememberedSecret"> {
+  allRememberedSecret: RememberedAgentSecret[];
+}
+
+function normalizeAgentSessions(boundSessions: BoundAgentSession[] | null): AgentSession[] {
+  return (boundSessions ?? []).map((session) => ({ ...session, allRememberedSecret: session.allRememberedSecret ?? [] }));
 }
 
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
@@ -458,6 +471,11 @@ const wailsApi = {
   listAllAgentVaultID: async (): Promise<string[]> => (await Service.ListAgentVaultIDs()) ?? [],
   setVaultAvailableToAgents: async (vaultID: string, isAvailable: boolean): Promise<string[]> =>
     (await Service.SetVaultAvailableToAgents(vaultID, isAvailable)) ?? [],
+  listAllAgentSession: async (): Promise<AgentSession[]> => normalizeAgentSessions(await Service.ListAgentSessions()),
+  revokeAgentSession: async (pid: number, startTime: number): Promise<AgentSession[]> =>
+    normalizeAgentSessions(await Service.RevokeAgentSession(pid, startTime)),
+  listAllAgentHost: async (): Promise<AgentHost[]> => (await Service.ListAgentHosts()) ?? [],
+  forgetAgentHost: async (path: string, teamID: string): Promise<AgentHost[]> => (await Service.ForgetAgentHost(path, teamID)) ?? [],
   listAllImportFormat: async (): Promise<ImportFormat[]> => (await Service.ListImportFormats()) ?? [],
   chooseImportFile: async (vaultID: string, format: string): Promise<ImportPreview> =>
     normalizeImportPreview(await Service.ChooseImportFile(vaultID, format)),

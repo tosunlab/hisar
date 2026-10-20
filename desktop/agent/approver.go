@@ -102,7 +102,14 @@ type ApprovalEvent struct {
 	MoreSecretCount int      `json:"moreSecretCount"`
 	// Agent requests (Kind ApprovalKindAgent) name the agent; Purpose is connect, run, code or reveal. A launcher's share
 	// link request has Purpose share-link.
-	AgentName             string `json:"agentName"`
+	AgentName string `json:"agentName"`
+	// HarnessName is the agent harness the request comes from inside, such as omp, and AgentNameSource says how Hisar
+	// knows AgentName (AgentNameSignature, AgentNameProcess or AgentNameGiven). ProjectName is the folder the harness
+	// works in, the last part of ProjectPath.
+	HarnessName           string `json:"harnessName"`
+	AgentNameSource       string `json:"agentNameSource"`
+	ProjectName           string `json:"projectName"`
+	ProjectPath           string `json:"projectPath"`
 	WorkingDirectory      string `json:"workingDirectory"`
 	RememberLabel         string `json:"rememberLabel"`
 	IsRememberedByDefault bool   `json:"isRememberedByDefault"`

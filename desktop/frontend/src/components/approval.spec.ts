@@ -8,6 +8,7 @@ import {
   createApprovalEvent,
   createCommandLineApprovalEvent,
   createForwardedApprovalEvent,
+  createHarnessApprovalEvent,
   createLauncherApprovalEvent,
   createSigningApprovalEvent,
 } from "../testing";
@@ -500,6 +501,49 @@ describe("SSHApprovalWindow", () => {
       "Lets Claude Code list and search the vaults available to agents until 10 minutes after its last request, or until Hisar locks. Using a secret always asks.",
     );
     expect(api.respondSSHApproval).toHaveBeenCalledWith("agent-1", true, false);
+    wrapper.unmount();
+  });
+
+  it("labels an MCP client's name as the name the agent gave", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createAgentRunApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-agent-name-given"]').text()).toBe("“Claude Code” is the name the agent gave");
+    expect(wrapper.find('[data-testid="approval-harness-checked"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-project"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("names omp in Tern with Tern's icon and the project folder, checked when its signature matched", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createHarnessApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("omp in Tern wants to use 1 secret");
+    expect(wrapper.find('[data-testid="approval-harness-checked"]').attributes("title")).toBe("Hisar recognized omp by its code signature");
+    expect(wrapper.find(".subtitle").text()).toBe("via hisar");
+    expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,Tern");
+    expect(wrapper.find('[data-testid="approval-project"]').text()).toBe("hisarapp-core");
+    expect(wrapper.find('[data-testid="approval-project"] span').attributes("title")).toBe("~/Chore/hisarapp-core");
+    expect(wrapper.find('[data-testid="approval-agent-name-given"]').exists()).toBe(false);
+    sendEvent("ssh-approval-closed", "harness-run-1");
+    sendEvent("ssh-approval", createHarnessApprovalEvent({ requestID: "harness-run-2", agentNameSource: "process" }));
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("omp in Tern wants to use 1 secret");
+    expect(wrapper.find('[data-testid="approval-harness-checked"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-project"]').text()).toBe("hisarapp-core");
+    wrapper.unmount();
+  });
+
+  it("keeps the reveal warning for hisar read inside omp", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent(
+      "ssh-approval",
+      createHarnessApprovalEvent({ purpose: "reveal", action: "read “Deploy token › password”", warning: "The value will be visible to omp in Tern and can end up in its transcript and logs." }),
+    );
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("omp in Tern wants to read “Deploy token › password”");
+    expect(wrapper.find('[data-testid="approval-warning"]').text()).toBe("The value will be visible to omp in Tern and can end up in its transcript and logs.");
+    expect(wrapper.find('[data-testid="approval-project"]').text()).toBe("hisarapp-core");
     wrapper.unmount();
   });
 
