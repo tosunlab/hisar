@@ -36,13 +36,17 @@ type VaultDeletion struct {
 	MoveToKeyGeneration int64
 }
 
-// RenameVault stores the vault's new sealed name. It locks like every change to an organization vault (§5.11) and
-// returns ErrConflict unless keyGeneration is the vault's current one (required for organization vaults, checked for any
-// vault when nonzero), so a name sealed with a key a rotation replaced is never stored.
-func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte, keyGeneration int64) error {
+// RenameVault stores the vault's new sealed name; renamedBy must be an owner (ErrNotOwner), checked under the vault's
+// lock. It locks like every change to an organization vault (§5.11) and returns ErrConflict unless keyGeneration is the
+// vault's current one (required for organization vaults, checked for any vault when nonzero), so a name sealed with a
+// key a rotation replaced is never stored.
+func (s *Store) RenameVault(ctx context.Context, vaultID, renamedBy string, encName []byte, keyGeneration int64) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, vaultID)
 		if err != nil {
+			return err
+		}
+		if err := requireVaultOwner(ctx, transaction, vaultID, renamedBy); err != nil {
 			return err
 		}
 		if !vault.acceptsKeyGeneration(keyGeneration) {

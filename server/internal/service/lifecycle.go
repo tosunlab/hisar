@@ -19,6 +19,7 @@ import (
 var (
 	errReauthenticationFailed = newError(KindForbidden, "incorrect master password")
 	errCredentialsChanged     = newError(KindConflict, "the master password or Secret Key was changed on another device; try again")
+	errDeletionBusy           = newError(KindConflict, "The account's memberships are changing. Try deleting the account again.")
 )
 
 // Reauthenticate starts a master password check for the caller's session, with a registration for new credentials
@@ -168,6 +169,8 @@ func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apity
 	}
 	deleted, err := s.store.DeleteAccount(ctx, actor.AccountID, actor.TokenHash, pending.recordHash)
 	switch {
+	case errors.Is(err, store.ErrDeletionBusy):
+		return errDeletionBusy
 	case errors.Is(err, store.ErrConflict):
 		return errCredentialsChanged
 	case errors.Is(err, store.ErrNotFound):

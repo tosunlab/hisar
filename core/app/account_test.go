@@ -5,11 +5,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
@@ -147,6 +149,20 @@ func TestCommittedCredentialChangeKeepsItsResultWhenStateSaveFails(t *testing.T)
 	})
 	if err != nil || result.LocalError == "" || result.SecretKey != newSecretKey.Encode() {
 		t.Fatalf("state save failure discarded a committed replacement: %+v %v", result, err)
+	}
+}
+
+func TestAccountDeletionConflictAsksToRetry(t *testing.T) {
+	conflict := &apiclient.APIError{Status: http.StatusConflict}
+	if err := convertAccountDeletionError(conflict); err.Error() != "the account changed while it was being deleted; try again" {
+		t.Errorf("deletion conflict: %v", err)
+	}
+	if err := convertAccountError(conflict); err.Error() != "your master password or Secret Key was just changed on another device; sign in again" {
+		t.Errorf("credential change conflict: %v", err)
+	}
+	other := errors.New("other")
+	if convertAccountDeletionError(other) != other {
+		t.Error("an unrelated error was changed")
 	}
 }
 

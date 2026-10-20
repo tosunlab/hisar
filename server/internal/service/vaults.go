@@ -198,9 +198,11 @@ func (s *Service) RemoveAccess(ctx context.Context, actor Actor, vaultID, target
 	if role != apitypes.VaultOwner {
 		return ErrOwnerOnly
 	}
-	switch err := s.store.RemoveAccess(ctx, vaultID, targetAccountID); {
+	switch err := s.store.RemoveAccess(ctx, vaultID, actor.AccountID, targetAccountID); {
 	case errors.Is(err, store.ErrOrganizationVault):
 		return errOrganizationVaultAccess
+	case errors.Is(err, store.ErrNotOwner):
+		return ErrOwnerOnly
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case err != nil:
@@ -297,6 +299,10 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	storeItem := &store.Item{ID: itemID, Revision: request.Revision, Deleted: request.Deleted, Overview: request.Overview, Details: request.Details, UpdatedBy: actor.AccountID}
 	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, request.KeyGeneration, storeItem)
 	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return 0, ErrNotFound
+	case errors.Is(err, store.ErrReadOnly):
+		return 0, errReadOnly
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return 0, ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
@@ -343,6 +349,8 @@ func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID str
 	}
 	currentStoreItem, err := s.store.MoveItem(ctx, move)
 	switch {
+	case errors.Is(err, store.ErrReadOnly):
+		return apitypes.MoveItemResponse{}, errReadOnly
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return apitypes.MoveItemResponse{}, ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
@@ -394,7 +402,9 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 	if len(request.EncName) == 0 || len(request.EncName) > maxEncName || request.KeyGeneration < 0 {
 		return newError(KindInvalid, "invalid vault name")
 	}
-	switch err := s.store.RenameVault(ctx, vaultID, request.EncName, request.KeyGeneration); {
+	switch err := s.store.RenameVault(ctx, vaultID, actor.AccountID, request.EncName, request.KeyGeneration); {
+	case errors.Is(err, store.ErrNotOwner):
+		return ErrOwnerOnly
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case errors.Is(err, store.ErrConflict):

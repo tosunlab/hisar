@@ -442,3 +442,56 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 		}
 	})
 }
+
+func TestInvitationsOfARemovedOwnerGrantNothing(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
+	dave := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", apitypes.RoleMember)
+	team := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Team", apitypes.VaultShared))
+	shareThroughInvitation(t, alice, bob, team, apitypes.VaultOwner)
+
+	for _, recipient := range []*session.Session{carol, dave} {
+		if err := alice.InviteToVault(ctx, team, recipient.Email, apitypes.VaultOwner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	carolInvitations := requireValue[*apitypes.ShareInvitationList](t)(carol.Client.ListShareInvitations(ctx))
+	daveInvitations := requireValue[*apitypes.ShareInvitationList](t)(dave.Client.ListShareInvitations(ctx))
+	if len(carolInvitations.Received) != 1 || len(daveInvitations.Received) != 1 {
+		t.Fatalf("received: %+v %+v", carolInvitations, daveInvitations)
+	}
+	if err := dave.Client.AcceptShareInvitation(ctx, daveInvitations.Received[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	bobTeam := requireValue[*session.Vault](t)(bob.FindVault(ctx, "Team"))
+	if err := bob.RemoveVaultMember(ctx, bobTeam, alice.AccountID); err != nil {
+		t.Fatal(err)
+	}
+
+	if received := requireValue[*apitypes.ShareInvitationList](t)(carol.Client.ListShareInvitations(ctx)).Received; len(received) != 0 {
+		t.Errorf("the removed owner's invitation is still offered: %+v", received)
+	}
+	if err := carol.Client.AcceptShareInvitation(ctx, carolInvitations.Received[0].ID); !apiclient.IsStatus(err, http.StatusNotFound) {
+		t.Errorf("accepting the removed owner's invitation: %v", err)
+	}
+	if waiting := requireValue[*apitypes.ShareInvitationList](t)(dave.Client.ListShareInvitations(ctx)).Waiting; len(waiting) != 0 {
+		t.Errorf("an acceptance of the removed owner's invitation still waits: %+v", waiting)
+	}
+	completedShares, err := bob.CompleteAcceptedShares(ctx)
+	if err != nil || len(completedShares) != 0 {
+		t.Errorf("the remaining owner's sync completed: %+v %v", completedShares, err)
+	}
+	for _, recipient := range []*session.Session{carol, dave} {
+		vaults := requireValue[[]apitypes.Vault](t)(recipient.Client.ListVaults(ctx))
+		if slices.ContainsFunc(vaults, func(vault apitypes.Vault) bool { return vault.ID == team.ID }) {
+			t.Errorf("%s got the vault through the removed owner's invitation", recipient.Email)
+		}
+	}
+	if err := bob.Client.SetAccess(ctx, team.ID, dave.AccountID, &apitypes.SetAccessRequest{WrappedKey: []byte{1}, Role: apitypes.VaultOwner}); !apiclient.IsStatus(err, http.StatusConflict) || !strings.Contains(err.Error(), "has not accepted an invitation") {
+		t.Errorf("granting the vault to the removed owner's invitee: %v", err)
+	}
+}

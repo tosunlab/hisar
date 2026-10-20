@@ -16,6 +16,7 @@ var (
 	// ErrKeyGenerationMissing refuses items for an organization vault that name no key generation, as apps older than
 	// key generations send them.
 	ErrKeyGenerationMissing = errors.New("store: organization vault items need the key generation")
+	ErrReadOnly             = errors.New("store: the account only reads the vault")
 )
 
 type Vault struct {
@@ -41,7 +42,13 @@ type Member struct {
 }
 
 func (s *Store) CreateVault(ctx context.Context, vault *Vault, ownerWrappedKey []byte) error {
-	return s.runInTransaction(ctx, func(transaction pgx.Tx) error { return insertVault(ctx, transaction, vault, ownerWrappedKey) })
+	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var accountID string
+		if err := transaction.QueryRow(ctx, `SELECT id FROM accounts WHERE id = $1 FOR SHARE`, vault.CreatedBy).Scan(&accountID); err != nil {
+			return convertNoRowsToNotFound(err)
+		}
+		return insertVault(ctx, transaction, vault, ownerWrappedKey)
+	})
 }
 
 func insertVault(ctx context.Context, transaction pgx.Tx, vault *Vault, ownerWrappedKey []byte) error {
@@ -117,6 +124,20 @@ func requireVaultOwner(ctx context.Context, transaction pgx.Tx, vaultID, account
 		return ErrNotFound
 	case role != "owner":
 		return ErrNotOwner
+	}
+	return nil
+}
+
+// requireVaultWriter returns ErrNotFound unless the account is a member of the vault and ErrReadOnly for a reader.
+func requireVaultWriter(ctx context.Context, transaction pgx.Tx, vaultID, accountID string) error {
+	role, err := queryVaultRole(ctx, transaction, vaultID, accountID)
+	switch {
+	case err != nil:
+		return err
+	case role == "":
+		return ErrNotFound
+	case role == "reader":
+		return ErrReadOnly
 	}
 	return nil
 }
@@ -228,7 +249,7 @@ func (s *Store) SetAccess(ctx context.Context, vaultID string, member Member) er
 }
 
 // GrantAccess stores a member's wrapped key; member.GrantedBy must be an owner (ErrNotOwner). A shared vault adds an
-// account only when it accepted a share invitation, consuming it (ErrNoInvitation), and otherwise changes an existing
+// account only when it accepted a share invitation from a current owner, consuming it (ErrNoInvitation), and otherwise changes an existing
 // member's role. An organization vault adds only an account its teams entitle to exactly that role (ErrNotEntitled) and
 // never changes a member's role (ErrRoleFromTeams). A nonzero keyGeneration, which organization vaults require, must be
 // the vault's current one (ErrStaleKeyGeneration).
@@ -263,8 +284,9 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 				return ErrNotEntitled
 			}
 		case isNewMember:
-			commandTag, err := transaction.Exec(ctx,
-				`DELETE FROM share_invitations WHERE vault_id = $1 AND accepted_by = $2 AND state = 'accepted'`, vaultID, member.AccountID)
+			commandTag, err := transaction.Exec(ctx, `
+				DELETE FROM share_invitations i WHERE i.vault_id = $1 AND i.accepted_by = $2 AND i.state = 'accepted' AND `+isInvitedByOwner,
+				vaultID, member.AccountID)
 			if err != nil {
 				return err
 			}
@@ -281,12 +303,16 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 	return isNewMember, err
 }
 
-// RemoveAccess removes a member and their wrapped key. Access to an organization vault comes from its teams
-// (ErrOrganizationVault).
-func (s *Store) RemoveAccess(ctx context.Context, vaultID, accountID string) error {
+// RemoveAccess removes a member and their wrapped key; removedBy must be an owner (ErrNotOwner), checked under the
+// vault's lock, so of two owners who remove each other at once only the first succeeds. Access to an organization vault
+// comes from its teams (ErrOrganizationVault).
+func (s *Store) RemoveAccess(ctx context.Context, vaultID, removedBy, accountID string) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, vaultID)
 		if err != nil {
+			return err
+		}
+		if err := requireVaultOwner(ctx, transaction, vaultID, removedBy); err != nil {
 			return err
 		}
 		if vault.organizationID != "" {

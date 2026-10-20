@@ -42,7 +42,7 @@ func (s *Service) PrepareSetup(ctx context.Context) (string, error) {
 		if !hasAccounts {
 			firstState = settings.SetupNeedsAdmin
 		}
-		if _, _, err := s.updateStoredSettings(ctx, "", func(stored []byte) ([]byte, error) {
+		if _, _, err := s.updateStoredSettings(ctx, "", false, func(stored []byte) ([]byte, error) {
 			if isStored, err := isSetupStateStored(stored); err != nil || isStored {
 				return stored, err
 			}
@@ -55,7 +55,7 @@ func (s *Service) PrepareSetup(ctx context.Context) (string, error) {
 		return "", nil
 	}
 	if hasAccounts {
-		return "", s.moveSetup(ctx, "", settings.SetupNeedsAdmin, settings.SetupNeedsChecks)
+		return "", s.moveSetup(ctx, "", false, settings.SetupNeedsAdmin, settings.SetupNeedsChecks)
 	}
 	token, _, err := s.newInviteToken(ctx, "", apitypes.RoleAdmin, nil)
 	if err != nil {
@@ -70,7 +70,7 @@ func (s *Service) finishAdminStep(ctx context.Context, accountID string) error {
 	if s.currentSettings().SetupState != settings.SetupNeedsAdmin {
 		return nil
 	}
-	if err := s.moveSetup(ctx, accountID, settings.SetupNeedsAdmin, settings.SetupNeedsChecks); err != nil && !errors.Is(err, errSetupStep) {
+	if err := s.moveSetup(ctx, accountID, false, settings.SetupNeedsAdmin, settings.SetupNeedsChecks); err != nil && !errors.Is(err, errSetupStep) {
 		return err
 	}
 	return s.store.DeleteUnusedSetupInvites(ctx)
@@ -90,18 +90,21 @@ func (s *Service) FinishChecksStep(ctx context.Context, actor Actor, request Che
 	if len(failedTitles) > 0 {
 		return newError(KindConflict, fmt.Sprintf("Fix %s first, then check again.", strings.Join(failedTitles, ", ")))
 	}
-	return s.moveSetup(ctx, actor.AccountID, settings.SetupNeedsChecks, settings.SetupNeedsInvitePolicy)
+	return s.moveSetup(ctx, actor.AccountID, true, settings.SetupNeedsChecks, settings.SetupNeedsInvitePolicy)
 }
 
 // FinishInvitePolicyStep is the last setup step: it saves who can invite people the way Settings saves it, and marks
 // setup done.
 func (s *Service) FinishInvitePolicyStep(ctx context.Context, actor Actor, request *apitypes.SetupInvitePolicyRequest) error {
+	if s.currentSettings().SetupState != settings.SetupNeedsInvitePolicy {
+		return errSetupStep
+	}
 	invitePolicy, err := json.Marshal(request.InvitePolicy)
 	if err != nil {
 		return err
 	}
 	var changedFields []string
-	if _, _, err := s.updateStoredSettings(ctx, actor.AccountID, func(stored []byte) ([]byte, error) {
+	if _, _, err := s.updateStoredSettings(ctx, actor.AccountID, true, func(stored []byte) ([]byte, error) {
 		if err := s.requireSetupState(stored, settings.SetupNeedsInvitePolicy); err != nil {
 			return nil, err
 		}
@@ -120,8 +123,8 @@ func (s *Service) FinishInvitePolicyStep(ctx context.Context, actor Actor, reque
 }
 
 // moveSetup moves setup from one step to the next, and refuses with errSetupStep when setup is at another step.
-func (s *Service) moveSetup(ctx context.Context, updatedBy string, from, to settings.SetupState) error {
-	_, _, err := s.updateStoredSettings(ctx, updatedBy, func(stored []byte) ([]byte, error) {
+func (s *Service) moveSetup(ctx context.Context, updatedBy string, isByAdmin bool, from, to settings.SetupState) error {
+	_, _, err := s.updateStoredSettings(ctx, updatedBy, isByAdmin, func(stored []byte) ([]byte, error) {
 		if err := s.requireSetupState(stored, from); err != nil {
 			return nil, err
 		}

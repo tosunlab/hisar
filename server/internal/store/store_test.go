@@ -67,6 +67,64 @@ func createTestVault(t *testing.T, database *Store, owner string) string {
 	return vaultID
 }
 
+// runWhileHolding opens a transaction and runs hold in it, then runs change in a goroutine. Once change has finished, or
+// waits for a lock, it commits hold's transaction and returns change's error: a change that checks under the locks hold
+// took sees hold's changes, and one that does not finishes before them.
+func runWhileHolding(t *testing.T, database *Store, hold func(transaction pgx.Tx) error, change func() error) error {
+	t.Helper()
+	ctx := context.Background()
+	transaction, err := database.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback(ctx)
+	if err := hold(transaction); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- change() }()
+	commit := func() {
+		if err := transaction.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		select {
+		case err := <-done:
+			commit()
+			return err
+		default:
+		}
+		var waitingCount int
+		if err := database.pool.QueryRow(ctx,
+			`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`).Scan(&waitingCount); err != nil {
+			t.Fatal(err)
+		}
+		if waitingCount > 0 {
+			commit()
+			return <-done
+		}
+	}
+	t.Fatal("the change neither finished nor waited for a lock")
+	return nil
+}
+
+func waitForStoreLock(t *testing.T, database *Store, ctx context.Context, queryPattern string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		var waiting bool
+		if err := database.pool.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+				AND wait_event_type = 'Lock' AND query LIKE $1)`, queryPattern).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			return
+		}
+	}
+	t.Fatalf("no lock wait for %q", queryPattern)
+}
+
 func TestMigrations(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
@@ -400,7 +458,7 @@ func TestSessions(t *testing.T) {
 
 	secondDevice := &Device{ID: uuid.NewString(), AccountID: "AAAAAA", Name: "d2", Platform: "p"}
 	expired := &Session{TokenHash: []byte("old"), AccountID: "AAAAAA", DeviceID: secondDevice.ID, ExpiresAt: time.Now().Add(-time.Minute)}
-	if err := database.CreateDeviceSession(ctx, secondDevice, expired); err != nil {
+	if err := database.CreateDeviceSession(ctx, secondDevice, expired, testRecordHash()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.GetSessionByHash(ctx, []byte("old"), time.Hour); !errors.Is(err, ErrNotFound) {
@@ -456,6 +514,46 @@ func TestSessionLookupRecordsLastSeenWithoutFailingAuthentication(t *testing.T) 
 	if time.Until(expiresAt) < 119*time.Minute {
 		t.Errorf("last-seen failure rolled back the session slide: %v", expiresAt)
 	}
+}
+
+func TestLoginProvenAgainstAReplacedRecordCreatesNoSession(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	_, session := createTestAccount(t, database, "AAAAAA", "a@example.com")
+	newDevice := func() (*Device, *Session) {
+		device := &Device{ID: uuid.NewString(), AccountID: "AAAAAA", Name: "laptop", Platform: "p"}
+		return device, &Session{TokenHash: []byte(device.ID), AccountID: "AAAAAA", DeviceID: device.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	}
+	update := &CredentialUpdate{AccountID: "AAAAAA", TokenHash: session.TokenHash, ProvenRecordHash: HashOpaqueRecord([]byte{2}),
+		Argon2Params: []byte(`{}`), Salt: []byte{3}, OpaqueRecord: []byte{3}, EncKeyset: []byte{3}}
+
+	laptop, laptopSession := newDevice()
+	err := runWhileHolding(t, database, func(transaction pgx.Tx) error {
+		_, err := transaction.Exec(ctx, `UPDATE accounts SET opaque_record = $1 WHERE id = 'AAAAAA'`, []byte{2})
+		return err
+	}, func() error { return database.CreateDeviceSession(ctx, laptop, laptopSession, testRecordHash()) })
+	if !errors.Is(err, ErrConflict) {
+		t.Errorf("a login proven against the record a change replaced meanwhile: %v", err)
+	}
+	if _, err := database.GetSessionByHash(ctx, laptopSession.TokenHash, time.Hour); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the refused login's session: %v", err)
+	}
+
+	if _, err := database.UpdateAccountCredentials(ctx, update); err != nil {
+		t.Fatal(err)
+	}
+	phone, phoneSession := newDevice()
+	if err := database.CreateDeviceSession(ctx, phone, phoneSession, HashOpaqueRecord([]byte{2})); !errors.Is(err, ErrConflict) {
+		t.Errorf("a login proven against the record before a credential change: %v", err)
+	}
+	if err := database.CreateDeviceSession(ctx, phone, phoneSession, HashOpaqueRecord([]byte{3})); err != nil {
+		t.Errorf("a login proven against the current record: %v", err)
+	}
+}
+
+// testRecordHash is the hash of the OPAQUE record createTestAccount gives its accounts.
+func testRecordHash() []byte {
+	return HashOpaqueRecord([]byte{1})
 }
 
 func TestPutItem(t *testing.T) {
@@ -666,10 +764,13 @@ func TestVaultAccess(t *testing.T) {
 	if members, _ := database.ListMembers(ctx, vaultID); len(members) != 2 {
 		t.Errorf("members: %d", len(members))
 	}
-	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); err != nil {
+	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB", "AAAAAA"); !errors.Is(err, ErrNotOwner) {
+		t.Errorf("an editor removes the owner: %v", err)
+	}
+	if err := database.RemoveAccess(ctx, vaultID, "AAAAAA", "BBBBBB"); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
+	if err := database.RemoveAccess(ctx, vaultID, "AAAAAA", "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("double remove: %v", err)
 	}
 	if err := database.CreateVault(ctx, &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}); !errors.Is(err, ErrExists) {

@@ -135,13 +135,16 @@ func TestLeaveVault(t *testing.T) {
 	if err := database.LeaveVault(ctx, vaultID, "AAAAAA"); err != nil {
 		t.Errorf("an owner leaves while another remains: %v", err)
 	}
-	if err := database.RenameVault(ctx, vaultID, []byte("renamed"), 0); err != nil {
+	if err := database.RenameVault(ctx, vaultID, "AAAAAA", []byte("by a former owner"), 0); !errors.Is(err, ErrNotFound) {
+		t.Errorf("renaming by an owner who left: %v", err)
+	}
+	if err := database.RenameVault(ctx, vaultID, "BBBBBB", []byte("renamed"), 0); err != nil {
 		t.Fatal(err)
 	}
 	if vaults, _ := database.ListVaults(ctx, "BBBBBB"); len(vaults) != 1 || string(vaults[0].EncName) != "renamed" {
 		t.Errorf("after leave and rename: %+v", vaults)
 	}
-	if err := database.RenameVault(ctx, uuid.NewString(), []byte("x"), 0); !errors.Is(err, ErrNotFound) {
+	if err := database.RenameVault(ctx, uuid.NewString(), "BBBBBB", []byte("x"), 0); !errors.Is(err, ErrNotFound) {
 		t.Errorf("renaming a missing vault: %v", err)
 	}
 }

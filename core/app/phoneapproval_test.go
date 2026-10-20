@@ -20,10 +20,12 @@ const (
 	testPhoneDeviceID = "phone-device"
 )
 
+// fakeApproval: requesterDeviceID is the device the server authenticated the request from, as the real server records it.
 type fakeApproval struct {
-	request      apitypes.CreateApprovalRequest
-	sealedAnswer []byte
-	isResolved   bool
+	request           apitypes.CreateApprovalRequest
+	requesterDeviceID string
+	sealedAnswer      []byte
+	isResolved        bool
 }
 
 func (server *fakeAPIServer) addApprovalRoutes(mux *http.ServeMux) {
@@ -43,7 +45,13 @@ func (server *fakeAPIServer) addApprovalRoutes(mux *http.ServeMux) {
 		if server.approvalsByRequestID == nil {
 			server.approvalsByRequestID = map[string]*fakeApproval{}
 		}
-		server.approvalsByRequestID[createRequest.RequestID] = &fakeApproval{request: createRequest}
+		requesterDeviceID := ""
+		for _, device := range server.devices {
+			if device.Current {
+				requesterDeviceID = device.ID
+			}
+		}
+		server.approvalsByRequestID[createRequest.RequestID] = &fakeApproval{request: createRequest, requesterDeviceID: requesterDeviceID}
 		writer.WriteHeader(http.StatusCreated)
 	})
 	mux.HandleFunc("GET /api/v1/approvals", func(writer http.ResponseWriter, request *http.Request) {
@@ -52,7 +60,9 @@ func (server *fakeAPIServer) addApprovalRoutes(mux *http.ServeMux) {
 		pendingRequests := []apitypes.PendingApproval{}
 		for _, stored := range server.approvalsByRequestID {
 			if stored.sealedAnswer == nil && !stored.isResolved {
-				pendingRequests = append(pendingRequests, apitypes.PendingApproval{RequestID: stored.request.RequestID, SealedRequest: stored.request.SealedRequest, ExpiresAt: stored.request.ExpiresAt})
+				pendingRequests = append(pendingRequests, apitypes.PendingApproval{
+					RequestID: stored.request.RequestID, SealedRequest: stored.request.SealedRequest, RequesterDeviceID: stored.requesterDeviceID, ExpiresAt: stored.request.ExpiresAt,
+				})
 			}
 		}
 		writeJSON(writer, http.StatusOK, pendingRequests)
@@ -425,6 +435,7 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	test.apiServer.mutex.Lock()
 	test.apiServer.devices = []apitypes.Device{
 		{ID: testMacDeviceID, Name: "MacBook Pro", Platform: "darwin/desktop"},
+		{ID: "tablet-device", Name: "Tablet", Platform: "android/mobile"},
 		{ID: testPhoneDeviceID, Name: "Hisar on iPhone", Platform: "ios/mobile", Current: true},
 	}
 	test.apiServer.mutex.Unlock()
@@ -433,8 +444,8 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 	test.service.config.DeviceName = "Hisar on iPhone"
 	test.service.mutex.Unlock()
 
-	postRequest := func(requesterDeviceID string, createdAt time.Time) (approval.Request, []byte) {
-		request := approval.NewRequest(requesterDeviceID, "MacBook Pro", approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", TerminalName: "ttys003"}, createdAt, approval.MaximumLifetime)
+	postRequest := func(sealedDeviceID, sealedDeviceName, authenticatedDeviceID string, createdAt time.Time) (approval.Request, []byte) {
+		request := approval.NewRequest(sealedDeviceID, sealedDeviceName, approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", TerminalName: "ttys003"}, createdAt, approval.MaximumLifetime)
 		sealedRequest, err := approval.SealRequest(keyset, test.accountID, request)
 		if err != nil {
 			t.Fatal(err)
@@ -443,13 +454,18 @@ func TestPhoneListsAndAnswersRequests(t *testing.T) {
 		if test.apiServer.approvalsByRequestID == nil {
 			test.apiServer.approvalsByRequestID = map[string]*fakeApproval{}
 		}
-		test.apiServer.approvalsByRequestID[request.RequestID] = &fakeApproval{request: apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt}}
+		test.apiServer.approvalsByRequestID[request.RequestID] = &fakeApproval{
+			request:           apitypes.CreateApprovalRequest{RequestID: request.RequestID, SealedRequest: sealedRequest, ExpiresAt: request.ExpiresAt},
+			requesterDeviceID: authenticatedDeviceID,
+		}
 		test.apiServer.mutex.Unlock()
 		return request, sealedRequest
 	}
-	open, sealedRequest := postRequest(testMacDeviceID, time.Now())
-	postRequest(testMacDeviceID, time.Now().Add(-approval.MaximumLifetime-time.Second))
-	postRequest(testPhoneDeviceID, time.Now())
+	open, sealedRequest := postRequest(testMacDeviceID, "Alper's iPad", testMacDeviceID, time.Now())
+	postRequest(testMacDeviceID, "MacBook Pro", testMacDeviceID, time.Now().Add(-approval.MaximumLifetime-time.Second))
+	postRequest(testPhoneDeviceID, "Hisar on iPhone", testPhoneDeviceID, time.Now())
+	postRequest(testMacDeviceID, "MacBook Pro", "tablet-device", time.Now())
+	postRequest("revoked-device", "Old laptop", "revoked-device", time.Now())
 	test.apiServer.mutex.Lock()
 	test.apiServer.approvalsByRequestID[approval.GenerateRequestID()] = &fakeApproval{request: apitypes.CreateApprovalRequest{RequestID: "not-a-request", SealedRequest: []byte("garbage")}}
 	test.apiServer.mutex.Unlock()

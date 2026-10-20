@@ -99,6 +99,8 @@ func checkOtherAccount(actor Actor, accountID string) error {
 
 func convertAdminAccountError(err error) error {
 	switch {
+	case errors.Is(err, store.ErrDeletionBusy):
+		return errDeletionBusy
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case errors.Is(err, store.ErrLastServerAdmin):

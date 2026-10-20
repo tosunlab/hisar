@@ -372,3 +372,39 @@ func TestDeleteAccount(t *testing.T) {
 		t.Error("signing up again reused the old Secret Key")
 	}
 }
+
+func TestLoginStartedBeforeAPasswordChangeCannotFinishAfterIt(t *testing.T) {
+	baseURL, server, _, _ := setupLifecycleServer(t)
+	ctx := context.Background()
+	alice := signUpLifecycleAccount(t, server, baseURL, "alice@example.com")
+	apiClient := apiclient.New(baseURL)
+	prelogin := requireValue[*apitypes.PreloginResponse](t)(apiClient.FetchPrelogin(ctx, "alice@example.com"))
+	derivedKeys := requireValue[*crypt.DerivedKeys](t)(crypt.DeriveKeys(alice.password, prelogin.Salt, prelogin.Argon2, alice.secretKey))
+	defer derivedKeys.Wipe()
+	opaqueClient, err := pake.NewConfig().Client()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyExchange1, err := opaqueClient.GenerateKE1(derivedKeys.AuthKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := requireValue[*apitypes.LoginStartResponse](t)(apiClient.StartLogin(ctx, &apitypes.LoginStartRequest{Email: "alice@example.com", KE1: keyExchange1.Serialize()}))
+	keyExchange2, err := opaqueClient.Deserialize.KE2(started.KE2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(alice.session.AccountID), pake.ServerIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	change := requireValue[*session.CredentialChange](t)(alice.session.ChangeMasterPassword(ctx, alice.password, []byte("a brand new master password"), alice.secretKey))
+	clear(change.AccountUnlockKey)
+	if _, err := apiClient.FinishLogin(ctx, &apitypes.LoginFinishRequest{LoginID: started.LoginID, KE3: keyExchange3.Serialize(), Device: testDevice}); !apiclient.IsStatus(err, http.StatusUnauthorized) {
+		t.Errorf("a login proven with the old password finished after the change: %v", err)
+	}
+	if devices := requireValue[[]apitypes.Device](t)(alice.session.Client.ListDevices(ctx)); len(devices) != 1 {
+		t.Errorf("devices after the refused login: %+v", devices)
+	}
+}

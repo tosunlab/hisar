@@ -76,6 +76,13 @@ func convertAccountError(err error) error {
 	return convertError(err)
 }
 
+func convertAccountDeletionError(err error) error {
+	if apiclient.IsStatus(err, http.StatusConflict) {
+		return errors.New("the account changed while it was being deleted; try again")
+	}
+	return convertAccountError(err)
+}
+
 // ChangeMasterPassword keeps the Secret Key; every other device is signed out and must sign in with the new password.
 func (s *Service) ChangeMasterPassword(currentPassword, newPassword string) (CredentialChangeResult, error) {
 	newPasswordBytes := []byte(newPassword)
@@ -211,7 +218,7 @@ func (s *Service) DeleteAccount(password, email string) (Status, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := s.unlockedSession.DeleteAccount(ctx, passwordBytes, secretKey, email); err != nil {
-		return Status{}, convertAccountError(err)
+		return Status{}, convertAccountDeletionError(err)
 	}
 	forgetErr := s.forgetLocalAccount()
 	return s.buildStatus(), forgetErr

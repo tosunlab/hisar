@@ -140,3 +140,17 @@ func TestConvertAccountError(t *testing.T) {
 		t.Error("an unknown count was reported as zero")
 	}
 }
+
+func TestAccountDeletionConflictAsksToRetry(t *testing.T) {
+	conflict := &apiclient.APIError{Status: http.StatusConflict}
+	if err := convertAccountDeletionError(conflict); err.Error() != "the account changed while it was being deleted; try again" {
+		t.Errorf("deletion conflict: %v", err)
+	}
+	if err := convertAccountDeletionError(session.ErrEmailMismatch); !strings.Contains(err.Error(), "nothing was deleted") {
+		t.Errorf("email mismatch: %v", err)
+	}
+	other := errors.New("other")
+	if convertAccountDeletionError(other) != other {
+		t.Error("an unrelated error was changed")
+	}
+}

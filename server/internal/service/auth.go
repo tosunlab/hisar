@@ -199,6 +199,7 @@ func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRe
 	}
 	var clientRecord *opaque.ClientRecord
 	var accountID string
+	var recordHash []byte
 	account, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -214,14 +215,14 @@ func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRe
 		if err != nil {
 			return apitypes.LoginStartResponse{}, err
 		}
-		accountID = account.ID
+		accountID, recordHash = account.ID, store.HashOpaqueRecord(account.OpaqueRecord)
 		clientRecord = &opaque.ClientRecord{RegistrationRecord: registrationRecord, CredentialIdentifier: []byte(account.ID), ClientIdentity: []byte(account.ID)}
 	}
 	keyExchange2, serverOutput, err := s.keys.OpaqueServer.GenerateKE2(keyExchange1, clientRecord)
 	if err != nil {
 		return apitypes.LoginStartResponse{}, errInvalidLogin
 	}
-	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC})
+	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC, recordHash: recordHash})
 	clear(serverOutput.SessionSecret)
 	return apitypes.LoginStartResponse{LoginID: loginID, KE2: keyExchange2.Serialize()}, nil
 }
@@ -238,13 +239,14 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 	if err != nil || s.keys.OpaqueServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
-	// Suspension is checked only now, after the proof, so the answer never tells someone without the password.
+	// Suspension is checked only now, after the proof, so the answer never tells someone without the password. A login
+	// started before a credential change is refused like a wrong password.
 	token, device, newSession := s.newSession(pending.accountID, request.Device)
-	switch err := s.store.CreateDeviceSession(ctx, device, newSession); {
+	switch err := s.store.CreateDeviceSession(ctx, device, newSession, pending.recordHash); {
 	case errors.Is(err, store.ErrAccountSuspended):
 		s.recordAudit(ctx, Actor{AccountID: pending.accountID, IP: actor.IP}, auditLoginRefusedSuspended, nil)
 		return apitypes.SessionResponse{}, errAccountSuspended
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrConflict):
 		return apitypes.SessionResponse{}, errLoginFailed
 	case err != nil:
 		return apitypes.SessionResponse{}, err

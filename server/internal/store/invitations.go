@@ -19,6 +19,11 @@ const (
 	ShareInvitationAccepted = "accepted"
 )
 
+// isInvitedByOwner holds for a share invitation i whose inviter still owns its vault: an invitation carries its
+// inviter's authority, so one from an owner who was removed or demoted can no longer be accepted or completed.
+const isInvitedByOwner = `EXISTS (SELECT 1 FROM vault_access inviter_access
+	WHERE inviter_access.vault_id = i.vault_id AND inviter_access.account_id = i.invited_by AND inviter_access.role = 'owner')`
+
 type ShareInvitation struct {
 	ID        string
 	VaultID   string
@@ -65,11 +70,36 @@ func (s *Store) UpsertShareInvitation(ctx context.Context, invitation *ShareInvi
 	return invitationID, err
 }
 
+const isPendingShareInvitation = `i.id = $1 AND i.email = $2 AND i.invited_by = $3 AND i.role = $4
+	AND i.state = 'pending' AND i.expires_at > now() AND ` + isInvitedByOwner
+
+func (s *Store) CheckPendingShareInvitation(ctx context.Context, invitation *ShareInvitation) error {
+	var exists int
+	err := s.pool.QueryRow(ctx, `SELECT 1 FROM share_invitations i WHERE `+isPendingShareInvitation,
+		invitation.ID, invitation.Email, invitation.InvitedBy, invitation.Role).Scan(&exists)
+	return convertNoRowsToNotFound(err)
+}
+
+// CreateShareSignUpInvite mints a member sign-up token only while its source invitation is still pending.
+func (s *Store) CreateShareSignUpInvite(ctx context.Context, invitation *ShareInvitation, tokenHash []byte, expiresAt time.Time) error {
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO invites (token_hash, email, role, created_by, expires_at)
+		SELECT $5, i.email, 'member', i.invited_by, $6 FROM share_invitations i WHERE `+isPendingShareInvitation,
+		invitation.ID, invitation.Email, invitation.InvitedBy, invitation.Role, tokenHash, expiresAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func (s *Store) ListReceivedShareInvitations(ctx context.Context, email string) ([]ReceivedShareInvitation, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, a.name, a.email
 		FROM share_invitations i JOIN accounts a ON a.id = i.invited_by
-		WHERE i.email = $1 AND i.state = 'pending' AND i.expires_at > now()
+		WHERE i.email = $1 AND i.state = 'pending' AND i.expires_at > now() AND `+isInvitedByOwner+`
 		ORDER BY i.created_at`, email)
 	if err != nil {
 		return nil, err
@@ -90,7 +120,7 @@ func (s *Store) ListSentShareInvitations(ctx context.Context, accountID string) 
 		FROM share_invitations i
 		JOIN vault_access owner ON owner.vault_id = i.vault_id AND owner.account_id = $1 AND owner.role = 'owner'
 		LEFT JOIN accounts r ON r.id = i.accepted_by
-		WHERE i.state = 'accepted' OR i.expires_at > now()
+		WHERE (i.state = 'accepted' OR i.expires_at > now()) AND `+isInvitedByOwner+`
 		ORDER BY i.created_at`, accountID)
 	if err != nil {
 		return nil, err
@@ -113,9 +143,9 @@ func (s *Store) ListSentShareInvitations(ctx context.Context, accountID string) 
 // AcceptShareInvitation marks a pending invitation to email as accepted by accountID and returns its vault and acceptance time.
 func (s *Store) AcceptShareInvitation(ctx context.Context, invitationID, accountID, email string) (vaultID string, acceptedAt time.Time, err error) {
 	err = s.pool.QueryRow(ctx, `
-		UPDATE share_invitations SET state = 'accepted', accepted_by = $2, accepted_at = now()
-		WHERE id = $1 AND email = $3 AND state = 'pending' AND expires_at > now()
-		RETURNING vault_id, accepted_at`, invitationID, accountID, email).Scan(&vaultID, &acceptedAt)
+		UPDATE share_invitations i SET state = 'accepted', accepted_by = $2, accepted_at = now()
+		WHERE i.id = $1 AND i.email = $3 AND i.state = 'pending' AND i.expires_at > now() AND `+isInvitedByOwner+`
+		RETURNING i.vault_id, i.accepted_at`, invitationID, accountID, email).Scan(&vaultID, &acceptedAt)
 	return vaultID, acceptedAt, convertNoRowsToNotFound(err)
 }
 
@@ -124,7 +154,7 @@ func (s *Store) ListWaitingShareInvitations(ctx context.Context, accountID strin
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, i.accepted_at, a.name, a.email
 		FROM share_invitations i JOIN accounts a ON a.id = i.invited_by
-		WHERE i.accepted_by = $1 AND i.state = 'accepted'
+		WHERE i.accepted_by = $1 AND i.state = 'accepted' AND `+isInvitedByOwner+`
 		ORDER BY i.accepted_at`, accountID)
 	if err != nil {
 		return nil, err

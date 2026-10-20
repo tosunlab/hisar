@@ -66,6 +66,13 @@ func convertAccountError(err error) error {
 	return err
 }
 
+func convertAccountDeletionError(err error) error {
+	if apiclient.IsStatus(err, http.StatusConflict) {
+		return errors.New("the account changed while it was being deleted; try again")
+	}
+	return convertAccountError(err)
+}
+
 // unlockForAccountChange returns the session and the master password; the caller clears the password.
 func unlockForAccountChange(ctx context.Context) (*localstate.State, *session.Session, crypt.SecretKey, []byte, error) {
 	currentState, err := loadState()
@@ -312,7 +319,7 @@ func runDeleteAccount(ctx context.Context, flags *flag.FlagSet, args []string) e
 			return errors.New("the email does not match this account; nothing was deleted")
 		}
 		if err := unlockedSession.DeleteAccount(ctx, password, secretKey, email); err != nil {
-			return convertAccountError(err)
+			return convertAccountDeletionError(err)
 		}
 		isDeleted = true
 		return nil

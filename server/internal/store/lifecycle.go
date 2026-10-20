@@ -5,9 +5,14 @@ import (
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
+
+// ErrDeletionBusy refuses deletion when concurrent memberships prevent a stable locked set. The caller can retry.
+var ErrDeletionBusy = errors.New("store: account memberships changed during deletion")
 
 type CredentialUpdate struct {
 	AccountID string
@@ -69,7 +74,9 @@ func HashOpaqueRecord(opaqueRecord []byte) []byte {
 	return hash[:]
 }
 
-// lockProvenAccount fails with ErrConflict when the OPAQUE record changed after the proof, and ErrNotFound when the session ended.
+// lockProvenAccount fails with ErrConflict when the OPAQUE record changed after the proof, and ErrNotFound when the
+// session ended. Devices are locked before sessions, matching revokeDevice. Locking every device also covers changes
+// that sign out the account's other devices.
 func lockProvenAccount(ctx context.Context, transaction pgx.Tx, accountID string, tokenHash, provenRecordHash []byte) (email, name, deviceID string, err error) {
 	var opaqueRecord []byte
 	err = transaction.QueryRow(ctx, `SELECT email, name, opaque_record FROM accounts WHERE id = $1 FOR NO KEY UPDATE`, accountID).Scan(&email, &name, &opaqueRecord)
@@ -79,9 +86,13 @@ func lockProvenAccount(ctx context.Context, transaction pgx.Tx, accountID string
 	if subtle.ConstantTimeCompare(HashOpaqueRecord(opaqueRecord), provenRecordHash) != 1 {
 		return "", "", "", ErrConflict
 	}
+	if _, err := transaction.Exec(ctx, `SELECT 1 FROM devices WHERE account_id = $1 ORDER BY id FOR UPDATE`, accountID); err != nil {
+		return "", "", "", err
+	}
 	err = transaction.QueryRow(ctx, `
 		SELECT s.device_id FROM sessions s JOIN devices d ON d.id = s.device_id
-		WHERE s.token_hash = $1 AND s.account_id = $2 AND s.expires_at > now() AND d.revoked_at IS NULL`,
+		WHERE s.token_hash = $1 AND s.account_id = $2 AND s.expires_at > now() AND d.revoked_at IS NULL
+		FOR SHARE OF s`,
 		tokenHash, accountID).Scan(&deviceID)
 	if err != nil {
 		return "", "", "", convertNoRowsToNotFound(err)
@@ -249,50 +260,101 @@ func (s *Store) DeleteAccount(ctx context.Context, accountID string, tokenHash, 
 // key to is marked for rotation, as after a team removal (§5.11). In its organizations the remaining member who joined
 // earliest becomes admin after their last admin, and an organization left without members is deleted.
 func (s *Store) deleteAccount(ctx context.Context, accountID string, lockAccount func(transaction pgx.Tx) (email, name string, err error)) (*DeletedAccount, error) {
-	deleted := &DeletedAccount{}
-	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		// Organizations are locked before the account, in ID order, like every other change to them (§5.11).
-		organizationRows, err := transaction.Query(ctx, `
-			SELECT o.id::text FROM organizations o JOIN organization_members m ON m.organization_id = o.id
-			WHERE m.account_id = $1 ORDER BY o.id FOR UPDATE OF o`, accountID)
-		if err != nil {
-			return err
-		}
-		if _, err := pgx.CollectRows(organizationRows, pgx.RowTo[string]); err != nil {
-			return err
-		}
-		email, name, err := lockAccount(transaction)
-		if err != nil {
-			return err
-		}
-		deleted.Email, deleted.Name = email, name
-		accesses, err := listAccountVaultAccesses(ctx, transaction, accountID)
-		if err != nil {
-			return err
-		}
-		deletedVaultIDs := []string{}
-		for _, access := range accesses {
-			if access.isDeletedWithAccount() {
-				deletedVaultIDs = append(deletedVaultIDs, access.vaultID)
+	for range 3 {
+		restart := false
+		deleted := &DeletedAccount{}
+		err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+			// Organizations are locked before the account, in ID order, like every other change to them (§5.11).
+			if _, err := transaction.Exec(ctx, `
+			SELECT 1 FROM organizations o JOIN organization_members m ON m.organization_id = o.id
+			WHERE m.account_id = $1 ORDER BY o.id FOR UPDATE OF o`, accountID); err != nil {
+				return err
 			}
-		}
-		deleted.DeletedVaultCount = len(deletedVaultIDs)
-		if deleted.VaultMemberAccountIDs, err = collectAccountIDs(ctx, transaction, `
+			email, name, err := lockAccount(transaction)
+			if err != nil {
+				return err
+			}
+			deleted.Email, deleted.Name = email, name
+			// Membership creation can commit while the first organization snapshot waits. The account lock now stops it.
+			// Never wait for an omitted organization: an acceptance could hold it while waiting for this account.
+			organizationRows, err := transaction.Query(ctx, `
+			SELECT o.id::text FROM organizations o JOIN organization_members m ON m.organization_id = o.id
+			WHERE m.account_id = $1 ORDER BY o.id FOR UPDATE OF o NOWAIT`, accountID)
+			if err != nil {
+				return err
+			}
+			organizationIDs, err := pgx.CollectRows(organizationRows, pgx.RowTo[string])
+			if err != nil {
+				return err
+			}
+			// An admin's proof locks their devices, not the target's. Take these before deleting the target's sessions.
+			if _, err := transaction.Exec(ctx, `SELECT 1 FROM devices WHERE account_id = $1 ORDER BY id FOR UPDATE`, accountID); err != nil {
+				return err
+			}
+			// Keep account key-share locks available until the sorted vault locks are held, so grants can finish.
+			vaultRows, err := transaction.Query(ctx, `
+			SELECT id::text FROM vaults WHERE id IN (SELECT vault_id FROM vault_access WHERE account_id = $1)
+				OR organization_id IN (SELECT organization_id FROM organization_members WHERE account_id = $1)
+			ORDER BY id FOR UPDATE`, accountID)
+			if err != nil {
+				return err
+			}
+			vaultIDs, err := pgx.CollectRows(vaultRows, pgx.RowTo[string])
+			if err != nil {
+				return err
+			}
+			// Grants consume invitations before taking an account key-share lock. Let them finish before upgrading.
+			for _, query := range []string{
+				`SELECT 1 FROM organization_invitations WHERE invited_by = $1 OR email = $2 ORDER BY id FOR UPDATE`,
+				`SELECT 1 FROM share_invitations WHERE invited_by = $1 OR accepted_by = $1 OR email = $2 ORDER BY id FOR UPDATE`,
+			} {
+				if _, err := transaction.Exec(ctx, query, accountID, email); err != nil {
+					return err
+				}
+			}
+			// Never wait on a new foreign-key holder while holding invitation rows it might need.
+			if _, err := transaction.Exec(ctx, `SELECT 1 FROM accounts WHERE id = $1 FOR UPDATE NOWAIT`, accountID); err != nil {
+				return err
+			}
+			if err := transaction.QueryRow(ctx, `
+			SELECT EXISTS (SELECT 1 FROM organization_members WHERE account_id = $1
+				AND NOT (organization_id = ANY(coalesce($2::uuid[], '{}'))))
+			OR EXISTS (SELECT 1 FROM vaults WHERE
+				(id IN (SELECT vault_id FROM vault_access WHERE account_id = $1)
+					OR organization_id IN (SELECT organization_id FROM organization_members WHERE account_id = $1))
+				AND NOT (id = ANY(coalesce($3::uuid[], '{}'))))`, accountID, organizationIDs, vaultIDs).Scan(&restart); err != nil {
+				return err
+			}
+			if restart {
+				return nil
+			}
+			accesses, err := listAccountVaultAccesses(ctx, transaction, accountID)
+			if err != nil {
+				return err
+			}
+			deletedVaultIDs := []string{}
+			for _, access := range accesses {
+				if access.isDeletedWithAccount() {
+					deletedVaultIDs = append(deletedVaultIDs, access.vaultID)
+				}
+			}
+			deleted.DeletedVaultCount = len(deletedVaultIDs)
+			if deleted.VaultMemberAccountIDs, err = collectAccountIDs(ctx, transaction, `
 			SELECT DISTINCT m.account_id FROM vault_access m
 			WHERE m.vault_id IN (SELECT vault_id FROM vault_access WHERE account_id = $1) AND m.account_id <> $1`, accountID); err != nil {
-			return err
-		}
-		if deleted.InvitationAccountIDs, err = collectAccountIDs(ctx, transaction, `
+				return err
+			}
+			if deleted.InvitationAccountIDs, err = collectAccountIDs(ctx, transaction, `
 			SELECT o.account_id FROM share_invitations i JOIN vault_access o ON o.vault_id = i.vault_id AND o.role = 'owner'
 			WHERE (i.email = $2 OR i.accepted_by = $1) AND o.account_id <> $1
 			UNION
 			SELECT a.id FROM share_invitations i JOIN accounts a ON a.email = i.email
 			WHERE (i.invited_by = $1 OR i.vault_id = ANY($3::uuid[])) AND a.id <> $1`, accountID, email, deletedVaultIDs); err != nil {
-			return err
-		}
-		// Everyone in an organization whose invitations change hears of it: the members of the account's organizations,
-		// the recipients of its invitations, and the members of every organization with an invitation from or to it.
-		if deleted.OrganizationAccountIDs, err = collectAccountIDs(ctx, transaction, `
+				return err
+			}
+			// Everyone in an organization whose invitations change hears of it: the members of the account's organizations,
+			// the recipients of its invitations, and the members of every organization with an invitation from or to it.
+			if deleted.OrganizationAccountIDs, err = collectAccountIDs(ctx, transaction, `
 			SELECT other.account_id FROM organization_members mine JOIN organization_members other ON other.organization_id = mine.organization_id
 			WHERE mine.account_id = $1 AND other.account_id <> $1
 			UNION
@@ -301,56 +363,66 @@ func (s *Store) deleteAccount(ctx context.Context, accountID string, lockAccount
 			UNION
 			SELECT m.account_id FROM organization_invitations i JOIN organization_members m ON m.organization_id = i.organization_id
 			WHERE (i.invited_by = $1 OR i.email = $2) AND m.account_id <> $1`, accountID, email); err != nil {
-			return err
-		}
-		memberships, err := listAccountMemberships(ctx, transaction, accountID)
-		if err != nil {
-			return err
-		}
-		deletedOrganizationIDs := []string{}
-		for _, membership := range memberships {
-			switch {
-			case membership.isDeletedWithAccount():
-				deletedOrganizationIDs = append(deletedOrganizationIDs, membership.organizationID)
-			case membership.needsNewAdmin():
-				if _, err := transaction.Exec(ctx, `UPDATE organization_members SET role = 'admin' WHERE organization_id = $1 AND account_id = $2`,
-					membership.organizationID, membership.successorID); err != nil {
+				return err
+			}
+			memberships, err := listAccountMemberships(ctx, transaction, accountID)
+			if err != nil {
+				return err
+			}
+			deletedOrganizationIDs := []string{}
+			for _, membership := range memberships {
+				switch {
+				case membership.isDeletedWithAccount():
+					deletedOrganizationIDs = append(deletedOrganizationIDs, membership.organizationID)
+				case membership.needsNewAdmin():
+					if _, err := transaction.Exec(ctx, `UPDATE organization_members SET role = 'admin' WHERE organization_id = $1 AND account_id = $2`,
+						membership.organizationID, membership.successorID); err != nil {
+						return err
+					}
+				}
+			}
+			for _, statement := range []struct {
+				query     string
+				arguments []any
+			}{
+				{`DELETE FROM vaults WHERE id = ANY($1::uuid[])`, []any{deletedVaultIDs}},
+				{`DELETE FROM vaults WHERE organization_id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
+				{`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
+				// The vaults deleted above are gone, so this marks the organization vaults that stay.
+				{`UPDATE vaults SET needs_rotation = true WHERE type = 'organization' AND id IN (SELECT vault_id FROM vault_access WHERE account_id = $1)`,
+					[]any{accountID}},
+				// Email-only invitations can arrive after the upgrade. Lock the deletion's exact snapshot without waiting.
+				{`WITH locked AS MATERIALIZED (
+					SELECT id FROM organization_invitations WHERE invited_by = $1 OR email = $2 ORDER BY id FOR UPDATE NOWAIT)
+					DELETE FROM organization_invitations WHERE id IN (SELECT id FROM locked)`, []any{accountID, email}},
+				{`WITH locked AS MATERIALIZED (
+					SELECT id FROM share_invitations WHERE invited_by = $1 OR accepted_by = $1 OR email = $2 ORDER BY id FOR UPDATE NOWAIT)
+					DELETE FROM share_invitations WHERE id IN (SELECT id FROM locked)`, []any{accountID, email}},
+				{`DELETE FROM invites WHERE email = $2 OR (created_by = $1 AND used_at IS NULL)`, []any{accountID, email}},
+				{`DELETE FROM share_links WHERE account_id = $1`, []any{accountID}},
+				{`DELETE FROM sessions WHERE account_id = $1`, []any{accountID}},
+				{`DELETE FROM devices WHERE account_id = $1`, []any{accountID}},
+				{`DELETE FROM vault_access WHERE account_id = $1`, []any{accountID}},
+				{`UPDATE instance_settings SET updated_by = NULL WHERE updated_by = $1`, []any{accountID}},
+				{`DELETE FROM accounts WHERE id = $1`, []any{accountID}},
+			} {
+				if _, err := transaction.Exec(ctx, statement.query, statement.arguments...); err != nil {
 					return err
 				}
 			}
-		}
-		for _, statement := range []struct {
-			query     string
-			arguments []any
-		}{
-			// The vaults deleted or marked below are locked first, in ID order, as item moves lock theirs (§5.11).
-			{`SELECT 1 FROM vaults WHERE id = ANY($1::uuid[]) OR organization_id = ANY($2::uuid[])
-				OR type = 'organization' AND id IN (SELECT vault_id FROM vault_access WHERE account_id = $3) ORDER BY id FOR UPDATE`,
-				[]any{deletedVaultIDs, deletedOrganizationIDs, accountID}},
-			{`DELETE FROM vaults WHERE id = ANY($1::uuid[])`, []any{deletedVaultIDs}},
-			{`DELETE FROM vaults WHERE organization_id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
-			{`DELETE FROM organizations WHERE id = ANY($1::uuid[])`, []any{deletedOrganizationIDs}},
-			// The vaults deleted above are gone, so this marks the organization vaults that stay.
-			{`UPDATE vaults SET needs_rotation = true WHERE type = 'organization' AND id IN (SELECT vault_id FROM vault_access WHERE account_id = $1)`,
-				[]any{accountID}},
-			{`DELETE FROM organization_invitations WHERE invited_by = $1 OR email = $2`, []any{accountID, email}},
-			{`DELETE FROM share_invitations WHERE invited_by = $1 OR accepted_by = $1 OR email = $2`, []any{accountID, email}},
-			{`DELETE FROM invites WHERE email = $2 OR (created_by = $1 AND used_at IS NULL)`, []any{accountID, email}},
-			{`DELETE FROM share_links WHERE account_id = $1`, []any{accountID}},
-			{`DELETE FROM sessions WHERE account_id = $1`, []any{accountID}},
-			{`DELETE FROM devices WHERE account_id = $1`, []any{accountID}},
-			{`DELETE FROM vault_access WHERE account_id = $1`, []any{accountID}},
-			{`UPDATE instance_settings SET updated_by = NULL WHERE updated_by = $1`, []any{accountID}},
-			{`DELETE FROM accounts WHERE id = $1`, []any{accountID}},
-		} {
-			if _, err := transaction.Exec(ctx, statement.query, statement.arguments...); err != nil {
-				return err
+			return nil
+		})
+		if err != nil {
+			var postgresError *pgconn.PgError
+			if errors.As(err, &postgresError) && postgresError.Code == "55P03" {
+				return nil, ErrDeletionBusy
 			}
+			return nil, err
 		}
-		return nil
-	})
-	if err != nil {
-		return nil, err
+		if restart {
+			continue
+		}
+		return deleted, nil
 	}
-	return deleted, nil
+	return nil, ErrDeletionBusy
 }

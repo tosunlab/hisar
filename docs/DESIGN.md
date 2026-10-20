@@ -240,6 +240,12 @@ Sign-up is invite-only: there is no open registration. An invite is an email add
 - **Admins** manage invites in the admin dashboard's **Invites**, whatever the invite policy (§8.3). `GET /admin/invites` lists the pending invites with an email, newest first, each with the account that sent it (`null` for the operator's); an invite is pending until it is used or expires, one rule in `inviteState`. Its `id` is the hex of the stored token hash, so it names the invite without being its code. `POST /admin/invites {email, role}` creates an `admin` or `member` invite and, unlike `POST /invites`, answers 409 "An account with this email already exists." because admins can see accounts. `DELETE /admin/invites/{id}` deletes a pending invite, whose link then shows the invalid-invite page. `POST /admin/invites/{id}/resend` replaces it in one transaction with a fresh one for the same email and role, sent by the admin, so the old link stops working. Create and resend answer `{invite, link, emailed, emailError}`: the link appears only in that answer, for the admin to copy, and the server emails it at once when email is set up, reporting an SMTP failure instead of failing the request. The audit log records `admin_invite_created`, `admin_invite_revoked` and `admin_invite_resent` with the email and role. The setup invite is never listed, revoked or resent.
 - **The setup invite** creates the first admin from the browser. When `hisar-server serve` starts with no account, it deletes any unused setup invite, creates a new admin invite without an email and logs one line, `Open <HISAR_PUBLIC_URL>/admin/setup#<token> to create the first admin.` The token sits in the URL fragment, so it never reaches the access log or a `Referer` header; a restart replaces it. Whoever holds it signs up with the email they enter. Once the first account exists, from the setup page or from `hisar-server invite`, the setup invite is deleted, so it cannot make a second admin.
 
+An unused admin-role invite from an account is usable and pending only while its issuer is an active server admin.
+Redemption share-locks the issuer before locking the invite, so demotion and suspension serialize with signup.
+The public invite page, dashboard list, resend check, and pending count apply the same authority rule.
+Losing authority hides the invitation rather than cancelling it. It revives if authority returns before expiry.
+An account that already redeemed the invite remains an admin after its issuer loses authority.
+
 **Invite page.** `GET /invite/{code}` (the link in the email) is a page rendered by `hisar-server` from an embedded template, in the share link page's style (§5.9), light and dark with the system, and usable at phone width.
 
 - **Valid invite:** who invited the person (the inviter's name and email, which the email already told them; operator invites name nobody), the address the invite is for, and when it expires. Then **Download for Mac** (`https://tryhisar.com/download`) and **Download for Linux** (`https://tryhisar.com/download#linux`), **Open in Hisar** (`hisar://invite/<code>?server=<public origin>`), the invite code with **Copy**, and for the terminal how to get `hisar` (on a Mac it comes with the app: Settings → Developer tools; on Linux the Hisar package installs it; on a server, the download page) and `hisar signup <invite link>` with **Copy**. The copy buttons appear only with JavaScript; without it the code is still selectable text.
@@ -349,6 +355,10 @@ HisarKit's replacement-kit export carries the committed credential result's priv
 
 A lost credential-change answer is treated as committed only when the server holds the exact newly generated encrypted keyset. The lost answer's signed-out-device count remains unknown. Session and app results use -1 in the existing integer field, and the CLI and app display helpers say the count could not be recovered instead of reporting zero.
 
+Proof-bearing changes lock the account's devices in ID order before its session rows, matching device revocation.
+This order also applies to account deletion, including an admin deleting another account.
+A revocation that commits first makes the old session unusable for the proof-bearing change.
+
 **Other devices.** Every other device of the account is signed out by the change, so no device keeps working with the old secrets. The apps say so before the user confirms: "Your other devices will be signed out. Sign in on them with the new master password" (or "with your master password and the new Secret Key from the new Emergency Kit; the old Emergency Kit stops working"). A device learns it was signed out from a 401: its event stream ends at once, and an unlock or any request then gets 401. The desktop and iPhone backend then forgets the account on that device (`forgetLocalAccount`: the Secret Key and Touch ID key in the keychain, the encrypted cache, the session and pins in the state file) and shows the sign-in screen with "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." A device that stays offline can still be unlocked from its cache with the old password until it next reaches the server; that is the limit of an offline-first client.
 
 Replacing the Secret Key does not replace the keyset: someone who already holds the old Secret Key, the master password and a copy of the old `encKeyset` (a device cache) can still open the keyset. Rotating the keyset itself would mean re-wrapping every vault key and re-pinning with every person; it is not part of this.
@@ -364,6 +374,28 @@ Mac Settings → Account → **Delete account…**, iPhone Settings → Account 
 - No key rotation happens for the shared vaults that stay: the deleted account can no longer fetch anything, and its devices are wiped. Organization vaults it held a key to are marked for rotation (§5.11).
 - The app forgets the account like a sign-out (§5.7) and returns to sign-in; the iPhone also removes its AutoFill identities.
 - **By an admin.** An admin of the Hisar server deletes another account from the admin dashboard (§5.1) with the account's email typed in and their own master password proved: the same transaction from the locked account row on, without the account's proof, the same events, and the email says an admin of the Hisar server deleted it. The audit log records `admin_account_deleted` by the admin instead of `account_deleted`.
+
+Deletion locks organizations and vaults in ID order before classifying what stays.
+It locks the target's share and organization invitations before upgrading the account lock, so grants can finish their
+invitation-then-account sequence. The upgrade blocks new memberships through their account foreign keys.
+The upgrade uses `NOWAIT`, so a newly arrived foreign-key holder cannot close a lock cycle.
+Final invitation deletes also lock their exact statement snapshot with `NOWAIT`, covering email-only invitations that
+arrive after the account upgrade without waiting on a concurrent acceptance's account foreign key.
+If a membership committed during lock acquisition introduced another organization or vault, deletion releases its locks
+and restarts before making changes. It tries at most three times. Contention or repeated membership changes return 409,
+with no partial deletion, asking the caller to retry. The final classification therefore contains only locked vaults.
+Keeping account key-share locks available during vault acquisition lets an in-flight grant finish without a lock cycle.
+Creating a personal or shared vault or a new organization first share-locks its creator's account.
+Accepting an organization invitation share-locks the accepting account after the organization and before the invitation.
+These locks conflict with deletion's initial account lock, so the target's own requests cannot keep adding memberships
+while deletion acquires its vault locks. Changes within an existing organization, including team membership and new
+organization vaults, already serialize on its organization row. Key grants retain their compatible account foreign-key
+locks, so already-accepted invitations can finish without inverting vault and account acquisition.
+After taking its initial account lock, deletion refreshes the organization set and locks it with `NOWAIT`.
+This includes organizations created or joined while the first organization-lock statement waited, without restarting
+under a continuous stream of creations. It never waits for an organization while holding the account lock, since
+an acceptance may already hold that organization and be waiting for the same account.
+Admin settings saves lock the saving admin account before the settings row, matching deletion's attribution cleanup.
 
 ### 5.8 Sharing a vault by email
 
