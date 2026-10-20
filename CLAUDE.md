@@ -100,7 +100,7 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
 | `browser` | Native host, socket server and manifests for the extension |
 | `commandline` | Installing `hisar`, Settings → Command-line tool and its approved launchers, and the signed app behind a caller without a terminal (`identity.go`) |
-| `harness` | The omp card of Settings → Coding agents: finds omp and links or unlinks the omp plugin in `Hisar.app/Contents/Resources/omp-plugin` (the repository's `omp/` in a development build) |
+| `harness` | The agents Settings → Coding agents connects: one row per agent in `service.go` (where its tool is installed, its connector), bound as `ListAgents`, `Connect(id)`, `Disconnect(id)`. omp (`omp.go`) links or unlinks the omp plugin in `Hisar.app/Contents/Resources/omp-plugin` (the repository's `omp/` in a development build); Claude Code (`claudecode.go`) and Codex (`codex.go`) get `Contents/Helpers/hisar mcp --no-reveal`, through `claude mcp add --scope user` and through Hisar's own table in Codex's `config.toml` (`codextoml.go`, a table-level editor that keeps every other byte). A `hisar` server Hisar did not add is a conflict and never changed |
 | `portable` | Running from an AppImage or a Flatpak: copies the browser host and `hisar` out, with the `hisar-app` launcher |
 | `loginitem`, `background` | Open at login; login item, Dock icon, appearance |
 | `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time (D-Bus on Linux), window placement, Sparkle (`Notifier` announces versions on Linux), the clipboard (copies concealed from clipboard managers) |
@@ -184,6 +184,8 @@ starts it for: it signs up, sends the phone real approval requests, and saves ea
   as `card.go` and `identity.go`: fields with fixed names, so older apps keep them), `Item.OmitsLoginData` if its form has no login data, its rules in `core/app` `applyCategory`, a row in the CLI's `itemTypes` table, a `cliprotocol`
   feature in `GetCategoryFeature`, the importers, then the desktop, iPhone and Android screens.
 - **A new CLI ↔ app request:** the type string and result in `core/cliprotocol`, the answer in `core/app/commandline.go`.
+- **A new coding agent to connect from Settings:** a row in `desktop/harness/service.go` with a connector (`getState`,
+  `connect`, `disconnect`, each converging), and its card copy in `CodingAgentConnections.vue`.
 - **A new desktop OS integration:** its own `desktop/<name>` package with platform files; wire it in `desktop/main.go`.
 - **A new crypto primitive or AAD label:** `core/crypt` only, with a vector in `vectors_test.go`.
 - **A new admin dashboard screen:** wire types in `core/apitypes/admin_<area>.go`, the rules in

@@ -110,20 +110,16 @@ use Hisar" on.
 
 1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults an agent may use. Every vault starts
    off, and the setting is per device. Agents cannot see the other vaults at all.
-2. Add the server to your agent:
-
-   ```sh
-   claude mcp add hisar -- hisar mcp        # Claude Code
-   ```
-
-   Cursor, in `~/.cursor/mcp.json` or a project's `.cursor/mcp.json`:
+2. Connect your agent. Claude Code, Codex and omp connect with one click in the same section (below). Cursor, in
+   `~/.cursor/mcp.json` or a project's `.cursor/mcp.json`:
 
    ```json
-   { "mcpServers": { "hisar": { "command": "hisar", "args": ["mcp"] } } }
+   { "mcpServers": { "hisar": { "command": "hisar", "args": ["mcp", "--no-reveal"] } } }
    ```
 
-   Any other MCP client: a stdio server with the command `hisar` and the argument `mcp`. Add `--no-reveal` (`hisar mcp --no-reveal`)
-   to leave out `get_secret` and `get_one_time_code`, so no secret value can reach the agent through MCP.
+   Any other MCP client: a stdio server with the command `hisar` and the arguments `mcp --no-reveal`. `--no-reveal` leaves out
+   `get_secret` and `get_one_time_code`, so no secret value can reach the agent through MCP; drop it only for an agent you let read
+   values.
 
 The agent gets these tools:
 
@@ -143,6 +139,41 @@ which masking does not catch, so approve only commands you would run yourself; a
 command with them for that hour. A value from `get_secret` is in the agent's transcript and logs. Details:
 [docs/DESIGN.md](docs/DESIGN.md) §9.4.2.
 
+### Claude Code
+
+In Hisar, open Settings → Developer tools → Coding agents and click **Connect** next to Claude Code. Hisar finds `claude` on your
+PATH, in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` or `~/.claude/local`, and adds the `hisar` inside Hisar.app to
+your user settings (`~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json`):
+
+```sh
+claude mcp add --scope user --transport stdio hisar -- /Applications/Hisar.app/Contents/Helpers/hisar mcp --no-reveal
+```
+
+That command is also the way to connect by hand. New Claude Code sessions load Hisar; restart the ones already running.
+**Disconnect** runs `claude mcp remove hisar --scope user`. If your settings already have a server named `hisar` that Hisar did not
+add, the card says "Claude Code already has a server named hisar. Remove it to connect Hisar." and Hisar never changes it.
+Commands Claude Code runs in its shell get the coding-agent rules, as omp's do (below).
+
+### Codex
+
+Click **Connect** next to Codex in the same section. Hisar finds `codex` on your PATH, in `/opt/homebrew/bin`, `/usr/local/bin`,
+`~/.npm-global/bin` or `~/.local/bin`, and adds this table to `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), leaving the
+rest of the file as it was:
+
+```toml
+[mcp_servers.hisar]
+command = "/Applications/Hisar.app/Contents/Helpers/hisar"
+args = ["mcp", "--no-reveal"]
+startup_timeout_sec = 15
+tool_timeout_sec = 4200
+```
+
+To connect by hand, add the same table: `codex mcp add` cannot set the timeouts, and Codex's default of 60 seconds per tool call
+would end a `run_with_secrets` call while its approval is still open. New Codex sessions load Hisar; restart the ones already
+running. **Disconnect** runs `codex mcp remove hisar`. A `hisar` server that Hisar did not add is left alone, as for Claude Code.
+Codex's sandbox blocks Unix sockets for the commands it runs, so `hisar run` in Codex's shell cannot reach the app; Codex uses
+your secrets through `run_with_secrets`, which runs outside the sandbox.
+
 ### omp and Tern
 
 Hisar comes with a plugin for omp, the coding agent that also runs in Tern's panes. Connecting it gives omp both the plugin and
@@ -151,7 +182,7 @@ shows whether Hisar is locked.
 
 1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults omp may use, as for
    `hisar mcp` above.
-2. On the omp card in the same section, click **Connect**. Hisar finds omp on your PATH, in `~/bin`, in Tern
+2. Next to omp in the same section, click **Connect**. Hisar finds omp on your PATH, in `~/bin`, in Tern
    (`~/Library/Application Support/Tern/omp/bin`) or in `~/.bun/bin`, and runs `omp plugin link` with the plugin inside Hisar.app.
    The plugin starts the MCP server with the `hisar` inside Hisar.app. New omp sessions load Hisar; restart the ones already
    running. **Disconnect** runs `omp plugin uninstall @tryhisar/omp-plugin`, which removes the MCP server too.

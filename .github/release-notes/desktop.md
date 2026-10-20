@@ -4,4 +4,6 @@
 
 **omp and Tern:** connect omp in Settings → Developer tools → Coding agents. Every `hisar` command omp runs follows the coding-agent rules, so if you already use `hisar` from omp, expect more approvals: one per secret for each omp session. ssh and git inside omp get only the SSH keys in vaults available to agents, so move a key omp needs, such as your GitHub key, into one of them. The app omp runs in, such as Tern, becomes an agent host: its other processes without a terminal ask on every connection, and it can no longer be a launcher.
 
+**Claude Code and Codex:** connect them in Settings → Developer tools → Coding agents. Hisar adds its MCP server, `hisar mcp --no-reveal`, to Claude Code's user settings or to Codex's `config.toml` with a tool timeout long enough for approvals, and never changes a server named `hisar` that you added yourself. Commands they run in their shells follow the coding-agent rules, as omp's do.
+
 Check downloads against the `SHA256SUMS-*` files: `sha256sum -c --ignore-missing SHA256SUMS-linux-amd64`.
