@@ -9,6 +9,9 @@ import (
 )
 
 func loadState() (*localstate.State, error) {
+	if err := checkStandaloneAllowed(); err != nil {
+		return nil, err
+	}
 	path, err := localstate.GetPath("HISAR_STATE", "state.json")
 	if err != nil {
 		return nil, err

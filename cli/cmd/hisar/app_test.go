@@ -16,9 +16,23 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 )
+
+// The tests run hisar as if no agent harness were in its chain, wherever they run; runInsideOmp says otherwise.
+func init() {
+	findOwnHarness = func() (agentharness.Session, bool) { return agentharness.Session{}, false }
+}
+
+func runInsideOmp(t *testing.T) {
+	t.Helper()
+	findOwnHarness = func() (agentharness.Session, bool) {
+		return agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1226, StartTime: 100}, true
+	}
+	t.Cleanup(func() { findOwnHarness = func() (agentharness.Session, bool) { return agentharness.Session{}, false } })
+}
 
 type fakeApp struct {
 	mutex       sync.Mutex
@@ -889,5 +903,55 @@ func TestParseGlobalOption(t *testing.T) {
 	}
 	if _, _, err := parseGlobalOption([]string{"--other", "ls"}); err == nil {
 		t.Error("unknown option accepted")
+	}
+}
+
+func TestNoStandaloneInsideAHarness(t *testing.T) {
+	runInsideOmp(t)
+	statePath := filepath.Join(t.TempDir(), "state.json")
+	t.Setenv("HISAR_STATE", statePath)
+	t.Setenv(noLaunchEnvironment, "1")
+	const refusal = "hisar runs inside omp, so it uses the Hisar app only."
+
+	app := startFakeApp(t)
+	if stdout, stderr, err := runCapturingOutput(t, false, "", "vaults"); err != nil || !strings.Contains(stdout, "Personal") {
+		t.Errorf("through the app: %q %q %v", stdout, stderr, err)
+	}
+	if _, _, err := runCapturingOutput(t, true, "", "ls"); err == nil || err.Error() != refusal {
+		t.Errorf("--standalone ls: %v", err)
+	}
+	t.Setenv(standaloneEnvironment, "1")
+	if _, _, err := runCapturingOutput(t, false, "", "ls"); err == nil || err.Error() != refusal {
+		t.Errorf("HISAR_STANDALONE=1 hisar ls: %v", err)
+	}
+	t.Setenv(standaloneEnvironment, "")
+	t.Setenv(cliprotocol.SocketEnvironment, filepath.Join(createShortTempDirectory(t), "missing.sock"))
+	for _, args := range [][]string{{"ls"}, {"read", "hisar://Personal/GitHub/password"}, {"whoami"}} {
+		if _, _, err := runCapturingOutput(t, false, "master password\n", args...); err == nil || err.Error() != refusal {
+			t.Errorf("%q with the app not running: %v", args, err)
+		}
+	}
+	if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("a standalone state was written: %v", err)
+	}
+	if types := app.listRequestTypes(); slices.Contains(types, cliprotocol.TypeListItem) {
+		t.Errorf("a refused command reached the app: %v", types)
+	}
+}
+
+func TestStatusInsideAHarness(t *testing.T) {
+	runInsideOmp(t)
+	t.Setenv(noLaunchEnvironment, "1")
+	socketPath := filepath.Join(createShortTempDirectory(t), "missing.sock")
+	t.Setenv(cliprotocol.SocketEnvironment, socketPath)
+	stdout, _, err := runCapturingOutput(t, false, "", "status")
+	expected := "mode:    none (the Hisar app is not running, or does not offer " + socketPath + ")\nhisar runs inside omp, so it uses the Hisar app only.\n"
+	if err != nil || stdout != expected {
+		t.Errorf("status with the app not running: %q %v", stdout, err)
+	}
+
+	app := startFakeApp(t)
+	if stdout, _, err := runCapturingOutput(t, false, "", "status"); err != nil || !strings.Contains(stdout, "mode:    Hisar app ("+app.socketPath+")") {
+		t.Errorf("status through the app: %q %v", stdout, err)
 	}
 }

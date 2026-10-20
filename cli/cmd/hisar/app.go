@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 )
@@ -37,6 +39,29 @@ type commandMode struct {
 }
 
 var selectedMode commandMode
+
+// findOwnHarness finds the agent harness this hisar runs inside, from its own process chain.
+var findOwnHarness = func() (agentharness.Session, bool) {
+	return agentharness.Find(agentharness.ReadChain(os.Getpid(), agentharness.SystemReader()))
+}
+
+// checkStandaloneAllowed refuses standalone mode inside an agent harness, where the Hisar app's agent rules are the only
+// way to the vaults: standalone would let the agent sign in with no approval in the app.
+func checkStandaloneAllowed() error {
+	if session, isInside := findOwnHarness(); isInside {
+		return describeHarnessRefusal(session)
+	}
+	return nil
+}
+
+func describeHarnessRefusal(session agentharness.Session) error {
+	return fmt.Errorf("hisar runs inside %s, so it uses the Hisar app only.", session.Harness.Name)
+}
+
+// writeHarnessStatus is hisar status inside an agent harness when the app did not answer.
+func writeHarnessStatus(output io.Writer, mode commandMode, session agentharness.Session) {
+	fmt.Fprintf(output, "mode:    none (%s)\n%v\n", mode.reason, describeHarnessRefusal(session))
+}
 
 func isStandaloneRequested() bool {
 	value := strings.ToLower(strings.TrimSpace(os.Getenv(standaloneEnvironment)))

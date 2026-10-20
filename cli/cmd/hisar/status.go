@@ -52,6 +52,10 @@ func runStatus(_ context.Context, flags *flag.FlagSet, args []string) error {
 	if _, err := parse(flags, args); err != nil {
 		return err
 	}
+	if session, isInside := findOwnHarness(); isInside {
+		writeHarnessStatus(os.Stdout, selectedMode, session)
+		return nil
+	}
 	statePath, err := localstate.GetPath("HISAR_STATE", "state.json")
 	if err != nil {
 		return err
