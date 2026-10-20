@@ -262,19 +262,11 @@ func TestToolsAreListedWithSchemasForModels(t *testing.T) {
 			t.Errorf("run_with_secrets schema lacks %s: %s", property, runSchema)
 		}
 	}
-	for _, name := range []string{"list_vaults", "search_items", "run_with_secrets"} {
-		if description := toolsByName[name].Description; !strings.Contains(description, "never returned") && !strings.Contains(description, "Returns no secrets") {
-			t.Errorf("%s does not say it never returns values: %s", name, description)
-		}
-	}
-	if description := toolsByName["get_secret"].Description; !strings.Contains(description, "only tool that returns a secret value") || !strings.Contains(description, "approval") {
-		t.Errorf("get_secret description: %s", description)
-	}
 	if runAnnotations := toolsByName["run_with_secrets"].Annotations; runAnnotations.ReadOnlyHint || runAnnotations.DestructiveHint == nil || !*runAnnotations.DestructiveHint {
 		t.Error("run_with_secrets is not marked destructive")
 	}
 	initializeResult := server.session.InitializeResult()
-	if initializeResult.ServerInfo.Name != "hisar" || initializeResult.ServerInfo.Version != "1.2.3" || !strings.Contains(initializeResult.Instructions, "without seeing them") {
+	if initializeResult.ServerInfo.Name != "hisar" || initializeResult.ServerInfo.Version != "1.2.3" || initializeResult.Instructions == "" {
 		t.Errorf("server info %+v, instructions %q", initializeResult.ServerInfo, initializeResult.Instructions)
 	}
 }

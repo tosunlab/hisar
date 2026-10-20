@@ -60,7 +60,7 @@ describe("CodingAgentConnections", () => {
     expect(hasElement(wrapper, "connect-agent-omp")).toBe(false);
     expect(hasElement(wrapper, "disconnect-agent-omp")).toBe(false);
 
-    expect(getText(wrapper, "agent-state-claude-code")).toBe("Connect to let Claude Code run commands with your secrets through hisar mcp without seeing them.");
+    expect(getText(wrapper, "agent-state-claude-code")).toBe("Connect to let Claude Code run approved commands with your secrets through hisar mcp. Commands receive the real values; output masking is not containment.");
     expect(hasElement(wrapper, "connect-agent-claude-code")).toBe(true);
     expect(hasElement(wrapper, "agent-restart-hint-claude-code")).toBe(false);
 

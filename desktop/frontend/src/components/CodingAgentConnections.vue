@@ -17,11 +17,11 @@ const allCopyByAgentID: Record<string, AgentCopy> = {
   },
   "claude-code": {
     notInstalled: "Claude Code is not installed.",
-    purpose: ["Connect to let Claude Code run commands with your secrets through ", "hisar mcp", " without seeing them."],
+    purpose: ["Connect to let Claude Code run approved commands with your secrets through ", "hisar mcp", ". Commands receive the real values; output masking is not containment."],
   },
   codex: {
     notInstalled: "Codex is not installed.",
-    purpose: ["Connect to let Codex run commands with your secrets through ", "hisar mcp", " without seeing them."],
+    purpose: ["Connect to let Codex run approved commands with your secrets through ", "hisar mcp", ". Commands receive the real values; output masking is not containment."],
   },
 };
 
@@ -29,7 +29,7 @@ function getCopy(agent: CodingAgent): AgentCopy {
   return (
     allCopyByAgentID[agent.id] ?? {
       notInstalled: `${agent.name} is not installed.`,
-      purpose: [`Connect to let ${agent.name} run commands with your secrets through `, "hisar mcp", " without seeing them."],
+      purpose: [`Connect to let ${agent.name} run approved commands with your secrets through `, "hisar mcp", ". Commands receive the real values; output masking is not containment."],
     }
   );
 }

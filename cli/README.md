@@ -54,24 +54,25 @@ hisar read hisar://Personal/GitHub/otp            # one value on stdout, for scr
 ```
 
 `hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your smart device) and shows the command
-and the secrets it reads. The command gets the real values in its environment; nothing is written to disk. Every value it prints is
-replaced with `<concealed by hisar>`. That needs pipes, so use `--no-masking` for commands that need the terminal itself (colours,
+and the secrets it reads. The command gets the real values in its environment; Hisar does not write a resolved `.env` file.
+Output masking replaces recognized exact values with `<concealed by hisar>` to reduce accidental disclosure. Values shorter than
+4 bytes and transformed output are not masked. That needs pipes, so use `--no-masking` for commands that need the terminal itself (colours,
 prompts, full-screen tools). Several `--env-file` options are applied in order; variables already in your environment win unless they
 are references themselves. Signals are passed on, and `hisar run` exits with the command's exit code. Approving covers the terminal
 session: other `hisar` commands in it don't ask again until 10 minutes after the last one, or until Hisar locks.
 
-**With coding agents.** Give the agent the `.env` with references and let it run `hisar run --env-file .env -- <command>`. It can
-run your tests, migrations and deploys, but what it sees (and what ends up in its transcript and logs) has the secrets masked, and the
-`.env` it reads holds only references. Masking is a guard against showing secrets, not a sandbox: the command itself has the values,
+**With coding agents.** Give the agent the `.env` with references and let it run `hisar run --env-file .env -- <command>`. The
+`.env` it reads holds references instead of values. Masking reduces accidental disclosure in output and transcripts, but cannot
+prevent the command from revealing a granted secret. The command itself has the values,
 and an agent that can run `hisar read` in an approved terminal can read them. An approval covers every vault, so approve an agent's
 terminal only when it may use them. Details: [docs/DESIGN.md](../docs/DESIGN.md) §9.4.1. For agents that speak MCP, `hisar mcp`
 (below) is narrower: it sees only the vaults you choose and asks per command.
 
 ## Use Hisar with coding agents
 
-`hisar mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio that lets coding agents use your secrets without seeing
-them. It always works through the Hisar app, which must be running with Settings → Developer tools → "Let the command-line tool
-use Hisar" on.
+`hisar mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio that lets coding agents find secret references and pass
+values to approved commands. Command output is masked, not contained. It always works through the Hisar app, which must be running
+with Settings → Developer tools → "Let the command-line tool use Hisar" on.
 
 1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults an agent may use. Every vault starts
    off, and the setting is per device. Agents cannot see the other vaults at all.
@@ -83,8 +84,8 @@ use Hisar" on.
    ```
 
    Any other MCP client: a stdio server with the command `hisar` and the arguments `mcp --no-reveal`. `--no-reveal` leaves out
-   `get_secret` and `get_one_time_code`, so no secret value can reach the agent through MCP; drop it only for an agent you let read
-   values.
+   `get_secret` and `get_one_time_code`, removing direct value-returning tools. It does not prevent an approved command from
+   disclosing values through its output or other channels. Drop it only for an agent you let read values directly.
 
 The agent gets these tools:
 
@@ -144,8 +145,8 @@ your secrets through `run_with_secrets`, which runs outside the sandbox.
 ### omp and Tern
 
 Hisar comes with a plugin for omp, the coding agent that also runs in Tern's panes. Connecting it gives omp both the plugin and
-Hisar's MCP server as `hisar mcp --no-reveal`, so omp runs commands with your secrets without seeing them, and its status line
-shows whether Hisar is locked.
+Hisar's MCP server as `hisar mcp --no-reveal`. omp passes references to commands, Hisar masks recognized values in their output,
+and its status line shows whether Hisar is locked. The command still receives the secrets.
 
 1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults omp may use, as for
    `hisar mcp` above.
