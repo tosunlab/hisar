@@ -188,15 +188,21 @@ func (hosts *memoryAgentHosts) AddAgentHost(app AppIdentity) error {
 	return nil
 }
 
-// recordAgentHost remembers the app an agent session runs in and ends the approvals it had as an app.
-func (s *Server) recordAgentHost(app AppIdentity) {
-	if s.config.AgentHosts.IsAgentHost(app) {
+// RecordAgentHost remembers the app an agent session runs in and ends the approvals it had as an app. The SSH agent
+// calls it too, so an app is an agent host for both sockets from whichever saw a harness in it first.
+func (s *Server) RecordAgentHost(app AppIdentity) {
+	if s.IsAgentHost(app) {
 		return
 	}
 	if err := s.config.AgentHosts.AddAgentHost(app); err != nil {
 		log.Printf("commandline: could not save %s as an app that runs coding agents: %v", app.Path, err)
 	}
 	s.config.Approvals.revokeApp(app)
+}
+
+// IsAgentHost reports whether a harness ran in the app, as either socket saw.
+func (s *Server) IsAgentHost(app AppIdentity) bool {
+	return s.config.AgentHosts.IsAgentHost(app)
 }
 
 func (client *connectionPeer) isInAgentSession() bool {

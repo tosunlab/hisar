@@ -242,3 +242,18 @@ func TestAppThatBecomesAnAgentHostLosesItsOpenConnectionsAndDialogs(t *testing.T
 		t.Errorf("%d launcher approvals; want 1", count)
 	}
 }
+
+func TestAgentHostRecordedByTheSSHAgentEndsAppApprovals(t *testing.T) {
+	fixture := createServerFixture(t)
+	fixture.resolver.setCaller(launchdSession, ternApp)
+	fixture.connect(t).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
+
+	fixture.server.RecordAgentHost(ternApp)
+	if !fixture.server.IsAgentHost(ternApp) || fixture.approvals.isApproved(&fixture.approvals.commandLine, approvalScope{app: ternApp}) {
+		t.Fatal("Tern kept its app approval after the SSH agent saw omp in it")
+	}
+	fixture.connect(t).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
+	if request := fixture.approver.requests[len(fixture.approver.requests)-1]; fixture.approver.requestCount.Load() != 2 || request.Coverage != CoverageConnection {
+		t.Errorf("Tern's next caller: %d approvals, coverage %q", fixture.approver.requestCount.Load(), request.Coverage)
+	}
+}

@@ -179,13 +179,13 @@ func (s *Server) identifyPeer(connection net.Conn, connectionID uint64) (connect
 		}
 	}
 	if agent.isInside && app.Path != "" {
-		s.recordAgentHost(app)
+		s.RecordAgentHost(app)
 	}
 	client := connectionPeer{peer: peer, session: session, connectionID: connectionID, agentSession: agent.session, isChainUnknown: agent.isUnknown}
 	if agent.isInside {
 		client.agentHost = app
 	}
-	if app.Path != "" && s.config.AgentHosts.IsAgentHost(app) {
+	if app.Path != "" && s.IsAgentHost(app) {
 		client.isAgentHost, app = !agent.isInside, AppIdentity{}
 	}
 	client.scope = getApprovalScope(agent, session, app, connectionID)
@@ -326,7 +326,7 @@ func refuseUnknownChain() error {
 // applyAgentHost gives a connection whose app became an agent host after it connected what a new connection from that
 // app gets: no app scope, so it is approved on its own, and no launcher.
 func (s *Server) applyAgentHost(client *connectionPeer) {
-	if client.scope.app.Path == "" || !s.config.AgentHosts.IsAgentHost(client.scope.app) {
+	if client.scope.app.Path == "" || !s.IsAgentHost(client.scope.app) {
 		return
 	}
 	client.isAgentHost, client.scope = true, approvalScope{connectionID: client.connectionID}

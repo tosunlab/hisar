@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"log"
 	"net"
 
 	"github.com/tryhisar/hisar/core/agentharness"
@@ -10,6 +9,13 @@ import (
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 )
+
+// AgentHosts are the apps that hosted an agent session, kept by the command-line socket (clisocket.Server), so that
+// recording one from either socket also ends its approvals as an app there.
+type AgentHosts interface {
+	IsAgentHost(app clisocket.AppIdentity) bool
+	RecordAgentHost(app clisocket.AppIdentity)
+}
 
 // PeerResolver resolves the SSH agent's peers from their process chain: the app a peer runs in, so approvals are
 // remembered per app, and the agent session it runs inside, read as the command-line socket reads it. A peer without a
@@ -24,8 +30,8 @@ type PeerResolver struct {
 	HasTerminal func(pid int) bool
 	// IdentifyApp is the app as macOS verified its code signature (commandline.IdentifyApp).
 	IdentifyApp func(requester appinfo.Requester) (clisocket.AppIdentity, bool)
-	// AgentHosts are the apps that hosted an agent session; a peer inside a session adds its app.
-	AgentHosts clisocket.AgentHosts
+	// AgentHosts are the apps that hosted an agent session; a peer inside a session records its app.
+	AgentHosts AgentHosts
 }
 
 func (resolver PeerResolver) ResolvePeer(connection net.Conn) (sshagent.Peer, error) {
@@ -38,10 +44,8 @@ func (resolver PeerResolver) ResolvePeer(connection net.Conn) (sshagent.Peer, er
 	peer.ApplicationPath = requester.App.Path
 	if session, isInside, _ := agentharness.Find(resolver.ReadChain(info.PID)); isInside {
 		peer.AgentSession = &session
-		if app, isVerified := resolver.IdentifyApp(requester); isVerified && !resolver.AgentHosts.IsAgentHost(app) {
-			if err := resolver.AgentHosts.AddAgentHost(app); err != nil {
-				log.Printf("SSH agent: could not save %s as an app that runs coding agents: %v", app.Path, err)
-			}
+		if app, isVerified := resolver.IdentifyApp(requester); isVerified {
+			resolver.AgentHosts.RecordAgentHost(app)
 		}
 		return peer, nil
 	}

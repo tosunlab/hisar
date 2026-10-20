@@ -164,6 +164,21 @@ func main() {
 	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
 	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
 	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
+	var commandLineService *commandline.Service
+	commandLineServer := clisocket.NewServer(clisocket.ServerConfig{
+		Handler:             commandLineBridge,
+		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
+		Approver:            approver,
+		AgentApprover:       approver,
+		LauncherApprover:    approver,
+		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
+			return commandline.IdentifyApp(requesterResolver.Resolve(pid), requesterResolver)
+		},
+		PeerResolver: commandline.PeerResolver{Resolver: requesterResolver},
+		Approvals:    commandLineApprovals,
+		AgentHosts:   commandLineBridge,
+		IsEnabled:    func() bool { return commandLineService.IsIntegrationEnabled() },
+	})
 	sshPeerResolver := agent.PeerResolver{
 		Base:      localsocket.SystemPeerResolver{},
 		Resolve:   requesterResolver.Resolve,
@@ -175,7 +190,7 @@ func main() {
 		IdentifyApp: func(requester appinfo.Requester) (clisocket.AppIdentity, bool) {
 			return commandline.IdentifyApp(requester, requesterResolver)
 		},
-		AgentHosts: commandLineBridge,
+		AgentHosts: commandLineServer,
 	}
 	agentServer = sshagent.NewServer(app.NewSSHKeySource(vaultService), approver, sshPeerResolver)
 	systemNotifications := newSystemNotifications()
@@ -225,21 +240,6 @@ func main() {
 		browserServer.AllowHostOutsideSandbox()
 	}
 
-	var commandLineService *commandline.Service
-	commandLineServer := clisocket.NewServer(clisocket.ServerConfig{
-		Handler:             commandLineBridge,
-		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
-		Approver:            approver,
-		AgentApprover:       approver,
-		LauncherApprover:    approver,
-		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
-			return commandline.IdentifyApp(requesterResolver.Resolve(pid), requesterResolver)
-		},
-		PeerResolver: commandline.PeerResolver{Resolver: requesterResolver},
-		Approvals:    commandLineApprovals,
-		AgentHosts:   commandLineBridge,
-		IsEnabled:    func() bool { return commandLineService.IsIntegrationEnabled() },
-	})
 	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
 	if commandLineSocketPath == "" {
 		commandLineSocketPath = cliprotocol.GetDefaultSocketPath(homeDirectory)

@@ -24,10 +24,7 @@ type fakeAgentHosts map[clisocket.AppIdentity]bool
 
 func (hosts fakeAgentHosts) IsAgentHost(app clisocket.AppIdentity) bool { return hosts[app] }
 
-func (hosts fakeAgentHosts) AddAgentHost(app clisocket.AppIdentity) error {
-	hosts[app] = true
-	return nil
-}
+func (hosts fakeAgentHosts) RecordAgentHost(app clisocket.AppIdentity) { hosts[app] = true }
 
 var ternIdentity = clisocket.AppIdentity{Path: ternBundlePath, TeamID: "VTLHGQC72S"}
 
