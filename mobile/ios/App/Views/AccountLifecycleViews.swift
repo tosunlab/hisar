@@ -202,6 +202,11 @@ struct ReplaceSecretKeyView: View {
                 ErrorBanner(message: result.keychainError)
             }
         }
+        if !result.localError.isEmpty {
+            Section {
+                ErrorBanner(message: result.localError)
+            }
+        }
         if !result.emergencyKitPath.isEmpty {
             Section {
                 ShareLink(item: URL(fileURLWithPath: result.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {

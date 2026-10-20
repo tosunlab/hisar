@@ -58,7 +58,8 @@ class SettingsModel(private val context: ModelContext) {
     suspend fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult? = context.runInModel {
         val result = context.perform { it.changeMasterPassword(currentPassword, newPassword) } ?: return@runInModel null
         context.applyStatus(result.status)
-        context.showNotice("Master password changed. ${AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)}")
+        val warning = result.localError.takeIf { it.isNotEmpty() }?.let { " $it" }.orEmpty()
+        context.showNotice("Master password changed. ${AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)}$warning")
         result
     }
 

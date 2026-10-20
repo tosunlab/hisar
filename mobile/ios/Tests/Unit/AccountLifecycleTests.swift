@@ -40,6 +40,11 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertTrue(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master password"))
     }
 
+    func testUnknownSignedOutDeviceCount() {
+        XCTAssertEqual(AccountLifecycleLogic.describeSignedOutDevices(-1), "Any other devices were signed out; their count could not be recovered.")
+        XCTAssertEqual(AccountLifecycleLogic.describeSignedOutDevices(0), "No other devices were signed in.")
+    }
+
     func testEmailConfirmationIgnoresCaseAndSpaces() {
         XCTAssertTrue(AccountLifecycleLogic.isEmailMatching(typedEmail: " Alice@Example.com ", accountEmail: "alice@example.com"))
         XCTAssertFalse(AccountLifecycleLogic.isEmailMatching(typedEmail: "bob@example.com", accountEmail: "alice@example.com"))

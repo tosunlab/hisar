@@ -332,6 +332,7 @@ fun ReplaceSecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                 CopySecretKeyRow(model, replaced.secretKey, "copy-new-secret-key-value")
             }
             if (replaced.keychainError.isNotEmpty()) FormSection { ErrorBanner(replaced.keychainError) }
+            if (replaced.localError.isNotEmpty()) FormSection { ErrorBanner(replaced.localError) }
             if (replaced.emergencyKitPath.isNotEmpty()) {
                 FormSection(
                     header = "New Emergency Kit",

@@ -1102,7 +1102,8 @@ final class AppModel: ObservableObject {
     func changeMasterPassword(currentPassword: String, newPassword: String) async -> CredentialChangeResult? {
         guard let result = await perform({ try $0.changeMasterPassword(currentPassword: currentPassword, newPassword: newPassword) }) else { return nil }
         applyStatus(result.status)
-        showNotice("Master password changed. \(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount))")
+        let warning = result.localError.isEmpty ? "" : " \(result.localError)"
+        showNotice("Master password changed. \(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount))\(warning)")
         return result
     }
 

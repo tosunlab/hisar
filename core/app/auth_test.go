@@ -93,6 +93,102 @@ func startRefusingServer(t *testing.T, accountID string, password []byte, secret
 	return server.URL
 }
 
+func startRegisteringServer(t *testing.T, refuseVault bool) string {
+	t.Helper()
+	configuration := pake.NewConfig()
+	privateKey, publicKey := configuration.KeyGen()
+	opaqueServer, err := configuration.Server()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyMaterial := &opaque.ServerKeyMaterial{PrivateKey: privateKey, PublicKeyBytes: publicKey.Encode(), OPRFGlobalSeed: configuration.GenerateOPRFSeed(), Identity: pake.ServerIdentity()}
+	if err := opaqueServer.SetKeyMaterial(keyMaterial); err != nil {
+		t.Fatal(err)
+	}
+	var account apitypes.Account
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /api/v1/auth/register/start", func(writer http.ResponseWriter, request *http.Request) {
+		var startRequest apitypes.RegisterStartRequest
+		json.NewDecoder(request.Body).Decode(&startRequest)
+		registrationRequest, err := opaqueServer.Deserialize.RegistrationRequest(startRequest.Request)
+		if err != nil {
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: "invalid request"})
+			return
+		}
+		registrationResponse, err := opaqueServer.RegistrationResponse(registrationRequest, []byte(startRequest.AccountID), nil)
+		if err != nil {
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: "invalid request"})
+			return
+		}
+		writeJSON(writer, http.StatusOK, apitypes.RegisterStartResponse{Response: registrationResponse.Serialize()})
+	})
+	mux.HandleFunc("POST /api/v1/auth/register/finish", func(writer http.ResponseWriter, request *http.Request) {
+		var finishRequest apitypes.RegisterFinishRequest
+		json.NewDecoder(request.Body).Decode(&finishRequest)
+		account = apitypes.Account{
+			AccountID: finishRequest.AccountID, Email: finishRequest.Email, Name: finishRequest.Name, Role: apitypes.RoleMember,
+			Salt: finishRequest.Salt, Argon2: finishRequest.Argon2, EncKeyset: finishRequest.EncKeyset, PublicKeys: finishRequest.PublicKeys,
+		}
+		writeJSON(writer, http.StatusOK, apitypes.SessionResponse{Token: "token", AccountID: finishRequest.AccountID, DeviceID: "device"})
+	})
+	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, http.StatusOK, account)
+	})
+	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+		if refuseVault {
+			writeJSON(writer, http.StatusInternalServerError, apitypes.Error{Error: "database unavailable"})
+			return
+		}
+		writer.WriteHeader(http.StatusCreated)
+	})
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server.URL
+}
+
+type failingSecretKeyStore struct {
+	*memorySecretKeyStore
+}
+
+func (failingSecretKeyStore) StoreSecretKey(crypt.SecretKey) error {
+	return errors.New("keychain locked")
+}
+
+func TestSignUpReportsFinishingFailuresAndShowsTheKeyWhenTheKeychainFails(t *testing.T) {
+	for _, failure := range []string{"Personal vault", "state save", "keychain"} {
+		t.Run(failure, func(t *testing.T) {
+			serverURL := startRegisteringServer(t, failure == "Personal vault")
+			var store SecretKeyStore = createMemorySecretKeyStore()
+			if failure == "keychain" {
+				store = failingSecretKeyStore{createMemorySecretKeyStore()}
+			}
+			statePath := filepath.Join(t.TempDir(), "desktop.json")
+			service, _, _ := createTestService(t, statePath, store)
+			service.config.IsEventStreamDisabled = true
+			if failure == "state save" {
+				if err := os.Mkdir(statePath, 0700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			result, err := service.SignUp(serverURL+"/invite/token", "new@example.com", "New", "a new master password")
+			if err == nil {
+				t.Fatal("incomplete account setup reported success")
+			}
+			if !strings.HasPrefix(result.SecretKey, "H1-") {
+				t.Fatal("the structured result lost the generated key")
+			}
+			if failure == "keychain" {
+				// App bridges discard the result on error, leaving only this message visible.
+				if !strings.Contains(err.Error(), "write it down: "+result.SecretKey) {
+					t.Fatal("the app's error message lost the only visible Secret Key")
+				}
+			} else if strings.Contains(err.Error(), "H1-") {
+				t.Fatal("a non-keychain finishing error disclosed the Secret Key")
+			}
+		})
+	}
+}
+
 func TestSignInToASuspendedAccount(t *testing.T) {
 	password := []byte("suspended master password")
 	secretKey, err := crypt.GenerateSecretKey("ABC123")
@@ -177,5 +273,23 @@ func TestSuspendedAccountLocksAndKeepsThisDevice(t *testing.T) {
 	reloaded, err := localstate.Load(service.config.StatePath)
 	if err != nil || !reloaded.IsLoggedIn() || reloaded.Token != "token" {
 		t.Errorf("state after the suspension: %+v %v", reloaded, err)
+	}
+}
+
+func TestSignInReportsParametersOutsideTheOriginalArgon2Bounds(t *testing.T) {
+	params := crypt.MaxArgon2Params()
+	params.MemoryKiB++
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, http.StatusOK, apitypes.PreloginResponse{Salt: crypt.GenerateSalt(), Argon2: params})
+	}))
+	t.Cleanup(server.Close)
+	secretKey, err := crypt.GenerateSecretKey("ABC123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	service, _, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
+	_, err = service.SignIn(server.URL, "a@example.com", secretKey.Encode(), "a master password")
+	if err == nil || !strings.HasPrefix(err.Error(), "the server asked for key-stretching settings Hisar does not accept") {
+		t.Fatalf("out-of-range key-stretching settings: %v", err)
 	}
 }

@@ -83,6 +83,34 @@ describe("store", () => {
     expect(store.pendingSecretKey).toBe("");
   });
 
+  it("delivers a committed key replacement despite a local cache warning", async () => {
+    const result = {
+      status: createStatus("unlocked"),
+      secretKey: "H1-NEW-SECRET",
+      signedOutDeviceCount: -1,
+      keychainError: "",
+      localError: "your credentials were changed, but this device's offline copy of the vaults could not be deleted",
+    };
+    api.replaceSecretKey.mockResolvedValue(result);
+    expect(await storeModule.replaceSecretKey("master password")).toEqual(result);
+    expect(store.status.state).toBe("unlocked");
+    expect(store.errorMessage).toBe(result.localError);
+    expect(store.isBusy).toBe(false);
+  });
+
+  it("reports a committed password change and its local warning together", async () => {
+    const result = {
+      status: createStatus("unlocked"),
+      secretKey: "",
+      signedOutDeviceCount: 0,
+      keychainError: "",
+      localError: "your credentials were changed, but the offline copy could not be refreshed",
+    };
+    api.changeMasterPassword.mockResolvedValue(result);
+    expect(await storeModule.changeMasterPassword("old password", "new password")).toEqual(result);
+    expect(store.errorMessage).toBe(result.localError);
+  });
+
   it("drops all vault data when the backend reports it is locked", async () => {
     store.status = createStatus("unlocked");
     store.allItem = [createItem()];

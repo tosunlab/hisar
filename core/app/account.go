@@ -22,6 +22,8 @@ type CredentialChangeResult struct {
 	SignedOutDeviceCount int    `json:"signedOutDeviceCount"`
 	// KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
 	KeychainError string `json:"keychainError"`
+	// LocalError reports local finalization failures after the credentials have already changed.
+	LocalError string `json:"localError"`
 }
 
 type DeletionVault struct {
@@ -103,6 +105,14 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 		return CredentialChangeResult{}, convertAccountError(err)
 	}
 	defer clear(credentialChange.AccountUnlockKey)
+	var cacheErr error
+	if credentialChange.IsCachedAccountStale {
+		s.unlockedSession.Cache = nil
+		cacheErr = s.removeCache()
+		if cacheErr == nil {
+			cacheErr = s.attachCache(ctx, s.unlockedSession)
+		}
+	}
 
 	result := CredentialChangeResult{SignedOutDeviceCount: credentialChange.SignedOutDeviceCount}
 	if credentialChange.SecretKey.Encode() != secretKey.Encode() {
@@ -125,7 +135,10 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 	}
 	s.recordPasswordUnlock()
 	result.Status = s.buildStatus()
-	return result, s.state.Save()
+	if err := errors.Join(cacheErr, s.state.Save()); err != nil {
+		result.LocalError = fmt.Sprintf("your credentials were changed, but this device could not finish saving the change: %v", err)
+	}
+	return result, nil
 }
 
 func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {

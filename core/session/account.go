@@ -23,8 +23,12 @@ const MinimumPasswordLength = 10
 type CredentialChange struct {
 	SecretKey crypt.SecretKey
 	// AccountUnlockKey is the new key; the caller wipes it.
-	AccountUnlockKey     []byte
+	AccountUnlockKey []byte
+	// SignedOutDeviceCount is -1 when a lost answer was recovered without its device count.
 	SignedOutDeviceCount int
+	// IsCachedAccountStale: the cache still holds the keyset sealed with the old credentials, which would keep unlocking
+	// this device offline; the caller starts the cache over.
+	IsCachedAccountStale bool
 }
 
 type DeletionVault struct {
@@ -179,18 +183,30 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 		EncKeyset:          credential.encryptedKeyset,
 	})
 	if err != nil {
-		return nil, convertReauthenticationError(err)
+		if !apiclient.IsUnreachable(err) || !s.holdsKeyset(ctx, credential.encryptedKeyset) {
+			return nil, convertReauthenticationError(err)
+		}
+		response = &apitypes.ChangeCredentialsResponse{SignedOutDeviceCount: -1}
 	}
-	if s.Cache != nil {
-		updatedAccount := *verified.account
-		updatedAccount.Salt, updatedAccount.Argon2, updatedAccount.EncKeyset = credential.salt, credential.argon2Params, credential.encryptedKeyset
-		s.Cache.SaveAccount(&updatedAccount)
-	}
-	return &CredentialChange{
+	credentialChange := &CredentialChange{
 		SecretKey:            newSecretKey,
 		AccountUnlockKey:     append([]byte(nil), newKeys.AccountUnlockKey...),
 		SignedOutDeviceCount: response.SignedOutDeviceCount,
-	}, nil
+	}
+	updatedAccount := *verified.account
+	updatedAccount.Salt, updatedAccount.Argon2, updatedAccount.EncKeyset = credential.salt, credential.argon2Params, credential.encryptedKeyset
+	s.verifiedAccount = &updatedAccount
+	if s.Cache != nil {
+		credentialChange.IsCachedAccountStale = s.Cache.SaveAccount(&updatedAccount) != nil
+	}
+	return credentialChange, nil
+}
+
+// holdsKeyset reports whether the server now has encryptedKeyset, a sealing no other request could have sent: a change
+// whose answer was lost was made, and its new credentials are the only ones that work.
+func (s *Session) holdsKeyset(ctx context.Context, encryptedKeyset []byte) bool {
+	account, err := s.Client.GetAccount(ctx)
+	return err == nil && bytes.Equal(account.EncKeyset, encryptedKeyset)
 }
 
 // A failed proof is 403, never 401: clients treat 401 as a signed-out device.

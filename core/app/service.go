@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"crypto/x509"
+	"fmt"
 	"net/http"
 	"sync"
 	"time"
@@ -72,20 +73,29 @@ func (s *Service) getCache() session.Cache {
 	return s.localCache
 }
 
-func (s *Service) removeCache() {
+func (s *Service) removeCache() error {
 	if s.localCache != nil {
 		s.localCache.Close()
 		s.localCache = nil
 	}
-	if s.config.CachePath != "" {
-		cache.Remove(s.config.CachePath)
+	if s.config.CachePath == "" {
+		return nil
 	}
+	if err := cache.Remove(s.config.CachePath); err != nil {
+		return fmt.Errorf("this device's offline copy of the vaults could not be deleted: %w", err)
+	}
+	return nil
 }
 
-func (s *Service) attachCache(ctx context.Context, unlockedSession *session.Session) {
+func (s *Service) attachCache(ctx context.Context, unlockedSession *session.Session) error {
 	if localCache := s.getCache(); localCache != nil {
-		unlockedSession.AttachCache(ctx, localCache)
+		if err := unlockedSession.AttachCache(ctx, localCache); err != nil {
+			return fmt.Errorf("this device's offline copy of the account could not be refreshed: %w", err)
+		}
+	} else if s.config.CachePath != "" {
+		return fmt.Errorf("this device's offline copy of the vaults could not be opened")
 	}
+	return nil
 }
 
 func NewService(config Config) (*Service, error) {

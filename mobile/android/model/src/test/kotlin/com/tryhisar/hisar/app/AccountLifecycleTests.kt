@@ -2,6 +2,7 @@ package com.tryhisar.hisar.app
 
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.AccountLifecycleLogic
+import com.tryhisar.hisar.model.CredentialChangeResult
 import com.tryhisar.hisar.model.DeletionOrganization
 import com.tryhisar.hisar.model.DeletionVault
 import com.tryhisar.hisar.model.FakeBackend
@@ -32,6 +33,12 @@ class AccountLifecycleTests {
         assertFalse(AccountLifecycleLogic.canChangePassword("", "a new master password", "a new master password"))
         assertFalse(AccountLifecycleLogic.canChangePassword("old password", "a new master password", ""))
         assertTrue(AccountLifecycleLogic.canChangePassword("old password", "a new master password", "a new master password"))
+    }
+
+    @Test
+    fun testUnknownSignedOutDeviceCount() {
+        assertEquals("Any other devices were signed out; their count could not be recovered.", AccountLifecycleLogic.describeSignedOutDevices(-1))
+        assertEquals("No other devices were signed in.", AccountLifecycleLogic.describeSignedOutDevices(0))
     }
 
     @Test
@@ -76,6 +83,16 @@ class AccountLifecycleTests {
         assertEquals(3, preview.shareLinkCount)
         val status = backendJson.decodeFromString<VaultStatus>("""{"state":"signed-out","signedOutReason":"This device was signed out."}""")
         assertEquals("This device was signed out.", status.signedOutReason)
+    }
+
+    @Test
+    fun testCommittedReplacementDecodesLocalWarningWithoutLosingTheKeyOrKit() {
+        val json = """{"status":{"state":"unlocked"},"secretKey":"H1-NEW-SECRET","signedOutDeviceCount":-1,"keychainError":"","localError":"credentials were changed; offline copy could not be deleted","emergencyKitPath":"/tmp/EmergencyKit/new.pdf"}"""
+        val result = backendJson.decodeFromString<CredentialChangeResult>(json)
+        assertEquals("H1-NEW-SECRET", result.secretKey)
+        assertEquals("/tmp/EmergencyKit/new.pdf", result.emergencyKitPath)
+        assertTrue(result.localError.contains("offline copy could not be deleted"))
+        assertEquals(-1, result.signedOutDeviceCount)
     }
 
     @Test

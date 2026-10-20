@@ -125,4 +125,7 @@ func TestConvertAccountError(t *testing.T) {
 	if describeSignedOutDevice(1) != "1 other device was signed out." || describeSignedOutDevice(3) != "3 other devices were signed out." {
 		t.Error("signed-out device count wording")
 	}
+	if describeSignedOutDevice(-1) != "Any other devices were signed out; their count could not be recovered." {
+		t.Error("an unknown count was reported as zero")
+	}
 }

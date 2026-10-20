@@ -26,6 +26,7 @@ object AccountLifecycleLogic {
     }
 
     fun describeSignedOutDevices(count: Int): String = when (count) {
+        in Int.MIN_VALUE..-1 -> "Any other devices were signed out; their count could not be recovered."
         0 -> "No other devices were signed in."
         1 -> "1 other device was signed out."
         else -> "$count other devices were signed out."

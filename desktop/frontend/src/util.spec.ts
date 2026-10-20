@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCommitSigningCommandList,
   computePasswordStrength,
+  describeSignedOutDevices,
   formatExpiresIn,
   formatShareLinkViews,
   formatViewLimit,
@@ -24,6 +25,13 @@ import {
   formatTimeAgo,
   isCalendarDate,
 } from "./util";
+
+describe("describeSignedOutDevices", () => {
+  it("does not report an unknown count as zero", () => {
+    expect(describeSignedOutDevices(-1)).toBe("Any other devices were signed out; their count could not be recovered.");
+    expect(describeSignedOutDevices(0)).toBe("No other devices were signed in.");
+  });
+});
 
 describe("computePasswordStrength", () => {
   it("rates random passwords by length and character classes", () => {

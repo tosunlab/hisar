@@ -133,6 +133,9 @@ func confirmUnlessYes(isYes bool, label string) error {
 }
 
 func describeSignedOutDevice(signedOutDeviceCount int) string {
+	if signedOutDeviceCount < 0 {
+		return "Any other devices were signed out; their count could not be recovered."
+	}
 	switch signedOutDeviceCount {
 	case 0:
 		return "No other devices were signed in."

@@ -1,6 +1,7 @@
 package session
 
 import (
+	"bytes"
 	"context"
 
 	"github.com/tryhisar/hisar/core/apiclient"
@@ -33,16 +34,24 @@ func (s *Session) AttachCache(ctx context.Context, accountCache Cache) error {
 	if err != nil {
 		return err
 	}
+	verified := s.verifiedAccount
+	if verified == nil || account.AccountID != s.AccountID ||
+		!bytes.Equal(account.EncKeyset, verified.EncKeyset) ||
+		!bytes.Equal(account.Salt, verified.Salt) || account.Argon2 != verified.Argon2 {
+		return ErrKeyMismatch
+	}
+	publicKeys := s.Keyset.GetPublicKeys(s.AccountID)
+	if !bytes.Equal(account.PublicKeys.KEM, publicKeys.KEM) || !bytes.Equal(account.PublicKeys.Sign, publicKeys.Sign) {
+		return ErrKeyMismatch
+	}
 	return accountCache.SaveAccount(account)
 }
 
-// getAccount falls back to the cached account only when the server cannot be reached.
+// getAccount falls back to the cached account only when the server cannot be reached. The caller caches a fetched
+// account once its keyset has opened, so a bad answer never replaces the copy that unlocks offline.
 func getAccount(ctx context.Context, apiClient *apiclient.Client, accountCache Cache, accountID string) (account *apitypes.Account, isOffline bool, err error) {
 	account, err = apiClient.GetAccount(ctx)
 	if err == nil {
-		if accountCache != nil && account.AccountID == accountID {
-			accountCache.SaveAccount(account)
-		}
 		return account, false, nil
 	}
 	if accountCache == nil || !apiclient.IsUnreachable(err) {
@@ -55,21 +64,27 @@ func getAccount(ctx context.Context, apiClient *apiclient.Client, accountCache C
 	return cachedAccount, true, nil
 }
 
-func (s *Session) listProtoVaults(ctx context.Context) ([]apitypes.Vault, error) {
-	protoVaults, err := s.Client.ListVaults(ctx)
-	if s.Cache == nil {
-		return protoVaults, err
-	}
+// listProtoVaults returns the server's vault list, or the cached one while the server is unreachable; isFetched says
+// which, so the caller replaces the cache only once every fetched vault has opened.
+func (s *Session) listProtoVaults(ctx context.Context) (protoVaults []apitypes.Vault, isFetched bool, err error) {
+	protoVaults, err = s.Client.ListVaults(ctx)
 	if err == nil {
-		s.isOffline.Store(false)
-		if cachedVaults, cacheErr := s.Cache.ListVaults(); cacheErr == nil {
-			s.noteRemovedVaults(cachedVaults, protoVaults)
+		if s.Cache != nil {
+			s.isOffline.Store(false)
 		}
-		return protoVaults, s.Cache.ReplaceVaults(protoVaults)
+		return protoVaults, true, nil
 	}
-	if !apiclient.IsUnreachable(err) {
-		return nil, err
+	if s.Cache == nil || !apiclient.IsUnreachable(err) {
+		return nil, false, err
 	}
 	s.isOffline.Store(true)
-	return s.Cache.ListVaults()
+	protoVaults, err = s.Cache.ListVaults()
+	return protoVaults, false, err
+}
+
+func (s *Session) replaceCachedVaults(protoVaults []apitypes.Vault) error {
+	if cachedVaults, err := s.Cache.ListVaults(); err == nil {
+		s.noteRemovedVaults(cachedVaults, protoVaults)
+	}
+	return s.Cache.ReplaceVaults(protoVaults)
 }

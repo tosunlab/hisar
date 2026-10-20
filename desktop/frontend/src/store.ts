@@ -427,6 +427,7 @@ export async function changeMasterPassword(currentPassword: string, newPassword:
   const result = await runAction(() => api.changeMasterPassword(currentPassword, newPassword));
   if (result) {
     store.status = result.status;
+    store.errorMessage = result.localError;
   }
   return result;
 }
@@ -435,6 +436,7 @@ export async function replaceSecretKey(password: string): Promise<CredentialChan
   const result = await runAction(() => api.replaceSecretKey(password));
   if (result) {
     store.status = result.status;
+    store.errorMessage = result.localError;
   }
   return result;
 }

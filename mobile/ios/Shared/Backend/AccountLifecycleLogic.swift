@@ -27,6 +27,7 @@ enum AccountLifecycleLogic {
 
     static func describeSignedOutDevices(_ count: Int) -> String {
         switch count {
+        case ..<0: return "Any other devices were signed out; their count could not be recovered."
         case 0: return "No other devices were signed in."
         case 1: return "1 other device was signed out."
         default: return "\(count) other devices were signed out."

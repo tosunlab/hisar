@@ -1064,6 +1064,7 @@ data class CredentialChangeResult(
     val secretKey: String = "",
     val signedOutDeviceCount: Int = 0,
     val keychainError: String = "",
+    val localError: String = "",
     val emergencyKitPath: String = "",
 )
 

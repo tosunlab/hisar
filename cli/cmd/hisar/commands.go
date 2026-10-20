@@ -115,20 +115,12 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 
 	fmt.Fprintln(os.Stderr, "Creating account...")
 	currentSession, secretKey, err := session.SignUp(ctx, createClient(server), token, email, name, password, getDeviceInfo())
-	if err != nil {
+	if currentSession == nil {
 		return err
 	}
 	defer currentSession.Lock()
 
-	currentState.Reset()
-	currentState.Server, currentState.Email, currentState.AccountID, currentState.Token = server, strings.ToLower(email), currentSession.AccountID, currentSession.Client.Token
-	if err := currentState.Save(); err != nil {
-		return err
-	}
-	if err := localstate.StoreSecretKey(secretKey); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not save Secret Key to keychain: %v\n", err)
-	}
-
+	// The account exists, and nobody can sign in to it without this key: show it before anything else can fail.
 	fmt.Fprintf(os.Stderr, `
 Account created. This is your Secret Key:
 
@@ -139,6 +131,18 @@ your Emergency Kit with "hisar emergency-kit". You need both to sign in on a
 new device. A forgotten master password cannot be recovered by anyone,
 including Hisar.
 `, secretKey.Encode())
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: %v\n", err)
+	}
+
+	currentState.Reset()
+	currentState.Server, currentState.Email, currentState.AccountID, currentState.Token = server, strings.ToLower(email), currentSession.AccountID, currentSession.Client.Token
+	if err := currentState.Save(); err != nil {
+		return err
+	}
+	if err := localstate.StoreSecretKey(secretKey); err != nil {
+		fmt.Fprintf(os.Stderr, "warning: could not save Secret Key to keychain: %v\n", err)
+	}
 	return nil
 }
 

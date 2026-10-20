@@ -148,8 +148,13 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKey(ctx, s.createClient(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
-	if err != nil {
+	if signedUp == nil {
 		return SignUpResult{}, convertError(err)
+	}
+	if err != nil {
+		signedUp.Lock()
+		clear(accountUnlockKey)
+		return SignUpResult{SecretKey: secretKey.Encode()}, convertError(err)
 	}
 
 	s.mutex.Lock()
@@ -164,7 +169,7 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	if err := s.state.Save(); err != nil {
 		signedUp.Lock()
 		clear(accountUnlockKey)
-		return SignUpResult{}, err
+		return SignUpResult{SecretKey: secretKey.Encode()}, err
 	}
 	keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
 	s.notifySessionChange()

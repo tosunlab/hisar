@@ -337,3 +337,16 @@ func BenchmarkDeriveAllKeyDefault(b *testing.B) {
 		}
 	}
 }
+
+func TestArgon2BoundsPreservePreviouslyValidParameters(t *testing.T) {
+	for _, params := range []Argon2Params{MinArgon2Params(), DefaultArgon2Params(), MaxArgon2Params(), {Time: 2, MemoryKiB: 128 * 1024, Threads: 1}} {
+		if err := params.Validate(); err != nil {
+			t.Errorf("previously valid parameters %+v: %v", params, err)
+		}
+	}
+	params := MaxArgon2Params()
+	params.MemoryKiB++
+	if err := params.Validate(); !errors.Is(err, ErrArgon2ParamsOutOfRange) {
+		t.Fatalf("parameters outside the old bounds: %v", err)
+	}
+}

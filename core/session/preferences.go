@@ -113,10 +113,14 @@ func (s *Session) fetchPreferences(ctx context.Context) (*Preferences, error) {
 	if err != nil {
 		return nil, err
 	}
+	preferences, err := s.openPreferences(record)
+	if err != nil {
+		return nil, err
+	}
 	if s.Cache != nil {
 		s.Cache.SaveAccountPreferences(s.AccountID, record)
 	}
-	return s.openPreferences(record)
+	return preferences, nil
 }
 
 // LoadPreferences reads the record from the server, or from the cache while the server is unreachable; with nothing

@@ -85,6 +85,11 @@ export interface CredentialChangeResult {
      * KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
      */
     "keychainError": string;
+
+    /**
+     * LocalError reports local finalization failures after the credentials have already changed.
+     */
+    "localError": string;
 }
 
 export interface DeletionOrganization {

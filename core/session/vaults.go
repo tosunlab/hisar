@@ -57,7 +57,7 @@ func (s *Session) createVault(ctx context.Context, name string, request *apitype
 }
 
 func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
-	protoVaults, err := s.listProtoVaults(ctx)
+	protoVaults, isFetched, err := s.listProtoVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -75,6 +75,11 @@ func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
 			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
 			OrganizationID: protoVault.OrganizationID, KeyGeneration: protoVault.KeyGeneration, NeedsRotation: protoVault.NeedsRotation,
 		})
+	}
+	if isFetched && s.Cache != nil {
+		if err := s.replaceCachedVaults(protoVaults); err != nil {
+			return nil, err
+		}
 	}
 	return vaults, nil
 }
