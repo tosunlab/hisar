@@ -207,6 +207,9 @@ func (scanner *tomlScanner) skipValue() error {
 				continue
 			}
 			scanner.pos++
+		case scanner.peek(0) == '\r':
+			// TOML allows a carriage return only in a line ending, which the case above takes.
+			return scanner.errorf("unexpected %q", scanner.peek(0))
 		case scanner.peek(0) == '"' || scanner.peek(0) == '\'':
 			if err := scanner.skipString(); err != nil {
 				return err
