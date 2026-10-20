@@ -13,12 +13,11 @@ import (
 )
 
 const (
-	ApprovalKindAgent        = "agent"
-	agentClientName          = "hisar mcp"
-	unknownAgentName         = "A coding agent"
-	maximumAgentNameLength   = 60
-	maximumDirectoryLength   = 160
-	agentRevealRememberLabel = "Allow this item for 1 hour"
+	ApprovalKindAgent      = "agent"
+	agentClientName        = "hisar mcp"
+	unknownAgentName       = "A coding agent"
+	maximumAgentNameLength = 60
+	maximumDirectoryLength = 160
 )
 
 // How Hisar knows an agent's name, ApprovalEvent.AgentNameSource: the code signature of its harness, which the window
@@ -92,7 +91,8 @@ func describeAgentRememberLabel(request clisocket.AgentApprovalRequest) string {
 	case clisocket.AgentRequestCode:
 		return "Allow this one-time code for this agent for 1 hour"
 	case clisocket.AgentRequestReveal:
-		return agentRevealRememberLabel
+		// A remembered reveal covers the whole item, so the checkbox says so rather than naming the one field.
+		return fmt.Sprintf("Allow every field of “%s” for this agent for 1 hour", request.RevealedItem)
 	}
 	return ""
 }

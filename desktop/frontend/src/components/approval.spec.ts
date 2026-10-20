@@ -585,7 +585,7 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find("#approval-title").text()).toBe("Claude Code wants to read “Stripe › api key”");
     expect(wrapper.find('[data-testid="approval-warning"]').text()).toBe("The value will be visible to Claude Code and can end up in its transcript and logs.");
-    expect(wrapper.find(".remember").text()).toBe("Allow this item for 1 hour");
+    expect(wrapper.find(".remember").text()).toBe("Allow every field of “Stripe” for this agent for 1 hour");
     expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(false);
     expect(approvalStore.isRemembered).toBe(false);
     expect(wrapper.find('[data-testid="approval-agent-note"]').text()).toBe("Approving also lets Claude Code list and search the vaults available to agents.");

@@ -385,13 +385,13 @@ func TestAgentHelloReportsTheAgentApproval(t *testing.T) {
 }
 
 func TestDescribeAgentSecretsWhileLocked(t *testing.T) {
-	names, revealedName := describeAgentSecrets(&cliprotocol.Request{Type: cliprotocol.TypeAgentRevealSecret, References: []string{stripeReference}}, nil)
-	if !slices.Equal(names, []string{"Work › Stripe › api key"}) || revealedName != "Stripe › api key" {
-		t.Errorf("%q %q", names, revealedName)
+	names, revealedName, revealedItem := describeAgentSecrets(&cliprotocol.Request{Type: cliprotocol.TypeAgentRevealSecret, References: []string{stripeReference}}, nil)
+	if !slices.Equal(names, []string{"Work › Stripe › api key"}) || revealedName != "Stripe › api key" || revealedItem != "Stripe" {
+		t.Errorf("%q %q %q", names, revealedName, revealedItem)
 	}
-	names, revealedName = describeAgentSecrets(&cliprotocol.Request{Type: cliprotocol.TypeAgentGetCode, ItemID: "item-1"}, nil)
-	if !slices.Equal(names, []string{"item item-1"}) || revealedName != "item item-1" {
-		t.Errorf("%q %q", names, revealedName)
+	names, revealedName, revealedItem = describeAgentSecrets(&cliprotocol.Request{Type: cliprotocol.TypeAgentGetCode, ItemID: "item-1"}, nil)
+	if !slices.Equal(names, []string{"item item-1"}) || revealedName != "item item-1" || revealedItem != "item item-1" {
+		t.Errorf("%q %q %q", names, revealedName, revealedItem)
 	}
 }
 
@@ -476,11 +476,11 @@ func TestCommandLineRequestsFromAnAgentUseAgentRules(t *testing.T) {
 		t.Errorf("hisar run asked %+v", run)
 	}
 	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}})
-	if read := fixture.agentApprover.getLastRequest(); read.Kind != AgentRequestReveal || read.RevealedName != "Stripe › api key" {
+	if read := fixture.agentApprover.getLastRequest(); read.Kind != AgentRequestReveal || read.RevealedName != "Stripe › api key" || read.RevealedItem != "Stripe" {
 		t.Errorf("hisar read asked %+v", read)
 	}
 	client.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeGetItem, VaultID: "v2", ItemID: "github"})
-	if get := fixture.agentApprover.getLastRequest(); get.Kind != AgentRequestReveal || get.RevealedName != "GitHub" || !slices.Equal(get.SecretNames, []string{"Work › GitHub"}) {
+	if get := fixture.agentApprover.getLastRequest(); get.Kind != AgentRequestReveal || get.RevealedName != "GitHub" || get.RevealedItem != "GitHub" || !slices.Equal(get.SecretNames, []string{"Work › GitHub"}) {
 		t.Errorf("hisar get asked %+v", get)
 	}
 

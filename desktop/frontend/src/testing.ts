@@ -362,7 +362,7 @@ export function createAgentRevealApprovalEvent(overrides: Partial<ApprovalEvent>
     action: "read “Stripe › api key”",
     allSecretName: ["Work › Stripe › api key"],
     isRememberable: true,
-    rememberLabel: "Allow this item for 1 hour",
+    rememberLabel: "Allow every field of “Stripe” for this agent for 1 hour",
     isConnectionApproval: false,
     warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
     ...overrides,

@@ -154,11 +154,11 @@ func TestAgentRevealDialogWarnsAndIsNotRememberedByDefault(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: false}, emitter, &fakeUnlocker{}, 0)
 	request := createAgentRequest(clisocket.AgentRequestReveal)
-	request.SecretNames, request.RevealedName = []string{"Work › Stripe › api key"}, "Stripe › api key"
+	request.SecretNames, request.RevealedName, request.RevealedItem = []string{"Work › Stripe › api key"}, "Stripe › api key", "Stripe"
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if event.Action != "read “Stripe › api key”" || event.Warning != "The value will be visible to Claude Code and can end up in its transcript and logs." ||
-		event.RememberLabel != "Allow this item for 1 hour" || event.IsRememberedByDefault {
+		event.RememberLabel != "Allow every field of “Stripe” for this agent for 1 hour" || event.IsRememberedByDefault {
 		t.Errorf("event = %+v", event)
 	}
 	approver.Respond(event.RequestID, true, false)

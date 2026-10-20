@@ -63,8 +63,10 @@ type AgentApprovalRequest struct {
 	CommandLine      []string
 	WorkingDirectory string
 	SecretNames      []string
-	// RevealedName is "item › field" of a reveal request, or the item's title when it reveals the whole item.
+	// RevealedName is "item › field" of a reveal request, or the item's title when it reveals the whole item;
+	// RevealedItem is the item's title, which a remembered reveal covers every field of.
 	RevealedName string
+	RevealedItem string
 	// IsConnectionApproval: approving also lets the agent list and search the agent-visible vaults.
 	IsConnectionApproval bool
 	// Session is the agent harness the client runs inside, which the system found in its process chain; nil outside one.
@@ -338,24 +340,24 @@ func (s *Server) askAgentApproval(ctx context.Context, client *connectionPeer, k
 		approvalRequest.CommandLine, approvalRequest.WorkingDirectory = request.CommandLine, request.WorkingDirectory
 	}
 	if kind != AgentRequestConnect {
-		approvalRequest.SecretNames, approvalRequest.RevealedName = describeAgentSecrets(request, secrets)
+		approvalRequest.SecretNames, approvalRequest.RevealedName, approvalRequest.RevealedItem = describeAgentSecrets(request, secrets)
 	}
 	result, err := s.config.AgentApprover.ApproveAgent(ctx, approvalRequest)
 	return result, convertDenial(err)
 }
 
-func describeAgentSecrets(request *cliprotocol.Request, secrets []AgentSecret) ([]string, string) {
+func describeAgentSecrets(request *cliprotocol.Request, secrets []AgentSecret) ([]string, string, string) {
 	names := make([]string, 0, max(len(secrets), len(request.References)))
-	revealedName := ""
+	revealedName, revealedItem := "", ""
 	if len(secrets) > 0 {
 		for _, secret := range secrets {
 			names = append(names, secret.Describe())
 		}
-		revealedName = secrets[0].ItemTitle
+		revealedName, revealedItem = secrets[0].ItemTitle, secrets[0].ItemTitle
 		if secrets[0].FieldLabel != "" && request.Type != cliprotocol.TypeAgentGetCode {
 			revealedName += " › " + secrets[0].FieldLabel
 		}
-		return names, revealedName
+		return names, revealedName, revealedItem
 	}
 	for _, text := range request.References {
 		reference, err := secretreference.Parse(text)
@@ -364,14 +366,14 @@ func describeAgentSecrets(request *cliprotocol.Request, secrets []AgentSecret) (
 			continue
 		}
 		names = append(names, reference.Describe())
-		revealedName = reference.Item + " › " + reference.Field
+		revealedName, revealedItem = reference.Item+" › "+reference.Field, reference.Item
 		if request.Type == cliprotocol.TypeAgentGetCode {
 			revealedName = reference.Item
 		}
 	}
 	if len(names) == 0 && request.ItemID != "" {
 		names = append(names, "item "+request.ItemID)
-		revealedName = "item " + request.ItemID
+		revealedName, revealedItem = "item "+request.ItemID, "item "+request.ItemID
 	}
-	return names, revealedName
+	return names, revealedName, revealedItem
 }
