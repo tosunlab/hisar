@@ -33,11 +33,14 @@ rm bin/hisar-amd64 bin/hisar-arm64
 test "$("$application/Contents/Helpers/hisar" --version)" = "hisar $version"
 
 # Settings → Coding agents links omp to this folder. The plugin imports only types from omp, so it needs no node_modules.
+# omp starts mcp.json's server with bin/run-hisar, which runs this app's hisar when it sits in Contents/Resources/omp-plugin.
 ompPlugin=$application/Contents/Resources/omp-plugin
 rm -rf "$ompPlugin"
 mkdir -p "$ompPlugin"
-cp -R ../omp/package.json ../omp/src ../omp/skills "$ompPlugin/"
+cp -R ../omp/package.json ../omp/mcp.json ../omp/bin ../omp/src ../omp/skills "$ompPlugin/"
 test -f "$ompPlugin/package.json"
+test -f "$ompPlugin/mcp.json"
+test -x "$ompPlugin/bin/run-hisar"
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" -c "Set :CFBundleVersion $buildNumber" "$application/Contents/Info.plist"
 test -f "$application/Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle"
