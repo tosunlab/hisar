@@ -43,7 +43,10 @@ type Script struct {
 }
 
 // harnesses is every harness Hisar recognizes. omp in Tern is signed and lives in a folder named after its version, so
-// only its signature or its first argument names it; omp installed with Bun runs as bun with omp's bin link.
+// only its signature or its first argument names it; omp installed with Bun runs as bun with omp's bin link. Claude
+// Code's native install is a signed executable named after its version, started through a link named claude; installed
+// with npm it runs as node with its bin link or its package's script. Codex runs as node with its bin link, which starts
+// the signed native codex; the native process is nearer every command and hisar mcp, so it is the session.
 var harnesses = []Harness{
 	{
 		ID:                   "omp",
@@ -53,6 +56,22 @@ var harnesses = []Harness{
 		Scripts:              []Script{{Runtime: "bun", Name: "omp"}},
 		PackagePaths:         []string{"@oh-my-pi/pi-coding-agent"},
 		WorkerArgumentPrefix: "__omp_worker_",
+	},
+	{
+		ID:              "claude-code",
+		Name:            "Claude Code",
+		Signatures:      []Signature{{Identifier: "com.anthropic.claude-code", TeamID: "Q6L2SF6YDW"}},
+		ExecutableNames: []string{"claude"},
+		Scripts:         []Script{{Runtime: "node", Name: "claude"}},
+		PackagePaths:    []string{"@anthropic-ai/claude-code"},
+	},
+	{
+		ID:              "codex",
+		Name:            "Codex",
+		Signatures:      []Signature{{Identifier: "codex", TeamID: "2DC432GLL2"}},
+		ExecutableNames: []string{"codex"},
+		Scripts:         []Script{{Runtime: "node", Name: "codex"}},
+		PackagePaths:    []string{"@openai/codex"},
 	},
 }
 

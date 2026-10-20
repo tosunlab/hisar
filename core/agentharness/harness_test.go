@@ -132,3 +132,125 @@ func TestOmpStartedFromAnOmpShellIsItsOwnSession(t *testing.T) {
 		t.Errorf("nested omp: %+v, %v", session, isFound)
 	}
 }
+
+const (
+	claudePath      = "/Users/developer/.local/share/claude/versions/2.1.302"
+	codexPath       = "/opt/homebrew/lib/node_modules/@openai/codex/node_modules/@openai/codex-darwin-arm64/vendor/aarch64-apple-darwin/bin/codex"
+	nodePath        = "/opt/homebrew/Cellar/node/25.1.0/bin/node"
+	claudeDirectory = "/Users/developer/src/hisarapp-core"
+)
+
+var (
+	claudeSignature = Signature{Identifier: "com.anthropic.claude-code", TeamID: "Q6L2SF6YDW"}
+	codexSignature  = Signature{Identifier: "codex", TeamID: "2DC432GLL2"}
+)
+
+// createClaudeInOmpChain is the chain measured from the Bash tool of Claude Code 2.1.302 started with claude -p from a
+// command omp ran in Tern: the shell is a direct child of claude, whose executable is named after its version and whose
+// first argument is the link it was started through.
+func createClaudeInOmpChain() Chain {
+	return Chain{IsKnown: true, Processes: []Process{
+		{PID: 97440, ParentPID: 97432, StartTime: 500, Path: "/opt/homebrew/bin/hisar", Arguments: []string{"hisar", "run", "--", "true"}},
+		{PID: 97432, ParentPID: 97198, StartTime: 450, Path: "/bin/zsh", Arguments: []string{"/bin/zsh", "-c", "source /tmp/snapshot-zsh.sh && eval 'hisar run -- true'"}},
+		{PID: 97198, ParentPID: 97191, StartTime: 400, Path: claudePath, Arguments: []string{"/Users/developer/.local/bin/claude", "-p", "Run hisar"}, WorkingDirectory: claudeDirectory, Signature: claudeSignature},
+		{PID: 97191, ParentPID: 1226, StartTime: 300, Path: "/usr/bin/python3", Arguments: []string{"python3", "-u", "runner.py"}},
+		{PID: 1226, ParentPID: 1217, StartTime: 100, Path: ompPath, Arguments: []string{"omp"}, Signature: ompSignature},
+		{PID: 1217, ParentPID: 1, StartTime: 50, Path: ternPath, Arguments: []string{"tern", "daemon"}},
+	}}
+}
+
+func TestFindClaudeCode(t *testing.T) {
+	session, isFound, _ := Find(createClaudeInOmpChain())
+	if !isFound || session.Harness.ID != "claude-code" || session.Harness.Name != "Claude Code" || session.PID != 97198 ||
+		session.StartTime != 400 || session.Directory != claudeDirectory || !session.IsSigned {
+		t.Fatalf("claude inside omp: %+v, %v", session, isFound)
+	}
+	byName := createClaudeInOmpChain()
+	byName.Processes[2].Signature = Signature{}
+	if session, isFound, _ := Find(byName); !isFound || session.PID != 97198 || session.IsSigned {
+		t.Errorf("first argument alone: %+v, %v", session, isFound)
+	}
+	for _, arguments := range [][]string{
+		{"node", "/opt/homebrew/bin/claude", "-p", "Run hisar"},
+		{"node", "/opt/homebrew/lib/node_modules/@anthropic-ai/claude-code/cli.js"},
+	} {
+		chain := createClaudeInOmpChain()
+		chain.Processes[2].Path, chain.Processes[2].Arguments, chain.Processes[2].Signature = nodePath, arguments, Signature{}
+		if session, isFound, _ := Find(chain); !isFound || session.Harness.ID != "claude-code" || session.PID != 97198 || session.IsSigned {
+			t.Errorf("npm install %q: %+v, %v", arguments, session, isFound)
+		}
+	}
+}
+
+// createCodexChain is the chain measured from a command Codex 0.162.1, installed with npm, ran with codex exec: the
+// shell is a child of the signed native codex, which the node launcher started.
+func createCodexChain() Chain {
+	return Chain{IsKnown: true, Processes: []Process{
+		{PID: 97730, ParentPID: 97728, StartTime: 600, Path: "/opt/homebrew/bin/hisar", Arguments: []string{"hisar", "run", "--", "true"}},
+		{PID: 97728, ParentPID: 97610, StartTime: 550, Path: "/bin/zsh", Arguments: []string{"/bin/zsh", "-lc", "hisar run -- true"}},
+		{PID: 97610, ParentPID: 97609, StartTime: 500, Path: codexPath, Arguments: []string{codexPath, "exec", "Run hisar"}, WorkingDirectory: "/Users/developer/src/web", Signature: codexSignature},
+		{PID: 97609, ParentPID: 400, StartTime: 450, Path: nodePath, Arguments: []string{"node", "/opt/homebrew/bin/codex", "exec", "Run hisar"}, WorkingDirectory: "/Users/developer/src/web"},
+		{PID: 400, ParentPID: 300, StartTime: 200, Path: "/bin/zsh", Arguments: []string{"-zsh"}},
+		{PID: 300, ParentPID: 1, StartTime: 100, Path: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal", Arguments: []string{"Terminal"}},
+	}}
+}
+
+// TestCodexRunIsOneSession: the shell and hisar mcp are both children of the native codex, so they share its session.
+func TestCodexRunIsOneSession(t *testing.T) {
+	shell, isFound, _ := Find(createCodexChain())
+	if !isFound || shell.Harness.ID != "codex" || shell.Harness.Name != "Codex" || shell.PID != 97610 || shell.StartTime != 500 ||
+		shell.Directory != "/Users/developer/src/web" || !shell.IsSigned {
+		t.Fatalf("shell command: %+v, %v", shell, isFound)
+	}
+	mcpChain := createCodexChain()
+	mcpChain.Processes = append([]Process{
+		{PID: 97700, ParentPID: 97610, StartTime: 520, Path: "/opt/homebrew/bin/hisar", Arguments: []string{"/opt/homebrew/bin/hisar", "mcp", "--no-reveal"}},
+	}, mcpChain.Processes[2:]...)
+	if mcp, isFound, _ := Find(mcpChain); !isFound || mcp.PID != shell.PID || mcp.StartTime != shell.StartTime {
+		t.Errorf("hisar mcp: %+v, %v; want the shell's session %+v", mcp, isFound, shell)
+	}
+	unsigned := createCodexChain()
+	unsigned.Processes[2].Signature = Signature{}
+	if session, isFound, _ := Find(unsigned); !isFound || session.PID != 97610 || session.IsSigned {
+		t.Errorf("native codex by name: %+v, %v", session, isFound)
+	}
+	launcherOnly := createCodexChain()
+	launcherOnly.Processes = append(launcherOnly.Processes[:2:2], launcherOnly.Processes[3:]...)
+	launcherOnly.Processes[1].ParentPID = 97609
+	if session, isFound, _ := Find(launcherOnly); !isFound || session.PID != 97609 {
+		t.Errorf("node launcher: %+v, %v", session, isFound)
+	}
+}
+
+// TestCodexAppServerIsTheSession uses the processes measured from the Codex app's daemon: its app-server, the native
+// codex, runs under a daemon that is the same executable.
+func TestCodexAppServerIsTheSession(t *testing.T) {
+	daemonPath := "/Users/developer/.codex/packages/app-server-daemon/releases/0.163.0-aarch64-apple-darwin/bin/codex"
+	chain := Chain{IsKnown: true, Processes: []Process{
+		{PID: 90000, ParentPID: 89990, StartTime: 300, Path: "/opt/homebrew/bin/hisar", Arguments: []string{"hisar", "vaults"}},
+		{PID: 89990, ParentPID: 87891, StartTime: 250, Path: "/bin/zsh", Arguments: []string{"/bin/zsh", "-lc", "hisar vaults"}},
+		{PID: 87891, ParentPID: 81014, StartTime: 200, Path: daemonPath, Arguments: []string{daemonPath, "app-server", "--listen", "unix://", "--managed-daemon"}, Signature: codexSignature},
+		{PID: 81014, ParentPID: 1, StartTime: 100, Path: daemonPath, Arguments: []string{daemonPath, "app-server", "daemon", "pid-update-loop"}, Signature: codexSignature},
+	}}
+	if session, isFound, _ := Find(chain); !isFound || session.Harness.ID != "codex" || session.PID != 87891 {
+		t.Errorf("app-server: %+v, %v", session, isFound)
+	}
+}
+
+func TestFindNoClaudeCodeOrCodexByLookalikes(t *testing.T) {
+	for _, lookalike := range []Process{
+		{Path: "/usr/local/bin/claude-monitor", Arguments: []string{"claude-monitor"}},
+		{Path: "/usr/local/bin/codex-cli-helper", Arguments: []string{"codex-cli-helper"}},
+		{Path: nodePath, Arguments: []string{"node", "/Users/developer/src/codex/server.js"}},
+		{Path: nodePath, Arguments: []string{"node", "/Users/developer/node_modules/@openai/codex-sdk/dist/index.js"}},
+		{Path: "/usr/local/bin/agent", Arguments: []string{"agent"}, Signature: Signature{Identifier: "com.anthropic.claude-code", TeamID: "ABCDE12345"}},
+		{Path: "/usr/local/bin/agent", Arguments: []string{"agent"}, Signature: Signature{Identifier: "codex", TeamID: "ABCDE12345"}},
+	} {
+		chain := createCodexChain()
+		lookalike.PID, lookalike.ParentPID, lookalike.StartTime = 97610, 400, 500
+		chain.Processes = append(chain.Processes[:2:2], append([]Process{lookalike}, chain.Processes[4:]...)...)
+		if session, isFound, _ := Find(chain); isFound {
+			t.Errorf("%+v matched: %+v", lookalike, session)
+		}
+	}
+}
