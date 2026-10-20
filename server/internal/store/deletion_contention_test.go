@@ -132,16 +132,23 @@ func TestAdminDeletionRetriesAnOrganizationJoinedDuringDeletion(t *testing.T) {
 		deleted <- err
 	}()
 	waitForStoreLock(t, database, ctx, "%ORDER BY id FOR NO KEY UPDATE%")
-	if _, _, err := database.AcceptOrganizationInvitation(ctx, invitationID, "ALICE1", "alice@example.com"); err != nil {
-		t.Fatal(err)
-	}
 	organizationBarrier, err := database.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer organizationBarrier.Rollback(context.Background())
-	if _, err := organizationBarrier.Exec(ctx, `SELECT 1 FROM organizations WHERE id = $1 FOR UPDATE`, organizationID); err != nil {
+	if _, err := organizationBarrier.Exec(ctx, `SELECT 1 FROM organizations WHERE id = $1 FOR NO KEY UPDATE`, organizationID); err != nil {
 		t.Fatal(err)
+	}
+	// Commit membership on the transaction that already holds the account share lock, ahead of deletion's waiter.
+	result, err := accountBarrier.Exec(ctx, `
+		WITH invitation AS (
+			DELETE FROM organization_invitations WHERE id = $1 RETURNING organization_id, role, invited_by
+		)
+		INSERT INTO organization_members (organization_id, account_id, role, added_by)
+		SELECT organization_id, 'ALICE1', role, invited_by FROM invitation`, invitationID)
+	if err != nil || result.RowsAffected() != 1 {
+		t.Fatalf("join organization during deletion: %v, result %v", err, result)
 	}
 	if err := accountBarrier.Commit(ctx); err != nil {
 		t.Fatal(err)
