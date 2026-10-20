@@ -235,28 +235,37 @@ func quoteArgument(argument string) string {
 	return argument
 }
 
-// formatCommandLine shows every argument of a command like a shell would. Only git's own credentials are hidden: the
-// approval shows on the user's own Mac and phones, and any other literal in a command came from whoever wrote it, so
-// masking it would protect nothing and could hide what the command does.
+// formatCommandLine shows every argument of a command like a shell would, its program as it was given, so a script an
+// agent wrote and named git still reads ./git. Only git's own credentials are hidden: the approval shows on the user's
+// own Mac and phones, and any other literal in a command came from whoever wrote it, so masking it would protect
+// nothing and could hide what the command does.
 func formatCommandLine(arguments []string) string {
 	if len(arguments) == 0 {
 		return ""
 	}
-	program := filepath.Base(arguments[0])
+	return joinCommandLine(arguments[0], arguments)
+}
+
+// formatShortCommandLine is a process's command cut to one line of the dialog, its program by name: the process chain
+// only explains a request, and its full paths are in the chain's tooltip.
+func formatShortCommandLine(arguments []string) string {
+	if len(arguments) == 0 {
+		return ""
+	}
+	return truncateText(joinCommandLine(filepath.Base(arguments[0]), arguments), maximumCommandLineLength)
+}
+
+func joinCommandLine(program string, arguments []string) string {
+	isGit := filepath.Base(arguments[0]) == "git"
 	quoted := []string{quoteArgument(program)}
 	for index := 1; index < len(arguments); index++ {
 		argument := arguments[index]
-		if program == "git" {
+		if isGit {
 			argument = redactGitArgument(arguments[index-1], argument)
 		}
 		quoted = append(quoted, quoteArgument(argument))
 	}
 	return strings.ToValidUTF8(strings.Join(quoted, " "), "�")
-}
-
-// formatShortCommandLine is formatCommandLine cut to one line of the dialog, for a process that only explains a request.
-func formatShortCommandLine(arguments []string) string {
-	return truncateText(formatCommandLine(arguments), maximumCommandLineLength)
 }
 
 func truncateText(text string, maximumLength int) string {

