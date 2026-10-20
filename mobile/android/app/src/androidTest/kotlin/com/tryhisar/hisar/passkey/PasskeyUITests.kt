@@ -17,6 +17,7 @@ import com.tryhisar.hisar.HisarUITestCase
 import com.tryhisar.hisar.autofill.AndroidApp
 import com.tryhisar.hisar.autofill.InstalledApps
 import com.tryhisar.hisar.autofill.testBackend
+import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.platform.EmulatorFingerprints
 import java.security.KeyFactory
 import java.security.MessageDigest
@@ -55,6 +56,11 @@ class PasskeyUITests : HisarUITestCase() {
         launch()
         signUp(readArgument("HISAR_UI_TEST_PASSKEY_INVITE_LINK"), readArgument("HISAR_UI_TEST_PASSKEY_EMAIL"), "Android Passkey")
         addLogin(title = "Example", username = "passkey-user", password = "passkey-password-1", website = "login.example.com")
+        val shared = testBackend.createVault("Family")
+        val sharedLogin = testBackend.saveItem(
+            shared.id,
+            ItemDetail(title = "AAA shared", username = "passkey-user", allURL = listOf("https://$RELYING_PARTY_ID")),
+        )
         // The app's lock screen would share its tags with the one Credential Manager opens.
         closeApp()
         turnOnHisarForPasskeys()
@@ -68,7 +74,8 @@ class PasskeyUITests : HisarUITestCase() {
             type(MASTER_PASSWORD, "unlock-password")
             tap("unlock-submit")
             waitFor("autofill-save-passkey")
-            tap("autofill-passkey-new-login")
+            assertTrue("a matching shared login does not change the default", device.findObject(By.res("autofill-passkey-new-login")).isSelected)
+            assertFalse("shared save requires selection", device.findObject(By.res("autofill-passkey-login-AAA shared")).isSelected)
             saveScreenshot("passkey-save")
             tap("autofill-save-passkey")
         }
@@ -83,6 +90,19 @@ class PasskeyUITests : HisarUITestCase() {
         assertArrayEquals("the credential ID in the attested credential data", credentialID, authenticatorData.copyOfRange(55, 55 + credentialID.size))
         assertEquals(-7, registrationResponse.getInt("publicKeyAlgorithm"))
         val publicKey = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(decode(registrationResponse.getString("publicKey"))))
+        assertEquals("default saves no credential into the shared login", 0, testBackend.getItem(shared.id, sharedLogin.id).allPasskey.size)
+
+        val sharedRegistration = callCredentialManager(
+            CredentialCallerActivity.MODE_CREATE_PASSKEY,
+            buildCreateRequest("shared-user-handle".toByteArray(), "discouraged"),
+        ) {
+            answerSheet("passkey-shared-register-sheet", "Hisar") { device.hasObject(By.res("autofill-save-passkey")) }
+            assertTrue("shared membership scope is visible", device.hasObject(By.text(Pattern.compile(".*Other members can sign in.*"))))
+            tap("autofill-passkey-login-AAA shared")
+            tap("autofill-save-passkey")
+        }
+        assertTrue(sharedRegistration, sharedRegistration.startsWith("registered "))
+        assertEquals("explicit selection preserves shared save", 1, testBackend.getItem(shared.id, sharedLogin.id).allPasskey.size)
 
         testBackend.lock()
         val assertion = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(credentialID, "discouraged")) {

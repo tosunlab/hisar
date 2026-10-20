@@ -11,7 +11,7 @@ const saveState: PasskeyPromptState = {
   relyingPartyID: "example.com",
   userName: "alex@example.com",
   allPasskey: [],
-  allLogin: [{ vaultID: "v1", itemID: "i1", title: "Example", username: "alex@example.com", vaultName: "Personal" }],
+  allLogin: [{ vaultID: "v1", itemID: "i1", title: "Example", username: "alex@example.com", vaultName: "Personal", isPersonal: true }],
 };
 
 const chooseState: PasskeyPromptState = {

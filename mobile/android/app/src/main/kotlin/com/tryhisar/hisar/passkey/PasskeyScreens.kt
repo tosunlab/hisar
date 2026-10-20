@@ -143,7 +143,8 @@ private fun LoginChoices(options: PasskeyRegistrationOptions, selectedLoginID: S
         options.allLogin.forEach { login ->
             ChoiceRow(
                 title = login.title,
-                subtitle = if (login.username.isEmpty()) login.vaultName else "${login.username} · ${login.vaultName}",
+                subtitle = (if (login.username.isEmpty()) login.vaultName else "${login.username} · ${login.vaultName}") +
+                    (if (login.isPersonal) "" else " · Shared. Other members can sign in with this passkey."),
                 testTag = "autofill-passkey-login-${login.title}",
                 isSelected = selectedLoginID == login.id,
                 onClick = { if (!isBusy) select(login.id) },

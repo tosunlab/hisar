@@ -150,7 +150,8 @@ watch(
   (view) => {
     const state = promptState.value;
     if (view !== "save" || !state) return;
-    const sameUser = state.allLogin.find((login) => login.username.toLowerCase() === state.userName.toLowerCase() && state.userName !== "");
+    selectedLoginKey.value = newLoginKey;
+    const sameUser = state.allLogin.find((login) => login.isPersonal === true && login.username.toLowerCase() === state.userName.toLowerCase() && state.userName !== "");
     if (sameUser) selectedLoginKey.value = `${sameUser.vaultID}/${sameUser.itemID}`;
   },
 );
@@ -237,6 +238,7 @@ onBeforeUnmount(() => {
           <span class="text">
             <span class="item-title">{{ login.title }}</span>
             <span class="item-subtitle">{{ login.username || "No username" }} · {{ login.vaultName }}</span>
+            <span v-if="login.isPersonal !== true" class="item-subtitle sharing-scope">Shared. Other vault members can sign in with this passkey.</span>
           </span>
         </label>
       </fieldset>
@@ -410,9 +412,15 @@ header {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-inline-size: 0;
   margin: 0;
   padding: 0;
   border: none;
+}
+
+.sharing-scope {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .logins legend {

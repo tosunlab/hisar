@@ -153,3 +153,26 @@ test("asks to unlock Hisar and falls back when the prompt is closed while locked
   expect(fallback.aaguid).not.toBe(hisarAAGUID);
   await page.close();
 });
+
+test("defaults to Personal despite a matching shared login and preserves explicit shared save", async () => {
+  harness.updateState((state) => {
+    state.allLogin = state.allLogin.filter((login) => login.itemID !== "item-passkey-site");
+    state.allLogin.push({ vaultID: "vault-family", vaultName: "Family", itemID: "attacker-login", title: "AAA shared", username: "alex@example.com", password: "pw", url: site.origin });
+  });
+  await harness.pairWithoutPopup();
+  const page = await openSite();
+  await page.locator("#register").click();
+  let prompt = await waitForPrompt(page);
+  await expect(prompt.getByTestId("passkey-login-option").first().locator("input")).toBeChecked();
+  await expect(prompt.getByTestId("passkey-login-option").nth(1)).toContainText("Other vault members can sign in");
+  await clickInPrompt(page, prompt, "save-passkey");
+  expect(await readStatus(page)).toMatchObject({ verified: true });
+  expect(harness.readState().allPasskey?.[0]?.vaultID).toBe("vault-personal");
+  await resetStatus(page);
+  await page.locator("#register").click();
+  prompt = await waitForPrompt(page);
+  await prompt.getByTestId("passkey-login-option").filter({ hasText: "AAA shared" }).click();
+  await clickInPrompt(page, prompt, "save-passkey");
+  expect(await readStatus(page)).toMatchObject({ verified: true });
+  expect(harness.readState().allPasskey?.some((key) => key.vaultID === "vault-family")).toBe(true);
+});

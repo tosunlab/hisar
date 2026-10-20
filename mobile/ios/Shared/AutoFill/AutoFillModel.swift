@@ -282,7 +282,7 @@ final class AutoFillModel: ObservableObject {
               let options = await perform({ try $0.preparePasskeyRegistration(relyingPartyID: request.relyingPartyID, allExcludedCredentialID: request.allExcludedCredentialID) }) else { return }
         passkeyRegistrationOptions = options
         let userName = request.userName.trimmingCharacters(in: .whitespaces)
-        selectedRegistrationLoginID = options.allLogin.first { !userName.isEmpty && $0.username.caseInsensitiveCompare(userName) == .orderedSame }?.id
+        selectedRegistrationLoginID = options.allLogin.first { $0.isPersonal && !userName.isEmpty && $0.username.caseInsensitiveCompare(userName) == .orderedSame }?.id
     }
 
     func savePasskey() async {

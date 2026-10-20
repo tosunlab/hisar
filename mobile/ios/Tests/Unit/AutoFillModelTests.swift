@@ -444,4 +444,21 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .passkeyRegistration)
         XCTAssertTrue(identityStore.allSaved.isEmpty)
     }
+
+    func testSharedPasskeyDestinationRequiresExplicitSelection() async {
+        backend.seedSignedIn()
+        backend.allItemByVaultID["family"]?.append(ItemDetail(id: "attacker", category: "login", title: "AAA shared", username: "victim", allURL: ["https://example.com"]))
+        let model = createModel()
+        let request = PasskeyRegistrationRequest(relyingPartyID: "example.com", userName: "victim", userHandle: Data([9]), clientDataHash: clientDataHash)
+        await model.prepareInterfaceForPasskeyRegistration(request)
+        XCTAssertNil(model.selectedRegistrationLoginID)
+        XCTAssertEqual(model.passkeyRegistrationOptions?.allLogin.first?.isPersonal, false)
+        await model.savePasskey()
+        XCTAssertEqual(backend.allPasskey.last?.vaultID, "personal")
+        await model.prepareInterfaceForPasskeyRegistration(request)
+        model.selectedRegistrationLoginID = "family/attacker"
+        await model.savePasskey()
+        XCTAssertEqual(backend.allPasskey.last?.vaultID, "family")
+        XCTAssertEqual(allRegistration.count, 2)
+    }
 }
