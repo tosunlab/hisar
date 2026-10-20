@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
@@ -37,6 +38,7 @@ type serviceState struct {
 	sessionEpoch                 uint64
 	recoveryMutex                sync.Mutex
 	pendingRecoveryFactors       map[string]session.PendingFactor
+	passkeyEpoch                 atomic.Uint64
 	vaultsByID                   map[string]*session.Vault
 	itemsByVaultID               map[string][]item.Item
 	favorites                    *session.Preferences

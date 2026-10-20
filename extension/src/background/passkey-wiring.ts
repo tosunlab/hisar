@@ -1,5 +1,6 @@
 import "../shared/passkey-protocol";
-import { toHisarError } from "../shared/protocol";
+import { HisarError, toHisarError } from "../shared/protocol";
+import { featurePasskeyVerification } from "../shared/passkey";
 import type { BackgroundController } from "./controller";
 import type { NativeClient } from "./native-client";
 import { PasskeyService, type PasskeyDependencies } from "./passkey";
@@ -16,11 +17,13 @@ export function createPasskeyDependencies(
     getDesktopView: async () => (await getController().getPopupState()).view,
     // Never connects: pages ask this on load, and connecting would start Hisar.
     isDesktopAvailable: async () =>
-      (await storage.getToken()) !== undefined && client.isConnected() && (client.getLastHello()?.state ?? "signed-out") !== "signed-out",
+      (await storage.getToken()) !== undefined && client.isConnected() && (client.getLastHello()?.state ?? "signed-out") !== "signed-out" && client.getLastHello()?.features?.includes(featurePasskeyVerification) === true,
     isDesktopConnected: () => client.isConnected(),
     async requestDesktop(type, passkey) {
       try {
-        return await client.request(type, { passkey });
+        const hello = await client.connect();
+        if (!hello.features?.includes(featurePasskeyVerification)) throw new HisarError("update-required", "Update Hisar to verify passkeys safely.");
+        return await client.request(type, { passkey }, { timeoutMilliseconds: 125000 });
       } catch (error) {
         const hisarError = toHisarError(error);
         if (hisarError.code === "not-paired") await storage.removeToken();

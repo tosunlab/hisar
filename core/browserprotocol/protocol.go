@@ -130,7 +130,7 @@ const FeatureSaveConfirmation = "save-confirmation"
 
 // ListFeatures returns the features this app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems, FeatureSaveConfirmation}
+	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems, FeatureSaveConfirmation, FeaturePasskeyVerification}
 }
 
 const (
@@ -158,6 +158,7 @@ type StatusResult struct {
 
 type Login struct {
 	VaultID            string `json:"vaultID"`
+	IsPersonal         bool   `json:"isPersonal"`
 	ItemID             string `json:"itemID"`
 	Title              string `json:"title"`
 	Username           string `json:"username"`

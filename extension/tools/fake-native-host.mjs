@@ -26,7 +26,7 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items", "save-confirmation"],
+    features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items", "save-confirmation", "passkey-verification-v2"],
     allVault: [
       { vaultID: "vault-personal", name: "Personal", isPersonal: true },
       { vaultID: "vault-family", name: "Family", isPersonal: false },

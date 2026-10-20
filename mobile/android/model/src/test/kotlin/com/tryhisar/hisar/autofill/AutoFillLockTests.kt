@@ -70,7 +70,6 @@ class AutoFillLockTests {
         copyOneTimeCode = {},
         cancelRequest = {},
         passkeyCompletion = AutoFillModel.PasskeyCompletion({}, {}, {}, {}),
-        verifyDeviceOwner = { true },
     )
 
     // Runs [read] until the backend call [heldCall] has its answer, locks Hisar, and lets the answer return.

@@ -928,14 +928,16 @@ struct LoginMatch: Codable, Hashable, Identifiable {
     var username: String
     var vaultName: String
     var hasOneTimePassword: Bool
+    var isPersonal = false
 
-    init(vaultID: String, itemID: String, title: String, username: String, vaultName: String, hasOneTimePassword: Bool = false) {
+    init(vaultID: String, itemID: String, title: String, username: String, vaultName: String, hasOneTimePassword: Bool = false, isPersonal: Bool = false) {
         self.vaultID = vaultID
         self.itemID = itemID
         self.title = title
         self.username = username
         self.vaultName = vaultName
         self.hasOneTimePassword = hasOneTimePassword
+        self.isPersonal = isPersonal
     }
 
     init(from decoder: Decoder) throws {
@@ -946,6 +948,7 @@ struct LoginMatch: Codable, Hashable, Identifiable {
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         vaultName = try container.decodeIfPresent(String.self, forKey: .vaultName) ?? ""
         hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
+        isPersonal = try container.decodeIfPresent(Bool.self, forKey: .isPersonal) ?? false
     }
 
     var id: String { LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: itemID) }
@@ -1123,8 +1126,8 @@ struct PasskeyAssertionRequest: Equatable {
     var relyingPartyID: String
     var clientDataHash: Data
     var allAllowedCredentialID: [Data] = []
-    // The site's userVerification is "discouraged": Hisar signs without asking the device owner again.
-    var isUserVerificationDiscouraged = false
+    var userVerification = "preferred"
+    var isUserVerificationDiscouraged: Bool { userVerification == "discouraged" }
 }
 
 struct PasskeyRegistrationRequest: Equatable {
@@ -1136,7 +1139,8 @@ struct PasskeyRegistrationRequest: Equatable {
     var clientDataHash: Data
     var allSupportedAlgorithm: [Int] = []
     var allExcludedCredentialID: [Data] = []
-    var isUserVerificationDiscouraged = false
+    var userVerification = "preferred"
+    var isUserVerificationDiscouraged: Bool { userVerification == "discouraged" }
 
     var isAlgorithmSupported: Bool {
         allSupportedAlgorithm.isEmpty || allSupportedAlgorithm.contains(Self.algorithmES256)

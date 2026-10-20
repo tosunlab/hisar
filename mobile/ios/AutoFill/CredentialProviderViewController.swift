@@ -67,7 +67,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         let allServiceIdentifier = allRequestedServiceIdentifier.map(\.identifier)
         let passkeyRequest = PasskeyAssertionRequest(
             relyingPartyID: requestParameters.relyingPartyIdentifier, clientDataHash: requestParameters.clientDataHash, allAllowedCredentialID: requestParameters.allowedCredentials,
-            isUserVerificationDiscouraged: requestParameters.userVerificationPreference == .discouraged
+            userVerification: verificationPolicy(requestParameters.userVerificationPreference)
         )
         Task { await model.prepareCredentialList(allServiceIdentifier: allServiceIdentifier, passkeyRequest: passkeyRequest) }
     }
@@ -147,7 +147,7 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         let request = PasskeyRegistrationRequest(
             relyingPartyID: identity.relyingPartyIdentifier, userName: identity.userName, userHandle: identity.userHandle,
             clientDataHash: passkeyRequest.clientDataHash, allSupportedAlgorithm: passkeyRequest.supportedAlgorithms.map(\.rawValue),
-            allExcludedCredentialID: allExcludedCredentialID, isUserVerificationDiscouraged: passkeyRequest.userVerificationPreference == .discouraged
+            allExcludedCredentialID: allExcludedCredentialID, userVerification: verificationPolicy(passkeyRequest.userVerificationPreference)
         )
         Task { await model.prepareInterfaceForPasskeyRegistration(request) }
     }
@@ -156,13 +156,24 @@ final class CredentialProviderViewController: ASCredentialProviderViewController
         model.showConfiguration()
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        model.endPasskeyCeremony()
+    }
+
+    private func verificationPolicy(_ preference: ASAuthorizationPublicKeyCredentialUserVerificationPreference) -> String {
+        if preference == .required { return "required" }
+        if preference == .discouraged { return "discouraged" }
+        return "preferred"
+    }
+
     private func readPasskeyRequest(_ credentialRequest: ASCredentialRequest) -> (request: PasskeyAssertionRequest, credentialID: Data)? {
         guard credentialRequest.type == .passkeyAssertion,
               let passkeyRequest = credentialRequest as? ASPasskeyCredentialRequest,
               let identity = passkeyRequest.credentialIdentity as? ASPasskeyCredentialIdentity else { return nil }
         return (PasskeyAssertionRequest(
             relyingPartyID: identity.relyingPartyIdentifier, clientDataHash: passkeyRequest.clientDataHash,
-            isUserVerificationDiscouraged: passkeyRequest.userVerificationPreference == .discouraged
+            userVerification: verificationPolicy(passkeyRequest.userVerificationPreference)
         ), identity.credentialID)
     }
 

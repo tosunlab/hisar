@@ -24,6 +24,9 @@ func (approver *Approver) authorize(pending *pendingApproval, response approvalR
 		}
 		return errPasswordCheck
 	}
+	if pending.event.Kind == ApprovalKindPasskey && !approver.IsTouchIDApproval() {
+		return errPasswordRequired
+	}
 	if isLocked {
 		if !approver.IsTouchIDApproval() || !unlocker.IsTouchIDUnlockReady() {
 			return errPasswordRequired
@@ -47,7 +50,7 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	phoneApprover := approver.config.PhoneApprover
 	pending.phoneChannel = make(chan approval.AcceptedAnswer, 1)
 	timeout := approver.config.Timeout
-	if phoneApprover != nil && !pending.event.IsUnlockRequired && phoneApprover.IsPhoneApprovalAvailable() {
+	if phoneApprover != nil && pending.event.Kind != ApprovalKindPasskey && !pending.event.IsUnlockRequired && phoneApprover.IsPhoneApprovalAvailable() {
 		phoneTimeout := max(timeout, approver.config.PhoneApprovalTimeout)
 		finishPhoneApproval, err := phoneApprover.StartPhoneApproval(pending.phoneRequest, pending.receivedAt.Add(phoneTimeout), func(answer approval.AcceptedAnswer) { approver.respondFromPhone(pending, answer) })
 		switch {

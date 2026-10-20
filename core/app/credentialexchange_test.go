@@ -109,7 +109,7 @@ func TestCredentialExchangeImportAddsPasskeysThatSignIn(t *testing.T) {
 
 	// The imported key signs: the iPhone path, verified with the key 1Password had.
 	clientDataHash := sha256.Sum256([]byte("client data"))
-	assertion, err := SignPasskeyForRelyingParty(service, "github.com", encodeBase64URL(github.credentialID), encodeBase64URL(clientDataHash[:]))
+	assertion, err := SignPasskeyWithPolicy(service, PasskeyAssertionRequest{RelyingPartyID: "github.com", CredentialID: encodeBase64URL(github.credentialID), ClientDataHash: encodeBase64URL(clientDataHash[:]), UserVerification: "preferred"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,7 +178,7 @@ func TestCredentialExchangeImportLinksAndroidApps(t *testing.T) {
 	}
 
 	clientDataHash := sha256.Sum256([]byte("client data"))
-	if _, err := SignPasskeyForRelyingParty(service, "login.example.com", "7eRKGgxZmQPuErE3IN4Lqg", encodeBase64URL(clientDataHash[:])); err != nil {
+	if _, err := SignPasskeyWithPolicy(service, PasskeyAssertionRequest{RelyingPartyID: "login.example.com", CredentialID: "7eRKGgxZmQPuErE3IN4Lqg", ClientDataHash: encodeBase64URL(clientDataHash[:]), UserVerification: "preferred"}); err != nil {
 		t.Errorf("the imported passkey does not sign: %v", err)
 	}
 }

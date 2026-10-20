@@ -93,6 +93,7 @@ class HisarKitBackend(
             setAppVersion(appVersion)
             setTrustedCertificates(trustedCertificates)
             setBiometricKeyPreparer(biometric)
+            setPasskeyVerifier(biometric)
         }
     } catch (error: Exception) {
         throw convertError(error)
@@ -349,6 +350,7 @@ class HisarKitBackend(
 
     override fun createPasskey(request: PasskeyRegistrationRequest, vaultID: String, itemID: String): PasskeyRegistrationResult {
         val registrationJSON = buildJsonObject {
+            put("userVerification", request.userVerification)
             put("relyingPartyId", request.relyingPartyID)
             put("userName", request.userName)
             put("userHandle", Base64URL.encode(request.userHandle))
@@ -360,11 +362,19 @@ class HisarKitBackend(
         return decode(PasskeyRegistrationResult.serializer(), call { createPasskey(registrationJSON) })
     }
 
-    override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString): PasskeyAssertionResult =
-        decode(
-            PasskeyAssertionResult.serializer(),
-            call { assertPasskey(relyingPartyID, Base64URL.encode(credentialID), Base64URL.encode(clientDataHash)) },
-        )
+    override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString, userVerification: String): PasskeyAssertionResult {
+        val requestJSON = buildJsonObject {
+            put("relyingPartyId", relyingPartyID)
+            put("credentialId", Base64URL.encode(credentialID))
+            put("clientDataHash", Base64URL.encode(clientDataHash))
+            put("userVerification", userVerification)
+        }.toString()
+        return decode(PasskeyAssertionResult.serializer(), call { assertPasskeyWithPolicy(requestJSON) })
+    }
+
+    override fun cancelPasskeyCeremonies() {
+        hisar.cancelPasskeyCeremonies()
+    }
 
     override fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String =
         callPackage { Hisarkit.resolvePasskeyRelyingPartyID(origin, relyingPartyID) }
@@ -489,8 +499,11 @@ class HisarKitBackend(
 
         /** Go's sentences start in lower case and already say "biometric" on Android. */
         fun convertError(error: Throwable): BackendError {
-            val message = error.message.orEmpty().ifEmpty { "Something went wrong." }
-            return BackendError(message.replaceFirstChar { it.uppercaseChar() })
+            val raw = error.message.orEmpty().ifEmpty { "Something went wrong." }
+            val prefix = BackendError.PASSKEY_VERIFICATION_FAILED + ": "
+            val code = BackendError.PASSKEY_VERIFICATION_FAILED.takeIf { raw.startsWith(prefix) }
+            val message = if (code != null) raw.removePrefix(prefix) else raw
+            return BackendError(message.replaceFirstChar { it.uppercaseChar() }, code)
         }
 
         private fun encodeAllCredentialID(allCredentialID: List<ByteString>): String =

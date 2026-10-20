@@ -8,6 +8,11 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
+import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import com.tryhisar.hisarkit.PasskeyVerifier
+import java.util.concurrent.TimeUnit
 import androidx.biometric.BiometricPrompt
 import com.tryhisar.hisarkit.Biometric
 import com.tryhisar.hisarkit.BiometricKeyPreparer
@@ -30,7 +35,7 @@ class BiometricKeystore(
     private val directory: File,
     private val foregroundActivity: ForegroundActivity,
     private val keyAliasPrefix: String = DEFAULT_KEY_ALIAS_PREFIX,
-) : Biometric, BiometricKeyPreparer {
+) : Biometric, BiometricKeyPreparer, PasskeyVerifier {
     private enum class Operation { STORE, LOAD }
 
     private class KeyUse(val operation: Operation, val accountID: String, val cipher: Cipher)
@@ -68,6 +73,54 @@ class BiometricKeystore(
         if (keyUse != null) {
             val cipher = authenticated.cryptoObject?.cipher ?: throw BiometricException("The biometric prompt did not unlock the key.")
             synchronized(this) { authorized = KeyUse(keyUse.operation, keyUse.accountID, cipher) }
+        }
+    }
+
+    override fun authenticatePasskey(reason: String) {
+        check(Looper.myLooper() != Looper.getMainLooper()) { "passkey verification waits for the main thread" }
+        val result = CompletableFuture<Unit>()
+        mainHandler.post {
+            val activity = foregroundActivity.current
+            if (activity == null || activity.isFinishing || activity.isDestroyed) {
+                result.completeExceptionally(BiometricException("Open Hisar to verify this passkey."))
+                return@post
+            }
+            val callback = object : BiometricPrompt.AuthenticationCallback() {
+                override fun onAuthenticationSucceeded(authenticated: BiometricPrompt.AuthenticationResult) {
+                    if (foregroundActivity.current === activity && !activity.isFinishing && !activity.isDestroyed) {
+                        result.complete(Unit)
+                    } else {
+                        result.completeExceptionally(BiometricException("This passkey ceremony has ended."))
+                    }
+                }
+
+                override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                    result.completeExceptionally(BiometricException(errString.toString()))
+                }
+            }
+            val prompt = BiometricPrompt(activity, context.mainExecutor, callback)
+            val observer = object : DefaultLifecycleObserver {
+                override fun onDestroy(owner: LifecycleOwner) {
+                    result.completeExceptionally(BiometricException("This passkey ceremony has ended."))
+                    prompt.cancelAuthentication()
+                }
+            }
+            activity.lifecycle.addObserver(observer)
+            result.whenComplete { _, _ -> mainHandler.post {
+                activity.lifecycle.removeObserver(observer)
+                prompt.cancelAuthentication()
+            } }
+            prompt.authenticate(BiometricPrompt.PromptInfo.Builder()
+                .setTitle(formatReason(reason))
+                .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
+                .setConfirmationRequired(true)
+                .build())
+        }
+        try {
+            result.get(120, TimeUnit.SECONDS)
+        } catch (error: Exception) {
+            result.completeExceptionally(error)
+            throw (error as? ExecutionException)?.cause ?: error
         }
     }
 

@@ -104,7 +104,7 @@ const purposeText = computed(() => {
   if (!current) {
     return "";
   }
-  if (current.kind === "command-line" || current.kind === "agent" || current.kind === "launcher") {
+  if (current.kind === "command-line" || current.kind === "agent" || current.kind === "launcher" || current.kind === "passkey") {
     return current.action || "use Hisar";
   }
   return [current.action || "use your SSH key", current.target].filter(Boolean).join(" ");

@@ -13,6 +13,7 @@ export const allErrorCode = [
   "desktop-unavailable",
   "update-required",
   "wrong-password",
+  "passkey-verification-failed",
   "internal",
 ] as const;
 
@@ -21,6 +22,7 @@ export type ErrorCode = (typeof allErrorCode)[number];
 export type DesktopState = "signed-out" | "locked" | "unlocked";
 
 export interface LoginSummary {
+  isPersonal?: boolean;
   vaultID: string;
   itemID: string;
   title: string;

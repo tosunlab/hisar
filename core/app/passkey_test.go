@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -40,6 +41,12 @@ func createPasskeyRelyingParty(t *testing.T, relyingPartyID, origin string, user
 
 func (testBridge *browserTestBridge) sendPasskeyRequest(t *testing.T, requestType, token string, passkeyRequest browserprotocol.PasskeyRequest) (any, string) {
 	t.Helper()
+	if passkeyRequest.UserVerification == "" {
+		passkeyRequest.UserVerification = "preferred"
+	}
+	if passkeyRequest.CeremonyID == "" {
+		passkeyRequest.CeremonyID = rand.Text()
+	}
 	encoded, err := json.Marshal(passkeyRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -88,6 +95,14 @@ func (relyingParty *passkeyRelyingParty) signIn(t *testing.T, testBridge *browse
 		return errors.New(code)
 	}
 	assertion := result.(browserprotocol.PasskeyAssertionResult)
+	authenticatorData, err := decodeBase64URL(assertion.AuthenticatorData)
+	if err != nil || len(authenticatorData) < 33 {
+		t.Fatalf("invalid signed authenticator data: %v", err)
+	}
+	wantsVerification := passkeyRequest.UserVerification != "discouraged" || (passkeyRequest.PRF != nil && (passkeyRequest.PRF.Eval != nil || len(passkeyRequest.PRF.EvalByCredential) > 0))
+	if (authenticatorData[32]&passkey.FlagUserVerified != 0) != wantsVerification {
+		t.Fatalf("signed UV does not match ceremony policy %q: %x", passkeyRequest.UserVerification, authenticatorData[32])
+	}
 	body, _ := json.Marshal(map[string]any{
 		"id": assertion.CredentialID, "rawId": assertion.CredentialID, "type": "public-key", "clientExtensionResults": map[string]any{},
 		"response": map[string]any{

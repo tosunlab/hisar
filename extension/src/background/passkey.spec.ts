@@ -167,7 +167,7 @@ describe("passkey requests from content scripts", () => {
     expect(port.allReceived[0]).toEqual({ type: "prompt", promptUrl: "chrome-extension://dynamic-id/passkey-prompt.html#id-1", isConditional: false });
     expect(harness.allDesktopRequest[0]).toEqual({
       type: "passkeys.prepare",
-      passkey: { origin: "https://login.example.com", topOrigin: undefined, isCrossOrigin: false, relyingPartyId: "example.com", excludeCredentials: [] },
+      passkey: { origin: "https://login.example.com", topOrigin: undefined, isCrossOrigin: false, relyingPartyId: "example.com", excludeCredentials: [], userVerification: "preferred", ceremonyId: "id-1" },
     });
     const prompt = connectPrompt();
     const state = await prompt.call<PasskeyPromptState>({ method: "getState" }, readSessionID(port));
@@ -177,6 +177,8 @@ describe("passkey requests from content scripts", () => {
     expect(harness.allDesktopRequest[1]).toEqual({
       type: "passkeys.create",
       passkey: {
+        userVerification: "preferred",
+        ceremonyId: "id-1",
         origin: "https://login.example.com",
         topOrigin: undefined,
         isCrossOrigin: false,

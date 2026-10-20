@@ -72,8 +72,9 @@ type BrowserBridge struct {
 	pendingPairing *pendingBrowserPairing
 	installations  []browserprotocol.BrowserInstallation
 	// unlockFailures holds each paired browser's recent wrong master passwords (unlockWithPassword).
-	unlockFailures map[[sha256.Size]byte][]time.Time
-	pendingSaves   map[string]pendingBrowserSave
+	unlockFailures    map[[sha256.Size]byte][]time.Time
+	pendingSaves      map[string]pendingBrowserSave
+	passkeyCeremonies map[string]*browserPasskeyCeremony
 }
 
 func NewBrowserBridge(service *Service, config BrowserBridgeConfig) *BrowserBridge {

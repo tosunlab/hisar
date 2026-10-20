@@ -130,7 +130,7 @@ async function readJSON(request: IncomingMessage): Promise<Record<string, unknow
   return JSON.parse(Buffer.concat(allChunk).toString("utf8") || "{}") as Record<string, unknown>;
 }
 
-export async function startPasskeySite(): Promise<PasskeySite> {
+export async function startPasskeySite(userVerification: "required" | "preferred" | "discouraged" = "preferred"): Promise<PasskeySite> {
   const relyingPartyID = "localhost";
   const userID = new TextEncoder().encode("user-alex-0001");
   const allCredential: PasskeySite["allCredential"] = [];
@@ -159,7 +159,7 @@ export async function startPasskeySite(): Promise<PasskeySite> {
               userID,
               attestationType: "none",
               excludeCredentials: body.isExcluded ? allCredential.map((credential) => ({ id: credential.id })) : [],
-              authenticatorSelection: { residentKey: "required", userVerification: "preferred" },
+              authenticatorSelection: { residentKey: "required", userVerification },
             });
             expectedChallenge = options.challenge;
             return answer(options);
@@ -170,7 +170,7 @@ export async function startPasskeySite(): Promise<PasskeySite> {
               expectedChallenge,
               expectedOrigin: origin,
               expectedRPID: relyingPartyID,
-              requireUserVerification: false,
+              requireUserVerification: userVerification === "required",
             });
             const info = verification.registrationInfo;
             if (verification.verified && info) allCredential.push({ ...info.credential, aaguid: info.aaguid });
@@ -184,7 +184,7 @@ export async function startPasskeySite(): Promise<PasskeySite> {
             });
           }
           case "/authentication/options": {
-            const options = await generateAuthenticationOptions({ rpID: relyingPartyID, userVerification: "preferred" });
+            const options = await generateAuthenticationOptions({ rpID: relyingPartyID, userVerification });
             expectedChallenge = options.challenge;
             return answer(options);
           }
@@ -197,7 +197,7 @@ export async function startPasskeySite(): Promise<PasskeySite> {
               expectedOrigin: origin,
               expectedRPID: relyingPartyID,
               credential,
-              requireUserVerification: false,
+              requireUserVerification: userVerification === "required",
             });
             return answer({ verified: verification.verified, credentialID: credential.id, aaguid: credential.aaguid, userVerified: verification.authenticationInfo.userVerified });
           }

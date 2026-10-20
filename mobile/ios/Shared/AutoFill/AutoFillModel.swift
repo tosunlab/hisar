@@ -56,8 +56,7 @@ final class AutoFillModel: ObservableObject {
     private(set) var allServiceIdentifier: [String] = []
     private var pendingRequest: PendingCredentialRequest?
     private var pendingPasskeyCredentialID: Data?
-    // The user unlocked or confirmed with Face ID, Touch ID or the passcode during this request, so a passkey needs no second prompt.
-    private var isUserVerified = false
+    private var requestEpoch: UInt64 = 0
     private var serviceIdentifierByLoginID: [String: String] = [:]
     private var backend: VaultBackend?
     private let createBackend: () throws -> VaultBackend
@@ -67,7 +66,6 @@ final class AutoFillModel: ObservableObject {
     private let cancelRequest: (ASExtensionError.Code) -> Void
     private let passkeyCompletion: PasskeyCompletion
     private let credentialIdentityStore: CredentialIdentitySaving
-    private let localAuthenticator: LocalAuthenticating
 
     init(
         createBackend: @escaping () throws -> VaultBackend,
@@ -76,8 +74,7 @@ final class AutoFillModel: ObservableObject {
         copyOneTimeCode: @escaping (String) -> Void,
         cancelRequest: @escaping (ASExtensionError.Code) -> Void,
         passkeyCompletion: PasskeyCompletion,
-        credentialIdentityStore: CredentialIdentitySaving = SystemCredentialIdentityStore(),
-        localAuthenticator: LocalAuthenticating = DeviceOwnerAuthenticator()
+        credentialIdentityStore: CredentialIdentitySaving = SystemCredentialIdentityStore()
     ) {
         self.createBackend = createBackend
         self.completeRequest = completeRequest
@@ -86,7 +83,6 @@ final class AutoFillModel: ObservableObject {
         self.cancelRequest = cancelRequest
         self.passkeyCompletion = passkeyCompletion
         self.credentialIdentityStore = credentialIdentityStore
-        self.localAuthenticator = localAuthenticator
     }
 
     var serviceName: String {
@@ -140,13 +136,20 @@ final class AutoFillModel: ObservableObject {
 
     private func perform<Value>(_ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
         guard let backend = prepareBackend() else { return nil }
+        let epoch = requestEpoch
         isBusy = true
-        defer { isBusy = false }
+        defer { if epoch == requestEpoch { isBusy = false } }
         do {
             let value = try await runInBackground { try operation(backend) }
+            guard epoch == requestEpoch else { return nil }
             errorMessage = nil
             return value
         } catch {
+            guard epoch == requestEpoch else { return nil }
+            if (error as? BackendError)?.code == BackendError.passkeyVerificationFailed {
+                cancelRequest(.userCanceled)
+                return nil
+            }
             errorMessage = describeError(error)
             return nil
         }
@@ -166,9 +169,9 @@ final class AutoFillModel: ObservableObject {
     }
 
     private func resetRequest() {
+        endPasskeyCeremony()
         pendingRequest = nil
         pendingPasskeyCredentialID = nil
-        isUserVerified = false
         passkeyAssertionRequest = nil
         passkeyRegistrationRequest = nil
         passkeyRegistrationOptions = nil
@@ -253,7 +256,7 @@ final class AutoFillModel: ObservableObject {
     func providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: Data) async -> PasskeyAssertionCredential? {
         guard request.isUserVerificationDiscouraged, let backend, backend.getStatus().isUnlocked, backend.getStatus().updateRequired == nil,
               let result = try? await runInBackground({
-                  try backend.assertPasskey(relyingPartyID: request.relyingPartyID, credentialID: credentialID, clientDataHash: request.clientDataHash)
+                  try backend.assertPasskey(relyingPartyID: request.relyingPartyID, credentialID: credentialID, clientDataHash: request.clientDataHash, userVerification: request.userVerification)
               }) else { return nil }
         return PasskeyAssertionCredential(relyingPartyID: request.relyingPartyID, clientDataHash: request.clientDataHash, result: result)
     }
@@ -284,7 +287,6 @@ final class AutoFillModel: ObservableObject {
 
     func savePasskey() async {
         guard let request = passkeyRegistrationRequest, let options = passkeyRegistrationOptions, !options.isExcluded else { return }
-        guard await verifyUser(reason: "Create a passkey for \(request.relyingPartyID)", isDiscouraged: request.isUserVerificationDiscouraged) else { return }
         let login = options.allLogin.first { $0.id == selectedRegistrationLoginID }
         guard let saved = await perform({ backend -> (result: PasskeyRegistrationResult, allPrevious: [StoredPasskey], allCurrent: [StoredPasskey]) in
             let allPrevious = try backend.listAllPasskeyForRelyingParty(relyingPartyID: request.relyingPartyID, allAllowedCredentialID: [])
@@ -323,24 +325,12 @@ final class AutoFillModel: ObservableObject {
 
     func selectPasskey(_ passkey: StoredPasskey) async {
         guard let request = passkeyAssertionRequest, let credentialID = Base64URL.decode(passkey.credentialID) else { return }
-        guard await verifyUser(reason: "Use your passkey for \(request.relyingPartyID)", isDiscouraged: request.isUserVerificationDiscouraged) else { return }
         _ = await assertPasskey(request: request, credentialID: credentialID)
     }
 
-    // An extension that was already unlocked asks the device owner again before a passkey is used or created, unless
-    // the user unlocked during this request or the site discourages user verification. Declining cancels the request.
-    private func verifyUser(reason: String, isDiscouraged: Bool) async -> Bool {
-        guard !isDiscouraged, !isUserVerified else { return true }
-        guard await localAuthenticator.authenticate(reason: reason) else {
-            cancelRequest(.userCanceled)
-            return false
-        }
-        isUserVerified = true
-        return true
-    }
 
     private func assertPasskey(request: PasskeyAssertionRequest, credentialID: Data) async -> Bool {
-        guard let result = await perform({ try $0.assertPasskey(relyingPartyID: request.relyingPartyID, credentialID: credentialID, clientDataHash: request.clientDataHash) }) else { return false }
+        guard let result = await perform({ try $0.assertPasskey(relyingPartyID: request.relyingPartyID, credentialID: credentialID, clientDataHash: request.clientDataHash, userVerification: request.userVerification) }) else { return false }
         guard let credential = PasskeyAssertionCredential(relyingPartyID: request.relyingPartyID, clientDataHash: request.clientDataHash, result: result) else {
             errorMessage = "Hisar could not read the passkey signature."
             return false
@@ -371,7 +361,6 @@ final class AutoFillModel: ObservableObject {
     private func handleUnlocked(_ newStatus: VaultStatus) async {
         applyStatus(newStatus)
         guard newStatus.isUnlocked else { return }
-        isUserVerified = true
         if passkeyRegistrationRequest != nil {
             await loadPasskeyRegistrationOptions()
         } else if pendingRequest != nil || pendingPasskeyCredentialID != nil {
@@ -389,7 +378,6 @@ final class AutoFillModel: ObservableObject {
                 cancelRequest(.credentialIdentityNotFound)
                 return
             }
-            guard await verifyUser(reason: "Use your passkey for \(request.relyingPartyID)", isDiscouraged: request.isUserVerificationDiscouraged) else { return }
             if await assertPasskey(request: request, credentialID: credentialID) {
                 return
             }
@@ -496,7 +484,13 @@ final class AutoFillModel: ObservableObject {
         completeRequest(credential)
     }
 
+    func endPasskeyCeremony() {
+        requestEpoch &+= 1
+        backend?.cancelPasskeyCeremonies()
+    }
+
     func cancel() {
+        endPasskeyCeremony()
         cancelRequest(.userCanceled)
     }
 }

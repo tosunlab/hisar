@@ -695,6 +695,7 @@ data class LoginMatch(
     val username: String = "",
     val vaultName: String = "",
     val hasOneTimePassword: Boolean = false,
+    val isPersonal: Boolean = false,
 ) {
     val id: String get() = buildRecordIdentifier(vaultID, itemID)
 
@@ -793,8 +794,10 @@ data class PasskeyAssertionRequest(
     val relyingPartyID: String,
     val clientDataHash: ByteString,
     val allAllowedCredentialID: List<ByteString> = emptyList(),
-    val isUserVerificationDiscouraged: Boolean = false,
-)
+    val userVerification: String = "preferred",
+) {
+    val isUserVerificationDiscouraged: Boolean get() = userVerification == "discouraged"
+}
 
 data class PasskeyRegistrationRequest(
     val relyingPartyID: String,
@@ -803,8 +806,9 @@ data class PasskeyRegistrationRequest(
     val clientDataHash: ByteString,
     val allSupportedAlgorithm: List<Int> = emptyList(),
     val allExcludedCredentialID: List<ByteString> = emptyList(),
-    val isUserVerificationDiscouraged: Boolean = false,
+    val userVerification: String = "preferred",
 ) {
+    val isUserVerificationDiscouraged: Boolean get() = userVerification == "discouraged"
     val isAlgorithmSupported: Boolean get() = isAlgorithmSupported(allSupportedAlgorithm)
 
     companion object {

@@ -25,6 +25,9 @@ func hashPlatformClientData(t *testing.T, ceremonyType protocol.CeremonyType, ch
 
 func (relyingParty *passkeyRelyingParty) registerOnPlatform(t *testing.T, service *Service, origin string, registration PasskeyRegistration) (PasskeyRegistrationResult, error) {
 	t.Helper()
+	if registration.UserVerification == "" {
+		registration.UserVerification = "preferred"
+	}
 	options, session, err := relyingParty.webAuthn.BeginRegistration(relyingParty.user)
 	if err != nil {
 		t.Fatal(err)
@@ -62,7 +65,7 @@ func (relyingParty *passkeyRelyingParty) signInOnPlatform(t *testing.T, service 
 		t.Fatal(err)
 	}
 	clientDataJSON, clientDataHash := hashPlatformClientData(t, protocol.AssertCeremony, options.Response.Challenge, origin)
-	assertion, err := SignPasskeyForRelyingParty(service, relyingPartyID, credentialID, clientDataHash)
+	assertion, err := SignPasskeyWithPolicy(service, PasskeyAssertionRequest{RelyingPartyID: relyingPartyID, CredentialID: credentialID, ClientDataHash: clientDataHash, UserVerification: "preferred"})
 	if err != nil {
 		return err
 	}
@@ -225,14 +228,15 @@ func TestPlatformPasskeyRefusals(t *testing.T) {
 		}
 	}
 	if _, err := CreatePasskeyForRelyingParty(service, PasskeyRegistration{
-		RelyingPartyID: "example.com", UserHandle: "AQ", ClientDataHash: validHash, VaultID: testService.personalID, ItemID: other.ID,
+		UserVerification: "preferred",
+		RelyingPartyID:   "example.com", UserHandle: "AQ", ClientDataHash: validHash, VaultID: testService.personalID, ItemID: other.ID,
 	}); readResponseErrorCode(err) != browserprotocol.ErrorNoMatch {
 		t.Errorf("saving to a login for another site: %v", err)
 	}
-	if _, err := SignPasskeyForRelyingParty(service, "example.com", "AQ", "AQ"); readResponseErrorCode(err) != browserprotocol.ErrorInvalidRequest {
+	if _, err := SignPasskeyWithPolicy(service, PasskeyAssertionRequest{RelyingPartyID: "example.com", CredentialID: "AQ", ClientDataHash: "AQ", UserVerification: "preferred"}); readResponseErrorCode(err) != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("signing a short hash: %v", err)
 	}
-	if _, err := SignPasskeyForRelyingParty(service, "example.com", "AQ", validHash); readResponseErrorCode(err) != browserprotocol.ErrorNotFound {
+	if _, err := SignPasskeyWithPolicy(service, PasskeyAssertionRequest{RelyingPartyID: "example.com", CredentialID: "AQ", ClientDataHash: validHash, UserVerification: "preferred"}); readResponseErrorCode(err) != browserprotocol.ErrorNotFound {
 		t.Errorf("signing with an unknown passkey: %v", err)
 	}
 	if _, err := ListPasskeysForRelyingParty(service, "com", nil); readResponseErrorCode(err) != browserprotocol.ErrorInvalidRequest {
@@ -242,7 +246,7 @@ func TestPlatformPasskeyRefusals(t *testing.T) {
 	if _, err := ListPasskeys(service); readResponseErrorCode(err) != browserprotocol.ErrorLocked {
 		t.Errorf("listing while locked: %v", err)
 	}
-	if _, err := SignPasskeyForRelyingParty(service, "example.com", "AQ", validHash); readResponseErrorCode(err) != browserprotocol.ErrorLocked {
+	if _, err := SignPasskeyWithPolicy(service, PasskeyAssertionRequest{RelyingPartyID: "example.com", CredentialID: "AQ", ClientDataHash: validHash, UserVerification: "preferred"}); readResponseErrorCode(err) != browserprotocol.ErrorLocked {
 		t.Errorf("signing while locked: %v", err)
 	}
 	if _, err := PreparePasskeyRegistration(service, "example.com", nil); readResponseErrorCode(err) != browserprotocol.ErrorLocked {

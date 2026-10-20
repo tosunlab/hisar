@@ -23,6 +23,8 @@ open class FakeBackend : VaultBackend {
     var favoriteErrorMessage: String? = null
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
+    var verifyPasskey: (String) -> Boolean = { true }
+    override fun cancelPasskeyCeremonies() {}
     var isOffline = false
 
     /** While set, deleting the account succeeds on the server and then reports that the local cache stayed. */
@@ -532,7 +534,7 @@ open class FakeBackend : VaultBackend {
         return allVault.flatMap { vault ->
             allItemByVaultID[vault.id].orEmpty().filter { item ->
                 item.allURL.any { url -> VaultLogic.extractHost(url)?.let { host.endsWith(it) || it.endsWith(host) } ?: false }
-            }.map { LoginMatch(vault.id, it.id, it.title, it.username, vault.name, it.hasOneTimePassword) }
+            }.map { LoginMatch(vault.id, it.id, it.title, it.username, vault.name, it.hasOneTimePassword, isPersonal = vault.type == "personal") }
         }
     }
 
@@ -552,7 +554,7 @@ open class FakeBackend : VaultBackend {
         return allVault.flatMap { vault ->
             allItemByVaultID[vault.id].orEmpty().filter { item ->
                 item.allAndroidApp.any { it.packageName == packageName && it.certificateSHA256.replace(":", "").lowercase() == certificate }
-            }.map { LoginMatch(vault.id, it.id, it.title, it.username, vault.name, it.hasOneTimePassword) }
+            }.map { LoginMatch(vault.id, it.id, it.title, it.username, vault.name, it.hasOneTimePassword, isPersonal = vault.type == "personal") }
         }
     }
 
@@ -612,6 +614,7 @@ open class FakeBackend : VaultBackend {
     override fun createPasskey(request: PasskeyRegistrationRequest, vaultID: String, itemID: String): PasskeyRegistrationResult {
         record("createPasskey")
         requireUnlocked()
+        if (request.userVerification != "discouraged" && !verifyPasskey("Create a passkey for ${request.relyingPartyID}")) throw BackendError("Passkey verification was cancelled.", BackendError.PASSKEY_VERIFICATION_FAILED)
         if (checkIsExcluded(request.relyingPartyID, request.allExcludedCredentialID)) {
             throw BackendError("Hisar already has a passkey for this account")
         }
@@ -657,9 +660,10 @@ open class FakeBackend : VaultBackend {
         if (index >= 0) allItem[index] = item
     }
 
-    override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString): PasskeyAssertionResult {
+    override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString, userVerification: String): PasskeyAssertionResult {
         record("assertPasskey")
         requireUnlocked()
+        if (userVerification != "discouraged" && !verifyPasskey("Use your passkey for $relyingPartyID")) throw BackendError("Passkey verification was cancelled.", BackendError.PASSKEY_VERIFICATION_FAILED)
         if (clientDataHash.size != 32) throw BackendError("the request is not valid")
         val passkey = allPasskey.firstOrNull { it.relyingPartyID == relyingPartyID && it.credentialID == Base64URL.encode(credentialID) }
             ?: throw BackendError("passkey not found")
