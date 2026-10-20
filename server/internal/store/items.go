@@ -25,19 +25,39 @@ func scanItem(row pgx.CollectableRow) (Item, error) {
 	return item, err
 }
 
-// ListChanges returns items with seq > since, and the vault's current seq.
-func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, limit int) (items []Item, vaultSeq int64, err error) {
+// ListChanges returns items with seq > since, and the vault's current seq. A page ends after limit items, or once its
+// sealed overviews and details reach maxBytes. One item can cross the budget; the first item is always included.
+// isMore reports that the page ended at one of those bounds.
+func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, limit int, maxBytes int64) (items []Item, vaultSeq int64, isMore bool, err error) {
 	if err := s.pool.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1`, vaultID).Scan(&vaultSeq); err != nil {
-		return nil, 0, convertNoRowsToNotFound(err)
+		return nil, 0, false, convertNoRowsToNotFound(err)
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, revision, seq, deleted, overview, details, updated_at, updated_by
-		FROM items WHERE vault_id = $1 AND seq > $2 ORDER BY seq LIMIT $3`, vaultID, since, limit)
+		SELECT id, revision, seq, deleted, CASE WHEN fits THEN overview END, CASE WHEN fits THEN details END, updated_at, updated_by, fits
+		FROM (
+			SELECT *, sum(octet_length(overview) + octet_length(details)) OVER (ORDER BY seq) - octet_length(overview) - octet_length(details) < $4 AS fits
+			FROM items WHERE vault_id = $1 AND seq > $2 ORDER BY seq LIMIT $3
+		) page ORDER BY seq`, vaultID, since, limit, maxBytes)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
-	items, err = pgx.CollectRows(rows, scanItem)
-	return items, vaultSeq, err
+	defer rows.Close()
+	rowCount := 0
+	for rows.Next() {
+		rowCount++
+		var item Item
+		var fits bool
+		if err := rows.Scan(&item.ID, &item.Revision, &item.Seq, &item.Deleted, &item.Overview, &item.Details, &item.UpdatedAt, &item.UpdatedBy, &fits); err != nil {
+			return nil, 0, false, err
+		}
+		if fits {
+			items = append(items, item)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, false, err
+	}
+	return items, vaultSeq, rowCount == limit || len(items) < rowCount, nil
 }
 
 // PutItem writes a new revision if baseRevision matches the stored one ("" for a new item).

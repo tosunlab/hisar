@@ -24,6 +24,10 @@ const (
 	maxRotatedItemCount   = 50000
 )
 
+// maxChangeBytes is a soft ciphertext budget. One item can cross it; with the per-item limits, base64 and JSON metadata
+// still keep the response below the 64 MiB the apps read.
+const maxChangeBytes = 16 << 20
+
 var (
 	errReadOnly                = newError(KindForbidden, "read only")
 	errOrganizationVaultAccess = newError(KindInvalid, "access to an organization vault comes from its teams")
@@ -229,8 +233,9 @@ func convertToProtoItem(storeItem *store.Item) apitypes.Item {
 	return apitypes.Item{ID: storeItem.ID, Revision: storeItem.Revision, Seq: storeItem.Seq, Deleted: storeItem.Deleted, Overview: storeItem.Overview, Details: storeItem.Details, UpdatedAt: storeItem.UpdatedAt, UpdatedBy: storeItem.UpdatedBy}
 }
 
-// ListChanges returns up to limit changes after since. NextSeq below the client's since signals a server rollback;
-// it is not clamped. A vault the caller cannot see is not found before since and limit are checked.
+// ListChanges returns up to limit changes after since, fewer when they hold more than maxChangeBytes. NextSeq below the
+// client's since signals a server rollback; it is not clamped. A vault the caller cannot see is not found before since
+// and limit are checked.
 func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, since int64, limit int) (apitypes.ChangesResponse, error) {
 	if _, err := s.GetVaultRole(ctx, actor, vaultID); err != nil {
 		return apitypes.ChangesResponse{}, err
@@ -241,7 +246,7 @@ func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, 
 	if limit < 1 || limit > MaxChangeLimit {
 		return apitypes.ChangesResponse{}, newError(KindInvalid, "invalid limit")
 	}
-	items, vaultSeq, err := s.store.ListChanges(ctx, vaultID, since, limit)
+	items, vaultSeq, isMore, err := s.store.ListChanges(ctx, vaultID, since, limit, maxChangeBytes)
 	if err != nil {
 		return apitypes.ChangesResponse{}, err
 	}
@@ -249,7 +254,7 @@ func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, 
 	for index := range items {
 		response.Items = append(response.Items, convertToProtoItem(&items[index]))
 	}
-	if len(items) == limit {
+	if isMore {
 		response.More = true
 		response.NextSeq = items[len(items)-1].Seq
 	} else if len(items) > 0 {
@@ -284,7 +289,7 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	if err := s.CheckItemWrite(ctx, actor, vaultID); err != nil {
 		return 0, err
 	}
-	if !IsValidUUID(itemID) || !IsValidUUID(request.Revision) || (baseRevision != "" && !IsValidUUID(baseRevision)) ||
+	if !IsValidUUID(itemID) || !IsValidUUID(request.Revision) || (baseRevision != "" && !IsValidUUID(baseRevision)) || (request.Deleted && baseRevision == "") ||
 		len(request.Overview) == 0 || len(request.Overview) > maxOverview ||
 		len(request.Details) == 0 || len(request.Details) > maxDetails || request.KeyGeneration < 0 {
 		return 0, newError(KindInvalid, "invalid item")

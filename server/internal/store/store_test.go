@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"testing"
 	"time"
 
@@ -439,14 +440,14 @@ func TestPutItem(t *testing.T) {
 		t.Errorf("stale base: %v %+v", err, currentItem)
 	}
 
-	items, seq, err := database.ListChanges(ctx, vaultID, 0, 10)
+	items, seq, _, err := database.ListChanges(ctx, vaultID, 0, 10, 1<<20)
 	if err != nil || seq != 2 || len(items) != 1 || items[0].Revision != revision2 {
 		t.Errorf("changes: seq=%d items=%+v %v", seq, items, err)
 	}
-	if items, _, _ := database.ListChanges(ctx, vaultID, 2, 10); len(items) != 0 {
+	if items, _, _, _ := database.ListChanges(ctx, vaultID, 2, 10, 1<<20); len(items) != 0 {
 		t.Errorf("changes since current: %d items", len(items))
 	}
-	if _, _, err := database.ListChanges(ctx, uuid.NewString(), 0, 10); !errors.Is(err, ErrNotFound) {
+	if _, _, _, err := database.ListChanges(ctx, uuid.NewString(), 0, 10, 1<<20); !errors.Is(err, ErrNotFound) {
 		t.Errorf("changes on missing vault: %v", err)
 	}
 	if histories, _ := database.GetItemHistory(ctx, vaultID, itemID); len(histories) != 2 {
@@ -465,21 +466,35 @@ func TestChangesPaging(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var since int64
-	var total int
-	for {
-		items, _, err := database.ListChanges(ctx, vaultID, since, 2)
-		if err != nil {
-			t.Fatal(err)
+	readPages := func(limit int, maxBytes int64) []int {
+		t.Helper()
+		var since int64
+		var pageSizes []int
+		for {
+			items, _, isMore, err := database.ListChanges(ctx, vaultID, since, limit, maxBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pageSizes = append(pageSizes, len(items))
+			if !isMore {
+				return pageSizes
+			}
+			since = items[len(items)-1].Seq
 		}
-		total += len(items)
-		if len(items) < 2 {
-			break
-		}
-		since = items[len(items)-1].Seq
 	}
-	if total != 5 {
-		t.Errorf("paged %d items, want 5", total)
+	for _, test := range []struct {
+		limit    int
+		maxBytes int64
+		want     []int
+	}{
+		{2, 1 << 20, []int{2, 2, 1}},
+		{5, 1 << 20, []int{5, 0}},
+		{10, 5, []int{3, 2}},
+		{10, 1, []int{1, 1, 1, 1, 1}},
+	} {
+		if got := readPages(test.limit, test.maxBytes); !slices.Equal(got, test.want) {
+			t.Errorf("limit %d, %d bytes: pages of %v, want %v", test.limit, test.maxBytes, got, test.want)
+		}
 	}
 }
 

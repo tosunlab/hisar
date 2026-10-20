@@ -56,11 +56,11 @@ func TestMoveItemRules(t *testing.T) {
 	if _, err := database.MoveItem(ctx, move); err != nil {
 		t.Fatalf("move onto a tombstone: %v", err)
 	}
-	sourceItems, sourceSeq, err := database.ListChanges(ctx, sourceID, 0, 100)
+	sourceItems, sourceSeq, _, err := database.ListChanges(ctx, sourceID, 0, 100, 1<<20)
 	if err != nil || len(sourceItems) != 1 || !sourceItems[0].Deleted || sourceSeq != move.Tombstone.Seq {
 		t.Errorf("source after the move: %+v seq %d %v", sourceItems, sourceSeq, err)
 	}
-	targetItems, targetSeq, err := database.ListChanges(ctx, targetID, 0, 100)
+	targetItems, targetSeq, _, err := database.ListChanges(ctx, targetID, 0, 100, 1<<20)
 	if err != nil || len(targetItems) != 1 || targetItems[0].Deleted || string(targetItems[0].Overview) != "moved-o" || targetSeq != move.Moved.Seq {
 		t.Errorf("target after the move: %+v seq %d %v", targetItems, targetSeq, err)
 	}

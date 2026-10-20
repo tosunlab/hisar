@@ -18,6 +18,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 func (server *fakeAPIServer) getVaultRole(vaultID string) string {
@@ -843,6 +844,86 @@ func TestRemoveVaultMemberRotatesKey(t *testing.T) {
 	}
 	if !bytes.Equal(getCachedVaultKey(t, service, test.familyID), newKey) {
 		t.Error("vault key changed although the rotation was refused")
+	}
+}
+
+// TestRemoveVaultMemberRotatesPastAMalformedTombstone: a deleted item's sealed content is never read, so a tombstone an
+// editor wrote with ciphertext nobody can open does not stop an owner from removing them.
+func TestRemoveVaultMemberRotatesPastAMalformedTombstone(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	shareThroughInvitation(t, test, test.familyID, bob, apitypes.VaultEditor)
+	tombstoneID := "4b0d1c34-6f07-4f3c-9a55-0e2f8d1c7a10"
+	test.apiServer.mutex.Lock()
+	test.apiServer.seq++
+	test.apiServer.itemsByVaultID[test.familyID][tombstoneID] = apitypes.Item{
+		ID: tombstoneID, Revision: "019a0000-0000-7000-8000-000000000001", Seq: test.apiServer.seq, Deleted: true, Overview: []byte{1}, Details: []byte{1},
+	}
+	test.apiServer.mutex.Unlock()
+
+	if err := service.RemoveVaultMember(test.familyID, bob.AccountID); err != nil {
+		t.Fatalf("removing Bob past the malformed tombstone: %v", err)
+	}
+	if _, found := test.apiServer.getAccess(test.familyID, bob.AccountID); found {
+		t.Error("Bob still has access")
+	}
+	test.apiServer.mutex.Lock()
+	tombstone := test.apiServer.itemsByVaultID[test.familyID][tombstoneID]
+	test.apiServer.mutex.Unlock()
+	if !tombstone.Deleted {
+		t.Errorf("the rotation brought the tombstone back: %+v", tombstone)
+	}
+	if _, err := crypt.OpenItemPart(getCachedVaultKey(t, service, test.familyID), test.familyID, tombstoneID, tombstone.Revision, crypt.Details, tombstone.Details); err != nil {
+		t.Errorf("the rotated tombstone is not sealed with the new key: %v", err)
+	}
+}
+
+// TestRemoveVaultMemberAfterAnotherOwnerRotated: another owner's rotation replaced the key this app holds, so the
+// removal reloads the vault and rotates from the current key instead of failing every attempt.
+func TestRemoveVaultMemberAfterAnotherOwnerRotated(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	ctx := context.Background()
+	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
+	carol, carolKeyset := test.apiServer.addMember(t, "Carol", "c@example.com")
+	saved, err := service.SaveItem(test.familyID, ItemDetail{Title: "Netflix", Password: "hunter2hunter2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shareThroughInvitation(t, test, test.familyID, bob, apitypes.VaultEditor)
+	shareThroughInvitation(t, test, test.familyID, carol, apitypes.VaultEditor)
+	staleKey := getCachedVaultKey(t, service, test.familyID)
+	service.mutex.Lock()
+	unlockedSession := service.unlockedSession
+	service.mutex.Unlock()
+	otherOwnersVault, err := unlockedSession.FindVault(ctx, test.familyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grants := []session.AccessGrant{
+		{AccountID: test.accountID, Role: apitypes.VaultOwner}, {AccountID: bob.AccountID, Role: apitypes.VaultEditor}, {AccountID: carol.AccountID, Role: apitypes.VaultEditor},
+	}
+	if err := unlockedSession.RotateVaultKey(ctx, otherOwnersVault, grants); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := service.RemoveVaultMember(test.familyID, bob.AccountID); err != nil {
+		t.Fatalf("removing Bob after another owner rotated: %v", err)
+	}
+	if _, found := test.apiServer.getAccess(test.familyID, bob.AccountID); found {
+		t.Error("Bob still has access")
+	}
+	newKey := getCachedVaultKey(t, service, test.familyID)
+	if bytes.Equal(newKey, staleKey) || bytes.Equal(newKey, otherOwnersVault.Key) {
+		t.Fatal("the removal did not rotate to a new key")
+	}
+	carolAccess, _ := test.apiServer.getAccess(test.familyID, carol.AccountID)
+	if carolKey, err := carolKeyset.UnwrapVaultKey(test.familyID, carol.AccountID, carolAccess.WrappedKey); err != nil || !bytes.Equal(carolKey, newKey) {
+		t.Errorf("Carol did not get the new key: %v", err)
+	}
+	if fetched, err := service.GetItem(test.familyID, saved.ID); err != nil || fetched.Password != "hunter2hunter2" {
+		t.Errorf("item after the removal: %+v %v", fetched, err)
 	}
 }
 
