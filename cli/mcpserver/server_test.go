@@ -296,6 +296,23 @@ func TestNoRevealLeavesOutTheToolsThatReturnValues(t *testing.T) {
 	}
 }
 
+// TestInstructionsLeadWithTheToolsAndTheShell: Codex advises keeping the first 512 characters of server instructions
+// self-contained, so they hold the tools and the shell fallback; the sandbox advice follows in both modes.
+func TestInstructionsLeadWithTheToolsAndTheShell(t *testing.T) {
+	for _, isRevealDisabled := range []bool{false, true} {
+		instructions := startTestServer(t, &fakeApp{}, Config{IsRevealDisabled: isRevealDisabled}).session.InitializeResult().Instructions
+		lead := instructions[:min(512, len(instructions))]
+		for _, phrase := range []string{"search_items", "run_with_secrets", "hisar run --env-file .env --", "in your shell instead."} {
+			if !strings.Contains(lead, phrase) {
+				t.Errorf("no reveal %v: the first 512 characters lack %q", isRevealDisabled, phrase)
+			}
+		}
+		if !strings.Contains(instructions, "If hisar in your shell says a sandbox blocks its socket, use run_with_secrets, or ask the user to let the command run outside your sandbox.") {
+			t.Errorf("no reveal %v: no sandbox advice in %q", isRevealDisabled, instructions)
+		}
+	}
+}
+
 func TestServerConnectsLazilyAndIntroducesTheAgentOnce(t *testing.T) {
 	app := &fakeApp{}
 	server := createTestServer(t, app)
