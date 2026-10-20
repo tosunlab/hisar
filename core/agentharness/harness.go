@@ -21,6 +21,9 @@ type Harness struct {
 	Scripts []Script
 	// PackagePaths match an argument inside one of these packages.
 	PackagePaths []string
+	// WorkerArgumentPrefix marks the harness's own worker processes: an argument after the program that starts with it.
+	// A worker belongs to the session of the harness process that started it.
+	WorkerArgumentPrefix string
 }
 
 // Signature is a code signature's identifier and Team ID as macOS verified it; the zero Signature is none.
@@ -39,12 +42,13 @@ type Script struct {
 // only its signature or its first argument names it; omp installed with Bun runs as bun with omp's bin link.
 var harnesses = []Harness{
 	{
-		ID:              "omp",
-		Name:            "omp",
-		Signatures:      []Signature{{Identifier: "omp-darwin-arm64", TeamID: "VTLHGQC72S"}},
-		ExecutableNames: []string{"omp"},
-		Scripts:         []Script{{Runtime: "bun", Name: "omp"}},
-		PackagePaths:    []string{"@oh-my-pi/pi-coding-agent"},
+		ID:                   "omp",
+		Name:                 "omp",
+		Signatures:           []Signature{{Identifier: "omp-darwin-arm64", TeamID: "VTLHGQC72S"}},
+		ExecutableNames:      []string{"omp"},
+		Scripts:              []Script{{Runtime: "bun", Name: "omp"}},
+		PackagePaths:         []string{"@oh-my-pi/pi-coding-agent"},
+		WorkerArgumentPrefix: "__omp_worker_",
 	},
 }
 
@@ -75,8 +79,10 @@ type Session struct {
 	Directory string
 }
 
-// Find returns the session of the nearest harness in a known chain. A harness process whose parent is the same harness,
-// such as omp's worker broker under omp, belongs to that parent's session, so Find takes the outermost of such a run.
+// Find returns the session of the nearest harness in a known chain. A worker of
+// the harness, such as omp's daemon broker, belongs to the session of the harness process that started it, so Find
+// passes over a run of workers to that process. Any other harness process, even one whose parent is the same harness,
+// is its own session.
 func Find(chain Chain) (Session, bool) {
 	if !chain.IsKnown {
 		return Session{}, false
@@ -86,7 +92,7 @@ func Find(chain Chain) (Session, bool) {
 			if !harness.matches(process) {
 				continue
 			}
-			for index+1 < len(chain.Processes) && harness.matches(chain.Processes[index+1]) {
+			for harness.isWorker(process) && index+1 < len(chain.Processes) && harness.matches(chain.Processes[index+1]) {
 				index++
 				process = chain.Processes[index]
 			}
@@ -94,6 +100,12 @@ func Find(chain Chain) (Session, bool) {
 		}
 	}
 	return Session{}, false
+}
+
+func (harness Harness) isWorker(process Process) bool {
+	return harness.WorkerArgumentPrefix != "" && slices.ContainsFunc(process.Arguments[min(1, len(process.Arguments)):], func(argument string) bool {
+		return strings.HasPrefix(argument, harness.WorkerArgumentPrefix)
+	})
 }
 
 func (harness Harness) matches(process Process) bool {

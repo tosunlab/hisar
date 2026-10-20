@@ -91,6 +91,8 @@ func TestUnknownChainFindsNoSession(t *testing.T) {
 	}
 }
 
+// TestWorkerBrokerBelongsToItsOmpSession uses the chain measured from a service command in omp 18.12.3: omp's daemon
+// broker started it, and the broker's text-prediction worker runs under the broker.
 func TestWorkerBrokerBelongsToItsOmpSession(t *testing.T) {
 	chain := createOmpInTernChain()
 	broker := Process{PID: 4564, ParentPID: 1226, StartTime: 150, Path: ompPath, Arguments: []string{ompPath, "__omp_worker_daemon_broker"}, Signature: ompSignature}
@@ -98,6 +100,23 @@ func TestWorkerBrokerBelongsToItsOmpSession(t *testing.T) {
 	chain.Processes = append(chain.Processes[:2], append([]Process{broker}, chain.Processes[2:]...)...)
 	if session, isFound := Find(chain); !isFound || session.PID != 1226 {
 		t.Errorf("service command: %+v, %v", session, isFound)
+	}
+	predictor := Process{PID: 69810, ParentPID: 4564, StartTime: 160, Path: ompPath, Arguments: []string{ompPath, "__omp_worker_text_predict"}, Signature: ompSignature}
+	chain.Processes[1].ParentPID = predictor.PID
+	chain.Processes = append(chain.Processes[:2], append([]Process{predictor}, chain.Processes[2:]...)...)
+	if session, isFound := Find(chain); !isFound || session.PID != 1226 {
+		t.Errorf("worker under the broker: %+v, %v", session, isFound)
+	}
+}
+
+// TestExecOmpIsItsOwnSession is omp started by sh -c 'exec omp' from omp's shell: the new omp replaced the shell, so it
+// is a direct child of omp, and it is no worker.
+func TestExecOmpIsItsOwnSession(t *testing.T) {
+	chain := createOmpInTernChain()
+	nested := Process{PID: 39136, ParentPID: 1226, StartTime: 200, Path: ompPath, Arguments: []string{"omp"}, WorkingDirectory: "/Users/developer/src/other", Signature: ompSignature}
+	chain.Processes[1] = nested
+	if session, isFound := Find(chain); !isFound || session.PID != 39136 || session.Directory != "/Users/developer/src/other" {
+		t.Errorf("exec omp: %+v, %v", session, isFound)
 	}
 }
 
