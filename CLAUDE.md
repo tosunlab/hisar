@@ -99,6 +99,7 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
 | `browser` | Native host, socket server and manifests for the extension |
 | `commandline` | Installing `hisar`, Settings → Command-line tool and its approved launchers, and the signed app behind a caller without a terminal (`identity.go`) |
+| `harness` | The omp card of Settings → Coding agents: finds omp and links or unlinks the omp plugin in `Hisar.app/Contents/Resources/omp-plugin` (the repository's `omp/` in a development build) |
 | `portable` | Running from an AppImage or a Flatpak: copies the browser host and `hisar` out, with the `hisar-app` launcher |
 | `loginitem`, `background` | Open at login; login item, Dock icon, appearance |
 | `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time (D-Bus on Linux), window placement, Sparkle (`Notifier` announces versions on Linux), the clipboard (copies concealed from clipboard managers) |
@@ -227,7 +228,7 @@ starts it for: it signs up, sends the phone real approval requests, and saves ea
 ## Wails bindings
 
 Wails binds every exported method of each bound type (`app.Service`, `app.BrowserBridge`, `app.UpdateService`,
-`app.InviteLinkService`, `agent.Service`, `commandline.Service`, `loginitem.Service` and the Touch ID services), so an
+`app.InviteLinkService`, `agent.Service`, `commandline.Service`, `harness.Service`, `loginitem.Service` and the Touch ID services), so an
 exported method is callable from the UI. After changing a bound type, run
 `cd desktop && wails3 generate bindings -clean=true -ts -i` (install with `make install-wails`), commit
 `desktop/frontend/bindings`, and update only `desktop/frontend/src/api.ts`, the one file that imports them.

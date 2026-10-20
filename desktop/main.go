@@ -28,6 +28,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/desktop/harness"
 	"github.com/tryhisar/hisar/desktop/loginitem"
 	"github.com/tryhisar/hisar/desktop/pasteboard"
 	"github.com/tryhisar/hisar/desktop/portable"
@@ -255,6 +256,11 @@ func main() {
 	}), commandLineRunner, commandLineApprovals, requesterResolver.DescribeApp)
 
 	loginItemService := loginitem.NewService(vaultService, background.NewLoginItem(homeDirectory))
+	harnessService := harness.NewService(harness.Config{
+		HomeDirectory: homeDirectory,
+		GetUserPath:   userPathReader.Read,
+		OmpPluginPath: harness.FindOmpPlugin(filepath.Dir(executablePath)),
+	})
 	inviteLinkService := app.NewInviteLinkService()
 	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])
 	background.StartLaunchObserver()
@@ -280,6 +286,7 @@ func main() {
 			application.NewService(commandLineService),
 			application.NewService(loginItemService),
 			application.NewService(inviteLinkService),
+			application.NewService(harnessService),
 		},
 		OnShutdown: func() {
 			commandLineRunner.Stop()
