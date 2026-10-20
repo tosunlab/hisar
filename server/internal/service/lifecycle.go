@@ -20,6 +20,7 @@ var (
 	errReauthenticationFailed = newError(KindForbidden, "incorrect master password")
 	errCredentialsChanged     = newError(KindConflict, "the master password or Secret Key was changed on another device; try again")
 	errDeletionBusy           = newError(KindConflict, "The account's memberships are changing. Try deleting the account again.")
+	errAdminDeletionBusy      = newError(KindConflict, "The account's memberships are changing. Suspend the account, then delete it.")
 )
 
 // Reauthenticate starts a master password check for the caller's session, with a registration for new credentials

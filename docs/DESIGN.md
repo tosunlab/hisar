@@ -385,7 +385,9 @@ If the organization refresh finds a newly joined organization locked, deletion r
 the same three-attempt bound. The next attempt includes that organization in its initial lock set, where waiting is safe.
 If a membership committed during lock acquisition introduced another organization or vault, deletion releases its locks
 and restarts before making changes. It tries at most three times. Contention or repeated membership changes return 409,
-with no partial deletion, asking the caller to retry. The final classification therefore contains only locked vaults.
+with no partial deletion, asking the caller to retry. Accounts that keep joining organizations can make that 409 repeat,
+so the admin route's 409 tells the admin to suspend the account first, which ends its requests. The final
+classification therefore contains only locked vaults.
 Keeping account key-share locks available during vault acquisition lets an in-flight grant finish without a lock cycle.
 Creating a personal or shared vault or a new organization first share-locks its creator's account.
 Accepting an organization invitation share-locks the accepting account after the organization and before the invitation.
