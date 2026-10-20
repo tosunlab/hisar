@@ -75,16 +75,22 @@ type Session struct {
 	Directory string
 }
 
-// Find returns the session of the nearest harness process in a known chain.
+// Find returns the session of the nearest harness in a known chain. A harness process whose parent is the same harness,
+// such as omp's worker broker under omp, belongs to that parent's session, so Find takes the outermost of such a run.
 func Find(chain Chain) (Session, bool) {
 	if !chain.IsKnown {
 		return Session{}, false
 	}
-	for _, process := range chain.Processes {
+	for index, process := range chain.Processes {
 		for _, harness := range harnesses {
-			if harness.matches(process) {
-				return Session{Harness: harness, PID: process.PID, StartTime: process.StartTime, Directory: process.WorkingDirectory}, true
+			if !harness.matches(process) {
+				continue
 			}
+			for index+1 < len(chain.Processes) && harness.matches(chain.Processes[index+1]) {
+				index++
+				process = chain.Processes[index]
+			}
+			return Session{Harness: harness, PID: process.PID, StartTime: process.StartTime, Directory: process.WorkingDirectory}, true
 		}
 	}
 	return Session{}, false

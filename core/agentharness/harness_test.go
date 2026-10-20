@@ -90,3 +90,25 @@ func TestUnknownChainFindsNoSession(t *testing.T) {
 		t.Errorf("found %+v in an unknown chain", session)
 	}
 }
+
+func TestWorkerBrokerBelongsToItsOmpSession(t *testing.T) {
+	chain := createOmpInTernChain()
+	broker := Process{PID: 4564, ParentPID: 1226, StartTime: 150, Path: ompPath, Arguments: []string{ompPath, "__omp_worker_daemon_broker"}, Signature: ompSignature}
+	chain.Processes[1].ParentPID = broker.PID
+	chain.Processes = append(chain.Processes[:2], append([]Process{broker}, chain.Processes[2:]...)...)
+	if session, isFound := Find(chain); !isFound || session.PID != 1226 {
+		t.Errorf("service command: %+v, %v", session, isFound)
+	}
+}
+
+func TestOmpStartedFromAnOmpShellIsItsOwnSession(t *testing.T) {
+	chain := createOmpInTernChain()
+	nested := []Process{
+		{PID: 39300, ParentPID: 39250, StartTime: 400, Path: "/opt/homebrew/bin/hisar", Arguments: []string{"hisar", "vaults"}},
+		{PID: 39250, ParentPID: 39136, StartTime: 350, Path: ompPath, Arguments: []string{"omp"}, WorkingDirectory: "/Users/developer/src/other", Signature: ompSignature},
+	}
+	chain.Processes = append(nested, chain.Processes[1:]...)
+	if session, isFound := Find(chain); !isFound || session.PID != 39250 || session.Directory != "/Users/developer/src/other" {
+		t.Errorf("nested omp: %+v, %v", session, isFound)
+	}
+}

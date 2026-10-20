@@ -1200,7 +1200,7 @@ An agent harness is a program that runs a coding agent and the commands it asks 
 **Chains measured** with omp 18.12.3 in Tern 0.9.4 on macOS:
 
 - The `bash` tool: `hisar` ← `sh` ← omp (`…/Tern/omp/versions/18.12.3`, first argument `omp`, signed by `VTLHGQC72S`) ← `tern daemon` ← launchd. Children of omp have no controlling terminal.
-- A managed service: the command ← omp's worker broker (the same signed executable, first argument `…/versions/18.12.3 __omp_worker_daemon_broker`) ← omp ← `tern daemon`. The broker is the nearest harness process, so a service is its own agent session and does not share grants with the `bash` tool.
+- A managed service: the command ← omp's worker broker (the same signed executable, first argument `…/versions/18.12.3 __omp_worker_daemon_broker`) ← omp ← `tern daemon`. Each omp session starts its own broker. A harness process whose parent is the same harness belongs to that parent's session, so a service shares the session and its grants with the `bash` tool. An omp started from a shell inside omp has a shell between the two and is its own session.
 - The PTY path and client terminals were not measured.
 - omp installed with `bun add` and started through its bin link runs as `bun ./node_modules/.bin/omp`; its executable is Bun's.
 
