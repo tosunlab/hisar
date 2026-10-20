@@ -40,27 +40,29 @@ type commandMode struct {
 
 var selectedMode commandMode
 
-// findOwnHarness finds the agent harness this hisar runs inside, from its own process chain.
-var findOwnHarness = func() (agentharness.Session, bool) {
+// findOwnHarness finds the agent harness this hisar runs inside, from its own process chain; an error means the chain is
+// unknown.
+var findOwnHarness = func() (agentharness.Session, bool, error) {
 	return agentharness.Find(agentharness.ReadChain(os.Getpid(), agentharness.SystemReader()))
 }
 
 // checkStandaloneAllowed refuses standalone mode inside an agent harness, where the Hisar app's agent rules are the only
-// way to the vaults: standalone would let the agent sign in with no approval in the app.
+// way to the vaults: standalone would let the agent sign in with no approval in the app. A chain that could not be read
+// may hold a harness, so it is refused too.
 func checkStandaloneAllowed() error {
-	if session, isInside := findOwnHarness(); isInside {
-		return describeHarnessRefusal(session)
+	session, isInside, err := findOwnHarness()
+	switch {
+	case err != nil:
+		return errors.New("hisar couldn't check which program runs it, so it uses the Hisar app only. Try again.")
+	case isInside:
+		return fmt.Errorf("hisar runs inside %s, so it uses the Hisar app only.", session.Harness.Name)
 	}
 	return nil
 }
 
-func describeHarnessRefusal(session agentharness.Session) error {
-	return fmt.Errorf("hisar runs inside %s, so it uses the Hisar app only.", session.Harness.Name)
-}
-
-// writeHarnessStatus is hisar status inside an agent harness when the app did not answer.
-func writeHarnessStatus(output io.Writer, mode commandMode, session agentharness.Session) {
-	fmt.Fprintf(output, "mode:    none (%s)\n%v\n", mode.reason, describeHarnessRefusal(session))
+// writeRefusedStatus is hisar status when the app did not answer and standalone mode is refused.
+func writeRefusedStatus(output io.Writer, mode commandMode, refusal error) {
+	fmt.Fprintf(output, "mode:    none (%s)\n%v\n", mode.reason, refusal)
 }
 
 func isStandaloneRequested() bool {

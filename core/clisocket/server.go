@@ -89,16 +89,18 @@ func getConnectionKind(requestType string) connectionKind {
 
 // connectionPeer is one connection. Its scope is fixed when it connects; its kind changes once, on agent.hello or
 // launcher.hello, and agent is what an agent connection said about itself. agentSession is the harness the caller runs
-// inside when its scope is an agent session; isAgentHost is a caller outside any harness in an app that hosted one.
+// inside when its scope is an agent session; isAgentHost is a caller outside any harness in an app that hosted one;
+// isChainUnknown is a caller whose process chain could not be read, so nobody knows whether a harness runs in it.
 type connectionPeer struct {
-	peer         Peer
-	session      TerminalSession
-	connectionID uint64
-	scope        approvalScope
-	kind         connectionKind
-	agent        AgentIdentity
-	agentSession agentharness.Session
-	isAgentHost  bool
+	peer           Peer
+	session        TerminalSession
+	connectionID   uint64
+	scope          approvalScope
+	kind           connectionKind
+	agent          AgentIdentity
+	agentSession   agentharness.Session
+	isAgentHost    bool
+	isChainUnknown bool
 }
 
 func NewServer(config ServerConfig) *Server {
@@ -166,7 +168,7 @@ func (s *Server) identifyPeer(connection net.Conn, connectionID uint64) (connect
 	var agent agentLookup
 	agent.session, agent.isInside, err = s.config.PeerResolver.GetAgentSession(peer.PID)
 	if err != nil {
-		log.Printf("commandline: approving PID %d for its connection only: %v", peer.PID, err)
+		log.Printf("commandline: could not check the process chain of PID %d: %v", peer.PID, err)
 		agent = agentLookup{isUnknown: true}
 	}
 	var app AppIdentity
@@ -178,7 +180,7 @@ func (s *Server) identifyPeer(connection net.Conn, connectionID uint64) (connect
 	if agent.isInside && app.Path != "" {
 		s.recordAgentHost(app)
 	}
-	client := connectionPeer{peer: peer, session: session, connectionID: connectionID, agentSession: agent.session}
+	client := connectionPeer{peer: peer, session: session, connectionID: connectionID, agentSession: agent.session, isChainUnknown: agent.isUnknown}
 	if app.Path != "" && s.config.AgentHosts.IsAgentHost(app) {
 		client.isAgentHost, app = !agent.isInside, AppIdentity{}
 	}
@@ -279,6 +281,9 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 	case connectionLauncher:
 		return s.answerLauncherRequest(ctx, client, hello, request)
 	}
+	if client.isChainUnknown {
+		return nil, refuseUnknownChain()
+	}
 	if hello.State == cliprotocol.StateSignedOut {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorSignedOut, "the Hisar app is not signed in; sign in there, or run hisar --standalone")
 	}
@@ -305,6 +310,12 @@ func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, requ
 		return nil, convertDenial(err)
 	}
 	return s.config.Handler.HandleRequest(ctx, request)
+}
+
+// refuseUnknownChain answers an ordinary hisar command or a launcher whose process chain could not be read: an agent
+// harness could run in it, so neither the command line's rules nor a launcher's apply. Reading it again usually works.
+func refuseUnknownChain() error {
+	return cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar couldn't check which program is asking. Try again.")
 }
 
 // isApproved is what hello and launcher.hello report: Hisar is unlocked, and the memory of the connection's kind holds an

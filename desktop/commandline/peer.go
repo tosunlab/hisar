@@ -14,5 +14,5 @@ type PeerResolver struct {
 }
 
 func (resolver PeerResolver) GetAgentSession(pid int) (agentharness.Session, bool, error) {
-	return clisocket.FindAgentSession(resolver.Resolver.ReadChain(pid))
+	return agentharness.Find(resolver.Resolver.ReadChain(pid))
 }

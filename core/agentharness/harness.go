@@ -4,10 +4,14 @@
 package agentharness
 
 import (
+	"errors"
 	"path/filepath"
 	"slices"
 	"strings"
 )
+
+// ErrUnknownChain is a chain whose snapshot cannot be trusted, so whether a harness runs in it is unknown.
+var ErrUnknownChain = errors.New("agentharness: the process chain changed while it was read, or is too long")
 
 // Harness is a coding agent harness and the ways to recognize its process. A process matches on any one of them.
 type Harness struct {
@@ -79,13 +83,13 @@ type Session struct {
 	Directory string
 }
 
-// Find returns the session of the nearest harness in a known chain. A worker of
+// Find returns the session of the nearest harness in a chain, and ErrUnknownChain when the chain is unknown. A worker of
 // the harness, such as omp's daemon broker, belongs to the session of the harness process that started it, so Find
 // passes over a run of workers to that process. Any other harness process, even one whose parent is the same harness,
 // is its own session.
-func Find(chain Chain) (Session, bool) {
+func Find(chain Chain) (Session, bool, error) {
 	if !chain.IsKnown {
-		return Session{}, false
+		return Session{}, false, ErrUnknownChain
 	}
 	for index, process := range chain.Processes {
 		for _, harness := range harnesses {
@@ -96,10 +100,10 @@ func Find(chain Chain) (Session, bool) {
 				index++
 				process = chain.Processes[index]
 			}
-			return Session{Harness: harness, PID: process.PID, StartTime: process.StartTime, Directory: process.WorkingDirectory}, true
+			return Session{Harness: harness, PID: process.PID, StartTime: process.StartTime, Directory: process.WorkingDirectory}, true, nil
 		}
 	}
-	return Session{}, false
+	return Session{}, false, nil
 }
 
 func (harness Harness) isWorker(process Process) bool {

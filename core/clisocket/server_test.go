@@ -23,10 +23,9 @@ type fakePeerResolver struct {
 	session TerminalSession
 	// app is what IdentifyApp verifies the caller runs in; the zero AppIdentity is none.
 	app AppIdentity
-	// agentSession is the harness the caller runs inside when isInsideAgent; agentChainError makes its chain unknown.
-	agentSession    agentharness.Session
-	isInsideAgent   bool
-	agentChainError error
+	// agentSession is the harness the caller runs inside when isInsideAgent.
+	agentSession  agentharness.Session
+	isInsideAgent bool
 }
 
 func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (Peer, error) {
@@ -50,20 +49,14 @@ func (resolver *fakePeerResolver) GetParentPID(int) (int, error) { return 4321, 
 func (resolver *fakePeerResolver) GetAgentSession(int) (agentharness.Session, bool, error) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
-	return resolver.agentSession, resolver.isInsideAgent, resolver.agentChainError
+	return resolver.agentSession, resolver.isInsideAgent, nil
 }
 
 // setAgentSession makes the next callers run inside the harness, or outside every harness for the zero Session.
 func (resolver *fakePeerResolver) setAgentSession(session agentharness.Session) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
-	resolver.agentSession, resolver.isInsideAgent, resolver.agentChainError = session, session.PID != 0, nil
-}
-
-func (resolver *fakePeerResolver) setUnknownChain() {
-	resolver.mutex.Lock()
-	defer resolver.mutex.Unlock()
-	resolver.agentSession, resolver.isInsideAgent, resolver.agentChainError = agentharness.Session{}, false, errUnknownChain
+	resolver.agentSession, resolver.isInsideAgent = session, session.PID != 0
 }
 
 // startHarness starts a process that stands in for omp, so the server watches a real process instance; stop ends it.

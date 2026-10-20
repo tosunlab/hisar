@@ -81,7 +81,7 @@ func TestReadChainIsASnapshotOfInstances(t *testing.T) {
 	if omp := chain.Processes[2]; omp.StartTime != 100 || omp.ParentPID != 1217 || omp.Path != ompPath || omp.Signature != ompSignature || !slices.Equal(omp.Arguments, []string{"omp"}) {
 		t.Errorf("omp = %+v", omp)
 	}
-	if session, isFound := Find(chain); !isFound || session.PID != 1226 || session.StartTime != 100 {
+	if session, isFound, _ := Find(chain); !isFound || session.PID != 1226 || session.StartTime != 100 {
 		t.Errorf("session = %+v, %v", session, isFound)
 	}
 }
@@ -118,7 +118,7 @@ func TestChangeDuringTheWalkIsUnknown(t *testing.T) {
 			if chain.IsKnown {
 				t.Errorf("known chain %+v", chain)
 			}
-			if session, isFound := Find(chain); isFound {
+			if session, isFound, _ := Find(chain); isFound {
 				t.Errorf("session %+v", session)
 			}
 		})

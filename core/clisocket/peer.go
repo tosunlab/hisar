@@ -10,8 +10,6 @@ import (
 	"github.com/tryhisar/hisar/core/localsocket"
 )
 
-var errUnknownChain = errors.New("commandline: the process chain changed while it was read")
-
 type Peer struct {
 	UID int
 	PID int
@@ -47,15 +45,6 @@ type PeerResolver interface {
 	GetAgentSession(pid int) (agentharness.Session, bool, error)
 	GetProcessPath(pid int) (string, error)
 	GetParentPID(pid int) (int, error)
-}
-
-// FindAgentSession answers GetAgentSession from a process chain.
-func FindAgentSession(chain agentharness.Chain) (agentharness.Session, bool, error) {
-	if !chain.IsKnown {
-		return agentharness.Session{}, false, errUnknownChain
-	}
-	session, isFound := agentharness.Find(chain)
-	return session, isFound, nil
 }
 
 type SystemPeerResolver struct{}
@@ -95,7 +84,7 @@ func (SystemPeerResolver) GetTerminalSession(pid int) (TerminalSession, error) {
 
 // GetAgentSession reads the chain with sysctl or /proc only, so it checks no code signature.
 func (SystemPeerResolver) GetAgentSession(pid int) (agentharness.Session, bool, error) {
-	return FindAgentSession(agentharness.ReadChain(pid, agentharness.SystemReader()))
+	return agentharness.Find(agentharness.ReadChain(pid, agentharness.SystemReader()))
 }
 
 func (SystemPeerResolver) GetProcessPath(pid int) (string, error) {

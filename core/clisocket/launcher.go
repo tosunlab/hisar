@@ -139,11 +139,14 @@ func checkLauncherShare(request *cliprotocol.Request) error {
 
 // startLauncherConnection turns a command-line connection into a launcher connection. A launcher is an app macOS
 // verified, running outside a terminal, so an approval that lasts until Hisar locks is never keyed by a terminal session
-// or shared by callers nobody can name. Nothing inside an agent harness, and no app that hosted one, is a launcher.
+// or shared by callers nobody can name. Nothing inside an agent harness, or whose chain could not be read, and no app
+// that hosted one, is a launcher.
 func (s *Server) startLauncherConnection(client *connectionPeer, hello cliprotocol.HelloResult) (any, error) {
 	switch {
 	case client.kind != connectionCommandLine:
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "this connection already belongs to an agent or a launcher")
+	case client.isChainUnknown:
+		return nil, refuseUnknownChain()
 	case client.isInAgentSession():
 		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf("Hisar answers no launcher inside %s", client.agentSession.Harness.Name))
 	case client.isAgentHost:

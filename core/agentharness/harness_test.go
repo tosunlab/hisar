@@ -1,6 +1,7 @@
 package agentharness
 
 import (
+	"errors"
 	"testing"
 )
 
@@ -24,7 +25,7 @@ func createOmpInTernChain() Chain {
 }
 
 func TestFindOmpInTern(t *testing.T) {
-	session, isFound := Find(createOmpInTernChain())
+	session, isFound, _ := Find(createOmpInTernChain())
 	if !isFound || session.Harness.ID != "omp" || session.Harness.Name != "omp" || session.PID != 1226 || session.StartTime != 100 ||
 		session.Directory != "/Users/developer/src/hisarapp-core" {
 		t.Fatalf("session = %+v, %v", session, isFound)
@@ -32,17 +33,17 @@ func TestFindOmpInTern(t *testing.T) {
 
 	bySignature := createOmpInTernChain()
 	bySignature.Processes[2].Arguments = nil
-	if session, isFound := Find(bySignature); !isFound || session.PID != 1226 {
+	if session, isFound, _ := Find(bySignature); !isFound || session.PID != 1226 {
 		t.Errorf("signature alone: %+v, %v", session, isFound)
 	}
 	byName := createOmpInTernChain()
 	byName.Processes[2].Signature = Signature{}
-	if session, isFound := Find(byName); !isFound || session.PID != 1226 {
+	if session, isFound, _ := Find(byName); !isFound || session.PID != 1226 {
 		t.Errorf("first argument alone: %+v, %v", session, isFound)
 	}
 	otherTeam := createOmpInTernChain()
 	otherTeam.Processes[2].Arguments, otherTeam.Processes[2].Signature = []string{"18.12.3"}, Signature{Identifier: "omp-darwin-arm64", TeamID: "ABCDE12345"}
-	if session, isFound := Find(otherTeam); isFound {
+	if session, isFound, _ := Find(otherTeam); isFound {
 		t.Errorf("another team's signature matched: %+v", session)
 	}
 }
@@ -57,16 +58,16 @@ func TestFindOmpRunByBun(t *testing.T) {
 		{PID: 46808, ParentPID: 46806, StartTime: 150, Path: "/usr/bin/python3", Arguments: []string{"python3", "-c", "import pty"}},
 		{PID: 46806, ParentPID: 1, StartTime: 100, Path: "/bin/bash", Arguments: []string{"/bin/bash", "-c", "sleep 8"}},
 	}}
-	session, isFound := Find(chain)
+	session, isFound, _ := Find(chain)
 	if !isFound || session.PID != 46809 || session.Directory != "/private/tmp/ompbun" {
 		t.Fatalf("bin link: %+v, %v", session, isFound)
 	}
 	chain.Processes[2].Arguments = []string{"bun", "--smol", "/Users/developer/.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"}
-	if session, isFound := Find(chain); !isFound || session.PID != 46809 {
+	if session, isFound, _ := Find(chain); !isFound || session.PID != 46809 {
 		t.Errorf("package path: %+v, %v", session, isFound)
 	}
 	chain.Processes[2].Arguments = []string{"bun", "run", "build"}
-	if session, isFound := Find(chain); isFound {
+	if session, isFound, _ := Find(chain); isFound {
 		t.Errorf("another Bun script matched: %+v", session)
 	}
 }
@@ -78,7 +79,7 @@ func TestFindNothingInATerminal(t *testing.T) {
 		{PID: 300, ParentPID: 200, StartTime: 150, Path: "/usr/bin/login", Arguments: []string{"login", "-pfl", "developer"}},
 		{PID: 200, ParentPID: 1, StartTime: 100, Path: ternPath, Arguments: []string{"tern"}},
 	}}
-	if session, isFound := Find(chain); isFound {
+	if session, isFound, _ := Find(chain); isFound {
 		t.Errorf("found %+v in a terminal", session)
 	}
 }
@@ -86,8 +87,8 @@ func TestFindNothingInATerminal(t *testing.T) {
 func TestUnknownChainFindsNoSession(t *testing.T) {
 	chain := createOmpInTernChain()
 	chain.IsKnown = false
-	if session, isFound := Find(chain); isFound {
-		t.Errorf("found %+v in an unknown chain", session)
+	if session, isFound, err := Find(chain); isFound || !errors.Is(err, ErrUnknownChain) {
+		t.Errorf("unknown chain: %+v, %v, %v", session, isFound, err)
 	}
 }
 
@@ -98,13 +99,13 @@ func TestWorkerBrokerBelongsToItsOmpSession(t *testing.T) {
 	broker := Process{PID: 4564, ParentPID: 1226, StartTime: 150, Path: ompPath, Arguments: []string{ompPath, "__omp_worker_daemon_broker"}, Signature: ompSignature}
 	chain.Processes[1].ParentPID = broker.PID
 	chain.Processes = append(chain.Processes[:2], append([]Process{broker}, chain.Processes[2:]...)...)
-	if session, isFound := Find(chain); !isFound || session.PID != 1226 {
+	if session, isFound, _ := Find(chain); !isFound || session.PID != 1226 {
 		t.Errorf("service command: %+v, %v", session, isFound)
 	}
 	predictor := Process{PID: 69810, ParentPID: 4564, StartTime: 160, Path: ompPath, Arguments: []string{ompPath, "__omp_worker_text_predict"}, Signature: ompSignature}
 	chain.Processes[1].ParentPID = predictor.PID
 	chain.Processes = append(chain.Processes[:2], append([]Process{predictor}, chain.Processes[2:]...)...)
-	if session, isFound := Find(chain); !isFound || session.PID != 1226 {
+	if session, isFound, _ := Find(chain); !isFound || session.PID != 1226 {
 		t.Errorf("worker under the broker: %+v, %v", session, isFound)
 	}
 }
@@ -115,7 +116,7 @@ func TestExecOmpIsItsOwnSession(t *testing.T) {
 	chain := createOmpInTernChain()
 	nested := Process{PID: 39136, ParentPID: 1226, StartTime: 200, Path: ompPath, Arguments: []string{"omp"}, WorkingDirectory: "/Users/developer/src/other", Signature: ompSignature}
 	chain.Processes[1] = nested
-	if session, isFound := Find(chain); !isFound || session.PID != 39136 || session.Directory != "/Users/developer/src/other" {
+	if session, isFound, _ := Find(chain); !isFound || session.PID != 39136 || session.Directory != "/Users/developer/src/other" {
 		t.Errorf("exec omp: %+v, %v", session, isFound)
 	}
 }
@@ -127,7 +128,7 @@ func TestOmpStartedFromAnOmpShellIsItsOwnSession(t *testing.T) {
 		{PID: 39250, ParentPID: 39136, StartTime: 350, Path: ompPath, Arguments: []string{"omp"}, WorkingDirectory: "/Users/developer/src/other", Signature: ompSignature},
 	}
 	chain.Processes = append(nested, chain.Processes[1:]...)
-	if session, isFound := Find(chain); !isFound || session.PID != 39250 || session.Directory != "/Users/developer/src/other" {
+	if session, isFound, _ := Find(chain); !isFound || session.PID != 39250 || session.Directory != "/Users/developer/src/other" {
 		t.Errorf("nested omp: %+v, %v", session, isFound)
 	}
 }

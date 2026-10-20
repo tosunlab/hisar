@@ -388,7 +388,7 @@ func createOmpInTernSystem() *fakeSystem {
 
 func TestResolveAgentSessionThroughTern(t *testing.T) {
 	system := createOmpInTernSystem()
-	session, isFound := agentharness.Find(system.createResolver().ReadChain(39200))
+	session, isFound, _ := agentharness.Find(system.createResolver().ReadChain(39200))
 	if !isFound || session.Harness.Name != "omp" || session.PID != 1226 || session.StartTime != 100 || session.Directory != "/Users/developer/src/hisarapp-core" {
 		t.Fatalf("session = %+v, %v", session, isFound)
 	}
@@ -397,11 +397,11 @@ func TestResolveAgentSessionThroughTern(t *testing.T) {
 	omp := nameless.tree[1226]
 	omp.arguments = []string{"18.12.3"}
 	nameless.tree[1226] = omp
-	if session, isFound := agentharness.Find(nameless.createResolver().ReadChain(39200)); !isFound || session.PID != 1226 {
+	if session, isFound, _ := agentharness.Find(nameless.createResolver().ReadChain(39200)); !isFound || session.PID != 1226 {
 		t.Errorf("signature alone: %+v, %v", session, isFound)
 	}
 	nameless.signatures[ompInTernPath] = Signature{Status: SignatureStatusInvalid, TeamID: "VTLHGQC72S", Identifier: "omp-darwin-arm64"}
-	if session, isFound := agentharness.Find(nameless.createResolver().ReadChain(39200)); isFound {
+	if session, isFound, _ := agentharness.Find(nameless.createResolver().ReadChain(39200)); isFound {
 		t.Errorf("a signature that does not verify matched: %+v", session)
 	}
 }
@@ -425,7 +425,7 @@ func TestParentChangedDuringWalkIsUnknown(t *testing.T) {
 	if chain.IsKnown || len(chain.Processes) != 4 {
 		t.Fatalf("chain = %+v", chain)
 	}
-	if session, isFound := agentharness.Find(chain); isFound {
+	if session, isFound, _ := agentharness.Find(chain); isFound {
 		t.Errorf("found %+v in a chain that changed", session)
 	}
 	if chain := system.createResolver().ReadChain(39200); !chain.IsKnown || len(chain.Processes) != 2 {

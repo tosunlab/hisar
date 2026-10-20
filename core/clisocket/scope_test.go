@@ -103,22 +103,63 @@ func TestAgentSessionComesBeforeTerminalAndApp(t *testing.T) {
 	}
 }
 
-func TestUnknownChainGetsConnectionScope(t *testing.T) {
-	if scope := getApprovalScope(agentLookup{isUnknown: true}, TerminalSession{SessionID: 77, TerminalDevice: 5}, terminalApp, 7); scope != (approvalScope{connectionID: 7}) {
-		t.Errorf("scope %+v", scope)
+// deepChainResolver puts the caller 70 processes below launchd, deeper than a chain is read, so its chain is unknown.
+type deepChainResolver struct{ *fakePeerResolver }
+
+func (deepChainResolver) GetAgentSession(int) (agentharness.Session, bool, error) {
+	const callerPID, depth = 1000, 70
+	reader := agentharness.Reader{
+		ReadInstance: func(pid int) (agentharness.Instance, error) {
+			if pid == callerPID+depth-1 {
+				return agentharness.Instance{StartTime: 1, ParentPID: 1}, nil
+			}
+			return agentharness.Instance{StartTime: int64(2*callerPID - pid), ParentPID: pid + 1}, nil
+		},
+		GetPath: func(int) (string, error) { return "/bin/sh", nil },
 	}
-	fixture := createServerFixture(t)
-	fixture.resolver.setUnknownChain()
-	for range 2 {
-		fixture.connect(t).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault})
+	return agentharness.Find(agentharness.ReadChain(callerPID, reader))
+}
+
+func TestUnknownChainIsRefusedButForHelloAndAgents(t *testing.T) {
+	const refusal = "Hisar couldn't check which program is asking. Try again."
+	fixture := createAgentFixture(t)
+	fixture.server.config.IdentifyApp = fixture.resolver.identifyApp
+	fixture.server.config.LauncherApprover = fixture.launcherApprover
+	fixture.server.config.PeerResolver = deepChainResolver{fixture.resolver}
+	fixture.resolver.setCaller(launchdSession, ternApp)
+
+	commandLine := fixture.connect(t)
+	var hello cliprotocol.HelloResult
+	if readResult(t, commandLine.send(t, cliprotocol.Request{Type: cliprotocol.TypeHello}), &hello); hello.State != cliprotocol.StateUnlocked || hello.IsApproved {
+		t.Errorf("hello: %+v", hello)
 	}
-	if count := fixture.approver.requestCount.Load(); count != 2 {
-		t.Fatalf("%d approvals; want one per connection", count)
-	}
-	for _, request := range fixture.approver.requests {
-		if request.Coverage != CoverageConnection {
-			t.Errorf("coverage %q", request.Coverage)
+	for _, request := range []cliprotocol.Request{
+		{Type: cliprotocol.TypeListVault},
+		{Type: cliprotocol.TypeGetItem, VaultID: "v1", ItemID: "i1"},
+		{Type: cliprotocol.TypeResolveSecret, References: []string{stripeReference}},
+		{Type: cliprotocol.TypeSaveItem, VaultID: "v1", Item: &cliprotocol.ItemChange{Title: "x"}},
+	} {
+		if response := commandLine.send(t, request); getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != refusal {
+			t.Errorf("%s: %+v", request.Type, response.Error)
 		}
+	}
+	if response := fixture.connect(t).send(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherHello}); getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != refusal {
+		t.Errorf("launcher.hello: %+v", response.Error)
+	}
+	if fixture.approver.requestCount.Load() != 0 || fixture.launcherApprover.requestCount.Load() != 0 || len(fixture.agentHandler.types) != 0 {
+		t.Fatalf("a refused request asked or reached the handler: %v", fixture.agentHandler.types)
+	}
+
+	agent := fixture.connectAgent(t)
+	for range 2 {
+		agent.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentListVault})
+	}
+	fixture.connectAgent(t).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentListVault})
+	if count := fixture.agentApprover.getRequestCount(); count != 2 {
+		t.Errorf("%d agent approvals; want one per connection", count)
+	}
+	if request := fixture.agentApprover.getLastRequest(); request.Session != nil || request.IsCommandLine {
+		t.Errorf("agent approval: %+v", request)
 	}
 }
 
