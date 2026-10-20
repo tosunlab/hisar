@@ -56,11 +56,10 @@ beforeEach(() => {
 });
 
 describe("CodingAgentsSection", () => {
-  it("lists every vault as invisible to agents by default and shows how to add hisar mcp", async () => {
+  it("lists every vault as invisible to agents by default", async () => {
     const wrapper = mount(CodingAgentsSection);
     await flushPromises();
     expect(api.listAllAgentVaultID).toHaveBeenCalledTimes(1);
-    expect(wrapper.find('[data-testid="coding-agents-snippet"]').text()).toBe("claude mcp add hisar -- hisar mcp");
     expect(wrapper.find('[data-testid="coding-agents-explanation"]').text()).toBe(
       "Agents can find items in these vaults and use their secrets after you approve; other vaults stay invisible to them.",
     );

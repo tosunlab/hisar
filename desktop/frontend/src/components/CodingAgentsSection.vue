@@ -6,7 +6,7 @@ import { forgetAgentHost, loadAgentSessions, loadAgentVaults, revokeAgentSession
 import { useSettingsRowVisibility } from "../settingsSections";
 import { describeAgentSession, formatCount, formatTimeAgo } from "../util";
 import AppIcon from "./AppIcon.vue";
-import OmpConnectCard from "./OmpConnectCard.vue";
+import CodingAgentConnections from "./CodingAgentConnections.vue";
 
 const isRowVisible = useSettingsRowVisibility();
 
@@ -43,19 +43,13 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
 <template>
   <section v-show="isRowVisible('coding-agents')" class="settings-block" data-testid="coding-agents-section">
     <p class="section-label">Coding agents</p>
-    <OmpConnectCard />
+    <CodingAgentConnections />
     <div class="settings-group">
       <div class="setting">
         <div class="setting-text">
-          <strong>Use Hisar from coding agents</strong>
-          <p class="muted">
-            Add <span class="monospace">hisar mcp</span> to Claude Code, Cursor or another MCP client. Agents run commands with your secrets without seeing
-            them; you approve each use here.
-          </p>
+          <strong>Vaults for coding agents</strong>
+          <p class="muted">Agents run commands with your secrets without seeing them; you approve each use here.</p>
         </div>
-      </div>
-      <div class="settings-group-detail">
-        <pre class="code-block monospace" data-testid="coding-agents-snippet">claude mcp add hisar -- hisar mcp</pre>
       </div>
       <label v-for="vault in store.allVault" :key="vault.id" class="setting" :data-testid="`agent-vault-${vault.id}`">
         <span class="settings-row-icon"><AppIcon name="vault" :size="14" /></span>

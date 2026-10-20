@@ -7,5 +7,9 @@ export {
 };
 
 export {
-    OmpState
+    State
+} from "./models.js";
+
+export type {
+    Agent
 } from "./models.js";

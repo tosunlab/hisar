@@ -262,6 +262,7 @@ func main() {
 		HomeDirectory: homeDirectory,
 		GetUserPath:   userPathReader.Read,
 		OmpPluginPath: harness.FindOmpPlugin(filepath.Dir(executablePath)),
+		HisarPath:     helpers.commandLine,
 	})
 	inviteLinkService := app.NewInviteLinkService()
 	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])

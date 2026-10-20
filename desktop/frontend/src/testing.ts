@@ -3,6 +3,7 @@ import type {
   AgentHost,
   AgentSession,
   ApprovalEvent,
+  CodingAgent,
   FavoriteItem,
   ShareLink,
   ShareLinkField,
@@ -507,6 +508,10 @@ export function createAgentHost(overrides: Partial<AgentHost> = {}): AgentHost {
   return { path: "/Applications/Tern.app", teamID: "VTLHGQC72S", name: "Tern", iconURL: "data:image/png;base64,Tern", ...overrides };
 }
 
+export function createCodingAgent(overrides: Partial<CodingAgent> = {}): CodingAgent {
+  return { id: "omp", name: "omp", state: "available", detail: "", ...overrides };
+}
+
 export function createCommandLineStatus(overrides: Partial<CommandLineStatus> = {}): CommandLineStatus {
   return {
     isAvailable: true,
@@ -792,9 +797,9 @@ export function createApiMock() {
     revokeAgentSession: vi.fn(),
     listAllAgentHost: vi.fn().mockResolvedValue([]),
     forgetAgentHost: vi.fn(),
-    getOmpState: vi.fn().mockResolvedValue("not-installed"),
-    connectOmp: vi.fn(),
-    disconnectOmp: vi.fn(),
+    listAllCodingAgent: vi.fn().mockResolvedValue([]),
+    connectCodingAgent: vi.fn(),
+    disconnectCodingAgent: vi.fn(),
     getLoginItemStatus: vi.fn().mockResolvedValue(createLoginItemStatus()),
     setOpenAtLogin: vi.fn(),
     openLoginItemSettings: vi.fn().mockResolvedValue(undefined),

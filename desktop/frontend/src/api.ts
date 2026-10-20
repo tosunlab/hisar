@@ -11,6 +11,7 @@ import type {
   Status as BoundCommandLineStatus,
 } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
 import { Service as HarnessService } from "../bindings/github.com/tryhisar/hisar/desktop/harness";
+import type { Agent as BoundCodingAgent } from "../bindings/github.com/tryhisar/hisar/desktop/harness";
 import { Service as LoginItemService } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type {
@@ -226,7 +227,15 @@ function normalizeCommandLineStatus(boundStatus: BoundCommandLineStatus): Comman
 }
 
 // The bound enum also has Go's zero value, which the service returns only with an error.
-export type OmpState = "not-installed" | "available" | "connected";
+export type CodingAgentState = "not-installed" | "available" | "connected" | "conflict" | "unknown";
+
+export interface CodingAgent extends Omit<BoundCodingAgent, "state"> {
+  state: CodingAgentState;
+}
+
+function normalizeCodingAgent(boundAgent: BoundCodingAgent): CodingAgent {
+  return { ...boundAgent, state: String(boundAgent.state) as CodingAgentState };
+}
 
 export interface BrowserStatus extends Omit<BoundBrowserStatus, "allInstallation" | "allPairedBrowser"> {
   allInstallation: BrowserInstallation[];
@@ -472,9 +481,9 @@ const wailsApi = {
     normalizeCommandLineStatus(await CommandLineService.SetCommandLineIntegration(isEnabled)),
   listAllLauncherApp: async (): Promise<LauncherApp[]> => (await CommandLineService.ListLauncherApps()) ?? [],
   revokeLauncherApp: async (appPath: string): Promise<LauncherApp[]> => (await CommandLineService.RevokeLauncherApp(appPath)) ?? [],
-  getOmpState: async (): Promise<OmpState> => String(await HarnessService.GetState()) as OmpState,
-  connectOmp: async (): Promise<OmpState> => String(await HarnessService.Connect()) as OmpState,
-  disconnectOmp: async (): Promise<OmpState> => String(await HarnessService.Disconnect()) as OmpState,
+  listAllCodingAgent: async (): Promise<CodingAgent[]> => ((await HarnessService.ListAgents()) ?? []).map(normalizeCodingAgent),
+  connectCodingAgent: async (id: string): Promise<CodingAgent> => normalizeCodingAgent(await HarnessService.Connect(id)),
+  disconnectCodingAgent: async (id: string): Promise<CodingAgent> => normalizeCodingAgent(await HarnessService.Disconnect(id)),
   listAllAgentVaultID: async (): Promise<string[]> => (await Service.ListAgentVaultIDs()) ?? [],
   setVaultAvailableToAgents: async (vaultID: string, isAvailable: boolean): Promise<string[]> =>
     (await Service.SetVaultAvailableToAgents(vaultID, isAvailable)) ?? [],

@@ -4,6 +4,8 @@ import type {
   AgentSession,
   CardDescription,
   ApprovalEvent,
+  CodingAgent,
+  CodingAgentState,
   BrowserStatus,
   CommandLineStatus,
   Device,
@@ -21,7 +23,6 @@ import type {
   ItemDetail,
   LauncherApp,
   LoginItemStatus,
-  OmpState,
   PasswordConfig,
   ShareInvitations,
   ShareLink,
@@ -563,8 +564,27 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
 
 // agentVaults=none starts with every vault invisible to coding agents.
 let allPreviewAgentVaultID: string[] = previewParameter.get("agentVaults") === "none" ? [] : ["work"];
-// omp=not-installed | available | connected
-let previewOmpState = (previewParameter.get("omp") ?? "available") as OmpState;
+// omp=, claudeCode=, codex= not-installed | available | connected | conflict | unknown
+let allPreviewCodingAgent: CodingAgent[] = [
+  { id: "omp", name: "omp", state: "available", detail: "" },
+  { id: "claude-code", name: "Claude Code", state: "connected", detail: "" },
+  { id: "codex", name: "Codex", state: "available", detail: "" },
+].map((agent) => {
+  const state = (previewParameter.get(agent.id === "claude-code" ? "claudeCode" : agent.id) ?? agent.state) as CodingAgentState;
+  const detail =
+    state === "conflict"
+      ? `${agent.name} already has a server named hisar. Remove it to connect Hisar.`
+      : state === "unknown"
+        ? `${agent.name} could not list its MCP servers: failed to load configuration`
+        : "";
+  return { ...agent, state, detail };
+});
+
+function setPreviewCodingAgentState(id: string, state: CodingAgentState): Promise<CodingAgent> {
+  allPreviewCodingAgent = allPreviewCodingAgent.map((agent) => (agent.id === id ? { ...agent, state } : agent));
+  const changedAgent = allPreviewCodingAgent.find((agent) => agent.id === id);
+  return changedAgent ? resolveAfterDelay(structuredClone(changedAgent)) : Promise.reject(new Error(`No coding agent named ${id}`));
+}
 
 // agentSessions=1: two omp sessions in Tern and Tern as an agent host in Settings → Coding agents; &appIcon=<url> is Tern's icon.
 const isPreviewAgentSessionShown = previewParameter.get("agentSessions") === "1";
@@ -1774,15 +1794,9 @@ export const previewApi = {
     allPreviewAgentHost = allPreviewAgentHost.filter((host) => host.path !== path || host.teamID !== teamID);
     return resolveAfterDelay(structuredClone(allPreviewAgentHost));
   },
-  getOmpState: () => resolveAfterDelay(previewOmpState),
-  connectOmp: () => {
-    previewOmpState = "connected";
-    return resolveAfterDelay(previewOmpState);
-  },
-  disconnectOmp: () => {
-    previewOmpState = "available";
-    return resolveAfterDelay(previewOmpState);
-  },
+  listAllCodingAgent: () => resolveAfterDelay(structuredClone(allPreviewCodingAgent)),
+  connectCodingAgent: (id: string) => setPreviewCodingAgentState(id, "connected"),
+  disconnectCodingAgent: (id: string) => setPreviewCodingAgentState(id, "available"),
   installCommandLineTool: () => {
     if (previewCommandLineMode === "conflict") {
       return Promise.reject(new Error("/opt/homebrew/bin/hisar is already a file that is not from Hisar; Hisar leaves it alone. Remove it yourself to install Hisar's"));
