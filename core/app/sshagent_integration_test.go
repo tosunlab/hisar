@@ -158,7 +158,7 @@ func checkSSHAgentFlow(t *testing.T, service *Service, personalID, password stri
 	defer os.RemoveAll(socketDirectory)
 	socketPath := filepath.Join(socketDirectory, "agent.sock")
 	approver := &recordingApprover{isAllowed: true}
-	agentServer := sshagent.NewServer(NewSSHKeySource(service), approver, localsocket.SystemPeerResolver{})
+	agentServer := sshagent.NewServer(NewSSHKeySource(service), approver, nil)
 	service.config.OnLock = agentServer.ClearApprovals
 	defer func() { service.config.OnLock = nil }()
 	listener, err := localsocket.ListenUnixSocket(socketPath)

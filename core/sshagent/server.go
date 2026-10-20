@@ -39,7 +39,7 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 	stopClosingConnection := context.AfterFunc(connectionContext, func() { connection.Close() })
 	defer stopClosingConnection()
 	defer connection.Close()
-	peer := localsocket.PeerInfo{Name: localsocket.UnknownPeerName}
+	peer := Peer{PeerInfo: localsocket.PeerInfo{Name: localsocket.UnknownPeerName}}
 	if s.peerResolver != nil {
 		if resolvedPeer, err := s.peerResolver.ResolvePeer(connection); err == nil {
 			peer = resolvedPeer
@@ -47,6 +47,9 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 	}
 	if peer.Name == "" {
 		peer.Name = localsocket.UnknownPeerName
+	}
+	if peer.AgentSession != nil {
+		s.joinAgentSession(ctx, *peer.AgentSession)
 	}
 	reader := localsocket.WatchConnectionClose(connection, cancel)
 	agent.ServeAgent(s.CreateAgent(connectionContext, peer), struct {

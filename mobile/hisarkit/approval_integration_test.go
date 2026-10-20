@@ -106,6 +106,14 @@ func (dialog *macDialog) waitForEvent(t *testing.T) agent.ApprovalEvent {
 	}
 }
 
+// programPeerResolver names the agent's peers by their program, so approvals are remembered per program.
+type programPeerResolver struct{}
+
+func (programPeerResolver) ResolvePeer(connection net.Conn) (sshagent.Peer, error) {
+	info, err := localsocket.SystemPeerResolver{}.ResolvePeer(connection)
+	return sshagent.Peer{PeerInfo: info}, err
+}
+
 type phoneApprovalRequest struct {
 	RequestID           string `json:"requestId"`
 	RequesterDeviceName string `json:"requesterDeviceName"`
@@ -252,7 +260,7 @@ func TestIntegrationPhoneApproval(t *testing.T) {
 	}
 	dialog := &macDialog{events: make(chan agent.ApprovalEvent, 8)}
 	approver := agent.NewApprover(agent.ApproverConfig{Emit: dialog.emit, PhoneApprover: phoneApprover, Timeout: 30 * time.Second})
-	agentServer := sshagent.NewServer(app.NewSSHKeySource(mac), approver, localsocket.SystemPeerResolver{})
+	agentServer := sshagent.NewServer(app.NewSSHKeySource(mac), approver, programPeerResolver{})
 	socketDirectory, err := os.MkdirTemp("", "hisar")
 	if err != nil {
 		t.Fatal(err)

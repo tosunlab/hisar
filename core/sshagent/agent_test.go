@@ -11,10 +11,12 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
@@ -92,10 +94,10 @@ func (approver *fakeApprover) getLastRequest(t *testing.T) ApprovalRequest {
 
 type fakePeerResolver struct {
 	mutex sync.Mutex
-	peer  localsocket.PeerInfo
+	peer  Peer
 }
 
-func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (localsocket.PeerInfo, error) {
+func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (Peer, error) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
 	return resolver.peer, nil
@@ -104,7 +106,7 @@ func (resolver *fakePeerResolver) ResolvePeer(net.Conn) (localsocket.PeerInfo, e
 func (resolver *fakePeerResolver) setPath(path string) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
-	resolver.peer = localsocket.PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path)}
+	resolver.peer = Peer{PeerInfo: localsocket.PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path)}}
 }
 
 type agentFixture struct {
@@ -377,7 +379,7 @@ func TestApprovalCachedPerClientPath(t *testing.T) {
 func (resolver *fakePeerResolver) setApplication(path, applicationPath string) {
 	resolver.mutex.Lock()
 	defer resolver.mutex.Unlock()
-	resolver.peer = localsocket.PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path), ApplicationPath: applicationPath}
+	resolver.peer = Peer{PeerInfo: localsocket.PeerInfo{PID: 4242, Path: path, Name: filepath.Base(path), ApplicationPath: applicationPath}}
 }
 
 func (approver *fakeApprover) setRemembered(isRemembered bool) {
@@ -578,7 +580,7 @@ func TestUnknownClientPathNotCached(t *testing.T) {
 	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
 	fixture := startAgent(t, []Key{key})
 	fixture.resolver.mutex.Lock()
-	fixture.resolver.peer = localsocket.PeerInfo{}
+	fixture.resolver.peer = Peer{}
 	fixture.resolver.mutex.Unlock()
 	address := startSSHServer(t, getPublicKey(t, key))
 	for range 2 {
@@ -662,7 +664,7 @@ func TestReadOnlyOperationsRefused(t *testing.T) {
 	if err != nil || len(agentKeys) != 1 {
 		t.Errorf("keys changed after refused operations: %v %v", agentKeys, err)
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), Peer{})
 	if _, err := directAgent.Signers(); !errors.Is(err, ErrReadOnly) {
 		t.Errorf("Signers err = %v", err)
 	}
@@ -697,7 +699,7 @@ func TestLockedSourceFailsGracefully(t *testing.T) {
 	if fixture.approver.countRequest() != 0 {
 		t.Error("approval requested while locked")
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), Peer{})
 	if _, err := directAgent.List(); !errors.Is(err, errTestLocked) {
 		t.Errorf("List err = %v, want wrapped source error", err)
 	}
@@ -884,7 +886,7 @@ func TestSignUnknownKey(t *testing.T) {
 	if _, err := fixture.dialAgent(t).Sign(otherKey, []byte("data")); err == nil {
 		t.Error("signed with a key the agent does not hold")
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), Peer{})
 	if _, err := directAgent.Sign(otherKey, []byte("data")); !errors.Is(err, ErrKeyNotFound) {
 		t.Errorf("err = %v, want ErrKeyNotFound", err)
 	}
@@ -934,7 +936,7 @@ func TestUnknownExtensionUnsupported(t *testing.T) {
 	if _, err := fixture.dialAgent(t).Extension("query", nil); !errors.Is(err, agent.ErrExtensionUnsupported) {
 		t.Errorf("err = %v, want ErrExtensionUnsupported", err)
 	}
-	directAgent := fixture.server.CreateAgent(context.Background(), localsocket.PeerInfo{})
+	directAgent := fixture.server.CreateAgent(context.Background(), Peer{})
 	if _, err := directAgent.Extension("unknown@example.com", []byte{1}); !errors.Is(err, agent.ErrExtensionUnsupported) {
 		t.Errorf("direct err = %v", err)
 	}
@@ -993,6 +995,165 @@ func TestServeWithoutPeerResolver(t *testing.T) {
 	}
 	if request := approver.getLastRequest(t); request.ClientName != localsocket.UnknownPeerName || request.ClientPath != "" {
 		t.Errorf("request = %+v", request)
+	}
+}
+
+func TestAgentSessionApprovalCoversOnlyThatSession(t *testing.T) {
+	key := createTestKey(t, "id", "Deploy key", getTestMaterials()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	paneA, _ := startHarness(t)
+	paneB, _ := startHarness(t)
+	connect := func(session *agentharness.Session, wantCount int) {
+		t.Helper()
+		fixture.resolver.setTernPeer(session, false)
+		if err := fixture.connectSSH(t, address); err != nil {
+			t.Fatalf("ssh auth failed: %v", err)
+		}
+		if count := fixture.approver.countRequest(); count != wantCount {
+			t.Fatalf("approval count = %d, want %d", count, wantCount)
+		}
+	}
+	connect(nil, 1)
+	connect(&paneA, 2)
+	if request := fixture.approver.getLastRequest(t); request.AgentSession == nil || request.AgentSession.PID != paneA.PID || !request.IsRememberable {
+		t.Errorf("request = %+v, want remembered for omp in pane A", request)
+	}
+	connect(&paneA, 2)
+	connect(&paneB, 3)
+	connect(&paneB, 3)
+	connect(nil, 3)
+}
+
+func TestAgentSessionApprovalEndsWithTheHarness(t *testing.T) {
+	key := createTestKey(t, "id", "Deploy key", getTestMaterials()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	session, stop := startHarness(t)
+	fixture.resolver.setTernPeer(&session, false)
+	connect := func(wantCount int) {
+		t.Helper()
+		if err := fixture.connectSSH(t, address); err != nil {
+			t.Fatalf("ssh auth failed: %v", err)
+		}
+		if count := fixture.approver.countRequest(); count != wantCount {
+			t.Fatalf("approval count = %d, want %d", count, wantCount)
+		}
+	}
+	connect(1)
+	connect(1)
+	stop()
+	connect(2)
+	connect(3)
+	deadline := time.Now().Add(5 * time.Second)
+	for fixture.countAgentSessionApprovals() != 0 {
+		if time.Now().After(deadline) {
+			t.Fatal("the agent kept the approval of a session whose harness exited")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func TestAgentSessionApprovalLastsAnHourAtMost(t *testing.T) {
+	key := createTestKey(t, "id", "Deploy key", getTestMaterials()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	advanceClock := fixture.setClock()
+	fixture.server.SetApprovalLifetime(0)
+	session, _ := startHarness(t)
+	connect := func(session *agentharness.Session, wantCount int) {
+		t.Helper()
+		fixture.resolver.setTernPeer(session, false)
+		if err := fixture.connectSSH(t, address); err != nil {
+			t.Fatalf("ssh auth failed: %v", err)
+		}
+		if count := fixture.approver.countRequest(); count != wantCount {
+			t.Fatalf("approval count = %d, want %d", count, wantCount)
+		}
+	}
+	connect(nil, 1)
+	connect(&session, 2)
+	advanceClock(AgentSessionApprovalLifetime - time.Minute)
+	connect(&session, 2)
+	advanceClock(2 * time.Minute)
+	connect(&session, 3)
+	connect(nil, 3)
+}
+
+func TestAgentHostWithoutHarnessReusesNoApproval(t *testing.T) {
+	key := createTestKey(t, "id", "Deploy key", getTestMaterials()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	address := startSSHServer(t, getPublicKey(t, key))
+	connect := func(isNeverRemembered bool, wantCount int) {
+		t.Helper()
+		fixture.resolver.setTernPeer(nil, isNeverRemembered)
+		if err := fixture.connectSSH(t, address); err != nil {
+			t.Fatalf("ssh auth failed: %v", err)
+		}
+		if count := fixture.approver.countRequest(); count != wantCount {
+			t.Fatalf("approval count = %d, want %d", count, wantCount)
+		}
+	}
+	connect(false, 1)
+	connect(true, 2)
+	if request := fixture.approver.getLastRequest(t); request.IsRememberable || !request.IsNeverRemembered {
+		t.Errorf("request = %+v, want no remember control", request)
+	}
+	connect(true, 3)
+	connect(false, 3)
+}
+
+// agentVaultKeySource offers an agent session only the keys of the vault open to coding agents.
+type agentVaultKeySource struct {
+	keys        []Key
+	agentVaults map[string]bool
+}
+
+func (source agentVaultKeySource) ListKeys(ctx context.Context) ([]Key, error) {
+	if _, isAgentSession := GetAgentSession(ctx); !isAgentSession {
+		return source.keys, nil
+	}
+	keys := []Key{}
+	for _, key := range source.keys {
+		if source.agentVaults[key.VaultID] {
+			keys = append(keys, key)
+		}
+	}
+	return keys, nil
+}
+
+func TestAgentSessionWithoutAgentKeyIsToldOnce(t *testing.T) {
+	key := createTestKey(t, "id", "Personal key", getTestMaterials()["ed25519"])
+	fixture := startAgent(t, nil)
+	fixture.server.keySource = agentVaultKeySource{keys: []Key{key}, agentVaults: map[string]bool{"agents": true}}
+	var notifiedMutex sync.Mutex
+	notifiedPIDs := []int{}
+	fixture.server.SetNoAgentKeyNotifier(func(session agentharness.Session) {
+		notifiedMutex.Lock()
+		defer notifiedMutex.Unlock()
+		notifiedPIDs = append(notifiedPIDs, session.PID)
+	})
+	list := func(session *agentharness.Session, wantKeyCount int) {
+		t.Helper()
+		fixture.resolver.setTernPeer(session, false)
+		keys, err := fixture.dialAgent(t).List()
+		if err != nil || len(keys) != wantKeyCount {
+			t.Fatalf("keys = %v, %v, want %d", keys, err, wantKeyCount)
+		}
+	}
+	paneA, _ := startHarness(t)
+	paneB, _ := startHarness(t)
+	list(nil, 1)
+	list(&paneA, 0)
+	list(&paneA, 0)
+	if _, err := fixture.server.CreateAgent(context.Background(), Peer{AgentSession: &paneA}).Sign(getPublicKey(t, key), []byte("data")); !errors.Is(err, ErrKeyNotFound) {
+		t.Errorf("omp signed with a key outside the vaults open to agents: %v", err)
+	}
+	list(&paneB, 0)
+	notifiedMutex.Lock()
+	defer notifiedMutex.Unlock()
+	if !slices.Equal(notifiedPIDs, []int{paneA.PID, paneB.PID}) {
+		t.Errorf("notified sessions %v, want each of %d and %d once", notifiedPIDs, paneA.PID, paneB.PID)
 	}
 }
 
