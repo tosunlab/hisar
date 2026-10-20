@@ -100,10 +100,9 @@ func (connector codexConnector) connect(codex program) error {
 	if err := requireHisar(connector.hisarPath); err != nil {
 		return err
 	}
-	path := connector.configPath()
-	// A config.toml linked from a dotfiles folder stays a link: the file it points to is the one that changes.
-	if target, err := filepath.EvalSymlinks(path); err == nil {
-		path = target
+	path, err := resolveConfigPath(connector.configPath())
+	if err != nil {
+		return err
 	}
 	original, err := readConfig(path)
 	if err != nil {
@@ -134,6 +133,31 @@ func (connector codexConnector) disconnect(codex program) error {
 		return fmt.Errorf("Codex could not remove Hisar's server: %w", err)
 	}
 	return nil
+}
+
+// resolveConfigPath is the file to change: config.toml, or the file a config.toml linked from a dotfiles folder points
+// to, so the link stays. A link to nothing is refused: replacing it would cut the user's link, and creating the file it
+// names would write into a folder that may no longer be where the user keeps their dotfiles.
+func resolveConfigPath(path string) (string, error) {
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return path, nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("Hisar cannot read Codex's config.toml: %w", err)
+	}
+	if info.Mode()&fs.ModeSymlink == 0 {
+		return path, nil
+	}
+	target, err := filepath.EvalSymlinks(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		link, _ := os.Readlink(path)
+		return "", fmt.Errorf("Codex's config.toml links to %s, which does not exist. Fix the link and try again", link)
+	}
+	if err != nil {
+		return "", fmt.Errorf("Hisar cannot read Codex's config.toml: %w", err)
+	}
+	return target, nil
 }
 
 // codexConfig is config.toml as Hisar read it; a file that does not exist yet is created owner-only, as Codex does.
