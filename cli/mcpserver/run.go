@@ -2,8 +2,10 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -14,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/tryhisar/hisar/cli/internal/dotenv"
 	"github.com/tryhisar/hisar/cli/internal/masking"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/secretreference"
@@ -21,21 +24,28 @@ import (
 
 const (
 	DefaultTimeout        = 120 * time.Second
-	MaximumTimeout        = 600 * time.Second
+	MaximumTimeout        = time.Hour
 	MaximumOutputLength   = 64 << 10
 	defaultKillDelay      = 5 * time.Second
 	outputDrainDuration   = time.Second
-	maximumVariableCount  = cliprotocol.MaxAgentReferenceCount
+	maximumSecretCount    = cliprotocol.MaxAgentReferenceCount
 	maximumArgumentLength = 1 << 20
+	shellPath             = "/bin/sh"
+	direnvStatusTimeout   = 5 * time.Second
+	// direnvAllowed is direnv's AllowStatus for an .envrc the user allowed.
+	direnvAllowed = 0
 )
 
 var variableNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
 type RunInput struct {
-	Command          []string          `json:"command" jsonschema:"the program and its arguments, e.g. [\"npm\", \"test\"]; it runs without a shell"`
-	Env              map[string]string `json:"env" jsonschema:"environment variables to set, each mapped to a hisar://vault/item/field secret reference from search_items"`
+	Command          []string          `json:"command,omitempty" jsonschema:"the program and its arguments, e.g. [\"npm\", \"test\"]; it runs without a shell. Pass command or shell, not both"`
+	Shell            string            `json:"shell,omitempty" jsonschema:"a command line that /bin/sh -c runs, for pipes, redirects and &&, e.g. \"npm test 2>&1 | tail -50\"; pass command or shell, not both"`
+	Env              map[string]string `json:"env,omitempty" jsonschema:"environment variables to set, each mapped to a hisar://vault/item/field secret reference from search_items"`
+	EnvFiles         []string          `json:"envFiles,omitempty" jsonschema:"dotenv files to read in order, relative to the working directory, as hisar run --env-file does: a value that is a whole hisar:// reference is resolved, other values are set as they are, and a variable already in the environment wins unless its value is a reference"`
+	Stdin            string            `json:"stdin,omitempty" jsonschema:"the command's standard input: literal text, or one whole hisar:// reference whose value is sent instead, e.g. for docker login --password-stdin; empty without it"`
 	WorkingDirectory string            `json:"workingDirectory,omitempty" jsonschema:"the directory to run in; relative to the directory hisar mcp started in (usually the project), which is also the default"`
-	TimeoutSeconds   int               `json:"timeoutSeconds,omitempty" jsonschema:"stop the command after this many seconds; default 120, at most 600"`
+	TimeoutSeconds   int               `json:"timeoutSeconds,omitempty" jsonschema:"stop the command after this many seconds; default 120, at most 3600"`
 }
 
 type RunOutput struct {
@@ -80,58 +90,43 @@ func (capture *outputCapture) getText() (string, bool) {
 	return strings.ToValidUTF8(text+string(capture.tail), "�"), capture.omittedLength > 0
 }
 
+// preparedCommand is a checked run_with_secrets call whose references are not resolved yet.
 type preparedCommand struct {
-	path             string
+	path string
+	// arguments is what runs and what the approval shows; arguments[0] is the program's name.
 	arguments        []string
 	workingDirectory string
-	variableNames    []string
-	references       []string
-	timeout          time.Duration
+	// variables is the whole environment; a value that is a reference becomes its secret.
+	variables []dotenv.Variable
+	// stdin is literal text or one reference.
+	stdin      string
+	references []string
+	timeout    time.Duration
 }
 
-// prepareCommand checks everything that can fail before the user is asked: names, references, directory, program.
-func prepareCommand(input RunInput, defaultDirectory string) (preparedCommand, error) {
-	prepared := preparedCommand{arguments: input.Command, timeout: DefaultTimeout}
-	if len(input.Command) == 0 || input.Command[0] == "" {
-		return prepared, errors.New("command is empty; pass the program and its arguments, e.g. [\"npm\", \"test\"]")
+// prepareCommand checks everything that can fail before the user is asked: the command, names, env files,
+// references, directory and program.
+func prepareCommand(input RunInput, defaultDirectory string, environ []string) (preparedCommand, error) {
+	prepared := preparedCommand{stdin: input.Stdin, timeout: DefaultTimeout}
+	switch {
+	case input.Shell != "" && len(input.Command) > 0:
+		return prepared, errors.New("pass command or shell, not both")
+	case input.Shell != "":
+		prepared.arguments = []string{shellPath, "-c", input.Shell}
+	case len(input.Command) == 0 || input.Command[0] == "":
+		return prepared, errors.New("command is empty; pass the program and its arguments, e.g. [\"npm\", \"test\"], or a command line as shell")
+	default:
+		prepared.arguments = input.Command
 	}
-	if len(input.Env) == 0 {
-		return prepared, errors.New("env is empty; map at least one variable to a hisar:// reference (run commands without secrets with your own tools)")
-	}
-	if len(input.Env) > maximumVariableCount {
-		return prepared, fmt.Errorf("at most %d variables can come from Hisar at once", maximumVariableCount)
-	}
-	totalLength := 0
-	for _, argument := range input.Command {
+	totalLength := len(input.Stdin)
+	for _, argument := range prepared.arguments {
 		totalLength += len(argument)
 		if strings.ContainsRune(argument, 0) {
 			return prepared, errors.New("an argument contains a NUL byte")
 		}
 	}
 	if totalLength > maximumArgumentLength {
-		return prepared, errors.New("the command's arguments are longer than 1 MiB")
-	}
-	for name := range input.Env {
-		prepared.variableNames = append(prepared.variableNames, name)
-	}
-	slices.Sort(prepared.variableNames)
-	var failures []string
-	for _, name := range prepared.variableNames {
-		reference := input.Env[name]
-		switch {
-		case !variableNamePattern.MatchString(name):
-			failures = append(failures, fmt.Sprintf("%q is not a valid variable name", name))
-		case !secretreference.IsReference(reference):
-			failures = append(failures, fmt.Sprintf("%s: the value must be a hisar://vault/item/field reference", name))
-		default:
-			if _, err := secretreference.Parse(reference); err != nil {
-				failures = append(failures, fmt.Sprintf("%s: %s: %v", name, reference, err))
-			}
-		}
-		prepared.references = append(prepared.references, reference)
-	}
-	if len(failures) > 0 {
-		return prepared, errors.New(strings.Join(failures, "; "))
+		return prepared, errors.New("the command's arguments and stdin are longer than 1 MiB")
 	}
 	if input.TimeoutSeconds < 0 || time.Duration(input.TimeoutSeconds)*time.Second > MaximumTimeout {
 		return prepared, fmt.Errorf("timeoutSeconds must be between 1 and %d", int(MaximumTimeout.Seconds()))
@@ -150,55 +145,148 @@ func prepareCommand(input RunInput, defaultDirectory string) (preparedCommand, e
 	if directoryInfo, err := os.Stat(prepared.workingDirectory); err != nil || !directoryInfo.IsDir() {
 		return prepared, fmt.Errorf("working directory %s does not exist", prepared.workingDirectory)
 	}
-	program := input.Command[0]
+	variables, err := buildVariables(input, prepared.workingDirectory, environ)
+	if err != nil {
+		return prepared, err
+	}
+	prepared.variables = variables
+	prepared.references = dotenv.ListReferences(variables)
+	if secretreference.IsReference(input.Stdin) && !slices.Contains(prepared.references, input.Stdin) {
+		prepared.references = append(prepared.references, input.Stdin)
+	}
+	if len(prepared.references) == 0 {
+		return prepared, errors.New("no secret to use: map a variable to a hisar:// reference in env, list envFiles with hisar:// values, " +
+			"or pass a reference as stdin (run commands without secrets with your own tools)")
+	}
+	if len(prepared.references) > maximumSecretCount {
+		return prepared, fmt.Errorf("at most %d secrets can come from Hisar at once", maximumSecretCount)
+	}
+	if direnvPath := findDirenv(prepared.workingDirectory, environ); direnvPath != "" {
+		prepared.path = direnvPath
+		prepared.arguments = append([]string{"direnv", "exec", prepared.workingDirectory}, prepared.arguments...)
+		return prepared, nil
+	}
+	program := prepared.arguments[0]
 	if strings.ContainsRune(program, filepath.Separator) && !filepath.IsAbs(program) {
 		program = filepath.Join(prepared.workingDirectory, program)
 	}
 	path, err := exec.LookPath(program)
 	switch {
 	case errors.Is(err, fs.ErrPermission):
-		return prepared, fmt.Errorf("%s: permission denied", input.Command[0])
+		return prepared, fmt.Errorf("%s: permission denied", prepared.arguments[0])
 	case err != nil && !errors.Is(err, exec.ErrDot):
-		return prepared, fmt.Errorf("%s: command not found", input.Command[0])
+		return prepared, fmt.Errorf("%s: command not found", prepared.arguments[0])
 	}
 	prepared.path = path
 	return prepared, nil
 }
 
-// buildEnvironment replaces or adds the variables that come from Hisar.
-func buildEnvironment(baseEntries []string, valuesByName map[string]string) []string {
-	entries := make([]string, 0, len(baseEntries)+len(valuesByName))
-	for _, entry := range baseEntries {
-		name, _, _ := strings.Cut(entry, "=")
-		if _, isReplaced := valuesByName[name]; !isReplaced {
-			entries = append(entries, entry)
+// buildVariables layers the env files over environ as hisar run does, then sets the env mapping over both, and
+// checks every reference among them and stdin.
+func buildVariables(input RunInput, workingDirectory string, environ []string) ([]dotenv.Variable, error) {
+	paths := make([]string, len(input.EnvFiles))
+	for index, path := range input.EnvFiles {
+		if !filepath.IsAbs(path) {
+			path = filepath.Join(workingDirectory, path)
 		}
+		paths[index] = path
 	}
-	names := make([]string, 0, len(valuesByName))
-	for name := range valuesByName {
+	fileVariables, err := dotenv.ReadFiles(paths)
+	if err != nil {
+		return nil, err
+	}
+	variables := dotenv.BuildEnvironment(environ, fileVariables)
+	names := make([]string, 0, len(input.Env))
+	for name := range input.Env {
 		names = append(names, name)
 	}
 	slices.Sort(names)
+	var failures []string
 	for _, name := range names {
-		entries = append(entries, name+"="+valuesByName[name])
+		reference := input.Env[name]
+		switch {
+		case !variableNamePattern.MatchString(name):
+			failures = append(failures, fmt.Sprintf("%q is not a valid variable name", name))
+			continue
+		case !secretreference.IsReference(reference):
+			failures = append(failures, fmt.Sprintf("%s: the value must be a hisar://vault/item/field reference", name))
+			continue
+		}
+		index := slices.IndexFunc(variables, func(variable dotenv.Variable) bool { return variable.Name == name })
+		if index < 0 {
+			variables = append(variables, dotenv.Variable{Name: name, Value: reference})
+		} else {
+			variables[index].Value = reference
+		}
 	}
-	return entries
+	for _, variable := range append(variables, dotenv.Variable{Name: "stdin", Value: input.Stdin}) {
+		if !secretreference.IsReference(variable.Value) {
+			continue
+		}
+		if _, err := secretreference.Parse(variable.Value); err != nil {
+			failures = append(failures, fmt.Sprintf("%s: %s: %v", variable.Name, variable.Value, err))
+		}
+	}
+	if len(failures) > 0 {
+		return nil, errors.New(strings.Join(failures, "; "))
+	}
+	return variables, nil
 }
 
-// runPrepared starts the command in its own process group, masks its output, and stops the group at the timeout.
-func runPrepared(ctx context.Context, prepared preparedCommand, environmentEntries []string, secretValues []string, killDelay time.Duration) (RunOutput, error) {
+// findDirenv returns direnv's path when it is installed and the user allowed the .envrc that applies to directory,
+// so the command gets the same environment as in the user's shell; otherwise "".
+func findDirenv(directory string, environ []string) string {
+	path, err := exec.LookPath("direnv")
+	if err != nil {
+		return ""
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), direnvStatusTimeout)
+	defer cancel()
+	command := exec.CommandContext(ctx, path, "status", "--json")
+	command.Dir, command.Env = directory, environ
+	output, err := command.Output()
+	if err != nil {
+		return ""
+	}
+	var status struct {
+		State struct {
+			FoundRC *struct {
+				Allowed *int `json:"allowed"`
+			} `json:"foundRC"`
+		} `json:"state"`
+	}
+	if json.Unmarshal(output, &status) != nil || status.State.FoundRC == nil || status.State.FoundRC.Allowed == nil || *status.State.FoundRC.Allowed != direnvAllowed {
+		return ""
+	}
+	return path
+}
+
+// run starts the command in its own process group, masks its output, reports it as progress, and stops the
+// group at the timeout.
+func (server *toolServer) run(ctx context.Context, prepared preparedCommand, environment []string, stdin string, secretValues []string, progress *progressReporter) (RunOutput, error) {
 	var stdout, stderr outputCapture
-	stdoutMasker := masking.NewSecretMasker(&stdout, secretValues)
-	stderrMasker := masking.NewSecretMasker(&stderr, secretValues)
+	stdoutWriter, stderrWriter := io.Writer(&stdout), io.Writer(&stderr)
+	finishProgress := func() {}
+	if progress != nil {
+		stream := &progressStream{reporter: progress}
+		stdoutWriter, stderrWriter = io.MultiWriter(&stdout, stream), io.MultiWriter(&stderr, stream)
+		finishProgress = stream.start(ctx)
+	}
+	stdoutMasker := masking.NewSecretMasker(stdoutWriter, secretValues)
+	stderrMasker := masking.NewSecretMasker(stderrWriter, secretValues)
 	command := exec.Command(prepared.path, prepared.arguments[1:]...)
 	command.Args[0] = prepared.arguments[0]
 	command.Dir = prepared.workingDirectory
-	command.Env = environmentEntries
+	command.Env = environment
+	if stdin != "" {
+		command.Stdin = strings.NewReader(stdin)
+	}
 	command.Stdout, command.Stderr = stdoutMasker, stderrMasker
 	command.WaitDelay = outputDrainDuration
 	startInProcessGroup(command)
 	startedAt := time.Now()
 	if err := command.Start(); err != nil {
+		finishProgress()
 		return RunOutput{}, fmt.Errorf("%s: %v", prepared.arguments[0], err)
 	}
 	waitResult := make(chan error, 1)
@@ -211,13 +299,14 @@ func runPrepared(ctx context.Context, prepared preparedCommand, environmentEntri
 	case waitError = <-waitResult:
 	case <-timer.C:
 		output.IsTimedOut = true
-		waitError = stopProcessGroup(command, waitResult, killDelay)
+		waitError = stopProcessGroup(command, waitResult, server.config.KillDelay)
 	case <-ctx.Done():
-		waitError = stopProcessGroup(command, waitResult, killDelay)
+		waitError = stopProcessGroup(command, waitResult, server.config.KillDelay)
 	}
 	output.DurationSeconds = time.Since(startedAt).Round(time.Millisecond).Seconds()
 	stdoutMasker.Flush()
 	stderrMasker.Flush()
+	finishProgress()
 	output.Stdout, output.IsStdoutTruncated = stdout.getText()
 	output.Stderr, output.IsStderrTruncated = stderr.getText()
 	var exitError *exec.ExitError

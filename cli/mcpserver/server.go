@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"math"
 	"os"
-	"slices"
 	"time"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
@@ -18,13 +17,17 @@ import (
 	"github.com/tryhisar/hisar/core/secretreference"
 )
 
-const instructions = `Hisar is the user's password and secrets manager. Use secrets without seeing them: find items with search_items, then pass their hisar:// references to run_with_secrets, which runs a command with the secrets in its environment and masks them in the output. Never ask the user to paste a secret into the chat. Only the vaults the user made available to agents are visible. The user approves each use of a secret in Hisar; if they deny it, tell them and do not retry the same request. get_secret reveals a value and is only for when the value itself is needed.`
+const instructions = `Hisar is the user's password and secrets manager. Use secrets without seeing them: find their hisar:// references with search_items, then pass them to run_with_secrets, which runs a command with the secrets in its environment, env files or stdin and masks them in the output. For a command that needs live output, interactive input or your own shell's environment, run NAME=hisar://vault/item/field hisar run -- <command> (or hisar run --env-file .env -- <command>) in your shell instead. Never print a secret, and never ask the user to paste one into the chat. Only the vaults the user made available to agents are visible. The user approves each use of a secret in Hisar; if they deny it, tell them and do not retry the same request.`
+
+const revealInstructions = ` get_secret reveals a value and is only for when the value itself is needed.`
 
 const noAgentVaultMessage = "No vault is available to coding agents. Ask the user to open Hisar → Settings → Developer tools → Coding agents and turn on “Available to agents” for the vaults you may use."
 
 type Config struct {
 	Version string
 	Dial    AppDialer
+	// IsRevealDisabled leaves out get_secret and get_one_time_code, the tools that return values.
+	IsRevealDisabled bool
 	// Environment is what commands start with; nil uses this process's environment.
 	Environment []string
 	// WorkingDirectory is where commands run by default; empty uses this process's directory.
@@ -88,7 +91,11 @@ func NewServer(config Config) (*mcp.Server, func()) {
 		config.KillDelay = defaultKillDelay
 	}
 	server := &toolServer{config: config, session: &appSession{dial: config.Dial}}
-	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "hisar", Title: "Hisar", Version: config.Version}, &mcp.ServerOptions{Instructions: instructions})
+	serverInstructions, runDescriptionEnd := instructions, "Secret values are never returned."
+	if !config.IsRevealDisabled {
+		serverInstructions, runDescriptionEnd = instructions+revealInstructions, "Secret values are never returned; prefer this tool over get_secret."
+	}
+	mcpServer := mcp.NewServer(&mcp.Implementation{Name: "hisar", Title: "Hisar", Version: config.Version}, &mcp.ServerOptions{Instructions: serverInstructions})
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:        "list_vaults",
 		Title:       "List vaults",
@@ -106,13 +113,19 @@ func NewServer(config Config) (*mcp.Server, func()) {
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:  "run_with_secrets",
 		Title: "Run a command with secrets",
-		Description: "Run a command with secrets from Hisar in its environment, without seeing them. env maps environment variable names to hisar://vault/item/field " +
-			"references from search_items. The user approves each run in Hisar, seeing the command, the working directory and the secrets. The command runs " +
-			"directly, without a shell (pass [\"sh\", \"-c\", \"...\"] yourself if you need one), with no stdin. Every secret value in stdout and stderr is replaced " +
-			"with <concealed by hisar>, and each stream keeps at most 64 KiB. Returns the exit code, the masked output and the duration. Secret values are never " +
-			"returned; prefer this tool over get_secret.",
+		Description: "Run a command with secrets from Hisar, without seeing them. Pass command, the program and its arguments, which runs without a shell, or shell, " +
+			"a command line for /bin/sh -c (pipes, redirects, &&). The secrets come from env, which maps environment variable names to hisar://vault/item/field " +
+			"references from search_items; from envFiles, dotenv files whose hisar:// values are resolved as hisar run --env-file does; and from stdin, which is " +
+			"literal text or one hisar:// reference whose value is sent, e.g. for --password-stdin. Without stdin the command reads nothing. The user approves each " +
+			"run in Hisar, seeing the command, the working directory and every secret. When direnv is installed and the user allowed an .envrc in or above the " +
+			"working directory, the command runs through direnv exec, so it gets the project's environment as in the user's shell. Every secret value in stdout " +
+			"and stderr is replaced with <concealed by hisar>, and each stream keeps at most 64 KiB; with a progressToken, the masked output also arrives as " +
+			"progress notifications while the command runs. Returns the exit code, the masked output and the duration. " + runDescriptionEnd,
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: isTrue(), OpenWorldHint: isTrue()},
 	}, server.runWithSecrets)
+	if config.IsRevealDisabled {
+		return mcpServer, server.session.close
+	}
 	mcp.AddTool(mcpServer, &mcp.Tool{
 		Name:  "get_one_time_code",
 		Title: "Get a one-time code",
@@ -188,44 +201,53 @@ func (server *toolServer) getWorkingDirectory() string {
 	return directory
 }
 
+func (server *toolServer) getEnvironment() []string {
+	if server.config.Environment != nil {
+		return server.config.Environment
+	}
+	return os.Environ()
+}
+
 func (server *toolServer) runWithSecrets(ctx context.Context, request *mcp.CallToolRequest, input RunInput) (*mcp.CallToolResult, RunOutput, error) {
-	prepared, err := prepareCommand(input, server.getWorkingDirectory())
+	prepared, err := prepareCommand(input, server.getWorkingDirectory(), server.getEnvironment())
 	if err != nil {
 		return nil, RunOutput{}, err
 	}
-	uniqueReferences := []string{}
-	for _, reference := range prepared.references {
-		if !slices.Contains(uniqueReferences, reference) {
-			uniqueReferences = append(uniqueReferences, reference)
-		}
-	}
+	progress := newProgressReporter(request)
+	progress.report(ctx, "Waiting for approval in Hisar")
 	var result cliprotocol.ResolveSecretResult
-	appRequest := cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: uniqueReferences, CommandLine: input.Command, WorkingDirectory: prepared.workingDirectory}
+	appRequest := cliprotocol.Request{Type: cliprotocol.TypeAgentResolveSecret, References: prepared.references, CommandLine: prepared.arguments, WorkingDirectory: prepared.workingDirectory}
 	if err := server.call(ctx, request, appRequest, &result); err != nil {
 		return nil, RunOutput{}, err
 	}
-	if len(result.Values) != len(uniqueReferences) {
+	if len(result.Values) != len(prepared.references) {
 		return nil, RunOutput{}, errors.New("the Hisar app answered with the wrong number of values")
 	}
 	valueByReference := map[string]string{}
-	for index, reference := range uniqueReferences {
+	for index, reference := range prepared.references {
 		valueByReference[reference] = result.Values[index]
 	}
-	output := RunOutput{}
-	valuesByName := map[string]string{}
-	for index, name := range prepared.variableNames {
-		value := valueByReference[prepared.references[index]]
-		valuesByName[name] = value
-		if len(value) < masking.MinimumLength {
-			output.Warnings = append(output.Warnings, fmt.Sprintf("%s is shorter than %d bytes and is not masked", name, masking.MinimumLength))
+	var warnings []string
+	useSecret := func(name, reference string) (string, bool) {
+		value, isSecret := valueByReference[reference]
+		if isSecret && len(value) < masking.MinimumLength {
+			warnings = append(warnings, fmt.Sprintf("%s is shorter than %d bytes and is not masked", name, masking.MinimumLength))
 		}
+		return value, isSecret
 	}
-	baseEntries := server.config.Environment
-	if baseEntries == nil {
-		baseEntries = os.Environ()
+	environment := make([]string, 0, len(prepared.variables))
+	for _, variable := range prepared.variables {
+		value, isSecret := useSecret(variable.Name, variable.Value)
+		if !isSecret {
+			value = variable.Value
+		}
+		environment = append(environment, variable.Name+"="+value)
 	}
-	warnings := output.Warnings
-	output, err = runPrepared(ctx, prepared, buildEnvironment(baseEntries, valuesByName), result.Values, server.config.KillDelay)
+	stdin, isSecret := useSecret("stdin", prepared.stdin)
+	if !isSecret {
+		stdin = prepared.stdin
+	}
+	output, err := server.run(ctx, prepared, environment, stdin, result.Values, progress)
 	output.Warnings = warnings
 	return nil, output, err
 }

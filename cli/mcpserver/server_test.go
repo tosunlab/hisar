@@ -102,33 +102,53 @@ func answerWithSecret(request cliprotocol.Request) (any, error) {
 }
 
 type testServer struct {
-	app     *fakeApp
-	session *mcp.ClientSession
+	app      *fakeApp
+	session  *mcp.ClientSession
+	mutex    sync.Mutex
+	progress []*mcp.ProgressNotificationParams
 }
 
 func createTestServer(t *testing.T, app *fakeApp) *testServer {
 	t.Helper()
+	return startTestServer(t, app, Config{})
+}
+
+// startTestServer fills in what config leaves empty and connects a client that records progress notifications.
+func startTestServer(t *testing.T, app *fakeApp, config Config) *testServer {
+	t.Helper()
 	if app.answer == nil {
 		app.answer = answerWithSecret
 	}
-	server, closeApp := NewServer(Config{
-		Version: "1.2.3", Dial: app.dial, Environment: []string{"PATH=" + os.Getenv("PATH"), "HOME=/nowhere", "TOKEN=from-the-agent"},
-		WorkingDirectory: t.TempDir(), KillDelay: 200 * time.Millisecond,
-		Now: func() time.Time { return time.Date(2026, 10, 11, 9, 0, 12, 500_000_000, time.UTC) },
-	})
+	config.Version, config.Dial, config.KillDelay = "1.2.3", app.dial, 200*time.Millisecond
+	config.Now = func() time.Time { return time.Date(2026, 10, 11, 9, 0, 12, 500_000_000, time.UTC) }
+	if config.Environment == nil {
+		config.Environment = []string{"PATH=" + os.Getenv("PATH"), "HOME=/nowhere", "TOKEN=from-the-agent"}
+	}
+	if config.WorkingDirectory == "" {
+		config.WorkingDirectory = t.TempDir()
+	}
+	server, closeApp := NewServer(config)
 	t.Cleanup(closeApp)
 	serverTransport, clientTransport := mcp.NewInMemoryTransports()
 	ctx := context.Background()
 	if _, err := server.Connect(ctx, serverTransport, nil); err != nil {
 		t.Fatal(err)
 	}
-	client := mcp.NewClient(&mcp.Implementation{Name: "claude-code", Title: "", Version: "2.1.0"}, nil)
+	test := &testServer{app: app}
+	client := mcp.NewClient(&mcp.Implementation{Name: "claude-code", Title: "", Version: "2.1.0"}, &mcp.ClientOptions{
+		ProgressNotificationHandler: func(_ context.Context, request *mcp.ProgressNotificationClientRequest) {
+			test.mutex.Lock()
+			defer test.mutex.Unlock()
+			test.progress = append(test.progress, request.Params)
+		},
+	})
 	session, err := client.Connect(ctx, clientTransport, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { session.Close() })
-	return &testServer{app: app, session: session}
+	test.session = session
+	return test
 }
 
 func (server *testServer) callTool(t *testing.T, name string, argument any) *mcp.CallToolResult {
@@ -138,6 +158,24 @@ func (server *testServer) callTool(t *testing.T, name string, argument any) *mcp
 		t.Fatalf("%s: %v", name, err)
 	}
 	return result
+}
+
+// listProgress returns the progress notifications in the order the server sent them.
+func (server *testServer) listProgress() []*mcp.ProgressNotificationParams {
+	server.mutex.Lock()
+	defer server.mutex.Unlock()
+	progress := slices.Clone(server.progress)
+	slices.SortFunc(progress, func(first, second *mcp.ProgressNotificationParams) int { return int(first.Progress - second.Progress) })
+	return progress
+}
+
+func waitFor(t *testing.T, description string, condition func() bool) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); !condition(); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatalf("timed out waiting until %s", description)
+		}
+	}
 }
 
 func getText(result *mcp.CallToolResult) string {
@@ -190,7 +228,7 @@ func TestToolsAreListedWithSchemasForModels(t *testing.T) {
 		t.Fatalf("tools = %q", names)
 	}
 	required := map[string][]string{
-		"list_vaults": nil, "search_items": {"query"}, "run_with_secrets": {"command", "env"}, "get_one_time_code": {"item"}, "get_secret": {"reference"},
+		"list_vaults": nil, "search_items": {"query"}, "run_with_secrets": nil, "get_one_time_code": {"item"}, "get_secret": {"reference"},
 	}
 	for name, expectedValues := range required {
 		schema, _ := json.Marshal(toolsByName[name].InputSchema)
@@ -208,7 +246,7 @@ func TestToolsAreListedWithSchemasForModels(t *testing.T) {
 		}
 	}
 	runSchema, _ := json.Marshal(toolsByName["run_with_secrets"].InputSchema)
-	for _, property := range []string{`"workingDirectory"`, `"timeoutSeconds"`, `hisar://vault/item/field`} {
+	for _, property := range []string{`"command"`, `"shell"`, `"env"`, `"envFiles"`, `"stdin"`, `"workingDirectory"`, `"timeoutSeconds"`, `hisar://vault/item/field`, `at most 3600`} {
 		if !strings.Contains(string(runSchema), property) {
 			t.Errorf("run_with_secrets schema lacks %s: %s", property, runSchema)
 		}
@@ -227,6 +265,34 @@ func TestToolsAreListedWithSchemasForModels(t *testing.T) {
 	initializeResult := server.session.InitializeResult()
 	if initializeResult.ServerInfo.Name != "hisar" || initializeResult.ServerInfo.Version != "1.2.3" || !strings.Contains(initializeResult.Instructions, "without seeing them") {
 		t.Errorf("server info %+v, instructions %q", initializeResult.ServerInfo, initializeResult.Instructions)
+	}
+}
+
+func TestNoRevealLeavesOutTheToolsThatReturnValues(t *testing.T) {
+	server := startTestServer(t, &fakeApp{}, Config{IsRevealDisabled: true})
+	result, err := server.session.ListTools(context.Background(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := []string{}
+	for _, tool := range result.Tools {
+		names = append(names, tool.Name)
+		if strings.Contains(tool.Description, "get_secret") {
+			t.Errorf("%s mentions get_secret: %s", tool.Name, tool.Description)
+		}
+	}
+	slices.Sort(names)
+	if !slices.Equal(names, []string{"list_vaults", "run_with_secrets", "search_items"}) {
+		t.Errorf("tools = %q", names)
+	}
+	if instructions := server.session.InitializeResult().Instructions; strings.Contains(instructions, "get_secret") || !strings.Contains(instructions, "hisar run --env-file .env --") {
+		t.Errorf("instructions = %q", instructions)
+	}
+	if _, err := server.session.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_secret", Arguments: map[string]any{"reference": "hisar://Work/Stripe/api%20key"}}); err == nil {
+		t.Error("get_secret answered")
+	}
+	if server.app.dialCount != 0 {
+		t.Errorf("get_secret reached the app (%d dials)", server.app.dialCount)
 	}
 }
 
@@ -382,18 +448,28 @@ func TestRunWithSecretsStopsTheCommandAtTheTimeout(t *testing.T) {
 func TestRunWithSecretsChecksEverythingBeforeAsking(t *testing.T) {
 	app := &fakeApp{}
 	server := createTestServer(t, app)
+	directory := t.TempDir()
+	brokenFile, plainFile := filepath.Join(directory, "broken.env"), filepath.Join(directory, "plain.env")
+	os.WriteFile(brokenFile, []byte("API_KEY=hisar://Work/Stripe\n"), 0o600)
+	os.WriteFile(plainFile, []byte("MODE=test\n"), 0o600)
+	token := map[string]string{"TOKEN": "hisar://Work/Stripe/password"}
 	cases := []struct {
 		argument map[string]any
 		message  string
 	}{
-		{map[string]any{"command": []string{"hisar-no-such-command"}, "env": map[string]string{"TOKEN": "hisar://Work/Stripe/password"}}, "hisar-no-such-command: command not found"},
-		{map[string]any{"command": []string{}, "env": map[string]string{"TOKEN": "hisar://Work/Stripe/password"}}, "command is empty"},
-		{map[string]any{"command": []string{"env"}, "env": map[string]string{}}, "env is empty"},
+		{map[string]any{"command": []string{"hisar-no-such-command"}, "env": token}, "hisar-no-such-command: command not found"},
+		{map[string]any{"command": []string{}, "env": token}, "command is empty"},
+		{map[string]any{"command": []string{"env"}, "shell": "env", "env": token}, "pass command or shell, not both"},
+		{map[string]any{"command": []string{"env"}, "env": map[string]string{}}, "no secret to use"},
+		{map[string]any{"shell": "env", "envFiles": []string{plainFile}}, "no secret to use"},
 		{map[string]any{"command": []string{"env"}, "env": map[string]string{"TOKEN": "plain value"}}, "TOKEN: the value must be a hisar://vault/item/field reference"},
 		{map[string]any{"command": []string{"env"}, "env": map[string]string{"BAD-NAME": "hisar://Work/Stripe/password"}}, `"BAD-NAME" is not a valid variable name`},
 		{map[string]any{"command": []string{"env"}, "env": map[string]string{"TOKEN": "hisar://Work/Stripe"}}, "has three parts"},
-		{map[string]any{"command": []string{"env"}, "env": map[string]string{"TOKEN": "hisar://Work/Stripe/password"}, "timeoutSeconds": 601}, "timeoutSeconds must be between 1 and 600"},
-		{map[string]any{"command": []string{"env"}, "env": map[string]string{"TOKEN": "hisar://Work/Stripe/password"}, "workingDirectory": "/no/such/directory"}, "working directory /no/such/directory does not exist"},
+		{map[string]any{"shell": "env", "envFiles": []string{brokenFile}}, "API_KEY: hisar://Work/Stripe: a secret reference has three parts"},
+		{map[string]any{"shell": "env", "envFiles": []string{"missing.env"}, "env": token}, "missing.env: no such file or directory"},
+		{map[string]any{"command": []string{"cat"}, "stdin": "hisar://Work"}, "stdin: hisar://Work: a secret reference has three parts"},
+		{map[string]any{"command": []string{"env"}, "env": token, "timeoutSeconds": 3601}, "timeoutSeconds must be between 1 and 3600"},
+		{map[string]any{"command": []string{"env"}, "env": token, "workingDirectory": "/no/such/directory"}, "working directory /no/such/directory does not exist"},
 	}
 	for _, testCase := range cases {
 		result := server.callTool(t, "run_with_secrets", testCase.argument)
