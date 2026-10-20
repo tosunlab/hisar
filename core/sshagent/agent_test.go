@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1121,6 +1122,47 @@ func TestAgentHostWithoutHarnessReusesNoApproval(t *testing.T) {
 	}
 	connect(true, 3)
 	connect(false, 3)
+}
+
+func TestUnlockApprovalCoversOneSignatureForAgentHost(t *testing.T) {
+	key := createTestKey(t, "id", "Deploy key", getTestMaterials()["ed25519"])
+	sign := func(client agent.ExtendedAgent, fixture *agentFixture, wantCount int) {
+		t.Helper()
+		if _, err := client.Sign(getPublicKey(t, key), []byte("data")); err != nil {
+			t.Fatal(err)
+		}
+		if count := fixture.approver.countRequest(); count != wantCount {
+			t.Fatalf("approval count = %d, want %d", count, wantCount)
+		}
+	}
+	unlockingAgent := func(isNeverRemembered *atomic.Bool) *agentFixture {
+		fixture := startAgent(t, []Key{key})
+		fixture.resolver.setTernPeer(nil, false)
+		fixture.resolver.mutex.Lock()
+		fixture.resolver.peer.IsNeverRemembered = isNeverRemembered.Load
+		fixture.resolver.mutex.Unlock()
+		fixture.source.setLockedWith(true)
+		fixture.approver.onApprove = func() { fixture.source.setLockedWith(false) }
+		return fixture
+	}
+
+	var becameHost atomic.Bool
+	fixture := unlockingAgent(&becameHost)
+	client := fixture.dialAgent(t)
+	sign(client, fixture, 1)
+	sign(client, fixture, 1)
+	becameHost.Store(true)
+	sign(client, fixture, 2)
+
+	var isHost atomic.Bool
+	isHost.Store(true)
+	fixture = unlockingAgent(&isHost)
+	client = fixture.dialAgent(t)
+	if _, err := client.List(); err != nil {
+		t.Fatal(err)
+	}
+	sign(client, fixture, 1)
+	sign(client, fixture, 2)
 }
 
 // agentVaultKeySource offers an agent session only the keys of the vault open to coding agents.

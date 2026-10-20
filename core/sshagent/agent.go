@@ -291,13 +291,15 @@ type connectionAgent struct {
 	peer     Peer
 	mutex    sync.Mutex
 	bindings []sessionBinding
-	// unlockApproval is set when the approval window unlocked Hisar for this connection; its signatures then do not ask again.
+	// unlockApproval is set when the approval window unlocked Hisar for this connection; its signatures then do not ask
+	// again, except that a never-remembered client gets only the first signature after the unlock.
 	unlockApproval *grantedUnlock
 }
 
 type grantedUnlock struct {
 	isRemembered bool
 	epoch        uint64
+	hasSigned    bool
 }
 
 type resolvedKey struct {
@@ -344,10 +346,17 @@ func (connection *connectionAgent) listResolvedKeyUnlocking(request ApprovalRequ
 	return connection.listResolvedKeys()
 }
 
-func (connection *connectionAgent) getUnlockApproval() *grantedUnlock {
+// useUnlockApproval returns the unlock that covers a signature, if any, and marks it used. A never-remembered request
+// is covered only by an unlock no signature has used yet: its app may have become an agent host since.
+func (connection *connectionAgent) useUnlockApproval(isNeverRemembered bool) (grantedUnlock, bool) {
 	connection.mutex.Lock()
 	defer connection.mutex.Unlock()
-	return connection.unlockApproval
+	unlock := connection.unlockApproval
+	if unlock == nil || (isNeverRemembered && unlock.hasSigned) {
+		return grantedUnlock{}, false
+	}
+	unlock.hasSigned = true
+	return *unlock, true
 }
 
 func (connection *connectionAgent) buildRequest() ApprovalRequest {
@@ -407,7 +416,12 @@ func (connection *connectionAgent) SignWithFlags(publicKey ssh.PublicKey, data [
 		return nil, ErrKeyNotFound
 	}
 	request.KeyID, request.KeyTitle = match.key.ID, match.key.Title
-	if unlockApproval := connection.getUnlockApproval(); unlockApproval != nil && !connection.server.isAlwaysAsk(request.KeyID) {
+	var unlockApproval grantedUnlock
+	isUnlocked := false
+	if !connection.server.isAlwaysAsk(request.KeyID) {
+		unlockApproval, isUnlocked = connection.useUnlockApproval(request.IsNeverRemembered)
+	}
+	if isUnlocked {
 		if unlockApproval.isRemembered {
 			connection.server.setRememberable(&request)
 			connection.server.remember(request, unlockApproval.epoch)
