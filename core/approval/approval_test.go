@@ -106,9 +106,9 @@ func (flow *testFlow) forgeAnswer(t *testing.T, signingKeyset *crypt.Keyset, cha
 	return sealedAnswer
 }
 
-func TestSecretsSurviveSealing(t *testing.T) {
+func TestSecretsAndProjectSurviveSealing(t *testing.T) {
 	keyset := createTestKeyset(t)
-	description := Description{Kind: KindCommandLine, AppName: "hisar in Terminal", Purpose: "run a command with 5 secrets", CommandLine: "npm test", Secrets: []string{"Personal › GitHub › password", "and 4 more"}}
+	description := Description{Kind: KindCommandLine, AppName: "omp in Tern (via hisar)", Purpose: "run a command with 5 secrets", CommandLine: "npm test", ProjectPath: "~/src/acme-web", Secrets: []string{"Personal › GitHub › password", "and 4 more"}}
 	request := NewRequest(macDeviceID, "Alper's MacBook Pro", description, testNow, MaximumLifetime)
 	sealedRequest, err := SealRequest(keyset, testAccountID, request)
 	if err != nil {
@@ -118,8 +118,8 @@ func TestSecretsSurviveSealing(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(opened.Description, description) {
 		t.Errorf("opened %+v, %v", opened.Description, err)
 	}
-	if encoded, _ := json.Marshal(createTestDescription()); strings.Contains(string(encoded), "secrets") {
-		t.Errorf("an SSH request carries secrets: %s", encoded)
+	if encoded, _ := json.Marshal(createTestDescription()); strings.Contains(string(encoded), "secrets") || strings.Contains(string(encoded), "projectPath") {
+		t.Errorf("an SSH request carries an agent's secrets or project: %s", encoded)
 	}
 }
 

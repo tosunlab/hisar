@@ -21,10 +21,11 @@ import (
 
 // recordingApprover stands in for the approval window; with unlock set, it unlocks Hisar for requests that need it.
 type recordingApprover struct {
-	mutex     sync.Mutex
-	isAllowed bool
-	unlock    func() error
-	requests  []sshagent.ApprovalRequest
+	mutex        sync.Mutex
+	isAllowed    bool
+	isRemembered bool
+	unlock       func() error
+	requests     []sshagent.ApprovalRequest
 }
 
 func (approver *recordingApprover) Approve(ctx context.Context, request sshagent.ApprovalRequest) (sshagent.ApprovalResult, error) {
@@ -36,7 +37,7 @@ func (approver *recordingApprover) Approve(ctx context.Context, request sshagent
 			return sshagent.ApprovalResult{}, err
 		}
 	}
-	return sshagent.ApprovalResult{IsAllowed: approver.isAllowed}, nil
+	return sshagent.ApprovalResult{IsAllowed: approver.isAllowed, IsRemembered: approver.isRemembered}, nil
 }
 
 func (approver *recordingApprover) getLastRequest() sshagent.ApprovalRequest {
@@ -158,7 +159,7 @@ func checkSSHAgentFlow(t *testing.T, service *Service, personalID, password stri
 	defer os.RemoveAll(socketDirectory)
 	socketPath := filepath.Join(socketDirectory, "agent.sock")
 	approver := &recordingApprover{isAllowed: true}
-	agentServer := sshagent.NewServer(NewSSHKeySource(service), approver, localsocket.SystemPeerResolver{})
+	agentServer := sshagent.NewServer(NewSSHKeySource(service), approver, nil)
 	service.config.OnLock = agentServer.ClearApprovals
 	defer func() { service.config.OnLock = nil }()
 	listener, err := localsocket.ListenUnixSocket(socketPath)

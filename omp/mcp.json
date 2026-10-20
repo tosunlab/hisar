@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "hisar": {
+      "type": "stdio",
+      "command": "./bin/run-hisar",
+      "args": ["mcp", "--no-reveal"],
+      "timeout": 0
+    }
+  }
+}

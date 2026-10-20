@@ -64,7 +64,7 @@ func TestLauncherApprovalNamesTheAppAndWhatItAllows(t *testing.T) {
 	resultChannel := startLauncherApproval(approver, context.Background())
 	event := waitForApprovalEvent(t, emitter)
 	if event.Kind != ApprovalKindLauncher || event.AppName != "Raycast" || event.AppIconURL != "data:image/png;base64,Raycast" || event.AppPath != raycastBundlePath ||
-		event.AppSigner != "Signed by Raycast Technologies Inc (A1B2C3D4E5)" || event.AppWarning != "" || event.ClientPath != raycastNodePath ||
+		event.AppSigner != "Raycast is signed by Raycast Technologies Inc (A1B2C3D4E5)" || event.AppWarning != "" || event.ClientPath != raycastNodePath ||
 		event.Action != "search Hisar and copy or paste passwords and one-time codes" || event.Coverage != "app" ||
 		event.IsRememberable || event.IsUnlockRequired || event.TerminalName != "" || event.KeyTitle != "" || len(event.SecretNames) != 0 {
 		t.Errorf("event = %+v", event)

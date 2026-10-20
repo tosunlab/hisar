@@ -3,6 +3,7 @@ package localstate
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -229,5 +230,26 @@ func TestLastServerIsSavedAndKeptOnReset(t *testing.T) {
 	reloadedState.Reset()
 	if reloadedState.LastServer != "https://other.example.com" {
 		t.Errorf("after another server: %q", reloadedState.LastServer)
+	}
+}
+
+func TestAgentHostsAreSavedAndKeptOnReset(t *testing.T) {
+	statePath := filepath.Join(t.TempDir(), "desktop.json")
+	state, err := Load(statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.AgentHosts = []AgentHost{{Path: "/Applications/Tern.app", TeamID: "VTLHGQC72S"}}
+	state.Reset()
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	saved, err := os.ReadFile(statePath)
+	if err != nil || !strings.Contains(string(saved), `"agentHosts": [`) || !strings.Contains(string(saved), `"teamId": "VTLHGQC72S"`) {
+		t.Fatalf("saved %s, %v", saved, err)
+	}
+	reloadedState, err := Load(statePath)
+	if err != nil || !slices.Equal(reloadedState.AgentHosts, state.AgentHosts) {
+		t.Errorf("reloaded %+v, %v", reloadedState.AgentHosts, err)
 	}
 }

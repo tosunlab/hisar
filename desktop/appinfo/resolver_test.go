@@ -2,10 +2,14 @@ package appinfo
 
 import (
 	"errors"
+	"os"
+	"os/exec"
 	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tryhisar/hisar/core/agentharness"
 )
 
 const (
@@ -30,6 +34,7 @@ type fakeSystem struct {
 	responsiblePIDs     map[int]int
 	teamIDs             map[string]string
 	signatures          map[string]Signature
+	processSignatures   map[int]agentharness.Signature
 	remoteHosts         map[int]string
 	signatureCheckCount map[string]int
 	iconRenderCount     map[string]int
@@ -42,6 +47,7 @@ func createFakeSystem(tree fakeProcessTree) *fakeSystem {
 		responsiblePIDs:     map[int]int{},
 		teamIDs:             map[string]string{},
 		signatures:          map[string]Signature{},
+		processSignatures:   map[int]agentharness.Signature{},
 		remoteHosts:         map[int]string{},
 		signatureCheckCount: map[string]int{},
 		iconRenderCount:     map[string]int{},
@@ -51,6 +57,10 @@ func createFakeSystem(tree fakeProcessTree) *fakeSystem {
 func (system *fakeSystem) createResolver() *Resolver {
 	return NewResolver(System{
 		ProcessReader: system.tree.createReader(),
+		ReadInstance:  system.tree.readInstance,
+		GetProcessSignature: func(pid int) agentharness.Signature {
+			return system.processSignatures[pid]
+		},
 		GetResponsiblePID: func(pid int) (int, error) {
 			if responsiblePID, isFound := system.responsiblePIDs[pid]; isFound {
 				return responsiblePID, nil
@@ -364,5 +374,85 @@ func TestFindTCPRemoteHost(t *testing.T) {
    0: 00000000000000000000000001000000:0016 B80D0120000000000000000001000000:C350 01 00000000:00000000 00:00000000 00000000     0        0 3333 1`
 	if host := findTCPRemoteHost(table6, map[string]bool{"3333": true}); host != "2001:db8::1" {
 		t.Errorf("IPv6 host %q", host)
+	}
+}
+
+const ompInTernPath = "/Users/developer/Library/Application Support/Tern/omp/versions/18.12.3"
+
+// createOmpInTernSystem is the chain measured from a command omp 18.12.3 ran inside Tern 0.9.4.
+func createOmpInTernSystem() *fakeSystem {
+	system := createFakeSystem(fakeProcessTree{
+		39200: {path: "/opt/homebrew/bin/hisar", parentPID: 39136, startTime: 300, arguments: []string{"hisar", "run", "--", "true"}},
+		39136: {path: "/bin/sh", parentPID: 1226, startTime: 200, arguments: []string{"sh", "-c", "hisar run -- true"}},
+		1226:  {path: ompInTernPath, parentPID: 1217, startTime: 100, arguments: []string{"omp"}, workingDirectory: "/Users/developer/src/hisarapp-core"},
+		1217:  {path: "/Applications/Tern.app/Contents/MacOS/tern", parentPID: 1, startTime: 50, arguments: []string{"tern", "daemon"}},
+	})
+	system.processSignatures[1226] = agentharness.Signature{TeamID: "VTLHGQC72S", Identifier: "omp-darwin-arm64"}
+	return system
+}
+
+func TestResolveAgentSessionThroughTern(t *testing.T) {
+	system := createOmpInTernSystem()
+	session, isFound, _ := agentharness.Find(system.createResolver().ReadChain(39200))
+	if !isFound || session.Harness.Name != "omp" || session.PID != 1226 || session.StartTime != 100 || session.Directory != "/Users/developer/src/hisarapp-core" {
+		t.Fatalf("session = %+v, %v", session, isFound)
+	}
+
+	nameless := createOmpInTernSystem()
+	omp := nameless.tree[1226]
+	omp.arguments = []string{"18.12.3"}
+	nameless.tree[1226] = omp
+	if session, isFound, _ := agentharness.Find(nameless.createResolver().ReadChain(39200)); !isFound || session.PID != 1226 {
+		t.Errorf("signature alone: %+v, %v", session, isFound)
+	}
+	delete(nameless.processSignatures, 1226)
+	if session, isFound, _ := agentharness.Find(nameless.createResolver().ReadChain(39200)); !isFound || session.IsSigned {
+		t.Errorf("a signature that does not verify counts as none, so only Tern's folder names omp: %+v, %v", session, isFound)
+	}
+}
+
+func TestParentChangedDuringWalkIsUnknown(t *testing.T) {
+	system := createOmpInTernSystem()
+	resolver := system.createResolver()
+	isOmpGone := false
+	resolver.system.ReadInstance = func(pid int) (agentharness.Instance, error) {
+		instance, err := system.tree.readInstance(pid)
+		if pid == 1217 && !isOmpGone {
+			isOmpGone = true
+			delete(system.tree, 1226)
+			shell := system.tree[39136]
+			shell.parentPID = 1
+			system.tree[39136] = shell
+		}
+		return instance, err
+	}
+	chain := resolver.ReadChain(39200)
+	if chain.IsKnown || len(chain.Processes) != 4 {
+		t.Fatalf("chain = %+v", chain)
+	}
+	if session, isFound, _ := agentharness.Find(chain); isFound {
+		t.Errorf("found %+v in a chain that changed", session)
+	}
+	if chain := system.createResolver().ReadChain(39200); !chain.IsKnown || len(chain.Processes) != 2 {
+		t.Errorf("after omp exited: %+v", chain)
+	}
+}
+
+func TestStartTimeIsRead(t *testing.T) {
+	resolver := NewSystemResolver()
+	own := resolver.ReadChain(os.Getpid())
+	instance, err := agentharness.ReadInstance(os.Getpid())
+	if err != nil || !own.IsKnown || own.Processes[0].PID != os.Getpid() || own.Processes[0].StartTime == 0 || own.Processes[0].StartTime != instance.StartTime {
+		t.Fatalf("this process: %+v, %+v, %v", own, instance, err)
+	}
+	child := exec.Command("sleep", "5")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { child.Process.Kill(); child.Wait() })
+	chain := resolver.ReadChain(child.Process.Pid)
+	if !chain.IsKnown || len(chain.Processes) < 2 || chain.Processes[1].PID != os.Getpid() || chain.Processes[1].StartTime != instance.StartTime ||
+		chain.Processes[0].StartTime < instance.StartTime {
+		t.Errorf("child chain = %+v", chain)
 	}
 }

@@ -57,7 +57,7 @@ func TestIntegrationAgentThroughApp(t *testing.T) {
 	t.Cleanup(func() { os.RemoveAll(socketDirectory) })
 	socketPath := filepath.Join(socketDirectory, "hisar", "cli.sock")
 	approver := &recordingAgentApprover{}
-	approvals := clisocket.NewSessionApprovals(0, nil)
+	approvals := clisocket.NewSessionApprovals(0, nil, nil)
 	runner := clisocket.NewRunner(clisocket.NewServer(clisocket.ServerConfig{
 		Handler: app.NewCommandLineBridge(service, approvals), Approver: &countingApprover{}, AgentApprover: approver, Approvals: approvals,
 	}), socketPath)

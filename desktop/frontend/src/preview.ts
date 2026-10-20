@@ -1,7 +1,11 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
 import type {
+  AgentHost,
+  AgentSession,
   CardDescription,
   ApprovalEvent,
+  CodingAgent,
+  CodingAgentState,
   BrowserStatus,
   CommandLineStatus,
   Device,
@@ -558,7 +562,63 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
   return detail;
 }
 
-let allPreviewAgentVaultID: string[] = ["work"];
+// agentVaults=none starts with every vault invisible to coding agents.
+let allPreviewAgentVaultID: string[] = previewParameter.get("agentVaults") === "none" ? [] : ["work"];
+// omp=, claudeCode=, codex= not-installed | available | connected | conflict | unknown
+let allPreviewCodingAgent: CodingAgent[] = [
+  { id: "omp", name: "omp", state: "available", detail: "" },
+  { id: "claude-code", name: "Claude Code", state: "connected", detail: "" },
+  { id: "codex", name: "Codex", state: "available", detail: "" },
+].map((agent) => {
+  const state = (previewParameter.get(agent.id === "claude-code" ? "claudeCode" : agent.id) ?? agent.state) as CodingAgentState;
+  const detail =
+    state === "conflict"
+      ? `${agent.name} already has a server named hisar. Remove it to connect Hisar.`
+      : state === "unknown"
+        ? `${agent.name} could not list its MCP servers: failed to load configuration`
+        : "";
+  return { ...agent, state, detail };
+});
+
+function setPreviewCodingAgentState(id: string, state: CodingAgentState): Promise<CodingAgent> {
+  allPreviewCodingAgent = allPreviewCodingAgent.map((agent) => (agent.id === id ? { ...agent, state } : agent));
+  const changedAgent = allPreviewCodingAgent.find((agent) => agent.id === id);
+  return changedAgent ? resolveAfterDelay(structuredClone(changedAgent)) : Promise.reject(new Error(`No coding agent named ${id}`));
+}
+
+// agentSessions=1: two omp sessions in Tern and Tern as an agent host in Settings → Coding agents; &appIcon=<url> is Tern's icon.
+const isPreviewAgentSessionShown = previewParameter.get("agentSessions") === "1";
+let allPreviewAgentSession: AgentSession[] = isPreviewAgentSessionShown
+  ? [
+      {
+        pid: 1226,
+        startTime: 1_760_000_000_000_000,
+        harnessName: "omp",
+        isSigned: true,
+        hostName: "Tern",
+        hostIconURL: previewParameter.get("appIcon") ?? "",
+        projectName: "hisarapp-core",
+        projectPath: "/Users/alper/Chore/hisarapp-core",
+        firstRequestAt: new Date(Date.now() - 12 * 60_000).toISOString(),
+        allRememberedSecret: [{ name: "Agents › Deploy token › password", isReveal: false, expiresAt: new Date(Date.now() + 48 * 60_000).toISOString() }],
+      },
+      {
+        pid: 4410,
+        startTime: 1_760_000_100_000_000,
+        harnessName: "omp",
+        isSigned: false,
+        hostName: "Tern",
+        hostIconURL: previewParameter.get("appIcon") ?? "",
+        projectName: "billing-api",
+        projectPath: "/Users/alper/src/billing-api",
+        firstRequestAt: new Date(Date.now() - 2 * 60_000).toISOString(),
+        allRememberedSecret: [],
+      },
+    ]
+  : [];
+let allPreviewAgentHost: AgentHost[] = isPreviewAgentSessionShown
+  ? [{ path: "/Applications/Tern.app", teamID: "VTLHGQC72S", name: "Tern", iconURL: previewParameter.get("appIcon") ?? "" }]
+  : [];
 
 function buildPreviewVaultSummary(vault: VaultSummary): VaultSummary {
   return { ...vault, itemCount: allPreviewItemByVaultID[vault.id]?.length ?? 0 };
@@ -640,7 +700,7 @@ function createPreviewTerminalRequester(): Pick<
     appIconURL: "",
     appPath: "/System/Applications/Utilities/Terminal.app",
     appSignature: "apple",
-    appSigner: "Signed by Apple",
+    appSigner: "Terminal is signed by Apple",
     appWarning: "",
     allChainProcess: [
       { name: "ssh", commandLine: "ssh git@git.tryhisar.com 'git-receive-pack '\\''hisar/core.git'\\''" },
@@ -669,7 +729,7 @@ function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
         appIconURL,
         appPath: "/Applications/iTerm.app",
         appSignature: "developer",
-        appSigner: "Signed by George Nachman (H7V7XYVQ7D)",
+        appSigner: "iTerm2 is signed by George Nachman (H7V7XYVQ7D)",
         allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }],
       };
     case "vscode":
@@ -679,7 +739,7 @@ function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
         appIconURL,
         appPath: "/Applications/Visual Studio Code.app",
         appSignature: "developer",
-        appSigner: "Signed by Microsoft Corporation (UBF8T346G9)",
+        appSigner: "Visual Studio Code is signed by Microsoft Corporation (UBF8T346G9)",
         allChainProcess: allPreviewSigningChain,
       };
     case "unsigned":
@@ -689,7 +749,7 @@ function applyPreviewApp(event: ApprovalEvent): ApprovalEvent {
         appIconURL,
         appPath: "/Users/developer/Downloads/iTerm.app",
         appSignature: "unsigned",
-        appSigner: "Not signed",
+        appSigner: "iTerm2 isn't signed",
         appWarning: "iTerm2 is not signed, so macOS cannot confirm who made it. Approve only if you started this yourself.",
         allChainProcess: [...allPreviewSigningChain, { name: "zsh", commandLine: "-zsh" }],
       };
@@ -813,9 +873,14 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
+    isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",
+    harnessName: "",
+    agentNameSource: "",
+    projectName: "",
+    projectPath: "",
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
@@ -858,10 +923,15 @@ function createPreviewSSHApproval(): ApprovalEvent {
     isCompact: previewParameter.get("compact") === "1" && isTouchIDApproval && !isLocked && !isForwarded,
     isTouchIDApproval,
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
+    isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",
+    harnessName: "",
+    agentNameSource: "",
+    projectName: "",
+    projectPath: "",
     workingDirectory: "",
     rememberLabel: "",
     isRememberedByDefault: true,
@@ -880,6 +950,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     requestID: `preview-agent-${kind}`,
     kind: "agent",
     agentName: "Claude Code",
+    agentNameSource: "agent",
     clientName: "hisar mcp",
     clientPath: "/opt/homebrew/bin/hisar",
     purpose: "connect",
@@ -890,6 +961,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     isUnlockRequired: isLocked,
     isPasswordUnlock: isLocked,
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
+    isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
   };
   if (kind === "run") {
     return {
@@ -911,7 +983,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
       action: "read “Stripe › api key”",
       allSecretName: ["Work › Stripe › api key"],
       isRememberable: true,
-      rememberLabel: "Allow this item for 1 hour",
+      rememberLabel: "Allow every field of “Stripe” for this agent for 1 hour",
       isConnectionApproval: false,
       warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
     };
@@ -928,6 +1000,51 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     };
   }
   return event;
+}
+
+// createPreviewHarnessApproval: &approval=omp (hisar run inside omp in Tern, recognized by its signature), =omp-unsigned (omp
+// recognized by its program name, as when Bun runs it), =omp-reveal (hisar read inside omp); &appIcon=<url> is Tern's icon.
+function createPreviewHarnessApproval(kind: string): ApprovalEvent {
+  const isReveal = kind === "reveal";
+  const event: ApprovalEvent = {
+    ...createPreviewAgentApproval(isReveal ? "reveal" : "run"),
+    requestID: `preview-omp-${kind}`,
+    agentName: "omp in Tern",
+    harnessName: "omp",
+    agentNameSource: kind === "unsigned" ? "process" : "signature",
+    projectName: "hisarapp-core",
+    projectPath: "~/Chore/hisarapp-core",
+    clientName: "hisar",
+    clientPath: "/Applications/Hisar.app/Contents/Helpers/hisar",
+    requesterKind: "app",
+    appName: "Tern",
+    appIconURL: previewParameter.get("appIcon") ?? "",
+    appPath: "/Applications/Tern.app",
+    appSignature: "developer",
+    appSigner: "Tern is signed by Can Boluk (VTLHGQC72S)",
+    allChainProcess: [
+      { name: "hisar", commandLine: "hisar run -- npm run deploy" },
+      { name: "zsh", commandLine: "/bin/zsh -c npm run deploy" },
+      { name: "omp", commandLine: "omp" },
+    ],
+    terminalName: "",
+  };
+  if (isReveal) {
+    return {
+      ...event,
+      action: "read “Deploy token › password”",
+      allSecretName: ["Agents › Deploy token › password"],
+      warning: "The value will be visible to omp in Tern and can end up in its transcript and logs.",
+    };
+  }
+  return {
+    ...event,
+    action: "use 1 secret",
+    commandLine: "npm run deploy",
+    workingDirectory: "~/Chore/hisarapp-core",
+    allSecretName: ["Agents › Deploy token › password"],
+    rememberLabel: "Allow this secret for this agent for 1 hour",
+  };
 }
 
 // listAllPreviewApproval: ?window=ssh-approval&approval=1 (one request), =2 (two waiting), =signing (a commit signature), =cli (command-line tool),
@@ -954,7 +1071,7 @@ function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
       appIconURL: "",
       appPath: "/Applications/Raycast.app",
       appSignature: "developer",
-      appSigner: "Signed by Raycast Technologies Inc (A1B2C3D4E5)",
+      appSigner: "Raycast is signed by Raycast Technologies Inc (A1B2C3D4E5)",
       appWarning: "",
       allChainProcess: [{ name: "node", commandLine: "node --max-old-space-size=4096 --expose-gc" }],
       clientName: "",
@@ -979,6 +1096,9 @@ function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
   }
   if (approvalParameter === "agent" || approvalParameter.startsWith("agent-")) {
     return [createPreviewAgentApproval(approvalParameter.replace(/^agent-?/, ""))];
+  }
+  if (approvalParameter === "omp" || approvalParameter.startsWith("omp-")) {
+    return [createPreviewHarnessApproval(approvalParameter.replace(/^omp-?/, ""))];
   }
   if (previewParameter.get("approval") === "run") {
     return [
@@ -1664,6 +1784,19 @@ export const previewApi = {
     }
     return resolveAfterDelay([...allPreviewAgentVaultID]);
   },
+  listAllAgentSession: () => resolveAfterDelay(structuredClone(allPreviewAgentSession)),
+  revokeAgentSession: (pid: number, startTime: number) => {
+    allPreviewAgentSession = allPreviewAgentSession.filter((session) => session.pid !== pid || session.startTime !== startTime);
+    return resolveAfterDelay(structuredClone(allPreviewAgentSession));
+  },
+  listAllAgentHost: () => resolveAfterDelay(structuredClone(allPreviewAgentHost)),
+  forgetAgentHost: (path: string, teamID: string) => {
+    allPreviewAgentHost = allPreviewAgentHost.filter((host) => host.path !== path || host.teamID !== teamID);
+    return resolveAfterDelay(structuredClone(allPreviewAgentHost));
+  },
+  listAllCodingAgent: () => resolveAfterDelay(structuredClone(allPreviewCodingAgent)),
+  connectCodingAgent: (id: string) => setPreviewCodingAgentState(id, "connected"),
+  disconnectCodingAgent: (id: string) => setPreviewCodingAgentState(id, "available"),
   installCommandLineTool: () => {
     if (previewCommandLineMode === "conflict") {
       return Promise.reject(new Error("/opt/homebrew/bin/hisar is already a file that is not from Hisar; Hisar leaves it alone. Remove it yourself to install Hisar's"));

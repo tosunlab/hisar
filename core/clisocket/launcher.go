@@ -27,8 +27,11 @@ const (
 	// CoverageApp: every caller without a terminal in one signed app, until DefaultApprovalLifetime after the app's last
 	// request.
 	CoverageApp ApprovalCoverage = "app"
-	// CoverageConnection: this connection only, for a caller with neither a terminal nor a verified app.
+	// CoverageConnection: this connection only, for a caller with neither a terminal nor a verified app, or whose
+	// process chain could not be read.
 	CoverageConnection ApprovalCoverage = "connection"
+	// CoverageAgentSession: every caller inside one agent harness process, which agent rules answer.
+	CoverageAgentSession ApprovalCoverage = "agent-session"
 )
 
 // LauncherApprovalRequest is what the approval window shows about a launcher such as Raycast: the app it is approved
@@ -73,11 +76,7 @@ func (approvals *SessionApprovals) ListLaunchers() []LauncherApproval {
 func (approvals *SessionApprovals) RevokeLauncher(appPath string) {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
-	for scope := range approvals.launchers.lastUsedByScope {
-		if scope.app.Path == appPath {
-			delete(approvals.launchers.lastUsedByScope, scope)
-		}
-	}
+	approvals.launchers.revokeAppPath(appPath)
 }
 
 // launcherRule is what the server checks before the handler answers a launcher request.
@@ -140,19 +139,34 @@ func checkLauncherShare(request *cliprotocol.Request) error {
 
 // startLauncherConnection turns a command-line connection into a launcher connection. A launcher is an app macOS
 // verified, running outside a terminal, so an approval that lasts until Hisar locks is never keyed by a terminal session
-// or shared by callers nobody can name.
+// or shared by callers nobody can name. Nothing inside an agent harness, or whose chain could not be read, and no app
+// that hosted one, is a launcher.
 func (s *Server) startLauncherConnection(client *connectionPeer, hello cliprotocol.HelloResult) (any, error) {
-	if client.kind != connectionCommandLine {
+	switch {
+	case client.kind != connectionCommandLine:
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "this connection already belongs to an agent or a launcher")
-	}
-	if client.scope.getCoverage() != CoverageApp {
+	case client.isChainUnknown:
+		return nil, refuseUnknownChain()
+	case client.isInAgentSession():
+		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf("Hisar answers no launcher inside %s", client.agentSession.Session.Harness.Name))
+	case client.isAgentHost:
+		return nil, refuseAgentHostLauncher()
+	case client.scope.getCoverage() != CoverageApp:
 		return nil, cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar answers launchers only in an app macOS can verify, outside a terminal")
 	}
 	client.kind = connectionLauncher
 	return cliprotocol.LauncherHelloResult{IsApproved: s.isApproved(client, hello)}, nil
 }
 
+func refuseAgentHostLauncher() error {
+	return cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar answers no launcher in an app that ran a coding agent")
+}
+
+// answerLauncherRequest refuses a launcher whose app ran a coding agent after it connected (applyAgentHost).
 func (s *Server) answerLauncherRequest(ctx context.Context, client *connectionPeer, hello cliprotocol.HelloResult, request *cliprotocol.Request) (any, error) {
+	if client.isAgentHost {
+		return nil, refuseAgentHostLauncher()
+	}
 	rule, isKnown := getLauncherRule(request.Type)
 	if !isKnown {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))

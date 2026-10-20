@@ -121,8 +121,8 @@ func (s *Service) saveSSHKey(vaultID, title string, material *sshkey.KeyMaterial
 	return s.describeItem(&vaultItem), nil
 }
 
-// SSHKeySource offers the ssh-key items of every vault to the SSH agent. It is a separate type so the
-// UI bindings of Service never expose private keys.
+// SSHKeySource offers the ssh-key items of every vault to the SSH agent, and to an agent session only those of the
+// vaults open to coding agents. It is a separate type so the UI bindings of Service never expose private keys.
 type SSHKeySource struct {
 	service *Service
 }
@@ -140,8 +140,10 @@ func (lockedKeySourceError) Is(target error) bool {
 	return target == ErrLocked || target == sshagent.ErrLocked
 }
 
-// ListKeys returns ErrLocked or ErrSignedOut unless Hisar is unlocked; it does not postpone auto-lock.
+// ListKeys returns ErrLocked or ErrSignedOut unless Hisar is unlocked; it does not postpone auto-lock. For an agent
+// session (sshagent.GetAgentSession) the other vaults do not exist, so their keys fail as keys the agent does not hold.
 func (source *SSHKeySource) ListKeys(ctx context.Context) ([]sshagent.Key, error) {
+	_, isAgentSession := sshagent.GetAgentSession(ctx)
 	s := source.service
 	if err := s.requireCurrentVersion(); err != nil {
 		var updateRequired *UpdateRequiredError
@@ -181,6 +183,9 @@ func (source *SSHKeySource) ListKeys(ctx context.Context) ([]sshagent.Key, error
 	})
 	keys := []sshagent.Key{}
 	for _, vault := range vaults {
+		if isAgentSession && !s.isAgentVault(vault.ID) {
+			continue
+		}
 		items, isCached := s.itemsByVaultID[vault.ID]
 		if !isCached {
 			loadedItem, err := s.unlockedSession.ListItems(ctx, vault)

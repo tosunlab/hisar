@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -183,9 +184,12 @@ func (test *phoneApprovalTest) start(t *testing.T) (fakeApproval, func()) {
 func (test *phoneApprovalTest) startUntil(t *testing.T, dialogTimeoutAt time.Time) (fakeApproval, func()) {
 	t.Helper()
 	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22", KeyName: "hisar gitlab"}
-	finish := test.phoneApprover.StartPhoneApproval(description, dialogTimeoutAt, func(answer approval.AcceptedAnswer) {
+	finish, err := test.phoneApprover.StartPhoneApproval(description, dialogTimeoutAt, func(answer approval.AcceptedAnswer) {
 		test.decisionChannel <- answer.Decision == approval.DecisionApprove
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	return test.apiServer.waitForApproval(t), finish
 }
 
@@ -301,7 +305,10 @@ func TestPhoneApprovalCarriesTheRememberChoice(t *testing.T) {
 	}
 	for _, testCase := range cases {
 		answerChannel := make(chan approval.AcceptedAnswer, 1)
-		finish := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(2*time.Minute), func(answer approval.AcceptedAnswer) { answerChannel <- answer })
+		finish, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(2*time.Minute), func(answer approval.AcceptedAnswer) { answerChannel <- answer })
+		if err != nil {
+			t.Fatal(err)
+		}
 		stored := test.apiServer.waitForApproval(t)
 		request, err := approval.OpenRequest(test.keyset, test.accountID, stored.request.RequestID, stored.request.SealedRequest, testPhoneDeviceID, time.Now())
 		if err != nil || request.RememberLabel != description.RememberLabel || !request.IsRememberedByDefault {
@@ -378,10 +385,8 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 	if test.phoneApprover.IsPhoneApprovalAvailable() {
 		t.Error("available with the switch off")
 	}
-	if finish := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, time.Now().Add(time.Minute), func(approval.AcceptedAnswer) { t.Error("decided with the switch off") }); finish == nil {
-		t.Error("no finish function")
-	} else {
-		finish()
+	if _, err := test.phoneApprover.StartPhoneApproval(approval.Description{Kind: approval.KindSSH}, time.Now().Add(time.Minute), func(approval.AcceptedAnswer) { t.Error("decided with the switch off") }); err == nil {
+		t.Error("started with the switch off")
 	}
 	preference.SetPhoneApproval(true)
 
@@ -399,6 +404,20 @@ func TestPhoneApprovalAvailability(t *testing.T) {
 		t.Errorf("requests were posted: %d", len(test.apiServer.approvalsByRequestID))
 	}
 	test.apiServer.mutex.Unlock()
+}
+
+func TestPhoneApprovalTooLargeIsNotSent(t *testing.T) {
+	test := createPhoneApprovalTest(t)
+	description := approval.Description{Kind: approval.KindCommandLine, AppName: "omp", Purpose: "run a command with 1 secret", CommandLine: "sh -c '" + strings.Repeat("true; ", 4000) + "'"}
+	finish, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Minute), func(approval.AcceptedAnswer) { t.Error("decided a request that was never sent") })
+	if !errors.Is(err, approval.ErrSealedTooLarge) || finish != nil {
+		t.Fatalf("StartPhoneApproval = %v, want approval.ErrSealedTooLarge", err)
+	}
+	test.apiServer.mutex.Lock()
+	defer test.apiServer.mutex.Unlock()
+	if len(test.apiServer.approvalsByRequestID) != 0 {
+		t.Errorf("requests were posted: %d", len(test.apiServer.approvalsByRequestID))
+	}
 }
 
 func TestPhoneListsAndAnswersRequests(t *testing.T) {
@@ -615,9 +634,12 @@ func TestPhoneApprovalOutlivesAHangingDeviceRefresh(t *testing.T) {
 		}
 	}
 	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "sign a commit"}
-	later := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Hour+time.Minute), func(answer approval.AcceptedAnswer) {
+	later, err := test.phoneApprover.StartPhoneApproval(description, time.Now().Add(time.Hour+time.Minute), func(answer approval.AcceptedAnswer) {
 		test.decisionChannel <- answer.Decision == approval.DecisionApprove
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer later()
 	laterStored := test.apiServer.waitForApproval(t)
 	if laterStored.request.RequestID == stored.request.RequestID {

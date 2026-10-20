@@ -9,6 +9,7 @@ import {
   loadAllShareLinkQuietly,
   loadStatus,
   openInviteLink,
+  openSettings,
   restoreBrowserPairing,
   showBrowserPairing,
   showUpdateRequired,
@@ -51,6 +52,7 @@ onMounted(() => {
     Events.On("share-links-changed", () => loadAllShareLinkQuietly()),
     Events.On("browser-pairing", (event) => showBrowserPairing(event.data ?? null)),
     Events.On("show-item", (event) => showItem(event.data)),
+    Events.On("show-settings", (event) => openSettings(event.data ?? "")),
   ];
   restoreBrowserPairing();
   window.addEventListener("keydown", reportActivity);

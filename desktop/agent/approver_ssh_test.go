@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 )
@@ -15,6 +16,7 @@ type sshApproverOption struct {
 	unlocker               Unlocker
 	isCompact              bool
 	processes              []appinfo.Process
+	requester              appinfo.Requester
 	fileSystem             fakeFileSystem
 	getSSHRememberDuration func() time.Duration
 }
@@ -23,9 +25,12 @@ func createSSHApprover(emitter *fakeEmitter, option sshApproverOption) *Approver
 	if option.biometric == nil {
 		option.biometric = &fakeBiometric{isAvailable: true}
 	}
+	if option.requester.Kind == "" {
+		option.requester = createTerminalRequester(option.processes)
+	}
 	config := ApproverConfig{
 		Biometric: option.biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
-		ResolveRequester:  func(int) appinfo.Requester { return createTerminalRequester(option.processes) },
+		ResolveRequester:  func(int) appinfo.Requester { return option.requester },
 		ReadFile:          option.fileSystem.readFile,
 		HomeDirectory:     testHomeDirectory,
 		IsCompactApproval: func() bool { return option.isCompact },
@@ -44,6 +49,74 @@ func createPushChain() []appinfo.Process {
 		createSSHProcess("-o", "SendEnv=GIT_PROTOCOL", "git@"+testRemoteHost, testRemoteGitPushed),
 		createGitProcess(40, "push", "origin", "main"),
 	}, createShellAndTerminal()...)
+}
+
+// createOmpSSHChain is `ssh -T git@github.com` that omp runs in Tern through its bash tool.
+func createOmpSSHChain() []appinfo.Process {
+	return []appinfo.Process{
+		createSSHProcess("-T", "git@github.com"),
+		{PID: 1300, Path: "/bin/sh", Arguments: []string{"/bin/sh", "-c", "ssh -T git@github.com"}, WorkingDirectory: testRepositoryPath},
+		{PID: ompInPaneA.Session.PID, Path: "/Users/developer/Library/Application Support/Tern/omp/versions/18.12.3", Arguments: []string{"omp"}, WorkingDirectory: testRepositoryPath},
+	}
+}
+
+func createOmpRequest(session *agentharness.LiveSession) sshagent.ApprovalRequest {
+	request := createTestRequest()
+	request.ApplicationPath, request.AgentSession = ternBundlePath, session
+	return request
+}
+
+func TestSSHTitleNamesTheHarness(t *testing.T) {
+	emitter := createFakeEmitter()
+	biometric := &fakeBiometric{isAvailable: true}
+	approver := createSSHApprover(emitter, sshApproverOption{biometric: biometric, requester: createTernRequester(createOmpSSHChain())})
+	resultChannel := startApproval(approver, context.Background(), createOmpRequest(ompInPaneA))
+	event := waitForApprovalEvent(t, emitter)
+	if event.AppName != "omp in Tern" || event.Action != "sign in to" || event.Target != "github.com" || event.AppPath != ternBundlePath {
+		t.Errorf("the window reads %q wants to %s %s (%+v)", event.AppName, event.Action, event.Target, event)
+	}
+	approver.Respond(event.RequestID, true, false)
+	waitForResult(t, resultChannel)
+	if reasons := biometric.listReasons(); len(reasons) != 1 || reasons[0] != `allow "omp in Tern" to sign in to github.com` {
+		t.Errorf("Touch ID reasons = %q", reasons)
+	}
+
+	unresolved := NewApprover(ApproverConfig{Biometric: biometric, Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow})
+	resultChannel = startApproval(unresolved, context.Background(), createOmpRequest(ompInPaneA))
+	if event = waitForApprovalEvent(t, emitter); event.AppName != "omp" {
+		t.Errorf("without the app, the window names %q", event.AppName)
+	}
+	unresolved.Respond(event.RequestID, false, false)
+	waitForResult(t, resultChannel)
+}
+
+func TestAgentSessionHidesUntilLock(t *testing.T) {
+	emitter := createFakeEmitter()
+	approver := createSSHApprover(emitter, sshApproverOption{
+		requester:              createTernRequester(createOmpSSHChain()),
+		getSSHRememberDuration: func() time.Duration { return 0 },
+	})
+	resultChannel := startApproval(approver, context.Background(), createOmpRequest(ompInPaneA))
+	event := waitForApprovalEvent(t, emitter)
+	if !event.IsRememberable || event.RememberPeriod != "for 1 hour" || event.RememberLabel != "Don’t ask again for omp in Tern for 1 hour" {
+		t.Errorf("event = %+v", event)
+	}
+	if label := approver.buildSSHPhoneDescription(event, 0).RememberLabel; label != "Also allows omp in Tern for 1 hour" {
+		t.Errorf("phone label = %q", label)
+	}
+	approver.Respond(event.RequestID, true, true)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed || !result.result.IsRemembered {
+		t.Errorf("result = %+v", result)
+	}
+
+	userPane := createTestRequest()
+	userPane.ApplicationPath = ternBundlePath
+	resultChannel = startApproval(approver, context.Background(), userPane)
+	if event = waitForApprovalEvent(t, emitter); event.RememberPeriod != "until Hisar locks" || event.RememberLabel != "" || event.AppName != "Tern" {
+		t.Errorf("the user's own Tern pane lost Until Hisar locks: %+v", event)
+	}
+	approver.Respond(event.RequestID, false, false)
+	waitForResult(t, resultChannel)
 }
 
 func TestSSHApprovalDescribesThePush(t *testing.T) {

@@ -129,7 +129,12 @@ func askPhone(phoneApprover *app.PhoneApprover, description approval.Description
 		}
 		answers := make(chan approval.AcceptedAnswer, 1)
 		expiresAt := time.Now().Add(approval.MaximumLifetime)
-		finish := phoneApprover.StartPhoneApproval(description, expiresAt, func(answer approval.AcceptedAnswer) { answers <- answer })
+		finish, err := phoneApprover.StartPhoneApproval(description, expiresAt, func(answer approval.AcceptedAnswer) { answers <- answer })
+		if err != nil {
+			log.Printf("could not ask the phone: %v", err)
+			time.Sleep(time.Second)
+			continue
+		}
 		log.Printf("asked the phone: %s wants to %s", description.AppName, description.Purpose)
 		select {
 		case answer := <-answers:

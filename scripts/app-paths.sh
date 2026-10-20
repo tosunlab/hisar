@@ -2,14 +2,15 @@
 # What each app is built from, as git pathspecs. Sourced by detect-app-changes.sh (which CI jobs a pull request needs) and
 # plan-release.sh and release-notes.sh (which commits a release has).
 #
-# The Go apps compile against core/ and go.work. The desktop app also counts cli/: its module requires it and the app
-# bundles the hisar CLI. The server image embeds the admin dashboard. The iPhone and Android apps share mobile/hisarkit
-# and mobile/go.mod; each also counts its own folder, so an Android-only change does not run the iPhone job.
+# The Go apps compile against core/ and go.work. The desktop app also counts cli/ and omp/: its module requires cli/, and
+# the app bundles the hisar CLI and the omp plugin. The server image embeds the admin dashboard. The iPhone and Android
+# apps share mobile/hisarkit and mobile/go.mod; each also counts its own folder, so an Android-only change does not run
+# the iPhone job.
 
 sharedGoPaths=(core/ go.work go.work.sum)
 serverPaths=(server/ admin/ deploy/Dockerfile "${sharedGoPaths[@]}")
 cliPaths=(cli/ scripts/package-cli-release.sh "${sharedGoPaths[@]}")
-desktopPaths=(desktop/ cli/ scripts/download-sparkle.sh scripts/get-build-number.sh scripts/package-desktop-dmg.sh
+desktopPaths=(desktop/ cli/ omp/ scripts/download-sparkle.sh scripts/get-build-number.sh scripts/package-desktop-dmg.sh
   scripts/package-desktop-flatpak.sh scripts/package-desktop-linux.sh scripts/package-desktop-update.sh
   scripts/sign-desktop-app.sh scripts/test-desktop-linux-package.sh "${sharedGoPaths[@]}")
 phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh "${sharedGoPaths[@]}")

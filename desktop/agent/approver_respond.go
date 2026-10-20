@@ -68,11 +68,12 @@ func (approver *Approver) acceptPhoneAnswer(pending *pendingApproval, answer app
 	return isApproved
 }
 
-// respondFromPhone answers with a decision the vault backend verified; it ends a Touch ID check that is waiting.
+// respondFromPhone answers with a decision the vault backend verified; it ends a Touch ID check that is waiting. The
+// phone is asked before the request is listed, so an answer counts until the request is finished.
 func (approver *Approver) respondFromPhone(pending *pendingApproval, answer approval.AcceptedAnswer) {
 	approver.mutex.Lock()
 	isSent := false
-	if approver.findPending(pending.event.RequestID) == pending {
+	if !pending.isFinished {
 		select {
 		case pending.phoneChannel <- answer:
 			isSent = true

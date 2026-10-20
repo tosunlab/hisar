@@ -110,6 +110,23 @@ class PhoneApprovalUITests : HisarUITestCase() {
     }
 
     @Test
+    fun testCodingAgentRequestShowsProject() {
+        val backend = createBackend(createApproval("agent"))
+        launchApp(backend).use {
+            openSheet("preview-agent")
+            assertEquals("omp in Tern (via hisar) wants to use 2 secrets", readText("phone-approval-summary"))
+            assertEquals("~/src/acme-web", readText("phone-approval-row-Project"))
+            assertEquals("npm run db:migrate", readText("phone-approval-row-Command"))
+            assertFalse("the agent runs in its project's root", exists(hasTestTag("phone-approval-row-Repository")))
+            val secrets = readText("phone-approval-row-Secrets")
+            assertTrue(secrets, "Agents › Staging Postgres › connection string" in secrets && "Agents › Stripe › secret key" in secrets)
+            saveScreenshot("phone-approval-agent")
+            tap("phone-approval-deny")
+            checkResult(backend, "deny preview-agent", "Denied on your Mac")
+        }
+    }
+
+    @Test
     fun testForwardedRequestWarns() {
         val backend = createBackend(createApproval("forwarded"))
         launchApp(backend).use {
@@ -317,6 +334,12 @@ class PhoneApprovalUITests : HisarUITestCase() {
                     requestID = "preview-launcher-share", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_LAUNCHER,
                     appName = "Raycast", purpose = "create a share link for “GitHub”", commandLine = "Expires in 7 days · 1 view", secrets = listOf("username", "password"),
                     appWarning = "Anyone with the link can read these until it expires or its views run out.",
+                )
+                "agent" -> PhoneApproval(
+                    requestID = "preview-agent", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_COMMAND_LINE,
+                    appName = "omp in Tern (via hisar)", purpose = "use 2 secrets", commandLine = "npm run db:migrate", repositoryPath = "~/src/acme-web",
+                    projectPath = "~/src/acme-web", secrets = listOf("Agents › Staging Postgres › connection string", "Agents › Stripe › secret key"),
+                    rememberLabel = "Also allows these secrets for this agent for 1 hour",
                 )
                 else -> PhoneApproval(
                     requestID = "preview-ssh", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_SSH,

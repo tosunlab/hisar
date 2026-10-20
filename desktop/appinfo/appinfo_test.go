@@ -4,6 +4,8 @@ import (
 	"errors"
 	"slices"
 	"testing"
+
+	"github.com/tryhisar/hisar/core/agentharness"
 )
 
 type fakeProcess struct {
@@ -11,6 +13,7 @@ type fakeProcess struct {
 	parentPID        int
 	arguments        []string
 	workingDirectory string
+	startTime        int64
 }
 
 type fakeProcessTree map[int]fakeProcess
@@ -43,6 +46,14 @@ func (tree fakeProcessTree) createReader() ProcessReader {
 			return "", errNoProcess
 		},
 	}
+}
+
+func (tree fakeProcessTree) readInstance(pid int) (agentharness.Instance, error) {
+	process, isFound := tree[pid]
+	if !isFound {
+		return agentharness.Instance{}, errors.New("no such process")
+	}
+	return agentharness.Instance{StartTime: process.startTime, ParentPID: process.parentPID}, nil
 }
 
 func (tree fakeProcessTree) findAppPath(pid int) string {
@@ -213,32 +224,5 @@ func TestFindApp(t *testing.T) {
 	}
 	if requester := resolver.Resolve(999); requester.Kind != RequesterKindProcess || requester.Name != "A process without an app" {
 		t.Errorf("an unknown process: %+v", requester)
-	}
-}
-
-func TestParseKernelProcessArgument(t *testing.T) {
-	raw := []byte{3, 0, 0, 0}
-	raw = append(raw, "/usr/bin/git\x00\x00\x00\x00git\x00push\x00\x00HOME=/Users/developer\x00GITHUB_TOKEN=secret\x00"...)
-	arguments, err := parseKernelProcessArgument(raw)
-	if err != nil || !slices.Equal(arguments, []string{"git", "push", ""}) {
-		t.Errorf("arguments %q, %v", arguments, err)
-	}
-	for _, malformed := range [][]byte{{1, 0}, {1, 0, 0, 0, 'x'}, {0xff, 0xff, 0, 0, '/', 0}} {
-		if _, err := parseKernelProcessArgument(malformed); err == nil {
-			t.Errorf("%q parsed", malformed)
-		}
-	}
-	truncated := append([]byte{5, 0, 0, 0}, "/bin/ls\x00ls\x00-l"...)
-	if arguments, err := parseKernelProcessArgument(truncated); err != nil || !slices.Equal(arguments, []string{"ls", "-l"}) {
-		t.Errorf("truncated: %q, %v", arguments, err)
-	}
-}
-
-func TestParseLinuxCommandLine(t *testing.T) {
-	if arguments := parseLinuxCommandLine([]byte("git\x00push\x00origin\x00")); !slices.Equal(arguments, []string{"git", "push", "origin"}) {
-		t.Errorf("%q", arguments)
-	}
-	if arguments := parseLinuxCommandLine(nil); len(arguments) != 0 {
-		t.Errorf("empty: %q", arguments)
 	}
 }

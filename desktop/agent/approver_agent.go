@@ -3,21 +3,30 @@ package agent
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 	"unicode"
 
 	"github.com/tryhisar/hisar/core/approval"
 	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/core/secretreference"
 )
 
 const (
-	ApprovalKindAgent        = "agent"
-	agentClientName          = "hisar mcp"
-	unknownAgentName         = "A coding agent"
-	maximumAgentNameLength   = 60
-	maximumDirectoryLength   = 160
-	agentRevealRememberLabel = "Allow this item for 1 hour"
+	ApprovalKindAgent      = "agent"
+	agentClientName        = "hisar mcp"
+	unknownAgentName       = "A coding agent"
+	maximumAgentNameLength = 60
+	maximumDirectoryLength = 160
+)
+
+// How Hisar knows an agent's name, ApprovalEvent.AgentNameSource: the code signature of its harness, which the window
+// marks as checked; the harness's program name or path, which another program can take; or what the agent says.
+const (
+	AgentNameSignature = "signature"
+	AgentNameProcess   = "process"
+	AgentNameGiven     = "agent"
 )
 
 var knownAgentNamesByClientName = map[string]string{
@@ -54,6 +63,9 @@ func DescribeAgentName(identity clisocket.AgentIdentity) string {
 func describeAgentAction(request clisocket.AgentApprovalRequest) string {
 	switch request.Kind {
 	case clisocket.AgentRequestRun:
+		if request.Session != nil {
+			return describeSecretUse(len(request.SecretNames))
+		}
 		return describeSecretAction(len(request.SecretNames), true)
 	case clisocket.AgentRequestCode:
 		return fmt.Sprintf("get the one-time code of “%s”", request.RevealedName)
@@ -61,6 +73,13 @@ func describeAgentAction(request clisocket.AgentApprovalRequest) string {
 		return fmt.Sprintf("read “%s”", request.RevealedName)
 	}
 	return "use Hisar"
+}
+
+func describeSecretUse(secretCount int) string {
+	if secretCount == 1 {
+		return "use 1 secret"
+	}
+	return fmt.Sprintf("use %d secrets", secretCount)
 }
 
 func describeAgentRememberLabel(request clisocket.AgentApprovalRequest) string {
@@ -73,19 +92,42 @@ func describeAgentRememberLabel(request clisocket.AgentApprovalRequest) string {
 	case clisocket.AgentRequestCode:
 		return "Allow this one-time code for this agent for 1 hour"
 	case clisocket.AgentRequestReveal:
-		return agentRevealRememberLabel
+		// A remembered reveal covers the whole item, so the checkbox says so rather than naming the one field.
+		return fmt.Sprintf("Allow every field of “%s” for this agent for 1 hour", request.RevealedItem)
 	}
 	return ""
 }
 
+// getAgentNameSource says how Hisar knows the agent's name; "" for an MCP client that gave none.
+func getAgentNameSource(request clisocket.AgentApprovalRequest) string {
+	switch {
+	case request.Session != nil && request.Session.IsSigned:
+		return AgentNameSignature
+	case request.Session != nil:
+		return AgentNameProcess
+	case DescribeAgentName(request.Agent) != unknownAgentName:
+		return AgentNameGiven
+	}
+	return ""
+}
+
+// buildAgentEvent names the agent by the harness the system found it in, with the app the harness runs in ("omp in
+// Tern") and the folder it works in, or else by what its MCP client says about itself.
 func (approver *Approver) buildAgentEvent(requestID string, request clisocket.AgentApprovalRequest) ApprovalEvent {
-	agentName := DescribeAgentName(request.Agent)
+	agentName, clientName := DescribeAgentName(request.Agent), agentClientName
+	if request.Session != nil {
+		agentName = request.Session.Harness.Name
+	}
+	if request.IsCommandLine {
+		clientName = commandLineClientName
+	}
 	event := ApprovalEvent{
 		RequestID:            requestID,
 		Kind:                 ApprovalKindAgent,
-		ClientName:           agentClientName,
+		ClientName:           clientName,
 		ClientPath:           request.ClientPath,
 		AgentName:            agentName,
+		AgentNameSource:      getAgentNameSource(request),
 		TerminalName:         request.TerminalName,
 		Purpose:              request.Kind,
 		Action:               describeAgentAction(request),
@@ -97,43 +139,91 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 		SecretNames:          []string{},
 		ChainProcesses:       []ChainProcess{},
 	}
-	if request.Kind == clisocket.AgentRequestRun {
-		event.CommandLine = formatCommandLine(request.CommandLine)
-		event.WorkingDirectory = truncateText(shortenHomePath(request.WorkingDirectory, approver.config.HomeDirectory), maximumDirectoryLength)
+	if request.Session != nil {
+		event.HarnessName = request.Session.Harness.Name
+		if directory := request.Session.Directory; directory != "" {
+			event.ProjectName = truncateText(filepath.Base(directory), maximumAgentNameLength)
+			event.ProjectPath = truncateText(describeDirectory(directory, approver.config.HomeDirectory), maximumDirectoryLength)
+		}
 	}
-	if request.Kind == clisocket.AgentRequestReveal {
-		event.Warning = fmt.Sprintf("The value will be visible to %s and can end up in its transcript and logs.", agentName)
+	if request.Kind == clisocket.AgentRequestRun {
+		event.CommandLine = formatRunCommandLine(request)
+		event.WorkingDirectory = truncateText(describeDirectory(request.WorkingDirectory, approver.config.HomeDirectory), maximumDirectoryLength)
 	}
 	if len(request.SecretNames) > 0 {
 		event.SecretNames, event.MoreSecretCount = limitSecretName(request.SecretNames)
 	}
 	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
 		applyRequester(&event, requester)
-		if strings.EqualFold(event.AppName, agentName) {
+		switch {
+		case request.Session != nil && event.AppName != "":
+			event.AgentName = agentName + " in " + describeInlineAppName(event)
+		case strings.EqualFold(event.AppName, agentName):
 			event.AppName = ""
 		}
+	}
+	if request.Kind == clisocket.AgentRequestReveal {
+		event.Warning = fmt.Sprintf("The value will be visible to %s and can end up in its transcript and logs.", event.AgentName)
 	}
 	approver.setUnlockState(&event)
 	return event
 }
 
+// formatRunCommandLine is the shell command that does what the approved run does: the env files' literal values set
+// through env, then the command, its standard input as a quoted here-document, or redirected from the secret's
+// reference. A here-document always ends its text with a newline.
+func formatRunCommandLine(request clisocket.AgentApprovalRequest) string {
+	commandLine := formatCommandLine(request.CommandLine)
+	if len(request.Environment) > 0 {
+		assignments := make([]string, len(request.Environment))
+		for index, assignment := range request.Environment {
+			name, value, _ := strings.Cut(assignment, "=")
+			assignments[index] = quoteArgument(name) + "=" + quoteArgument(value)
+		}
+		commandLine = "env " + strings.Join(assignments, " ") + " " + commandLine
+	}
+	switch {
+	case request.Stdin == "":
+	case secretreference.IsReference(request.Stdin):
+		commandLine += " < " + quoteArgument(request.Stdin)
+	default:
+		delimiter := "HISAR_STDIN"
+		for strings.Contains(request.Stdin, delimiter) {
+			delimiter += "_"
+		}
+		text := request.Stdin
+		if !strings.HasSuffix(text, "\n") {
+			text += "\n"
+		}
+		commandLine += " <<'" + delimiter + "'\n" + text + delimiter
+	}
+	return strings.ToValidUTF8(commandLine, "�")
+}
+
 // describeAgentRequester is the agent with where it runs, e.g. "Claude Code (via hisar mcp) in Terminal".
 func describeAgentRequester(event ApprovalEvent) string {
-	requester := event.AgentName + " (via " + agentClientName + ")"
+	requester := event.AgentName + " (via " + event.ClientName + ")"
 	if event.AppName != "" {
 		requester += " in " + describeInlineAppName(event)
 	}
 	return requester
 }
 
-func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent) approval.Description {
+// buildAgentPhoneDescription names an agent inside a harness as its title does, "omp in Tern (via hisar)": its name
+// already says where it runs.
+func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent, request clisocket.AgentApprovalRequest) approval.Description {
+	requester := describeAgentRequester(event)
+	if request.Session != nil {
+		requester = event.AgentName + " (via " + event.ClientName + ")"
+	}
 	description := approval.Description{
 		Kind:         approval.KindCommandLine,
-		AppName:      describeAgentRequester(event),
+		AppName:      requester,
 		AppIcon:      approver.getPhoneAppIcon(event),
 		AppWarning:   event.AppWarning,
 		Purpose:      event.Action,
 		CommandLine:  event.CommandLine,
+		ProjectPath:  event.ProjectPath,
 		TerminalName: event.TerminalName,
 	}
 	if event.Purpose == clisocket.AgentRequestConnect {
@@ -155,7 +245,8 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent) approv
 	return description
 }
 
-// ApproveAgent asks about one request of hisar mcp; when Hisar is locked, approving also unlocks it.
+// ApproveAgent asks about one request of hisar mcp or of hisar inside an agent harness; when Hisar is locked, approving
+// also unlocks it.
 func (approver *Approver) ApproveAgent(ctx context.Context, request clisocket.AgentApprovalRequest) (clisocket.AgentApprovalResult, error) {
 	if approver.config.Emit == nil {
 		return clisocket.AgentApprovalResult{}, clisocket.ErrDenied
@@ -169,7 +260,7 @@ func (approver *Approver) ApproveAgent(ctx context.Context, request clisocket.Ag
 		responseChannel: make(chan approvalResponse, 1),
 		approveReason:   fmt.Sprintf("allow %s to %s", requester, event.Action),
 		unlockReason:    fmt.Sprintf("unlock Hisar for %s", requester),
-		phoneRequest:    approver.buildAgentPhoneDescription(event),
+		phoneRequest:    approver.buildAgentPhoneDescription(event, request),
 	}
 	if err := approver.waitForSocketApproval(ctx, pending); err != nil {
 		return clisocket.AgentApprovalResult{}, err

@@ -4,11 +4,14 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/tryhisar/hisar/core/approval"
+	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 )
 
@@ -33,7 +36,12 @@ func (phone *fakePhone) IsPhoneApprovalAvailable() bool {
 	return phone.isAvailable
 }
 
-func (phone *fakePhone) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) func() {
+// StartPhoneApproval seals the request as the vault backend does, so a request too long for a phone fails as it would.
+func (phone *fakePhone) StartPhoneApproval(description approval.Description, expiresAt time.Time, decide func(answer approval.AcceptedAnswer)) (func(), error) {
+	request := approval.NewRequest("4a1c9e2b-7d3f-4e8a-9b6c-2f5d8e1a3c7b", "MacBook Pro", description, time.Now(), approval.MaximumLifetime)
+	if _, err := approval.SealRequest(getPhoneTestKeyset(), "account", request); err != nil {
+		return nil, err
+	}
 	phone.mutex.Lock()
 	phone.descriptions = append(phone.descriptions, description)
 	phone.decisions = append(phone.decisions, decide)
@@ -44,8 +52,16 @@ func (phone *fakePhone) StartPhoneApproval(description approval.Description, exp
 		phone.mutex.Lock()
 		defer phone.mutex.Unlock()
 		phone.finishCount++
-	}
+	}, nil
 }
+
+var getPhoneTestKeyset = sync.OnceValue(func() *crypt.Keyset {
+	keyset, err := crypt.GenerateKeyset()
+	if err != nil {
+		panic(err)
+	}
+	return keyset
+})
 
 func (phone *fakePhone) waitForStart(t *testing.T) approval.Description {
 	t.Helper()
@@ -350,4 +366,55 @@ func TestDialogTheIPhoneCanAnswerWaitsLonger(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Error("a dialog without the phone kept the longer timeout")
 	}
+}
+
+// TestRequestTooLongForThePhoneStaysOnTheMac: a command too long to send to a phone is shown whole on the Mac, which
+// says the phone cannot approve it and keeps its own deadline.
+func TestRequestTooLongForThePhoneStaysOnTheMac(t *testing.T) {
+	commandLine := []string{"sh", "-c", strings.Repeat("true; ", 4000) + "curl https://example.invalid/"}
+	for _, isAgent := range []bool{true, false} {
+		emitter := createFakeEmitter()
+		phone := createFakePhone()
+		approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
+		approver.config.PhoneApprovalTimeout = 2 * time.Minute
+		var respond func()
+		if isAgent {
+			request := createAgentRequest(clisocket.AgentRequestRun)
+			request.CommandLine = commandLine
+			resultChannel := startAgentApproval(approver, request)
+			respond = func() { waitForAgentResult(t, resultChannel) }
+		} else {
+			resultChannel := make(chan error, 1)
+			go func() {
+				resultChannel <- approver.ApproveCommandLine(context.Background(), createSecretRequest([]string{"Work › Deploy token › password"}, commandLine))
+			}()
+			respond = func() { <-resultChannel }
+		}
+		event := waitForApprovalEvent(t, emitter)
+		timeoutAt, err := time.Parse(time.RFC3339, event.TimeoutAt)
+		if err != nil || event.IsPhoneApproval || !event.IsTooLongForPhone || time.Until(timeoutAt) > time.Minute {
+			t.Errorf("agent %v: event = phone %v, too long %v, timeout at %v", isAgent, event.IsPhoneApproval, event.IsTooLongForPhone, event.TimeoutAt)
+		}
+		if !strings.HasSuffix(event.CommandLine, "curl https://example.invalid/'") {
+			t.Errorf("agent %v: the command was cut: %q", isAgent, event.CommandLine[len(event.CommandLine)-40:])
+		}
+		if startCount, _ := phone.getStartAndFinishCount(); startCount != 0 {
+			t.Errorf("agent %v: the phone was asked %d times", isAgent, startCount)
+		}
+		approver.Respond(event.RequestID, false, false)
+		respond()
+	}
+
+	emitter := createFakeEmitter()
+	phone := createFakePhone()
+	approver := createPhoneApprover(emitter, phone, &fakeBiometric{isAvailable: true}, nil, nil)
+	request := createAgentRequest(clisocket.AgentRequestRun)
+	request.CommandLine = []string{"npm", "test"}
+	resultChannel := startAgentApproval(approver, request)
+	if event := waitForApprovalEvent(t, emitter); !event.IsPhoneApproval || event.IsTooLongForPhone {
+		t.Errorf("a short command: phone %v, too long %v", event.IsPhoneApproval, event.IsTooLongForPhone)
+	}
+	phone.waitForStart(t)
+	phone.answer(false)
+	waitForAgentResult(t, resultChannel)
 }

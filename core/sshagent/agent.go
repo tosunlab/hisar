@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/tryhisar/hisar/core/localsocket"
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/sshkey"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
@@ -67,6 +67,11 @@ type ApprovalRequest struct {
 	IsRememberable           bool
 	// IsAlwaysAskKey marks a key set to ask every time, which the approver must not remember either.
 	IsAlwaysAskKey bool
+	// AgentSession is the live agent session the client runs inside; an approval is then remembered for that session
+	// only, and ends with it.
+	AgentSession *agentharness.LiveSession
+	// IsNeverRemembered marks a client that no remembered approval covers (Peer).
+	IsNeverRemembered bool
 }
 
 type ApprovalResult struct {
@@ -83,23 +88,32 @@ type Approver interface {
 // SetApprovalLifetime changes it, and a lifetime of 0 keeps approvals until ClearApprovals.
 const DefaultApprovalLifetime = time.Hour
 
+// approvalCacheKey is what a remembered approval covers: a key with a live agent session (its ID), or with the app
+// bundle the client runs in, or the program when there is none.
 type approvalCacheKey struct {
-	fingerprint string
-	scope       string
+	fingerprint  string
+	scope        string
+	agentSession uint64
 }
 
-// getApprovalScope is the app bundle the client runs in, or the program when there is none.
-func getApprovalScope(request ApprovalRequest) string {
-	if request.ApplicationPath != "" {
-		return request.ApplicationPath
+func getApprovalCacheKey(request ApprovalRequest) approvalCacheKey {
+	if request.AgentSession != nil {
+		return approvalCacheKey{fingerprint: request.Fingerprint, agentSession: request.AgentSession.ID}
 	}
-	return request.ClientPath
+	if request.ApplicationPath != "" {
+		return approvalCacheKey{fingerprint: request.Fingerprint, scope: request.ApplicationPath}
+	}
+	return approvalCacheKey{fingerprint: request.Fingerprint, scope: request.ClientPath}
+}
+
+func (cacheKey approvalCacheKey) isAgentSession() bool {
+	return cacheKey.agentSession != 0
 }
 
 type Server struct {
 	keySource        KeySource
 	approver         Approver
-	peerResolver     localsocket.PeerResolver
+	peerResolver     PeerResolver
 	mutex            sync.Mutex
 	approvedAt       map[approvalCacheKey]time.Time
 	approvalLifetime time.Duration
@@ -107,9 +121,12 @@ type Server struct {
 	approvalEpoch    uint64
 	alwaysAskKeyIDs  map[string]bool
 	knownHostsPaths  []string
+	// agentSessions holds the live agent sessions this agent saw a connection from, by ID, until they end.
+	agentSessions    map[uint64]*agentSessionState
+	notifyNoAgentKey func(session agentharness.Session)
 }
 
-func NewServer(keySource KeySource, approver Approver, peerResolver localsocket.PeerResolver) *Server {
+func NewServer(keySource KeySource, approver Approver, peerResolver PeerResolver) *Server {
 	return &Server{
 		keySource:        keySource,
 		approver:         approver,
@@ -118,6 +135,7 @@ func NewServer(keySource KeySource, approver Approver, peerResolver localsocket.
 		approvalLifetime: DefaultApprovalLifetime,
 		getNow:           time.Now,
 		alwaysAskKeyIDs:  map[string]bool{},
+		agentSessions:    map[uint64]*agentSessionState{},
 	}
 }
 
@@ -149,7 +167,7 @@ func (s *Server) SetApprovalLifetime(lifetime time.Duration) {
 	defer s.mutex.Unlock()
 	// Approvals already expired under the old lifetime must not come back under a longer one.
 	for cacheKey, approvedAt := range s.approvedAt {
-		if s.hasApprovalExpired(approvedAt) {
+		if s.hasApprovalExpired(cacheKey, approvedAt) {
 			delete(s.approvedAt, cacheKey)
 		}
 	}
@@ -162,7 +180,13 @@ func (s *Server) GetApprovalLifetime() time.Duration {
 	return s.approvalLifetime
 }
 
-func (s *Server) CreateAgent(ctx context.Context, peer localsocket.PeerInfo) agent.ExtendedAgent {
+// CreateAgent serves one connection. An agent session's connection carries the session in its context
+// (GetAgentSession), so the key source offers it only the keys agents may use.
+func (s *Server) CreateAgent(ctx context.Context, peer Peer) agent.ExtendedAgent {
+	if peer.AgentSession != nil {
+		s.joinAgentSession(peer.AgentSession)
+		ctx = context.WithValue(ctx, agentSessionContextKey{}, peer.AgentSession.Session)
+	}
 	return &connectionAgent{server: s, ctx: ctx, peer: peer}
 }
 
@@ -176,8 +200,9 @@ func (s *Server) setRememberable(request *ApprovalRequest) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	request.IsAlwaysAskKey = s.alwaysAskKeyIDs[request.KeyID]
-	request.IsRememberable = getApprovalScope(*request) != "" && !request.IsForwarded &&
-		request.SignatureNamespace != GitSignatureNamespace && !request.IsAlwaysAskKey
+	cacheKey := getApprovalCacheKey(*request)
+	request.IsRememberable = (cacheKey.scope != "" || cacheKey.isAgentSession()) && !request.IsNeverRemembered &&
+		!request.IsForwarded && request.SignatureNamespace != GitSignatureNamespace && !request.IsAlwaysAskKey
 }
 
 // askApprover returns the approver's answer and the approval epoch it was asked in.
@@ -195,16 +220,18 @@ func (s *Server) askApprover(ctx context.Context, request ApprovalRequest) (Appr
 	return result, epoch, nil
 }
 
-// remember keeps an approval unless Hisar locked since it was asked for.
+// remember keeps an approval unless Hisar locked since it was asked for, or the agent session it is for ended.
 func (s *Server) remember(request ApprovalRequest, epoch uint64) {
 	if !request.IsRememberable || request.Fingerprint == "" {
 		return
 	}
+	cacheKey := getApprovalCacheKey(request)
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.approvalEpoch == epoch {
-		s.approvedAt[approvalCacheKey{fingerprint: request.Fingerprint, scope: getApprovalScope(request)}] = s.getNow()
+	if s.approvalEpoch != epoch || (request.AgentSession != nil && request.AgentSession.Context().Err() != nil) {
+		return
 	}
+	s.approvedAt[cacheKey] = s.getNow()
 }
 
 func (s *Server) getApprovalEpoch() uint64 {
@@ -213,10 +240,11 @@ func (s *Server) getApprovalEpoch() uint64 {
 	return s.approvalEpoch
 }
 
+// requestApproval asks unless a remembered approval covers the request.
 func (s *Server) requestApproval(ctx context.Context, request ApprovalRequest) error {
 	s.setRememberable(&request)
 	s.mutex.Lock()
-	isApproved := request.IsRememberable && s.isApprovalCurrent(approvalCacheKey{fingerprint: request.Fingerprint, scope: getApprovalScope(request)})
+	isApproved := request.IsRememberable && s.isApprovalCurrent(getApprovalCacheKey(request))
 	s.mutex.Unlock()
 	if isApproved {
 		return nil
@@ -236,15 +264,19 @@ func (s *Server) isApprovalCurrent(cacheKey approvalCacheKey) bool {
 	if !isFound {
 		return false
 	}
-	if s.hasApprovalExpired(approvedAt) {
+	if s.hasApprovalExpired(cacheKey, approvedAt) {
 		delete(s.approvedAt, cacheKey)
 		return false
 	}
 	return true
 }
 
-func (s *Server) hasApprovalExpired(approvedAt time.Time) bool {
-	return s.approvalLifetime > 0 && s.getNow().Sub(approvedAt) >= s.approvalLifetime
+func (s *Server) hasApprovalExpired(cacheKey approvalCacheKey, approvedAt time.Time) bool {
+	lifetime := s.approvalLifetime
+	if cacheKey.isAgentSession() {
+		lifetime = GetAgentSessionApprovalLifetime(lifetime)
+	}
+	return lifetime > 0 && s.getNow().Sub(approvedAt) >= lifetime
 }
 
 type sessionBinding struct {
@@ -256,16 +288,18 @@ type sessionBinding struct {
 type connectionAgent struct {
 	server   *Server
 	ctx      context.Context
-	peer     localsocket.PeerInfo
+	peer     Peer
 	mutex    sync.Mutex
 	bindings []sessionBinding
-	// unlockApproval is set when the approval window unlocked Hisar for this connection; its signatures then do not ask again.
+	// unlockApproval is set when the approval window unlocked Hisar for this connection; its signatures then do not ask
+	// again, except that a never-remembered client gets only the first signature after the unlock.
 	unlockApproval *grantedUnlock
 }
 
 type grantedUnlock struct {
 	isRemembered bool
 	epoch        uint64
+	hasSigned    bool
 }
 
 type resolvedKey struct {
@@ -273,6 +307,8 @@ type resolvedKey struct {
 	signer ssh.Signer
 }
 
+// listResolvedKeys lists the keys the key source offers this connection; an agent session that gets none is told once
+// where its keys went.
 func (connection *connectionAgent) listResolvedKeys() ([]resolvedKey, error) {
 	keys, err := connection.server.keySource.ListKeys(connection.ctx)
 	if err != nil {
@@ -285,6 +321,9 @@ func (connection *connectionAgent) listResolvedKeys() ([]resolvedKey, error) {
 			continue
 		}
 		resolvedKeys = append(resolvedKeys, resolvedKey{key: key, signer: signer})
+	}
+	if len(resolvedKeys) == 0 && connection.peer.AgentSession != nil {
+		connection.server.notifyNoAgentKeyOnce(connection.peer.AgentSession)
 	}
 	return resolvedKeys, nil
 }
@@ -307,18 +346,27 @@ func (connection *connectionAgent) listResolvedKeyUnlocking(request ApprovalRequ
 	return connection.listResolvedKeys()
 }
 
-func (connection *connectionAgent) getUnlockApproval() *grantedUnlock {
+// useUnlockApproval returns the unlock that covers a signature, if any, and marks it used. A never-remembered request
+// is covered only by an unlock no signature has used yet: its app may have become an agent host since.
+func (connection *connectionAgent) useUnlockApproval(isNeverRemembered bool) (grantedUnlock, bool) {
 	connection.mutex.Lock()
 	defer connection.mutex.Unlock()
-	return connection.unlockApproval
+	unlock := connection.unlockApproval
+	if unlock == nil || (isNeverRemembered && unlock.hasSigned) {
+		return grantedUnlock{}, false
+	}
+	unlock.hasSigned = true
+	return *unlock, true
 }
 
 func (connection *connectionAgent) buildRequest() ApprovalRequest {
 	request := ApprovalRequest{
-		ClientName:      connection.peer.Name,
-		ClientPath:      connection.peer.Path,
-		ClientPID:       connection.peer.PID,
-		ApplicationPath: connection.peer.ApplicationPath,
+		ClientName:        connection.peer.Name,
+		ClientPath:        connection.peer.Path,
+		ClientPID:         connection.peer.PID,
+		ApplicationPath:   connection.peer.ApplicationPath,
+		AgentSession:      connection.peer.AgentSession,
+		IsNeverRemembered: connection.peer.IsNeverRemembered != nil && connection.peer.IsNeverRemembered(),
 	}
 	connection.describeSessionBinding(&request)
 	return request
@@ -368,13 +416,23 @@ func (connection *connectionAgent) SignWithFlags(publicKey ssh.PublicKey, data [
 		return nil, ErrKeyNotFound
 	}
 	request.KeyID, request.KeyTitle = match.key.ID, match.key.Title
-	if unlockApproval := connection.getUnlockApproval(); unlockApproval != nil && !connection.server.isAlwaysAsk(request.KeyID) {
+	var unlockApproval grantedUnlock
+	isUnlocked := false
+	if !connection.server.isAlwaysAsk(request.KeyID) {
+		unlockApproval, isUnlocked = connection.useUnlockApproval(request.IsNeverRemembered)
+	}
+	if isUnlocked {
 		if unlockApproval.isRemembered {
 			connection.server.setRememberable(&request)
 			connection.server.remember(request, unlockApproval.epoch)
 		}
 	} else if err := connection.server.requestApproval(connection.ctx, request); err != nil {
 		return nil, err
+	}
+	// The harness may have exited, or Settings revoked its session, while the dialog was open or before the exit watch
+	// saw it: an ended agent session signs nothing.
+	if live := connection.peer.AgentSession; live != nil && !live.IsRunning() {
+		return nil, ErrDenied
 	}
 	return signWithFlags(match.signer, data, flags)
 }

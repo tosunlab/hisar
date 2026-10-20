@@ -285,7 +285,7 @@ func (fixture *openSSHFixture) replay(t *testing.T, connection *recordedConnecti
 	approver := &fakeApprover{isApproving: true}
 	server := NewServer(&fakeKeySource{keys: []Key{{ID: "fixture", Title: "Fixture", PrivateKeyPEM: []byte(fixture.ClientPrivateKey)}}}, approver, nil)
 	server.SetKnownHostsPaths([]string{writeKnownHosts(t, fixture.KnownHostsName+" "+strings.TrimSpace(string(ssh.MarshalAuthorizedKey(hostKey))))})
-	connectionAgent := server.CreateAgent(context.Background(), localsocket.PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh"})
+	connectionAgent := server.CreateAgent(context.Background(), Peer{PeerInfo: localsocket.PeerInfo{PID: 4242, Path: "/usr/bin/ssh", Name: "ssh"}})
 	result := replayResult{}
 	for index, message := range connection.Messages {
 		if modify != nil {

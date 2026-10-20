@@ -10,10 +10,15 @@ import type {
   LauncherApp,
   Status as BoundCommandLineStatus,
 } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import { Service as HarnessService } from "../bindings/github.com/tryhisar/hisar/desktop/harness";
+import type { Agent as BoundCodingAgent } from "../bindings/github.com/tryhisar/hisar/desktop/harness";
 import { Service as LoginItemService } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type {
   AccountDeletionPreview as BoundAccountDeletionPreview,
+  AgentHost,
+  AgentSession as BoundAgentSession,
+  RememberedAgentSecret,
   BrowserPairingRequest,
   CardDescription,
   CredentialChangeResult,
@@ -80,7 +85,9 @@ import type {
 } from "../bindings/github.com/tryhisar/hisar/core/app";
 
 export type {
+  AgentHost,
   ApprovalEvent,
+  RememberedAgentSecret,
   CardDescription,
   CredentialChangeResult,
   DeletionOrganization,
@@ -172,6 +179,14 @@ function normalizeShareLink(boundShareLink: BoundShareLink): ShareLink {
   return { ...boundShareLink, fieldLabels: boundShareLink.fieldLabels ?? [] };
 }
 
+export interface AgentSession extends Omit<BoundAgentSession, "allRememberedSecret"> {
+  allRememberedSecret: RememberedAgentSecret[];
+}
+
+function normalizeAgentSessions(boundSessions: BoundAgentSession[] | null): AgentSession[] {
+  return (boundSessions ?? []).map((session) => ({ ...session, allRememberedSecret: session.allRememberedSecret ?? [] }));
+}
+
 // ItemDetail mirrors the Go type with nil slices normalized to empty arrays.
 export interface ItemDetail extends Omit<BoundItemDetail, "urls" | "tags" | "fields" | "passkeys" | "androidApps"> {
   urls: string[];
@@ -209,6 +224,17 @@ export interface CommandLineStatus extends Omit<BoundCommandLineStatus, "allInst
 
 function normalizeCommandLineStatus(boundStatus: BoundCommandLineStatus): CommandLineStatus {
   return { ...boundStatus, allInstallation: boundStatus.allInstallation ?? [] };
+}
+
+// The bound enum also has Go's zero value, which the service returns only with an error.
+export type CodingAgentState = "not-installed" | "available" | "connected" | "conflict" | "unknown";
+
+export interface CodingAgent extends Omit<BoundCodingAgent, "state"> {
+  state: CodingAgentState;
+}
+
+function normalizeCodingAgent(boundAgent: BoundCodingAgent): CodingAgent {
+  return { ...boundAgent, state: String(boundAgent.state) as CodingAgentState };
 }
 
 export interface BrowserStatus extends Omit<BoundBrowserStatus, "allInstallation" | "allPairedBrowser"> {
@@ -455,9 +481,17 @@ const wailsApi = {
     normalizeCommandLineStatus(await CommandLineService.SetCommandLineIntegration(isEnabled)),
   listAllLauncherApp: async (): Promise<LauncherApp[]> => (await CommandLineService.ListLauncherApps()) ?? [],
   revokeLauncherApp: async (appPath: string): Promise<LauncherApp[]> => (await CommandLineService.RevokeLauncherApp(appPath)) ?? [],
+  listAllCodingAgent: async (): Promise<CodingAgent[]> => ((await HarnessService.ListAgents()) ?? []).map(normalizeCodingAgent),
+  connectCodingAgent: async (id: string): Promise<CodingAgent> => normalizeCodingAgent(await HarnessService.Connect(id)),
+  disconnectCodingAgent: async (id: string): Promise<CodingAgent> => normalizeCodingAgent(await HarnessService.Disconnect(id)),
   listAllAgentVaultID: async (): Promise<string[]> => (await Service.ListAgentVaultIDs()) ?? [],
   setVaultAvailableToAgents: async (vaultID: string, isAvailable: boolean): Promise<string[]> =>
     (await Service.SetVaultAvailableToAgents(vaultID, isAvailable)) ?? [],
+  listAllAgentSession: async (): Promise<AgentSession[]> => normalizeAgentSessions(await Service.ListAgentSessions()),
+  revokeAgentSession: async (pid: number, startTime: number): Promise<AgentSession[]> =>
+    normalizeAgentSessions(await Service.RevokeAgentSession(pid, startTime)),
+  listAllAgentHost: async (): Promise<AgentHost[]> => (await Service.ListAgentHosts()) ?? [],
+  forgetAgentHost: async (path: string, teamID: string): Promise<AgentHost[]> => (await Service.ForgetAgentHost(path, teamID)) ?? [],
   listAllImportFormat: async (): Promise<ImportFormat[]> => (await Service.ListImportFormats()) ?? [],
   chooseImportFile: async (vaultID: string, format: string): Promise<ImportPreview> =>
     normalizeImportPreview(await Service.ChooseImportFile(vaultID, format)),

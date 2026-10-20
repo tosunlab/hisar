@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/secretreference"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -263,11 +265,16 @@ func (s *Service) resolveAgentSecrets(request *cliprotocol.Request) ([]secretref
 	return resolvedReferences, err
 }
 
-// LocateAgentSecrets names the secrets of an agent request for the approval window without handing out values.
+// LocateAgentSecrets names the secrets of an agent request for the approval window without handing out values; for
+// hisar get inside an agent harness, the item it asks for.
 func (bridge *CommandLineBridge) LocateAgentSecrets(request *cliprotocol.Request) ([]clisocket.AgentSecret, error) {
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if request.Type == cliprotocol.TypeGetItem {
+		secret, err := s.locateAgentItem(request.VaultID, request.ItemID)
+		return []clisocket.AgentSecret{secret}, convertCommandLineError(err)
+	}
 	resolvedReferences, err := s.resolveAgentSecrets(request)
 	if err != nil {
 		return nil, convertCommandLineError(err)
@@ -279,6 +286,206 @@ func (bridge *CommandLineBridge) LocateAgentSecrets(request *cliprotocol.Request
 		})
 	}
 	return secrets, nil
+}
+
+// locateAgentItem finds an item in an agent-visible vault; an item elsewhere fails as not found. It needs s.mutex.
+func (s *Service) locateAgentItem(vaultID, itemID string) (clisocket.AgentSecret, error) {
+	if err := s.requireUnlocked(); err != nil {
+		return clisocket.AgentSecret{}, err
+	}
+	if !s.isAgentVault(vaultID) {
+		return clisocket.AgentSecret{}, fmt.Errorf("vault %w", ErrNotFound)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	vault, err := s.findVault(ctx, vaultID)
+	if err != nil {
+		return clisocket.AgentSecret{}, err
+	}
+	items, err := agentSecretSource{serviceSecretSource{service: s, ctx: ctx}}.ListItems(vaultID)
+	if err != nil {
+		return clisocket.AgentSecret{}, err
+	}
+	index := slices.IndexFunc(items, func(vaultItem item.Item) bool { return vaultItem.ID == itemID })
+	if index < 0 {
+		return clisocket.AgentSecret{}, fmt.Errorf("item %w", ErrNotFound)
+	}
+	return clisocket.AgentSecret{VaultID: vaultID, ItemID: itemID, VaultName: vault.Name, ItemTitle: items[index].Overview.Title}, nil
+}
+
+// answerAgentSessionRequest answers what clisocket lets an ordinary hisar command inside an agent harness send, among
+// the agent-visible vaults only: a hidden vault fails like one that does not exist.
+func (bridge *CommandLineBridge) answerAgentSessionRequest(request *cliprotocol.Request) (any, error) {
+	s := bridge.service
+	switch request.Type {
+	case cliprotocol.TypeListVault:
+		summaries, err := s.ListVaults()
+		if err != nil {
+			return nil, err
+		}
+		agentVaultIDs := s.ListAgentVaultIDs()
+		result := cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{}}
+		for _, summary := range summaries {
+			if slices.Contains(agentVaultIDs, summary.ID) {
+				result.Vaults = append(result.Vaults, convertToCommandLineVault(summary))
+			}
+		}
+		return result, nil
+	case cliprotocol.TypeListItem, cliprotocol.TypeGetItem:
+		if !slices.Contains(s.ListAgentVaultIDs(), request.VaultID) {
+			return nil, fmt.Errorf("vault %w", ErrNotFound)
+		}
+		return bridge.answerCommandLineRequest(request)
+	case cliprotocol.TypeResolveSecret:
+		s.mutex.Lock()
+		defer s.mutex.Unlock()
+		resolvedReferences, err := s.resolveAgentSecrets(request)
+		if err != nil {
+			return nil, err
+		}
+		result := cliprotocol.ResolveSecretResult{Values: make([]string, 0, len(resolvedReferences))}
+		for _, resolved := range resolvedReferences {
+			result.Values = append(result.Values, resolved.Value)
+		}
+		return result, nil
+	}
+	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+}
+
+// IsAgentHost and AddAgentHost keep the CLI socket's agent hosts in desktop.json (clisocket.AgentHosts).
+func (bridge *CommandLineBridge) IsAgentHost(app clisocket.AppIdentity) bool {
+	s := bridge.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return slices.Contains(s.state.AgentHosts, localstate.AgentHost{Path: app.Path, TeamID: app.TeamID})
+}
+
+func (bridge *CommandLineBridge) AddAgentHost(app clisocket.AppIdentity) error {
+	s := bridge.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	host := localstate.AgentHost{Path: app.Path, TeamID: app.TeamID}
+	if slices.Contains(s.state.AgentHosts, host) {
+		return nil
+	}
+	s.state.AgentHosts = append(s.state.AgentHosts, host)
+	return s.state.Save()
+}
+
+// AgentSession is a coding agent harness, such as omp, that sent hisar requests and still runs, as Settings → Coding
+// agents lists it. PID and StartTime name it for RevokeAgentSession. IsSigned: the harness was recognized by its code
+// signature. The host is the app it runs in, empty when Hisar could not verify one. FirstRequestAt is RFC 3339.
+type AgentSession struct {
+	PID               int                     `json:"pid"`
+	StartTime         int64                   `json:"startTime"`
+	HarnessName       string                  `json:"harnessName"`
+	IsSigned          bool                    `json:"isSigned"`
+	HostName          string                  `json:"hostName"`
+	HostIconURL       string                  `json:"hostIconURL"`
+	ProjectName       string                  `json:"projectName"`
+	ProjectPath       string                  `json:"projectPath"`
+	FirstRequestAt    string                  `json:"firstRequestAt"`
+	RememberedSecrets []RememberedAgentSecret `json:"allRememberedSecret"`
+}
+
+// RememberedAgentSecret is a secret an agent session uses, or reads when IsReveal, without asking until ExpiresAt (RFC
+// 3339).
+type RememberedAgentSecret struct {
+	Name      string `json:"name"`
+	IsReveal  bool   `json:"isReveal"`
+	ExpiresAt string `json:"expiresAt"`
+}
+
+// AgentHost is an app a coding agent harness ran in, as Settings → Coding agents lists it.
+type AgentHost struct {
+	Path    string `json:"path"`
+	TeamID  string `json:"teamID"`
+	Name    string `json:"name"`
+	IconURL string `json:"iconURL"`
+}
+
+func (s *Service) getCommandLineApprovals() *clisocket.SessionApprovals {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.commandLineApprovals
+}
+
+func (s *Service) describeApp(bundlePath string) (string, string) {
+	if s.config.DescribeApp != nil {
+		return s.config.DescribeApp(bundlePath)
+	}
+	return strings.TrimSuffix(filepath.Base(bundlePath), ".app"), ""
+}
+
+// ListAgentSessions lists the running coding agent harnesses that sent hisar requests, in the order they first did.
+func (s *Service) ListAgentSessions() []AgentSession {
+	approvals := s.getCommandLineApprovals()
+	if approvals == nil {
+		return []AgentSession{}
+	}
+	liveSessions := approvals.ListAgentSessions()
+	sessions := make([]AgentSession, 0, len(liveSessions))
+	for _, live := range liveSessions {
+		listed := AgentSession{
+			PID: live.Session.PID, StartTime: live.Session.StartTime, HarnessName: live.Session.Harness.Name, IsSigned: live.Session.IsSigned,
+			ProjectPath: live.Session.Directory, FirstRequestAt: live.FirstRequestAt.UTC().Format(time.RFC3339),
+			RememberedSecrets: make([]RememberedAgentSecret, 0, len(live.RememberedSecrets)),
+		}
+		if live.Session.Directory != "" {
+			listed.ProjectName = filepath.Base(live.Session.Directory)
+		}
+		if live.Host != "" {
+			listed.HostName, listed.HostIconURL = s.describeApp(live.Host)
+		}
+		for _, remembered := range live.RememberedSecrets {
+			listed.RememberedSecrets = append(listed.RememberedSecrets, RememberedAgentSecret{
+				Name: remembered.Secret.Describe(), IsReveal: remembered.Kind == clisocket.AgentRequestReveal, ExpiresAt: remembered.ExpiresAt.UTC().Format(time.RFC3339),
+			})
+		}
+		sessions = append(sessions, listed)
+	}
+	return sessions
+}
+
+// RevokeAgentSession ends the session of the harness process (PID and StartTime from ListAgentSessions): its open
+// approval windows close, it forgets its secrets, and its next request asks again. It returns the sessions left.
+func (s *Service) RevokeAgentSession(pid int, startTime int64) []AgentSession {
+	if approvals := s.getCommandLineApprovals(); approvals != nil {
+		approvals.RevokeAgentSession(pid, startTime)
+	}
+	return s.ListAgentSessions()
+}
+
+// ListAgentHosts lists the apps a coding agent harness ran in, in the order Hisar first saw one there.
+func (s *Service) ListAgentHosts() []AgentHost {
+	s.mutex.Lock()
+	savedHosts := slices.Clone(s.state.AgentHosts)
+	s.mutex.Unlock()
+	hosts := make([]AgentHost, 0, len(savedHosts))
+	for _, savedHost := range savedHosts {
+		host := AgentHost{Path: savedHost.Path, TeamID: savedHost.TeamID}
+		host.Name, host.IconURL = s.describeApp(savedHost.Path)
+		hosts = append(hosts, host)
+	}
+	return hosts
+}
+
+// ForgetAgentHost lets the app's command-line callers without a terminal share one approval again, and the app be a
+// launcher again, until a coding agent harness runs in it again. It returns the hosts left.
+func (s *Service) ForgetAgentHost(path, teamID string) ([]AgentHost, error) {
+	s.mutex.Lock()
+	if err := s.requireUnlocked(); err != nil {
+		s.mutex.Unlock()
+		return nil, err
+	}
+	forgotten := localstate.AgentHost{Path: path, TeamID: teamID}
+	s.state.AgentHosts = slices.DeleteFunc(slices.Clone(s.state.AgentHosts), func(host localstate.AgentHost) bool { return host == forgotten })
+	err := s.state.Save()
+	s.mutex.Unlock()
+	if approvals := s.getCommandLineApprovals(); approvals != nil {
+		approvals.ForgetAgentHost(clisocket.AppIdentity{Path: path, TeamID: teamID})
+	}
+	return s.ListAgentHosts(), err
 }
 
 func (bridge *CommandLineBridge) answerAgentRequest(request *cliprotocol.Request) (any, error) {

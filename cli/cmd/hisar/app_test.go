@@ -8,6 +8,8 @@ import (
 	"flag"
 	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,9 +18,28 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 )
+
+// The tests run hisar as if no agent harness were in its chain, wherever they run; setOwnChain says otherwise.
+func init() {
+	findOwnHarness = func() (agentharness.Session, bool, error) { return agentharness.Session{}, false, nil }
+}
+
+func setOwnChain(t *testing.T, session agentharness.Session, isInside bool, err error) {
+	t.Helper()
+	findOwnHarness = func() (agentharness.Session, bool, error) { return session, isInside, err }
+	t.Cleanup(func() {
+		findOwnHarness = func() (agentharness.Session, bool, error) { return agentharness.Session{}, false, nil }
+	})
+}
+
+func runInsideOmp(t *testing.T) {
+	t.Helper()
+	setOwnChain(t, agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1226, StartTime: 100}, true, nil)
+}
 
 type fakeApp struct {
 	mutex       sync.Mutex
@@ -889,5 +910,113 @@ func TestParseGlobalOption(t *testing.T) {
 	}
 	if _, _, err := parseGlobalOption([]string{"--other", "ls"}); err == nil {
 		t.Error("unknown option accepted")
+	}
+}
+
+func TestNoStandaloneInsideAHarnessOrAnUnknownChain(t *testing.T) {
+	cases := []struct {
+		name     string
+		setChain func(t *testing.T)
+		refusal  string
+	}{
+		{"inside omp", runInsideOmp, "hisar runs inside omp, so it uses the Hisar app only."},
+		{"unknown chain", func(t *testing.T) { setOwnChain(t, agentharness.Session{}, false, agentharness.ErrUnknownChain) },
+			"hisar couldn't check which program runs it, so it uses the Hisar app only. Try again."},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCase.setChain(t)
+			statePath := filepath.Join(t.TempDir(), "state.json")
+			t.Setenv("HISAR_STATE", statePath)
+			t.Setenv(noLaunchEnvironment, "1")
+			refusal := testCase.refusal
+
+			app := startFakeApp(t)
+			if stdout, stderr, err := runCapturingOutput(t, false, "", "vaults"); err != nil || !strings.Contains(stdout, "Personal") {
+				t.Errorf("through the app: %q %q %v", stdout, stderr, err)
+			}
+			if _, _, err := runCapturingOutput(t, true, "", "ls"); err == nil || err.Error() != refusal {
+				t.Errorf("--standalone ls: %v", err)
+			}
+			t.Setenv(standaloneEnvironment, "1")
+			if _, _, err := runCapturingOutput(t, false, "", "ls"); err == nil || err.Error() != refusal {
+				t.Errorf("HISAR_STANDALONE=1 hisar ls: %v", err)
+			}
+			t.Setenv(standaloneEnvironment, "")
+			t.Setenv(cliprotocol.SocketEnvironment, filepath.Join(createShortTempDirectory(t), "missing.sock"))
+			for _, args := range [][]string{{"ls"}, {"read", "hisar://Personal/GitHub/password"}, {"whoami"}} {
+				if _, _, err := runCapturingOutput(t, false, "master password\n", args...); err == nil || err.Error() != refusal {
+					t.Errorf("%q with the app not running: %v", args, err)
+				}
+			}
+			if stdout, _, err := runCapturingOutput(t, false, "", "status"); err != nil || !strings.HasSuffix(stdout, "\n"+refusal+"\n") {
+				t.Errorf("status with the app not running: %q %v", stdout, err)
+			}
+			if _, err := os.Stat(statePath); !errors.Is(err, os.ErrNotExist) {
+				t.Errorf("a standalone state was written: %v", err)
+			}
+			if types := app.listRequestTypes(); slices.Contains(types, cliprotocol.TypeListItem) {
+				t.Errorf("a refused command reached the app: %v", types)
+			}
+		})
+	}
+}
+
+// TestSignupInsideAHarnessReachesNoServer: a refused signup must not create the account first, or the invite is used
+// up and the Secret Key is never shown.
+func TestSignupInsideAHarnessReachesNoServer(t *testing.T) {
+	cases := []struct {
+		name     string
+		setChain func(t *testing.T)
+	}{
+		{"inside omp", runInsideOmp},
+		{"unknown chain", func(t *testing.T) { setOwnChain(t, agentharness.Session{}, false, agentharness.ErrUnknownChain) }},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			testCase.setChain(t)
+			var requestPaths []string
+			var mutex sync.Mutex
+			apiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+				mutex.Lock()
+				requestPaths = append(requestPaths, request.URL.Path)
+				mutex.Unlock()
+				writer.WriteHeader(http.StatusInternalServerError)
+			}))
+			defer apiServer.Close()
+			t.Setenv("HISAR_STATE", filepath.Join(t.TempDir(), "state.json"))
+			t.Setenv(standaloneEnvironment, "1")
+			for _, args := range [][]string{{"signup", apiServer.URL + "/invite/token"}, {"login"}} {
+				input := "a@example.com\nA\npw-long-enough\npw-long-enough\n"
+				if args[0] == "login" {
+					input = apiServer.URL + "\na@example.com\nA3-ABCDEF-ABCDEF-ABCDE-FGHIJ-KLMNO-PQRST\npw-long-enough\n"
+				}
+				if _, _, err := runCapturingOutput(t, false, input, args...); err == nil {
+					t.Errorf("%s ran inside a harness", args[0])
+				}
+			}
+			mutex.Lock()
+			defer mutex.Unlock()
+			if len(requestPaths) != 0 {
+				t.Errorf("the server got %q", requestPaths)
+			}
+		})
+	}
+}
+
+func TestStatusInsideAHarness(t *testing.T) {
+	runInsideOmp(t)
+	t.Setenv(noLaunchEnvironment, "1")
+	socketPath := filepath.Join(createShortTempDirectory(t), "missing.sock")
+	t.Setenv(cliprotocol.SocketEnvironment, socketPath)
+	stdout, _, err := runCapturingOutput(t, false, "", "status")
+	expected := "mode:    none (the Hisar app is not running, or does not offer " + socketPath + ")\nhisar runs inside omp, so it uses the Hisar app only.\n"
+	if err != nil || stdout != expected {
+		t.Errorf("status with the app not running: %q %v", stdout, err)
+	}
+
+	app := startFakeApp(t)
+	if stdout, _, err := runCapturingOutput(t, false, "", "status"); err != nil || !strings.Contains(stdout, "mode:    Hisar app ("+app.socketPath+")") {
+		t.Errorf("status through the app: %q %v", stdout, err)
 	}
 }

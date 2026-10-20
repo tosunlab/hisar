@@ -18,10 +18,12 @@ type CommandLineBridge struct {
 	service *Service
 }
 
-// NewCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out.
+// NewCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out, and lets the Service list and
+// revoke the agent sessions they keep.
 func NewCommandLineBridge(service *Service, approvals *clisocket.SessionApprovals) *CommandLineBridge {
 	service.mutex.Lock()
 	service.lockListeners = append(service.lockListeners, approvals.ClearAll)
+	service.commandLineApprovals = approvals
 	service.mutex.Unlock()
 	return &CommandLineBridge{service: service}
 }
@@ -76,18 +78,26 @@ func convertCommandLineError(err error) error {
 	return cliprotocol.NewError(cliprotocol.ErrorInternal, err.Error())
 }
 
-func (bridge *CommandLineBridge) HandleRequest(_ context.Context, request *cliprotocol.Request) (any, error) {
-	result, err := bridge.answer(request)
+func (bridge *CommandLineBridge) HandleRequest(ctx context.Context, request *cliprotocol.Request) (any, error) {
+	result, err := bridge.answer(ctx, request)
 	return result, convertCommandLineError(err)
 }
 
-func (bridge *CommandLineBridge) answer(request *cliprotocol.Request) (any, error) {
-	if cliprotocol.IsAgentRequest(request.Type) {
+// answer gives an ordinary hisar command inside an agent harness agent rules, whichever request it sends.
+func (bridge *CommandLineBridge) answer(ctx context.Context, request *cliprotocol.Request) (any, error) {
+	switch {
+	case cliprotocol.IsAgentRequest(request.Type):
 		return bridge.answerAgentRequest(request)
-	}
-	if cliprotocol.IsLauncherRequest(request.Type) {
+	case cliprotocol.IsLauncherRequest(request.Type):
 		return bridge.answerLauncherRequest(request)
 	}
+	if _, isInside := clisocket.GetAgentSession(ctx); isInside {
+		return bridge.answerAgentSessionRequest(request)
+	}
+	return bridge.answerCommandLineRequest(request)
+}
+
+func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.Request) (any, error) {
 	if result, isHandled, err := bridge.answerOrganizationRequest(request); isHandled {
 		return result, err
 	}

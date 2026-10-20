@@ -546,6 +546,11 @@ export function formatLastUse(timestamp: string, now = new Date()): string {
   return lastSeen ? `Last used ${lastSeen === "Active now" ? "just now" : lastSeen.toLowerCase()}` : "";
 }
 
+// describeAgentSession names a coding agent session by its harness and the app it runs in: "omp in Tern", or "omp".
+export function describeAgentSession(session: { harnessName: string; hostName: string }): string {
+  return session.hostName ? `${session.harnessName} in ${session.hostName}` : session.harnessName;
+}
+
 // formatTimeAgo is a short "since" for banners: "just now", "5 min ago", "2 h ago", "yesterday", "3 days ago".
 export function formatTimeAgo(timestamp: string, now = new Date()): string {
   const minuteCount = Math.floor((now.getTime() - new Date(timestamp).getTime()) / 60000);

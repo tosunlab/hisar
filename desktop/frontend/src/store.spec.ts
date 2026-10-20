@@ -12,6 +12,7 @@ import {
   createVaultMember,
   testBob,
 } from "./testing";
+import { loadSelectedSectionID } from "./settingsSections";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -252,6 +253,18 @@ describe("openWebsite", () => {
     await storeModule.openWebsite("file:///etc/passwd");
     expect(api.openURL).not.toHaveBeenCalled();
     expect(store.errorMessage).toContain("Only http and https");
+  });
+});
+
+describe("openSettings", () => {
+  it("opens Settings at the section the app asks for and ignores an unknown one", async () => {
+    resetStore();
+    store.isSettingsOpen = false;
+    await storeModule.openSettings("no-such-section");
+    expect(store.isSettingsOpen).toBe(false);
+    await storeModule.openSettings("developer");
+    expect(store.isSettingsOpen).toBe(true);
+    expect(loadSelectedSectionID()).toBe("developer");
   });
 });
 

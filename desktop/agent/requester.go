@@ -31,7 +31,7 @@ func buildChainProcesses(processes []appinfo.Process) []ChainProcess {
 		if name == "" {
 			continue
 		}
-		commandLine := formatCommandLine(process.Arguments)
+		commandLine := formatShortCommandLine(process.Arguments)
 		if commandLine == "" {
 			commandLine = process.Path
 		}
@@ -40,12 +40,13 @@ func buildChainProcesses(processes []appinfo.Process) []ChainProcess {
 	return chainProcesses
 }
 
-// describeAppSignature says who signed an app; the warning is for an app macOS cannot vouch for.
+// describeAppSignature says who signed an app, naming the app, since an agent's own check mark sits next to it; the
+// warning is for an app macOS cannot vouch for.
 func describeAppSignature(app appinfo.App) (string, string) {
 	signature := app.Signature
 	switch signature.Status {
 	case appinfo.SignatureStatusApple:
-		return "Signed by Apple", ""
+		return app.Name + " is signed by Apple", ""
 	case appinfo.SignatureStatusDeveloper:
 		signerName := signature.SignerName
 		if signerName == "" {
@@ -53,11 +54,11 @@ func describeAppSignature(app appinfo.App) (string, string) {
 		} else if signature.TeamID != "" && !strings.Contains(signerName, signature.TeamID) {
 			signerName += " (" + signature.TeamID + ")"
 		}
-		return "Signed by " + signerName, ""
+		return app.Name + " is signed by " + signerName, ""
 	case appinfo.SignatureStatusUnsigned:
-		return "Not signed", fmt.Sprintf("%s is not signed, so macOS cannot confirm who made it. Approve only if you started this yourself.", app.Name)
+		return app.Name + " isn't signed", fmt.Sprintf("%s is not signed, so macOS cannot confirm who made it. Approve only if you started this yourself.", app.Name)
 	case appinfo.SignatureStatusInvalid:
-		return "Signature not valid", fmt.Sprintf("The code signature of %s does not verify: the app may have been modified. Approve only if you started this yourself.", app.Name)
+		return app.Name + "'s signature isn't valid", fmt.Sprintf("The code signature of %s does not verify: the app may have been modified. Approve only if you started this yourself.", app.Name)
 	}
 	return "", ""
 }

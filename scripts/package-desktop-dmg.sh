@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds a universal (Apple silicon + Intel) Hisar.app with Sparkle and the hisar CLI, and wraps it in desktop/bin/Hisar-<version>.dmg.
+# Builds a universal (Apple silicon + Intel) Hisar.app with Sparkle, the hisar CLI and the omp plugin, and wraps it in
+# desktop/bin/Hisar-<version>.dmg.
 # Usage: package-desktop-dmg.sh [version]     (default: the version in desktop/build/darwin/Info.plist)
 # Needs macOS with Xcode command line tools, Go, Node, wails3 (make install-wails) and dmgbuild (pip install dmgbuild).
 # HISAR_SIGNING_IDENTITY signs with a team identity instead of ad-hoc (scripts/sign-desktop-app.sh). With HISAR_NOTARY_KEY
@@ -30,6 +31,16 @@ mkdir -p "$application/Contents/Helpers"
 lipo -create -output "$application/Contents/Helpers/hisar" bin/hisar-amd64 bin/hisar-arm64
 rm bin/hisar-amd64 bin/hisar-arm64
 test "$("$application/Contents/Helpers/hisar" --version)" = "hisar $version"
+
+# Settings → Coding agents links omp to this folder. The plugin imports only types from omp, so it needs no node_modules.
+# omp starts mcp.json's server with bin/run-hisar, which runs this app's hisar when it sits in Contents/Resources/omp-plugin.
+ompPlugin=$application/Contents/Resources/omp-plugin
+rm -rf "$ompPlugin"
+mkdir -p "$ompPlugin"
+cp -R ../omp/package.json ../omp/mcp.json ../omp/bin ../omp/src ../omp/skills "$ompPlugin/"
+test -f "$ompPlugin/package.json"
+test -f "$ompPlugin/mcp.json"
+test -x "$ompPlugin/bin/run-hisar"
 
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $version" -c "Set :CFBundleVersion $buildNumber" "$application/Contents/Info.plist"
 test -f "$application/Contents/Frameworks/Sparkle.framework/Versions/Current/Sparkle"

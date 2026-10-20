@@ -1,0 +1,23 @@
+#!/bin/sh
+# run-hisar runs hisar with its arguments, for mcp.json. Inside Hisar.app (Contents/Resources/omp-plugin) it runs
+# the app's own hisar, which knows every flag this plugin passes; elsewhere the first hisar on PATH, then the one
+# in /Applications or ~/Applications. omp may reach the plugin through a link, so the folder is resolved first.
+set -eu
+
+plugin=$(cd -P -- "$(dirname -- "$0")/.." && pwd -P)
+case $plugin in
+*/Contents/Resources/omp-plugin)
+	bundled=${plugin%/Resources/omp-plugin}/Helpers/hisar
+	if [ -f "$bundled" ] && [ -x "$bundled" ]; then exec "$bundled" "$@"; fi
+	;;
+esac
+
+if onPath=$(command -v hisar); then exec "$onPath" "$@"; fi
+
+for applications in /Applications "${HOME:-}/Applications"; do
+	helper=$applications/Hisar.app/Contents/Helpers/hisar
+	if [ -f "$helper" ] && [ -x "$helper" ]; then exec "$helper" "$@"; fi
+done
+
+echo "hisar is not installed: install the Hisar app, or put hisar on PATH" >&2
+exit 127

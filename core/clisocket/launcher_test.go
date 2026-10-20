@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
@@ -190,6 +191,32 @@ func TestLauncherHelloNeedsAVerifiedAppOutsideATerminal(t *testing.T) {
 	}
 	if count := fixture.launcherApprover.requestCount.Load(); count != 1 {
 		t.Errorf("%d launcher approvals; launcher.hello must never ask", count)
+	}
+}
+
+func TestLauncherRefusedFromAgentSessionAndAgentHost(t *testing.T) {
+	fixture := createServerFixture(t)
+	raycast, _ := fixture.connectLauncher(t, raycastApp)
+	raycast.mustSend(t, listLauncherItems)
+
+	harness, _ := startHarness(t)
+	fixture.resolver.setCaller(launchdSession, raycastApp)
+	fixture.resolver.setAgentSession(harness)
+	response := fixture.connect(t).send(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherHello})
+	if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar answers no launcher inside omp" {
+		t.Errorf("inside omp: %+v", response.Error)
+	}
+
+	fixture.resolver.setAgentSession(agentharness.Session{})
+	response = fixture.connect(t).send(t, cliprotocol.Request{Type: cliprotocol.TypeLauncherHello})
+	if getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar answers no launcher in an app that ran a coding agent" {
+		t.Errorf("in an agent host: %+v", response.Error)
+	}
+	if response := raycast.send(t, listLauncherItems); getErrorCode(response) != cliprotocol.ErrorDenied || response.Error.Message != "Hisar answers no launcher in an app that ran a coding agent" {
+		t.Errorf("the launcher kept working after omp ran in its app: %+v", response.Error)
+	}
+	if count := fixture.launcherApprover.requestCount.Load(); count != 1 {
+		t.Errorf("%d launcher approvals; want 1", count)
 	}
 }
 

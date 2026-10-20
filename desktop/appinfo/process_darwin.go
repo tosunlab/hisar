@@ -15,14 +15,6 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func ListProcessArguments(pid int) ([]string, error) {
-	raw, err := unix.SysctlRaw("kern.procargs2", pid)
-	if err != nil {
-		return nil, err
-	}
-	return parseKernelProcessArgument(raw)
-}
-
 func GetProcessWorkingDirectory(pid int) (string, error) {
 	buffer := (*C.char)(C.malloc(C.size_t(unix.PathMax)))
 	defer C.free(unsafe.Pointer(buffer))
