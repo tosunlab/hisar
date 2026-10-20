@@ -109,6 +109,45 @@ func TestConnectCodexKeepsALinkedConfig(t *testing.T) {
 	}
 }
 
+// TestConnectCodexRefusesALinkToNothing: a config.toml linked to a file that is gone is a dotfiles setup that broke, so
+// Hisar neither replaces the link with a file of its own nor creates the file the link names.
+func TestConnectCodexRefusesALinkToNothing(t *testing.T) {
+	for _, test := range []struct {
+		name          string
+		hasTargetsDir bool
+	}{
+		{"the target's folder exists", true},
+		{"the target's folder is gone", false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			world := newFakeWorld(t)
+			world.installCodex(world.pathOnUserPath("codex"))
+			target := filepath.Join(t.TempDir(), "dotfiles", "codex.toml")
+			if test.hasTargetsDir {
+				if err := os.MkdirAll(filepath.Dir(target), 0o700); err != nil {
+					t.Fatal(err)
+				}
+			}
+			if err := os.MkdirAll(filepath.Dir(world.codexConfigPath()), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(target, world.codexConfigPath()); err != nil {
+				t.Fatal(err)
+			}
+			want := "Codex's config.toml links to " + target + ", which does not exist. Fix the link and try again"
+			if _, err := world.newService("").Connect("codex"); err == nil || err.Error() != want {
+				t.Fatalf("Connect() error = %v; want %q", err, want)
+			}
+			if link, err := os.Readlink(world.codexConfigPath()); err != nil || link != target {
+				t.Fatalf("config.toml links to %q, %v; want %q", link, err, target)
+			}
+			if _, err := os.Lstat(target); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("the link's target: %v; want none", err)
+			}
+		})
+	}
+}
+
 func TestConnectCodexLeavesAnotherHisarServer(t *testing.T) {
 	world := newFakeWorld(t)
 	codexPath := world.pathOnUserPath("codex")
