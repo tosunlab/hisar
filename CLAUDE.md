@@ -86,7 +86,7 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 |---|---|
 | `cmd/hisar` | `main.go` (command table, dispatch, `main.version`), `backend.go` (the `backend` interface), `backend_app.go`, `backend_standalone.go`, and one file per command group |
 | `mcpserver` | `hisar mcp` (public: desktop tests drive it) |
-| `internal/dotenv` | `.env` parsing and layout-preserving rewriting |
+| `internal/dotenv` | `.env` parsing, the environment `hisar run --env-file` and `run_with_secrets` build from env files, and layout-preserving rewriting |
 | `internal/masking` | Masking secrets in command output |
 
 ### desktop

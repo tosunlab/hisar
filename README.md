@@ -122,7 +122,8 @@ use Hisar" on.
    { "mcpServers": { "hisar": { "command": "hisar", "args": ["mcp"] } } }
    ```
 
-   Any other MCP client: a stdio server with the command `hisar` and the argument `mcp`.
+   Any other MCP client: a stdio server with the command `hisar` and the argument `mcp`. Add `--no-reveal` (`hisar mcp --no-reveal`)
+   to leave out `get_secret` and `get_one_time_code`, so no secret value can reach the agent through MCP.
 
 The agent gets these tools:
 
@@ -130,7 +131,7 @@ The agent gets these tools:
 |---|---|---|
 | `list_vaults` | the vaults available to agents | once per agent connection |
 | `search_items` | items by title, username, URL or vault: metadata, field labels and `hisar://` references, never values or notes | once per agent connection |
-| `run_with_secrets` | runs a command (an argument list, no shell) with references in its environment; output masked, at most 64 KiB per stream, timeout up to 600 s | every call, showing the command, directory and secrets; "Allow these secrets for this agent for 1 hour" |
+| `run_with_secrets` | runs a command, as an argument list or a `/bin/sh -c` command line, with secrets from `env` (variable → `hisar://` reference), `envFiles` (as `hisar run --env-file`) and `stdin` (text or one reference); through `direnv exec` when the directory has an allowed `.envrc`; output masked, at most 64 KiB per stream and streamed as progress to clients that ask, timeout up to 1 hour | every call, showing the command, directory and secrets; "Allow these secrets for this agent for 1 hour" |
 | `get_one_time_code` | the current one-time code of an item | every call; can be allowed for 1 hour |
 | `get_secret` | reveals one value to the agent | every call, for that item; "Allow this item for 1 hour". `private key` is always refused |
 
