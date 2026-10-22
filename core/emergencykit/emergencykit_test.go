@@ -2,9 +2,12 @@ package emergencykit
 
 import (
 	"bytes"
+	"encoding/base64"
+	"encoding/json"
 	"errors"
-	"net/url"
+	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 )
@@ -33,6 +36,11 @@ func TestGenerateProducesSinglePagePDF(t *testing.T) {
 	if !bytes.Contains(document, []byte("/Title")) {
 		t.Error("document title missing from the PDF info")
 	}
+	if path := os.Getenv("HISAR_TEST_KIT_PDF"); path != "" {
+		if err := os.WriteFile(path, document, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func TestGenerateRequiresSignInDetails(t *testing.T) {
@@ -58,20 +66,27 @@ func TestGenerateHandlesLongValuesAndNoName(t *testing.T) {
 	}
 }
 
-func TestBuildSignInURI(t *testing.T) {
-	signInURI := BuildSignInURI(createTestKit())
-	parsedURI, err := url.Parse(signInURI)
+func TestQRPayloadIsPlainTextAndPreservesSignInDetails(t *testing.T) {
+	kit := createTestKit()
+	kit.Server = "https://hisar.example/a?x=one+two&y=%20"
+	kit.Email = "alper+kit@tryhisar.com"
+	payload := BuildQRPayload(kit)
+	const canonical = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL2hpc2FyLmV4YW1wbGUvYT94PW9uZSt0d29cdTAwMjZ5PSUyMCIsImVtYWlsIjoiYWxwZXIra2l0QHRyeWhpc2FyLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+	if payload != canonical {
+		t.Fatalf("canonical payload changed: %q", payload)
+	}
+	if !strings.HasPrefix(payload, "HISARKIT1 ") || strings.ContainsAny(payload, ":.@=/") {
+		t.Fatalf("payload is not the specified non-URI text: %q", payload)
+	}
+	data, err := base64.RawURLEncoding.Strict().DecodeString(strings.TrimPrefix(payload, "HISARKIT1 "))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if parsedURI.Scheme != "hisar" || parsedURI.Host != "sign-in" {
-		t.Errorf("uri = %s", signInURI)
+	var decoded signInPayload
+	if err := json.Unmarshal(data, &decoded); err != nil {
+		t.Fatal(err)
 	}
-	query := parsedURI.Query()
-	if query.Get("server") != "https://tryhisar.com" || query.Get("email") != "alper@tryhisar.com" || query.Get("secretKey") != "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M" {
-		t.Errorf("query = %v", query)
-	}
-	if len(query) != 3 {
-		t.Errorf("unexpected fields in the QR payload: %v", query)
+	if decoded != (signInPayload{Server: kit.Server, Email: kit.Email, SecretKey: kit.SecretKey}) {
+		t.Fatalf("sign-in bytes changed: %#v", decoded)
 	}
 }

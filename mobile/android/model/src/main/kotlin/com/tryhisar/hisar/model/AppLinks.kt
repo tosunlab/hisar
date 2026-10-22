@@ -3,15 +3,45 @@ package com.tryhisar.hisar.model
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URLDecoder
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
+import java.util.Base64
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
-/** hisar://sign-in?server=…&email=…&secretKey=…, from the Emergency Kit's QR code. */
+/** The plain-text Emergency Kit payload, or a legacy printed sign-in URI. */
 data class SignInLink(val server: String, val email: String, val secretKey: String) {
     companion object {
         fun parse(text: String): SignInLink? {
+            if (text.startsWith("HISARKIT")) return parsePayload(text)
             val link = parseHisarURI(text, host = "sign-in") ?: return null
-            fun readValue(name: String) = link.readQueryValue(name)?.trimmingWhitespaces().orEmpty()
+            fun readValue(name: String) = link.readQueryValue(name).orEmpty()
             val signInLink = SignInLink(server = readValue("server"), email = readValue("email"), secretKey = readValue("secretKey"))
             return signInLink.takeUnless { it.server.isEmpty() && it.email.isEmpty() && it.secretKey.isEmpty() }
+        }
+
+        private fun parsePayload(text: String): SignInLink? {
+            if (!text.startsWith("HISARKIT1 ")) return null
+            val encoded = text.removePrefix("HISARKIT1 ")
+            if (!Regex("^[A-Za-z0-9_-]+$").matches(encoded)) return null
+            return runCatching {
+                val bytes = Base64.getUrlDecoder().decode(encoded)
+                if (Base64.getUrlEncoder().withoutPadding().encodeToString(bytes) != encoded) return null
+                val json = Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes)).toString()
+                val fields = Json.parseToJsonElement(json) as? JsonObject ?: return null
+                if (fields.keys != setOf("server", "email", "secretKey")) return null
+                fun read(name: String): String? = (fields[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                val result = SignInLink(read("server") ?: return null, read("email") ?: return null, read("secretKey") ?: return null)
+                val server = URI(result.server)
+                if (server.scheme?.lowercase() !in listOf("https", "http") || server.host.isNullOrEmpty() ||
+                    server.userInfo != null || server.fragment != null || result.email.isBlank()) return null
+                val normalizedKey = result.secretKey.trim().uppercase().replace(Regex("[- ]"), "")
+                    .replace('O', '0').replace('I', '1').replace('L', '1')
+                if (!Regex("^H1[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{31}[048CGMRW]$").matches(normalizedKey)) return null
+                result
+            }.getOrNull()
         }
     }
 }

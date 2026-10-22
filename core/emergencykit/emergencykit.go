@@ -2,11 +2,16 @@
 package emergencykit
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/url"
 	"strings"
 	"time"
+	"unicode/utf8"
+
+	"github.com/tryhisar/hisar/core/crypt"
 
 	"github.com/signintech/gopdf"
 	"github.com/skip2/go-qrcode"
@@ -32,15 +37,29 @@ const (
 
 var ErrIncompleteKit = errors.New("emergencykit: server, email and Secret Key are required")
 
-// BuildSignInURI encodes everything except the master password, for the QR code.
-func BuildSignInURI(kit Kit) string {
-	query := url.Values{"server": {kit.Server}, "email": {kit.Email}, "secretKey": {kit.SecretKey}}
-	return "hisar://sign-in?" + query.Encode()
+type signInPayload struct {
+	Server    string `json:"server"`
+	Email     string `json:"email"`
+	SecretKey string `json:"secretKey"`
+}
+
+// BuildQRPayload encodes sign-in details as plain text, never a dispatchable URI.
+func BuildQRPayload(kit Kit) string {
+	data, _ := json.Marshal(signInPayload{Server: kit.Server, Email: kit.Email, SecretKey: kit.SecretKey})
+	return "HISARKIT1 " + base64.RawURLEncoding.EncodeToString(data)
 }
 
 func Generate(kit Kit) ([]byte, error) {
 	if strings.TrimSpace(kit.Server) == "" || strings.TrimSpace(kit.Email) == "" || strings.TrimSpace(kit.SecretKey) == "" {
 		return nil, ErrIncompleteKit
+	}
+	server, err := url.Parse(kit.Server)
+	if err != nil || server.Hostname() == "" || (server.Scheme != "https" && server.Scheme != "http") ||
+		server.User != nil || server.Fragment != "" || !utf8.ValidString(kit.Email) {
+		return nil, errors.New("emergencykit: invalid sign-in details")
+	}
+	if _, err := crypt.ParseSecretKey(kit.SecretKey); err != nil {
+		return nil, fmt.Errorf("emergencykit: %w", err)
 	}
 	if kit.CreatedAt.IsZero() {
 		kit.CreatedAt = time.Now()
@@ -216,7 +235,7 @@ func (writer *pageWriter) drawSignInSection(kit Kit) error {
 	writer.setFont("regular", 13)
 	writer.writeParagraph(textX, nextY+28, textWidth, kit.Email, 17)
 
-	qrCode, err := qrcode.New(BuildSignInURI(kit), qrcode.Medium)
+	qrCode, err := qrcode.New(BuildQRPayload(kit), qrcode.Medium)
 	if err != nil {
 		return err
 	}
@@ -242,8 +261,8 @@ func (writer *pageWriter) drawSignInSection(kit Kit) error {
 	}
 	writer.document.SetTextColor(100, 106, 115)
 	writer.setFont("regular", 8.5)
-	writer.writeParagraph(textX, sectionTop+sectionHeight-34, textWidth,
-		"The code holds the sign-in address, email and Secret Key, never your master password.", 11)
+	writer.writeParagraph(textX, sectionTop+sectionHeight-45, textWidth,
+		"Scan only with Hisar. This code contains your Secret Key, not your master password. Do not search or share its text.", 11)
 	writer.cursorY = sectionTop + sectionHeight + 22
 	return nil
 }

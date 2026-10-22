@@ -13,16 +13,39 @@ struct SignInLink: Equatable {
     var email: String
     var secretKey: String
 
-    // hisar://sign-in?server=…&email=…&secretKey=… from the Emergency Kit QR code.
+    // Plain-text kits never enter the OS URL dispatcher. Old printed kits remain readable.
     static func parse(_ text: String) -> SignInLink? {
+        if text.hasPrefix("HISARKIT") { return parsePayload(text) }
         guard let components = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
               components.scheme?.lowercased() == "hisar",
               components.host?.lowercased() == "sign-in" else { return nil }
         func readValue(_ name: String) -> String {
-            components.queryItems?.first { $0.name == name }?.value?.trimmingCharacters(in: .whitespaces) ?? ""
+            components.queryItems?.first { $0.name == name }?.value ?? ""
         }
         let link = SignInLink(server: readValue("server"), email: readValue("email"), secretKey: readValue("secretKey"))
         return link.server.isEmpty && link.email.isEmpty && link.secretKey.isEmpty ? nil : link
+    }
+
+    private static func parsePayload(_ text: String) -> SignInLink? {
+        guard text.hasPrefix("HISARKIT1 ") else { return nil }
+        let encoded = String(text.dropFirst("HISARKIT1 ".count))
+        guard !encoded.isEmpty, encoded.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else { return nil }
+        let base64 = encoded.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        guard let data = Data(base64Encoded: base64 + String(repeating: "=", count: (4 - base64.count % 4) % 4)),
+              data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "") == encoded,
+              String(data: data, encoding: .utf8) != nil, !data.contains(0),
+              let fields = try? JSONSerialization.jsonObject(with: data) as? [String: String],
+              Set(fields.keys) == Set(["server", "email", "secretKey"]),
+              let server = fields["server"], let email = fields["email"], let secretKey = fields["secretKey"],
+              let url = URLComponents(string: server),
+              ["https", "http"].contains(url.scheme?.lowercased() ?? ""), !(url.host ?? "").isEmpty,
+              url.user == nil, url.password == nil, url.fragment == nil,
+              !email.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        let normalizedKey = secretKey.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+            .replacingOccurrences(of: "-", with: "").replacingOccurrences(of: " ", with: "")
+            .replacingOccurrences(of: "O", with: "0").replacingOccurrences(of: "I", with: "1").replacingOccurrences(of: "L", with: "1")
+        guard normalizedKey.range(of: "^H1[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{31}[048CGMRW]$", options: .regularExpression) != nil else { return nil }
+        return SignInLink(server: server, email: email, secretKey: secretKey)
     }
 }
 
