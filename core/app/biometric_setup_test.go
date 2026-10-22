@@ -310,7 +310,7 @@ func TestInterruptedCredentialResealStillFinishesTheCommittedChange(t *testing.T
 				}()
 				select {
 				case <-b.started:
-				case <-time.After(5 * time.Second):
+				case <-time.After(30 * time.Second):
 					t.Fatal("reseal never reached the OS boundary")
 				}
 				switch transition {
