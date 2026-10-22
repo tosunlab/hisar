@@ -43,7 +43,7 @@ sets its version, and writes `desktop/bin/Hisar-0.1.0.dmg` with the usual drag-t
 Sparkle update: `Hisar-0.1.0.zip`, signed with the EdDSA private key, and `update.json` (signature, length, minimum macOS,
 release notes). The script refuses a key that does not belong to `SUPublicEDKey` in `build/darwin/Info.plist`.
 
-A release is a run of Actions → Release with the app `desktop` (the root [README](../README.md#ci-and-releases) has the
+A release is a run of Actions → Release with the app `desktop` (the root [docs/RELEASING.md](../docs/RELEASING.md) has the
 steps). It tags `desktop-<version>` with the changes as the message, which becomes the release notes Sparkle shows, and
 builds on a GitHub-hosted macOS runner and Linux runners. The GitHub prerelease `desktop-<version>` then has
 `Hisar-<version>.dmg`, `Hisar-<version>.zip`, `update-unpublished.json` and the Linux packages, a download for the team.

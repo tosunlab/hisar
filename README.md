@@ -1,151 +1,130 @@
-# Hisar
+<p align="center">
+  <a href="https://tryhisar.com">
+    <picture>
+      <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/tosunlab/hisar/main/assets/logo/png/hisar-wordmark-on-dark-504.png">
+      <img alt="Hisar" width="252" src="https://raw.githubusercontent.com/tosunlab/hisar/main/assets/logo/png/hisar-wordmark-on-light-504.png">
+    </picture>
+  </a>
+</p>
 
-End-to-end encrypted password, SSH-key and secrets manager for developers, hosted at api.tryhisar.com.
+<p align="center"><strong>End-to-end encrypted password, SSH-key and secrets manager for developers.</strong></p>
 
-The server stores only ciphertext. Keys are derived on your devices from your master password and a Secret Key that never leaves them. See [docs/DESIGN.md](docs/DESIGN.md).
+<p align="center">
+  <a href="https://tryhisar.com">Website</a> ·
+  <a href="https://github.com/tosunlab/hisar/releases">Releases</a> ·
+  <a href="docs/DESIGN.md">Design</a> ·
+  <a href="deploy/README.md">Self-hosting</a> ·
+  <a href="https://tryhisar.com/security">Security</a>
+</p>
 
-## Layout
+<p align="center">
+  <a href="https://github.com/tosunlab/hisar/releases?q=desktop&expanded=true"><img src="https://img.shields.io/github/v/release/tosunlab/hisar?filter=desktop-*&logo=apple&logoColor=white" alt="Latest desktop app release"></a>
+  <a href="https://github.com/tosunlab/hisar/releases?q=server&expanded=true"><img src="https://img.shields.io/github/v/release/tosunlab/hisar?filter=server-*&logo=docker&logoColor=white" alt="Latest server release"></a>
+  <a href="https://github.com/tosunlab/hisar/releases?q=extension&expanded=true"><img src="https://img.shields.io/github/v/release/tosunlab/hisar?filter=extension-*&logo=googlechrome&logoColor=white" alt="Latest browser extension release"></a>
+  <a href="core/go.mod"><img src="https://img.shields.io/github/go-mod/go-version/tosunlab/hisar?filename=core/go.mod&logo=go&logoColor=white" alt="Go version"></a>
+</p>
 
-| Path | What |
+---
+
+Hisar keeps your passwords, passkeys, SSH keys, one-time codes and API secrets in vaults that only your devices can read. The server, hosted at `api.tryhisar.com` or [run by you](deploy/README.md), stores ciphertext and nothing else: every key is derived on your devices from your master password and a **Secret Key** that never leaves them, so a copy of the database, a compromised server or a network attacker learns nothing. The cryptography, the sync protocol and every product decision are written down in [docs/DESIGN.md](docs/DESIGN.md).
+
+Hisar is one Go implementation of the crypto shared by a Mac and Linux app, a browser extension, an iPhone app, an Android app and a command-line tool. It is built for people who live in a terminal: the app is an SSH agent, `hisar run` hands secrets to commands without ever showing them, and `hisar mcp` lets coding agents use your secrets without seeing them.
+
+## Features
+
+- **Zero-knowledge server.** The master password never reaches the server (OPAQUE), and the 128-bit Secret Key makes offline guessing against a stolen database impossible. Titles, URLs and vault names are encrypted too ([threat model](docs/DESIGN.md#2-threat-model)).
+- **Offline first.** Every client keeps a full encrypted copy and works without a network. Sync detects a server that withholds or rolls back data.
+- **Every kind of secret.** Logins with one-time codes and passkeys, SSH keys, secure notes, credit cards, identities, addresses, API credentials, software licenses, servers and databases.
+- **SSH agent with Touch ID.** Private keys never sit in `~/.ssh`: `ssh`, `git` and commit signing ask Hisar, which approves each use with Touch ID, the master password or your phone. The app writes the `git config` lines for SSH commit signing for you.
+- **Browser extension.** Fills and saves logins, passkeys, cards, identities and addresses in Chromium browsers, only on an exact origin match. The extension holds no keys: it talks to the desktop app over native messaging.
+- **Phones.** The iPhone app with an AutoFill extension and the Android app with autofill into apps, built on the same Go backend. The phone can also approve requests that arrive at your Mac.
+- **Sharing.** Share a vault with anyone by email, send a login to someone without an account through an end-to-end encrypted share link, and group people into organizations and teams with organization vaults.
+- **Secrets for commands.** Keep `hisar://vault/item/field` references in your `.env` instead of values. `hisar run --env-file .env -- <command>` resolves them in one approval and masks every secret the command prints.
+- **Coding agents.** `hisar mcp` is an MCP server that shows an agent only the vaults you allow and asks you before every command it runs with secrets.
+- **In and out.** Import from 1Password, Bitwarden, LastPass and CSV, and passkeys through Credential Exchange on the phone. Export everything as encrypted or plain JSON and import it back.
+- **Recovery you control.** A forgotten master password cannot be recovered by anyone; the Emergency Kit PDF is the only way back in.
+- **Self-hosted in one binary.** `hisar-server` and Postgres, with an admin dashboard at `/admin` whose crypto runs in the browser as WebAssembly, so it can never read a vault.
+
+## Install
+
+Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/releases), one release per app, each with `SHA256SUMS` files to check it against.
+
+| Platform | How to get it |
 |---|---|
-| `core/` | Shared Go library: crypto, item model, sessions and sync, and `core/app`, the app backend of the Mac, the iPhone and Android |
-| `server/` | `hisar-server` sync server (Go + Postgres) |
-| `cli/` | `hisar` command-line client |
-| `desktop/` | Desktop app (Wails v3 + Vue), see [desktop/README.md](desktop/README.md) |
-| `extension/` | Browser extension |
-| `mobile/` | iOS and Android apps, see [mobile/README.md](mobile/README.md) |
-| `docs/` | Design docs |
+| **macOS** | Open `Hisar-<version>.dmg` from the latest `desktop-<version>` release and drag Hisar into Applications. The app updates itself (Sparkle) and bundles `hisar`: Settings → Developer tools → **Install command-line tool**. |
+| **Linux** (amd64, arm64) | `sudo apt install ./Hisar-<version>-linux-<arch>.deb` on Ubuntu 24.04+ or Debian 13+, `sudo dnf install ./Hisar-<version>-linux-<arch>.rpm` on Fedora 40+. Elsewhere, the `.AppImage` needs the system's GTK 4 and WebKitGTK 6.0, or the `.flatpak` brings them along. The packages include `hisar`. Details [below](#desktop-app-on-linux). |
+| **Browser extension** | Unzip `hisar-extension-<version>.zip` from the latest `extension-<version>` release, open `chrome://extensions`, turn on Developer mode and choose **Load unpacked**. It needs the desktop app. |
+| **iPhone and Android** | No store builds yet: build the apps from [`mobile/`](mobile/README.md) and install them on your own phone. |
+| **Command-line tool** (Windows, servers, without the app) | The standalone `hisar-<version>-<os>-<arch>` archive from a `cli-<version>` release; see [cli/README.md](cli/README.md). |
+| **Server** | `ghcr.io/tosunlab/hisar-server:<version>` for linux/amd64 and linux/arm64, run with Docker Compose behind your own TLS: [deploy/README.md](deploy/README.md). |
 
-Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
+Sign-up is invite-only: an existing user invites you by email, or you run your own server and invite yourself from its admin dashboard.
 
-## Desktop app on Linux
+### Desktop app on Linux
 
-Each `desktop-<version>` GitHub Release has `Hisar-<version>-linux-<arch>.deb` and `.rpm` for amd64 and arm64, built for
-GTK 4 and WebKitGTK 6.0 (Ubuntu 24.04+, Debian 13+, Fedora 40+). Check them against `SHA256SUMS-linux-<arch>`, then:
+The `.deb` and `.rpm` are built for GTK 4 and WebKitGTK 6.0 (Ubuntu 24.04+, Debian 13+, Fedora 40+) and install the app at `/usr/bin/Hisar`, `hisar` at `/usr/bin/hisar` and the browser extension's host. On other distributions, run `Hisar-<version>-linux-<arch>.AppImage` with the system's GTK 4 and WebKitGTK 6.0 (for example `sudo pacman -S gtk4 webkitgtk-6.0` on Arch; without them it says which packages to install), or install the Flatpak, which brings them with the GNOME runtime: `flatpak install --user Hisar-<version>-linux-<arch>.flatpak`. Both copy `hisar` to `~/.local/share/hisar/bin`; Settings → Command-line tool links it onto your `PATH`.
 
-```sh
-sudo apt install ./Hisar-0.3.0-linux-amd64.deb     # Fedora: sudo dnf install ./Hisar-0.3.0-linux-amd64.rpm
-```
+The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or KWallet); without one, set `HISAR_SECRET_KEY`. What works as on the Mac and what differs (no Touch ID, update notices instead of installing updates, no app names in approvals): [docs/DESIGN.md §9.1.3](docs/DESIGN.md).
 
-The package installs the app (`/usr/bin/Hisar`, in the app menu), `hisar` at `/usr/bin/hisar`, and the browser
-extension's host. On other distributions, run `Hisar-<version>-linux-<arch>.AppImage` (it needs the system's GTK 4 and
-WebKitGTK 6.0, for example `sudo pacman -S gtk4 webkitgtk-6.0` on Arch; without them it says which packages to install), or install the Flatpak, which brings them with the GNOME runtime: `flatpak install --user
-Hisar-<version>-linux-<arch>.flatpak`. Both copy `hisar` to `~/.local/share/hisar/bin`; Settings → Command-line tool
-links it onto your `PATH`. The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or
-KWallet); without one, set `HISAR_SECRET_KEY`. What works as on the Mac and what differs (no Touch ID, update notices
-instead of installing updates, no app names in approvals): [docs/DESIGN.md §9.1.3](docs/DESIGN.md).
+## Quick start
 
-## Command-line tool
-
-`hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`).
-
-**On a Mac with the Hisar app**, the app includes it: Settings → Developer tools → **Install command-line tool**. `hisar` then works
-through the running app, which asks you to approve each terminal with Touch ID; `hisar status` shows whether it uses the app.
-Details: [desktop/README.md](desktop/README.md#command-line-tool).
-
-**Keep the app running.** SSH clients, `git` and commit signing reach Hisar through `~/.hisar/agent.sock`, and they cannot start the
-app themselves: while Hisar is not running they fail at once with "Connection refused" or "Permission denied (publickey)". So the app
-opens at login (Settings → General → **Open Hisar at login**, on by default) and keeps running in the menu bar when you close its window;
-⌘Q or **Quit Hisar** in the menu bar quits it. `hisar` itself starts the app when it is installed but not running, waits up to 10 seconds
-for it, and otherwise says "Hisar isn't running. Open the Hisar app and try again."; `HISAR_NO_LAUNCH=1` turns that off for scripts and CI.
-
-**Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the published GitHub Release of a `cli-<version>` tag
-(github.com/tosunlab/hisar → Releases): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
-`.zip` for Windows, and `SHA256SUMS`. Check the download before you run it, then put `hisar` on your `PATH`:
+With the Hisar app running on your Mac, `hisar` works through it and asks you to approve each terminal with Touch ID. Anywhere else, `hisar login` signs in on its own.
 
 ```sh
-sha256sum -c --ignore-missing SHA256SUMS          # macOS: shasum -a 256 -c --ignore-missing SHA256SUMS
-tar -xzf hisar-0.2.1-linux-amd64.tar.gz && sudo install hisar /usr/local/bin/
-hisar --version
-hisar login                                       # its own sign-in: server, email, Secret Key, master password
+hisar status                                      # through the app, or standalone?
+hisar vaults                                      # your vaults
+hisar get "GitHub"                                # an item, by title
+hisar read hisar://Personal/GitHub/otp            # one field on stdout, here the current one-time code
 ```
 
-On Windows, `Get-FileHash hisar-0.2.1-windows-amd64.zip -Algorithm SHA256` must match the line in `SHA256SUMS`. The standalone
-`hisar` keeps its session in `state.json` and asks for the master password for each command; `hisar --standalone` (or
-`HISAR_STANDALONE=1`) uses this mode even when the Mac app is running.
-
-### Secrets for commands: `hisar run` and `hisar read`
-
-Name a secret with a reference instead of copying it: `hisar://<vault>/<item>/<field>`. Vault and item are names (case does not
-matter) or IDs; the field is `password`, `username`, `notes`, `url`, `otp` (the current one-time code), `public key`,
-`fingerprint` or a custom field's label. SSH private keys never leave Hisar (use its SSH agent), so `private key` references are refused. Characters such as `/`, `%` and spaces are percent-encoded (`AWS%20prod`). In the
-Hisar app, the terminal button next to a field's copy button copies its reference.
-
-Keep references, not values, in your `.env`:
+Keep secret references, not values, in your `.env`, and let `hisar run` resolve them:
 
 ```sh
 # .env — safe to commit; it holds no secrets
-DATABASE_URL=postgres://localhost:5432/app
 DATABASE_PASSWORD=hisar://Work/Postgres%20staging/password
 GITHUB_TOKEN=hisar://Personal/GitHub/API%20token
-AWS_SECRET_ACCESS_KEY="hisar://Work/AWS prod/secret access key"
 ```
 
 ```sh
-hisar run --env-file .env -- npm test
-hisar run --env-file .env -- docker compose up
-GITHUB_TOKEN=hisar://Personal/GitHub/API%20token hisar run -- gh release list
-hisar read hisar://Personal/GitHub/otp            # one value on stdout, for scripts
+hisar run --env-file .env -- npm test             # one approval; printed secrets become <concealed by hisar>
 ```
 
-`hisar run` resolves every reference in one request, so the app asks once (with Touch ID, or on your smart device) and shows the command
-and the secrets it reads. The command gets the real values in its environment; nothing is written to disk. Every value it prints is
-replaced with `<concealed by hisar>`. That needs pipes, so use `--no-masking` for commands that need the terminal itself (colours,
-prompts, full-screen tools). Several `--env-file` options are applied in order; variables already in your environment win unless they
-are references themselves. Signals are passed on, and `hisar run` exits with the command's exit code. Approving covers the terminal
-session: other `hisar` commands in it don't ask again until 10 minutes after the last one, or until Hisar locks.
+Give a coding agent your secrets without showing them: turn on **Available to agents** for a vault in Settings → Developer tools → Coding agents, then
 
-**With coding agents.** Give the agent the `.env` with references and let it run `hisar run --env-file .env -- <command>`. It can
-run your tests, migrations and deploys, but what it sees (and what ends up in its transcript and logs) has the secrets masked, and the
-`.env` it reads holds only references. Masking is a guard against showing secrets, not a sandbox: the command itself has the values,
-and an agent that can run `hisar read` in an approved terminal can read them. An approval covers every vault, so approve an agent's
-terminal only when it may use them. Details: [docs/DESIGN.md](docs/DESIGN.md) §9.4.1. For agents that speak MCP, `hisar mcp`
-(below) is narrower: it sees only the vaults you choose and asks per command.
+```sh
+claude mcp add hisar -- hisar mcp                 # Claude Code; any MCP client: command `hisar`, argument `mcp`
+```
 
-### Use Hisar with coding agents
+Everything `hisar` can do, the reference format, masking and the MCP tools: [cli/README.md](cli/README.md).
 
-`hisar mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio that lets coding agents use your secrets without seeing
-them. It always works through the Hisar app, which must be running with Settings → Developer tools → "Let the command-line tool
-use Hisar" on.
+## How it works
 
-1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults an agent may use. Every vault starts
-   off, and the setting is per device. Agents cannot see the other vaults at all.
-2. Add the server to your agent:
+- **Keys.** Argon2id derives the account unlock key from the master password and the Secret Key; HKDF and AEAD seal a keyset, per-vault keys and each item, with authenticated labels so a record cannot be moved or swapped. [§3](docs/DESIGN.md#3-cryptographic-primitives), [§4](docs/DESIGN.md#4-key-hierarchy).
+- **Sign-in.** OPAQUE proves the master password without sending it. A new device needs the Secret Key and the master password; a known device unlocks locally, with Touch ID on the Mac and Face ID on the iPhone. [§5](docs/DESIGN.md#5-accounts-and-devices).
+- **Sharing.** A vault key is wrapped to each member's public key, verified by fingerprint. Removing someone rotates the vault. [§5.8](docs/DESIGN.md#58-sharing-a-vault-by-email), [§5.11](docs/DESIGN.md#511-organizations-teams-and-organization-vaults).
+- **Sync.** Clients pull and push encrypted records; conflicts resolve on the client, and rollback or withholding by the server is detected. [§7](docs/DESIGN.md#7-sync-protocol).
+- **What the server sees.** Emails, who can reach which vault, counts, sizes, timestamps and IPs. Never item contents, titles, URLs or vault names. [§2.3](docs/DESIGN.md#23-accepted-metadata-leakage).
 
-   ```sh
-   claude mcp add hisar -- hisar mcp        # Claude Code
-   ```
+## Repository layout
 
-   Cursor, in `~/.cursor/mcp.json` or a project's `.cursor/mcp.json`:
+| Path | What |
+|---|---|
+| [`core/`](core) | Shared Go library: crypto, item model, API client, sessions and sync, and `core/app`, the backend of the Mac, iPhone and Android apps |
+| [`server/`](server) | `hisar-server`, the sync server (Go + Postgres) |
+| [`admin/`](admin) | The admin dashboard (Vue) that `hisar-server` embeds at `/admin` |
+| [`cli/`](cli) | `hisar`, the command-line tool and MCP server, see [cli/README.md](cli/README.md) |
+| [`desktop/`](desktop) | The Mac and Linux app (Wails v3 + Vue), the SSH agent and the extension's native host, see [desktop/README.md](desktop/README.md) |
+| [`extension/`](extension) | The browser extension (TypeScript, MV3), see [extension/README.md](extension/README.md) |
+| [`mobile/`](mobile) | The iPhone (Swift) and Android (Kotlin) apps on the gomobile-bound core, see [mobile/README.md](mobile/README.md) |
+| [`raycast/`](raycast) | The Raycast extension |
+| [`deploy/`](deploy) | Dockerfile and Docker Compose for the server, see [deploy/README.md](deploy/README.md) |
+| [`docs/`](docs) | [DESIGN.md](docs/DESIGN.md), the source of truth for the security model, and [RELEASING.md](docs/RELEASING.md) |
 
-   ```json
-   { "mcpServers": { "hisar": { "command": "hisar", "args": ["mcp"] } } }
-   ```
-
-   Any other MCP client: a stdio server with the command `hisar` and the argument `mcp`.
-
-The agent gets these tools:
-
-| Tool | What it does | Asks you |
-|---|---|---|
-| `list_vaults` | the vaults available to agents | once per agent connection |
-| `search_items` | items by title, username, URL or vault: metadata, field labels and `hisar://` references, never values or notes | once per agent connection |
-| `run_with_secrets` | runs a command (an argument list, no shell) with references in its environment; output masked, at most 64 KiB per stream, timeout up to 600 s | every call, showing the command, directory and secrets; "Allow these secrets for this agent for 1 hour" |
-| `get_one_time_code` | the current one-time code of an item | every call; can be allowed for 1 hour |
-| `get_secret` | reveals one value to the agent | every call, for that item; "Allow this item for 1 hour". `private key` is always refused |
-
-The first dialog names the agent (from its MCP client name) and the app it runs in. Denying fails the tool with "The user denied
-access in Hisar.", which the agent can relay to you. Approvals and allowed secrets end when the agent disconnects or Hisar locks.
-
-Limits: a command run with secrets has the real values and can write them to a file, send them elsewhere or print them encoded,
-which masking does not catch, so approve only commands you would run yourself; allowing secrets for an hour lets the agent run any
-command with them for that hour. A value from `get_secret` is in the agent's transcript and logs. Details:
-[docs/DESIGN.md](docs/DESIGN.md) §9.4.2.
+Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
 
 ## Development
 
-Requires Go 1.26+, Docker (for Postgres) and Node 24 (`make build` runs `npm ci` and Vite to build the admin dashboard into
-`hisar-server`).
+Requires Go 1.26+, Docker (for Postgres) and Node 24 (`make build` runs `npm ci` and Vite to build the admin dashboard into `hisar-server`).
 
 ```sh
 docker run -d --name hisar-pg -e POSTGRES_PASSWORD=hisar -e POSTGRES_DB=hisar -p 127.0.0.1:55432:5432 postgres:18
@@ -153,7 +132,6 @@ export HISAR_TEST_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar?
 
 make vet test build      # database tests drop and recreate the public schema of that database
 make build-cli-all       # cross-compile the CLI
-make package-cli-release VERSION=0.2.1   # the release archives and SHA256SUMS in bin/cli-release
 make docker              # build the server image
 ```
 
@@ -164,92 +142,14 @@ docker exec hisar-pg createdb -U postgres hisar_end_to_end
 HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_end_to_end?sslmode=disable" make test-end-to-end
 ```
 
-The phone apps build from `mobile/`: the iPhone app with Xcode on a Mac, and the Android app with the Android SDK and JDK 21
-on macOS or Linux (`make build-android-aar build-android test-android`). See [mobile/README.md](mobile/README.md).
+The desktop app builds with `make build-desktop` ([desktop/README.md](desktop/README.md)), the extension with `make build-extension`, the iPhone app with Xcode on a Mac and the Android app with the Android SDK and JDK 21 (`make build-android-aar build-android test-android`, see [mobile/README.md](mobile/README.md)). The other targets are in the [Makefile](Makefile).
 
-### CI and releases
+## Contributing
 
-GitHub Actions runs CI on pull requests, on manual runs (Actions → CI → Run workflow) and on a release that asks for it, never
-on pushes to `main`: a merge was already tested as its pull request. A new push to a pull request cancels its running CI.
+Open an issue for a bug or a feature using the templates, or a pull request on `main`. CI runs on every pull request (gofmt, vet, the Go tests against Postgres, the CLI for every platform, the end-to-end test, the server image, the desktop frontend, the extension, the admin dashboard, and the Mac, iPhone and Android apps when a change touches them); it never runs on pushes to `main`. Commit messages follow Conventional Commits (`feat(core): …`, `fix(desktop): …`, with `!` or a `BREAKING CHANGE:` footer for breaking changes), which the release notes are built from. A change to the security model starts in [docs/DESIGN.md](docs/DESIGN.md): change the document before the code.
 
-`.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
-`TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
-binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
-(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip),
-the share link page in Chromium against the server, the admin dashboard (typecheck, tests, the `admin/src/themes.css`
-freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
-`core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
-release APKs, lint, the JVM tests and the instrumented tests on x86_64 API 36 emulators against a local server, split over two
-jobs; only when the pull request changes `mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes,
-`core/`, `go.work` or the workflow, and not while the pull request has the label `skip-android`, for changes whose Android build
-and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before
-pushing).
+How CI is laid out, which labels skip the expensive app jobs, and how releases are cut and published: [docs/RELEASING.md](docs/RELEASING.md).
 
-`.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
-(HisarKit, Xcode project check, unit tests, then UI tests against a local server in two jobs that run the one build) on
-GitHub's `macos-26` runners with Xcode 26.6. macOS
-minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
-branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
+## Security
 
-- the Mac app when `desktop/`, `cli/` (the app bundles `hisar`), `core/`, `go.work`, its packaging scripts or the workflow
-  changes (`scripts/app-paths.sh` lists them);
-- the iPhone app when `mobile/ios/`, `mobile/hisarkit/`, `mobile/go.mod`, `mobile/build-framework.sh`, `core/`, `go.work` or the
-  workflow changes; an Android-only change does not run it;
-- both, whatever changed, while the pull request has the label `run-macos`;
-- not the iPhone app while the pull request has the label `skip-ios`, for changes whose iPhone build, unit tests and UI tests
-  already passed locally (`make build-ios-framework build-ios test-ios test-ios-ui`). Add the label before pushing: a run
-  reads the labels the pull request has when it starts. The jobs then report as skipped;
-- or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
-
-A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then 20 minutes of UI tests in
-two jobs, so about 150–250 included minutes for the Mac app alone and up to 850 with the iPhone app. A desktop release build costs
-about the same as the Mac app job.
-
-Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Each release is one run of
-Actions → Release → Run workflow (or `gh workflow run release.yml -f app=server -f type=minor`), on `main`:
-
-- **App**: `server`, `cli`, `desktop` or `extension`.
-- **Release type**: `patch`, `minor` or `major` bumps the app's newest `<app>-X.Y.Z` tag (`0.1.14` → `0.1.15`, `0.2.0`,
-  `1.0.0`; an app's first release is `0.1.0`), and `custom` takes **Version** as it is: `0.2.1`, or `0.3.0-rc1` for a custom
-  build that is built the same way, marked "(custom build)" and can never be published. A custom build may run on any branch.
-- **Dry run**: only the plan.
-- **Run tests**: also runs `ci.yml` on the commit, plus `macos.yml` for the desktop app, before tagging it. Off by default:
-  pull requests ran them already, and a release should be quick when a fix has to go out.
-
-The run then goes on by itself (`scripts/plan-release.sh` plans it):
-
-1. **Plan**: the next version, which must be newer than the previous release and not tagged yet, and the commits since the
-   previous release that change what the app is built from (`scripts/app-paths.sh`, without tests and docs). It refuses a
-   release without such commits, and warns about a patch release with a breaking change (`feat(core)!: …` or a
-   `BREAKING CHANGE:` footer). The run summary shows the plan.
-2. **CI**, only with **Run tests**: `ci.yml` for the commit, plus `macos.yml` for the desktop app.
-3. **Tag**: the annotated tag on that commit; its message is the title and the changes, which the desktop app's Sparkle
-   update shows as release notes. The deploy key in `RELEASE_DEPLOY_KEY` pushes it, past the tag ruleset.
-4. **Build**: `release-<app>.yml`, which only the Release workflow calls. The desktop app builds the Mac DMG and Sparkle update
-   and the Linux packages and Flatpak (amd64 and arm64); the server pushes `ghcr.io/tosunlab/hisar-server:X.Y.Z`.
-5. **Prerelease**: the GitHub prerelease with every file at once (`scripts/check-release-files.sh` checks them first), its
-   changes and the app's install text from `.github/release-notes/<app>.md`. Nobody gets it yet.
-6. **Publish**: waits in the environment `publish-<app>` until a reviewer approves it (Review deployments on the run). A newer
-   release of the app that reaches this step replaces an older one still waiting. It refuses a version older than the app's
-   published release, then
-   - server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at `:X.Y.Z`;
-   - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every Mac app as an
-     automatic update;
-   - all: rewrites the notes to cover every change since the published release, turns the prerelease into a release and marks
-     it latest.
-
-A failed run continues with Re-run failed jobs; a new run refuses the tag it already pushed. Actions → Publish → Run workflow
-publishes an existing prerelease by hand, through the same approval. Actions → Release server image → Run workflow on a branch
-pushes only `ghcr.io/tosunlab/hisar-server:sha-<commit>`, for testing.
-
-Repository secrets: `SPARKLE_PRIVATE_KEY`, the Sparkle EdDSA private key file's content (`gh secret set SPARKLE_PRIVATE_KEY --repo
-tosunlab/hisar < <key file>`); `RELEASE_DEPLOY_KEY`, the private half of the deploy key "Release workflow tags" (write
-access, a bypass actor of the ruleset "tags: only maintainers create"); and, for desktop releases, the team's Developer ID
-Application identity and the App Store Connect API key that notarizes the app: `MACOS_SIGNING_CERTIFICATE` (the identity as a
-base64 `.p12`: `base64 -i <identity.p12> | gh secret set MACOS_SIGNING_CERTIFICATE --repo tosunlab/hisar`),
-`MACOS_SIGNING_CERTIFICATE_PASSWORD` (its export password), `APPLE_NOTARY_KEY` (the base64 `.p8`), `APPLE_NOTARY_KEY_ID` and
-`APPLE_NOTARY_ISSUER_ID`. Images go to the GitHub Container Registry with the
-workflow's own `GITHUB_TOKEN`. The environments `publish-server`, `publish-cli`, `publish-desktop` and `publish-extension` have
-the required reviewers and accept only `main`.
-
-Deployment: see [deploy/README.md](deploy/README.md).
+Found a vulnerability? Use [GitHub's private vulnerability reporting](https://github.com/tosunlab/hisar/security/advisories/new) or email [support@tryhisar.com](mailto:support@tryhisar.com?subject=Security%20report), not a public issue. We reply within two working days and credit reporters who want it. The threat model and what the server can and cannot learn are in [docs/DESIGN.md §2](docs/DESIGN.md#2-threat-model); the primitives and their frozen test vectors are in `core/crypt`.
