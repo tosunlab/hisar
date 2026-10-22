@@ -194,6 +194,11 @@ func (s *Service) Unlock(password string) (Status, error) {
 	server, token, accountID, epoch := s.state.Server, s.state.Token, s.state.AccountID, s.sessionEpoch
 	recoveryOperationID := s.state.RecoveryOperationID
 	accountCache := s.getCache()
+	migrator, _ := s.config.Biometric.(BiometricKeyMigrator)
+	var sealedBiometricKey []byte
+	if migrator != nil {
+		sealedBiometricKey = append([]byte(nil), s.state.BiometricUnlock...)
+	}
 	s.mutex.Unlock()
 
 	passwordBytes := []byte(password)
@@ -216,12 +221,24 @@ func (s *Service) Unlock(password string) (Status, error) {
 		return Status{}, convertError(err)
 	}
 
+	var biometricSetupError string
+	if migrator != nil && len(sealedBiometricKey) > 0 {
+		s.biometricMutex.Lock()
+		if s.isSessionEpoch(epoch) {
+			if err := migrator.MigrateKey(accountID, sealedBiometricKey); err != nil {
+				biometricSetupError = err.Error()
+			}
+		}
+		s.biometricMutex.Unlock()
+	}
+
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.openUnlockedSession(unlocked, epoch); err != nil {
 		return s.buildStatus(), err
 	}
 	s.recordPasswordUnlock()
+	s.biometricSetupError = biometricSetupError
 	return s.buildStatus(), nil
 }
 

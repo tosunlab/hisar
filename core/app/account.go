@@ -165,14 +165,34 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 	if persistedKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID); err != nil || persistedKey.Encode() != credentialChange.SecretKey.Encode() {
 		result.KeychainError = "the current keychain or environment does not retain the new credentials; protected local recovery remains required"
 	}
+	s.biometricSetupRevision++
 	if len(s.state.BiometricUnlock) > 0 {
-		// Only a platform with a BiometricKeyPreparer needs a prompt to store the key; a keychain stores it silently.
-		if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() {
+		setup, setupErr := s.snapshotBiometricSetup()
+		if setupErr != nil {
 			s.forgetBiometricUnlock()
-		} else if s.config.BiometricKeyPreparer != nil && s.authenticateToStoreBiometricKey("keep biometric unlock on for Hisar") != nil {
-			s.forgetBiometricUnlock()
-		} else if _, err := s.sealBiometricUnlock(credentialChange.AccountUnlockKey); err != nil {
-			s.forgetBiometricUnlock()
+		} else {
+			reason := ""
+			if s.config.BiometricKeyPreparer != nil {
+				reason = "keep biometric unlock on for Hisar"
+			}
+			s.mutex.Unlock()
+			s.biometricMutex.Lock()
+			sealed, setupErr := s.storeBiometricUnlock(setup, credentialChange.AccountUnlockKey, reason)
+			s.mutex.Lock()
+			if err := s.requireBiometricSetup(setup); err != nil {
+				s.biometricMutex.Unlock()
+				result.Status = s.buildStatus()
+				result.LocalError = err.Error()
+				return result, nil
+			}
+			if setupErr != nil {
+				s.forgetBiometricUnlock()
+			} else {
+				s.state.BiometricUnlock = sealed
+				s.biometricSetupRevision++
+				s.biometricSetupError = ""
+			}
+			s.biometricMutex.Unlock()
 		}
 	}
 	if pending.OperationID != "" {

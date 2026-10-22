@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
 	"testing"
 	"time"
 )
@@ -15,6 +16,12 @@ func TestKeychainRoundtrip(t *testing.T) {
 	accountID := "TEST01"
 	t.Cleanup(func() { biometric.DeleteKey(accountID) })
 
+	if os.Getenv("HISAR_TEST_SIGNED_BIOMETRIC") != "1" {
+		if err := biometric.StoreKey(accountID, bytes.Repeat([]byte{7}, 32)); err == nil {
+			t.Fatal("unprovisioned test executable created an OS-protected biometric key")
+		}
+		return
+	}
 	if _, err := biometric.LoadKey(accountID); !errors.Is(err, ErrKeyNotFound) {
 		t.Fatalf("load before store: %v", err)
 	}

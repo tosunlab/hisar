@@ -322,7 +322,17 @@ func prepareTestApprovalUnlock(t *testing.T, fixture unlockedTestService, passwo
 		t.Fatal(err)
 	}
 	service.recordPasswordUnlock()
-	if _, err := service.sealBiometricUnlock(derivedKeys.AccountUnlockKey); err != nil {
+	wrappingKey := crypt.GenerateKey()
+	defer clear(wrappingKey)
+	sealed, err := crypt.Seal(wrappingKey, derivedKeys.AccountUnlockKey, buildBiometricContext(fixture.accountID))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := service.config.Biometric.StoreKey(fixture.accountID, wrappingKey); err != nil {
+		t.Fatal(err)
+	}
+	service.state.BiometricUnlock = sealed
+	if err := service.state.Save(); err != nil {
 		t.Fatal(err)
 	}
 }

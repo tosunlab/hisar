@@ -736,6 +736,7 @@ export interface Status {
     "biometricAvailable": boolean;
     "biometricEnabled": boolean;
     "biometricReady": boolean;
+    "biometricSetupError"?: string;
 
     /**
      * IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.

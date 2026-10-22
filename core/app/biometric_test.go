@@ -1,12 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/session"
@@ -168,4 +170,116 @@ func TestBiometricUnlockPreparesTheKeyFirst(t *testing.T) {
 		t.Errorf("biometric unlock stayed on with an invalidated key: %+v", status)
 	}
 	checkCalls("unlock after a new enrollment", "prepare load "+accountID)
+}
+
+type migratingBiometric struct {
+	*fakeBiometric
+	protected      bool
+	migrationError error
+	migrations     int
+}
+
+func (biometric *migratingBiometric) IsKeyProtected(string) bool { return biometric.protected }
+func (biometric *migratingBiometric) MigrateKey(string, []byte) error {
+	biometric.migrations++
+	if biometric.migrationError != nil {
+		return biometric.migrationError
+	}
+	biometric.protected = true
+	return nil
+}
+
+func TestPasswordUnlockMigratesBiometricProtectionWithoutLosingFallback(t *testing.T) {
+	const password = "correct horse battery"
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, password)
+	service := fixture.service
+	if _, err := service.EnableBiometricUnlock(password); err != nil {
+		t.Fatal(err)
+	}
+	sealed := append([]byte(nil), service.state.BiometricUnlock...)
+	platform := &migratingBiometric{fakeBiometric: service.config.Biometric.(*fakeBiometric), migrationError: errors.New("macOS provisioning profile required")}
+	service.config.Biometric = platform
+	service.Lock()
+	if status := service.GetStatus(); status.BiometricReady || !status.BiometricEnabled || status.BiometricSetupError == "" {
+		t.Fatalf("legacy wrapper was treated as protected: %+v", status)
+	}
+	if _, err := service.UnlockWithBiometric(); !errors.Is(err, ErrBiometricNotReady) {
+		t.Fatalf("legacy unlock: %v", err)
+	}
+	status, err := service.Unlock(password)
+	if err != nil || status.State != StateUnlocked || status.BiometricSetupError != platform.migrationError.Error() {
+		t.Fatalf("password fallback was lost: %+v %v", status, err)
+	}
+	if !bytes.Equal(sealed, service.state.BiometricUnlock) || platform.migrations != 1 {
+		t.Fatal("failed migration changed recoverable state")
+	}
+	service.Lock()
+	platform.migrationError = nil
+	if _, err := service.Unlock(password); err != nil {
+		t.Fatal(err)
+	}
+	service.Lock()
+	if status := service.GetStatus(); !status.BiometricReady || status.BiometricSetupError != "" {
+		t.Fatalf("successful migration: %+v", status)
+	}
+	if status, err := service.UnlockWithBiometric(); err != nil || status.State != StateUnlocked {
+		t.Fatalf("protected unlock: %+v %v", status, err)
+	}
+}
+
+type blockingKeyMigration struct {
+	*migratingBiometric
+	started chan struct{}
+	resume  chan struct{}
+}
+
+func (biometric *blockingKeyMigration) MigrateKey(accountID string, sealed []byte) error {
+	close(biometric.started)
+	<-biometric.resume
+	return biometric.migratingBiometric.MigrateKey(accountID, sealed)
+}
+
+func TestLockDoesNotWaitForBiometricMigrationOrAcceptItsLateUnlock(t *testing.T) {
+	const password = "correct horse battery"
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, password)
+	service := fixture.service
+	if _, err := service.EnableBiometricUnlock(password); err != nil {
+		t.Fatal(err)
+	}
+	platform := &blockingKeyMigration{
+		migratingBiometric: &migratingBiometric{fakeBiometric: service.config.Biometric.(*fakeBiometric)},
+		started:            make(chan struct{}), resume: make(chan struct{}),
+	}
+	release := sync.OnceFunc(func() { close(platform.resume) })
+	t.Cleanup(release)
+	service.config.Biometric = platform
+	service.Lock()
+	unlocked := make(chan error, 1)
+	go func() { _, err := service.Unlock(password); unlocked <- err }()
+	select {
+	case <-platform.started:
+	case err := <-unlocked:
+		t.Fatalf("unlock ended before migration: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("password unlock did not reach migration")
+	}
+	locked := make(chan Status, 1)
+	go func() { locked <- service.Lock() }()
+	select {
+	case status := <-locked:
+		if status.State != StateLocked {
+			t.Fatalf("lock: %+v", status)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("lock waited for the OS keychain prompt")
+	}
+	release()
+	if err := <-unlocked; !errors.Is(err, errUnlockInterrupted) {
+		t.Fatalf("late migration reopened the session: %v", err)
+	}
+	if status := service.GetStatus(); status.State != StateLocked || !status.BiometricEnabled {
+		t.Fatalf("recovery state changed: %+v", status)
+	}
 }

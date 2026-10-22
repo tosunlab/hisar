@@ -17,6 +17,9 @@ enum {
 
 static LAContext *activeContext = nil;
 static LAAuthenticationView *activeView = nil;
+static LAContext *authenticatedContext = nil;
+static NSString *preparedAccount = nil;
+static NSString *authenticatedAccount = nil;
 
 int hisarBiometricIsAvailable(void) {
     LAContext *context = [[LAContext alloc] init];
@@ -49,7 +52,21 @@ static void runOnMainThread(dispatch_block_t block) {
     }
 }
 
+void hisarBiometricPrepareLoad(const char *account) {
+    @synchronized ([LAContext class]) {
+        [authenticatedContext invalidate];
+        authenticatedContext = nil;
+        authenticatedAccount = nil;
+        preparedAccount = account == NULL ? nil : [NSString stringWithUTF8String:account];
+    }
+}
+
 int hisarBiometricAuthenticate(const char *reason, void *window, int embed, int controlSize, double x, double y, double width, double height, char **errorMessage) {
+    NSString *account = nil;
+    @synchronized ([LAContext class]) {
+        account = preparedAccount;
+        preparedAccount = nil;
+    }
     LAContext *context = [[LAContext alloc] init];
     context.localizedFallbackTitle = @"";
     NSError *availabilityError = nil;
@@ -93,6 +110,14 @@ int hisarBiometricAuthenticate(const char *reason, void *window, int embed, int 
     });
 
     if (isSuccess) {
+        @synchronized ([LAContext class]) {
+            if (account != nil) {
+                authenticatedContext = context;
+                authenticatedAccount = account;
+            } else {
+                [context invalidate];
+            }
+        }
         return hisarBiometricSuccess;
     }
     if (evaluationError != nil) {
@@ -121,10 +146,14 @@ void hisarBiometricMovePrompt(double x, double y, double width, double height) {
 void hisarBiometricCancel(void) {
     @synchronized ([LAContext class]) {
         [activeContext invalidate];
+        [authenticatedContext invalidate];
+        authenticatedContext = nil;
+        authenticatedAccount = nil;
+        preparedAccount = nil;
     }
 }
 
-static NSMutableDictionary *createKeychainQuery(const char *service, const char *account) {
+static NSMutableDictionary *createLegacyKeychainQuery(const char *service, const char *account) {
     return [@{
         (__bridge id)kSecClass: (__bridge id)kSecClassGenericPassword,
         (__bridge id)kSecAttrService: [NSString stringWithUTF8String:service],
@@ -132,29 +161,86 @@ static NSMutableDictionary *createKeychainQuery(const char *service, const char 
     } mutableCopy];
 }
 
-int hisarKeychainStore(const char *service, const char *account, const void *data, int length) {
-    NSMutableDictionary *query = createKeychainQuery(service, account);
-    SecItemDelete((__bridge CFDictionaryRef)query);
-    query[(__bridge id)kSecValueData] = [NSData dataWithBytes:data length:length];
-    query[(__bridge id)kSecAttrAccessible] = (__bridge id)kSecAttrAccessibleWhenUnlockedThisDeviceOnly;
-    query[(__bridge id)kSecAttrLabel] = @"Hisar Touch ID unlock";
-    return (int)SecItemAdd((__bridge CFDictionaryRef)query, NULL);
+static NSMutableDictionary *createKeychainQuery(const char *service, const char *account) {
+    NSMutableDictionary *query = createLegacyKeychainQuery(service, account);
+    query[(__bridge id)kSecAttrService] = [[NSString stringWithUTF8String:service] stringByAppendingString:@".biometry-current-set.v1"];
+    query[(__bridge id)kSecUseDataProtectionKeychain] = @YES;
+    return query;
 }
 
-int hisarKeychainLoad(const char *service, const char *account, void **data, int *length) {
+int hisarKeychainStore(const char *service, const char *account, const void *data, int length) {
+    CFErrorRef error = NULL;
+    SecAccessControlRef access = SecAccessControlCreateWithFlags(NULL,
+        kSecAttrAccessibleWhenUnlockedThisDeviceOnly, kSecAccessControlBiometryCurrentSet, &error);
+    if (access == NULL) {
+        if (error != NULL) CFRelease(error);
+        return errSecParam;
+    }
     NSMutableDictionary *query = createKeychainQuery(service, account);
+    NSData *value = [NSData dataWithBytes:data length:length];
+    query[(__bridge id)kSecAttrAccessControl] = (__bridge id)access;
+    query[(__bridge id)kSecValueData] = value;
+    query[(__bridge id)kSecAttrLabel] = @"Hisar Touch ID unlock";
+    OSStatus status = SecItemAdd((__bridge CFDictionaryRef)query, NULL);
+    CFRelease(access);
+    if (status == errSecDuplicateItem) {
+        status = SecItemUpdate((__bridge CFDictionaryRef)createKeychainQuery(service, account),
+            (__bridge CFDictionaryRef)@{(__bridge id)kSecValueData: value});
+    }
+    return (int)status;
+}
+
+static int loadKey(NSMutableDictionary *query, LAContext *context, void **data, int *length) {
+    if (context != nil) {
+        context.localizedFallbackTitle = @"";
+        query[(__bridge id)kSecUseAuthenticationContext] = context;
+        query[(__bridge id)kSecUseOperationPrompt] = @"unlock Hisar";
+    }
     query[(__bridge id)kSecReturnData] = @YES;
     query[(__bridge id)kSecMatchLimit] = (__bridge id)kSecMatchLimitOne;
     CFTypeRef result = NULL;
     OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, &result);
-    if (status != errSecSuccess) {
-        return (int)status;
-    }
+    if (context != nil) [context invalidate];
+    if (status != errSecSuccess) return (int)status;
     NSData *value = (__bridge_transfer NSData *)result;
     *length = (int)value.length;
     *data = malloc(value.length);
     memcpy(*data, value.bytes, value.length);
     return 0;
+}
+
+int hisarKeychainLoad(const char *service, const char *account, int freshContext, void **data, int *length) {
+    LAContext *context = nil;
+    @synchronized ([LAContext class]) {
+        if (!freshContext && [authenticatedAccount isEqualToString:[NSString stringWithUTF8String:account]]) context = authenticatedContext;
+        if (context != authenticatedContext) [authenticatedContext invalidate];
+        authenticatedContext = nil;
+        authenticatedAccount = nil;
+    }
+    if (context == nil) context = [[LAContext alloc] init];
+    return loadKey(createKeychainQuery(service, account), context, data, length);
+}
+
+int hisarKeychainLoadLegacy(const char *service, const char *account, void **data, int *length) {
+    return loadKey(createLegacyKeychainQuery(service, account), nil, data, length);
+}
+
+int hisarKeychainHasLegacy(const char *service, const char *account) {
+    NSMutableDictionary *query = createLegacyKeychainQuery(service, account);
+    query[(__bridge id)kSecUseAuthenticationUI] = (__bridge id)kSecUseAuthenticationUIFail;
+    return SecItemCopyMatching((__bridge CFDictionaryRef)query, NULL) != errSecItemNotFound;
+}
+
+int hisarKeychainHasProtected(const char *service, const char *account) {
+    NSMutableDictionary *query = createKeychainQuery(service, account);
+    query[(__bridge id)kSecUseAuthenticationUI] = (__bridge id)kSecUseAuthenticationUIFail;
+    OSStatus status = SecItemCopyMatching((__bridge CFDictionaryRef)query, NULL);
+    return status == errSecSuccess || status == errSecInteractionNotAllowed;
+}
+
+int hisarKeychainDeleteLegacy(const char *service, const char *account) {
+    OSStatus status = SecItemDelete((__bridge CFDictionaryRef)createLegacyKeychainQuery(service, account));
+    return status == errSecItemNotFound ? 0 : (int)status;
 }
 
 int hisarKeychainDelete(const char *service, const char *account) {

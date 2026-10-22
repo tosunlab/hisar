@@ -87,6 +87,7 @@ onBeforeUnmount(() => {
           </li>
         </ul>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+        <p v-if="store.status.biometricSetupError" class="muted" role="status" data-testid="biometric-setup-error">{{ store.status.biometricSetupError }}</p>
 
         <form class="unlock-form" @submit.prevent="submitUnlock">
           <label class="password-field">
