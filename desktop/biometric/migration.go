@@ -14,6 +14,7 @@ type migrationKeychain interface {
 	loadProtected() ([]byte, error)
 	storeProtected([]byte) error
 	deleteLegacy() error
+	deleteProtected() error
 }
 
 // The sealed state stays unchanged, so interruption never leaves it pointing at a different key.
@@ -59,4 +60,10 @@ func migrateWrappingKey(keychain migrationKeychain, accountID string, sealedUnlo
 		return fmt.Errorf("Touch ID protection is pending because the obsolete wrapper could not be retired: %w", err)
 	}
 	return nil
+}
+
+// deleteWrappingKey removes the protected wrapper and any login-keychain wrapper a migration has not retired yet, so
+// turning Touch ID off or signing out leaves neither behind.
+func deleteWrappingKey(keychain migrationKeychain) error {
+	return errors.Join(keychain.deleteProtected(), keychain.deleteLegacy())
 }

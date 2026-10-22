@@ -124,13 +124,7 @@ func (biometric *Biometric) LoadKey(accountID string) ([]byte, error) {
 }
 
 func (biometric *Biometric) DeleteKey(accountID string) error {
-	service, account := C.CString(biometric.service), C.CString(accountID)
-	defer C.free(unsafe.Pointer(service))
-	defer C.free(unsafe.Pointer(account))
-	if status := C.hisarKeychainDelete(service, account); status != 0 {
-		return fmt.Errorf("keychain error %d", int(status))
-	}
-	return nil
+	return deleteWrappingKey(nativeMigrationKeychain{biometric: biometric, accountID: accountID})
 }
 
 func (biometric *Biometric) IsKeyProtected(accountID string) bool {
@@ -204,6 +198,16 @@ func (store nativeMigrationKeychain) deleteLegacy() error {
 	defer C.free(unsafe.Pointer(service))
 	defer C.free(unsafe.Pointer(account))
 	if status := C.hisarKeychainDeleteLegacy(service, account); status != 0 {
+		return fmt.Errorf("keychain error %d", int(status))
+	}
+	return nil
+}
+
+func (store nativeMigrationKeychain) deleteProtected() error {
+	service, account := C.CString(store.biometric.service), C.CString(store.accountID)
+	defer C.free(unsafe.Pointer(service))
+	defer C.free(unsafe.Pointer(account))
+	if status := C.hisarKeychainDelete(service, account); status != 0 {
 		return fmt.Errorf("keychain error %d", int(status))
 	}
 	return nil

@@ -50,6 +50,11 @@ func (fixture *migrationFixture) deleteLegacy() error {
 	fixture.legacy = nil
 	return nil
 }
+func (fixture *migrationFixture) deleteProtected() error {
+	clear(fixture.protected)
+	fixture.protected = nil
+	return nil
+}
 
 func TestWrapperMigrationPreservesRecoveryUntilProtectedReadProvesTheKey(t *testing.T) {
 	for _, failure := range []string{"missing profile", "cancelled proof", "wrong proof", "retirement failed", "none"} {
@@ -116,5 +121,36 @@ func TestWrapperMigrationRejectsAnotherAccountsSealedState(t *testing.T) {
 	}
 	if fixture.protected != nil || fixture.deletes != 0 {
 		t.Fatal("invalid state changed keychain recovery")
+	}
+}
+
+func TestDeletingTheKeyRemovesTheWrapperAMigrationHasNotRetired(t *testing.T) {
+	for _, state := range []string{"missing profile", "retirement failed", "migrated"} {
+		t.Run(state, func(t *testing.T) {
+			key := crypt.GenerateKey()
+			defer clear(key)
+			sealed, err := crypt.Seal(key, []byte("account unlock key"), []byte("hisar/v1/biometric-unlock:ABC123"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			fixture := &migrationFixture{legacy: bytes.Clone(key)}
+			switch state {
+			case "missing profile":
+				fixture.storeError = errors.New("missing entitlement")
+			case "retirement failed":
+				fixture.deleteError = errors.New("keychain unavailable")
+			}
+			migrateWrappingKey(fixture, "ABC123", sealed)
+			fixture.deleteError = nil
+			if err := deleteWrappingKey(fixture); err != nil {
+				t.Fatal(err)
+			}
+			if fixture.hasLegacy() {
+				t.Error("the login-keychain wrapper survived turning Touch ID off")
+			}
+			if _, err := fixture.loadProtected(); !errors.Is(err, ErrKeyNotFound) {
+				t.Errorf("the protected wrapper survived turning Touch ID off: %v", err)
+			}
+		})
 	}
 }
