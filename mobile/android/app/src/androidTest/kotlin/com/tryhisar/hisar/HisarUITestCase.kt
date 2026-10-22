@@ -170,9 +170,15 @@ abstract class HisarUITestCase {
         }
     }
 
+    /**
+     * Typing needs no keyboard, but focusing the field asks for one, which a slow emulator shows a second or more later.
+     * Arriving after the next step scrolled, it would cover the button scrolled to, and that step's tap would land on
+     * nothing. Closing it at once keeps the screen as the next step finds it.
+     */
     fun type(text: String, tag: String) {
         scrollTo(tag)
         composeRule.onNode(hasTestTag(tag)).performTextInput(text)
+        Espresso.closeSoftKeyboard()
     }
 
     /** With [isBiometricOfferExpected], it stops at the biometric offer after the Secret Key; otherwise it declines any offer. */
