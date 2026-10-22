@@ -10,52 +10,95 @@ import (
 	"github.com/tryhisar/hisar/core/sharelink"
 )
 
-// resolveCommandLineItem finds the item as hisar get does: its ID or exact title, else one title containing the query.
+// resolveCommandLineItem finds the item as hisar get does: the vault by ID, else by its one name; the item by ID, else by
+// its one exact title, else by the one title containing the query. A name or title more than one has is refused.
 func (s *Service) resolveCommandLineItem(vaultNameOrID, query string) (string, item.Item, error) {
 	vaults, err := s.ListVaults()
 	if err != nil {
 		return "", item.Item{}, err
 	}
-	// A vault or item that did not open may have the name or title asked for, so the lookup needs every record.
-	for _, vault := range vaults {
-		if len(vault.ReadIssues) != 0 {
-			return "", item.Item{}, session.ErrIncompleteRead
-		}
-	}
-	vaultID := ""
-	for _, vault := range vaults {
-		if vault.ID == vaultNameOrID || strings.EqualFold(vault.Name, vaultNameOrID) {
-			vaultID = vault.ID
-			break
-		}
-	}
-	if vaultID == "" {
-		return "", item.Item{}, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("vault %q: not found", vaultNameOrID))
+	vault, err := selectCommandLineVault(vaults, vaultNameOrID)
+	if err != nil {
+		return "", item.Item{}, err
 	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	var matches []*item.Item
-	for index := range s.itemsByVaultID[vaultID] {
-		vaultItem := &s.itemsByVaultID[vaultID][index]
-		if vaultItem.ID == query || strings.EqualFold(vaultItem.Overview.Title, query) {
-			return vaultID, *vaultItem, nil
+	items := s.itemsByVaultID[vault.ID]
+	for index := range items {
+		if items[index].ID == query {
+			return vault.ID, items[index], nil
+		}
+	}
+	// An item that did not open may have the title asked for, so a title lookup needs every item.
+	for _, issue := range vault.ReadIssues {
+		if issue.ItemID != "" {
+			return "", item.Item{}, session.ErrIncompleteRead
+		}
+	}
+	var exact, partial []*item.Item
+	for index := range items {
+		vaultItem := &items[index]
+		if strings.EqualFold(vaultItem.Overview.Title, query) {
+			exact = append(exact, vaultItem)
 		}
 		if strings.Contains(strings.ToLower(vaultItem.Overview.Title), strings.ToLower(query)) {
-			matches = append(matches, vaultItem)
+			partial = append(partial, vaultItem)
 		}
+	}
+	matches := partial
+	if len(exact) > 0 {
+		matches = exact
 	}
 	switch len(matches) {
 	case 0:
-		return "", item.Item{}, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("no item matches %q", query))
+		return "", item.Item{}, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("no item matches %q in %s", query, describeCommandLineVault(vault)))
 	case 1:
-		return vaultID, *matches[0], nil
+		return vault.ID, *matches[0], nil
 	}
 	var builder strings.Builder
-	fmt.Fprintf(&builder, "%q matches %d items; use the exact title or ID:", query, len(matches))
+	fmt.Fprintf(&builder, "%q matches %d items in %s; use an ID (hisar ls -v <vault-ID> lists metadata):", query, len(matches), describeCommandLineVault(vault))
 	for _, match := range matches {
 		fmt.Fprintf(&builder, "\n  %s  %s", match.ID, match.Overview.Title)
 	}
 	return "", item.Item{}, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, builder.String())
+}
+
+// selectCommandLineVault picks the vault with this ID, else the one vault with this name ignoring case. A name lookup
+// needs every vault's name: one that did not open may be the name asked for.
+func selectCommandLineVault(vaults []VaultSummary, nameOrID string) (VaultSummary, error) {
+	for _, vault := range vaults {
+		if vault.ID == nameOrID {
+			return vault, nil
+		}
+	}
+	for _, vault := range vaults {
+		for _, issue := range vault.ReadIssues {
+			if issue.ItemID == "" {
+				return VaultSummary{}, session.ErrIncompleteRead
+			}
+		}
+	}
+	var matches []VaultSummary
+	for _, vault := range vaults {
+		if strings.EqualFold(vault.Name, nameOrID) {
+			matches = append(matches, vault)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return VaultSummary{}, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("vault %q: not found", nameOrID))
+	case 1:
+		return matches[0], nil
+	}
+	candidates := make([]string, 0, len(matches))
+	for _, vault := range matches {
+		candidates = append(candidates, describeCommandLineVault(vault))
+	}
+	return VaultSummary{}, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("%d vaults are named %q; use an ID instead: %s", len(matches), nameOrID, strings.Join(candidates, ", ")))
+}
+
+func describeCommandLineVault(vault VaultSummary) string {
+	return fmt.Sprintf("%s (name %q, type %s, role %s, organization %q)", vault.ID, vault.Name, vault.Type, vault.Role, vault.OrganizationID)
 }
 
 // findShareLinkItem finds the item a share link request names: by its ID for a launcher, by vault and query as hisar get

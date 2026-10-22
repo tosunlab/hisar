@@ -69,8 +69,8 @@ func TestFindItemPrefersAnIDOverATitle(t *testing.T) {
 	if vaultItem, err := findItem(items, "4"); err != nil || vaultItem.ID != "4" {
 		t.Errorf("a title shadowed an ID: %v %v", vaultItem, err)
 	}
-	if vaultItem, err := findItem(items, "deploy"); err != nil || vaultItem.ID != "1" {
-		t.Errorf("two items with the title: %v %v", vaultItem, err)
+	if vaultItem, err := findItem(items, "deploy"); err == nil || vaultItem != nil || !strings.Contains(err.Error(), "1") || !strings.Contains(err.Error(), "2") {
+		t.Errorf("duplicate titles must name the candidates: %v %v", vaultItem, err)
 	}
 }
 

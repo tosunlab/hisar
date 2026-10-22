@@ -42,7 +42,7 @@ func answerVaultDataRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 			Vault:       cliprotocol.Vault{ID: "work-id", Name: "Work", ItemCount: 3}, CanRename: true, CanDelete: true,
 			LeaveBlockedReason:  "You are its only owner.",
 			MembersLosingAccess: []cliprotocol.VaultMember{{Name: "Ada", Email: "ada@example.com", Role: "editor"}},
-			TargetVaults:        []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Role: "owner"}},
+			TargetVaults:        []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"}},
 		}, nil
 	case cliprotocol.TypeRenameVault, cliprotocol.TypeLeaveVault:
 		return struct{}{}, nil
@@ -105,7 +105,7 @@ func TestVaultCommandsThroughApp(t *testing.T) {
 		t.Fatal("a refused deletion reached the app")
 	}
 	_, stderr, err := runCapturingOutput(t, false, "", "vault", "delete", "Work", "--move-to", "Personal", "-y")
-	if err != nil || !strings.Contains(stderr, "These people lose access:\n  Ada <ada@example.com>, editor") || !strings.Contains(stderr, "Moved 3 items to Personal and deleted Work.") {
+	if err != nil || !strings.Contains(stderr, "These people lose access:\n  Ada <ada@example.com>, editor") || !strings.Contains(stderr, "Moved 3 items to Personal [personal-id]") {
 		t.Fatalf("move and delete: %v\n%s", err, stderr)
 	}
 	if _, _, err := runCapturingOutput(t, false, "", "vault", "delete", "Work", "--delete-items", "--confirm", "Work"); err != nil {
@@ -137,11 +137,42 @@ func TestVaultDeleteWizardAsksForTheTypedName(t *testing.T) {
 	if _, _, err := runCapturingOutput(t, false, "2\nwrong\n", "vault", "delete", "Work"); err == nil {
 		t.Error("deleted with a wrong typed name")
 	}
-	if _, stderr, err := runCapturingOutput(t, false, "\ny\n", "vault", "delete", "Work"); err != nil || !strings.Contains(stderr, "Move 3 items to Personal and delete Work?") {
+	if _, stderr, err := runCapturingOutput(t, false, "\ny\n", "vault", "delete", "Work"); err != nil || !strings.Contains(stderr, "Move 3 items to Personal [personal-id] (type personal, role owner) and delete Work?") {
 		t.Fatalf("move by default: %v\n%s", err, stderr)
 	}
 	deletions := app.findRequest(cliprotocol.TypeDeleteVault)
 	if len(deletions) != 2 || !deletions[0].VaultDeletion.IsDeletingItems || deletions[1].VaultDeletion.MoveToVaultID != "personal-id" {
+		t.Errorf("deletion requests: %+v", deletions)
+	}
+}
+
+func TestVaultDeleteWizardTellsApartDestinationsWithOneName(t *testing.T) {
+	app := startFakeApp(t)
+	targets := []cliprotocol.Vault{{ID: "private-target", Name: "Work", Type: "personal", Role: "owner"}, {ID: "shared-target", Name: "Work", Type: "shared", Role: "editor"}}
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		switch request.Type {
+		case cliprotocol.TypeListVault:
+			return cliprotocol.VaultListResult{Vaults: append([]cliprotocol.Vault{{ID: "source", Name: "Source", Type: "shared", Role: "owner", ItemCount: 1}}, targets...)}, nil
+		case cliprotocol.TypeGetVaultActions:
+			return cliprotocol.VaultActionsResult{Vault: cliprotocol.Vault{ID: "source", Name: "Source", ItemCount: 1}, CanDelete: true, TargetVaults: targets}, nil
+		case cliprotocol.TypeDeleteVault:
+			return cliprotocol.VaultDeletionResult{MovedCount: 1}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	setInteractiveTerminal(t, true)
+	_, stderr, err := runCapturingOutput(t, false, "2\ny\n", "vault", "delete", "source")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"1) Move them to Work [private-target] (type personal, role owner)", "2) Move them to Work [shared-target] (type shared, role editor)", "Move 1 item to Work [shared-target]"} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the wizard does not show %q:\n%s", want, stderr)
+		}
+	}
+	if deletions := app.findRequest(cliprotocol.TypeDeleteVault); len(deletions) != 1 || deletions[0].VaultDeletion.MoveToVaultID != "shared-target" {
 		t.Errorf("deletion requests: %+v", deletions)
 	}
 }
@@ -281,6 +312,47 @@ func TestDotenvImportWizard(t *testing.T) {
 	}
 	if content, _ := os.ReadFile(envPath); string(content) != "TOKEN=abc\nPORT=hisar://Personal/app/PORT\n" {
 		t.Errorf("rewritten: %s", content)
+	}
+}
+
+func TestDotenvChoosesAmongVaultsWithOneNameOnlyByID(t *testing.T) {
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		switch request.Type {
+		case cliprotocol.TypeListVault:
+			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "private-id", Name: "Work", Type: "personal", Role: "owner"}, {ID: "shared-id", Name: "WORK", Type: "shared", Role: "editor"}}}, nil
+		case cliprotocol.TypeListItem:
+			return cliprotocol.ItemListResult{Items: []cliprotocol.Item{{ID: "env-a", Title: "Deploy"}, {ID: "env-b", Title: "DEPLOY"}}}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	envPath := filepath.Join(t.TempDir(), ".env")
+	os.WriteFile(envPath, []byte("TOKEN=abc12345\n"), 0o600)
+
+	setInteractiveTerminal(t, true)
+	_, stderr, err := runCapturingOutput(t, false, "\nwork\nshared-id\napp\ny\n", "import", envPath)
+	if err != nil {
+		t.Fatalf("wizard: %v\n%s", err, stderr)
+	}
+	for _, want := range []string{"Work [private-id] (type personal, role owner)", "WORK [shared-id] (type shared, role editor)", `2 vaults are named "work"`} {
+		if !strings.Contains(stderr, want) {
+			t.Errorf("the wizard does not show %q:\n%s", want, stderr)
+		}
+	}
+	if saves := app.findRequest(cliprotocol.TypeSaveItem); len(saves) != 1 || saves[0].VaultID != "shared-id" {
+		t.Fatalf("saves: %+v", saves)
+	}
+
+	setInteractiveTerminal(t, false)
+	os.WriteFile(envPath, []byte("TOKEN=abc12345\n"), 0o600)
+	_, _, err = runCapturingOutput(t, false, "", "import", envPath, "--vault", "shared-id", "--item", "deploy", "-y")
+	if err == nil || !strings.Contains(err.Error(), "env-a") || !strings.Contains(err.Error(), "env-b") || !strings.Contains(err.Error(), "shared-id") {
+		t.Errorf("two items titled deploy: %v", err)
+	}
+	if saves := app.findRequest(cliprotocol.TypeSaveItem); len(saves) != 1 {
+		t.Errorf("an ambiguous item was saved: %+v", saves)
 	}
 }
 

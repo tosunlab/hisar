@@ -167,15 +167,13 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 	if err != nil {
 		return result, err
 	}
+	vaultNames := countVaultNames(s.listSecretVaults(s.isAgentVault))
 	if vaultQuery != "" {
-		vaults = slices.DeleteFunc(vaults, func(vault *session.Vault) bool {
-			return vault.ID != vaultQuery && !strings.EqualFold(vault.Name, vaultQuery)
-		})
+		vaults = filterAgentVaults(vaults, vaultQuery)
 		if len(vaults) == 0 {
 			return result, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("no vault available to agents is named %q", vaultQuery))
 		}
 	}
-	vaultNames := countVaultNames(s.listSecretVaults(isAnyVault))
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, vault := range vaults {
 		read, err := s.readVaultItems(ctx, vault)
@@ -196,6 +194,14 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 		}
 	}
 	return result, nil
+}
+
+// filterAgentVaults keeps the vault with this ID, else every vault with this name ignoring case: search lists them all.
+func filterAgentVaults(vaults []*session.Vault, vaultQuery string) []*session.Vault {
+	if index := slices.IndexFunc(vaults, func(vault *session.Vault) bool { return vault.ID == vaultQuery }); index >= 0 {
+		return vaults[index : index+1]
+	}
+	return slices.DeleteFunc(vaults, func(vault *session.Vault) bool { return !strings.EqualFold(vault.Name, vaultQuery) })
 }
 
 func convertToAgentItem(vault *session.Vault, vaultItem *item.Item, reference secretreference.Reference) cliprotocol.AgentItem {

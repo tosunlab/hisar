@@ -223,22 +223,21 @@ func chooseDotenvVault(ctx context.Context, access backend) (cliprotocol.Vault, 
 	}
 	fmt.Fprintln(standardError(), "Vault:")
 	for index, vault := range writable {
-		fmt.Fprintf(standardError(), "  %d) %s\n", index+1, vault.Name)
+		fmt.Fprintf(standardError(), "  %d) %s\n", index+1, formatVaultChoice(vault))
 	}
 	for {
-		answer, err := prompt("Choose", "1")
+		answer, err := prompt("Choose a number, vault ID or name", "1")
 		if err != nil {
 			return cliprotocol.Vault{}, err
 		}
 		if number, err := strconv.Atoi(answer); err == nil && number >= 1 && number <= len(writable) {
 			return writable[number-1], nil
 		}
-		for _, vault := range writable {
-			if strings.EqualFold(vault.Name, answer) {
-				return vault, nil
-			}
+		vault, err := selectVault(writable, answer)
+		if err == nil {
+			return vault, nil
 		}
-		fmt.Fprintf(standardError(), "Enter a number from 1 to %d.\n", len(writable))
+		fmt.Fprintf(standardError(), "%v. Enter a number from 1 to %d or a vault ID.\n", err, len(writable))
 	}
 }
 
@@ -275,10 +274,10 @@ func findDotenvItem(ctx context.Context, access backend, vault cliprotocol.Vault
 		}
 	}
 	if isAnotherItemsID {
-		return "", fmt.Errorf("%q is the ID of another item in %s; choose another item name", title, vault.Name)
+		return "", fmt.Errorf("%q is the ID of another item in %s; choose another item name", title, describeVault(vault))
 	}
 	if len(matchIDs) > 1 {
-		return "", fmt.Errorf("%d items in %s are titled %q; choose another item name", len(matchIDs), vault.Name, title)
+		return "", fmt.Errorf("%d items in %s are titled %q (%s); choose another item name", len(matchIDs), describeVault(vault), title, strings.Join(matchIDs, ", "))
 	}
 	if len(matchIDs) == 1 {
 		return matchIDs[0], nil

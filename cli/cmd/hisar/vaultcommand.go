@@ -196,7 +196,7 @@ func deleteVaultInteractively(ctx context.Context, access backend, nameOrID stri
 		}
 		question := fmt.Sprintf("Delete %s?", vault.Name)
 		if deletion.MoveToVaultID != "" {
-			question = fmt.Sprintf("Move %s to %s and delete %s?", formatItemCount(itemCount), findTargetName(actions, deletion.MoveToVaultID), vault.Name)
+			question = fmt.Sprintf("Move %s to %s and delete %s?", formatItemCount(itemCount), describeTargetVault(actions, deletion.MoveToVaultID), vault.Name)
 		}
 		isDeleting, err := confirm(question)
 		if err != nil || !isDeleting {
@@ -208,26 +208,26 @@ func deleteVaultInteractively(ctx context.Context, access backend, nameOrID stri
 		return err
 	}
 	if deletion.MoveToVaultID != "" {
-		fmt.Fprintf(standardError(), "Moved %s to %s and deleted %s.\n", formatItemCount(movedCount), findTargetName(actions, deletion.MoveToVaultID), vault.Name)
+		fmt.Fprintf(standardError(), "Moved %s to %s and deleted %s.\n", formatItemCount(movedCount), describeTargetVault(actions, deletion.MoveToVaultID), vault.Name)
 		return nil
 	}
 	fmt.Fprintf(standardError(), "Deleted %s.\n", vault.Name)
 	return nil
 }
 
-func findTargetName(actions cliprotocol.VaultActionsResult, vaultID string) string {
+func describeTargetVault(actions cliprotocol.VaultActionsResult, vaultID string) string {
 	for _, target := range actions.TargetVaults {
 		if target.ID == vaultID {
-			return target.Name
+			return formatVaultChoice(target)
 		}
 	}
-	return "the other vault"
+	return "the other vault [" + vaultID + "]"
 }
 
 func chooseItemDeletion(actions cliprotocol.VaultActionsResult) (cliprotocol.VaultDeletion, error) {
 	fmt.Fprintln(standardError(), "What happens to its items?")
 	for index, target := range actions.TargetVaults {
-		fmt.Fprintf(standardError(), "  %d) Move them to %s\n", index+1, target.Name)
+		fmt.Fprintf(standardError(), "  %d) Move them to %s\n", index+1, formatVaultChoice(target))
 	}
 	deleteChoice := len(actions.TargetVaults) + 1
 	fmt.Fprintf(standardError(), "  %d) Delete them with the vault\n", deleteChoice)

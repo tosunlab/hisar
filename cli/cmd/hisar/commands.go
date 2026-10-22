@@ -258,8 +258,7 @@ func addVaultFlag(flags *flag.FlagSet) *string {
 	return flags.String("v", "Personal", "vault name or ID")
 }
 
-// findItem matches the item's ID, else the first item with that exact title ignoring case, else a part of its title;
-// a part that names more than one item is refused with their IDs.
+// findItem resolves an ID, an unambiguous exact title, or an unambiguous part of a title.
 func findItem(items []item.Item, query string) (*item.Item, error) {
 	for index := range items {
 		if items[index].ID == query {
@@ -267,14 +266,18 @@ func findItem(items []item.Item, query string) (*item.Item, error) {
 		}
 	}
 	var matches []*item.Item
+	var exact []*item.Item
 	for index := range items {
 		vaultItem := &items[index]
 		if strings.EqualFold(vaultItem.Overview.Title, query) {
-			return vaultItem, nil
+			exact = append(exact, vaultItem)
 		}
 		if strings.Contains(strings.ToLower(vaultItem.Overview.Title), strings.ToLower(query)) {
 			matches = append(matches, vaultItem)
 		}
+	}
+	if len(exact) > 0 {
+		matches = exact
 	}
 	switch len(matches) {
 	case 0:
@@ -283,7 +286,7 @@ func findItem(items []item.Item, query string) (*item.Item, error) {
 		return matches[0], nil
 	}
 	var builder strings.Builder
-	fmt.Fprintf(&builder, "%q matches %d items; use the exact title or ID:", query, len(matches))
+	fmt.Fprintf(&builder, "%q matches %d items; use an ID (hisar ls -v <vault-ID> lists metadata):", query, len(matches))
 	for _, match := range matches {
 		fmt.Fprintf(&builder, "\n  %s  %s", match.ID, match.Overview.Title)
 	}
@@ -642,8 +645,8 @@ func promptDatabase(vaultItem *item.Item) error {
 	return nil
 }
 
-// promptSSHKey asks for the title of one of the vault's SSH keys and returns its ID; "none" removes the link, and an empty
-// answer keeps the current one.
+// promptSSHKey asks for the ID or title of one of the vault's SSH keys and returns its ID; "none" removes the link, and an
+// empty answer keeps the current one.
 func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 	var allKey []item.Item
 	currentTitle := ""
@@ -658,7 +661,7 @@ func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 	if currentID != "" && currentTitle == "" {
 		currentTitle = "missing key " + currentID
 	}
-	label := "SSH key (the title of an SSH key in this vault, empty for none)"
+	label := "SSH key (the title or ID of an SSH key in this vault, empty for none)"
 	if currentID != "" {
 		label = "SSH key (empty to keep, 'none' to remove)"
 	}
@@ -673,9 +676,12 @@ func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 		case strings.EqualFold(answer, "none"):
 			return "", nil
 		}
+		if index := slices.IndexFunc(allKey, func(key item.Item) bool { return key.ID == answer }); index >= 0 {
+			return allKey[index].ID, nil
+		}
 		var matches []item.Item
 		for _, key := range allKey {
-			if strings.EqualFold(strings.TrimSpace(key.Overview.Title), answer) || key.ID == answer {
+			if strings.EqualFold(strings.TrimSpace(key.Overview.Title), answer) {
 				matches = append(matches, key)
 			}
 		}
@@ -685,7 +691,10 @@ func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 		case 0:
 			fmt.Fprintf(standardError(), "This vault has no SSH key called %q.\n", answer)
 		default:
-			fmt.Fprintf(standardError(), "%d SSH keys are called %q; enter one's ID instead.\n", len(matches), answer)
+			fmt.Fprintf(standardError(), "%d SSH keys are called %q; enter one's ID instead:\n", len(matches), answer)
+			for _, match := range matches {
+				fmt.Fprintf(standardError(), "  %s  %s\n", match.ID, match.Overview.Title)
+			}
 		}
 	}
 }
