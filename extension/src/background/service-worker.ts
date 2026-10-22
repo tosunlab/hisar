@@ -7,6 +7,7 @@ import type { FrameInfo } from "./frames";
 import { NativeClient } from "./native-client";
 import { createPasskeyService } from "./passkey-wiring";
 import { routeMessage } from "./router";
+import { SaveExpiryScheduler } from "./save-expiry";
 import { ExtensionStorage } from "./storage";
 
 async function getAllFrameInfo(tabId: number): Promise<FrameInfo[]> {
@@ -42,10 +43,14 @@ async function writeToClipboard(text: string): Promise<void> {
 }
 
 const navigatorWithBrands = navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] }; brave?: unknown };
+const saveExpiry = new SaveExpiryScheduler(chrome);
 
 const bridge: BrowserBridge = {
   async getTabUrl(tabId) {
     return (await chrome.tabs.get(tabId)).url;
+  },
+  async getFrameDocumentID(tabId, frameId) {
+    return (await chrome.webNavigation.getFrame({ tabId, frameId }))?.documentId;
   },
   getAllFrameInfo,
   async injectContentScript(tabId) {
@@ -65,6 +70,11 @@ const bridge: BrowserBridge = {
       await chrome.tabs.create({ url: chrome.runtime.getURL(`popup.html?tabId=${tabId}`), index: tab.index + 1, openerTabId: tabId });
     }
   },
+  async setSaveBadge(tabId, isPending) {
+    await saveExpiry.ready;
+    await chrome.action.setBadgeText({ tabId, text: isPending ? "+" : "" }).catch(() => undefined);
+  },
+  scheduleSaveExpiry: saveExpiry.schedule,
   writeToClipboard,
   // In the service worker getURL uses the dynamic ID of web_accessible_resources (use_dynamic_url); content scripts get the static one.
   getInlineMenuUrl: () => chrome.runtime.getURL("inline-menu.html"),
@@ -103,7 +113,7 @@ const routerContext = { extensionID: chrome.runtime.id, extensionOrigin: chrome.
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message?.target !== undefined) return false;
-  void routeMessage({ controller: getController(), inlineMenu: getInlineMenu() }, message, sender, routerContext).then(sendResponse);
+  void saveExpiry.ready.then(() => routeMessage({ controller: getController(), inlineMenu: getInlineMenu() }, message, sender, routerContext)).then(sendResponse);
   return true;
 });
 
@@ -122,6 +132,7 @@ chrome.commands.onCommand.addListener((command, tab) => {
 
 // The toolbar icon shows how many logins are saved for the tab, while the native host is connected.
 async function updateBadge(tabId: number): Promise<void> {
+  await saveExpiry.ready;
   const text = await getController().getBadgeText(tabId);
   await chrome.action.setBadgeText({ tabId, text }).catch(() => undefined);
 }
@@ -130,6 +141,8 @@ void chrome.action.setBadgeBackgroundColor({ color: "#30343a" }).catch(() => und
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.status === "complete") void updateBadge(tabId);
 });
+chrome.webNavigation.onCommitted.addListener(({ tabId, url, frameId, documentId }) => getController().handleTabNavigation(tabId, url, frameId, documentId));
+chrome.webNavigation.onHistoryStateUpdated.addListener(({ tabId, url, frameId }) => getController().handleTabNavigation(tabId, url, frameId));
 chrome.tabs.onActivated.addListener(({ tabId }) => void updateBadge(tabId));
 
 const allContextMenu = [

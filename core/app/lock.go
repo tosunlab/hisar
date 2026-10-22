@@ -201,6 +201,9 @@ func (s *Service) checkRequestEpoch() error {
 	if s.requestEpoch != nil && *s.requestEpoch != s.sessionEpoch {
 		return errCommandLineSessionEnded
 	}
+	if s.requestBrowserToken != "" && !s.hasPairedBrowserToken(s.requestBrowserToken) {
+		return browserPairingEndedError()
+	}
 	return nil
 }
 

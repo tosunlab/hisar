@@ -273,7 +273,6 @@ func (s *Service) saveLogin(ctx context.Context, request *browserprotocol.Reques
 		}
 		return browserprotocol.SaveResult{VaultID: request.VaultID, ItemID: saved.ID}, nil
 	}
-	// A new login goes into the vault the user chose in the save bar, else the personal vault.
 	vaultID := request.VaultID
 	var err error
 	if vaultID != "" {

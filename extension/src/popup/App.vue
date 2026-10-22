@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
-import type { PopupState } from "../shared/messages";
+import type { PopupState, SaveOfferView } from "../shared/messages";
 import type { ItemSummary } from "../shared/protocol";
 import { describeError, getTargetTabId, openUpdatePage, sendToBackground } from "./api";
 import AddressList from "./components/AddressList.vue";
@@ -15,6 +15,7 @@ import SettingsView from "./components/SettingsView.vue";
 import StatusView from "./components/StatusView.vue";
 import VaultView from "./components/VaultView.vue";
 import AppIcon from "./components/AppIcon.vue";
+import SaveConfirmation from "./components/SaveConfirmation.vue";
 
 const props = withDefaults(defineProps<{ pollIntervalMilliseconds?: number; pollLimit?: number; statusIntervalMilliseconds?: number }>(), {
   pollIntervalMilliseconds: 1000,
@@ -24,6 +25,7 @@ const props = withDefaults(defineProps<{ pollIntervalMilliseconds?: number; poll
 
 const popupState = ref<PopupState>();
 const tabId = ref<number>();
+const saveOffer = ref<SaveOfferView | null>(null);
 const isWaiting = ref(false);
 const errorMessage = ref("");
 const activeSection = ref<"logins" | "cards" | "addresses" | "generator">("logins");
@@ -42,6 +44,9 @@ async function refreshState(shouldReconnect = false, isOverOpenConnection = fals
       isOverOpenConnection ? { type: "popup.getState", isOverOpenConnection } : { type: "popup.getState", shouldReconnect },
     );
     errorMessage.value = "";
+    saveOffer.value = popupState.value.view === "unlocked" && tabId.value !== undefined
+      ? await sendToBackground<SaveOfferView | null>({ type: "popup.getPendingSaveOffer", tabId: tabId.value })
+      : null;
   } catch (error) {
     errorMessage.value = describeError(error);
   }
@@ -169,6 +174,8 @@ onBeforeUnmount(() => {
     <p v-else-if="!popupState" class="muted connecting" data-testid="connecting">Connecting to Hisar…</p>
     <PairingView v-else-if="popupState.view === 'not-paired'" @paired="refreshState()" />
     <section v-else-if="popupState.view === 'unlocked'" :key="popupState.email" class="unlocked" data-testid="unlocked-view">
+      <SaveConfirmation v-if="saveOffer && tabId !== undefined" :key="saveOffer.offerID" :offer="saveOffer" :tab-id="tabId" @finished="saveOffer = null" @failed="showNotice" />
+      <p v-if="popupState.isSaveConfirmationAvailable === false" class="muted panel" data-testid="save-update-required">Update the Hisar app to review and save submitted logins here.</p>
       <div class="segments" role="tablist">
         <button
           type="button"

@@ -49,6 +49,7 @@ type Request struct {
 	ItemID           string `json:"itemID,omitempty"`
 	Username         string `json:"username,omitempty"`
 	Password         string `json:"password,omitempty"`
+	SaveContext      string `json:"saveContext,omitempty"`
 	Length           int    `json:"length,omitempty"`
 	Digits           *bool  `json:"digits,omitempty"`
 	Symbols          *bool  `json:"symbols,omitempty"`
@@ -122,9 +123,12 @@ const FeatureCreateItems = "create-items"
 // FeatureUnlockPassword: unlock.password unlocks Hisar with the master password typed in the popup.
 const FeatureUnlockPassword = "unlock-password"
 
+// FeatureSaveConfirmation requires a one-use session-bound context for logins.save.
+const FeatureSaveConfirmation = "save-confirmation"
+
 // ListFeatures returns the features this app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems}
+	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems, FeatureSaveConfirmation}
 }
 
 const (
@@ -170,10 +174,13 @@ type FillResult struct {
 }
 
 type CheckResult struct {
-	Status  string `json:"status"`
-	VaultID string `json:"vaultID,omitempty"`
-	ItemID  string `json:"itemID,omitempty"`
-	Title   string `json:"title,omitempty"`
+	Status      string `json:"status"`
+	VaultID     string `json:"vaultID,omitempty"`
+	ItemID      string `json:"itemID,omitempty"`
+	Title       string `json:"title,omitempty"`
+	VaultName   string `json:"vaultName,omitempty"`
+	IsPersonal  bool   `json:"isPersonal,omitempty"`
+	SaveContext string `json:"saveContext,omitempty"`
 }
 
 // AddressSource tells where an address offered for filling comes from.

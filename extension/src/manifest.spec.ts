@@ -27,6 +27,8 @@ describe("manifest.json", () => {
       "scripting",
       "activeTab",
       "tabs",
+      "webNavigation",
+      "alarms",
       "contextMenus",
       "offscreen",
       "clipboardWrite",

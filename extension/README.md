@@ -11,7 +11,7 @@ public/manifest.json      MV3 manifest (version must equal package.json)
 popup.html, inline-menu.html, passkey-prompt.html
 src/background/           service worker: native port (native-client.ts), popup/content handlers (controller.ts, router.ts),
                           frame rule (frames.ts), save offers (save.ts), chrome.storage.local (storage.ts)
-src/content/              content script (all frames): form detection, fill, submit capture, save bar (closed shadow root);
+src/content/              content script (all frames): form detection, fill, submit capture; no save confirmation UI;
                           payment forms (card-detection.ts, card-fill.ts), personal details (identity-detection.ts, identity-fill.ts)
 src/content/inline-menu/  inline icon and menu frame placement, eligibility, keyboard, clickjacking checks
 src/inline-menu/          the menu page shown in the iframe under a login field (inline-menu.html)
@@ -32,7 +32,7 @@ The build runs Vite four times: once for the popup, the inline menu and passkey 
 ```sh
 npm ci
 npm run typecheck
-npm test                    # Vitest: detection fixtures, fill, frame rule, capture, save bar, inline menu, service worker, popup, fake host
+npm test                    # Vitest: detection, fill, frame rule, capture, popup save confirmation, inline menu, service worker, fake host
 npm run build               # dist/
 npm run package             # hisar-extension-<version>.zip (not committed)
 npx playwright install chromium
@@ -44,7 +44,7 @@ npm run test:end-to-end     # builds, then runs the Playwright tests with the fa
 - pairs with the code;
 - fills a login (a cross-origin iframe stays empty);
 - copies a password;
-- updates a changed password and saves a new login from the save bar;
+- updates a changed password and saves a new login through the extension-owned popup;
 - checks that "Never for this site" works.
 
 `end-to-end/inline-menu.spec.ts` covers the inline menu:
@@ -80,7 +80,7 @@ npm run test:end-to-end     # builds, then runs the Playwright tests with the fa
 
 To watch it run, use `HISAR_HEADED=1 npm run test:end-to-end`.
 
-`HISAR_SCREENSHOT_DIRECTORY=/tmp/shots npm run screenshots` saves the popup states, the save bar and the inline menu states as PNGs. Add `HISAR_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` to use the installed Chrome. Branded Chrome ignores `--load-extension`, so the script loads the build over the DevTools protocol (`Extensions.loadUnpacked`) instead.
+`HISAR_SCREENSHOT_DIRECTORY=/tmp/shots npm run screenshots` saves the popup states, credential confirmations, and inline menu states as PNGs. Add `HISAR_CHROME_PATH="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"` to use installed Chrome. The screenshot script loads the build through `Extensions.loadUnpacked`, because branded Chrome ignores `--load-extension`.
 
 ## Load unpacked
 
@@ -94,6 +94,26 @@ With Hisar.app installed and launched once, the extension talks to the real app:
 
 A release is a run of Actions → Release with the app `extension` (the root [docs/RELEASING.md](../docs/RELEASING.md) has the steps). The workflow "Release extension" writes the version of the tag `extension-<version>` into `public/manifest.json` and `package.json` for the build, so the committed version is not bumped by hand; it builds `hisar-extension-<version>.zip` and checks that its manifest still gives the fixed ID and has that version, and the release puts it on the GitHub prerelease `extension-<version>`; approving the run's Publish job marks it as the latest release. To update an unpacked install, unzip it, remove the old Hisar extension in `chrome://extensions` and load the new folder: the `key` in the manifest keeps the ID, so pairing with the Mac app is kept. A custom build (`extension-0.2.0-test`) has the manifest version `0.2.0`, because Chrome only accepts numeric versions.
 
+## Save and update submitted logins
+
+After submitting a new or changed login, open Hisar from the toolbar's `+` badge.
+The popup shows the site, login, username, destination vault, and access scope.
+New logins default to Personal. You can edit the title and username or deliberately select another writable vault.
+Choose **Save login** or **Update password** to write the reviewed candidate.
+**Not now** discards it. **Never for this site** suppresses later candidates for that origin.
+
+The page receives no password-dependent save UI or comparison result.
+Page clicks cannot authorize credential updates. The popup is not web-accessible and cannot be embedded by the page.
+Each new submission replaces the earlier candidate, including an unchanged password.
+A candidate can follow one same-origin submission navigation within ten seconds, but a subsequent navigation discards it.
+Candidates expire after two minutes and disappear when the worker restarts or the tab closes.
+Lock, account changes, and pairing replacement invalidate the native confirmation.
+A failed save needs a fresh submission and another explicit confirmation.
+
+The app advertises `save-confirmation` for `logins.prepare`, `logins.review`, and context-bound `logins.save`.
+Legacy `logins.check` and saves without a context are refused. Update both the app and extension for submitted-login saves.
+Manual popup item creation and filling remain available independently of this feature.
+
 ## Fake native host
 
 `tools/fake-native-host.mjs` implements the protocol with data from a JSON state file. Edit the file while the host runs to change its state:
@@ -104,6 +124,7 @@ A release is a run of Actions → Release with the app `extension` (the root [do
 - `allLogin`: the stored logins.
 
 After an `unlock` request, `locked` changes to `unlocked` after `unlockDelayMilliseconds`, as if the user had unlocked Hisar. URL matching follows §9.2, but approximates the registrable domain as the last two host labels.
+
 
 Register it for a separate Chrome profile:
 

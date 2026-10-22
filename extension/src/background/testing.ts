@@ -85,6 +85,8 @@ export function createHarness(options: HarnessOptions = {}) {
   const allBroadcast: InlineMenuBroadcast[] = [];
   const allOpenedPopupTab: number[] = [];
   const allClipboardText: string[] = [];
+  const allSaveBadge = new Map<number, boolean>();
+  const allExpiry = new Map<string, { deadline: number; expire: () => void }>();
   let injectionCount = 0;
   const tabUrl = options.tabUrl ?? "https://example.com/login";
   const allFrame = options.allFrame ?? [{ frameId: 0, url: tabUrl, origin: new URL(tabUrl).origin, allAncestorOrigin: [] }];
@@ -92,6 +94,7 @@ export function createHarness(options: HarnessOptions = {}) {
 
   const bridge: BrowserBridge = {
     getTabUrl: async () => tabUrl,
+    getFrameDocumentID: async () => "document-1",
     getAllFrameInfo: async () => allFrame,
     injectContentScript: async () => {
       injectionCount += 1;
@@ -113,6 +116,12 @@ export function createHarness(options: HarnessOptions = {}) {
     },
     openPopup: async (tabId) => {
       allOpenedPopupTab.push(tabId);
+    },
+    setSaveBadge: async (tabId, isPending) => { allSaveBadge.set(tabId, isPending); },
+    scheduleSaveExpiry: (tabId, generation, deadline, expire) => {
+      const key = `${tabId}/${generation}`;
+      allExpiry.set(key, { deadline, expire });
+      return () => { allExpiry.delete(key); };
     },
     writeToClipboard: async (text) => {
       if (options.isClipboardUnavailable) throw new Error("The clipboard is not available");
@@ -157,14 +166,20 @@ export function createHarness(options: HarnessOptions = {}) {
     allBroadcast,
     allOpenedPopupTab,
     allClipboardText,
+    allSaveBadge,
     bridge,
     getInjectionCount: () => injectionCount,
-    advanceTime: (milliseconds: number) => (currentTime += milliseconds),
+    advanceTime: (milliseconds: number) => {
+      currentTime += milliseconds;
+      for (const expiry of allExpiry.values()) if (expiry.deadline <= currentTime) expiry.expire();
+    },
     getRequestTypes: () => allRequest.map((request) => request.type),
     // restartServiceWorker drops the connection and the controller, as the browser does when it stops an idle worker; the
     // storage, and so the token and the features pages read, stays.
     restartServiceWorker() {
       client.disconnect();
+      allExpiry.clear();
+      allSaveBadge.clear();
       controller = new BackgroundController(client, storage, bridge);
       return controller;
     },

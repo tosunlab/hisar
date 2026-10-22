@@ -34,10 +34,10 @@ The store rejects a manifest with a `key` field, so `package:store` removes it. 
   >
   > • Fill logins from the Hisar icon in login fields, from the toolbar or with Cmd/Ctrl+Shift+L
   > • Hisar fills a login only on the site it was saved for, never into frames from other sites
-  > • Save new logins and update changed passwords as you sign in
+  > • Review new logins and password updates in Hisar's toolbar popup before saving
   > • Generate strong passwords
   >
-  > The extension holds no passwords and no keys. It talks only to the Hisar desktop app on the same computer, which must be installed and signed in to your Hisar account. Nothing is sent to the internet by the extension.
+  > The extension keeps no vault decryption keys and no persistent password database. It temporarily holds submitted credentials in memory for popup confirmation. It talks only to the Hisar desktop app on the same computer, which must be installed and signed in to your Hisar account. Nothing is sent to the internet by the extension.
 
 ## Privacy practices
 
@@ -51,7 +51,8 @@ The store rejects a manifest with a `key` field, so `package:store` removes it. 
 | `storage` | Stores the extension's pairing with the Hisar app, its two settings, the sites the user chose "Never for this site" for, and when each item was last filled (IDs and times only), to list recently used logins first. |
 | `scripting` | Lists the frames of the current tab and fills a login into the page only after the user chooses it, respecting the same-site frame rule. |
 | `activeTab` | Reads the address of the tab the user opened the popup or pressed the fill shortcut on, to find matching logins. |
-| `tabs` | Finds the current tab's address for the popup and keeps save offers with their tab while the page navigates after signing in. |
+| `tabs` | Finds the current tab's address for the popup and binds each pending credential to its tab. |
+| `webNavigation` | Checks the source document and invalidates pending credential confirmations when the tab or submitting frame navigates. |
 | `contextMenus` | Adds "Show Hisar here", "Fill login" and "Fill a suggested password" to the menu of editable fields. |
 | `offscreen` | Opens a hidden extension page whose only job is to put the current one-time code on the clipboard after the user fills a login that has one; a service worker cannot reach the clipboard itself. |
 | `clipboardWrite` | That hidden page copies without a user gesture of its own, which Chrome allows only with this permission. Only the code of the login the user just filled is copied. |

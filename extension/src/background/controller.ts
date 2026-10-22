@@ -15,7 +15,7 @@ import {
   featureCards,
   featureCreateItems,
   featureIdentities,
-  featureSaveOptions,
+  featureSaveConfirmation,
   featureUnlockPassword,
   featureVault,
   HisarError,
@@ -40,16 +40,19 @@ import {
 import { getHost, getOrigin, isWebUrl } from "../shared/url";
 import { chooseAddressFrame, chooseCardFrame, chooseFocusedFrame, chooseIdentityFrame, chooseLoginFrame, chooseOneTimeCodeFrame, selectAllFillableFrame, type FrameInfo, type ProbedFrame } from "./frames";
 import type { NativeClient } from "./native-client";
-import { decideSaveOffer, RememberedUsernameStore, SaveOfferStore, toSaveOfferView } from "./save";
+import { decideSaveOffer, RememberedUsernameStore, SaveOfferStore, toSaveOfferView, type ScheduleSaveExpiry } from "./save";
 import type { ExtensionStorage } from "./storage";
 
 export interface BrowserBridge {
   getTabUrl(tabId: number): Promise<string | undefined>;
+  getFrameDocumentID(tabId: number, frameId: number): Promise<string | undefined>;
   getAllFrameInfo(tabId: number): Promise<FrameInfo[]>;
   injectContentScript(tabId: number): Promise<void>;
   sendToFrame<Result>(tabId: number, frameId: number, message: BackgroundToContentMessage): Promise<Result>;
   broadcastToInlineMenu(message: InlineMenuBroadcast): Promise<void>;
   openPopup(tabId: number): Promise<void>;
+  setSaveBadge?(tabId: number, isPending: boolean): Promise<void>;
+  scheduleSaveExpiry?: ScheduleSaveExpiry;
   writeToClipboard(text: string): Promise<void>;
   getInlineMenuUrl(): string;
   getBrowserName(): string;
@@ -63,6 +66,7 @@ export class BackgroundController {
   readonly allRememberedUsername: RememberedUsernameStore;
   private updateRequirement: UpdateRequirement | undefined;
   private allAppFeature: string[] = [];
+  private readonly neverOrigins = new Set<string>();
   // hasHello: this service worker has said hello to the app, so allAppFeature is the app's. The browser stops an idle
   // worker, and pages keep the features of an earlier hello, so a page may ask for an address menu before the first one.
   private hasHello = false;
@@ -72,7 +76,12 @@ export class BackgroundController {
     private readonly storage: ExtensionStorage,
     private readonly browser: BrowserBridge,
   ) {
-    this.allSaveOffer = new SaveOfferStore(() => browser.now());
+    this.allSaveOffer = new SaveOfferStore(
+      () => browser.now(),
+      120000,
+      tabId => { void browser.setSaveBadge?.(tabId, false); },
+      browser.scheduleSaveExpiry,
+    );
     this.allRememberedUsername = new RememberedUsernameStore(() => browser.now());
   }
 
@@ -80,6 +89,7 @@ export class BackgroundController {
     this.updateRequirement = result.updateRequired;
     this.allAppFeature = result.features ?? [];
     this.hasHello = true;
+    if (!result.isPaired || result.state !== "unlocked") this.allSaveOffer.clear();
     // Pages read the features to offer address filling only with an app that does it.
     await this.storage.setAppFeatures(this.allAppFeature);
     if (!result.isPaired) await this.storage.removeToken();
@@ -113,6 +123,7 @@ export class BackgroundController {
     if (!(await this.storage.getToken())) return { view: hello.state === "signed-out" ? "signed-out" : "not-paired" };
     try {
       const status = await this.client.request("status", {}, { isOverOpenConnection });
+      if (status.state !== "unlocked") this.allSaveOffer.clear();
       return {
         view: status.state,
         email: status.email,
@@ -123,6 +134,7 @@ export class BackgroundController {
         isVaultAvailable: this.isVaultAvailable(),
         isCreateAvailable: this.allAppFeature.includes(featureCreateItems),
         isPasswordUnlockAvailable: this.isPasswordUnlockAvailable(),
+        isSaveConfirmationAvailable: this.allAppFeature.includes(featureSaveConfirmation),
       };
     } catch (error) {
       const hisarError = toHisarError(error);
@@ -253,6 +265,7 @@ export class BackgroundController {
   // already open, so switching tabs never starts the native host, which would start Hisar.
   async getBadgeText(tabId: number): Promise<string> {
     if (!this.client.isConnected() || !(await this.storage.getToken())) return "";
+    if (this.allSaveOffer.getForTab(tabId, await this.storage.getToken())) return "+";
     try {
       const url = await this.browser.getTabUrl(tabId);
       if (!isWebUrl(url)) return "";
@@ -463,34 +476,41 @@ export class BackgroundController {
     if (pairingToken) this.allRememberedUsername.remember(tabId, getOrigin(frameUrl), username, pairingToken);
   }
 
-  async handleLoginSubmitted(tabId: number, frameUrl: string, username: string, password: string): Promise<SaveOfferView | undefined> {
+  async handleLoginSubmitted(tabId: number, frameUrl: string, username: string, password: string, frameId = 0, tabURL = frameUrl, documentID?: string): Promise<SaveOfferView | undefined> {
     if (!isWebUrl(frameUrl) || !password) return undefined;
+    const navigationID = this.browser.createID();
+    const capturedAt = this.browser.now();
+    this.allSaveOffer.beginSubmission(tabId, navigationID, tabURL, frameId, frameUrl, documentID, capturedAt);
+    void this.browser.setSaveBadge?.(tabId, false);
+    if (documentID && !this.allSaveOffer.matchesDocument(tabId, navigationID, await this.browser.getFrameDocumentID(tabId, frameId))) return undefined;
     const origin = getOrigin(frameUrl);
     if (await this.storage.isNeverOrigin(origin)) return undefined;
     const pairingToken = await this.storage.getToken();
     if (!pairingToken) return undefined;
+    if (!this.hasHello) await this.request(() => this.client.connect());
+    if (!this.allAppFeature.includes(featureSaveConfirmation)) return undefined;
     const effectiveUsername = username || this.allRememberedUsername.recall(tabId, origin, pairingToken) || "";
     let checkResult;
     try {
       checkResult = await this.request(
-        () => this.client.request("logins.check", { url: frameUrl, username: effectiveUsername, password }, { pairingToken }),
+        () => this.client.request("logins.prepare", { url: frameUrl, username: effectiveUsername, password }, { pairingToken }),
         pairingToken,
       );
     } catch {
       return undefined;
     }
     const kind = decideSaveOffer(checkResult, false);
-    if (!kind) return undefined;
-    // A new login may get another title and go into another vault, when the app takes them.
-    let allVault: { vaultID: string; name: string }[] | undefined;
-    if (kind === "save" && this.allAppFeature.includes(featureSaveOptions)) {
-      allVault = await this.request(() => this.client.request("vaults.list", {}, { pairingToken }), pairingToken)
-        .then((result) => (result.vaults ?? []).map(({ vaultID, name }) => ({ vaultID, name })))
-        .catch(() => undefined);
-    }
+    if (!kind || !checkResult.saveContext) return undefined;
+    const allVault = await this.request(() => this.client.request("vaults.list", {}, { pairingToken }), pairingToken)
+      .then((result) => (result.vaults ?? []).sort((a, b) => Number(b.isPersonal) - Number(a.isPersonal)))
+      .catch(() => undefined);
     const offer = {
       offerID: this.browser.createID(),
       pairingToken,
+      saveContext: checkResult.saveContext,
+      navigationID,
+      vaultName: checkResult.vaultName ?? allVault?.find((vault) => vault.vaultID === checkResult.vaultID)?.name,
+      isPersonal: checkResult.isPersonal ?? allVault?.find((vault) => vault.vaultID === checkResult.vaultID)?.isPersonal,
       tabId,
       url: frameUrl,
       host: getHost(frameUrl),
@@ -502,17 +522,28 @@ export class BackgroundController {
       title: checkResult.title,
       defaultTitle: allVault ? getHost(frameUrl).replace(/^www\./, "") : undefined,
       allVault,
-      createdAt: this.browser.now(),
+      createdAt: capturedAt,
     };
-    this.allSaveOffer.put(offer);
-    const view = toSaveOfferView(offer);
-    await this.browser.sendToFrame(tabId, 0, { type: "content.showSaveOffer", offer: view }).catch(() => undefined);
-    return view;
+    if (!this.allSaveOffer.isCurrent(tabId, navigationID) || this.neverOrigins.has(origin) || await this.storage.isNeverOrigin(origin) || (await this.storage.getToken()) !== pairingToken) return undefined;
+    if (!this.allSaveOffer.put(offer)) return undefined;
+    await this.browser.setSaveBadge?.(tabId, true);
+    return toSaveOfferView(offer);
   }
 
   async getPendingSaveOffer(tabId: number): Promise<SaveOfferView | null> {
     const offer = this.allSaveOffer.getForTab(tabId, await this.storage.getToken());
-    return offer ? toSaveOfferView(offer) : null;
+    if (!offer) {
+      await this.browser.setSaveBadge?.(tabId, false);
+      return null;
+    }
+    try {
+      await this.request(() => this.client.request("logins.review", { saveContext: offer.saveContext }, { pairingToken: offer.pairingToken }), offer.pairingToken);
+    } catch {
+      this.allSaveOffer.take(tabId, offer.offerID);
+      await this.browser.setSaveBadge?.(tabId, false);
+      return null;
+    }
+    return this.allSaveOffer.getForTab(tabId, offer.pairingToken) === offer ? toSaveOfferView(offer) : null;
   }
 
   async actOnSaveOffer(tabId: number, offerID: string, action: SaveOfferAction, edits?: SaveOfferEdits): Promise<void> {
@@ -520,28 +551,34 @@ export class BackgroundController {
     if (!offer || offer.offerID !== offerID) throw new HisarError("not-found", "This save offer has expired");
     if (action === "not-now") {
       this.allSaveOffer.take(tabId, offerID);
+      await this.browser.setSaveBadge?.(tabId, false);
       return;
     }
     if (action === "never") {
+      this.neverOrigins.add(getOrigin(offer.url));
       this.allSaveOffer.take(tabId, offerID);
       await this.storage.addNeverOrigin(getOrigin(offer.url));
+      await this.browser.setSaveBadge?.(tabId, false);
       return;
     }
     const parameters =
       offer.kind === "update" && offer.vaultID && offer.itemID
         ? { url: offer.url, username: offer.username, password: offer.password, vaultID: offer.vaultID, itemID: offer.itemID }
         : { url: offer.url, username: offer.username, password: offer.password, ...this.applySaveEdits(offer.allVault, edits) };
-    await this.request(() => this.client.request("logins.save", parameters, { pairingToken: offer.pairingToken }), offer.pairingToken);
-    this.allSaveOffer.take(tabId, offerID);
+    const tabURL = await this.browser.getTabUrl(tabId);
+    if (!tabURL || !offer.navigationID || this.neverOrigins.has(getOrigin(offer.url)) || !this.allSaveOffer.isCurrent(tabId, offer.navigationID, tabURL)) throw new HisarError("not-found", "This page has changed; submit the login again");
+    await this.request(() => this.client.request("logins.save", { ...parameters, saveContext: offer.saveContext }, {
+      pairingToken: offer.pairingToken,
+      isStillValid: () => !this.neverOrigins.has(getOrigin(offer.url)) && this.allSaveOffer.getForTab(tabId, offer.pairingToken) === offer && this.allSaveOffer.take(tabId, offerID) === offer,
+    }), offer.pairingToken);
+    await this.browser.setSaveBadge?.(tabId, false);
   }
 
-  // applySaveEdits takes the bar's title, username and vault for a new login; a vault the offer did not list is ignored,
-  // and the app checks again that the user may write to it.
   private applySaveEdits(allVault: { vaultID: string }[] | undefined, edits: SaveOfferEdits | undefined): { username?: string; title?: string; vaultID?: string } {
-    if (!allVault || !edits) return {};
+    if (!edits) return {};
     const changes: { username?: string; title?: string; vaultID?: string } = { username: edits.username.trim() };
     if (edits.title.trim()) changes.title = edits.title.trim();
-    if (edits.vaultID && allVault.some((vault) => vault.vaultID === edits.vaultID)) changes.vaultID = edits.vaultID;
+    if (edits.vaultID && allVault?.some((vault) => vault.vaultID === edits.vaultID)) changes.vaultID = edits.vaultID;
     return changes;
   }
 
@@ -555,6 +592,11 @@ export class BackgroundController {
     if (!this.hasHello) await this.request(() => this.client.connect());
     if (!this.allAppFeature.includes(featureCreateItems)) throw new HisarError("invalid-request", "Update the Hisar app to add items from the browser");
     return this.request(() => this.client.request("items.create", { vaultID, item }));
+  }
+
+  handleTabNavigation(tabId: number, url: string, frameId = 0, documentID?: string): void {
+    this.allSaveOffer.navigate(tabId, url, frameId, documentID);
+    void this.browser.setSaveBadge?.(tabId, false);
   }
 
   handleTabRemoved(tabId: number): void {
@@ -580,7 +622,10 @@ export class BackgroundController {
       return await send();
     } catch (error) {
       const hisarError = toHisarError(error);
-      if (hisarError.code === "not-paired" && (pairingToken === undefined || (await this.storage.getToken()) === pairingToken)) await this.storage.removeToken();
+      if (["not-paired", "locked", "signed-out"].includes(hisarError.code) && (pairingToken === undefined || (await this.storage.getToken()) === pairingToken)) {
+        this.allSaveOffer.clear();
+        if (hisarError.code === "not-paired") await this.storage.removeToken();
+      }
       throw hisarError;
     }
   }

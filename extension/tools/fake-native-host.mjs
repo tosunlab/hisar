@@ -26,7 +26,7 @@ export function createInitialState() {
     allPairing: [],
     exactHostOnly: false,
     // features: what the app announces in hello; an older app announces none.
-    features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items"],
+    features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items", "save-confirmation"],
     allVault: [
       { vaultID: "vault-personal", name: "Personal", isPersonal: true },
       { vaultID: "vault-family", name: "Family", isPersonal: false },
@@ -369,19 +369,29 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       state.allCodeRequest = [...(state.allCodeRequest ?? []), { itemID: login.itemID, url }];
       return generateOneTimeCode(login.oneTimePassword, now);
     }
-    case "logins.check": {
+    case "logins.prepare": {
       requireUnlocked(state);
       const url = requireString(request, "url");
       const username = typeof request.username === "string" ? request.username : "";
       const password = requireString(request, "password");
       const login = findAllMatchingLogin(state, url).find((candidate) => candidate.username.toLowerCase() === username.toLowerCase());
-      if (!login) return { status: "new" };
+      const saveContext = randomBytes(20).toString("hex");
+      state.pendingSaves ??= {};
+      state.pendingSaves[saveContext] = { token: request.token, url, password, username, itemID: login?.itemID, vaultID: login?.vaultID, expiresAt: now + pairingLifetimeMilliseconds, email: state.email };
+      if (!login) return { status: "new", saveContext };
       return {
         status: login.password === password ? "unchanged" : "changed",
         vaultID: login.vaultID,
         itemID: login.itemID,
         title: login.title,
+        saveContext,
       };
+    }
+    case "logins.review": {
+      requireUnlocked(state);
+      const pending = state.pendingSaves?.[request.saveContext];
+      if (!pending || pending.token !== request.token || pending.email !== state.email || pending.expiresAt < now) throw new ProtocolError("not-found", "This save confirmation expired; submit the login again");
+      return {};
     }
     case "logins.save": {
       requireUnlocked(state);
@@ -389,6 +399,9 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       const url = requireString(request, "url");
       const username = typeof request.username === "string" ? request.username : "";
       const password = requireString(request, "password");
+      const pending = state.pendingSaves?.[request.saveContext];
+      if (!pending || pending.token !== request.token || pending.url !== url || pending.password !== password || pending.itemID !== request.itemID || pending.email !== state.email || pending.expiresAt < now) throw new ProtocolError("invalid-request", "This save confirmation expired; submit the login again");
+      delete state.pendingSaves[request.saveContext];
       if (request.itemID) {
         const login = state.allLogin.find((candidate) => candidate.vaultID === request.vaultID && candidate.itemID === request.itemID);
         if (!login) throw new ProtocolError("not-found", "No such login");

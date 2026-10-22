@@ -89,7 +89,7 @@ describe("findInlineMenuPurpose", () => {
   });
 
   it("never offers itself on inputs inside Hisar's own elements", () => {
-    const host = document.createElement("hisar-save-bar");
+    const host = document.createElement("hisar-inline-menu");
     document.body.append(host);
     const shadowRoot = host.attachShadow({ mode: "open" });
     shadowRoot.innerHTML = `<form><input id="user" autocomplete="username" /><input id="pass" type="password" /></form>`;

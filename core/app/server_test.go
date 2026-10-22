@@ -125,7 +125,7 @@ func TestBrowserOffersAServerOnItsAdminConsole(t *testing.T) {
 	if code != "" || fill.(browserprotocol.FillResult).Password != "console-password" {
 		t.Errorf("fill = %+v %s", fill, code)
 	}
-	check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.check", Token: token, URL: "https://console.example.com/login", Username: "admin", Password: "console-password"})
+	check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.prepare", Token: token, URL: "https://console.example.com/login", Username: "admin", Password: "console-password"})
 	if code != "" || check.(browserprotocol.CheckResult).Status != "unchanged" || check.(browserprotocol.CheckResult).ItemID != server.ID {
 		t.Errorf("check = %+v %s", check, code)
 	}
@@ -159,7 +159,7 @@ func TestImportedServerKeepsItsPasswordOffAConsoleWithItsOwnLogin(t *testing.T) 
 		t.Errorf("the console is filled with %+v", fill)
 	}
 	// Saving the console's login offers a new login, not an update that would overwrite the server's password.
-	check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.check", Token: token, URL: consoleURL, Username: "admin", Password: "console-password"})
+	check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.prepare", Token: token, URL: consoleURL, Username: "admin", Password: "console-password"})
 	if result := check.(browserprotocol.CheckResult); code != "" || result.ItemID == server.ID {
 		t.Errorf("check = %+v %s", result, code)
 	}

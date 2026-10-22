@@ -77,6 +77,7 @@ export interface FakeHostState {
   allPairing: { instanceID: string; browser: string; tokenHash: string; pairedAt: number }[];
   exactHostOnly: boolean;
   allLogin: FakeLogin[];
+  pendingSaves?: Record<string, { token: string; url: string; username: string; password: string; itemID?: string; vaultID?: string; email: string; expiresAt: number }>;
   features?: string[];
   masterPassword?: string;
   allAddress?: FakeAddress[];
