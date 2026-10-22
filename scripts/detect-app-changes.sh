@@ -6,6 +6,8 @@
 #
 # scripts/app-paths.sh says what each app is built from: core/ and go.work count for each, and the desktop app also counts
 # cli/ and omp/. The phone apps share mobile/hisarkit and mobile/go.mod; an Android-only change keeps off the macOS runner.
+# The phone UI tests and the admin browser tests also run when what they run against changes (testBackendPaths:
+# hisar-server, the hisar CLI and the Makefile), and every job runs when the Makefile changes.
 #
 # Environment: BASE_SHA, HEAD_SHA, IS_FORCED ("true" runs everything) and WORKFLOW_FILE (a change to it, or to the
 # ci-apt-install.sh its container jobs use, runs everything, so a workflow edit is tested). Writes isDesktopChanged,
@@ -32,10 +34,10 @@ if [ "${IS_FORCED:-false}" = true ]; then
 else
   # shellcheck source=scripts/app-paths.sh
   source "$(dirname "$0")/app-paths.sh"
-  if isChanged "${desktopPaths[@]}"; then isDesktopChanged=true; fi
-  if isChanged "${mobilePaths[@]}"; then isMobileChanged=true; fi
-  if isChanged "${androidPaths[@]}"; then isAndroidChanged=true; fi
-  if isChanged "${serverPaths[@]}"; then isAdminChanged=true; fi
+  if isChanged "${desktopPaths[@]}" Makefile; then isDesktopChanged=true; fi
+  if isChanged "${mobilePaths[@]}" "${testBackendPaths[@]}"; then isMobileChanged=true; fi
+  if isChanged "${androidPaths[@]}" "${testBackendPaths[@]}"; then isAndroidChanged=true; fi
+  if isChanged "${serverPaths[@]}" "${testBackendPaths[@]}"; then isAdminChanged=true; fi
 fi
 echo "isDesktopChanged=$isDesktopChanged" | tee -a "${GITHUB_OUTPUT:-/dev/null}"
 echo "isMobileChanged=$isMobileChanged" | tee -a "${GITHUB_OUTPUT:-/dev/null}"

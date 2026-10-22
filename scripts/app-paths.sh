@@ -19,6 +19,10 @@ mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${pho
 androidPaths=(mobile/android/ mobile/build-android-aar.sh mobile/cmd/ scripts/install-android-sdk.sh scripts/test-android-ui.sh
   assets/themes/ scripts/themes/ Makefile "${phonePaths[@]}")
 extensionPaths=(extension/)
+# CI also runs an app's tests when something those tests run against changes, without making that a reason to release
+# the app: the iPhone and Android UI tests and the admin dashboard's browser tests run against a real hisar-server and the
+# hisar CLI that scripts/ui-test-partner.sh and the end-to-end fixtures build, and every job builds through Makefile recipes.
+testBackendPaths=(server/ cli/ Makefile)
 
 # A commit that only changes tests or documentation is not a reason to release.
 releaseExcludedPaths=(':(exclude,glob)**/*_test.go' ':(exclude,glob)**/testdata/**' ':(exclude,glob)**/*.spec.ts'
