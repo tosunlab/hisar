@@ -82,9 +82,9 @@ final class FaceIDUITests: HisarUITestCase {
         waitForExpectations(timeout: 10)
         let knob = toggle.switches.firstMatch
         (knob.exists ? knob : toggle).tap()
-        expectation(for: NSPredicate(format: "value == '0'"), evaluatedWith: toggle)
+        // The switch shows off at once; it stays disabled until the app has turned Face ID off.
+        expectation(for: NSPredicate(format: "value == '0' AND enabled == true"), evaluatedWith: toggle)
         waitForExpectations(timeout: 10)
-        sleep(1)
         (knob.exists ? knob : toggle).tap()
         let passwordField = app.alerts.secureTextFields.firstMatch
         waitFor(passwordField)
