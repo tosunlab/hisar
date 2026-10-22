@@ -30,9 +30,9 @@ func TestCLIDuplicateDiscoveryAndIDSelection(t *testing.T) {
 	app.mutex.Lock()
 	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
 		switch request.Type {
-		case cliprotocol.TypeListVault:
+		case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "private-id", Name: "Work", Type: "personal", Role: "owner"}, {ID: "shared-id", Name: "WORK", Type: "shared", Role: "editor"}}}, nil
-		case cliprotocol.TypeListItem:
+		case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 			return cliprotocol.ItemListResult{Items: []cliprotocol.Item{{ID: "deploy-a", Title: "Deploy", Username: "alice", Tags: []string{"deploy"}}, {ID: "deploy-b", Title: "DEPLOY", Username: "bob", Tags: []string{"deploy"}}, {ID: "unique-id", Title: "Unique"}}}, nil
 		case cliprotocol.TypeGetItem:
 			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: request.ItemID, Title: request.ItemID, Password: "synthetic-never-in-metadata"}}, nil
