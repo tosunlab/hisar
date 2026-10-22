@@ -78,7 +78,7 @@ class CredentialCompletionTests {
         val app = checkNotNull(InstalledApps.readAndroidApp(application, application.packageName))
         backend.addAndroidApp("personal", "github", app.packageName, app.certificateSHA256)
         application.installFakeBackend(backend)
-        val viewModel = withContext(Dispatchers.Main) { CredentialViewModel(application, unlockIntent()) }
+        val viewModel = withContext(Dispatchers.Main) { CredentialViewModel(application, unlockIntent()).also { it.startWhenResumed() } }
         try {
             assertTrue(withContext(Dispatchers.IO) { backend.started.await(10, TimeUnit.SECONDS) })
             backend.lock()
@@ -95,19 +95,23 @@ class CredentialCompletionTests {
         assertEquals(1, offer?.credentialEntries?.size)
     }
 
-    @Test fun testCommittedRegistrationReturnsItsPublicResponseAfterLock() = runBlocking {
-        val backend = HeldBackend().apply { seedSignedIn() }
-        application.installFakeBackend(backend)
+    // A native app (this test app, which example.org vouches for) asks Hisar to save a passkey.
+    private fun createIntent(userVerification: String): Intent {
         val app = checkNotNull(InstalledApps.readAndroidApp(application, application.packageName))
         application.statementByRelyingParty["example.org"] =
             """[{"relation":["delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"${app.packageName}","sha256_cert_fingerprints":["${app.certificateSHA256}"]}}]"""
         val signingInfo = checkNotNull(application.packageManager.getPackageInfo(application.packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo)
-        val json = """{"rp":{"id":"example.org","name":"Example"},"user":{"id":"aGFuZGxl","name":"alice","displayName":"Alice"},"challenge":"Y2hhbGxlbmdl","pubKeyCredParams":[{"type":"public-key","alg":-7}],"authenticatorSelection":{"userVerification":"discouraged"}}"""
+        val json = """{"rp":{"id":"example.org","name":"Example"},"user":{"id":"aGFuZGxl","name":"alice","displayName":"Alice"},"challenge":"Y2hhbGxlbmdl","pubKeyCredParams":[{"type":"public-key","alg":-7}],"authenticatorSelection":{"userVerification":"$userVerification"}}"""
         val request = CreatePublicKeyCredentialRequest(json)
         val platformRequest = CreateCredentialRequest(CallingAppInfo(application.packageName, signingInfo), PublicKeyCredential.TYPE_PUBLIC_KEY_CREDENTIAL, request.credentialData)
-        val intent = Intent().putExtra("com.tryhisar.hisar.passkey.PICK", "create")
+        return Intent().putExtra("com.tryhisar.hisar.passkey.PICK", "create")
             .putExtra(CredentialProviderService.EXTRA_CREATE_CREDENTIAL_REQUEST, platformRequest)
-        val viewModel = withContext(Dispatchers.Main) { CredentialViewModel(application, intent) }
+    }
+
+    @Test fun testCommittedRegistrationReturnsItsPublicResponseAfterLock() = runBlocking {
+        val backend = HeldBackend().apply { seedSignedIn() }
+        application.installFakeBackend(backend)
+        val viewModel = withContext(Dispatchers.Main) { CredentialViewModel(application, createIntent("discouraged")).also { it.startWhenResumed() } }
         withTimeout(5_000) { viewModel.model.passkeyRegistrationOptions.filterNotNull().first() }
         val save = launch(Dispatchers.Main) { viewModel.model.savePasskey() }
         try {
