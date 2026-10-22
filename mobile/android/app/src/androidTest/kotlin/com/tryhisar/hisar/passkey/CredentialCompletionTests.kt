@@ -2,6 +2,7 @@ package com.tryhisar.hisar.passkey
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Bundle
 import android.service.credentials.BeginGetCredentialOption
 import android.service.credentials.BeginGetCredentialRequest
@@ -12,9 +13,14 @@ import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.PasswordCredential
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.credentials.PublicKeyCredential
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.filters.SdkSuppress
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import com.tryhisar.hisar.HisarTestApplication
+import com.tryhisar.hisar.MainActivity
 import com.tryhisar.hisar.autofill.AutoFillModel
 import com.tryhisar.hisar.autofill.InstalledApps
 import com.tryhisar.hisar.model.BackendEvent
@@ -27,6 +33,7 @@ import java.security.spec.ECGenParameterSpec
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -126,5 +133,44 @@ class CredentialCompletionTests {
         val response = withTimeout(5_000) { viewModel.result.filterNotNull().first() }
         assertNotNull(PendingIntentHandler.retrieveCreateCredentialResponse(PublicKeyCredential.TYPE_PUBLIC_KEY_CREDENTIAL, response))
         assertEquals(1, backend.allPasskey.count { it.relyingPartyID == "example.org" })
+    }
+
+    @Test fun testRotatingWhileTheDeviceOwnerPromptShowsKeepsThePasskeyCeremony() = runBlocking {
+        val backend = HeldBackend().apply { seedSignedIn() }
+        backend.verifyPasskey = {
+            backend.started.countDown()
+            backend.release.await(60, TimeUnit.SECONDS)
+        }
+        application.installFakeBackend(backend)
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val intent = createIntent("required").setClass(application, CredentialActivity::class.java)
+        // Credential Manager shows the activity over the calling app, which decides the rotation; Hisar's own app stands in for it.
+        val caller = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            ActivityScenario.launch<CredentialActivity>(intent).use { scenario ->
+                lateinit var viewModel: CredentialViewModel
+                scenario.onActivity { viewModel = ViewModelProvider(it)[CredentialViewModel::class.java] }
+                assertNotNull("the save screen shows", withTimeoutOrNull(5_000) { viewModel.model.passkeyRegistrationOptions.filterNotNull().first() })
+                val save = launch(Dispatchers.Main) { viewModel.model.savePasskey() }
+                try {
+                    assertTrue("the device owner prompt is up", withContext(Dispatchers.IO) { backend.started.await(10, TimeUnit.SECONDS) })
+                    device.setOrientationLeft()
+                    val isRotated = withTimeoutOrNull(5_000) {
+                        while (application.resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) delay(50)
+                    }
+                    assertNotNull("the screen rotates", isRotated)
+                    InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                } finally {
+                    backend.release.countDown()
+                }
+                save.join()
+                val response = withTimeoutOrNull(5_000) { viewModel.result.filterNotNull().first() }
+                assertNotNull("the site gets its new passkey after the rotation", response?.let { PendingIntentHandler.retrieveCreateCredentialResponse(PublicKeyCredential.TYPE_PUBLIC_KEY_CREDENTIAL, it) })
+            }
+        } finally {
+            device.setOrientationNatural()
+            device.unfreezeRotation()
+            caller.close()
+        }
     }
 }
