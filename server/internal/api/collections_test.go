@@ -131,4 +131,34 @@ func TestPagedHistoryAndObjectTraversal(t *testing.T) {
 		}
 	}
 	t.Logf("real inventory smoke vaults=%d concurrentRestarts=%d teams=%d with all member/grant edges", len(inventory), transport.conflicts, len(organizationDetails.Teams))
+
+	// Another admin reviews alice's deletion through the same paged plan alice sees for her own deletion.
+	adminInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "reviewer@example.com", apitypes.RoleAdmin, nil))
+	reviewer, _, err := session.SignUp(ctx, apiclient.New(baseURL), adminInvite.Token, "reviewer@example.com", "Reviewer", []byte("fixture password"), testDevice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reviewer.Keyset.Wipe()
+	own := requireValue[*apitypes.AccountDeletionPreview](t)(alice.Client.GetAccountDeletionPreview(ctx))
+	previewPages := &collectionPageCounter{base: http.DefaultTransport, path: "/api/v1/admin/accounts/" + alice.AccountID + "/deletion-preview"}
+	reviewer.Client.HTTP = &http.Client{Transport: previewPages}
+	reviewed := requireValue[*apitypes.AccountDeletionPreview](t)(reviewer.Client.GetAdminAccountDeletionPreview(ctx, alice.AccountID))
+	if reviewed.PlanVersion == "" || reviewed.PlanVersion != own.PlanVersion || len(reviewed.OwnedVaults) != len(own.OwnedVaults) ||
+		len(reviewed.OwnedVaults) <= apitypes.CollectionPageRows || len(reviewed.Organizations) != 1 || previewPages.pages < 2 {
+		t.Fatalf("admin deletion preview plan=%q own=%q ownedVaults=%d/%d organizations=%d pages=%d", reviewed.PlanVersion, own.PlanVersion,
+			len(reviewed.OwnedVaults), len(own.OwnedVaults), len(reviewed.Organizations), previewPages.pages)
+	}
+}
+
+type collectionPageCounter struct {
+	base  http.RoundTripper
+	path  string
+	pages int
+}
+
+func (counter *collectionPageCounter) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request.URL.Path == counter.path && request.Header.Get(apitypes.CollectionPageHeader) != "" {
+		counter.pages++
+	}
+	return counter.base.RoundTrip(request)
 }

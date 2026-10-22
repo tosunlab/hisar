@@ -119,8 +119,18 @@ export function changeAccountRole(accountId: string, role: AccountRole, proof: R
   return request("PUT", `${accountPath(accountId)}/role`, { body: { role, proof } });
 }
 
-export function previewAccountDeletion(accountId: string): Promise<AccountDeletionPreview> {
-  return request("GET", `${accountPath(accountId)}/deletion-preview`);
+export async function previewAccountDeletion(accountId: string): Promise<AccountDeletionPreview> {
+  const preview = await readCollection<AccountDeletionPreview>(`${accountPath(accountId)}/deletion-preview`, () => ({
+    planVersion: "", ownedVaults: [], memberVaults: [], organizations: [], shareLinkCount: 0, sentInvitationCount: 0, receivedInvitationCount: 0, deviceCount: 0,
+  }), (result, record) => {
+    if (record.field === "$") Object.assign(result, record.value as AccountDeletionPreview, { ownedVaults: result.ownedVaults, memberVaults: result.memberVaults, organizations: result.organizations });
+    else if (record.field === "ownedVaults") result.ownedVaults.push(record.value as AccountDeletionPreview["ownedVaults"][number]);
+    else if (record.field === "memberVaults") result.memberVaults.push(record.value as AccountDeletionPreview["memberVaults"][number]);
+    else if (record.field === "organizations") result.organizations?.push(record.value as NonNullable<AccountDeletionPreview["organizations"]>[number]);
+    else throw new Error("The server returned an unknown deletion preview record.");
+  });
+  if (!preview.planVersion) throw new Error("The server returned no deletion plan.");
+  return preview;
 }
 
 export function deleteAccount(accountId: string, email: string, proof: ReauthenticationProof, planVersion: string): Promise<void> {

@@ -35,7 +35,7 @@ func (s *Server) handleGetAdminAccountDeletionPreview(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(preview)
+	return s.sendDeletionPreview(c, preview)
 }
 
 func (s *Server) handleSuspendAccount(c fiber.Ctx) error {
