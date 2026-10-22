@@ -47,7 +47,7 @@ func (testBridge *browserTestBridge) sendRequest(request browserprotocol.Request
 
 func (testBridge *browserTestBridge) saveConfirmed(request browserprotocol.Request) (any, string) {
 	check := request
-	check.Type = "logins.prepare"
+	check.Type, check.TabID = "logins.prepare", "1"
 	result, code := testBridge.sendRequest(check)
 	if code != "" {
 		return nil, code
@@ -209,7 +209,7 @@ func checkBrowserFlow(t *testing.T, service *Service, personalID string) {
 		t.Fatalf("match over the host: %+v", responses)
 	}
 	itemID := logins[0].(map[string]any)["itemID"].(string)
-	checkResponses := sendMessages(fmt.Sprintf(`{"id":"check","type":"logins.prepare","token":%q,"url":"https://shop.example.org/signin","username":"desktop","password":"shop-password"}`, token))
+	checkResponses := sendMessages(fmt.Sprintf(`{"id":"check","type":"logins.prepare","token":%q,"tabID":"1","url":"https://shop.example.org/signin","username":"desktop","password":"shop-password"}`, token))
 	saveContext := checkResponses[0].Result.(map[string]any)["saveContext"].(string)
 	responses = sendMessages(
 		fmt.Sprintf(`{"id":"4","type":"logins.fill","token":%q,"vaultID":%q,"itemID":%q,"url":"https://intranet.example.com/login"}`, token, personalID, itemID),
@@ -287,7 +287,7 @@ func TestBrowserLogins(t *testing.T) {
 		{"ALPER", "new-password", "changed"},
 		{"someone-else", "x", "new"},
 	} {
-		check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.prepare", Token: token, URL: "https://github.com/login", Username: testCase.username, Password: testCase.password})
+		check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.prepare", Token: token, TabID: "1", URL: "https://github.com/login", Username: testCase.username, Password: testCase.password})
 		if code != "" || check.(browserprotocol.CheckResult).Status != testCase.want {
 			t.Errorf("check %s: %+v %s", testCase.username, check, code)
 		}

@@ -673,6 +673,18 @@ describe("save offers", () => {
     expect(harness.getRequestTypes()).not.toContain("logins.save");
   });
 
+  it("leaves Hisar room for other tabs' offers however often one page submits", async () => {
+    const harness = createHarness({ tabUrl: "https://example.com/login" });
+    await harness.pair();
+    let latest;
+    for (let submission = 0; submission < 200; submission++) {
+      latest = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", `page password ${submission}`);
+    }
+    expect(await harness.controller.handleLoginSubmitted(2, "https://example.com/login", "other", "other tab's password")).toMatchObject({ kind: "save" });
+    await harness.controller.actOnSaveOffer(1, latest!.offerID, "save");
+    expect(harness.state.allLogin.find((login) => login.username === "new")).toMatchObject({ password: "page password 199" });
+  });
+
   it("allows only the immediate same-origin submit navigation and rejects subsequent navigation", async () => {
     const harness = createHarness();
     await harness.pair();

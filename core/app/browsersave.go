@@ -10,8 +10,11 @@ import (
 	"github.com/tryhisar/hisar/core/browserprotocol"
 )
 
+// pendingBrowserSave is the one-use context of a browser tab's pending save. A tab holds at most one offer, and each
+// submission replaces it, so logins.prepare from a tab of a browser retires that tab's earlier context.
 type pendingBrowserSave struct {
 	tokenHash    [sha256.Size]byte
+	tabID        string
 	passwordHash [sha256.Size]byte
 	url          string
 	username     string
@@ -22,6 +25,9 @@ type pendingBrowserSave struct {
 }
 
 func (bridge *BrowserBridge) checkLoginForSave(ctx context.Context, request *browserprotocol.Request) (any, error) {
+	if request.TabID == "" {
+		return nil, browserprotocol.NewError(browserprotocol.ErrorUpdateRequired, "update the browser extension to save logins")
+	}
 	s := bridge.service
 	s.mutex.Lock()
 	epoch := s.sessionEpoch
@@ -45,16 +51,17 @@ func (bridge *BrowserBridge) checkLoginForSave(ctx context.Context, request *bro
 	if err != nil {
 		return nil, convertBrowserError(err)
 	}
-	if result.Status == "unchanged" {
-		return result, nil
-	}
 	bridge.mutex.Lock()
 	defer bridge.mutex.Unlock()
 	now := s.config.Now()
+	tokenHash := sha256.Sum256([]byte(request.Token))
 	for key, pending := range bridge.pendingSaves {
-		if !now.Before(pending.expiresAt) {
+		if !now.Before(pending.expiresAt) || pending.tokenHash == tokenHash && pending.tabID == request.TabID {
 			delete(bridge.pendingSaves, key)
 		}
+	}
+	if result.Status == "unchanged" {
+		return result, nil
 	}
 	if len(bridge.pendingSaves) >= 128 {
 		return nil, browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "too many pending saves; try again after two minutes")
@@ -64,7 +71,7 @@ func (bridge *BrowserBridge) checkLoginForSave(ctx context.Context, request *bro
 	}
 	result.SaveContext = rand.Text()
 	bridge.pendingSaves[result.SaveContext] = pendingBrowserSave{
-		tokenHash: sha256.Sum256([]byte(request.Token)), passwordHash: sha256.Sum256([]byte(request.Password)),
+		tokenHash: tokenHash, tabID: request.TabID, passwordHash: sha256.Sum256([]byte(request.Password)),
 		url: request.URL, username: request.Username, vaultID: result.VaultID, itemID: result.ItemID, epoch: epoch, expiresAt: now.Add(2 * time.Minute),
 	}
 	return result, nil

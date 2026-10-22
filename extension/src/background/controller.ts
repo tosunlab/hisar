@@ -493,7 +493,7 @@ export class BackgroundController {
     let checkResult;
     try {
       checkResult = await this.request(
-        () => this.client.request("logins.prepare", { url: frameUrl, username: effectiveUsername, password }, { pairingToken }),
+        () => this.client.request("logins.prepare", { tabID: String(tabId), url: frameUrl, username: effectiveUsername, password }, { pairingToken }),
         pairingToken,
       );
     } catch {

@@ -371,21 +371,21 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
     }
     case "logins.prepare": {
       requireUnlocked(state);
+      if (typeof request.tabID !== "string" || !request.tabID) throw new ProtocolError("update-required", "update the browser extension to save logins");
       const url = requireString(request, "url");
       const username = typeof request.username === "string" ? request.username : "";
       const password = requireString(request, "password");
       const login = findAllMatchingLogin(state, url).find((candidate) => candidate.username.toLowerCase() === username.toLowerCase());
-      const saveContext = randomBytes(20).toString("hex");
       state.pendingSaves ??= {};
-      state.pendingSaves[saveContext] = { token: request.token, url, password, username, itemID: login?.itemID, vaultID: login?.vaultID, expiresAt: now + pairingLifetimeMilliseconds, email: state.email };
+      for (const [key, pending] of Object.entries(state.pendingSaves)) {
+        if (pending.expiresAt < now || (pending.token === request.token && pending.tabID === request.tabID)) delete state.pendingSaves[key];
+      }
+      if (login?.password === password) return { status: "unchanged", vaultID: login.vaultID, itemID: login.itemID, title: login.title };
+      if (Object.keys(state.pendingSaves).length >= 128) throw new ProtocolError("invalid-request", "too many pending saves; try again after two minutes");
+      const saveContext = randomBytes(20).toString("hex");
+      state.pendingSaves[saveContext] = { token: request.token, tabID: request.tabID, url, password, username, itemID: login?.itemID, vaultID: login?.vaultID, expiresAt: now + pairingLifetimeMilliseconds, email: state.email };
       if (!login) return { status: "new", saveContext };
-      return {
-        status: login.password === password ? "unchanged" : "changed",
-        vaultID: login.vaultID,
-        itemID: login.itemID,
-        title: login.title,
-        saveContext,
-      };
+      return { status: "changed", vaultID: login.vaultID, itemID: login.itemID, title: login.title, saveContext };
     }
     case "logins.review": {
       requireUnlocked(state);

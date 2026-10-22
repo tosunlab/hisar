@@ -50,9 +50,11 @@ type Request struct {
 	Username         string `json:"username,omitempty"`
 	Password         string `json:"password,omitempty"`
 	SaveContext      string `json:"saveContext,omitempty"`
-	Length           int    `json:"length,omitempty"`
-	Digits           *bool  `json:"digits,omitempty"`
-	Symbols          *bool  `json:"symbols,omitempty"`
+	// TabID names the browser tab of a logins.prepare; the tab's next one retires its save context.
+	TabID   string `json:"tabID,omitempty"`
+	Length  int    `json:"length,omitempty"`
+	Digits  *bool  `json:"digits,omitempty"`
+	Symbols *bool  `json:"symbols,omitempty"`
 	// Query, Category and IsFavoriteOnly narrow items.list; FieldID names the field items.reveal returns.
 	Query          string `json:"query,omitempty"`
 	Category       string `json:"category,omitempty"`

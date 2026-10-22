@@ -1,6 +1,8 @@
 package app
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"slices"
 	"testing"
@@ -97,7 +99,7 @@ func TestBrowserSaveRequiresCurrentCandidateConfirmation(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			request := browserprotocol.Request{Type: "logins.prepare", Token: token, URL: "https://example.com/login", Username: "alice", Password: "new"}
+			request := browserprotocol.Request{Type: "logins.prepare", Token: token, TabID: "1", URL: "https://example.com/login", Username: "alice", Password: "new"}
 			check, code := fixture.sendRequest(request)
 			if code != "" {
 				t.Fatal(code)
@@ -152,6 +154,59 @@ func TestBrowserSaveRequiresCurrentCandidateConfirmation(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestBrowserSaveKeepsOneContextPerTab(t *testing.T) {
+	fixture := createBrowserTestBridge(t)
+	pageBrowser, otherBrowser := fixture.pair(t, "page-browser"), fixture.pair(t, "other-browser")
+	prepare := func(token, tabID, password string) (string, string) {
+		t.Helper()
+		var request browserprotocol.Request
+		message := fmt.Sprintf(`{"type":"logins.prepare","token":%q,"tabID":%q,"url":"https://example.com/login","username":"alice","password":%q}`, token, tabID, password)
+		if err := json.Unmarshal([]byte(message), &request); err != nil {
+			t.Fatal(err)
+		}
+		result, code := fixture.sendRequest(request)
+		if code != "" {
+			return "", code
+		}
+		return result.(browserprotocol.CheckResult).SaveContext, ""
+	}
+	save := func(token, saveContext, password string) string {
+		_, code := fixture.sendRequest(browserprotocol.Request{Type: "logins.save", Token: token, SaveContext: saveContext, URL: "https://example.com/login", Username: "alice", Password: password})
+		return code
+	}
+
+	if _, code := prepare(pageBrowser, "", "password from an extension that names no tab"); code != browserprotocol.ErrorUpdateRequired {
+		t.Fatalf("prepare without a tab = %s", code)
+	}
+	otherTab, code := prepare(otherBrowser, "7", "other browser's password")
+	if code != "" {
+		t.Fatalf("other browser's prepare = %s", code)
+	}
+	var first, latest string
+	for submission := range 300 {
+		saveContext, code := prepare(pageBrowser, "7", fmt.Sprintf("page password %d", submission))
+		if code != "" {
+			t.Fatalf("submission %d in one tab = %s", submission, code)
+		}
+		if submission == 0 {
+			first = saveContext
+		}
+		latest = saveContext
+	}
+	if _, code := prepare(otherBrowser, "8", "another tab's password"); code != "" {
+		t.Fatalf("other browser's prepare after one tab submitted 300 times = %s", code)
+	}
+	if code := save(pageBrowser, first, "page password 0"); code == "" {
+		t.Fatal("a context the tab's later submission replaced still saved")
+	}
+	if code := save(pageBrowser, latest, "page password 299"); code != "" {
+		t.Fatalf("the tab's latest context = %s", code)
+	}
+	if code := save(otherBrowser, otherTab, "other browser's password"); code != "" {
+		t.Fatalf("the same tab ID in another browser = %s", code)
 	}
 }
 

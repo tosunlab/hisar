@@ -228,7 +228,8 @@ export interface RequestMap {
   "logins.match": { parameters: { url: string }; result: { logins: LoginSummary[] } };
   "logins.fill": { parameters: { vaultID: string; itemID: string; url: string }; result: Credentials };
   "logins.code": { parameters: { vaultID: string; itemID: string; url: string }; result: OneTimeCode };
-  "logins.prepare": { parameters: { url: string; username: string; password: string }; result: CheckResult };
+  // tabID is the tab whose offer this is: Hisar keeps one save context per tab, and the tab's next prepare retires it.
+  "logins.prepare": { parameters: { tabID: string; url: string; username: string; password: string }; result: CheckResult };
   "logins.review": { parameters: { saveContext: string }; result: Record<string, never> };
   "logins.save": {
     parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string; title?: string; saveContext: string };

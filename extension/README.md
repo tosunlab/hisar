@@ -112,6 +112,7 @@ Lock, account changes, and pairing replacement invalidate the native confirmatio
 A failed save needs a fresh submission and another explicit confirmation.
 
 The app advertises `save-confirmation` for `logins.prepare`, `logins.review`, and context-bound `logins.save`.
+`logins.prepare` names the submission's tab, and the app keeps one save context per tab, so a page that submits again and again retires its own earlier contexts.
 Legacy `logins.check` and saves without a context are refused. Update both the app and extension for submitted-login saves.
 Manual popup item creation and filling remain available independently of this feature.
 
