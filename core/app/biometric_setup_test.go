@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -267,8 +268,89 @@ func TestCredentialResealDoesNotBlockLockOrRestoreBiometricSetup(t *testing.T) {
 	}
 	release()
 	result := <-changed
-	if result.LocalError == "" || result.Status.State != StateLocked {
-		t.Fatalf("stale reseal reported success: %+v", result)
+	if result.Status.State != StateLocked || result.Status.BiometricEnabled {
+		t.Fatalf("a reseal interrupted by lock published Touch ID: %+v", result)
+	}
+}
+
+type promptingKeyPreparer struct{}
+
+func (promptingKeyPreparer) PrepareStoreKey(string) error { return nil }
+func (promptingKeyPreparer) PrepareLoadKey(string) error  { return nil }
+
+func TestInterruptedCredentialResealStillFinishesTheCommittedChange(t *testing.T) {
+	const password = "correct horse battery"
+	for _, phase := range []string{"authenticate", "store", "readback"} {
+		for _, transition := range []string{"lock", "disable", "sign out"} {
+			t.Run(phase+"/"+transition, func(t *testing.T) {
+				fixture := createUnlockedTestService(t)
+				prepareTestApprovalUnlock(t, fixture, password)
+				s := fixture.service
+				b := &pausedBiometricSetup{fakeBiometric: s.config.Biometric.(*fakeBiometric), phase: phase, started: make(chan struct{}), resume: make(chan struct{})}
+				release := sync.OnceFunc(func() { close(b.resume) })
+				t.Cleanup(release)
+				s.config.Biometric = b
+				SetBiometricKeyPreparer(s, promptingKeyPreparer{})
+				changed := make(chan CredentialChangeResult, 1)
+				go func() {
+					result, err := s.changeCredentials(password, func(_ context.Context, _ *session.Session, _ []byte, current crypt.SecretKey, stage session.StagePendingFactor) (*session.CredentialChange, error) {
+						replacement, err := crypt.GenerateSecretKey(fixture.accountID)
+						if err != nil {
+							return nil, err
+						}
+						if err := stage(session.PendingFactor{Kind: "replace-secret-key", SecretKey: replacement.Encode(), PriorSecretKey: current.Encode()}); err != nil {
+							return nil, err
+						}
+						return &session.CredentialChange{SecretKey: replacement, AccountUnlockKey: crypt.GenerateKey()}, nil
+					})
+					if err != nil {
+						t.Error(err)
+					}
+					changed <- result
+				}()
+				select {
+				case <-b.started:
+				case <-time.After(5 * time.Second):
+					t.Fatal("reseal never reached the OS boundary")
+				}
+				switch transition {
+				case "lock":
+					s.Lock()
+				case "disable":
+					if _, err := s.DisableBiometricUnlock(); err != nil {
+						t.Fatal(err)
+					}
+				case "sign out":
+					s.SignOut()
+				}
+				release()
+				result := <-changed
+				if result.PendingOperationID == "" || result.SetupState != "delivery-pending" || result.LocalError != "" {
+					t.Fatalf("the committed change was reported as unfinished: %+v", result)
+				}
+				entries, err := s.ListPendingRecovery()
+				if err != nil || len(entries) != 1 || entries[0].OperationID != result.PendingOperationID || entries[0].Phase != "delivery-pending" {
+					t.Fatalf("the recovery record does not show the committed change: %+v %v", entries, err)
+				}
+				saved, err := localstate.Load(s.config.StatePath)
+				if err != nil {
+					t.Fatal(err)
+				}
+				wantOperationID := result.PendingOperationID
+				if transition == "sign out" {
+					wantOperationID = ""
+				}
+				if saved.RecoveryOperationID != wantOperationID {
+					t.Errorf("saved recovery operation %q, want %q", saved.RecoveryOperationID, wantOperationID)
+				}
+				if s.GetStatus().BiometricEnabled || len(saved.BiometricUnlock) > 0 {
+					t.Error("Touch ID stayed on with a sealed state of the replaced credentials")
+				}
+				if _, err := b.fakeBiometric.LoadKey(fixture.accountID); err == nil {
+					t.Error("a Touch ID key outlived the reseal that did not finish")
+				}
+			})
+		}
 	}
 }
 
