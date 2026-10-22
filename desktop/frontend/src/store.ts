@@ -786,6 +786,7 @@ export async function syncInBackground(): Promise<void> {
       return;
     }
     store.allItem = allItem;
+    updateSelectedVaultSummary();
     const selectedItemID = store.selectedItem?.id;
     if (selectedItemID) {
       store.selectedItem = allItem.some((vaultItem) => vaultItem.id === selectedItemID) ? await api.getItem(store.selectedVaultID, selectedItemID) : null;
@@ -811,7 +812,7 @@ async function loadVaultItems(vaultID: string, version: number): Promise<void> {
     return;
   }
   store.allItem = allItem ? sortAllItem(allItem) : [];
-  updateSelectedVaultItemCount();
+  updateSelectedVaultSummary();
 }
 
 export async function createVault(name: string): Promise<boolean> {
@@ -966,10 +967,13 @@ export function selectTag(tag: string): void {
   }
 }
 
-function updateSelectedVaultItemCount(): void {
+// updateSelectedVaultSummary makes the selected vault's summary describe store.allItem, its latest acquisition: the
+// healthy items it counts and every record that did not open, so a record the list hides is still disclosed.
+function updateSelectedVaultSummary(): void {
   const vault = store.allVault.find((candidate) => candidate.id === store.selectedVaultID);
   if (vault) {
-    vault.itemCount = store.allItem.length;
+    vault.itemCount = store.allItem.filter((vaultItem) => !vaultItem.readIssue).length;
+    vault.readIssues = [...(vault.readIssues ?? []).filter((issue) => !issue.itemId), ...store.allItem.flatMap((vaultItem) => (vaultItem.readIssue ? [vaultItem.readIssue] : []))];
   }
 }
 
@@ -1079,7 +1083,7 @@ async function showCreatedItem(created: ItemDetail): Promise<void> {
   const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
-    updateSelectedVaultItemCount();
+    updateSelectedVaultSummary();
   }
   store.selectedItem = created;
   store.editorMode = "view";
@@ -1123,7 +1127,7 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
-    updateSelectedVaultItemCount();
+    updateSelectedVaultSummary();
     dropMissingTagFilter();
   }
   store.selectedItem = saved;
@@ -1174,7 +1178,7 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
   // Opening a favorite makes its vault the selected one but leaves allItem as the vault last listed, so allItem counts the
   // selected vault only outside Favorites.
   if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
-    updateSelectedVaultItemCount();
+    updateSelectedVaultSummary();
     dropMissingTagFilter();
   } else {
     const vault = store.allVault.find((candidate) => candidate.id === vaultID);
@@ -1196,6 +1200,15 @@ async function reloadSelectedVaultItems(): Promise<void> {
   const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
+    updateSelectedVaultSummary();
+  }
+}
+
+// retryReads reads every vault and the one on screen again, after a recovery action or when the user retries.
+export async function retryReads(): Promise<void> {
+  await loadAllVault();
+  if (!store.isFavoritesSelected && store.allVault.some((vault) => vault.id === store.selectedVaultID)) {
+    await reloadSelectedVaultItems();
   }
 }
 

@@ -52,15 +52,13 @@ type RemovedVaultNotice struct {
 }
 
 func (s *Service) loadVaultItemCount(ctx context.Context, vault *session.Vault) (int, error) {
-	items, found := s.itemsByVaultID[vault.ID]
-	if !found {
-		var err error
-		if items, err = s.unlockedSession.ListItems(ctx, vault); err != nil {
-			return 0, convertError(err)
-		}
-		s.itemsByVaultID[vault.ID] = items
+	result, err := s.unlockedSession.ReadItems(ctx, vault)
+	if err != nil {
+		return 0, convertError(err)
 	}
-	return len(items), nil
+	s.itemsByVaultID[vault.ID] = result.Items
+	s.setItemReadIssues(vault.ID, result.Issues)
+	return len(result.Items) + len(result.Issues), nil
 }
 
 func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
@@ -108,6 +106,10 @@ func (s *Service) GetVaultActions(vaultID string) (VaultActions, error) {
 	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(s.vaultsByID), ownerCount)
 	actions.CanRename, actions.CanDelete, actions.DeleteBlockedReason = permissions.CanRename, permissions.CanDelete, permissions.DeleteBlockedReason
 	actions.CanLeave, actions.LeaveBlockedReason = permissions.CanLeave, permissions.LeaveBlockedReason
+	if vault.IsPersonalExtra && vault.Role == apitypes.VaultOwner {
+		actions.CanDelete, actions.DeleteBlockedReason = true, ""
+	}
+	actions.Vault.ReadIssues = append(actions.Vault.ReadIssues, s.itemReadIssuesByVaultID[vault.ID]...)
 
 	if actions.CanDelete {
 		for _, candidate := range s.vaultsByID {
@@ -145,6 +147,7 @@ func (s *Service) RenameVault(vaultID, name string) (VaultSummary, error) {
 	if err != nil {
 		return VaultSummary{}, convertVaultError(err)
 	}
+	s.vaultReadIssues = slices.DeleteFunc(s.vaultReadIssues, func(issue session.ReadIssue) bool { return issue.VaultID == vaultID })
 	return convertToVaultSummary(vault, len(s.itemsByVaultID[vault.ID])), nil
 }
 

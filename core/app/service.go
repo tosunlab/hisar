@@ -43,6 +43,8 @@ type serviceState struct {
 	passkeyEpoch                 atomic.Uint64
 	vaultsByID                   map[string]*session.Vault
 	itemsByVaultID               map[string][]item.Item
+	vaultReadIssues              []session.ReadIssue
+	itemReadIssuesByVaultID      map[string][]session.ReadIssue
 	favorites                    *session.Preferences
 	lockTimer                    *time.Timer
 	lockDeadline                 time.Duration

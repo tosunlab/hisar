@@ -318,7 +318,7 @@ func (s *Service) locateAgentItem(vaultID, itemID string) (clisocket.AgentSecret
 func (bridge *CommandLineBridge) answerAgentSessionRequest(epoch uint64, request *cliprotocol.Request) (any, error) {
 	s := bridge.service
 	switch request.Type {
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		summaries, err := s.ListVaults()
 		if err != nil {
 			return nil, err
@@ -327,11 +327,15 @@ func (bridge *CommandLineBridge) answerAgentSessionRequest(epoch uint64, request
 		result := cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{}}
 		for _, summary := range summaries {
 			if slices.Contains(agentVaultIDs, summary.ID) {
+				if request.Type == cliprotocol.TypeListVault && len(summary.ReadIssues) != 0 {
+					return nil, session.ErrIncompleteRead
+				}
+				result.Issues = append(result.Issues, summary.ReadIssues...)
 				result.Vaults = append(result.Vaults, convertToCommandLineVault(summary))
 			}
 		}
 		return result, nil
-	case cliprotocol.TypeListItem, cliprotocol.TypeGetItem:
+	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem, cliprotocol.TypeGetItem:
 		if !slices.Contains(s.ListAgentVaultIDs(), request.VaultID) {
 			return nil, fmt.Errorf("vault %w", ErrNotFound)
 		}

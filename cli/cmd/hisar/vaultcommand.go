@@ -277,6 +277,7 @@ func leaveVaultInteractively(ctx context.Context, access backend, nameOrID strin
 }
 
 func runListVaults(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	access = readingBackend{access}
 	if _, err := parse(flags, args); err != nil {
 		return err
 	}

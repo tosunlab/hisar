@@ -14,6 +14,7 @@ import (
 )
 
 func runListItems(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	access = readingBackend{access}
 	vaultName := addVaultFlag(flags)
 	tag := flags.String("tag", "", "only items with this tag (case does not matter)")
 	isListingFavorites := flags.Bool("favorites", false, "list your favorites in every vault, or only in the vault -v names")

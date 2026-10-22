@@ -297,6 +297,13 @@ class HisarKitBackend(
 
     override fun deleteItem(vaultID: String, itemID: String) = call { deleteItem(vaultID, itemID) }
 
+    override fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String) = call { deleteUnreadableItem(vaultID, itemID, revision) }
+
+    override fun deleteUnreadableVault(vaultID: String, revision: String) = call { deleteUnreadableVault(vaultID, revision) }
+
+    override fun repairVaultName(vaultID: String, revision: String, name: String): VaultSummary =
+        decode(VaultSummary.serializer(), call { repairVaultName(vaultID, revision, name) })
+
     override fun listAllFavoriteItem(): List<FavoriteItem> = decodeList(FavoriteItem.serializer(), call { listAllFavoriteItem() })
 
     override fun setItemFavorite(vaultID: String, itemID: String, isFavorite: Boolean) =

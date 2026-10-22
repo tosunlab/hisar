@@ -252,18 +252,27 @@ func hasSameContent(first, second *item.Item) (bool, error) {
 }
 
 // reloadVaults replaces each vault with the server's current copy, with the key and key generation of its latest rotation.
+// A vault the server lists but whose record did not open is ErrIncompleteRead, never evidence that it is gone.
 func (s *Session) reloadVaults(ctx context.Context, vaults ...*Vault) error {
-	currentVaults, err := s.ListVaults(ctx)
+	result, err := s.ReadVaults(ctx)
 	if err != nil {
 		return err
 	}
+	defer clearVaultKeys(result.Vaults)
 	for _, vault := range vaults {
-		index := slices.IndexFunc(currentVaults, func(current Vault) bool { return current.ID == vault.ID })
-		if index < 0 {
-			return fmt.Errorf("vault %q: %w", vault.Name, ErrNotFound)
+		if slices.ContainsFunc(result.Vaults, func(current Vault) bool { return current.ID == vault.ID }) {
+			continue
 		}
+		if slices.ContainsFunc(result.Issues, func(issue ReadIssue) bool { return issue.VaultID == vault.ID }) {
+			return fmt.Errorf("vault %q: %w", vault.Name, ErrIncompleteRead)
+		}
+		return fmt.Errorf("vault %q: %w", vault.Name, ErrNotFound)
+	}
+	for _, vault := range vaults {
+		index := slices.IndexFunc(result.Vaults, func(current Vault) bool { return current.ID == vault.ID })
 		clear(vault.Key)
-		*vault = currentVaults[index]
+		*vault = result.Vaults[index]
+		result.Vaults[index].Key = nil
 	}
 	return nil
 }

@@ -11,6 +11,7 @@ import (
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 // CommandLineBridge answers the hisar CLI on the app's socket (clisocket.Handler); it is not bound to the UI.
@@ -132,13 +133,17 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request 
 	switch request.Type {
 	case cliprotocol.TypeAccount:
 		return s.getCommandLineAccount()
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		summaries, err := s.ListVaults()
 		if err != nil {
 			return nil, err
 		}
 		result := cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{}}
 		for _, summary := range summaries {
+			if request.Type == cliprotocol.TypeListVault && len(summary.ReadIssues) != 0 {
+				return nil, session.ErrIncompleteRead
+			}
+			result.Issues = append(result.Issues, summary.ReadIssues...)
 			result.Vaults = append(result.Vaults, convertToCommandLineVault(summary))
 		}
 		return result, nil
@@ -166,13 +171,33 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request 
 		}
 		result, err := s.writeExportFile(request.Export.Format, request.Export.Passphrase, request.Export.Path, epoch)
 		return cliprotocol.ExportResult{Path: result.Path, VaultCount: result.VaultCount, ItemCount: result.ItemCount}, err
-	case cliprotocol.TypeListItem:
+	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 		details, err := s.ListItems(request.VaultID)
 		if err != nil {
 			return nil, err
 		}
+		if request.Type == cliprotocol.TypeListItem {
+			if err := s.requireCompleteRead(request.VaultID); err != nil {
+				return nil, err
+			}
+		}
 		result := cliprotocol.ItemListResult{Items: []cliprotocol.Item{}}
+		issues, err := s.GetReadIssues()
+		if err != nil {
+			return nil, err
+		}
+		for _, issue := range issues {
+			if issue.VaultID == request.VaultID {
+				result.Issues = append(result.Issues, issue)
+			}
+		}
 		for _, detail := range details {
+			if detail.ReadIssue != nil {
+				if request.Type == cliprotocol.TypeListItem {
+					return nil, session.ErrIncompleteRead
+				}
+				continue
+			}
 			result.Items = append(result.Items, convertToCommandLineSummary(detail))
 		}
 		return result, nil
@@ -200,6 +225,9 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request 
 	case cliprotocol.TypeListFavorite:
 		favorites, err := s.ListFavoriteItems()
 		if err != nil {
+			return nil, err
+		}
+		if err := s.requireCompleteRead(""); err != nil {
 			return nil, err
 		}
 		result := cliprotocol.FavoriteListResult{Favorites: []cliprotocol.Favorite{}}
@@ -358,6 +386,9 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	}
 	if vault.Role == apitypes.VaultReader {
 		return result, errReadOnlyVault
+	}
+	if len(s.itemReadIssuesByVaultID[vault.ID]) != 0 {
+		return result, session.ErrIncompleteRead
 	}
 	if s.itemsByVaultID[vault.ID] == nil {
 		existingItems, err := s.unlockedSession.ListItems(ctx, vault)

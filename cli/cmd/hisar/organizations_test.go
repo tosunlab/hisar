@@ -51,7 +51,7 @@ func answerOrganizationRequest(request cliprotocol.Request) (any, *cliprotocol.R
 		return cliprotocol.TeamResult{Team: cliprotocol.Team{ID: "team-id", Name: request.Name}}, nil
 	case cliprotocol.TypeCreateOrganizationVault:
 		return cliprotocol.VaultResult{Vault: cliprotocol.Vault{ID: "new-vault-id", Name: request.Name, Type: "organization", Role: "owner", OrganizationID: request.OrganizationID}}, nil
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{
 			{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"},
 			{ID: "eng-vault-id", Name: "EngVault", Type: "organization", Role: "owner", OrganizationID: "acme-id"},

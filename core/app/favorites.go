@@ -44,7 +44,7 @@ func (s *Service) ListFavoriteItems() ([]FavoriteItem, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if !s.reloadAllVaultItem(ctx) {
-		if err := s.loadItemsOfAllVault(ctx); err != nil {
+		if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 			return nil, err
 		}
 	}

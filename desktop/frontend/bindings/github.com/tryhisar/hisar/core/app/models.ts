@@ -4,6 +4,9 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as browserprotocol$0 from "../browserprotocol/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as session$0 from "../session/models.js";
 
 export interface AccountDeletionPreview {
     "planVersion": string;
@@ -323,6 +326,7 @@ export interface ItemDatabase {
 export interface ItemDetail {
     "id": string;
     "revision": string;
+    "readIssue"?: session$0.ReadIssue | null;
     "category": string;
     "title": string;
     "username": string;
@@ -868,6 +872,8 @@ export interface VaultSummary {
      * OrganizationID is set for organization vaults only.
      */
     "organizationId"?: string;
+    "readIssues"?: session$0.ReadIssue[] | null;
+    "isPersonalExtra"?: boolean;
 }
 
 /**

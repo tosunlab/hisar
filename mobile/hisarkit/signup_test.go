@@ -62,7 +62,7 @@ func TestInterruptedSignUpReturnsDurableVisibleRecoveryWithoutReinstallingTheAcc
 		<-resume
 		json.NewEncoder(writer).Encode(apitypes.SessionResponse{AccountID: finish.AccountID, Token: "new-token"})
 	})
-	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/vaults/personal", func(writer http.ResponseWriter, request *http.Request) {
 		writer.WriteHeader(http.StatusCreated)
 	})
 	mux.HandleFunc("POST /api/v1/auth/logout", func(writer http.ResponseWriter, request *http.Request) {

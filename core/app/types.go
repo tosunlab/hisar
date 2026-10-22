@@ -6,6 +6,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 const (
@@ -64,7 +65,9 @@ type VaultSummary struct {
 	Role      string `json:"role"`
 	ItemCount int    `json:"itemCount"`
 	// OrganizationID is set for organization vaults only.
-	OrganizationID string `json:"organizationId,omitempty"`
+	OrganizationID  string              `json:"organizationId,omitempty"`
+	ReadIssues      []session.ReadIssue `json:"readIssues,omitempty"`
+	IsPersonalExtra bool                `json:"isPersonalExtra,omitempty"`
 }
 
 type OrganizationSummary struct {
@@ -253,19 +256,20 @@ type ItemField struct {
 
 // ItemDetail never carries an SSH private key; the agent reads it from the cached item.
 type ItemDetail struct {
-	ID          string      `json:"id"`
-	Revision    string      `json:"revision"`
-	Category    string      `json:"category"`
-	Title       string      `json:"title"`
-	Username    string      `json:"username"`
-	URLs        []string    `json:"urls"`
-	Tags        []string    `json:"tags"`
-	Password    string      `json:"password"`
-	Notes       string      `json:"notes"`
-	Fields      []ItemField `json:"fields"`
-	PublicKey   string      `json:"publicKey"`
-	Fingerprint string      `json:"fingerprint"`
-	KeyType     string      `json:"keyType"`
+	ID          string             `json:"id"`
+	Revision    string             `json:"revision"`
+	ReadIssue   *session.ReadIssue `json:"readIssue,omitempty"`
+	Category    string             `json:"category"`
+	Title       string             `json:"title"`
+	Username    string             `json:"username"`
+	URLs        []string           `json:"urls"`
+	Tags        []string           `json:"tags"`
+	Password    string             `json:"password"`
+	Notes       string             `json:"notes"`
+	Fields      []ItemField        `json:"fields"`
+	PublicKey   string             `json:"publicKey"`
+	Fingerprint string             `json:"fingerprint"`
+	KeyType     string             `json:"keyType"`
 	// OneTimePassword is the otpauth:// URI; summaries leave it empty and set HasOneTimePassword instead.
 	OneTimePassword    string `json:"oneTimePassword"`
 	HasOneTimePassword bool   `json:"hasOneTimePassword"`

@@ -494,6 +494,34 @@ class FakeBackend: VaultBackend {
         allPasskey.removeAll { $0.vaultID == vaultID && $0.itemID == itemID }
     }
 
+    func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws {
+        try requireUnlocked()
+        guard allItemByVaultID[vaultID]?.contains(where: { $0.id == itemID && $0.revision == revision && $0.readIssue?.canDelete == true }) == true else {
+            throw BackendError(message: "The unreadable record changed")
+        }
+        allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
+        if let index = allVault.firstIndex(where: { $0.id == vaultID }) { allVault[index].readIssues.removeAll { $0.itemId == itemID } }
+    }
+
+    func deleteUnreadableVault(vaultID: String, revision: String) throws {
+        try requireUnlocked()
+        guard allVault.contains(where: { $0.id == vaultID && $0.readIssues.contains(where: { $0.canDelete && $0.itemId == nil && $0.revision == revision }) }) else {
+            throw BackendError(message: "The unreadable vault changed")
+        }
+        allVault.removeAll { $0.id == vaultID }
+        allItemByVaultID.removeValue(forKey: vaultID)
+    }
+
+    func repairVaultName(vaultID: String, revision: String, name: String) throws -> VaultSummary {
+        try requireUnlocked()
+        guard let index = allVault.firstIndex(where: { $0.id == vaultID && $0.readIssues.contains(where: { $0.canRename && $0.revision == revision }) }) else {
+            throw BackendError(message: "The unreadable vault changed")
+        }
+        allVault[index].name = name.trimmingCharacters(in: .whitespaces)
+        allVault[index].readIssues.removeAll { $0.itemId == nil }
+        return allVault[index]
+    }
+
     func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode {
         record("getOneTimeCode")
         guard try getItem(vaultID: vaultID, itemID: itemID).hasOneTimePassword else { throw BackendError(message: "One-time password not found") }

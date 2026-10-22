@@ -229,6 +229,7 @@ func (s *Server) CreateApp() *fiber.App {
 
 	apiGroup.Get("/vaults", s.requireSession, s.handleListVaults)
 	apiGroup.Post("/vaults", s.requireSession, s.handleCreateVault)
+	apiGroup.Post("/vaults/personal", s.requireSession, s.handleCreateVault)
 	apiGroup.Get("/vaults/:vault/members", s.requireSession, s.handleListVaultMembers)
 	apiGroup.Post("/vaults/:vault/share-invitations", s.requireSession, s.handleCreateShareInvitation)
 	apiGroup.Post("/vaults/:vault/signed-share-invitations", s.requireSession, s.handleCreateShareInvitation)
@@ -250,6 +251,8 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/vaults/:vault/transitions/:transition/abort", s.requireSession, s.handleAbortVaultTransition)
 	apiGroup.Put("/vaults/:vault/name", s.requireSession, s.handleRenameVault)
 	apiGroup.Post("/vaults/:vault/delete", s.requireSession, s.handleDeleteVault)
+	apiGroup.Post("/vaults/:vault/recovery/name", s.requireSession, s.handleRepairVaultName)
+	apiGroup.Post("/vaults/:vault/recovery/delete", s.requireSession, s.handleDeleteUnreadableVault)
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListChanges)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)

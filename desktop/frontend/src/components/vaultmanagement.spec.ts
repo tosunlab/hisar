@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import type { VaultSummary } from "../api";
 import { createApiMock, createItem, createStatus, createVaultActions, createVaultMember, testBob } from "../testing";
+import ReadIssuesPanel from "./ReadIssuesPanel.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -17,7 +18,7 @@ vi.mock("../api", async () => {
 
 vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
 
-const { store, loadAllVault, syncInBackground } = await import("../store");
+const { store, loadAllVault, selectVault, syncInBackground } = await import("../store");
 const MainView = (await import("./MainView.vue")).default;
 const api = apiMock.current;
 
@@ -228,5 +229,59 @@ describe("removed vault notice", () => {
     api.listAllRemovedVault.mockResolvedValueOnce([{ id: "infra", name: "", message: "A vault is no longer available: it was deleted, or you no longer have access to it." }]);
     await syncInBackground();
     expect(store.allRemovedVaultNotice.map((notice) => notice.id)).toEqual(["infra"]);
+  });
+});
+
+describe("unreadable recovery", () => {
+  it("keeps healthy data visible and deletes only the reviewed unreadable revision", async () => {
+    store.allVault = [{ ...personalVault, readIssues: [{ vaultId: "personal", itemId: "bad", revision: "bad-r1", kind: "item", canRename: false, canDelete: true }] }];
+    store.allItem = [createItem({ id: "healthy", title: "Still available" })];
+    api.deleteUnreadableItem.mockResolvedValue(undefined);
+    const wrapper = mount(ReadIssuesPanel);
+    expect(wrapper.text()).toContain("1 unreadable vault or item records");
+    expect(store.allItem[0].id).toBe("healthy");
+    await wrapper.findAll("button").find((button) => button.text() === "Delete unreadable data…")!.trigger("click");
+    expect(api.deleteUnreadableItem).not.toHaveBeenCalled();
+    await wrapper.findAll("button").find((button) => button.text() === "Permanently delete")!.trigger("click");
+    await flushPromises();
+    expect(api.deleteUnreadableItem).toHaveBeenCalledWith("personal", "bad", "bad-r1");
+    expect(api.deleteUnreadableVault).not.toHaveBeenCalled();
+  });
+
+  it("discloses a record that stopped opening when only the vault's items are listed again", async () => {
+    const issue = { vaultId: "personal", itemId: "late-bad", revision: "late-r1", kind: "item", canRename: false, canDelete: true };
+    api.listAllItem.mockResolvedValue([createItem({ id: "healthy", title: "Still available" }), createItem({ id: "late-bad", revision: "late-r1", title: "Unreadable item late-bad", readIssue: issue })]);
+    api.listAllVault.mockResolvedValue([{ ...personalVault }, createWorkVault()]);
+    store.allVault = [{ ...personalVault }, createWorkVault()];
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await flushPromises();
+    await selectVault("personal");
+    await flushPromises();
+    const personal = store.allVault.find((vault) => vault.id === "personal");
+    expect(personal?.itemCount).toBe(1);
+    expect(personal?.readIssues).toEqual([issue]);
+    expect(wrapper.find('[data-testid="read-issues"]').text()).toContain("1 unreadable vault or item records");
+    expect(wrapper.findAll("button.item").map((button) => button.text()).join()).not.toContain("Unreadable item late-bad");
+    wrapper.unmount();
+  });
+
+  it("names the reviewed revision when deleting or repairing an unreadable vault", async () => {
+    const nameIssue = { vaultId: "work", revision: "work-review-1", kind: "vault-name", canRename: true, canDelete: true };
+    store.allVault = [personalVault, { ...createWorkVault(), name: "Unreadable vault work", readIssues: [nameIssue] }];
+    api.repairVaultName.mockRejectedValue(new Error("that unreadable record changed; retry and review it again"));
+    api.deleteUnreadableVault.mockResolvedValue(undefined);
+    const wrapper = mount(ReadIssuesPanel);
+    await wrapper.find('input[aria-label="Repaired vault name"]').setValue("Work");
+    await wrapper.findAll("button").find((button) => button.text() === "Repair name")!.trigger("click");
+    await flushPromises();
+    expect(api.repairVaultName).toHaveBeenCalledWith("work", "work-review-1", "Work");
+    expect(api.renameVault).not.toHaveBeenCalled();
+    expect(api.listAllVault).toHaveBeenCalled();
+    store.allVault = [personalVault, { ...createWorkVault(), name: "Unreadable vault work", readIssues: [nameIssue] }];
+    await flushPromises();
+    await wrapper.findAll("button").find((button) => button.text() === "Delete unreadable data…")!.trigger("click");
+    await wrapper.findAll("button").find((button) => button.text() === "Permanently delete")!.trigger("click");
+    await flushPromises();
+    expect(api.deleteUnreadableVault).toHaveBeenCalledWith("work", "work-review-1");
   });
 });

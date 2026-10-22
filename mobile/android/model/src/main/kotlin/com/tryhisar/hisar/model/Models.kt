@@ -117,6 +117,9 @@ object VaultStatusSerializer : JsonTransformingSerializer<VaultStatus>(VaultStat
 }
 
 @Serializable
+data class ReadIssue(val vaultId: String, val itemId: String = "", val revision: String = "", val kind: String, val canRename: Boolean = false, val canDelete: Boolean = false)
+
+@Serializable
 data class VaultSummary(
     val id: String,
     val name: String = "",
@@ -125,6 +128,8 @@ data class VaultSummary(
     val itemCount: Int = 0,
     /** Set for organization vaults only. */
     @SerialName("organizationId") val organizationID: String = "",
+    val readIssues: List<ReadIssue> = emptyList(),
+    val isPersonalExtra: Boolean = false,
 ) {
     val isOrganization: Boolean get() = type == TYPE_ORGANIZATION
 
@@ -142,6 +147,7 @@ data class ItemField(val name: String, val value: String, val concealed: Boolean
 data class ItemDetail(
     val id: String = "",
     val revision: String = "",
+    val readIssue: ReadIssue? = null,
     val category: String = CATEGORY_LOGIN,
     val title: String = "",
     val username: String = "",

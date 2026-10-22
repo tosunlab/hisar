@@ -131,6 +131,28 @@ func (s *Server) handleDeleteVault(c fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
 
+func (s *Server) handleRepairVaultName(c fiber.Ctx) error {
+	var request apitypes.RepairVaultNameRequest
+	if err := s.decodeOwnerBody(c, &request, maxBody); err != nil {
+		return err
+	}
+	if err := s.service.RepairVaultName(c.Context(), s.getActor(c), c.Params("vault"), &request); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (s *Server) handleDeleteUnreadableVault(c fiber.Ctx) error {
+	var request apitypes.DeleteUnreadableVaultRequest
+	if err := s.decodeOwnerBody(c, &request, maxBody); err != nil {
+		return err
+	}
+	if err := s.service.DeleteUnreadableVault(c.Context(), s.getActor(c), c.Params("vault"), &request); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
 func (s *Server) handleRotateVault(c fiber.Ctx) error {
 	var request apitypes.RotateVaultRequest
 	if err := s.decodeOwnerBody(c, &request, maxRotationBody); err != nil {

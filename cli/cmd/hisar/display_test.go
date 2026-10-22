@@ -32,7 +32,7 @@ func TestCommandMessagesEscapeBackendTextOnStandardError(t *testing.T) {
 				DeliveryError: hostileDisplayText, RotationError: hostileDisplayText,
 				Waiting: []cliprotocol.WaitingVaultKey{{OrganizationName: hostileDisplayText}},
 			}, nil
-		case cliprotocol.TypeListVault:
+		case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{
 				{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"},
 				{ID: "work-id", Name: hostileDisplayText, Type: "shared", Role: "owner"},

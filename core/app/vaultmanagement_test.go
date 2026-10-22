@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -73,6 +74,53 @@ func (server *fakeAPIServer) addVaultManagementRoutes(mux *http.ServeMux) {
 			}
 		} else if liveCount > 0 && !deleteRequest.IsDeletingItems {
 			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault has items"})
+			return
+		}
+		server.removeVault(vaultID)
+		writer.WriteHeader(http.StatusNoContent)
+	})
+	// The recovery routes act only while the vault is still the record the review names, as the real server does.
+	isStillReviewed := func(vaultID string, review apitypes.VaultReview) bool {
+		for _, vault := range server.vaults {
+			if vault.ID == vaultID {
+				return bytes.Equal(vault.EncName, review.EncName) && bytes.Equal(vault.WrappedKey, review.WrappedKey) && vault.KeyGeneration == review.KeyGeneration
+			}
+		}
+		return false
+	}
+	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/recovery/name", func(writer http.ResponseWriter, request *http.Request) {
+		var repairRequest apitypes.RepairVaultNameRequest
+		json.NewDecoder(request.Body).Decode(&repairRequest)
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		vaultID := request.PathValue("vaultID")
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
+			return
+		}
+		if !isStillReviewed(vaultID, repairRequest.Review) {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault changed since it was reviewed"})
+			return
+		}
+		for index := range server.vaults {
+			if server.vaults[index].ID == vaultID {
+				server.vaults[index].EncName = repairRequest.EncName
+			}
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/recovery/delete", func(writer http.ResponseWriter, request *http.Request) {
+		var deleteRequest apitypes.DeleteUnreadableVaultRequest
+		json.NewDecoder(request.Body).Decode(&deleteRequest)
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		vaultID := request.PathValue("vaultID")
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
+			return
+		}
+		if !isStillReviewed(vaultID, deleteRequest.Review) {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault changed since it was reviewed"})
 			return
 		}
 		server.removeVault(vaultID)

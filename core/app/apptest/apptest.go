@@ -99,7 +99,7 @@ func (api *fakeAPI) handler() http.Handler {
 		defer api.mutex.Unlock()
 		writeJSON(writer, http.StatusOK, api.vaults)
 	})
-	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+	createVault := func(writer http.ResponseWriter, request *http.Request) {
 		var createRequest apitypes.CreateVaultRequest
 		if err := json.NewDecoder(request.Body).Decode(&createRequest); err != nil {
 			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
@@ -113,7 +113,9 @@ func (api *fakeAPI) handler() http.Handler {
 		})
 		api.itemsByVaultID[createRequest.ID] = map[string]apitypes.Item{}
 		writer.WriteHeader(http.StatusCreated)
-	})
+	}
+	mux.HandleFunc("POST /api/v1/vaults", createVault)
+	mux.HandleFunc("POST /api/v1/vaults/personal", createVault)
 	mux.HandleFunc("GET /api/v1/vaults/{vaultID}/changes", func(writer http.ResponseWriter, request *http.Request) {
 		api.mutex.Lock()
 		defer api.mutex.Unlock()

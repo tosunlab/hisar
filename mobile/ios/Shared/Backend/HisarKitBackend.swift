@@ -328,6 +328,18 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.deleteItem(vaultID, itemID: itemID) }
     }
 
+    func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws {
+        try callReturningNothing { try hisar.deleteUnreadableItem(vaultID, itemID: itemID, revision: revision) }
+    }
+
+    func deleteUnreadableVault(vaultID: String, revision: String) throws {
+        try callReturningNothing { try hisar.deleteUnreadableVault(vaultID, revision: revision) }
+    }
+
+    func repairVaultName(vaultID: String, revision: String, name: String) throws -> VaultSummary {
+        try decode(VaultSummary.self, from: callReturningText { hisar.repairVaultName(vaultID, revision: revision, name: name, error: $0) })
+    }
+
     func listAllFavoriteItem() throws -> [FavoriteItem] {
         try decode([FavoriteItem]?.self, from: callReturningText { hisar.listAllFavoriteItem($0) }) ?? []
     }

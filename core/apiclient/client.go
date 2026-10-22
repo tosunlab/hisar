@@ -338,7 +338,11 @@ func (c *Client) ListVaults(ctx context.Context) ([]apitypes.Vault, error) {
 }
 
 func (c *Client) CreateVault(ctx context.Context, request *apitypes.CreateVaultRequest) error {
-	return c.sendRequest(ctx, "POST", "/api/v1/vaults", nil, request, nil, nil)
+	path := "/api/v1/vaults"
+	if request.Type == apitypes.VaultPersonal {
+		path += "/personal"
+	}
+	return c.sendRequest(ctx, "POST", path, nil, request, nil, nil)
 }
 
 func (c *Client) ListVaultMembers(ctx context.Context, vaultID string) ([]apitypes.VaultMember, error) {
@@ -364,6 +368,16 @@ func (c *Client) RenameVault(ctx context.Context, vaultID string, request *apity
 
 func (c *Client) DeleteVault(ctx context.Context, vaultID string, request *apitypes.DeleteVaultRequest) error {
 	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/delete", nil, request, nil, nil)
+}
+
+// RepairVaultName and DeleteUnreadableVault use their own routes, so a server without the review check refuses them
+// (404) rather than renaming or deleting unconditionally.
+func (c *Client) RepairVaultName(ctx context.Context, vaultID string, request *apitypes.RepairVaultNameRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/recovery/name", nil, request, nil, nil)
+}
+
+func (c *Client) DeleteUnreadableVault(ctx context.Context, vaultID string, request *apitypes.DeleteUnreadableVaultRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/recovery/delete", nil, request, nil, nil)
 }
 
 func (c *Client) ListChanges(ctx context.Context, vaultID string, since int64, limit int) (*apitypes.ChangesResponse, error) {

@@ -125,7 +125,7 @@ func TestVaultChangesAreCheckedAgainstAccessRemovedMeanwhile(t *testing.T) {
 		t.Errorf("an item move by an editor removed meanwhile: %v", err)
 	}
 	grantBob("owner")
-	if err := removeBobMeanwhile(func() error { return database.RenameVault(ctx, vaultID, "BBBBBB", []byte("renamed"), 0) }); !errors.Is(err, ErrNotFound) {
+	if err := removeBobMeanwhile(func() error { return database.RenameVault(ctx, vaultID, "BBBBBB", []byte("renamed"), 0, nil) }); !errors.Is(err, ErrNotFound) {
 		t.Errorf("a rename by an owner removed meanwhile: %v", err)
 	}
 	grantBob("owner")

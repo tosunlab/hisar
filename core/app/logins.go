@@ -9,6 +9,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 var (
@@ -78,6 +79,23 @@ func (s *Service) requireUnlockedWithoutActivity() error {
 }
 
 func (s *Service) loadItemsOfAllVault(ctx context.Context) error {
+	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
+		return err
+	}
+	if len(s.vaultReadIssues) != 0 {
+		return session.ErrIncompleteRead
+	}
+	for _, issues := range s.itemReadIssuesByVaultID {
+		if len(issues) != 0 {
+			return session.ErrIncompleteRead
+		}
+	}
+	return nil
+}
+
+// loadReadableItemsOfAllVault reads every vault not loaded yet, keeping the records that open and an issue for each one
+// that does not.
+func (s *Service) loadReadableItemsOfAllVault(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if s.vaultsByID == nil {
@@ -89,11 +107,12 @@ func (s *Service) loadItemsOfAllVault(ctx context.Context) error {
 		if _, isLoaded := s.itemsByVaultID[vaultID]; isLoaded {
 			continue
 		}
-		items, err := s.unlockedSession.ListItems(ctx, vault)
+		result, err := s.unlockedSession.ReadItems(ctx, vault)
 		if err != nil {
 			return convertError(err)
 		}
-		s.itemsByVaultID[vaultID] = items
+		s.itemsByVaultID[vaultID] = result.Items
+		s.setItemReadIssues(vaultID, result.Issues)
 	}
 	return nil
 }

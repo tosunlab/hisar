@@ -64,6 +64,12 @@ func TestUnreadableVaultDoesNotDisableHealthyInventory(t *testing.T) {
 	if _, err := unlocked.ListVaults(ctx); !errors.Is(err, ErrIncompleteRead) {
 		t.Fatalf("strict inventory lost issues: %v", err)
 	}
+	if vault, err := unlocked.FindVault(ctx, account.vaultID); err != nil || vault.ID != account.vaultID {
+		t.Fatalf("unrelated bad vault blocked exact healthy-key lookup: %+v %v", vault, err)
+	}
+	if _, err := unlocked.FindVault(ctx, "not-observed"); !errors.Is(err, ErrIncompleteRead) {
+		t.Fatalf("partial inventory inferred absence: %v", err)
+	}
 }
 
 func TestRotationRaceReloadsKeyBeforePublishing(t *testing.T) {

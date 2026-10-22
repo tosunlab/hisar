@@ -350,6 +350,9 @@ const wailsApi = {
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>
     normalizeItem(await Service.SaveItem(vaultID, detail)),
   deleteItem: (vaultID: string, itemID: string): Promise<void> => Service.DeleteItem(vaultID, itemID),
+  deleteUnreadableItem: (vaultID: string, itemID: string, revision: string): Promise<void> => Service.DeleteUnreadableItem(vaultID, itemID, revision),
+  deleteUnreadableVault: (vaultID: string, revision: string): Promise<void> => Service.DeleteUnreadableVault(vaultID, revision),
+  repairVaultName: (vaultID: string, revision: string, name: string): Promise<VaultSummary> => Service.RepairVaultName(vaultID, revision, name),
   moveItem: async (vaultID: string, itemID: string, targetVaultID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.MoveItem(vaultID, itemID, targetVaultID)),
   duplicateItem: async (vaultID: string, itemID: string): Promise<ItemDetail> => normalizeItem(await Service.DuplicateItem(vaultID, itemID)),

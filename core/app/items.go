@@ -23,19 +23,30 @@ func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	for _, issue := range s.vaultReadIssues {
+		if issue.VaultID == vaultID && issue.Kind == "vault-key" {
+			return []ItemDetail{}, nil
+		}
+	}
 	vault, err := s.findVault(ctx, vaultID)
 	if err != nil {
 		return nil, err
 	}
-	items, err := s.unlockedSession.ListItems(ctx, vault)
+	result, err := s.unlockedSession.ReadItems(ctx, vault)
 	if err != nil {
 		return nil, convertError(err)
 	}
+	items := result.Items
+	s.setItemReadIssues(vaultID, result.Issues)
 	s.itemsByVaultID[vaultID] = items
 	s.loadFavoritesOnce(ctx)
 	summaries := make([]ItemDetail, 0, len(items))
 	for index := range items {
 		summaries = append(summaries, s.summarizeItem(&items[index]))
+	}
+	for index := range result.Issues {
+		issue := result.Issues[index]
+		summaries = append(summaries, ItemDetail{ID: issue.ItemID, Revision: issue.Revision, Title: "Unreadable item " + issue.ItemID, ReadIssue: &issue})
 	}
 	return summaries, nil
 }
@@ -104,6 +115,11 @@ func (s *Service) findItem(vaultID, itemID string) (*item.Item, error) {
 	for index, vaultItem := range s.itemsByVaultID[vaultID] {
 		if vaultItem.ID == itemID {
 			return &s.itemsByVaultID[vaultID][index], nil
+		}
+	}
+	for _, issue := range s.itemReadIssuesByVaultID[vaultID] {
+		if issue.ItemID == itemID {
+			return nil, session.ErrIncompleteRead
 		}
 	}
 	return nil, fmt.Errorf("item %w", ErrNotFound)
@@ -381,6 +397,15 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	if err != nil {
 		return ItemDetail{}, err
 	}
+	if _, isLoaded := s.itemsByVaultID[vaultID]; detail.ID != "" && !isLoaded {
+		// Whether the stored record opens decides how the edit is applied, so the vault is read first.
+		result, err := s.unlockedSession.ReadItems(ctx, vault)
+		if err != nil {
+			return ItemDetail{}, convertError(err)
+		}
+		s.itemsByVaultID[vaultID] = result.Items
+		s.setItemReadIssues(vaultID, result.Issues)
+	}
 	vaultItem, err := s.buildSavedItem(vaultID, detail)
 	if err != nil {
 		return ItemDetail{}, err
@@ -415,7 +440,12 @@ func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vau
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
 	var cachedItem *item.Item
 	if detail.ID != "" {
-		cachedItem, _ = s.findItem(vaultID, detail.ID)
+		var err error
+		// A stored record that did not open has no known plaintext, so no edit may replace it; only the reviewed
+		// recovery deletion removes it.
+		if cachedItem, err = s.findItem(vaultID, detail.ID); errors.Is(err, session.ErrIncompleteRead) {
+			return item.Item{}, err
+		}
 	}
 	if cachedItem == nil {
 		switch detail.Category {

@@ -27,12 +27,13 @@ type Vault struct {
 	CreatedBy string
 	CreatedAt time.Time
 	// OrganizationID is empty except for organization vaults.
-	OrganizationID string
-	KeyGeneration  int64
-	NeedsRotation  bool
-	AccessRevision int64
-	Role           string
-	WrappedKey     []byte
+	OrganizationID  string
+	KeyGeneration   int64
+	NeedsRotation   bool
+	AccessRevision  int64
+	Role            string
+	WrappedKey      []byte
+	IsPersonalExtra bool
 }
 
 type Member struct {
@@ -45,8 +46,17 @@ type Member struct {
 func (s *Store) CreateVault(ctx context.Context, vault *Vault, ownerWrappedKey []byte) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		var accountID string
-		if err := transaction.QueryRow(ctx, `SELECT id FROM accounts WHERE id = $1 FOR SHARE`, vault.CreatedBy).Scan(&accountID); err != nil {
+		if err := transaction.QueryRow(ctx, `SELECT id FROM accounts WHERE id = $1 FOR UPDATE`, vault.CreatedBy).Scan(&accountID); err != nil {
 			return convertNoRowsToNotFound(err)
+		}
+		if vault.Type == "personal" {
+			var exists bool
+			if err := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM vaults WHERE created_by = $1 AND type = 'personal')`, vault.CreatedBy).Scan(&exists); err != nil {
+				return err
+			}
+			if exists {
+				return ErrExists
+			}
 		}
 		return insertVault(ctx, transaction, vault, ownerWrappedKey)
 	})
@@ -71,7 +81,8 @@ func insertVault(ctx context.Context, transaction pgx.Tx, vault *Vault, ownerWra
 func (s *Store) ListVaults(ctx context.Context, accountID string) ([]Vault, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT v.id, v.type, v.enc_name, v.seq, v.created_by, v.created_at, coalesce(v.organization_id::text, ''), v.key_generation,
-			v.needs_rotation, a.role, a.wrapped_key, v.access_revision
+			v.needs_rotation, a.role, a.wrapped_key, v.access_revision,
+			v.type = 'personal' AND v.id <> (SELECT p.id FROM vaults p WHERE p.created_by = v.created_by AND p.type = 'personal' ORDER BY p.created_at, p.id LIMIT 1)
 		FROM vaults v JOIN vault_access a ON a.vault_id = v.id
 		WHERE a.account_id = $1 ORDER BY v.created_at`, accountID)
 	if err != nil {
@@ -80,7 +91,7 @@ func (s *Store) ListVaults(ctx context.Context, accountID string) ([]Vault, erro
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Vault, error) {
 		var vault Vault
 		err := row.Scan(&vault.ID, &vault.Type, &vault.EncName, &vault.Seq, &vault.CreatedBy, &vault.CreatedAt, &vault.OrganizationID,
-			&vault.KeyGeneration, &vault.NeedsRotation, &vault.Role, &vault.WrappedKey, &vault.AccessRevision)
+			&vault.KeyGeneration, &vault.NeedsRotation, &vault.Role, &vault.WrappedKey, &vault.AccessRevision, &vault.IsPersonalExtra)
 		return vault, err
 	})
 }

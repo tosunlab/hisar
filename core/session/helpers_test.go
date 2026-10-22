@@ -197,7 +197,7 @@ func (server *credentialTestServer) createHandler() http.Handler {
 		server.sessionCount++
 		writeTestJSON(writer, http.StatusOK, apitypes.SessionResponse{Token: "token", AccountID: server.account.AccountID, DeviceID: "device"})
 	})
-	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/vaults/personal", func(writer http.ResponseWriter, request *http.Request) {
 		var createRequest apitypes.CreateVaultRequest
 		json.NewDecoder(request.Body).Decode(&createRequest)
 		server.vaultTypes = append(server.vaultTypes, createRequest.Type)

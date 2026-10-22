@@ -176,7 +176,13 @@ func (s *Store) BeginVaultTransition(ctx context.Context, vaultID, actorID strin
 		var target *lockedVault
 		if request.Kind == "delete-move" {
 			if source.vaultType == "personal" {
-				return ErrPersonalVault
+				var isPrimary bool
+				if err := tx.QueryRow(ctx, `SELECT $1::uuid = (SELECT id FROM vaults WHERE created_by = $2 AND type = 'personal' ORDER BY created_at, id LIMIT 1)`, vaultID, actorID).Scan(&isPrimary); err != nil {
+					return err
+				}
+				if isPrimary {
+					return ErrPersonalVault
+				}
 			}
 			if err := source.checkItemKeyGeneration(request.KeyGeneration); err != nil {
 				return err

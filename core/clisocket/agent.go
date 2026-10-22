@@ -196,7 +196,7 @@ func getAgentRequestKind(requestType string) (string, bool) {
 // vaults and items, use secrets with hisar run, and read a value with hisar read or hisar get.
 func getAgentSessionRequestKind(request *cliprotocol.Request) (string, bool) {
 	switch request.Type {
-	case cliprotocol.TypeListVault, cliprotocol.TypeListItem:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault, cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 		return AgentRequestConnect, true
 	case cliprotocol.TypeResolveSecret:
 		if len(request.CommandLine) > 0 {

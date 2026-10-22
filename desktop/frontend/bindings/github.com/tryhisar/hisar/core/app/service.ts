@@ -12,6 +12,10 @@ import { Call as $Call, CancellablePromise as $CancellablePromise } from "@wails
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as session$0 from "../session/models.js";
+
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as $models from "./models.js";
 
 /**
@@ -222,6 +226,21 @@ export function DeleteTeam(organizationID: string, teamID: string): $Cancellable
     return $Call.ByID(3347983567, organizationID, teamID);
 }
 
+/**
+ * DeleteUnreadableItem only deletes the exact issue the user reviewed.
+ */
+export function DeleteUnreadableItem(vaultID: string, itemID: string, revision: string): $CancellablePromise<void> {
+    return $Call.ByID(3847229238, vaultID, itemID, revision);
+}
+
+/**
+ * DeleteUnreadableVault deliberately discards a reviewed unreadable vault and all its records; the server refuses it
+ * once the vault's record is no longer the reviewed one.
+ */
+export function DeleteUnreadableVault(vaultID: string, revision: string): $CancellablePromise<void> {
+    return $Call.ByID(4167666911, vaultID, revision);
+}
+
 export function DeleteVault(vaultID: string, request: $models.VaultDeletionRequest): $CancellablePromise<$models.VaultDeletionResult> {
     return $Call.ByID(3950255738, vaultID, request);
 }
@@ -326,6 +345,13 @@ export function GetOneTimeCode(vaultID: string, itemID: string): $CancellablePro
  */
 export function GetOrganization(organizationID: string): $CancellablePromise<$models.Organization> {
     return $Call.ByID(3339834708, organizationID);
+}
+
+/**
+ * GetReadIssues returns the issues from the currently loaded view, not a new acquisition.
+ */
+export function GetReadIssues(): $CancellablePromise<session$0.ReadIssue[] | null> {
+    return $Call.ByID(120353839);
 }
 
 export function GetStatus(): $CancellablePromise<$models.Status> {
@@ -581,6 +607,14 @@ export function RenameTeam(organizationID: string, teamID: string, name: string)
 
 export function RenameVault(vaultID: string, name: string): $CancellablePromise<$models.VaultSummary> {
     return $Call.ByID(2996180057, vaultID, name);
+}
+
+/**
+ * RepairVaultName names a vault whose name did not open, only while its record is still the reviewed one, so a name
+ * another device repaired meanwhile is never overwritten.
+ */
+export function RepairVaultName(vaultID: string, revision: string, name: string): $CancellablePromise<$models.VaultSummary> {
+    return $Call.ByID(794954999, vaultID, revision, name);
 }
 
 /**

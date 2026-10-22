@@ -108,6 +108,16 @@ struct VaultStatus: Codable, Equatable {
     }
 }
 
+struct ReadIssue: Codable, Hashable, Identifiable {
+    var vaultId: String
+    var itemId: String?
+    var revision: String?
+    var kind: String
+    var canRename: Bool
+    var canDelete: Bool
+    var id: String { "\(vaultId)/\(itemId ?? "")/\(kind)" }
+}
+
 struct VaultSummary: Codable, Identifiable, Hashable {
     static let typePersonal = "personal"
     static let typeShared = "shared"
@@ -120,11 +130,14 @@ struct VaultSummary: Codable, Identifiable, Hashable {
     var itemCount: Int
     /// Set for organization vaults only.
     var organizationID: String
+    var readIssues: [ReadIssue] = []
+    var isPersonalExtra = false
 
     var isOrganization: Bool { type == Self.typeOrganization }
 
     enum CodingKeys: String, CodingKey {
         case id, name, type, role, itemCount
+        case readIssues, isPersonalExtra
         case organizationID = "organizationId"
     }
 
@@ -145,6 +158,8 @@ struct VaultSummary: Codable, Identifiable, Hashable {
         role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
         itemCount = try container.decodeIfPresent(Int.self, forKey: .itemCount) ?? 0
         organizationID = try container.decodeIfPresent(String.self, forKey: .organizationID) ?? ""
+        readIssues = try container.decodeIfPresent([ReadIssue].self, forKey: .readIssues) ?? []
+        isPersonalExtra = try container.decodeIfPresent(Bool.self, forKey: .isPersonalExtra) ?? false
     }
 }
 
@@ -168,6 +183,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
 
     var id: String
     var revision: String
+    var readIssue: ReadIssue? = nil
     var category: String
     var title: String
     var username: String
@@ -214,6 +230,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server, database, icon
+        case readIssue
         case allURL = "urls"
         case allTag = "tags"
         case allField = "fields"
@@ -255,6 +272,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
         revision = try container.decodeIfPresent(String.self, forKey: .revision) ?? ""
+        readIssue = try container.decodeIfPresent(ReadIssue.self, forKey: .readIssue)
         category = try container.decodeIfPresent(String.self, forKey: .category) ?? ""
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
