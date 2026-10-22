@@ -2127,8 +2127,10 @@ async function finishImport(progress: ImportProgress): Promise<void> {
   if (allVault) {
     store.allVault = allVault;
   }
-  if (progress.vaultId === store.selectedVaultID) {
-    const allItem = await runAction(() => api.listAllItem(progress.vaultId));
+  // A mixed import reports no single vault; the reviewed groups name every destination.
+  const allDestinationID = [progress.vaultId, ...(store.importPreview?.groups ?? []).map((group) => group.vaultId)];
+  if (store.selectedVaultID && allDestinationID.includes(store.selectedVaultID)) {
+    const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
     if (allItem) {
       store.allItem = sortAllItem(allItem);
     }

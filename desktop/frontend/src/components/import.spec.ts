@@ -129,6 +129,23 @@ describe("Import store", () => {
     expect(store.store.noticeMessage).toBe("Imported 1 item into Work");
   });
 
+  it("reloads the open vault after an import that sent items to several vaults", async () => {
+    const groups = [
+      { id: "private-source", name: "1Password Private", isPrivate: true, itemCount: 1, vaultId: "personal", vaultName: "Personal", members: [] },
+      { id: "shared-source", name: "1Password Team", isPrivate: false, itemCount: 1, vaultId: "work", vaultName: "Work", members: [] },
+    ];
+    api.chooseImportFile.mockResolvedValue(createImportPreview({ vaultId: "", vaultName: "", groups }));
+    await store.openImport();
+    await store.chooseImportFile("personal", "1pux");
+    api.startImport.mockResolvedValue(createImportProgress({ vaultId: "", vaultName: "the mapped vaults" }));
+    api.continueImport.mockResolvedValue(createImportProgress({ vaultId: "", vaultName: "the mapped vaults", savedCount: 2, totalCount: 2, isDone: true }));
+    api.listAllItem.mockResolvedValue([createItem({ id: "a", title: "Imported into Personal" })]);
+    await store.startImport(false);
+    expect(api.startImport).toHaveBeenCalledWith("", false);
+    expect(api.listAllItem).toHaveBeenCalledWith("personal");
+    expect(store.store.allItem.map((vaultItem) => vaultItem.title)).toEqual(["Imported into Personal"]);
+  });
+
   it("pauses on an error and continues where it stopped", async () => {
     await store.openImport();
     await store.chooseImportFile("personal", "");
