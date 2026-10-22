@@ -12,6 +12,25 @@ let storedSettings: Record<string, unknown>;
 let allClipboardText: string[];
 const closeWindow = vi.fn();
 
+type TabListener = (tabId: number, change: { url?: string }, tab: { id: number; url?: string }) => void;
+let tabUrl: string | undefined;
+let allTabListener: TabListener[];
+let tabReadGate: Promise<unknown>;
+
+// navigateTab moves the popup's target tab, as Chrome reports it to tabs.onUpdated; undefined is a page whose address
+// the extension may not read.
+function navigateTab(url: string | undefined): void {
+  tabUrl = url;
+  for (const listener of allTabListener) listener(42, { url }, { id: 42, url });
+}
+
+// holdTabRead makes tabs.get answer only when released.
+function holdTabRead(): { release: () => void } {
+  const gate = Promise.withResolvers<void>();
+  tabReadGate = gate.promise;
+  return { release: () => gate.resolve() };
+}
+
 const allLogin: LoginSummary[] = [
   { vaultID: "v1", itemID: "i1", title: "Example", username: "alex@example.com", vaultName: "Personal" },
   { vaultID: "v2", itemID: "i2", title: "Example (work)", username: "alex@work.example", vaultName: "Family" },
@@ -30,7 +49,18 @@ function installChrome(): void {
         }
       }),
     },
-    tabs: { query: vi.fn(async () => [{ id: 42 }]), create: vi.fn(async () => ({})) },
+    tabs: {
+      query: vi.fn(async () => [{ id: 42 }]),
+      get: vi.fn(async (id: number) => {
+        await tabReadGate;
+        return { id, url: tabUrl };
+      }),
+      onUpdated: {
+        addListener: vi.fn((listener: TabListener) => allTabListener.push(listener)),
+        removeListener: vi.fn((listener: TabListener) => (allTabListener = allTabListener.filter((other) => other !== listener))),
+      },
+      create: vi.fn(async () => ({})),
+    },
     storage: {
       local: {
         get: vi.fn(async (allKey: string[]) => Object.fromEntries(allKey.filter((key) => key in storedSettings).map((key) => [key, storedSettings[key]]))),
@@ -61,6 +91,9 @@ async function mountApp(props: Record<string, unknown> = {}) {
 beforeEach(() => {
   allMessage = [];
   storedSettings = {};
+  tabUrl = "https://example.com/login";
+  allTabListener = [];
+  tabReadGate = Promise.resolve();
   allClipboardText = [];
   installChrome();
   vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(async (text: string) => void allClipboardText.push(text)) } });
@@ -668,34 +701,75 @@ describe("vault", () => {
     expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(true);
   });
 
-  async function openNewItemBeforeThePageIsKnown() {
-    const pageMatch = Promise.withResolvers<{ url: string; allLogin: LoginSummary[] }>();
-    respondWithVault({ "popup.listVaults": () => [{ vaultID: "v1", name: "Personal", isPersonal: true }], "popup.matchLogins": () => pageMatch.promise });
+  async function openNewItem(overrides: Partial<Record<PopupMessage["type"], Handler>> = {}) {
+    respondWithVault({ "popup.listVaults": () => [{ vaultID: "v1", name: "Personal", isPersonal: true }], ...overrides });
     respondWithStateOverride({ isCreateAvailable: true });
     const wrapper = await mountApp();
     await wrapper.find('[data-testid="new-item-open"]').trigger("click");
     await flushPromises();
-    const answerPageMatch = async () => {
-      pageMatch.resolve({ url: "https://www.example.com/login", allLogin });
-      await flushPromises();
-    };
-    return { wrapper, answerPageMatch };
+    const readField = (field: "title" | "url") => (wrapper.find(`[data-testid="new-${field}"]`).element as HTMLInputElement).value;
+    return { wrapper, readField };
   }
 
-  it("gives a new login the page's site when the page's address arrives after the form opened", async () => {
-    const { wrapper, answerPageMatch } = await openNewItemBeforeThePageIsKnown();
-    expect((wrapper.find('[data-testid="new-title"]').element as HTMLInputElement).value).toBe("");
-    await answerPageMatch();
-    expect((wrapper.find('[data-testid="new-title"]').element as HTMLInputElement).value).toBe("example.com");
-    expect((wrapper.find('[data-testid="new-url"]').element as HTMLInputElement).value).toBe("https://www.example.com");
+  it("gives a new login the page's site while the page's logins are still loading", async () => {
+    const { readField } = await openNewItem({ "popup.matchLogins": () => Promise.withResolvers().promise });
+    expect(readField("title")).toBe("example.com");
+    expect(readField("url")).toBe("https://example.com");
   });
 
-  it("keeps a title typed before the page's address arrives", async () => {
-    const { wrapper, answerPageMatch } = await openNewItemBeforeThePageIsKnown();
+  it("keeps what the user typed, or cleared, before the page's address arrives", async () => {
+    const tabRead = holdTabRead();
+    const pageMatch = Promise.withResolvers<{ url: string; allLogin: LoginSummary[] }>();
+    const { wrapper, readField } = await openNewItem({ "popup.matchLogins": () => pageMatch.promise });
     await wrapper.find('[data-testid="new-title"]').setValue("My bank");
-    await answerPageMatch();
-    expect((wrapper.find('[data-testid="new-title"]').element as HTMLInputElement).value).toBe("My bank");
-    expect((wrapper.find('[data-testid="new-url"]').element as HTMLInputElement).value).toBe("https://www.example.com");
+    await wrapper.find('[data-testid="new-url"]').setValue("https://bank.example");
+    await wrapper.find('[data-testid="new-url"]').setValue("");
+    pageMatch.resolve({ url: "https://example.com/login", allLogin });
+    tabRead.release();
+    await flushPromises();
+    expect(readField("title")).toBe("My bank");
+    expect(readField("url")).toBe("");
+  });
+
+  it("follows the tab to another site, but not into fields the user cleared", async () => {
+    const { wrapper, readField } = await openNewItem();
+    await wrapper.find('[data-testid="new-url"]').setValue("");
+    navigateTab("https://www.second.example/login");
+    await flushPromises();
+    expect(readField("title")).toBe("second.example");
+    expect(readField("url")).toBe("");
+    await wrapper.find('[data-testid="new-title"]').setValue("");
+    navigateTab("https://third.example/login");
+    await flushPromises();
+    expect(readField("title")).toBe("");
+  });
+
+  it("saves the site the tab is on when it navigated while the page's logins were loading", async () => {
+    let created: unknown;
+    const pageMatch = Promise.withResolvers<{ url: string; allLogin: LoginSummary[] }>();
+    const { wrapper, readField } = await openNewItem({
+      "popup.matchLogins": () => pageMatch.promise,
+      "popup.createItem": (message) => {
+        created = message;
+        return { ...allItem[1], itemID: "new", title: "My bank" };
+      },
+    });
+    await wrapper.find('[data-testid="new-title"]').setValue("My bank");
+    navigateTab("https://bank.example/login");
+    pageMatch.resolve({ url: "https://example.com/login", allLogin });
+    await flushPromises();
+    expect(readField("url")).toBe("https://bank.example");
+    await wrapper.find('[data-testid="new-item"]').trigger("submit");
+    await flushPromises();
+    expect(created).toMatchObject({ type: "popup.createItem", item: { title: "My bank", url: "https://bank.example" } });
+  });
+
+  it("offers no site once the tab leaves the web", async () => {
+    const { readField } = await openNewItem();
+    navigateTab(undefined);
+    await flushPromises();
+    expect(readField("title")).toBe("");
+    expect(readField("url")).toBe("");
   });
 
   it("moves between the search box and the rows with the arrow keys, and copies a login's password with Ctrl+C", async () => {

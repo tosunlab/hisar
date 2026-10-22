@@ -45,3 +45,16 @@ test("creates a login from the popup for the page", async () => {
   await expect(popup.getByTestId("item-title")).toHaveText("Test site 2");
   expect(harness.readState().allLogin.find((login) => login.title === "Test site 2")).toMatchObject({ username: "second@example.com", url: harness.site.origin });
 });
+
+test("moves a new login's site to the page the tab navigates to", async () => {
+  await harness.pairWithoutPopup();
+  const loginPage = await harness.context.newPage();
+  await loginPage.goto(`${harness.site.origin}/login`);
+  const popup = await harness.context.newPage();
+  await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=${await harness.getTabId(`${harness.site.origin}/login`)}`);
+  await popup.getByTestId("new-item-open").click();
+  await expect(popup.getByTestId("new-url")).toHaveValue(harness.site.origin);
+  await loginPage.goto(`${harness.site.crossOrigin}/login`);
+  await expect(popup.getByTestId("new-title")).toHaveValue("localhost");
+  await expect(popup.getByTestId("new-url")).toHaveValue(harness.site.crossOrigin);
+});
