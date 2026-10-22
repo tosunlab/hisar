@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import type { ItemSummary, NewItem, VaultSummary } from "../../shared/protocol";
 import { describeError, sendToBackground } from "../api";
 import AppIcon from "./AppIcon.vue";
 
-// pageUrl is the tab's address: a new login starts with its site as the title and website, and a generated password.
+// pageUrl is the tab's address: a new login starts with its site as the title and website, and a generated password. The
+// address can arrive after the form opens, since the popup learns it with the page's logins.
 const props = defineProps<{ pageUrl: string }>();
 const emit = defineEmits<{ cancel: []; created: [item: ItemSummary] }>();
 
@@ -29,11 +30,11 @@ const pageOrigin = computed(() => {
 const category = ref<Category>("login");
 const allVault = ref<VaultSummary[]>([]);
 const vaultID = ref("");
-const title = ref(pageOrigin.value ? new URL(pageOrigin.value).hostname.replace(/^www\./, "") : "");
+const title = ref("");
 const username = ref("");
 const password = ref("");
 const isPasswordShown = ref(false);
-const url = ref(pageOrigin.value);
+const url = ref("");
 const notes = ref("");
 const cardholder = ref("");
 const cardNumber = ref("");
@@ -46,6 +47,16 @@ const phone = ref("");
 const errorMessage = ref("");
 const isSaving = ref(false);
 const titleInput = ref<HTMLInputElement>();
+
+watch(
+  pageOrigin,
+  (origin) => {
+    if (!origin) return;
+    if (!title.value) title.value = new URL(origin).hostname.replace(/^www\./, "");
+    if (!url.value) url.value = origin;
+  },
+  { immediate: true },
+);
 
 async function generatePassword(): Promise<void> {
   try {

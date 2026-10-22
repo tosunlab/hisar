@@ -668,6 +668,36 @@ describe("vault", () => {
     expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(true);
   });
 
+  async function openNewItemBeforeThePageIsKnown() {
+    const pageMatch = Promise.withResolvers<{ url: string; allLogin: LoginSummary[] }>();
+    respondWithVault({ "popup.listVaults": () => [{ vaultID: "v1", name: "Personal", isPersonal: true }], "popup.matchLogins": () => pageMatch.promise });
+    respondWithStateOverride({ isCreateAvailable: true });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="new-item-open"]').trigger("click");
+    await flushPromises();
+    const answerPageMatch = async () => {
+      pageMatch.resolve({ url: "https://www.example.com/login", allLogin });
+      await flushPromises();
+    };
+    return { wrapper, answerPageMatch };
+  }
+
+  it("gives a new login the page's site when the page's address arrives after the form opened", async () => {
+    const { wrapper, answerPageMatch } = await openNewItemBeforeThePageIsKnown();
+    expect((wrapper.find('[data-testid="new-title"]').element as HTMLInputElement).value).toBe("");
+    await answerPageMatch();
+    expect((wrapper.find('[data-testid="new-title"]').element as HTMLInputElement).value).toBe("example.com");
+    expect((wrapper.find('[data-testid="new-url"]').element as HTMLInputElement).value).toBe("https://www.example.com");
+  });
+
+  it("keeps a title typed before the page's address arrives", async () => {
+    const { wrapper, answerPageMatch } = await openNewItemBeforeThePageIsKnown();
+    await wrapper.find('[data-testid="new-title"]').setValue("My bank");
+    await answerPageMatch();
+    expect((wrapper.find('[data-testid="new-title"]').element as HTMLInputElement).value).toBe("My bank");
+    expect((wrapper.find('[data-testid="new-url"]').element as HTMLInputElement).value).toBe("https://www.example.com");
+  });
+
   it("moves between the search box and the rows with the arrow keys, and copies a login's password with Ctrl+C", async () => {
     respondWithVault();
     const wrapper = await mountApp();
