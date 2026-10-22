@@ -1161,6 +1161,16 @@ final class AppModel: ObservableObject {
         removeEmergencyKitFile(path: export.emergencyKitPath)
     }
 
+    /// Exports and Emergency Kits, a pending recovery's included, live in the temporary folder only while their screen is
+    /// open, and no screen outlives the process. Whatever a killed process left there is deleted at launch, before any
+    /// account opens. The prefixes are those of the folders the exports and kits are written to.
+    static func deleteLeftoverKitFiles(in directory: URL = FileManager.default.temporaryDirectory) {
+        let allName = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in allName where ["Export-", "EmergencyKit-", "PendingRecovery-"].contains(where: { name.hasPrefix($0) }) {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
     func removeEmergencyKitFile(path: String) {
         guard !path.isEmpty else { return }
         try? FileManager.default.removeItem(at: URL(fileURLWithPath: path).deletingLastPathComponent())

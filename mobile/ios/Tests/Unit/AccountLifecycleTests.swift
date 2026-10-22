@@ -237,6 +237,25 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(model.pendingRecoveryExport?.secretKey, FakeBackend.secretKey)
     }
 
+    func testLaunchDeletesKitFilesTheLastProcessLeft() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("LaunchCleanup-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let allLeftover = ["PendingRecovery-1/Hisar Emergency Kit.pdf", "EmergencyKit-1/Hisar Emergency Kit.pdf", "Export-1/hisar-export.json"]
+            .map { directory.appendingPathComponent($0) }
+        let kept = directory.appendingPathComponent("Other-1/notes.txt")
+        for file in allLeftover + [kept] {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("x".utf8).write(to: file)
+        }
+
+        AppModel.deleteLeftoverKitFiles(in: directory)
+
+        for file in allLeftover {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "\(file.lastPathComponent) outlived the process that wrote it")
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path))
+    }
+
     func testPendingSignupKeepsProblemsWithoutApplyingStaleStatus() async {
         seedPendingRecovery()
         var staleStatus = VaultStatus.signedOut

@@ -10,6 +10,7 @@ struct HisarApp: App {
     private let lockEventRelay = LockEventRelay()
 
     init() {
+        AppModel.deleteLeftoverKitFiles()
         if ProcessInfo.processInfo.arguments.contains("-HisarUITest") {
             UIView.setAnimationsEnabled(false)
         }
