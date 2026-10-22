@@ -1,4 +1,5 @@
 import { request } from "../../api";
+import type { ReauthenticationProof } from "../../bridge/bridge";
 
 export type InviteRole = "member" | "admin";
 
@@ -49,14 +50,14 @@ export async function listInvites(): Promise<AdminInvite[]> {
   return (await request<{ invites: AdminInvite[] }>("GET", "/admin/invites")).invites;
 }
 
-export function createInvite(email: string, role: InviteRole): Promise<CreatedInvite> {
-  return request("POST", "/admin/invites", { body: { email, role } });
+export function createInvite(email: string, role: InviteRole, proof?: ReauthenticationProof): Promise<CreatedInvite> {
+  return request("POST", "/admin/invites", { body: { email, role, proof } });
 }
 
 export function revokeInvite(id: string): Promise<void> {
   return request("DELETE", `/admin/invites/${encodeURIComponent(id)}`);
 }
 
-export function resendInvite(id: string): Promise<CreatedInvite> {
-  return request("POST", `/admin/invites/${encodeURIComponent(id)}/resend`);
+export function resendInvite(id: string, proof?: ReauthenticationProof): Promise<CreatedInvite> {
+  return request("POST", `/admin/invites/${encodeURIComponent(id)}/resend`, { body: { proof } });
 }

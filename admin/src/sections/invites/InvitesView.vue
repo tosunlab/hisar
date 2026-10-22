@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { getErrorMessage } from "../../api";
+import { proveAdmin } from "../accounts/accounts";
 import {
   createInvite,
   describeDelivery,
@@ -25,6 +26,21 @@ const email = ref("");
 const role = ref<InviteRole>("member");
 const isCreating = ref(false);
 const createError = ref("");
+const secretKey = ref("");
+const password = ref("");
+const pendingResend = ref<AdminInvite | null>(null);
+const isProving = ref(false);
+
+function clearFactors(): void {
+  secretKey.value = "";
+  password.value = "";
+}
+
+function closeForm(): void {
+  isFormOpen.value = false;
+  pendingResend.value = null;
+  clearFactors();
+}
 
 const created = ref<CreatedInvite | null>(null);
 const copyMessage = ref("");
@@ -38,6 +54,7 @@ onMounted(async () => {
 });
 
 function openForm(): void {
+  closeForm();
   email.value = "";
   role.value = "member";
   createError.value = "";
@@ -56,12 +73,17 @@ async function submit(): Promise<void> {
   isCreating.value = true;
   createError.value = "";
   try {
-    showCreated(await createInvite(email.value, role.value));
-    isFormOpen.value = false;
+    isProving.value = role.value === "admin";
+    const proof = role.value === "admin" ? await proveAdmin(secretKey.value, password.value) : undefined;
+    clearFactors();
+    isProving.value = false;
+    showCreated(await createInvite(email.value, role.value, proof));
+    closeForm();
   } catch (error) {
     createError.value = getErrorMessage(error);
   } finally {
     isCreating.value = false;
+    isProving.value = false;
   }
 }
 
@@ -98,11 +120,37 @@ function revoke(invite: AdminInvite): Promise<void> {
   });
 }
 
-function resend(invite: AdminInvite): Promise<void> {
-  return changeInvite(invite, async () => {
-    isFormOpen.value = false;
+async function resend(invite: AdminInvite): Promise<void> {
+  if (invite.role === "admin") {
+    closeForm();
+    createError.value = "";
+    pendingResend.value = invite;
+    return;
+  }
+  await changeInvite(invite, async () => {
+    closeForm();
     showCreated(await resendInvite(invite.id), invite.id);
   });
+}
+
+async function submitResend(): Promise<void> {
+  const invite = pendingResend.value;
+  if (!invite) return;
+  isCreating.value = true;
+  createError.value = "";
+  try {
+    isProving.value = true;
+    const proof = await proveAdmin(secretKey.value, password.value);
+    clearFactors();
+    isProving.value = false;
+    showCreated(await resendInvite(invite.id, proof), invite.id);
+    closeForm();
+  } catch (error) {
+    createError.value = getErrorMessage(error);
+  } finally {
+    isProving.value = false;
+    isCreating.value = false;
+  }
 }
 </script>
 
@@ -110,16 +158,16 @@ function resend(invite: AdminInvite): Promise<void> {
   <section class="invites">
     <header class="title">
       <h1>Invites</h1>
-      <button type="button" class="primary" @click="openForm">Invite to Hisar…</button>
+      <button type="button" class="primary" :disabled="isCreating" @click="openForm">Invite to Hisar…</button>
     </header>
     <p class="description">Sign-up invites nobody has used yet. Each invite works once and expires after 7 days.</p>
 
     <form v-if="isFormOpen" class="panel" role="dialog" aria-label="Invite to Hisar" @submit.prevent="submit">
       <label class="field">
         <span>Email</span>
-        <input v-model="email" name="email" type="email" placeholder="name@example.com" autocomplete="off" spellcheck="false" required />
+        <input v-model="email" name="email" type="email" placeholder="name@example.com" autocomplete="off" spellcheck="false" :disabled="isCreating" required />
       </label>
-      <fieldset class="choices">
+      <fieldset class="choices" :disabled="isCreating">
         <legend>Role</legend>
         <label v-for="(label, value) in roleLabels" :key="value" class="choice">
           <input v-model="role" type="radio" name="role" :value="value" />
@@ -127,10 +175,37 @@ function resend(invite: AdminInvite): Promise<void> {
         </label>
         <span class="hint">An admin can also sign in to this dashboard.</span>
       </fieldset>
+      <template v-if="role === 'admin'">
+        <label class="field">
+          <span>Your Secret Key</span>
+          <input v-model="secretKey" name="secretKey" type="password" autocomplete="off" spellcheck="false" :disabled="isCreating" required />
+        </label>
+        <label class="field">
+          <span>Your master password</span>
+          <input v-model="password" name="password" type="password" autocomplete="current-password" :disabled="isCreating" required />
+        </label>
+      </template>
       <p v-if="createError" class="error" role="alert">{{ createError }}</p>
       <div class="actions">
-        <button type="button" class="ghost" @click="isFormOpen = false">Cancel</button>
-        <button type="submit" class="primary" :disabled="isCreating">{{ isCreating ? "Creating…" : "Create invite" }}</button>
+        <button type="button" class="ghost" :disabled="isCreating" @click="closeForm">Cancel</button>
+        <button type="submit" class="primary" :disabled="isCreating">{{ isProving ? "Checking master password…" : isCreating ? "Creating…" : "Create invite" }}</button>
+      </div>
+    </form>
+
+    <form v-if="pendingResend" class="panel" role="dialog" aria-label="Resend admin invite" @submit.prevent="submitResend">
+      <p>Send a new admin invite to {{ pendingResend.email }}. The old link will stop working.</p>
+      <label class="field">
+        <span>Your Secret Key</span>
+        <input v-model="secretKey" name="secretKey" type="password" autocomplete="off" spellcheck="false" :disabled="isCreating" required />
+      </label>
+      <label class="field">
+        <span>Your master password</span>
+        <input v-model="password" name="password" type="password" autocomplete="current-password" :disabled="isCreating" required />
+      </label>
+      <p v-if="createError" class="error" role="alert">{{ createError }}</p>
+      <div class="actions">
+        <button type="button" class="ghost" :disabled="isCreating" @click="closeForm">Cancel</button>
+        <button type="submit" class="primary" :disabled="isCreating">{{ isProving ? "Checking master password…" : isCreating ? "Sending…" : "Resend invite" }}</button>
       </div>
     </form>
 
@@ -172,8 +247,8 @@ function resend(invite: AdminInvite): Promise<void> {
             <td>{{ formatDate(invite.createdAt) }}</td>
             <td>{{ formatDate(invite.expiresAt) }}</td>
             <td class="row-actions">
-              <button type="button" class="ghost" :disabled="busyInviteId !== ''" @click="resend(invite)">Resend</button>
-              <button type="button" class="ghost danger" :disabled="busyInviteId !== ''" @click="revoke(invite)">Revoke</button>
+              <button type="button" class="ghost" :disabled="busyInviteId !== '' || isCreating" @click="resend(invite)">Resend</button>
+              <button type="button" class="ghost danger" :disabled="busyInviteId !== '' || isCreating" @click="revoke(invite)">Revoke</button>
             </td>
           </tr>
         </tbody>

@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -71,35 +72,39 @@ func (s *Store) DeleteUnusedInvite(ctx context.Context, tokenHash []byte) error 
 	return nil
 }
 
-// CreateAdminInvite creates an invite from the admin adminID, who must still be an active admin (ErrActorNotAdmin).
-func (s *Store) CreateAdminInvite(ctx context.Context, tokenHash []byte, email, role, adminID string, expiresAt time.Time) error {
+// CreateAdminInvite requires fresh proven authority for admin-role invites.
+func (s *Store) CreateAdminInvite(ctx context.Context, tokenHash []byte, email, role string, actor AdminActor, expiresAt time.Time) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
-		if err := requireActiveAdmin(ctx, transaction, adminID); err != nil {
+		if err := requireInviteAdmin(ctx, transaction, actor, role); err != nil {
 			return err
 		}
 		_, err := transaction.Exec(ctx, `INSERT INTO invites (token_hash, email, role, created_by, expires_at) VALUES ($1, $2, $3, $4, $5)`,
-			tokenHash, email, role, adminID, expiresAt)
+			tokenHash, email, role, actor.AccountID, expiresAt)
 		return err
 	})
 }
 
 // ReplaceInvite deletes the unused invite with an email of oldTokenHash and creates one for the same email and role
 // under newTokenHash, in one transaction, and returns the new invite; ErrNotFound when the old one is gone or used, and
-// ErrActorNotAdmin unless createdBy is still an active admin.
-func (s *Store) ReplaceInvite(ctx context.Context, oldTokenHash, newTokenHash []byte, createdBy string, expiresAt time.Time) (*AdminInvite, error) {
+// ErrActorNotAdmin unless actor is still an active admin.
+func (s *Store) ReplaceInvite(ctx context.Context, oldTokenHash, newTokenHash []byte, actor AdminActor, expiresAt time.Time) (*AdminInvite, error) {
 	var replaced *AdminInvite
 	err := pgx.BeginFunc(ctx, s.pool, func(transaction pgx.Tx) error {
-		if err := requireActiveAdmin(ctx, transaction, createdBy); err != nil {
+		var role string
+		if err := transaction.QueryRow(ctx, `SELECT role FROM invites WHERE token_hash = $1`, oldTokenHash).Scan(&role); err != nil {
+			return convertNoRowsToNotFound(err)
+		}
+		if err := requireInviteAdmin(ctx, transaction, actor, role); err != nil {
 			return err
 		}
-		var email, role string
+		var email string
 		err := transaction.QueryRow(ctx, `DELETE FROM invites WHERE token_hash = $1 AND used_at IS NULL AND email <> '' RETURNING email, role`,
 			oldTokenHash).Scan(&email, &role)
 		if err != nil {
 			return convertNoRowsToNotFound(err)
 		}
 		_, err = transaction.Exec(ctx, `INSERT INTO invites (token_hash, email, role, created_by, expires_at) VALUES ($1, $2, $3, $4, $5)`,
-			newTokenHash, email, role, createdBy, expiresAt)
+			newTokenHash, email, role, actor.AccountID, expiresAt)
 		if err != nil {
 			return err
 		}
@@ -107,4 +112,18 @@ func (s *Store) ReplaceInvite(ctx context.Context, oldTokenHash, newTokenHash []
 		return err
 	})
 	return replaced, err
+}
+
+func requireInviteAdmin(ctx context.Context, transaction pgx.Tx, actor AdminActor, role string) error {
+	if role == "admin" {
+		if len(actor.ProvenRecordHash) == 0 {
+			return ErrConflict
+		}
+		if _, _, _, err := lockProvenAccount(ctx, transaction, actor.AccountID, actor.TokenHash, actor.ProvenRecordHash); errors.Is(err, ErrNotFound) {
+			return ErrSessionEnded
+		} else if err != nil {
+			return err
+		}
+	}
+	return requireActiveAdmin(ctx, transaction, actor.AccountID)
 }
