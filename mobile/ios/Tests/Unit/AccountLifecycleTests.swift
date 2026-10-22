@@ -213,6 +213,30 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertTrue(backend.allPendingRecovery[0].kitSaved)
     }
 
+    func testLockWhilePreparingTheKitHidesItAndSaysToPrepareItAgain() async {
+        let model = await createUnlockedModel()
+        seedPendingRecovery(phase: "delivery-pending")
+        await model.refreshPendingRecovery()
+        let isPreparing = DispatchSemaphore(value: 0)
+        let mayFinish = DispatchSemaphore(value: 0)
+        backend.onExportPendingRecoveryEmergencyKit = {
+            isPreparing.signal()
+            mayFinish.wait()
+        }
+        let export = Task { await model.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password) }
+        while isPreparing.wait(timeout: .now()) == .timedOut {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        model.lock()
+        backend.onExportPendingRecoveryEmergencyKit = nil
+        mayFinish.signal()
+        await export.value
+        XCTAssertNil(model.pendingRecoveryExport)
+        XCTAssertEqual(model.errorMessage, "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again.")
+        await model.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertEqual(model.pendingRecoveryExport?.secretKey, FakeBackend.secretKey)
+    }
+
     func testPendingSignupKeepsProblemsWithoutApplyingStaleStatus() async {
         seedPendingRecovery()
         var staleStatus = VaultStatus.signedOut

@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -532,7 +533,7 @@ fun PendingRecoveryScreen(model: AppModel) {
     val export by model.pendingRecovery.export.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val error by model.errorMessage.collectAsStateWithLifecycle()
-    var selectedID by remember { mutableStateOf<String?>(null) }
+    var selectedID by rememberSaveable { mutableStateOf<String?>(null) }
     var password by remember { mutableStateOf("") }
     var secretKey by remember { mutableStateOf("") }
     var priorSecretKey by remember { mutableStateOf("") }
@@ -545,9 +546,6 @@ fun PendingRecoveryScreen(model: AppModel) {
         isDiscardConfirmationShown = false
     }
     BackHandler { model.pendingRecovery.close() }
-    DisposableEffect(Unit) {
-        onDispose { model.pendingRecovery.clearExport() }
-    }
     SettingsScreen("Account recovery", model.pendingRecovery::close, isTitleInline = true) {
         FormSection {
             FormRow {

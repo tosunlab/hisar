@@ -1018,8 +1018,12 @@ open class FakeBackend : VaultBackend {
         allPendingRecovery.removeAll { it.operationId == operationID }
     }
 
+    /** Runs while a pending recovery's Emergency Kit is prepared: a test can lock or sign out meanwhile. */
+    var onExportPendingRecoveryEmergencyKit: (() -> Unit)? = null
+
     override fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport {
         record("exportPendingRecoveryEmergencyKit")
+        onExportPendingRecoveryEmergencyKit?.invoke()
         val index = allPendingRecovery.indexOfFirst { it.operationId == operationID }
         if (password != pendingRecoveryPassword || index < 0 || allPendingRecovery[index].phase == "outcome-unknown") {
             throw BackendError("Resume this recovery before preparing the Emergency Kit.")

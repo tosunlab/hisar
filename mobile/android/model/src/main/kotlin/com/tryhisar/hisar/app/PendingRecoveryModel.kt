@@ -96,6 +96,11 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         val result = context.perform { it.exportPendingRecoveryEmergencyKit(operationID, password, directory) }
         if (result == null || startedEpoch != epoch || generation != exportGeneration) {
             directory.deleteRecursively()
+            // A lock, sign-out or account switch hides the Secret Key; a newer export, another record or closing the
+            // screen is the user's own choice and needs no word.
+            if (result != null && startedEpoch != epoch) {
+                context.errorMessage.value = "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again."
+            }
             return@runInModel false
         }
         mutableExport.value = result

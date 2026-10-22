@@ -1287,9 +1287,14 @@ final class AppModel: ObservableObject {
         let epoch = lifecycleEpoch
         let generation = pendingDeliveryGeneration
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("PendingRecovery-\(UUID().uuidString)", isDirectory: true)
-        guard let result = await perform({ try $0.exportPendingRecoveryEmergencyKit(operationID: operationID, password: password, directory: directory) }),
-              epoch == lifecycleEpoch, generation == pendingDeliveryGeneration else {
+        let result = await perform { try $0.exportPendingRecoveryEmergencyKit(operationID: operationID, password: password, directory: directory) }
+        guard let result, epoch == lifecycleEpoch, generation == pendingDeliveryGeneration else {
             try? FileManager.default.removeItem(at: directory)
+            // A lock, sign-out or account switch hides the Secret Key; a newer export, another record or closing the
+            // screen is the user's own choice and needs no word.
+            if result != nil && epoch != lifecycleEpoch {
+                errorMessage = "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again."
+            }
             return
         }
         pendingRecoveryExport = result

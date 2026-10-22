@@ -28,6 +28,8 @@ class FakeBackend: VaultBackend {
     /// Runs when a refresh lists the passkeys, its last call, after the unlock check: a test can sign out or lock while a
     /// refresh that listed everything is still in flight.
     var onListAllPasskey: (() -> Void)?
+    /// Runs while a pending recovery's Emergency Kit is prepared: a test can lock or sign out meanwhile.
+    var onExportPendingRecoveryEmergencyKit: (() -> Void)?
     var allMember: [Member] = []
     var allVaultMemberByVaultID: [String: [Member]] = [:]
     var allInvitedEmail: [String] = []
@@ -943,6 +945,7 @@ extension FakeBackend {
 
     func exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: URL) throws -> PendingRecoveryExport {
         record("exportPendingRecoveryEmergencyKit")
+        onExportPendingRecoveryEmergencyKit?()
         guard password == pendingRecoveryPassword,
               let index = allPendingRecovery.firstIndex(where: { $0.operationId == operationID }),
               allPendingRecovery[index].phase != "outcome-unknown" else {

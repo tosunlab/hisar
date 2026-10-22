@@ -226,6 +226,24 @@ class AccountLifecycleTests {
     }
 
     @Test
+    fun testLockWhilePreparingTheKitHidesItAndSaysToPrepareItAgain() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        seedPendingRecovery(harness.backend, "delivery-pending")
+        model.pendingRecovery.refresh()
+        harness.backend.onExportPendingRecoveryEmergencyKit = { model.applyStatus(harness.backend.lock()) }
+        assertFalse(model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
+        assertNull(model.pendingRecovery.export.value)
+        assertEquals(
+            "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again.",
+            model.errorMessage.value,
+        )
+        harness.backend.onExportPendingRecoveryEmergencyKit = null
+        assertTrue(model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
+        assertEquals(FakeBackend.SECRET_KEY, model.pendingRecovery.export.value?.secretKey)
+    }
+
+    @Test
     fun testPendingSignupKeepsProblemsWithoutApplyingStaleStatus() = runTest {
         val harness = AppModelHarness(this)
         seedPendingRecovery(harness.backend)

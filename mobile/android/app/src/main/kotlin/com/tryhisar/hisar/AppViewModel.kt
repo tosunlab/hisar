@@ -43,7 +43,9 @@ class AppViewModel(private val provider: BackendProvider) : ViewModel() {
 
     fun copySecret(text: String): Boolean = provider.copySecret(text)
 
+    // Leaving Hisar for good removes a prepared Emergency Kit; turning the phone only recreates the screen, which keeps it.
     override fun onCleared() {
+        model.pendingRecovery.clearExport()
         ProcessLifecycleOwner.get().lifecycle.removeObserver(processObserver)
     }
 }
