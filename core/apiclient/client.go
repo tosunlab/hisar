@@ -66,6 +66,15 @@ var ErrAccountSuspended = errors.New(apitypes.AccountSuspendedMessage)
 // ErrInsecureRedirect is a redirect from https to plain http, which would expose the bearer and the traffic.
 var ErrInsecureRedirect = errors.New("the server redirected from https to an unencrypted http address")
 
+// ResourceBudgetError is the server's 507: the change would grow a vault, an account or an organization past its growth
+// budget. Message is the server's sentence saying what to remove. It is not an APIError, so no check for a 409 mistakes
+// it for a conflict to merge or retry.
+type ResourceBudgetError struct {
+	Message string
+}
+
+func (e *ResourceBudgetError) Error() string { return e.Message }
+
 // readError returns the error of an answer that is not a success, from its status and JSON body.
 func readError(status int, data []byte) error {
 	var errorBody apitypes.Error
@@ -74,6 +83,9 @@ func readError(status int, data []byte) error {
 	}
 	if status == http.StatusForbidden && errorBody.Error == apitypes.AccountSuspendedMessage {
 		return ErrAccountSuspended
+	}
+	if status == http.StatusInsufficientStorage {
+		return &ResourceBudgetError{Message: errorBody.Error}
 	}
 	return &APIError{Status: status, Message: errorBody.Error}
 }

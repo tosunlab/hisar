@@ -351,13 +351,31 @@ var statusByKind = map[service.Kind]int{
 	service.KindGone:            fiber.StatusGone,
 }
 
+// resourceBudgetMessages tells the user what to remove when a growth budget (store.ExceededResource) refuses a change.
+var resourceBudgetMessages = map[string]string{
+	"vaults":               "You have created as many vaults as one account can. Delete vaults you no longer need, then try again.",
+	"devices":              "This account is already signed in on as many devices as it can be. Sign out devices you no longer use in Settings > Devices on a device that is still signed in, then try again.",
+	"organizations":        "You have created as many organizations as one account can. Delete an organization you no longer need, then try again.",
+	"teams":                "This organization has as many teams as it can have. Delete teams it no longer needs, then try again.",
+	"organization members": "This organization has as many members as it can have. Remove people who no longer need it, then try again.",
+	"team memberships":     "This organization's teams have as many members as they can have. Remove people from teams they no longer need, then try again.",
+	"team grants":          "This organization's teams have access to as many vaults as they can. Remove vaults from teams that no longer need them, then try again.",
+	"vault grants":         "This vault is shared with as many people as it can be. Remove people who no longer need it, then try again.",
+	"history":              "This vault's item history is full. Its items stay readable and exportable. Delete items you no longer need, or wait for the server to remove old item versions, then try again.",
+}
+
 // handleError renders refusals (*service.Error, *fiber.Error) as JSON and hides all other errors behind a 500. An item
 // conflict answers 409 with the current item, which the client needs to merge; items sealed with a key a rotation
 // replaced answer 409 with apitypes.KeyChangedResponse, and a deletion whose plan changed with
-// apitypes.DeletionPlanChangedResponse.
+// apitypes.DeletionPlanChangedResponse. A growth budget answers 507, which no client reads as a conflict to merge or
+// retry, and which clients of every version show with its sentence.
 func handleError(c fiber.Ctx, err error) error {
-	if store.IsResourceBudget(err) {
-		return c.Status(fiber.StatusConflict).JSON(apitypes.Error{Error: "This collection has reached its resource growth budget. Existing data remains readable and exportable. Delete unneeded vaults or other objects, or wait for configured history retention, before adding more."})
+	if resource := store.ExceededResource(err); resource != "" {
+		message, ok := resourceBudgetMessages[resource]
+		if !ok {
+			message = "This has reached its growth limit on the server. Delete what you no longer need, then try again."
+		}
+		return c.Status(fiber.StatusInsufficientStorage).JSON(apitypes.Error{Error: message})
 	}
 	var conflict *service.ItemConflictError
 	if errors.As(err, &conflict) {

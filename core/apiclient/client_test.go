@@ -67,6 +67,18 @@ func TestConflictReturnsCurrent(t *testing.T) {
 	}
 }
 
+func TestResourceBudgetIsNotAConflict(t *testing.T) {
+	fakeClient := startFakeServer(t, func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusInsufficientStorage)
+		json.NewEncoder(writer).Encode(apitypes.Error{Error: "This vault's item history is full."})
+	})
+	_, current, err := fakeClient.PutItem(context.Background(), "v", "i", "rev-0", &apitypes.PutItemRequest{})
+	var budgetError *ResourceBudgetError
+	if !errors.As(err, &budgetError) || err.Error() != "This vault's item history is full." || current != nil || IsStatus(err, http.StatusConflict) {
+		t.Fatalf("cur=%+v err=%v", current, err)
+	}
+}
+
 func TestErrors(t *testing.T) {
 	cases := []struct {
 		status int

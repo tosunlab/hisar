@@ -215,7 +215,17 @@ func (s *Store) CreateDeviceSession(ctx context.Context, device *Device, session
 	})
 }
 
+// insertDeviceSession first revokes the account's devices without a live session: a session is never created for an
+// existing device and an expired one never comes back, so they can never be used again, and only signed-in devices
+// count against the device budget. Rows are locked in ID order so two sign-ins of one account cannot deadlock.
 func insertDeviceSession(ctx context.Context, transaction pgx.Tx, device *Device, session *Session) error {
+	if _, err := transaction.Exec(ctx, `
+		UPDATE devices SET revoked_at = now() WHERE id IN (
+			SELECT d.id FROM devices d WHERE d.account_id = $1 AND d.revoked_at IS NULL
+			  AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.device_id = d.id AND s.expires_at > now())
+			ORDER BY d.id FOR UPDATE)`, device.AccountID); err != nil {
+		return err
+	}
 	if _, err := transaction.Exec(ctx,
 		`INSERT INTO devices (id, account_id, name, platform) VALUES ($1, $2, $3, $4)`,
 		device.ID, device.AccountID, device.Name, device.Platform); err != nil {

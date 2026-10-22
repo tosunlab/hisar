@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"slices"
+	"testing"
+	"time"
+
 	"github.com/google/uuid"
 	"github.com/tryhisar/hisar/core/apitypes"
-	"testing"
 )
 
 func TestLegacyOverBudgetInventoryCanReadAndDeleteButNotGrow(t *testing.T) {
@@ -75,6 +78,72 @@ func TestLegacyOverBudgetInventoryCanReadAndDeleteButNotGrow(t *testing.T) {
 		t.Fatalf("rows=%d charged=%d", actual, charged)
 	}
 	t.Logf("legacy over-budget smoke traversed=%d pages=%d; refused growth, deleted safely, reused one freed slot", count, pages)
+}
+
+func TestFirstUsageRowIsCapacityChecked(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "fresh", "fresh@example.com")
+	_, err := database.pool.Exec(ctx, `INSERT INTO vaults(id,type,enc_name,created_by) SELECT gen_random_uuid(),'shared','x'::bytea,'fresh' FROM generate_series(1,1100)`)
+	if ExceededResource(err) != "vaults" {
+		t.Fatalf("one statement created 1,100 vaults for a creator with no usage yet: %v", err)
+	}
+	transaction, err := database.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := transaction.Exec(ctx, `INSERT INTO vaults(id,type,enc_name,created_by) SELECT gen_random_uuid(),'shared','x'::bytea,'fresh' FROM generate_series(1,2000)`); err != nil {
+		t.Fatal(err)
+	}
+	if err := transaction.Commit(ctx); ExceededResource(err) != "vaults" {
+		t.Fatalf("a transaction committed 2,000 vaults for a creator with no usage yet: %v", err)
+	}
+	if _, err := database.pool.Exec(ctx, `INSERT INTO vaults(id,type,enc_name,created_by) SELECT gen_random_uuid(),'shared','x'::bytea,'fresh' FROM generate_series(1,1024)`); err != nil {
+		t.Fatalf("a first usage exactly at the budget was refused: %v", err)
+	}
+	if rows, charged := countQueryRow(t, database, `SELECT count(*) FROM vaults WHERE created_by='fresh'`),
+		countQueryRow(t, database, `SELECT used FROM resource_usage WHERE resource='vaults' AND scope='fresh'`); rows != 1024 || charged != rows {
+		t.Fatalf("rows=%d charged=%d", rows, charged)
+	}
+}
+
+func TestNewDeviceTakesThePlaceOfDevicesWithoutALiveSession(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	firstDevice, _ := createTestAccount(t, database, "owner", "owner@example.com")
+	if _, err := database.pool.Exec(ctx, `
+		WITH ended AS (INSERT INTO devices(id,account_id,name,platform) SELECT gen_random_uuid(),'owner','ended','p' FROM generate_series(1,255) RETURNING id)
+		INSERT INTO sessions(token_hash,account_id,device_id,expires_at) SELECT uuid_send(gen_random_uuid()),'owner',id,now()-interval '1 second' FROM ended WHERE random()<0.5`); err != nil {
+		t.Fatal(err)
+	}
+	signIn := func(name string) (*Device, error) {
+		device := &Device{ID: uuid.NewString(), AccountID: "owner", Name: name, Platform: "p"}
+		return device, database.CreateDeviceSession(ctx, device, &Session{TokenHash: []byte(name), AccountID: "owner", DeviceID: device.ID, ExpiresAt: time.Now().Add(time.Hour)}, testRecordHash())
+	}
+	if _, err := signIn("new"); err != nil {
+		t.Fatalf("sign-in refused while 255 of 256 devices had no live session: %v", err)
+	}
+	listed, err := database.ListDevices(ctx, "owner")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(listed) != 2 || countQueryRow(t, database, `SELECT used FROM resource_usage WHERE resource='devices' AND scope='owner'`) != 2 ||
+		!slices.ContainsFunc(listed, func(device Device) bool { return device.ID == firstDevice.ID }) {
+		t.Fatalf("after the sign-in the account lists %+v", listed)
+	}
+	if _, err := database.pool.Exec(ctx, `
+		WITH live AS (INSERT INTO devices(id,account_id,name,platform) SELECT gen_random_uuid(),'owner','live','p' FROM generate_series(1,254) RETURNING id)
+		INSERT INTO sessions(token_hash,account_id,device_id,expires_at) SELECT uuid_send(gen_random_uuid()),'owner',id,now()+interval '1 hour' FROM live`); err != nil {
+		t.Fatal(err)
+	}
+	refused, err := signIn("one too many")
+	if ExceededResource(err) != "devices" {
+		t.Fatalf("a 257th live device was accepted: %v", err)
+	}
+	if countQueryRow(t, database, `SELECT count(*) FROM devices WHERE id=$1`, refused.ID) != 0 ||
+		countQueryRow(t, database, `SELECT count(*) FROM devices WHERE account_id='owner' AND revoked_at IS NULL`) != 256 {
+		t.Fatal("the refused sign-in left a device or signed one out")
+	}
 }
 
 func TestCollectionCursorRejectsMutationAndCrossAccountReuse(t *testing.T) {

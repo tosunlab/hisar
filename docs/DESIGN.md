@@ -770,14 +770,18 @@ New clients accept a complete ordinary response from an old server only within a
 
 #### 8.2.2 Transactional growth budgets
 
-Migration 00017 records existing counts without trimming data. Positive net growth is refused with an actionable 409 at these policy envelopes:
+Migration 00017 records existing counts without trimming data. Positive net growth is refused at these policy envelopes:
 
 | Scope | Growth budget |
 |---|---|
 | Creator | 1,024 vaults; 128 organizations |
-| Account | 256 active devices |
+| Account | 256 signed-in devices |
 | Organization | 1,024 teams; 4,096 members; 32,768 team memberships; 16,384 team-to-vault grants |
 | Vault | 4,096 access grants; 1 GiB of history charges |
+
+A refusal answers 507 Insufficient Storage with `{"error": …}`, a sentence that names the full budget and what to remove. It is deliberately not 409: the item, sharing, rotation and preferences calls read 409 as a conflict to merge or retry, so a budget refusal there would reach the user as "changed on another device" or be retried. Clients of every version show the sentence; the Go client returns it as `apiclient.ResourceBudgetError`. A scope's first usage is checked like every later one, so one transaction cannot create more than a budget from zero.
+
+Every sign-in revokes the account's devices that have no live session before it adds its own. A session is only created with a new device and an expired session never comes back, so such a device can never be used again; a device signed out with `logout` or by session expiry therefore stops holding a place, and repeated sign-ins never lock an account out. The budget then refuses only a 257th device with a live session, and its sentence says to sign out devices in Settings > Devices from one still signed in.
 
 A history revision costs its encrypted overview and details plus 256 bytes. That fixed charge conservatively accounts for row/index overhead; it is not a claim about compressed disk usage. The counts and byte envelopes bound growth rather than measured production demand. There is no second independent item-count limit. Existing over-budget data remains readable through every page, exportable and removable. One live-to-deleted transition remains possible over the history budget and is charged; repeated tombstone revisions are not exempt. Rotation must pass the same before/after history-growth check, not gain a blanket exemption. Daily retention pruning locks eligible vaults without waiting and skips busy writers until the next prune, preserving each writer's stable history baseline.
 

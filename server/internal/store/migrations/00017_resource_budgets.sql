@@ -43,6 +43,8 @@ $$;
 CREATE FUNCTION adjust_resource_usage(resource_name text,scope_key text,change bigint,capacity_limit bigint) RETURNS void LANGUAGE plpgsql AS $$
 BEGIN
  IF change=0 THEN RETURN; END IF;
+ -- A scope without a row has used nothing, and the conflict branch below never sees its first growth.
+ IF change>capacity_limit THEN RAISE EXCEPTION USING ERRCODE='P0001',MESSAGE='resource growth budget exceeded',DETAIL=resource_name; END IF;
  INSERT INTO resource_usage(resource,scope,used) VALUES(resource_name,scope_key,greatest(change,0))
  ON CONFLICT(resource,scope) DO UPDATE SET used=resource_usage.used+change
  WHERE change<=0 OR resource_usage.used+change<=capacity_limit;
