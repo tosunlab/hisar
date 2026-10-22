@@ -42,8 +42,8 @@ class HisarUITestCase: XCTestCase {
     }
 
     // Waits until the element takes a tap: a row behind a closing sheet, or a button of a dialog still animating in, exists
-    // before it is hittable. iOS's Save Password sheet can come up seconds after a save, later than dismissSavePasswordPrompt
-    // looks for it, and cover the app; it is dismissed here too.
+    // before it is hittable. iOS's Save Password sheet can come up seconds after signing in or changing the master password,
+    // later than dismissSavePasswordPrompt looks for it, and cover the app; it is dismissed here too.
     func waitForHittable(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {

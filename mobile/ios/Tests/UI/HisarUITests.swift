@@ -122,8 +122,6 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("add-server")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "build.example.com:2222 · deploy")).firstMatch)
-        // A server's editor has a username and password, so iOS may offer to save them, as after a login.
-        dismissSavePasswordPrompt()
         XCTAssertFalse(app.staticTexts["server-password-from-the-phone"].exists, "the password is shown before it is revealed")
         saveScreenshot("server")
         goBack()
@@ -139,7 +137,6 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("add-database")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "PostgreSQL · db.example.com:5432/app")).firstMatch)
-        dismissSavePasswordPrompt()
         waitFor(app.descendants(matching: .any)["database-connection-string"].firstMatch)
         XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "database-password-from-the-phone")).firstMatch.exists, "the connection string is shown before it is revealed")
         saveScreenshot("database")

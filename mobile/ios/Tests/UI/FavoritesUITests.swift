@@ -10,7 +10,6 @@ final class FavoritesUITests: HisarUITestCase {
         saveScreenshot("favorites-empty")
 
         addLogin(title: "GitHub", username: "octocat", password: "favorite-github-password", website: "https://github.com")
-        dismissSavePasswordPrompt()
         choose("add-login", from: "add-item")
         type("AWS Console", into: app.textFields["editor-title"])
         type("root", into: app.textFields["editor-username"])
@@ -25,7 +24,6 @@ final class FavoritesUITests: HisarUITestCase {
         saveScreenshot("item-icon-picker")
         app.buttons["icon-done"].tap()
         app.buttons["editor-save"].tap()
-        dismissSavePasswordPrompt()
         waitFor(app.buttons["item-AWS Console"])
 
         // The editor sheet is still closing over the list.

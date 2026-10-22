@@ -95,6 +95,9 @@ struct ItemEditorView: View {
                         TextField("Username or email", text: $draft.username)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            // Without content types iOS takes the username and password for a sign-in and, seconds after the
+                            // editor closes, offers to save them in Apple's Passwords. A one-time code type on both opts out.
+                            .textContentType(.oneTimeCode)
                             .accessibilityIdentifier("editor-username")
                         HStack {
                             Group {
@@ -107,6 +110,7 @@ struct ItemEditorView: View {
                             }
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
+                            .textContentType(.oneTimeCode)
                             .accessibilityIdentifier("editor-password")
                             Button {
                                 isPasswordRevealed.toggle()
