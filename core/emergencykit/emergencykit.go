@@ -219,11 +219,6 @@ func (writer *pageWriter) drawLabel(x, y float64, label string) {
 func (writer *pageWriter) drawSignInSection(kit Kit) error {
 	const qrSize = 132.0
 	sectionTop := writer.cursorY
-	sectionHeight := qrSize + 28
-	writer.document.SetStrokeColor(214, 217, 222)
-	writer.document.SetLineWidth(1)
-	writer.strokeRectangle(pageMargin, sectionTop, contentWide, sectionHeight, 10)
-
 	textX := pageMargin + 20
 	textWidth := contentWide - qrSize - 60
 	writer.drawLabel(textX, sectionTop+22, "Sign-in address")
@@ -233,7 +228,7 @@ func (writer *pageWriter) drawSignInSection(kit Kit) error {
 	writer.drawLabel(textX, nextY+12, "Email")
 	writer.document.SetTextColor(11, 12, 14)
 	writer.setFont("regular", 13)
-	writer.writeParagraph(textX, nextY+28, textWidth, kit.Email, 17)
+	nextY = writer.writeParagraph(textX, nextY+28, textWidth, kit.Email, 17)
 
 	qrCode, err := qrcode.New(BuildQRPayload(kit), qrcode.Medium)
 	if err != nil {
@@ -259,10 +254,16 @@ func (writer *pageWriter) drawSignInSection(kit Kit) error {
 			runStart = runEnd
 		}
 	}
+	// The warning sits at the bottom of the box beside the code, lower when a long address or email needs the room.
+	warningY := max(sectionTop+qrSize-17, nextY+15)
 	writer.document.SetTextColor(100, 106, 115)
 	writer.setFont("regular", 8.5)
-	writer.writeParagraph(textX, sectionTop+sectionHeight-45, textWidth,
+	writer.writeParagraph(textX, warningY, textWidth,
 		"Scan only with Hisar. This code contains your Secret Key, not your master password. Do not search or share its text.", 11)
+	sectionHeight := warningY + 45 - sectionTop
+	writer.document.SetStrokeColor(214, 217, 222)
+	writer.document.SetLineWidth(1)
+	writer.strokeRectangle(pageMargin, sectionTop, contentWide, sectionHeight, 10)
 	writer.cursorY = sectionTop + sectionHeight + 22
 	return nil
 }

@@ -66,6 +66,36 @@ func TestGenerateHandlesLongValuesAndNoName(t *testing.T) {
 	}
 }
 
+func TestGeneratePrintsLongSignInDetailsWithoutOverlap(t *testing.T) {
+	kit := createTestKit()
+	kit.Server = "https://passwords.a-very-long-family-domain-name.example.com/hisar/a-long-path-under-the-reverse-proxy/sign-in"
+	kit.Email = "someone.with.a.really.long.address.that.wraps@a-very-long-family-domain-name.example.com"
+	document, err := Generate(kit)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := readPrintedLines(t, document)
+	var printed strings.Builder
+	for _, line := range lines {
+		printed.WriteString(line.text)
+		if line.left < 0 || line.right > pageWidth || line.bottom < 0 || line.top > pageHeight {
+			t.Errorf("%q is printed off the page", line.text)
+		}
+	}
+	for _, want := range []string{"Scan only with Hisar.", "a-long-path-under-the-reverse-proxy", "that.wraps@", "Signing in on a new device"} {
+		if !strings.Contains(printed.String(), want) {
+			t.Errorf("%q is not printed", want)
+		}
+	}
+	for first := range lines {
+		for second := first + 1; second < len(lines); second++ {
+			if lines[first].overlaps(lines[second]) {
+				t.Errorf("%q is printed over %q", lines[first].text, lines[second].text)
+			}
+		}
+	}
+}
+
 func TestQRPayloadIsPlainTextAndPreservesSignInDetails(t *testing.T) {
 	kit := createTestKit()
 	kit.Server = "https://hisar.example/a?x=one+two&y=%20"
