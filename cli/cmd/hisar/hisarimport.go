@@ -61,6 +61,10 @@ func decodeHisarExport(format string, content []byte) (*export.Document, error) 
 // planHisarImport suggests an exact stable vault ID before any explicit mapping. Names never restore authority.
 // Noninteractive restores default to Personal unless a destination was explicitly mapped.
 func planHisarImport(ctx context.Context, access backend, document *export.Document, option hisarImportOption) ([]exportedVaultPlan, error) {
+	// Each plan pairs with the exported vault at its index; with no vaults, SourceGroups would add a fallback group.
+	if len(document.Vaults) == 0 {
+		return nil, nil
+	}
 	vaults, err := access.listVaults(ctx)
 	if err != nil {
 		return nil, err

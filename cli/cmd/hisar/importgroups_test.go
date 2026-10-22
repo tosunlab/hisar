@@ -72,3 +72,21 @@ func TestHisarRestorePrefersIDsNeverSameNames(t *testing.T) {
 		t.Fatal("restore auto-created a vault")
 	}
 }
+
+func TestHisarRestoreOfAnExportWithoutVaultsImportsNothing(t *testing.T) {
+	app := startVaultDataApp(t)
+	source, err := export.EncodePlain(&export.Document{Format: export.FormatPlain, Version: export.Version})
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), "empty.json")
+	if err := os.WriteFile(path, source, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, output, err := runCapturingOutput(t, false, "", "import", path, "-y"); err != nil || !strings.Contains(output, "Nothing to import") {
+		t.Fatalf("empty restore: %s %v", output, err)
+	}
+	if len(app.findRequest(cliprotocol.TypeImportItem)) != 0 {
+		t.Fatal("empty restore wrote")
+	}
+}
