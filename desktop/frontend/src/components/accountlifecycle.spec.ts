@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createApiMock, createStatus } from "../testing";
-import type { AccountDeletionPreview } from "../api";
+import type { AccountDeletionPreview, Status } from "../api";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -15,7 +15,7 @@ vi.mock("../api", async () => {
   };
 });
 
-const { store } = await import("../store");
+const { store, loadStatus } = await import("../store");
 const SettingsPanel = (await import("./SettingsPanel.vue")).default;
 const ChangeMasterPasswordDialog = (await import("./ChangeMasterPasswordDialog.vue")).default;
 const ReplaceSecretKeyDialog = (await import("./ReplaceSecretKeyDialog.vue")).default;
@@ -226,6 +226,25 @@ describe("Delete account", () => {
     expect(api.deleteAccount).toHaveBeenCalledWith("master password", expect.stringMatching(/^ ?Alice@Example\.com ?$/), "plan-1");
     expect(store.status.state).toBe("signed-out");
     expect(wrapper.emitted("close")).toHaveLength(1);
+  });
+
+  it("reports a finished deletion even when its sign-out reached the app first", async () => {
+    api.previewAccountDeletion.mockResolvedValue(createPreview());
+    const deletion = Promise.withResolvers<Status>();
+    api.deleteAccount.mockReturnValue(deletion.promise);
+    api.getStatus.mockResolvedValue(createStatus("signed-out"));
+    const wrapper = mount(DeleteAccountDialog);
+    await flushPromises();
+    await wrapper.find('input[name="deleteAccountPassword"]').setValue("master password");
+    await wrapper.find('input[name="deleteAccountEmail"]').setValue("alice@example.com");
+    await submitForm(wrapper);
+    await loadStatus();
+    deletion.resolve(createStatus("signed-out"));
+    await flushPromises();
+    expect(store.noticeMessage).toBe("Your account was deleted");
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    expect(api.previewAccountDeletion).toHaveBeenCalledTimes(1);
+    expect(store.status.state).toBe("signed-out");
   });
 
   it("shows a wrong master password without closing", async () => {
