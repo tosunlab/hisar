@@ -138,6 +138,10 @@ variables in `.env` override a field and lock it in the dashboard (any of the Em
 
 Run one server process per database: each process reads the settings at start and after its own saves.
 
+An HTTP 507 answer from the server means a user's change hit a growth budget, such as the vaults one account can
+create or a vault's item history (`docs/DESIGN.md` §8.2.2). It is not a server fault: the user sees what to remove, and
+nothing needs fixing on the server.
+
 ## Desktop app updates
 
 The macOS app checks the server it is signed in to for updates (`docs/DESIGN.md` §9.1.1). The server reads the published
