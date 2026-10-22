@@ -53,9 +53,10 @@ func Generate(kit Kit) ([]byte, error) {
 	if strings.TrimSpace(kit.Server) == "" || strings.TrimSpace(kit.Email) == "" || strings.TrimSpace(kit.SecretKey) == "" {
 		return nil, ErrIncompleteKit
 	}
+	// url.Parse reports "https://h#" with no fragment, but both phones refuse its empty one.
 	server, err := url.Parse(kit.Server)
 	if err != nil || server.Hostname() == "" || (server.Scheme != "https" && server.Scheme != "http") ||
-		server.User != nil || server.Fragment != "" || !utf8.ValidString(kit.Email) {
+		server.User != nil || strings.Contains(kit.Server, "#") || !utf8.ValidString(kit.Email) {
 		return nil, errors.New("emergencykit: invalid sign-in details")
 	}
 	if _, err := crypt.ParseSecretKey(kit.SecretKey); err != nil {

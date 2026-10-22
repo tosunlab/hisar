@@ -55,6 +55,17 @@ func TestGenerateRequiresSignInDetails(t *testing.T) {
 	}
 }
 
+// Both phones' scanners refuse a server with a fragment, an empty one included, so no kit may print one.
+func TestGenerateRefusesAServerWithAFragment(t *testing.T) {
+	for _, server := range []string{"https://hisar.example#", "https://hisar.example/#", "https://hisar.example#top"} {
+		kit := createTestKit()
+		kit.Server = server
+		if _, err := Generate(kit); err == nil {
+			t.Errorf("a kit was printed for %q", server)
+		}
+	}
+}
+
 func TestGenerateHandlesLongValuesAndNoName(t *testing.T) {
 	kit := createTestKit()
 	kit.Name = ""
