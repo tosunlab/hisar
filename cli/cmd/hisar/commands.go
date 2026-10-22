@@ -99,6 +99,10 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	if err != nil {
 		return err
 	}
+	// With a keychain the account is registered before its kit is written, so a taken kit path is refused first.
+	if err := refuseExistingOutput(*outputPath); err != nil {
+		return err
+	}
 
 	email, err := promptRequired("Email", "")
 	if err != nil {

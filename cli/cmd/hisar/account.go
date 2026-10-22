@@ -6,7 +6,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"os"
 	"strings"
@@ -201,9 +200,7 @@ func runReplaceSecretKey(ctx context.Context, flags *flag.FlagSet, args []string
 	} else if len(positionals) != 0 {
 		return errUsage
 	}
-	if _, err := os.Stat(*outputPath); err == nil {
-		return fmt.Errorf("%s already exists; choose another file with -o", *outputPath)
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	if err := refuseExistingOutput(*outputPath); err != nil {
 		return err
 	}
 	fmt.Fprintln(standardError(), `Replacing your Secret Key makes your current Secret Key and Emergency Kit stop working.

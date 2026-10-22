@@ -138,6 +138,16 @@ func findBackendVault(ctx context.Context, access backend, nameOrID string) (cli
 	return cliprotocol.Vault{}, fmt.Errorf("%d vaults are named %q; use an ID instead: %s", len(matches), nameOrID, strings.Join(iDs, ", "))
 }
 
+// refuseExistingOutput fails when the -o path is taken, so a command checks it before it changes anything it cannot undo.
+func refuseExistingOutput(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("%s already exists; choose another file with -o", path)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 // writeNewFile never replaces an existing file and creates it readable only by the user.
 func writeNewFile(path string, content []byte) error {
 	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
