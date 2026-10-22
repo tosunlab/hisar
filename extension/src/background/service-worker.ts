@@ -141,8 +141,10 @@ void chrome.action.setBadgeBackgroundColor({ color: "#30343a" }).catch(() => und
 chrome.tabs.onUpdated.addListener((tabId, change) => {
   if (change.status === "complete") void updateBadge(tabId);
 });
-chrome.webNavigation.onCommitted.addListener(({ tabId, url, frameId, documentId }) => getController().handleTabNavigation(tabId, url, frameId, documentId));
-chrome.webNavigation.onHistoryStateUpdated.addListener(({ tabId, url, frameId }) => getController().handleTabNavigation(tabId, url, frameId));
+// Messages wait for the restart cleanup, so the tab events that end a submission wait behind them, in the order the
+// browser delivered them: a submit navigation that reaches a woken worker right after its submission then still finds it.
+chrome.webNavigation.onCommitted.addListener(({ tabId, url, frameId, documentId }) => void saveExpiry.ready.then(() => getController().handleTabNavigation(tabId, url, frameId, documentId)));
+chrome.webNavigation.onHistoryStateUpdated.addListener(({ tabId, url, frameId }) => void saveExpiry.ready.then(() => getController().handleTabNavigation(tabId, url, frameId)));
 chrome.tabs.onActivated.addListener(({ tabId }) => void updateBadge(tabId));
 
 const allContextMenu = [
@@ -184,6 +186,8 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  getController().handleTabRemoved(tabId);
-  getInlineMenu().handleTabRemoved(tabId);
+  void saveExpiry.ready.then(() => {
+    getController().handleTabRemoved(tabId);
+    getInlineMenu().handleTabRemoved(tabId);
+  });
 });
