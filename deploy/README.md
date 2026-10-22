@@ -181,6 +181,12 @@ docker compose run --rm hisar migrate down    # roll back the latest migration
 
 Take a backup before applying a migration that changes existing tables.
 
+Migration `00013_invitation_sources` invalidates every sign-up invite that has not been used yet, including links from
+`hisar-server invite`, the admin dashboard, and share or organization invitations sent to people without an account.
+Older invites cannot be linked to the invitation they came from, so canceling that invitation could not stop them.
+Accounts and invites that were already used are not changed. After the upgrade, resend any invite that is still
+needed. Stop every server process running an older version before the migration runs.
+
 ## Backups
 
 Back up nightly and copy off the server:
