@@ -151,6 +151,15 @@ func importSourceGroups(ctx context.Context, access backend, path string, result
 		}
 		skipping = !including
 	}
+	queuedCount := 0
+	for _, plan := range plans {
+		queuedCount += len(selectQueuedItems(plan.source.Items, plan.duplicates, skipping))
+	}
+	// Skipped duplicates the app could not compare still go through the retention report below.
+	if queuedCount == 0 && (canCompare || !skipping || duplicateCount == 0) {
+		fmt.Fprintln(standardError(), "Nothing to import.")
+		return nil
+	}
 	if !option.isConfirmed {
 		confirmed, err := confirm("Import these source groups into the destinations and member scopes shown?")
 		if err != nil || !confirmed {
