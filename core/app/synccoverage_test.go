@@ -66,7 +66,7 @@ func TestStrictConsumersRefuseAVaultThatNeverFinishedSyncing(t *testing.T) {
 	if check, err := s.checkLogin(ctx, "https://remote.example", "alice", "remote-secret"); !errors.Is(err, session.ErrIncompleteRead) {
 		t.Errorf("the save offer concluded %+v from a vault that never finished syncing: %v", check, err)
 	}
-	if imported, err := s.saveCommandLineImports(f.personalID, []item.Item{{Overview: item.Overview{Title: "Remote only"}, Details: item.Details{Password: "remote-secret"}}}); !errors.Is(err, session.ErrIncompleteRead) {
+	if imported, err := s.saveCommandLineImports(f.personalID, []item.Item{{Overview: item.Overview{Title: "Remote only"}, Details: item.Details{Password: "remote-secret"}}}, reviewedImportScope(t, s, f.personalID)); !errors.Is(err, session.ErrIncompleteRead) {
 		t.Errorf("an import went into a vault whose items are not known: %+v %v", imported, err)
 	}
 	if resolved, err := s.resolveSecrets([]string{"hisar://Family/Family%20synced/password"}); err != nil || len(resolved.Values) != 1 || resolved.Values[0] != "family-secret" {
