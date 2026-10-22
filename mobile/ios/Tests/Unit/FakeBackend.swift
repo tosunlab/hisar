@@ -1124,6 +1124,28 @@ extension FakeBackend {
     }
 }
 
+extension FakeBackend {
+    /// Holds a refresh at its last listing while change runs, as when the device is signed out, locks or hears of a
+    /// remote change meanwhile.
+    @MainActor
+    func finishRefresh(of model: AppModel, after change: () async -> Void) async {
+        let isListing = DispatchSemaphore(value: 0)
+        let mayFinish = DispatchSemaphore(value: 0)
+        onListAllPasskey = {
+            isListing.signal()
+            mayFinish.wait()
+        }
+        let refresh = Task { await model.refreshAll() }
+        while isListing.wait(timeout: .now()) == .timedOut {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        await change()
+        onListAllPasskey = nil
+        mayFinish.signal()
+        await refresh.value
+    }
+}
+
 final class FakeCredentialIdentityStore: CredentialIdentityUpdating {
     var allIdentity: [CredentialIdentityRecord] = []
     var replaceCount = 0

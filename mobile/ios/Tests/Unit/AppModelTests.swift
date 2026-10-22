@@ -897,6 +897,15 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.remoteChangeCount, remoteChangeCount + 1, "a locked app ignores remote changes")
     }
 
+    func testARemoteChangeDuringAnotherRefreshListsAgain() async {
+        let model = await createUnlockedModel()
+        await backend.finishRefresh(of: model) {
+            backend.allVault.append(VaultSummary(id: "shared-with-me", name: "Deploy keys", type: "shared", role: Member.vaultRoleReader, itemCount: 0))
+            model.handleRemoteChange()
+        }
+        XCTAssertNotNil(model.findVault(vaultID: "shared-with-me"), "the refresh listed the vaults before the change and nothing listed them again")
+    }
+
     func testVaultSharingShowsMembersAndOnlyThisVaultsInvitations() async {
         let model = await createUnlockedModel()
         guard let streaming = await model.createVault(name: "Streaming"), let deploy = await model.createVault(name: "Deploy keys") else { return XCTFail("vaults missing") }

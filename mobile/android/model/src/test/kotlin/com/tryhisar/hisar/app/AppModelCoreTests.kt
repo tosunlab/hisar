@@ -148,6 +148,18 @@ class AppModelCoreTests {
     }
 
     @Test
+    fun testARemoteChangeDuringAnotherRefreshListsAgain() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        runCurrent()
+        finishRefresh(harness, model) {
+            harness.backend.allVault += VaultSummary(id = "shared-with-me", name = "Deploy keys", type = "shared", role = Member.VAULT_ROLE_READER, itemCount = 0)
+            model.handleRemoteChange()
+        }
+        assertNotNull(model.unlockedData.value.findVault("shared-with-me"), "the refresh listed the vaults before the change and nothing listed them again")
+    }
+
+    @Test
     fun testRefreshFinishingAfterSignOutBringsNothingBack() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()

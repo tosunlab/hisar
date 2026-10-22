@@ -255,10 +255,19 @@ class AppModel(
         }
     }
 
+    // A remote change that comes while a refresh lists may be missing from its lists, so that refresh lists again, whoever
+    // started it: the first refresh, an unlock or a pull to refresh as much as a remote change.
+    override suspend fun refreshAll() {
+        do {
+            isRefreshRequestedAgain = false
+            refreshAllOnce()
+        } while (isRefreshRequestedAgain && status.value.isUnlocked)
+    }
+
     // Listing the share invitations also completes the shares people accepted, and listing the waiting vault keys gives
     // team members the keys of the organization vaults this user owns, as the Mac's sync does. Both run before the vaults
     // are listed, so a vault rotated meanwhile is listed with its new key.
-    override suspend fun refreshAll() {
+    private suspend fun refreshAllOnce() {
         if (!status.value.isUnlocked) return
         val refresh = ++startedRefreshCount
         mutableIsRefreshing.value = true
@@ -325,12 +334,7 @@ class AppModel(
             isRefreshRequestedAgain = true
             return
         }
-        scope.launch {
-            do {
-                isRefreshRequestedAgain = false
-                refreshAll()
-            } while (isRefreshRequestedAgain && status.value.isUnlocked)
-        }
+        scope.launch { refreshAll() }
     }
 
     suspend fun copyField(vaultID: String, itemID: String, fieldName: String, label: String) {

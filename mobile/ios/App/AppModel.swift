@@ -377,10 +377,19 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // A remote change that comes while a refresh lists may be missing from its lists, so that refresh lists again, whoever
+    // started it: the first refresh, an unlock or a pull to refresh as much as a remote change.
+    func refreshAll() async {
+        repeat {
+            isRefreshRequestedAgain = false
+            await refreshAllOnce()
+        } while isRefreshRequestedAgain && status.isUnlocked
+    }
+
     // Listing the share invitations also completes the shares people accepted, and listing the waiting vault keys gives
     // team members the keys of the organization vaults this user owns, as the Mac's sync does. Both run before the vaults
     // are listed, so a vault rotated meanwhile is listed with its new key.
-    func refreshAll() async {
+    private func refreshAllOnce() async {
         guard status.isUnlocked else { return }
         startedRefreshCount += 1
         let refresh = startedRefreshCount
@@ -449,12 +458,7 @@ final class AppModel: ObservableObject {
             isRefreshRequestedAgain = true
             return
         }
-        Task {
-            repeat {
-                isRefreshRequestedAgain = false
-                await refreshAll()
-            } while isRefreshRequestedAgain && status.isUnlocked
-        }
+        Task { await refreshAll() }
     }
 
     private func publishAllCredentialIdentity() async {

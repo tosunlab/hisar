@@ -136,27 +136,9 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(model.noticeMessage, "Your Hisar account was deleted.")
     }
 
-    /// Holds a refresh at its last listing while change runs, as when the device is signed out or locks meanwhile.
-    private func finishRefresh(of model: AppModel, after change: () async -> Void) async {
-        let isListing = DispatchSemaphore(value: 0)
-        let mayFinish = DispatchSemaphore(value: 0)
-        backend.onListAllPasskey = {
-            isListing.signal()
-            mayFinish.wait()
-        }
-        let refresh = Task { await model.refreshAll() }
-        while isListing.wait(timeout: .now()) == .timedOut {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-        await change()
-        backend.onListAllPasskey = nil
-        mayFinish.signal()
-        await refresh.value
-    }
-
     func testRefreshFinishingAfterSignOutBringsNothingBack() async {
         let model = await createUnlockedModel()
-        await finishRefresh(of: model) {
+        await backend.finishRefresh(of: model) {
             backend.status = .signedOut
             model.handleLockedEvent()
             await waitUntil({ identityStore.allIdentity.isEmpty }, "signing out did not clear AutoFill")
@@ -170,7 +152,7 @@ final class AccountLifecycleTests: XCTestCase {
         let model = await createUnlockedModel()
         let allPublishedIdentity = identityStore.allIdentity
         let replaceCount = identityStore.replaceCount
-        await finishRefresh(of: model) { model.lock() }
+        await backend.finishRefresh(of: model) { model.lock() }
         XCTAssertEqual(model.screen, .locked)
         XCTAssertTrue(model.allVault.isEmpty, "the refresh restored the vaults behind the lock screen")
         XCTAssertTrue(model.allItemByVaultID.isEmpty, "the refresh restored the items behind the lock screen")
@@ -180,7 +162,7 @@ final class AccountLifecycleTests: XCTestCase {
 
     func testRefreshFinishingAfterANewerRefreshKeepsTheNewerLists() async {
         let model = await createUnlockedModel()
-        await finishRefresh(of: model) {
+        await backend.finishRefresh(of: model) {
             backend.onListAllPasskey = nil
             backend.allFavoriteRecordID = ["family/netflix"]
             await model.refreshAll()
