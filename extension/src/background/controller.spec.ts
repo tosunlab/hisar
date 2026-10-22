@@ -707,6 +707,43 @@ describe("save offers", () => {
     expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
   });
 
+  it("keeps the offer while the app cannot be reached and saves it once the app answers again", async () => {
+    const harness = createHarness({ tabUrl: "https://example.com/login" });
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw"))!;
+    harness.state.isDesktopUnavailable = true;
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+    expect(harness.allSaveBadge.get(1)).toBe(true);
+    harness.state.isDesktopUnavailable = false;
+    expect(await harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+    await harness.controller.actOnSaveOffer(1, offer.offerID, "save");
+    expect(harness.state.allLogin.find((login) => login.username === "new")).toMatchObject({ password: "pw" });
+  });
+
+  it("keeps an unreachable app's offer only until its capture deadline", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw");
+    harness.state.isDesktopUnavailable = true;
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+    harness.advanceTime(120_000);
+    expect(harness.allSaveBadge.get(1)).toBe(false);
+    harness.state.isDesktopUnavailable = false;
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
+  it("drops the offer when the app refuses its review, as after another account signs in", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw");
+    const email = harness.state.email;
+    harness.state.email = "other@example.com";
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+    expect(harness.allSaveBadge.get(1)).toBe(false);
+    harness.state.email = email;
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
   it("rejects a late submission from a document that has already navigated away", async () => {
     const harness = createHarness();
     await harness.pair();

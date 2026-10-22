@@ -107,6 +107,7 @@ Page clicks cannot authorize credential updates. The popup is not web-accessible
 Each new submission replaces the earlier candidate, including an unchanged password.
 A candidate can follow one same-origin submission navigation within ten seconds, but a subsequent navigation discards it.
 Candidates expire after two minutes and disappear when the worker restarts or the tab closes.
+If the popup cannot reach Hisar while reviewing a candidate, the candidate waits until its two-minute deadline.
 Lock, account changes, and pairing replacement invalidate the native confirmation.
 A failed save needs a fresh submission and another explicit confirmation.
 

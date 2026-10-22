@@ -538,7 +538,10 @@ export class BackgroundController {
     }
     try {
       await this.request(() => this.client.request("logins.review", { saveContext: offer.saveContext }, { pairingToken: offer.pairingToken }), offer.pairingToken);
-    } catch {
+    } catch (error) {
+      // desktop-unavailable is the connection failing (a timeout, a disconnect, Hisar not running), not Hisar refusing the
+      // offer, so the offer waits for its capture deadline.
+      if (toHisarError(error).code === "desktop-unavailable") return null;
       this.allSaveOffer.take(tabId, offer.offerID);
       await this.browser.setSaveBadge?.(tabId, false);
       return null;
