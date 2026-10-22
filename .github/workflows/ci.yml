@@ -336,28 +336,24 @@ jobs:
       - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-admin-end-to-end
 
   android:
-    name: Android app build, JVM tests and instrumented tests (part ${{ matrix.part }} of 4)
+    name: Android app build, JVM tests and instrumented tests (part ${{ matrix.part }} of 2)
     needs: changes
-    # The skip-android label skips every part, for a pull request whose Android build and tests already passed locally (make
+    # The skip-android label skips both parts, for a pull request whose Android build and tests already passed locally (make
     # build-android-aar build-android test-android test-android-ui); a run reads the labels the pull request has when it starts.
     if: needs.changes.outputs.isAndroidChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-android')
-    runs-on: blacksmith-8vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Each part runs a quarter of the instrumented tests on its own emulator; the first also runs the JVM tests and the second
-    # builds the release APK and runs lint.
+    # Each part runs half of the instrumented tests on its own emulator; the first also runs the JVM tests and the second builds
+    # the release APK and runs lint, so both take about as long.
     strategy:
       fail-fast: false
       matrix:
         # shard is the test runner's 0-based ANDROID_UI_TEST_SHARD.
         include:
           - part: 1
-            shard: 0/4
+            shard: 0/2
           - part: 2
-            shard: 1/4
-          - part: 3
-            shard: 2/4
-          - part: 4
-            shard: 3/4
+            shard: 1/2
     services:
       postgres:
         image: postgres:18
