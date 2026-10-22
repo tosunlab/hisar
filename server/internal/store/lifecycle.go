@@ -78,6 +78,19 @@ type DeletedAccount struct {
 	DeletedVaultCount      int
 }
 
+// The invitations an account deletion removes ($1 the account, $2 its email): its own, the ones to it, and those of
+// the vaults and organizations deleted with it. Deleting one also cancels the unused sign-up invites minted from it.
+const (
+	deletedShareInvitationIDs = `SELECT s.id FROM share_invitations s
+		WHERE s.invited_by = $1 OR s.accepted_by = $1 OR s.email = $2
+			OR s.vault_id IN (SELECT a.vault_id FROM vault_access a WHERE a.account_id = $1 AND a.role = 'owner'
+				AND NOT EXISTS (SELECT 1 FROM vault_access o WHERE o.vault_id = a.vault_id AND o.role = 'owner' AND o.account_id <> $1))`
+	deletedOrganizationInvitationIDs = `SELECT o.id FROM organization_invitations o
+		WHERE o.invited_by = $1 OR o.email = $2 OR o.organization_id IN
+			(SELECT m.organization_id FROM organization_members m WHERE m.account_id = $1
+				AND NOT EXISTS (SELECT 1 FROM organization_members x WHERE x.organization_id = m.organization_id AND x.account_id <> $1))`
+)
+
 func HashOpaqueRecord(opaqueRecord []byte) []byte {
 	hash := sha256.Sum256(opaqueRecord)
 	return hash[:]
@@ -291,8 +304,8 @@ func buildDeletionPreview(ctx context.Context, database queryer, accountID strin
 			(SELECT count(*) FROM share_invitations WHERE invited_by = $1)
 				+ (SELECT count(*) FROM organization_invitations WHERE invited_by = $1)
 				+ (SELECT count(*) FROM invites i WHERE i.created_by = $1 AND i.used_at IS NULL AND i.expires_at > now()
-					AND NOT EXISTS (SELECT 1 FROM share_invitations s WHERE s.invited_by = $1 AND s.email = i.email)
-					AND NOT EXISTS (SELECT 1 FROM organization_invitations o WHERE o.invited_by = $1 AND o.email = i.email)),
+					AND NOT EXISTS (SELECT 1 FROM share_invitations s WHERE s.id = i.share_invitation_id AND s.invited_by = $1)
+					AND NOT EXISTS (SELECT 1 FROM organization_invitations o WHERE o.id = i.organization_invitation_id AND o.invited_by = $1)),
 			(SELECT count(*) FROM share_invitations WHERE (email = $2 OR accepted_by = $1) AND invited_by <> $1)
 				+ (SELECT count(*) FROM organization_invitations WHERE email = $2),
 			(SELECT count(*) FROM devices WHERE account_id = $1 AND revoked_at IS NULL)`,
@@ -333,17 +346,15 @@ func buildDeletionPreview(ctx context.Context, database queryer, accountID strin
 		`SELECT jsonb_build_array(id, revoked_at IS NULL)::text FROM devices WHERE account_id = $1 ORDER BY id`,
 		`SELECT jsonb_build_array(id)::text FROM share_links WHERE account_id = $1 ORDER BY id`,
 		`SELECT jsonb_build_array(i.id, i.invited_by, i.email, i.accepted_by, i.vault_id)::text FROM share_invitations i
-			WHERE i.invited_by = $1 OR i.accepted_by = $1 OR i.email = $2
-				OR i.vault_id IN (SELECT a.vault_id FROM vault_access a WHERE a.account_id = $1 AND a.role = 'owner'
-					AND NOT EXISTS (SELECT 1 FROM vault_access o WHERE o.vault_id = a.vault_id AND o.role = 'owner' AND o.account_id <> $1))
-			ORDER BY i.id`,
+			WHERE i.id IN (` + deletedShareInvitationIDs + `) ORDER BY i.id`,
 		`SELECT jsonb_build_array(i.id, i.invited_by, i.email, i.organization_id)::text FROM organization_invitations i
-			WHERE i.invited_by = $1 OR i.email = $2 OR i.organization_id IN
-				(SELECT m.organization_id FROM organization_members m WHERE m.account_id = $1
-					AND NOT EXISTS (SELECT 1 FROM organization_members o WHERE o.organization_id = m.organization_id AND o.account_id <> $1))
-			ORDER BY i.id`,
-		`SELECT jsonb_build_array(encode(i.token_hash, 'hex'), i.created_by, i.email, i.used_at IS NULL)::text FROM invites i
-			WHERE i.email = $2 OR (i.created_by = $1 AND i.used_at IS NULL) ORDER BY i.token_hash`,
+			WHERE i.id IN (` + deletedOrganizationInvitationIDs + `) ORDER BY i.id`,
+		`SELECT jsonb_build_array(encode(i.token_hash, 'hex'), i.created_by, i.email, i.used_at IS NULL,
+				i.share_invitation_id, i.organization_invitation_id)::text FROM invites i
+			WHERE i.email = $2 OR (i.created_by = $1 AND i.used_at IS NULL)
+				OR (i.used_at IS NULL AND (i.share_invitation_id IN (` + deletedShareInvitationIDs + `)
+					OR i.organization_invitation_id IN (` + deletedOrganizationInvitationIDs + `)))
+			ORDER BY i.token_hash`,
 	} {
 		arguments := []any{accountID}
 		if strings.Contains(query, "$2") {

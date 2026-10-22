@@ -293,3 +293,50 @@ func TestProvenChangesAreCheckedAgainstARevocationThatCommitsMeanwhile(t *testin
 		t.Errorf("the account deletion of a revoked device went through: %v", err)
 	}
 }
+
+func TestDeletionPlanLinksSignupInvitesToTheirSources(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	_, inviterSession := createTestAccount(t, database, "INVTER", "inviter@example.com")
+	createTestAccount(t, database, "ADMIN1", "admin@example.com")
+	if _, err := database.pool.Exec(ctx, "UPDATE accounts SET role = 'admin' WHERE id = 'ADMIN1'"); err != nil {
+		t.Fatal(err)
+	}
+	share := createSignupSource(t, database, "share", "new@example.com")
+	organization := createSignupSource(t, database, "organization", "new@example.com")
+	for _, source := range []signupSource{share, organization} {
+		if err := source.mint([]byte(source.table)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inviterID := "INVTER"
+	if err := database.CreateInvite(ctx, []byte("standalone"), "new@example.com", "member", &inviterID, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := database.PreviewAccountDeletion(ctx, inviterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The two sources count once with their sign-up invites; the standalone invite to the same email counts too.
+	if preview.SentInvitationCount != 3 {
+		t.Errorf("sent invitations: %d", preview.SentInvitationCount)
+	}
+
+	// Another admin's resends keep the organization invitation's sign-up invite, which the deletion cancels with it.
+	if _, err := database.ReplaceInvite(ctx, []byte(organization.table), []byte("resent"), AdminActor{AccountID: "ADMIN1"}, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	planVersion := reviewStoreDeletion(t, database, ctx, inviterID)
+	if _, err := database.ReplaceInvite(ctx, []byte("resent"), []byte("resent-again"), AdminActor{AccountID: "ADMIN1"}, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DeleteAccount(ctx, inviterID, inviterSession.TokenHash, testRecordHash(), planVersion); !errors.Is(err, ErrDeletionPlanChanged) {
+		t.Fatalf("deletion of a plan reviewed before its source's sign-up invite changed: %v", err)
+	}
+	if _, err := database.DeleteAccount(ctx, inviterID, inviterSession.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, inviterID)); err != nil {
+		t.Fatal(err)
+	}
+	for _, hash := range []string{share.table, "resent-again", "standalone"} {
+		requireSignupTokenGone(t, database, []byte(hash))
+	}
+}
