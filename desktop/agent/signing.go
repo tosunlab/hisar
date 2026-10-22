@@ -7,9 +7,11 @@ import (
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
-// signingScope is what a remembered commit signature covers: one app bundle, one repository and one key.
+// signingScope is what a remembered commit signature covers: one live agent session (its ID), or else one app bundle,
+// with one repository and one key.
 type signingScope struct {
 	appPath        string
+	agentSession   uint64
 	repositoryPath string
 	fingerprint    string
 }
@@ -41,13 +43,20 @@ func (approver *Approver) getSigningRememberDuration() time.Duration {
 	return max(approver.config.GetSigningRememberDuration(), 0)
 }
 
-// findSigningScope returns the scope of a commit signature from a resolved app in a known repository; tags,
-// forwarded requests, keys that always ask and requests without an app or repository have none.
+// findSigningScope returns the scope of a commit signature in a known repository from an agent session or else from a
+// resolved app; tags, forwarded requests, keys that always ask, requests never remembered and requests without an app
+// or repository have none.
 func findSigningScope(event ApprovalEvent, request sshagent.ApprovalRequest) (signingScope, bool) {
-	if event.Purpose != PurposeSignCommit || event.IsForwarded || request.IsForwarded || request.IsAlwaysAskKey {
+	if event.Purpose != PurposeSignCommit || event.IsForwarded || request.IsForwarded || request.IsAlwaysAskKey || request.IsNeverRemembered {
 		return signingScope{}, false
 	}
-	if !isAppRequester(event) || event.AppPath == "" || event.RepositoryPath == "" || request.Fingerprint == "" {
+	if event.RepositoryPath == "" || request.Fingerprint == "" {
+		return signingScope{}, false
+	}
+	if live := request.AgentSession; live != nil {
+		return signingScope{agentSession: live.ID, repositoryPath: event.RepositoryPath, fingerprint: request.Fingerprint}, true
+	}
+	if !isAppRequester(event) || event.AppPath == "" {
 		return signingScope{}, false
 	}
 	return signingScope{appPath: event.AppPath, repositoryPath: event.RepositoryPath, fingerprint: request.Fingerprint}, true

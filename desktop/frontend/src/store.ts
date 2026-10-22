@@ -1,6 +1,8 @@
-import { reactive } from "vue";
+import { nextTick, reactive } from "vue";
 import {
   type AccountDeletionPreview,
+  type AgentHost,
+  type AgentSession,
   type CredentialChangeResult,
   api,
   getErrorMessage,
@@ -48,7 +50,8 @@ import {
   type FavoriteItem,
   type WaitingVaultKeys,
 } from "./api";
-import { allAddressKey, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress } from "./util";
+import { isSettingsSectionID, saveSelectedSectionID } from "./settingsSections";
+import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress } from "./util";
 import { forgetWebsiteIcons } from "./websiteicons";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
@@ -123,6 +126,8 @@ export const store = reactive({
   commandLineErrorMessage: "",
   allLauncherApp: [] as LauncherApp[],
   allAgentVaultID: [] as string[],
+  allAgentSession: [] as AgentSession[],
+  allAgentHost: [] as AgentHost[],
   agentErrorMessage: "",
   isImportOpen: false,
   importStep: "choose" as ImportStep,
@@ -833,6 +838,18 @@ async function loadSelectedItem(itemID: string, version: number): Promise<void> 
     store.selectedItem = detail;
     store.editorMode = "view";
   }
+}
+
+// openSettings follows the app's request to show a Settings section; Settings already open closes first, so it opens
+// at that section.
+export async function openSettings(sectionID: string): Promise<void> {
+  if (!isSettingsSectionID(sectionID)) {
+    return;
+  }
+  saveSelectedSectionID(sectionID);
+  store.isSettingsOpen = false;
+  await nextTick();
+  store.isSettingsOpen = true;
 }
 
 // showItem follows a launcher's Open in Hisar: the item in its vault, in its editor when asked and the vault allows it.
@@ -1756,6 +1773,40 @@ export async function setVaultAvailableToAgents(vault: VaultSummary, isAvailable
     const message = getErrorMessage(error);
     await loadAgentVaults();
     store.agentErrorMessage = message;
+  } finally {
+    store.isBusy = false;
+  }
+}
+
+export async function loadAgentSessions(): Promise<void> {
+  try {
+    [store.allAgentSession, store.allAgentHost] = await Promise.all([api.listAllAgentSession(), api.listAllAgentHost()]);
+  } catch (error) {
+    store.agentErrorMessage = getErrorMessage(error);
+  }
+}
+
+export async function revokeAgentSession(session: AgentSession): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.allAgentSession = await api.revokeAgentSession(session.pid, session.startTime);
+    store.agentErrorMessage = "";
+    showNotice(`${describeAgentSession(session)} asks again the next time it uses a secret`);
+  } catch (error) {
+    store.agentErrorMessage = getErrorMessage(error);
+  } finally {
+    store.isBusy = false;
+  }
+}
+
+export async function forgetAgentHost(host: AgentHost): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.allAgentHost = await api.forgetAgentHost(host.path, host.teamID);
+    store.agentErrorMessage = "";
+    showNotice(`${host.name} shares one approval for its command-line requests again`);
+  } catch (error) {
+    store.agentErrorMessage = getErrorMessage(error);
   } finally {
     store.isBusy = false;
   }

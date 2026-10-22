@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/localstate"
 )
@@ -125,12 +126,12 @@ func TestChooseModeDoesNotStartTheApp(t *testing.T) {
 	useFakeAppLauncher(t, launcher)
 
 	t.Setenv(noLaunchEnvironment, "1")
-	if mode := chooseMode(false); mode.client != nil || mode.isAppNotRunning || !strings.Contains(mode.reason, "not running") {
+	if mode := chooseMode(false); mode.client != nil || mode.appError != nil || !strings.Contains(mode.reason, "not running") {
 		t.Errorf("HISAR_NO_LAUNCH: %+v", mode)
 	}
 	t.Setenv(noLaunchEnvironment, "")
 
-	if mode := chooseModeWithLaunch(false, false); mode.client != nil || mode.isAppNotRunning {
+	if mode := chooseModeWithLaunch(false, false); mode.client != nil || mode.appError != nil {
 		t.Errorf("standalone-only command: %+v", mode)
 	}
 	if mode := chooseMode(true); mode.client != nil || mode.reason != "--standalone was given" {
@@ -141,7 +142,7 @@ func TestChooseModeDoesNotStartTheApp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if mode := chooseMode(false); mode.client != nil || mode.isAppNotRunning {
+	if mode := chooseMode(false); mode.client != nil || mode.appError != nil {
 		t.Errorf("app running with the command-line switch off: %+v", mode)
 	}
 	agentListener.Close()
@@ -157,7 +158,7 @@ func TestChooseModeWithoutInstalledAppFallsBackToStandalone(t *testing.T) {
 	launcher := &fakeAppLauncher{err: errAppNotInstalled}
 	useFakeAppLauncher(t, launcher)
 	mode := chooseMode(false)
-	if mode.client != nil || mode.isAppNotRunning || !strings.Contains(mode.reason, "not running") || launcher.getLaunchCount() != 1 {
+	if mode.client != nil || mode.appError != nil || !strings.Contains(mode.reason, "not running") || launcher.getLaunchCount() != 1 {
 		t.Errorf("%+v, %d launches", mode, launcher.getLaunchCount())
 	}
 	if _, _, err := runCapturingOutput(t, false, "", "vaults"); err == nil || !strings.Contains(err.Error(), "not logged in") {
@@ -206,6 +207,37 @@ func TestCommandUsesStandaloneSignInWhenTheAppDoesNotStart(t *testing.T) {
 	_, _, err := runCapturingOutput(t, false, "", "vaults")
 	if err == nil || errors.Is(err, errAppNotRunning) {
 		t.Errorf("did not fall back to the standalone sign-in: %v", err)
+	}
+}
+
+// TestBlockedSocketNamesTheSandbox stands in for Codex's sandbox, which refuses a connection to any Unix socket, with a
+// socket hisar may not write to: connecting fails for permission, as it does there.
+func TestBlockedSocketNamesTheSandbox(t *testing.T) {
+	app := startFakeApp(t)
+	if err := os.Chmod(app.socketPath, 0); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(app.socketPath, 0o600) })
+	launcher := &fakeAppLauncher{}
+	useFakeAppLauncher(t, launcher)
+	sentence := errSocketBlocked.Error()
+
+	if _, _, err := runCapturingOutput(t, false, "", "vaults"); err == nil || err.Error() != sentence {
+		t.Errorf("vaults outside a harness: %v", err)
+	}
+	setOwnChain(t, agentharness.Session{Harness: agentharness.Harness{ID: "codex", Name: "Codex"}, PID: 97610, StartTime: 500}, true, nil)
+	t.Setenv("DEPLOY_TOKEN", "hisar://Agents/Deploy%20token/password")
+	for _, args := range [][]string{{"run", "--", "true"}, {"read", "hisar://Agents/Deploy%20token/password"}, {"ls"}} {
+		if _, _, err := runCapturingOutput(t, false, "", args...); err == nil || err.Error() != sentence {
+			t.Errorf("%q inside Codex: %v", args, err)
+		}
+	}
+	stdout, _, err := runCapturingOutput(t, false, "", "status")
+	if expected := "mode:    none (" + sentence + ")\nhisar runs inside Codex, so it uses the Hisar app only.\n"; err != nil || stdout != expected {
+		t.Errorf("status inside Codex: %q %v", stdout, err)
+	}
+	if launcher.getLaunchCount() != 0 || len(app.listRequestTypes()) != 0 {
+		t.Errorf("%d launches, the app got %v", launcher.getLaunchCount(), app.listRequestTypes())
 	}
 }
 

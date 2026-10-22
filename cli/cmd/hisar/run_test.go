@@ -14,8 +14,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/tryhisar/hisar/cli/internal/dotenv"
 )
 
 const helperEnvironment = "HISAR_TEST_RUN_HELPER"
@@ -296,37 +294,5 @@ func TestCheckAllReferenceNamesEveryBadReference(t *testing.T) {
 	err := checkReferences([]string{"hisar://a/b/c", "hisar://a/b", "hisar://a/%zz/c"})
 	if err == nil || !strings.Contains(err.Error(), "hisar://a/b: a secret reference has three parts") || !strings.Contains(err.Error(), `hisar://a/%zz/c: "%zz" is not a valid percent-encoding`) {
 		t.Errorf("error %v", err)
-	}
-}
-
-func TestBuildRunEnvironment(t *testing.T) {
-	environ := []string{
-		"PATH=/usr/bin",
-		"PLAIN_IN_BOTH=from the environment",
-		"REFERENCE_IN_BOTH=hisar://Personal/Environment/password",
-		"REFERENCE_ONLY_HERE=hisar://Personal/Only/password",
-		"BROKEN_ENTRY",
-	}
-	fileVariables := []dotenv.Variable{
-		{Name: "PLAIN_IN_BOTH", Value: "from the first file"},
-		{Name: "REFERENCE_IN_BOTH", Value: "hisar://Personal/First/password"},
-		{Name: "FILE_ONLY", Value: "first"},
-		{Name: "REFERENCE_IN_BOTH", Value: "hisar://Personal/Second/password"},
-		{Name: "FILE_ONLY", Value: "second"},
-	}
-	variables := buildRunEnvironment(environ, fileVariables)
-	expectedValues := []dotenv.Variable{
-		{Name: "PATH", Value: "/usr/bin"},
-		{Name: "PLAIN_IN_BOTH", Value: "from the environment"},
-		{Name: "REFERENCE_IN_BOTH", Value: "hisar://Personal/Second/password"},
-		{Name: "REFERENCE_ONLY_HERE", Value: "hisar://Personal/Only/password"},
-		{Name: "FILE_ONLY", Value: "second"},
-	}
-	if !slices.Equal(variables, expectedValues) {
-		t.Errorf("environment:\n%q\nwant:\n%q", variables, expectedValues)
-	}
-	references := listUniqueReferences(append(variables, dotenv.Variable{Name: "AGAIN", Value: "hisar://Personal/Only/password"}))
-	if !slices.Equal(references, []string{"hisar://Personal/Second/password", "hisar://Personal/Only/password"}) {
-		t.Errorf("references %q", references)
 	}
 }

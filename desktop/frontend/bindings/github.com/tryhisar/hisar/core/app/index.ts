@@ -14,6 +14,8 @@ export {
 
 export type {
     AccountDeletionPreview,
+    AgentHost,
+    AgentSession,
     BrowserPairingRequest,
     BrowserStatus,
     CardDescription,
@@ -53,6 +55,7 @@ export type {
     PasswordConfig,
     Person,
     ReceivedShareInvitation,
+    RememberedAgentSecret,
     RemovedVaultNotice,
     SentOrganizationInvitation,
     SentShareInvitation,

@@ -92,6 +92,12 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	if err != nil {
 		return err
 	}
+	// Before anything reaches the server: inside an agent harness loadState refuses, and an account created first
+	// would be lost with its Secret Key.
+	currentState, err := loadState()
+	if err != nil {
+		return err
+	}
 
 	email, err := promptRequired("Email", "")
 	if err != nil {
@@ -114,10 +120,6 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	}
 	defer currentSession.Lock()
 
-	currentState, err := loadState()
-	if err != nil {
-		return err
-	}
 	currentState.Reset()
 	currentState.Server, currentState.Email, currentState.AccountID, currentState.Token = server, strings.ToLower(email), currentSession.AccountID, currentSession.Client.Token
 	if err := currentState.Save(); err != nil {

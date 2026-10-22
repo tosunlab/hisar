@@ -12,6 +12,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/tryhisar/hisar/core/agentharness"
 )
 
 const terminalBundlePath = "/System/Applications/Utilities/Terminal.app"
@@ -54,6 +56,31 @@ func TestSignatureOnMacOS(t *testing.T) {
 	}
 }
 
+// TestProcessSignatureOnMacOS reads signatures of running processes: Apple's sleep has its identity, this test binary,
+// signed ad hoc by the Go linker, and a process that is gone have none.
+func TestProcessSignatureOnMacOS(t *testing.T) {
+	child := exec.Command("/bin/sleep", "5")
+	if err := child.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { child.Process.Kill(); child.Wait() })
+	startedAt := time.Now()
+	if signature := getProcessSignature(child.Process.Pid); signature != (agentharness.Signature{Identifier: "com.apple.sleep"}) {
+		t.Errorf("sleep: %+v", signature)
+	}
+	t.Logf("read sleep's signature in %v", time.Since(startedAt))
+	if signature := getProcessSignature(os.Getpid()); signature != (agentharness.Signature{}) {
+		t.Errorf("this ad hoc signed test: %+v", signature)
+	}
+	gone := exec.Command("/usr/bin/true")
+	if err := gone.Run(); err != nil {
+		t.Fatal(err)
+	}
+	if signature := getProcessSignature(gone.Process.Pid); signature != (agentharness.Signature{}) {
+		t.Errorf("a process that exited: %+v", signature)
+	}
+}
+
 func TestStrictSignatureChecksResourcesAndInvalidatesItsCache(t *testing.T) {
 	for _, change := range []string{"edit", "add", "remove"} {
 		t.Run(change, func(t *testing.T) {
@@ -92,10 +119,6 @@ func TestStrictSignatureChecksResourcesAndInvalidatesItsCache(t *testing.T) {
 }
 
 func TestReadThisProcessOnMacOS(t *testing.T) {
-	arguments, err := ListProcessArguments(os.Getpid())
-	if err != nil || !slices.Equal(arguments, os.Args) {
-		t.Errorf("arguments %q, want %q: %v", arguments, os.Args, err)
-	}
 	workingDirectory, err := GetProcessWorkingDirectory(os.Getpid())
 	expected, _ := os.Getwd()
 	if err != nil || workingDirectory != expected {

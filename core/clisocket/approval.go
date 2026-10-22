@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
@@ -88,8 +89,9 @@ func newScopeApprovals(idleLifetime time.Duration) scopeApprovals {
 }
 
 // SessionApprovals remembers what the user approved on cli.sock. The command line and launchers have separate memories,
-// so approving one never approves the other, even for the same app; agents keep their per-connection state. One mutex
-// and one generation cover all of it, so ClearAll (lock, sign-out, switch off) ends everything, a dialog still open too.
+// so approving one never approves the other, even for the same app; agents keep their own state per live agent
+// session, or per connection outside a harness. One mutex and one generation cover all of it, so ClearAll (lock,
+// sign-out, switch off) ends everything, a dialog still open too.
 type SessionApprovals struct {
 	mutex    sync.Mutex
 	lifetime time.Duration
@@ -97,24 +99,48 @@ type SessionApprovals struct {
 	// commandLine approvals end lifetime after their scope's last request.
 	commandLine scopeApprovals
 	// launchers last until Hisar locks, the switch goes off, or Settings revokes them; their scope is always an app.
-	launchers            scopeApprovals
-	agentConnectionsByID map[uint64]*agentConnectionState
-	generation           int
+	launchers     scopeApprovals
+	agentsByScope map[approvalScope]*agentState
+	// agentSessions are the live agent sessions both sockets share; an agent session's grants end with it.
+	agentSessions         *agentharness.Sessions
+	onAgentSessionsChange func()
+	// agentHosts are the apps revokeApp ended, until ForgetAgentHost; an app approval for one of them is never recorded
+	// again, and a dialog answered after revokeApp is denied. ClearAll keeps them: they are no approval.
+	agentHosts map[AppIdentity]bool
+	generation int
 }
 
-func NewSessionApprovals(lifetime time.Duration, now func() time.Time) *SessionApprovals {
+// NewSessionApprovals keeps approvals for lifetime after their scope's last request. agentSessions are the live agent
+// sessions the SSH agent shares; nil keeps sessions of these approvals' own, for Hisar without an SSH agent.
+func NewSessionApprovals(lifetime time.Duration, now func() time.Time, agentSessions *agentharness.Sessions) *SessionApprovals {
 	if lifetime == 0 {
 		lifetime = DefaultApprovalLifetime
 	}
 	if now == nil {
 		now = time.Now
 	}
-	return &SessionApprovals{
-		lifetime:             lifetime,
-		now:                  now,
-		commandLine:          newScopeApprovals(lifetime),
-		launchers:            newScopeApprovals(0),
-		agentConnectionsByID: map[uint64]*agentConnectionState{},
+	if agentSessions == nil {
+		agentSessions = agentharness.NewSessions(now)
+	}
+	approvals := &SessionApprovals{
+		lifetime:      lifetime,
+		now:           now,
+		commandLine:   newScopeApprovals(lifetime),
+		launchers:     newScopeApprovals(0),
+		agentsByScope: map[approvalScope]*agentState{},
+		agentSessions: agentSessions,
+		agentHosts:    map[AppIdentity]bool{},
+	}
+	agentSessions.Watch(approvals.followAgentSession)
+	return approvals
+}
+
+// revokeAppPath needs approvals.mutex.
+func (memory *scopeApprovals) revokeAppPath(appPath string) {
+	for scope := range memory.lastUsedByScope {
+		if scope.app.Path == appPath {
+			delete(memory.lastUsedByScope, scope)
+		}
 	}
 }
 
@@ -138,7 +164,7 @@ func (approvals *SessionApprovals) isApproved(memory *scopeApprovals, scope appr
 }
 
 // require refreshes a current approval, or runs ask once for the scope while concurrent requests for it wait; the
-// request is denied if ClearAll ran while the dialog was open.
+// request is denied if ClearAll ran while the dialog was open, or if its app became an agent host.
 func (approvals *SessionApprovals) require(memory *scopeApprovals, scope approvalScope, ask func() error) error {
 	approvals.mutex.Lock()
 	if approvals.isCurrent(memory, scope) {
@@ -163,7 +189,7 @@ func (approvals *SessionApprovals) require(memory *scopeApprovals, scope approva
 
 	approvals.mutex.Lock()
 	delete(memory.pendingByScope, scope)
-	if generation != approvals.generation {
+	if approvals.isOutdated(scope, generation) {
 		pending.err = ErrDenied
 	} else if pending.err == nil {
 		memory.lastUsedByScope[scope] = approvals.now()
@@ -181,7 +207,7 @@ func (approvals *SessionApprovals) requireAlways(memory *scopeApprovals, scope a
 	err := ask()
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
-	if generation != approvals.generation {
+	if approvals.isOutdated(scope, generation) {
 		return ErrDenied
 	}
 	if err == nil && memory != nil {
@@ -190,22 +216,45 @@ func (approvals *SessionApprovals) requireAlways(memory *scopeApprovals, scope a
 	return err
 }
 
+// isOutdated needs approvals.mutex: ClearAll ran since generation, or the scope's app became an agent host.
+func (approvals *SessionApprovals) isOutdated(scope approvalScope, generation int) bool {
+	return generation != approvals.generation || approvals.agentHosts[scope.app]
+}
+
 // ClearAll ends every approval, launchers' too, and every agent's remembered secrets, e.g. when Hisar locks; an approval
 // in progress is denied too.
 func (approvals *SessionApprovals) ClearAll() {
 	approvals.mutex.Lock()
-	defer approvals.mutex.Unlock()
 	clear(approvals.commandLine.lastUsedByScope)
 	clear(approvals.launchers.lastUsedByScope)
-	clear(approvals.agentConnectionsByID)
+	clear(approvals.agentsByScope)
 	approvals.generation++
+	approvals.mutex.Unlock()
+	approvals.notifyAgentSessions()
 }
 
-// forgetConnection drops what only the closed connection could use: its agent state and its connection-scoped approval
-// (only the command line has those).
+// revokeApp ends the command-line and launcher approvals of the app's path once the app hosted an agent session, and
+// denies the ones whose dialog is still open.
+func (approvals *SessionApprovals) revokeApp(app AppIdentity) {
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	approvals.commandLine.revokeAppPath(app.Path)
+	approvals.launchers.revokeAppPath(app.Path)
+	approvals.agentHosts[app] = true
+}
+
+// ForgetAgentHost lets the app's approvals be recorded again, once Settings forgot that the app hosted an agent session.
+func (approvals *SessionApprovals) ForgetAgentHost(app AppIdentity) {
+	approvals.mutex.Lock()
+	defer approvals.mutex.Unlock()
+	delete(approvals.agentHosts, app)
+}
+
+// forgetConnection drops what only the closed connection could use: the agent state of a connection outside a harness
+// and its connection-scoped approval (only the command line has those). An agent session's state outlives it.
 func (approvals *SessionApprovals) forgetConnection(connectionID uint64) {
 	approvals.mutex.Lock()
 	defer approvals.mutex.Unlock()
 	delete(approvals.commandLine.lastUsedByScope, approvalScope{connectionID: connectionID})
-	delete(approvals.agentConnectionsByID, connectionID)
+	delete(approvals.agentsByScope, approvalScope{connectionID: connectionID})
 }

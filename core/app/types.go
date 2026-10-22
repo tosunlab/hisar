@@ -497,6 +497,9 @@ type Config struct {
 	// ShowItem shows an item, or its editor, in the app's window for launcher.items.open; nil, as on the iPhone, refuses
 	// that request.
 	ShowItem func(location ItemLocation)
+	// DescribeApp names an app bundle and gives its icon as a data URL, for the coding agent sessions and agent hosts that
+	// Settings lists; nil names it by its file name, without an icon.
+	DescribeApp func(bundlePath string) (name string, iconURL string)
 }
 
 type WebsiteIconFetcher interface {

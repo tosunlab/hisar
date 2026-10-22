@@ -25,6 +25,8 @@ func (approver *waitingApprover) Approve(ctx context.Context, request ApprovalRe
 	return ApprovalResult{}, nil
 }
 
+// TestClientDisconnectCancelsTheWaitingApproval: a client that hangs up cancels its approval, also when it sent more
+// after the request than the agent has read yet.
 func TestClientDisconnectCancelsTheWaitingApproval(t *testing.T) {
 	material, err := sshkey.GenerateEd25519Key("laptop")
 	if err != nil {
@@ -47,10 +49,6 @@ func TestClientDisconnectCancelsTheWaitingApproval(t *testing.T) {
 	defer cancel()
 	go server.Serve(ctx, listener)
 
-	connection, err := net.Dial("unix", socketPath)
-	if err != nil {
-		t.Fatal(err)
-	}
 	signRequest := ssh.Marshal(struct {
 		Type  byte
 		Key   []byte
@@ -58,18 +56,25 @@ func TestClientDisconnectCancelsTheWaitingApproval(t *testing.T) {
 		Flags uint32
 	}{13, signer.PublicKey().Marshal(), []byte("data"), 0})
 	message := binary.BigEndian.AppendUint32(nil, uint32(len(signRequest)))
-	if _, err := connection.Write(append(message, signRequest...)); err != nil {
-		t.Fatal(err)
-	}
-	select {
-	case <-approver.startedChannel:
-	case <-time.After(5 * time.Second):
-		t.Fatal("the agent never asked for approval")
-	}
-	connection.Close()
-	select {
-	case <-approver.cancelledChannel:
-	case <-time.After(3 * time.Second):
-		t.Fatal("the approval kept waiting after the client disconnected")
+	message = append(message, signRequest...)
+	for _, sent := range [][]byte{message, append(message, 0)} {
+		connection, err := net.Dial("unix", socketPath)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := connection.Write(sent); err != nil {
+			t.Fatal(err)
+		}
+		select {
+		case <-approver.startedChannel:
+		case <-time.After(5 * time.Second):
+			t.Fatal("the agent never asked for approval")
+		}
+		connection.Close()
+		select {
+		case <-approver.cancelledChannel:
+		case <-time.After(3 * time.Second):
+			t.Fatalf("the approval kept waiting after the client disconnected, with %d bytes after the request", len(sent)-len(message))
+		}
 	}
 }

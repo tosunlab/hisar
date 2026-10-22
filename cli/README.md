@@ -1,10 +1,8 @@
 # Hisar command-line tool
 
-`hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`), runs commands with secrets they never see, and serves them to coding agents over MCP. Design: [docs/DESIGN.md §9.4](../docs/DESIGN.md).
+`hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`), runs commands with your secrets and masks them in the output, and serves them to coding agents over MCP. Design: [docs/DESIGN.md §9.4](../docs/DESIGN.md#94-cli).
 
 ## Install
-
-`hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`).
 
 **On a Mac with the Hisar app**, the app includes it: Settings → Developer tools → **Install command-line tool**. `hisar` then works
 through the running app, which asks you to approve each terminal with Touch ID; `hisar status` shows whether it uses the app.
@@ -77,19 +75,16 @@ use Hisar" on.
 
 1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults an agent may use. Every vault starts
    off, and the setting is per device. Agents cannot see the other vaults at all.
-2. Add the server to your agent:
-
-   ```sh
-   claude mcp add hisar -- hisar mcp        # Claude Code
-   ```
-
-   Cursor, in `~/.cursor/mcp.json` or a project's `.cursor/mcp.json`:
+2. Connect your agent. Claude Code, Codex and omp connect with one click in the same section (below). Cursor, in
+   `~/.cursor/mcp.json` or a project's `.cursor/mcp.json`:
 
    ```json
-   { "mcpServers": { "hisar": { "command": "hisar", "args": ["mcp"] } } }
+   { "mcpServers": { "hisar": { "command": "hisar", "args": ["mcp", "--no-reveal"] } } }
    ```
 
-   Any other MCP client: a stdio server with the command `hisar` and the argument `mcp`.
+   Any other MCP client: a stdio server with the command `hisar` and the arguments `mcp --no-reveal`. `--no-reveal` leaves out
+   `get_secret` and `get_one_time_code`, so no secret value can reach the agent through MCP; drop it only for an agent you let read
+   values.
 
 The agent gets these tools:
 
@@ -97,9 +92,9 @@ The agent gets these tools:
 |---|---|---|
 | `list_vaults` | the vaults available to agents | once per agent connection |
 | `search_items` | items by title, username, URL or vault: metadata, field labels and `hisar://` references, never values or notes | once per agent connection |
-| `run_with_secrets` | runs a command (an argument list, no shell) with references in its environment; output masked, at most 64 KiB per stream, timeout up to 600 s | every call, showing the command, directory and secrets; "Allow these secrets for this agent for 1 hour" |
+| `run_with_secrets` | runs a command, as an argument list or a `/bin/sh -c` command line, with secrets from `env` (variable → `hisar://` reference), `envFiles` (as `hisar run --env-file`) and `stdin` (text or one reference); through `direnv exec` when the directory has an allowed `.envrc`; output masked, at most 64 KiB per stream and streamed as progress to clients that ask, timeout up to 1 hour | every call, showing the command with the env files' plain values (`env NAME=value …`) and its stdin, the directory and secrets; "Allow these secrets for this agent for 1 hour" |
 | `get_one_time_code` | the current one-time code of an item | every call; can be allowed for 1 hour |
-| `get_secret` | reveals one value to the agent | every call, for that item; "Allow this item for 1 hour". `private key` is always refused |
+| `get_secret` | reveals one value to the agent | every call, for that item; "Allow every field of “&lt;item&gt;” for this agent for 1 hour". `private key` is always refused |
 
 The first dialog names the agent (from its MCP client name) and the app it runs in. Denying fails the tool with "The user denied
 access in Hisar.", which the agent can relay to you. Approvals and allowed secrets end when the agent disconnects or Hisar locks.
@@ -108,3 +103,65 @@ Limits: a command run with secrets has the real values and can write them to a f
 which masking does not catch, so approve only commands you would run yourself; allowing secrets for an hour lets the agent run any
 command with them for that hour. A value from `get_secret` is in the agent's transcript and logs. Details:
 [docs/DESIGN.md](../docs/DESIGN.md) §9.4.2.
+
+### Claude Code
+
+In Hisar, open Settings → Developer tools → Coding agents and click **Connect** next to Claude Code. Hisar finds `claude` on your
+PATH, in `~/.local/bin`, `/opt/homebrew/bin`, `/usr/local/bin` or `~/.claude/local`, and adds the `hisar` inside Hisar.app to
+your user settings (`~/.claude.json`, or `$CLAUDE_CONFIG_DIR/.claude.json`):
+
+```sh
+claude mcp add --scope user --transport stdio hisar -- /Applications/Hisar.app/Contents/Helpers/hisar mcp --no-reveal
+```
+
+That command is also the way to connect by hand. New Claude Code sessions load Hisar; restart the ones already running.
+**Disconnect** runs `claude mcp remove hisar --scope user`. If your settings already have a server named `hisar` that Hisar did not
+add, or Hisar's with a setting you added or changed, the card says "Claude Code already has a server named hisar. Remove it to
+connect Hisar." and Hisar never changes it.
+Commands Claude Code runs in its shell get the coding-agent rules, as omp's do (below).
+
+### Codex
+
+Click **Connect** next to Codex in the same section. Hisar finds `codex` on your PATH, in `/opt/homebrew/bin`, `/usr/local/bin`,
+`~/.npm-global/bin` or `~/.local/bin`, and adds this table to `~/.codex/config.toml` (or `$CODEX_HOME/config.toml`), leaving the
+rest of the file as it was:
+
+```toml
+[mcp_servers.hisar]
+command = "/Applications/Hisar.app/Contents/Helpers/hisar"
+args = ["mcp", "--no-reveal"]
+startup_timeout_sec = 15
+tool_timeout_sec = 4200
+```
+
+To connect by hand, add the same table: `codex mcp add` cannot set the timeouts, and Codex's default of 60 seconds per tool call
+would end a `run_with_secrets` call while its approval is still open. New Codex sessions load Hisar; restart the ones already
+running. **Disconnect** runs `codex mcp remove hisar`. A `hisar` server that Hisar did not add, or this table with a key you added
+or changed, is left alone, as for Claude Code.
+Codex's sandbox blocks Unix sockets for the commands it runs, so `hisar run` in Codex's shell cannot reach the app; Codex uses
+your secrets through `run_with_secrets`, which runs outside the sandbox.
+
+### omp and Tern
+
+Hisar comes with a plugin for omp, the coding agent that also runs in Tern's panes. Connecting it gives omp both the plugin and
+Hisar's MCP server as `hisar mcp --no-reveal`, so omp runs commands with your secrets without seeing them, and its status line
+shows whether Hisar is locked.
+
+1. In Hisar, open Settings → Developer tools → Coding agents and turn on "Available to agents" for the vaults omp may use, as for
+   `hisar mcp` above.
+2. Next to omp in the same section, click **Connect**. Hisar finds omp on your PATH, in `~/bin`, in Tern
+   (`~/Library/Application Support/Tern/omp/bin`) or in `~/.bun/bin`, and runs `omp plugin link` with the plugin inside Hisar.app.
+   The plugin starts the MCP server with the `hisar` inside Hisar.app. New omp sessions load Hisar; restart the ones already
+   running. **Disconnect** runs `omp plugin uninstall @tryhisar/omp-plugin`, which removes the MCP server too.
+   On Linux, link the plugin from a checkout of this repository: `omp plugin link <checkout>/omp`.
+3. Start omp. Its status line says "Hisar locked" or "Hisar unlocked", and `/hisar` shows Hisar's state. The agent gets
+   `list_vaults`, `search_items` and `run_with_secrets`, never `get_secret` or `get_one_time_code`. omp shows nothing of a
+   `run_with_secrets` command's output until it ends, so for a long command, one that asks for input or one that needs the shell's
+   environment, the agent runs `hisar run --env-file .env -- <command>` in its shell instead.
+
+Every `hisar` command omp runs, in its shell or as `hisar mcp`, gets the coding-agent rules
+([docs/DESIGN.md](../docs/DESIGN.md) §9.4.4): it sees only the vaults available to agents, `hisar run` asks once per secret for each omp
+session, `hisar read` and `hisar get` ask per item, and changes to items are refused. The approval names omp and the app it runs in
+("omp in Tern wants to use 1 secret"). Approvals end when that omp exits or Hisar locks. ssh and git inside omp get only the SSH
+keys in vaults available to agents. The app omp runs in, such as Tern, becomes an agent host: its other processes without a
+terminal then ask on every connection, and it can no longer be a launcher.

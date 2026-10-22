@@ -52,6 +52,10 @@ const isPasswordShown = computed(() => approval.value?.isPasswordUnlock === true
 const isTouchIDUsed = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
 const isWaitingForTouchID = computed(() => approvalStore.isAuthorizing && isTouchIDUsed.value);
 const canChoosePassword = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
+const phoneNote = computed(() => {
+  if (approval.value?.isPhoneApproval) return "or approve on your smart device";
+  return approval.value?.isTooLongForPhone ? "This request is too long to approve on your phone." : "";
+});
 
 const isAppRequester = computed(() => !approval.value?.requesterKind || approval.value.requesterKind === "app");
 
@@ -81,6 +85,14 @@ const requesterName = computed(() => {
   return current.appName;
 });
 
+// harnessName is the agent harness an agent request comes from inside, such as omp; the title marks it as checked when
+// Hisar recognized it by its code signature, and names the app it runs in after it ("omp ✓ in Tern").
+const harnessName = computed(() => (approval.value?.kind === "agent" ? approval.value.harnessName : ""));
+const isHarnessSigned = computed(() => harnessName.value !== "" && approval.value?.agentNameSource === "signature");
+const harnessPlace = computed(() => (harnessName.value ? (approval.value?.agentName ?? "").slice(harnessName.value.length) : ""));
+const signedHarnessText = computed(() => `Hisar recognized ${harnessName.value} by its code signature`);
+const isAgentNameGiven = computed(() => approval.value?.kind === "agent" && approval.value.agentNameSource === "agent");
+
 const allChainProcess = computed(() => (approval.value?.isForwarded ? [] : (approval.value?.allChainProcess ?? [])));
 const chainText = computed(() => allChainProcess.value.map((process) => process.name).join(" ← "));
 const chainTitle = computed(() => allChainProcess.value.map((process) => process.commandLine || process.name).join("\n"));
@@ -107,6 +119,9 @@ const subtitle = computed(() => {
     return current.terminalName ? `from the terminal session ${current.terminalName}` : "from the command line";
   }
   if (current.kind === "agent") {
+    if (harnessName.value) {
+      return `via ${current.clientName}`;
+    }
     return current.appName ? `via ${current.clientName} in ${inlineAppName.value}` : `via ${current.clientName}`;
   }
   if (current.kind === "launcher") {
@@ -140,6 +155,10 @@ const allDetailLine = computed(() => {
   const location = [current.repositoryPath, current.hostAndPort].filter(Boolean).join(" · ");
   return [current.commandLine || current.clientPath || current.clientName, location].filter(Boolean);
 });
+
+// isCommandShownWhole: the first detail line of a command-line or agent request may be a command it runs, so it wraps
+// and scrolls, never cut.
+const isCommandShownWhole = computed(() => approval.value?.kind === "command-line" || approval.value?.kind === "agent");
 
 const allSecretName = computed(() => approval.value?.allSecretName ?? []);
 const rememberLabel = computed(
@@ -368,7 +387,7 @@ onBeforeUnmount(() => {
             <p v-if="appWarning" class="compact-subtitle app-warning-line" data-testid="approval-app-warning">
               <AppIcon name="warning" :size="12" /> {{ approval.appSigner }} — check this is the app you expect
             </p>
-            <p v-if="approval.isPhoneApproval" class="compact-subtitle phone-note" data-testid="approval-phone">or approve on your smart device</p>
+            <p v-if="phoneNote" class="compact-subtitle phone-note" data-testid="approval-phone">{{ phoneNote }}</p>
             <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
             <div class="compact-actions">
               <div v-if="isWaitingForTouchID" class="compact-touch-id" data-testid="approval-touch-id">
@@ -404,9 +423,21 @@ onBeforeUnmount(() => {
                 <AppIcon name="edit" :size="12" /> {{ approval.purpose === "sign-tag" ? "Sign a tag" : "Sign a commit" }}
               </span>
               <h1 id="approval-title">
-                <span data-testid="approval-app">{{ requesterName }}</span> wants to {{ purposeText }}
+                <span v-if="harnessName" data-testid="approval-app">
+                  {{ harnessName
+                  }}<span v-if="isHarnessSigned" class="checked-name" :title="signedHarnessText" :aria-label="signedHarnessText" data-testid="approval-harness-checked"
+                    ><AppIcon name="check" :size="10" /></span
+                  >{{ harnessPlace }}
+                </span>
+                <span v-else data-testid="approval-app">{{ requesterName }}</span> wants to {{ purposeText }}
               </h1>
               <p id="approval-subtitle" class="subtitle" :title="approval.fingerprint">{{ subtitle }}</p>
+              <p v-if="approval.projectName" class="agent-line" data-testid="approval-project">
+                <AppIcon name="folder" :size="12" /> <span class="agent-line-text" :title="approval.projectPath">{{ approval.projectName }}</span>
+              </p>
+              <p v-else-if="isAgentNameGiven" class="agent-line" data-testid="approval-agent-name-given">
+                <AppIcon name="tag" :size="12" /> <span class="agent-line-text">“{{ approval.agentName }}” is the name the agent gave</span>
+              </p>
               <p v-if="chainText || appSigner" class="requester-line" data-testid="approval-requester">
                 <span v-if="chainText" class="chain" :title="chainTitle" data-testid="approval-chain">{{ chainText }}</span>
                 <span v-if="appSigner" class="signer" :class="{ 'is-unverified': appWarning }" :title="approval.appPath" data-testid="approval-signer">
@@ -422,7 +453,14 @@ onBeforeUnmount(() => {
           </div>
 
           <div v-if="allDetailLine.length > 0" class="detail-box" data-testid="approval-details">
-            <code v-for="(line, index) in allDetailLine" :key="index" class="detail-line" :class="{ secondary: index > 0 }" :title="line">{{ line }}</code>
+            <code
+              v-for="(line, index) in allDetailLine"
+              :key="index"
+              class="detail-line"
+              :class="{ secondary: index > 0, whole: index === 0 && isCommandShownWhole }"
+              :title="line"
+              >{{ line }}</code
+            >
           </div>
 
           <div v-if="isLauncher && !isLauncherShare" class="launcher-allowance" data-testid="approval-launcher-note">
@@ -486,7 +524,7 @@ onBeforeUnmount(() => {
               <div class="touch-id-text">
                 <span>{{ touchIDLabel }}</span>
                 <button class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
-                <span v-if="approval.isPhoneApproval" class="phone-note" data-testid="approval-phone">or approve on your smart device</span>
+                <span v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</span>
               </div>
             </div>
             <div v-else-if="!isPasswordShown" class="touch-id manual">
@@ -500,9 +538,9 @@ onBeforeUnmount(() => {
                 {{ approvalStore.failureMessage && !isForwarded ? "Try again" : approveButtonLabel }}
               </button>
               <button v-if="canChoosePassword" class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
-              <span v-if="approval.isPhoneApproval" class="phone-note" data-testid="approval-phone">or approve on your smart device</span>
+              <span v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</span>
             </div>
-            <span v-else-if="approval.isPhoneApproval" class="phone-note footer-spacer" data-testid="approval-phone">or approve on your smart device</span>
+            <span v-else-if="phoneNote" class="phone-note footer-spacer" data-testid="approval-phone">{{ phoneNote }}</span>
             <span v-else class="footer-spacer"></span>
             <span v-if="approvalStore.allApproval.length > 1" class="muted waiting">{{ approvalStore.allApproval.length - 1 }} more waiting</span>
             <button ref="denyButton" :class="{ primary: isForwarded }" data-testid="deny-approval" @click="deny">Deny</button>
@@ -670,6 +708,39 @@ h1 {
   overflow-wrap: anywhere;
 }
 
+.checked-name {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  margin-left: 4px;
+  vertical-align: 1px;
+  border-radius: 50%;
+  background: var(--color-success);
+  color: var(--color-surface);
+}
+
+.agent-line {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.agent-line .icon {
+  flex: none;
+}
+
+.agent-line-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .requester-line {
   display: flex;
   flex-direction: column;
@@ -747,6 +818,14 @@ h1 {
 
 .detail-line.secondary {
   color: var(--color-text-muted);
+}
+
+.detail-line.whole {
+  max-height: 9em;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
 }
 
 .launcher-allowance {

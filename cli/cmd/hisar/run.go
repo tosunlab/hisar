@@ -9,14 +9,12 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strings"
 	"sync"
 	"syscall"
 	"time"
 
 	"github.com/tryhisar/hisar/cli/internal/dotenv"
 	"github.com/tryhisar/hisar/cli/internal/masking"
-	"github.com/tryhisar/hisar/core/secretreference"
 )
 
 const (
@@ -78,51 +76,6 @@ func runRun(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	return nil
 }
 
-// buildRunEnvironment applies the env files in order; a real variable wins over the files unless its value is a reference.
-func buildRunEnvironment(environ []string, fileVariables []dotenv.Variable) []dotenv.Variable {
-	var variables []dotenv.Variable
-	indexByName := map[string]int{}
-	for _, entry := range environ {
-		name, value, hasEquals := strings.Cut(entry, "=")
-		if !hasEquals || name == "" {
-			continue
-		}
-		if index, isKnown := indexByName[name]; isKnown {
-			variables[index].Value = value
-			continue
-		}
-		indexByName[name] = len(variables)
-		variables = append(variables, dotenv.Variable{Name: name, Value: value})
-	}
-	isFromFile := map[string]bool{}
-	for _, fileVariable := range fileVariables {
-		index, isKnown := indexByName[fileVariable.Name]
-		if !isKnown {
-			indexByName[fileVariable.Name] = len(variables)
-			variables = append(variables, fileVariable)
-			isFromFile[fileVariable.Name] = true
-			continue
-		}
-		if isFromFile[fileVariable.Name] || secretreference.IsReference(variables[index].Value) {
-			variables[index].Value = fileVariable.Value
-			isFromFile[fileVariable.Name] = true
-		}
-	}
-	return variables
-}
-
-func listUniqueReferences(variables []dotenv.Variable) []string {
-	var references []string
-	isListed := map[string]bool{}
-	for _, variable := range variables {
-		if secretreference.IsReference(variable.Value) && !isListed[variable.Value] {
-			isListed[variable.Value] = true
-			references = append(references, variable.Value)
-		}
-	}
-	return references
-}
-
 func findCommandPath(name string) (string, int, error) {
 	path, err := exec.LookPath(name)
 	switch {
@@ -136,22 +89,18 @@ func findCommandPath(name string) (string, int, error) {
 
 // runWithSecret resolves the references, starts the command with the values in its environment and returns its exit code.
 func runWithSecret(ctx context.Context, option runOption, environ []string, resolve referenceResolver, stdio runStdio) (int, error) {
-	var fileVariables []dotenv.Variable
-	for _, path := range option.environmentFiles {
-		variablesInFile, err := dotenv.ReadFile(path)
-		if err != nil {
-			return 0, err
-		}
-		fileVariables = append(fileVariables, variablesInFile...)
+	fileVariables, err := dotenv.ReadFiles(option.environmentFiles)
+	if err != nil {
+		return 0, err
 	}
-	variables := buildRunEnvironment(environ, fileVariables)
+	variables := dotenv.BuildEnvironment(environ, fileVariables)
 	commandPath, exitCode, err := findCommandPath(option.commandArgs[0])
 	if err != nil {
 		fmt.Fprintln(stdio.stderr, "hisar:", err)
 		return exitCode, nil
 	}
 
-	references := listUniqueReferences(variables)
+	references := dotenv.ListReferences(variables)
 	var secretValues []string
 	if len(references) == 0 {
 		fmt.Fprintln(stdio.stderr, "hisar: no secret references found")

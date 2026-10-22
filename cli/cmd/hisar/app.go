@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"os"
 	"strings"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 )
@@ -28,15 +30,42 @@ type appClient struct {
 	isApprovalNoticeShown bool
 }
 
-// commandMode is how this run reaches the vaults: through the app (client set) or standalone, and why.
+// commandMode is how this run reaches the vaults: through the app (client set) or standalone, and why. appError is why
+// the app did not answer when standalone mode should report it instead of its own failure: errAppNotRunning after hisar
+// started the app and it never answered, errSocketBlocked when a sandbox blocks the socket.
 type commandMode struct {
-	client          *appClient
-	reason          string
-	socketPath      string
-	isAppNotRunning bool
+	client     *appClient
+	reason     string
+	socketPath string
+	appError   error
 }
 
 var selectedMode commandMode
+
+// findOwnHarness finds the agent harness this hisar runs inside, from its own process chain; an error means the chain is
+// unknown.
+var findOwnHarness = func() (agentharness.Session, bool, error) {
+	return agentharness.Find(agentharness.ReadChain(os.Getpid(), agentharness.SystemReader()))
+}
+
+// checkStandaloneAllowed refuses standalone mode inside an agent harness, where the Hisar app's agent rules are the only
+// way to the vaults: standalone would let the agent sign in with no approval in the app. A chain that could not be read
+// may hold a harness, so it is refused too.
+func checkStandaloneAllowed() error {
+	session, isInside, err := findOwnHarness()
+	switch {
+	case err != nil:
+		return errors.New("hisar couldn't check which program runs it, so it uses the Hisar app only. Try again.")
+	case isInside:
+		return fmt.Errorf("hisar runs inside %s, so it uses the Hisar app only.", session.Harness.Name)
+	}
+	return nil
+}
+
+// writeRefusedStatus is hisar status when the app did not answer and standalone mode is refused.
+func writeRefusedStatus(output io.Writer, mode commandMode, refusal error) {
+	fmt.Fprintf(output, "mode:    none (%s)\n%v\n", mode.reason, refusal)
+}
 
 func isStandaloneRequested() bool {
 	value := strings.ToLower(strings.TrimSpace(os.Getenv(standaloneEnvironment)))
@@ -64,6 +93,9 @@ func chooseModeWithLaunch(isStandaloneForced, isLaunchAllowed bool) commandMode 
 
 func dialApp(socketPath string) (*appClient, error) {
 	connection, err := net.DialTimeout("unix", socketPath, appDialTimeout)
+	if errors.Is(err, os.ErrPermission) {
+		return nil, errSocketBlocked
+	}
 	if err != nil {
 		return nil, &appUnreachableError{socketPath: socketPath}
 	}

@@ -5,7 +5,7 @@
 # base is the previous release's tag.
 #
 # scripts/app-paths.sh says what each app is built from: core/ and go.work count for each, and the desktop app also counts
-# cli/. The phone apps share mobile/hisarkit and mobile/go.mod; an Android-only change keeps off the macOS runner.
+# cli/ and omp/. The phone apps share mobile/hisarkit and mobile/go.mod; an Android-only change keeps off the macOS runner.
 #
 # Environment: BASE_SHA, HEAD_SHA, IS_FORCED ("true" runs everything) and WORKFLOW_FILE (a change to it runs everything, so
 # a workflow edit is tested). Writes isDesktopChanged, isMobileChanged (the iPhone app), isAndroidChanged and isAdminChanged

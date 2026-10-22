@@ -94,6 +94,33 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testCodingAgentRequestShowsItsProject() {
+        val approval = decode(
+            """
+            [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+              "kind":"cli","appName":"omp in Tern (via hisar)","purpose":"use 1 secret","commandLine":"npm run db:migrate","repositoryPath":"~/src/acme-web/packages/db",
+              "projectPath":"~/src/acme-web","secrets":["Agents › Stripe › secret key"]}]
+            """,
+        ).first()
+        assertEquals(listOf("App", "Project", "Command", "Repository", "Secrets"), approval.allDetailRow.map { it.label })
+        assertEquals(PhoneApproval.DetailRow("Project", "~/src/acme-web", true), approval.allDetailRow[1])
+        assertEquals("", createApproval().projectPath, "a request from an older Mac has no project")
+    }
+
+    @Test
+    fun testCodingAgentRequestOmitsTheRepositoryThatIsItsProject() {
+        val approval = decode(
+            """
+            [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
+              "kind":"cli","appName":"omp in Tern (via hisar)","purpose":"use 1 secret","commandLine":"npm run db:migrate","repositoryPath":"~/src/acme-web/",
+              "projectPath":"~/src/acme-web","secrets":["Agents › Stripe › secret key"]}]
+            """,
+        ).first()
+        assertEquals(listOf("App", "Project", "Command", "Secrets"), approval.allDetailRow.map { it.label })
+        assertEquals("~/src/acme-web", approval.allDetailRow[1].value)
+    }
+
+    @Test
     fun testLauncherRequestNamesTheAppAndHowLongItLasts() {
         val approval = decode(
             """

@@ -18,6 +18,7 @@ import (
 	"time"
 	"unsafe"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/localsocket"
 	"golang.org/x/sys/unix"
 )
@@ -31,9 +32,11 @@ func NewSystemResolver() *Resolver {
 		ProcessReader: ProcessReader{
 			GetPath:             GetProcessPath,
 			GetParentPID:        localsocket.GetParentPID,
-			ListArguments:       ListProcessArguments,
+			ListArguments:       agentharness.ListArguments,
 			GetWorkingDirectory: GetProcessWorkingDirectory,
 		},
+		ReadInstance:              agentharness.ReadInstance,
+		GetProcessSignature:       getProcessSignature,
 		GetResponsiblePID:         getResponsiblePID,
 		ListProcessIDs:            listProcessIDs,
 		ListRunningApps:           listRunningApps,
@@ -115,7 +118,15 @@ func checkSignature(path string, validateResources bool) Signature {
 		strict = 1
 	}
 	info := C.checkSignature(cPath, strict)
-	return Signature{Status: signatureStatuses[info.status], TeamID: takeCString(info.teamID), SignerName: cleanSignerName(takeCString(info.signerName))}
+	return Signature{
+		Status: signatureStatuses[info.status], TeamID: takeCString(info.teamID), SignerName: cleanSignerName(takeCString(info.signerName)),
+		Identifier: takeCString(info.identifier),
+	}
+}
+
+func getProcessSignature(pid int) agentharness.Signature {
+	info := C.copyProcessSignature(C.int(pid))
+	return agentharness.Signature{Identifier: takeCString(info.identifier), TeamID: takeCString(info.teamID)}
 }
 
 // Change times include nested resource edits, removals and replacements, even when a writer restores modification times.

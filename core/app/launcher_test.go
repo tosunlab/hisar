@@ -68,7 +68,7 @@ type launcherTest struct {
 func createLauncherTest(t *testing.T) *launcherTest {
 	t.Helper()
 	test := &launcherTest{
-		testService: createUnlockedTestService(t), approvals: clisocket.NewSessionApprovals(0, nil),
+		testService: createUnlockedTestService(t), approvals: clisocket.NewSessionApprovals(0, nil, nil),
 		approver: &countingApprover{}, launcherApprover: &countingLauncherApprover{},
 	}
 	test.server = clisocket.NewServer(clisocket.ServerConfig{

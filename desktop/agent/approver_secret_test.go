@@ -48,7 +48,7 @@ func TestRunApprovalShowsTheCommandAndTheSecrets(t *testing.T) {
 	resultChannel := make(chan error, 1)
 	go func() { resultChannel <- approver.ApproveCommandLine(context.Background(), request) }()
 	event := waitForApprovalEvent(t, emitter)
-	if event.Action != "run a command with 6 secrets" || event.CommandLine != `npm run test:unit -- --grep 'it'\''s slow'` ||
+	if event.Action != "run a command with 6 secrets" || event.CommandLine != `/usr/local/bin/npm run test:unit -- --grep 'it'\''s slow'` ||
 		!slices.Equal(event.SecretNames, secretNames[:4]) || event.MoreSecretCount != 2 || event.TerminalName != "ttys003" {
 		t.Errorf("event = %+v", event)
 	}

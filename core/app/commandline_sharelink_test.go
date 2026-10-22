@@ -176,7 +176,7 @@ func TestCommandLineShareLinksThroughTheApp(t *testing.T) {
 
 func TestCommandLineShareLinkDescription(t *testing.T) {
 	testService := createUnlockedTestService(t)
-	bridge := NewCommandLineBridge(testService.service, clisocket.NewSessionApprovals(0, nil))
+	bridge := NewCommandLineBridge(testService.service, clisocket.NewSessionApprovals(0, nil, nil))
 	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Title: "GitHub", Username: "alice", Password: "pw", URLs: []string{"https://github.com"}}); err != nil {
 		t.Fatal(err)
 	}

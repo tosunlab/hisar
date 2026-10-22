@@ -35,19 +35,19 @@ Hisar is one Go implementation of the crypto shared by a Mac and Linux app, a br
 - **Zero-knowledge server.** The master password never reaches the server (OPAQUE), and the 128-bit Secret Key makes offline guessing against a stolen database impossible. Titles, URLs and vault names are encrypted too ([threat model](docs/DESIGN.md#2-threat-model)).
 - **Offline first.** Every client keeps a full encrypted copy and works without a network. Sync detects a server that withholds or rolls back data.
 - **Every kind of secret.** Logins with one-time codes and passkeys, SSH keys, secure notes, credit cards, identities, addresses, API credentials, software licenses, servers and databases.
-- **SSH agent with Touch ID.** Private keys never sit in `~/.ssh`: `ssh`, `git` and commit signing ask Hisar, which approves each use with Touch ID, the master password or your phone. The app writes the `git config` lines for SSH commit signing for you.
-- **Browser extension.** Fills and saves logins, passkeys, cards, identities and addresses in Chromium browsers, only on an exact origin match. The extension holds no keys: it talks to the desktop app over native messaging.
+- **SSH agent with Touch ID.** Private keys never sit in `~/.ssh`: `ssh`, `git` and commit signing ask Hisar, which approves each use with Touch ID, the master password or your phone. For SSH commit signing, the app shows the `git config` commands ready to copy; it never changes your Git config itself.
+- **Browser extension.** Fills and saves logins, passkeys, cards, identities and addresses in Chromium browsers. A login fills only on pages whose host shares its registrable domain (`accounts.google.com` for a login saved for `google.com`), or only on the exact host if you turn that on. The extension holds no keys: it talks to the desktop app over native messaging.
 - **Phones.** The iPhone app with an AutoFill extension and the Android app with autofill into apps, built on the same Go backend. The phone can also approve requests that arrive at your Mac.
 - **Sharing.** Share a vault with anyone by email, send a login to someone without an account through an end-to-end encrypted share link, and group people into organizations and teams with organization vaults.
 - **Secrets for commands.** Keep `hisar://vault/item/field` references in your `.env` instead of values. `hisar run --env-file .env -- <command>` resolves them in one approval and masks every secret the command prints.
-- **Coding agents.** `hisar mcp` is an MCP server that shows an agent only the vaults you allow and asks you before every command it runs with secrets.
+- **Coding agents.** `hisar mcp` is an MCP server that shows an agent only the vaults you allow and asks you before every command it runs with secrets. Claude Code, Codex and omp connect with one click in Settings.
 - **In and out.** Import from 1Password, Bitwarden, LastPass and CSV, and passkeys through Credential Exchange on the phone. Export everything as encrypted or plain JSON and import it back.
-- **Recovery you control.** A forgotten master password cannot be recovered by anyone; the Emergency Kit PDF is the only way back in.
+- **Recovery you control.** A forgotten master password cannot be recovered by anyone, Hisar included. The Emergency Kit PDF holds your email, server and Secret Key, so that with your master password you can sign in on any new device.
 - **Self-hosted in one binary.** `hisar-server` and Postgres, with an admin dashboard at `/admin` whose crypto runs in the browser as WebAssembly, so it can never read a vault.
 
 ## Install
 
-Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/releases), one release per app, each with `SHA256SUMS` files to check it against.
+Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/releases), one release per app. The CLI archives, the Linux packages and the Flatpak come with `SHA256SUMS` files to check them against; the Mac DMG is signed and notarized instead.
 
 | Platform | How to get it |
 |---|---|
@@ -68,7 +68,7 @@ The Secret Key goes into the desktop's keyring, so a Secret Service has to run (
 
 ## Quick start
 
-With the Hisar app running on your Mac, `hisar` works through it and asks you to approve each terminal with Touch ID. Anywhere else, `hisar login` signs in on its own.
+With the Hisar app running on your Mac or Linux desktop, `hisar` works through it and asks you to approve each terminal (with Touch ID on the Mac, with the master password or your phone on Linux). On Windows, servers and machines without the app, `hisar login` signs in on its own.
 
 ```sh
 hisar status                                      # through the app, or standalone?
@@ -89,10 +89,10 @@ GITHUB_TOKEN=hisar://Personal/GitHub/API%20token
 hisar run --env-file .env -- npm test             # one approval; printed secrets become <concealed by hisar>
 ```
 
-Give a coding agent your secrets without showing them: turn on **Available to agents** for a vault in Settings → Developer tools → Coding agents, then
+Give a coding agent your secrets without showing them: in Settings → Developer tools → Coding agents, turn on **Available to agents** for a vault and click **Connect** next to Claude Code, Codex or omp. Any other MCP client gets a stdio server:
 
 ```sh
-claude mcp add hisar -- hisar mcp                 # Claude Code; any MCP client: command `hisar`, argument `mcp`
+hisar mcp --no-reveal                             # --no-reveal: no tool can hand a secret's value to the agent
 ```
 
 Everything `hisar` can do, the reference format, masking and the MCP tools: [cli/README.md](cli/README.md).
@@ -117,6 +117,7 @@ Everything `hisar` can do, the reference format, masking and the MCP tools: [cli
 | [`extension/`](extension) | The browser extension (TypeScript, MV3), see [extension/README.md](extension/README.md) |
 | [`mobile/`](mobile) | The iPhone (Swift) and Android (Kotlin) apps on the gomobile-bound core, see [mobile/README.md](mobile/README.md) |
 | [`raycast/`](raycast) | The Raycast extension |
+| [`omp/`](omp) | The Hisar plugin for omp, the coding agent that also runs in Tern |
 | [`deploy/`](deploy) | Dockerfile and Docker Compose for the server, see [deploy/README.md](deploy/README.md) |
 | [`docs/`](docs) | [DESIGN.md](docs/DESIGN.md), the source of truth for the security model, and [RELEASING.md](docs/RELEASING.md) |
 

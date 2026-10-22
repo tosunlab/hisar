@@ -37,6 +37,9 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 		applyRequester(&event, requester)
 		processes = requester.Processes
 	}
+	if request.AgentSession != nil {
+		nameAgentSession(&event, request.AgentSession.Session.Harness.Name)
+	}
 	description := DescribeRequest(processes, request, approver.config.HomeDirectory, approver.config.ReadFile)
 	event.Purpose, event.Action, event.Target = description.Purpose, description.Action, description.Target
 	event.CommandLine, event.RepositoryPath, event.HostAndPort = description.CommandLine, description.RepositoryPath, description.HostAndPort
@@ -46,7 +49,12 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 	}
 	event.IsRememberedByDefault = event.IsRememberable
 	if event.IsRememberable {
-		event.RememberPeriod = describeRememberPeriod(approver.getSSHRememberDuration())
+		rememberDuration := approver.getSSHRememberDuration()
+		if request.AgentSession != nil {
+			rememberDuration = sshagent.GetAgentSessionApprovalLifetime(rememberDuration)
+			event.RememberLabel = fmt.Sprintf("Don’t ask again for %s %s", event.AppName, describeRememberPeriod(rememberDuration))
+		}
+		event.RememberPeriod = describeRememberPeriod(rememberDuration)
 	}
 	approver.setUnlockState(&event)
 	event.IsCompact = approver.config.IsCompactApproval != nil && approver.config.IsCompactApproval() &&
@@ -154,8 +162,19 @@ func describeRememberPeriod(duration time.Duration) string {
 
 // describeRememberedRequester is who a remembered approval covers, as the dialog's checkbox names it.
 func describeRememberedRequester(event ApprovalEvent) string {
-	if isAppRequester(event) {
+	if isAppRequester(event) || event.AgentName != "" {
 		return event.AppName
 	}
 	return event.ClientName
+}
+
+// nameAgentSession names a request from inside an agent harness by the harness and where it runs, "omp in Tern", as
+// the agent approval window does: the approval is remembered for that session, not for the app.
+func nameAgentSession(event *ApprovalEvent, harnessName string) {
+	event.AgentName = harnessName
+	if event.RequesterKind == "" {
+		event.AppName = harnessName
+		return
+	}
+	event.AppName = harnessName + " in " + describeInlineAppName(*event)
 }

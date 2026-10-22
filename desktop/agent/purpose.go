@@ -29,15 +29,14 @@ const (
 	PurposeSignTag    = "sign-tag"
 	PurposeUseKey     = "use-key"
 
-	maximumCommandLineLength  = 160
-	maximumSubjectLength      = 100
-	maximumSignedPayloadSize  = 64 * 1024
-	maximumGitHeadSize        = 4 * 1024
-	defaultSSHPort            = 22
-	redactedValue             = "•••"
-	sshOptionLetterWithValue  = "BbcDEeFIiJLlmOoPpQRSWw"
-	gitGlobalOptionWithValue  = "|-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|"
-	sensitiveConfigNamePieces = "token|password|secret|header|auth"
+	maximumCommandLineLength = 160
+	maximumSubjectLength     = 100
+	maximumSignedPayloadSize = 64 * 1024
+	maximumGitHeadSize       = 4 * 1024
+	defaultSSHPort           = 22
+	redactedValue            = "•••"
+	sshOptionLetterWithValue = "BbcDEeFIiJLlmOoPpQRSWw"
+	gitGlobalOptionWithValue = "|-C|-c|--git-dir|--work-tree|--namespace|--super-prefix|--config-env|"
 )
 
 // RequestDescription is what the approval dialog says about a request: "<app> wants to <Action> <Target>".
@@ -194,15 +193,33 @@ func describeRemoteGitCommand(remoteArguments []string) (string, bool) {
 	return "", false
 }
 
-var urlPasswordPattern = regexp.MustCompile(`(://[^/:@\s]*:)[^@/\s]+@`)
-var sensitiveConfigPattern = regexp.MustCompile(`(?i)^([^=]*(?:` + sensitiveConfigNamePieces + `)[^=]*=).+$`)
+var (
+	// urlPasswordPattern finds the password of a URL, https://user:password@host, made only of characters that are never
+	// shell syntax, so a mask never hides a command when git hands an argument to a shell (git bisect run, an alias).
+	urlPasswordPattern = regexp.MustCompile(`(://[^/?#@\s:]*:)[^\s;&|()<>$\x60\\'"/?#@]+(@)`)
+	// gitSecretConfigPattern matches the last part of a git config key that holds a credential, such as
+	// http.extraHeader or github.token.
+	gitSecretConfigPattern = regexp.MustCompile(`(?i)token|password|secret|header|auth`)
+)
 
-func redactArgument(previousArgument, argument string) string {
-	argument = urlPasswordPattern.ReplaceAllString(argument, "${1}"+redactedValue+"@")
-	if previousArgument == "-c" {
-		argument = sensitiveConfigPattern.ReplaceAllString(argument, "${1}"+redactedValue)
+// redactGitArgument hides the credentials git takes in its own arguments: the value of a -c option named like a
+// secret or a header, and the password of a URL. An alias runs, so its value stays whole, in -c alias.x=… and in
+// git config alias.x ….
+func redactGitArgument(previousArgument, argument string) string {
+	if strings.HasPrefix(strings.ToLower(previousArgument), "alias.") {
+		return argument
 	}
-	return argument
+	if previousArgument == "-c" {
+		key, value, _ := strings.Cut(argument, "=")
+		section, _, _ := strings.Cut(key, ".")
+		if strings.EqualFold(section, "alias") {
+			return argument
+		}
+		if value != "" && gitSecretConfigPattern.MatchString(key[strings.LastIndex(key, ".")+1:]) {
+			return key + "=" + redactedValue
+		}
+	}
+	return urlPasswordPattern.ReplaceAllString(argument, "${1}"+redactedValue+"${2}")
 }
 
 func quoteArgument(argument string) string {
@@ -218,16 +235,37 @@ func quoteArgument(argument string) string {
 	return argument
 }
 
-// formatCommandLine shows a process's arguments like a shell would, without secrets, cut to fit the dialog.
+// formatCommandLine shows every argument of a command like a shell would, its program as it was given, so a script an
+// agent wrote and named git still reads ./git. Only git's own credentials are hidden: the approval shows on the user's
+// own Mac and phones, and any other literal in a command came from whoever wrote it, so masking it would protect
+// nothing and could hide what the command does.
 func formatCommandLine(arguments []string) string {
 	if len(arguments) == 0 {
 		return ""
 	}
-	quoted := []string{quoteArgument(filepath.Base(arguments[0]))}
-	for index := 1; index < len(arguments); index++ {
-		quoted = append(quoted, quoteArgument(redactArgument(arguments[index-1], arguments[index])))
+	return joinCommandLine(arguments[0], arguments)
+}
+
+// formatShortCommandLine is a process's command cut to one line of the dialog, its program by name: the process chain
+// only explains a request, and its full paths are in the chain's tooltip.
+func formatShortCommandLine(arguments []string) string {
+	if len(arguments) == 0 {
+		return ""
 	}
-	return truncateText(strings.Join(quoted, " "), maximumCommandLineLength)
+	return truncateText(joinCommandLine(filepath.Base(arguments[0]), arguments), maximumCommandLineLength)
+}
+
+func joinCommandLine(program string, arguments []string) string {
+	isGit := filepath.Base(arguments[0]) == "git"
+	quoted := []string{quoteArgument(program)}
+	for index := 1; index < len(arguments); index++ {
+		argument := arguments[index]
+		if isGit {
+			argument = redactGitArgument(arguments[index-1], argument)
+		}
+		quoted = append(quoted, quoteArgument(argument))
+	}
+	return strings.ToValidUTF8(strings.Join(quoted, " "), "�")
 }
 
 func truncateText(text string, maximumLength int) string {
@@ -250,6 +288,19 @@ func shortenHomePath(path, homeDirectory string) string {
 		return "~/" + rest
 	}
 	return path
+}
+
+// describeDirectory shows a folder with its symlinks resolved, as the kernel reports a harness's working directory,
+// then $HOME as ~, so the project and a command's folder compare equal when they are the same folder (/tmp and
+// /private/tmp on macOS). A folder that cannot be resolved is shown as given.
+func describeDirectory(path, homeDirectory string) string {
+	if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		path = resolved
+	}
+	if resolvedHome, err := filepath.EvalSymlinks(homeDirectory); err == nil {
+		homeDirectory = resolvedHome
+	}
+	return shortenHomePath(path, homeDirectory)
 }
 
 func formatHostAndPort(host string, port int) string {
@@ -436,7 +487,7 @@ func DescribeRequest(processes []appinfo.Process, request sshagent.ApprovalReque
 		commandProcess = &peer
 	}
 	if commandProcess != nil {
-		description.CommandLine = formatCommandLine(commandProcess.Arguments)
+		description.CommandLine = formatShortCommandLine(commandProcess.Arguments)
 	}
 	return description
 }

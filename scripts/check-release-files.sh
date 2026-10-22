@@ -41,4 +41,20 @@ for sumFile in SHA256SUMS*; do
   [ -f "$sumFile" ] || continue
   if command -v sha256sum > /dev/null; then sha256sum -c --quiet "$sumFile"; else shasum -a 256 -c --quiet "$sumFile"; fi
 done
+# omp links to the plugin inside Hisar.app and starts its MCP server with bin/run-hisar, so an update without them breaks
+# every connected omp.
+if [ "$app" = desktop ] && ! $isCustomBuild; then
+  ompPlugin=Hisar.app/Contents/Resources/omp-plugin
+  for pluginFile in package.json mcp.json bin/run-hisar; do
+    if ! unzip -l "Hisar-$version.zip" "$ompPlugin/$pluginFile" > /dev/null; then
+      echo "Hisar-$version.zip has no $ompPlugin/$pluginFile" >&2
+      exit 1
+    fi
+  done
+  runHisarMode=$(zipinfo "Hisar-$version.zip" "$ompPlugin/bin/run-hisar")
+  if [[ $runHisarMode != -rwx* ]]; then
+    echo "Hisar-$version.zip has $ompPlugin/bin/run-hisar without its executable bit" >&2
+    exit 1
+  fi
+fi
 echo "$app $version: ${#allExpected[@]} files"

@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strconv"
@@ -39,14 +40,21 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 	stopClosingConnection := context.AfterFunc(connectionContext, func() { connection.Close() })
 	defer stopClosingConnection()
 	defer connection.Close()
-	peer := localsocket.PeerInfo{Name: localsocket.UnknownPeerName}
+	peer := Peer{PeerInfo: localsocket.PeerInfo{Name: localsocket.UnknownPeerName}}
 	if s.peerResolver != nil {
-		if resolvedPeer, err := s.peerResolver.ResolvePeer(connection); err == nil {
-			peer = resolvedPeer
+		resolvedPeer, err := s.peerResolver.ResolvePeer(connection)
+		if err != nil {
+			log.Printf("sshagent: refused a connection whose program is unknown: %v", err)
+			return
 		}
+		peer = resolvedPeer
 	}
 	if peer.Name == "" {
 		peer.Name = localsocket.UnknownPeerName
+	}
+	if peer.AgentSession != nil {
+		stopEndingWithSession := context.AfterFunc(peer.AgentSession.Context(), cancel)
+		defer stopEndingWithSession()
 	}
 	reader := localsocket.WatchConnectionClose(connection, cancel)
 	agent.ServeAgent(s.CreateAgent(connectionContext, peer), struct {

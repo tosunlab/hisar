@@ -23,6 +23,9 @@ var (
 	appLaunchTimeout   = 10 * time.Second
 	errAppNotInstalled = errors.New("the Hisar app is not installed")
 	errAppNotRunning   = errors.New("Hisar isn't running. Open the Hisar app and try again.")
+	// errSocketBlocked is a connection to the socket refused for permission, which a sandbox around the shell does:
+	// Codex's blocks every Unix socket. Starting the app would not help.
+	errSocketBlocked = errors.New("hisar can't reach the Hisar app: this shell's sandbox blocks its socket. Run the command outside the sandbox, or use the run_with_secrets tool.")
 )
 
 // appLauncher starts the desktop app hidden; errAppNotInstalled means there is none to start.
@@ -91,6 +94,9 @@ func connectToApp(socketPath string, isLaunchAllowed bool) commandMode {
 	if err == nil {
 		return commandMode{client: client, socketPath: socketPath, reason: "the Hisar app answered on " + socketPath}
 	}
+	if errors.Is(err, errSocketBlocked) {
+		return commandMode{socketPath: socketPath, reason: err.Error(), appError: err}
+	}
 	var unreachable *appUnreachableError
 	if !errors.As(err, &unreachable) || !isLaunchAllowed || isLaunchDisabled() || isAppRunning() {
 		return commandMode{socketPath: socketPath, reason: err.Error()}
@@ -102,7 +108,11 @@ func connectToApp(socketPath string, isLaunchAllowed bool) commandMode {
 	case !isLaunched:
 		return commandMode{socketPath: socketPath, reason: err.Error()}
 	}
-	return commandMode{socketPath: socketPath, reason: launchError.Error(), isAppNotRunning: errors.Is(launchError, errAppNotRunning)}
+	mode := commandMode{socketPath: socketPath, reason: launchError.Error()}
+	if errors.Is(launchError, errAppNotRunning) {
+		mode.appError = launchError
+	}
+	return mode
 }
 
 // findAppBundlePath returns the Hisar.app that holds this hisar, following the installed symlink.

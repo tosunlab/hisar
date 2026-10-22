@@ -35,6 +35,11 @@ type Request struct {
 	Query            string `json:"query,omitempty"`
 	Vault            string `json:"vault,omitempty"`
 	WorkingDirectory string `json:"workingDirectory,omitempty"`
+	// Stdin is what agent.secrets.resolve's command reads: literal text or one hisar:// reference.
+	Stdin string `json:"stdin,omitempty"`
+	// Environment is each NAME=value an env file sets for agent.secrets.resolve's command whose value is not a reference,
+	// in the command's environment order.
+	Environment []string `json:"environment,omitempty"`
 
 	ClientPlatform string `json:"clientPlatform,omitempty"`
 	ClientVersion  string `json:"clientVersion,omitempty"`

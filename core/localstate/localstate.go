@@ -91,6 +91,15 @@ type Settings struct {
 	// LastServer is the server this device last signed in to; signing out keeps it, so the sign-in form opens on it
 	// rather than the default server. No email or other account data is kept.
 	LastServer string `json:"lastServer,omitempty"`
+	// AgentHosts are the apps a coding agent harness ran in. The desktop app answers their callers without a terminal
+	// and without a harness one connection at a time, and never as launchers.
+	AgentHosts []AgentHost `json:"agentHosts,omitempty"`
+}
+
+// AgentHost is an app as the desktop app verified its code signature: bundle path and Team ID.
+type AgentHost struct {
+	Path   string `json:"path"`
+	TeamID string `json:"teamId"`
 }
 
 type PairedBrowser struct {

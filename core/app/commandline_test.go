@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
@@ -33,6 +34,10 @@ func (staticPeerResolver) GetTerminalSession(int) (clisocket.TerminalSession, er
 func (staticPeerResolver) GetProcessPath(int) (string, error) { return "/usr/local/bin/hisar", nil }
 
 func (staticPeerResolver) GetParentPID(int) (int, error) { return 4000, nil }
+
+func (staticPeerResolver) GetAgentSession(int) (agentharness.Session, bool, error) {
+	return agentharness.Session{}, false, nil
+}
 
 type countingApprover struct {
 	mutex sync.Mutex
@@ -62,7 +67,7 @@ type commandLineTest struct {
 
 func createCommandLineTest(t *testing.T) *commandLineTest {
 	t.Helper()
-	test := &commandLineTest{testService: createUnlockedTestService(t), approvals: clisocket.NewSessionApprovals(0, nil), approver: &countingApprover{}}
+	test := &commandLineTest{testService: createUnlockedTestService(t), approvals: clisocket.NewSessionApprovals(0, nil, nil), approver: &countingApprover{}}
 	bridge := NewCommandLineBridge(test.testService.service, test.approvals)
 	server := clisocket.NewServer(clisocket.ServerConfig{Handler: bridge, Approver: test.approver, PeerResolver: staticPeerResolver{}, Approvals: test.approvals})
 	serverSide, clientSide := net.Pipe()

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/crypt"
@@ -37,6 +38,10 @@ func (staticPeerResolver) GetTerminalSession(int) (clisocket.TerminalSession, er
 func (staticPeerResolver) GetProcessPath(int) (string, error) { return "/usr/local/bin/hisar", nil }
 
 func (staticPeerResolver) GetParentPID(int) (int, error) { return 4000, nil }
+
+func (staticPeerResolver) GetAgentSession(int) (agentharness.Session, bool, error) {
+	return agentharness.Session{}, false, nil
+}
 
 type countingApprover struct {
 	mutex sync.Mutex

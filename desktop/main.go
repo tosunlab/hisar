@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
@@ -13,6 +14,7 @@ import (
 	"github.com/wailsapp/wails/v3/pkg/application"
 	"github.com/wailsapp/wails/v3/pkg/events"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -26,6 +28,7 @@ import (
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/desktop/harness"
 	"github.com/tryhisar/hisar/desktop/loginitem"
 	"github.com/tryhisar/hisar/desktop/pasteboard"
 	"github.com/tryhisar/hisar/desktop/portable"
@@ -54,6 +57,7 @@ func main() {
 	notifier := &appNotifier{}
 	fileSaver := &wailsFileSaver{}
 	fileOpener := &wailsFileOpener{}
+	requesterResolver := appinfo.NewSystemResolver()
 	var agentServer *sshagent.Server
 	var approver *agent.Approver
 	var showUpdateRequired func(requirement app.UpdateRequirement)
@@ -92,6 +96,10 @@ func main() {
 				showItem(location)
 			}
 		},
+		DescribeApp: func(bundlePath string) (string, string) {
+			described := requesterResolver.DescribeApp(bundlePath)
+			return described.Name, described.IconURL
+		},
 	}
 	vaultService, err := app.NewService(vaultConfig)
 	if err != nil {
@@ -128,7 +136,6 @@ func main() {
 		return approvalWindow.NativeWindow()
 	}, biometric.PromptSizeSmall)
 	approvalPreference := app.NewApprovalPreference(vaultService)
-	requesterResolver := appinfo.NewSystemResolver()
 	approver = agent.NewApprover(agent.ApproverConfig{
 		Biometric:       approvalTouchID,
 		CancelBiometric: approvalTouchID.CancelPrompt,
@@ -155,14 +162,49 @@ func main() {
 			return agent.GetSSHRememberDuration(approvalPreference.GetSSHRememberSeconds())
 		},
 	})
-	peerResolver := agent.ApplicationPeerResolver{
-		Base: localsocket.SystemPeerResolver{},
-		FindApplicationPath: func(pid int) (string, bool) {
-			requester := requesterResolver.Resolve(pid)
-			return requester.App.Path, requester.App.Path != ""
+	agentSessions := agentharness.NewSessions(nil)
+	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil, agentSessions)
+	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
+	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
+	var commandLineService *commandline.Service
+	commandLineServer := clisocket.NewServer(clisocket.ServerConfig{
+		Handler:             commandLineBridge,
+		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
+		Approver:            approver,
+		AgentApprover:       approver,
+		LauncherApprover:    approver,
+		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
+			return commandline.IdentifyApp(requesterResolver.Resolve(pid), requesterResolver)
 		},
+		PeerResolver: commandline.PeerResolver{Resolver: requesterResolver},
+		Approvals:    commandLineApprovals,
+		AgentHosts:   commandLineBridge,
+		IsEnabled:    func() bool { return commandLineService.IsIntegrationEnabled() },
+	})
+	sshPeerResolver := agent.PeerResolver{
+		Base:      localsocket.SystemPeerResolver{},
+		Resolve:   requesterResolver.Resolve,
+		ReadChain: requesterResolver.ReadChain,
+		HasTerminal: func(pid int) bool {
+			session, err := clisocket.SystemPeerResolver{}.GetTerminalSession(pid)
+			return err == nil && session.TerminalDevice != 0
+		},
+		IdentifyApp: func(requester appinfo.Requester) (clisocket.AppIdentity, bool) {
+			return commandline.IdentifyApp(requester, requesterResolver)
+		},
+		AgentHosts:    commandLineServer,
+		AgentSessions: agentSessions,
 	}
-	agentServer = sshagent.NewServer(app.NewSSHKeySource(vaultService), approver, peerResolver)
+	agentServer = sshagent.NewServer(app.NewSSHKeySource(vaultService), approver, sshPeerResolver)
+	systemNotifications := newSystemNotifications()
+	agentServer.SetNoAgentKeyNotifier(func(session agentharness.Session) {
+		title, text := agent.DescribeMissingAgentKey(session)
+		id := fmt.Sprintf("no-agent-ssh-key-%d-%d", session.PID, session.StartTime)
+		systemNotifications.show(id, title, text, func() {
+			showWindow()
+			wailsApp.Event.Emit("show-settings", "developer")
+		})
+	})
 	agentServer.SetKnownHostsPaths([]string{filepath.Join(homeDirectory, ".ssh", "known_hosts"), "/etc/ssh/ssh_known_hosts"})
 	socketPath := os.Getenv("HISAR_SSH_AGENT_SOCKET")
 	if socketPath == "" {
@@ -201,21 +243,6 @@ func main() {
 		browserServer.AllowHostOutsideSandbox()
 	}
 
-	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil)
-	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
-	var commandLineService *commandline.Service
-	commandLineServer := clisocket.NewServer(clisocket.ServerConfig{
-		Handler:             commandLineBridge,
-		CheckUpdateRequired: commandLineBridge.CheckUpdateRequired,
-		Approver:            approver,
-		AgentApprover:       approver,
-		LauncherApprover:    approver,
-		IdentifyApp: func(pid int) (clisocket.AppIdentity, bool) {
-			return commandline.IdentifyApp(requesterResolver.Resolve(pid), requesterResolver)
-		},
-		Approvals: commandLineApprovals,
-		IsEnabled: func() bool { return commandLineService.IsIntegrationEnabled() },
-	})
 	commandLineSocketPath := os.Getenv(cliprotocol.SocketEnvironment)
 	if commandLineSocketPath == "" {
 		commandLineSocketPath = cliprotocol.GetDefaultSocketPath(homeDirectory)
@@ -231,6 +258,12 @@ func main() {
 	}), commandLineRunner, commandLineApprovals, requesterResolver.DescribeApp)
 
 	loginItemService := loginitem.NewService(vaultService, background.NewLoginItem(homeDirectory))
+	harnessService := harness.NewService(harness.Config{
+		HomeDirectory: homeDirectory,
+		GetUserPath:   userPathReader.Read,
+		OmpPluginPath: harness.FindOmpPlugin(filepath.Dir(executablePath)),
+		HisarPath:     helpers.commandLine,
+	})
 	inviteLinkService := app.NewInviteLinkService()
 	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])
 	background.StartLaunchObserver()
@@ -256,6 +289,7 @@ func main() {
 			application.NewService(commandLineService),
 			application.NewService(loginItemService),
 			application.NewService(inviteLinkService),
+			application.NewService(harnessService),
 		},
 		OnShutdown: func() {
 			commandLineRunner.Stop()

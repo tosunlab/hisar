@@ -10,16 +10,21 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/secretreference"
 )
 
 var (
 	ErrDeniedInHisar  = errors.New("The user denied access in Hisar.")
 	ErrDialogTimedOut = errors.New("The user did not answer Hisar's approval dialog in time.")
+
+	errRunInputsNeedNewerApp = errors.New("This Hisar app can't show the command's standard input or environment in its approval. Update Hisar to run this command.")
 )
 
 // AppConnection is one connection to the Hisar app's socket; requests on it are sent one at a time.
 type AppConnection interface {
 	Call(ctx context.Context, request cliprotocol.Request, result any) error
+	// HasFeature reports whether the app announced feature in hello.
+	HasFeature(feature string) bool
 	Close() error
 }
 
@@ -28,21 +33,31 @@ type AppDialer func(ctx context.Context) (AppConnection, error)
 
 type socketConnection struct {
 	client  *cliprotocol.Client
+	hello   cliprotocol.HelloResult
 	timeout time.Duration
 }
 
-// NewSocketConnection speaks the CLI protocol on a connection the caller opened; timeout bounds each request.
-func NewSocketConnection(connection net.Conn, timeout time.Duration) AppConnection {
-	return &socketConnection{client: cliprotocol.NewClient(connection), timeout: timeout}
+// NewSocketConnection says hello on a connection the caller opened; timeout bounds each request.
+func NewSocketConnection(ctx context.Context, connection net.Conn, timeout time.Duration) (AppConnection, error) {
+	socket := &socketConnection{client: cliprotocol.NewClient(connection), timeout: timeout}
+	if err := socket.Call(ctx, cliprotocol.Request{Type: cliprotocol.TypeHello}, &socket.hello); err != nil {
+		socket.Close()
+		return nil, err
+	}
+	return socket, nil
 }
 
-// NewProtocolConnection uses a client that already said hello to the app.
-func NewProtocolConnection(client *cliprotocol.Client, timeout time.Duration) AppConnection {
-	return &socketConnection{client: client, timeout: timeout}
+// NewProtocolConnection uses a client that already said hello to the app; hello is the app's answer.
+func NewProtocolConnection(client *cliprotocol.Client, hello cliprotocol.HelloResult, timeout time.Duration) AppConnection {
+	return &socketConnection{client: client, hello: hello, timeout: timeout}
 }
 
 func (connection *socketConnection) Call(ctx context.Context, request cliprotocol.Request, result any) error {
 	return connection.client.Call(ctx, request, result, connection.timeout)
+}
+
+func (connection *socketConnection) HasFeature(feature string) bool {
+	return connection.hello.HasFeature(feature)
 }
 
 func (connection *socketConnection) Close() error {
@@ -71,6 +86,9 @@ func (session *appSession) call(ctx context.Context, identity cliprotocol.Reques
 		}
 		session.connection = connection
 	}
+	if hasLiteralRunInputs(request) && !session.connection.HasFeature(cliprotocol.FeatureAgentRunInputs) {
+		return errRunInputsNeedNewerApp
+	}
 	err := session.connection.Call(ctx, request, result)
 	var responseError *cliprotocol.ResponseError
 	if err != nil && !errors.As(err, &responseError) {
@@ -87,6 +105,12 @@ func (session *appSession) close() {
 		session.connection.Close()
 		session.connection = nil
 	}
+}
+
+// hasLiteralRunInputs tells a run whose approval must show literal stdin or env-file values; an app without
+// FeatureAgentRunInputs ignores them, and a stdin reference it shows among the secrets.
+func hasLiteralRunInputs(request cliprotocol.Request) bool {
+	return len(request.Environment) > 0 || request.Stdin != "" && !secretreference.IsReference(request.Stdin)
 }
 
 // describeAppError turns the app's answers into messages a model can relay to the user.

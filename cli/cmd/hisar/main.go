@@ -35,7 +35,7 @@ type command struct {
 }
 
 var commands = []command{
-	{name: "status", summary: "show whether hisar uses the Hisar app or its own sign-in, and the account", run: runStatus, runThroughApp: runStatusThroughApp},
+	{name: "status", argumentUsage: "[--json]", summary: "show whether hisar uses the Hisar app or its own sign-in, and the account; --json prints mode, state and account", run: runStatus, runThroughApp: runStatusThroughApp},
 	{name: "signup", argumentUsage: "<invite-link>", summary: "create your account from an invite", run: runSignup, appAlternative: "create the account in the Hisar app"},
 	{name: "login", summary: "sign in on this device", run: runLogin, appAlternative: "sign in to the Hisar app"},
 	{name: "logout", summary: "sign out on this device", run: runLogout, appAlternative: "sign out in the Hisar app"},
@@ -47,7 +47,7 @@ var commands = []command{
 	{name: "get", argumentUsage: "<item> [-f field] [-v vault]", summary: "show an item, or one field of it (e.g. -f password, -f code)", withBackend: runGet},
 	{name: "read", argumentUsage: "<hisar://vault/item/field> [--no-newline]", summary: "print one secret, for scripts", run: runRead, isLocal: true},
 	{name: "run", argumentUsage: "[--env-file f]... [--no-masking] -- <cmd>", summary: "run a command with the secrets its hisar:// references name, masked in its output", run: runRun, isLocal: true},
-	{name: "mcp", summary: "serve coding agents over MCP (stdio): they use secrets without seeing them, after you approve in the Hisar app", run: runMCP, isLocal: true},
+	{name: "mcp", argumentUsage: "[--no-reveal]", summary: "serve coding agents over MCP (stdio): they use secrets without seeing them, after you approve in the Hisar app", run: runMCP, isLocal: true},
 	{name: "add", argumentUsage: "[-v vault] [--type t]", summary: "add an item; --type is one of " + listItemTypeNames() + " (default login)", withBackend: runAdd},
 	{name: "edit", argumentUsage: "<item> [-v vault]", summary: "edit an item", withBackend: runEdit},
 	{name: "rm", argumentUsage: "<item> [-v vault]", summary: "delete an item", withBackend: runRemove},

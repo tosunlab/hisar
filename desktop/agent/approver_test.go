@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
 )
@@ -136,6 +137,21 @@ const terminalBundlePath = "/System/Applications/Utilities/Terminal.app"
 func createTerminalRequester(processes []appinfo.Process) appinfo.Requester {
 	app := appinfo.App{Name: "Terminal", Path: terminalBundlePath, IconURL: "data:image/png;base64,AA==", Signature: appinfo.Signature{Status: appinfo.SignatureStatusApple}}
 	return appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "Terminal", App: app, Processes: processes, ChainProcesses: processes}
+}
+
+const ternBundlePath = "/Applications/Tern.app"
+
+// ompInPaneA and ompInPaneB are two live sessions of omp in Tern; their processes do not run, which the approver never
+// checks.
+var (
+	testAgentSessions = agentharness.NewSessions(nil)
+	ompInPaneA        = testAgentSessions.Join(agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1217, StartTime: 1_760_000_000_000_000}, ternBundlePath)
+	ompInPaneB        = testAgentSessions.Join(agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1388, StartTime: 1_760_000_100_000_000}, ternBundlePath)
+)
+
+func createTernRequester(processes []appinfo.Process) appinfo.Requester {
+	app := appinfo.App{Name: "Tern", Path: ternBundlePath, Signature: appinfo.Signature{Status: appinfo.SignatureStatusDeveloper, TeamID: "VTLHGQC72S"}}
+	return appinfo.Requester{Kind: appinfo.RequesterKindApp, Name: "Tern", App: app, Processes: processes, ChainProcesses: processes}
 }
 
 type approveResult struct {

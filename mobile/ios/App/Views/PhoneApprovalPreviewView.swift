@@ -44,6 +44,13 @@ struct PhoneApprovalPreviewView: View {
                 appName: "Raycast", purpose: "create a share link for “GitHub”", commandLine: "Expires in 7 days · 1 view", secrets: ["username", "password"],
                 appWarning: "Anyone with the link can read these until it expires or its views run out."
             )
+        case "agent":
+            return PhoneApproval(
+                requestID: "preview-agent", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindCommandLine,
+                appName: "omp in Tern (via hisar)", purpose: "use 2 secrets", commandLine: "npm run db:migrate", repositoryPath: "~/src/acme-web",
+                projectPath: "~/src/acme-web", secrets: ["Agents › Staging Postgres › connection string", "Agents › Stripe › secret key"],
+                rememberLabel: "Also allows these secrets for this agent for 1 hour"
+            )
         default:
             return PhoneApproval(
                 requestID: "preview-ssh", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindSSH,

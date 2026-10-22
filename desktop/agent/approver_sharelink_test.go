@@ -49,7 +49,7 @@ func TestShareLinkApprovalNamesTheApp(t *testing.T) {
 	resultChannel := make(chan error, 1)
 	go func() { resultChannel <- approver.ApproveCommandLine(context.Background(), request) }()
 	event := waitForApprovalEvent(t, emitter)
-	if event.AppName != "iTerm2" || event.AppIconURL == "" || event.AppPath != iTermBundlePath || event.AppSigner != "Not signed" || event.AppWarning == "" || len(event.ChainProcesses) != 3 {
+	if event.AppName != "iTerm2" || event.AppIconURL == "" || event.AppPath != iTermBundlePath || event.AppSigner != "iTerm2 isn't signed" || event.AppWarning == "" || len(event.ChainProcesses) != 3 {
 		t.Errorf("event = %+v", event)
 	}
 	if description := phone.waitForStart(t); description.AppName != "hisar in iTerm2" || string(description.AppIcon) != "png" || description.AppWarning != event.AppWarning || description.Purpose != "create a share link for “GitHub”" {
