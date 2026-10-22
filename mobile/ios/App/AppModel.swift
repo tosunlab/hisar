@@ -66,6 +66,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var credentialImportProgress: ImportProgress?
     @Published private(set) var isImportingCredentials = false
     @Published var credentialImportMessage: String?
+    private var startedRefreshCount: UInt64 = 0
+    private var shownRefresh: UInt64 = 0
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
@@ -374,6 +376,8 @@ final class AppModel: ObservableObject {
     // are listed, so a vault rotated meanwhile is listed with its new key.
     func refreshAll() async {
         guard status.isUnlocked else { return }
+        startedRefreshCount += 1
+        let refresh = startedRefreshCount
         isRefreshing = true
         defer { isRefreshing = false }
         guard let result = await perform(isBusyShown: false, { backend -> RefreshResult in
@@ -400,19 +404,24 @@ final class AppModel: ObservableObject {
         // them back, nor put a signed-out account's logins back into AutoFill. A lock keeps what AutoFill already has.
         refreshStatus()
         guard status.isUnlocked else { return }
-        allVault = result.allVault.sorted { Self.sortVault($0, $1) }
-        allItemByVaultID = result.allItemByVaultID
-        allPasskey = result.allPasskey
-        if let shareInvitations = result.shareInvitations {
-            applyShareInvitations(shareInvitations)
+        // Refreshes can finish out of order: one that started earlier than the lists shown lists older data.
+        if refresh > shownRefresh {
+            shownRefresh = refresh
+            allVault = result.allVault.sorted { Self.sortVault($0, $1) }
+            allItemByVaultID = result.allItemByVaultID
+            allPasskey = result.allPasskey
+            if let shareInvitations = result.shareInvitations {
+                applyShareInvitations(shareInvitations)
+            }
+            // Offline both fail; the last organizations keep naming the vault groups.
+            if let organizations = result.organizations {
+                applyOrganizations(organizations)
+            }
+            if let waitingVaultKeys = result.waitingVaultKeys {
+                self.waitingVaultKeys = waitingVaultKeys
+            }
         }
-        // Offline both fail; the last organizations keep naming the vault groups.
-        if let organizations = result.organizations {
-            applyOrganizations(organizations)
-        }
-        if let waitingVaultKeys = result.waitingVaultKeys {
-            self.waitingVaultKeys = waitingVaultKeys
-        }
+        // Removed vaults are listed only once, so even an older refresh keeps them.
         addAllRemovedVaultNotice(result.allRemovedVault)
         await publishAllCredentialIdentity()
     }

@@ -18,8 +18,10 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -168,6 +170,23 @@ class AppModelCoreTests {
         assertEquals(Screen.Locked, model.screen.value)
         assertTrue(model.unlockedData.value.allVault.isEmpty(), "the refresh restored the vaults behind the lock screen")
         assertTrue(model.unlockedData.value.allItemByVaultID.isEmpty(), "the refresh restored the items behind the lock screen")
+    }
+
+    // The backend runs inline, so a refresh started from its last listing finishes before the first one does.
+    @Test
+    fun testRefreshFinishingAfterANewerRefreshKeepsTheNewerLists() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.seedSignedIn()
+        val model = harness.createModel(ioDispatcher = Dispatchers.Unconfined).also { it.start { harness.backend } }
+        runCurrent()
+        harness.backend.onListAllPasskey = {
+            harness.backend.onListAllPasskey = null
+            harness.backend.allFavoriteRecordID = mutableSetOf("family/netflix")
+            runBlocking { model.refreshAll() }
+        }
+        model.refreshAll()
+        runCurrent()
+        assertEquals(listOf("Netflix"), model.unlockedData.value.listAllFavoriteReference().map { it.item.title }, "the older refresh brought back the older lists")
     }
 
     @Test

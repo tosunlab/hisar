@@ -181,6 +181,16 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(identityStore.replaceCount, replaceCount)
     }
 
+    func testRefreshFinishingAfterANewerRefreshKeepsTheNewerLists() async {
+        let model = await createUnlockedModel()
+        await finishRefresh(of: model) {
+            backend.onListAllPasskey = nil
+            backend.allFavoriteRecordID = ["family/netflix"]
+            await model.refreshAll()
+        }
+        XCTAssertEqual(model.listAllFavoriteReference().map(\.item.title), ["Netflix"], "the older refresh brought back the older lists")
+    }
+
     func testSignedOutByServerShowsReasonAndClearsAutoFill() async throws {
         let model = await createUnlockedModel()
         XCTAssertFalse(identityStore.allIdentity.isEmpty)
