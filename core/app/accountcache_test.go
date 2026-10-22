@@ -34,7 +34,7 @@ func TestAccountSwitchWithUndeletableCacheNeverUsesThePreviousAccount(t *testing
 				t.Fatal(err)
 			}
 			fixture.apiServer.mutex.Lock()
-			err = previousCache.ReplaceVaults(fixture.apiServer.vaults)
+			err = previousCache.ReplaceVaults(fixture.apiServer.vaults, nil)
 			fixture.apiServer.mutex.Unlock()
 			if err != nil {
 				t.Fatal(err)
@@ -116,7 +116,7 @@ func TestCacheWithNoAccountBindingIsNotAttached(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := unbound.ReplaceVaults([]apitypes.Vault{{ID: "unbound-vault"}}); err != nil {
+	if err := unbound.ReplaceVaults([]apitypes.Vault{{ID: "unbound-vault"}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	unbound.Close()

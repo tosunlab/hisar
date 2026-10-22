@@ -149,7 +149,13 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		for _, storedItem := range server.itemsByVaultID[request.PathValue("vaultID")] {
 			items = append(items, storedItem)
 		}
-		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: items, NextSeq: server.seq})
+		generation := int64(1)
+		for _, vault := range server.vaults {
+			if vault.ID == request.PathValue("vaultID") {
+				generation = max(int64(1), vault.KeyGeneration)
+			}
+		}
+		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: items, NextSeq: server.seq, KeyGeneration: generation})
 	})
 	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", func(writer http.ResponseWriter, request *http.Request) {
 		var putRequest apitypes.PutItemRequest

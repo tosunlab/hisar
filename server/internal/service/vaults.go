@@ -249,11 +249,11 @@ func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, 
 	if limit < 1 || limit > MaxChangeLimit {
 		return apitypes.ChangesResponse{}, newError(KindInvalid, "invalid limit")
 	}
-	items, vaultSeq, isMore, err := s.store.ListChanges(ctx, vaultID, since, limit, maxChangeBytes)
+	items, vaultSeq, generation, isMore, err := s.store.ListChangesSnapshot(ctx, actor.AccountID, vaultID, since, limit, maxChangeBytes)
 	if err != nil {
 		return apitypes.ChangesResponse{}, err
 	}
-	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(items)), NextSeq: vaultSeq}
+	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(items)), NextSeq: vaultSeq, KeyGeneration: generation}
 	for index := range items {
 		response.Items = append(response.Items, convertToProtoItem(&items[index]))
 	}

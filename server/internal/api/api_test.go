@@ -302,8 +302,12 @@ func TestEndToEnd(t *testing.T) {
 		if _, err := connection.Exec(ctx, `UPDATE items SET details = set_byte(details, 30, get_byte(details, 30) # 1) WHERE id = $1`, bank.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := alice.ListItems(ctx, family); !errors.Is(err, crypt.ErrDecrypt) {
-			t.Errorf("tampered item: %v", err)
+		if _, err := alice.ListItems(ctx, family); !errors.Is(err, session.ErrIncompleteRead) {
+			t.Errorf("tampered item in a strict list: %v", err)
+		}
+		read, err := alice.ReadItems(ctx, family)
+		if err != nil || len(read.Issues) != 1 || read.Issues[0].ItemID != bank.ID || slices.ContainsFunc(read.Items, func(opened item.Item) bool { return opened.ID == bank.ID }) {
+			t.Errorf("tampered item opened or went unreported: %+v %v", read, err)
 		}
 	})
 

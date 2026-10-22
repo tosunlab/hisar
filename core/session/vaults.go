@@ -78,38 +78,26 @@ func (s *Session) createVault(ctx context.Context, name string, request *apitype
 	if err := s.Client.CreateVault(ctx, request); err != nil {
 		return nil, err
 	}
+	record := apitypes.Vault{
+		ID: vaultID, Type: request.Type, EncName: encryptedName, Role: apitypes.VaultOwner, WrappedKey: wrappedKey,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1,
+	}
 	return &Vault{
 		ID: vaultID, Type: request.Type, Name: name, Role: apitypes.VaultOwner, Key: vaultKey,
-		OrganizationID: request.OrganizationID, KeyGeneration: 1,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1, record: record,
 	}, nil
 }
 
+// ListVaults requires a complete readable inventory. Recovery views use ReadVaults.
 func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
-	protoVaults, isFetched, err := s.listProtoVaults(ctx)
+	result, err := s.ReadVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
-	vaults := make([]Vault, 0, len(protoVaults))
-	for _, protoVault := range protoVaults {
-		vaultKey, err := s.Keyset.UnwrapVaultKey(protoVault.ID, s.AccountID, protoVault.WrappedKey)
-		if err != nil {
-			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
-		}
-		name, err := crypt.OpenVaultName(vaultKey, protoVault.ID, protoVault.EncName)
-		if err != nil {
-			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
-		}
-		vaults = append(vaults, Vault{
-			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
-			OrganizationID: protoVault.OrganizationID, KeyGeneration: protoVault.KeyGeneration, NeedsRotation: protoVault.NeedsRotation, AccessRevision: protoVault.AccessRevision,
-		})
+	if len(result.Issues) != 0 {
+		return nil, ErrIncompleteRead
 	}
-	if isFetched && s.Cache != nil {
-		if err := s.replaceCachedVaults(protoVaults); err != nil {
-			return nil, err
-		}
-	}
-	return vaults, nil
+	return result.Vaults, nil
 }
 
 func (s *Session) FindVault(ctx context.Context, nameOrID string) (*Vault, error) {
@@ -204,6 +192,7 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 		return err
 	}
 	vault.Name = name
+	vault.record.EncName = encryptedName
 	return nil
 }
 

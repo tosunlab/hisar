@@ -29,10 +29,14 @@ func scanItem(row pgx.CollectableRow) (Item, error) {
 // sealed overviews and details reach maxBytes. One item can cross the budget; the first item is always included.
 // isMore reports that the page ended at one of those bounds.
 func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, limit int, maxBytes int64) (items []Item, vaultSeq int64, isMore bool, err error) {
-	if err := s.pool.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1`, vaultID).Scan(&vaultSeq); err != nil {
+	return listChanges(ctx, s.pool, vaultID, since, limit, maxBytes)
+}
+
+func listChanges(ctx context.Context, database queryer, vaultID string, since int64, limit int, maxBytes int64) (items []Item, vaultSeq int64, isMore bool, err error) {
+	if err := database.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1`, vaultID).Scan(&vaultSeq); err != nil {
 		return nil, 0, false, convertNoRowsToNotFound(err)
 	}
-	rows, err := s.pool.Query(ctx, `
+	rows, err := database.Query(ctx, `
 		SELECT id, revision, seq, deleted, CASE WHEN fits THEN overview END, CASE WHEN fits THEN details END, updated_at, updated_by, fits
 		FROM (
 			SELECT *, sum(octet_length(overview) + octet_length(details)) OVER (ORDER BY seq) - octet_length(overview) - octet_length(details) < $4 AS fits

@@ -65,7 +65,10 @@ type Vault struct {
 	KeyGeneration  int64
 	AccessRevision int64
 	// NeedsRotation remains set after owner removal until an owner's app commits the replacement key generation.
-	NeedsRotation bool
+	NeedsRotation  bool
+	NameUnreadable bool
+	// record is the server's record Key was opened from; the cache publishes it with the items sealed with Key.
+	record apitypes.Vault
 }
 
 func (s *Session) Lock() {

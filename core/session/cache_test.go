@@ -74,11 +74,17 @@ func (server *offlineTestServer) createHandler() http.Handler {
 		server.sinceValues = append(server.sinceValues, request.URL.Query().Get("since"))
 		server.changeRequestCount++
 		since, _ := strconv.ParseInt(request.URL.Query().Get("since"), 10, 64)
+		generation := int64(1)
+		for _, vault := range server.vaults {
+			if vault.ID == request.PathValue("vaultID") {
+				generation = max(int64(1), vault.KeyGeneration)
+			}
+		}
 		if server.isChangesStalled {
-			writeJSON(writer, apitypes.ChangesResponse{Items: []apitypes.Item{}, NextSeq: since, More: true})
+			writeJSON(writer, apitypes.ChangesResponse{Items: []apitypes.Item{}, NextSeq: since, More: true, KeyGeneration: generation})
 			return
 		}
-		response := apitypes.ChangesResponse{Items: []apitypes.Item{}, NextSeq: server.seq}
+		response := apitypes.ChangesResponse{Items: []apitypes.Item{}, NextSeq: server.seq, KeyGeneration: generation}
 		for _, storedItem := range server.itemsByID {
 			if storedItem.Seq > since {
 				response.Items = append(response.Items, storedItem)

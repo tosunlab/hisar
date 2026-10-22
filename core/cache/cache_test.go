@@ -86,13 +86,15 @@ func TestCheckAccountAcceptsOnlyOneBoundAccountOrAnEmptyCache(t *testing.T) {
 }
 
 func TestCheckAccountRefusesUnboundData(t *testing.T) {
-	for _, table := range []string{"vaults", "items", "account_preferences", "website_icons"} {
+	for _, table := range []string{"vaults", "observed_vaults", "items", "account_preferences", "website_icons"} {
 		t.Run(table, func(t *testing.T) {
 			testCache, _ := openTestCache(t)
 			var err error
 			switch table {
 			case "vaults":
-				err = testCache.ReplaceVaults([]apitypes.Vault{{ID: "vault"}})
+				err = testCache.ReplaceVaults([]apitypes.Vault{{ID: "vault"}}, nil)
+			case "observed_vaults":
+				err = testCache.ReplaceVaults(nil, []apitypes.Vault{{ID: "unopened vault"}})
 			case "items":
 				err = testCache.ApplyChanges("vault", []apitypes.Item{{ID: "item"}}, 1)
 			case "account_preferences":
@@ -186,7 +188,7 @@ func TestReplaceAllVaultForgetsRemovedVaults(t *testing.T) {
 	if err := testCache.ApplyChanges("vault-new", []apitypes.Item{{ID: "item-x"}}, 1); err != nil {
 		t.Fatal(err)
 	}
-	if err := testCache.ReplaceVaults([]apitypes.Vault{{ID: "vault-1", Role: "owner"}, {ID: "vault-2", Role: "reader"}}); err != nil {
+	if err := testCache.ReplaceVaults([]apitypes.Vault{{ID: "vault-1", Role: "owner"}, {ID: "vault-2", Role: "reader"}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	if err := testCache.ApplyChanges("vault-2", []apitypes.Item{{ID: "item-y"}}, 7); err != nil {
@@ -195,7 +197,7 @@ func TestReplaceAllVaultForgetsRemovedVaults(t *testing.T) {
 	if items, _ := testCache.ListItems("vault-new"); len(items) != 0 {
 		t.Errorf("items of an unlisted vault kept: %v", items)
 	}
-	if err := testCache.ReplaceVaults([]apitypes.Vault{{ID: "vault-1", Role: "editor"}}); err != nil {
+	if err := testCache.ReplaceVaults([]apitypes.Vault{{ID: "vault-1", Role: "editor"}}, nil); err != nil {
 		t.Fatal(err)
 	}
 	vaults, err := testCache.ListVaults()

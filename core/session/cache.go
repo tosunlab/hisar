@@ -6,18 +6,21 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/snapshot"
 )
 
 // Cache keeps the server's encrypted records so a session can unlock and read while the server is unreachable.
 type Cache interface {
 	SaveAccount(account *apitypes.Account) error
 	LoadAccount(accountID string) (*apitypes.Account, error)
-	ReplaceVaults(vaults []apitypes.Vault) error
+	ReplaceVaults(verified, unverified []apitypes.Vault) error
 	ListVaults() ([]apitypes.Vault, error)
 	GetSeq(vaultID string) (int64, error)
 	ApplyChanges(vaultID string, items []apitypes.Item, nextSeq int64) error
 	ListItems(vaultID string) ([]apitypes.Item, error)
 	ResetVault(vaultID string) error
+	BeginSync(vaultID string, reset bool) (snapshot.Staging, error)
+	GetCheckpoint(vaultID string) (snapshot.Checkpoint, error)
 	SaveAccountPreferences(accountID string, preferences *apitypes.AccountPreferences) error
 	LoadAccountPreferences(accountID string) (*apitypes.AccountPreferences, error)
 }
@@ -89,5 +92,5 @@ func (s *Session) replaceCachedVaults(protoVaults []apitypes.Vault) error {
 	if cachedVaults, err := s.Cache.ListVaults(); err == nil {
 		s.noteRemovedVaults(cachedVaults, protoVaults)
 	}
-	return s.Cache.ReplaceVaults(protoVaults)
+	return s.Cache.ReplaceVaults(protoVaults, nil)
 }

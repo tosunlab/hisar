@@ -52,6 +52,7 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, accessGrants
 	if err != nil {
 		return err
 	}
+	var ownWrappedKey []byte
 	for start := 0; start < len(accessGrants); start += 100 {
 		end := min(start+100, len(accessGrants))
 		request := &apitypes.StageVaultAccessRequest{}
@@ -73,6 +74,9 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, accessGrants
 				return err
 			}
 			request.Accesses = append(request.Accesses, apitypes.RotatedAccess{AccountID: member.AccountID, Role: grant.Role, WrappedKey: wrappedKey})
+			if member.AccountID == s.AccountID {
+				ownWrappedKey = wrappedKey
+			}
 		}
 		if err := s.Client.StageVaultAccess(ctx, vault.ID, op.ID, request); err != nil {
 			return err
@@ -90,6 +94,10 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, accessGrants
 	vault.Name = string(name)
 	vault.KeyGeneration = op.Source.KeyGeneration + 1
 	vault.NeedsRotation = false
+	vault.record.EncName, vault.record.KeyGeneration, vault.record.NeedsRotation = encName, vault.KeyGeneration, false
+	if ownWrappedKey != nil {
+		vault.record.WrappedKey = ownWrappedKey
+	}
 	return nil
 }
 
