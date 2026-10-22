@@ -62,9 +62,6 @@ struct ItemEditorView: View {
                             .accessibilityIdentifier("editor-title")
                     }
                 }
-                .sheet(isPresented: $isIconPickerShown) {
-                    IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
-                }
                 if draft.isSecureNote {
                     Section("Note") {
                         TextField("Recovery codes, door codes, account details…", text: $draft.notes, axis: .vertical)
@@ -208,6 +205,11 @@ struct ItemEditorView: View {
                     isPasswordRevealed = true
                 }
                 .environmentObject(model)
+            }
+            // Outside the Form: a sheet attached to a row inside it is rebuilt whenever the model or the draft changes, which
+            // resets the picker's color and drops a tap in flight.
+            .sheet(isPresented: $isIconPickerShown) {
+                IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
             }
         }
         .interactiveDismissDisabled(model.isBusy)
