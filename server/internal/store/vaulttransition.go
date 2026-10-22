@@ -144,6 +144,22 @@ func (s *Store) BeginVaultTransition(ctx context.Context, vaultID, actorID strin
 		if source.keyGeneration != request.KeyGeneration {
 			return ErrStaleKeyGeneration
 		}
+		// A new operation supersedes the actor's own earlier ones on this vault. A crashed or suspended app cannot cancel
+		// an operation whose ID it lost, and only one replacement of a generation can ever commit.
+		if _, err := tx.Exec(ctx, `DELETE FROM vault_transitions WHERE vault_id=$1 AND actor_id=$2 AND state='aborted'`, vaultID, actorID); err != nil {
+			return err
+		}
+		rows, err := tx.Query(ctx, `UPDATE vault_transitions SET state='aborted' WHERE vault_id=$1 AND actor_id=$2 AND state='staging' RETURNING id::text`, vaultID, actorID)
+		if err != nil {
+			return err
+		}
+		superseded, err := pgx.CollectRows(rows, pgx.RowTo[string])
+		if err != nil {
+			return err
+		}
+		if err := releaseStaging(ctx, tx, superseded); err != nil {
+			return err
+		}
 		var pending int
 		if err := tx.QueryRow(ctx, `SELECT count(*) FROM vault_transitions t WHERE vault_id=$1 AND
 		 ((state='staging' AND expires_at>now()) OR EXISTS(SELECT 1 FROM vault_transition_items WHERE transition_id=t.id)
@@ -151,13 +167,6 @@ func (s *Store) BeginVaultTransition(ctx context.Context, vaultID, actorID strin
 			return err
 		}
 		if pending >= 2 {
-			return ErrTransitionLimit
-		}
-		var recent int
-		if err := tx.QueryRow(ctx, `SELECT count(*) FROM vault_transitions WHERE vault_id=$1 AND expires_at>now()`, vaultID).Scan(&recent); err != nil {
-			return err
-		}
-		if recent >= 64 {
 			return ErrTransitionLimit
 		}
 		var name []byte
@@ -372,16 +381,32 @@ func (s *Store) ListVaultTransitionItems(ctx context.Context, vaultID, actorID, 
 }
 
 func (s *Store) AbortVaultTransition(ctx context.Context, vaultID, actorID, id string) error {
-	tag, err := s.pool.Exec(ctx, `UPDATE vault_transitions SET state='aborted' WHERE id=$1 AND vault_id=$2 AND actor_id=$3 AND state='staging'`, id, vaultID, actorID)
+	err := s.runInTransaction(ctx, func(tx pgx.Tx) error {
+		tag, err := tx.Exec(ctx, `UPDATE vault_transitions SET state='aborted' WHERE id=$1 AND vault_id=$2 AND actor_id=$3 AND state='staging'`, id, vaultID, actorID)
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			_, err := readTransition(ctx, tx, vaultID, actorID, id, false)
+			return err
+		}
+		return releaseStaging(ctx, tx, []string{id})
+	})
 	if err != nil {
 		return err
 	}
-	if tag.RowsAffected() == 0 {
-		if _, err := s.GetVaultTransition(ctx, vaultID, actorID, id); err != nil {
+	return s.CleanupVaultTransitions(ctx)
+}
+
+// releaseStaging deletes the staged copies of operations that can no longer commit, in the transaction that ends them,
+// so they never hold another operation's admission.
+func releaseStaging(ctx context.Context, tx pgx.Tx, ids []string) error {
+	for _, table := range []string{"vault_transition_items", "vault_transition_access"} {
+		if _, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE transition_id = ANY($1::uuid[])`, ids); err != nil {
 			return err
 		}
 	}
-	return s.CleanupVaultTransitions(ctx)
+	return nil
 }
 
 // CommitVaultTransition checks exact coverage and publishes only a complete replacement under the original authority.
@@ -503,6 +528,9 @@ func (s *Store) CommitVaultTransition(ctx context.Context, vaultID, actorID, id 
 			if _, err := tx.Exec(ctx, `DELETE FROM vaults WHERE id=$1`, vaultID); err != nil {
 				return err
 			}
+		}
+		if err := releaseStaging(ctx, tx, []string{id}); err != nil {
+			return err
 		}
 		if _, err := tx.Exec(ctx, `UPDATE vault_transitions SET state='committed',enc_name=$2,item_count=$3,expires_at=clock_timestamp()+interval '1 hour' WHERE id=$1`, id, encName, op.ItemCount); err != nil {
 			return err

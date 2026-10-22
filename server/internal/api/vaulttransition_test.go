@@ -217,3 +217,42 @@ func TestStagedSnapshotCannotOverwriteConcurrentAPIEdit(t *testing.T) {
 		t.Fatal("failed staging lost the concurrent edit")
 	}
 }
+
+func TestInterruptedStagingNeverBlocksFinishingRemoval(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	attachMailRecorder(server)
+	ctx := context.Background()
+	owner := signUpTestAccount(t, ctx, server, baseURL, "owner@example.com", apitypes.RoleMember)
+	removed := signUpTestAccount(t, ctx, server, baseURL, "removed@example.com", apitypes.RoleMember)
+	vault := requireValue[*session.Vault](t)(owner.CreateVault(ctx, "Interrupted", apitypes.VaultShared))
+	shareThroughInvitation(t, owner, removed, vault, apitypes.VaultEditor)
+	createTestItem(t, owner, vault, item.Item{Overview: item.Overview{Title: "Kept"}, Details: item.Details{Password: "kept"}})
+	if err := owner.Client.RemoveAccess(ctx, vault.ID, removed.AccountID); err != nil {
+		t.Fatal(err)
+	}
+	for attempt := range 2 {
+		op := requireValue[*apitypes.VaultTransition](t)(owner.Client.BeginVaultTransition(ctx, vault.ID, &apitypes.BeginVaultTransitionRequest{
+			Protocol: 1, ID: uuid.NewString(), Kind: "rotate", KeyGeneration: 1,
+		}))
+		page := requireValue[apitypes.VaultTransitionPage](t)(owner.Client.ListVaultTransitionItems(ctx, vault.ID, op.ID, ""))
+		request := &apitypes.StageVaultItemsRequest{}
+		for _, record := range page.Items {
+			request.Items = append(request.Items, apitypes.RotatedItem{ID: record.ID, BaseRevision: record.Revision, Revision: uuid.NewString(),
+				Overview: []byte{byte(attempt + 1)}, Details: []byte{1}})
+		}
+		if err := owner.Client.StageVaultItems(ctx, vault.ID, op.ID, request); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rotated, err := owner.RotatePendingVaults(ctx)
+	if err != nil || len(rotated) != 1 {
+		t.Fatalf("an owner whose app was killed twice mid-rotation could not finish the removal: %+v %v", rotated, err)
+	}
+	if listed, _ := findListedVault(t, owner, vault.ID); listed.NeedsRotation || listed.KeyGeneration != 2 {
+		t.Fatalf("removal still pending: %+v", listed)
+	}
+	current := requireValue[*session.Vault](t)(owner.FindVault(ctx, vault.ID))
+	if got := requireValue[[]item.Item](t)(owner.ListItems(ctx, current)); len(got) != 1 || got[0].Details.Password != "kept" {
+		t.Fatal("an abandoned staging copy reached the vault")
+	}
+}

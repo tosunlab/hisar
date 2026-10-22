@@ -179,3 +179,101 @@ func TestStagingCannotInflateAcceptedCiphertextWithoutBound(t *testing.T) {
 		t.Fatalf("valid replacement failed after rejected inflation: %v", err)
 	}
 }
+
+func TestInterruptedStagingNeverBlocksItsOwnersNextBegin(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	owners := []string{"AAAAAA", "BBBBBB", "CCCCCC"}
+	for _, accountID := range owners {
+		createTestAccount(t, database, accountID, accountID+"@example.com")
+	}
+	vaultID := createTestVault(t, database, "AAAAAA")
+	for _, accountID := range owners[1:] {
+		if err := database.SetAccess(ctx, vaultID, Member{AccountID: accountID, Role: "owner", WrappedKey: []byte("old"), GrantedBy: "AAAAAA"}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	item := &Item{ID: uuid.NewString(), Revision: uuid.NewString(), Overview: []byte("o"), Details: []byte("d"), UpdatedBy: "AAAAAA"}
+	if _, err := database.PutItem(ctx, vaultID, "", 1, item); err != nil {
+		t.Fatal(err)
+	}
+	begin := func(actorID string) (*apitypes.VaultTransition, error) {
+		return database.BeginVaultTransition(ctx, vaultID, actorID, &apitypes.BeginVaultTransitionRequest{ID: uuid.NewString(), Kind: "rotate", KeyGeneration: 1})
+	}
+	stage := func(actorID string, op *apitypes.VaultTransition) error {
+		return database.StageVaultItems(ctx, vaultID, actorID, op.ID, []apitypes.RotatedItem{
+			{ID: item.ID, BaseRevision: item.Revision, Revision: uuid.NewString(), Overview: []byte("o"), Details: []byte("d")}})
+	}
+	var lost *apitypes.VaultTransition
+	for range 2 {
+		op, err := begin("AAAAAA")
+		if err != nil {
+			t.Fatalf("an app that lost its earlier operation could not begin again: %v", err)
+		}
+		if err := stage("AAAAAA", op); err != nil {
+			t.Fatal(err)
+		}
+		lost = op
+	}
+	current, err := begin("AAAAAA")
+	if err != nil {
+		t.Fatalf("two interrupted operations blocked their owner: %v", err)
+	}
+	if err := stage("AAAAAA", lost); !errors.Is(err, ErrConflict) {
+		t.Fatalf("a superseded operation kept staging: %v", err)
+	}
+	if _, err := begin("BBBBBB"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := begin("CCCCCC"); !errors.Is(err, ErrTransitionLimit) {
+		t.Fatalf("a third owner's begin was admitted beside two other owners' live staging: %v", err)
+	}
+	if current, err = begin("AAAAAA"); err != nil {
+		t.Fatalf("another owner's staging blocked replacing this owner's own operation: %v", err)
+	}
+	if err := stage("AAAAAA", current); err != nil {
+		t.Fatal(err)
+	}
+	accesses := []apitypes.RotatedAccess{}
+	for _, accountID := range owners {
+		accesses = append(accesses, apitypes.RotatedAccess{AccountID: accountID, Role: "owner", WrappedKey: []byte("new")})
+	}
+	if err := database.StageVaultAccess(ctx, vaultID, "AAAAAA", current.ID, accesses); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CommitVaultTransition(ctx, vaultID, "AAAAAA", current.ID, []byte("new-name")); err != nil {
+		t.Fatalf("the latest operation could not commit: %v", err)
+	}
+}
+
+func TestEndedOperationsNeverExhaustAVaultsAdmission(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	vaultID := createTestVault(t, database, "AAAAAA")
+	begin := func(generation int64) *apitypes.VaultTransition {
+		t.Helper()
+		op, err := database.BeginVaultTransition(ctx, vaultID, "AAAAAA", &apitypes.BeginVaultTransitionRequest{ID: uuid.NewString(), Kind: "rotate", KeyGeneration: generation})
+		if err != nil {
+			t.Fatalf("begin at generation %d: %v", generation, err)
+		}
+		return op
+	}
+	generation := int64(1)
+	for range 70 {
+		op := begin(generation)
+		if err := database.StageVaultAccess(ctx, vaultID, "AAAAAA", op.ID, []apitypes.RotatedAccess{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte("new")}}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := database.CommitVaultTransition(ctx, vaultID, "AAAAAA", op.ID, []byte("new-name")); err != nil {
+			t.Fatal(err)
+		}
+		generation++
+	}
+	for range 70 {
+		if err := database.AbortVaultTransition(ctx, vaultID, "AAAAAA", begin(generation).ID); err != nil {
+			t.Fatal(err)
+		}
+	}
+	begin(generation)
+}
