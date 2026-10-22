@@ -217,19 +217,28 @@ func (vault *lockedVault) acceptsKeyGeneration(keyGeneration int64) bool {
 	return keyGeneration == vault.keyGeneration || keyGeneration == 0 && vault.keyGeneration == 1 && vault.organizationID == ""
 }
 
-// checkItemKeyGeneration refuses items sealed with the vault key of keyGeneration unless the vault accepts it:
-// ErrKeyGenerationMissing requests a client update; ErrRotationPending blocks writes under an exposed key.
-func (vault *lockedVault) checkItemKeyGeneration(keyGeneration int64) error {
+// checkKeyGeneration refuses a key generation the vault does not accept: ErrKeyGenerationMissing requests a client
+// update.
+func (vault *lockedVault) checkKeyGeneration(keyGeneration int64) error {
 	switch {
 	case vault.acceptsKeyGeneration(keyGeneration):
-		if vault.needsRotation {
-			return ErrRotationPending
-		}
 		return nil
 	case keyGeneration == 0:
 		return ErrKeyGenerationMissing
 	}
 	return ErrStaleKeyGeneration
+}
+
+// checkItemKeyGeneration refuses items sealed with the vault key of keyGeneration unless the vault accepts it, and
+// blocks writes under a key that pending rotation exposed (ErrRotationPending).
+func (vault *lockedVault) checkItemKeyGeneration(keyGeneration int64) error {
+	if err := vault.checkKeyGeneration(keyGeneration); err != nil {
+		return err
+	}
+	if vault.needsRotation {
+		return ErrRotationPending
+	}
+	return nil
 }
 
 func (s *Store) ListMembers(ctx context.Context, vaultID string) ([]Member, error) {
@@ -257,7 +266,8 @@ func (s *Store) SetAccess(ctx context.Context, vaultID string, member Member) er
 // account only when it accepted a share invitation from a current owner, consuming it (ErrNoInvitation), and otherwise changes an existing
 // member's role. An organization vault adds only an account its teams entitle to exactly that role (ErrNotEntitled) and
 // never changes a member's role (ErrRoleFromTeams). Rotated vaults require the current explicit generation.
-// Pending rotation refuses key delivery even when the supplied generation is current.
+// Pending rotation refuses key delivery even when the supplied generation is current, but only after the membership
+// checks, so a grant that can never succeed is refused for that reason and not for the vault's key state.
 func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, keyGeneration int64) (isNewMember bool, err error) {
 	err = s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, vaultID)
@@ -267,7 +277,7 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 		if err := requireVaultOwner(ctx, transaction, vaultID, member.GrantedBy); err != nil {
 			return err
 		}
-		if err := vault.checkItemKeyGeneration(keyGeneration); err != nil {
+		if err := vault.checkKeyGeneration(keyGeneration); err != nil {
 			return err
 		}
 		currentRole, err := queryVaultRole(ctx, transaction, vaultID, member.AccountID)
@@ -290,6 +300,9 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 			}
 		case isNewMember:
 			return ErrNoInvitation
+		}
+		if vault.needsRotation {
+			return ErrRotationPending
 		}
 		_, err = transaction.Exec(ctx, `
 			INSERT INTO vault_access (vault_id, account_id, wrapped_key, role, granted_by) VALUES ($1, $2, $3, $4, $5)

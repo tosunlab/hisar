@@ -172,9 +172,12 @@ func TestOwnerRemovalBlocksExposedGenerationUntilRotation(t *testing.T) {
 	ctx := context.Background()
 	createTestAccount(t, database, "AAAAAA", "a@example.com")
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
+	createTestAccount(t, database, "CCCCCC", "c@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
-	if err := database.SetAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte("b"), GrantedBy: "AAAAAA"}); err != nil {
-		t.Fatal(err)
+	for _, accountID := range []string{"BBBBBB", "CCCCCC"} {
+		if err := database.SetAccess(ctx, vaultID, Member{AccountID: accountID, Role: "editor", WrappedKey: []byte("old"), GrantedBy: "AAAAAA"}); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := database.RemoveAccess(ctx, vaultID, "AAAAAA", "BBBBBB"); err != nil {
 		t.Fatal(err)
@@ -190,10 +193,16 @@ func TestOwnerRemovalBlocksExposedGenerationUntilRotation(t *testing.T) {
 	if err := database.RenameVault(ctx, vaultID, "AAAAAA", []byte("new"), 1); !errors.Is(err, ErrRotationPending) {
 		t.Fatalf("exposed name: %v", err)
 	}
-	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte("old"), GrantedBy: "AAAAAA"}, 1); !errors.Is(err, ErrRotationPending) {
-		t.Fatalf("retired key grant: %v", err)
+	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "CCCCCC", Role: "reader", WrappedKey: []byte("old"), GrantedBy: "AAAAAA"}, 1); !errors.Is(err, ErrRotationPending) {
+		t.Fatalf("remaining member's grant under the exposed key: %v", err)
+	}
+	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte("old"), GrantedBy: "AAAAAA"}, 1); !errors.Is(err, ErrNoInvitation) {
+		t.Fatalf("removed member's grant without an invitation: %v", err)
 	}
 	if role, err := database.GetVaultRole(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) || role != "" {
 		t.Fatalf("removed member restored: %q %v", role, err)
+	}
+	if role, err := database.GetVaultRole(ctx, vaultID, "CCCCCC"); err != nil || role != "editor" {
+		t.Fatalf("refused grant changed a remaining member: %q %v", role, err)
 	}
 }
