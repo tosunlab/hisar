@@ -143,9 +143,11 @@ class HisarUITestCase: XCTestCase {
     }
 
     // On a slow simulator the keyboard focus comes a moment after the tap, and typing before it fails, so it waits for the focus
-    // and taps again if it does not come.
+    // and taps again if it does not come. Only a field the form has not created yet is dragged to: tap() scrolls one that exists
+    // just into view, while a drag can carry it under the navigation bar, where it still counts as hittable and taps land on
+    // the bar.
     func type(_ text: String, into element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        if !element.waitForExistence(timeout: 5) || !element.isHittable {
+        if !element.waitForExistence(timeout: 5) {
             scrollTo(element)
         }
         let hasFocus = NSPredicate(format: "hasKeyboardFocus == true")
