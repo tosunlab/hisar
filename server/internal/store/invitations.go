@@ -61,8 +61,11 @@ type SentShareInvitation struct {
 	Recipient *Account
 }
 
+// isRetiredShareIntent counts an expired operation as retired, so a tombstone only has to outlive its signed expiry.
+const isRetiredShareIntent = `SELECT EXISTS(SELECT 1 FROM retired_share_invitations WHERE id=$1) OR $2 <= now()`
+
 // UpsertShareInvitation replaces a source row, never its identity. The lifetime is signed by the owner.
-func (s *Store) UpsertShareInvitation(ctx context.Context, invitation *ShareInvitation, ttl time.Duration) (string, error) {
+func (s *Store) UpsertShareInvitation(ctx context.Context, invitation *ShareInvitation) (string, error) {
 	if invitation.Intent == nil {
 		return "", ErrNoInvitation
 	}
@@ -79,7 +82,7 @@ func (s *Store) UpsertShareInvitation(ctx context.Context, invitation *ShareInvi
 			return ErrConflict
 		}
 		var retired bool
-		if err := transaction.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retired_share_invitations WHERE id=$1)`, intent.ID).Scan(&retired); err != nil {
+		if err := transaction.QueryRow(ctx, isRetiredShareIntent, intent.ID, time.Unix(intent.ExpiresAt, 0)).Scan(&retired); err != nil {
 			return err
 		}
 		if retired {
@@ -96,7 +99,7 @@ func (s *Store) UpsertShareInvitation(ctx context.Context, invitation *ShareInvi
 		if !errors.Is(err, pgx.ErrNoRows) {
 			return err
 		}
-		if err := transaction.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM retired_share_invitations WHERE id=$1)`, intent.ID).Scan(&retired); err != nil {
+		if err := transaction.QueryRow(ctx, isRetiredShareIntent, intent.ID, time.Unix(intent.ExpiresAt, 0)).Scan(&retired); err != nil {
 			return err
 		}
 		if retired {

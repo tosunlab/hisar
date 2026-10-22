@@ -108,8 +108,8 @@ func TestEventStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	aliceStream.waitForEvent(t, apitypes.EventShareInvitationsChanged)
-	if completedShares, err := alice.CompleteAcceptedShares(ctx); err != nil || len(completedShares) != 1 {
-		t.Fatalf("completed: %+v %v", completedShares, err)
+	if completedShares := completeReviewedShares(t, alice); len(completedShares) != 1 {
+		t.Fatalf("completed: %+v", completedShares)
 	}
 	bobStream.waitForEvent(t, apitypes.EventVaultsChanged)
 

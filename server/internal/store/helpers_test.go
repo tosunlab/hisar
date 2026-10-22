@@ -10,15 +10,24 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 )
 
-// Store fixtures use dummy account keys; signature authorization is exercised through the real API tests.
+// Store fixtures use dummy account keys; signature authorization is exercised through the real API tests. A ttl of zero
+// or less stores a live operation and then expires its row, because the store refuses an already-expired operation.
 func createTestShareInvitation(t *testing.T, database *Store, ctx context.Context, invitation *ShareInvitation, ttl time.Duration) (string, error) {
 	t.Helper()
 	var generation, revision int64
 	if err := database.pool.QueryRow(ctx, `SELECT key_generation,access_revision FROM vaults WHERE id=$1`, invitation.VaultID).Scan(&generation, &revision); err != nil {
 		return "", err
 	}
-	invitation.Intent = &apitypes.SignedShareIntent{Context: crypt.ShareIntent{Version: 1, Origin: "https://hisar.test", ID: uuid.NewString(), VaultID: invitation.VaultID, InvitedBy: invitation.InvitedBy, Email: invitation.Email, Role: invitation.Role, KeyGeneration: generation, AccessRevision: revision, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(ttl).Unix()}, Signature: []byte("fixture")}
-	return database.UpsertShareInvitation(ctx, invitation, ttl)
+	lifetime := ttl
+	if ttl <= 0 {
+		lifetime = time.Hour
+	}
+	invitation.Intent = &apitypes.SignedShareIntent{Context: crypt.ShareIntent{Version: 1, Origin: "https://hisar.test", ID: uuid.NewString(), VaultID: invitation.VaultID, InvitedBy: invitation.InvitedBy, Email: invitation.Email, Role: invitation.Role, KeyGeneration: generation, AccessRevision: revision, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(lifetime).Unix()}, Signature: []byte("fixture")}
+	id, err := database.UpsertShareInvitation(ctx, invitation)
+	if err == nil && ttl <= 0 {
+		_, err = database.pool.Exec(ctx, `UPDATE share_invitations SET expires_at = now() + $2::interval WHERE id = $1`, id, ttl)
+	}
+	return id, err
 }
 
 func authorizeTestShareCompletion(t *testing.T, database *Store, invitationID string) *apitypes.CompleteShareRequest {

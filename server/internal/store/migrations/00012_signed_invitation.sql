@@ -1,12 +1,12 @@
 -- +goose Up
 ALTER TABLE share_invitations ADD COLUMN intent jsonb;
 ALTER TABLE vaults ADD COLUMN access_revision bigint NOT NULL DEFAULT 1;
-CREATE TABLE retired_share_invitations (id uuid PRIMARY KEY);
+CREATE TABLE retired_share_invitations (id uuid PRIMARY KEY, expires_at timestamptz NOT NULL);
 
 -- +goose StatementBegin
 CREATE FUNCTION retire_share_invitation() RETURNS trigger LANGUAGE plpgsql AS $$
 BEGIN
- INSERT INTO retired_share_invitations(id) VALUES (OLD.id) ON CONFLICT DO NOTHING;
+ INSERT INTO retired_share_invitations(id, expires_at) VALUES (OLD.id, OLD.expires_at) ON CONFLICT DO NOTHING;
  RETURN OLD;
 END;
 $$;

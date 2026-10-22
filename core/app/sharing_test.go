@@ -1031,8 +1031,24 @@ func checkSharingFlow(t *testing.T, service *Service, familyID, memberEmail, mem
 		t.Fatalf("member has the vault before the owner completed: %+v %v", memberVaults, err)
 	}
 	sent, err := service.ListShareInvitations()
-	if err != nil || sent.CompletionError != "" || slices.ContainsFunc(sent.Sent, func(invitation SentShareInvitation) bool { return invitation.Email == memberEmail }) {
-		t.Fatalf("owner's invitations after completing: %+v %v", sent, err)
+	if err != nil || sent.CompletionError != "" {
+		t.Fatalf("owner's invitations before review: %+v %v", sent, err)
+	}
+	reviewIndex := slices.IndexFunc(sent.Sent, func(invitation SentShareInvitation) bool {
+		return invitation.Email == memberEmail && invitation.RequiresConfirmation
+	})
+	if reviewIndex < 0 {
+		t.Fatalf("no recipient review: %+v", sent)
+	}
+	if memberVaults, err := member.ListVaults(); err != nil || slices.ContainsFunc(memberVaults, func(vault VaultSummary) bool { return vault.ID == familyID }) {
+		t.Fatalf("member got the vault before the review: %+v %v", memberVaults, err)
+	}
+	if err := service.ConfirmShareRecipient(sent.Sent[reviewIndex].ID, sent.Sent[reviewIndex].ReviewToken); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	sent, err = service.ListShareInvitations()
+	if err != nil || slices.ContainsFunc(sent.Sent, func(invitation SentShareInvitation) bool { return invitation.Email == memberEmail }) {
+		t.Fatalf("owner's invitations after confirming: %+v %v", sent, err)
 	}
 	people, err := service.ListPeople()
 	if err != nil {

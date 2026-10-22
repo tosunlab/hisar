@@ -286,3 +286,44 @@ func TestLegacyAndAlteredSharingNeverAutoDeliver(t *testing.T) {
 		t.Fatal("recorded legitimate key delivery did not decrypt")
 	}
 }
+
+func TestSharingNamesTheServerAddressAndKeepsTheServerLifetime(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	owner := signUpTestAccount(t, ctx, server, baseURL, "owner@example.com", apitypes.RoleMember)
+	recipient := signUpTestAccount(t, ctx, server, baseURL, "recipient@example.com", apitypes.RoleMember)
+	vault := requireValue[*session.Vault](t)(owner.CreateVault(ctx, "Team", apitypes.VaultShared))
+
+	otherAddress := "http://localhost:" + strings.TrimPrefix(baseURL, "http://127.0.0.1:")
+	elsewhere := secondSharingDevice(t, owner)
+	elsewhere.Client.BaseURL = otherAddress
+	err := elsewhere.InviteToVault(ctx, vault, recipient.Email, apitypes.VaultReader)
+	if !apiclient.IsStatus(err, http.StatusBadRequest) || !strings.Contains(err.Error(), baseURL) || !strings.Contains(err.Error(), otherAddress) || !strings.Contains(err.Error(), "HISAR_PUBLIC_URL") {
+		t.Fatalf("an invitation signed for another address got no actionable refusal: %v", err)
+	}
+	request := signedShareRequest(t, owner, vault, recipient.Email, apitypes.VaultReader, recipient)
+	if err := owner.Client.CreateSignedShareInvitation(ctx, vault.ID, &request); err != nil {
+		t.Fatal(err)
+	}
+	if err := recipient.Client.AcceptShareInvitation(ctx, request.Intent.Context.ID); err != nil {
+		t.Fatal(err)
+	}
+	if completed, err := elsewhere.CompleteAcceptedShares(ctx); len(completed) != 0 || err == nil || !strings.Contains(err.Error(), otherAddress) {
+		t.Fatalf("an app on another address completed or gave no actionable reason: %+v %v", completed, err)
+	}
+	if _, err := recipient.FindVault(ctx, vault.ID); !errors.Is(err, session.ErrNotFound) {
+		t.Fatalf("an app on another address delivered a key: %v", err)
+	}
+	if err := owner.Client.CancelShareInvitation(ctx, request.Intent.Context.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	server.service.InviteTTL = time.Hour
+	if err := owner.InviteToVault(ctx, vault, recipient.Email, apitypes.VaultReader); !apiclient.IsStatus(err, http.StatusBadRequest) {
+		t.Fatalf("a signed lifetime beyond the server's invitation lifetime was stored: %v", err)
+	}
+	withinLifetime := signedShareRequest(t, owner, vault, recipient.Email, apitypes.VaultReader, recipient)
+	if err := owner.Client.CreateSignedShareInvitation(ctx, vault.ID, &withinLifetime); err != nil {
+		t.Fatalf("a signed lifetime equal to the server's was refused: %v", err)
+	}
+}

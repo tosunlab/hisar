@@ -78,7 +78,11 @@ func (s *Session) verifyInvitation(ctx context.Context, vault *Vault, invitation
 	if err != nil {
 		return err
 	}
-	if intent.Version != 1 || intent.Origin != origin || intent.ID != invitation.ID || intent.VaultID != vault.ID ||
+	if intent.Origin != origin {
+		// The stored origin is not verified yet, so the message never repeats it.
+		return fmt.Errorf("This invitation was sent through another address of the Hisar server than %s, the one this app uses. Finish it from an app connected to the address it was sent from, or cancel it and send a new invitation.", origin)
+	}
+	if intent.Version != 1 || intent.ID != invitation.ID || intent.VaultID != vault.ID ||
 		intent.InvitedBy != invitation.InvitedBy || intent.Email != invitation.Email || intent.Role != invitation.Role ||
 		intent.KeyGeneration != vault.KeyGeneration || intent.AccessRevision <= 0 || intent.AccessRevision > vault.AccessRevision || intent.ExpiresAt != invitation.ExpiresAt.Unix() || intent.ExpiresAt <= time.Now().Unix() ||
 		intent.IssuedAt > time.Now().Unix()+60 || intent.ExpiresAt <= intent.IssuedAt || len(intent.ParentHash) != 0 {

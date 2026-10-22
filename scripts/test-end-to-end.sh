@@ -150,7 +150,15 @@ expect "bob's invitations" "$(B invitations 2>&1)" "Alice <alice@example.com>  e
 expect "bob accepts" "$(printf '\n' | B invitations accept 2>&1)" "Accepted."
 [[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before alice completed the share"
 echo "ok   accepting alone gives no access"
-expect "alice's app completes the share" "$(printf '%s\n' "$PW" | A invitations 2>&1)" 'Shared "Family" with bob@example.com as editor. Their security code:'
+ALICE_INVITATIONS=$(printf '%s\n' "$PW" | A invitations 2>&1)
+expect "alice's hisar asks her to review bob, whom she has never shared with" "$ALICE_INVITATIONS" "needs-review"
+[[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before alice reviewed him"
+echo "ok   a first-contact recipient gets no key without the owner's review"
+BOB_INVITATION=$(printf '%s\n' "$ALICE_INVITATIONS" | awk '/bob@example.com/ && /needs-review/{print $1}')
+[[ -n "$BOB_INVITATION" ]] || fail "alice's hisar does not ask her to review bob: $ALICE_INVITATIONS"
+BOB_CONFIRMATION=$(printf '%s\n' "$PW" | A invitations confirm "$BOB_INVITATION" --yes 2>&1)
+expect "alice's review shows bob's security code" "$BOB_CONFIRMATION" "Security code"
+expect "alice confirms bob" "$BOB_CONFIRMATION" "Shared with the reviewed recipient."
 expect "bob sees Family" "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" "Family    shared    editor"
 expect "bob reads item" "$(printf '%s\n' "$PW" | B get netflix -v Family -f password 2>/dev/null)" "hunter2hunter2"
 expect "bob edits item" "$(printf '%s\nNetflix\n\n\n\nedited by bob\n' "$PW" | B edit netflix -v Family 2>&1)" "Saved"
@@ -164,17 +172,29 @@ C() { HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=$CAROL_SK hisar "$@"; }
 printf '%s\n' "$PW" | A vault-create Work 2>/dev/null
 ALICE_TOKEN=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$T/alice.json")
 WORK_ID=$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/^Work/{print $4}')
+# The unsigned request of older apps is what a stolen bearer token could send; both share routes refuse it alike.
 share_raw() {
   curl -s -w ' %{http_code}' -H "Authorization: Bearer $ALICE_TOKEN" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$1\",\"role\":\"reader\"}" "http://127.0.0.1:$PORT/api/v1/vaults/$WORK_ID/share-invitations"
+    -d "{\"email\":\"$1\",\"role\":\"reader\"}" "http://127.0.0.1:$PORT/api/v1/vaults/$WORK_ID/$2"
 }
-EXISTING_RESPONSE=$(share_raw carol@example.com)
-UNKNOWN_RESPONSE=$(share_raw ghost@example.com)
-expect "share API response" "$EXISTING_RESPONSE" '{"message":"Invitation sent"} 202'
-[[ "$EXISTING_RESPONSE" == "$UNKNOWN_RESPONSE" ]] || fail "the share API answers differently for an unknown email: $UNKNOWN_RESPONSE"
-echo "ok   the share API answers the same for an existing and an unknown email"
+for SHARE_ROUTE in share-invitations signed-share-invitations; do
+  EXISTING_RESPONSE=$(share_raw carol@example.com "$SHARE_ROUTE")
+  UNKNOWN_RESPONSE=$(share_raw ghost@example.com "$SHARE_ROUTE")
+  expect "an unsigned bearer share to $SHARE_ROUTE is refused" "$EXISTING_RESPONSE" " 400"
+  [[ "$EXISTING_RESPONSE" == "$UNKNOWN_RESPONSE" ]] || fail "$SHARE_ROUTE refuses an unknown email differently: $UNKNOWN_RESPONSE"
+  echo "ok   $SHARE_ROUTE refuses an unsigned share the same for an existing and an unknown email"
+done
+[[ -z "$(C invitations 2>/dev/null | awk '/alice@example.com/{print $1}')" ]] || fail "an unsigned bearer share reached carol"
+echo "ok   carol received nothing from the refused requests"
+WORK_SHARE_OUTPUT=$(printf '%s\n' "$PW" | A share Work carol@example.com -r reader 2>&1)
+expect "alice shares Work with carol" "$WORK_SHARE_OUTPUT" 'Invitation sent to carol@example.com for "Work" as reader.'
+GHOST_SHARE_OUTPUT=$(printf '%s\n' "$PW" | A share Work ghost@example.com -r reader 2>&1)
+[[ "${GHOST_SHARE_OUTPUT//ghost@example.com/someone}" == "${WORK_SHARE_OUTPUT//carol@example.com/someone}" ]] || fail "share to an unknown email answered differently: $GHOST_SHARE_OUTPUT"
+echo "ok   the share answers the same for an existing and an unknown email"
 expect "carol accepts" "$(C invitations accept "$(C invitations 2>/dev/null | awk '/alice@example.com/{print $1}')" 2>&1)" "Accepted."
-expect "alice completes carol's share" "$(printf '%s\n' "$PW" | A invitations 2>&1)" 'Shared "Work" with carol@example.com as reader.'
+CAROL_INVITATION=$(printf '%s\n' "$PW" | A invitations 2>/dev/null | awk '/carol@example.com/ && /needs-review/{print $1}')
+[[ -n "$CAROL_INVITATION" ]] || fail "alice's hisar does not ask her to review carol"
+expect "alice confirms carol" "$(printf '%s\n' "$PW" | A invitations confirm "$CAROL_INVITATION" --yes 2>&1)" "Shared with the reviewed recipient."
 expect "alice sees carol" "$(A people)" "carol@example.com"
 BOB_PEOPLE=$(B people)
 expect "bob sees alice" "$BOB_PEOPLE" "alice@example.com"
@@ -475,7 +495,7 @@ MOBILE_SHARING_OWNER_INVITE=$("$BIN/hisar-server" invite --email mobile-sharing-
 MOBILE_SHARING_RECIPIENT_INVITE=$("$BIN/hisar-server" invite --email mobile-sharing-recipient@example.com </dev/null | tail -1)
 MOBILE_SHARING_RESULT=$(HISAR_TEST_MOBILE_SHARING_OWNER_INVITE_LINK="$MOBILE_SHARING_OWNER_INVITE" HISAR_TEST_MOBILE_SHARING_RECIPIENT_INVITE_LINK="$MOBILE_SHARING_RECIPIENT_INVITE" \
   go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileSharing ./hisarkit/ 2>&1 || true)
-expect "the iPhone shares a vault, completes the accepted share on its own, and the recipient reads the item" "$MOBILE_SHARING_RESULT" "--- PASS: TestIntegrationMobileSharing"
+expect "the iPhone shares a vault, the owner reviews the new recipient before the key leaves, and the recipient reads the item" "$MOBILE_SHARING_RESULT" "--- PASS: TestIntegrationMobileSharing"
 
 MOBILE_ORGANIZATIONS_ADMIN_INVITE=$("$BIN/hisar-server" invite --email mobile-organizations-admin@example.com </dev/null | tail -1)
 MOBILE_ORGANIZATIONS_MEMBER_INVITE=$("$BIN/hisar-server" invite --email mobile-organizations-member@example.com </dev/null | tail -1)

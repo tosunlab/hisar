@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
@@ -161,19 +162,18 @@ func (s *Service) CreateShareInvitation(ctx context.Context, actor Actor, vaultI
 	if err != nil {
 		return err
 	}
-	origin, originErr := pake.CanonicalOrigin(s.config.PublicURL)
-	if originErr != nil {
-		return originErr
-	}
 	if request.Intent == nil {
 		return newError(KindInvalid, "Update Hisar to send an owner-authorized sharing invitation.")
 	}
 	intent := request.Intent.Context
+	if _, err := s.checkShareOrigin(intent.Origin); err != nil {
+		return err
+	}
 	now := time.Now().Unix()
-	if intent.Version != 1 || intent.Origin != origin || !IsValidUUID(intent.ID) || intent.VaultID != vaultID ||
+	if intent.Version != 1 || !IsValidUUID(intent.ID) || intent.VaultID != vaultID ||
 		intent.InvitedBy != actor.AccountID || intent.Email != email || intent.Role != request.Role ||
 		intent.KeyGeneration <= 0 || intent.AccessRevision <= 0 || intent.IssuedAt > now+60 ||
-		intent.ExpiresAt <= now || intent.ExpiresAt <= intent.IssuedAt || intent.ExpiresAt-intent.IssuedAt > int64((30*24*time.Hour)/time.Second) ||
+		intent.ExpiresAt <= now || intent.ExpiresAt <= intent.IssuedAt || intent.ExpiresAt-intent.IssuedAt > int64(s.InviteTTL/time.Second) ||
 		len(intent.ParentHash) != 0 || (intent.RecipientID == "") != (len(intent.RecipientKeyHash) == 0) ||
 		intent.RecipientID != "" && (!crypt.IsValidAccountID(intent.RecipientID) || len(intent.RecipientKeyHash) != 32) ||
 		crypt.VerifyShareIntent(inviter.SignPub, intent, request.Intent.Signature) != nil {
@@ -193,7 +193,7 @@ func (s *Service) CreateShareInvitation(ctx context.Context, actor Actor, vaultI
 		return errTooManyInvitation
 	}
 	invitation := &store.ShareInvitation{VaultID: vaultID, Email: email, Role: request.Role, InvitedBy: inviter.ID, Intent: request.Intent}
-	invitationID, err := s.store.UpsertShareInvitation(ctx, invitation, s.InviteTTL)
+	invitationID, err := s.store.UpsertShareInvitation(ctx, invitation)
 	if errors.Is(err, store.ErrConflict) || errors.Is(err, store.ErrExists) {
 		return newError(KindConflict, "This sharing authorization is stale or was already used. Send a new invitation.")
 	}
@@ -371,7 +371,7 @@ func (s *Service) CompleteSignedShare(ctx context.Context, actor Actor, request 
 	if !IsValidUUID(intent.ID) || !IsValidUUID(intent.VaultID) || !crypt.IsValidAccountID(intent.RecipientID) || len(request.WrappedKey) == 0 || len(request.WrappedKey) > 8192 {
 		return newError(KindInvalid, "This sharing authorization is invalid. Review the recipient and send a new invitation.")
 	}
-	origin, err := pake.CanonicalOrigin(s.config.PublicURL)
+	origin, err := s.checkShareOrigin(intent.Origin)
 	if err != nil {
 		return err
 	}
@@ -386,4 +386,18 @@ func (s *Service) CompleteSignedShare(ctx context.Context, actor Actor, request 
 	s.publishVaultsChanged(intent.RecipientID)
 	s.publishShareInvitationsChangedToOwner(ctx, intent.VaultID, intent.RecipientID)
 	return nil
+}
+
+// checkShareOrigin names both addresses when an app signed for another origin than HISAR_PUBLIC_URL. That is a
+// deployment mistake, and a generic refusal would send the user looking for a forged invitation instead.
+func (s *Service) checkShareOrigin(signedOrigin string) (string, error) {
+	origin, err := pake.CanonicalOrigin(s.config.PublicURL)
+	if err != nil {
+		return "", err
+	}
+	if signedOrigin != origin {
+		return "", newError(KindInvalid, fmt.Sprintf("This Hisar server's address is %s, but your app is connected to it as %s. "+
+			"Sign in to %s, or ask the server's operator to set HISAR_PUBLIC_URL to the address your apps use.", origin, signedOrigin, origin))
+	}
+	return origin, nil
 }
