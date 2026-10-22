@@ -259,8 +259,9 @@ Your master password stays the same, and so do your vaults and items.`)
 		if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
 			return err
 		}
+		fmt.Fprintf(standardError(), "Replaced your Secret Key. This is your new Secret Key:\n\n    %s\n\n", result.SecretKey)
 		if os.Getenv(localstate.SecretKeyEnvironmentVariable) != "" {
-			fmt.Fprintln(standardError(), "HISAR_SECRET_KEY still holds the old Secret Key; use the new Emergency Kit to replace it.")
+			fmt.Fprintln(standardError(), "HISAR_SECRET_KEY still holds the old Secret Key; set it to the new one.")
 		}
 		return nil
 	}()

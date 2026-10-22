@@ -425,7 +425,7 @@ expect "the new master password unlocks" "$(printf '%s\n' "$NEW_PW" | A get gith
 expect "password change email" "$(wait_for_mail alice@example.com "$ALICE_MAIL_COUNT")" "Your other device was signed out."
 expect "the other device signs in with the new master password" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$NEW_PW" | HISAR_STATE=$T/alice3.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
 
-expect "replace Secret Key" "$(printf '%s\ny\n' "$NEW_PW" | A account replace-secret-key -o "$T/new-kit.pdf" 2>"$T/replace.txt"; cat "$T/replace.txt")" "Saved your new Emergency Kit to $T/new-kit.pdf"
+expect "replace Secret Key" "$(printf '%s\n' "$NEW_PW" | A account replace-secret-key -y -o "$T/new-kit.pdf" 2>"$T/replace.txt"; cat "$T/replace.txt")" "Saved your new Emergency Kit to $T/new-kit.pdf"
 NEW_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/replace.txt" | head -1)
 [[ -n "$NEW_SK" && "$NEW_SK" != "$ALICE_SK" ]] || fail "no new Secret Key: $(cat "$T/replace.txt")"
 expect "the new Emergency Kit is a private PDF" "$(head -c 5 "$T/new-kit.pdf") $(stat -c %a "$T/new-kit.pdf" 2>/dev/null || stat -f %Lp "$T/new-kit.pdf")" "%PDF- 600"
