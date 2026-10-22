@@ -596,7 +596,6 @@ export class BackgroundController {
 
   handleTabNavigation(tabId: number, url: string, frameId = 0, documentID?: string): void {
     this.allSaveOffer.navigate(tabId, url, frameId, documentID);
-    void this.browser.setSaveBadge?.(tabId, false);
   }
 
   handleTabRemoved(tabId: number): void {

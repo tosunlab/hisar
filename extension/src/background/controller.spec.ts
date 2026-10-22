@@ -693,6 +693,20 @@ describe("save offers", () => {
     expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
   });
 
+  it("keeps the pending badge through a frame navigation and the immediate submit navigation", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw");
+    expect(harness.allSaveBadge.get(1)).toBe(true);
+    harness.controller.handleTabNavigation(1, "https://ads.example.net/frame", 7);
+    expect(harness.allSaveBadge.get(1)).toBe(true);
+    harness.controller.handleTabNavigation(1, "https://example.com/welcome");
+    expect(harness.allSaveBadge.get(1)).toBe(true);
+    harness.controller.handleTabNavigation(1, "https://example.com/another");
+    expect(harness.allSaveBadge.get(1)).toBe(false);
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
   it("rejects a late submission from a document that has already navigated away", async () => {
     const harness = createHarness();
     await harness.pair();

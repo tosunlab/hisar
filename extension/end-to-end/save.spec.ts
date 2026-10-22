@@ -34,6 +34,28 @@ test("saves a new login under the title and vault chosen in the popup after the 
     .toMatchObject({ title: "Test shop", vaultID: "vault-family", password: "brand new" });
 });
 
+test("keeps the offer and its badge through a same-document submit navigation and saves it", async () => {
+  await harness.pairWithoutPopup();
+  const page = await harness.context.newPage();
+  await page.goto(`${harness.site.origin}/login`);
+  const tabId = await harness.getTabId(page.url());
+  await page.evaluate(() => document.querySelector("form")!.addEventListener("submit", event => event.preventDefault()));
+  await page.locator("#username").fill("single-page@example.com");
+  await page.locator("#password").fill("single page password");
+  await page.locator("h1").click();
+  await page.evaluate(() => document.querySelector("form")!.requestSubmit());
+  const badge = () => harness.evaluateInExtension(id => chrome.action.getBadgeText({ tabId: id }), tabId);
+  await expect.poll(badge).toBe("+");
+  await page.evaluate(() => history.pushState({}, "", "/welcome"));
+  await expect.poll(() => harness.evaluateInExtension(async id => (await chrome.tabs.get(id)).url, tabId)).toBe(`${harness.site.origin}/welcome`);
+  await expect.poll(badge).toBe("+");
+  const popup = await harness.context.newPage();
+  await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=${tabId}`);
+  await expect(popup.getByTestId("save-confirmation")).toBeVisible();
+  await popup.getByTestId("save-confirm").click();
+  await expect.poll(() => harness.readState().allLogin.find((login) => login.username === "single-page@example.com")).toMatchObject({ password: "single page password" });
+});
+
 test("creates a login from the popup for the page", async () => {
   await harness.pairWithoutPopup();
   const loginPage = await harness.context.newPage();
