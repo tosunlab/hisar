@@ -8,6 +8,10 @@
 # clones starve each other and tests time out, but can be quicker on a Mac with cores to spare. IOS_TESTS_PREBUILT=1 runs the
 # tests make build-ios built instead of building them again. IOS_UI_TEST_PART=1 or 2 runs one of two parts of similar length,
 # for two CI jobs: part 2 runs SECOND_PART, part 1 every other class, new ones included.
+#
+# The simulator boots after the server and the partner are ready, and the tests start once it has finished booting. A simulator
+# booted earlier and then left alone goes down with CoreSimulatorService, which macOS reclaims when nothing is using it and
+# memory runs short; xcodebuild then finds no simulator at all.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -34,6 +38,9 @@ if [ -n "${IOS_UI_TEST_PART:-}" ] && [ -n "${IOS_UI_TESTS:-}" ]; then
   echo "set IOS_UI_TESTS or IOS_UI_TEST_PART, not both" >&2
   exit 1
 fi
+
+# xcodebuild boots its own clones of the simulator, and a booted simulator cannot be cloned.
+if [ "$WORKERS" -eq 1 ]; then xcrun simctl bootstatus "$SIMULATOR_ID" -b; fi
 
 if ! env "${UI_TEST_VALUES[@]/#/TEST_RUNNER_}" TEST_RUNNER_HISAR_UI_TEST_SCREENSHOT_DIRECTORY="${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" \
   xcodebuild "$ACTION" -project "$ROOT/mobile/ios/Hisar.xcodeproj" -scheme Hisar "${SELECTION[@]}" \
