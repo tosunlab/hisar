@@ -36,8 +36,8 @@ func TestImportRequiresReviewedCurrentMembership(t *testing.T) {
 	}
 	shareThroughInvitation(t, alice, bob, work, apitypes.VaultReader)
 	second := &item.Item{Overview: item.Overview{Title: "Unreviewed import"}, Details: item.Details{Password: "synthetic-second"}}
-	if _, err := alice.SaveImportItem(ctx, work, second, reviewed); !errors.Is(err, session.ErrConflict) {
-		t.Fatalf("changed members did not stop import: %v", err)
+	if _, err := alice.SaveImportItem(ctx, work, second, reviewed); !errors.Is(err, session.ErrImportScopeChanged) {
+		t.Fatalf("changed members did not stop import as a membership change: %v", err)
 	}
 	if _, exists := findTestItem(t, alice, work, second.ID); exists {
 		t.Fatal("unreviewed item persisted")

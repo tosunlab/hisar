@@ -306,7 +306,7 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, request.KeyGeneration, storeItem, scopes...)
 	switch {
 	case errors.Is(err, store.ErrImportScopeChanged):
-		return 0, newError(KindConflict, "destination membership changed; review the import destination again")
+		return 0, newError(KindPreconditionFailed, "destination membership changed; review the import destination again")
 	case errors.Is(err, store.ErrNotFound):
 		return 0, ErrNotFound
 	case errors.Is(err, store.ErrReadOnly):

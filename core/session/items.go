@@ -168,6 +168,9 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *it
 	if conflict, ok := err.(*rotationConflict); ok {
 		return conflict.current, ErrConflict
 	}
+	if len(importScope) > 0 && apiclient.IsStatus(err, http.StatusPreconditionFailed) {
+		return nil, ErrImportScopeChanged
+	}
 	if apiclient.IsStatus(err, http.StatusConflict) {
 		if serverItem == nil || serverItem.Deleted {
 			return nil, ErrConflict

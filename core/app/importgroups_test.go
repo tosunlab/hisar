@@ -1,11 +1,13 @@
 package app
 
 import (
+	"errors"
 	"strings"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 func TestImportPreservesSourceGroupsAndDefaultsToPersonal(t *testing.T) {
@@ -70,8 +72,10 @@ func TestImportStopsWhenReviewedDestinationMembersChange(t *testing.T) {
 	test.apiServer.mutex.Lock()
 	test.apiServer.accessesByVaultID[test.familyID] = append(test.apiServer.accessesByVaultID[test.familyID], apitypes.RotatedAccess{AccountID: "new-reader", Role: apitypes.VaultReader})
 	test.apiServer.mutex.Unlock()
-	if _, err := service.ContinueImport(); err == nil {
-		t.Fatal("import continued after a membership change")
+	for range 2 {
+		if _, err := service.ContinueImport(); !errors.Is(err, session.ErrImportScopeChanged) {
+			t.Fatalf("membership change paused the import as %v", err)
+		}
 	}
 	if count := len(listItemsByTitle(t, service, test.familyID)); count != 10 {
 		t.Fatalf("wrote more after scope changed: %d", count)

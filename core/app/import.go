@@ -488,7 +488,7 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 // isImportStoppingError: these failures would repeat for every item, so the import pauses and can be continued.
 func isImportStoppingError(err error) bool {
 	return err != nil && (apiclient.IsUnreachable(err) || apiclient.IsStatus(err, http.StatusUnauthorized) ||
-		errors.Is(err, session.ErrConflict) || errors.Is(err, apiclient.ErrAccountSuspended) || apiclient.IsStatus(err, http.StatusForbidden) || apiclient.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.DeadlineExceeded))
+		errors.Is(err, session.ErrConflict) || errors.Is(err, session.ErrImportScopeChanged) || errors.Is(err, apiclient.ErrAccountSuspended) || apiclient.IsStatus(err, http.StatusForbidden) || apiclient.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.DeadlineExceeded))
 }
 
 func (s *Service) buildImportProgress() ImportProgress {

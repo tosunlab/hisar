@@ -174,7 +174,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 				members = append(members, crypt.ImportMember{AccountID: member.AccountID, Role: member.Role})
 			}
 			if putRequest.ImportScope == "" || putRequest.ImportScope != crypt.ImportScope(request.PathValue("vaultID"), members) {
-				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "destination membership changed; review the import destination again"})
+				writeJSON(writer, http.StatusPreconditionFailed, apitypes.Error{Error: "destination membership changed; review the import destination again"})
 				return
 			}
 		}

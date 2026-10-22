@@ -344,15 +344,16 @@ func setSecurityHeaders(c fiber.Ctx) error {
 
 // statusByKind is the HTTP status of each kind of refusal from the service.
 var statusByKind = map[service.Kind]int{
-	service.KindInvalid:         fiber.StatusBadRequest,
-	service.KindUnauthorized:    fiber.StatusUnauthorized,
-	service.KindForbidden:       fiber.StatusForbidden,
-	service.KindNotFound:        fiber.StatusNotFound,
-	service.KindConflict:        fiber.StatusConflict,
-	service.KindTooManyRequests: fiber.StatusTooManyRequests,
-	service.KindUnavailable:     fiber.StatusServiceUnavailable,
-	service.KindNotImplemented:  fiber.StatusNotImplemented,
-	service.KindGone:            fiber.StatusGone,
+	service.KindInvalid:            fiber.StatusBadRequest,
+	service.KindUnauthorized:       fiber.StatusUnauthorized,
+	service.KindForbidden:          fiber.StatusForbidden,
+	service.KindNotFound:           fiber.StatusNotFound,
+	service.KindConflict:           fiber.StatusConflict,
+	service.KindTooManyRequests:    fiber.StatusTooManyRequests,
+	service.KindUnavailable:        fiber.StatusServiceUnavailable,
+	service.KindNotImplemented:     fiber.StatusNotImplemented,
+	service.KindGone:               fiber.StatusGone,
+	service.KindPreconditionFailed: fiber.StatusPreconditionFailed,
 }
 
 // resourceBudgetMessages tells the user what to remove when a growth budget (store.ExceededResource) refuses a change.

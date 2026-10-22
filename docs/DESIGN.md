@@ -1551,7 +1551,9 @@ Imports never create sharing grants or auto-create source vaults.
 Each import item carries the reviewed destination's scope hash, computed from its vault ID and sorted account-ID/role pairs.
 `PUT /vaults/{vault}/items/{item}/import` requires this scope. The store compares it while holding the same vault row lock that
 access changes and item writes take, then checks write permission and key generation before persisting the item.
-A membership change stops remaining writes and keeps the source file. Already committed items stay saved.
+A membership change stops remaining writes and keeps the source file. Already committed items stay saved. The route refuses a
+changed scope with 412 Precondition Failed, not 409, so no client reads it as an item conflict; the Go client returns
+`session.ErrImportScopeChanged`, which pauses the import and says the destination's members changed.
 Stop the paused import and preview the source again to review the new scope. Later sharing can still expose previously imported data.
 An old server has no protected import route and refuses it. CLI app mode requires the `import-scope` feature and sends
 `Request.importScope`; apps refuse legacy import requests without a reviewed scope.

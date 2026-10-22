@@ -13,6 +13,9 @@ const (
 	KindUnavailable
 	KindNotImplemented
 	KindGone
+	// KindPreconditionFailed: a condition the client reviewed no longer holds, such as an import destination's members.
+	// It is not an item conflict, so no client merges or retries it.
+	KindPreconditionFailed
 )
 
 // Error is a refusal the caller may read; any other error is internal.
