@@ -695,6 +695,25 @@ func TestEditingAServerKeepsOrRemovesItsSSHKey(t *testing.T) {
 	}
 }
 
+func TestEditingAServerTakesAnIDThatTheLinkedKeyHasAsItsTitle(t *testing.T) {
+	const keyID = "12345678-1234-4234-8234-123456789abc"
+	originalReader := stdinReader
+	defer func() { stdinReader = originalReader }()
+	vaultItems := []item.Item{
+		{ID: "shadow-id", Overview: item.Overview{Title: keyID, Category: item.CategorySSHKey}},
+		{ID: keyID, Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey}},
+	}
+	stdinReader = bufio.NewReader(strings.NewReader("\n\n\n\n\n\n" + keyID + "\n"))
+	vaultItem := item.Item{Overview: item.Overview{Title: "Build", Category: item.CategoryServer}}
+	item.WriteServer(&vaultItem, item.Server{Host: "build.example.com", SSHKeyID: "shadow-id"}, nil)
+	if err := promptServer(&vaultItem, vaultItems); err != nil {
+		t.Fatal(err)
+	}
+	if server, _ := item.ReadServer(&vaultItem); server.SSHKeyID != keyID {
+		t.Errorf("typed ID %s linked %q", keyID, server.SSHKeyID)
+	}
+}
+
 func TestServerSSHKeyTakesAnIDThatAnotherKeyHasAsItsTitle(t *testing.T) {
 	const keyID = "12345678-1234-4234-8234-123456789abc"
 	app := startFakeApp(t)

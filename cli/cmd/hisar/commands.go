@@ -663,15 +663,16 @@ func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 	}
 	label := "SSH key (the title or ID of an SSH key in this vault, empty for none)"
 	if currentID != "" {
-		label = "SSH key (empty to keep, 'none' to remove)"
+		label = "SSH key (empty to keep, 'none' to remove) [" + currentTitle + "]"
 	}
 	for {
-		answer, err := prompt(label, currentTitle)
+		// Only an empty answer keeps the current key: a typed answer equal to its title may be another key's ID.
+		answer, err := prompt(label, "")
 		if err != nil {
 			return "", err
 		}
 		switch {
-		case answer == currentTitle:
+		case answer == "":
 			return currentID, nil
 		case strings.EqualFold(answer, "none"):
 			return "", nil
