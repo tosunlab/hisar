@@ -26,6 +26,8 @@ async function startWokenWorker() {
   const allAlarm = Promise.withResolvers<{ name: string }[]>();
   const allBadge = new Map<number, string>();
   const allRequestType: unknown[] = [];
+  const allHeldType = new Set<string>();
+  const allHeld: { type: string; release: () => void }[] = [];
   const frame = { url: "https://example.com/login", documentId: "login-document" };
   const browser = {
     runtime: {
@@ -36,11 +38,16 @@ async function startWokenWorker() {
       onInstalled: createEvent(),
       getURL: (path: string) => `chrome-extension://${extensionID}/${path}`,
       getManifest: () => ({ version: "0.3.0" }),
-      connectNative: () =>
-        new FakePort((request) => {
+      connectNative: () => {
+        const port: FakePort = new FakePort((request) => {
           allRequestType.push(request.type);
-          return respond(state, request, Date.now());
-        }),
+          const response = respond(state, request, Date.now());
+          if (!allHeldType.has(request.type as string)) return response;
+          allHeld.push({ type: request.type as string, release: () => port.deliver(response) });
+          return undefined;
+        });
+        return port;
+      },
       sendMessage: async () => undefined,
     },
     storage: { local, session: createMemoryArea() },
@@ -72,10 +79,10 @@ async function startWokenWorker() {
   return {
     allBadge,
     allRequestType,
-    submit(password: string) {
+    submit(password: string, username = "new-user") {
       const sendResponse = vi.fn();
       browser.runtime.onMessage.dispatch(
-        { type: "content.loginSubmitted", username: "new-user", password },
+        { type: "content.loginSubmitted", username, password },
         { id: extensionID, url: "https://example.com/login", tab: { id: 1, url: "https://example.com/login" }, frameId: 0, documentId: "login-document" },
         sendResponse,
       );
@@ -84,6 +91,21 @@ async function startWokenWorker() {
     navigate(url: string, documentId: string) {
       Object.assign(frame, { url, documentId });
       browser.webNavigation.onCommitted.dispatch({ tabId: 1, url, frameId: 0, documentId });
+    },
+    hold(type: string) {
+      allHeldType.add(type);
+    },
+    stopHolding(type: string) {
+      allHeldType.delete(type);
+    },
+    release(type: string) {
+      const index = allHeld.findIndex((held) => held.type === type);
+      allHeld.splice(index, 1)[0].release();
+    },
+    isHeld: (type: string) => allHeld.some((held) => held.type === type),
+    completeLoad(url = frame.url) {
+      frame.url = url;
+      browser.tabs.onUpdated.dispatch(1, { status: "complete" });
     },
     finishRestartCleanup: () => allAlarm.resolve([]),
   };
@@ -117,5 +139,38 @@ it("still refuses a submission whose document was replaced before the browser de
   await vi.waitFor(() => expect(sendResponse).toHaveBeenCalledWith({ ok: true, result: null }));
   await settle();
   expect(worker.allRequestType).not.toContain("logins.prepare");
+  expect(worker.allBadge.get(1) ?? "").toBe("");
+});
+
+it("keeps the save badge when a login count asked for before the offer arrives after it", async () => {
+  const worker = await startWokenWorker();
+  worker.finishRestartCleanup();
+  worker.hold("logins.prepare");
+  worker.submit("new password");
+  await vi.waitFor(() => expect(worker.isHeld("logins.prepare")).toBe(true));
+  worker.hold("logins.match");
+  worker.completeLoad();
+  await vi.waitFor(() => expect(worker.isHeld("logins.match")).toBe(true));
+  worker.release("logins.prepare");
+  await vi.waitFor(() => expect(worker.allBadge.get(1)).toBe("+"));
+  worker.release("logins.match");
+  await settle();
+  expect(worker.allBadge.get(1)).toBe("+");
+});
+
+it("shows the login count of the page the tab shows now, not of the page it left", async () => {
+  const worker = await startWokenWorker();
+  worker.finishRestartCleanup();
+  worker.submit("correct horse battery staple", "alex@example.com");
+  await vi.waitFor(() => expect(worker.allRequestType).toContain("logins.prepare"));
+  worker.hold("logins.match");
+  worker.completeLoad();
+  await vi.waitFor(() => expect(worker.isHeld("logins.match")).toBe(true));
+  worker.stopHolding("logins.match");
+  worker.completeLoad("https://other.example/");
+  await vi.waitFor(() => expect(worker.allRequestType.filter((type) => type === "logins.match")).toHaveLength(2));
+  await settle();
+  worker.release("logins.match");
+  await settle();
   expect(worker.allBadge.get(1) ?? "").toBe("");
 });

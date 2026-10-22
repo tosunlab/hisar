@@ -44,6 +44,15 @@ async function writeToClipboard(text: string): Promise<void> {
 
 const navigatorWithBrands = navigator as Navigator & { userAgentData?: { brands?: { brand: string }[] }; brave?: unknown };
 const saveExpiry = new SaveExpiryScheduler(chrome);
+// Every badge write takes the tab's next generation. A login count asked for before a later write answers after it, so
+// updateBadge shows it only while its generation is still the tab's latest.
+const allBadgeGeneration = new Map<number, number>();
+
+function takeBadgeGeneration(tabId: number): number {
+  const generation = (allBadgeGeneration.get(tabId) ?? 0) + 1;
+  allBadgeGeneration.set(tabId, generation);
+  return generation;
+}
 
 const bridge: BrowserBridge = {
   async getTabUrl(tabId) {
@@ -71,6 +80,7 @@ const bridge: BrowserBridge = {
     }
   },
   async setSaveBadge(tabId, isPending) {
+    takeBadgeGeneration(tabId);
     await saveExpiry.ready;
     await chrome.action.setBadgeText({ tabId, text: isPending ? "+" : "" }).catch(() => undefined);
   },
@@ -132,8 +142,10 @@ chrome.commands.onCommand.addListener((command, tab) => {
 
 // The toolbar icon shows how many logins are saved for the tab, while the native host is connected.
 async function updateBadge(tabId: number): Promise<void> {
+  const generation = takeBadgeGeneration(tabId);
   await saveExpiry.ready;
   const text = await getController().getBadgeText(tabId);
+  if (allBadgeGeneration.get(tabId) !== generation) return;
   await chrome.action.setBadgeText({ tabId, text }).catch(() => undefined);
 }
 
@@ -189,5 +201,6 @@ chrome.tabs.onRemoved.addListener((tabId) => {
   void saveExpiry.ready.then(() => {
     getController().handleTabRemoved(tabId);
     getInlineMenu().handleTabRemoved(tabId);
+    allBadgeGeneration.delete(tabId);
   });
 });
