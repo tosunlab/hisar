@@ -165,6 +165,11 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s missing", indexName)
 		}
 	}
+	rollbackTestMigrationsTo(t, database, 17)
+	if countColumn(t, database, "operational_secrets", "settings_version") != 0 ||
+		countQueryRow(t, database, `SELECT count(*) FROM pg_constraint WHERE conname = 'smtp_password_encrypted'`) != 0 {
+		t.Fatal("rolling back unused SMTP password encryption left its column or constraint")
+	}
 	if countTable(t, database, "resource_usage") != 1 || countTable(t, database, "collection_versions") != 1 {
 		t.Fatal("resource budget migration is missing")
 	}

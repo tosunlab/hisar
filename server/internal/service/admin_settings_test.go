@@ -48,6 +48,9 @@ func createSettingsService(t *testing.T, environment map[string]string) *Service
 	if _, err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := database.InitializeOperationalSecrets(ctx, make([]byte, 32), make([]byte, 32)); err != nil {
+		t.Fatal(err)
+	}
 	inviteToken := generateToken()
 	if err := database.CreateInvite(ctx, hashToken(inviteToken), "admin@example.com", apitypes.RoleAdmin, nil, time.Hour); err != nil {
 		t.Fatal(err)

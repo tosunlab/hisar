@@ -100,8 +100,9 @@ with someone who already has an account still works, and they see the invitation
    DKIM for that domain so the emails are delivered.
 2. Sign in to the admin dashboard at `https://<domain>/admin`, open **Settings → Email**, fill in the host, port,
    username, password and sender, click **Save**, then **Send test email…** to check them. The change applies at once.
-   The SMTP password is then stored in the database in plain text, not encrypted: anyone who can read the database or
-   its backups can read it. Changing the host, port or username later clears it, so enter it again in the same save.
+   The server encrypts the SMTP password with a domain-separated key derived from `hisar-secrets.json`.
+   A database-only dump does not contain that key. A live server, or someone with both the dump and secrets file, can
+   decrypt it. Changing the host, port or username later clears it, so enter it again in the same save.
 
 Or set them in `.env` on the server, which keeps the SMTP password out of the database. Any `HISAR_SMTP_*` variable
 there sets all of Email: the values saved in the dashboard are ignored, a variable left empty gives its default (port
@@ -194,10 +195,12 @@ Older invites cannot be linked to the invitation they came from, so canceling th
 Accounts and invites that were already used are not changed. After the upgrade, resend any invite that is still
 needed. Stop every server process running an older version before the migration runs.
 
-Migration `00016_operational_secrets` enrolls a fingerprint of both authentication keys on the next server startup.
-The transaction finishes before settings are read or requests are served.
-Once secrets are enrolled, `migrate down` refuses this migration. To run a pre-upgrade binary, restore its matching
-pre-upgrade database and secrets backup into an isolated instance. Do not remove the fingerprint by hand.
+Migration `00016_operational_secrets` enrolls a fingerprint of both authentication keys, and migration
+`00018_smtp_password_encryption` encrypts any existing dashboard SMTP password, on the next server startup. The
+transaction finishes before settings are read or requests are served, including when SMTP environment overrides are
+set. Existing plaintext in older backups remains sensitive. Once secrets are enrolled, `migrate down` refuses both
+migrations. To run a pre-upgrade binary, restore its matching pre-upgrade database and secrets backup into an isolated
+instance. Do not remove the fingerprint or decrypt the row by hand.
 
 ## Backups
 
@@ -215,7 +218,8 @@ docker compose start hisar
 
 The tar archive preserves the secrets file's owner and private permissions. Encrypt the recovery set before copying it
 off-server, for example with `age`, and keep its decryption key elsewhere. Preserve the deployment's protected `.env`,
-`hisar.env`, and `db_password.txt` configuration too.
+`hisar.env`, and `db_password.txt` configuration too. A backup containing both the database and server secrets
+exposes the SMTP password if its own encryption fails.
 Retain several dated sets, including a known-good pre-upgrade pair, under your organization's retention policy.
 
 The dump contains encrypted vault payloads, plaintext account and sharing metadata, audit events and instance settings.
@@ -246,7 +250,7 @@ upgrading the isolated instance. Test this recovery procedure quarterly and reco
 If startup reports missing or mismatched secrets, stop and restore the matching archive. Do not delete account data,
 remove the fingerprint, or replace keys to silence the error. Without the original authentication secrets, new keys
 cannot recover existing accounts. The missing-file check also applies to `hisar-server invite`. A healthy `/healthz`
-alone does not prove that accounts were recovered.
+alone does not prove that accounts or encrypted SMTP settings were recovered.
 
 ## Building from source
 

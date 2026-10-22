@@ -14,7 +14,10 @@ func (s *Store) GetInstanceSettings(ctx context.Context) ([]byte, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
-	return document, err
+	if err != nil {
+		return nil, err
+	}
+	return transformSMTPPassword(document, s.settingsKey, false, false)
 }
 
 // UpdateInstanceSettings replaces the settings document with what update makes of the current one, holding the row
@@ -34,7 +37,15 @@ func (s *Store) UpdateInstanceSettings(ctx context.Context, updatedBy string, is
 		if err := transaction.QueryRow(ctx, `SELECT settings FROM instance_settings WHERE id = 1 FOR UPDATE`).Scan(&document); err != nil {
 			return err
 		}
+		document, err := transformSMTPPassword(document, s.settingsKey, false, false)
+		if err != nil {
+			return err
+		}
 		updated, err := update(document)
+		if err != nil {
+			return err
+		}
+		updated, err = transformSMTPPassword(updated, s.settingsKey, true, false)
 		if err != nil {
 			return err
 		}

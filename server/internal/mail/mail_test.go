@@ -212,7 +212,7 @@ func TestSendErrorLeavesTheRecipientOut(t *testing.T) {
 			case "EHLO", "HELO", "MAIL":
 				reader.PrintfLine("250 ok")
 			case "RCPT":
-				reader.PrintfLine("550 5.1.1 <Bob@Example.com>: Recipient address rejected")
+				reader.PrintfLine("550 5.1.1 <Bob@Example.com>: Recipient address rejected smtp-only-credential")
 			default:
 				reader.PrintfLine("221 bye")
 				return
@@ -221,12 +221,12 @@ func TestSendErrorLeavesTheRecipientOut(t *testing.T) {
 	}()
 	host, portText, _ := net.SplitHostPort(listener.Addr().String())
 	port, _ := strconv.Atoi(portText)
-	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{Host: host, Port: port, From: "noreply@tryhisar.com"})
+	mailer, err := mail.NewSMTPMailer(mail.SMTPConfig{Host: host, Port: port, Password: "smtp-only-credential", From: "noreply@tryhisar.com"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	err = mailer.Send(context.Background(), testMessage)
-	if err == nil || strings.Contains(strings.ToLower(err.Error()), "bob@example.com") || !strings.Contains(err.Error(), "Recipient address rejected") {
+	if err == nil || strings.Contains(strings.ToLower(err.Error()), "bob@example.com") || strings.Contains(err.Error(), "smtp-only-credential") || !strings.Contains(err.Error(), "Recipient address rejected") {
 		t.Errorf("error: %v", err)
 	}
 }
