@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
-"""Exercise the signing profile boundary without accessing user keychain items."""
+"""Exercise Mac app signing and its profile boundary without accessing user keychain items."""
 
 import copy
 import datetime
 import importlib.util
+import os
 import pathlib
+import shutil
 import unittest
 import plistlib
 import subprocess
@@ -14,6 +16,9 @@ from unittest import mock
 spec = importlib.util.spec_from_file_location("desktop_signing", pathlib.Path(__file__).with_name("desktop-keychain-entitlements.py"))
 signing = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(signing)
+
+SIGN = pathlib.Path(__file__).with_name("sign-desktop-app.sh")
+INFO = pathlib.Path(__file__).parent.parent / "desktop/build/darwin/Info.plist"
 
 
 class ProfileTests(unittest.TestCase):
@@ -81,13 +86,27 @@ class ProfileTests(unittest.TestCase):
                 return subprocess.CompletedProcess(arguments, 0, f'1) {fingerprint} "{name}"')
             return real_run(arguments, **options)
 
-        info = pathlib.Path(__file__).parent.parent / "desktop/build/darwin/Info.plist"
         with tempfile.TemporaryDirectory() as directory:
             output = pathlib.Path(directory) / "entitlements.plist"
-            with mock.patch.object(signing.subprocess, "run", side_effect=run), mock.patch.object(signing.sys, "argv", ["signing", "fixture.profile", str(info), str(output), fingerprint]):
+            with mock.patch.object(signing.subprocess, "run", side_effect=run), mock.patch.object(signing.sys, "argv", ["signing", "fixture.profile", str(INFO), str(output), fingerprint]):
                 signing.main()
             with output.open("rb") as stream:
                 self.assertEqual(plistlib.load(stream)["keychain-access-groups"], ["589NVZWDWZ.com.tryhisar.hisar"])
+
+
+class AdHocSigningTests(unittest.TestCase):
+    def test_ad_hoc_signing_with_the_system_bash_leaves_a_valid_bundle(self):
+        with tempfile.TemporaryDirectory() as directory:
+            application = pathlib.Path(directory) / "Hisar.app"
+            (application / "Contents/MacOS").mkdir(parents=True)
+            (application / "Contents/Helpers").mkdir()
+            shutil.copy("/usr/bin/true", application / "Contents/MacOS/Hisar")
+            shutil.copy("/usr/bin/true", application / "Contents/Helpers/hisar")
+            shutil.copy(INFO, application / "Contents/Info.plist")
+            environment = {name: value for name, value in os.environ.items()
+                           if name not in ("HISAR_SIGNING_IDENTITY", "HISAR_MACOS_PROVISIONING_PROFILE")}
+            subprocess.run(["/bin/bash", str(SIGN), str(application)], check=True, env=environment)
+            subprocess.run(["codesign", "--verify", "--deep", "--strict", str(application)], check=True)
 
 
 if __name__ == "__main__":

@@ -10,7 +10,8 @@ identity=${HISAR_SIGNING_IDENTITY:--}
 allOption=(--force --sign "$identity")
 appOption=()
 entitlements=""
-trap 'if [ -n "$entitlements" ]; then rm -f "$entitlements"; fi' EXIT
+# The entitlements file is removed without an EXIT trap, because macOS's bash 3.2 exits 0 from a script that has one
+# after a set -u error.
 # Ad-hoc code has no Team ID, so the hardened runtime's library validation would refuse to load Sparkle.
 if [ "$identity" != "-" ]; then
   allOption+=(--options runtime --timestamp)
@@ -36,5 +37,6 @@ fi
 if [ -f "$application/Contents/Helpers/hisar" ]; then
   codesign "${allOption[@]}" --identifier com.tryhisar.hisar.cli "$application/Contents/Helpers/hisar"
 fi
-codesign "${allOption[@]}" "${appOption[@]}" "$application"
+codesign "${allOption[@]}" ${appOption[@]+"${appOption[@]}"} "$application"
+if [ -n "$entitlements" ]; then rm -f "$entitlements"; fi
 codesign --verify --deep --strict "$application"
