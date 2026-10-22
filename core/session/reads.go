@@ -132,7 +132,8 @@ func clearVaultKeys(vaults []Vault) {
 }
 
 // ReadItems returns the vault's items that open and an issue for each one that does not. When a record does not open
-// after an online acquisition, the vault is reloaded once, since another device may have rotated its key meanwhile.
+// after an online acquisition, the vault is reloaded once, since another device may have rotated its key meanwhile; if
+// that retry fails, the read that already succeeded stands.
 func (s *Session) ReadItems(ctx context.Context, vault *Vault) (ItemReadResult, error) {
 	result := ItemReadResult{Items: []item.Item{}, Issues: []ReadIssue{}}
 	acquired, err := s.acquireItems(ctx, vault, false)
@@ -146,10 +147,10 @@ func (s *Session) ReadItems(ctx context.Context, vault *Vault) (ItemReadResult, 
 	}
 	result.Items, result.Issues = acquired.open(vault)
 	if len(result.Issues) != 0 && acquired.provenance.Source == "online" && s.reloadVaults(ctx, vault) == nil {
-		if acquired, err = s.acquireItems(ctx, vault, true); err != nil {
-			return result, err
+		if retried, err := s.acquireItems(ctx, vault, true); err == nil {
+			acquired = retried
+			result.Items, result.Issues = acquired.open(vault)
 		}
-		result.Items, result.Issues = acquired.open(vault)
 	}
 	result.Provenance = acquired.provenance
 	return result, nil

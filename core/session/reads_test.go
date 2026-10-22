@@ -3,12 +3,52 @@ package session
 import (
 	"context"
 	"errors"
+	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 )
+
+func TestFailedRetryKeepsTheHealthyRecordsAlreadyRead(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	ctx := context.Background()
+	unlocked, err := Unlock(ctx, account.apiClient, openTestCache(t), account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlocked.Lock()
+	vaults, err := unlocked.ListVaults(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	healthy := &item.Item{Overview: item.Overview{Title: "Healthy"}}
+	if _, err := unlocked.SaveItem(ctx, &vaults[0], healthy); err != nil {
+		t.Fatal(err)
+	}
+	account.server.mutex.Lock()
+	account.server.seq++
+	account.server.itemsByID["bad"] = apitypes.Item{ID: "bad", Revision: "bad-r1", Seq: account.server.seq, Overview: []byte("bad"), Details: []byte("bad")}
+	account.server.mutex.Unlock()
+	transport, changeRequests := http.DefaultTransport, 0
+	account.apiClient.HTTP.Transport = r08Transport(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/changes") {
+			if changeRequests++; changeRequests > 1 {
+				return r08Response(http.StatusInternalServerError, apitypes.Error{Error: "unavailable"}), nil
+			}
+		}
+		return transport.RoundTrip(request)
+	})
+	result, err := unlocked.ReadItems(ctx, &vaults[0])
+	if changeRequests != 2 {
+		t.Fatalf("the unreadable record was not retried: %d change requests", changeRequests)
+	}
+	if err != nil || len(result.Items) != 1 || result.Items[0].ID != healthy.ID || len(result.Issues) != 1 || result.Issues[0].ItemID != "bad" || result.Provenance.Source != "online" {
+		t.Fatalf("a failed retry hid the records already read: %+v %v", result, err)
+	}
+}
 
 func TestUnreadableItemDoesNotHideHealthyRecords(t *testing.T) {
 	account := createOfflineTestAccount(t)
