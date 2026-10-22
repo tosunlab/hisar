@@ -48,12 +48,10 @@ func (s *Service) ListVaults() ([]VaultSummary, error) {
 	}
 	summaries := make([]VaultSummary, 0, len(s.vaultsByID))
 	for _, vault := range s.vaultsByID {
-		result, err := s.unlockedSession.ReadItems(ctx, vault)
+		result, err := s.readVaultItems(ctx, vault)
 		if err != nil {
-			return nil, convertError(err)
+			return nil, err
 		}
-		s.itemsByVaultID[vault.ID] = result.Items
-		s.setItemReadIssues(vault.ID, result.Issues)
 		summary := convertToVaultSummary(vault, len(result.Items))
 		summary.ReadIssues = append(summary.ReadIssues, result.Issues...)
 		for _, issue := range s.vaultReadIssues {
@@ -145,19 +143,24 @@ func (s *Service) findVault(ctx context.Context, vaultID string) (*session.Vault
 	return nil, fmt.Errorf("vault %w", ErrNotFound)
 }
 
+// findPersonalVaultID finds the Personal vault where new logins and passkeys go. A vault that did not open may be it, so
+// it is missing only from an inventory in which every vault opened.
 func (s *Service) findPersonalVaultID(ctx context.Context) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return "", err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return "", err
 	}
 	for vaultID, vault := range s.vaultsByID {
 		if vault.Type == apitypes.VaultPersonal && !vault.IsPersonalExtra && vault.Role != apitypes.VaultReader {
 			return vaultID, nil
 		}
+	}
+	if len(s.vaultReadIssues) != 0 {
+		return "", session.ErrIncompleteRead
 	}
 	return "", fmt.Errorf("personal vault %w", ErrNotFound)
 }

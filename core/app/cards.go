@@ -19,7 +19,7 @@ func (s *Service) listCardSources(ctx context.Context) ([]browserprotocol.CardSu
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, nil, err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, nil, err
 	}
 	summaries := []browserprotocol.CardSummary{}

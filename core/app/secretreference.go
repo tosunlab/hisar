@@ -55,21 +55,24 @@ func (s *Service) listSecretVaults(isListed func(vaultID string) bool) secretref
 
 func isAnyVault(string) bool { return true }
 
-func (source serviceSecretSource) ListItems(vaultID string) ([]item.Item, error) {
+func (source serviceSecretSource) ListItems(vaultID string) (secretreference.ItemList, error) {
 	s := source.service
-	if items, isCached := s.itemsByVaultID[vaultID]; isCached && source.isCacheOnly {
-		return items, nil
+	if _, isCached := s.itemsByVaultID[vaultID]; !isCached || !source.isCacheOnly {
+		vault, isFound := s.vaultsByID[vaultID]
+		if !isFound {
+			return secretreference.ItemList{}, fmt.Errorf("vault %w", ErrNotFound)
+		}
+		if _, err := s.readVaultItems(source.ctx, vault); err != nil {
+			return secretreference.ItemList{}, err
+		}
 	}
-	vault, isFound := s.vaultsByID[vaultID]
-	if !isFound {
-		return nil, fmt.Errorf("vault %w", ErrNotFound)
-	}
-	items, err := s.unlockedSession.ListItems(source.ctx, vault)
-	if err != nil {
-		return nil, convertError(err)
-	}
-	s.itemsByVaultID[vaultID] = items
-	return items, nil
+	return s.listSecretItems(vaultID), nil
+}
+
+// listSecretItems is a vault's loaded items as references see them: complete only when every record opened. It needs
+// s.mutex.
+func (s *Service) listSecretItems(vaultID string) secretreference.ItemList {
+	return secretreference.ItemList{Items: s.itemsByVaultID[vaultID], IsComplete: len(s.itemReadIssuesByVaultID[vaultID]) == 0}
 }
 
 func (s *Service) resolveSecrets(references []string) (cliprotocol.ResolveSecretResult, error) {
@@ -141,11 +144,15 @@ func countVaultNames(inventory secretreference.Inventory) nameCounts {
 	return counts
 }
 
-func countItemTitles(items []item.Item) nameCounts {
+// countItemTitles counts nothing in an incomplete item list, whose titles the resolver refuses, so references use IDs.
+func countItemTitles(items secretreference.ItemList) nameCounts {
 	counts := nameCounts{}
-	for index := range items {
-		counts[foldName(items[index].Overview.Title)]++
-		counts[foldName(items[index].ID)]++
+	if !items.IsComplete {
+		return counts
+	}
+	for index := range items.Items {
+		counts[foldName(items.Items[index].Overview.Title)]++
+		counts[foldName(items.Items[index].ID)]++
 	}
 	return counts
 }
@@ -239,7 +246,7 @@ func (s *Service) CopySecretReference(vaultID, itemID, fieldName string) (string
 	if _, _, err := secretreference.ReadField(vaultItem, label, time.Now()); err != nil {
 		return "", err
 	}
-	reference := buildItemReference(vault, vaultItem, countVaultNames(s.listSecretVaults(isAnyVault)), countItemTitles(s.itemsByVaultID[vaultID]))
+	reference := buildItemReference(vault, vaultItem, countVaultNames(s.listSecretVaults(isAnyVault)), countItemTitles(s.listSecretItems(vaultID)))
 	reference.Field = label
 	text := reference.String()
 	if s.config.Clipboard == nil || !s.config.Clipboard.SetText(text) {

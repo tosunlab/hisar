@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/secretreference"
 	"github.com/tryhisar/hisar/core/session"
 	"golang.org/x/term"
@@ -37,12 +36,16 @@ func (source *sessionSecretSource) ListVaults() (secretreference.Inventory, erro
 	return inventory, nil
 }
 
-func (source *sessionSecretSource) ListItems(vaultID string) ([]item.Item, error) {
+func (source *sessionSecretSource) ListItems(vaultID string) (secretreference.ItemList, error) {
 	vault, isFound := source.vaultsByID[vaultID]
 	if !isFound {
-		return nil, fmt.Errorf("vault %q: not found", vaultID)
+		return secretreference.ItemList{}, fmt.Errorf("vault %q: not found", vaultID)
 	}
-	return source.session.ListItems(source.ctx, vault)
+	read, err := source.session.ReadItems(source.ctx, vault)
+	if err != nil {
+		return secretreference.ItemList{}, err
+	}
+	return secretreference.ItemList{Items: read.Items, IsComplete: len(read.Issues) == 0}, nil
 }
 
 // checkReferences parses every reference before anything is asked, so a typo never opens an approval.

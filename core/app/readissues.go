@@ -15,6 +15,35 @@ func (s *Service) setItemReadIssues(vaultID string, issues []session.ReadIssue) 
 	s.itemReadIssuesByVaultID[vaultID] = issues
 }
 
+// readVaultItems reads a vault's items into the loaded view: the records that open, and an issue for each one that does
+// not. Whoever uses healthy records reads through it; whoever decides from an item's absence also calls
+// checkCompleteRead. It needs s.mutex.
+func (s *Service) readVaultItems(ctx context.Context, vault *session.Vault) (session.ItemReadResult, error) {
+	result, err := s.unlockedSession.ReadItems(ctx, vault)
+	if err != nil {
+		return result, convertError(err)
+	}
+	s.itemsByVaultID[vault.ID] = result.Items
+	s.setItemReadIssues(vault.ID, result.Issues)
+	return result, nil
+}
+
+// checkCompleteRead returns ErrIncompleteRead while the loaded view of vaultID, or of any vault for "", is missing a
+// record that did not open. It needs s.mutex.
+func (s *Service) checkCompleteRead(vaultID string) error {
+	for _, issue := range s.vaultReadIssues {
+		if vaultID == "" || issue.VaultID == vaultID {
+			return session.ErrIncompleteRead
+		}
+	}
+	for issueVaultID, issues := range s.itemReadIssuesByVaultID {
+		if len(issues) != 0 && (vaultID == "" || issueVaultID == vaultID) {
+			return session.ErrIncompleteRead
+		}
+	}
+	return nil
+}
+
 // GetReadIssues returns the issues from the currently loaded view, not a new acquisition.
 func (s *Service) GetReadIssues() ([]session.ReadIssue, error) {
 	s.mutex.Lock()
@@ -119,14 +148,10 @@ func (s *Service) RepairVaultName(vaultID, revision, name string) (VaultSummary,
 }
 
 func (s *Service) requireCompleteRead(vaultID string) error {
-	issues, err := s.GetReadIssues()
-	if err != nil {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
 		return err
 	}
-	for _, issue := range issues {
-		if vaultID == "" || issue.VaultID == vaultID {
-			return session.ErrIncompleteRead
-		}
-	}
-	return nil
+	return s.checkCompleteRead(vaultID)
 }

@@ -291,12 +291,8 @@ func (s *Service) RemoveVaultMember(vaultID, accountID string) error {
 	if !found {
 		return nil
 	}
-	items, err := s.unlockedSession.ListItems(ctx, refreshed)
-	if err != nil {
-		return convertError(err)
-	}
-	s.itemsByVaultID[vaultID] = items
-	return nil
+	_, err = s.readVaultItems(ctx, refreshed)
+	return err
 }
 
 // InvitePerson asks the server to email a sign-up invite; the answer is the same whether or not the person has an account.

@@ -55,10 +55,17 @@ type Inventory struct {
 	IsComplete bool
 }
 
+// ItemList is the items of a vault a source can open. IsComplete says no other item of the vault failed to open: one
+// that did not may have any title, so titles are matched only in a complete list, and IDs always.
+type ItemList struct {
+	Items      []item.Item
+	IsComplete bool
+}
+
 // Source lists what references resolve against; the desktop app and standalone hisar each provide one.
 type Source interface {
 	ListVaults() (Inventory, error)
-	ListItems(vaultID string) ([]item.Item, error)
+	ListItems(vaultID string) (ItemList, error)
 }
 
 // Error is a reference that did not resolve; it never carries a value.
@@ -94,14 +101,14 @@ func GetBuiltInField(label string) (string, bool) {
 type resolver struct {
 	source          Source
 	inventory       Inventory
-	itemsByVault    map[string][]item.Item
+	itemsByVault    map[string]ItemList
 	isVaultListRead bool
 }
 
 // ResolveAll resolves every reference or none: a source error is returned as it is, and every reference
 // that does not resolve is listed in one joined error of *Error values.
 func ResolveAll(source Source, texts []string, now time.Time) ([]Resolved, error) {
-	state := &resolver{source: source, itemsByVault: map[string][]item.Item{}}
+	state := &resolver{source: source, itemsByVault: map[string]ItemList{}}
 	resolvedReferences := make([]Resolved, len(texts))
 	var failures []error
 	for index, text := range texts {
@@ -124,7 +131,7 @@ func ResolveAll(source Source, texts []string, now time.Time) ([]Resolved, error
 
 // Locate finds the vault, item and field a reference names, without reading the value.
 func Locate(source Source, text string) (Resolved, error) {
-	state := &resolver{source: source, itemsByVault: map[string][]item.Item{}}
+	state := &resolver{source: source, itemsByVault: map[string]ItemList{}}
 	resolved, err := state.resolve(text, time.Now())
 	resolved.Value = ""
 	return resolved, err
@@ -191,16 +198,19 @@ func findVault(inventory Inventory, query string) (Vault, error) {
 	return Vault{}, fmt.Errorf("%d vaults are named %q; use the vault's ID instead (%s)", len(matches), query, strings.Join(iDs, ", "))
 }
 
-func findItem(items []item.Item, vaultName, query string) (*item.Item, error) {
+func findItem(items ItemList, vaultName, query string) (*item.Item, error) {
 	var matches []*item.Item
-	for index := range items {
-		vaultItem := &items[index]
+	for index := range items.Items {
+		vaultItem := &items.Items[index]
 		if vaultItem.ID == query {
 			return vaultItem, nil
 		}
 		if strings.EqualFold(vaultItem.Overview.Title, query) {
 			matches = append(matches, vaultItem)
 		}
+	}
+	if !items.IsComplete {
+		return nil, fmt.Errorf("an item in vault %q could not be opened and its title is unknown, so an item title may find the wrong item; use the item's ID instead", vaultName)
 	}
 	switch len(matches) {
 	case 0:

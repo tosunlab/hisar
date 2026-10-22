@@ -32,13 +32,11 @@ func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 	if err != nil {
 		return nil, err
 	}
-	result, err := s.unlockedSession.ReadItems(ctx, vault)
+	result, err := s.readVaultItems(ctx, vault)
 	if err != nil {
-		return nil, convertError(err)
+		return nil, err
 	}
 	items := result.Items
-	s.setItemReadIssues(vaultID, result.Issues)
-	s.itemsByVaultID[vaultID] = items
 	s.loadFavoritesOnce(ctx)
 	summaries := make([]ItemDetail, 0, len(items))
 	for index := range items {
@@ -399,12 +397,9 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	}
 	if _, isLoaded := s.itemsByVaultID[vaultID]; detail.ID != "" && !isLoaded {
 		// Whether the stored record opens decides how the edit is applied, so the vault is read first.
-		result, err := s.unlockedSession.ReadItems(ctx, vault)
-		if err != nil {
-			return ItemDetail{}, convertError(err)
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return ItemDetail{}, err
 		}
-		s.itemsByVaultID[vaultID] = result.Items
-		s.setItemReadIssues(vaultID, result.Issues)
 	}
 	vaultItem, err := s.buildSavedItem(vaultID, detail)
 	if err != nil {
@@ -541,11 +536,9 @@ func (s *Service) checkServerSSHKey(ctx context.Context, vault *session.Vault, v
 		}
 	}
 	if _, isLoaded := s.itemsByVaultID[vault.ID]; !isLoaded {
-		items, err := s.unlockedSession.ListItems(ctx, vault)
-		if err != nil {
-			return convertError(err)
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return err
 		}
-		s.itemsByVaultID[vault.ID] = items
 	}
 	if key, err := s.findItem(vault.ID, server.SSHKeyID); err != nil || !key.IsCategory(item.CategorySSHKey) {
 		return errors.New("choose an SSH key from this vault")

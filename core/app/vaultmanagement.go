@@ -52,12 +52,10 @@ type RemovedVaultNotice struct {
 }
 
 func (s *Service) loadVaultItemCount(ctx context.Context, vault *session.Vault) (int, error) {
-	result, err := s.unlockedSession.ReadItems(ctx, vault)
+	result, err := s.readVaultItems(ctx, vault)
 	if err != nil {
-		return 0, convertError(err)
+		return 0, err
 	}
-	s.itemsByVaultID[vault.ID] = result.Items
-	s.setItemReadIssues(vault.ID, result.Issues)
 	return len(result.Items) + len(result.Issues), nil
 }
 
