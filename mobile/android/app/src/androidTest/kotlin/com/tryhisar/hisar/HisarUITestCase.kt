@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
@@ -15,6 +16,7 @@ import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
@@ -23,6 +25,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.printToString
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
@@ -64,8 +67,14 @@ abstract class HisarUITestCase {
         TestStorage().openOutputFile("android-$name.png").use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** On a timeout the failure carries the screen's semantics tree: an error banner, a disabled button or a spinner says why. */
     fun waitFor(matcher: SemanticsMatcher, timeoutMillis: Long = 30_000) {
-        composeRule.waitUntil("${matcher.description} appears", timeoutMillis) { exists(matcher) }
+        try {
+            composeRule.waitUntil("${matcher.description} appears", timeoutMillis) { exists(matcher) }
+        } catch (error: ComposeTimeoutException) {
+            val screen = composeRule.onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE)
+            throw AssertionError("${error.message}; the screen was:\n$screen", error)
+        }
     }
 
     fun waitFor(tag: String, timeoutMillis: Long = 30_000) = waitFor(hasTestTag(tag), timeoutMillis)
