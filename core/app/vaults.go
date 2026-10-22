@@ -151,7 +151,7 @@ func (s *Service) findPersonalVaultID(ctx context.Context) (string, error) {
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return "", err
 	}
-	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return "", err
 	}
 	for vaultID, vault := range s.vaultsByID {

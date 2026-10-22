@@ -6,6 +6,9 @@
 import * as browserprotocol$0 from "../browserprotocol/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
+import * as export$0 from "../export/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
 import * as session$0 from "../session/models.js";
 
 export interface AccountDeletionPreview {
@@ -148,6 +151,8 @@ export interface ExportResult {
     "path": string;
     "vaultCount": number;
     "itemCount": number;
+    "provenance"?: export$0.Provenance | null;
+    "warning"?: string;
 }
 
 /**

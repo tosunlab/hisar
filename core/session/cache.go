@@ -71,7 +71,7 @@ func getAccount(ctx context.Context, apiClient *apiclient.Client, accountCache C
 }
 
 // listProtoVaults returns the server's vault list, or the cached one while the server is unreachable; isFetched says
-// which, so the caller replaces the cache only once every fetched vault has opened.
+// which, so only a fetched list replaces the cache.
 func (s *Session) listProtoVaults(ctx context.Context) (protoVaults []apitypes.Vault, isFetched bool, err error) {
 	protoVaults, err = s.Client.ListVaults(ctx)
 	if err == nil {
@@ -88,9 +88,11 @@ func (s *Session) listProtoVaults(ctx context.Context) (protoVaults []apitypes.V
 	return protoVaults, false, err
 }
 
-func (s *Session) replaceCachedVaults(protoVaults []apitypes.Vault) error {
-	if cachedVaults, err := s.Cache.ListVaults(); err == nil {
-		s.noteRemovedVaults(cachedVaults, protoVaults)
+// replaceCachedVaults stores the fetched list: verified records opened, unverified ones did not and stay known
+// omissions without replacing the last verified copy. Only a list that verified completely tells which vaults are gone.
+func (s *Session) replaceCachedVaults(verified, unverified []apitypes.Vault) error {
+	if cachedVaults, err := s.Cache.ListVaults(); err == nil && len(unverified) == 0 {
+		s.noteRemovedVaults(cachedVaults, verified)
 	}
-	return s.Cache.ReplaceVaults(protoVaults, nil)
+	return s.Cache.ReplaceVaults(verified, unverified)
 }

@@ -1,6 +1,7 @@
 package cliprotocol
 
 import (
+	"github.com/tryhisar/hisar/core/export"
 	"github.com/tryhisar/hisar/core/session"
 	"slices"
 )
@@ -137,15 +138,17 @@ const (
 
 // ExportChange: the app writes the file at Path itself, so private keys never cross the socket; it never replaces a file.
 type ExportChange struct {
-	Format     string `json:"format"`
-	Passphrase string `json:"passphrase,omitempty"`
-	Path       string `json:"path"`
+	Format           string `json:"format"`
+	Passphrase       string `json:"passphrase,omitempty"`
+	Path             string `json:"path"`
+	AcceptProvenance bool   `json:"acceptProvenance,omitempty"`
 }
 
 type ExportResult struct {
-	Path       string `json:"path"`
-	VaultCount int    `json:"vaultCount"`
-	ItemCount  int    `json:"itemCount"`
+	Path       string             `json:"path"`
+	VaultCount int                `json:"vaultCount"`
+	ItemCount  int                `json:"itemCount"`
+	Provenance *export.Provenance `json:"provenance,omitempty"`
 }
 
 type CodeResult struct {

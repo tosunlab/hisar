@@ -34,7 +34,7 @@ func (s *Service) listLogins(ctx context.Context, isMatch func(*item.Item) bool)
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, nil, err
 	}
-	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, nil, err
 	}
 	logins := []browserprotocol.Login{}
@@ -79,31 +79,36 @@ func (s *Service) requireUnlockedWithoutActivity() error {
 }
 
 func (s *Service) loadItemsOfAllVault(ctx context.Context) error {
-	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return err
 	}
 	return s.checkCompleteRead("")
 }
 
-// loadReadableItemsOfAllVault reads every vault not loaded yet, keeping the records that open and an issue for each one
-// that does not.
-func (s *Service) loadReadableItemsOfAllVault(ctx context.Context) error {
+// loadReadableItemsOfAllVault reads every vault not loaded yet. isAuthoritative reports whether it read every vault and
+// each read came from the server, reached the end of the vault's changes and opened every record: only then is an item
+// missing from the loaded lists known to be gone.
+func (s *Service) loadReadableItemsOfAllVault(ctx context.Context) (isAuthoritative bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if s.vaultsByID == nil {
 		if err := s.loadVaults(ctx); err != nil {
-			return err
+			return false, err
 		}
 	}
+	isAuthoritative = true
 	for vaultID, vault := range s.vaultsByID {
 		if _, isLoaded := s.itemsByVaultID[vaultID]; isLoaded {
+			isAuthoritative = false
 			continue
 		}
-		if _, err := s.readVaultItems(ctx, vault); err != nil {
-			return err
+		result, err := s.readVaultItems(ctx, vault)
+		if err != nil {
+			return false, err
 		}
+		isAuthoritative = isAuthoritative && result.Provenance.Source == "online" && result.Provenance.HasCompletedSync && len(result.Issues) == 0
 	}
-	return nil
+	return isAuthoritative, nil
 }
 
 // ListLoginsForURL and GetLoginForURL serve the mobile AutoFill extensions; as functions, Wails does not bind them.

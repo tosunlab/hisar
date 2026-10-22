@@ -169,8 +169,11 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request 
 		if request.Export == nil {
 			return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the export is missing")
 		}
+		if !request.Export.AcceptProvenance {
+			return nil, cliprotocol.NewError(cliprotocol.ErrorUpdateRequired, "update hisar to export cached-copy provenance and omissions")
+		}
 		result, err := s.writeExportFile(request.Export.Format, request.Export.Passphrase, request.Export.Path, epoch)
-		return cliprotocol.ExportResult{Path: result.Path, VaultCount: result.VaultCount, ItemCount: result.ItemCount}, err
+		return cliprotocol.ExportResult{Path: result.Path, VaultCount: result.VaultCount, ItemCount: result.ItemCount, Provenance: result.Provenance}, err
 	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 		details, err := s.ListItems(request.VaultID)
 		if err != nil {

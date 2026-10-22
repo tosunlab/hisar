@@ -322,11 +322,12 @@ func (access *standaloneBackend) writeExport(ctx context.Context, change cliprot
 	if err := access.requireSession(ctx); err != nil {
 		return cliprotocol.ExportResult{}, err
 	}
-	vaults, err := export.Collect(ctx, access.unlockedSession)
+	collection, err := export.Collect(ctx, access.unlockedSession)
 	if err != nil {
 		return cliprotocol.ExportResult{}, err
 	}
-	document := export.Build(export.Account{Email: access.currentState.Email, Server: access.currentState.Server}, vaults, time.Now())
+	document := export.Build(export.Account{Email: access.currentState.Email, Server: access.currentState.Server}, collection.Vaults, time.Now())
+	document.Provenance = &collection.Provenance
 	var content []byte
 	if change.Format == cliprotocol.ExportFormatPlain {
 		content, err = export.EncodePlain(document)
@@ -342,7 +343,7 @@ func (access *standaloneBackend) writeExport(ctx context.Context, change cliprot
 	if err := writeNewFile(change.Path, content); err != nil {
 		return cliprotocol.ExportResult{}, err
 	}
-	return cliprotocol.ExportResult{Path: change.Path, VaultCount: len(document.Vaults), ItemCount: document.CountItem()}, nil
+	return cliprotocol.ExportResult{Path: change.Path, VaultCount: len(document.Vaults), ItemCount: document.CountItem(), Provenance: document.Provenance}, nil
 }
 
 func (access *standaloneBackend) finish(err error) error {

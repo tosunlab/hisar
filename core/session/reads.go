@@ -68,6 +68,7 @@ func (s *Session) readVaults(ctx context.Context, retry bool) (VaultReadResult, 
 	if !fetched {
 		result.Source = "cached"
 	}
+	var verified, unverified []apitypes.Vault
 	for _, record := range records {
 		vault, issue := s.openVault(record)
 		if vault != nil {
@@ -75,15 +76,17 @@ func (s *Session) readVaults(ctx context.Context, retry bool) (VaultReadResult, 
 		}
 		if issue != nil {
 			result.Issues = append(result.Issues, *issue)
+			unverified = append(unverified, record)
+		} else {
+			verified = append(verified, record)
 		}
 	}
 	if fetched && retry && len(result.Issues) != 0 {
 		clearVaultKeys(result.Vaults)
 		return s.readVaults(ctx, false)
 	}
-	// Only a list in which every record opened replaces the cache.
-	if fetched && s.Cache != nil && len(result.Issues) == 0 {
-		if err := s.replaceCachedVaults(records); err != nil {
+	if fetched && s.Cache != nil {
+		if err := s.replaceCachedVaults(verified, unverified); err != nil {
 			clearVaultKeys(result.Vaults)
 			return VaultReadResult{}, err
 		}

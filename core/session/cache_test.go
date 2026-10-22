@@ -413,8 +413,12 @@ func TestServerRecordsThatFailVerificationKeepTheCachedCopy(t *testing.T) {
 		t.Fatalf("offline unlock after the server sent a forged keyset: %v", err)
 	}
 	defer offlineSession.Lock()
-	if vaults, err := offlineSession.ListVaults(ctx); err != nil || len(vaults) != 1 || vaults[0].ID != account.vaultID {
-		t.Errorf("offline vaults after the server sent a forged list: %+v %v", vaults, err)
+	read, err := offlineSession.ReadVaults(ctx)
+	if err != nil || len(read.Vaults) != 1 || read.Vaults[0].ID != account.vaultID || len(read.Issues) != 1 || read.Issues[0].VaultID != "vault-forged" {
+		t.Errorf("offline, the forged list replaced the verified copy or its unopened record was forgotten: %+v %v", read, err)
+	}
+	if _, err := offlineSession.ListVaults(ctx); !errors.Is(err, ErrIncompleteRead) {
+		t.Errorf("offline, a strict list ignored the known unopened record: %v", err)
 	}
 	if preferences, err := offlineSession.LoadPreferences(ctx); err != nil || !preferences.IsFavorite("item-a") {
 		t.Errorf("offline preferences after the server sent forged ones: %+v %v", preferences, err)
