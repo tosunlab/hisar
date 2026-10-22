@@ -61,14 +61,13 @@ struct PeopleView: View {
             if !shareInvitations.allSent.isEmpty || !shareInvitations.completionError.isEmpty {
                 Section {
                     ForEach(shareInvitations.allSent) { invitation in
-                        SentInvitationRow(invitation: invitation, onConfirmed: { await load() })
+                        SentInvitationRow(invitation: invitation, identifier: "sent-invitation-\(invitation.email)", onConfirmed: { await load() })
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                 Button("Cancel", role: .destructive) { invitationToCancel = invitation }
                             }
                             .contextMenu {
                                 Button("Cancel Invitation", systemImage: "xmark.circle", role: .destructive) { invitationToCancel = invitation }
                             }
-                            .accessibilityIdentifier("sent-invitation-\(invitation.email)")
                     }
                 } header: {
                     Text("Invitations you sent")
@@ -218,6 +217,8 @@ struct ReceivedInvitationRow: View {
 struct SentInvitationRow: View {
     var invitation: SentShareInvitation
     var isVaultNameShown = true
+    // The row's own identifier names its label, so the review button below keeps its identifier.
+    var identifier: String
     var onConfirmed: () async -> Void = {}
     @EnvironmentObject private var model: AppModel
     @State private var reviewed: SentShareInvitation?
@@ -229,18 +230,19 @@ struct SentInvitationRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(invitation.email)
-                Text(isVaultNameShown ? "\(invitation.vaultName.isEmpty ? "A vault you own" : invitation.vaultName) · \(stateText)" : stateText)
-                    .font(.footnote)
-                    .foregroundStyle(.themeSecondary)
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(invitation.email)
+                    Text(isVaultNameShown ? "\(invitation.vaultName.isEmpty ? "A vault you own" : invitation.vaultName) · \(stateText)" : stateText)
+                        .font(.footnote)
+                        .foregroundStyle(.themeSecondary)
+                }
+            } icon: {
+                Image(systemName: invitation.state == SentShareInvitation.stateAccepted ? "envelope.open" : "envelope")
             }
-        } icon: {
-            Image(systemName: invitation.state == SentShareInvitation.stateAccepted ? "envelope.open" : "envelope")
-        }
-        .badge(Text(describeVaultRole(invitation.role)))
-        .accessibilityElement(children: .combine)
+            .badge(Text(describeVaultRole(invitation.role)))
+            .accessibilityElement(children: .combine)
+            .accessibilityIdentifier(identifier)
             if invitation.requiresConfirmation == true {
                 Button("Review recipient") { reviewed = invitation }
                     .accessibilityIdentifier("review-share-\(invitation.email)")

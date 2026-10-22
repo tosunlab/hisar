@@ -50,14 +50,13 @@ struct VaultSharingView: View {
                 if isOwner, let allInvitation = sharing?.allInvitation, !allInvitation.isEmpty {
                     Section("Invited") {
                         ForEach(allInvitation) { invitation in
-                            SentInvitationRow(invitation: invitation, isVaultNameShown: false, onConfirmed: { await load() })
+                            SentInvitationRow(invitation: invitation, isVaultNameShown: false, identifier: "vault-invitation-\(invitation.email)", onConfirmed: { await load() })
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
                                     Button("Cancel", role: .destructive) { invitationToCancel = invitation }
                                 }
                                 .contextMenu {
                                     Button("Cancel Invitation", systemImage: "xmark.circle", role: .destructive) { invitationToCancel = invitation }
                                 }
-                                .accessibilityIdentifier("vault-invitation-\(invitation.email)")
                         }
                     }
                 }
