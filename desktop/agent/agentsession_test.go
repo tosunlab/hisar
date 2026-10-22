@@ -3,6 +3,7 @@ package agent
 import (
 	"errors"
 	"net"
+	"os"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/agentharness"
@@ -73,14 +74,23 @@ func createTernChain(isUnderOmp bool) agentharness.Chain {
 }
 
 // TestPeerResolverFindsTheAgentSession: ssh inside omp joins omp's live session, which Settings lists with the app it
-// runs in, as it lists a session that used the command-line socket.
+// runs in, as it lists a session that used the command-line socket. A live session ends as soon as its harness exits,
+// so omp here is a process that runs: this test's own.
 func TestPeerResolverFindsTheAgentSession(t *testing.T) {
-	test := &sshPeerTest{chain: createTernChain(true), agentHosts: fakeAgentHosts{}}
+	ompPID := os.Getpid()
+	ompInstance, err := agentharness.ReadInstance(ompPID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	chain := createTernChain(true)
+	chain.Processes[1].ParentPID = ompPID
+	chain.Processes[2].PID, chain.Processes[2].StartTime = ompPID, ompInstance.StartTime
+	test := &sshPeerTest{chain: chain, agentHosts: fakeAgentHosts{}}
 	peer, err := test.createResolver().ResolvePeer(nil)
 	if err != nil || peer.AgentSession == nil {
 		t.Fatalf("peer = %+v, %v", peer, err)
 	}
-	if session := peer.AgentSession.Session; session.PID != 1217 || session.StartTime != 10 || session.Harness.Name != "omp" {
+	if session := peer.AgentSession.Session; session.PID != ompPID || session.StartTime != ompInstance.StartTime || session.Harness.Name != "omp" {
 		t.Errorf("session = %+v", session)
 	}
 	if peer.ApplicationPath != ternBundlePath || peer.Path != "/usr/bin/ssh" || peer.IsNeverRemembered != nil {
