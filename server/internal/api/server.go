@@ -80,6 +80,11 @@ type Server struct {
 
 // NewServer reads the stored instance settings, when it has a database, and refuses settings that fail Validate.
 func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
+	opaqueConfiguration := pake.NewConfig()
+	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
+	if err != nil {
+		return nil, err
+	}
 	defaultSettings := settings.Defaults()
 	if config.DefaultSettings != nil {
 		defaultSettings = *config.DefaultSettings
@@ -87,6 +92,9 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	var storedSettings []byte
 	if database != nil {
 		var err error
+		if err := database.InitializeOperationalSecrets(context.Background(), secrets.fingerprint()); err != nil {
+			return nil, fmt.Errorf("initialize operational secrets: %w", err)
+		}
 		if storedSettings, err = database.GetInstanceSettings(context.Background()); err != nil {
 			return nil, fmt.Errorf("read instance settings: %w", err)
 		}
@@ -107,11 +115,6 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	// Apps give up on a request after 30 s, so work past this answers nobody.
 	if config.RequestTimeout == 0 {
 		config.RequestTimeout = time.Minute
-	}
-	opaqueConfiguration := pake.NewConfig()
-	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
-	if err != nil {
-		return nil, err
 	}
 	opaqueServer, err := opaqueConfiguration.Server()
 	if err != nil {

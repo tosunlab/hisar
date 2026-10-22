@@ -28,7 +28,7 @@ import (
 
 func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
-	created, err := LoadOrCreateSecrets(path)
+	created, err := LoadOrCreateSecrets(path, true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,7 +39,7 @@ func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 	if fileInfo.Mode().Perm() != 0o600 {
 		t.Errorf("mode = %o", fileInfo.Mode().Perm())
 	}
-	reloaded, err := LoadOrCreateSecrets(path)
+	reloaded, err := LoadOrCreateSecrets(path, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestSecretsCreatedOnceWithPrivateMode(t *testing.T) {
 func TestSecretsRejectsIncomplete(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "secrets.json")
 	os.WriteFile(path, []byte(`{"hmacKey":"AAAA"}`), 0o600)
-	if _, err := LoadOrCreateSecrets(path); err == nil {
+	if _, err := LoadOrCreateSecrets(path, true); err == nil {
 		t.Error("incomplete secrets accepted")
 	}
 }

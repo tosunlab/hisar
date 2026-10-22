@@ -40,8 +40,11 @@ docker compose up -d
 curl http://127.0.0.1:8080/healthz  # ok
 ```
 
-On first start `hisar-server` creates `/data/hisar-secrets.json` in the `hisar-data` volume (OPAQUE server key and HMAC
-key). **Back it up**: if it is lost, nobody can log in and every account must be re-created.
+On an empty, uninitialized database, `hisar-server` creates `/data/hisar-secrets.json` in the `hisar-data` volume.
+It contains the OPAQUE server keys and HMAC key. Back up this file with the database. Startup refuses a missing file
+when accounts or an enrolled secrets fingerprint exist. Restore the matching file instead of generating new keys.
+After fingerprint enrollment, a different valid file also fails startup. The first upgrade of an older database cannot
+detect a wrong file supplied before enrollment, so confirm the original secrets volume before upgrading.
 
 ## nginx
 
@@ -187,16 +190,59 @@ Older invites cannot be linked to the invitation they came from, so canceling th
 Accounts and invites that were already used are not changed. After the upgrade, resend any invite that is still
 needed. Stop every server process running an older version before the migration runs.
 
+Migration `00016_operational_secrets` enrolls a fingerprint of both authentication keys on the next server startup.
+The transaction finishes before settings are read or requests are served.
+Once secrets are enrolled, `migrate down` refuses this migration. To run a pre-upgrade binary, restore its matching
+pre-upgrade database and secrets backup into an isolated instance. Do not remove the fingerprint by hand.
+
 ## Backups
 
-Back up nightly and copy off the server:
+Back up nightly, after configuration changes, and before upgrades. Keep the database dump and matching secrets archive
+as one recovery set. Stop the server while taking the pair. The Postgres container stays running.
 
-- `docker compose exec postgres pg_dump -U hisar hisar`. The dump contains encrypted vault payloads, plaintext account and sharing metadata, audit events and instance settings. It is sensitive, not ciphertext-only. Encrypt it, for example with `age`.
-- the `hisar-data` volume (`hisar-secrets.json`). Keep it with the matching database backup for recovery, but restrict access to both.
+```sh
+umask 077
+mkdir backup
+docker compose stop hisar
+docker compose exec -T postgres pg_dump -U hisar -Fc hisar > backup/database.dump
+docker cp "$(docker compose ps -aq hisar):/data/hisar-secrets.json" - > backup/secrets.tar
+docker compose start hisar
+```
 
-The [database schema](../server/internal/store/migrations/00001_init.sql) records emails, devices, access grants and audit IPs outside the encrypted item payloads. [Organization names and rosters](../server/internal/store/migrations/00008_organizations.sql) are also plaintext. Operational credentials have different protection from vault keys, as described under **Email** above. Treat both backup components as sensitive. Possession of server secrets does not itself supply vault decryption keys.
+The tar archive preserves the secrets file's owner and private permissions. Encrypt the recovery set before copying it
+off-server, for example with `age`, and keep its decryption key elsewhere. Preserve the deployment's protected `.env`,
+`hisar.env`, and `db_password.txt` configuration too.
+Retain several dated sets, including a known-good pre-upgrade pair, under your organization's retention policy.
+
+The dump contains encrypted vault payloads, plaintext account and sharing metadata, audit events and instance settings.
+It is sensitive, not ciphertext-only. The [database schema](../server/internal/store/migrations/00001_init.sql) records emails, devices, access grants and audit IPs outside the encrypted item payloads. [Organization names and rosters](../server/internal/store/migrations/00008_organizations.sql) are also plaintext. Operational credentials have different protection from vault keys, as described under **Email** above. Treat both backup components as sensitive. Possession of server secrets does not itself supply vault decryption keys.
 
 A native client's offline cache is not a substitute for a server backup. It contains only records that device has downloaded and may omit whole unsynced vaults or newer writes. See [the cache and export limits](../docs/DESIGN.md#91-desktop--wails-v3-go--vuetypescript).
+
+### Test a paired restore
+
+Use a fresh directory and an isolated Compose project, never the running project's volumes. Copy the deployment files
+and protected configuration there. Pin the original server version first. Decrypt a recovery set into `backup/`.
+Set `HISAR_PORT=18080` in the copied `.env`, or choose another unused port and adjust the check below. Keep `HISAR_PUBLIC_URL` unchanged and route its original hostname to
+the isolated host through a private TLS proxy for the sign-in check. Do not expose the restore instance publicly.
+
+```sh
+docker compose -p hisar-restore up -d postgres
+docker compose -p hisar-restore exec -T postgres pg_restore --clean --if-exists -U hisar -d hisar < backup/database.dump
+docker compose -p hisar-restore create hisar
+docker cp -a - "$(docker compose -p hisar-restore ps -aq hisar):/data" < backup/secrets.tar
+docker compose -p hisar-restore start hisar
+curl http://127.0.0.1:18080/healthz
+```
+
+Expect `ok`. Sign in with an existing test account using its master password and Secret Key. Open a known encrypted
+item and compare its value. Send a test email through a disposable SMTP sink, not a production recipient. Repeat after
+upgrading the isolated instance. Test this recovery procedure quarterly and record the results.
+
+If startup reports missing or mismatched secrets, stop and restore the matching archive. Do not delete account data,
+remove the fingerprint, or replace keys to silence the error. Without the original authentication secrets, new keys
+cannot recover existing accounts. The missing-file check also applies to `hisar-server invite`. A healthy `/healthz`
+alone does not prove that accounts were recovered.
 
 ## Building from source
 

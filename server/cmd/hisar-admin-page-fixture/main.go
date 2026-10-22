@@ -100,7 +100,7 @@ func main() {
 		log.Fatal(err)
 	}
 	defer os.RemoveAll(secretDirectory)
-	secrets, err := api.LoadOrCreateSecrets(filepath.Join(secretDirectory, "secrets.json"))
+	secrets, err := api.LoadOrCreateSecrets(filepath.Join(secretDirectory, "secrets.json"), true)
 	if err != nil {
 		log.Fatal(err)
 	}

@@ -37,6 +37,8 @@ import (
 
 var testDevice = apitypes.DeviceInfo{Name: "test", Platform: "go"}
 
+var testServerSecrets = generateSecrets()
+
 // Requires HISAR_TEST_DATABASE_URL pointing at a disposable database: the public schema is dropped.
 func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL string) {
 	t.Helper()
@@ -68,7 +70,7 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 	}
 	t.Cleanup(func() { listener.Close() })
 	trustedOrigin := "http://" + listener.Addr().String()
-	server, err = NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: trustedOrigin}})
+	server, err = NewServer(database, testServerSecrets, Config{Config: service.Config{PublicURL: trustedOrigin}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -452,7 +454,7 @@ func TestSessionLookupAnswers503WhenTheDatabaseIsDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	database := requireValue[*store.Store](t)(store.Open(ctx, databaseURL))
-	disconnected := requireValue[*Server](t)(NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}}))
+	disconnected := requireValue[*Server](t)(NewServer(database, testServerSecrets, Config{Config: service.Config{PublicURL: "https://hisar.test"}}))
 	database.Close()
 	app := disconnected.CreateApp()
 	for _, path := range []string{"/api/v1/vaults", "/api/v1/admin/server"} {
