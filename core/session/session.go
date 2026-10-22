@@ -64,7 +64,7 @@ type Vault struct {
 	// KeyGeneration is the generation of Key; 0 when the server does not count them.
 	KeyGeneration  int64
 	AccessRevision int64
-	// NeedsRotation: someone lost access through a team and no owner's app has rotated the key since.
+	// NeedsRotation remains set after owner removal until an owner's app commits the replacement key generation.
 	NeedsRotation bool
 }
 

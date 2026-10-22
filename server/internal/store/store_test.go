@@ -165,7 +165,16 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s missing", indexName)
 		}
 	}
+	if countTable(t, database, "vault_transition_items") != 1 {
+		t.Fatal("staging migration is missing")
+	}
 	rollbackTestMigrationsTo(t, database, 13)
+	if countTable(t, database, "vault_transition_items") != 0 || countColumn(t, database, "vaults", "metadata_revision") != 0 {
+		t.Fatal("rolling back staging left transition state")
+	}
+	if countColumn(t, database, "vaults", "access_revision") != 1 {
+		t.Fatal("rolling back staging removed the signed invitation migration's access revision")
+	}
 	if countColumn(t, database, "invites", "share_invitation_id") != 1 || countColumn(t, database, "invites", "organization_invitation_id") != 1 {
 		t.Fatal("invitation source migration is missing")
 	}

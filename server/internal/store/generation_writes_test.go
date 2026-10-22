@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/tryhisar/hisar/core/apitypes"
 )
 
 func TestGenerationOmissionRefusedOnEveryRotatedWrite(t *testing.T) {
@@ -15,8 +16,14 @@ func TestGenerationOmissionRefusedOnEveryRotatedWrite(t *testing.T) {
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	rotatedID := createTestVault(t, database, "AAAAAA")
 	otherID := createTestVault(t, database, "AAAAAA")
-	if err := database.RotateVault(ctx, VaultRotation{VaultID: rotatedID, RotatedBy: "AAAAAA", EncName: []byte("new-name"), KeyGeneration: 1,
-		Accesses: []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte("new")}}}); err != nil {
+	op, err := database.BeginVaultTransition(ctx, rotatedID, "AAAAAA", &apitypes.BeginVaultTransitionRequest{ID: uuid.NewString(), Kind: "rotate", KeyGeneration: 1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := database.StageVaultAccess(ctx, rotatedID, "AAAAAA", op.ID, []apitypes.RotatedAccess{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte("new")}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.CommitVaultTransition(ctx, rotatedID, "AAAAAA", op.ID, []byte("new-name")); err != nil {
 		t.Fatal(err)
 	}
 	newItem := func() *Item {

@@ -29,6 +29,7 @@ func (server *fakeAPIServer) getVaultRole(vaultID string) string {
 }
 
 func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
+	server.addVaultTransitionRoutes(mux)
 	mux.HandleFunc("GET /api/v1/members", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
@@ -200,56 +201,6 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 			}
 			server.shareInvitations = slices.Delete(server.shareInvitations, invitationIndex, invitationIndex+1)
 			server.accessesByVaultID[vaultID] = append(accesses, access)
-		}
-		writer.WriteHeader(http.StatusNoContent)
-	})
-	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/rotate", func(writer http.ResponseWriter, request *http.Request) {
-		var rotateRequest apitypes.RotateVaultRequest
-		if err := json.NewDecoder(request.Body).Decode(&rotateRequest); err != nil {
-			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
-			return
-		}
-		server.mutex.Lock()
-		defer server.mutex.Unlock()
-		vaultID := request.PathValue("vaultID")
-		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
-			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
-			return
-		}
-		if rotateRequest.KeyGeneration != 0 && rotateRequest.KeyGeneration != server.getKeyGeneration(vaultID) {
-			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault key was rotated since"})
-			return
-		}
-		items := server.itemsByVaultID[vaultID]
-		if len(rotateRequest.Items) != len(items) {
-			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "items changed"})
-			return
-		}
-		for _, rotatedItem := range rotateRequest.Items {
-			if stored, found := items[rotatedItem.ID]; !found || stored.Revision != rotatedItem.BaseRevision {
-				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "items changed"})
-				return
-			}
-		}
-		for _, rotatedItem := range rotateRequest.Items {
-			server.seq++
-			items[rotatedItem.ID] = apitypes.Item{ID: rotatedItem.ID, Revision: rotatedItem.Revision, Seq: server.seq, Deleted: rotatedItem.Deleted, Overview: rotatedItem.Overview, Details: rotatedItem.Details}
-		}
-		server.accessesByVaultID[vaultID] = rotateRequest.Accesses
-		for index := range server.vaults {
-			if server.vaults[index].ID != vaultID {
-				continue
-			}
-			server.vaults[index].EncName = rotateRequest.EncName
-			server.vaults[index].NeedsRotation = false
-			if server.vaults[index].KeyGeneration > 0 {
-				server.vaults[index].KeyGeneration++
-			}
-			for _, access := range rotateRequest.Accesses {
-				if access.AccountID == server.accountID {
-					server.vaults[index].WrappedKey = access.WrappedKey
-				}
-			}
 		}
 		writer.WriteHeader(http.StatusNoContent)
 	})

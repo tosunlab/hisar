@@ -154,8 +154,7 @@ func (s *Service) DeleteVault(vaultID string, request VaultDeletionRequest) (Vau
 	if err := s.requireUnlocked(); err != nil {
 		return VaultDeletionResult{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+	ctx := context.Background()
 	if err := s.loadVaults(ctx); err != nil {
 		return VaultDeletionResult{}, err
 	}
