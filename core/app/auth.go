@@ -221,9 +221,10 @@ func (s *Service) Unlock(password string) (Status, error) {
 		return Status{}, convertError(err)
 	}
 
+	// Migration is best effort: a busy biometricMutex means an OS prompt is pending, and a password unlock never waits
+	// on one. The status keeps the migration pending until a later password unlock.
 	var biometricSetupError string
-	if migrator != nil && len(sealedBiometricKey) > 0 {
-		s.biometricMutex.Lock()
+	if migrator != nil && len(sealedBiometricKey) > 0 && !migrator.IsKeyProtected(accountID) && s.biometricMutex.TryLock() {
 		if s.isSessionEpoch(epoch) {
 			if err := migrator.MigrateKey(accountID, sealedBiometricKey); err != nil {
 				biometricSetupError = err.Error()

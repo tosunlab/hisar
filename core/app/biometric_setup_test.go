@@ -17,7 +17,7 @@ type pausedBiometricSetup struct {
 	phase           string
 	started, resume chan struct{}
 	failure         error
-	sealed          []byte
+	stored, sealed  []byte
 }
 
 func (b *pausedBiometricSetup) pause(phase string) {
@@ -34,6 +34,7 @@ func (b *pausedBiometricSetup) Authenticate(reason string) error {
 
 func (b *pausedBiometricSetup) StoreKey(accountID string, key []byte) error {
 	b.pause("store")
+	b.stored = bytes.Clone(key)
 	return b.fakeBiometric.StoreKey(accountID, key)
 }
 
@@ -154,6 +155,9 @@ func TestBiometricSetupCannotBlockLockOrPublishAcrossSessionChanges(t *testing.T
 					if r.err == nil || r.status.BiometricEnabled || len(s.state.BiometricUnlock) != 0 {
 						t.Fatalf("late setup activated: %+v %v", r.status, r.err)
 					}
+					if _, err := b.LoadKey(fixture.accountID); err == nil {
+						t.Fatal("late setup left its key in the keychain")
+					}
 					if transition == "lock" && r.status.State != StateLocked {
 						t.Fatalf("late setup changed locked state: %+v", r.status)
 					}
@@ -161,12 +165,7 @@ func TestBiometricSetupCannotBlockLockOrPublishAcrossSessionChanges(t *testing.T
 						t.Fatal("late setup replaced the new account")
 					}
 					if phase == "readback" && transition == "lock" {
-						wrapping, err := b.LoadKey(fixture.accountID)
-						if err != nil {
-							t.Fatal(err)
-						}
-						defer clear(wrapping)
-						opened, err := crypt.Open(wrapping, b.sealed, buildBiometricContext(fixture.accountID))
+						opened, err := crypt.Open(b.stored, b.sealed, buildBiometricContext(fixture.accountID))
 						defer clear(opened)
 						if err != nil || !bytes.Equal(opened, expectedKey) {
 							t.Fatalf("setup raced the session's secret wipe: %v", err)
@@ -270,5 +269,65 @@ func TestCredentialResealDoesNotBlockLockOrRestoreBiometricSetup(t *testing.T) {
 	result := <-changed
 	if result.LocalError == "" || result.Status.State != StateLocked {
 		t.Fatalf("stale reseal reported success: %+v", result)
+	}
+}
+
+func TestBiometricReSetupThatDoesNotFinishKeepsKeychainAndStateTogether(t *testing.T) {
+	const password = "correct horse battery"
+	for _, test := range []struct {
+		phase, transition string
+		keepsEarlierSetup bool
+	}{
+		{"authenticate", "lock", true},
+		{"store", "lock", false},
+		{"store", "disable", false},
+		{"readback", "lock", false},
+		{"readback", "disable", false},
+		{"", "failed readback", false},
+	} {
+		t.Run(test.phase+"/"+test.transition, func(t *testing.T) {
+			fixture := createUnlockedTestService(t)
+			prepareTestApprovalUnlock(t, fixture, password)
+			s := fixture.service
+			b := &pausedBiometricSetup{fakeBiometric: s.config.Biometric.(*fakeBiometric), phase: test.phase, started: make(chan struct{}), resume: make(chan struct{})}
+			release := sync.OnceFunc(func() { close(b.resume) })
+			t.Cleanup(release)
+			if test.transition == "failed readback" {
+				b.failure = errors.New("protected readback failed")
+			}
+			s.config.Biometric = b
+			done := make(chan error, 1)
+			go func() { _, err := s.EnableBiometricUnlock(password); done <- err }()
+			if test.phase != "" {
+				select {
+				case <-b.started:
+				case <-time.After(5 * time.Second):
+					t.Fatal("setup never reached the OS boundary")
+				}
+				switch test.transition {
+				case "lock":
+					s.Lock()
+				case "disable":
+					if _, err := s.DisableBiometricUnlock(); err != nil {
+						t.Fatal(err)
+					}
+				}
+				release()
+			}
+			if err := <-done; err == nil {
+				t.Fatal("interrupted setup reported success")
+			}
+			b.phase = ""
+			status := s.GetStatus()
+			_, loadErr := b.LoadKey(fixture.accountID)
+			if status.BiometricEnabled != test.keepsEarlierSetup || (loadErr == nil) != test.keepsEarlierSetup {
+				t.Fatalf("keychain and state disagree: enabled %v, keychain error %v", status.BiometricEnabled, loadErr)
+			}
+			if test.keepsEarlierSetup {
+				if status, err := s.UnlockWithBiometric(); err != nil || status.State != StateUnlocked {
+					t.Fatalf("earlier setup stopped unlocking: %+v %v", status, err)
+				}
+			}
+		})
 	}
 }

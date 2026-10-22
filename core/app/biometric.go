@@ -153,14 +153,18 @@ func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Sta
 
 	s.biometricMutex.Lock()
 	defer s.biometricMutex.Unlock()
-	sealed, setupErr := s.storeBiometricUnlock(setup, accountUnlockKey, fmt.Sprintf("turn on %s unlock for Hisar", s.config.BiometricName))
+	sealed, isStored, setupErr := s.storeBiometricUnlock(setup, accountUnlockKey, fmt.Sprintf("turn on %s unlock for Hisar", s.config.BiometricName))
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if err := s.requireBiometricSetup(setup); err != nil {
-		return s.buildStatus(), err
+	err = s.requireBiometricSetup(setup)
+	if err == nil {
+		err = setupErr
 	}
-	if setupErr != nil {
-		return s.buildStatus(), setupErr
+	if err != nil {
+		if isStored {
+			s.discardStoredBiometricKey(setup.accountID)
+		}
+		return s.buildStatus(), err
 	}
 	s.state.BiometricUnlock = sealed
 	s.biometricSetupRevision++
@@ -173,44 +177,56 @@ func (s *Service) enableBiometricUnlock(password string, isNewAccount bool) (Sta
 	return s.buildStatus(), s.state.Save()
 }
 
-// storeBiometricUnlock needs biometricMutex, but never the service mutex while waiting on the OS.
-func (s *Service) storeBiometricUnlock(setup biometricSetup, accountUnlockKey []byte, reason string) ([]byte, error) {
+// storeBiometricUnlock needs biometricMutex, but never the service mutex while waiting on the OS. isStored reports that
+// the keychain now holds the new key, even when err is set.
+func (s *Service) storeBiometricUnlock(setup biometricSetup, accountUnlockKey []byte, reason string) (sealed []byte, isStored bool, err error) {
 	check := func() error {
 		s.mutex.Lock()
 		defer s.mutex.Unlock()
 		return s.requireBiometricSetup(setup)
 	}
 	if err := check(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if reason != "" {
 		if preparer := s.config.BiometricKeyPreparer; preparer != nil {
 			if err := preparer.PrepareStoreKey(setup.accountID); err != nil {
-				return nil, fmt.Errorf("could not create the biometric unlock key: %w", err)
+				return nil, false, fmt.Errorf("could not create the biometric unlock key: %w", err)
 			}
 		}
 		if err := s.config.Biometric.Authenticate(reason); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 	}
 	if err := check(); err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	wrappingKey := crypt.GenerateKey()
 	defer clear(wrappingKey)
-	sealed, err := crypt.Seal(wrappingKey, accountUnlockKey, buildBiometricContext(setup.accountID))
+	sealed, err = crypt.Seal(wrappingKey, accountUnlockKey, buildBiometricContext(setup.accountID))
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	if err := s.config.Biometric.StoreKey(setup.accountID, wrappingKey); err != nil {
-		return nil, fmt.Errorf("could not save the %s key: %w", s.config.BiometricName, err)
+		return nil, false, fmt.Errorf("could not save the %s key: %w", s.config.BiometricName, err)
 	}
 	if migrator, ok := s.config.Biometric.(BiometricKeyMigrator); ok {
 		if err := migrator.MigrateKey(setup.accountID, sealed); err != nil {
-			return nil, err
+			return nil, true, err
 		}
 	}
-	return sealed, nil
+	return sealed, true, nil
+}
+
+// discardStoredBiometricKey needs both mutexes. It runs when a setup stored a key it does not publish: that key replaced
+// the wrapper of any earlier setup, so biometric unlock is turned off rather than left unable to open its sealed state.
+func (s *Service) discardStoredBiometricKey(accountID string) {
+	if s.state.AccountID == accountID && len(s.state.BiometricUnlock) > 0 {
+		s.forgetBiometricUnlock()
+		s.state.Save()
+		return
+	}
+	s.config.Biometric.DeleteKey(accountID)
 }
 
 func (s *Service) DisableBiometricUnlock() (Status, error) {

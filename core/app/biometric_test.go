@@ -283,3 +283,87 @@ func TestLockDoesNotWaitForBiometricMigrationOrAcceptItsLateUnlock(t *testing.T)
 		t.Fatalf("recovery state changed: %+v", status)
 	}
 }
+
+type promptingBiometric struct {
+	*migratingBiometric
+	prompted, dismissed chan struct{}
+}
+
+func (biometric *promptingBiometric) Authenticate(string) error {
+	close(biometric.prompted)
+	<-biometric.dismissed
+	return ErrBiometricCancelled
+}
+
+func TestPasswordUnlockDoesNotWaitForAPendingBiometricPrompt(t *testing.T) {
+	const password = "correct horse battery"
+	for _, isProtected := range []bool{true, false} {
+		name := "protected key, Touch ID unlock prompt"
+		if !isProtected {
+			name = "legacy key, setup prompt"
+		}
+		t.Run(name, func(t *testing.T) {
+			fixture := createUnlockedTestService(t)
+			prepareTestApprovalUnlock(t, fixture, password)
+			service := fixture.service
+			platform := &promptingBiometric{
+				migratingBiometric: &migratingBiometric{fakeBiometric: service.config.Biometric.(*fakeBiometric), protected: isProtected},
+				prompted:           make(chan struct{}), dismissed: make(chan struct{}),
+			}
+			dismiss := sync.OnceFunc(func() { close(platform.dismissed) })
+			t.Cleanup(dismiss)
+			service.config.Biometric = platform
+			prompt := make(chan error, 1)
+			if isProtected {
+				service.Lock()
+				go func() { _, err := service.UnlockWithBiometric(); prompt <- err }()
+			} else {
+				go func() { _, err := service.EnableBiometricUnlock(password); prompt <- err }()
+			}
+			select {
+			case <-platform.prompted:
+			case err := <-prompt:
+				t.Fatalf("no biometric prompt: %v", err)
+			case <-time.After(5 * time.Second):
+				t.Fatal("biometric prompt never shown")
+			}
+			if !isProtected {
+				service.Lock()
+			}
+			type result struct {
+				status Status
+				err    error
+			}
+			unlocked := make(chan result, 1)
+			go func() { status, err := service.Unlock(password); unlocked <- result{status, err} }()
+			select {
+			case r := <-unlocked:
+				if r.err != nil || r.status.State != StateUnlocked {
+					t.Fatalf("password unlock: %+v %v", r.status, r.err)
+				}
+				if !isProtected && (r.status.BiometricSetupError == "" || platform.migrations != 0) {
+					t.Fatalf("busy migration was not left pending: %+v, %d migrations", r.status, platform.migrations)
+				}
+			case <-time.After(2 * time.Second):
+				dismiss()
+				<-prompt
+				<-unlocked
+				t.Fatal("password unlock waited for the pending biometric prompt")
+			}
+			dismiss()
+			if err := <-prompt; err == nil {
+				t.Fatal("dismissed prompt reported success")
+			}
+			if isProtected {
+				if platform.migrations != 0 {
+					t.Fatalf("protected key was migrated again: %d", platform.migrations)
+				}
+				return
+			}
+			service.Lock()
+			if _, err := service.Unlock(password); err != nil || platform.migrations != 1 {
+				t.Fatalf("next password unlock did not migrate: %v, %d migrations", err, platform.migrations)
+			}
+		})
+	}
+}

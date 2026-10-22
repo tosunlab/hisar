@@ -177,9 +177,12 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 			}
 			s.mutex.Unlock()
 			s.biometricMutex.Lock()
-			sealed, setupErr := s.storeBiometricUnlock(setup, credentialChange.AccountUnlockKey, reason)
+			sealed, isStored, setupErr := s.storeBiometricUnlock(setup, credentialChange.AccountUnlockKey, reason)
 			s.mutex.Lock()
 			if err := s.requireBiometricSetup(setup); err != nil {
+				if isStored {
+					s.discardStoredBiometricKey(setup.accountID)
+				}
 				s.biometricMutex.Unlock()
 				result.Status = s.buildStatus()
 				result.LocalError = err.Error()
