@@ -160,51 +160,29 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKey(ctx, s.createClient(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
+	stage, pending := s.stagePendingRecovery(server, strings.ToLower(strings.TrimSpace(email)), strings.TrimSpace(name), passwordBytes)
+	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKeyWithRecovery(ctx, s.createClient(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo(), stage)
 	if signedUp == nil {
-		return SignUpResult{}, convertError(err)
+		if pending.OperationID == "" {
+			return SignUpResult{}, convertError(err)
+		}
+		if errors.Is(err, session.ErrRecoveryDeliveryRequired) {
+			return SignUpResult{Status: s.GetStatus(), SecretKey: secretKey.Encode(), PendingOperationID: pending.OperationID, SetupState: pending.Phase, Problems: pending.Problems}, nil
+		}
+		if session.IsRegistrationNotCommitted(err) {
+			if removeErr := s.removePendingRecovery(pending); removeErr != nil {
+				return SignUpResult{}, removeErr
+			}
+			return SignUpResult{}, convertError(err)
+		}
+		pending.Problems = []string{"The account's remote setup is not confirmed. Do not register again. Resume this protected recovery operation."}
+		_ = s.updatePendingRecovery(pending)
+		return SignUpResult{Status: s.GetStatus(), PendingOperationID: pending.OperationID, SetupState: "outcome-unknown", Problems: pending.Problems}, nil
 	}
 	if err != nil {
-		signedUp.Lock()
-		clear(accountUnlockKey)
-		return SignUpResult{SecretKey: secretKey.Encode()}, convertError(err)
+		pending.Problems = []string{"The account was created, but its Personal vault could not finish. Resume account setup."}
 	}
-
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	if epoch != s.sessionEpoch {
-		signedUp.Lock()
-		clear(accountUnlockKey)
-		keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
-		signedUp.Client.Logout(ctx)
-		result := SignUpResult{Status: s.buildStatus(), SecretKey: secretKey.Encode()}
-		if keychainErr != nil {
-			return result, fmt.Errorf("account created, but sign-up was interrupted and the Secret Key could not be saved (%v); write it down: %s", keychainErr, result.SecretKey)
-		}
-		return result, fmt.Errorf("account created, but sign-up was interrupted; write down your Secret Key: %s", result.SecretKey)
-	}
-	if err := s.resetAccount(); err != nil {
-		log.Printf("sign-up could not delete the previous account's offline copy: %v", err)
-	}
-	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
-	s.state.LastServer = server
-	if err := s.state.Save(); err != nil {
-		signedUp.Lock()
-		clear(accountUnlockKey)
-		return SignUpResult{SecretKey: secretKey.Encode()}, err
-	}
-	keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
-	s.notifySessionChange()
-	s.attachCache(ctx, signedUp)
-	s.openSession(signedUp)
-	s.newAccountSecretKey = &secretKey
-	s.newAccountUnlockKey = accountUnlockKey
-	s.recordPasswordUnlock()
-	result := SignUpResult{Status: s.buildStatus(), SecretKey: secretKey.Encode()}
-	if keychainErr != nil {
-		return result, fmt.Errorf("account created, but the Secret Key could not be saved to the keychain (%v); write it down: %s", keychainErr, result.SecretKey)
-	}
-	return result, nil
+	return s.installRecoveredAccount(ctx, pending, signedUp, secretKey, accountUnlockKey, epoch)
 }
 
 func (s *Service) Unlock(password string) (Status, error) {
@@ -214,15 +192,16 @@ func (s *Service) Unlock(password string) (Status, error) {
 		return Status{}, ErrSignedOut
 	}
 	server, token, accountID, epoch := s.state.Server, s.state.Token, s.state.AccountID, s.sessionEpoch
+	recoveryOperationID := s.state.RecoveryOperationID
 	accountCache := s.getCache()
 	s.mutex.Unlock()
 
-	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(accountID)
-	if err != nil {
-		return Status{}, fmt.Errorf("the Secret Key is missing from the keychain; sign in again: %w", err)
-	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
+	secretKey, err := s.loadAccountSecretKey(server, accountID, recoveryOperationID, passwordBytes)
+	if err != nil {
+		return Status{}, fmt.Errorf("the Secret Key is missing from the keychain or protected recovery storage; sign in again: %w", err)
+	}
 	apiClient := s.createClient(server)
 	apiClient.Token = token
 
@@ -300,7 +279,7 @@ func (s *Service) resetAccount() error {
 }
 
 // OpenUnlockedSession makes a session the caller unlocked itself the service's own, signed in to server with token;
-// for tests outside this package (see apptest). Not a method, so the UI cannot call it.
+// for trusted Go callers such as the standalone CLI and apptest. Not a method, so the UI cannot call it.
 func OpenUnlockedSession(s *Service, server, token string, unlockedSession *session.Session) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()

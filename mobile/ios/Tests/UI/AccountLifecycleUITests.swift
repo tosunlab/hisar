@@ -29,14 +29,16 @@ final class AccountLifecycleUITests: HisarUITestCase {
         saveScreenshot("account-life-replace-secret-key\(screenshotSuffix)")
         app.buttons["replace-secret-key-submit"].tap()
         tapConfirmation(identifier: "replace-secret-key-confirm")
-        let newSecretKey = app.staticTexts["new-secret-key-value"]
-        waitFor(newSecretKey, timeout: 60)
-        XCTAssertTrue(newSecretKey.label.hasPrefix("H1-"), newSecretKey.label)
+        let newSecretKey = finishPendingRecovery(email: email, password: Self.newMasterPassword, restartAfterPreparingKit: true)
+        XCTAssertTrue(newSecretKey.hasPrefix("H1-"), newSecretKey)
         saveScreenshot("account-life-new-secret-key\(screenshotSuffix)")
-        app.buttons["replace-secret-key-done"].tap()
 
-        goBack()
-        app.buttons["open-account"].tap()
+        if app.secureTextFields["unlock-password"].waitForExistence(timeout: 2) {
+            type(Self.newMasterPassword, into: app.secureTextFields["unlock-password"])
+            app.buttons["unlock-submit"].tap()
+        }
+        waitFor(app.buttons["vault-Personal"], timeout: 60)
+        openSettings("open-account")
         app.buttons["open-delete-account"].tap()
         saveScreenshot("account-life-delete-account-preview\(screenshotSuffix)")
         type(Self.newMasterPassword, into: app.secureTextFields["delete-account-password"])

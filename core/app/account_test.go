@@ -44,7 +44,7 @@ func TestCredentialChangeStartsOverACacheThatKeptTheOldKeyset(t *testing.T) {
 	service.unlockedSession.Lock()
 	service.unlockedSession = verified
 
-	_, err = service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey) (*session.CredentialChange, error) {
+	_, err = service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
 		return &session.CredentialChange{SecretKey: secretKey, IsCachedAccountStale: true}, nil
 	})
 	if err != nil {
@@ -88,7 +88,7 @@ func TestCredentialChangeReportsCacheDeletionFailureAndKeepsTheNewSecretKey(t *t
 		os.Chmod(directory, 0700)
 		os.Chmod(service.config.CachePath, 0600)
 	})
-	result, err := service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey) (*session.CredentialChange, error) {
+	result, err := service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
 		return &session.CredentialChange{SecretKey: newSecretKey, IsCachedAccountStale: true}, nil
 	})
 	if err != nil {
@@ -146,7 +146,7 @@ func TestCommittedCredentialChangeKeepsItsResultWhenStateSaveFails(t *testing.T)
 	if err := os.Mkdir(service.config.StatePath, 0700); err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey) (*session.CredentialChange, error) {
+	result, err := service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
 		return &session.CredentialChange{SecretKey: newSecretKey}, nil
 	})
 	if err != nil || result.LocalError == "" || result.SecretKey != newSecretKey.Encode() {

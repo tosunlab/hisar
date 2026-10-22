@@ -168,6 +168,9 @@ describe("ChecksStep", () => {
 });
 
 describe("SetupView", () => {
+  beforeEach(() => {
+    vi.spyOn(bridge, "listPendingRecovery").mockResolvedValue([]);
+  });
   function answerSetupState(state: string): void {
     vi.stubGlobal(
       "fetch",
@@ -236,5 +239,20 @@ describe("SetupView", () => {
     await flush();
     expect(root.textContent).not.toContain(secretKey);
     expect(emergencyKitPdf.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it("keeps an interrupted setup visible after restart even when server setup is done", async () => {
+    answerSetupState("done");
+    vi.mocked(bridge.listPendingRecovery).mockResolvedValue([{
+      operationId: "pending-1", kind: "signup", origin: "https://hisar.test", accountId: "admin",
+      email: "ada@example.com", name: "Ada", phase: "needs-finishing", revision: 1,
+    }]);
+    const onLeave = vi.fn();
+    mount(SetupView, { onLeave });
+    await flush();
+    expect(root.querySelector('[data-testid="setup-recovery"]')).not.toBeNull();
+    expect(root.textContent).toContain("setup still needs to finish");
+    expect(onLeave).not.toHaveBeenCalled();
+    expect(root.querySelector('input[name="password"]')).toBeNull();
   });
 });

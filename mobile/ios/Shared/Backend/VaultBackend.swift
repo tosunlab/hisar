@@ -99,6 +99,12 @@ protocol VaultBackend: AnyObject {
     func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult
     func previewAccountDeletion() throws -> AccountDeletionPreview
     func deleteAccountWithPlan(password: String, email: String, planVersion: String) throws -> VaultStatus
+    func listPendingRecovery() throws -> [PendingRecovery]
+    func resumePendingRecovery(operationID: String, password: String) throws -> SignUpResult
+    func resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String) throws -> SignUpResult
+    func discardPreparedRecovery(operationID: String, password: String) throws
+    func exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: URL) throws -> PendingRecoveryExport
+    func acknowledgePendingRecovery(operationID: String, password: String) throws
     func dismissSignedOutReason() -> VaultStatus
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String
     func isMacApprovalAllowed() -> Bool

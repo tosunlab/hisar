@@ -7,6 +7,8 @@ import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.Base64URL
 import com.tryhisar.hisar.model.CardDescription
 import com.tryhisar.hisar.model.CredentialChangeResult
+import com.tryhisar.hisar.model.PendingRecovery
+import com.tryhisar.hisar.model.PendingRecoveryExport
 import com.tryhisar.hisar.model.Device
 import com.tryhisar.hisar.model.EmergencyKitExport
 import com.tryhisar.hisar.model.ExportFormat
@@ -423,6 +425,22 @@ class HisarKitBackend(
 
     override fun deleteAccountWithPlan(password: String, email: String, planVersion: String): VaultStatus =
         decode(VaultStatus.serializer(), call { deleteAccountWithPlan(password, email, planVersion) })
+
+    override fun listPendingRecovery(): List<PendingRecovery> =
+        decodeList(PendingRecovery.serializer(), call { listPendingRecovery() })
+
+    override fun resumePendingRecovery(operationID: String, password: String): SignUpResult =
+        decode(SignUpResult.serializer(), call { resumePendingRecovery(operationID, password) })
+
+    override fun resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String): SignUpResult =
+        decode(SignUpResult.serializer(), call { resumePendingRecoveryWithSecretKey(operationID, password, secretKey, priorSecretKey) })
+
+    override fun discardPreparedRecovery(operationID: String, password: String) = call { discardPreparedRecovery(operationID, password) }
+
+    override fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport =
+        decode(PendingRecoveryExport.serializer(), call { exportPendingRecoveryEmergencyKit(operationID, password, directory.path) })
+
+    override fun acknowledgePendingRecovery(operationID: String, password: String) = call { acknowledgePendingRecovery(operationID, password) }
 
     override fun dismissSignedOutReason(): VaultStatus = readStatus(call { dismissSignedOutReason() })
 

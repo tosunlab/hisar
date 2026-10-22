@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -172,11 +173,23 @@ func startRegisteringServer(t *testing.T, refuseVault bool) string {
 	mux.HandleFunc("GET /api/v1/account", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, account)
 	})
+	var vaultsMutex sync.Mutex
+	vaults := []apitypes.Vault{}
+	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+		vaultsMutex.Lock()
+		defer vaultsMutex.Unlock()
+		writeJSON(writer, http.StatusOK, vaults)
+	})
 	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
 		if refuseVault {
 			writeJSON(writer, http.StatusInternalServerError, apitypes.Error{Error: "database unavailable"})
 			return
 		}
+		var createRequest apitypes.CreateVaultRequest
+		json.NewDecoder(request.Body).Decode(&createRequest)
+		vaultsMutex.Lock()
+		defer vaultsMutex.Unlock()
+		vaults = append(vaults, apitypes.Vault{ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey, KeyGeneration: 1})
 		writer.WriteHeader(http.StatusCreated)
 	})
 	server := httptest.NewServer(mux)
@@ -192,7 +205,7 @@ func (failingSecretKeyStore) StoreSecretKey(crypt.SecretKey) error {
 	return errors.New("keychain locked")
 }
 
-func TestSignUpReportsFinishingFailuresAndShowsTheKeyWhenTheKeychainFails(t *testing.T) {
+func TestSignUpReturnsVisiblePendingSetupWithoutSecretBearingErrors(t *testing.T) {
 	for _, failure := range []string{"Personal vault", "state save", "keychain"} {
 		t.Run(failure, func(t *testing.T) {
 			serverURL := startRegisteringServer(t, failure == "Personal vault")
@@ -203,25 +216,31 @@ func TestSignUpReportsFinishingFailuresAndShowsTheKeyWhenTheKeychainFails(t *tes
 			statePath := filepath.Join(t.TempDir(), "desktop.json")
 			service, _, _ := createTestService(t, statePath, store)
 			service.config.IsEventStreamDisabled = true
+			service.config.CachePath = ""
 			if failure == "state save" {
 				if err := os.Mkdir(statePath, 0700); err != nil {
 					t.Fatal(err)
 				}
 			}
 			result, err := service.SignUp(serverURL+"/invite/token", "new@example.com", "New", "a new master password")
-			if err == nil {
-				t.Fatal("incomplete account setup reported success")
+			if err != nil {
+				t.Fatalf("the bridge would discard a committed recovery outcome: %v", err)
 			}
-			if !strings.HasPrefix(result.SecretKey, "H1-") {
-				t.Fatal("the structured result lost the generated key")
+			if !strings.HasPrefix(result.SecretKey, "H1-") || result.PendingOperationID == "" || len(result.Problems) == 0 {
+				t.Fatalf("incomplete setup lost its visible recovery identity: %+v", result)
 			}
-			if failure == "keychain" {
-				// App bridges discard the result on error, leaving only this message visible.
-				if !strings.Contains(err.Error(), "write it down: "+result.SecretKey) {
-					t.Fatal("the app's error message lost the only visible Secret Key")
+			if result.SetupState != "needs-finishing" && result.SetupState != "delivery-pending" {
+				t.Fatalf("wrong partial setup phase: %+v", result)
+			}
+			if failure == "state save" {
+				if err := os.Remove(statePath); err != nil {
+					t.Fatal(err)
 				}
-			} else if strings.Contains(err.Error(), "H1-") {
-				t.Fatal("a non-keychain finishing error disclosed the Secret Key")
+			}
+			restarted, _, _ := createTestService(t, statePath, store)
+			entries, err := restarted.ListPendingRecovery()
+			if err != nil || len(entries) != 1 || entries[0].OperationID != result.PendingOperationID {
+				t.Fatalf("pending recovery did not survive restart: %+v %v", entries, err)
 			}
 		})
 	}

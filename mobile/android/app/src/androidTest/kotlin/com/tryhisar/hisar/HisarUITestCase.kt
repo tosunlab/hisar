@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
@@ -13,6 +14,7 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
@@ -76,6 +78,13 @@ abstract class HisarUITestCase {
 
     fun tap(tag: String) {
         scrollTo(tag)
+        composeRule.onNode(hasTestTag(tag)).performClick()
+    }
+
+    /** Waits until [tag] is enabled, then taps it: a disabled button ignores the tap, while a user would wait for it. */
+    fun tapWhenEnabled(tag: String) {
+        scrollTo(tag)
+        waitFor(hasTestTag(tag) and isEnabled(), ACCOUNT_KEY_TIMEOUT)
         composeRule.onNode(hasTestTag(tag)).performClick()
     }
 
@@ -170,10 +179,7 @@ abstract class HisarUITestCase {
         scrollTo("create-account-note")
         saveScreenshot("create-account")
         tap("sign-in-submit")
-        waitFor("new-secret-key", ACCOUNT_KEY_TIMEOUT)
-        val secretKey = readText("new-secret-key")
-        saveScreenshot("new-secret-key")
-        tap("new-secret-key-done")
+        val secretKey = finishPendingRecovery(email, MASTER_PASSWORD)
         if (isBiometricOfferExpected) {
             waitFor("biometric-offer-not-now", 10_000)
             return secretKey
@@ -185,6 +191,37 @@ abstract class HisarUITestCase {
             waitForGone("biometric-offer-not-now")
         }
         waitFor("vault-Personal")
+        return secretKey
+    }
+
+    fun finishPendingRecovery(email: String, password: String): String {
+        val record = SemanticsMatcher("a pending recovery record") { node ->
+            node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("pending-recovery-") == true
+        }
+        val account = record and hasText(email, substring = true) and !hasText("manual-unlock", substring = true)
+        waitFor(account, ACCOUNT_KEY_TIMEOUT)
+        composeRule.onAllNodes(account).onLast().performClick()
+        val isPrecommit = readText("pending-recovery-phase") == "awaiting-kit"
+        type(password, "pending-recovery-password")
+        tapWhenEnabled("pending-recovery-export")
+        waitFor("pending-recovery-secret-key", ACCOUNT_KEY_TIMEOUT)
+        val secretKey = readText("pending-recovery-secret-key")
+        saveScreenshot("pending-recovery-kit")
+        type(password, "pending-recovery-password")
+        tapWhenEnabled("pending-recovery-acknowledge")
+        if (isPrecommit) {
+            waitFor(hasTestTag("pending-recovery-phase") and hasText("prepared"), ACCOUNT_KEY_TIMEOUT)
+            type(secretKey, "pending-recovery-input-secret-key")
+            type(password, "pending-recovery-password")
+            tapWhenEnabled("pending-recovery-resume")
+            waitFor(hasTestTag("pending-recovery-phase") and hasText("delivery-pending"), ACCOUNT_KEY_TIMEOUT)
+            type(password, "pending-recovery-password")
+            tapWhenEnabled("pending-recovery-acknowledge")
+        }
+        composeRule.waitUntil("recovery delivery is acknowledged", ACCOUNT_KEY_TIMEOUT) {
+            !exists(hasTestTag("pending-recovery-phase")) || exists(hasTestTag("pending-recovery-phase") and hasText("manual-unlock"))
+        }
+        if (exists(hasTestTag("pending-recovery-phase"))) tap("pending-recovery-later")
         return secretKey
     }
 

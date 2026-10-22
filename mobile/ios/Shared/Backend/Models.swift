@@ -879,6 +879,46 @@ struct CardDescription: Codable, Equatable {
 struct SignUpResult: Codable, Equatable {
     var status: VaultStatus
     var secretKey: String
+    var pendingOperationId: String = ""
+    var setupState: String = ""
+    var problems: [String] = []
+
+    init(status: VaultStatus, secretKey: String, pendingOperationId: String = "", setupState: String = "", problems: [String] = []) {
+        self.status = status
+        self.secretKey = secretKey
+        self.pendingOperationId = pendingOperationId
+        self.setupState = setupState
+        self.problems = problems
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        status = try values.decode(VaultStatus.self, forKey: .status)
+        secretKey = try values.decodeIfPresent(String.self, forKey: .secretKey) ?? ""
+        pendingOperationId = try values.decodeIfPresent(String.self, forKey: .pendingOperationId) ?? ""
+        setupState = try values.decodeIfPresent(String.self, forKey: .setupState) ?? ""
+        problems = try values.decodeIfPresent([String].self, forKey: .problems) ?? []
+    }
+}
+
+struct PendingRecovery: Codable, Equatable, Identifiable {
+    var operationId: String
+    var kind: String
+    var origin: String
+    var accountId: String
+    var email: String
+    var name: String
+    var phase: String
+    var kitSaved: Bool
+    var problems: [String]
+    var manualUnlock: Bool = false
+    var keychainProtected: Bool = false
+    var id: String { operationId }
+}
+
+struct PendingRecoveryExport: Codable, Equatable {
+    var secretKey: String
+    var path: String
 }
 
 struct LoginMatch: Codable, Hashable, Identifiable {
@@ -1699,14 +1739,20 @@ struct CredentialChangeResult: Codable, Equatable {
     var keychainError: String
     var localError: String
     var emergencyKitPath: String
+    var pendingOperationId: String = ""
+    var setupState: String = ""
+    var problems: [String] = []
 
-    init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", localError: String = "", emergencyKitPath: String = "") {
+    init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", localError: String = "", emergencyKitPath: String = "", pendingOperationId: String = "", setupState: String = "", problems: [String] = []) {
         self.status = status
         self.secretKey = secretKey
         self.signedOutDeviceCount = signedOutDeviceCount
         self.keychainError = keychainError
         self.localError = localError
         self.emergencyKitPath = emergencyKitPath
+        self.pendingOperationId = pendingOperationId
+        self.setupState = setupState
+        self.problems = problems
     }
 
     init(from decoder: Decoder) throws {
@@ -1717,6 +1763,9 @@ struct CredentialChangeResult: Codable, Equatable {
         keychainError = try container.decodeIfPresent(String.self, forKey: .keychainError) ?? ""
         localError = try container.decodeIfPresent(String.self, forKey: .localError) ?? ""
         emergencyKitPath = try container.decodeIfPresent(String.self, forKey: .emergencyKitPath) ?? ""
+        pendingOperationId = try container.decodeIfPresent(String.self, forKey: .pendingOperationId) ?? ""
+        setupState = try container.decodeIfPresent(String.self, forKey: .setupState) ?? ""
+        problems = try container.decodeIfPresent([String].self, forKey: .problems) ?? []
     }
 }
 

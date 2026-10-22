@@ -410,8 +410,11 @@ type OneTimeCode struct {
 }
 
 type SignUpResult struct {
-	Status    Status `json:"status"`
-	SecretKey string `json:"secretKey"`
+	Status             Status   `json:"status"`
+	SecretKey          string   `json:"secretKey"`
+	PendingOperationID string   `json:"pendingOperationId"`
+	SetupState         string   `json:"setupState"`
+	Problems           []string `json:"problems"`
 }
 
 type PasswordConfig struct {

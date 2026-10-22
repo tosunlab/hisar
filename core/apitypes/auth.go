@@ -4,6 +4,9 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 )
 
+// RegistrationNotCommittedMessage certifies a refused finish whose account does not exist.
+const RegistrationNotCommittedMessage = "This registration was refused. No account was created for this operation. Use a new valid invitation."
+
 type PreloginResponse struct {
 	Salt   []byte             `json:"salt"`
 	Argon2 crypt.Argon2Params `json:"argon2"`

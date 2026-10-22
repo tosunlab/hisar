@@ -83,6 +83,8 @@ interface ModelContext {
 
     suspend fun refreshAll()
 
+    suspend fun refreshPendingRecovery()
+
     /** Shows a floating confirmation for 2.5 seconds. */
     fun showNotice(message: String)
 

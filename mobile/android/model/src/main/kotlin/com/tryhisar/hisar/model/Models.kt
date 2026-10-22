@@ -661,7 +661,31 @@ data class CardDescription(
 )
 
 @Serializable
-data class SignUpResult(val status: VaultStatus, val secretKey: String)
+data class SignUpResult(
+    val status: VaultStatus,
+    val secretKey: String = "",
+    val pendingOperationId: String = "",
+    val setupState: String = "",
+    val problems: List<String> = emptyList(),
+)
+
+@Serializable
+data class PendingRecovery(
+    val operationId: String,
+    val kind: String,
+    val origin: String,
+    val accountId: String,
+    val email: String,
+    val name: String,
+    val phase: String,
+    val kitSaved: Boolean = false,
+    val problems: List<String> = emptyList(),
+    val manualUnlock: Boolean = false,
+    val keychainProtected: Boolean = false,
+)
+
+@Serializable
+data class PendingRecoveryExport(val secretKey: String, val path: String)
 
 @Serializable
 data class LoginMatch(
@@ -1070,6 +1094,9 @@ data class CredentialChangeResult(
     val keychainError: String = "",
     val localError: String = "",
     val emergencyKitPath: String = "",
+    val pendingOperationId: String = "",
+    val setupState: String = "",
+    val problems: List<String> = emptyList(),
 )
 
 @Serializable

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -13,7 +14,7 @@ import (
 	"github.com/tryhisar/hisar/core/pake"
 )
 
-func TestInterruptedSignUpReturnsRecoveryKeyInVisibleError(t *testing.T) {
+func TestInterruptedSignUpReturnsDurableVisibleRecoveryWithoutReinstallingTheAccount(t *testing.T) {
 	configuration := pake.NewConfig()
 	privateKey, publicKey := configuration.KeyGen()
 	opaqueServer, err := configuration.Server()
@@ -70,7 +71,8 @@ func TestInterruptedSignUpReturnsRecoveryKeyInVisibleError(t *testing.T) {
 	server := httptest.NewServer(mux)
 	t.Cleanup(server.Close)
 	store := createMemorySecretKeyStore()
-	hisar, err := New(t.TempDir(), "Phone", store, nil, nil, nil)
+	directory := t.TempDir()
+	hisar, err := New(directory, "Phone", store, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -87,21 +89,41 @@ func TestInterruptedSignUpReturnsRecoveryKeyInVisibleError(t *testing.T) {
 	hisar.Lock()
 	close(resume)
 	finished := <-done
-	if finished.err == nil || finished.result != "" {
-		t.Fatal("interrupted mobile registration did not return only an error")
+	if finished.err != nil || finished.result == "" {
+		t.Fatalf("the mobile bridge discarded the pending recovery outcome: %v", finished.err)
 	}
-	key, err := store.LoadSecretKey(accountID)
+	result := decodeJSON[struct {
+		PendingOperationID string   `json:"pendingOperationId"`
+		SetupState         string   `json:"setupState"`
+		Problems           []string `json:"problems"`
+	}](t)(finished.result, nil)
+	if result.PendingOperationID == "" || result.SetupState != "needs-finishing" || len(result.Problems) == 0 {
+		t.Fatalf("interrupted setup was not visible: %+v", result)
+	}
+	if _, err := store.LoadSecretKey(accountID); err == nil {
+		t.Fatal("late signup promoted an active account factor after lock")
+	}
+	restarted, err := New(directory, "Phone", store, nil, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := crypt.ParseSecretKey(key); err != nil {
-		t.Fatal(err)
+	entries := decodeJSON[[]struct {
+		OperationID string `json:"operationId"`
+	}](t)(restarted.ListPendingRecovery())
+	if len(entries) != 1 || entries[0].OperationID != result.PendingOperationID {
+		t.Fatalf("pending recovery was lost across restart: %+v", entries)
 	}
-	if !strings.Contains(finished.err.Error(), key) {
-		t.Error("the phone-visible error omitted the created account's Secret Key")
+	kit := decodeJSON[struct {
+		SecretKey string `json:"secretKey"`
+		Path      string `json:"path"`
+	}](t)(restarted.ExportPendingRecoveryEmergencyKit(result.PendingOperationID, "new master password", t.TempDir()))
+	key, err := crypt.ParseSecretKey(kit.SecretKey)
+	if err != nil || key.AccountID != accountID {
+		t.Fatalf("protected delivery returned another account's factor: %v", err)
 	}
-	if strings.Contains(strings.ToLower(finished.err.Error()), "try again") {
-		t.Error("the phone-visible error told the user to retry a completed registration")
+	document, err := os.ReadFile(kit.Path)
+	if err != nil || !strings.HasPrefix(string(document), "%PDF-") {
+		t.Fatalf("the actual Emergency Kit was unavailable: %v", err)
 	}
 	if current := decodeJSON[status](t)(hisar.Status(), nil); current.State != "signed-out" {
 		t.Error("interrupted registration reopened the account")

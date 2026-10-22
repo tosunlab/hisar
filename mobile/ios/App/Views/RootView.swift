@@ -41,9 +41,18 @@ struct RootView: View {
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
+        .safeAreaInset(edge: .top) {
+            if !model.allPendingRecovery.isEmpty {
+                Button("Finish account recovery") { model.isPendingRecoveryShown = true }
+                    .accessibilityIdentifier("pending-recovery-open")
+                    .padding()
+                    .frame(maxWidth: .infinity)
+                    .background(.regularMaterial)
+            }
+        }
         .animation(.easeOut(duration: 0.2), value: model.noticeMessage)
         .sensoryFeedback(.success, trigger: model.copyCount)
-        .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil ? model.presentedApproval : nil }, set: { if $0 == nil { model.closeApprovalSheet() } })) { approval in
+        .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil && !model.isPendingRecoveryShown ? model.presentedApproval : nil }, set: { if $0 == nil { model.closeApprovalSheet() } })) { approval in
             PhoneApprovalSheet(
                 approval: approval,
                 isBusy: model.isAnsweringApproval,
@@ -54,8 +63,15 @@ struct RootView: View {
                 deny: { await model.denyPendingApproval() }
             )
         }
-        .fullScreenCover(isPresented: Binding(get: { model.newSecretKey != nil }, set: { if !$0 { model.dismissNewSecretKey() } })) {
-            if model.isBiometricOfferShown {
+        .fullScreenCover(isPresented: Binding(get: { model.isPendingRecoveryShown || model.newSecretKey != nil }, set: {
+            if !$0 {
+                model.closePendingRecovery()
+                model.dismissNewSecretKey()
+            }
+        })) {
+            if model.isPendingRecoveryShown {
+                PendingRecoveryView()
+            } else if model.isBiometricOfferShown {
                 BiometricOfferView()
             } else {
                 NewSecretKeyView(secretKey: model.newSecretKey ?? "", email: model.status.email, server: model.status.server) {

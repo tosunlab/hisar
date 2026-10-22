@@ -897,7 +897,8 @@ func TestStandaloneOnlyCommandsPointToTheApp(t *testing.T) {
 
 func TestRemovedRecoveryCommandsPointToTheEmergencyKit(t *testing.T) {
 	startFakeApp(t)
-	for _, commandName := range []string{"recover", "recovery-setup", "recovery-enable", "recovery-start", "recovery-list", "recovery-complete"} {
+	removedCommands := []string{"recover", "recovery-setup", "recovery-enable", "recovery-start", "recovery-list", "recovery-complete"}
+	for _, commandName := range removedCommands {
 		for _, isStandaloneForced := range []bool{false, true} {
 			_, _, err := runCapturingOutput(t, isStandaloneForced, "", commandName, "anything")
 			if err == nil || err.Error() != "account recovery was removed; sign in with your Emergency Kit" {
@@ -907,8 +908,16 @@ func TestRemovedRecoveryCommandsPointToTheEmergencyKit(t *testing.T) {
 	}
 	var usage strings.Builder
 	printUsage(&usage)
-	if strings.Contains(usage.String(), "recover") {
-		t.Errorf("usage lists recovery commands:\n%s", usage.String())
+	for _, line := range strings.Split(usage.String(), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		for _, commandName := range removedCommands {
+			if fields[0] == commandName {
+				t.Errorf("usage lists removed recovery command %s", commandName)
+			}
+		}
 	}
 }
 

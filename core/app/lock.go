@@ -123,6 +123,9 @@ func (s *Service) lockWhenIdle() {
 
 func (s *Service) lockSession() {
 	s.forgetNewAccountSecrets()
+	s.recoveryMutex.Lock()
+	clear(s.pendingRecoveryFactors)
+	s.recoveryMutex.Unlock()
 	if s.stopEvents != nil {
 		s.stopEvents()
 		s.stopEvents = nil

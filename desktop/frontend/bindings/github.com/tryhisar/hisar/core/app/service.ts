@@ -28,6 +28,10 @@ export function AcceptShareInvitation(invitationID: string): $CancellablePromise
     return $Call.ByID(3210650703, invitationID);
 }
 
+export function AcknowledgePendingRecovery(operationID: string, password: string): $CancellablePromise<void> {
+    return $Call.ByID(2476632049, operationID, password);
+}
+
 /**
  * AddAndroidApp links a login to an Android app the user chose to always fill it into, named by its package name and
  * the hex SHA-256 of its signing certificate; ListLoginsForAndroidApp then offers the login in that app. Adding a link
@@ -232,6 +236,10 @@ export function DescribeCard($number: string, expiry: string): $CancellablePromi
 
 export function DisableBiometricUnlock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(2785988027);
+}
+
+export function DiscardPreparedRecovery(operationID: string, password: string): $CancellablePromise<void> {
+    return $Call.ByID(537348687, operationID, password);
 }
 
 /**
@@ -441,6 +449,10 @@ export function ListOrganizations(): $CancellablePromise<$models.Organizations> 
     return $Call.ByID(869031763);
 }
 
+export function ListPendingRecovery(): $CancellablePromise<$models.PendingRecoverySummary[] | null> {
+    return $Call.ByID(3579109323);
+}
+
 /**
  * ListPeople returns the user and the people they share a vault with, with the security code of their signing key.
  */
@@ -585,6 +597,14 @@ export function ReportActivity(): $CancellablePromise<void> {
     return $Call.ByID(422149086);
 }
 
+export function ResumePendingRecovery(operationID: string, password: string): $CancellablePromise<$models.SignUpResult> {
+    return $Call.ByID(3335086634, operationID, password);
+}
+
+export function ResumePendingRecoveryWithSecretKey(operationID: string, password: string, secretKey: string, priorSecretKey: string): $CancellablePromise<$models.SignUpResult> {
+    return $Call.ByID(201039221, operationID, password, secretKey, priorSecretKey);
+}
+
 /**
  * RevokeAgentSession ends the session of the harness process (PID and StartTime from ListAgentSessions): its open
  * approval windows close, it forgets its secrets, and its next request asks again. It returns the sessions left.
@@ -623,6 +643,10 @@ export function SaveItem(vaultID: string, detail: $models.ItemDetail): $Cancella
  */
 export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
     return $Call.ByID(3118509742);
+}
+
+export function SavePendingRecoveryEmergencyKit(operationID: string, password: string): $CancellablePromise<string> {
+    return $Call.ByID(3209141355, operationID, password);
 }
 
 /**

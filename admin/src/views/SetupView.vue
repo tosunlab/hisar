@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { auth, getErrorMessage } from "../api";
-import type { SignUpResult } from "../bridge/bridge";
+import { bridge, type RecoveryMetadata, type SignUpResult } from "../bridge/bridge";
 import AccountStep from "./setup/AccountStep.vue";
 import ChecksStep from "./setup/ChecksStep.vue";
 import EmergencyKitStep from "./setup/EmergencyKitStep.vue";
 import InvitePolicyStep from "./setup/InvitePolicyStep.vue";
+import RecoveryStep from "./setup/RecoveryStep.vue";
 import { findStep, getSetup, invalidSetupLinkMessage, setupSteps, type SetupStep } from "./setup/setup";
 import SignInView from "./SignInView.vue";
 
@@ -25,12 +26,18 @@ const inviteToken = ref(readInviteToken());
 const step = ref<SetupStep | null>(null);
 const signUpResult = ref<SignUpResult | null>(null);
 const loadError = ref("");
+const pendingRecovery = ref<RecoveryMetadata[]>([]);
 const stepNumber = computed(() => setupSteps.findIndex((setupStep) => setupStep.step === step.value) + 1);
 
 onMounted(async () => {
   window.addEventListener("hashchange", updateInviteToken);
   try {
+    await loadPendingRecovery();
     const firstStep = findStep((await getSetup()).state);
+    if (pendingRecovery.value.length > 0) {
+      step.value = firstStep ?? "checks";
+      return;
+    }
     if (firstStep === null) {
       emit("leave");
       return;
@@ -41,11 +48,38 @@ onMounted(async () => {
   }
 });
 
-onUnmounted(() => window.removeEventListener("hashchange", updateInviteToken));
+onUnmounted(() => {
+  window.removeEventListener("hashchange", updateInviteToken);
+  signUpResult.value?.emergencyKitPdf?.fill(0);
+  signUpResult.value = null;
+});
 
-function showEmergencyKit(result: SignUpResult): void {
-  window.history.replaceState(null, "", "/admin/setup");
+
+async function loadPendingRecovery(): Promise<void> {
+  pendingRecovery.value = await bridge.listPendingRecovery();
+}
+
+async function finishRecovery(): Promise<void> {
+  try {
+    await loadPendingRecovery();
+    if (pendingRecovery.value.length === 0) {
+      signUpResult.value?.emergencyKitPdf?.fill(0);
+      signUpResult.value = null;
+      const next = findStep((await getSetup()).state);
+      if (next === null) emit("leave");
+      else step.value = next;
+    }
+  } catch (error) {
+    loadError.value = getErrorMessage(error);
+  }
+}
+async function showEmergencyKit(result: SignUpResult): Promise<void> {
   signUpResult.value = result;
+  window.history.replaceState(null, "", "/admin/setup");
+  if (result.pendingOperationId) {
+    await loadPendingRecovery();
+    return;
+  }
   step.value = "emergencyKit";
 }
 
@@ -59,12 +93,13 @@ function leaveEmergencyKit(): void {
 </script>
 
 <template>
-  <SignInView v-if="(step === 'checks' || step === 'invitePolicy') && !auth.session" />
+  <SignInView v-if="pendingRecovery.length === 0 && (step === 'checks' || step === 'invitePolicy') && !auth.session" />
   <main v-else class="setup">
     <div class="setup-card">
       <p class="product">Hisar · Set up the server</p>
       <p v-if="stepNumber > 0" class="step-number">Step {{ stepNumber }} of {{ setupSteps.length }}</p>
       <p v-if="loadError" class="error" role="alert">{{ loadError }}</p>
+      <RecoveryStep v-if="pendingRecovery.length > 0" :operations="pendingRecovery" :initial-result="signUpResult" @refresh="loadPendingRecovery" @acknowledged="finishRecovery" />
       <p v-else-if="!step" class="hint">Loading…</p>
       <p v-else-if="step === 'account' && !inviteToken" class="error" role="alert">{{ invalidSetupLinkMessage }}</p>
       <AccountStep v-else-if="step === 'account'" :invite-token="inviteToken" @signed-up="showEmergencyKit" />

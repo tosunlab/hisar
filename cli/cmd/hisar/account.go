@@ -10,11 +10,10 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/emergencykit"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -46,8 +45,10 @@ func runAccount(ctx context.Context, flags *flag.FlagSet, args []string) error {
 		return runReplaceSecretKey(ctx, flags, args)
 	case accountDelete:
 		return runDeleteAccount(ctx, flags, args)
+	case "pending":
+		return runPendingRecovery(ctx, flags, args)
 	}
-	return fmt.Errorf("unknown account action %q; use change-password, replace-secret-key or delete", action)
+	return fmt.Errorf("unknown account action %q; use change-password, replace-secret-key, delete or pending", action)
 }
 
 func convertAccountError(err error) error {
@@ -208,7 +209,7 @@ func runReplaceSecretKey(ctx context.Context, flags *flag.FlagSet, args []string
 	fmt.Fprintln(standardError(), `Replacing your Secret Key makes your current Secret Key and Emergency Kit stop working.
 Your other devices are signed out: they need the new Secret Key from the new Emergency Kit to sign in again.
 Your master password stays the same, and so do your vaults and items.`)
-	currentState, unlockedSession, secretKey, password, err := unlockForAccountChange(ctx)
+	currentState, unlockedSession, priorKey, password, err := unlockForAccountChange(ctx)
 	if err != nil {
 		return err
 	}
@@ -217,37 +218,54 @@ Your master password stays the same, and so do your vaults and items.`)
 		if err := confirmUnlessYes(*isYes, "Replace your Secret Key and sign out your other devices?"); err != nil {
 			return err
 		}
-		credentialChange, err := unlockedSession.ReplaceSecretKey(ctx, password, secretKey)
+		service, err := newRecoveryService(*outputPath)
 		if err != nil {
-			return convertAccountError(err)
+			return err
 		}
-		clear(credentialChange.AccountUnlockKey)
-		newSecretKey := credentialChange.SecretKey.Encode()
-		if err := localstate.StoreSecretKey(credentialChange.SecretKey); err != nil {
-			fmt.Fprintf(standardError(), "warning: could not save the new Secret Key to the keychain: %v\n", err)
+		app.OpenUnlockedSession(service, currentState.Server, currentState.Token, unlockedSession)
+		result, err := service.ReplaceSecretKey(string(password))
+		if err != nil {
+			return err
 		}
-		fmt.Fprintf(standardError(), `
-Replaced your Secret Key. %s This is your new Secret Key:
-
-    %s
-
-`, describeSignedOutDevice(credentialChange.SignedOutDeviceCount), newSecretKey)
+		printPendingRecovery(result.PendingOperationID, result.SetupState, result.Problems)
+		if result.SecretKey == "" {
+			return errors.New("the remote outcome is pending; use the recovery operation above instead of replacing the key again")
+		}
+		path, err := service.SavePendingRecoveryEmergencyKit(result.PendingOperationID, string(password))
+		if err != nil {
+			return fmt.Errorf("the recovery record is safe, but saving the new Emergency Kit failed: %w", err)
+		}
+		fmt.Fprintf(standardError(), "Saved your new Emergency Kit to %s. Keep it safe, then acknowledge delivery with `hisar account pending acknowledge %s`.\n", path, result.PendingOperationID)
+		phase := result.SetupState
+		if phase == "awaiting-kit" {
+			if err := confirmUnlessYes(*isYes, "Is the new Emergency Kit safely saved before replacing the old Secret Key?"); err != nil {
+				return err
+			}
+			if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
+				return err
+			}
+			resumed, err := service.ResumePendingRecoveryWithSecretKey(result.PendingOperationID, string(password), result.SecretKey, priorKey.Encode())
+			if err != nil {
+				return err
+			}
+			phase = resumed.SetupState
+			printPendingRecovery(resumed.PendingOperationID, resumed.SetupState, resumed.Problems)
+		} else if err := confirmUnlessYes(*isYes, "Have you saved the new Emergency Kit somewhere safe?"); err != nil {
+			return err
+		}
+		if phase != "delivery-pending" {
+			return errors.New("credential setup still needs finishing; keep both Emergency Kits and resume the recovery operation")
+		}
+		if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
+			return err
+		}
 		if os.Getenv(localstate.SecretKeyEnvironmentVariable) != "" {
-			fmt.Fprintln(standardError(), "HISAR_SECRET_KEY still holds the old Secret Key; set it to the new one.")
+			fmt.Fprintln(standardError(), "HISAR_SECRET_KEY still holds the old Secret Key; use the new Emergency Kit to replace it.")
 		}
-		document, err := emergencykit.Generate(emergencykit.Kit{
-			Name: unlockedSession.Name, Email: currentState.Email, Server: currentState.Server, SecretKey: newSecretKey, CreatedAt: time.Now(),
-		})
-		if err != nil {
-			return fmt.Errorf("could not create the new Emergency Kit (%v); write down the Secret Key above", err)
-		}
-		if err := writeNewPrivateFile(*outputPath, document); err != nil {
-			return fmt.Errorf("could not save the new Emergency Kit (%v); write down the Secret Key above", err)
-		}
-		fmt.Fprintf(standardError(), "Saved your new Emergency Kit to %s. Print it, then delete the file and your old kit.\n", *outputPath)
 		return nil
 	}()
-	return finishSession(currentState, unlockedSession, err)
+	unlockedSession.Lock()
+	return err
 }
 
 func printAccountDeletionPreview(output io.Writer, preview *session.AccountDeletionPreview) {

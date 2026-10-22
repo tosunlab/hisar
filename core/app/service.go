@@ -34,6 +34,8 @@ type serviceState struct {
 	unlockedSession *session.Session
 	// sessionEpoch advances on session end and explicit lock intent, even while already locked.
 	sessionEpoch                 uint64
+	recoveryMutex                sync.Mutex
+	pendingRecoveryFactors       map[string]session.PendingFactor
 	vaultsByID                   map[string]*session.Vault
 	itemsByVaultID               map[string][]item.Item
 	favorites                    *session.Preferences
