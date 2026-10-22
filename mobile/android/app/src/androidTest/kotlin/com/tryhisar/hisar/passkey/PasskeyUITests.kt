@@ -55,7 +55,7 @@ class PasskeyUITests : HisarUITestCase() {
     fun testRegisterPasskeyThenSignInWithIt() {
         launch()
         signUp(readArgument("HISAR_UI_TEST_PASSKEY_INVITE_LINK"), readArgument("HISAR_UI_TEST_PASSKEY_EMAIL"), "Android Passkey")
-        addLogin(title = "Example", username = "passkey-user", password = "passkey-password-1", website = "login.example.com")
+        addLogin(title = "Example", username = "app-user", password = "passkey-password-1", website = "login.example.com")
         val shared = testBackend.createVault("Family")
         val sharedLogin = testBackend.saveItem(
             shared.id,
@@ -74,8 +74,9 @@ class PasskeyUITests : HisarUITestCase() {
             type(MASTER_PASSWORD, "unlock-password")
             tap("unlock-submit")
             waitFor("autofill-save-passkey")
-            assertTrue("a matching shared login does not change the default", device.findObject(By.res("autofill-passkey-new-login")).isSelected)
-            assertFalse("shared save requires selection", device.findObject(By.res("autofill-passkey-login-AAA shared")).isSelected)
+            assertTrue("a shared login with the requested username does not become the default", isChoiceSelected("autofill-passkey-new-login"))
+            assertFalse("shared save requires selection", isChoiceSelected("autofill-passkey-login-AAA shared"))
+            assertFalse("a Personal login for another user is not the default", isChoiceSelected("autofill-passkey-login-Example"))
             saveScreenshot("passkey-save")
             tap("autofill-save-passkey")
         }
@@ -126,9 +127,9 @@ class PasskeyUITests : HisarUITestCase() {
         val example = testBackend.listAllItem(personal.id).single { it.title == "Example" }
         testBackend.addAndroidApp(personal.id, example.id, callerApp.packageName, callerApp.certificateSHA256)
         val password = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
-            answerSheet("password-sheet", "passkey-user") { device.hasObject(callerOutcome) }
+            answerSheet("password-sheet", "app-user") { device.hasObject(callerOutcome) }
         }
-        assertEquals("the login linked to the app, not the passkey's new login", "password passkey-user passkey-password-1", password)
+        assertEquals("the login linked to the app, not the passkey's new login", "password app-user passkey-password-1", password)
 
         application.statementByRelyingParty[RELYING_PARTY_ID] = buildStatement(AndroidApp("com.example.other", callerApp.certificateSHA256))
         val refused = callCredentialManager(
@@ -237,6 +238,9 @@ class PasskeyUITests : HisarUITestCase() {
         check(waitUntil(30_000) { device.hasObject(prompt) }) { "no device owner prompt; ${dumpWindow(name)}" }
         fingerprints.touch(prompt = prompt)
     }
+
+    // Compose's selected state does not reach UiAutomator's isSelected; ChoiceRow marks the chosen row with a check icon.
+    private fun isChoiceSelected(testTag: String) = device.findObject(By.res(testTag)).hasObject(By.desc("Selected"))
 
     private fun checkSignedIn(outcome: String, publicKey: PublicKey) {
         assertTrue(outcome, outcome.startsWith("signed-in "))
