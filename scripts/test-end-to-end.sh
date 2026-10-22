@@ -376,10 +376,11 @@ expect "the personal vault can't be deleted" "$(printf '%s\n' "$PW" | A vault de
 expect "an owner renames a vault" "$(printf '%s\n' "$PW" | A vault rename Imports "Old imports" 2>&1)" 'Renamed "Imports" to "Old imports"'
 expect "a vault with items needs a choice in a script" "$(printf '%s\n' "$PW" | A vault delete "Old imports" -y 2>&1 || true)" "pass --move-to <vault>"
 printf '%s\n' "$PW" | A vault create Archive 2>/dev/null
-expect "deleting a vault moves its items" "$(printf '%s\n' "$PW" | A vault delete "Old imports" --move-to Archive -y 2>&1)" "Moved 3 items to Archive and deleted Old imports."
-MOVED_COUNT=$(printf '%s\n' "$PW" | A ls -v Archive 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
-[[ "$MOVED_COUNT" == 3 ]] || fail "Archive has $MOVED_COUNT items after the move"
-expect "moved items decrypt in the target vault" "$(printf '%s\n' "$PW" | A get "Imported Mail" -v Archive -f notes 2>/dev/null)" $'First line\nSecond line'
+ARCHIVE_ID=$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/^Archive/{print $4}')
+expect "deleting a vault moves its items" "$(printf '%s\n' "$PW" | A vault delete "Old imports" --move-to Archive -y 2>&1)" "Moved 3 items to Archive [$ARCHIVE_ID] (type shared, role owner) and deleted Old imports."
+MOVED_COUNT=$(printf '%s\n' "$PW" | A ls -v "$ARCHIVE_ID" 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+[[ "$MOVED_COUNT" == 3 ]] || fail "vault $ARCHIVE_ID has $MOVED_COUNT items after the move"
+expect "moved items decrypt in the target vault" "$(printf '%s\n' "$PW" | A get "Imported Mail" -v "$ARCHIVE_ID" -f notes 2>/dev/null)" $'First line\nSecond line'
 printf '%s\n' "$PW" | A vault create Scratch 2>/dev/null
 expect "an empty vault is deleted" "$(printf '%s\n' "$PW" | A vault delete Scratch -y 2>&1)" "Deleted Scratch."
 
