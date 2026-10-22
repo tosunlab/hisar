@@ -97,14 +97,20 @@ func (s *Store) ReplaceInvite(ctx context.Context, oldTokenHash, newTokenHash []
 		if err := requireInviteAdmin(ctx, transaction, actor, role); err != nil {
 			return err
 		}
+		if err := lockInviteSource(ctx, transaction, oldTokenHash); err != nil {
+			return err
+		}
 		var email string
-		err := transaction.QueryRow(ctx, `DELETE FROM invites WHERE token_hash = $1 AND used_at IS NULL AND email <> '' RETURNING email, role`,
-			oldTokenHash).Scan(&email, &role)
+		var shareSource, organizationSource *string
+		err := transaction.QueryRow(ctx, `DELETE FROM invites WHERE token_hash = $1 AND used_at IS NULL AND email <> ''
+			RETURNING email, role, share_invitation_id::text, organization_invitation_id::text`,
+			oldTokenHash).Scan(&email, &role, &shareSource, &organizationSource)
 		if err != nil {
 			return convertNoRowsToNotFound(err)
 		}
-		_, err = transaction.Exec(ctx, `INSERT INTO invites (token_hash, email, role, created_by, expires_at) VALUES ($1, $2, $3, $4, $5)`,
-			newTokenHash, email, role, actor.AccountID, expiresAt)
+		_, err = transaction.Exec(ctx, `INSERT INTO invites (token_hash, email, role, created_by, expires_at, share_invitation_id, organization_invitation_id)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+			newTokenHash, email, role, actor.AccountID, expiresAt, shareSource, organizationSource)
 		if err != nil {
 			return err
 		}
@@ -126,4 +132,21 @@ func requireInviteAdmin(ctx context.Context, transaction pgx.Tx, actor AdminActo
 		}
 	}
 	return requireActiveAdmin(ctx, transaction, actor.AccountID)
+}
+
+// Source deletion locks its row before invalidating tokens. Keep the same order in redemption and resend.
+func lockInviteSource(ctx context.Context, transaction pgx.Tx, tokenHash []byte) error {
+	var shareSource, organizationSource *string
+	if err := transaction.QueryRow(ctx, `SELECT share_invitation_id::text, organization_invitation_id::text FROM invites WHERE token_hash = $1`,
+		tokenHash).Scan(&shareSource, &organizationSource); err != nil {
+		return convertNoRowsToNotFound(err)
+	}
+	var id string
+	if shareSource != nil {
+		return convertNoRowsToNotFound(transaction.QueryRow(ctx, `SELECT id::text FROM share_invitations WHERE id = $1 FOR SHARE`, *shareSource).Scan(&id))
+	}
+	if organizationSource != nil {
+		return convertNoRowsToNotFound(transaction.QueryRow(ctx, `SELECT id::text FROM organization_invitations WHERE id = $1 FOR SHARE`, *organizationSource).Scan(&id))
+	}
+	return nil
 }

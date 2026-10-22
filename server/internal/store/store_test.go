@@ -165,6 +165,17 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s missing", indexName)
 		}
 	}
+	rollbackTestMigrationsTo(t, database, 13)
+	if countColumn(t, database, "invites", "share_invitation_id") != 1 || countColumn(t, database, "invites", "organization_invitation_id") != 1 {
+		t.Fatal("invitation source migration is missing")
+	}
+	sourceRollback, err := database.RollbackMigration(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if countColumn(t, database, "invites", "share_invitation_id") != 0 || countColumn(t, database, "invites", "organization_invitation_id") != 0 {
+		t.Errorf("rolling back %s left invitation provenance", sourceRollback.Source.Path)
+	}
 	if countColumn(t, database, "share_invitations", "intent") != 1 || countTable(t, database, "retired_share_invitations") != 1 {
 		t.Fatal("signed invitation migration is missing")
 	}

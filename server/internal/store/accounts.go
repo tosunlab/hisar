@@ -160,6 +160,9 @@ func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Acc
 				return err
 			}
 		}
+		if err := lockInviteSource(ctx, transaction, tokenHash); err != nil {
+			return err
+		}
 		var email, role string
 		err := transaction.QueryRow(ctx,
 			`SELECT i.email, i.role FROM invites i WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.expires_at > now()
@@ -325,18 +328,43 @@ func (s *Store) PruneAudit(ctx context.Context, maxAge time.Duration) (int64, er
 func (s *Store) PruneExpiredInvitation(ctx context.Context, maxAge time.Duration) (int64, error) {
 	var prunedCount int64
 	err := pgx.BeginFunc(ctx, s.pool, func(transaction pgx.Tx) error {
-		for _, query := range []string{
-			`DELETE FROM invites WHERE expires_at < now() - $1::interval`,
-			`DELETE FROM share_invitations WHERE state = 'pending' AND expires_at < now() - $1::interval`,
-			`DELETE FROM organization_invitations WHERE expires_at < now() - $1::interval`,
-		} {
-			commandTag, err := transaction.Exec(ctx, query, maxAge)
+		sources := [...]struct {
+			lockQuery   string
+			deleteQuery string
+			ids         []string
+		}{
+			{
+				lockQuery:   `SELECT id::text FROM organization_invitations WHERE expires_at < now() - $1::interval ORDER BY id FOR UPDATE`,
+				deleteQuery: `DELETE FROM organization_invitations WHERE id = ANY($1::uuid[])`,
+			},
+			{
+				lockQuery:   `SELECT id::text FROM share_invitations WHERE state = 'pending' AND expires_at < now() - $1::interval ORDER BY id FOR UPDATE`,
+				deleteQuery: `DELETE FROM share_invitations WHERE id = ANY($1::uuid[])`,
+			},
+		}
+		for index := range sources {
+			rows, err := transaction.Query(ctx, sources[index].lockQuery, maxAge)
+			if err != nil {
+				return err
+			}
+			sources[index].ids, err = pgx.CollectRows(rows, pgx.RowTo[string])
+			if err != nil {
+				return err
+			}
+		}
+		for _, source := range sources {
+			commandTag, err := transaction.Exec(ctx, source.deleteQuery, source.ids)
 			if err != nil {
 				return err
 			}
 			prunedCount += commandTag.RowsAffected()
 		}
-		_, err := transaction.Exec(ctx, `DELETE FROM retired_share_invitations WHERE expires_at <= now()`)
+		commandTag, err := transaction.Exec(ctx, `DELETE FROM invites WHERE expires_at < now() - $1::interval`, maxAge)
+		prunedCount += commandTag.RowsAffected()
+		if err != nil {
+			return err
+		}
+		_, err = transaction.Exec(ctx, `DELETE FROM retired_share_invitations WHERE expires_at <= now()`)
 		return err
 	})
 	return prunedCount, err

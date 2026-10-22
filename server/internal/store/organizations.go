@@ -568,8 +568,9 @@ func (s *Store) CheckPendingOrganizationInvitation(ctx context.Context, invitati
 // CreateOrganizationSignUpInvite mints a member sign-up token only while its source invitation is still pending.
 func (s *Store) CreateOrganizationSignUpInvite(ctx context.Context, invitation *OrganizationInvitation, tokenHash []byte, expiresAt time.Time) error {
 	tag, err := s.pool.Exec(ctx, `
-		INSERT INTO invites (token_hash, email, role, created_by, expires_at)
-		SELECT $5, i.email, 'member', i.invited_by, $6 FROM organization_invitations i WHERE `+isPendingOrganizationInvitation,
+		WITH source AS MATERIALIZED (SELECT i.* FROM organization_invitations i WHERE `+isPendingOrganizationInvitation+` FOR SHARE OF i)
+		INSERT INTO invites (token_hash, email, role, created_by, expires_at, organization_invitation_id)
+		SELECT $5, i.email, 'member', i.invited_by, $6, i.id FROM source i`,
 		invitation.ID, invitation.Email, invitation.InvitedBy, invitation.Role, tokenHash, expiresAt)
 	if err != nil {
 		return err

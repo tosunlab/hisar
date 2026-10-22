@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -19,142 +20,165 @@ import (
 func TestCancelledInvitationsSendNoQueuedEmailOrSignUpToken(t *testing.T) {
 	for _, kind := range []string{"share", "organization"} {
 		for _, hasAccount := range []bool{false, true} {
-			name := kind + "/new-account"
-			if hasAccount {
-				name = kind + "/existing-account"
-			}
-			t.Run(name, func(t *testing.T) {
-				service := createSettingsService(t, nil)
-				ctx := context.Background()
-				actor := Actor{AccountID: settingsAdminID, Role: apitypes.RoleAdmin}
-				email := "recipient@example.com"
+			for _, phase := range []string{"before-mint", "after-mint", "delivered"} {
+				pauseAtSend := phase == "after-mint"
+				if hasAccount && phase != "before-mint" {
+					continue
+				}
+				name := kind + "/new-account"
 				if hasAccount {
-					token := generateToken()
-					if err := service.store.CreateInvite(ctx, hashToken(token), email, apitypes.RoleMember, nil, time.Hour); err != nil {
-						t.Fatal(err)
-					}
-					key := []byte{1}
-					account := &store.Account{ID: "RECPNT", Email: email, Name: "Recipient", Argon2Params: []byte(`{}`),
-						Salt: key, OpaqueRecord: key, EncKeyset: key, KEMPub: key, SignPub: key, KEMSig: key}
-					device := &store.Device{ID: uuid.NewString(), AccountID: account.ID, Name: "test", Platform: "go"}
-					if err := service.store.RedeemInvite(ctx, hashToken(token), account, device,
-						&store.Session{TokenHash: hashToken(generateToken()), AccountID: account.ID, DeviceID: device.ID}); err != nil {
-						t.Fatal(err)
-					}
+					name = kind + "/existing-account"
 				}
+				name += "/" + phase
+				t.Run(name, func(t *testing.T) {
+					service := createSettingsService(t, nil)
+					ctx := context.Background()
+					actor := Actor{AccountID: settingsAdminID, Role: apitypes.RoleAdmin}
+					email := "recipient@example.com"
+					if hasAccount {
+						token := generateToken()
+						if err := service.store.CreateInvite(ctx, hashToken(token), email, apitypes.RoleMember, nil, time.Hour); err != nil {
+							t.Fatal(err)
+						}
+						key := []byte{1}
+						account := &store.Account{ID: "RECPNT", Email: email, Name: "Recipient", Argon2Params: []byte(`{}`),
+							Salt: key, OpaqueRecord: key, EncKeyset: key, KEMPub: key, SignPub: key, KEMSig: key}
+						device := &store.Device{ID: uuid.NewString(), AccountID: account.ID, Name: "test", Platform: "go"}
+						if err := service.store.RedeemInvite(ctx, hashToken(token), account, device,
+							&store.Session{TokenHash: hashToken(generateToken()), AccountID: account.ID, DeviceID: device.ID}); err != nil {
+							t.Fatal(err)
+						}
+					}
 
-				var create func() error
-				var cancel func() error
-				if kind == "share" {
-					keyset, err := crypt.GenerateKeyset()
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer keyset.Wipe()
-					actor.AccountID = crypt.GenerateAccountID()
-					keys := keyset.GetPublicKeys(actor.AccountID)
-					token := generateToken()
-					if err := service.store.CreateInvite(ctx, hashToken(token), "owner@example.com", apitypes.RoleAdmin, nil, time.Hour); err != nil {
-						t.Fatal(err)
-					}
-					account := &store.Account{ID: actor.AccountID, Email: "owner@example.com", Name: "Owner", Argon2Params: []byte(`{}`), Salt: []byte{1}, OpaqueRecord: []byte{1}, EncKeyset: []byte{1}, KEMPub: keys.KEM, SignPub: keys.Sign, KEMSig: keys.KEMSig}
-					device := &store.Device{ID: uuid.NewString(), AccountID: actor.AccountID, Name: "Owner", Platform: "go"}
-					if err := service.store.RedeemInvite(ctx, hashToken(token), account, device, &store.Session{TokenHash: hashToken(generateToken()), AccountID: actor.AccountID, DeviceID: device.ID}); err != nil {
-						t.Fatal(err)
-					}
-					vaultID := uuid.NewString()
-					if err := service.store.CreateVault(ctx, &store.Vault{ID: vaultID, Type: apitypes.VaultShared,
-						EncName: []byte{1}, CreatedBy: actor.AccountID}, []byte{1}); err != nil {
-						t.Fatal(err)
-					}
-					create = func() error {
-						vaults, err := service.store.ListVaults(ctx, actor.AccountID)
+					var create func() error
+					var cancel func() error
+					if kind == "share" {
+						keyset, err := crypt.GenerateKeyset()
 						if err != nil {
-							return err
+							t.Fatal(err)
 						}
-						intent := crypt.ShareIntent{Version: 1, Origin: service.config.PublicURL, ID: uuid.NewString(), VaultID: vaultID, InvitedBy: actor.AccountID, Email: email, Role: "reader", KeyGeneration: vaults[0].KeyGeneration, AccessRevision: vaults[0].AccessRevision, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(time.Hour).Unix()}
-						return service.CreateShareInvitation(ctx, actor, vaultID, &apitypes.ShareInvitationRequest{Email: email, Role: "reader", Intent: &apitypes.SignedShareIntent{Context: intent, Signature: keyset.SignShareIntent(intent)}})
-					}
-					cancel = func() error {
-						invitations, err := service.store.ListSentShareInvitations(ctx, actor.AccountID)
-						if err != nil {
-							return err
+						defer keyset.Wipe()
+						actor.AccountID = crypt.GenerateAccountID()
+						keys := keyset.GetPublicKeys(actor.AccountID)
+						token := generateToken()
+						if err := service.store.CreateInvite(ctx, hashToken(token), "owner@example.com", apitypes.RoleAdmin, nil, time.Hour); err != nil {
+							t.Fatal(err)
 						}
-						if len(invitations) != 1 {
-							t.Fatalf("pending share invitations = %d, want 1", len(invitations))
+						account := &store.Account{ID: actor.AccountID, Email: "owner@example.com", Name: "Owner", Argon2Params: []byte(`{}`), Salt: []byte{1}, OpaqueRecord: []byte{1}, EncKeyset: []byte{1}, KEMPub: keys.KEM, SignPub: keys.Sign, KEMSig: keys.KEMSig}
+						device := &store.Device{ID: uuid.NewString(), AccountID: actor.AccountID, Name: "Owner", Platform: "go"}
+						if err := service.store.RedeemInvite(ctx, hashToken(token), account, device, &store.Session{TokenHash: hashToken(generateToken()), AccountID: actor.AccountID, DeviceID: device.ID}); err != nil {
+							t.Fatal(err)
 						}
-						return service.CancelShareInvitation(ctx, actor, invitations[0].ID)
-					}
-				} else {
-					organizationID := uuid.NewString()
-					if err := service.store.CreateOrganization(ctx, organizationID, "Acme", actor.AccountID); err != nil {
-						t.Fatal(err)
-					}
-					create = func() error {
-						return service.CreateOrganizationInvitation(ctx, actor, organizationID,
-							&apitypes.OrganizationInvitationRequest{Email: email, Role: apitypes.OrganizationRoleMember})
-					}
-					cancel = func() error {
-						organization, err := service.store.GetOrganization(ctx, organizationID, actor.AccountID)
-						if err != nil {
-							return err
+						vaultID := uuid.NewString()
+						if err := service.store.CreateVault(ctx, &store.Vault{ID: vaultID, Type: apitypes.VaultShared,
+							EncName: []byte{1}, CreatedBy: actor.AccountID}, []byte{1}); err != nil {
+							t.Fatal(err)
 						}
-						if len(organization.Invitations) != 1 {
-							t.Fatalf("pending organization invitations = %d, want 1", len(organization.Invitations))
+						create = func() error {
+							vaults, err := service.store.ListVaults(ctx, actor.AccountID)
+							if err != nil {
+								return err
+							}
+							intent := crypt.ShareIntent{Version: 1, Origin: service.config.PublicURL, ID: uuid.NewString(), VaultID: vaultID, InvitedBy: actor.AccountID, Email: email, Role: "reader", KeyGeneration: vaults[0].KeyGeneration, AccessRevision: vaults[0].AccessRevision, IssuedAt: time.Now().Unix(), ExpiresAt: time.Now().Add(time.Hour).Unix()}
+							return service.CreateShareInvitation(ctx, actor, vaultID, &apitypes.ShareInvitationRequest{Email: email, Role: "reader", Intent: &apitypes.SignedShareIntent{Context: intent, Signature: keyset.SignShareIntent(intent)}})
 						}
-						return service.CancelOrganizationInvitation(ctx, actor, organizationID, organization.Invitations[0].ID)
+						cancel = func() error {
+							invitations, err := service.store.ListSentShareInvitations(ctx, actor.AccountID)
+							if err != nil {
+								return err
+							}
+							if len(invitations) != 1 {
+								t.Fatalf("pending share invitations = %d, want 1", len(invitations))
+							}
+							return service.CancelShareInvitation(ctx, actor, invitations[0].ID)
+						}
+					} else {
+						organizationID := uuid.NewString()
+						if err := service.store.CreateOrganization(ctx, organizationID, "Acme", actor.AccountID); err != nil {
+							t.Fatal(err)
+						}
+						create = func() error {
+							return service.CreateOrganizationInvitation(ctx, actor, organizationID,
+								&apitypes.OrganizationInvitationRequest{Email: email, Role: apitypes.OrganizationRoleMember})
+						}
+						cancel = func() error {
+							organization, err := service.store.GetOrganization(ctx, organizationID, actor.AccountID)
+							if err != nil {
+								return err
+							}
+							if len(organization.Invitations) != 1 {
+								t.Fatalf("pending organization invitations = %d, want 1", len(organization.Invitations))
+							}
+							return service.CancelOrganizationInvitation(ctx, actor, organizationID, organization.Invitations[0].ID)
+						}
 					}
-				}
 
-				recorder := mailtest.NewRecorder()
-				started, release := make(chan struct{}), make(chan struct{})
-				var pause, resume sync.Once
-				service.NewMailer = func(settings.SMTP) mail.Mailer {
-					pause.Do(func() {
-						close(started)
-						<-release
+					recorder := mailtest.NewRecorder()
+					started, release := make(chan struct{}), make(chan struct{})
+					var resume sync.Once
+					var mailerCalls atomic.Int32
+					service.NewMailer = func(settings.SMTP) mail.Mailer {
+						pauseCall := int32(1)
+						if pauseAtSend {
+							pauseCall = 2
+						}
+						if phase == "delivered" {
+							pauseCall = 0
+						}
+						if mailerCalls.Add(1) == pauseCall {
+							close(started)
+							<-release
+						}
+						return recorder
+					}
+					t.Cleanup(func() {
+						resume.Do(func() { close(release) })
+						service.WaitForBackgroundWork()
 					})
-					return recorder
-				}
-				t.Cleanup(func() {
+					if err := create(); err != nil {
+						t.Fatal(err)
+					}
+					if phase == "delivered" {
+						service.WaitForBackgroundWork()
+					} else {
+						select {
+						case <-started:
+						case <-time.After(10 * time.Second):
+							t.Fatal("background sender did not start")
+						}
+					}
+					if err := cancel(); err != nil {
+						t.Fatal(err)
+					}
 					resume.Do(func() { close(release) })
 					service.WaitForBackgroundWork()
-				})
-				if err := create(); err != nil {
-					t.Fatal(err)
-				}
-				select {
-				case <-started:
-				case <-time.After(10 * time.Second):
-					t.Fatal("background sender did not start")
-				}
-				if err := cancel(); err != nil {
-					t.Fatal(err)
-				}
-				resume.Do(func() { close(release) })
-				service.WaitForBackgroundWork()
-				if messages := recorder.ListMessages(); len(messages) != 0 {
-					t.Errorf("cancelled invitation sent %d email(s)", len(messages))
-				}
-				if invites, err := service.store.ListUnusedInvites(ctx); err != nil || len(invites) != 0 {
-					t.Errorf("cancelled invitation minted sign-up invites = %d, %v, want 0", len(invites), err)
-				}
+					wantMessages := 0
+					if phase != "before-mint" {
+						wantMessages = 1
+					}
+					if messages := recorder.ListMessages(); len(messages) != wantMessages {
+						t.Errorf("cancelled invitation sent %d email(s), want %d", len(messages), wantMessages)
+					}
+					if invites, err := service.store.ListUnusedInvites(ctx); err != nil || len(invites) != 0 {
+						t.Errorf("cancelled invitation minted sign-up invites = %d, %v, want 0", len(invites), err)
+					}
 
-				if err := create(); err != nil {
-					t.Fatal(err)
-				}
-				service.WaitForBackgroundWork()
-				if messages := recorder.ListMessages(); len(messages) != 1 || messages[0].To != email {
-					t.Errorf("live invitation email = %+v, want one to %s", messages, email)
-				}
-				wantInvites := 1
-				if hasAccount {
-					wantInvites = 0
-				}
-				if invites, err := service.store.ListUnusedInvites(ctx); err != nil || len(invites) != wantInvites {
-					t.Errorf("live invitation sign-up invites = %d, %v, want %d", len(invites), err, wantInvites)
-				}
-			})
+					if err := create(); err != nil {
+						t.Fatal(err)
+					}
+					service.WaitForBackgroundWork()
+					if messages := recorder.ListMessages(); len(messages) != wantMessages+1 || messages[len(messages)-1].To != email {
+						t.Errorf("live invitation email = %+v, want a new one to %s", messages, email)
+					}
+					wantInvites := 1
+					if hasAccount {
+						wantInvites = 0
+					}
+					if invites, err := service.store.ListUnusedInvites(ctx); err != nil || len(invites) != wantInvites {
+						t.Errorf("live invitation sign-up invites = %d, %v, want %d", len(invites), err, wantInvites)
+					}
+				})
+			}
 		}
 	}
 }
