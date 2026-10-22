@@ -205,6 +205,22 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.verify(success=False)
         self.assertFalse(self.log.exists())
 
+    def test_checksum_files_list_every_file_they_cover(self):
+        for app, sum_file, dropped in (("cli", "SHA256SUMS", "hisar-1.2.3-windows-arm64.zip"),
+                                       ("desktop", "SHA256SUMS-linux-arm64", "Hisar-1.2.3-linux-arm64.rpm"),
+                                       ("desktop", "SHA256SUMS-flatpak-amd64", "Hisar-1.2.3-linux-amd64.flatpak")):
+            with self.subTest(sum_file=sum_file):
+                for path in self.directory.iterdir():
+                    path.unlink()
+                subprocess.run(["git", "tag", "-d", app + "-1.2.3"], cwd=self.repository, capture_output=True)
+                self.fixture(app)
+                checksums = self.directory / sum_file
+                listed = [line for line in checksums.read_text().splitlines() if not line.endswith("  " + dropped)]
+                checksums.write_text("".join(line + "\n" for line in listed))
+                self.create()
+                self.verify(success=False)
+                self.assertFalse(self.log.exists())
+
     def test_image_verifier_rejects_mutable_docker_and_workflow_images(self):
         scripts = self.root / "scripts"
         scripts.mkdir()
