@@ -98,7 +98,7 @@ func (s *Service) loadReadableItemsOfAllVault(ctx context.Context) (isAuthoritat
 	}
 	isAuthoritative = true
 	for vaultID, vault := range s.vaultsByID {
-		if _, isLoaded := s.itemsByVaultID[vaultID]; isLoaded {
+		if s.hasReadVaultItems(vaultID) {
 			isAuthoritative = false
 			continue
 		}

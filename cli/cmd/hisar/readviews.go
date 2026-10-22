@@ -38,6 +38,9 @@ func (access readingBackend) listItems(ctx context.Context, vaultID string) ([]i
 		return nil, err
 	}
 	printReadIssues(result.Issues)
+	if result.Provenance.Source != "" && !result.Provenance.HasCompletedSync {
+		fmt.Fprintln(standardError(), "Cached copy. This vault has not finished syncing, so items may be missing.")
+	}
 	return result.Items, nil
 }
 
@@ -63,6 +66,9 @@ func (access appBackend) readItems(ctx context.Context, vaultID string) (session
 		result.Items = append(result.Items, convertFromAppItem(summary))
 	}
 	result.Issues = response.Issues
+	if response.Provenance != nil {
+		result.Provenance = *response.Provenance
+	}
 	return result, nil
 }
 

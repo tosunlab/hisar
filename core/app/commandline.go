@@ -185,6 +185,9 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request 
 			}
 		}
 		result := cliprotocol.ItemListResult{Items: []cliprotocol.Item{}}
+		if provenance, isLoaded := s.getItemProvenance(request.VaultID); isLoaded && request.Type == cliprotocol.TypeReadItem {
+			result.Provenance = &provenance
+		}
 		issues, err := s.GetReadIssues()
 		if err != nil {
 			return nil, err
@@ -390,15 +393,13 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	if vault.Role == apitypes.VaultReader {
 		return result, errReadOnlyVault
 	}
-	if len(s.itemReadIssuesByVaultID[vault.ID]) != 0 {
-		return result, session.ErrIncompleteRead
-	}
-	if s.itemsByVaultID[vault.ID] == nil {
-		existingItems, err := s.unlockedSession.ListItems(ctx, vault)
-		if err != nil {
-			return result, convertError(err)
+	if !s.hasReadVaultItems(vault.ID) {
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return result, err
 		}
-		s.itemsByVaultID[vault.ID] = existingItems
+	}
+	if !s.isItemListComplete(vault.ID) {
+		return result, session.ErrIncompleteRead
 	}
 	favoriteItemIDs := []string{}
 	for _, vaultItem := range importedItems {

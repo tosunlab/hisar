@@ -69,10 +69,10 @@ func (source serviceSecretSource) ListItems(vaultID string) (secretreference.Ite
 	return s.listSecretItems(vaultID), nil
 }
 
-// listSecretItems is a vault's loaded items as references see them: complete only when every record opened. It needs
-// s.mutex.
+// listSecretItems is a vault's loaded items as references see them: complete only when every record opened and the
+// vault synced to the end. It needs s.mutex.
 func (s *Service) listSecretItems(vaultID string) secretreference.ItemList {
-	return secretreference.ItemList{Items: s.itemsByVaultID[vaultID], IsComplete: len(s.itemReadIssuesByVaultID[vaultID]) == 0}
+	return secretreference.ItemList{Items: s.itemsByVaultID[vaultID], IsComplete: s.isItemListComplete(vaultID)}
 }
 
 func (s *Service) resolveSecrets(references []string) (cliprotocol.ResolveSecretResult, error) {
@@ -230,6 +230,14 @@ func (s *Service) CopySecretReference(vaultID, itemID, fieldName string) (string
 	vault, isFound := s.vaultsByID[vaultID]
 	if !isFound {
 		return "", fmt.Errorf("vault %w", ErrNotFound)
+	}
+	if !s.hasReadVaultItems(vaultID) {
+		// Whether the title finds only this item depends on every item of the vault.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return "", err
+		}
 	}
 	vaultItem, err := s.findItem(vaultID, itemID)
 	if err != nil {

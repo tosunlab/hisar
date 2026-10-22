@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -117,18 +118,18 @@ func (s *Service) updateFavorites(ctx context.Context, buildChange func() (sessi
 	return nil
 }
 
-// reloadAllVaultItem lists the vaults and their items again; on failure the previous ones stay. It reports whether the
-// server listed every vault and item in full (loadReadableItemsOfAllVault).
+// reloadAllVaultItem lists the vaults and their items again; on failure the previous view stays, with its issues and
+// provenance. It reports whether the server listed every vault and item in full (loadReadableItemsOfAllVault).
 func (s *Service) reloadAllVaultItem(ctx context.Context) bool {
 	if err := s.loadVaults(ctx); err != nil {
 		return false
 	}
 	isInventoryAuthoritative := !s.unlockedSession.IsOffline() && len(s.vaultReadIssues) == 0
-	previousItems := s.itemsByVaultID
+	previousItems, previousIssues, previousProvenance := s.itemsByVaultID, maps.Clone(s.itemReadIssuesByVaultID), maps.Clone(s.itemProvenanceByVaultID)
 	s.itemsByVaultID = map[string][]item.Item{}
 	isAuthoritative, err := s.loadReadableItemsOfAllVault(ctx)
 	if err != nil {
-		s.itemsByVaultID = previousItems
+		s.itemsByVaultID, s.itemReadIssuesByVaultID, s.itemProvenanceByVaultID = previousItems, previousIssues, previousProvenance
 		return false
 	}
 	return isInventoryAuthoritative && isAuthoritative

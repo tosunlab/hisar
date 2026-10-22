@@ -77,9 +77,12 @@ type Item struct {
 	Fingerprint        string    `json:"fingerprint,omitempty"`
 }
 
+// ItemListResult answers items.list and items.read. Provenance, on items.read only, says where the items came from and
+// whether their vault ever synced to the end; without that, missing items are not known to be absent.
 type ItemListResult struct {
-	Items  []Item              `json:"items"`
-	Issues []session.ReadIssue `json:"issues,omitempty"`
+	Items      []Item                  `json:"items"`
+	Issues     []session.ReadIssue     `json:"issues,omitempty"`
+	Provenance *session.ReadProvenance `json:"provenance,omitempty"`
 }
 
 type ItemResult struct {

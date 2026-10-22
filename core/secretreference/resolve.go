@@ -55,8 +55,9 @@ type Inventory struct {
 	IsComplete bool
 }
 
-// ItemList is the items of a vault a source can open. IsComplete says no other item of the vault failed to open: one
-// that did not may have any title, so titles are matched only in a complete list, and IDs always.
+// ItemList is the items of a vault a source can open. IsComplete says the source holds every item of the vault: none
+// failed to open and its sync reached the end. A missing one may have any title, so titles are matched only in a
+// complete list, and IDs always.
 type ItemList struct {
 	Items      []item.Item
 	IsComplete bool
@@ -210,7 +211,7 @@ func findItem(items ItemList, vaultName, query string) (*item.Item, error) {
 		}
 	}
 	if !items.IsComplete {
-		return nil, fmt.Errorf("an item in vault %q could not be opened and its title is unknown, so an item title may find the wrong item; use the item's ID instead", vaultName)
+		return nil, fmt.Errorf("not every item in vault %q could be read, so an item title may find the wrong item; use the item's ID instead", vaultName)
 	}
 	switch len(matches) {
 	case 0:

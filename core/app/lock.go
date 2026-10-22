@@ -155,6 +155,7 @@ func (s *Service) lockSession() {
 	s.itemsByVaultID = nil
 	s.vaultReadIssues = nil
 	s.itemReadIssuesByVaultID = nil
+	s.itemProvenanceByVaultID = nil
 	s.favorites = nil
 	s.pendingImport = nil
 	s.forgetWebsiteIconKeys()
