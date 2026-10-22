@@ -5,15 +5,39 @@ import hashlib
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import unittest
 import zipfile
 
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts/release-evidence.py"
+PUBLISH = ROOT / ".github/workflows/publish.yml"
+
+
+def workflow_script(workflow, containing):
+    """Return the one `run: |` block of the workflow that contains the given text."""
+    lines = workflow.read_text().splitlines()
+    scripts = []
+    for index, line in enumerate(lines):
+        key = line.lstrip().removeprefix("- ")
+        if key != "run: |":
+            continue
+        indent = len(line) - len(key)
+        body = []
+        for following in lines[index + 1:]:
+            if following.strip() and len(following) - len(following.lstrip()) <= indent:
+                break
+            body.append(following)
+        scripts.append(textwrap.dedent("\n".join(body)))
+    matches = [script for script in scripts if containing in script]
+    if len(matches) != 1:
+        raise AssertionError(f"{workflow} has {len(matches)} run steps containing {containing!r}")
+    return matches[0]
 
 
 class ReleaseEvidenceTests(unittest.TestCase):
@@ -34,7 +58,11 @@ class ReleaseEvidenceTests(unittest.TestCase):
                         PATH=str(self.bin) + os.pathsep + os.environ["PATH"])
         gh = self.bin / "gh"
         gh.write_text("#!" + sys.executable + "\n" +
-                      "import json, os, sys\n"
+                      "import json, os, shutil, sys\n"
+                      "if sys.argv[1:3] == ['release', 'download']:\n"
+                      "    shutil.copytree(os.environ['PUBLISHED_RELEASE'], sys.argv[sys.argv.index('--dir') + 1],"
+                      " dirs_exist_ok=True)\n"
+                      "    sys.exit(0)\n"
                       "with open(os.environ['ATTESTATION_LOG'], 'a') as f: f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
                       "sys.exit(1 if os.environ.get('REJECT_ATTESTATION') else 0)\n")
         gh.chmod(0o755)
@@ -95,6 +123,14 @@ class ReleaseEvidenceTests(unittest.TestCase):
 
     def verify(self, success=True):
         return self.run_script("verify", self.app, self.tag, self.sha, str(self.directory), success=success)
+
+    def publish_step(self, containing, runner_temp):
+        """Run the publish.yml step containing the given text as GitHub runs a bash step, in the default-branch checkout."""
+        env = dict(self.env, APP=self.app, TAG=self.tag, VERSION=self.tag.removeprefix(self.app + "-"),
+                   SOURCE_SHA=self.sha, RUNNER_TEMP=str(runner_temp))
+        return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c",
+                               workflow_script(PUBLISH, containing)], cwd=self.repository, env=env, text=True,
+                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     def test_each_app_attests_every_delivered_file(self):
         for app in ("server", "cli", "desktop", "extension"):
@@ -220,6 +256,25 @@ class ReleaseEvidenceTests(unittest.TestCase):
                 self.create()
                 self.verify(success=False)
                 self.assertFalse(self.log.exists())
+
+    def test_publication_verifies_with_the_release_commit_policy_not_the_default_branch(self):
+        scripts = self.repository / "scripts"
+        scripts.mkdir()
+        for name in ("release-evidence.py", "check-release-files.sh"):
+            shutil.copy(ROOT / "scripts" / name, scripts / name)
+        self.git("add", "scripts")
+        self.git("commit", "-qm", "release source")
+        self.sha = self.git("rev-parse", "HEAD")
+        self.fixture("extension")
+        self.create()
+        self.env["PUBLISHED_RELEASE"] = str(self.directory)
+        (scripts / "release-evidence.py").write_text("import sys\nsys.exit(0)\n")
+        self.git("commit", "-qam", "default branch accepts any release")
+        intact = self.publish_step("gh release download", self.root / "intact")
+        self.assertEqual(intact.returncode, 0, intact.stdout)
+        next(self.directory.glob("*.zip")).write_bytes(b"substituted")
+        substituted = self.publish_step("gh release download", self.root / "substituted")
+        self.assertNotEqual(substituted.returncode, 0, substituted.stdout)
 
     def test_image_verifier_rejects_mutable_docker_and_workflow_images(self):
         scripts = self.root / "scripts"

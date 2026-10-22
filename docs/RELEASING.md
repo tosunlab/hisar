@@ -69,7 +69,8 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
    index after packaging and signing. The run verifies them and rejects a moved release tag before creating the prerelease.
 6. **Publish**: waits in the environment `publish-<app>` until a reviewer approves it (Review deployments on the run). A newer
    release of the app that reaches this step replaces an older one still waiting. It refuses a version older than the app's
-   published release, verifies the evidence and attestations against the tag's full source SHA, then
+   published release, verifies the evidence and attestations against the tag's full source SHA with the verifier from that
+   commit, not from the default branch, then
    - server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at the verified immutable image digest;
    - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every Mac app as an
      automatic update;
