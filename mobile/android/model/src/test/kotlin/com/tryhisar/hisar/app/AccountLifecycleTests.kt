@@ -8,9 +8,12 @@ import com.tryhisar.hisar.model.DeletionVault
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.PendingRecovery
+import com.tryhisar.hisar.model.PendingRecoveryExport
 import com.tryhisar.hisar.model.SignUpResult
 import com.tryhisar.hisar.model.backendJson
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -18,6 +21,12 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
@@ -241,6 +250,43 @@ class AccountLifecycleTests {
         harness.backend.onExportPendingRecoveryEmergencyKit = null
         assertTrue(model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
         assertEquals(FakeBackend.SECRET_KEY, model.pendingRecovery.export.value?.secretKey)
+    }
+
+    // Hisar's activity finishing for good cancels the model's scope while the blocking backend call still writes the kit.
+    @Test
+    fun testFinishingWhilePreparingTheKitLeavesNoFile() = runTest {
+        val isWriting = CountDownLatch(1)
+        val mayWrite = CountDownLatch(1)
+        val hasWritten = CountDownLatch(1)
+        var kitDirectory: File? = null
+        val backend = object : FakeBackend() {
+            override fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport {
+                kitDirectory = directory
+                isWriting.countDown()
+                check(mayWrite.await(5, TimeUnit.SECONDS))
+                return super.exportPendingRecoveryEmergencyKit(operationID, password, directory).also { hasWritten.countDown() }
+            }
+        }
+        seedPendingRecovery(backend, "delivery-pending")
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val model = AppModel(scope, Dispatchers.IO, FakeTextClipboard())
+        try {
+            model.start { backend }
+            val export = async { runCatching { model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD) } }
+            runCurrent()
+            assertTrue(isWriting.await(5, TimeUnit.SECONDS))
+            model.pendingRecovery.clearExport()
+            scope.cancel()
+            mayWrite.countDown()
+            assertTrue(hasWritten.await(5, TimeUnit.SECONDS))
+            export.await()
+            assertNull(model.pendingRecovery.export.value)
+            assertFalse(kitDirectory!!.exists(), "the finished activity's kit stayed at $kitDirectory")
+        } finally {
+            mayWrite.countDown()
+            scope.cancel()
+            kitDirectory?.deleteRecursively()
+        }
     }
 
     @Test

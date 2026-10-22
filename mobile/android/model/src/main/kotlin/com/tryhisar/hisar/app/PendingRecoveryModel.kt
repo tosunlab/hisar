@@ -93,17 +93,24 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         val startedEpoch = epoch
         val generation = exportGeneration
         val directory = File(System.getProperty("java.io.tmpdir"), "handoff/PendingRecovery-${UUID.randomUUID()}")
-        val result = context.perform { it.exportPendingRecoveryEmergencyKit(operationID, password, directory) }
-        if (result == null || startedEpoch != epoch || generation != exportGeneration) {
-            directory.deleteRecursively()
-            // A lock, sign-out or account switch hides the Secret Key; a newer export, another record or closing the
-            // screen is the user's own choice and needs no word.
-            if (result != null && startedEpoch != epoch) {
-                context.errorMessage.value = "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again."
+        // The backend call blocks and writes the kit even when the model is cancelled meanwhile, as when Hisar's activity
+        // finishes; perform then throws once it returns. Whatever is not published here is deleted, the file with it.
+        var isPublished = false
+        try {
+            val result = context.perform { it.exportPendingRecoveryEmergencyKit(operationID, password, directory) }
+            if (result == null || startedEpoch != epoch || generation != exportGeneration) {
+                // A lock, sign-out or account switch hides the Secret Key; a newer export, another record or closing the
+                // screen is the user's own choice and needs no word.
+                if (result != null && startedEpoch != epoch) {
+                    context.errorMessage.value = "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again."
+                }
+                return@runInModel false
             }
-            return@runInModel false
+            mutableExport.value = result
+            isPublished = true
+        } finally {
+            if (!isPublished) directory.deleteRecursively()
         }
-        mutableExport.value = result
         refresh()
         true
     }
