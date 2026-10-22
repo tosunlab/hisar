@@ -344,6 +344,46 @@ final class PhoneApprovalTests: XCTestCase {
         subscription.cancel()
     }
 
+    // Starts a poll that has read the open requests and waits for the returned closure before it returns them, as a slow
+    // poll on a phone.
+    private func startHeldPoll(of model: AppModel) async -> (poll: Task<Void, Never>, finish: () -> Void) {
+        let isListing = DispatchSemaphore(value: 0)
+        let mayFinish = DispatchSemaphore(value: 0)
+        backend.onListAllPendingApproval = {
+            isListing.signal()
+            mayFinish.wait()
+        }
+        let poll = Task { await model.refreshPendingApproval() }
+        while isListing.wait(timeout: .now()) == .timedOut {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        backend.onListAllPendingApproval = nil
+        return (poll, { mayFinish.signal() })
+    }
+
+    func testALateOlderListingKeepsANewerRequest() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "first")])
+        let (olderPoll, finishOlderPoll) = await startHeldPoll(of: model)
+        backend.withApprovalLock { backend.allPendingApproval.append(createApproval(requestID: "second", secondsLeft: 90)) }
+        await model.refreshPendingApproval(isOpeningNewRequest: true)
+        XCTAssertEqual(model.presentedApproval?.requestID, "second")
+        finishOlderPoll()
+        await olderPoll.value
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["first", "second"], "a poll that started earlier took the new request off the list")
+        XCTAssertEqual(model.presentedApproval?.requestID, "second", "a poll that started earlier closed the new request's sheet")
+    }
+
+    func testTurningMacApprovalsOffDuringAListingKeepsTheListEmpty() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "first")])
+        backend.withApprovalLock { backend.allPendingApproval.append(createApproval(requestID: "second", secondsLeft: 90)) }
+        let (poll, finishPoll) = await startHeldPoll(of: model)
+        await model.setMacApprovalAllowed(false)
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
+        finishPoll()
+        await poll.value
+        XCTAssertTrue(model.allPendingApproval.isEmpty, "a listing that started before approvals were turned off listed a request")
+    }
+
     func testNothingWhileLocked() async {
         let model = await createReviewingModel(allApproval: [createApproval()])
         XCTAssertNotNil(model.presentedApproval)

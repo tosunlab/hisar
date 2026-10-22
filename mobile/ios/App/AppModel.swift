@@ -68,6 +68,8 @@ final class AppModel: ObservableObject {
     @Published var credentialImportMessage: String?
     private var startedRefreshCount: UInt64 = 0
     private var shownRefresh: UInt64 = 0
+    private var startedApprovalListCount: UInt64 = 0
+    private var shownApprovalList: UInt64 = 0
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
@@ -1263,6 +1265,7 @@ final class AppModel: ObservableObject {
                 allFinishedApprovalID.insert(approval.requestID)
             }
             allPendingApproval = []
+            shownApprovalList = startedApprovalListCount
             presentedApproval = nil
         }
         return true
@@ -1295,8 +1298,13 @@ final class AppModel: ObservableObject {
     // refreshPendingApproval lists the open requests; with isOpeningNewRequest, a request seen for the first time opens the sheet.
     func refreshPendingApproval(isOpeningNewRequest: Bool = false) async {
         guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
+        startedApprovalListCount += 1
+        let approvalList = startedApprovalListCount
         guard let allApproval = try? await runInBackground({ try backend.listAllPendingApproval() }) else { return }
-        guard status.isUnlocked else { return }
+        // Listings run at once and can finish out of order: a poll that started before a request's own listing must not
+        // take that request back off the list and close its sheet.
+        guard status.isUnlocked, approvalList > shownApprovalList else { return }
+        shownApprovalList = approvalList
         let now = getCurrentDate()
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
         let firstNewApproval = allOpenApproval.first { !allSeenApprovalID.contains($0.requestID) }
@@ -1388,6 +1396,8 @@ final class AppModel: ObservableObject {
         approvalExpiryTask?.cancel()
         approvalExpiryTask = nil
         allPendingApproval = []
+        // A listing still running started before the clear and must not bring the requests back.
+        shownApprovalList = startedApprovalListCount
         presentedApproval = nil
         isAnsweringApproval = false
         isApprovalPasswordRequired = false

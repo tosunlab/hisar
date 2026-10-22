@@ -36,6 +36,8 @@ open class FakeBackend : VaultBackend {
      * refresh that listed everything is still in flight.
      */
     var onListAllPasskey: (() -> Unit)? = null
+    /** Runs when the open requests have been read and before they are returned: a test can hold an older listing while a newer one runs. */
+    @Volatile var onListAllPendingApproval: (() -> Unit)? = null
     var allMember: MutableList<Member> = mutableListOf()
     var allVaultMemberByVaultID: MutableMap<String, MutableList<Member>> = mutableMapOf()
     val allInvitedEmail = mutableListOf<String>()
@@ -689,7 +691,9 @@ open class FakeBackend : VaultBackend {
     // Phone approvals: the Mac's requests are seeded and answers recorded. Listing is not recorded, as it runs in the background.
     override fun listAllPendingApproval(): List<PhoneApproval> {
         requireUnlocked()
-        return withApprovalLock { allPendingApproval.toList() }
+        val allApproval = withApprovalLock { allPendingApproval.toList() }
+        onListAllPendingApproval?.invoke()
+        return allApproval
     }
 
     override fun approveApproval(requestID: String, isRemembered: Boolean) {
