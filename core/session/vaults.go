@@ -206,7 +206,9 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 		return 0, ErrPersonalVault
 	}
 	if deletion.MoveTo == nil {
-		err := s.Client.DeleteVault(ctx, vault.ID, &apitypes.DeleteVaultRequest{IsDeletingItems: deletion.IsDeletingItems})
+		err := s.sendSealed(ctx, func() error {
+			return s.Client.DeleteVault(ctx, vault.ID, &apitypes.DeleteVaultRequest{IsDeletingItems: deletion.IsDeletingItems, KeyGeneration: vault.KeyGeneration})
+		}, vault)
 		if apiclient.IsStatus(err, http.StatusConflict) {
 			return 0, ErrVaultNotEmpty
 		}
@@ -227,7 +229,7 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 				return err
 			}
 			return s.Client.DeleteVault(ctx, vault.ID, request)
-		}, target)
+		}, vault, target)
 		if apiclient.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
 			continue
 		}
@@ -244,7 +246,7 @@ func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*ap
 	if err != nil {
 		return nil, err
 	}
-	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, MoveToKeyGeneration: target.KeyGeneration, MovedItems: []apitypes.MovedItem{}}
+	request := &apitypes.DeleteVaultRequest{KeyGeneration: vault.KeyGeneration, MoveToVaultID: target.ID, MoveToKeyGeneration: target.KeyGeneration, MovedItems: []apitypes.MovedItem{}}
 	for index := range protoItems {
 		protoItem := &protoItems[index]
 		if protoItem.Deleted {

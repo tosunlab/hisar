@@ -494,7 +494,7 @@ func TestInvitationsOfARemovedOwnerGrantNothing(t *testing.T) {
 			t.Errorf("%s got the vault through the removed owner's invitation", recipient.Email)
 		}
 	}
-	if err := bob.Client.SetAccess(ctx, team.ID, dave.AccountID, &apitypes.SetAccessRequest{WrappedKey: []byte{1}, Role: apitypes.VaultOwner}); !apiclient.IsStatus(err, http.StatusConflict) || !strings.Contains(err.Error(), "has not accepted an invitation") {
+	if err := bob.Client.SetAccess(ctx, team.ID, dave.AccountID, &apitypes.SetAccessRequest{WrappedKey: []byte{1}, Role: apitypes.VaultOwner, KeyGeneration: bobTeam.KeyGeneration}); !apiclient.IsStatus(err, http.StatusConflict) || !strings.Contains(err.Error(), "has not accepted an invitation") {
 		t.Errorf("granting the vault to the removed owner's invitee: %v", err)
 	}
 }

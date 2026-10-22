@@ -13,9 +13,8 @@ var (
 	ErrNotEntitled        = errors.New("store: the account's teams do not give it the vault with this role")
 	ErrRoleFromTeams      = errors.New("store: roles in an organization vault come from its teams")
 	ErrStaleKeyGeneration = errors.New("store: not the vault's current key generation")
-	// ErrKeyGenerationMissing refuses items for an organization vault that name no key generation, as apps older than
-	// key generations send them.
-	ErrKeyGenerationMissing = errors.New("store: organization vault items need the key generation")
+	// ErrKeyGenerationMissing asks legacy writers to update after rotation or for organization vaults.
+	ErrKeyGenerationMissing = errors.New("store: this vault needs an explicit key generation")
 	ErrReadOnly             = errors.New("store: the account only reads the vault")
 )
 
@@ -211,15 +210,13 @@ func lockVaults(ctx context.Context, transaction pgx.Tx, vaultIDs []string) (map
 	return vaultsByID, err
 }
 
-// acceptsKeyGeneration reports whether something sealed with the vault key of keyGeneration may be stored: the vault's
-// current generation is required for organization vaults and checked for any vault when nonzero, so older clients keep
-// working with personal and shared vaults, and nothing sealed with a key a rotation replaced is stored.
+// acceptsKeyGeneration permits legacy omission only before any rotation of a nonorganization vault.
 func (vault *lockedVault) acceptsKeyGeneration(keyGeneration int64) bool {
-	return keyGeneration == vault.keyGeneration || keyGeneration == 0 && vault.organizationID == ""
+	return keyGeneration == vault.keyGeneration || keyGeneration == 0 && vault.keyGeneration == 1 && vault.organizationID == ""
 }
 
 // checkItemKeyGeneration refuses items sealed with the vault key of keyGeneration unless the vault accepts it:
-// ErrKeyGenerationMissing when an organization vault gets no generation, ErrStaleKeyGeneration for another one.
+// ErrKeyGenerationMissing requests a client update; ErrStaleKeyGeneration names a replaced key.
 func (vault *lockedVault) checkItemKeyGeneration(keyGeneration int64) error {
 	switch {
 	case vault.acceptsKeyGeneration(keyGeneration):
@@ -254,8 +251,7 @@ func (s *Store) SetAccess(ctx context.Context, vaultID string, member Member) er
 // GrantAccess stores a member's wrapped key; member.GrantedBy must be an owner (ErrNotOwner). A shared vault adds an
 // account only when it accepted a share invitation from a current owner, consuming it (ErrNoInvitation), and otherwise changes an existing
 // member's role. An organization vault adds only an account its teams entitle to exactly that role (ErrNotEntitled) and
-// never changes a member's role (ErrRoleFromTeams). A nonzero keyGeneration, which organization vaults require, must be
-// the vault's current one (ErrStaleKeyGeneration).
+// never changes a member's role (ErrRoleFromTeams). Rotated vaults require the current explicit generation.
 func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, keyGeneration int64) (isNewMember bool, err error) {
 	err = s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, vaultID)
@@ -265,8 +261,8 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 		if err := requireVaultOwner(ctx, transaction, vaultID, member.GrantedBy); err != nil {
 			return err
 		}
-		if !vault.acceptsKeyGeneration(keyGeneration) {
-			return ErrStaleKeyGeneration
+		if err := vault.checkItemKeyGeneration(keyGeneration); err != nil {
+			return err
 		}
 		currentRole, err := queryVaultRole(ctx, transaction, vaultID, member.AccountID)
 		if err != nil {
