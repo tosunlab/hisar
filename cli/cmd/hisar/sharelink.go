@@ -67,23 +67,24 @@ func (option *shareLinkOption) validateCreation() error {
 }
 
 func runShareLink(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	// open and revoke take one link or ID and no options, so a share link ID that starts with "-" (it is base64url) is
+	// the ID; "--" before it is still accepted.
+	if len(args) > 0 && (args[0] == "open" || args[0] == "revoke") {
+		operands := args[1:]
+		if len(operands) == 2 && operands[0] == "--" {
+			operands = operands[1:]
+		}
+		if len(operands) != 1 {
+			return errUsage
+		}
+		if args[0] == "open" {
+			return openShareLink(ctx, operands[0])
+		}
+		return revokeShareLink(ctx, operands[0])
+	}
 	option, err := parseShareLinkOption(flags, args)
 	if err != nil {
 		return err
-	}
-	if len(option.positionals) > 0 && !option.isText {
-		switch option.positionals[0] {
-		case "open":
-			if len(option.positionals) != 2 {
-				return errUsage
-			}
-			return openShareLink(ctx, option.positionals[1])
-		case "revoke":
-			if len(option.positionals) != 2 {
-				return errUsage
-			}
-			return revokeShareLink(ctx, option.positionals[1])
-		}
 	}
 	if err := option.validateCreation(); err != nil {
 		return err
