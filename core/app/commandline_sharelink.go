@@ -6,6 +6,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
 )
 
@@ -14,6 +15,12 @@ func (s *Service) resolveCommandLineItem(vaultNameOrID, query string) (string, i
 	vaults, err := s.ListVaults()
 	if err != nil {
 		return "", item.Item{}, err
+	}
+	// A vault or item that did not open may have the name or title asked for, so the lookup needs every record.
+	for _, vault := range vaults {
+		if len(vault.ReadIssues) != 0 {
+			return "", item.Item{}, session.ErrIncompleteRead
+		}
 	}
 	vaultID := ""
 	for _, vault := range vaults {

@@ -14,10 +14,11 @@ type memorySource struct {
 	itemsByVault   map[string][]item.Item
 	listItemCount  int
 	vaultListError error
+	isIncomplete   bool
 }
 
-func (source *memorySource) ListVaults() ([]Vault, error) {
-	return source.vaults, source.vaultListError
+func (source *memorySource) ListVaults() (Inventory, error) {
+	return Inventory{Vaults: source.vaults, IsComplete: !source.isIncomplete}, source.vaultListError
 }
 
 func (source *memorySource) ListItems(vaultID string) ([]item.Item, error) {
@@ -141,6 +142,21 @@ func TestResolveAllSourceError(t *testing.T) {
 	source.vaultListError = sourceError
 	if _, err := ResolveAll(source, []string{"hisar://Personal/GitHub/password"}, time.Now()); !errors.Is(err, sourceError) {
 		t.Errorf("source error = %v", err)
+	}
+}
+
+// A vault that did not open may have any name, so a name never resolves beside it; an ID always does.
+func TestVaultNamesNeedACompleteInventory(t *testing.T) {
+	source := createTestSource()
+	source.isIncomplete = true
+	_, err := ResolveAll(source, []string{"hisar://Personal/GitHub/password", "hisar://Team%2FOps/Ops/password"}, time.Now())
+	var resolveError *Error
+	if !errors.As(err, &resolveError) || strings.Count(err.Error(), "use the vault's ID instead") != 2 {
+		t.Errorf("names in an incomplete inventory: %v", err)
+	}
+	resolvedReferences, err := ResolveAll(source, []string{"hisar://vault-personal/GitHub/password", "hisar://vault-team/Ops/password"}, time.Now())
+	if err != nil || resolvedReferences[0].Value != "github-password" || resolvedReferences[1].Value != "ops-password" {
+		t.Errorf("IDs in an incomplete inventory: %+v %v", resolvedReferences, err)
 	}
 }
 

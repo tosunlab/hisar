@@ -93,7 +93,7 @@ func (s *Service) listLauncherItems() (cliprotocol.LauncherItemListResult, error
 	vaults := slices.SortedFunc(maps.Values(s.vaultsByID), func(first, second *session.Vault) int {
 		return cmp.Or(strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name)), strings.Compare(first.ID, second.ID))
 	})
-	vaultNames := countVaultNames(s.vaultsByID)
+	vaultNames := countVaultNames(s.listSecretVaults(isAnyVault))
 	for _, vault := range vaults {
 		items, err := s.unlockedSession.ListItems(ctx, vault)
 		if err != nil {

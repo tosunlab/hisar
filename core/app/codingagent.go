@@ -56,12 +56,11 @@ type agentSecretSource struct {
 	serviceSecretSource
 }
 
-func (source agentSecretSource) ListVaults() ([]secretreference.Vault, error) {
-	vaults, err := source.serviceSecretSource.ListVaults()
-	if err != nil {
-		return nil, err
+func (source agentSecretSource) ListVaults() (secretreference.Inventory, error) {
+	if err := source.loadVaults(); err != nil {
+		return secretreference.Inventory{}, err
 	}
-	return slices.DeleteFunc(vaults, func(vault secretreference.Vault) bool { return !source.service.isAgentVault(vault.ID) }), nil
+	return source.service.listSecretVaults(source.service.isAgentVault), nil
 }
 
 func (source agentSecretSource) ListItems(vaultID string) ([]item.Item, error) {
@@ -177,7 +176,7 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 			return result, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("no vault available to agents is named %q", vaultQuery))
 		}
 	}
-	vaultNames := countVaultNames(s.vaultsByID)
+	vaultNames := countVaultNames(s.listSecretVaults(isAnyVault))
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, vault := range vaults {
 		items, err := s.unlockedSession.ListItems(ctx, vault)
@@ -226,11 +225,11 @@ func (s *Service) buildAgentReferences(source agentSecretSource, request *clipro
 		reference.Field = secretreference.FieldOneTimeCode
 		return []string{reference.String()}, nil
 	}
-	vaults, err := source.ListVaults()
+	inventory, err := source.ListVaults()
 	if err != nil {
 		return nil, err
 	}
-	for _, vault := range vaults {
+	for _, vault := range inventory.Vaults {
 		items, err := source.ListItems(vault.ID)
 		if err != nil {
 			return nil, err

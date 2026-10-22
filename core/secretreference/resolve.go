@@ -48,9 +48,16 @@ type Vault struct {
 	Name string
 }
 
+// Inventory is the vaults a source can open. IsComplete says no other vault of the account failed to open: one whose
+// key or name did not open may have any name, so names are matched only in a complete inventory, and IDs always.
+type Inventory struct {
+	Vaults     []Vault
+	IsComplete bool
+}
+
 // Source lists what references resolve against; the desktop app and standalone hisar each provide one.
 type Source interface {
-	ListVaults() ([]Vault, error)
+	ListVaults() (Inventory, error)
 	ListItems(vaultID string) ([]item.Item, error)
 }
 
@@ -86,7 +93,7 @@ func GetBuiltInField(label string) (string, bool) {
 
 type resolver struct {
 	source          Source
-	vaults          []Vault
+	inventory       Inventory
 	itemsByVault    map[string][]item.Item
 	isVaultListRead bool
 }
@@ -129,12 +136,12 @@ func (state *resolver) resolve(text string, now time.Time) (Resolved, error) {
 		return Resolved{}, &Error{Reference: text, Reason: err.Error()}
 	}
 	if !state.isVaultListRead {
-		if state.vaults, err = state.source.ListVaults(); err != nil {
+		if state.inventory, err = state.source.ListVaults(); err != nil {
 			return Resolved{}, err
 		}
 		state.isVaultListRead = true
 	}
-	vault, err := findVault(state.vaults, reference.Vault)
+	vault, err := findVault(state.inventory, reference.Vault)
 	if err != nil {
 		return Resolved{}, &Error{Reference: text, Reason: err.Error()}
 	}
@@ -156,12 +163,17 @@ func (state *resolver) resolve(text string, now time.Time) (Resolved, error) {
 	return Resolved{Reference: reference, VaultID: vault.ID, ItemID: vaultItem.ID, VaultName: vault.Name, ItemTitle: vaultItem.Overview.Title, FieldLabel: label, Value: value}, nil
 }
 
-func findVault(vaults []Vault, query string) (Vault, error) {
-	var matches []Vault
-	for _, vault := range vaults {
+func findVault(inventory Inventory, query string) (Vault, error) {
+	for _, vault := range inventory.Vaults {
 		if vault.ID == query {
 			return vault, nil
 		}
+	}
+	if !inventory.IsComplete {
+		return Vault{}, errors.New("a vault could not be opened and its name is unknown, so a vault name may find the wrong vault; use the vault's ID instead")
+	}
+	var matches []Vault
+	for _, vault := range inventory.Vaults {
 		if strings.EqualFold(vault.Name, query) {
 			matches = append(matches, vault)
 		}

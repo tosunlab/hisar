@@ -23,18 +23,18 @@ type sessionSecretSource struct {
 	vaultsByID map[string]*session.Vault
 }
 
-func (source *sessionSecretSource) ListVaults() ([]secretreference.Vault, error) {
-	sessionVaults, err := source.session.ListVaults(source.ctx)
+func (source *sessionSecretSource) ListVaults() (secretreference.Inventory, error) {
+	read, err := source.session.ReadVaults(source.ctx)
 	if err != nil {
-		return nil, err
+		return secretreference.Inventory{}, err
 	}
 	source.vaultsByID = map[string]*session.Vault{}
-	vaults := make([]secretreference.Vault, 0, len(sessionVaults))
-	for index := range sessionVaults {
-		source.vaultsByID[sessionVaults[index].ID] = &sessionVaults[index]
-		vaults = append(vaults, secretreference.Vault{ID: sessionVaults[index].ID, Name: sessionVaults[index].Name})
+	inventory := secretreference.Inventory{Vaults: make([]secretreference.Vault, 0, len(read.Vaults)), IsComplete: len(read.Issues) == 0}
+	for index := range read.Vaults {
+		source.vaultsByID[read.Vaults[index].ID] = &read.Vaults[index]
+		inventory.Vaults = append(inventory.Vaults, secretreference.Vault{ID: read.Vaults[index].ID, Name: read.Vaults[index].Name})
 	}
-	return vaults, nil
+	return inventory, nil
 }
 
 func (source *sessionSecretSource) ListItems(vaultID string) ([]item.Item, error) {
