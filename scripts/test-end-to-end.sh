@@ -273,12 +273,20 @@ echo "ok   the deleted organization is gone"
 
 expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$PW" | HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
 
+# Sign-up refuses names with terminal controls (S-09); an account created before that rule can still have one, so the
+# CLI must keep escaping it (D-07). The name is set in the database the way such an older account has it.
 CONTROL_NAME=$'Eve\033]52;c;ZWNobyBoaQ==\007\302\233'
 CONTROL_INV=$("$BIN/hisar-server" invite --email terminal-controls@example.com </dev/null | tail -1)
-printf 'terminal-controls@example.com\n%s\n%s\n%s\n' "$CONTROL_NAME" "$PW" "$PW" |
+REFUSED_SIGNUP=$(printf 'terminal-controls@example.com\n%s\n%s\n%s\n' "$CONTROL_NAME" "$PW" "$PW" |
+  HISAR_STATE=$T/terminal-refused.json HISAR_SECRET_KEY=- hisar signup "$CONTROL_INV" 2>&1 || true)
+[[ "$REFUSED_SIGNUP" != *H1-* ]] || fail "signup accepted a name with terminal controls: $REFUSED_SIGNUP"
+echo "ok   signup refuses a name with terminal controls"
+printf 'terminal-controls@example.com\nEve\n%s\n%s\n' "$PW" "$PW" |
   HISAR_STATE=$T/terminal-signup.json HISAR_SECRET_KEY=- hisar signup "$CONTROL_INV" >"$T/terminal-signup.stdout" 2>"$T/terminal-signup.stderr"
 CONTROL_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/terminal-signup.stderr")
-expect "terminal-control account signup" "$CONTROL_SK" "H1-"
+expect "older-account signup" "$CONTROL_SK" "H1-"
+printf "UPDATE accounts SET name = :'name' WHERE email = 'terminal-controls@example.com'\n" |
+  psql -q -v ON_ERROR_STOP=1 -v name="$CONTROL_NAME" "$HISAR_DATABASE_URL" >/dev/null || fail "could not give the account an older name"
 printf 'http://127.0.0.1:%s\nterminal-controls@example.com\n%s\n%s\n' "$PORT" "$CONTROL_SK" "$PW" |
   HISAR_STATE=$T/terminal-login.json HISAR_SECRET_KEY=- hisar login >"$T/terminal-login.stdout" 2>"$T/terminal-login.stderr"
 CONTROL_LOGIN=$(cat "$T/terminal-login.stderr")
