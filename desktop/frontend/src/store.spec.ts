@@ -532,6 +532,7 @@ it("ignores a password unlock response that arrives after a newer lock", async (
 
 it("discovers undelivered recovery on restart without automatically unlocking", async () => {
   resetStore();
+  Object.assign(store, { pendingRecovery: [], isRecoveryOpen: false });
   api.getStatus.mockResolvedValue(createStatus("locked"));
   api.listPendingRecovery.mockResolvedValue([{
     operationId: "pending", kind: "signup", origin: "https://hisar.test", accountId: "account",
@@ -543,6 +544,24 @@ it("discovers undelivered recovery on restart without automatically unlocking", 
   expect(store.pendingRecovery[0].phase).toBe("delivery-pending");
   expect(store.status.state).toBe("locked");
   expect(api.resumePendingRecovery).not.toHaveBeenCalled();
+});
+
+it("keeps Finish later when the status is read again", async () => {
+  resetStore();
+  const pending = {
+    operationId: "pending", kind: "signup", origin: "https://hisar.test", accountId: "account",
+    email: "alice@example.com", name: "Alice", phase: "manual-unlock", revision: 2, kitSaved: true,
+    keychainProtected: false, manualUnlock: true, problems: [],
+  };
+  Object.assign(store, { status: createStatus("locked"), pendingRecovery: [pending], isRecoveryOpen: false });
+  api.getStatus.mockResolvedValue(createStatus("unlocked"));
+  api.listPendingRecovery.mockResolvedValue([pending]);
+  api.listAllVault.mockResolvedValue([allTestVault[0]]);
+  api.listAllItem.mockResolvedValue([]);
+  await storeModule.handleUnlockedElsewhere();
+  expect(store.status.state).toBe("unlocked");
+  expect(store.pendingRecovery).toHaveLength(1);
+  expect(store.isRecoveryOpen).toBe(false);
 });
 
 it("keeps committed signup warnings visible after loading the unlocked account", async () => {

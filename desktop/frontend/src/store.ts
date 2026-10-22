@@ -251,13 +251,16 @@ export async function loadStatus(): Promise<void> {
     if (generation === sessionGeneration) await applyStatus(status);
   });
   await loadPendingRecovery();
-  store.isRecoveryOpen = store.pendingRecovery.length > 0;
 }
 
+// loadPendingRecovery opens the recovery screen when operations appear where there were none, as at launch, and keeps
+// Finish later for the operations already listed, as the iPhone and Android apps do.
 export async function loadPendingRecovery(): Promise<void> {
   try {
+    const hadNone = store.pendingRecovery.length === 0;
     store.pendingRecovery = await api.listPendingRecovery();
     if (store.pendingRecovery.length === 0) store.isRecoveryOpen = false;
+    else if (hadNone) store.isRecoveryOpen = true;
   } catch (error) {
     store.errorMessage = getErrorMessage(error);
   }
