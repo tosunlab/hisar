@@ -208,3 +208,49 @@ func TestRecoveryStorageFailureRefusesRemoteRegistration(t *testing.T) {
 		t.Fatal("failed staging still committed a new account")
 	}
 }
+
+type changingFileSaver struct {
+	path   string
+	change func()
+}
+
+func (fileSaver *changingFileSaver) ChooseSavePath(string) (string, error) {
+	if change := fileSaver.change; change != nil {
+		fileSaver.change = nil
+		change()
+	}
+	return fileSaver.path, nil
+}
+
+func TestFailedEmergencyKitSaveCanBeRetriedOnTheSamePath(t *testing.T) {
+	const password = "kit master password"
+	serverURL := startRegisteringServer(t, false)
+	service := recoveryTestService(t, filepath.Join(t.TempDir(), "state.json"), unavailableRecoveryStore{createMemorySecretKeyStore()})
+	result, err := service.SignUp(serverURL+"/invite/token", "kit@example.com", "Kit", password)
+	if err != nil || result.SetupState != "awaiting-kit" {
+		t.Fatalf("sign-up did not wait for its kit: %+v %v", result, err)
+	}
+	kitPath := filepath.Join(t.TempDir(), "Hisar Emergency Kit.pdf")
+	service.config.FileSaver = &changingFileSaver{path: kitPath, change: func() {
+		entry, _, err := service.loadPendingRecovery(result.PendingOperationID, []byte(password))
+		if err == nil {
+			err = service.updatePendingRecovery(entry)
+		}
+		if err != nil {
+			t.Error(err)
+		}
+	}}
+	if _, err := service.SavePendingRecoveryEmergencyKit(result.PendingOperationID, password); err == nil {
+		t.Fatal("a kit save whose journal update conflicted reported success")
+	}
+	path, err := service.SavePendingRecoveryEmergencyKit(result.PendingOperationID, password)
+	if err != nil || path != kitPath {
+		t.Fatalf("the kit could not be saved again on the same path: %q %v", path, err)
+	}
+	if document, err := os.ReadFile(kitPath); err != nil || !bytes.HasPrefix(document, []byte("%PDF-")) {
+		t.Fatalf("the saved kit is not a complete PDF: %v", err)
+	}
+	if err := service.AcknowledgePendingRecovery(result.PendingOperationID, password); err != nil {
+		t.Fatalf("the retried kit was not recorded as saved: %v", err)
+	}
+}

@@ -391,11 +391,10 @@ func (s *Service) SavePendingRecoveryEmergencyKit(operationID, password string) 
 	if err != nil || path == "" {
 		return path, err
 	}
-	if err := writePendingEmergencyKit(kit, path); err != nil {
+	if err := s.savePendingEmergencyKit(entry, kit, path); err != nil {
 		return "", err
 	}
-	entry.KitSaved = true
-	return path, s.updatePendingRecovery(entry)
+	return path, nil
 }
 
 func ExportPendingRecoveryEmergencyKitToDirectory(s *Service, operationID, password, directory string) (EmergencyKitFile, error) {
@@ -407,17 +406,15 @@ func ExportPendingRecoveryEmergencyKitToDirectory(s *Service, operationID, passw
 		return EmergencyKitFile{}, err
 	}
 	path := filepath.Join(directory, emergencyKitFileName)
-	if err := writePendingEmergencyKit(kit, path); err != nil {
-		return EmergencyKitFile{}, err
-	}
-	entry.KitSaved = true
-	if err := s.updatePendingRecovery(entry); err != nil {
+	if err := s.savePendingEmergencyKit(entry, kit, path); err != nil {
 		return EmergencyKitFile{}, err
 	}
 	return EmergencyKitFile{SecretKey: kit.SecretKey, Path: path}, nil
 }
 
-func writePendingEmergencyKit(kit emergencykit.Kit, path string) error {
+// savePendingEmergencyKit writes the kit to a new file at path and records it as saved. When writing or recording fails
+// it removes the file it created, so the kit is either saved and recorded or absent, and the same path can be tried again.
+func (s *Service) savePendingEmergencyKit(entry *PendingRecoverySummary, kit emergencykit.Kit, path string) error {
 	document, err := emergencykit.Generate(kit)
 	if err != nil {
 		return err
@@ -427,7 +424,15 @@ func writePendingEmergencyKit(kit emergencykit.Kit, path string) error {
 		return err
 	}
 	_, writeErr := file.Write(document)
-	return errors.Join(writeErr, file.Sync(), file.Close())
+	err = errors.Join(writeErr, file.Sync(), file.Close())
+	if err == nil {
+		entry.KitSaved = true
+		err = s.updatePendingRecovery(entry)
+	}
+	if err != nil {
+		return errors.Join(err, os.Remove(path))
+	}
+	return nil
 }
 
 func (s *Service) AcknowledgePendingRecovery(operationID, password string) error {
