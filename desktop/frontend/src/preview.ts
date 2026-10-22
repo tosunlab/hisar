@@ -1335,6 +1335,7 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     databaseCount: allPreviewImportItem.filter((detail) => detail.category === "database").length,
     passkeyCount: 0,
     allSkipped: allPreviewImportSkipped,
+    groups: [{ id: "private", name: "1Password Private", isPrivate: true, itemCount: allPreviewImportItem.length, vaultId: vaultID, vaultName: vault.name, members: listAllPreviewVaultMember(vaultID) }],
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({
       title: detail.title,
       username: detail.username,
@@ -1390,6 +1391,7 @@ export const previewApi = {
     ]),
   chooseImportFile: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   previewImport: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
+  mapImportGroup: (_groupID: string, vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   startImport: (vaultID: string, isSkippingDuplicate: boolean) => {
     const allDuplicate = isSkippingDuplicate ? findAllPreviewImportDuplicate(vaultID) : [];
     previewImportRun = { vaultID, allQueued: allPreviewImportItem.filter((detail) => !allDuplicate.includes(detail)), savedCount: 0 };

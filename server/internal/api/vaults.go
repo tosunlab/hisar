@@ -72,7 +72,11 @@ func (s *Server) handleListChanges(c fiber.Ctx) error {
 	return c.JSON(response)
 }
 
-func (s *Server) handlePutItem(c fiber.Ctx) error {
+func (s *Server) handlePutItem(c fiber.Ctx) error { return s.putItem(c, false) }
+
+func (s *Server) handlePutImportItem(c fiber.Ctx) error { return s.putItem(c, true) }
+
+func (s *Server) putItem(c fiber.Ctx, isImport bool) error {
 	// A reader is refused before the body is read; PutItem checks again.
 	if err := s.service.CheckItemWrite(c.Context(), s.getActor(c), c.Params("vault")); err != nil {
 		return err
@@ -80,6 +84,9 @@ func (s *Server) handlePutItem(c fiber.Ctx) error {
 	var request apitypes.PutItemRequest
 	if err := decodeBody(c, &request); err != nil {
 		return err
+	}
+	if isImport && len(request.ImportScope) != 64 {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "review the import destination with an updated Hisar app"})
 	}
 	baseRevision := strings.Trim(strings.TrimPrefix(c.Get("If-Match"), "W/"), `"`)
 	seq, err := s.service.PutItem(c.Context(), s.getActor(c), c.Params("vault"), c.Params("item"), baseRevision, &request)

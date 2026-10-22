@@ -255,6 +255,7 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/vaults/:vault/recovery/delete", s.requireSession, s.handleDeleteUnreadableVault)
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListChanges)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
+	apiGroup.Put("/vaults/:vault/items/:item/import", s.requireSession, s.handlePutImportItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
 	apiGroup.Post("/vaults/:vault/items/:item/move", s.requireSession, s.handleMoveItem)
 

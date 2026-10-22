@@ -62,6 +62,9 @@ protocol VaultBackend: AnyObject {
     func prepareCredentialExchangeImport(vaultID: String, credentialData: Data) throws -> ImportPreview
     /// previewImport shows the prepared import again for another vault, with that vault's duplicates.
     func previewImport(vaultID: String) throws -> ImportPreview
+    /// mapImportGroup sends one source group of the prepared import, such as a Credential Exchange collection, to vaultID;
+    /// the preview's vaultID is then "" when the groups go to different vaults, and startImport takes it as it is.
+    func mapImportGroup(groupID: String, vaultID: String) throws -> ImportPreview
     func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress
     /// continueImport saves the next items; an error pauses the import, and calling it again continues.
     func continueImport() throws -> ImportProgress

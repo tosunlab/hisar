@@ -31,14 +31,15 @@ func answerVaultDataRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 	case cliprotocol.TypeGetVaultActions:
 		switch request.VaultID {
 		case "personal-id":
-			return cliprotocol.VaultActionsResult{Vault: cliprotocol.Vault{ID: "personal-id", Name: "Personal", ItemCount: 2}, CanRename: true,
+			return cliprotocol.VaultActionsResult{ImportScope: "reviewed-personal", Vault: cliprotocol.Vault{ID: "personal-id", Name: "Personal", ItemCount: 2}, CanRename: true,
 				DeleteBlockedReason: "Your Personal vault can't be deleted.", LeaveBlockedReason: "You can't leave your Personal vault."}, nil
 		case "family-id":
 			return cliprotocol.VaultActionsResult{Vault: cliprotocol.Vault{ID: "family-id", Name: "Family", ItemCount: 1}, CanLeave: true,
 				DeleteBlockedReason: "Only an owner of this vault can delete it. You can leave it instead."}, nil
 		}
 		return cliprotocol.VaultActionsResult{
-			Vault: cliprotocol.Vault{ID: "work-id", Name: "Work", ItemCount: 3}, CanRename: true, CanDelete: true,
+			ImportScope: "reviewed-work",
+			Vault:       cliprotocol.Vault{ID: "work-id", Name: "Work", ItemCount: 3}, CanRename: true, CanDelete: true,
 			LeaveBlockedReason:  "You are its only owner.",
 			MembersLosingAccess: []cliprotocol.VaultMember{{Name: "Ada", Email: "ada@example.com", Role: "editor"}},
 			TargetVaults:        []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Role: "owner"}},
@@ -210,11 +211,11 @@ func TestDotenvImportThroughApp(t *testing.T) {
 	}
 
 	_, stderr, err = runCapturingOutput(t, false, "", "import", envPath, "--vault", "Work", "--item", "shop", "-y")
-	if err != nil || !strings.Contains(stderr, "hisar run --env-file "+envPath+" -- <command>") || !strings.Contains(stderr, "(the existing item)") {
+	if err != nil || !strings.Contains(stderr, "hisar run --env-file "+envPath+" -- <command>") || !strings.Contains(stderr, "(the existing item)") || !strings.Contains(stderr, "ada@example.com") {
 		t.Fatalf("import: %v\n%s", err, stderr)
 	}
 	saveRequests := app.findRequest(cliprotocol.TypeSaveItem)
-	if len(saveRequests) != 1 || saveRequests[0].VaultID != "work-id" || saveRequests[0].Item.ID != "shop-id" || saveRequests[0].Item.Fields == nil {
+	if len(saveRequests) != 1 || saveRequests[0].VaultID != "work-id" || saveRequests[0].Item.ID != "shop-id" || saveRequests[0].Item.Fields == nil || saveRequests[0].ImportScope != "reviewed-work" {
 		t.Fatalf("save requests: %+v", saveRequests)
 	}
 	fields := *saveRequests[0].Item.Fields
@@ -309,12 +310,12 @@ func TestHisarExportImportThroughApp(t *testing.T) {
 	}
 	_, stderr, err := runCapturingOutput(t, false, "a long export passphrase\n", "import", path, "-y")
 	if err != nil || !strings.Contains(stderr, "Personal → Personal: 2 items, 1 already there") ||
-		!strings.Contains(stderr, "Family → Family (imported) (new vault): 1 item") || !strings.Contains(stderr, "Side project → Side project (new vault)") {
+		!strings.Contains(stderr, "Family → Personal: 1 item") || !strings.Contains(stderr, "Side project → Personal") {
 		t.Fatalf("import: %v\n%s", err, stderr)
 	}
 	createRequests := app.findRequest(cliprotocol.TypeCreateVault)
-	if len(createRequests) != 2 || createRequests[0].Name != "Family (imported)" || createRequests[1].Name != "Side project" {
-		t.Errorf("created vaults: %+v", createRequests)
+	if len(createRequests) != 0 {
+		t.Errorf("restore must not create or share vaults: %+v", createRequests)
 	}
 	imports := app.findRequest(cliprotocol.TypeImportItem)
 	if len(imports) != 3 || imports[0].VaultID != "personal-id" || len(imports[0].ImportedItems) != 1 || imports[0].ImportedItems[0].Details.OneTimePassword == "" {

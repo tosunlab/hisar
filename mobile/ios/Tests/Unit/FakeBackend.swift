@@ -1,6 +1,14 @@
 import Foundation
 @testable import Hisar
 
+/// FakeImportGroup is one source group of the pending import: the titles of its logins and the vault they go to.
+struct FakeImportGroup {
+    var id: String
+    var name: String
+    var allTitle: [String]
+    var vaultID: String
+}
+
 class FakeBackend: VaultBackend {
     static let password = "correct horse battery"
     static let secretKey = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
@@ -77,10 +85,10 @@ class FakeBackend: VaultBackend {
     /// While set, listing the organizations or reading one fails with this sentence.
     var listAllOrganizationErrorMessage: String?
     var getOrganizationErrorMessage: String?
-    /// The import prepareCredentialExchangeImport keeps, as the items it would save; nil when none is pending.
-    var allPendingImportTitle: [String]?
+    /// The import prepareCredentialExchangeImport keeps, as the logins of each source group it would save; nil when none is pending.
+    var allPendingImportGroup: [FakeImportGroup]?
     var pendingImportVaultID = ""
-    var allQueuedImportTitle: [String] = []
+    var allQueuedImport: [(title: String, vaultID: String)] = []
     var importSavedCount = 0
     var importBatchSize = 2
     var allImportedCredentialData: [Data] = []
@@ -822,36 +830,77 @@ extension FakeBackend {
         return ExportResult(path: path.path, vaultCount: allVault.count, itemCount: allItemByVaultID.values.map(\.count).reduce(0, +))
     }
 
-    private func buildImportPreview(vaultID: String) throws -> ImportPreview {
-        guard let allTitle = allPendingImportTitle else { throw BackendError(message: "There is no import to continue") }
+    private func checkImportVault(_ vaultID: String) throws -> VaultSummary {
         guard let vault = allVault.first(where: { $0.id == vaultID }) else { throw BackendError(message: "Vault not found") }
         guard vault.type == VaultSummary.typePersonal || vault.role != Member.vaultRoleReader else { throw BackendError(message: "You can only view this vault") }
-        let allExistingTitle = Set((allItemByVaultID[vaultID] ?? []).map(\.title))
-        let allDuplicate = allTitle.filter { allExistingTitle.contains($0) }.map { ImportDuplicate(title: $0) }
-        return ImportPreview(fileName: "Other Manager", vaultID: vault.id, vaultName: vault.name, itemCount: allTitle.count, loginCount: allTitle.count, allDuplicate: allDuplicate)
+        return vault
     }
 
+    /// buildImportPreview is the pending import as core/app previews it: vaultID is the vault every group goes to, or ""
+    /// when the groups go to different vaults.
+    private func buildImportPreview() throws -> ImportPreview {
+        guard let allGroup = allPendingImportGroup else { throw BackendError(message: "There is no import to continue") }
+        let allVaultID = Set(allGroup.map(\.vaultID))
+        let commonVault = allVaultID.count == 1 ? try checkImportVault(allGroup[0].vaultID) : nil
+        var allDuplicate: [ImportDuplicate] = []
+        var allSourceGroup: [ImportSourceGroup] = []
+        for group in allGroup {
+            let vault = try checkImportVault(group.vaultID)
+            let allExistingTitle = Set((allItemByVaultID[vault.id] ?? []).map(\.title))
+            allDuplicate += group.allTitle.filter { allExistingTitle.contains($0) }.map { ImportDuplicate(title: $0) }
+            allSourceGroup.append(ImportSourceGroup(id: group.id, name: group.name, isPrivate: true, itemCount: group.allTitle.count, vaultID: vault.id, vaultName: vault.name,
+                                                    members: allVaultMemberByVaultID[vault.id] ?? []))
+        }
+        let itemCount = allGroup.map(\.allTitle.count).reduce(0, +)
+        var preview = ImportPreview(fileName: "Other Manager", vaultID: commonVault?.id ?? "", vaultName: commonVault?.name ?? "the mapped vaults", itemCount: itemCount,
+                                    loginCount: itemCount, allDuplicate: allDuplicate)
+        preview.groups = allSourceGroup
+        return preview
+    }
+
+    /// prepareCredentialExchangeImport reads credentialData as the titles of the logins to import, or as one list of
+    /// titles per source group, like the collections of a Credential Exchange.
     func prepareCredentialExchangeImport(vaultID: String, credentialData: Data) throws -> ImportPreview {
         record("prepareCredentialExchangeImport")
         try requireUnlocked()
-        let exported = try JSONDecoder().decode([String].self, from: credentialData)
+        if let allTitle = try? JSONDecoder().decode([String].self, from: credentialData) {
+            allPendingImportGroup = [FakeImportGroup(id: "private", name: "Private or unspecified source", allTitle: allTitle, vaultID: vaultID)]
+        } else {
+            let allGroupTitle = try JSONDecoder().decode([[String]].self, from: credentialData)
+            allPendingImportGroup = allGroupTitle.enumerated().map { FakeImportGroup(id: "group-\($0.offset)", name: "Collection \($0.offset + 1)", allTitle: $0.element, vaultID: vaultID) }
+        }
         allImportedCredentialData.append(credentialData)
-        allPendingImportTitle = exported
-        return try buildImportPreview(vaultID: vaultID)
+        return try buildImportPreview()
     }
 
     func previewImport(vaultID: String) throws -> ImportPreview {
         record("previewImport")
         try requireUnlocked()
-        return try buildImportPreview(vaultID: vaultID)
+        guard allPendingImportGroup?.count == 1 else { throw BackendError(message: "Choose a destination for each source group") }
+        _ = try checkImportVault(vaultID)
+        allPendingImportGroup?[0].vaultID = vaultID
+        return try buildImportPreview()
+    }
+
+    func mapImportGroup(groupID: String, vaultID: String) throws -> ImportPreview {
+        record("mapImportGroup")
+        try requireUnlocked()
+        guard let index = allPendingImportGroup?.firstIndex(where: { $0.id == groupID }) else { throw BackendError(message: "Source group not found; choose the import file again") }
+        _ = try checkImportVault(vaultID)
+        allPendingImportGroup?[index].vaultID = vaultID
+        return try buildImportPreview()
     }
 
     func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress {
         record("startImport")
         try requireUnlocked()
-        let preview = try buildImportPreview(vaultID: vaultID)
-        let allDuplicateTitle = Set(preview.allDuplicate.map(\.title))
-        allQueuedImportTitle = (allPendingImportTitle ?? []).filter { !isSkippingDuplicate || !allDuplicateTitle.contains($0) }
+        let preview = try buildImportPreview()
+        guard vaultID == preview.vaultID else { throw BackendError(message: "Review the import destinations again") }
+        allQueuedImport = []
+        for group in allPendingImportGroup ?? [] {
+            let allExistingTitle = Set((allItemByVaultID[group.vaultID] ?? []).map(\.title))
+            allQueuedImport += group.allTitle.filter { !isSkippingDuplicate || !allExistingTitle.contains($0) }.map { (title: $0, vaultID: group.vaultID) }
+        }
         pendingImportVaultID = vaultID
         importSavedCount = 0
         return buildImportProgress()
@@ -860,30 +909,30 @@ extension FakeBackend {
     func continueImport() throws -> ImportProgress {
         record("continueImport")
         try requireUnlocked()
-        guard allPendingImportTitle != nil else { throw BackendError(message: "There is no import to continue") }
+        guard allPendingImportGroup != nil else { throw BackendError(message: "There is no import to continue") }
         if let continueImportErrorMessage {
             self.continueImportErrorMessage = nil
             throw BackendError(message: continueImportErrorMessage)
         }
-        for title in allQueuedImportTitle.prefix(importBatchSize) {
-            allItemByVaultID[pendingImportVaultID, default: []].append(ItemDetail(id: "imported-\(nextItemNumber)", revision: "r1", category: "login", title: title))
+        for queued in allQueuedImport.prefix(importBatchSize) {
+            allItemByVaultID[queued.vaultID, default: []].append(ItemDetail(id: "imported-\(nextItemNumber)", revision: "r1", category: "login", title: queued.title))
             nextItemNumber += 1
             importSavedCount += 1
         }
-        allQueuedImportTitle = Array(allQueuedImportTitle.dropFirst(importBatchSize))
+        allQueuedImport = Array(allQueuedImport.dropFirst(importBatchSize))
         return buildImportProgress()
     }
 
     private func buildImportProgress() -> ImportProgress {
-        let vaultName = allVault.first { $0.id == pendingImportVaultID }?.name ?? ""
+        let vaultName = allVault.first { $0.id == pendingImportVaultID }?.name ?? "the mapped vaults"
         return ImportProgress(fileName: "Other Manager", vaultID: pendingImportVaultID, vaultName: vaultName, savedCount: importSavedCount,
-                              totalCount: importSavedCount + allQueuedImportTitle.count, isDone: allQueuedImportTitle.isEmpty)
+                              totalCount: importSavedCount + allQueuedImport.count, isDone: allQueuedImport.isEmpty)
     }
 
     func cancelImport() {
         record("cancelImport")
-        allPendingImportTitle = nil
-        allQueuedImportTitle = []
+        allPendingImportGroup = nil
+        allQueuedImport = []
     }
 
     func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport {

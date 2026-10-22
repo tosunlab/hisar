@@ -13,7 +13,6 @@ import (
 	"strings"
 
 	"github.com/tryhisar/hisar/core/apiclient"
-	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/export"
 	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
@@ -121,17 +120,20 @@ func selectQueuedItems(items []item.Item, duplicateIndexes []int, isSkippingDupl
 // isImportStoppingError: these failures would repeat for every item, so the import stops.
 func isImportStoppingError(err error) bool {
 	return apiclient.IsUnreachable(err) || apiclient.IsStatus(err, http.StatusUnauthorized) || apiclient.IsStatus(err, http.StatusForbidden) ||
-		errors.Is(err, apiclient.ErrAccountSuspended) ||
+		errors.Is(err, session.ErrConflict) || errors.Is(err, apiclient.ErrAccountSuspended) ||
 		apiclient.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
-func saveImportedItems(ctx context.Context, unlockedSession *session.Session, vault *session.Vault, queuedItems []item.Item) (int, error) {
+func saveImportedItems(ctx context.Context, unlockedSession *session.Session, vault *session.Vault, queuedItems []item.Item, scope ...string) (int, error) {
+	if len(scope) != 1 || scope[0] == "" {
+		return 0, errors.New("review the import destination before importing")
+	}
 	savedCount := 0
 	favoriteItemIDs := []string{}
 	defer func() { addImportedFavorites(ctx, unlockedSession, favoriteItemIDs) }()
 	for index := range queuedItems {
 		vaultItem := queuedItems[index]
-		_, err := unlockedSession.SaveItem(ctx, vault, &vaultItem)
+		_, err := unlockedSession.SaveImportItem(ctx, vault, &vaultItem, scope[0])
 		if err != nil && isImportStoppingError(err) {
 			fmt.Fprintln(os.Stderr)
 			return savedCount, fmt.Errorf("stopped after importing %d of %d items: %w", savedCount, len(queuedItems), err)
@@ -172,18 +174,23 @@ type importOption struct {
 	keyList              string
 	isKeyListChosen      bool
 	isDryRun             bool
+	mappings             []string
 }
 
 func addImportFlag(flags *flag.FlagSet) *importOption {
 	option := &importOption{}
-	flags.StringVar(&option.vaultName, "v", "Personal", "vault name or ID; for a Hisar export, put every item into this vault")
+	flags.StringVar(&option.vaultName, "v", "Personal", "explicit destination name or ID for a single source group")
 	flags.StringVar(&option.vaultName, "vault", "Personal", "the same as -v")
 	flags.StringVar(&option.format, "format", "", describeImportFormats()+"; Hisar exports and .env files are recognised by themselves")
 	flags.BoolVar(&option.isConfirmed, "y", false, "import without asking; items already in the vault are skipped")
 	flags.BoolVar(&option.isIncludingDuplicate, "include-duplicates", false, "also import items the vault already has")
 	flags.StringVar(&option.itemTitle, "item", "", ".env: the item to store the chosen values in (created when missing)")
 	flags.StringVar(&option.keyList, "keys", "", ".env: comma-separated variables to store; by default the ones that look secret")
-	flags.BoolVar(&option.isDryRun, "dry-run", false, ".env: print what would be stored and how the file would change, and write nothing")
+	flags.BoolVar(&option.isDryRun, "dry-run", false, "preview destinations and changes without writing")
+	flags.Func("map", "map a source group ID to a destination vault ID (source=destination); repeat for each group", func(value string) error {
+		option.mappings = append(option.mappings, value)
+		return nil
+	})
 	return option
 }
 
@@ -201,6 +208,9 @@ func (option *importOption) readChosenFlag(flags *flag.FlagSet) {
 // importOwnFormat handles .env files and Hisar's own exports; other files go to the password manager importers.
 func importOwnFormat(ctx context.Context, access backend, path string, option *importOption) (bool, error) {
 	if isDotenvFile(path, option.format) {
+		if len(option.mappings) > 0 {
+			return true, errors.New("--map is for source groups; use --vault for a .env file")
+		}
 		dotenvOption := dotenvImportOption{
 			vaultName: option.vaultName, isVaultChosen: option.isVaultChosen, itemTitle: option.itemTitle,
 			isDryRun: option.isDryRun, isConfirmed: option.isConfirmed,
@@ -215,8 +225,8 @@ func importOwnFormat(ctx context.Context, access backend, path string, option *i
 		}
 		return true, importDotenv(ctx, access, path, dotenvOption)
 	}
-	if option.itemTitle != "" || option.isKeyListChosen || option.isDryRun {
-		return true, errors.New("--item, --keys and --dry-run are for .env files")
+	if option.itemTitle != "" || option.isKeyListChosen {
+		return true, errors.New("--item and --keys are for .env files")
 	}
 	if option.format != "" {
 		return false, nil
@@ -234,7 +244,7 @@ func importOwnFormat(ctx context.Context, access backend, path string, option *i
 		return true, err
 	}
 	return true, importHisarExport(ctx, access, path, format, content, hisarImportOption{
-		vaultName: option.vaultName, isVaultChosen: option.isVaultChosen, isConfirmed: option.isConfirmed, isIncludingDuplicate: option.isIncludingDuplicate,
+		vaultName: option.vaultName, isVaultChosen: option.isVaultChosen, isConfirmed: option.isConfirmed, isIncludingDuplicate: option.isIncludingDuplicate, mappings: option.mappings, isDryRun: option.isDryRun,
 	})
 }
 
@@ -281,66 +291,5 @@ func runImport(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err != nil {
 		return err
 	}
-	vault, err := findVaultByNameOrID(ctx, access, option.vaultName)
-	if err != nil {
-		return err
-	}
-	if vault.Role == apitypes.VaultReader {
-		return fmt.Errorf("you can only read %q; choose a vault you can edit with -v", vault.Name)
-	}
-	existingItems, err := access.listItems(ctx, vault.ID)
-	if err != nil {
-		return err
-	}
-	canCompareContent := !access.listsItemSummaries()
-	duplicateIndexes := importer.FindDuplicateIndexes(result.Items, existingItems)
-	printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, existingItems, canCompareContent)
-	isSkippingDuplicate := !option.isIncludingDuplicate
-	if !option.isConfirmed && isSkippingDuplicate && len(duplicateIndexes) > 0 {
-		isIncluding, err := confirm(fmt.Sprintf("Also import the %s already in %s?", formatItemCount(len(duplicateIndexes)), vault.Name))
-		if err != nil {
-			return err
-		}
-		isSkippingDuplicate = !isIncluding
-	}
-	if isSkippingDuplicate {
-		if canCompareContent {
-			result.Skipped = append(result.Skipped, importer.FindUnsavedDuplicates(result.Items, existingItems, importer.FindDuplicateMatches(result.Items, existingItems))...)
-		} else {
-			for _, index := range duplicateIndexes {
-				result.Skipped = append(result.Skipped, importer.SkippedEntry{
-					Title: result.Items[index].Overview.Title, Reason: "the skipped duplicate could not be compared through the Hisar app",
-				})
-			}
-		}
-	}
-	queuedItems := selectQueuedItems(result.Items, duplicateIndexes, isSkippingDuplicate)
-	savedCount := 0
-	if len(queuedItems) == 0 {
-		fmt.Fprintln(standardError(), "Nothing to import.")
-	} else {
-		if !option.isConfirmed {
-			isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(queuedItems)), vault.Name))
-			if err != nil || !isImporting {
-				return err
-			}
-		}
-		savedCount, err = access.importItems(ctx, vault.ID, queuedItems)
-		if err != nil {
-			return err
-		}
-		fmt.Fprintf(standardError(), "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
-	}
-	if leftCount := importer.CountLeftBehind(len(queuedItems)-savedCount, result.Skipped); leftCount > 0 {
-		if !canCompareContent && isSkippingDuplicate && len(duplicateIndexes) > 0 {
-			fmt.Fprintf(standardError(), "Keep %s: %s could not be saved or verified in Hisar.\n", path, formatItemCount(leftCount))
-		} else {
-			fmt.Fprintf(standardError(), "Keep %s: %d of its entries are not in Hisar.\n", path, leftCount)
-		}
-		return nil
-	}
-	if len(queuedItems) == 0 {
-		return nil
-	}
-	return offerToDeleteImportFile(path, option.isConfirmed)
+	return importSourceGroups(ctx, access, path, result, option)
 }

@@ -167,6 +167,14 @@ class CredentialImportModel(private val context: ModelContext) {
         if (session == current && preview != null) mutableSheet.value = CredentialImportSheet.Previewing(newPreview)
     }
 
+    /** Sends one source group, such as a collection of the other app, to another vault; the other groups stay where they are. */
+    suspend fun mapCredentialImportGroup(groupID: String, vaultID: String) {
+        if (preview == null) return
+        val current = session
+        val newPreview = context.perform { it.mapImportGroup(groupID, vaultID) } ?: return
+        if (session == current && preview != null) mutableSheet.value = CredentialImportSheet.Previewing(newPreview)
+    }
+
     suspend fun startCredentialImport(isSkippingDuplicate: Boolean) {
         val preview = preview ?: return
         if (mutableIsImporting.value) return

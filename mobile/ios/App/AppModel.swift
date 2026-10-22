@@ -968,6 +968,14 @@ final class AppModel: ObservableObject {
         credentialImportPreview = preview
     }
 
+    /// mapCredentialImportGroup sends one source group, such as a collection of the other app, to another vault; the
+    /// other groups stay where they are.
+    func mapCredentialImportGroup(groupID: String, vaultID: String) async {
+        guard credentialImportPreview != nil, credentialImportProgress == nil else { return }
+        guard let preview = await perform({ try $0.mapImportGroup(groupID: groupID, vaultID: vaultID) }), isCredentialImportShown else { return }
+        credentialImportPreview = preview
+    }
+
     func startCredentialImport(isSkippingDuplicate: Bool) async {
         guard let preview = credentialImportPreview, credentialImportProgress == nil, !isImportingCredentials else { return }
         isImportingCredentials = true

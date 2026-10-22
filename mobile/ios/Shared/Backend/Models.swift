@@ -1623,6 +1623,21 @@ struct ImportDuplicate: Codable, Hashable {
 
 /// ImportPreview is what an import would bring into vaultID. For a Credential Exchange import fileName names the app the
 /// items came from and filePath is empty.
+struct ImportSourceGroup: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var isPrivate: Bool
+    var itemCount: Int
+    var vaultID: String
+    var vaultName: String
+    var members: [Member]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, isPrivate, itemCount, vaultName, members
+        case vaultID = "vaultId"
+    }
+}
+
 struct ImportPreview: Codable, Equatable {
     static let formatCredentialExchange = "credential-exchange"
 
@@ -1646,11 +1661,13 @@ struct ImportPreview: Codable, Equatable {
     var passkeyCount: Int = 0
     var allSkipped: [ImportSkippedEntry] = []
     var allDuplicate: [ImportDuplicate] = []
+    var groups: [ImportSourceGroup] = []
 
     enum CodingKeys: String, CodingKey {
         case fileName, filePath, format, formatName, vaultName, itemCount, loginCount, secureNoteCount, sshKeyCount
         case creditCardCount, identityCount, apiCredentialCount, addressCount, softwareLicenseCount, serverCount
         case databaseCount, passkeyCount, allSkipped, allDuplicate
+        case groups
         case vaultID = "vaultId"
     }
 
@@ -1691,6 +1708,7 @@ struct ImportPreview: Codable, Equatable {
         passkeyCount = try container.decodeIfPresent(Int.self, forKey: .passkeyCount) ?? 0
         allSkipped = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allSkipped) ?? []
         allDuplicate = try container.decodeIfPresent([ImportDuplicate].self, forKey: .allDuplicate) ?? []
+        groups = try container.decodeIfPresent([ImportSourceGroup].self, forKey: .groups) ?? []
     }
 
     /// The preview's non-zero counts, as the import sheet lists them.

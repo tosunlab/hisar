@@ -159,7 +159,7 @@ func (access *standaloneBackend) getItem(ctx context.Context, vaultID, itemID st
 	return nil, fmt.Errorf("item %s: not found", itemID)
 }
 
-func (access *standaloneBackend) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
+func (access *standaloneBackend) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item, importScope ...string) error {
 	vault, err := access.findVault(ctx, vaultID)
 	if err != nil {
 		return err
@@ -172,17 +172,21 @@ func (access *standaloneBackend) saveItem(ctx context.Context, vaultID string, v
 		}
 	}
 	delete(access.itemsByVaultID, vaultID)
-	_, err = access.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
+	if len(importScope) > 0 {
+		_, err = access.unlockedSession.SaveImportItem(ctx, vault, vaultItem, importScope[0], base)
+	} else {
+		_, err = access.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
+	}
 	return err
 }
 
-func (access *standaloneBackend) importItems(ctx context.Context, vaultID string, items []item.Item) (int, error) {
+func (access *standaloneBackend) importItems(ctx context.Context, vaultID string, items []item.Item, scope ...string) (int, error) {
 	vault, err := access.findVault(ctx, vaultID)
 	if err != nil {
 		return 0, err
 	}
 	delete(access.itemsByVaultID, vaultID)
-	return saveImportedItems(ctx, access.unlockedSession, vault, items)
+	return saveImportedItems(ctx, access.unlockedSession, vault, items, scope...)
 }
 
 func (access *standaloneBackend) listFavorites(ctx context.Context) ([]cliprotocol.Favorite, error) {
@@ -235,29 +239,30 @@ func (access *standaloneBackend) getVaultActions(ctx context.Context, vaultID st
 		TargetVaults:        []cliprotocol.Vault{},
 	}
 	ownerCount := 0
-	if vault.Type != apitypes.VaultPersonal {
-		accesses, err := access.unlockedSession.Client.ListVaultMembers(ctx, vault.ID)
-		if err != nil {
-			return cliprotocol.VaultActionsResult{}, err
-		}
-		people, err := access.unlockedSession.Client.ListMembers(ctx)
-		if err != nil {
-			return cliprotocol.VaultActionsResult{}, err
-		}
-		for _, backend := range accesses {
-			if backend.Role == apitypes.VaultOwner {
-				ownerCount++
-			}
-			if backend.AccountID == access.unlockedSession.AccountID {
-				continue
-			}
-			member := cliprotocol.VaultMember{Role: backend.Role}
-			if index := slices.IndexFunc(people, func(person apitypes.Member) bool { return person.AccountID == backend.AccountID }); index >= 0 {
-				member.Name, member.Email = people[index].Name, people[index].Email
-			}
-			actions.MembersLosingAccess = append(actions.MembersLosingAccess, member)
-		}
+	accesses, err := access.unlockedSession.Client.ListVaultMembers(ctx, vault.ID)
+	if err != nil {
+		return cliprotocol.VaultActionsResult{}, err
 	}
+	people, err := access.unlockedSession.Client.ListMembers(ctx)
+	if err != nil {
+		return cliprotocol.VaultActionsResult{}, err
+	}
+	scopeMembers := []crypt.ImportMember{}
+	for _, memberAccess := range accesses {
+		scopeMembers = append(scopeMembers, crypt.ImportMember{AccountID: memberAccess.AccountID, Role: memberAccess.Role})
+		if memberAccess.Role == apitypes.VaultOwner {
+			ownerCount++
+		}
+		if memberAccess.AccountID == access.unlockedSession.AccountID {
+			continue
+		}
+		member := cliprotocol.VaultMember{AccountID: memberAccess.AccountID, Role: memberAccess.Role}
+		if index := slices.IndexFunc(people, func(person apitypes.Member) bool { return person.AccountID == memberAccess.AccountID }); index >= 0 {
+			member.Name, member.Email = people[index].Name, people[index].Email
+		}
+		actions.MembersLosingAccess = append(actions.MembersLosingAccess, member)
+	}
+	actions.ImportScope = crypt.ImportScope(vaultID, scopeMembers)
 	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(access.vaultsByID), ownerCount)
 	actions.CanRename, actions.CanDelete, actions.DeleteBlockedReason = permissions.CanRename, permissions.CanDelete, permissions.DeleteBlockedReason
 	actions.CanLeave, actions.LeaveBlockedReason = permissions.CanLeave, permissions.LeaveBlockedReason

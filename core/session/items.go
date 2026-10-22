@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -56,6 +57,18 @@ func (s *Session) SaveItem(ctx context.Context, vault *Vault, vaultItem *item.It
 		baseItem = base[0]
 	}
 	return s.putItem(ctx, vault, vaultItem, baseItem, false)
+}
+
+// SaveImportItem requires the server to keep the reviewed destination membership unchanged through the write.
+func (s *Session) SaveImportItem(ctx context.Context, vault *Vault, vaultItem *item.Item, scope string, base ...*item.Item) (*item.Item, error) {
+	if scope == "" {
+		return nil, errors.New("review the import destination again")
+	}
+	var baseItem *item.Item
+	if len(base) > 0 {
+		baseItem = base[0]
+	}
+	return s.putItem(ctx, vault, vaultItem, baseItem, false, scope)
 }
 
 func (s *Session) DeleteItem(ctx context.Context, vault *Vault, vaultItem *item.Item) (current *item.Item, err error) {
@@ -129,7 +142,7 @@ func (s *Session) sealItem(vault *Vault, vaultItem *item.Item, deleted bool) (*a
 	}, nil
 }
 
-func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *item.Item, deleted bool) (*item.Item, error) {
+func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *item.Item, deleted bool, importScope ...string) (*item.Item, error) {
 	if vaultItem.ID == "" {
 		vaultItem.ID = uuid.NewString()
 	}
@@ -139,6 +152,9 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *it
 		var err error
 		if request, err = s.sealItem(vault, vaultItem, deleted); err != nil {
 			return err
+		}
+		if len(importScope) > 0 {
+			request.ImportScope = importScope[0]
 		}
 		_, serverItem, err = s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, request)
 		return err

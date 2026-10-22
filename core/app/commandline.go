@@ -10,6 +10,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -220,14 +221,14 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request 
 		code, err := s.GetOneTimeCode(request.VaultID, request.ItemID)
 		return cliprotocol.CodeResult{Code: code.Code, ExpiresAt: code.ExpiresAt, Period: code.Period}, err
 	case cliprotocol.TypeSaveItem:
-		return bridge.saveItem(request.VaultID, request.Item)
+		return bridge.saveItem(request.VaultID, request.Item, request.ImportScope)
 	case cliprotocol.TypeDeleteItem:
 		if _, err := bridge.getItem(request.VaultID, request.ItemID); err != nil {
 			return nil, err
 		}
 		return nil, s.DeleteItem(request.VaultID, request.ItemID)
 	case cliprotocol.TypeImportItem:
-		return s.saveCommandLineImports(request.VaultID, request.ImportedItems)
+		return s.saveCommandLineImports(request.VaultID, request.ImportedItems, request.ImportScope)
 	case cliprotocol.TypeListFavorite:
 		favorites, err := s.ListFavoriteItems()
 		if err != nil {
@@ -338,7 +339,7 @@ func (bridge *CommandLineBridge) getItem(vaultID, itemID string) (ItemDetail, er
 	return bridge.service.GetItem(vaultID, itemID)
 }
 
-func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.ItemChange) (any, error) {
+func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.ItemChange, importScope string) (any, error) {
 	if change == nil {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the item is missing")
 	}
@@ -366,7 +367,7 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 			detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 		}
 	}
-	saved, err := bridge.service.SaveItem(vaultID, detail)
+	saved, err := bridge.service.saveItem(vaultID, detail, importScope)
 	if err != nil {
 		return nil, err
 	}
@@ -374,7 +375,7 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 }
 
 // saveCommandLineImports only creates items: IDs and revisions from the CLI are dropped.
-func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.Item) (cliprotocol.ImportResult, error) {
+func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.Item, scope string) (cliprotocol.ImportResult, error) {
 	result := cliprotocol.ImportResult{Failures: []cliprotocol.ImportFailure{}}
 	if len(importedItems) > cliprotocol.MaxImportBatch {
 		return result, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send at most %d items at a time", cliprotocol.MaxImportBatch))
@@ -383,6 +384,9 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
 		return result, err
+	}
+	if scope == "" {
+		return result, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "update hisar and review the import destination")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -404,7 +408,7 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	favoriteItemIDs := []string{}
 	for _, vaultItem := range importedItems {
 		vaultItem.ID, vaultItem.Revision = "", ""
-		err := s.saveSessionItem(ctx, vault, &vaultItem)
+		err := s.saveSessionItem(ctx, vault, &vaultItem, scope)
 		if isImportStoppingError(err) {
 			return result, convertError(err)
 		}
@@ -433,9 +437,18 @@ func (s *Service) getCommandLineVaultActions(vaultID string) (cliprotocol.VaultA
 		CanLeave: actions.CanLeave, LeaveBlockedReason: actions.LeaveBlockedReason,
 		MembersLosingAccess: []cliprotocol.VaultMember{}, TargetVaults: []cliprotocol.Vault{},
 	}
-	for _, member := range actions.MembersLosingAccess {
-		result.MembersLosingAccess = append(result.MembersLosingAccess, cliprotocol.VaultMember{Name: member.Name, Email: member.Email, Role: member.Role})
+	members, err := s.ListVaultMembers(vaultID)
+	if err != nil {
+		return cliprotocol.VaultActionsResult{}, err
 	}
+	scopeMembers := []crypt.ImportMember{}
+	for _, member := range members {
+		scopeMembers = append(scopeMembers, crypt.ImportMember{AccountID: member.AccountID, Role: member.Role})
+		if !member.IsCurrentUser {
+			result.MembersLosingAccess = append(result.MembersLosingAccess, cliprotocol.VaultMember{AccountID: member.AccountID, Name: member.Name, Email: member.Email, Role: member.Role})
+		}
+	}
+	result.ImportScope = crypt.ImportScope(vaultID, scopeMembers)
 	for _, target := range actions.TargetVaults {
 		result.TargetVaults = append(result.TargetVaults, convertToCommandLineVault(target))
 	}

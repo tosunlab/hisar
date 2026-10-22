@@ -39,7 +39,8 @@ func TestCommandMessagesEscapeBackendTextOnStandardError(t *testing.T) {
 			}}, nil
 		case cliprotocol.TypeGetVaultActions:
 			return cliprotocol.VaultActionsResult{
-				Vault: cliprotocol.Vault{ID: "work-id", Name: hostileDisplayText}, CanDelete: true,
+				ImportScope: "reviewed-display-scope",
+				Vault:       cliprotocol.Vault{ID: "work-id", Name: hostileDisplayText}, CanDelete: true,
 				MembersLosingAccess: []cliprotocol.VaultMember{{Name: hostileDisplayText, Email: "eve@example.com", Role: "editor"}},
 			}, nil
 		case cliprotocol.TypeImportItem:

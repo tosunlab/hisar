@@ -45,7 +45,16 @@ var onePasswordCredentialCategories = map[string]bool{"109": true, "111": true}
 
 type onePasswordExport struct {
 	Accounts []struct {
+		Attrs struct {
+			UUID string `json:"uuid"`
+			Name string `json:"name"`
+		} `json:"attrs"`
 		Vaults []struct {
+			Attrs struct {
+				UUID string `json:"uuid"`
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"attrs"`
 			Items []onePasswordItem `json:"items"`
 		} `json:"vaults"`
 	} `json:"accounts"`
@@ -158,8 +167,17 @@ func parseOnePasswordExport(content []byte) (*Result, error) {
 		return nil, errors.New("the 1Password export could not be read; export it from 1Password again")
 	}
 	result := &Result{Items: []item.Item{}, Skipped: []SkippedEntry{}}
-	for _, account := range export.Accounts {
-		for _, vault := range account.Vaults {
+	for accountIndex, account := range export.Accounts {
+		for vaultIndex, vault := range account.Vaults {
+			sourceID := fmt.Sprintf("1password/%d/%d", accountIndex, vaultIndex)
+			if account.Attrs.UUID != "" && vault.Attrs.UUID != "" {
+				sourceID = "1password/" + account.Attrs.UUID + "/" + vault.Attrs.UUID
+			}
+			group := SourceGroup{ID: sourceID, Name: vault.Attrs.Name, IsPrivate: vault.Attrs.Type == "P" || vault.Attrs.Type == ""}
+			if group.Name == "" {
+				group.Name = "Unspecified 1Password vault"
+				group.IsPrivate = true
+			}
 			for _, onePasswordEntry := range vault.Items {
 				vaultItem, reason := convertOnePasswordItem(onePasswordEntry, &result.Skipped)
 				if reason != "" {
@@ -172,11 +190,13 @@ func parseOnePasswordExport(content []byte) (*Result, error) {
 				}
 				if finishItem(&vaultItem) {
 					result.Items = append(result.Items, vaultItem)
+					group.Items = append(group.Items, vaultItem)
 					for _, fileName := range listOnePasswordAttachments(onePasswordEntry) {
 						result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: describeAttachment(fileName)})
 					}
 				}
 			}
+			result.Groups = append(result.Groups, group)
 		}
 	}
 	return result, nil

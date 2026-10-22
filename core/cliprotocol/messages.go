@@ -23,6 +23,7 @@ type Request struct {
 	TeamID         string           `json:"teamID,omitempty"`
 	Item           *ItemChange      `json:"item,omitempty"`
 	ImportedItems  []item.Item      `json:"importedItems,omitempty"`
+	ImportScope    string           `json:"importScope,omitempty"`
 	References     []string         `json:"references,omitempty"`
 	CommandLine    []string         `json:"commandLine,omitempty"`
 	ShareLink      *ShareLinkChange `json:"shareLink,omitempty"`

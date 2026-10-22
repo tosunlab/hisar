@@ -42,6 +42,7 @@ type dotenvPlan struct {
 	itemTitle        string
 	existingItemID   string
 	referencesByName map[string]string
+	accessScope      cliprotocol.VaultActionsResult
 }
 
 type dotenvSource struct {
@@ -401,6 +402,12 @@ func planDotenvImport(ctx context.Context, access backend, path string, option d
 		if plan.existingItemID, err = findDotenvItem(ctx, access, plan.vault, plan.itemTitle); err != nil {
 			return nil, err
 		}
+		if plan.accessScope, err = access.getVaultActions(ctx, plan.vault.ID); err != nil {
+			return nil, err
+		}
+		if plan.accessScope.ImportScope == "" {
+			return nil, errors.New("update the Hisar app to review destination membership before importing")
+		}
 	}
 	for _, variable := range plan.storedVariables {
 		plan.referencesByName[variable.Name] = secretreference.Reference{Vault: vaultSegment, Item: plan.itemTitle, Field: variable.Name}.String()
@@ -412,6 +419,11 @@ func printDotenvPlan(plan *dotenvPlan) {
 	action := "a new item"
 	if plan.existingItemID != "" {
 		action = "the existing item"
+	}
+	if plan.accessScope.ImportScope != "" {
+		printImportScope(plan.vault, plan.accessScope)
+	} else {
+		fmt.Fprintln(standardError(), "Destination membership is not checked in this offline dry run.")
 	}
 	fmt.Fprintf(standardError(), "Store %s in %s › %s (%s), as concealed fields:\n", formatValueCount(len(plan.storedVariables)), plan.vault.Name, plan.itemTitle, action)
 	for _, variable := range plan.storedVariables {
@@ -475,7 +487,7 @@ func storeDotenvItem(ctx context.Context, access backend, plan *dotenvPlan) erro
 			return fmt.Errorf("%s: %s can't be read back through its secret reference; nothing was stored", plan.itemTitle, variable.Name)
 		}
 	}
-	return access.saveItem(ctx, plan.vault.ID, vaultItem)
+	return access.saveItem(ctx, plan.vault.ID, vaultItem, plan.accessScope.ImportScope)
 }
 
 // rewriteDotenvFile replaces the file in one rename, keeping its mode; no copy of the old content is kept.

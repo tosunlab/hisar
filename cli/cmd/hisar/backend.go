@@ -26,7 +26,7 @@ type backend interface {
 	listsItemSummaries() bool
 	getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error)
 	// saveItem creates an item without an ID, or updates its title, username, websites, password, notes and fields.
-	saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
+	saveItem(ctx context.Context, vaultID string, vaultItem *item.Item, importScope ...string) error
 	// savePromptedItem saves what add and edit ask for: title, username, websites, password and notes; fields stay.
 	savePromptedItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
 	// checkNewItemCategory refuses a category the backend would not save as asked; add calls it before prompting.
@@ -36,7 +36,7 @@ type backend interface {
 	deleteItem(ctx context.Context, vaultID, itemID string) error
 	// getOneTimeCode returns errNoOneTimeCode for an item without a one-time password.
 	getOneTimeCode(ctx context.Context, vaultID, itemID string) (string, error)
-	importItems(ctx context.Context, vaultID string, items []item.Item) (int, error)
+	importItems(ctx context.Context, vaultID string, items []item.Item, scope ...string) (int, error)
 	// listFavorites returns the user's starred items in the vaults they can open.
 	listFavorites(ctx context.Context) ([]cliprotocol.Favorite, error)
 	setItemFavorite(ctx context.Context, vaultID, itemID string, isFavorite bool) error

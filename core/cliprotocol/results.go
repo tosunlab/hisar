@@ -118,9 +118,10 @@ type VaultDeletionResult struct {
 }
 
 type VaultMember struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	AccountID string `json:"accountID,omitempty"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
 }
 
 type VaultActionsResult struct {
@@ -132,6 +133,7 @@ type VaultActionsResult struct {
 	LeaveBlockedReason  string        `json:"leaveBlockedReason,omitempty"`
 	MembersLosingAccess []VaultMember `json:"membersLosingAccess"`
 	TargetVaults        []Vault       `json:"targetVaults"`
+	ImportScope         string        `json:"importScope,omitempty"`
 }
 
 const (

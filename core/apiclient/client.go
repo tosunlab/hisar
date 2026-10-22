@@ -397,7 +397,11 @@ func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision stri
 	}
 	var response apitypes.PutItemResponse
 	var conflict apitypes.ConflictResponse
-	err := c.sendRequest(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID), header, request, &response, &conflict)
+	path := "/api/v1/vaults/" + url.PathEscape(vaultID) + "/items/" + url.PathEscape(itemID)
+	if request.ImportScope != "" {
+		path += "/import"
+	}
+	err := c.sendRequest(ctx, "PUT", path, header, request, &response, &conflict)
 	if IsStatus(err, http.StatusConflict) {
 		return 0, conflict.Current, err
 	}

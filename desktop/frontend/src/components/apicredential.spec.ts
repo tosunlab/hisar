@@ -193,6 +193,7 @@ describe("Importing API credentials", () => {
       serverCount: 0,
       databaseCount: 0,
       passkeyCount: 0,
+      groups: [],
       allSkipped: [],
       allDuplicate: [],
     };
@@ -223,6 +224,7 @@ describe("Importing API credentials", () => {
       serverCount: 0,
       databaseCount: 0,
       passkeyCount: 0,
+      groups: [],
       allSkipped: [],
       allDuplicate: [
         { title: "Stripe", username: "", url: "", detail: "key_1", passkeyCount: 0 },

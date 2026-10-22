@@ -299,8 +299,14 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 		return 0, newError(KindInvalid, "invalid item")
 	}
 	storeItem := &store.Item{ID: itemID, Revision: request.Revision, Deleted: request.Deleted, Overview: request.Overview, Details: request.Details, UpdatedBy: actor.AccountID}
-	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, request.KeyGeneration, storeItem)
+	var scopes []string
+	if request.ImportScope != "" {
+		scopes = []string{request.ImportScope}
+	}
+	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, request.KeyGeneration, storeItem, scopes...)
 	switch {
+	case errors.Is(err, store.ErrImportScopeChanged):
+		return 0, newError(KindConflict, "destination membership changed; review the import destination again")
 	case errors.Is(err, store.ErrNotFound):
 		return 0, ErrNotFound
 	case errors.Is(err, store.ErrReadOnly):

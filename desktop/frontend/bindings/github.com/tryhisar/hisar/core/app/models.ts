@@ -232,6 +232,7 @@ export interface ImportPreview {
     "passkeyCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
+    "groups": ImportSourceGroup[] | null;
 }
 
 export interface ImportProgress {
@@ -249,6 +250,16 @@ export interface ImportProgress {
 export interface ImportSkippedEntry {
     "title": string;
     "reason": string;
+}
+
+export interface ImportSourceGroup {
+    "id": string;
+    "name": string;
+    "isPrivate": boolean;
+    "itemCount": number;
+    "vaultId": string;
+    "vaultName": string;
+    "members": VaultMember[] | null;
 }
 
 /**

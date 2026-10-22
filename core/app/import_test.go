@@ -42,10 +42,17 @@ func importOnePasswordExport(t *testing.T, service *Service, vaultID, exportData
 		t.Fatal(err)
 	}
 	setImportPath(service, writeImportFile(t, "export.1pux", buffer.String()))
-	if _, err := service.ChooseImportFile(vaultID, ""); err != nil {
+	preview, err := service.ChooseImportFile(vaultID, "")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.StartImport(vaultID, false); err != nil {
+	for _, group := range preview.Groups {
+		preview, err = service.MapImportGroup(group.ID, vaultID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.StartImport(preview.VaultID, false); err != nil {
 		t.Fatal(err)
 	}
 	runImportToEnd(t, service)
@@ -127,6 +134,9 @@ func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
 	if err != nil || familyPreview.VaultName != "Family" || len(familyPreview.Duplicates) != 0 || familyPreview.ItemCount != 14 {
 		t.Errorf("family preview = %+v %v", familyPreview, err)
 	}
+	if _, err := service.PreviewImport(test.personalID); err != nil {
+		t.Fatal(err)
+	}
 
 	started, err := service.StartImport(test.personalID, true)
 	if err != nil {
@@ -201,6 +211,9 @@ func TestImportIncludesDuplicatesWhenAsked(t *testing.T) {
 	if _, err := service.ChooseImportFile(test.familyID, "csv"); err != nil {
 		t.Fatal(err)
 	}
+	if _, err := service.PreviewImport(test.familyID); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := service.StartImport(test.familyID, false); err != nil {
 		t.Fatal(err)
 	}
@@ -249,7 +262,7 @@ func TestImportRejectsReadOnlyVaultAndUnknownFormat(t *testing.T) {
 	if _, err := service.PreviewImport(test.familyID); !errors.Is(err, errReadOnlyVault) {
 		t.Errorf("preview for a read-only vault: %v", err)
 	}
-	if _, err := service.StartImport(test.familyID, true); !errors.Is(err, errReadOnlyVault) {
+	if _, err := service.StartImport(test.familyID, true); err == nil {
 		t.Errorf("import into a read-only vault: %v", err)
 	}
 	if _, err := service.ChooseImportFile(test.familyID, ""); !errors.Is(err, errReadOnlyVault) {
@@ -355,6 +368,9 @@ func TestImportStarsTheFavoritesOfTheExport(t *testing.T) {
 	builder.WriteString("Bank,https://bank.example.com,alice,bank-pass,,true,false,,\n")
 	setImportPath(service, writeImportFile(t, "1PasswordExport.csv", builder.String()))
 	if _, err := service.ChooseImportFile(test.familyID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PreviewImport(test.familyID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.StartImport(test.familyID, false); err != nil {

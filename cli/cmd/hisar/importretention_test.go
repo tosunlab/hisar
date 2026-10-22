@@ -32,8 +32,12 @@ func (access *retentionBackend) listItems(context.Context, string) ([]item.Item,
 	return []item.Item{{Overview: item.Overview{Category: item.CategoryLogin, Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}}, Details: item.Details{Password: "old-password"}}}, nil
 }
 func (*retentionBackend) listsItemSummaries() bool { return false }
-func (*retentionBackend) importItems(_ context.Context, _ string, items []item.Item) (int, error) {
+func (*retentionBackend) importItems(_ context.Context, _ string, items []item.Item, _ ...string) (int, error) {
 	return len(items), nil
+}
+
+func (*retentionBackend) getVaultActions(context.Context, string) (cliprotocol.VaultActionsResult, error) {
+	return cliprotocol.VaultActionsResult{ImportScope: "reviewed-personal-scope"}, nil
 }
 
 func TestImportRetainsDifferentPasswordDuplicateInCLI(t *testing.T) {
@@ -126,9 +130,13 @@ func (access *summaryRetentionBackend) listItems(context.Context, string) ([]ite
 	return items, nil
 }
 
-func (access *summaryRetentionBackend) importItems(_ context.Context, _ string, items []item.Item) (int, error) {
+func (access *summaryRetentionBackend) importItems(_ context.Context, _ string, items []item.Item, _ ...string) (int, error) {
 	access.saved += len(items)
 	return len(items), nil
+}
+
+func (*summaryRetentionBackend) getVaultActions(context.Context, string) (cliprotocol.VaultActionsResult, error) {
+	return cliprotocol.VaultActionsResult{ImportScope: "reviewed-personal-scope"}, nil
 }
 
 func TestImportAppSummariesKeepUncomparedDuplicates(t *testing.T) {
@@ -229,7 +237,7 @@ type shortImportBackend struct {
 	retentionBackend
 }
 
-func (*shortImportBackend) importItems(context.Context, string, []item.Item) (int, error) {
+func (*shortImportBackend) importItems(context.Context, string, []item.Item, ...string) (int, error) {
 	return 1, nil
 }
 

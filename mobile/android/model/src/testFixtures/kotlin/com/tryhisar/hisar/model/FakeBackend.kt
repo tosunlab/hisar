@@ -8,6 +8,9 @@ import kotlinx.io.bytestring.encodeToByteString
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.builtins.serializer
 
+/** One source group of the pending import: the titles of its logins and the vault they go to. */
+data class FakeImportGroup(val id: String, val name: String, val allTitle: List<String>, var vaultID: String)
+
 /** An in-memory VaultBackend that answers as core/app does, the port of the iPhone tests' FakeBackend. */
 open class FakeBackend : VaultBackend {
     private val callLock = Any()
@@ -84,10 +87,11 @@ open class FakeBackend : VaultBackend {
     var getOrganizationErrorMessage: String? = null
     /** The server's answer to the next version check; null means it accepts this version. */
     var serverUpdateRequirement: UpdateRequirement? = null
-    /** The import prepareCredentialExchangeImport keeps, as the items it would save; null when none is pending. */
-    var allPendingImportTitle: List<String>? = null
+    /** The import prepareCredentialExchangeImport keeps, as the logins of each source group it would save; null when none is pending. */
+    var allPendingImportGroup: List<FakeImportGroup>? = null
+    val allPendingImportTitle: List<String>? get() = allPendingImportGroup?.flatMap { it.allTitle }
     var pendingImportVaultID = ""
-    var allQueuedImportTitle: List<String> = emptyList()
+    var allQueuedImport: List<Pair<String, String>> = emptyList()
     var importSavedCount = 0
     var importBatchSize = 2
     val allImportedCredentialData = mutableListOf<ByteArray>()
@@ -892,39 +896,72 @@ open class FakeBackend : VaultBackend {
         return ExportResult(file.path, allVault.size, allItemByVaultID.values.sumOf { it.size })
     }
 
-    private fun buildImportPreview(vaultID: String): ImportPreview {
-        val allTitle = allPendingImportTitle ?: throw BackendError("There is no import to continue")
+    private fun checkImportVault(vaultID: String): VaultSummary {
         val vault = allVault.firstOrNull { it.id == vaultID } ?: throw BackendError("Vault not found")
         if (vault.type != VaultSummary.TYPE_PERSONAL && vault.role == Member.VAULT_ROLE_READER) throw BackendError("You can only view this vault")
-        val allExistingTitle = allItemByVaultID[vaultID].orEmpty().map { it.title }.toSet()
-        val allDuplicate = allTitle.filter { it in allExistingTitle }.map { ImportDuplicate(title = it) }
+        return vault
+    }
+
+    /** The pending import as core/app previews it: vaultID is the vault every group goes to, or "" when they go to different vaults. */
+    private fun buildImportPreview(): ImportPreview {
+        val allGroup = allPendingImportGroup ?: throw BackendError("There is no import to continue")
+        val commonVault = allGroup.map { it.vaultID }.toSet().singleOrNull()?.let(::checkImportVault)
+        val allDuplicate = mutableListOf<ImportDuplicate>()
+        val allSourceGroup = allGroup.map { group ->
+            val vault = checkImportVault(group.vaultID)
+            val allExistingTitle = allItemByVaultID[vault.id].orEmpty().map { it.title }.toSet()
+            allDuplicate += group.allTitle.filter { it in allExistingTitle }.map { ImportDuplicate(title = it) }
+            ImportSourceGroup(group.id, group.name, true, group.allTitle.size, vault.id, vault.name, allVaultMemberByVaultID[vault.id].orEmpty())
+        }
+        val itemCount = allGroup.sumOf { it.allTitle.size }
         return ImportPreview(
-            fileName = "Other Manager", vaultID = vault.id, vaultName = vault.name, itemCount = allTitle.size, loginCount = allTitle.size,
-            allDuplicate = allDuplicate,
+            fileName = "Other Manager", vaultID = commonVault?.id.orEmpty(), vaultName = commonVault?.name ?: "the mapped vaults", itemCount = itemCount,
+            loginCount = itemCount, allDuplicate = allDuplicate, groups = allSourceGroup,
         )
     }
 
-    /** Reads what the other app exported as the titles of the logins to import. */
+    /** Reads what the other app exported as the titles of the logins to import, or as one list of titles per collection. */
     override fun prepareCredentialExchangeImport(vaultID: String, credentialData: ByteArray): ImportPreview {
         record("prepareCredentialExchangeImport")
         requireUnlocked()
-        val exported = backendJson.decodeFromString(ListSerializer(String.serializer()), credentialData.decodeToString())
+        val text = credentialData.decodeToString()
+        allPendingImportGroup = runCatching { backendJson.decodeFromString(ListSerializer(String.serializer()), text) }.map { allTitle ->
+            listOf(FakeImportGroup("private", "Private or unspecified source", allTitle, vaultID))
+        }.getOrElse {
+            backendJson.decodeFromString(ListSerializer(ListSerializer(String.serializer())), text).mapIndexed { index, allTitle ->
+                FakeImportGroup("group-$index", "Collection ${index + 1}", allTitle, vaultID)
+            }
+        }
         allImportedCredentialData += credentialData.copyOf()
-        allPendingImportTitle = exported
-        return buildImportPreview(vaultID)
+        return buildImportPreview()
     }
 
     override fun previewImport(vaultID: String): ImportPreview {
         record("previewImport")
         requireUnlocked()
-        return buildImportPreview(vaultID)
+        val group = allPendingImportGroup?.singleOrNull() ?: throw BackendError("Choose a destination for each source group")
+        checkImportVault(vaultID)
+        group.vaultID = vaultID
+        return buildImportPreview()
+    }
+
+    override fun mapImportGroup(groupID: String, vaultID: String): ImportPreview {
+        record("mapImportGroup")
+        requireUnlocked()
+        val group = allPendingImportGroup?.firstOrNull { it.id == groupID } ?: throw BackendError("Source group not found; choose the import file again")
+        checkImportVault(vaultID)
+        group.vaultID = vaultID
+        return buildImportPreview()
     }
 
     override fun startImport(vaultID: String, isSkippingDuplicate: Boolean): ImportProgress {
         record("startImport")
         requireUnlocked()
-        val allDuplicateTitle = buildImportPreview(vaultID).allDuplicate.map { it.title }.toSet()
-        allQueuedImportTitle = allPendingImportTitle.orEmpty().filter { !isSkippingDuplicate || it !in allDuplicateTitle }
+        if (vaultID != buildImportPreview().vaultID) throw BackendError("Review the import destinations again")
+        allQueuedImport = allPendingImportGroup.orEmpty().flatMap { group ->
+            val allExistingTitle = allItemByVaultID[group.vaultID].orEmpty().map { it.title }.toSet()
+            group.allTitle.filter { !isSkippingDuplicate || it !in allExistingTitle }.map { it to group.vaultID }
+        }
         pendingImportVaultID = vaultID
         importSavedCount = 0
         return buildImportProgress()
@@ -933,30 +970,30 @@ open class FakeBackend : VaultBackend {
     override fun continueImport(): ImportProgress {
         record("continueImport")
         requireUnlocked()
-        if (allPendingImportTitle == null) throw BackendError("There is no import to continue")
+        if (allPendingImportGroup == null) throw BackendError("There is no import to continue")
         continueImportErrorMessage?.let { message ->
             continueImportErrorMessage = null
             throw BackendError(message)
         }
-        for (title in allQueuedImportTitle.take(importBatchSize)) {
-            allItemByVaultID.getOrPut(pendingImportVaultID) { mutableListOf() } +=
+        for ((title, vaultID) in allQueuedImport.take(importBatchSize)) {
+            allItemByVaultID.getOrPut(vaultID) { mutableListOf() } +=
                 ItemDetail(id = "imported-$nextItemNumber", revision = "r1", category = "login", title = title)
             nextItemNumber += 1
             importSavedCount += 1
         }
-        allQueuedImportTitle = allQueuedImportTitle.drop(importBatchSize)
+        allQueuedImport = allQueuedImport.drop(importBatchSize)
         return buildImportProgress()
     }
 
     private fun buildImportProgress(): ImportProgress = ImportProgress(
-        fileName = "Other Manager", vaultID = pendingImportVaultID, vaultName = allVault.firstOrNull { it.id == pendingImportVaultID }?.name.orEmpty(),
-        savedCount = importSavedCount, totalCount = importSavedCount + allQueuedImportTitle.size, isDone = allQueuedImportTitle.isEmpty(),
+        fileName = "Other Manager", vaultID = pendingImportVaultID, vaultName = allVault.firstOrNull { it.id == pendingImportVaultID }?.name ?: "the mapped vaults",
+        savedCount = importSavedCount, totalCount = importSavedCount + allQueuedImport.size, isDone = allQueuedImport.isEmpty(),
     )
 
     override fun cancelImport() {
         record("cancelImport")
-        allPendingImportTitle = null
-        allQueuedImportTitle = emptyList()
+        allPendingImportGroup = null
+        allQueuedImport = emptyList()
     }
 
     override fun exportEmergencyKit(password: String, directory: File): EmergencyKitExport {

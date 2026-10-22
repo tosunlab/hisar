@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { changeImportVault, chooseImportFile, closeImport, continueImport, deleteImportFile, getAllEditableVault, startImport, store } from "../store";
+import { changeImportVault, chooseImportFile, closeImport, continueImport, deleteImportFile, getAllEditableVault, mapImportGroup, startImport, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import { getThisDeviceName } from "../util";
 
@@ -8,7 +8,7 @@ const allEditableVault = computed(() => getAllEditableVault());
 
 function getInitialVaultID(): string {
   const selectedVault = allEditableVault.value.find((vault) => vault.id === store.selectedVaultID);
-  return (selectedVault ?? allEditableVault.value[0])?.id ?? "";
+  return (allEditableVault.value.find((vault) => vault.type === "personal") ?? selectedVault)?.id ?? "";
 }
 
 const vaultID = ref(getInitialVaultID());
@@ -91,7 +91,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <h2 id="import-title">Import passwords</h2>
           <p class="muted">From 1Password, Bitwarden, LastPass, or a CSV file from your browser</p>
         </div>
-        <button class="ghost icon-button" aria-label="Close" :disabled="store.importStep === 'saving'" @click="closeImport"><AppIcon name="close" /></button>
+        <button class="ghost icon-button" aria-label="Close" :disabled="store.isBusy" @click="closeImport"><AppIcon name="close" /></button>
       </header>
 
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
@@ -138,12 +138,28 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <span class="muted">{{ store.importPreview.formatName }}</span>
           </div>
         </div>
-        <label>
+        <label v-if="!store.importPreview.groups?.length">
           <span>Import into</span>
           <select :value="store.importPreview.vaultId" name="importVault" data-testid="import-preview-vault" :disabled="store.isBusy" @change="changeVault">
             <option v-for="vault in allEditableVault" :key="vault.id" :value="vault.id">{{ vault.name }}</option>
           </select>
         </label>
+        <section v-for="group in store.importPreview.groups ?? []" :key="group.id" data-testid="import-source-group">
+          <label>
+            <span>{{ group.name }} · {{ group.itemCount }} items · {{ group.isPrivate ? "Private source" : "Shared or unspecified source" }}</span>
+            <select :value="group.vaultId" :disabled="store.isBusy" @change="mapImportGroup(group.id, ($event.target as HTMLSelectElement).value)">
+              <option v-for="vault in allEditableVault" :key="vault.id" :value="vault.id">{{ vault.name }} · {{ vault.type }} · {{ vault.id }}</option>
+            </select>
+          </label>
+          <p class="muted hint">Source ID {{ group.id }}</p>
+          <p v-if="allEditableVault.find(vault => vault.id === group.vaultId)?.type === 'personal'" class="muted hint">Only you can access Personal.</p>
+          <template v-else>
+            <p class="warning">Shared destination. Imported items are readable by its current members. Access can change later.</p>
+            <ul>
+              <li v-for="member in group.members ?? []" :key="member.accountId">{{ member.name || member.accountId }} &lt;{{ member.email }}&gt; · {{ member.role }}{{ member.isCurrentUser ? " (you)" : "" }}</li>
+            </ul>
+          </template>
+        </section>
         <div class="count-grid">
           <div v-for="countEntry in allCount" :key="countEntry.testID" class="count" :data-testid="`import-count-${countEntry.testID}`">
             <AppIcon :name="countEntry.icon" class="count-icon" />
@@ -198,6 +214,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <p class="muted hint">Each item is encrypted on {{ getThisDeviceName() }} before it is saved. Keep Hisar open until the import finishes.</p>
         <div v-if="store.errorMessage && !store.isBusy" class="row actions">
           <button class="primary" data-testid="continue-import" @click="continueImport">Try again</button>
+          <button class="ghost" @click="closeImport">Stop and keep the source file</button>
         </div>
       </div>
 

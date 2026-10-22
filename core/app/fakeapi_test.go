@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
 )
 
 // fakeAPIServer stores encrypted vaults and items in memory, like the Hisar server API.
@@ -159,7 +160,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: items, NextSeq: server.seq, KeyGeneration: generation})
 	})
-	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", func(writer http.ResponseWriter, request *http.Request) {
+	putItem := func(writer http.ResponseWriter, request *http.Request) {
 		var putRequest apitypes.PutItemRequest
 		if err := json.NewDecoder(request.Body).Decode(&putRequest); err != nil {
 			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
@@ -167,6 +168,16 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
+		if strings.HasSuffix(request.URL.Path, "/import") {
+			members := []crypt.ImportMember{}
+			for _, member := range server.accessesByVaultID[request.PathValue("vaultID")] {
+				members = append(members, crypt.ImportMember{AccountID: member.AccountID, Role: member.Role})
+			}
+			if putRequest.ImportScope == "" || putRequest.ImportScope != crypt.ImportScope(request.PathValue("vaultID"), members) {
+				writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "destination membership changed; review the import destination again"})
+				return
+			}
+		}
 		items, found := server.itemsByVaultID[request.PathValue("vaultID")]
 		if !found {
 			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "vault not found"})
@@ -194,7 +205,9 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		server.seq++
 		items[itemID] = apitypes.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
 		writeJSON(writer, http.StatusOK, apitypes.PutItemResponse{Seq: server.seq})
-	})
+	}
+	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", putItem)
+	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}/import", putItem)
 	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/items/{itemID}/move", func(writer http.ResponseWriter, request *http.Request) {
 		var moveRequest apitypes.MoveItemRequest
 		if err := json.NewDecoder(request.Body).Decode(&moveRequest); err != nil {
