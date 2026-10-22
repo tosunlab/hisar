@@ -208,8 +208,10 @@ test("deletes a member after the admin's proof", async ({ page }) => {
   expect((await fetchAsAdmin(`/admin/accounts/${accountId}`)).status).toBe(404);
 });
 
-// The database may hold admins of earlier runs, so the test suspends them first. Each admin's request is then held until
-// both proofs are done and both are let through at once, so that both pass the admin check before either change is saved.
+// The database may hold admins of earlier runs, so the test suspends them first. The two admins then demote each other,
+// each request held until both proofs are done and both let through at once. One change is saved and the other refused:
+// by the last-admin check when its request passed the admin check before the first change was saved, and as "admin only"
+// when it reached the server after. Releasing both at once makes the first case likely, but the browser cannot force it.
 test("refuses the change that would leave the server without an admin", async ({ page, browser }) => {
   const milo = fixture.members[1];
   let cursor = "";
@@ -250,9 +252,9 @@ test("refuses the change that would leave the server without an admin", async ({
   await Promise.all(allHeldRoute.map((route) => route.continue()));
 
   const allAlert = [page, miloPage].map((adminPage) => adminPage.getByRole("dialog").getByRole("alert"));
-  await expect
-    .poll(async () => (await Promise.all(allAlert.map((alert) => alert.allTextContents()))).flat(), { timeout: 30_000 })
-    .toEqual(["The Hisar server needs at least one admin."]);
+  const readAllRefusal = async () => (await Promise.all(allAlert.map((alert) => alert.allTextContents()))).flat();
+  await expect.poll(readAllRefusal, { timeout: 30_000 }).toHaveLength(1);
+  expect(["The Hisar server needs at least one admin.", "admin only"]).toContain((await readAllRefusal())[0]);
   const isAdaRefused = (await allAlert[0].count()) > 0;
   const remainingAdmin = isAdaRefused ? milo : fixture;
   const roles = await Promise.all([fixture, milo].map((admin) => readRole(admin.email, remainingAdmin.token)));
