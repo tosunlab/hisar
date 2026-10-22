@@ -6,7 +6,7 @@ listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it.
 ## Images
 
 A server release is a run of Actions → Release with the app `server` and a release type (patch, minor, major, or custom with
-a version; the root [README](../README.md#ci-and-releases) has the steps). It tags `server-<version>`, publishes
+a version; the root [docs/RELEASING.md](../docs/RELEASING.md) has the steps). It tags `server-<version>`, publishes
 `ghcr.io/tosunlab/hisar-server` as `:<version>` and `:sha-<commit>`, for linux/amd64 and linux/arm64, built from
 `deploy/Dockerfile`, and creates the GitHub prerelease `server-<version>`. Approving the run's Publish job then points
 `:<major>.<minor>` and `:latest` at it and turns the prerelease into a release; only published releases make the admin
