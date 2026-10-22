@@ -27,8 +27,15 @@ func TestOperationalSecretsEnrollFingerprint(t *testing.T) {
 	if err := s.InitializeOperationalSecrets(ctx, bytes.Repeat([]byte{3}, 32)); err == nil || !strings.Contains(err.Error(), "do not match") {
 		t.Fatalf("wrong fingerprint accepted: %v", err)
 	}
-	if _, err := s.RollbackMigration(ctx); err == nil {
-		t.Fatal("enrolled secrets migration rolled back")
+	// Whatever later migrations are applied, rolling back stops before the enrolled secrets are dropped.
+	for range 100 {
+		if _, err := s.RollbackMigration(ctx); err != nil {
+			break
+		}
+	}
+	var enrolled []byte
+	if err := s.pool.QueryRow(ctx, `SELECT fingerprint FROM operational_secrets`).Scan(&enrolled); err != nil || !bytes.Equal(enrolled, fingerprint) {
+		t.Fatalf("enrolled secrets migration rolled back: %x %v", enrolled, err)
 	}
 }
 
