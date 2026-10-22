@@ -17,6 +17,7 @@ import zipfile
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts/release-evidence.py"
 PUBLISH = ROOT / ".github/workflows/publish.yml"
+SERVER_IMAGE = "ghcr.io/tosunlab/hisar-server"
 
 
 def workflow_script(workflow, containing):
@@ -52,9 +53,10 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.bin = self.root / "bin"
         self.bin.mkdir()
         self.log = self.root / "attestations.jsonl"
+        self.registry = self.root / "registry.json"
         self.env = dict(os.environ, GH_REPO="tosunlab/hisar", GITHUB_REPOSITORY="tosunlab/hisar",
                         GITHUB_RUN_ID="1234", CI_RESULT="success", MACOS_RESULT="success",
-                        IMAGE_DIGEST="sha256:" + "a" * 64, ATTESTATION_LOG=str(self.log),
+                        IMAGE_DIGEST="sha256:" + "a" * 64, ATTESTATION_LOG=str(self.log), REGISTRY=str(self.registry),
                         PATH=str(self.bin) + os.pathsep + os.environ["PATH"])
         gh = self.bin / "gh"
         gh.write_text("#!" + sys.executable + "\n" +
@@ -66,6 +68,21 @@ class ReleaseEvidenceTests(unittest.TestCase):
                       "with open(os.environ['ATTESTATION_LOG'], 'a') as f: f.write(json.dumps(sys.argv[1:]) + '\\n')\n"
                       "sys.exit(1 if os.environ.get('REJECT_ATTESTATION') else 0)\n")
         gh.chmod(0o755)
+        docker = self.bin / "docker"
+        docker.write_text("#!" + sys.executable + "\n" +
+                          "import json, os, sys\n"
+                          "path = os.environ['REGISTRY']\n"
+                          "with open(path) as f: registry = json.load(f)\n"
+                          "command, source = sys.argv[1:4], sys.argv[-1]\n"
+                          "assert command[:2] == ['buildx', 'imagetools'], command\n"
+                          "digest = source.partition('@')[2]\n"
+                          "digest = digest if digest in registry['digests'] else registry['tags'].get(source)\n"
+                          "if not digest: sys.exit('unknown image ' + source)\n"
+                          "if command[2] == 'create':\n"
+                          "    for index, argument in enumerate(sys.argv):\n"
+                          "        if argument == '-t': registry['tags'][sys.argv[index + 1]] = digest\n"
+                          "    with open(path, 'w') as f: json.dump(registry, f)\n")
+        docker.chmod(0o755)
         self.git("init", "-q", "-b", "main")
         self.git("config", "user.name", "Test")
         self.git("config", "user.email", "test@example.invalid")
@@ -127,7 +144,7 @@ class ReleaseEvidenceTests(unittest.TestCase):
     def publish_step(self, containing, runner_temp):
         """Run the publish.yml step containing the given text as GitHub runs a bash step, in the default-branch checkout."""
         env = dict(self.env, APP=self.app, TAG=self.tag, VERSION=self.tag.removeprefix(self.app + "-"),
-                   SOURCE_SHA=self.sha, RUNNER_TEMP=str(runner_temp))
+                   SOURCE_SHA=self.sha, RUNNER_TEMP=str(runner_temp), SERVER_IMAGE=SERVER_IMAGE)
         return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c",
                                workflow_script(PUBLISH, containing)], cwd=self.repository, env=env, text=True,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
@@ -275,6 +292,16 @@ class ReleaseEvidenceTests(unittest.TestCase):
         next(self.directory.glob("*.zip")).write_bytes(b"substituted")
         substituted = self.publish_step("gh release download", self.root / "substituted")
         self.assertNotEqual(substituted.returncode, 0, substituted.stdout)
+
+    def test_publication_points_every_public_server_tag_at_the_verified_digest(self):
+        self.fixture("server")
+        self.create()
+        verified, replaced = self.env["IMAGE_DIGEST"], "sha256:" + "b" * 64
+        public = [f"{SERVER_IMAGE}:{tag}" for tag in ("1.2.3", "1.2", "latest")]
+        self.registry.write_text(json.dumps({"digests": [verified, replaced], "tags": dict.fromkeys(public, replaced)}))
+        result = self.publish_step("imagetools create", self.root)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertEqual(json.loads(self.registry.read_text())["tags"], dict.fromkeys(public, verified))
 
     def test_image_verifier_rejects_mutable_docker_and_workflow_images(self):
         scripts = self.root / "scripts"

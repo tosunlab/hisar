@@ -71,7 +71,8 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
    release of the app that reaches this step replaces an older one still waiting. It refuses a version older than the app's
    published release, verifies the evidence and attestations against the tag's full source SHA with the verifier from that
    commit, not from the default branch, then
-   - server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at the verified immutable image digest;
+   - server: points `ghcr.io/tosunlab/hisar-server:X.Y.Z`, `:X.Y` and `:latest` at the verified immutable image digest, so a
+     version tag moved after the build is reset;
    - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every Mac app as an
      automatic update;
    - all: rewrites the notes to cover every change since the published release, turns the prerelease into a release and marks

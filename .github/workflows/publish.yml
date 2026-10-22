@@ -89,13 +89,15 @@ jobs:
           git worktree add --detach "$RUNNER_TEMP/release-source" "$SOURCE_SHA"
           python3 "$RUNNER_TEMP/release-source/scripts/release-evidence.py" verify "$APP" "$TAG" "$SOURCE_SHA" \
             "$RUNNER_TEMP/release-files"
-      - name: Point the latest and MAJOR.MINOR server image tags at the version
+      # The build pushed :X.Y.Z before approval, so publishing points it, :X.Y and :latest at the digest just verified.
+      - name: Point the version, MAJOR.MINOR and latest server image tags at the verified image
         if: inputs.app == 'server'
         run: |
           digest=$(jq -r .image.digest "$RUNNER_TEMP/release-files/release-evidence.json")
           docker buildx imagetools inspect "$SERVER_IMAGE@$digest" >/dev/null
-          docker buildx imagetools create -t "$SERVER_IMAGE:${VERSION%.*}" -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE@$digest"
-          echo "Published $SERVER_IMAGE@$digest as latest and ${VERSION%.*}"
+          docker buildx imagetools create -t "$SERVER_IMAGE:$VERSION" -t "$SERVER_IMAGE:${VERSION%.*}" \
+            -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE@$digest"
+          echo "Published $SERVER_IMAGE@$digest as $VERSION, ${VERSION%.*} and latest"
 
       # Apps are offered a desktop version only once its release has an asset named update.json.
       - name: Offer the desktop version as an automatic update
