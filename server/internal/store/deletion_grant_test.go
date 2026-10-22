@@ -2,11 +2,12 @@ package store
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
 
-func TestDeletionLocksVaultGrantedDuringInitialVaultWait(t *testing.T) {
+func TestDeletionAsksForReviewOfAVaultGrantedDuringItsVaultWait(t *testing.T) {
 	database := createTestStore(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
@@ -32,7 +33,7 @@ func TestDeletionLocksVaultGrantedDuringInitialVaultWait(t *testing.T) {
 	}
 	deleted := make(chan error, 1)
 	go func() {
-		_, err := database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash())
+		_, err := database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, "ALICE1"))
 		deleted <- err
 	}()
 	waitForStoreLock(t, database, ctx, "%FROM vaults WHERE id IN (SELECT vault_id%")
@@ -53,36 +54,17 @@ func TestDeletionLocksVaultGrantedDuringInitialVaultWait(t *testing.T) {
 	if err := firstHold.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	finished := false
-	for {
-		select {
-		case err := <-deleted:
-			if err != nil {
-				t.Fatal(err)
-			}
-			finished = true
-		default:
-		}
-		var waiting bool
-		if err := database.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM pg_stat_activity WHERE datname = current_database() AND $1 = ANY(pg_blocking_pids(pid)))`, int32(laterHold.Conn().PgConn().PID())).Scan(&waiting); err != nil {
-			t.Fatal(err)
-		}
-		if finished || waiting {
-			break
-		}
-		select {
-		case <-ctx.Done():
-			t.Fatal(ctx.Err())
-		case <-time.After(5 * time.Millisecond):
-		}
-	}
 	if err := laterHold.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if !finished {
-		if err := <-deleted; err != nil {
-			t.Fatal(err)
-		}
+	if err := <-deleted; !errors.Is(err, ErrDeletionPlanChanged) {
+		t.Fatalf("deletion reviewed before the grant: %v", err)
+	}
+	if countQueryRow(t, database, `SELECT count(*) FROM vault_access WHERE vault_id = $1 AND account_id = 'ALICE1' AND role = 'owner'`, laterVault) != 1 {
+		t.Fatal("a refused deletion removed the granted owner")
+	}
+	if _, err := database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, "ALICE1")); err != nil {
+		t.Fatalf("deletion reviewed after the grant: %v", err)
 	}
 	if countQueryRow(t, database, `SELECT count(*) FROM vaults WHERE id = $1`, laterVault) != 0 {
 		t.Error("a vault granted during deletion was left without an owner")

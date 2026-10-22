@@ -269,8 +269,8 @@ func (s *Store) SetAccountRole(ctx context.Context, actor AdminActor, accountID,
 }
 
 // DeleteAccountAsAdmin deletes the account like DeleteAccount, without a proof from the account itself.
-func (s *Store) DeleteAccountAsAdmin(ctx context.Context, actor AdminActor, accountID string) (*DeletedAccount, error) {
-	return s.deleteAccount(ctx, accountID, func(transaction pgx.Tx) (email, name string, err error) {
+func (s *Store) DeleteAccountAsAdmin(ctx context.Context, actor AdminActor, accountID, planVersion string) (*DeletedAccount, error) {
+	return s.deleteAccount(ctx, accountID, planVersion, func(transaction pgx.Tx) (email, name string, err error) {
 		target, err := lockAdminTarget(ctx, transaction, actor, accountID, true)
 		if err != nil {
 			return "", "", err

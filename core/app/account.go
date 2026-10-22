@@ -41,6 +41,7 @@ type DeletionVault struct {
 }
 
 type AccountDeletionPreview struct {
+	PlanVersion             string          `json:"planVersion"`
 	Email                   string          `json:"email"`
 	OwnedVaults             []DeletionVault `json:"ownedVaults"`
 	MemberVaults            []DeletionVault `json:"memberVaults"`
@@ -58,6 +59,7 @@ type DeletionOrganization struct {
 	Name         string `json:"name"`
 	IsDeleted    bool   `json:"isDeleted"`
 	NewAdminName string `json:"newAdminName"`
+	NewAdminID   string `json:"newAdminId"`
 }
 
 func convertAccountError(err error) error {
@@ -78,7 +80,7 @@ func convertAccountError(err error) error {
 
 func convertAccountDeletionError(err error) error {
 	if apiclient.IsStatus(err, http.StatusConflict) {
-		return errors.New("the account changed while it was being deleted; try again")
+		return errors.New("the deletion plan changed; review the deletion again before confirming")
 	}
 	return convertAccountError(err)
 }
@@ -170,6 +172,7 @@ func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
 		return AccountDeletionPreview{}, convertAccountError(err)
 	}
 	result := AccountDeletionPreview{
+		PlanVersion:             preview.PlanVersion,
 		Email:                   s.state.Email,
 		OwnedVaults:             convertDeletionVaults(preview.OwnedVaults),
 		MemberVaults:            convertDeletionVaults(preview.MemberVaults),
@@ -181,7 +184,7 @@ func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
 	}
 	for _, organization := range preview.Organizations {
 		result.Organizations = append(result.Organizations, DeletionOrganization{
-			ID: organization.OrganizationID, Name: organization.Name, IsDeleted: organization.IsDeleted, NewAdminName: organization.NewAdminName,
+			ID: organization.OrganizationID, Name: organization.Name, IsDeleted: organization.IsDeleted, NewAdminName: organization.NewAdminName, NewAdminID: organization.NewAdminID,
 		})
 	}
 	return result, nil
@@ -192,7 +195,7 @@ func convertDeletionVaults(vaults []session.DeletionVault) []DeletionVault {
 	for _, vault := range vaults {
 		name := vault.Name
 		if name == "" {
-			name = "A vault"
+			name = fmt.Sprintf("Vault %s (name unavailable)", vault.ID)
 		}
 		converted = append(converted, DeletionVault{ID: vault.ID, Name: name, Type: vault.Type, Role: vault.Role, OtherMemberCount: vault.OtherMemberCount})
 	}
@@ -201,6 +204,15 @@ func convertDeletionVaults(vaults []session.DeletionVault) []DeletionVault {
 
 // DeleteAccount needs the master password and the account's email; afterwards this device is signed out and wiped.
 func (s *Service) DeleteAccount(password, email string) (Status, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
+		return Status{}, err
+	}
+	return Status{}, errors.New("update Hisar to pass the reviewed account deletion plan")
+}
+
+func (s *Service) DeleteAccountWithPlan(password, email, planVersion string) (Status, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -217,7 +229,7 @@ func (s *Service) DeleteAccount(password, email string) (Status, error) {
 	defer clear(passwordBytes)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	if err := s.unlockedSession.DeleteAccount(ctx, passwordBytes, secretKey, email); err != nil {
+	if err := s.unlockedSession.DeleteAccount(ctx, passwordBytes, secretKey, email, planVersion); err != nil {
 		return Status{}, convertAccountDeletionError(err)
 	}
 	forgetErr := s.forgetLocalAccount()

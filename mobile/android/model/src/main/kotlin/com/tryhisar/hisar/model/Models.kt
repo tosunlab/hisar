@@ -1078,6 +1078,7 @@ data class DeletionVault(val id: String, val name: String, val type: String, val
 @Serializable
 data class AccountDeletionPreview(
     val email: String = "",
+    val planVersion: String = "",
     @SerialName("ownedVaults") val allOwnedVault: List<DeletionVault> = emptyList(),
     @SerialName("memberVaults") val allMemberVault: List<DeletionVault> = emptyList(),
     val shareLinkCount: Int = 0,

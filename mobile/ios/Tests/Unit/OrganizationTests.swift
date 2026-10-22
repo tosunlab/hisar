@@ -296,7 +296,7 @@ final class OrganizationTests: XCTestCase {
     }
 
     func testAccountDeletionSaysWhatHappensToEachOrganization() {
-        XCTAssertEqual(AccountLifecycleLogic.describeOrganization(DeletionOrganization(id: "a", name: "Acme", isDeleted: true)), "Acme is deleted with your account")
+        XCTAssertEqual(AccountLifecycleLogic.describeOrganization(DeletionOrganization(id: "a", name: "Acme", isDeleted: true)), "Acme, its vaults, and their items are deleted with your account")
         XCTAssertEqual(AccountLifecycleLogic.describeOrganization(DeletionOrganization(id: "a", name: "Acme", newAdminName: "Ada")), "Ada becomes an admin of Acme")
         XCTAssertEqual(AccountLifecycleLogic.describeOrganization(DeletionOrganization(id: "a", name: "Acme")), "You leave Acme")
     }

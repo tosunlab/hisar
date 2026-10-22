@@ -98,7 +98,7 @@ protocol VaultBackend: AnyObject {
     func changeMasterPassword(currentPassword: String, newPassword: String) throws -> CredentialChangeResult
     func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult
     func previewAccountDeletion() throws -> AccountDeletionPreview
-    func deleteAccount(password: String, email: String) throws -> VaultStatus
+    func deleteAccountWithPlan(password: String, email: String, planVersion: String) throws -> VaultStatus
     func dismissSignedOutReason() -> VaultStatus
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String
     func isMacApprovalAllowed() -> Bool

@@ -459,7 +459,7 @@ const wailsApi = {
     Service.ChangeMasterPassword(currentPassword, newPassword),
   replaceSecretKey: (password: string): Promise<CredentialChangeResult> => Service.ReplaceSecretKey(password),
   previewAccountDeletion: async (): Promise<AccountDeletionPreview> => normalizeAccountDeletionPreview(await Service.PreviewAccountDeletion()),
-  deleteAccount: (password: string, email: string): Promise<Status> => Service.DeleteAccount(password, email),
+  deleteAccount: (password: string, email: string, planVersion: string): Promise<Status> => Service.DeleteAccountWithPlan(password, email, planVersion),
   dismissSignedOutReason: (): Promise<Status> => Service.DismissSignedOutReason(),
   getBrowserStatus: async (): Promise<BrowserStatus> => normalizeBrowserStatus(await BrowserBridge.GetBrowserStatus()),
   removePairedBrowser: async (instanceID: string): Promise<BrowserStatus> =>

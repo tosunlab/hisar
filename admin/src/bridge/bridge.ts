@@ -26,7 +26,7 @@ export interface SignUpResult {
 
 export type BridgeRequest =
   | { type: "signIn"; email: string; secretKey: string; password: string }
-  | { type: "reauthenticate"; token: string; email: string; secretKey: string; password: string }
+  | { type: "reauthenticate"; token: string; email: string; secretKey: string; password: string; action?: string; targetAccountID?: string; planVersion?: string }
   | { type: "signUp"; inviteToken: string; email: string; name: string; password: string };
 
 export interface BridgeResult {
@@ -76,8 +76,8 @@ export class Bridge {
     return this.call({ type: "signIn", email, secretKey, password });
   }
 
-  reauthenticate(token: string, email: string, secretKey: string, password: string): Promise<ReauthenticationProof> {
-    return this.call({ type: "reauthenticate", token, email, secretKey, password });
+  reauthenticate(token: string, email: string, secretKey: string, password: string, action?: string, targetAccountID?: string, planVersion?: string): Promise<ReauthenticationProof> {
+    return this.call({ type: "reauthenticate", token, email, secretKey, password, ...(action ? { action, ...(targetAccountID ? { targetAccountID } : {}), ...(planVersion ? { planVersion } : {}) } : {}) });
   }
 
   signUp(inviteToken: string, email: string, name: string, password: string): Promise<SignUpResult> {

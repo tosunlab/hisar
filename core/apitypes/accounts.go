@@ -46,10 +46,12 @@ type DeleteAccountRequest struct {
 	ReauthenticationID string `json:"reauthenticationId"`
 	KE3                []byte `json:"ke3"`
 	Email              string `json:"email"`
+	PlanVersion        string `json:"planVersion"`
 }
 
 // AccountDeletionPreview names vaults by ID only: their names are encrypted.
 type AccountDeletionPreview struct {
+	PlanVersion             string                `json:"planVersion"`
 	OwnedVaults             []DeletionOwnedVault  `json:"ownedVaults"`
 	MemberVaults            []DeletionMemberVault `json:"memberVaults"`
 	ShareLinkCount          int                   `json:"shareLinkCount"`
@@ -67,6 +69,7 @@ type DeletionOrganization struct {
 	Name           string `json:"name"`
 	IsDeleted      bool   `json:"deleted"`
 	NewAdminName   string `json:"newAdminName,omitempty"`
+	NewAdminID     string `json:"newAdminId,omitempty"`
 }
 
 // DeletionOwnedVault has no other owner, so it is deleted with the account.

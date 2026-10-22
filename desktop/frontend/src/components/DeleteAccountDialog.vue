@@ -12,7 +12,7 @@ const password = ref("");
 const typedEmail = ref("");
 
 const isEmailMatching = computed(() => preview.value !== null && typedEmail.value.trim().toLowerCase() === preview.value.email.toLowerCase());
-const isSubmittable = computed(() => isEmailMatching.value && password.value !== "" && !store.isBusy);
+const isSubmittable = computed(() => !!preview.value?.planVersion && isEmailMatching.value && password.value !== "" && !store.isBusy);
 const allSharedOwnedVault = computed(() => preview.value?.ownedVaults.filter((vault) => vault.otherMemberCount > 0) ?? []);
 const allPrivateOwnedVault = computed(() => preview.value?.ownedVaults.filter((vault) => vault.otherMemberCount === 0) ?? []);
 
@@ -29,7 +29,7 @@ function describeMembership(vault: DeletionVault): string {
 }
 
 function describePrivateVaults(allVault: DeletionVault[]): string {
-  return allVault.map((vault) => vault.name).join(", ");
+  return allVault.map((vault) => vault.name || vault.id).join(", ");
 }
 
 onMounted(async () => {
@@ -40,10 +40,19 @@ async function submitDeletion(): Promise<void> {
   if (!isSubmittable.value) {
     return;
   }
-  const isDeleted = await deleteAccount(password.value, typedEmail.value);
+  const isDeleted = await deleteAccount(password.value, typedEmail.value, preview.value!.planVersion);
   password.value = "";
   if (isDeleted) {
     emit("close");
+  } else {
+    typedEmail.value = "";
+    const failure = store.errorMessage;
+    preview.value = (await loadAccountDeletionPreview()) ?? null;
+    if (preview.value) {
+      store.errorMessage = failure.includes("deletion plan changed")
+        ? `${failure} Review the current consequences and enter your email and password again to confirm.`
+        : failure;
+    }
   }
 }
 
@@ -65,21 +74,22 @@ function close(): void {
   >
     <p v-if="!preview && !store.errorMessage" class="muted loading">Checking what your account holds…</p>
     <form v-if="preview" novalidate @submit.prevent="submitDeletion">
+      <p v-if="!preview.planVersion" class="error" role="alert">This server cannot confirm the reviewed deletion plan. Update the server before deleting your account.</p>
       <p class="export-advice" data-testid="delete-account-export">Export your items first in Settings → Export. Nobody can restore them after the account is deleted.</p>
       <ul class="consequences warning" data-testid="delete-account-consequences">
         <li v-if="allPrivateOwnedVault.length > 0">
           Deleted with their items: {{ describePrivateVaults(allPrivateOwnedVault) }}.
         </li>
         <li v-for="vault in allSharedOwnedVault" :key="vault.id" data-testid="delete-account-owned-shared-vault">
-          <strong>{{ vault.name }}</strong> is deleted with its items: you are its only owner, so {{ countPeople(vault.otherMemberCount) }}.
+          <strong>{{ vault.name || vault.id }}</strong> is deleted with its items: {{ vault.type === "organization" ? "its organization is deleted" : "you are its only owner" }}, so {{ countPeople(vault.otherMemberCount) }}.
         </li>
         <li v-for="vault in preview.memberVaults" :key="vault.id" data-testid="delete-account-member-vault">
-          <strong>{{ vault.name }}</strong>: {{ describeMembership(vault) }}.
+          <strong>{{ vault.name || vault.id }}</strong>: {{ describeMembership(vault) }}.
         </li>
         <li v-for="organization in preview.organizations" :key="organization.id" data-testid="delete-account-organization">
-          <template v-if="organization.isDeleted"><strong>{{ organization.name }}</strong> is deleted with your account.</template>
-          <template v-else-if="organization.newAdminName">
-            <strong>{{ organization.newAdminName }}</strong> becomes an admin of <strong>{{ organization.name }}</strong>.
+          <template v-if="organization.isDeleted"><strong>{{ organization.name }}</strong> is deleted with its teams, vaults, and items.</template>
+          <template v-else-if="organization.newAdminId || organization.newAdminName">
+            <strong>{{ organization.newAdminName || organization.newAdminId }}</strong> becomes an admin of <strong>{{ organization.name }}</strong>.
           </template>
           <template v-else>You leave <strong>{{ organization.name }}</strong>.</template>
         </li>

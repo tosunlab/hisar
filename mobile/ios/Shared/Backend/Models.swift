@@ -1776,6 +1776,7 @@ struct DeletionVault: Codable, Equatable, Identifiable {
 
 struct AccountDeletionPreview: Codable, Equatable {
     var email: String
+    var planVersion: String
     var allOwnedVault: [DeletionVault]
     var allMemberVault: [DeletionVault]
     var shareLinkCount: Int
@@ -1785,15 +1786,16 @@ struct AccountDeletionPreview: Codable, Equatable {
     var allOrganization: [DeletionOrganization]
 
     enum CodingKeys: String, CodingKey {
-        case email
+        case email, planVersion
         case allOwnedVault = "ownedVaults"
         case allMemberVault = "memberVaults"
         case shareLinkCount, sentInvitationCount, receivedInvitationCount, deviceCount
         case allOrganization = "organizations"
     }
 
-    init(email: String, allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1, allOrganization: [DeletionOrganization] = []) {
+    init(email: String, planVersion: String = "", allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1, allOrganization: [DeletionOrganization] = []) {
         self.email = email
+        self.planVersion = planVersion
         self.allOwnedVault = allOwnedVault
         self.allMemberVault = allMemberVault
         self.shareLinkCount = shareLinkCount
@@ -1806,6 +1808,7 @@ struct AccountDeletionPreview: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        planVersion = try container.decodeIfPresent(String.self, forKey: .planVersion) ?? ""
         allOwnedVault = try container.decodeIfPresent([DeletionVault].self, forKey: .allOwnedVault) ?? []
         allMemberVault = try container.decodeIfPresent([DeletionVault].self, forKey: .allMemberVault) ?? []
         shareLinkCount = try container.decodeIfPresent(Int.self, forKey: .shareLinkCount) ?? 0

@@ -1171,8 +1171,8 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func deleteAccount(password: String, email: String) async -> Bool {
-        guard let newStatus = await perform({ try $0.deleteAccount(password: password, email: email) }) else {
+    func deleteAccount(password: String, email: String, planVersion: String) async -> Bool {
+        guard let newStatus = await perform({ try $0.deleteAccountWithPlan(password: password, email: email, planVersion: planVersion) }) else {
             refreshStatus()
             return false
         }

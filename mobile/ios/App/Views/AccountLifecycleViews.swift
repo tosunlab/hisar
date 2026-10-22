@@ -256,7 +256,7 @@ struct DeleteAccountView: View {
     @State private var isConfirmationShown = false
 
     private var canSubmit: Bool {
-        !password.isEmpty && AccountLifecycleLogic.isEmailMatching(typedEmail: typedEmail, accountEmail: model.status.email) && !model.isBusy
+        preview?.planVersion.isEmpty == false && !isPreviewLoading && !password.isEmpty && AccountLifecycleLogic.isEmailMatching(typedEmail: typedEmail, accountEmail: model.status.email) && !model.isBusy
     }
 
     var body: some View {
@@ -366,12 +366,21 @@ struct DeleteAccountView: View {
     }
 
     private func submit() {
+        guard let reviewed = preview, !reviewed.planVersion.isEmpty else { return }
         let enteredPassword = password
         let enteredEmail = typedEmail
+        password = ""
+        typedEmail = ""
+        isConfirmationShown = false
+        preview = nil
         Task {
-            if await model.deleteAccount(password: enteredPassword, email: enteredEmail) {
-                password = ""
-                typedEmail = ""
+            let deleted = await model.deleteAccount(password: enteredPassword, email: enteredEmail, planVersion: reviewed.planVersion)
+            if !deleted && model.status.isUnlocked {
+                let deletionError = model.errorMessage
+                isPreviewLoading = true
+                preview = await model.loadAccountDeletionPreview()
+                isPreviewLoading = false
+                model.errorMessage = deletionError
             }
         }
     }

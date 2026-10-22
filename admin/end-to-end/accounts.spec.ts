@@ -114,6 +114,26 @@ test("lists the accounts with their last activity and narrows them as you type",
   await saveScreenshot(page, "a2-search");
 });
 
+test("refreshes a changed deletion plan and requires a fresh admin confirmation", async ({ page }) => {
+  const mira = fixture.members[0];
+  await openAccount(page, mira);
+  await page.getByRole("button", { name: "Delete account…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Delete account" });
+  await expect(dialog.getByTestId("deletion-consequences")).toBeVisible();
+  expect((await fetchAsAdmin(`/admin/accounts/${await findAccountId(mira.email)}/sign-out`, fixture.token, "POST")).status).toBe(204);
+  await dialog.getByLabel(`Type ${mira.email} to confirm`).fill(mira.email);
+  await fillProof(page, fixture);
+  await dialog.getByRole("button", { name: "Delete account", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toContainText("Review the latest consequences", { timeout: 30_000 });
+  await expect(dialog.getByLabel(`Type ${mira.email} to confirm`)).toHaveValue("");
+  await expect(dialog.getByLabel("Your master password")).toHaveValue("");
+  await expect(dialog.getByLabel("Your Secret Key")).toHaveValue("");
+  await expect(dialog.getByRole("button", { name: "Delete account", exact: true })).toBeDisabled();
+  expect(await findAccountId(mira.email)).toBeTruthy();
+  await saveScreenshot(page, "a05-deletion-plan-changed");
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+});
+
 test("suspends a member, whose CLI keeps its session but is refused until reactivation", async ({ page }) => {
   const mira = fixture.members[0];
   expect((await logIn("mira-1", mira)).code).toBe(0);
@@ -190,6 +210,7 @@ test("keeps the account when the delete dialog gets a wrong master password", as
   await saveScreenshot(page, "a2-bad-proof");
   expect(await findAccountId(mira.email)).toBeTruthy();
 });
+
 
 test("deletes a member after the admin's proof", async ({ page }) => {
   const mira = fixture.members[0];

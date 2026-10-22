@@ -395,7 +395,8 @@ fun DeleteAccountScreen(model: AppModel, onBack: () -> Unit) {
     var password by remember { mutableStateOf("") }
     var typedEmail by remember { mutableStateOf("") }
     var isConfirmationShown by remember { mutableStateOf(false) }
-    val canSubmit = password.isNotEmpty() && AccountLifecycleLogic.isEmailMatching(typedEmail, status.email) && !isBusy
+    val canSubmit = preview?.planVersion?.isNotEmpty() == true && !isPreviewLoading && password.isNotEmpty() &&
+        AccountLifecycleLogic.isEmailMatching(typedEmail, status.email) && !isBusy
 
     LaunchedEffect(Unit) {
         model.errorMessage.value = null
@@ -444,12 +445,20 @@ fun DeleteAccountScreen(model: AppModel, onBack: () -> Unit) {
             confirmLabel = "Delete account",
             confirmTestTag = "delete-account-confirm",
             onConfirm = {
+                val reviewed = preview ?: return@ConfirmationDialog
                 val enteredPassword = password
                 val enteredEmail = typedEmail
+                password = ""
+                typedEmail = ""
+                isConfirmationShown = false
+                preview = null
                 scope.launch {
-                    if (model.settings.deleteAccount(enteredPassword, enteredEmail)) {
-                        password = ""
-                        typedEmail = ""
+                    if (!model.settings.deleteAccount(enteredPassword, enteredEmail, reviewed.planVersion) && model.status.value.isUnlocked) {
+                        val deletionError = model.errorMessage.value
+                        isPreviewLoading = true
+                        preview = model.settings.loadAccountDeletionPreview()
+                        isPreviewLoading = false
+                        model.errorMessage.value = deletionError
                     }
                 }
             },

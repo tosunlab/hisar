@@ -134,7 +134,7 @@ interface VaultBackend {
     fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult
     fun replaceSecretKey(password: String, directory: File): CredentialChangeResult
     fun previewAccountDeletion(): AccountDeletionPreview
-    fun deleteAccount(password: String, email: String): VaultStatus
+    fun deleteAccountWithPlan(password: String, email: String, planVersion: String): VaultStatus
     fun dismissSignedOutReason(): VaultStatus
     fun copySecretReference(vaultID: String, itemID: String, fieldName: String): String
     fun isMacApprovalAllowed(): Boolean

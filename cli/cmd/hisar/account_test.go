@@ -143,7 +143,7 @@ func TestConvertAccountError(t *testing.T) {
 
 func TestAccountDeletionConflictAsksToRetry(t *testing.T) {
 	conflict := &apiclient.APIError{Status: http.StatusConflict}
-	if err := convertAccountDeletionError(conflict); err.Error() != "the account changed while it was being deleted; try again" {
+	if err := convertAccountDeletionError(conflict); err.Error() != "the deletion plan changed; review the deletion again before confirming" {
 		t.Errorf("deletion conflict: %v", err)
 	}
 	if err := convertAccountDeletionError(session.ErrEmailMismatch); !strings.Contains(err.Error(), "nothing was deleted") {

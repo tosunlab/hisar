@@ -64,7 +64,7 @@ open class FakeBackend : VaultBackend {
     var exportOptions = ExportOptions(isBiometricAvailable = true, minPassphraseLength = 10)
     var currentPassword = PASSWORD
     var currentSecretKey = SECRET_KEY
-    var deletionPreview = AccountDeletionPreview(email = "alice@example.com")
+    var deletionPreview = AccountDeletionPreview(email = "alice@example.com", planVersion = "reviewed-plan")
     var isAccountDeleted = false
     /** The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence. */
     var allOrganization: MutableList<Organization> = mutableListOf()
@@ -958,9 +958,10 @@ open class FakeBackend : VaultBackend {
         return deletionPreview
     }
 
-    override fun deleteAccount(password: String, email: String): VaultStatus {
-        record("deleteAccount")
+    override fun deleteAccountWithPlan(password: String, email: String, planVersion: String): VaultStatus {
+        record("deleteAccountWithPlan")
         requireUnlocked()
+        if (planVersion.isEmpty() || planVersion != deletionPreview.planVersion) throw BackendError("The deletion plan changed. Review it again.")
         if (email.trimmingWhitespaces().lowercase() != status.email.lowercase()) throw BackendError("Type the email of this account to confirm")
         if (password != currentPassword) throw BackendError("The master password is not correct")
         isAccountDeleted = true

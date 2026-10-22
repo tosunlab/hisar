@@ -170,7 +170,7 @@ func TestServerKeepsAnActiveAdmin(t *testing.T) {
 			return err
 		},
 		"delete": func() error {
-			_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "AAAAAA")
+			_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "AAAAAA", reviewStoreDeletion(t, database, ctx, "AAAAAA"))
 			return err
 		},
 	} {
@@ -246,7 +246,7 @@ func TestDeleteAccountAsAdmin(t *testing.T) {
 	acmeVaultID := createTestOrganizationVault(t, database, acmeID, createTestTeam(t, database, acmeID, "AAAAAA", "BOBBBB"))
 	grantTestVaultKey(t, database, acmeVaultID, "BOBBBB")
 
-	deleted, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "BOBBBB")
+	deleted, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "BOBBBB", reviewStoreDeletion(t, database, ctx, "BOBBBB"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestDeleteAccountAsAdmin(t *testing.T) {
 	if !queryNeedsRotation(t, database, acmeVaultID) {
 		t.Error("the organization vault Bob held a key to is not marked for rotation")
 	}
-	if _, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "BOBBBB"); !errors.Is(err, ErrNotFound) {
+	if _, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "BOBBBB", reviewStoreDeletion(t, database, ctx, "BOBBBB")); !errors.Is(err, ErrNotFound) {
 		t.Errorf("deleting again: %v", err)
 	}
 }
@@ -328,7 +328,7 @@ func TestAdminChangesNeedAnActiveAdmin(t *testing.T) {
 				return err
 			},
 			"delete": func() error {
-				_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: actorAccountID}, "CCCCCC")
+				_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: actorAccountID}, "CCCCCC", reviewStoreDeletion(t, database, ctx, "CCCCCC"))
 				return err
 			},
 			"reactivate": func() error {
@@ -378,7 +378,7 @@ func TestProvenAdminChangesCheckTheProof(t *testing.T) {
 		if err := database.SetAccountRole(ctx, test.actor, "CCCCCC", "admin"); !errors.Is(err, test.want) {
 			t.Errorf("role change with %s: %v", name, err)
 		}
-		if _, err := database.DeleteAccountAsAdmin(ctx, test.actor, "CCCCCC"); !errors.Is(err, test.want) {
+		if _, err := database.DeleteAccountAsAdmin(ctx, test.actor, "CCCCCC", reviewStoreDeletion(t, database, ctx, "CCCCCC")); !errors.Is(err, test.want) {
 			t.Errorf("deletion with %s: %v", name, err)
 		}
 	}
@@ -388,7 +388,7 @@ func TestProvenAdminChangesCheckTheProof(t *testing.T) {
 	if err := database.SetAccountRole(ctx, proven, "CCCCCC", "admin"); err != nil {
 		t.Errorf("role change with a valid proof: %v", err)
 	}
-	if _, err := database.DeleteAccountAsAdmin(ctx, proven, "CCCCCC"); err != nil {
+	if _, err := database.DeleteAccountAsAdmin(ctx, proven, "CCCCCC", reviewStoreDeletion(t, database, ctx, "CCCCCC")); err != nil {
 		t.Errorf("deletion with a valid proof: %v", err)
 	}
 }
@@ -415,7 +415,7 @@ func TestDeleteAccountAsAdminWhileAVaultIsGrantedToAnAdmin(t *testing.T) {
 	}
 	deletion := make(chan error, 1)
 	go func() {
-		_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "BOBBBB")
+		_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "BOBBBB", reviewStoreDeletion(t, database, ctx, "BOBBBB"))
 		deletion <- err
 	}()
 	deadline := time.Now().Add(10 * time.Second)
@@ -431,8 +431,14 @@ func TestDeleteAccountAsAdminWhileAVaultIsGrantedToAnAdmin(t *testing.T) {
 	if err := grant.Commit(ctx); err != nil {
 		t.Fatalf("the grant's commit: %v", err)
 	}
-	if err := <-deletion; err != nil {
-		t.Errorf("the deletion: %v", err)
+	if err := <-deletion; !errors.Is(err, ErrDeletionPlanChanged) {
+		t.Fatalf("a deletion reviewed before the grant must ask for a new review, got %v", err)
+	}
+	if _, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "AAAAAA"}, "BOBBBB", reviewStoreDeletion(t, database, ctx, "BOBBBB")); err != nil {
+		t.Errorf("the deletion after a new review: %v", err)
+	}
+	if countQueryRow(t, database, `SELECT count(*) FROM vaults WHERE id = $1`, vaultID) != 0 {
+		t.Error("the reviewed deletion kept the vault it owned alone")
 	}
 }
 

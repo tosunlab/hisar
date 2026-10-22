@@ -59,6 +59,7 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 
 	preview := decodeJSON[struct {
 		Email       string `json:"email"`
+		PlanVersion string `json:"planVersion"`
 		OwnedVaults []struct {
 			Name string `json:"name"`
 		} `json:"ownedVaults"`
@@ -67,13 +68,13 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 	if preview.Email != email || len(preview.OwnedVaults) != 1 || preview.OwnedVaults[0].Name != "Personal" || preview.DeviceCount != 1 {
 		t.Errorf("deletion preview: %+v", preview)
 	}
-	if _, err := hisar.DeleteAccount(newPassword, "someone@example.com"); err == nil {
+	if _, err := hisar.DeleteAccountWithPlan(newPassword, "someone@example.com", preview.PlanVersion); err == nil {
 		t.Error("deleted with another email")
 	}
-	if _, err := hisar.DeleteAccount("", email); err == nil {
+	if _, err := hisar.DeleteAccountWithPlan("", email, preview.PlanVersion); err == nil {
 		t.Error("deleted without a master password")
 	}
-	deleted := decodeJSON[status](t)(hisar.DeleteAccount(newPassword, email))
+	deleted := decodeJSON[status](t)(hisar.DeleteAccountWithPlan(newPassword, email, preview.PlanVersion))
 	if deleted.State != "signed-out" || deleted.Email != "" {
 		t.Errorf("after deletion: %+v", deleted)
 	}

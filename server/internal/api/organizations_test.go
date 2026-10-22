@@ -886,7 +886,7 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	preview := requireValue[*apitypes.AccountDeletionPreview](t)(alice.session.Client.GetAccountDeletionPreview(ctx))
 	slices.SortFunc(preview.Organizations, func(first, second apitypes.DeletionOrganization) int { return strings.Compare(first.Name, second.Name) })
 	if !slices.Equal(preview.Organizations, []apitypes.DeletionOrganization{
-		{OrganizationID: acme.ID, Name: "Acme", NewAdminName: "carol"},
+		{OrganizationID: acme.ID, Name: "Acme", NewAdminName: "carol", NewAdminID: carol.AccountID},
 		{OrganizationID: solo.ID, Name: "Solo", IsDeleted: true},
 	}) {
 		t.Errorf("organizations in the preview: %+v", preview.Organizations)
@@ -900,7 +900,7 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	waitForSubscriber(t, server, carol.AccountID, 1)
 	daveEvents := openEventStream(t, dave.Client)
 	waitForSubscriber(t, server, dave.AccountID, 1)
-	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, "alice@example.com"); err != nil {
+	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, "alice@example.com", reviewSessionDeletion(t, alice.session, ctx)); err != nil {
 		t.Fatal(err)
 	}
 	carolEvents.waitForEvent(t, apitypes.EventOrganizationsChanged)
@@ -927,11 +927,11 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	if _, isListed := findListedVault(t, carol, production.ID); isListed {
 		t.Error("the vault Alice owned alone outlived her")
 	}
-	// Alice held Staging's key, so its remaining owner's app rotates it, as after a team removal; Family is not marked (§5.7.1).
+	// Alice held the keys of Staging and Family, so their remaining owners' apps rotate them (§5.7.1, §5.11).
 	if listedStaging, isListed := findListedVault(t, carol, staging.ID); !isListed || !listedStaging.NeedsRotation {
 		t.Errorf("the organization vault Alice had a key to: listed %v, needs rotation %v", isListed, listedStaging.NeedsRotation)
 	}
-	if listedFamily, isListed := findListedVault(t, carol, family.ID); !isListed || listedFamily.NeedsRotation {
+	if listedFamily, isListed := findListedVault(t, carol, family.ID); !isListed || !listedFamily.NeedsRotation {
 		t.Errorf("the shared vault Alice was in: listed %v, needs rotation %v", isListed, listedFamily.NeedsRotation)
 	}
 	for name, query := range map[string]string{

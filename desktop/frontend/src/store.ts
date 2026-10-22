@@ -477,8 +477,12 @@ export async function loadAccountDeletionPreview(): Promise<AccountDeletionPrevi
   return runAction(() => api.previewAccountDeletion());
 }
 
-export async function deleteAccount(password: string, email: string): Promise<boolean> {
-  const status = await runAction(() => api.deleteAccount(password, email));
+export async function deleteAccount(password: string, email: string, planVersion: string): Promise<boolean> {
+  const generation = sessionGeneration;
+  const status = await runAction(() => api.deleteAccount(password, email, planVersion));
+  if (generation !== sessionGeneration) {
+    return false;
+  }
   if (status) {
     await applyStatus(status);
     showNotice("Your account was deleted");

@@ -6,6 +6,7 @@
 import * as browserprotocol$0 from "../browserprotocol/models.js";
 
 export interface AccountDeletionPreview {
+    "planVersion": string;
     "email": string;
     "ownedVaults": DeletionVault[] | null;
     "memberVaults": DeletionVault[] | null;
@@ -97,6 +98,7 @@ export interface DeletionOrganization {
     "name": string;
     "isDeleted": boolean;
     "newAdminName": string;
+    "newAdminId": string;
 }
 
 export interface DeletionVault {

@@ -18,7 +18,15 @@ type opaqueLogin struct {
 
 // startOpaqueLogin returns the login and its serialized KE1; the caller clears the login.
 func startOpaqueLogin(authKey []byte, baseURL string, purpose pake.AuthPurpose) (*opaqueLogin, []byte, error) {
+	return startOpaqueLoginForScope(authKey, baseURL, purpose, apitypes.ReauthenticationScope{})
+}
+
+func startOpaqueLoginForScope(authKey []byte, baseURL string, purpose pake.AuthPurpose, scope apitypes.ReauthenticationScope) (*opaqueLogin, []byte, error) {
 	configuration, err := pake.NewAuthConfig(baseURL, purpose)
+	if err != nil {
+		return nil, nil, err
+	}
+	configuration, err = pake.WithReauthenticationScope(configuration, scope)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -52,12 +60,16 @@ func (login *opaqueLogin) clear() {
 }
 
 func proveCredentials(ctx context.Context, client *apiclient.Client, authKey []byte, accountID string, registrationRequest []byte) (proof apitypes.ReauthenticationProof, registrationResponse []byte, err error) {
-	login, keyExchange1, err := startOpaqueLogin(authKey, client.BaseURL, pake.Reauthenticate)
+	return proveCredentialsForScope(ctx, client, authKey, accountID, registrationRequest, apitypes.ReauthenticationScope{})
+}
+
+func proveCredentialsForScope(ctx context.Context, client *apiclient.Client, authKey []byte, accountID string, registrationRequest []byte, scope apitypes.ReauthenticationScope) (proof apitypes.ReauthenticationProof, registrationResponse []byte, err error) {
+	login, keyExchange1, err := startOpaqueLoginForScope(authKey, client.BaseURL, pake.Reauthenticate, scope)
 	if err != nil {
 		return apitypes.ReauthenticationProof{}, nil, err
 	}
 	defer login.clear()
-	reauthentication, err := client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1, RegistrationRequest: registrationRequest})
+	reauthentication, err := client.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1, RegistrationRequest: registrationRequest, Scope: scope})
 	if err != nil {
 		return apitypes.ReauthenticationProof{}, nil, err
 	}

@@ -70,7 +70,7 @@ class AccountLifecycleTests {
 
     @Test
     fun testAccountDeletionSaysWhatHappensToEachOrganization() {
-        assertEquals("Acme is deleted with your account", AccountLifecycleLogic.describeOrganization(DeletionOrganization(id = "a", name = "Acme", isDeleted = true)))
+        assertEquals("Acme, its vaults, and their items are deleted with your account", AccountLifecycleLogic.describeOrganization(DeletionOrganization(id = "a", name = "Acme", isDeleted = true)))
         assertEquals("Ada becomes an admin of Acme", AccountLifecycleLogic.describeOrganization(DeletionOrganization(id = "a", name = "Acme", newAdminName = "Ada")))
         assertEquals("You leave Acme", AccountLifecycleLogic.describeOrganization(DeletionOrganization(id = "a", name = "Acme")))
     }
@@ -126,9 +126,9 @@ class AccountLifecycleTests {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()
         assertEquals("alice@example.com", model.settings.loadAccountDeletionPreview()?.email)
-        assertFalse(model.settings.deleteAccount(FakeBackend.PASSWORD, "bob@example.com"))
+        assertFalse(model.settings.deleteAccount(FakeBackend.PASSWORD, "bob@example.com", harness.backend.deletionPreview.planVersion))
         assertEquals(Screen.Unlocked, model.screen.value)
-        assertTrue(model.settings.deleteAccount(FakeBackend.PASSWORD, "alice@example.com"))
+        assertTrue(model.settings.deleteAccount(FakeBackend.PASSWORD, "alice@example.com", harness.backend.deletionPreview.planVersion))
         assertTrue(harness.backend.isAccountDeleted)
         assertEquals(Screen.SignedOut, model.screen.value)
         assertTrue(model.unlockedData.value.allVault.isEmpty())
@@ -140,10 +140,23 @@ class AccountLifecycleTests {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()
         harness.backend.isCacheRemovalFailing = true
-        assertFalse(model.settings.deleteAccount(FakeBackend.PASSWORD, "alice@example.com"))
+        assertFalse(model.settings.deleteAccount(FakeBackend.PASSWORD, "alice@example.com", harness.backend.deletionPreview.planVersion))
         assertTrue(harness.backend.isAccountDeleted)
         assertEquals(Screen.SignedOut, model.screen.value)
         assertTrue(model.unlockedData.value.allVault.isEmpty())
         assertEquals(FakeBackend.CACHE_REMOVAL_MESSAGE, model.errorMessage.value)
+    }
+
+    @Test
+    fun testDeletionRejectsChangedPlanUntilReviewedAgain() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val reviewed = assertNotNull(model.settings.loadAccountDeletionPreview())
+        harness.backend.deletionPreview = reviewed.copy(planVersion = "new-plan")
+        assertFalse(model.settings.deleteAccount(FakeBackend.PASSWORD, reviewed.email, reviewed.planVersion))
+        assertFalse(harness.backend.isAccountDeleted)
+        assertEquals(Screen.Unlocked, model.screen.value)
+        val refreshed = assertNotNull(model.settings.loadAccountDeletionPreview())
+        assertTrue(model.settings.deleteAccount(FakeBackend.PASSWORD, refreshed.email, refreshed.planVersion))
     }
 }

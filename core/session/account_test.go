@@ -61,10 +61,10 @@ func TestWrongCurrentPasswordSendsNothing(t *testing.T) {
 	if _, err := signedIn.ReplaceSecretKey(ctx, []byte("wrong master password"), secretKey); !errors.Is(err, ErrBadCredentials) {
 		t.Errorf("replace with a wrong password: %v", err)
 	}
-	if err := signedIn.DeleteAccount(ctx, []byte("wrong master password"), secretKey, "a@example.com"); !errors.Is(err, ErrBadCredentials) {
+	if err := signedIn.DeleteAccount(ctx, []byte("wrong master password"), secretKey, "a@example.com", "reviewed-plan"); !errors.Is(err, ErrBadCredentials) {
 		t.Errorf("delete with a wrong password: %v", err)
 	}
-	if err := signedIn.DeleteAccount(ctx, password, secretKey, "b@example.com"); !errors.Is(err, ErrEmailMismatch) {
+	if err := signedIn.DeleteAccount(ctx, password, secretKey, "b@example.com", "reviewed-plan"); !errors.Is(err, ErrEmailMismatch) {
 		t.Errorf("delete with another email: %v", err)
 	}
 	otherSecretKey, _ := crypt.GenerateSecretKey("XYZ789")
@@ -112,7 +112,7 @@ func TestAccountChangesRefuseAServerKeysetThatIsNotTheSessions(t *testing.T) {
 	signedIn := &Session{Client: apiclient.New(server.URL), AccountID: "ABC123", Email: "a@example.com", Keyset: sessionKeyset}
 	ctx := context.Background()
 
-	if err := signedIn.DeleteAccount(ctx, password, secretKey, "a@example.com"); !errors.Is(err, ErrKeyMismatch) {
+	if err := signedIn.DeleteAccount(ctx, password, secretKey, "a@example.com", "reviewed-plan"); !errors.Is(err, ErrKeyMismatch) {
 		t.Errorf("delete with the server's keyset swapped: %v", err)
 	}
 	if _, err := signedIn.ChangeMasterPassword(ctx, password, []byte("a new master password"), secretKey); !errors.Is(err, ErrKeyMismatch) {

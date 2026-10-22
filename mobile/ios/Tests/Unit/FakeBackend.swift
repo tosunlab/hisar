@@ -57,7 +57,7 @@ class FakeBackend: VaultBackend {
     var exportOptions = ExportOptions(isBiometricAvailable: true, minPassphraseLength: 10)
     var currentPassword = FakeBackend.password
     var currentSecretKey = FakeBackend.secretKey
-    var deletionPreview = AccountDeletionPreview(email: "alice@example.com")
+    var deletionPreview = AccountDeletionPreview(email: "alice@example.com", planVersion: "reviewed-plan")
     var isAccountDeleted = false
     /// The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence.
     var allOrganization: [Organization] = []
@@ -878,9 +878,10 @@ extension FakeBackend {
         return deletionPreview
     }
 
-    func deleteAccount(password: String, email: String) throws -> VaultStatus {
-        record("deleteAccount")
+    func deleteAccountWithPlan(password: String, email: String, planVersion: String) throws -> VaultStatus {
+        record("deleteAccountWithPlan")
         try requireUnlocked()
+        guard !planVersion.isEmpty, planVersion == deletionPreview.planVersion else { throw BackendError(message: "The deletion plan changed. Review it again.") }
         guard email.trimmingCharacters(in: .whitespaces).lowercased() == status.email.lowercased() else { throw BackendError(message: "Type the email of this account to confirm") }
         guard password == currentPassword else { throw BackendError(message: "The master password is not correct") }
         isAccountDeleted = true
