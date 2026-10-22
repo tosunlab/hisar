@@ -153,7 +153,7 @@ async function submitDelete(): Promise<void> {
     secretKey.value = "";
     password.value = "";
     typedEmail.value = "";
-    if (error instanceof APIError && error.status === 409) {
+    if (error instanceof APIError && error.isDeletionPlanChanged) {
       await loadDeletionPlan();
       dialogError.value = deletionPreview.value
         ? "The deletion plan changed. Review the latest consequences, type the email again, and enter your credentials for a fresh confirmation."

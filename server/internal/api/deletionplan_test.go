@@ -42,12 +42,12 @@ func TestReviewedDeletionRefusesCoownerLeaveUntilFreshConfirmation(t *testing.T)
 			}
 			if administrative {
 				status, body := sendRawRequest(t, baseURL, admin.session.Client.Token, "POST", adminAccountsPath+"/"+owner.session.AccountID+"/delete", request)
-				if status != http.StatusConflict || !strings.Contains(body, "deletion plan changed") {
+				if status != http.StatusConflict || !strings.Contains(body, `"deletionPlanChanged":true`) {
 					t.Fatalf("old administrator review mutated a newly sole-owned vault: %d %s", status, body)
 				}
 			} else {
 				err := owner.session.DeleteAccount(ctx, owner.password, owner.secretKey, owner.session.Email, plan)
-				if !apiclient.IsStatus(err, http.StatusConflict) || !strings.Contains(err.Error(), "deletion plan changed") {
+				if !apiclient.IsDeletionPlanChanged(err) {
 					t.Fatalf("old review deleted its promised survivor: %v", err)
 				}
 			}
@@ -97,5 +97,25 @@ func TestDeletionRefusesMissingPlanAndProofForAnotherReviewedPlan(t *testing.T) 
 	}
 	if _, err := owner.session.Client.GetAccount(ctx); err != nil {
 		t.Fatalf("refused proof changed the account: %v", err)
+	}
+}
+
+func TestDeletionConflictOtherThanThePlanIsNotAPlanChange(t *testing.T) {
+	baseURL, server, _, _ := setupLifecycleServer(t)
+	ctx := context.Background()
+	owner := signUpLifecycleAccount(t, server, baseURL, "owner@example.com")
+	plan := reviewSessionDeletion(t, owner.session, ctx)
+	proof := requireValue[apitypes.ReauthenticationProof](t)(session.ReauthenticateForScope(ctx, owner.session.Client, owner.session.Email, owner.password, owner.secretKey, apitypes.ReauthenticationScope{Action: "account-delete", Target: owner.session.AccountID, PlanVersion: plan}))
+	requireValue[*session.CredentialChange](t)(owner.session.ChangeMasterPassword(ctx, owner.password, []byte("a new master password after the proof"), owner.secretKey))
+	if fresh := reviewSessionDeletion(t, owner.session, ctx); fresh != plan {
+		t.Fatalf("the credential change also changed the plan: %s %s", plan, fresh)
+	}
+	request := &apitypes.DeleteAccountRequest{Email: owner.session.Email, PlanVersion: plan, ReauthenticationID: proof.ReauthenticationID, KE3: proof.KE3}
+	err := owner.session.Client.DeleteAccount(ctx, request)
+	if !apiclient.IsStatus(err, http.StatusConflict) || apiclient.IsDeletionPlanChanged(err) {
+		t.Fatalf("a credential change conflict was reported as a changed plan: %v", err)
+	}
+	if _, err := owner.session.Client.GetAccount(ctx); err != nil {
+		t.Fatalf("refused deletion changed the account: %v", err)
 	}
 }

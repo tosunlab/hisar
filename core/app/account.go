@@ -78,9 +78,15 @@ func convertAccountError(err error) error {
 	return convertError(err)
 }
 
+// convertAccountDeletionError asks for a new review only when the server says the plan changed; any other deletion
+// conflict (busy memberships, changed credentials) keeps the server's reason.
 func convertAccountDeletionError(err error) error {
-	if apiclient.IsStatus(err, http.StatusConflict) {
+	var apiError *apiclient.APIError
+	switch {
+	case apiclient.IsDeletionPlanChanged(err):
 		return errors.New("the deletion plan changed; review the deletion again before confirming")
+	case errors.As(err, &apiError) && apiError.Status == http.StatusConflict:
+		return errors.New(apiError.Message)
 	}
 	return convertAccountError(err)
 }

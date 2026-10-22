@@ -209,7 +209,7 @@ describe("AccountView", () => {
   });
 
   it("requires review and fresh credentials when the deletion plan changes", async () => {
-    deleteAnswer = answer(409, { error: "The deletion plan changed." });
+    deleteAnswer = answer(409, { error: "The deletion plan changed. Review the deletion again before confirming.", deletionPlanChanged: true });
     mountAccount(ada);
     await vi.waitFor(() => findButton("Delete account…"));
     findButton("Delete account…").click();
@@ -238,6 +238,23 @@ describe("AccountView", () => {
     await vi.waitFor(() => expect(currentPath.value).toBe("/admin/accounts"));
     const lastRequest = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/delete")).at(-1)!;
     expect(JSON.parse(String(lastRequest[1]?.body))).toMatchObject({ planVersion: "plan-2", proof: { reauthenticationId: "second-proof" } });
+  });
+
+  it("keeps the server's reason for a deletion conflict that is not a plan change", async () => {
+    deleteAnswer = answer(409, { error: "The account's memberships are changing. Suspend the account, then delete it." });
+    mountAccount(ada);
+    await vi.waitFor(() => findButton("Delete account…"));
+    findButton("Delete account…").click();
+    await vi.waitFor(() => expect(root.querySelector('[data-testid="deletion-consequences"]')?.textContent).toContain("family"));
+    type("secretKey", "H1-ADMIN1-SECRET");
+    type("password", "admin password");
+    type("confirmEmail", "ada@example.com");
+    reauthenticate.mockResolvedValue({ reauthenticationId: "proof", ke3: "a2Uz" });
+    planVersion = "plan-2";
+    root.querySelector<HTMLFormElement>("form[aria-label='Delete account']")!.dispatchEvent(new Event("submit"));
+    await vi.waitFor(() => expect(root.querySelector("[role=dialog] [role=alert]")?.textContent).toBe("The account's memberships are changing. Suspend the account, then delete it."));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/deletion-preview"))).toHaveLength(1);
+    expect(root.querySelector('[data-testid="deletion-consequences"]')?.textContent).toContain("family");
   });
 
   it("offers no suspension, role change or deletion of the admin's own account", async () => {

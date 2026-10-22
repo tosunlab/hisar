@@ -212,7 +212,7 @@ func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apity
 	deleted, err := s.store.DeleteAccount(ctx, actor.AccountID, actor.TokenHash, pending.recordHash, request.PlanVersion)
 	switch {
 	case errors.Is(err, store.ErrDeletionPlanChanged):
-		return newError(KindConflict, "The deletion plan changed. Review the deletion again before confirming.")
+		return ErrDeletionPlanChanged
 	case errors.Is(err, store.ErrDeletionBusy):
 		return errDeletionBusy
 	case errors.Is(err, store.ErrConflict):

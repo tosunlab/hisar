@@ -100,7 +100,7 @@ func checkOtherAccount(actor Actor, accountID string) error {
 func convertAdminAccountError(err error) error {
 	switch {
 	case errors.Is(err, store.ErrDeletionPlanChanged):
-		return newError(KindConflict, "The deletion plan changed. Review the deletion again before confirming.")
+		return ErrDeletionPlanChanged
 	case errors.Is(err, store.ErrDeletionBusy):
 		return errAdminDeletionBusy
 	case errors.Is(err, store.ErrNotFound):

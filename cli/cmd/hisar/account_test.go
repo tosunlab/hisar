@@ -4,9 +4,11 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
@@ -141,11 +143,35 @@ func TestConvertAccountError(t *testing.T) {
 	}
 }
 
-func TestAccountDeletionConflictAsksToRetry(t *testing.T) {
-	conflict := &apiclient.APIError{Status: http.StatusConflict}
-	if err := convertAccountDeletionError(conflict); err.Error() != "the deletion plan changed; review the deletion again before confirming" {
-		t.Errorf("deletion conflict: %v", err)
+func TestAccountDeletionAsksForReviewOnlyWhenThePlanChanged(t *testing.T) {
+	for _, answer := range []struct {
+		name   string
+		body   any
+		reason string
+	}{
+		{"plan changed", apitypes.DeletionPlanChangedResponse{Error: "The deletion plan changed. Review the deletion again before confirming.", IsDeletionPlanChanged: true}, "review the deletion again"},
+		{"memberships busy", apitypes.Error{Error: "The account's memberships are changing. Try deleting the account again."}, "memberships are changing"},
+		{"credentials changed", apitypes.Error{Error: "the master password or Secret Key was changed on another device; try again"}, "changed on another device"},
+	} {
+		t.Run(answer.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(writer).Encode(answer.body)
+			}))
+			defer server.Close()
+			err := convertAccountDeletionError(apiclient.New(server.URL).DeleteAccount(context.Background(), &apitypes.DeleteAccountRequest{PlanVersion: "1:reviewed"}))
+			if err == nil || !strings.Contains(err.Error(), answer.reason) {
+				t.Fatalf("deletion conflict lost its reason: %v", err)
+			}
+			if isReviewAsked := strings.Contains(err.Error(), "deletion plan changed"); isReviewAsked != (answer.name == "plan changed") {
+				t.Errorf("asks for a new review %v: %v", isReviewAsked, err)
+			}
+		})
 	}
+}
+
+func TestAccountDeletionKeepsOtherErrors(t *testing.T) {
 	if err := convertAccountDeletionError(session.ErrEmailMismatch); !strings.Contains(err.Error(), "nothing was deleted") {
 		t.Errorf("email mismatch: %v", err)
 	}

@@ -6,12 +6,14 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
@@ -152,11 +154,37 @@ func TestCommittedCredentialChangeKeepsItsResultWhenStateSaveFails(t *testing.T)
 	}
 }
 
-func TestAccountDeletionConflictAsksToRetry(t *testing.T) {
-	conflict := &apiclient.APIError{Status: http.StatusConflict}
-	if err := convertAccountDeletionError(conflict); err.Error() != "the deletion plan changed; review the deletion again before confirming" {
-		t.Errorf("deletion conflict: %v", err)
+func TestAccountDeletionAsksForReviewOnlyWhenThePlanChanged(t *testing.T) {
+	const planChanged = "The deletion plan changed. Review the deletion again before confirming."
+	for _, answer := range []struct {
+		name   string
+		body   any
+		reason string
+	}{
+		{"plan changed", apitypes.DeletionPlanChangedResponse{Error: planChanged, IsDeletionPlanChanged: true}, "review the deletion again"},
+		{"memberships busy", apitypes.Error{Error: "The account's memberships are changing. Try deleting the account again."}, "memberships are changing"},
+		{"credentials changed", apitypes.Error{Error: "the master password or Secret Key was changed on another device; try again"}, "changed on another device"},
+	} {
+		t.Run(answer.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(writer).Encode(answer.body)
+			}))
+			defer server.Close()
+			err := convertAccountDeletionError(apiclient.New(server.URL).DeleteAccount(context.Background(), &apitypes.DeleteAccountRequest{PlanVersion: "1:reviewed"}))
+			if err == nil || !strings.Contains(err.Error(), answer.reason) {
+				t.Fatalf("deletion conflict lost its reason: %v", err)
+			}
+			if isReviewAsked := strings.Contains(err.Error(), "deletion plan changed"); isReviewAsked != (answer.name == "plan changed") {
+				t.Errorf("asks for a new review %v: %v", isReviewAsked, err)
+			}
+		})
 	}
+}
+
+func TestAccountConflictAsksToSignInAgain(t *testing.T) {
+	conflict := &apiclient.APIError{Status: http.StatusConflict}
 	if err := convertAccountError(conflict); err.Error() != "your master password or Secret Key was just changed on another device; sign in again" {
 		t.Errorf("credential change conflict: %v", err)
 	}

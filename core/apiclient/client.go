@@ -52,6 +52,9 @@ type APIError struct {
 	Message string
 	// IsKeyChanged marks the 409 that refused items sealed with a key a rotation replaced (apitypes.KeyChangedResponse).
 	IsKeyChanged bool
+	// IsDeletionPlanChanged marks the 409 that refused an account deletion whose reviewed plan no longer matches the
+	// account (apitypes.DeletionPlanChangedResponse).
+	IsDeletionPlanChanged bool
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Message, e.Status) }
@@ -121,6 +124,14 @@ func IsKeyChanged(err error) bool {
 	return errors.As(err, &apiError) && apiError.IsKeyChanged
 }
 
+// IsDeletionPlanChanged reports whether err is, or wraps, the server refusing an account deletion because its reviewed
+// plan no longer matches the account: the deletion must be reviewed and confirmed again. Every other deletion conflict
+// keeps its own reason.
+func IsDeletionPlanChanged(err error) bool {
+	var apiError *APIError
+	return errors.As(err, &apiError) && apiError.IsDeletionPlanChanged
+}
+
 // IsUnreachable reports a failed connection or a reverse proxy that cannot reach the server.
 func IsUnreachable(err error) bool {
 	var urlError *url.Error
@@ -172,6 +183,10 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		var keyChanged apitypes.KeyChangedResponse
 		if json.Unmarshal(data, &keyChanged) == nil && keyChanged.IsKeyChanged {
 			return &APIError{Status: response.StatusCode, Message: keyChanged.Error, IsKeyChanged: true}
+		}
+		var planChanged apitypes.DeletionPlanChangedResponse
+		if json.Unmarshal(data, &planChanged) == nil && planChanged.IsDeletionPlanChanged {
+			return &APIError{Status: response.StatusCode, Message: planChanged.Error, IsDeletionPlanChanged: true}
 		}
 	}
 	if response.StatusCode == http.StatusConflict && conflict != nil {
