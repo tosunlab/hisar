@@ -33,6 +33,8 @@ var (
 	errTouchIDFailed    = errors.New("Touch ID did not confirm it's you. Try again, or deny.")
 	errPasswordRequired = errors.New("Enter your master password to unlock Hisar.")
 	errPasswordCheck    = errors.New("Hisar cannot check the master password here.")
+	// Locking closes the session a passkey ceremony belongs to, so its approval cannot unlock Hisar instead.
+	errPasskeyCeremonyEnded = errors.New("Hisar locked, so this passkey request has ended. Try again in your browser.")
 )
 
 type Biometric interface {

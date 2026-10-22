@@ -23,6 +23,9 @@ func (approver *Approver) VerifyPasskey(ctx context.Context, reason string) erro
 		receivedAt: approver.config.Now(), approveReason: reason,
 	}
 	if !approver.waitForApproval(ctx, pending) {
+		if approver.isLocked() {
+			return errPasskeyCeremonyEnded
+		}
 		return errors.New("passkey verification was cancelled or expired")
 	}
 	return nil

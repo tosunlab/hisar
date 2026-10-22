@@ -38,3 +38,32 @@ func TestPasskeyWithoutTouchIDRequiresFreshMasterPassword(t *testing.T) {
 		t.Fatalf("verification reused earlier evidence: %v", unlocker.passwords)
 	}
 }
+
+// Locking ends the session the passkey ceremony belongs to, so its approval window must not unlock Hisar or prompt.
+func TestPasskeyApprovalEndsWhenHisarLocks(t *testing.T) {
+	for _, approve := range []string{"touch-id", "password"} {
+		emitter := createFakeEmitter()
+		biometric := &fakeBiometric{isAvailable: true}
+		unlocker := &fakeUnlocker{correctPassword: "ceremony-password", isTouchIDUnlockReady: true}
+		approver := createCommandLineApprover(biometric, emitter, unlocker, 0)
+		result := make(chan error, 1)
+		go func() {
+			result <- approver.VerifyPasskey(context.Background(), "use your passkey for example.com")
+		}()
+		event := waitForApprovalEvent(t, emitter)
+		unlocker.mutex.Lock()
+		unlocker.isLocked = true
+		unlocker.mutex.Unlock()
+		if approve == "touch-id" {
+			approver.Respond(event.RequestID, true, false)
+		} else {
+			approver.RespondWithPassword(event.RequestID, "ceremony-password", false)
+		}
+		if err := waitForCommandLineResult(t, result); err == nil {
+			t.Fatalf("%s: a passkey was verified after Hisar locked", approve)
+		}
+		if !unlocker.IsLocked() || len(biometric.listReasons()) != 0 {
+			t.Fatalf("%s: the passkey window unlocked Hisar or prompted for Touch ID: locked %v, prompts %q", approve, unlocker.IsLocked(), biometric.listReasons())
+		}
+	}
+}

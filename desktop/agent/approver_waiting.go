@@ -15,6 +15,9 @@ import (
 func (approver *Approver) authorize(pending *pendingApproval, response approvalResponse) error {
 	unlocker := approver.config.Unlocker
 	isLocked := approver.isLocked()
+	if pending.event.Kind == ApprovalKindPasskey && isLocked {
+		return errPasskeyCeremonyEnded
+	}
 	if response.password != "" {
 		switch {
 		case isLocked:
@@ -101,6 +104,9 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 			isAuthorizing = false
 			if authorizeError == nil {
 				return true
+			}
+			if errors.Is(authorizeError, errPasskeyCeremonyEnded) {
+				return false
 			}
 			// The phone's answer cancels a Touch ID check in progress, so it arrives as a failed check.
 			select {
