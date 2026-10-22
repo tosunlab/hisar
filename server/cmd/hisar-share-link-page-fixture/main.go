@@ -1,4 +1,6 @@
 // Command hisar-share-link-page-fixture runs the API server and creates share links with the Go client, for the recipient page's browser test.
+// The server secrets live in one file per database (see fixturedatabase), so it starts again on the database it used
+// before.
 package main
 
 import (
@@ -11,7 +13,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"syscall"
 
 	"github.com/gofiber/fiber/v3"
@@ -22,9 +23,9 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
 	"github.com/tryhisar/hisar/server/internal/api"
+	"github.com/tryhisar/hisar/server/internal/fixturedatabase"
 	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/settings"
-	"github.com/tryhisar/hisar/server/internal/store"
 )
 
 const (
@@ -49,23 +50,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	database, err := store.Open(ctx, databaseURL)
+	database, secrets, err := fixturedatabase.Open(ctx, databaseURL, false)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer database.Close()
-	if _, err := database.Migrate(ctx); err != nil {
-		log.Fatal(err)
-	}
-	secretDirectory, err := os.MkdirTemp("", "hisar-share-link-page-fixture")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer os.RemoveAll(secretDirectory)
-	secrets, err := api.LoadOrCreateSecrets(filepath.Join(secretDirectory, "secrets.json"), true)
-	if err != nil {
-		log.Fatal(err)
-	}
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		log.Fatal(err)

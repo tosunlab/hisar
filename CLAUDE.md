@@ -80,7 +80,7 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 | `internal/ratelimit` | Per-key token buckets |
 | `internal/settings` | The instance settings admins edit: defaults, the stored document, `HISAR_*` overrides, `Validate` |
 | `internal/mail`, `internal/desktopupdate`, `internal/serverupdate` | SMTP; the Sparkle appcast from GitHub Releases; the newest server release for Overview |
-| `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests |
+| `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests; `internal/fixturedatabase` keeps the two page fixtures' secrets, one file per database, so a restart on the same database works |
 
 ### cli
 
