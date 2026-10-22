@@ -230,6 +230,13 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertEqual(SignInLink.parse("hisar://sign-in?secretKey=%20key%2Bbytes%20")?.secretKey, " key+bytes ")
     }
 
+    func testPlainTextEmergencyKitWithInternationalServerName() {
+        let payload = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL-S-i-OBiC50ZXN0Ojg0NDMiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        XCTAssertEqual(SignInLink.parse(payload), SignInLink(server: "https://例え.test:8443", email: "李雷@例え.test", secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"))
+        let withUser = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL3VzZXJA5L6L44GILnRlc3QiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        XCTAssertNil(SignInLink.parse(withUser))
+    }
+
     func testPlainTextAndLegacyKitFramesDecodeForSignIn() throws {
         let payloads = [
             "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL2hpc2FyLmV4YW1wbGUvYT94PW9uZSt0d29cdTAwMjZ5PSUyMCIsImVtYWlsIjoiYWxwZXIra2l0QHRyeWhpc2FyLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ",

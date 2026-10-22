@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.model
 
+import java.net.IDN
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URLDecoder
@@ -34,14 +35,21 @@ data class SignInLink(val server: String, val email: String, val secretKey: Stri
                 if (fields.keys != setOf("server", "email", "secretKey")) return null
                 fun read(name: String): String? = (fields[name] as? JsonPrimitive)?.takeIf { it.isString }?.content
                 val result = SignInLink(read("server") ?: return null, read("email") ?: return null, read("secretKey") ?: return null)
-                val server = URI(result.server)
-                if (server.scheme?.lowercase() !in listOf("https", "http") || server.host.isNullOrEmpty() ||
-                    server.userInfo != null || server.fragment != null || result.email.isBlank()) return null
+                if (!isServerAddress(result.server) || result.email.isBlank()) return null
                 val normalizedKey = result.secretKey.trim().uppercase().replace(Regex("[- ]"), "")
                     .replace('O', '0').replace('I', '1').replace('L', '1')
                 if (!Regex("^H1[0123456789ABCDEFGHJKMNPQRSTVWXYZ]{31}[048CGMRW]$").matches(normalizedKey)) return null
                 result
             }.getOrNull()
+        }
+
+        // java.net.URI reads only ASCII host names, so a server Go and Swift accept with an internationalized name is
+        // checked in its ASCII form.
+        private fun isServerAddress(text: String): Boolean {
+            val server = URI(text)
+            val authority = server.rawAuthority ?: return false
+            if (server.scheme?.lowercase() !in listOf("https", "http") || '@' in authority || server.fragment != null) return false
+            return !URI("${server.scheme}://${IDN.toASCII(authority)}").host.isNullOrEmpty()
         }
     }
 }

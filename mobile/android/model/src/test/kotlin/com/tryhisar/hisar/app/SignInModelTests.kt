@@ -164,6 +164,14 @@ class SignInModelTests {
     }
 
     @Test
+    fun testPlainTextEmergencyKitWithInternationalServerName() {
+        val payload = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL-S-i-OBiC50ZXN0Ojg0NDMiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        assertEquals(SignInLink("https://例え.test:8443", "李雷@例え.test", "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"), SignInLink.parse(payload))
+        val withUser = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL3VzZXJA5L6L44GILnRlc3QiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        assertNull(SignInLink.parse(withUser))
+    }
+
+    @Test
     fun testInviteLinkFromInvitePage() {
         val expectedByLink = mapOf(
             "hisar://invite/abc_DEF-123" to "abc_DEF-123",

@@ -90,3 +90,21 @@ func TestQRPayloadIsPlainTextAndPreservesSignInDetails(t *testing.T) {
 		t.Fatalf("sign-in bytes changed: %#v", decoded)
 	}
 }
+
+// The phones' tests parse this exact payload, so the generator and both scanners agree on international server names.
+func TestQRPayloadKeepsAnInternationalServerName(t *testing.T) {
+	kit := createTestKit()
+	kit.Server = "https://例え.test:8443"
+	kit.Email = "李雷@例え.test"
+	if _, err := Generate(kit); err != nil {
+		t.Fatal(err)
+	}
+	const canonical = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL-S-i-OBiC50ZXN0Ojg0NDMiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+	if payload := BuildQRPayload(kit); payload != canonical {
+		t.Fatalf("canonical payload changed: %q", payload)
+	}
+	kit.Server = "https://user@例え.test"
+	if _, err := Generate(kit); err == nil {
+		t.Fatal("a server address with a user name was accepted")
+	}
+}
