@@ -24,7 +24,8 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
         app.buttons["editor-save"].tap()
-        waitFor(app.staticTexts["password-value"])
+        // The item under the editor shows the old password until the save finishes and the editor closes.
+        XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(app.staticTexts["password-value"].label, "ui-test-password-1", "the generated password replaced the old one")
 
         app.buttons["copy-secret-reference"].tap()
