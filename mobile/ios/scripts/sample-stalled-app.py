@@ -7,9 +7,9 @@ XCTest posts every accessibility query to the app's main run loop and fails the 
 when the main thread does not run it. That message names no frame, so this writes the app's call graph to
 <prefix>-<n>.txt while the stall lasts; scripts/test-ios-ui.sh prints the main thread's part when the tests fail.
 
-Every child runs in its own process group and is owned here: SIGTERM, the end of the log stream and any error stop
-them all, wait up to 3 s, then kill what is left. At most MAX_SAMPLES attempts are made, each bounded in time, and each
-file is cut to MAX_SAMPLE_BYTES.
+Every child runs in its own process group, recorded before SIGTERM can be handled: SIGTERM, the end of the log stream
+and any error signal each group, wait up to 3 s for it to empty, then kill it. At most MAX_SAMPLES attempts are made,
+each bounded in time, and `sample` writes into a pipe of which at most MAX_SAMPLE_BYTES reach the file.
 """
 import os
 import re
@@ -26,15 +26,15 @@ MAX_SAMPLES = 3
 MAX_SAMPLE_BYTES = 2 << 20
 STOP_SECONDS = 3
 
-
 children = []
-# Reentrant: the SIGTERM handler runs on the main thread, possibly while it is starting the log stream.
-children_lock = threading.RLock()
+children_lock = threading.Lock()
 is_stopping = False
 
 
 def start_child(command, **options):
-    """Starts command in its own process group, so stopping it also stops what it started (xcrun runs simctl)."""
+    """Starts command as the leader of a new process group and records it, or returns None once stopping began.
+
+    The SIGTERM handler takes children_lock, so it waits for a child being started to be recorded."""
     with children_lock:
         if is_stopping:
             return None
@@ -43,25 +43,35 @@ def start_child(command, **options):
         return child
 
 
-def signal_children(number):
-    for child in children:
-        if child.poll() is None:
-            try:
-                os.killpg(child.pid, number)
-            except ProcessLookupError:
-                pass
+def is_group_alive(pgid):
+    try:
+        os.killpg(pgid, 0)
+        return True
+    except (ProcessLookupError, PermissionError):
+        return False
+
+
+def signal_group(pgid, number):
+    try:
+        os.killpg(pgid, number)
+    except (ProcessLookupError, PermissionError):
+        pass
 
 
 def stop_children():
-    """Terminates every child, then kills the ones still running after STOP_SECONDS, and reaps them."""
+    """Signals each child's process group by its pgid, also after its leader exited, waits STOP_SECONDS, kills, reaps."""
     global is_stopping
     with children_lock:
         is_stopping = True
-    signal_children(signal.SIGTERM)
+    for child in children:
+        signal_group(child.pid, signal.SIGTERM)
     deadline = time.monotonic() + STOP_SECONDS
-    while any(child.poll() is None for child in children) and time.monotonic() < deadline:
+    while any(is_group_alive(child.pid) for child in children) and time.monotonic() < deadline:
+        for child in children:
+            child.poll()
         time.sleep(0.1)
-    signal_children(signal.SIGKILL)
+    for child in children:
+        signal_group(child.pid, signal.SIGKILL)
     for child in children:
         child.wait()
 
@@ -72,10 +82,22 @@ def exit_on_signal(*_):
     os._exit(0)
 
 
-signal.signal(signal.SIGTERM, exit_on_signal)
-udid, prefix = sys.argv[1], sys.argv[2]
-posted_by_pid = {}
-lock = threading.Lock()
+def sample_app(pid, path):
+    """Samples pid into path; `sample` writes to a pipe, so at most MAX_SAMPLE_BYTES ever reach the disk."""
+    sampler = start_child(["sample", pid, str(SAMPLE_SECONDS), "10", "-mayDie", "-file", "/dev/stdout"],
+                          stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+    if sampler is None:
+        return False
+    timer = threading.Timer(SAMPLE_DEADLINE_SECONDS, signal_group, (sampler.pid, signal.SIGKILL))
+    timer.start()
+    report = sampler.stdout.read(MAX_SAMPLE_BYTES)
+    with open(path, "wb") as output:
+        output.write(report)
+    timer.cancel()
+    signal_group(sampler.pid, signal.SIGKILL)
+    sampler.stdout.close()
+    sampler.wait()
+    return True
 
 
 def sample_stalls():
@@ -88,26 +110,24 @@ def sample_stalls():
                     posted_by_pid[pid] = []
             if stalled_pids:
                 break
-        path = f"{prefix}-{attempt}.txt"
-        sampler = start_child(["sample", stalled_pids[0], str(SAMPLE_SECONDS), "10", "-mayDie", "-file", path],
-                              stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        if sampler is None:
+        if not sample_app(stalled_pids[0], f"{prefix}-{attempt}.txt"):
             return
-        try:
-            sampler.wait(timeout=SAMPLE_DEADLINE_SECONDS)
-        except subprocess.TimeoutExpired:
-            os.killpg(sampler.pid, signal.SIGKILL)
-            sampler.wait()
-        if os.path.exists(path) and os.path.getsize(path) > MAX_SAMPLE_BYTES:
-            os.truncate(path, MAX_SAMPLE_BYTES)
 
 
+udid, prefix = sys.argv[1], sys.argv[2]
+posted_by_pid = {}
+lock = threading.Lock()
+# SIGTERM stays blocked until the stream is recorded; the sampling thread inherits the block, so only the main thread,
+# which starts no child after that, runs the handler.
+signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
+signal.signal(signal.SIGTERM, exit_on_signal)
 try:
     stream = start_child(
         ["xcrun", "simctl", "spawn", udid, "log", "stream", "--style", "compact", "--predicate",
          'process == "Hisar" AND eventMessage CONTAINS "XCTPerformOnMainRunLoop"'],
         stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
     threading.Thread(target=sample_stalls, daemon=True).start()
+    signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGTERM})
     for line in stream.stdout:
         match = re.search(r"Hisar\[(\d+):", line)
         if not match:
@@ -119,4 +139,5 @@ try:
             elif posted and ("inside CFRunLoopPerform" in line or "did not respond" in line):
                 posted.pop(0)
 finally:
+    signal.pthread_sigmask(signal.SIG_BLOCK, {signal.SIGTERM})
     stop_children()
