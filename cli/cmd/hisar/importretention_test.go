@@ -66,6 +66,40 @@ func TestImportRetainsDifferentPasswordDuplicateInCLI(t *testing.T) {
 	}
 }
 
+// Nothing is queued, but an entry of the file is not in Hisar: a duplicate whose content differs, or an entry Hisar
+// cannot import beside an identical duplicate. The CLI still says to keep the file.
+func TestImportWithNothingToImportStillSaysToKeepTheFile(t *testing.T) {
+	for name, source := range map[string]string{
+		"different.csv":    "name,url,username,password\nGitHub,https://github.com,alice,new-password\n",
+		"unsupported.json": `{"encrypted":false,"items":[{"type":1,"name":"GitHub","login":{"username":"alice","password":"old-password","uris":[{"uri":"https://github.com"}]}},{"type":99,"name":"Unknown"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), name)
+			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			output, err := os.CreateTemp(t.TempDir(), "stderr")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer output.Close()
+			original := os.Stderr
+			os.Stderr = output
+			defer func() { os.Stderr = original }()
+			if err := runImport(context.Background(), &retentionBackend{}, flag.NewFlagSet("import", flag.ContinueOnError), []string{"-y", path}); err != nil {
+				t.Fatal(err)
+			}
+			content, err := os.ReadFile(output.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(content), "Nothing to import.") || !strings.Contains(string(content), "Keep "+path+": 1 of its entries are not in Hisar.") {
+				t.Fatalf("no keep-the-file warning:\n%s", content)
+			}
+		})
+	}
+}
+
 func TestImportIdenticalStarredAndSSHContentInCLI(t *testing.T) {
 	key, err := sshkey.GenerateEd25519Key("")
 	if err != nil {

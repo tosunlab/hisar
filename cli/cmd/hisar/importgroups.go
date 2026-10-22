@@ -155,19 +155,7 @@ func importSourceGroups(ctx context.Context, access backend, path string, result
 	for _, plan := range plans {
 		queuedCount += len(selectQueuedItems(plan.source.Items, plan.duplicates, skipping))
 	}
-	// Skipped duplicates the app could not compare still go through the retention report below.
-	if queuedCount == 0 && (canCompare || !skipping || duplicateCount == 0) {
-		fmt.Fprintln(standardError(), "Nothing to import.")
-		return nil
-	}
-	if !option.isConfirmed {
-		confirmed, err := confirm("Import these source groups into the destinations and member scopes shown?")
-		if err != nil || !confirmed {
-			return err
-		}
-	}
 	unsaved := append([]importer.SkippedEntry{}, result.Skipped...)
-	saved, queued := 0, 0
 	for _, plan := range plans {
 		if skipping {
 			if canCompare {
@@ -178,6 +166,23 @@ func importSourceGroups(ctx context.Context, access backend, path string, result
 				}
 			}
 		}
+	}
+	// Skipped duplicates the app could not compare still go through the retention report below.
+	if queuedCount == 0 && (canCompare || !skipping || duplicateCount == 0) {
+		fmt.Fprintln(standardError(), "Nothing to import.")
+		if left := importer.CountLeftBehind(0, unsaved); left > 0 {
+			fmt.Fprintf(standardError(), "Keep %s: %d of its entries are not in Hisar.\n", path, left)
+		}
+		return nil
+	}
+	if !option.isConfirmed {
+		confirmed, err := confirm("Import these source groups into the destinations and member scopes shown?")
+		if err != nil || !confirmed {
+			return err
+		}
+	}
+	saved, queued := 0, 0
+	for _, plan := range plans {
 		items := selectQueuedItems(plan.source.Items, plan.duplicates, skipping)
 		queued += len(items)
 		count, err := access.importItems(ctx, plan.target.ID, items, plan.actions.ImportScope)
