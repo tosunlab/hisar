@@ -16,9 +16,7 @@ func TestLegacyOverBudgetInventoryCanReadAndDeleteButNotGrow(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
 	createTestAccount(t, database, "owner", "owner@example.com")
-	if _, err := database.RollbackMigration(ctx); err != nil {
-		t.Fatal(err)
-	}
+	rollbackTestMigrationsTo(t, database, 16)
 	if _, err := database.pool.Exec(ctx, `INSERT INTO vaults(id,type,enc_name,created_by) SELECT gen_random_uuid(),'shared','x'::bytea,'owner' FROM generate_series(1,1025);
  INSERT INTO vault_access(vault_id,account_id,wrapped_key,role,granted_by) SELECT id,'owner','x'::bytea,'owner','owner' FROM vaults`); err != nil {
 		t.Fatal(err)

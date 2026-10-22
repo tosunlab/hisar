@@ -45,14 +45,25 @@ func TestConcurrentRotationsKeepSharedActorVersionsOrdered(t *testing.T) {
 		database.pool.Exec(context.Background(), `DROP TRIGGER rotation_resource_barrier ON vault_access; DROP FUNCTION rotation_resource_barrier()`)
 	})
 	access := func(id, role string) Member { return Member{AccountID: id, Role: role, WrappedKey: []byte{2}} }
+	// A rotation names the access and metadata revisions it was built from (F-10).
+	rotation := func(vaultID, owner string, accesses ...Member) VaultRotation {
+		reviewed := VaultRotation{VaultID: vaultID, RotatedBy: owner, KeyGeneration: 1, EncName: []byte{2}, Accesses: accesses}
+		if err := database.pool.QueryRow(ctx, `SELECT access_revision, metadata_revision FROM vaults WHERE id=$1`, vaultID).Scan(&reviewed.AccessRevision, &reviewed.MetadataRevision); err != nil {
+			t.Fatal(err)
+		}
+		return reviewed
+	}
+	firstRotation := rotation(first, "OWNER1", access("AAAAAA", "reader"), access("BBBBBB", "reader"), access("OWNER1", "owner"))
+	secondRotation := rotation(second, "OWNER2", access("BBBBBB", "reader"), access("AAAAAA", "reader"), access("OWNER2", "owner"))
 	done := make(chan error, 2)
-	go func() {
-		done <- database.RotateVault(ctx, VaultRotation{VaultID: first, RotatedBy: "OWNER1", KeyGeneration: 1, EncName: []byte{2}, Accesses: []Member{access("AAAAAA", "reader"), access("BBBBBB", "reader"), access("OWNER1", "owner")}})
-	}()
-	go func() {
-		done <- database.RotateVault(ctx, VaultRotation{VaultID: second, RotatedBy: "OWNER2", KeyGeneration: 1, EncName: []byte{2}, Accesses: []Member{access("BBBBBB", "reader"), access("AAAAAA", "reader"), access("OWNER2", "owner")}})
-	}()
+	go func() { done <- database.RotateVault(ctx, firstRotation) }()
+	go func() { done <- database.RotateVault(ctx, secondRotation) }()
 	for deadline := time.Now().Add(8 * time.Second); ; time.Sleep(5 * time.Millisecond) {
+		select {
+		case err := <-done:
+			t.Fatalf("a rotation finished before its second-member barrier: %v", err)
+		default:
+		}
 		var waiting int
 		if err := database.pool.QueryRow(ctx, `SELECT count(*) FROM pg_stat_activity a WHERE datname=current_database() AND query LIKE '%UPDATE vault_access SET wrapped_key%' AND EXISTS(SELECT 1 FROM pg_locks l WHERE l.pid=a.pid AND l.locktype='advisory' AND NOT l.granted)`).Scan(&waiting); err != nil {
 			t.Fatal(err)
