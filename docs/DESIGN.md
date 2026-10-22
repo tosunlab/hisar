@@ -267,7 +267,8 @@ It deletes only those captured source IDs, matching account deletion's lock orde
 Dashboard resend preserves the exact source link.
 A delayed email can still arrive after cancellation, but its token no longer opens a valid invite page or permits signup.
 Used tokens do not cause account deletion. Unrelated direct sign-up tokens created after the migration retain their existing expiry.
-The ongoing token lifetime and accepted-share completion policy do not change.
+The ongoing token lifetime does not change. This covers the sign-up tokens of S-23.
+An accepted share no longer waits for completion without a deadline (S-16): its owner-signed intent expires within the 7-day invitation lifetime, and the server and the owner's app refuse to complete it after that.
 
 **Invite page.** `GET /invite/{code}` (the link in the email) is a page rendered by `hisar-server` from an embedded template, in the share link page's style (§5.9), light and dark with the system, and usable at phone width.
 
