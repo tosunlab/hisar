@@ -42,9 +42,43 @@ fi
 # xcodebuild boots its own clones of the simulator, and a booted simulator cannot be cloned.
 if [ "$WORKERS" -eq 1 ]; then xcrun simctl bootstatus "$SIMULATOR_ID" -b; fi
 
+# XCTest fails a stalled app with "main thread busy for 30.0s" and no frame, so a sampler records what the main thread
+# was doing (mobile/ios/scripts/sample-stalled-app.py) and a failure prints it. It watches one simulator, not clones.
+# The diagnostic never decides the result: its output is bounded, its errors are ignored, and the exit status is the tests'.
+UI_TEST_STALL_SAMPLER=
+stop_stall_sampler() {
+  local pid=$UI_TEST_STALL_SAMPLER
+  [ -n "$pid" ] || return 0
+  UI_TEST_STALL_SAMPLER=
+  # The sampler stops its children within 3 s of SIGTERM; a sampler still running after 5 s is killed.
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.5
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+if [ "$WORKERS" -eq 1 ]; then
+  /usr/bin/python3 -I "$ROOT/mobile/ios/scripts/sample-stalled-app.py" "$SIMULATOR_ID" "$T/main-thread" >/dev/null 2>&1 &
+  UI_TEST_STALL_SAMPLER=$!
+  trap 'status=$?; stop_stall_sampler; ui_test_stop; exit $status' EXIT
+fi
+print_main_thread_samples() {
+  local sample
+  for sample in "$T"/main-thread-*.txt; do
+    [ -e "$sample" ] || return 0
+    echo "main thread while it left XCTest waiting ($(basename "$sample"), frames in at least a tenth of the samples):" >&2
+    awk '/^    [0-9]+ Thread_.*(Main Thread|com\.apple\.main-thread)/ { total = $1; inside = 1; print substr($0, 1, 240); next }
+      inside && /^    [0-9]+ Thread_/ { exit }
+      inside && match($0, /[0-9]+ /) && substr($0, RSTART, RLENGTH) * 10 >= total { print substr($0, 1, 240); if (++printed == 60) exit }' "$sample" >&2
+  done
+}
+
 if ! env "${UI_TEST_VALUES[@]/#/TEST_RUNNER_}" TEST_RUNNER_HISAR_UI_TEST_SCREENSHOT_DIRECTORY="${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" \
   xcodebuild "$ACTION" -project "$ROOT/mobile/ios/Hisar.xcodeproj" -scheme Hisar "${SELECTION[@]}" \
   -destination "id=$SIMULATOR_ID" "${PARALLEL[@]}" ${IOS_DERIVED_DATA:+-derivedDataPath "$IOS_DERIVED_DATA"} ${IOS_RESULT_BUNDLE:+-resultBundlePath "$IOS_RESULT_BUNDLE"}; then
   ui_test_print_logs
+  print_main_thread_samples || true
   exit 1
 fi
