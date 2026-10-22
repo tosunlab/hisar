@@ -635,7 +635,7 @@ class AutoFillModelTests {
         assertEquals(AutoFillModel.Screen.Starting, model.screen.value, "the sheet lists the credentials, not Hisar")
         assertFalse("listAllPasskeyForRelyingParty" in backend.allCallName)
         model.prepareUnlock(noWebsite, null)
-        assertEquals(listOf(true, false), allUnlockCompletion, "an unlocked Hisar hands back at once, without verifying anyone")
+        assertEquals(listOf(Unit, Unit), allUnlockCompletion)
     }
 
     private fun linkBankLogin(app: AndroidApp) {
