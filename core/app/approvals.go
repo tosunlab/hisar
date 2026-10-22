@@ -138,6 +138,15 @@ func (unlocker *ApprovalUnlocker) UnlockWithTouchID(authenticate func(reason str
 	return nil
 }
 
+// ConfirmWithTouchID runs an approval's biometric check of an unlocked Hisar after any biometric unlock or setup in
+// progress, so the check cannot authorize the key operation that unlock or setup prepared for its own prompt.
+func (unlocker *ApprovalUnlocker) ConfirmWithTouchID(authenticate func() error) error {
+	s := unlocker.service
+	s.biometricMutex.Lock()
+	defer s.biometricMutex.Unlock()
+	return authenticate()
+}
+
 var errIncorrectMasterPassword = errors.New("Incorrect master password.")
 
 // VerifyPassword checks the master password while Hisar is unlocked, without locking or unlocking it.

@@ -172,6 +172,89 @@ func TestBiometricUnlockPreparesTheKeyFirst(t *testing.T) {
 	checkCalls("unlock after a new enrollment", "prepare load "+accountID)
 }
 
+// preparePausingBiometric holds a Touch ID unlock between preparing its key read and its own prompt.
+type preparePausingBiometric struct {
+	*perUseBiometric
+	pause *pause
+}
+
+func (biometric preparePausingBiometric) PrepareLoadKey(accountID string) error {
+	err := biometric.perUseBiometric.PrepareLoadKey(accountID)
+	biometric.pause.wait()
+	return err
+}
+
+func TestOtherTouchIDPromptsCannotTakeTheKeyReadAnUnlockPrepared(t *testing.T) {
+	const password = "correct horse battery"
+	for _, prompt := range []string{"approval", "export"} {
+		t.Run(prompt, func(t *testing.T) {
+			fixture := createUnlockedTestService(t)
+			prepareTestApprovalUnlock(t, fixture, password)
+			service := fixture.service
+			keys := &perUseBiometric{keys: map[string][]byte{}}
+			service.config.Biometric = keys
+			SetBiometricKeyPreparer(service, keys)
+			if _, err := service.EnableBiometricUnlock(password); err != nil {
+				t.Fatal(err)
+			}
+			prepared := newPause()
+			biometric := preparePausingBiometric{perUseBiometric: keys, pause: prepared}
+			SetBiometricKeyPreparer(service, biometric)
+			unlock := func() <-chan error {
+				unlocked := make(chan error, 1)
+				go func() { _, err := service.UnlockWithBiometric(); unlocked <- err }()
+				return unlocked
+			}
+			var unlocked <-chan error
+			promptDone := make(chan error, 1)
+			switch prompt {
+			case "approval":
+				service.config.Biometric = biometric
+				service.Lock()
+				unlocked = unlock()
+				<-prepared.reached
+				go func() {
+					promptDone <- NewApprovalUnlocker(service, nil).ConfirmWithTouchID(func() error { return biometric.Authenticate(`allow "Terminal" to use "GitHub"`) })
+				}()
+				select {
+				case err := <-promptDone:
+					promptDone <- err
+				case <-time.After(200 * time.Millisecond):
+				}
+				close(prepared.resume)
+			case "export":
+				exportPrompt := newPause()
+				service.config.Biometric = promptPausingBiometric{Biometric: biometric, pause: exportPrompt}
+				go func() {
+					_, err := ExportDataToDirectory(service, ExportRequest{Format: ExportFormatPlain}, t.TempDir())
+					promptDone <- err
+				}()
+				<-exportPrompt.reached
+				service.Lock()
+				unlocked = unlock()
+				select {
+				case <-prepared.reached:
+				case <-time.After(200 * time.Millisecond):
+				}
+				close(exportPrompt.resume)
+				<-promptDone
+				close(prepared.resume)
+			}
+			if err := <-unlocked; err != nil {
+				t.Fatalf("the unlock lost its prepared key read: %v", err)
+			}
+			if status := service.GetStatus(); status.State != StateUnlocked || !status.BiometricEnabled {
+				t.Fatalf("status after the unlock: %+v", status)
+			}
+			if prompt == "approval" {
+				if err := <-promptDone; err != nil {
+					t.Errorf("the approval's Touch ID check failed: %v", err)
+				}
+			}
+		})
+	}
+}
+
 type migratingBiometric struct {
 	*fakeBiometric
 	protected      bool

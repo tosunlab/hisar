@@ -43,10 +43,13 @@ type Biometric interface {
 }
 
 // Unlocker lets the approval window unlock a locked Hisar, or check the master password when it is unlocked.
+// ConfirmWithTouchID runs the Touch ID check of an unlocked Hisar after any Touch ID unlock or setup of Hisar's own, so
+// the check cannot take the key read that unlock prepared for its prompt.
 type Unlocker interface {
 	IsLocked() bool
 	IsTouchIDUnlockReady() bool
 	UnlockWithTouchID(authenticate func(reason string) error) error
+	ConfirmWithTouchID(authenticate func() error) error
 	UnlockWithPassword(password string) error
 	VerifyPassword(password string) error
 }

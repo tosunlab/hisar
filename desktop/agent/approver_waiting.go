@@ -41,10 +41,19 @@ func (approver *Approver) authorize(pending *pendingApproval, response approvalR
 			return errTouchIDFailed
 		})
 	}
-	if !approver.IsTouchIDApproval() || approver.authenticatePending(pending, pending.approveReason) {
+	if !approver.IsTouchIDApproval() {
 		return nil
 	}
-	return errTouchIDFailed
+	confirm := func() error {
+		if approver.authenticatePending(pending, pending.approveReason) {
+			return nil
+		}
+		return errTouchIDFailed
+	}
+	if unlocker == nil {
+		return confirm()
+	}
+	return unlocker.ConfirmWithTouchID(confirm)
 }
 
 // waitForApproval shows the request until authorize succeeds, Deny, the phone, the deadline or ctx ends it; a failed authorize keeps it open.
