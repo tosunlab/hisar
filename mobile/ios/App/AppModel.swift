@@ -98,7 +98,10 @@ final class AppModel: ObservableObject {
         self.receiveExportedCredentials = receiveExportedCredentials
     }
 
-    func start(createBackend: () throws -> VaultBackend) {
+    /// Returns the work start() begins, the first refresh and the version check, or nil when the backend failed. The app
+    /// lets it run; a test awaits it, so its own changes come after the first lists.
+    @discardableResult
+    func start(createBackend: () throws -> VaultBackend) -> Task<Void, Never>? {
         do {
             let backend = try createBackend()
             self.backend = backend
@@ -107,12 +110,15 @@ final class AppModel: ObservableObject {
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
             clearIdentitiesWhenSignedOut()
-            if status.isUnlocked {
-                Task { await refreshAll() }
+            let firstRefresh = status.isUnlocked ? Task { await refreshAll() } : nil
+            let versionCheck = Task { await checkMinimumVersion() }
+            return Task {
+                await firstRefresh?.value
+                await versionCheck.value
             }
-            Task { await checkMinimumVersion() }
         } catch {
             screen = .failed(describeError(error))
+            return nil
         }
     }
 

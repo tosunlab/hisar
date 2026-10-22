@@ -14,8 +14,7 @@ final class ItemIconTests: XCTestCase {
     private func createUnlockedModel() async -> AppModel {
         backend.seedSignedIn()
         let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore(), getCurrentDate: { Date(timeIntervalSince1970: 1_800_000_000) })
-        model.start { self.backend }
-        await model.refreshAll()
+        await model.start { self.backend }?.value
         return model
     }
 

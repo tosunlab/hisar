@@ -24,7 +24,7 @@ final class PhoneApprovalTests: XCTestCase {
         backend.seedSignedIn()
         backend.allPendingApproval = allApproval
         let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore(), getCurrentDate: { [unowned self] in currentDate })
-        model.start { self.backend }
+        await model.start { self.backend }?.value
         await model.refreshPendingApproval()
         return model
     }

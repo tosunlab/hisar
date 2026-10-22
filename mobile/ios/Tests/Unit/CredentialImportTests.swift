@@ -15,20 +15,18 @@ final class CredentialImportTests: XCTestCase {
         allReceivedToken = []
     }
 
-    private func createModel() -> AppModel {
+    private func createModel() async -> AppModel {
         let model = AppModel(credentialIdentityStore: identityStore, receiveExportedCredentials: { [unowned self] token in
             self.allReceivedToken.append(token)
             return try JSONEncoder().encode(self.allExportedTitle)
         })
-        model.start { self.backend }
+        await model.start { self.backend }?.value
         return model
     }
 
     private func createUnlockedModel() async -> AppModel {
         backend.seedSignedIn()
-        let model = createModel()
-        await model.refreshAll()
-        return model
+        return await createModel()
     }
 
     private func waitUntil(_ description: String, _ condition: () -> Bool) async {
@@ -49,7 +47,7 @@ final class CredentialImportTests: XCTestCase {
 
     func testTokenWaitsForUnlockAndPreparesOnce() async {
         backend.seedSignedIn(state: VaultStatus.stateLocked)
-        let model = createModel()
+        let model = await createModel()
         let token = UUID()
         model.receiveCredentialExchange(token: token)
         XCTAssertEqual(model.screen, .locked)
@@ -71,8 +69,8 @@ final class CredentialImportTests: XCTestCase {
         XCTAssertEqual(countCall("prepareCredentialExchangeImport"), 1, "a later status change does not import again")
     }
 
-    func testTokenWhileSignedOutExplainsInstead() {
-        let model = createModel()
+    func testTokenWhileSignedOutExplainsInstead() async {
+        let model = await createModel()
         model.receiveCredentialExchange(token: UUID())
         XCTAssertEqual(model.credentialImportMessage, AppModel.signedOutCredentialImportMessage)
         XCTAssertNil(model.pendingCredentialImportToken)

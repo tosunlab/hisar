@@ -21,8 +21,7 @@ final class VaultManagementTests: XCTestCase {
             Member(accountID: "bob-id", name: "Bob", email: "bob@example.com", role: Member.vaultRoleEditor),
         ]
         let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore())
-        model.start { self.backend }
-        await model.refreshAll()
+        await model.start { self.backend }?.value
         return model
     }
 

@@ -12,21 +12,19 @@ final class AppModelTests: XCTestCase {
         identityStore = FakeCredentialIdentityStore()
     }
 
-    private func createModel() -> AppModel {
+    private func createModel() async -> AppModel {
         let model = AppModel(credentialIdentityStore: identityStore, getCurrentDate: { [unowned self] in currentDate })
-        model.start { self.backend }
+        await model.start { self.backend }?.value
         return model
     }
 
     private func createUnlockedModel() async -> AppModel {
         backend.seedSignedIn()
-        let model = createModel()
-        await model.refreshAll()
-        return model
+        return await createModel()
     }
 
-    func testStartsSignedOut() {
-        let model = createModel()
+    func testStartsSignedOut() async {
+        let model = await createModel()
         XCTAssertEqual(model.screen, .signedOut)
     }
 
@@ -37,7 +35,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testSignInLoadsVaultsAndItems() async {
-        let model = createModel()
+        let model = await createModel()
         let isSignedIn = await model.signIn(server: " http://127.0.0.1:18080 ", email: "alice@example.com", secretKey: "h1-abc123-aaaaa-bbbbb-ccccc-ddddd-eeeeee", password: FakeBackend.password)
         XCTAssertTrue(isSignedIn)
         XCTAssertEqual(model.screen, .unlocked)
@@ -50,7 +48,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testSignInFailureKeepsSignedOutWithMessage() async {
-        let model = createModel()
+        let model = await createModel()
         let isSignedIn = await model.signIn(server: "http://127.0.0.1:18080", email: "alice@example.com", secretKey: FakeBackend.secretKey, password: "wrong")
         XCTAssertFalse(isSignedIn)
         XCTAssertEqual(model.screen, .signedOut)
@@ -58,7 +56,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testSignUpShowsNewSecretKey() async {
-        let model = createModel()
+        let model = await createModel()
         let isSignedUp = await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         XCTAssertTrue(isSignedUp)
         XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
@@ -68,7 +66,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testLockHidesTheNewSecretKey() async {
-        let model = createModel()
+        let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         model.lock()
         XCTAssertEqual(model.screen, .locked)
@@ -76,7 +74,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testAutoLockHidesTheBiometricOffer() async {
-        let model = createModel()
+        let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         model.finishNewSecretKey()
         XCTAssertTrue(model.isBiometricOfferShown)
@@ -94,7 +92,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testSecretKeyScreenOffersFaceIDAndTurnsItOnInOneTap() async {
-        let model = createModel()
+        let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         model.finishNewSecretKey()
         XCTAssertTrue(model.isBiometricOfferShown)
@@ -109,7 +107,7 @@ final class AppModelTests: XCTestCase {
     }
 
     func testFaceIDOfferFailureStaysOnTheOffer() async {
-        let model = createModel()
+        let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         model.finishNewSecretKey()
         backend.isBiometricSucceeding = false
@@ -125,7 +123,7 @@ final class AppModelTests: XCTestCase {
 
     func testSecretKeyScreenSkipsTheOfferWithoutFaceID() async {
         backend.isBiometricAvailable = false
-        let model = createModel()
+        let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         model.finishNewSecretKey()
         XCTAssertFalse(model.isBiometricOfferShown)
@@ -254,13 +252,13 @@ final class AppModelTests: XCTestCase {
 
     func testSignedOutStartClearsLeftoverIdentities() async {
         identityStore.allIdentity = [leftoverIdentity]
-        let model = createModel()
+        let model = await createModel()
         XCTAssertEqual(model.screen, .signedOut)
         await waitUntilIdentitiesAreCleared()
     }
 
     func testForegroundWhileSignedOutClearsLeftoverIdentities() async {
-        let model = createModel()
+        let model = await createModel()
         await waitUntilIdentitiesAreCleared()
         identityStore.allIdentity = [leftoverIdentity]
         model.handleDidEnterBackground()
@@ -271,7 +269,7 @@ final class AppModelTests: XCTestCase {
     func testLockedStartKeepsAutoFillIdentities() async {
         backend.seedSignedIn(state: VaultStatus.stateLocked)
         identityStore.allIdentity = [leftoverIdentity]
-        let model = createModel()
+        let model = await createModel()
         XCTAssertEqual(model.screen, .locked)
         try? await Task.sleep(nanoseconds: 100_000_000)
         XCTAssertEqual(identityStore.allIdentity, [leftoverIdentity])
@@ -730,7 +728,7 @@ final class AppModelTests: XCTestCase {
     func testAnyoneInvitesByEmailWithTrimmedAddress() async {
         backend.seedSignedIn()
         backend.allMember[0].role = Member.roleMember
-        let model = createModel()
+        let model = await createModel()
         let isInvited = await model.invitePerson(email: " dave@example.com ")
         XCTAssertTrue(isInvited)
         XCTAssertEqual(backend.allInvitedEmail, ["dave@example.com"])
@@ -782,7 +780,7 @@ final class AppModelTests: XCTestCase {
             ReceivedShareInvitation(id: "from-carol", vaultID: "carol-vault", role: Member.vaultRoleEditor, invitedByName: "Carol", invitedByEmail: "carol@example.com", expiresAt: "2027-01-22T08:00:00Z"),
             ReceivedShareInvitation(id: "from-dave", vaultID: "dave-vault", role: Member.vaultRoleReader, invitedByName: "", invitedByEmail: "dave@example.com", expiresAt: "2027-01-22T08:00:00Z"),
         ])
-        let model = createModel()
+        let model = await createModel()
         let shareInvitations = await model.loadShareInvitations()
         XCTAssertEqual(shareInvitations?.allReceived.map(\.inviterName), ["Carol", "dave@example.com"])
         let isAccepted = await model.acceptShareInvitation(invitationID: "from-carol")
@@ -801,7 +799,7 @@ final class AppModelTests: XCTestCase {
             ReceivedShareInvitation(id: "from-carol", vaultID: "carol-vault", role: Member.vaultRoleEditor, invitedByName: "Carol", invitedByEmail: "carol@example.com", expiresAt: "2027-01-22T08:00:00Z"),
             ReceivedShareInvitation(id: "from-dave", vaultID: "dave-vault", role: Member.vaultRoleReader, invitedByName: "", invitedByEmail: "dave@example.com", expiresAt: "2027-01-22T08:00:00Z"),
         ])
-        let model = createModel()
+        let model = await createModel()
         await model.refreshAll()
         XCTAssertEqual(model.allReceivedInvitation.map(\.id), ["from-carol", "from-dave"])
         XCTAssertEqual(model.receivedInvitationCount, 2)
@@ -824,7 +822,7 @@ final class AppModelTests: XCTestCase {
             ShareAwaitingUnlock(invitationID: "to-ada", recipientName: "Ada", recipientEmail: "ada@example.com", acceptedAt: "2027-01-15T06:00:00Z"),
             ShareAwaitingUnlock(invitationID: "to-bo", recipientName: "", recipientEmail: "bo@example.com", acceptedAt: "2027-01-15T07:00:00Z"),
         ]
-        let model = createModel()
+        let model = await createModel()
         XCTAssertEqual(model.screen, .locked)
         await model.refreshShareAwaitingUnlock()
         XCTAssertEqual(model.allShareAwaitingUnlock.map(\.message), [
@@ -851,7 +849,7 @@ final class AppModelTests: XCTestCase {
         backend.shareInvitations = ShareInvitations(allWaiting: [
             WaitingShareInvitation(id: "from-carol", vaultID: "carol-vault", role: Member.vaultRoleEditor, invitedByName: "Carol", invitedByEmail: "carol@example.com", acceptedAt: "2027-01-15T06:00:00Z"),
         ])
-        let model = createModel()
+        let model = await createModel()
         await model.refreshAll()
         XCTAssertEqual(model.allWaitingInvitation.map(\.id), ["from-carol"])
         let now = ISO8601DateFormatter().date(from: "2027-01-15T08:05:00Z")!
@@ -958,8 +956,7 @@ final class AppModelTests: XCTestCase {
         let recordingBackend = ThreadRecordingBackend()
         recordingBackend.seedSignedIn()
         let model = AppModel(credentialIdentityStore: identityStore)
-        model.start { recordingBackend }
-        await model.refreshAll()
+        await model.start { recordingBackend }?.value
         XCTAssertEqual(recordingBackend.isListCalledOnMainThread, false)
     }
 
@@ -977,9 +974,9 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isCheckingMinimumVersion)
     }
 
-    func testUpdateRequiredEventShowsTheBlockingScreen() {
+    func testUpdateRequiredEventShowsTheBlockingScreen() async {
         backend.seedSignedIn(state: VaultStatus.stateLocked)
-        let model = createModel()
+        let model = await createModel()
         XCTAssertEqual(model.screen, .locked)
         let requirement = UpdateRequirement(currentVersion: "", minimumVersion: "0.2.0", updateURL: "https://tryhisar.com/download")
         backend.status.updateRequired = requirement
@@ -987,8 +984,8 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .updateRequired(requirement))
     }
 
-    func testInviteLinkPrefillsCreateAccountWhenSignedOut() {
-        let model = createModel()
+    func testInviteLinkPrefillsCreateAccountWhenSignedOut() async {
+        let model = await createModel()
         let link = InviteLink(invite: "https://hisar.example.com/invite/abc")
         model.openInviteLink(link)
         XCTAssertEqual(model.pendingInviteLink, link)
