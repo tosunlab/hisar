@@ -169,3 +169,28 @@ func TestCollectionCursorRejectsMutationAndCrossAccountReuse(t *testing.T) {
 		t.Fatalf("cross-account cursor accepted: %v", err)
 	}
 }
+
+func TestWholeCollectionReadKeepsOneSnapshotThroughWrites(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "owner", "owner@example.com")
+	for range 250 {
+		createTestVault(t, database, "owner")
+	}
+	pages, vaults := 0, map[string]bool{}
+	err := database.ReadCollection(ctx, "owner", "device", "/vaults", func(page apitypes.CollectionPage) error {
+		pages++
+		for _, record := range page.Records {
+			vaults[record.Key] = true
+		}
+		createTestVault(t, database, "owner")
+		return nil
+	})
+	if err != nil || pages != 3 || len(vaults) != 250 {
+		t.Fatalf("whole read during writes: pages=%d vaults=%d err=%v", pages, len(vaults), err)
+	}
+	stop := errors.New("visitor stopped")
+	if err := database.ReadCollection(ctx, "owner", "device", "/vaults", func(apitypes.CollectionPage) error { return stop }); !errors.Is(err, stop) {
+		t.Fatalf("visitor error replaced: %v", err)
+	}
+}

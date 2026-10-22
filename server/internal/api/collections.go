@@ -55,16 +55,12 @@ func (s *Server) sendCollection(c fiber.Ctx) error {
 	if c.Query("cursor") != "" {
 		return createAPIError(fiber.StatusBadRequest, "collection cursors require the pagination feature header")
 	}
-	// Old peers receive a complete bounded result or an actionable refusal, never a first page.
+	// Old peers receive a complete bounded result from one snapshot or an actionable refusal, never a first page. They
+	// never retry a collection-changed conflict, so the walk must not be one.
 	target := legacyCollectionTarget(path)
 	assembler := apitypes.NewCollectionAssembler(target)
-	cursor := ""
 	bytes := 0
-	for {
-		page, err := s.service.ReadCollectionPage(c.Context(), s.getActor(c), path, cursor)
-		if err != nil {
-			return err
-		}
+	err := s.service.ReadCollection(c.Context(), s.getActor(c), path, func(page apitypes.CollectionPage) error {
 		for _, record := range page.Records {
 			bytes += len(record.Value) + len(record.Key) + len(record.Parent) + len(record.Field) + 128
 			if bytes > apitypes.CollectionPageBytes {
@@ -74,10 +70,10 @@ func (s *Server) sendCollection(c fiber.Ctx) error {
 				return err
 			}
 		}
-		if page.NextCursor == "" {
-			break
-		}
-		cursor = page.NextCursor
+		return nil
+	})
+	if err != nil {
+		return err
 	}
 	assembler.Finish()
 	data, err := json.Marshal(target)

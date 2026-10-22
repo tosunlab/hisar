@@ -150,6 +150,68 @@ func TestPagedHistoryAndObjectTraversal(t *testing.T) {
 	}
 }
 
+// An old peer sends no pagination header and never retries a collection-changed conflict, so a write elsewhere in the
+// account must not fail its list.
+func TestLegacyPeerListsCompletelyDuringWrites(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "legacy@example.com", apitypes.RoleAdmin, nil))
+	alice, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, "legacy@example.com", "Legacy", []byte("fixture password"), testDevice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer alice.Keyset.Wipe()
+	for index := range 130 {
+		if _, err := alice.CreateVault(ctx, fmt.Sprintf("Legacy vault %03d", index), apitypes.VaultShared); err != nil {
+			t.Fatal(err)
+		}
+	}
+	stop := make(chan struct{})
+	written := make(chan int)
+	go func() {
+		writes := 0
+		for {
+			select {
+			case <-stop:
+				written <- writes
+				return
+			default:
+			}
+			if _, err := alice.CreateVault(ctx, fmt.Sprintf("Concurrent vault %03d", writes), apitypes.VaultShared); err != nil {
+				t.Error(err)
+				written <- writes
+				return
+			}
+			writes++
+		}
+	}()
+	var failures []string
+	counts := []int{}
+	for range 40 {
+		status, body := sendRawRequest(t, baseURL, alice.Client.Token, "GET", "/api/v1/vaults", nil)
+		var vaults []apitypes.Vault
+		if status != http.StatusOK || json.Unmarshal([]byte(body), &vaults) != nil {
+			failures = append(failures, fmt.Sprintf("%d %.80s", status, body))
+			continue
+		}
+		ids := map[string]bool{}
+		for _, vault := range vaults {
+			ids[vault.ID] = true
+		}
+		counts = append(counts, len(ids))
+	}
+	close(stop)
+	writes := <-written
+	if len(failures) > 0 || writes == 0 {
+		t.Fatalf("legacy lists during %d writes failed %d of 40 times: %v", writes, len(failures), failures)
+	}
+	for _, count := range counts {
+		if count < 131 || count > 131+writes {
+			t.Fatalf("legacy list held %d distinct vaults, outside 131..%d", count, 131+writes)
+		}
+	}
+}
+
 type collectionPageCounter struct {
 	base  http.RoundTripper
 	path  string

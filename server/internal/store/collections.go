@@ -67,106 +67,134 @@ func collectionQuery(path string) (string, string, string, error) {
 // ReadCollectionPage performs each page in a read-only repeatable snapshot. A transactional
 // revision check rejects a mixture of pages after any relevant committed mutation.
 func (s *Store) ReadCollectionPage(ctx context.Context, accountID, deviceID, path, encodedCursor string) (apitypes.CollectionPage, error) {
+	var page apitypes.CollectionPage
+	err := pgx.BeginTxFunc(ctx, s.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		var err error
+		page, err = readCollectionPage(ctx, tx, accountID, deviceID, path, encodedCursor)
+		return err
+	})
+	return page, err
+}
+
+// ReadCollection hands visit every page of a collection from one read-only repeatable snapshot, for a server-side reader
+// that assembles the whole collection: a concurrent write never invalidates it. visit stops the walk by returning an error.
+func (s *Store) ReadCollection(ctx context.Context, accountID, deviceID, path string, visit func(apitypes.CollectionPage) error) error {
+	return pgx.BeginTxFunc(ctx, s.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
+		cursor := ""
+		for {
+			page, err := readCollectionPage(ctx, tx, accountID, deviceID, path, cursor)
+			if err != nil {
+				return err
+			}
+			if err := visit(page); err != nil {
+				return err
+			}
+			if page.NextCursor == "" {
+				return nil
+			}
+			cursor = page.NextCursor
+		}
+	})
+}
+
+func readCollectionPage(ctx context.Context, tx pgx.Tx, accountID, deviceID, path, encodedCursor string) (apitypes.CollectionPage, error) {
+	page := apitypes.CollectionPage{Version: apitypes.CollectionPageVersion, Records: []apitypes.CollectionRecord{}}
 	query, vaultOrOrganizationID, itemID, err := collectionQuery(path)
 	if err != nil {
-		return apitypes.CollectionPage{}, err
+		return page, err
 	}
 	scope := accountID + "/" + deviceID + path
 	cursor := collectionCursor{Scope: scope, At: time.Now().UTC()}
 	if encodedCursor != "" {
 		if len(encodedCursor) > 4096 {
-			return apitypes.CollectionPage{}, ErrConflict
+			return page, ErrConflict
 		}
 		decoded, err := base64.RawURLEncoding.DecodeString(encodedCursor)
 		if err != nil || json.Unmarshal(decoded, &cursor) != nil || cursor.Scope != scope || len(cursor.After) > 512 || cursor.At.IsZero() {
-			return apitypes.CollectionPage{}, ErrConflict
+			return page, ErrConflict
 		}
 	}
 	query = strings.ReplaceAll(query, "now()", "$7::timestamptz")
-	page := apitypes.CollectionPage{Version: apitypes.CollectionPageVersion, Records: []apitypes.CollectionRecord{}}
-	err = pgx.BeginTxFunc(ctx, s.pool, pgx.TxOptions{IsoLevel: pgx.RepeatableRead, AccessMode: pgx.ReadOnly}, func(tx pgx.Tx) error {
-		if strings.HasPrefix(path, "/admin/") {
-			var isAdmin bool
-			if err := tx.QueryRow(ctx, `SELECT role='admin' AND suspended_at IS NULL FROM accounts WHERE id=$1`, accountID).Scan(&isAdmin); err != nil {
-				return convertNoRowsToNotFound(err)
+	if strings.HasPrefix(path, "/admin/") {
+		var isAdmin bool
+		if err := tx.QueryRow(ctx, `SELECT role='admin' AND suspended_at IS NULL FROM accounts WHERE id=$1`, accountID).Scan(&isAdmin); err != nil {
+			return page, convertNoRowsToNotFound(err)
+		}
+		if !isAdmin {
+			return page, ErrActorNotAdmin
+		}
+		if strings.HasPrefix(path, "/admin/accounts/") {
+			var exists bool
+			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE id=$1)`, vaultOrOrganizationID).Scan(&exists); err != nil {
+				return page, err
 			}
-			if !isAdmin {
-				return ErrActorNotAdmin
-			}
-			if strings.HasPrefix(path, "/admin/accounts/") {
-				var exists bool
-				if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM accounts WHERE id=$1)`, vaultOrOrganizationID).Scan(&exists); err != nil {
-					return err
-				}
-				if !exists {
-					return ErrNotFound
-				}
+			if !exists {
+				return page, ErrNotFound
 			}
 		}
-		if strings.HasPrefix(path, "/vaults/") {
-			var member bool
-			if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vault_access WHERE vault_id=$1 AND account_id=$2)`, vaultOrOrganizationID, accountID).Scan(&member); err != nil {
-				return err
-			}
-			if !member {
-				return ErrNotFound
-			}
+	}
+	if strings.HasPrefix(path, "/vaults/") {
+		var member bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM vault_access WHERE vault_id=$1 AND account_id=$2)`, vaultOrOrganizationID, accountID).Scan(&member); err != nil {
+			return page, err
 		}
-		if strings.HasPrefix(path, "/organizations/") {
-			if _, err := getOrganizationSummary(ctx, tx, vaultOrOrganizationID, accountID); err != nil {
-				return err
-			}
+		if !member {
+			return page, ErrNotFound
 		}
-		revision, err := collectionRevision(ctx, tx, accountID, path, vaultOrOrganizationID)
-		if err != nil {
-			return err
+	}
+	if strings.HasPrefix(path, "/organizations/") {
+		if _, err := getOrganizationSummary(ctx, tx, vaultOrOrganizationID, accountID); err != nil {
+			return page, err
 		}
-		if encodedCursor != "" && revision != cursor.Revision {
-			return ErrCollectionChanged
-		}
-		cursor.Revision = revision
-		if itemID != "" && cursor.After != "" && uuid.Validate(cursor.After) != nil {
-			return ErrConflict
-		}
-		var pageSQL string
-		if itemID != "" {
-			pageSQL = query
-		} else {
-			// Typed parameter CTEs keep unused parameters well defined for all collection queries.
-			pageSQL = `WITH parameters AS (SELECT $1::text,$2::text,$3::text,$4::text,$7::timestamptz), source AS (` + query + `), candidates AS (
+	}
+	revision, err := collectionRevision(ctx, tx, accountID, path, vaultOrOrganizationID)
+	if err != nil {
+		return page, err
+	}
+	if encodedCursor != "" && revision != cursor.Revision {
+		return page, ErrCollectionChanged
+	}
+	cursor.Revision = revision
+	if itemID != "" && cursor.After != "" && uuid.Validate(cursor.After) != nil {
+		return page, ErrConflict
+	}
+	var pageSQL string
+	if itemID != "" {
+		pageSQL = query
+	} else {
+		// Typed parameter CTEs keep unused parameters well defined for all collection queries.
+		pageSQL = `WITH parameters AS (SELECT $1::text,$2::text,$3::text,$4::text,$7::timestamptz), source AS (` + query + `), candidates AS (
    SELECT key,jsonb_build_object('key',key,'field',field,'parent',parent,'value',value)::text AS record FROM source WHERE key COLLATE "C">$5 ORDER BY key COLLATE "C" LIMIT 101
   ), sized AS (SELECT *,sum(octet_length(record)) OVER(ORDER BY key COLLATE "C") AS bytes,row_number() OVER(ORDER BY key COLLATE "C") AS n FROM candidates)
   SELECT key,CASE WHEN bytes<=$6 AND n<=100 THEN record END FROM sized ORDER BY key COLLATE "C"`
+	}
+	rows, err := tx.Query(ctx, pageSQL, accountID, deviceID, vaultOrOrganizationID, itemID, cursor.After, apitypes.CollectionPageBytes-4096, cursor.At)
+	if err != nil {
+		return page, err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var key string
+		var record *string
+		if err := rows.Scan(&key, &record); err != nil {
+			return page, err
 		}
-		rows, err := tx.Query(ctx, pageSQL, accountID, deviceID, vaultOrOrganizationID, itemID, cursor.After, apitypes.CollectionPageBytes-4096, cursor.At)
-		if err != nil {
-			return err
+		if record == nil {
+			if len(page.Records) == 0 {
+				return page, ErrCollectionTooLarge
+			}
+			data, _ := json.Marshal(cursor)
+			page.NextCursor = base64.RawURLEncoding.EncodeToString(data)
+			break
 		}
-		defer rows.Close()
-		for rows.Next() {
-			var key string
-			var record *string
-			if err := rows.Scan(&key, &record); err != nil {
-				return err
-			}
-			if record == nil {
-				if len(page.Records) == 0 {
-					return ErrCollectionTooLarge
-				}
-				data, _ := json.Marshal(cursor)
-				page.NextCursor = base64.RawURLEncoding.EncodeToString(data)
-				break
-			}
-			var value apitypes.CollectionRecord
-			if err := json.Unmarshal([]byte(*record), &value); err != nil {
-				return err
-			}
-			page.Records = append(page.Records, value)
-			cursor.After = key
+		var value apitypes.CollectionRecord
+		if err := json.Unmarshal([]byte(*record), &value); err != nil {
+			return page, err
 		}
-		return rows.Err()
-	})
-	return page, err
+		page.Records = append(page.Records, value)
+		cursor.After = key
+	}
+	return page, rows.Err()
 }
 
 const organizationCollection = `
