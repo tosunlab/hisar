@@ -210,6 +210,33 @@ func TestBrowserSaveKeepsOneContextPerTab(t *testing.T) {
 	}
 }
 
+func TestBrowserPairingRequiresUnlockAtBothTransitions(t *testing.T) {
+	fixture := createBrowserTestBridge(t)
+	s := fixture.testService.service
+	s.Lock()
+	if _, code := fixture.sendRequest(browserprotocol.Request{Type: "pair.start", InstanceID: "locked"}); code != browserprotocol.ErrorLocked {
+		t.Fatalf("locked start = %s", code)
+	}
+	if len(fixture.pairing) != 0 {
+		t.Fatal("locked start displayed a pairing code")
+	}
+	fixture = createBrowserTestBridge(t)
+	if _, code := fixture.sendRequest(browserprotocol.Request{Type: "pair.start", InstanceID: "browser"}); code != "" {
+		t.Fatal(code)
+	}
+	code := fixture.pairing[0].Code
+	fixture.testService.service.Lock()
+	if fixture.bridge.GetBrowserStatus().PendingPairing != nil {
+		t.Fatal("locked Settings exposed a pairing code")
+	}
+	if _, errCode := fixture.sendRequest(browserprotocol.Request{Type: "pair.finish", InstanceID: "browser", Code: code}); errCode != browserprotocol.ErrorLocked {
+		t.Fatalf("locked finish = %s", errCode)
+	}
+	if len(fixture.testService.service.state.PairedBrowsers) != 0 {
+		t.Fatal("locked finish persisted a browser")
+	}
+}
+
 func TestBrowserPairingCodeDoesNotSurviveUnlockOrLegacySaveChecks(t *testing.T) {
 	fixture := createBrowserTestBridge(t)
 	s := fixture.testService.service
@@ -225,6 +252,9 @@ func TestBrowserPairingCodeDoesNotSurviveUnlockOrLegacySaveChecks(t *testing.T) 
 	s.Lock()
 	if _, err := s.Unlock(testMasterPassword); err != nil {
 		t.Fatal(err)
+	}
+	if fixture.bridge.GetBrowserStatus().PendingPairing != nil {
+		t.Fatal("stale code returned after unlock")
 	}
 	if _, errCode := fixture.sendRequest(browserprotocol.Request{Type: "pair.finish", InstanceID: "pending", Code: code}); errCode != browserprotocol.ErrorPairingFailed {
 		t.Fatalf("stale code finish = %s", errCode)

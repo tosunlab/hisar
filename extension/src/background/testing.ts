@@ -184,8 +184,11 @@ export function createHarness(options: HarnessOptions = {}) {
       return controller;
     },
     async pair() {
+      const stateBeforePairing = state.state;
+      state.state = "unlocked";
       await controller.startPairing();
       await controller.finishPairing("123456");
+      state.state = stateBeforePairing;
     },
   };
 }

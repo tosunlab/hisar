@@ -250,11 +250,11 @@ func (bridge *BrowserBridge) startPairing(request *browserprotocol.Request) erro
 	}
 	s := bridge.service
 	s.mutex.Lock()
-	isSignedIn, epoch := s.state.IsLoggedIn(), s.sessionEpoch
-	s.mutex.Unlock()
-	if !isSignedIn {
-		return browserprotocol.NewError(browserprotocol.ErrorSignedOut, "sign in to Hisar first")
+	defer s.mutex.Unlock()
+	if err := s.requireUnlockedWithoutActivity(); err != nil {
+		return convertBrowserError(err)
 	}
+	epoch := s.sessionEpoch
 	code, err := generatePairingCode()
 	if err != nil {
 		return err
@@ -308,6 +308,9 @@ func (bridge *BrowserBridge) finishPairing(request *browserprotocol.Request) (an
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if err := s.requireUnlockedWithoutActivity(); err != nil {
+		return nil, convertBrowserError(err)
+	}
 	if s.sessionEpoch != pending.sessionEpoch {
 		return nil, browserprotocol.NewError(browserprotocol.ErrorPairingFailed, "Hisar locked, signed out or switched accounts since pairing started; start pairing again")
 	}
@@ -355,13 +358,18 @@ func (bridge *BrowserBridge) isTokenValid(token string) bool {
 func (bridge *BrowserBridge) GetBrowserStatus() BrowserStatus {
 	bridge.mutex.Lock()
 	status := BrowserStatus{Installations: append([]browserprotocol.BrowserInstallation{}, bridge.installations...), PairedBrowsers: []PairedBrowser{}}
+	pendingEpoch := uint64(0)
 	if pending := bridge.pendingPairing; pending != nil && bridge.service.config.Now().Before(pending.expiresAt) {
 		status.PendingPairing = &BrowserPairingRequest{Browser: pending.browser, Code: pending.code, ExpiresAt: pending.expiresAt.UTC().Format(time.RFC3339)}
+		pendingEpoch = pending.sessionEpoch
 	}
 	bridge.mutex.Unlock()
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if !s.isUnlocked() || s.sessionEpoch != pendingEpoch {
+		status.PendingPairing = nil
+	}
 	status.IsExactHostMatch = s.state.IsExactHostMatch
 	for _, paired := range s.state.PairedBrowsers {
 		status.PairedBrowsers = append(status.PairedBrowsers, PairedBrowser{

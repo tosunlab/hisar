@@ -989,7 +989,7 @@ Differs:
 ### 9.2 Browser extension — TypeScript, MV3
 
 - No crypto and no keys in the extension. It talks to the desktop app through the browser's native messaging API; the desktop app must be running (the host starts it when it is not).
-- Pairing: on first connect, the desktop shows a code that the user confirms in the extension. The native host manifest allows only our extension IDs.
+- Pairing requires an unlocked Hisar at start and completion. The desktop shows a code that the user confirms in the extension. A lock, sign-out, or account change invalidates the pending attempt and hides its code. The native host manifest allows only our extension IDs.
 - Autofill logins, and servers on their admin console, only when the page origin matches an item URL (below). Addresses belong to no site and are filled only on an explicit choice in the inline menu or popup (below). Never autofill automatically into cross-origin iframes. Fill on explicit user action by default.
 - Detects new and changed logins and offers to save them.
 - Chromium browsers first (Chrome, Brave, Edge, Arc, Vivaldi, Chromium), from one MV3 build. Firefox later from the same code; Safari needs a team-signed app (§12 #7). Distributed as an unlisted Chrome Web Store item.
@@ -1008,8 +1008,8 @@ Differs:
 | Type | Parameters | Result |
 |---|---|---|
 | `hello` | `instanceID`, `browser`, `extensionVersion` | `protocolVersion` (1), `isPaired`, `state`, `features`, including `save-confirmation` for popup-owned credential saves. An older app announces fewer features. |
-| `pair.start` | `instanceID`, `browser` | `{}`; the desktop window shows "Pair <browser>?" with a 6-digit code |
-| `pair.finish` | `instanceID`, `code` | `token`. The code is valid for 2 minutes and 5 attempts |
+| `pair.start` | `instanceID`, `browser` | `{}`; requires an unlocked app and shows a 6-digit code in the desktop window |
+| `pair.finish` | `instanceID`, `code` | `token`; requires the same unlocked session. The code is valid for 2 minutes and 5 attempts. |
 | `status` | — | `state`, `email`, `isOffline` |
 | `unlock` | — | `{}`; brings the desktop window forward (on the Touch ID screen when it is ready) |
 | `unlock.password` | `password` | `state`, `email`, `isOffline`; unlocks with the master password typed in the popup. `wrong-password` for a wrong one; after 5 wrong ones within 5 minutes from one paired browser, that browser waits out the 5 minutes (an attempt counts before its password is checked, so attempts sent at once over several connections cannot pass the limit) |

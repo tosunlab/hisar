@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createApiMock, createBrowserStatus, createStatus } from "../testing";
+import type { BrowserStatus } from "../api";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -14,7 +15,7 @@ vi.mock("../api", async () => {
   };
 });
 
-const { store, restoreBrowserPairing, showBrowserPairing } = await import("../store");
+const { store, restoreBrowserPairing, showBrowserPairing, handleLocked } = await import("../store");
 const BrowserPairingModal = (await import("./BrowserPairingModal.vue")).default;
 const BrowserExtensionSection = (await import("./BrowserExtensionSection.vue")).default;
 const api = apiMock.current;
@@ -44,9 +45,10 @@ beforeEach(() => {
 describe("BrowserPairingModal", () => {
   it("shows the code from the pairing event and cancels it", async () => {
     const wrapper = mount(BrowserPairingModal);
+    const pendingPairing = { browser: "Chrome", code: "482913", expiresAt: new Date(Date.now() + 120_000).toISOString() };
+    api.getBrowserStatus.mockResolvedValue(createBrowserStatus({ pendingPairing }));
     showBrowserPairing({ browser: "Chrome", code: "482913", expiresAt: new Date(Date.now() + 120_000).toISOString() });
     await flushPromises();
-    api.getBrowserStatus.mockResolvedValue(createBrowserStatus({ pendingPairing: store.browserPairing }));
     expect(wrapper.find('[data-testid="pairing-code"]').text().replace(/\s/g, "")).toBe("482913");
     expect(wrapper.text()).toContain("Pair Chrome with Hisar?");
     await wrapper.find('[data-testid="cancel-pairing"]').trigger("click");
@@ -80,6 +82,35 @@ describe("BrowserPairingModal", () => {
     expect(wrapper.text()).toContain("Expires in 0:02");
     await vi.advanceTimersByTimeAsync(3_000);
     expect(wrapper.find('[data-testid="browser-pairing"]').exists()).toBe(false);
+  });
+
+  it("clears a pairing on lock and rejects a late restoration after unlock", async () => {
+    const pendingPairing = { browser: "Chrome", code: "482913", expiresAt: new Date(Date.now() + 120_000).toISOString() };
+    store.browserPairing = pendingPairing;
+    store.browserStatus = createBrowserStatus({ pendingPairing });
+    const pending = Promise.withResolvers<BrowserStatus>();
+    api.getBrowserStatus.mockReturnValueOnce(pending.promise);
+    const restoring = restoreBrowserPairing();
+    api.getStatus.mockResolvedValue(createStatus("locked"));
+    await handleLocked();
+    expect(store.browserPairing).toBeNull();
+    expect(store.browserStatus?.pendingPairing).toBeNull();
+    store.status = createStatus("unlocked");
+    pending.resolve(createBrowserStatus({ pendingPairing }));
+    await restoring;
+    expect(store.browserPairing).toBeNull();
+  });
+
+  it("does not restore a cleared pairing from a late Settings response", async () => {
+    const pendingPairing = { browser: "Chrome", code: "482913", expiresAt: new Date(Date.now() + 120_000).toISOString() };
+    const pending = Promise.withResolvers<BrowserStatus>();
+    api.getBrowserStatus.mockReturnValueOnce(pending.promise);
+    const restoring = restoreBrowserPairing();
+    showBrowserPairing(null);
+    pending.resolve(createBrowserStatus({ pendingPairing }));
+    await restoring;
+    expect(store.browserPairing).toBeNull();
+    expect(store.browserStatus?.pendingPairing ?? null).toBeNull();
   });
 });
 
