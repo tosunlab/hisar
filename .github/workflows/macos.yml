@@ -2,14 +2,15 @@ name: macOS and iOS
 
 # macOS minutes are expensive, so each job runs only when the pull request changes what it builds: desktop/ and cli/ (the
 # Mac app), mobile/ios/, mobile/hisarkit/ and mobile/go.mod (the iPhone app), core/ and go.work (both), or this workflow;
-# scripts/detect-app-changes.sh decides.
+# scripts/detect-app-changes.sh decides. The iPhone UI tests wait until the pull request is ready for review; marking it
+# ready starts a run.
 # The run-macos label, or a manual run, runs both anyway. The skip-ios label skips the iPhone jobs, for a pull request whose
 # iPhone build and tests already passed on a Mac (make build-ios-framework build-ios test-ios test-ios-ui); add it before
 # pushing, since a run reads the labels the pull request has when it starts. The Release workflow calls it for a desktop
 # release, which builds the Mac app and not the iPhone app.
 on:
   pull_request:
-    types: [opened, reopened, synchronize, labeled]
+    types: [opened, reopened, synchronize, labeled, ready_for_review]
   workflow_dispatch:
     inputs:
       alwaysRunIos:
@@ -18,7 +19,8 @@ on:
         default: false
   workflow_call:
 
-# Adding an unrelated label gets its own group, so it never cancels a running build; a manual or release run is its own.
+# Adding an unrelated label gets its own group, so it never cancels a running build; marking the pull request ready for review
+# replaces a running build, as a push does; a manual or release run is its own.
 concurrency:
   group: macos-${{ github.event.pull_request.number || github.run_id }}-${{ (github.event.action == 'labeled' && github.event.label.name != 'run-macos') && github.run_id || 'build' }}
   cancel-in-progress: true
@@ -175,6 +177,7 @@ jobs:
   ios:
     name: iPhone UI tests against the server (part ${{ matrix.part }} of 2)
     needs: [changes, ios-build]
+    if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-26
     timeout-minutes: 60
     # Each part runs half of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator, with the app and
