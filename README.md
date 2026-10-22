@@ -146,9 +146,18 @@ The desktop app builds with `make build-desktop` ([desktop/README.md](desktop/RE
 
 ## Contributing
 
-Open an issue for a bug or a feature using the templates, or a pull request on `main`. CI runs on every pull request (gofmt, vet, the Go tests against Postgres, the CLI for every platform, the end-to-end test, the server image, the desktop frontend, the extension, the admin dashboard, and the Mac, iPhone and Android apps when a change touches them); it never runs on pushes to `main`. Commit messages follow Conventional Commits (`feat(core): …`, `fix(desktop): …`, with `!` or a `BREAKING CHANGE:` footer for breaking changes), which the release notes are built from. A change to the security model starts in [docs/DESIGN.md](docs/DESIGN.md): change the document before the code.
+Bug reports and feature requests are welcome as issues, and changes as pull requests on `main`. [CONTRIBUTING.md](CONTRIBUTING.md) has what a pull request needs to pass, the commit message format and the code conventions. A change to the security model starts in [docs/DESIGN.md](docs/DESIGN.md): change the document before the code. How CI and releases work: [docs/RELEASING.md](docs/RELEASING.md).
 
-How CI is laid out, which labels skip the expensive app jobs, and how releases are cut and published: [docs/RELEASING.md](docs/RELEASING.md).
+## Maintainers
+
+<table>
+  <tr>
+    <td align="center"><a href="https://github.com/alperb"><img src="https://github.com/alperb.png?size=64" width="48" height="48" alt="Alper Berber"><br>Alper Berber</a></td>
+    <td align="center"><a href="https://github.com/emrebdr"><img src="https://github.com/emrebdr.png?size=64" width="48" height="48" alt="Edip Emre Bodur"><br>Edip Emre Bodur</a></td>
+    <td align="center"><a href="https://github.com/bilgehanertan"><img src="https://github.com/bilgehanertan.png?size=64" width="48" height="48" alt="M. Bilgehan Ertan"><br>M. Bilgehan Ertan</a></td>
+    <td align="center"><a href="https://github.com/emirhanboge"><img src="https://github.com/emirhanboge.png?size=64" width="48" height="48" alt="Emirhan Böge"><br>Emirhan Böge</a></td>
+  </tr>
+</table>
 
 ## Security
 
