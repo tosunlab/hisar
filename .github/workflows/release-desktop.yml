@@ -174,11 +174,11 @@ jobs:
     env:
       TAG: ${{ inputs.tag }}
     steps:
-      - name: Install git, GTK 4 and WebKitGTK
-        run: apt-get update -qq && apt-get install -y -qq git libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
+      - name: Install GTK 4 and WebKitGTK
+        run: bash scripts/ci-apt-install.sh libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work

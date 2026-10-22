@@ -183,9 +183,9 @@ jobs:
     timeout-minutes: 30
     container: node:24-trixie
     steps:
-      - name: Install git, GTK 4 and WebKitGTK
-        run: apt-get update -qq && apt-get install -y -qq git libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install GTK 4 and WebKitGTK
+        run: bash scripts/ci-apt-install.sh libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -237,9 +237,9 @@ jobs:
     timeout-minutes: 30
     container: mcr.microsoft.com/playwright:v1.63.0-noble
     steps:
-      - name: Install git, make and zip
-        run: apt-get update -qq && apt-get install -y -qq git make zip >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make and zip
+        run: bash scripts/ci-apt-install.sh make zip
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           cache: npm
@@ -290,9 +290,9 @@ jobs:
           POSTGRES_DB: hisar
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
-      - name: Install git, make and curl
-        run: apt-get update -qq && apt-get install -y -qq git make curl >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make
+        run: bash scripts/ci-apt-install.sh make
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -318,9 +318,9 @@ jobs:
           POSTGRES_DB: hisar
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
-      - name: Install git and make
-        run: apt-get update -qq && apt-get install -y -qq git make >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make
+        run: bash scripts/ci-apt-install.sh make
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work

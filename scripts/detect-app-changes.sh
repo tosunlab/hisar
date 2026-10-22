@@ -7,15 +7,18 @@
 # scripts/app-paths.sh says what each app is built from: core/ and go.work count for each, and the desktop app also counts
 # cli/ and omp/. The phone apps share mobile/hisarkit and mobile/go.mod; an Android-only change keeps off the macOS runner.
 #
-# Environment: BASE_SHA, HEAD_SHA, IS_FORCED ("true" runs everything) and WORKFLOW_FILE (a change to it runs everything, so
-# a workflow edit is tested). Writes isDesktopChanged, isMobileChanged (the iPhone app), isAndroidChanged and isAdminChanged
-# to $GITHUB_OUTPUT.
+# Environment: BASE_SHA, HEAD_SHA, IS_FORCED ("true" runs everything) and WORKFLOW_FILE (a change to it, or to the
+# ci-apt-install.sh its container jobs use, runs everything, so a workflow edit is tested). Writes isDesktopChanged,
+# isMobileChanged (the iPhone app), isAndroidChanged and isAdminChanged to $GITHUB_OUTPUT.
 set -euo pipefail
 
 range="$BASE_SHA...$HEAD_SHA"
 echo "Comparing $range"
 
-isChanged() { [ -n "$(git diff --name-only "$range" -- "$@" "$WORKFLOW_FILE" scripts/detect-app-changes.sh scripts/app-paths.sh)" ]; }
+isChanged() {
+  [ -n "$(git diff --name-only "$range" -- "$@" "$WORKFLOW_FILE" scripts/ci-apt-install.sh scripts/detect-app-changes.sh \
+    scripts/app-paths.sh)" ]
+}
 
 isDesktopChanged=false
 isMobileChanged=false
