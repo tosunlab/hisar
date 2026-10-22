@@ -15,7 +15,9 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
@@ -379,6 +381,22 @@ class PhoneApprovalTests {
         assertTrue(approvals.allPendingApproval.value.isEmpty())
         approvals.refreshPendingApproval()
         assertTrue(approvals.allPendingApproval.value.isEmpty(), "finished requests are not shown again")
+    }
+
+    @Test
+    fun testPollingUnchangedRequestsRedrawsNothing() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModel(harness, listOf(createApproval("first")))
+        val allShownList = mutableListOf<List<PhoneApproval>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.approvals.allPendingApproval.collect { allShownList += it } }
+        model.approvals.refreshPendingApproval()
+        model.approvals.refreshPendingApproval()
+        runCurrent()
+        assertEquals(1, allShownList.size, "a poll that finds the same requests redraws the app")
+        harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90))
+        model.approvals.refreshPendingApproval()
+        runCurrent()
+        assertEquals(listOf("first", "second"), allShownList.last().map { it.requestID }, "a new request is not shown")
     }
 
     @Test

@@ -1301,7 +1301,11 @@ final class AppModel: ObservableObject {
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
         let firstNewApproval = allOpenApproval.first { !allSeenApprovalID.contains($0.requestID) }
         allSeenApprovalID.formUnion(allOpenApproval.map(\.requestID))
-        allPendingApproval = allOpenApproval
+        // Assigning publishes even an equal list, and the poll would then redraw every screen every 15 seconds. A switch
+        // whose tap ends during that redraw ignores the tap.
+        if allOpenApproval != allPendingApproval {
+            allPendingApproval = allOpenApproval
+        }
         if isOpeningNewRequest, presentedApproval == nil, let firstNewApproval {
             presentApproval(firstNewApproval)
         }

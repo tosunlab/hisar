@@ -1,3 +1,4 @@
+import Combine
 import UIKit
 import XCTest
 @testable import Hisar
@@ -327,6 +328,20 @@ final class PhoneApprovalTests: XCTestCase {
         }
         XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["posted-while-away"])
         XCTAssertNil(model.presentedApproval, "a request found on returning is listed, not pushed into a sheet")
+    }
+
+    func testPollingUnchangedRequestsRedrawsNothing() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "first")])
+        var changeCount = 0
+        let subscription = model.objectWillChange.sink { changeCount += 1 }
+        await model.refreshPendingApproval()
+        await model.refreshPendingApproval()
+        XCTAssertEqual(changeCount, 0, "a poll that finds the same requests redraws the app")
+        backend.allPendingApproval.append(createApproval(requestID: "second", secondsLeft: 90))
+        await model.refreshPendingApproval()
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["first", "second"])
+        XCTAssertGreaterThan(changeCount, 0, "a new request is not shown")
+        subscription.cancel()
     }
 
     func testNothingWhileLocked() async {
