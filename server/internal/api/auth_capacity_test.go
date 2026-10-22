@@ -21,7 +21,7 @@ type loginBurstTransport struct {
 
 func (transport *loginBurstTransport) RoundTrip(request *http.Request) (*http.Response, error) {
 	response, err := transport.base.RoundTrip(request)
-	if err == nil && request.URL.Path == "/api/v1/auth/login/start" && response.StatusCode == http.StatusOK {
+	if err == nil && request.URL.Path == "/api/v1/auth/login/v2/start" && response.StatusCode == http.StatusOK {
 		body, bodyErr := request.GetBody()
 		if bodyErr != nil {
 			return nil, bodyErr
