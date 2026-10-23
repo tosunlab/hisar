@@ -15,3 +15,5 @@ gh attestation verify "oci://ghcr.io/tosunlab/hisar-server@$digest" --repo tosun
 
 Authenticate to GHCR when required. Deploy `ghcr.io/tosunlab/hisar-server@$digest` after verification, not a mutable tag.
 The attestation covers the multiarchitecture image index. It does not protect against a compromised authorized builder.
+
+Desktop versions through 0.1.12 and CLI versions through 0.1.6 can still read rotated vaults but cannot change their items, names, grants or deletion state without an explicit key generation. The server returns an instruction to update Hisar. Generation omission remains supported only for never-rotated nonorganization vaults.

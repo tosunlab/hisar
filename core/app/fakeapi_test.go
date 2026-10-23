@@ -77,7 +77,7 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 // required for organization vaults, checked for any vault when set. It needs server.mutex.
 func (server *fakeAPIServer) refusesKeyGeneration(writer http.ResponseWriter, vaultID string, keyGeneration int64) bool {
 	index := slices.IndexFunc(server.vaults, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
-	isAccepted := index < 0 || keyGeneration == server.vaults[index].KeyGeneration || keyGeneration == 0 && server.vaults[index].OrganizationID == ""
+	isAccepted := index < 0 || keyGeneration == server.vaults[index].KeyGeneration || keyGeneration == 0 && server.vaults[index].OrganizationID == "" && server.vaults[index].KeyGeneration <= 1
 	if isAccepted && server.keyChangeRefusalCount == 0 {
 		return false
 	}

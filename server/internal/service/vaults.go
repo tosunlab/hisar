@@ -31,10 +31,8 @@ const maxChangeBytes = 16 << 20
 var (
 	errReadOnly                = newError(KindForbidden, "read only")
 	errOrganizationVaultAccess = newError(KindInvalid, "access to an organization vault comes from its teams")
-	// errUpdateForOrganizationVaults refuses items for an organization vault that name no key generation: only apps
-	// older than key generations send them, and they read the key-changed 409 as an item conflict without a current
-	// item, so they would ask for a reload that never helps. They show this sentence as it is.
-	errUpdateForOrganizationVaults = newError(KindInvalid, "update Hisar to change items in organization vaults")
+	// Older apps display this sentence without trying an item-conflict reload that cannot fix omission.
+	errUpdateForOrganizationVaults = newError(KindInvalid, "update Hisar to change data in this vault")
 )
 
 func IsValidUUID(value string) bool {
@@ -161,6 +159,8 @@ func (s *Service) SetAccess(ctx context.Context, actor Actor, vaultID, targetAcc
 	isNewMember, err := s.store.GrantAccess(ctx, vaultID,
 		store.Member{AccountID: targetAccountID, Role: request.Role, WrappedKey: request.WrappedKey, GrantedBy: actor.AccountID}, request.KeyGeneration)
 	switch {
+	case errors.Is(err, store.ErrKeyGenerationMissing):
+		return errUpdateForOrganizationVaults
 	case errors.Is(err, store.ErrNoInvitation):
 		return newError(KindConflict, "this person has not accepted an invitation to this vault")
 	case errors.Is(err, store.ErrNotEntitled):
@@ -403,6 +403,10 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 		return newError(KindInvalid, "invalid vault name")
 	}
 	switch err := s.store.RenameVault(ctx, vaultID, actor.AccountID, request.EncName, request.KeyGeneration); {
+	case errors.Is(err, store.ErrKeyGenerationMissing):
+		return errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrStaleKeyGeneration):
+		return newError(KindConflict, "the vault key changed since the name was encrypted; sync and try again")
 	case errors.Is(err, store.ErrNotOwner):
 		return ErrOwnerOnly
 	case errors.Is(err, store.ErrNotFound):
@@ -449,7 +453,7 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 	}
 	formerMemberIDs, err := s.store.DeleteVault(ctx, store.VaultDeletion{
 		VaultID: vaultID, AccountID: actor.AccountID, MoveToVaultID: request.MoveToVaultID,
-		MovedItems: movedItems, IsDeletingItems: request.IsDeletingItems, MoveToKeyGeneration: request.MoveToKeyGeneration,
+		MovedItems: movedItems, IsDeletingItems: request.IsDeletingItems, MoveToKeyGeneration: request.MoveToKeyGeneration, KeyGeneration: request.KeyGeneration,
 	})
 	switch {
 	case errors.Is(err, store.ErrNotOwner):
@@ -552,6 +556,10 @@ func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, 
 		KeyGeneration: request.KeyGeneration,
 	})
 	switch {
+	case errors.Is(err, store.ErrKeyGenerationMissing):
+		return errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrStaleKeyGeneration):
+		return ErrKeyChanged
 	case errors.Is(err, store.ErrConflict):
 		return newError(KindConflict, "the vault changed during the key rotation; try again")
 	case errors.Is(err, store.ErrNotMember):

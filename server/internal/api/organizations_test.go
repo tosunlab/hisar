@@ -405,7 +405,7 @@ func TestOrganizationVaultAccessRules(t *testing.T) {
 	}
 	expectStatus(t, "a key for a member in no team of the vault", setAccess(dave, apitypes.VaultReader, 1), http.StatusConflict)
 	expectStatus(t, "a key with another role than the teams give", setAccess(carol, apitypes.VaultOwner, 1), http.StatusConflict)
-	expectStatus(t, "a key without its generation", setAccess(carol, apitypes.VaultEditor, 0), http.StatusConflict)
+	expectStatus(t, "a key without its generation", setAccess(carol, apitypes.VaultEditor, 0), http.StatusBadRequest)
 	if err := setAccess(carol, apitypes.VaultEditor, 1); err != nil {
 		t.Fatalf("a key with the entitled role: %v", err)
 	}
@@ -518,7 +518,7 @@ func TestOrganizationVaultRotationFromAStaleKey(t *testing.T) {
 
 	withoutGeneration := *production
 	withoutGeneration.KeyGeneration = 0
-	expectStatus(t, "a rotation without the key generation", alice.RotateVaultKey(ctx, &withoutGeneration, grants), http.StatusConflict)
+	expectStatus(t, "a rotation without the key generation", alice.RotateVaultKey(ctx, &withoutGeneration, grants), http.StatusBadRequest)
 	if err := alice.RotateVaultKey(ctx, production, grants); err != nil {
 		t.Fatalf("the first rotation: %v", err)
 	}
@@ -559,7 +559,7 @@ func TestRenameWithARotatedAwayKey(t *testing.T) {
 	expectStatus(t, "a rename sealed with the replaced key", bob.RenameVault(ctx, bobProduction, "Stale"), http.StatusConflict)
 	staleName := requireValue[[]byte](t)(crypt.SealVaultName(bobProduction.Key, production.ID, []byte("Stale")))
 	expectStatus(t, "a rename of an organization vault without its key generation",
-		bob.Client.RenameVault(ctx, production.ID, &apitypes.RenameVaultRequest{EncName: staleName}), http.StatusConflict)
+		bob.Client.RenameVault(ctx, production.ID, &apitypes.RenameVaultRequest{EncName: staleName}), http.StatusBadRequest)
 	if countDatabaseRows(t, databaseURL, `SELECT count(*) FROM vaults WHERE id = $1 AND enc_name = $2`, production.ID, rotated.EncName) != 1 {
 		t.Error("a refused rename replaced the stored name")
 	}
@@ -625,7 +625,7 @@ func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 	// current item and ask for a reload that never helps, so they get a sentence they show as it is.
 	isUpdateRefusal := func(err error) bool {
 		return apiclient.IsStatus(err, http.StatusBadRequest) && !apiclient.IsKeyChanged(err) &&
-			strings.Contains(err.Error(), "update Hisar to change items in organization vaults")
+			strings.Contains(err.Error(), "update Hisar to change data in this vault")
 	}
 
 	newItemID := uuid.NewString()

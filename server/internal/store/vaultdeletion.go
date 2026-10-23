@@ -34,12 +34,10 @@ type VaultDeletion struct {
 	MovedItems          []MovedItem
 	IsDeletingItems     bool
 	MoveToKeyGeneration int64
+	KeyGeneration       int64
 }
 
-// RenameVault stores the vault's new sealed name; renamedBy must be an owner (ErrNotOwner), checked under the vault's
-// lock. It locks like every change to an organization vault (§5.11) and returns ErrConflict unless keyGeneration is the
-// vault's current one (required for organization vaults, checked for any vault when nonzero), so a name sealed with a
-// key a rotation replaced is never stored.
+// RenameVault checks owner authority and the current key policy under the vault lock before storing the sealed name.
 func (s *Store) RenameVault(ctx context.Context, vaultID, renamedBy string, encName []byte, keyGeneration int64) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, vaultID)
@@ -49,8 +47,8 @@ func (s *Store) RenameVault(ctx context.Context, vaultID, renamedBy string, encN
 		if err := requireVaultOwner(ctx, transaction, vaultID, renamedBy); err != nil {
 			return err
 		}
-		if !vault.acceptsKeyGeneration(keyGeneration) {
-			return ErrConflict
+		if err := vault.checkItemKeyGeneration(keyGeneration); err != nil {
+			return err
 		}
 		_, err = transaction.Exec(ctx, `UPDATE vaults SET enc_name = $2 WHERE id = $1`, vaultID, encName)
 		return err
@@ -60,8 +58,7 @@ func (s *Store) RenameVault(ctx context.Context, vaultID, renamedBy string, encN
 // DeleteVault deletes the vault, its access grants, items, history, invitations and team grants in one transaction,
 // after moving its live items into another vault when asked. It returns the accounts that had access to the deleted
 // vault. Deleting an organization vault removes access, so its organization is locked first (§5.11); the target only
-// receives items, so only its row is locked. Moved items sealed with a target key a rotation replaced are refused
-// (ErrStaleKeyGeneration), as are items for an organization vault that name no key generation (ErrKeyGenerationMissing).
+// receives items, so only its row is locked. Both source and destination enforce the generation policy.
 func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]string, error) {
 	var formerMemberIDs []string
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
@@ -79,6 +76,12 @@ func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]stri
 		vault, isFound := vaultsByID[deletion.VaultID]
 		if !isFound {
 			return ErrNotFound
+		}
+		if !vault.acceptsKeyGeneration(deletion.KeyGeneration) {
+			if deletion.KeyGeneration == 0 {
+				return ErrKeyGenerationMissing
+			}
+			return ErrStaleKeyGeneration
 		}
 
 		var role string
