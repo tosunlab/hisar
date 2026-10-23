@@ -68,6 +68,10 @@ abstract class HisarUITestCase {
 
     fun waitFor(tag: String, timeoutMillis: Long = 30_000) = waitFor(hasTestTag(tag), timeoutMillis)
 
+    fun waitForGone(tag: String, timeoutMillis: Long = 30_000) {
+        composeRule.waitUntil("$tag goes", timeoutMillis) { !exists(hasTestTag(tag)) }
+    }
+
     fun exists(matcher: SemanticsMatcher): Boolean = composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
 
     fun tap(tag: String) {
@@ -174,11 +178,11 @@ abstract class HisarUITestCase {
             waitFor("biometric-offer-not-now", 10_000)
             return secretKey
         }
-        composeRule.waitUntil("the biometric offer or the vaults appear", 30_000) {
-            exists(hasTestTag("biometric-offer-not-now")) || exists(hasTestTag("vault-Personal"))
-        }
+        // The vaults are composed under the Secret Key screen and the biometric offer, so they exist before either closes.
+        waitForGone("new-secret-key")
         if (exists(hasTestTag("biometric-offer-not-now"))) {
             tap("biometric-offer-not-now")
+            waitForGone("biometric-offer-not-now")
         }
         waitFor("vault-Personal")
         return secretKey
