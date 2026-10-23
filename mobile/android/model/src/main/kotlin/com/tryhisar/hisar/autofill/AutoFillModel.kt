@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.autofill
 
+import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.Base64URL
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.LoginMatch
@@ -14,10 +15,15 @@ import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.VaultTheme
 import com.tryhisar.hisar.model.describeError
 import kotlinx.io.bytestring.ByteString
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.cancellation.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -34,12 +40,14 @@ class AutoFillModel(
     private val scope: CoroutineScope,
     private val ioDispatcher: CoroutineDispatcher,
     private val createBackend: () -> VaultBackend,
+    /** The backend's events; a lock, such as auto-lock, while a screen is open shows the lock screen at once. */
+    events: Flow<BackendEvent>,
     private val verifier: AppWebsiteVerifier,
-    private val completeRequest: (LoginCredential) -> Unit,
-    private val completeOneTimeCodeRequest: (String) -> Unit,
-    private val copyOneTimeCode: (String) -> Unit,
+    completeRequest: (LoginCredential) -> Unit,
+    completeOneTimeCodeRequest: (String) -> Unit,
+    copyOneTimeCode: (String) -> Unit,
     private val cancelRequest: (CancelReason) -> Unit,
-    private val passkeyCompletion: PasskeyCompletion,
+    passkeyCompletion: PasskeyCompletion,
     /** Asks the device owner to confirm with biometrics or the screen lock, with this reason as the title; false when declined. */
     private val verifyDeviceOwner: suspend (reason: String) -> Boolean,
 ) {
@@ -128,6 +136,41 @@ class AutoFillModel(
     private var sourceByLoginID: Map<String, LoginSource> = emptyMap()
     private var backend: VaultBackend? = null
 
+    private class UnlockGeneration(val count: Int) : AbstractCoroutineContextElement(Key) {
+        companion object Key : CoroutineContext.Key<UnlockGeneration>
+    }
+
+    private val completeRequest: suspend (LoginCredential) -> Unit = { value -> completeWithinUnlock { completeRequest(value) } }
+    private val completeOneTimeCodeRequest: suspend (String) -> Unit = { value -> completeWithinUnlock { completeOneTimeCodeRequest(value) } }
+    private val copyOneTimeCode: suspend (String) -> Unit = { value -> completeWithinUnlock { copyOneTimeCode(value) } }
+    private val completeAssertion: suspend (PasskeyAssertionCredential) -> Unit = { value -> completeWithinUnlock { passkeyCompletion.completeAssertion(value) } }
+    private val completeUnlock: suspend (Boolean) -> Unit = { value -> completeWithinUnlock { passkeyCompletion.completeUnlock(value) } }
+    private val completeRegistration = passkeyCompletion.completeRegistration
+    private val rejectExcludedRegistration = passkeyCompletion.rejectExcludedRegistration
+
+    private suspend fun completeWithinUnlock(complete: () -> Unit) {
+        val generation = checkNotNull(currentCoroutineContext()[UnlockGeneration])
+        if (generation.count == mutableLockCount.value) complete()
+    }
+
+    init {
+        scope.launch(start = CoroutineStart.UNDISPATCHED) {
+            events.collect { event ->
+                if (event != BackendEvent.Locked && event != BackendEvent.UpdateRequired) return@collect
+                if (!mutableStatus.value.isUnlocked) mutableLockCount.update { it + 1 }
+                forgetUnlockedData()
+                applyStatus(mutableStatus.value.copy(state = VaultStatus.STATE_LOCKED))
+                val backend = backend ?: return@collect
+                try {
+                    refreshStatus(backend)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (_: Exception) {
+                }
+            }
+        }
+    }
+
     val serviceName: String
         get() = mutableTarget.value?.name?.ifEmpty { null }
             ?: mutablePasskeyAssertionRequest.value?.relyingPartyID
@@ -166,42 +209,62 @@ class AutoFillModel(
     /** Builds the backend once and reads the app's theme; a backend that cannot start shows why. */
     suspend fun prepare(): VaultBackend? {
         backend?.let { return it }
+        val lockCount = mutableLockCount.value
         return try {
             val (backend, theme) = withContext(ioDispatcher) { createBackend().let { it to it.getTheme() } }
+            if (mutableLockCount.value != lockCount) return null
             this.backend = backend
             mutableTheme.value = theme
             backend
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            mutableScreen.value = Screen.Failed(describeError(error))
+            if (mutableLockCount.value == lockCount) mutableScreen.value = Screen.Failed(describeError(error))
             null
         }
     }
 
-    private suspend fun <Value> perform(operation: (VaultBackend) -> Value): Value? {
+    private suspend fun <Value> performWithinUnlock(operation: (VaultBackend) -> Value): Value? {
+        val lockCount = currentCoroutineContext()[UnlockGeneration]?.count ?: mutableLockCount.value
+        if (mutableLockCount.value != lockCount) return null
         val backend = prepare() ?: return null
         mutableIsBusy.value = true
         return try {
             val value = withContext(ioDispatcher) { operation(backend) }
+            if (mutableLockCount.value != lockCount) return null
             errorMessage.value = null
             value
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            errorMessage.value = describeError(error)
+            if (mutableLockCount.value == lockCount) errorMessage.value = describeError(error)
             null
         } finally {
             mutableIsBusy.value = false
         }
     }
 
+    /** Carries one lock generation through suspended work and its completion sinks. */
+    suspend fun <Value> withinUnlock(lockCount: Int = mutableLockCount.value, operation: suspend () -> Value): Value? {
+        val generation = currentCoroutineContext()[UnlockGeneration] ?: UnlockGeneration(lockCount)
+        if (mutableLockCount.value != generation.count) return null
+        val value = withContext(generation) { operation() }
+        return value.takeIf { mutableLockCount.value == generation.count }
+    }
+
     private fun matcher(backend: VaultBackend) = LoginMatcher(backend, verifier)
 
-    private suspend fun readStatus(backend: VaultBackend): VaultStatus = withContext(ioDispatcher) { backend.getStatus() }
+    private suspend fun refreshStatus(backend: VaultBackend): Boolean {
+        val newStatus = withinUnlock { withContext(ioDispatcher) { backend.getStatus() } } ?: return false
+        applyStatus(newStatus)
+        return true
+    }
 
     private fun applyStatus(newStatus: VaultStatus) {
-        if (mutableStatus.value.isUnlocked && !newStatus.isUnlocked) mutableLockCount.update { it + 1 }
+        if (mutableStatus.value.isUnlocked && !newStatus.isUnlocked) {
+            mutableLockCount.update { it + 1 }
+            forgetUnlockedData()
+        }
         mutableStatus.value = newStatus
         mutableScreen.value = when {
             newStatus.updateRequired != null -> Screen.UpdateRequired
@@ -213,6 +276,20 @@ class AutoFillModel(
             newStatus.state == VaultStatus.STATE_LOCKED -> Screen.Locked
             else -> Screen.SignedOut
         }
+    }
+
+    // What only an unlocked Hisar shows; the unlock loads it again for the request.
+    private fun forgetUnlockedData() {
+        isUserVerified = false
+        mutableAllMatchingLogin.value = emptyList()
+        mutableAllOtherLogin.value = emptyList()
+        mutableIsOtherLoginLoaded.value = false
+        mutableSearchText.value = ""
+        mutableAllMatchingPasskey.value = emptyList()
+        mutablePasskeyRegistrationOptions.value = null
+        mutableLoginToLink.value = null
+        selectedRegistrationLoginID.value = null
+        sourceByLoginID = emptyMap()
     }
 
     private fun resetRequest(target: FillTarget, kind: RequestKind) {
@@ -235,7 +312,7 @@ class AutoFillModel(
         resetRequest(target, kind)
         mutablePasskeyAssertionRequest.value = passkeyRequest
         val backend = prepare() ?: return
-        applyStatus(readStatus(backend))
+        if (!refreshStatus(backend)) return
         if (mutableStatus.value.isUnlocked) loadAllMatchingCredential()
     }
 
@@ -245,8 +322,8 @@ class AutoFillModel(
         mutablePasskeyAssertionRequest.value = passkeyRequest
         isUnlockOnly = true
         val backend = prepare() ?: return
-        applyStatus(readStatus(backend))
-        if (mutableStatus.value.isUnlocked) passkeyCompletion.completeUnlock(false)
+        if (!refreshStatus(backend)) return
+        if (mutableStatus.value.isUnlocked) withinUnlock { completeUnlock(false) }
     }
 
     /** A suggestion the user picked: filled at once when unlocked, else after the unlock. */
@@ -259,27 +336,29 @@ class AutoFillModel(
         resetRequest(target, kind)
         pendingRequest = PendingCredentialRequest(recordIdentifier, source, kind)
         val backend = prepare() ?: return
-        applyStatus(readStatus(backend))
+        if (!refreshStatus(backend)) return
         if (mutableStatus.value.isUnlocked) finishPendingRequest()
     }
 
     // Without user interaction only a backend that is prepared and still unlocked can answer.
-    suspend fun provideCredentialWithoutUserInteraction(recordIdentifier: String, source: LoginSource): LoginCredential? {
-        val backend = backend ?: return null
-        val (vaultID, itemID) = LoginMatch.parseRecordIdentifier(recordIdentifier) ?: return null
-        val credential = withContext(ioDispatcher) {
-            val status = backend.getStatus()
-            if (!status.isUnlocked || status.updateRequired != null) return@withContext null
-            runCatching { matcher(backend).getLogin(vaultID, itemID, source) }.getOrNull()
-        } ?: return null
+    suspend fun provideCredentialWithoutUserInteraction(recordIdentifier: String, source: LoginSource): LoginCredential? = withinUnlock {
+        val backend = backend ?: return@withinUnlock null
+        val (vaultID, itemID) = LoginMatch.parseRecordIdentifier(recordIdentifier) ?: return@withinUnlock null
+        val credential = withinUnlock {
+            withContext(ioDispatcher) {
+                val status = backend.getStatus()
+                if (!status.isUnlocked || status.updateRequired != null) return@withContext null
+                runCatching { matcher(backend).getLogin(vaultID, itemID, source) }.getOrNull()
+            }
+        } ?: return@withinUnlock null
         if (credential.hasOneTimePassword) copyCode(vaultID, itemID, source)
-        return credential
+        credential
     }
 
-    suspend fun provideOneTimeCodeWithoutUserInteraction(recordIdentifier: String, source: LoginSource): String? {
-        val backend = backend ?: return null
-        val (vaultID, itemID) = LoginMatch.parseRecordIdentifier(recordIdentifier) ?: return null
-        return withContext(ioDispatcher) {
+    suspend fun provideOneTimeCodeWithoutUserInteraction(recordIdentifier: String, source: LoginSource): String? = withinUnlock {
+        val backend = backend ?: return@withinUnlock null
+        val (vaultID, itemID) = LoginMatch.parseRecordIdentifier(recordIdentifier) ?: return@withinUnlock null
+        withContext(ioDispatcher) {
             val status = backend.getStatus()
             if (!status.isUnlocked || status.updateRequired != null) return@withContext null
             runCatching { matcher(backend).getOneTimeCode(vaultID, itemID, source).code }.getOrNull()
@@ -287,25 +366,31 @@ class AutoFillModel(
     }
 
     // The code goes to the clipboard after a password fill, for the site's next step; a failure never stops the fill.
-    private suspend fun copyCode(vaultID: String, itemID: String, source: LoginSource?) {
-        val backend = backend ?: return
-        val code = withContext(ioDispatcher) { runCatching { matcher(backend).getOneTimeCode(vaultID, itemID, source) }.getOrNull() }
+    private suspend fun copyCode(vaultID: String, itemID: String, source: LoginSource?) = withinUnlock {
+        val backend = backend ?: return@withinUnlock
+        val code = withinUnlock {
+            withContext(ioDispatcher) { runCatching { matcher(backend).getOneTimeCode(vaultID, itemID, source) }.getOrNull() }
+        }
         if (code != null) copyOneTimeCode(code.code)
     }
 
     // Unlocking replaces the lock screen that called it, so the work runs in the model's scope, not the screen's.
     suspend fun unlock(password: String): Boolean = scope.async {
-        val newStatus = perform { it.unlock(password) } ?: return@async false
-        handleUnlocked(newStatus)
-        true
+        withinUnlock {
+            val newStatus = performWithinUnlock { it.unlock(password) } ?: return@withinUnlock false
+            handleUnlocked(newStatus)
+            true
+        } ?: false
     }.await()
 
     suspend fun unlockWithBiometric() = scope.async {
-        val newStatus = if (mutableStatus.value.biometricReady) perform { it.unlockWithBiometric() } else null
-        if (newStatus == null) {
-            backend?.let { mutableStatus.value = readStatus(it) }
-        } else {
-            handleUnlocked(newStatus)
+        withinUnlock {
+            val newStatus = if (mutableStatus.value.biometricReady) performWithinUnlock { it.unlockWithBiometric() } else null
+            if (newStatus == null) {
+                backend?.let { refreshStatus(it) }
+            } else {
+                handleUnlocked(newStatus)
+            }
         }
     }.await()
 
@@ -314,7 +399,7 @@ class AutoFillModel(
         if (!newStatus.isUnlocked) return
         isUserVerified = true
         when {
-            isUnlockOnly -> passkeyCompletion.completeUnlock(true)
+            isUnlockOnly -> completeUnlock(true)
             mutablePasskeyRegistrationRequest.value != null -> loadPasskeyRegistrationOptions()
             pendingRequest != null || pendingPasskeyCredentialID != null -> finishPendingRequest()
             else -> loadAllMatchingCredential()
@@ -331,21 +416,21 @@ class AutoFillModel(
         mutablePasskeyAssertionRequest.value = request
         pendingPasskeyCredentialID = credentialID
         val backend = prepare() ?: return
-        applyStatus(readStatus(backend))
+        if (!refreshStatus(backend)) return
         if (mutableStatus.value.isUnlocked) finishPendingRequest()
     }
 
     // Like passwords, only a backend that is prepared and still unlocked signs without user interaction, and only when the
     // user needs no verification: the site discourages it, or [isUserVerified] says this request's unlock verified the user.
-    suspend fun providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: ByteString, isUserVerified: Boolean = false): PasskeyAssertionCredential? {
-        if (!request.isUserVerificationDiscouraged && !isUserVerified) return null
-        val backend = backend ?: return null
+    suspend fun providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: ByteString, isUserVerified: Boolean = false): PasskeyAssertionCredential? = withinUnlock {
+        if (!request.isUserVerificationDiscouraged && !isUserVerified) return@withinUnlock null
+        val backend = backend ?: return@withinUnlock null
         val result = withContext(ioDispatcher) {
             val status = backend.getStatus()
             if (!status.isUnlocked || status.updateRequired != null) return@withContext null
             runCatching { backend.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash) }.getOrNull()
-        } ?: return null
-        return PasskeyAssertionCredential.create(request.relyingPartyID, request.clientDataHash, result)
+        } ?: return@withinUnlock null
+        PasskeyAssertionCredential.create(request.relyingPartyID, request.clientDataHash, result)
     }
 
     /** A site asks to save a passkey; without ES256, which Hisar's passkeys use, the request fails. */
@@ -354,14 +439,14 @@ class AutoFillModel(
         if (!request.isAlgorithmSupported) return cancelRequest(CancelReason.NOT_SUPPORTED)
         mutablePasskeyRegistrationRequest.value = request
         val backend = prepare() ?: return
-        applyStatus(readStatus(backend))
+        if (!refreshStatus(backend)) return
         if (mutableStatus.value.isUnlocked) loadPasskeyRegistrationOptions()
     }
 
     /** The logins the passkey can join, with the one whose username is the account's user name chosen. */
     suspend fun loadPasskeyRegistrationOptions() {
         val request = mutablePasskeyRegistrationRequest.value ?: return
-        val options = perform { it.preparePasskeyRegistration(request.relyingPartyID, request.allExcludedCredentialID) } ?: return
+        val options = performWithinUnlock { it.preparePasskeyRegistration(request.relyingPartyID, request.allExcludedCredentialID) } ?: return
         mutablePasskeyRegistrationOptions.value = options
         val userName = request.userName.trim()
         selectedRegistrationLoginID.value = options.allLogin.firstOrNull { userName.isNotEmpty() && it.username.equals(userName, ignoreCase = true) }?.id
@@ -369,35 +454,51 @@ class AutoFillModel(
 
     /** Saves the passkey to the chosen login, or to a new login in the Personal vault, once the device owner confirms. */
     suspend fun savePasskey() {
-        val request = mutablePasskeyRegistrationRequest.value ?: return
-        val options = mutablePasskeyRegistrationOptions.value?.takeIf { !it.isExcluded } ?: return
-        if (!verifyUser("Create a passkey for ${request.relyingPartyID}", request.isUserVerificationDiscouraged)) return
-        val login = options.allLogin.firstOrNull { it.id == selectedRegistrationLoginID.value }
-        val result = perform { it.createPasskey(request, login?.vaultID.orEmpty(), login?.itemID.orEmpty()) } ?: return
-        val credential = PasskeyRegistrationCredential.create(request.relyingPartyID, request.clientDataHash, result)
-        if (credential == null) {
-            errorMessage.value = "Hisar could not read the new passkey."
-            return
+        withinUnlock {
+            val request = mutablePasskeyRegistrationRequest.value ?: return@withinUnlock
+            val options = mutablePasskeyRegistrationOptions.value?.takeIf { !it.isExcluded } ?: return@withinUnlock
+            if (!verifyUser("Create a passkey for ${request.relyingPartyID}", request.isUserVerificationDiscouraged)) return@withinUnlock
+            val login = options.allLogin.firstOrNull { it.id == selectedRegistrationLoginID.value }
+            val backend = backend ?: return@withinUnlock
+            mutableIsBusy.value = true
+            try {
+                // Go commits before returning. Its public registration response must reach the site even after a lock.
+                val result = withContext(ioDispatcher) { backend.createPasskey(request, login?.vaultID.orEmpty(), login?.itemID.orEmpty()) }
+                val credential = PasskeyRegistrationCredential.create(request.relyingPartyID, request.clientDataHash, result)
+                if (credential == null) {
+                    errorMessage.value = "Hisar could not read the new passkey."
+                } else {
+                    completeRegistration(credential)
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                if (currentCoroutineContext()[UnlockGeneration]?.count == mutableLockCount.value) errorMessage.value = describeError(error)
+            } finally {
+                mutableIsBusy.value = false
+            }
         }
-        passkeyCompletion.completeRegistration(credential)
     }
 
     fun rejectExcludedPasskeyRegistration() {
-        passkeyCompletion.rejectExcludedRegistration()
+        rejectExcludedRegistration()
     }
 
     suspend fun selectPasskey(passkey: StoredPasskey) {
-        val request = mutablePasskeyAssertionRequest.value ?: return
-        val credentialID = Base64URL.decode(passkey.credentialID) ?: return
-        if (!verifyUser("Use your passkey for ${request.relyingPartyID}", request.isUserVerificationDiscouraged)) return
-        assertPasskey(request, credentialID)
+        withinUnlock {
+            val request = mutablePasskeyAssertionRequest.value ?: return@withinUnlock
+            val credentialID = Base64URL.decode(passkey.credentialID) ?: return@withinUnlock
+            if (!verifyUser("Use your passkey for ${request.relyingPartyID}", request.isUserVerificationDiscouraged)) return@withinUnlock
+            assertPasskey(request, credentialID)
+        }
     }
 
     // Hisar asks the device owner again before a passkey is used or created, unless the user unlocked during this request
     // or the site discourages user verification. Declining cancels the request.
     private suspend fun verifyUser(reason: String, isDiscouraged: Boolean): Boolean {
         if (isDiscouraged || isUserVerified) return true
-        if (!verifyDeviceOwner(reason)) {
+        val verified = withinUnlock { verifyDeviceOwner(reason) } ?: return false
+        if (!verified) {
             cancelRequest(CancelReason.USER_CANCELED)
             return false
         }
@@ -406,46 +507,51 @@ class AutoFillModel(
     }
 
     private suspend fun assertPasskey(request: PasskeyAssertionRequest, credentialID: ByteString): Boolean {
-        val result = perform { it.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash) } ?: return false
+        val result = performWithinUnlock { it.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash) } ?: return false
         val credential = PasskeyAssertionCredential.create(request.relyingPartyID, request.clientDataHash, result)
         if (credential == null) {
             errorMessage.value = "Hisar could not read the passkey signature."
             return false
         }
-        passkeyCompletion.completeAssertion(credential)
+        completeAssertion(credential)
         return true
     }
 
     // A passkey whose login no longer matches falls back to the list; one Hisar no longer has fails the request. A
     // suggestion whose login is gone falls back to the list.
     private suspend fun finishPendingRequest() {
-        val credentialID = pendingPasskeyCredentialID
-        val passkeyRequest = mutablePasskeyAssertionRequest.value
-        if (credentialID != null && passkeyRequest != null) {
-            val allFound = perform { it.listAllPasskeyForRelyingParty(passkeyRequest.relyingPartyID, listOf(credentialID)) }
-            if (allFound.isNullOrEmpty()) return cancelRequest(CancelReason.CREDENTIAL_NOT_FOUND)
-            if (!verifyUser("Use your passkey for ${passkeyRequest.relyingPartyID}", passkeyRequest.isUserVerificationDiscouraged)) return
-            if (assertPasskey(passkeyRequest, credentialID)) return
-            pendingPasskeyCredentialID = null
-            loadAllMatchingCredential()
-            return
-        }
-        val request = pendingRequest ?: return
-        val (vaultID, itemID) = LoginMatch.parseRecordIdentifier(request.recordIdentifier) ?: return cancel()
-        if (request.kind == RequestKind.ONE_TIME_CODE) {
-            perform { matcher(it).getOneTimeCode(vaultID, itemID, request.source) }?.let { code ->
-                completeOneTimeCodeRequest(code.code)
-                return
+        withinUnlock {
+            val credentialID = pendingPasskeyCredentialID
+            val passkeyRequest = mutablePasskeyAssertionRequest.value
+            if (credentialID != null && passkeyRequest != null) {
+                val allFound = performWithinUnlock { it.listAllPasskeyForRelyingParty(passkeyRequest.relyingPartyID, listOf(credentialID)) } ?: return@withinUnlock
+                if (allFound.isEmpty()) {
+                    cancelRequest(CancelReason.CREDENTIAL_NOT_FOUND)
+                    return@withinUnlock
+                }
+                if (!verifyUser("Use your passkey for ${passkeyRequest.relyingPartyID}", passkeyRequest.isUserVerificationDiscouraged)) return@withinUnlock
+                if (assertPasskey(passkeyRequest, credentialID)) return@withinUnlock
+                pendingPasskeyCredentialID = null
+                loadAllMatchingCredential()
+                return@withinUnlock
             }
-        } else {
-            perform { matcher(it).getLogin(vaultID, itemID, request.source) }?.let { credential ->
-                if (credential.hasOneTimePassword) copyCode(vaultID, itemID, request.source)
-                completeRequest(credential)
-                return
+            val request = pendingRequest ?: return@withinUnlock
+            val (vaultID, itemID) = LoginMatch.parseRecordIdentifier(request.recordIdentifier) ?: return@withinUnlock cancel()
+            if (request.kind == RequestKind.ONE_TIME_CODE) {
+                performWithinUnlock { matcher(it).getOneTimeCode(vaultID, itemID, request.source) }?.let { code ->
+                    completeOneTimeCodeRequest(code.code)
+                    return@withinUnlock
+                }
+            } else {
+                performWithinUnlock { matcher(it).getLogin(vaultID, itemID, request.source) }?.let { credential ->
+                    if (credential.hasOneTimePassword) copyCode(vaultID, itemID, request.source)
+                    completeRequest(credential)
+                    return@withinUnlock
+                }
             }
+            pendingRequest = null
+            loadAllMatchingLogin()
         }
-        pendingRequest = null
-        loadAllMatchingLogin()
     }
 
     suspend fun loadAllMatchingCredential() {
@@ -455,19 +561,20 @@ class AutoFillModel(
 
     suspend fun loadAllMatchingPasskey() {
         val request = mutablePasskeyAssertionRequest.value ?: return run { mutableAllMatchingPasskey.value = emptyList() }
-        mutableAllMatchingPasskey.value = perform { it.listAllPasskeyForRelyingParty(request.relyingPartyID, request.allAllowedCredentialID) }.orEmpty()
+        val allPasskey = performWithinUnlock { it.listAllPasskeyForRelyingParty(request.relyingPartyID, request.allAllowedCredentialID) } ?: return
+        mutableAllMatchingPasskey.value = allPasskey
     }
 
     suspend fun loadAllMatchingLogin() {
         val target = mutableTarget.value ?: return
-        val allMatch = perform { matcher(it).listAllMatch(target) } ?: return
+        val allMatch = performWithinUnlock { matcher(it).listAllMatch(target) } ?: return
         sourceByLoginID = allMatch.associate { it.login.id to it.source }
         mutableAllMatchingLogin.value = allMatch.map { it.login }
     }
 
     suspend fun loadAllOtherLogin() {
         if (mutableIsOtherLoginLoaded.value || !mutableStatus.value.isUnlocked || mutableIsBusy.value) return
-        val allLogin = perform { backend ->
+        val allLogin = performWithinUnlock { backend ->
             backend.listAllVault().flatMap { vault ->
                 backend.listAllItem(vault.id).filter { it.offersLoginFill }.map { item ->
                     LoginMatch(vault.id, item.id, item.title, item.username, vault.name, item.hasOneTimePassword)
@@ -494,7 +601,7 @@ class AutoFillModel(
         val app = (mutableTarget.value as? FillTarget.App)?.app ?: return
         mutableLoginToLink.value = null
         if (!isLinked) return fill(login, null)
-        perform { it.addAndroidApp(login.vaultID, login.itemID, app.packageName, app.certificateSHA256) } ?: return
+        performWithinUnlock { it.addAndroidApp(login.vaultID, login.itemID, app.packageName, app.certificateSHA256) } ?: return
         fill(login, LoginSource.App(app))
     }
 
@@ -503,13 +610,15 @@ class AutoFillModel(
     }
 
     private suspend fun fill(login: LoginMatch, source: LoginSource?) {
-        if (mutableRequestKind.value == RequestKind.ONE_TIME_CODE) {
-            perform { matcher(it).getOneTimeCode(login.vaultID, login.itemID, source) }?.let { completeOneTimeCodeRequest(it.code) }
-            return
+        withinUnlock {
+            if (mutableRequestKind.value == RequestKind.ONE_TIME_CODE) {
+                performWithinUnlock { matcher(it).getOneTimeCode(login.vaultID, login.itemID, source) }?.let { completeOneTimeCodeRequest(it.code) }
+                return@withinUnlock
+            }
+            val credential = performWithinUnlock { matcher(it).getLogin(login.vaultID, login.itemID, source) } ?: return@withinUnlock
+            if (credential.hasOneTimePassword) copyCode(login.vaultID, login.itemID, source)
+            completeRequest(credential)
         }
-        val credential = perform { matcher(it).getLogin(login.vaultID, login.itemID, source) } ?: return
-        if (credential.hasOneTimePassword) copyCode(login.vaultID, login.itemID, source)
-        completeRequest(credential)
     }
 
     fun cancel() {

@@ -1,6 +1,24 @@
 package service
 
-import "testing"
+import (
+	"bytes"
+	"context"
+	"log"
+	"strings"
+	"testing"
+)
+
+func TestAuditEventThatCannotBeRecordedIsLogged(t *testing.T) {
+	service := createSettingsService(t, nil)
+	var logged bytes.Buffer
+	previousWriter := log.Writer()
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(previousWriter) })
+	service.recordAudit(context.Background(), Actor{IP: "192.0.2.1"}, auditLogin, map[string]any{"device": make(chan int)})
+	if !strings.Contains(logged.String(), "audit event login not recorded") {
+		t.Errorf("log: %q", logged.String())
+	}
+}
 
 func TestEveryAuditTypeHasALabel(t *testing.T) {
 	groupIDs := map[string]bool{}

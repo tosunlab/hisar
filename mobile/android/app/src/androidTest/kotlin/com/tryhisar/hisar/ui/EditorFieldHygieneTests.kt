@@ -97,6 +97,7 @@ class EditorFieldHygieneTests {
         assertSecret("editor-password")
         assertSecret("editor-one-time-password")
         assertSecret("editor-field-0-value")
+        assertSecret("editor-notes")
 
         val allSecretTagByCategory = mapOf(
             ItemDetail.CATEGORY_CREDIT_CARD to listOf("editor-card-number", "editor-card-security-code", "editor-card-pin"),
@@ -109,6 +110,9 @@ class EditorFieldHygieneTests {
             composeRule.waitForTag(allSecretTag.first())
             allSecretTag.forEach(::assertSecret)
         }
+        composeRule.runOnUiThread { request = EditorRequest.New("personal", ItemDetail(category = ItemDetail.CATEGORY_SECURE_NOTE)) }
+        composeRule.waitForTag("editor-notes")
+        assertSecret("editor-notes")
     }
 
     @Test

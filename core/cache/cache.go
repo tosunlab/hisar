@@ -14,6 +14,8 @@ import (
 
 const schemaVersion = 1
 
+var ErrAccountMismatch = errors.New("cache: offline copy belongs to another account or has no account binding")
+
 var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS accounts (account_id TEXT PRIMARY KEY, data BLOB NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS vaults (vault_id TEXT PRIMARY KEY, data BLOB, seq INTEGER NOT NULL DEFAULT 0)`,
@@ -28,13 +30,18 @@ type Cache struct {
 	database *sql.DB
 }
 
-// Open creates the file with mode 0600 if needed; a file from another schema version is emptied.
+// Open creates the file with mode 0600 if needed, and makes an existing one 0600; a file from another schema version
+// is emptied.
 func Open(path string) (*Cache, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
 	}
+	err = file.Chmod(0o600)
 	file.Close()
+	if err != nil {
+		return nil, err
+	}
 	database, err := sql.Open(sqliteDriver, buildSQLiteDataSource(path))
 	if err != nil {
 		return nil, err
@@ -78,6 +85,30 @@ func Remove(path string) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// CheckAccount accepts this account's snapshot or a completely empty cache.
+func (c *Cache) CheckAccount(accountID string) error {
+	var isAllowed bool
+	err := c.database.QueryRow(`
+		SELECT NOT EXISTS (SELECT 1 FROM accounts WHERE account_id <> ?)
+			AND NOT EXISTS (SELECT 1 FROM account_preferences WHERE account_id <> ?)
+			AND (
+				EXISTS (SELECT 1 FROM accounts WHERE account_id = ?)
+				OR NOT (
+					EXISTS (SELECT 1 FROM vaults)
+					OR EXISTS (SELECT 1 FROM items)
+					OR EXISTS (SELECT 1 FROM account_preferences)
+					OR EXISTS (SELECT 1 FROM website_icons)
+				)
+			)`, accountID, accountID, accountID).Scan(&isAllowed)
+	if err != nil {
+		return err
+	}
+	if !isAllowed {
+		return ErrAccountMismatch
+	}
+	return nil
 }
 
 func (c *Cache) SaveAccount(account *apitypes.Account) error {

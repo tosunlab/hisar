@@ -87,7 +87,8 @@ func TestParseLastPassTypedNotes(t *testing.T) {
 		lastPassNoteRow("Locker", "", "NoteType:Custom_123", "Combination:10-20-30", "Notes:Gym"),
 	})
 	result := parseFixture(t, "lastpass_export.csv", content, FormatAutomatic)
-	if result.Format != FormatLastPassCSV || len(result.Skipped) != 0 {
+	wantSkipped := []SkippedEntry{{Title: "Deploy key", Reason: "the encrypted SSH key comment could not be compared; Hisar uses the item title as its comment"}}
+	if result.Format != FormatLastPassCSV || !reflect.DeepEqual(result.Skipped, wantSkipped) {
 		t.Fatalf("format %q, skipped %+v", result.Format, result.Skipped)
 	}
 
@@ -196,5 +197,55 @@ func TestParseLastPassNoteText(t *testing.T) {
 	}
 	if isLastPassTypedNote("Door code 1234") || !isLastPassTypedNote("NoteType:Passport\nNumber:X") {
 		t.Error("typed note detection")
+	}
+}
+
+// A password is kept exactly: a leading space is not mistaken for a line of the value before it (which would show the
+// password as part of the username), surrounding spaces stay, and a password of commas is not read as an empty date.
+func TestParseLastPassKeepsExactSecrets(t *testing.T) {
+	content := buildLastPassExport(t, [][]string{
+		lastPassNoteRow("Leading space", "", "NoteType:Server", "Hostname:a.example.com", "Username:admin", "Password: secret ", "Notes:"),
+		lastPassNoteRow("Commas", "", "NoteType:Database", "Hostname:db.example.com", "Username:sa", "Password:,", "Expiration Date:,", "Notes:"),
+		lastPassNoteRow("Custom", "", "NoteType:Custom_123", "API Key:ak_1", "Recovery Code:rc-2", "Token:tk-3", "Notes:"),
+	})
+	result := parseFixture(t, "lastpass_export.csv", content, FormatLastPassCSV)
+	leading := findTestItem(t, result, "Leading space")
+	if leading.Overview.Username != "admin" || leading.Details.Password != " secret " {
+		t.Errorf("Leading space = %q %q", leading.Overview.Username, leading.Details.Password)
+	}
+	commas := findTestItem(t, result, "Commas")
+	if commas.Details.Password != "," || strings.Contains(describeFields(commas.Details.Fields), "Expiration Date") {
+		t.Errorf("Commas = %q %+v", commas.Details.Password, commas.Details.Fields)
+	}
+	for _, field := range findTestItem(t, result, "Custom").Details.Fields {
+		if field.Name != "Type" && !field.Concealed {
+			t.Errorf("custom note field %q is not concealed", field.Name)
+		}
+	}
+}
+
+func TestLastPassSSHConcealsSecretSiblings(t *testing.T) {
+	privateKey, _ := createLastPassSSHKey(t, " key password ")
+	result := parseFixture(t, "lastpass.csv", buildLastPassExport(t, [][]string{
+		lastPassNoteRow("Deploy", "", "NoteType:SSH Key", "Passphrase: key password ", "Private Key:"+privateKey,
+			"API Key: api-secret ", "Recovery Code:\u00a0", "Hostname:deploy.example.com", "Notes:CI only"),
+	}), FormatLastPassCSV)
+	key := findTestItem(t, result, "Deploy")
+	if !key.IsCategory(item.CategorySSHKey) {
+		t.Fatalf("key category = %q", key.Overview.Category)
+	}
+	for name, want := range map[string]string{"API Key": " api-secret ", "Recovery Code": "\u00a0"} {
+		found := false
+		for _, field := range key.Details.Fields {
+			if field.Name == name && field.Value == want && field.Concealed {
+				found = true
+			}
+		}
+		if !found || strings.Contains(key.Details.Notes, name) {
+			t.Errorf("%s is not concealed exactly: fields %+v, notes %q", name, key.Details.Fields, key.Details.Notes)
+		}
+	}
+	if !strings.Contains(key.Details.Notes, "Hostname: deploy.example.com") || !strings.Contains(key.Details.Notes, "CI only") {
+		t.Errorf("nonsecret notes lost: %q", key.Details.Notes)
 	}
 }

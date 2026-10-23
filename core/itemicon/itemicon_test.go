@@ -20,6 +20,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -164,6 +165,11 @@ func TestIsPublicAddress(t *testing.T) {
 		"64:ff9b::a00:1": false, "64:ff9b::7f00:1": false, "64:ff9b::8c52:7003": true,
 		"2002:c0a8:1::": false, "2002:a9fe:a9fe::1": false, "2002:8c52:7003::1": true,
 		"64:ff9b:1::8c52:7003": false, "2001:0:4136:e378:8000:63bf:3fff:fdd2": false,
+		// Special-purpose ranges that are not reachable on the internet: this network, IETF protocol assignments,
+		// documentation, benchmarking, reserved, IPv4-compatible IPv6, discard-only and SRv6.
+		"0.1.2.3": false, "192.0.0.8": false, "192.0.2.1": false, "198.18.0.1": false, "198.51.100.7": false, "203.0.113.9": false,
+		"240.0.0.1": false, "255.255.255.255": false, "2001:db8::1": false, "3fff::1": false, "2001:2::1": false, "100::1": false,
+		"::808:808": false, "5f00::1": false, "2a00:1450:4001:81d::200e": true,
 	} {
 		if got := isPublicAddress(netip.MustParseAddr(address)); got != want {
 			t.Errorf("isPublicAddress(%s) = %v", address, got)
@@ -209,6 +215,32 @@ func startTestWebsite(t *testing.T, handler http.Handler) *Fetcher {
 		return (&net.Dialer{}).DialContext(ctx, network, server.Listener.Addr().String())
 	}
 	return newFetcher(transport)
+}
+
+func TestFetchSendsNoRefererAfterARedirect(t *testing.T) {
+	var referers []string
+	fetcher := startTestWebsite(t, http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		referers = append(referers, request.Header.Get("Referer"))
+		switch request.URL.Path {
+		case "/":
+			http.Redirect(writer, request, "/home", http.StatusFound)
+		case "/home":
+			writer.Header().Set("Content-Type", "text/html")
+			writer.Write([]byte(`<html><head><link rel="icon" href="/moved.png"></head></html>`))
+		case "/moved.png":
+			http.Redirect(writer, request, "/icon.png", http.StatusFound)
+		case "/icon.png":
+			writer.Write(encodeTestPNG(t, createTestImage(32, 32)))
+		default:
+			http.NotFound(writer, request)
+		}
+	}))
+	if _, err := fetcher.Fetch(context.Background(), "https://example.com/"); err != nil {
+		t.Fatal(err)
+	}
+	if len(referers) != 4 || slices.ContainsFunc(referers, func(referer string) bool { return referer != "" }) {
+		t.Errorf("Referer headers sent: %q", referers)
+	}
 }
 
 func TestFetchPrefersTheLargestIconLink(t *testing.T) {

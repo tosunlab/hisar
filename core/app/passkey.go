@@ -24,7 +24,12 @@ const (
 	maxPasskeyCredentialCount = 64
 )
 
-var errPasskeyExcluded = errors.New("Hisar already has a passkey for this account")
+var (
+	errPasskeyExcluded = errors.New("Hisar already has a passkey for this account")
+	// errPasskeyAmbiguous: logins in two vaults hold different keys under one credential ID, as a shared vault's editor
+	// can make one; signing with either could be the wrong key.
+	errPasskeyAmbiguous = errors.New("Hisar has two different passkeys with this ID; remove the one you do not use")
+)
 
 // ItemPasskey describes a stored passkey without its private key.
 type ItemPasskey struct {
@@ -138,7 +143,7 @@ func (bridge *BrowserBridge) handlePasskeyRequest(ctx context.Context, request *
 
 func convertPasskeyError(err error) error {
 	switch {
-	case errors.Is(err, passkey.ErrInvalidOrigin), errors.Is(err, passkey.ErrInvalidRelyingPartyID), errors.Is(err, passkey.ErrInvalidRequest), errors.Is(err, errPasskeyExcluded):
+	case errors.Is(err, passkey.ErrInvalidOrigin), errors.Is(err, passkey.ErrInvalidRelyingPartyID), errors.Is(err, passkey.ErrInvalidRequest), errors.Is(err, errPasskeyExcluded), errors.Is(err, errPasskeyAmbiguous):
 		return browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, err.Error())
 	}
 	return convertBrowserError(err)
@@ -354,7 +359,9 @@ func (s *Service) savePasskey(ctx context.Context, save passkeySave, createCrede
 	return savedPasskey{creation: creation, vaultID: vaultID, itemID: vaultItem.ID}, nil
 }
 
-func (s *Service) signWithPasskey(ctx context.Context, relyingPartyID string, credentialID []byte, allowedIDs [][]byte, sign func(item.Passkey) (passkey.Assertion, error)) (item.Passkey, passkey.Assertion, error) {
+// signWithPasskey signs with the passkey credentialID names, in the login vaultID and itemID name when the caller chose
+// one.
+func (s *Service) signWithPasskey(ctx context.Context, relyingPartyID string, credentialID []byte, vaultID, itemID string, allowedIDs [][]byte, sign func(item.Passkey) (passkey.Assertion, error)) (item.Passkey, passkey.Assertion, error) {
 	if len(credentialID) == 0 {
 		return item.Passkey{}, passkey.Assertion{}, passkey.ErrInvalidRequest
 	}
@@ -367,11 +374,20 @@ func (s *Service) signWithPasskey(ctx context.Context, relyingPartyID string, cr
 	if err != nil {
 		return item.Passkey{}, passkey.Assertion{}, err
 	}
-	index := slices.IndexFunc(matches, func(match passkeyMatch) bool { return bytes.Equal(match.passkey.CredentialID, credentialID) })
-	if index < 0 {
+	isItemChosen := vaultID != "" || itemID != ""
+	matches = slices.DeleteFunc(matches, func(match passkeyMatch) bool {
+		return !bytes.Equal(match.passkey.CredentialID, credentialID) || (isItemChosen && (match.vaultID != vaultID || match.itemID != itemID))
+	})
+	if len(matches) == 0 {
 		return item.Passkey{}, passkey.Assertion{}, fmt.Errorf("passkey %w", ErrNotFound)
 	}
-	storedPasskey := matches[index].passkey
+	storedPasskey := matches[0].passkey
+	if slices.ContainsFunc(matches[1:], func(match passkeyMatch) bool {
+		return !bytes.Equal(match.passkey.PrivateKey, storedPasskey.PrivateKey) || !bytes.Equal(match.passkey.PRFSecret, storedPasskey.PRFSecret) ||
+			!bytes.Equal(match.passkey.UserHandle, storedPasskey.UserHandle)
+	}) {
+		return item.Passkey{}, passkey.Assertion{}, errPasskeyAmbiguous
+	}
 	assertion, err := sign(storedPasskey)
 	return storedPasskey, assertion, err
 }
@@ -476,7 +492,7 @@ func (s *Service) signPasskeyAssertion(ctx context.Context, request *browserprot
 		return browserprotocol.PasskeyAssertionResult{}, err
 	}
 	var prfResult *browserprotocol.PasskeyPRFResult
-	storedPasskey, assertion, err := s.signWithPasskey(ctx, target.relyingPartyID, credentialID, allowedIDs, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
+	storedPasskey, assertion, err := s.signWithPasskey(ctx, target.relyingPartyID, credentialID, request.VaultID, request.ItemID, allowedIDs, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
 		var err error
 		if prfResult, err = evaluatePasskeyAssertionPRF(request.PRF, allowedIDs, storedPasskey); err != nil {
 			return passkey.Assertion{}, err

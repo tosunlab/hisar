@@ -2,8 +2,6 @@ package hisarkit
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 
 	"github.com/tryhisar/hisar/core/app"
 )
@@ -27,15 +25,8 @@ func (hisar *Hisar) ReplaceSecretKey(password, directory string) (string, error)
 		return "", err
 	}
 	replacement := secretKeyReplacement{CredentialChangeResult: result}
-	export, err := app.ExportNewSecretKeyEmergencyKit(hisar.service)
-	if err == nil {
-		err = os.MkdirAll(directory, 0o700)
-	}
-	if err == nil {
-		path := filepath.Join(directory, emergencyKitFileName)
-		if os.WriteFile(path, export.Document, 0o600) == nil {
-			replacement.EmergencyKitPath = path
-		}
+	if kit, err := app.ExportNewSecretKeyEmergencyKitToDirectory(hisar.service, result, directory); err == nil {
+		replacement.EmergencyKitPath = kit.Path
 	}
 	return encodeJSON(replacement, nil)
 }

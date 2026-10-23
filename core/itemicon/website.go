@@ -71,6 +71,8 @@ func newFetcher(transport http.RoundTripper) *Fetcher {
 			if _, err := checkURL(request.URL); err != nil {
 				return err
 			}
+			// The website an icon is fetched for is no business of the one a redirect leads to.
+			request.Header.Del("Referer")
 			return nil
 		},
 	}}
@@ -129,6 +131,16 @@ var (
 	nat64LocalUse  = netip.MustParsePrefix("64:ff9b:1::/48")
 	sixToFour      = netip.MustParsePrefix("2002::/16")
 	teredo         = netip.MustParsePrefix("2001::/32")
+	// globalUnicastIPv6 is the only IPv6 space allocated for the internet.
+	globalUnicastIPv6 = netip.MustParsePrefix("2000::/3")
+	// specialPurposeRanges are the IANA special-purpose ranges no website is on that IsGlobalUnicast and IsPrivate let
+	// through: this network, IETF protocol assignments, documentation, benchmarking and reserved addresses.
+	specialPurposeRanges = []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/8"), netip.MustParsePrefix("192.0.0.0/24"), netip.MustParsePrefix("192.0.2.0/24"),
+		netip.MustParsePrefix("198.18.0.0/15"), netip.MustParsePrefix("198.51.100.0/24"), netip.MustParsePrefix("203.0.113.0/24"),
+		netip.MustParsePrefix("240.0.0.0/4"), netip.MustParsePrefix("2001::/23"), netip.MustParsePrefix("2001:db8::/32"),
+		netip.MustParsePrefix("3fff::/20"),
+	}
 )
 
 func isPublicAddress(address netip.Addr) bool {
@@ -141,6 +153,11 @@ func isPublicAddress(address netip.Addr) bool {
 		bytes := address.As16()
 		return isPublicAddress(netip.AddrFrom4([4]byte(bytes[2:6])))
 	case nat64LocalUse.Contains(address), teredo.Contains(address):
+		return false
+	case address.Is6() && !globalUnicastIPv6.Contains(address):
+		return false
+	}
+	if slices.ContainsFunc(specialPurposeRanges, func(prefix netip.Prefix) bool { return prefix.Contains(address) }) {
 		return false
 	}
 	return address.IsGlobalUnicast() && !address.IsPrivate() && !sharedAddressSpace.Contains(address)

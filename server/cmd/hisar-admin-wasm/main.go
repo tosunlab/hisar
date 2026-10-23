@@ -177,6 +177,7 @@ func signUp(ctx context.Context, arguments []string) (js.Value, error) {
 	if document != nil {
 		emergencyKit := js.Global().Get("Uint8Array").New(len(document))
 		js.CopyBytesToJS(emergencyKit, document)
+		clear(document)
 		result.Set("emergencyKitPdf", emergencyKit)
 	}
 	return result, nil

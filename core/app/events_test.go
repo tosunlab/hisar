@@ -63,6 +63,11 @@ func TestRemoteChangeSyncsAndNotifies(t *testing.T) {
 	testService.apiServer.eventChannel = make(chan string, 4)
 	eventChannel := testService.apiServer.eventChannel
 	testService.apiServer.mutex.Unlock()
+	select {
+	case <-remoteChangeChannel:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the opened stream did not sync")
+	}
 
 	if _, err := service.ListVaults(); err != nil {
 		t.Fatal(err)
@@ -147,5 +152,58 @@ func TestReconnectEventStreamOpensANewStreamNow(t *testing.T) {
 	time.Sleep(300 * time.Millisecond)
 	if countStream() != lockedCount {
 		t.Error("a locked service opened an event stream")
+	}
+}
+
+func TestReopenedEventStreamSyncsWhatItMissed(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, apiServer := testService.service, testService.apiServer
+	remoteChangeChannel := make(chan struct{}, 4)
+	service.mutex.Lock()
+	service.config.OnRemoteChange = func() { remoteChangeChannel <- struct{}{} }
+	unlockedSession := service.unlockedSession
+	service.mutex.Unlock()
+	countStream := func() int {
+		apiServer.mutex.Lock()
+		defer apiServer.mutex.Unlock()
+		return apiServer.eventStreamCount
+	}
+	apiServer.mutex.Lock()
+	apiServer.eventChannel = make(chan string)
+	apiServer.mutex.Unlock()
+	ReconnectEventStream(service)
+	for deadline := time.Now().Add(5 * time.Second); countStream() == 0; time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the service never opened the event stream")
+		}
+	}
+	select {
+	case <-remoteChangeChannel:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the first stream did not sync")
+	}
+	family, err := service.findVault(context.Background(), testService.familyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mutex.Lock()
+	service.itemsByVaultID[testService.familyID] = []item.Item{}
+	service.mutex.Unlock()
+
+	// The change happens while no stream is open, so its event is never delivered.
+	if _, err := unlockedSession.SaveItem(context.Background(), family, &item.Item{Overview: item.Overview{Title: "Saved while disconnected"}}); err != nil {
+		t.Fatal(err)
+	}
+	ReconnectEventStream(service)
+	select {
+	case <-remoteChangeChannel:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the reopened stream did not sync")
+	}
+	service.mutex.Lock()
+	cachedItems := service.itemsByVaultID[testService.familyID]
+	service.mutex.Unlock()
+	if len(cachedItems) != 1 || cachedItems[0].Overview.Title != "Saved while disconnected" {
+		t.Errorf("items after the stream reopened = %+v", cachedItems)
 	}
 }

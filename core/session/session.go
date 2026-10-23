@@ -14,6 +14,7 @@ var (
 	ErrBadCredentials = errors.New("incorrect email, password or Secret Key")
 	ErrConflict       = errors.New("item was changed on another device")
 	ErrRollback       = errors.New("server returned older vault state than previously seen")
+	ErrChangesStalled = errors.New("the server's list of vault changes did not advance")
 	ErrKeyMismatch    = errors.New("server returned public keys that do not match the keyset")
 	ErrNotFound       = errors.New("not found")
 	// ErrKeyChanged: the server refused items sealed with a vault key another device's rotation replaced, again after the
@@ -43,8 +44,9 @@ type Session struct {
 	// MemberVerifier, when set, is asked to accept each member a vault key is wrapped for (e.g. key pinning).
 	MemberVerifier func(member *apitypes.Member) error
 	// Cache, when set, stores the server's encrypted records; reads fall back to it while the server is unreachable.
-	Cache     Cache
-	isOffline atomic.Bool
+	Cache           Cache
+	isOffline       atomic.Bool
+	verifiedAccount *apitypes.Account
 
 	removalMutex  sync.Mutex
 	removedVaults []RemovedVault

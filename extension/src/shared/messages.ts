@@ -102,7 +102,7 @@ export interface InlineMenuState {
 }
 
 export type PopupMessage =
-  | { type: "popup.getState"; shouldReconnect?: boolean }
+  | { type: "popup.getState"; shouldReconnect?: boolean; isOverOpenConnection?: boolean }
   | { type: "popup.startPairing" }
   | { type: "popup.finishPairing"; code: string }
   | { type: "popup.unlock" }

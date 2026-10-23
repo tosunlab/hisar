@@ -1336,6 +1336,7 @@ function buildPreviewImportProgress(): ImportProgress {
     vaultName: vault.name,
     savedCount: previewImportRun.savedCount,
     totalCount: previewImportRun.savedCount + previewImportRun.allQueued.length,
+    leftBehindCount: allPreviewImportSkipped.length,
     isDone: previewImportRun.allQueued.length === 0,
     allFailed: [],
   };
@@ -1911,11 +1912,11 @@ export const previewApi = {
   changeMasterPassword: (currentPassword: string) =>
     currentPassword.length < 4
       ? Promise.reject(new Error("the master password is not correct"))
-      : resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "" }),
+      : resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "", localError: "" }),
   replaceSecretKey: (password: string) =>
     password.length < 4
       ? Promise.reject(new Error("the master password is not correct"))
-      : resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-8RW2N-QHT4M-0ZKXD-71BJE-P3SV6A", signedOutDeviceCount: 2, keychainError: "" }),
+      : resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-8RW2N-QHT4M-0ZKXD-71BJE-P3SV6A", signedOutDeviceCount: 2, keychainError: "", localError: "" }),
   previewAccountDeletion: () =>
     resolveAfterDelay({
       email: "alper@tryhisar.com",

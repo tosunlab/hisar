@@ -58,7 +58,8 @@ class SettingsModel(private val context: ModelContext) {
     suspend fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult? = context.runInModel {
         val result = context.perform { it.changeMasterPassword(currentPassword, newPassword) } ?: return@runInModel null
         context.applyStatus(result.status)
-        context.showNotice("Master password changed. ${AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)}")
+        val warning = result.localError.takeIf { it.isNotEmpty() }?.let { " $it" }.orEmpty()
+        context.showNotice("Master password changed. ${AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)}$warning")
         result
     }
 
@@ -77,7 +78,12 @@ class SettingsModel(private val context: ModelContext) {
     suspend fun loadAccountDeletionPreview(): AccountDeletionPreview? = context.perform(isBusyShown = false) { it.previewAccountDeletion() }
 
     suspend fun deleteAccount(password: String, email: String): Boolean = context.runInModel {
-        val newStatus = context.perform { it.deleteAccount(password, email) } ?: return@runInModel false
+        val newStatus = context.perform { it.deleteAccount(password, email) }
+        // A deletion the server made can still fail to clean up this phone; the status read again shows it signed out.
+        if (newStatus == null) {
+            context.refreshStatus()
+            return@runInModel false
+        }
         context.applyStatus(newStatus)
         context.showNotice("Your Hisar account was deleted.")
         true

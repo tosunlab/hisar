@@ -58,9 +58,12 @@ func writeRecord[T any](vaultItem *Item, record T, namedFields []NamedField[T], 
 	}
 }
 
-// trimRecord trims every value of record.
+// trimRecord trims display values, leaving concealed values byte for byte.
 func trimRecord[T any](record *T, namedFields []NamedField[T]) {
 	for _, namedField := range namedFields {
+		if namedField.Concealed {
+			continue
+		}
 		value := namedField.value(record)
 		*value = strings.TrimSpace(*value)
 	}

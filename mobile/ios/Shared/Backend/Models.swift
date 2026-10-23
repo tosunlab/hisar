@@ -1737,13 +1737,15 @@ struct CredentialChangeResult: Codable, Equatable {
     var secretKey: String
     var signedOutDeviceCount: Int
     var keychainError: String
+    var localError: String
     var emergencyKitPath: String
 
-    init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", emergencyKitPath: String = "") {
+    init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", localError: String = "", emergencyKitPath: String = "") {
         self.status = status
         self.secretKey = secretKey
         self.signedOutDeviceCount = signedOutDeviceCount
         self.keychainError = keychainError
+        self.localError = localError
         self.emergencyKitPath = emergencyKitPath
     }
 
@@ -1753,6 +1755,7 @@ struct CredentialChangeResult: Codable, Equatable {
         secretKey = try container.decodeIfPresent(String.self, forKey: .secretKey) ?? ""
         signedOutDeviceCount = try container.decodeIfPresent(Int.self, forKey: .signedOutDeviceCount) ?? 0
         keychainError = try container.decodeIfPresent(String.self, forKey: .keychainError) ?? ""
+        localError = try container.decodeIfPresent(String.self, forKey: .localError) ?? ""
         emergencyKitPath = try container.decodeIfPresent(String.self, forKey: .emergencyKitPath) ?? ""
     }
 }

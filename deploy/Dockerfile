@@ -1,4 +1,5 @@
-FROM --platform=$BUILDPLATFORM golang:1.26 AS admin-wasm
+FROM --platform=$BUILDPLATFORM golang:1.26.10 AS admin-wasm
+ENV GOTOOLCHAIN=local
 WORKDIR /src
 COPY core core
 COPY server server
@@ -15,7 +16,8 @@ COPY admin/end-to-end end-to-end
 COPY --from=admin-wasm /admin-wasm wasm
 RUN npm run build
 
-FROM --platform=$BUILDPLATFORM golang:1.26 AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.10 AS build
+ENV GOTOOLCHAIN=local
 ARG TARGETOS
 ARG TARGETARCH
 WORKDIR /src

@@ -144,3 +144,36 @@ func TestCopySecretReference(t *testing.T) {
 		t.Error("a missing item was referenced")
 	}
 }
+
+// TestCopySecretReferenceNeverNamesAnotherObjectsID: the resolver tries IDs before names, so a title or vault name
+// that is another item's or vault's ID must not be used as a name.
+func TestCopySecretReferenceNeverNamesAnotherObjectsID(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, personalID := testService.service, testService.personalID
+	target, err := service.SaveItem(personalID, ItemDetail{Title: "Target", Password: "target-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	impostor, err := service.SaveItem(personalID, ItemDetail{Title: target.ID, Password: "impostor-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shadowVaultID := createSharedTestVault(t, service, testService.familyID)
+	inside, err := service.SaveItem(shadowVaultID, ItemDetail{Title: "Inside", Password: "inside-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct{ vaultID, itemID, want string }{
+		{personalID, impostor.ID, "impostor-password"},
+		{shadowVaultID, inside.ID, "inside-password"},
+	} {
+		reference, err := service.CopySecretReference(testCase.vaultID, testCase.itemID, "password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolvedReferences, err := secretreference.ResolveAll(serviceSecretSource{service: service, ctx: t.Context()}, []string{reference}, service.config.Now())
+		if err != nil || resolvedReferences[0].Value != testCase.want {
+			t.Errorf("%s resolves to %+v, %v; want %q", reference, resolvedReferences, err, testCase.want)
+		}
+	}
+}

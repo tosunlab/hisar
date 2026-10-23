@@ -74,7 +74,7 @@ func TestAdminAccountsPagingAndSearch(t *testing.T) {
 
 	device, _ := createTestAccount(t, database, "DEVICE", "devices@example.com")
 	second := &Device{ID: uuid.NewString(), AccountID: "DEVICE", Name: "laptop", Platform: "darwin/desktop"}
-	if err := database.CreateDeviceSession(ctx, second, &Session{TokenHash: []byte("laptop"), AccountID: "DEVICE", DeviceID: second.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+	if err := database.CreateDeviceSession(ctx, second, &Session{TokenHash: []byte("laptop"), AccountID: "DEVICE", DeviceID: second.ID, ExpiresAt: time.Now().Add(time.Hour)}, testRecordHash()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.RevokeDevice(ctx, "DEVICE", device.ID); err != nil {
@@ -115,7 +115,7 @@ func TestSuspendAccount(t *testing.T) {
 		t.Errorf("a suspended account's session: %v", err)
 	}
 	laptop := &Device{ID: uuid.NewString(), AccountID: "BOBBBB", Name: "laptop", Platform: "p"}
-	if err := database.CreateDeviceSession(ctx, laptop, &Session{TokenHash: []byte("bob laptop"), AccountID: "BOBBBB", DeviceID: laptop.ID, ExpiresAt: time.Now().Add(time.Hour)}); !errors.Is(err, ErrAccountSuspended) {
+	if err := database.CreateDeviceSession(ctx, laptop, &Session{TokenHash: []byte("bob laptop"), AccountID: "BOBBBB", DeviceID: laptop.ID, ExpiresAt: time.Now().Add(time.Hour)}, testRecordHash()); !errors.Is(err, ErrAccountSuspended) {
 		t.Errorf("a suspended account signed in: %v", err)
 	}
 	if countQueryRow(t, database, `SELECT count(*) FROM devices WHERE id = $1 AND revoked_at IS NULL`, bobDevice.ID) != 1 ||
@@ -139,7 +139,7 @@ func TestSuspendAccount(t *testing.T) {
 	if reactivated, err := database.ReactivateAccount(ctx, "AAAAAA", "BOBBBB"); err != nil || reactivated {
 		t.Errorf("reactivating an active account: %v %v", reactivated, err)
 	}
-	if err := database.CreateDeviceSession(ctx, laptop, &Session{TokenHash: []byte("bob laptop"), AccountID: "BOBBBB", DeviceID: laptop.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+	if err := database.CreateDeviceSession(ctx, laptop, &Session{TokenHash: []byte("bob laptop"), AccountID: "BOBBBB", DeviceID: laptop.ID, ExpiresAt: time.Now().Add(time.Hour)}, testRecordHash()); err != nil {
 		t.Errorf("reactivated account: %v", err)
 	}
 	if _, err := database.GetSessionByHash(ctx, []byte("bob laptop"), time.Hour); err != nil {
@@ -286,7 +286,7 @@ func TestSignOutAccount(t *testing.T) {
 	setTestRole(t, database, "AAAAAA", "admin")
 	_, session := createTestAccount(t, database, "BOBBBB", "bob@example.com")
 	laptop := &Device{ID: uuid.NewString(), AccountID: "BOBBBB", Name: "laptop", Platform: "p"}
-	if err := database.CreateDeviceSession(ctx, laptop, &Session{TokenHash: []byte("laptop"), AccountID: "BOBBBB", DeviceID: laptop.ID, ExpiresAt: time.Now().Add(time.Hour)}); err != nil {
+	if err := database.CreateDeviceSession(ctx, laptop, &Session{TokenHash: []byte("laptop"), AccountID: "BOBBBB", DeviceID: laptop.ID, ExpiresAt: time.Now().Add(time.Hour)}, testRecordHash()); err != nil {
 		t.Fatal(err)
 	}
 	if revokedDeviceCount, err := database.SignOutAccount(ctx, "AAAAAA", "BOBBBB"); err != nil || revokedDeviceCount != 2 {
@@ -419,7 +419,7 @@ func TestDeleteAccountAsAdminWhileAVaultIsGrantedToAnAdmin(t *testing.T) {
 		deletion <- err
 	}()
 	deadline := time.Now().Add(10 * time.Second)
-	for countQueryRow(t, database, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FROM vaults WHERE id = ANY%'`) == 0 {
+	for countQueryRow(t, database, `SELECT count(*) FROM pg_stat_activity WHERE wait_event_type = 'Lock' AND query LIKE '%FROM vaults WHERE id IN (SELECT vault_id%'`) == 0 {
 		if time.Now().After(deadline) {
 			t.Fatal("the deletion never waited for the vault")
 		}
@@ -433,5 +433,31 @@ func TestDeleteAccountAsAdminWhileAVaultIsGrantedToAnAdmin(t *testing.T) {
 	}
 	if err := <-deletion; err != nil {
 		t.Errorf("the deletion: %v", err)
+	}
+}
+
+func TestRefusedSessionOfASuspendedAccountDoesNotSlide(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	createTestAccount(t, database, "AAAAAA", "a@example.com")
+	setTestRole(t, database, "AAAAAA", "admin")
+	_, session := createTestAccount(t, database, "BBBBBB", "b@example.com")
+	if suspended, err := database.SuspendAccount(ctx, "AAAAAA", "BBBBBB"); err != nil || !suspended {
+		t.Fatalf("suspend: %v %v", suspended, err)
+	}
+	readExpiry := func() time.Time {
+		t.Helper()
+		var expiresAt time.Time
+		if err := database.pool.QueryRow(ctx, `SELECT expires_at FROM sessions WHERE token_hash = $1`, session.TokenHash).Scan(&expiresAt); err != nil {
+			t.Fatal(err)
+		}
+		return expiresAt
+	}
+	before := readExpiry()
+	if _, err := database.GetSessionByHash(ctx, session.TokenHash, 30*24*time.Hour); !errors.Is(err, ErrAccountSuspended) {
+		t.Errorf("a suspended account's session: %v", err)
+	}
+	if after := readExpiry(); !after.Equal(before) {
+		t.Errorf("the refused session slid from %v to %v", before, after)
 	}
 }

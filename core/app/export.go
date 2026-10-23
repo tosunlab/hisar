@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"syscall"
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -66,10 +67,11 @@ func (s *Service) ExportData(request ExportRequest) (ExportResult, error) {
 	if err := checkExportRequest(request.Format, request.Passphrase); err != nil {
 		return ExportResult{}, err
 	}
-	if err := s.authenticateExport(request.Password); err != nil {
+	epoch, err := s.authenticateExport(request.Password)
+	if err != nil {
 		return ExportResult{}, err
 	}
-	content, result, err := s.buildExport(request.Format, request.Passphrase)
+	content, result, err := s.buildExport(request.Format, request.Passphrase, epoch)
 	if err != nil {
 		return ExportResult{}, err
 	}
@@ -81,28 +83,30 @@ func (s *Service) ExportData(request ExportRequest) (ExportResult, error) {
 	if err != nil || path == "" {
 		return ExportResult{}, err
 	}
-	if err := writeFileAtomically(path, content); err != nil {
+	if err := s.saveFile(path, content, epoch); err != nil {
 		return ExportResult{}, err
 	}
 	result.Path = path
 	return result, nil
 }
 
-func (s *Service) authenticateExport(password string) error {
+// authenticateExport returns the epoch of the session the user approved exporting.
+func (s *Service) authenticateExport(password string) (uint64, error) {
 	s.mutex.Lock()
 	err := s.requireUnlocked()
+	epoch := s.sessionEpoch
 	s.mutex.Unlock()
 	if err != nil {
-		return err
+		return 0, err
 	}
 	switch {
 	case password != "":
-		_, err := s.loadVerifiedSecretKey(password)
-		return err
+		_, epoch, err := s.loadVerifiedSecretKey(password)
+		return epoch, err
 	case s.isTouchIDAvailable():
-		return s.config.Biometric.Authenticate("export your Hisar data")
+		return epoch, s.config.Biometric.Authenticate("export your Hisar data")
 	}
-	return errExportNeedsPassword
+	return 0, errExportNeedsPassword
 }
 
 // ExportDataToDirectory is for platforms that share the file themselves, such as the iPhone; a function rather than
@@ -111,60 +115,100 @@ func ExportDataToDirectory(s *Service, request ExportRequest, directory string) 
 	if err := checkExportRequest(request.Format, request.Passphrase); err != nil {
 		return ExportResult{}, err
 	}
-	if err := s.authenticateExport(request.Password); err != nil {
+	epoch, err := s.authenticateExport(request.Password)
+	if err != nil {
 		return ExportResult{}, err
 	}
-	content, result, err := s.buildExport(request.Format, request.Passphrase)
+	content, result, err := s.buildExport(request.Format, request.Passphrase, epoch)
 	if err != nil {
 		return ExportResult{}, err
 	}
 	defer clear(content)
 	path := filepath.Join(directory, buildExportFileName(request.Format, s.config.Now()))
-	if err := writeFileAtomically(path, content); err != nil {
+	if err := s.saveFile(path, content, epoch); err != nil {
 		return ExportResult{}, err
 	}
 	result.Path = path
 	return result, nil
 }
 
-// writeExportFile is for the command-line tool, whose approval dialog already asked: it never replaces a file.
-func (s *Service) writeExportFile(format, passphrase, path string) (ExportResult, error) {
+// writeExportFile is for the command-line tool, whose approval dialog already asked for the session of epoch: it never
+// replaces a file.
+func (s *Service) writeExportFile(format, passphrase, path string, epoch uint64) (ExportResult, error) {
 	if err := checkExportRequest(format, passphrase); err != nil {
 		return ExportResult{}, err
 	}
 	if !filepath.IsAbs(path) {
 		return ExportResult{}, errors.New("the export path must be absolute")
 	}
-	content, result, err := s.buildExport(format, passphrase)
+	content, result, err := s.buildExport(format, passphrase, epoch)
 	if err != nil {
 		return ExportResult{}, err
 	}
 	defer clear(content)
-	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
-	if errors.Is(err, os.ErrExist) {
-		return ExportResult{}, errExportFileExists
-	}
-	if err != nil {
-		return ExportResult{}, fmt.Errorf("could not save the export: %w", err)
-	}
-	if _, err := file.Write(content); err != nil {
-		file.Close()
-		os.Remove(path)
-		return ExportResult{}, fmt.Errorf("could not save the export: %w", err)
-	}
-	if err := file.Close(); err != nil {
-		return ExportResult{}, fmt.Errorf("could not save the export: %w", err)
+	if err := s.saveNewFile(path, content, epoch); err != nil {
+		return ExportResult{}, err
 	}
 	result.Path = path
 	return result, nil
 }
 
-func (s *Service) buildExport(format, passphrase string) ([]byte, ExportResult, error) {
+type durableExportWriter interface {
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+	Stat() (os.FileInfo, error)
+}
+
+func finishNewExportFile(path string, content []byte, file durableExportWriter) error {
+	return finishExportFile(path, file, func() error {
+		_, err := file.Write(content)
+		return err
+	})
+}
+
+func finishExportFile(path string, file durableExportWriter, write func() error) error {
+	err := write()
+	if err == nil {
+		err = file.Sync()
+	}
+	// FAT and exFAT may assign a different inode when the first write allocates a cluster.
+	owned, statErr := file.Stat()
+	if err == nil {
+		err = statErr
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		current, statErr := os.Lstat(path)
+		if statErr != nil {
+			err = statErr
+		} else if !os.SameFile(owned, current) {
+			err = errExportFileExists
+		}
+	}
+	if err != nil {
+		removeOwnedExportFile(path, owned)
+	}
+	return err
+}
+
+func removeOwnedExportFile(path string, owned os.FileInfo) {
+	current, err := os.Lstat(path)
+	if err == nil && owned != nil && os.SameFile(owned, current) {
+		os.Remove(path)
+	}
+}
+
+// buildExport exports the session of epoch, never one that replaced it after the approval.
+func (s *Service) buildExport(format, passphrase string, epoch uint64) ([]byte, ExportResult, error) {
 	s.mutex.Lock()
-	if err := s.requireUnlocked(); err != nil {
+	if err := s.requireSessionEpoch(epoch); err != nil {
 		s.mutex.Unlock()
 		return nil, ExportResult{}, err
 	}
+	s.noteActivity()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
 	vaults, err := export.Collect(ctx, s.unlockedSession)
@@ -192,26 +236,64 @@ func buildExportFileName(format string, now time.Time) string {
 	return "Hisar export " + now.Format("2006-01-02") + ".hisar"
 }
 
-func writeFileAtomically(path string, content []byte) error {
-	temporaryFile, err := os.CreateTemp(filepath.Dir(path), ".hisar-export-*")
+// saveFile replaces path with content only the user can read, so a file that was there keeps neither its old content
+// nor its permissions, and never holds half of content. Nothing appears at path unless the session of epoch is still
+// the unlocked one when it does: the check and the rename share one hold of the mutex, so a lock, sign-out or account
+// switch while content was written leaves no file.
+func (s *Service) saveFile(path string, content []byte, epoch uint64) error {
+	if err := s.checkSessionEpoch(epoch); err != nil {
+		return err
+	}
+	return s.saveSessionFile(path, content, epoch, os.Rename)
+}
+
+func (s *Service) saveSessionFile(path string, content []byte, epoch uint64, publish func(string, string) error) error {
+	temporaryFile, err := os.CreateTemp(filepath.Dir(path), ".hisar-save-*")
 	if err != nil {
-		return fmt.Errorf("could not save the export: %w", err)
+		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	temporaryPath := temporaryFile.Name()
 	defer os.Remove(temporaryPath)
-	if _, err := temporaryFile.Write(content); err != nil {
-		temporaryFile.Close()
-		return fmt.Errorf("could not save the export: %w", err)
+	if err := finishNewExportFile(temporaryPath, content, temporaryFile); err != nil {
+		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
-	if err := temporaryFile.Sync(); err != nil {
-		temporaryFile.Close()
-		return fmt.Errorf("could not save the export: %w", err)
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireSessionEpoch(epoch); err != nil {
+		return err
 	}
-	if err := temporaryFile.Close(); err != nil {
-		return fmt.Errorf("could not save the export: %w", err)
-	}
-	if err := os.Rename(temporaryPath, path); err != nil {
-		return fmt.Errorf("could not save the export: %w", err)
+	if err := publish(temporaryPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return errExportFileExists
+		}
+		return fmt.Errorf("could not save %s: %w", filepath.Base(path), err)
 	}
 	return nil
+}
+
+// saveNewFile publishes without replacing a destination, even if another writer creates it during the save.
+func (s *Service) saveNewFile(path string, content []byte, epoch uint64) error {
+	return s.saveSessionFile(path, content, epoch, func(temporaryPath, path string) error {
+		return publishNewExportFile(temporaryPath, path, content, os.Link)
+	})
+}
+
+func publishNewExportFile(temporaryPath, path string, content []byte, link func(string, string) error) error {
+	err := link(temporaryPath, path)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, syscall.EPERM) && !errors.Is(err, errors.ErrUnsupported) && !errors.Is(err, syscall.EXDEV) {
+		return err
+	}
+	// The encoded bytes are still in memory. Free the temporary file before writing the destination
+	// so filesystems without hard links need space for only one copy.
+	if err := os.Remove(temporaryPath); err != nil {
+		return err
+	}
+	file, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	return finishNewExportFile(path, content, file)
 }

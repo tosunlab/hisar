@@ -61,6 +61,8 @@ class AppModel(
     private var enteredBackgroundAt: Instant? = null
     private var noticeJob: Job? = null
     private var isRefreshRequestedAgain = false
+    private var startedRefreshCount = 0L
+    private var shownRefresh = 0L
 
     override val status: StateFlow<VaultStatus> = mutableStatus.asStateFlow()
     override val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
@@ -253,11 +255,21 @@ class AppModel(
         }
     }
 
+    // A remote change that comes while a refresh lists may be missing from its lists, so that refresh lists again, whoever
+    // started it: the first refresh, an unlock or a pull to refresh as much as a remote change.
+    override suspend fun refreshAll() {
+        do {
+            isRefreshRequestedAgain = false
+            refreshAllOnce()
+        } while (isRefreshRequestedAgain && status.value.isUnlocked)
+    }
+
     // Listing the share invitations also completes the shares people accepted, and listing the waiting vault keys gives
     // team members the keys of the organization vaults this user owns, as the Mac's sync does. Both run before the vaults
     // are listed, so a vault rotated meanwhile is listed with its new key.
-    override suspend fun refreshAll() {
+    private suspend fun refreshAllOnce() {
         if (!status.value.isUnlocked) return
+        val refresh = ++startedRefreshCount
         mutableIsRefreshing.value = true
         try {
             val result = perform(isBusyShown = false) { backend ->
@@ -278,7 +290,14 @@ class AppModel(
             // it back.
             refreshStatus()
             if (result == null || !status.value.isUnlocked) return
+            // Refreshes can finish out of order: one that started earlier than the lists shown lists older data. Removed
+            // vaults are listed only once, so even an older refresh keeps them.
+            val isNewer = refresh > shownRefresh
+            if (isNewer) shownRefresh = refresh
             mutableUnlockedData.update { data ->
+                val allRemovedVaultNotice = data.allRemovedVaultNotice +
+                    result.allRemovedVault.filter { notice -> data.allRemovedVaultNotice.none { it.id == notice.id } }
+                if (!isNewer) return@update data.copy(allRemovedVaultNotice = allRemovedVaultNotice)
                 data.copy(
                     allVault = result.allVault.sortedWith(vaultOrder),
                     allItemByVaultID = result.allItemByVaultID,
@@ -289,8 +308,7 @@ class AppModel(
                     allOrganization = result.organizations?.allOrganization ?: data.allOrganization,
                     allOrganizationInvitation = result.organizations?.allInvitation ?: data.allOrganizationInvitation,
                     waitingVaultKeys = result.waitingVaultKeys ?: data.waitingVaultKeys,
-                    allRemovedVaultNotice = data.allRemovedVaultNotice +
-                        result.allRemovedVault.filter { notice -> data.allRemovedVaultNotice.none { it.id == notice.id } },
+                    allRemovedVaultNotice = allRemovedVaultNotice,
                 )
             }
         } finally {
@@ -316,12 +334,7 @@ class AppModel(
             isRefreshRequestedAgain = true
             return
         }
-        scope.launch {
-            do {
-                isRefreshRequestedAgain = false
-                refreshAll()
-            } while (isRefreshRequestedAgain && status.value.isUnlocked)
-        }
+        scope.launch { refreshAll() }
     }
 
     suspend fun copyField(vaultID: String, itemID: String, fieldName: String, label: String) {

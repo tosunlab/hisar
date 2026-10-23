@@ -103,6 +103,17 @@ func TestPrintAccountDeletionPreview(t *testing.T) {
 	}
 }
 
+func TestAccountDeletionPreviewEscapesTheNextAdminsName(t *testing.T) {
+	var output bytes.Buffer
+	printAccountDeletionPreview(&output, &session.AccountDeletionPreview{
+		Organizations: []apitypes.DeletionOrganization{{Name: "Work", NewAdminName: hostileDisplayText}},
+	})
+	if text := output.String(); strings.ContainsAny(text, "\x1b\x07\u009b") ||
+		!strings.Contains(text, `You leave the organization "Work"; `+escapedDisplayText+" becomes its admin") {
+		t.Errorf("unsafe or missing next-admin preview: %q", text)
+	}
+}
+
 func TestConvertAccountError(t *testing.T) {
 	cases := map[string]struct {
 		err      error
@@ -124,5 +135,22 @@ func TestConvertAccountError(t *testing.T) {
 	}
 	if describeSignedOutDevice(1) != "1 other device was signed out." || describeSignedOutDevice(3) != "3 other devices were signed out." {
 		t.Error("signed-out device count wording")
+	}
+	if describeSignedOutDevice(-1) != "Any other devices were signed out; their count could not be recovered." {
+		t.Error("an unknown count was reported as zero")
+	}
+}
+
+func TestAccountDeletionConflictAsksToRetry(t *testing.T) {
+	conflict := &apiclient.APIError{Status: http.StatusConflict}
+	if err := convertAccountDeletionError(conflict); err.Error() != "the account changed while it was being deleted; try again" {
+		t.Errorf("deletion conflict: %v", err)
+	}
+	if err := convertAccountDeletionError(session.ErrEmailMismatch); !strings.Contains(err.Error(), "nothing was deleted") {
+		t.Errorf("email mismatch: %v", err)
+	}
+	other := errors.New("other")
+	if convertAccountDeletionError(other) != other {
+		t.Error("an unrelated error was changed")
 	}
 }

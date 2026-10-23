@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"errors"
-	"time"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -37,13 +36,17 @@ type VaultDeletion struct {
 	MoveToKeyGeneration int64
 }
 
-// RenameVault stores the vault's new sealed name. It locks like every change to an organization vault (§5.11) and
-// returns ErrConflict unless keyGeneration is the vault's current one (required for organization vaults, checked for any
-// vault when nonzero), so a name sealed with a key a rotation replaced is never stored.
-func (s *Store) RenameVault(ctx context.Context, vaultID string, encName []byte, keyGeneration int64) error {
+// RenameVault stores the vault's new sealed name; renamedBy must be an owner (ErrNotOwner), checked under the vault's
+// lock. It locks like every change to an organization vault (§5.11) and returns ErrConflict unless keyGeneration is the
+// vault's current one (required for organization vaults, checked for any vault when nonzero), so a name sealed with a
+// key a rotation replaced is never stored.
+func (s *Store) RenameVault(ctx context.Context, vaultID, renamedBy string, encName []byte, keyGeneration int64) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, vaultID)
 		if err != nil {
+			return err
+		}
+		if err := requireVaultOwner(ctx, transaction, vaultID, renamedBy); err != nil {
 			return err
 		}
 		if !vault.acceptsKeyGeneration(keyGeneration) {
@@ -171,32 +174,25 @@ func moveItems(ctx context.Context, transaction pgx.Tx, deletion VaultDeletion, 
 			return ErrConflict
 		}
 	}
-	var targetSeq int64
-	if err := transaction.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1`, deletion.MoveToVaultID).Scan(&targetSeq); err != nil {
+	movedItemIDs := make([]string, 0, len(deletion.MovedItems))
+	for _, movedItem := range deletion.MovedItems {
+		movedItemIDs = append(movedItemIDs, movedItem.ID)
+	}
+	var isTargetLive bool
+	if err := transaction.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM items WHERE vault_id = $1 AND id = ANY($2::uuid[]) AND NOT deleted)`,
+		deletion.MoveToVaultID, movedItemIDs).Scan(&isTargetLive); err != nil {
 		return err
 	}
+	if isTargetLive {
+		return ErrExists
+	}
 	for _, movedItem := range deletion.MovedItems {
-		targetSeq++
-		var updatedAt time.Time
-		err := transaction.QueryRow(ctx, `
-			INSERT INTO items (vault_id, id, revision, seq, deleted, overview, details, updated_by)
-			VALUES ($1, $2, $3, $4, false, $5, $6, $7) RETURNING updated_at`,
-			deletion.MoveToVaultID, movedItem.ID, movedItem.Revision, targetSeq, movedItem.Overview, movedItem.Details, deletion.AccountID).Scan(&updatedAt)
-		if isUniqueViolation(err) {
-			return ErrExists
-		}
-		if err != nil {
-			return err
-		}
-		if _, err := transaction.Exec(ctx, `
-			INSERT INTO item_history (vault_id, id, revision, deleted, overview, details, updated_at, updated_by)
-			VALUES ($1, $2, $3, false, $4, $5, $6, $7)`,
-			deletion.MoveToVaultID, movedItem.ID, movedItem.Revision, movedItem.Overview, movedItem.Details, updatedAt, deletion.AccountID); err != nil {
+		item := &Item{ID: movedItem.ID, Revision: movedItem.Revision, Overview: movedItem.Overview, Details: movedItem.Details, UpdatedBy: deletion.AccountID}
+		if err := writeItemRevision(ctx, transaction, deletion.MoveToVaultID, item); err != nil {
 			return err
 		}
 	}
-	_, err = transaction.Exec(ctx, `UPDATE vaults SET seq = $2 WHERE id = $1`, deletion.MoveToVaultID, targetSeq)
-	return err
+	return nil
 }
 
 // LeaveVault removes the account's access and wrapped key; an owner may leave only while another owner remains.

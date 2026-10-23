@@ -32,6 +32,7 @@ type PublicKeys struct {
 
 func GenerateKeyset() (*Keyset, error) {
 	seeds := make([]byte, 3*seedSize)
+	defer clear(seeds)
 	rand.Read(seeds)
 	return decodeKeyset(seeds)
 }
@@ -48,6 +49,7 @@ func decodeKeyset(encoded []byte) (*Keyset, error) {
 	}
 	var err error
 	if keyset.kemPrivateKey, err = hybridKeyEncapsulation.DeriveKeyPair(keyset.kemSeed); err != nil {
+		keyset.Wipe()
 		return nil, err
 	}
 	keyset.signingPrivateKey = ed25519.NewKeyFromSeed(keyset.signingSeed)
@@ -66,6 +68,11 @@ func (keyset *Keyset) Wipe() {
 	clear(keyset.kemSeed)
 	clear(keyset.signingSeed)
 	clear(keyset.signingPrivateKey)
+	if keyset.kemPrivateKey != nil {
+		// The hybrid HPKE key keeps a derived seed separate from kemSeed.
+		seed, _ := keyset.kemPrivateKey.Bytes()
+		clear(seed)
+	}
 	keyset.kemPrivateKey = nil
 }
 

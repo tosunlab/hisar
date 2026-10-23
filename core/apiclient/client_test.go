@@ -141,3 +141,49 @@ func TestIsStatusMatchesWrappedErrors(t *testing.T) {
 		t.Error("matched the wrong status or a plain error")
 	}
 }
+
+// startRedirectTarget is another origin on the same host; it records the Authorization header it receives.
+func startRedirectTarget(t *testing.T) (string, *[]string) {
+	t.Helper()
+	var authorizations []string
+	target := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		authorizations = append(authorizations, request.Header.Get("Authorization"))
+		writer.Header().Set("Content-Type", "application/json")
+		writer.Write([]byte(`{}`))
+	}))
+	t.Cleanup(target.Close)
+	return target.URL, &authorizations
+}
+
+func TestRedirectsNeverDowngradeTLSOrCarryTheBearerToAnotherOrigin(t *testing.T) {
+	targetURL, authorizations := startRedirectTarget(t)
+	redirectTo := func(writer http.ResponseWriter, request *http.Request) {
+		http.Redirect(writer, request, targetURL+request.URL.Path, http.StatusFound)
+	}
+	tlsServer := httptest.NewTLSServer(http.HandlerFunc(redirectTo))
+	t.Cleanup(tlsServer.Close)
+	tlsClient := New(tlsServer.URL)
+	tlsClient.HTTP.Transport = tlsServer.Client().Transport
+	tlsClient.Token = "tok"
+	ctx := context.Background()
+
+	_, err := tlsClient.GetAccount(ctx)
+	if !errors.Is(err, ErrInsecureRedirect) || IsUnreachable(err) {
+		t.Errorf("https redirected to http: %v", err)
+	}
+	streamErr := tlsClient.StreamEvents(ctx, nil, func(Event) {})
+	if !errors.Is(streamErr, ErrInsecureRedirect) {
+		t.Errorf("event stream redirected to http: %v", streamErr)
+	}
+	if len(*authorizations) != 0 {
+		t.Errorf("the http origin received %q", *authorizations)
+	}
+
+	otherPortClient := startFakeServer(t, redirectTo)
+	if _, err := otherPortClient.GetAccount(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if len(*authorizations) != 1 || (*authorizations)[0] != "" {
+		t.Errorf("another port of the same host received %q", *authorizations)
+	}
+}

@@ -1,7 +1,10 @@
 # Deploying hisar-server
 
 Docker Compose runs Postgres and `hisar-server` from the container registry (linux/amd64 and linux/arm64). The server
-listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it.
+listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it. Keep it that way: the server speaks plain
+HTTP and, with `HISAR_TRUST_PROXY=true`, believes the `X-Forwarded-For` it is sent, so nothing but the proxy may reach
+it. Run one `hisar-server` per database: rate limits, phone approvals, pending sign-ins and the event streams live in
+that one process, so a second replica would neither see nor notify the first one's clients.
 
 ## Images
 
@@ -26,10 +29,13 @@ docker login ghcr.io -u <GitHub user>     # paste the token as the password
 Copy `compose.yaml`, `.env.example` and `hisar.env.example` to the server (for example `/opt/hisar`), then:
 
 ```sh
-cp .env.example .env                # set HISAR_DOMAIN, pin HISAR_VERSION
-openssl rand -hex 32 | tr -d '\n' > db_password.txt
-sed "s/CHANGE_ME/$(cat db_password.txt)/" hisar.env.example > hisar.env
-chmod 600 db_password.txt hisar.env
+(
+  umask 077                         # only you may read the three files: they hold secrets
+  cp .env.example .env              # set HISAR_DOMAIN, pin HISAR_VERSION
+  openssl rand -hex 32 | tr -d '\n' > db_password.txt
+  sed "s/CHANGE_ME/$(cat db_password.txt)/" hisar.env.example > hisar.env
+)
+chmod 600 .env db_password.txt hisar.env
 docker compose up -d
 curl http://127.0.0.1:8080/healthz  # ok
 ```
@@ -47,11 +53,18 @@ the proxy:
 - `/api/v1/events` (instant sync) unbuffered with a long `proxy_read_timeout`; the server sends a heartbeat every 25 s.
 - `X-Forwarded-For` from `$proxy_add_x_forwarded_for`: with `HISAR_TRUST_PROXY=true` the server rate-limits by its last
   entry, the address nginx saw.
+- The `hisar` log format, which logs paths without query strings and only the route of `/invite/…`, `/s/…` and
+  `/api/v1/public/share-links/…`, regardless of letter case, so invite codes, share link IDs and sign-in email addresses
+  stay out of the access log. nginx's error log still names the whole request when it cannot reach the server, so keep
+  it as private as the database.
 
 ```sh
 sudo nginx -t && sudo systemctl reload nginx
 curl https://<domain>/healthz       # ok
 ```
+
+Run `bash scripts/test-nginx.sh` from the repository root to check this configuration in a Docker container. It checks
+`nginx -t` and the HTTPS and redirect access logs with lowercase, uppercase, and mixed-case capability paths.
 
 ## Open the setup URL from the log
 

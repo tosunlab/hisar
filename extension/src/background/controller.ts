@@ -95,18 +95,24 @@ export class BackgroundController {
     return this.hasHello && !this.isAddressFillAvailable();
   }
 
-  async getPopupState(shouldReconnect = false): Promise<PopupState> {
+  // isOverOpenConnection asks only over a connection that is already open, as the popup does while it shows the vault: a
+  // connection would start the host, which would relaunch Hisar after the user quit it.
+  async getPopupState(shouldReconnect = false, isOverOpenConnection = false): Promise<PopupState> {
     let hello: HelloResult;
     try {
-      const hasToken = (await this.storage.getToken()) !== undefined;
-      hello = shouldReconnect || !hasToken ? await this.client.reconnect() : await this.client.connect();
+      if (isOverOpenConnection) {
+        hello = await this.client.waitForOpenConnection();
+      } else {
+        const hasToken = (await this.storage.getToken()) !== undefined;
+        hello = shouldReconnect || !hasToken ? await this.client.reconnect() : await this.client.connect();
+      }
     } catch (error) {
       return { view: "desktop-unavailable", errorMessage: toHisarError(error).message };
     }
     if (hello.updateRequired) return { view: "update-required", updateRequired: hello.updateRequired };
     if (!(await this.storage.getToken())) return { view: hello.state === "signed-out" ? "signed-out" : "not-paired" };
     try {
-      const status = await this.client.request("status", {});
+      const status = await this.client.request("status", {}, { isOverOpenConnection });
       return {
         view: status.state,
         email: status.email,
@@ -201,9 +207,10 @@ export class BackgroundController {
     return this.getOneTimeCode(vaultID, itemID, url);
   }
 
-  // copyOneTimeCodeAfterFill puts the code on the clipboard for the next step of the sign-in; the fill has already succeeded.
-  async copyOneTimeCodeAfterFill(credentials: Credentials, vaultID: string, itemID: string, url: string): Promise<boolean> {
-    if (!credentials.hasOneTimePassword) return false;
+  // copyOneTimeCodeAfterFill puts the code on the clipboard for the next step of the sign-in once the password is filled;
+  // after only a username the code is not needed yet.
+  async copyOneTimeCodeAfterFill(credentials: Credentials, outcome: { filledPassword: boolean }, vaultID: string, itemID: string, url: string): Promise<boolean> {
+    if (!credentials.hasOneTimePassword || !outcome.filledPassword) return false;
     try {
       const { code } = await this.getOneTimeCode(vaultID, itemID, url);
       await this.browser.writeToClipboard(code);
@@ -230,7 +237,7 @@ export class BackgroundController {
     });
     if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "No login form found on this page");
     await this.recordUse(vaultID, itemID);
-    await this.copyOneTimeCodeAfterFill(credentials, vaultID, itemID, target.url);
+    await this.copyOneTimeCodeAfterFill(credentials, outcome, vaultID, itemID, target.url);
     return outcome;
   }
 
@@ -450,21 +457,24 @@ export class BackgroundController {
     if (!isFilled) throw new HisarError("not-found", "Click into a field on the page first");
   }
 
-  handleUsernameSubmitted(tabId: number, frameUrl: string, username: string): void {
+  async handleUsernameSubmitted(tabId: number, frameUrl: string, username: string): Promise<void> {
     if (!isWebUrl(frameUrl) || !username) return;
-    this.allRememberedUsername.remember(tabId, getOrigin(frameUrl), username);
+    const pairingToken = await this.storage.getToken();
+    if (pairingToken) this.allRememberedUsername.remember(tabId, getOrigin(frameUrl), username, pairingToken);
   }
 
   async handleLoginSubmitted(tabId: number, frameUrl: string, username: string, password: string): Promise<SaveOfferView | undefined> {
     if (!isWebUrl(frameUrl) || !password) return undefined;
     const origin = getOrigin(frameUrl);
     if (await this.storage.isNeverOrigin(origin)) return undefined;
-    if (!(await this.storage.getToken())) return undefined;
-    const effectiveUsername = username || this.allRememberedUsername.recall(tabId, origin) || "";
+    const pairingToken = await this.storage.getToken();
+    if (!pairingToken) return undefined;
+    const effectiveUsername = username || this.allRememberedUsername.recall(tabId, origin, pairingToken) || "";
     let checkResult;
     try {
-      checkResult = await this.request(() =>
-        this.client.request("logins.check", { url: frameUrl, username: effectiveUsername, password }),
+      checkResult = await this.request(
+        () => this.client.request("logins.check", { url: frameUrl, username: effectiveUsername, password }, { pairingToken }),
+        pairingToken,
       );
     } catch {
       return undefined;
@@ -474,12 +484,13 @@ export class BackgroundController {
     // A new login may get another title and go into another vault, when the app takes them.
     let allVault: { vaultID: string; name: string }[] | undefined;
     if (kind === "save" && this.allAppFeature.includes(featureSaveOptions)) {
-      allVault = await this.request(() => this.client.request("vaults.list", {}))
+      allVault = await this.request(() => this.client.request("vaults.list", {}, { pairingToken }), pairingToken)
         .then((result) => (result.vaults ?? []).map(({ vaultID, name }) => ({ vaultID, name })))
         .catch(() => undefined);
     }
     const offer = {
       offerID: this.browser.createID(),
+      pairingToken,
       tabId,
       url: frameUrl,
       host: getHost(frameUrl),
@@ -499,13 +510,13 @@ export class BackgroundController {
     return view;
   }
 
-  getPendingSaveOffer(tabId: number): SaveOfferView | null {
-    const offer = this.allSaveOffer.getForTab(tabId);
+  async getPendingSaveOffer(tabId: number): Promise<SaveOfferView | null> {
+    const offer = this.allSaveOffer.getForTab(tabId, await this.storage.getToken());
     return offer ? toSaveOfferView(offer) : null;
   }
 
   async actOnSaveOffer(tabId: number, offerID: string, action: SaveOfferAction, edits?: SaveOfferEdits): Promise<void> {
-    const offer = this.allSaveOffer.getForTab(tabId);
+    const offer = this.allSaveOffer.getForTab(tabId, await this.storage.getToken());
     if (!offer || offer.offerID !== offerID) throw new HisarError("not-found", "This save offer has expired");
     if (action === "not-now") {
       this.allSaveOffer.take(tabId, offerID);
@@ -520,7 +531,7 @@ export class BackgroundController {
       offer.kind === "update" && offer.vaultID && offer.itemID
         ? { url: offer.url, username: offer.username, password: offer.password, vaultID: offer.vaultID, itemID: offer.itemID }
         : { url: offer.url, username: offer.username, password: offer.password, ...this.applySaveEdits(offer.allVault, edits) };
-    await this.request(() => this.client.request("logins.save", parameters));
+    await this.request(() => this.client.request("logins.save", parameters, { pairingToken: offer.pairingToken }), offer.pairingToken);
     this.allSaveOffer.take(tabId, offerID);
   }
 
@@ -559,7 +570,9 @@ export class BackgroundController {
     };
   }
 
-  private async request<Result>(send: () => Promise<Result>): Promise<Result> {
+  // request sends a request and forgets the pairing Hisar no longer knows; with pairingToken, the request was sent only under
+  // that pairing, and the browser's pairing is forgotten only if it is still that one.
+  private async request<Result>(send: () => Promise<Result>, pairingToken?: string): Promise<Result> {
     if (this.updateRequirement?.target === "extension") {
       throw new HisarError("update-required", `Update the Hisar extension: this server requires version ${this.updateRequirement.minimumVersion} or later.`);
     }
@@ -567,7 +580,7 @@ export class BackgroundController {
       return await send();
     } catch (error) {
       const hisarError = toHisarError(error);
-      if (hisarError.code === "not-paired") await this.storage.removeToken();
+      if (hisarError.code === "not-paired" && (pairingToken === undefined || (await this.storage.getToken()) === pairingToken)) await this.storage.removeToken();
       throw hisarError;
     }
   }

@@ -1,13 +1,38 @@
 package service
 
 import (
+	"context"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/realtime"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
+
+func TestExpiredApprovalLeavesMemoryWithoutANewApproval(t *testing.T) {
+	service := &Service{Approvals: newApprovalRelay(), events: realtime.NewBroker()}
+	start := time.Now()
+	var now atomic.Int64
+	now.Store(start.UnixNano())
+	service.Approvals.SetClock(func() time.Time { return time.Unix(0, now.Load()) })
+	requestID := strings.Repeat("ab", approvalRequestIDByteCount)
+	request := &apitypes.CreateApprovalRequest{RequestID: requestID, SealedRequest: []byte{1}, ExpiresAt: start.Add(time.Minute)}
+	if err := service.CreateApproval(Actor{AccountID: "A", DeviceID: "D"}, request); err != nil {
+		t.Fatal(err)
+	}
+	now.Store(start.Add(time.Minute + ApprovalRetention + time.Second).UnixNano())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go service.Approvals.Run(ctx, 10*time.Millisecond)
+	for deadline := time.Now().Add(2 * time.Second); service.Approvals.IsKept("A", requestID); time.Sleep(10 * time.Millisecond) {
+		if time.Now().After(deadline) {
+			t.Fatal("the sealed request stayed in memory past its retention")
+		}
+	}
+}
 
 func TestLoginCache(t *testing.T) {
 	cache := newLoginCache(50 * time.Millisecond)
@@ -25,6 +50,24 @@ func TestLoginCache(t *testing.T) {
 	}
 	if cache.take("nope") != nil {
 		t.Error("unknown id returned state")
+	}
+}
+
+func TestManyPendingLoginsDoNotSlowEveryLogin(t *testing.T) {
+	cache := newLoginCache(time.Hour)
+	deadline := time.Now().Add(5 * time.Second)
+	var firstLoginID string
+	for index := range 200_000 {
+		loginID := cache.put(&pendingLogin{accountID: "A"})
+		if index == 0 {
+			firstLoginID = loginID
+		}
+		if index%1000 == 0 && time.Now().After(deadline) {
+			t.Fatalf("%d pending logins took over 5 s: each login walks every pending one", index)
+		}
+	}
+	if cache.take(firstLoginID) == nil {
+		t.Error("a pending login was dropped before it expired")
 	}
 }
 

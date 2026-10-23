@@ -27,7 +27,7 @@ function isFromExtensionPage(sender: MessageSender, context: RouterContext): boo
 async function routePopupMessage(controller: BackgroundController, message: PopupMessage): Promise<unknown> {
   switch (message.type) {
     case "popup.getState":
-      return controller.getPopupState(message.shouldReconnect === true);
+      return controller.getPopupState(message.shouldReconnect === true, message.isOverOpenConnection === true);
     case "popup.startPairing":
       return controller.startPairing();
     case "popup.finishPairing":
@@ -100,7 +100,7 @@ async function routeContentMessage(
     case "content.loginSubmitted":
       return (await controller.handleLoginSubmitted(tabId, frameUrl, message.username, message.password)) ?? null;
     case "content.usernameSubmitted":
-      controller.handleUsernameSubmitted(tabId, frameUrl, message.username);
+      await controller.handleUsernameSubmitted(tabId, frameUrl, message.username);
       return null;
     case "content.getPendingSaveOffer":
       return controller.getPendingSaveOffer(tabId);

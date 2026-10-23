@@ -27,20 +27,25 @@ func describeImportFormats() string {
 		importer.FormatOnePasswordExport, importer.FormatOnePasswordCSV, importer.FormatBitwardenJSON, importer.FormatBitwardenCSV, importer.FormatLastPassCSV, importer.FormatCSV)
 }
 
+// readImportFile reads at most maxImportFileSize bytes: a pipe or a file that grows says nothing true about its size
+// beforehand.
 func readImportFile(path string) ([]byte, error) {
-	fileInfo, err := os.Stat(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("could not open %s", path)
 	}
-	if fileInfo.IsDir() {
+	defer file.Close()
+	if fileInfo, err := file.Stat(); err == nil && fileInfo.IsDir() {
 		return nil, fmt.Errorf("%s is a directory; pass the export file", path)
 	}
-	if fileInfo.Size() > maxImportFileSize {
-		return nil, errors.New("the file is larger than 100 MB; export without attachments and try again")
-	}
-	content, err := os.ReadFile(path)
+	content, err := io.ReadAll(io.LimitReader(file, maxImportFileSize+1))
 	if err != nil {
+		clear(content)
 		return nil, fmt.Errorf("could not read %s", path)
+	}
+	if len(content) > maxImportFileSize {
+		clear(content)
+		return nil, errors.New("the file is larger than 100 MB; export without attachments and try again")
 	}
 	return content, nil
 }
@@ -52,17 +57,27 @@ func formatItemCount(count int) string {
 	return fmt.Sprintf("%d items", count)
 }
 
-func describeDuplicate(vaultItem item.Item) string {
-	if detail := importer.DescribeDuplicate(vaultItem); detail != "" {
-		return vaultItem.Overview.Title + " · " + detail
+func describeDuplicate(imported, existing item.Item, canCompareContent bool) string {
+	var detail string
+	if canCompareContent {
+		detail = importer.DescribeDuplicateOf(imported, existing)
+	} else {
+		detail = importer.DescribeDuplicate(imported)
 	}
-	return vaultItem.Overview.Title
+	if detail != "" {
+		return imported.Overview.Title + " · " + detail
+	}
+	return imported.Overview.Title
 }
 
-func printImportPreview(writer io.Writer, fileName string, result *importer.Result, vaultName string, duplicateIndexes []int) {
+func printImportPreview(writer io.Writer, fileName string, result *importer.Result, vaultName string, existingItems []item.Item, canCompareContent bool) {
+	writer = terminalSafeWriter{output: writer}
 	summary := importer.Summarize(result.Items)
 	fmt.Fprintf(writer, "File:            %s\n", fileName)
 	fmt.Fprintf(writer, "Format:          %s\n", importer.GetFormatName(result.Format))
+	if result.Format == importer.FormatOnePasswordExport {
+		fmt.Fprintln(writer, "1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.")
+	}
 	fmt.Fprintf(writer, "Vault:           %s\n", vaultName)
 	fmt.Fprintf(writer, "Logins:          %d\n", summary.LoginCount)
 	fmt.Fprintf(writer, "Secure notes:    %d\n", summary.SecureNoteCount)
@@ -74,10 +89,14 @@ func printImportPreview(writer io.Writer, fileName string, result *importer.Resu
 	fmt.Fprintf(writer, "Licenses:        %d\n", summary.SoftwareLicenseCount)
 	fmt.Fprintf(writer, "Servers:         %d\n", summary.ServerCount)
 	fmt.Fprintf(writer, "Databases:       %d\n", summary.DatabaseCount)
-	if len(duplicateIndexes) > 0 {
+	duplicateMatches := importer.FindDuplicateMatches(result.Items, existingItems)
+	if duplicateIndexes := importer.FindDuplicateIndexes(result.Items, existingItems); len(duplicateIndexes) > 0 {
 		fmt.Fprintf(writer, "Already in %s: %d\n", vaultName, len(duplicateIndexes))
 		for _, index := range duplicateIndexes {
-			fmt.Fprintf(writer, "  - %s\n", describeDuplicate(result.Items[index]))
+			fmt.Fprintf(writer, "  - %s\n", describeDuplicate(result.Items[index], existingItems[duplicateMatches[index]], canCompareContent))
+		}
+		if !canCompareContent {
+			fmt.Fprintln(writer, "Duplicate contents could not be compared through the Hisar app. Skipped duplicates keep the source file.")
 		}
 	}
 	if len(result.Skipped) > 0 {
@@ -118,7 +137,7 @@ func saveImportedItems(ctx context.Context, unlockedSession *session.Session, va
 			return savedCount, fmt.Errorf("stopped after importing %d of %d items: %w", savedCount, len(queuedItems), err)
 		}
 		if err != nil {
-			fmt.Fprintf(os.Stderr, "\rcould not import %q: %v\n", vaultItem.Overview.Title, err)
+			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", vaultItem.Overview.Title, escapeControlCharacters(err.Error()))
 			continue
 		}
 		savedCount++
@@ -139,7 +158,7 @@ func addImportedFavorites(ctx context.Context, unlockedSession *session.Session,
 		return
 	}
 	if _, err := unlockedSession.UpdateFavorites(ctx, nil, session.FavoriteChange{AddItemIDs: itemIDs}); err != nil {
-		fmt.Fprintf(os.Stderr, "Could not add %d imported items to Favorites: %v\n", len(itemIDs), err)
+		fmt.Fprintf(standardError(), "Could not add %d imported items to Favorites: %v\n", len(itemIDs), err)
 	}
 }
 
@@ -222,7 +241,7 @@ func importOwnFormat(ctx context.Context, access backend, path string, option *i
 func offerToDeleteImportFile(path string, isConfirmed bool) error {
 	warning := fmt.Sprintf("%s holds these passwords in plain text.", path)
 	if isConfirmed {
-		fmt.Fprintf(os.Stderr, "%s Delete it and any other copies of the export.\n", warning)
+		fmt.Fprintf(standardError(), "%s Delete it and any other copies of the export.\n", warning)
 		return nil
 	}
 	isDeleting, err := confirm(warning + " Delete it now?")
@@ -232,7 +251,7 @@ func offerToDeleteImportFile(path string, isConfirmed bool) error {
 	if err := os.Remove(path); err != nil {
 		return fmt.Errorf("could not delete %s; delete it yourself", path)
 	}
-	fmt.Fprintf(os.Stderr, "Deleted %s.\n", path)
+	fmt.Fprintf(standardError(), "Deleted %s.\n", path)
 	return nil
 }
 
@@ -273,8 +292,9 @@ func runImport(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err != nil {
 		return err
 	}
+	canCompareContent := !access.listsItemSummaries()
 	duplicateIndexes := importer.FindDuplicateIndexes(result.Items, existingItems)
-	printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, duplicateIndexes)
+	printImportPreview(os.Stderr, filepath.Base(path), result, vault.Name, existingItems, canCompareContent)
 	isSkippingDuplicate := !option.isIncludingDuplicate
 	if !option.isConfirmed && isSkippingDuplicate && len(duplicateIndexes) > 0 {
 		isIncluding, err := confirm(fmt.Sprintf("Also import the %s already in %s?", formatItemCount(len(duplicateIndexes)), vault.Name))
@@ -283,21 +303,44 @@ func runImport(ctx context.Context, access backend, flags *flag.FlagSet, args []
 		}
 		isSkippingDuplicate = !isIncluding
 	}
-	queuedItems := selectQueuedItems(result.Items, duplicateIndexes, isSkippingDuplicate)
-	if len(queuedItems) == 0 {
-		fmt.Fprintln(os.Stderr, "Nothing to import.")
-		return nil
-	}
-	if !option.isConfirmed {
-		isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(queuedItems)), vault.Name))
-		if err != nil || !isImporting {
-			return err
+	if isSkippingDuplicate {
+		if canCompareContent {
+			result.Skipped = append(result.Skipped, importer.FindUnsavedDuplicates(result.Items, existingItems, importer.FindDuplicateMatches(result.Items, existingItems))...)
+		} else {
+			for _, index := range duplicateIndexes {
+				result.Skipped = append(result.Skipped, importer.SkippedEntry{
+					Title: result.Items[index].Overview.Title, Reason: "the skipped duplicate could not be compared through the Hisar app",
+				})
+			}
 		}
 	}
-	savedCount, err := access.importItems(ctx, vault.ID, queuedItems)
-	if err != nil {
-		return err
+	queuedItems := selectQueuedItems(result.Items, duplicateIndexes, isSkippingDuplicate)
+	savedCount := 0
+	if len(queuedItems) == 0 {
+		fmt.Fprintln(standardError(), "Nothing to import.")
+	} else {
+		if !option.isConfirmed {
+			isImporting, err := confirm(fmt.Sprintf("Import %s into %s?", formatItemCount(len(queuedItems)), vault.Name))
+			if err != nil || !isImporting {
+				return err
+			}
+		}
+		savedCount, err = access.importItems(ctx, vault.ID, queuedItems)
+		if err != nil {
+			return err
+		}
+		fmt.Fprintf(standardError(), "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
 	}
-	fmt.Fprintf(os.Stderr, "Imported %s into %s.\n", formatItemCount(savedCount), vault.Name)
+	if leftCount := importer.CountLeftBehind(len(queuedItems)-savedCount, result.Skipped); leftCount > 0 {
+		if !canCompareContent && isSkippingDuplicate && len(duplicateIndexes) > 0 {
+			fmt.Fprintf(standardError(), "Keep %s: %s could not be saved or verified in Hisar.\n", path, formatItemCount(leftCount))
+		} else {
+			fmt.Fprintf(standardError(), "Keep %s: %d of its entries are not in Hisar.\n", path, leftCount)
+		}
+		return nil
+	}
+	if len(queuedItems) == 0 {
+		return nil
+	}
 	return offerToDeleteImportFile(path, option.isConfirmed)
 }

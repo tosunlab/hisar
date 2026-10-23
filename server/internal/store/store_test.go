@@ -1,9 +1,13 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"log"
 	"os"
+	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -61,6 +65,64 @@ func createTestVault(t *testing.T, database *Store, owner string) string {
 		t.Fatal(err)
 	}
 	return vaultID
+}
+
+// runWhileHolding opens a transaction and runs hold in it, then runs change in a goroutine. Once change has finished, or
+// waits for a lock, it commits hold's transaction and returns change's error: a change that checks under the locks hold
+// took sees hold's changes, and one that does not finishes before them.
+func runWhileHolding(t *testing.T, database *Store, hold func(transaction pgx.Tx) error, change func() error) error {
+	t.Helper()
+	ctx := context.Background()
+	transaction, err := database.pool.Begin(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer transaction.Rollback(ctx)
+	if err := hold(transaction); err != nil {
+		t.Fatal(err)
+	}
+	done := make(chan error, 1)
+	go func() { done <- change() }()
+	commit := func() {
+		if err := transaction.Commit(ctx); err != nil {
+			t.Fatal(err)
+		}
+	}
+	for deadline := time.Now().Add(10 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		select {
+		case err := <-done:
+			commit()
+			return err
+		default:
+		}
+		var waitingCount int
+		if err := database.pool.QueryRow(ctx,
+			`SELECT count(*) FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`).Scan(&waitingCount); err != nil {
+			t.Fatal(err)
+		}
+		if waitingCount > 0 {
+			commit()
+			return <-done
+		}
+	}
+	t.Fatal("the change neither finished nor waited for a lock")
+	return nil
+}
+
+func waitForStoreLock(t *testing.T, database *Store, ctx context.Context, queryPattern string) {
+	t.Helper()
+	for deadline := time.Now().Add(5 * time.Second); time.Now().Before(deadline); time.Sleep(5 * time.Millisecond) {
+		var waiting bool
+		if err := database.pool.QueryRow(ctx, `SELECT EXISTS (
+			SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+				AND wait_event_type = 'Lock' AND query LIKE $1)`, queryPattern).Scan(&waiting); err != nil {
+			t.Fatal(err)
+		}
+		if waiting {
+			return
+		}
+	}
+	t.Fatalf("no lock wait for %q", queryPattern)
 }
 
 func TestMigrations(t *testing.T) {
@@ -396,12 +458,106 @@ func TestSessions(t *testing.T) {
 
 	secondDevice := &Device{ID: uuid.NewString(), AccountID: "AAAAAA", Name: "d2", Platform: "p"}
 	expired := &Session{TokenHash: []byte("old"), AccountID: "AAAAAA", DeviceID: secondDevice.ID, ExpiresAt: time.Now().Add(-time.Minute)}
-	if err := database.CreateDeviceSession(ctx, secondDevice, expired); err != nil {
+	if err := database.CreateDeviceSession(ctx, secondDevice, expired, testRecordHash()); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := database.GetSessionByHash(ctx, []byte("old"), time.Hour); !errors.Is(err, ErrNotFound) {
 		t.Errorf("expired session: %v", err)
 	}
+}
+
+func TestSessionLookupRecordsLastSeenAtomicallyOrFails(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	device, session := createTestAccount(t, database, "AAAAAA", "a@example.com")
+	readLastSeen := func() time.Time {
+		t.Helper()
+		var lastSeenAt time.Time
+		if err := database.pool.QueryRow(ctx, `SELECT last_seen_at FROM devices WHERE id = $1`, device.ID).Scan(&lastSeenAt); err != nil {
+			t.Fatal(err)
+		}
+		return lastSeenAt
+	}
+	if _, err := database.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() - interval '1 day' WHERE id = $1`, device.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.GetSessionByHash(ctx, session.TokenHash, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	if time.Since(readLastSeen()) > time.Minute {
+		t.Errorf("last seen not recorded: %v", readLastSeen())
+	}
+
+	var output bytes.Buffer
+	previousWriter := log.Writer()
+	log.SetOutput(&output)
+	t.Cleanup(func() { log.SetOutput(previousWriter) })
+	beforeFailedWrite := readLastSeen()
+	var beforeFailedExpiry time.Time
+	if err := database.pool.QueryRow(ctx, `SELECT expires_at FROM sessions WHERE token_hash = $1`, session.TokenHash).Scan(&beforeFailedExpiry); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.pool.Exec(ctx, `
+		CREATE FUNCTION refuse_last_seen() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RAISE EXCEPTION 'last seen refused'; END $$;
+		CREATE TRIGGER refuse_last_seen BEFORE UPDATE OF last_seen_at ON devices FOR EACH ROW EXECUTE FUNCTION refuse_last_seen()`); err != nil {
+		t.Fatal(err)
+	}
+	if authenticated, err := database.GetSessionByHash(ctx, session.TokenHash, 2*time.Hour); err == nil || authenticated != nil {
+		t.Fatalf("last-seen failure returned an authenticated session: %+v %v", authenticated, err)
+	}
+	if !readLastSeen().Equal(beforeFailedWrite) {
+		t.Error("the refused last-seen update changed the timestamp")
+	}
+	if !strings.Contains(output.String(), "device last-seen update failed") {
+		t.Errorf("last-seen failure was not logged: %q", output.String())
+	}
+	var expiresAt time.Time
+	if err := database.pool.QueryRow(ctx, `SELECT expires_at FROM sessions WHERE token_hash = $1`, session.TokenHash).Scan(&expiresAt); err != nil {
+		t.Fatal(err)
+	}
+	if !expiresAt.Equal(beforeFailedExpiry) {
+		t.Errorf("last-seen failure changed the session expiry: %v, was %v", expiresAt, beforeFailedExpiry)
+	}
+}
+
+func TestLoginProvenAgainstAReplacedRecordCreatesNoSession(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	_, session := createTestAccount(t, database, "AAAAAA", "a@example.com")
+	newDevice := func() (*Device, *Session) {
+		device := &Device{ID: uuid.NewString(), AccountID: "AAAAAA", Name: "laptop", Platform: "p"}
+		return device, &Session{TokenHash: []byte(device.ID), AccountID: "AAAAAA", DeviceID: device.ID, ExpiresAt: time.Now().Add(time.Hour)}
+	}
+	update := &CredentialUpdate{AccountID: "AAAAAA", TokenHash: session.TokenHash, ProvenRecordHash: HashOpaqueRecord([]byte{2}),
+		Argon2Params: []byte(`{}`), Salt: []byte{3}, OpaqueRecord: []byte{3}, EncKeyset: []byte{3}}
+
+	laptop, laptopSession := newDevice()
+	err := runWhileHolding(t, database, func(transaction pgx.Tx) error {
+		_, err := transaction.Exec(ctx, `UPDATE accounts SET opaque_record = $1 WHERE id = 'AAAAAA'`, []byte{2})
+		return err
+	}, func() error { return database.CreateDeviceSession(ctx, laptop, laptopSession, testRecordHash()) })
+	if !errors.Is(err, ErrConflict) {
+		t.Errorf("a login proven against the record a change replaced meanwhile: %v", err)
+	}
+	if _, err := database.GetSessionByHash(ctx, laptopSession.TokenHash, time.Hour); !errors.Is(err, ErrNotFound) {
+		t.Errorf("the refused login's session: %v", err)
+	}
+
+	if _, err := database.UpdateAccountCredentials(ctx, update); err != nil {
+		t.Fatal(err)
+	}
+	phone, phoneSession := newDevice()
+	if err := database.CreateDeviceSession(ctx, phone, phoneSession, HashOpaqueRecord([]byte{2})); !errors.Is(err, ErrConflict) {
+		t.Errorf("a login proven against the record before a credential change: %v", err)
+	}
+	if err := database.CreateDeviceSession(ctx, phone, phoneSession, HashOpaqueRecord([]byte{3})); err != nil {
+		t.Errorf("a login proven against the current record: %v", err)
+	}
+}
+
+// testRecordHash is the hash of the OPAQUE record createTestAccount gives its accounts.
+func testRecordHash() []byte {
+	return HashOpaqueRecord([]byte{1})
 }
 
 func TestPutItem(t *testing.T) {
@@ -439,14 +595,14 @@ func TestPutItem(t *testing.T) {
 		t.Errorf("stale base: %v %+v", err, currentItem)
 	}
 
-	items, seq, err := database.ListChanges(ctx, vaultID, 0, 10)
+	items, seq, _, err := database.ListChanges(ctx, vaultID, 0, 10, 1<<20)
 	if err != nil || seq != 2 || len(items) != 1 || items[0].Revision != revision2 {
 		t.Errorf("changes: seq=%d items=%+v %v", seq, items, err)
 	}
-	if items, _, _ := database.ListChanges(ctx, vaultID, 2, 10); len(items) != 0 {
+	if items, _, _, _ := database.ListChanges(ctx, vaultID, 2, 10, 1<<20); len(items) != 0 {
 		t.Errorf("changes since current: %d items", len(items))
 	}
-	if _, _, err := database.ListChanges(ctx, uuid.NewString(), 0, 10); !errors.Is(err, ErrNotFound) {
+	if _, _, _, err := database.ListChanges(ctx, uuid.NewString(), 0, 10, 1<<20); !errors.Is(err, ErrNotFound) {
 		t.Errorf("changes on missing vault: %v", err)
 	}
 	if histories, _ := database.GetItemHistory(ctx, vaultID, itemID); len(histories) != 2 {
@@ -465,21 +621,35 @@ func TestChangesPaging(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	var since int64
-	var total int
-	for {
-		items, _, err := database.ListChanges(ctx, vaultID, since, 2)
-		if err != nil {
-			t.Fatal(err)
+	readPages := func(limit int, maxBytes int64) []int {
+		t.Helper()
+		var since int64
+		var pageSizes []int
+		for {
+			items, _, isMore, err := database.ListChanges(ctx, vaultID, since, limit, maxBytes)
+			if err != nil {
+				t.Fatal(err)
+			}
+			pageSizes = append(pageSizes, len(items))
+			if !isMore {
+				return pageSizes
+			}
+			since = items[len(items)-1].Seq
 		}
-		total += len(items)
-		if len(items) < 2 {
-			break
-		}
-		since = items[len(items)-1].Seq
 	}
-	if total != 5 {
-		t.Errorf("paged %d items, want 5", total)
+	for _, test := range []struct {
+		limit    int
+		maxBytes int64
+		want     []int
+	}{
+		{2, 1 << 20, []int{2, 2, 1}},
+		{5, 1 << 20, []int{5, 0}},
+		{10, 5, []int{3, 2}},
+		{10, 1, []int{1, 1, 1, 1, 1}},
+	} {
+		if got := readPages(test.limit, test.maxBytes); !slices.Equal(got, test.want) {
+			t.Errorf("limit %d, %d bytes: pages of %v, want %v", test.limit, test.maxBytes, got, test.want)
+		}
 	}
 }
 
@@ -508,8 +678,11 @@ func TestPruneAudit(t *testing.T) {
 	database := createTestStore(t)
 	ctx := context.Background()
 	accountID := "AAAAAA"
-	database.RecordAudit(ctx, &accountID, nil, "login", nil, "192.0.2.1")
-	database.RecordAudit(ctx, &accountID, nil, "login", nil, "192.0.2.2")
+	for _, ip := range []string{"192.0.2.1", "192.0.2.2"} {
+		if err := database.RecordAudit(ctx, &accountID, nil, "login", nil, ip); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := database.pool.Exec(ctx, `UPDATE audit_events SET created_at = now() - interval '400 days' WHERE ip = '192.0.2.1'`); err != nil {
 		t.Fatal(err)
 	}
@@ -595,10 +768,13 @@ func TestVaultAccess(t *testing.T) {
 	if members, _ := database.ListMembers(ctx, vaultID); len(members) != 2 {
 		t.Errorf("members: %d", len(members))
 	}
-	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); err != nil {
+	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB", "AAAAAA"); !errors.Is(err, ErrNotOwner) {
+		t.Errorf("an editor removes the owner: %v", err)
+	}
+	if err := database.RemoveAccess(ctx, vaultID, "AAAAAA", "BBBBBB"); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.RemoveAccess(ctx, vaultID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
+	if err := database.RemoveAccess(ctx, vaultID, "AAAAAA", "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("double remove: %v", err)
 	}
 	if err := database.CreateVault(ctx, &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}); !errors.Is(err, ErrExists) {

@@ -22,6 +22,14 @@ type CredentialChangeResult struct {
 	SignedOutDeviceCount int    `json:"signedOutDeviceCount"`
 	// KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
 	KeychainError string `json:"keychainError"`
+	// LocalError reports local finalization failures after the credentials have already changed.
+	LocalError string `json:"localError"`
+	identity   credentialChangeIdentity
+}
+
+type credentialChangeIdentity struct {
+	epoch     uint64
+	accountID string
 }
 
 type DeletionVault struct {
@@ -68,6 +76,13 @@ func convertAccountError(err error) error {
 	return convertError(err)
 }
 
+func convertAccountDeletionError(err error) error {
+	if apiclient.IsStatus(err, http.StatusConflict) {
+		return errors.New("the account changed while it was being deleted; try again")
+	}
+	return convertAccountError(err)
+}
+
 // ChangeMasterPassword keeps the Secret Key; every other device is signed out and must sign in with the new password.
 func (s *Service) ChangeMasterPassword(currentPassword, newPassword string) (CredentialChangeResult, error) {
 	newPasswordBytes := []byte(newPassword)
@@ -103,8 +118,19 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 		return CredentialChangeResult{}, convertAccountError(err)
 	}
 	defer clear(credentialChange.AccountUnlockKey)
+	var cacheErr error
+	if credentialChange.IsCachedAccountStale {
+		s.unlockedSession.Cache = nil
+		cacheErr = s.removeCache()
+		if cacheErr == nil {
+			cacheErr = s.attachCache(ctx, s.unlockedSession)
+		}
+	}
 
-	result := CredentialChangeResult{SignedOutDeviceCount: credentialChange.SignedOutDeviceCount}
+	result := CredentialChangeResult{
+		SignedOutDeviceCount: credentialChange.SignedOutDeviceCount,
+		identity:             credentialChangeIdentity{epoch: s.sessionEpoch, accountID: s.state.AccountID},
+	}
 	if credentialChange.SecretKey.Encode() != secretKey.Encode() {
 		newSecretKey := credentialChange.SecretKey
 		s.newAccountSecretKey = &newSecretKey
@@ -125,7 +151,10 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 	}
 	s.recordPasswordUnlock()
 	result.Status = s.buildStatus()
-	return result, s.state.Save()
+	if err := errors.Join(cacheErr, s.state.Save()); err != nil {
+		result.LocalError = fmt.Sprintf("your credentials were changed, but this device could not finish saving the change: %v", err)
+	}
+	return result, nil
 }
 
 func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
@@ -189,7 +218,7 @@ func (s *Service) DeleteAccount(password, email string) (Status, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := s.unlockedSession.DeleteAccount(ctx, passwordBytes, secretKey, email); err != nil {
-		return Status{}, convertAccountError(err)
+		return Status{}, convertAccountDeletionError(err)
 	}
 	forgetErr := s.forgetLocalAccount()
 	return s.buildStatus(), forgetErr
@@ -201,16 +230,12 @@ func (s *Service) forgetLocalAccount() error {
 	if s.state.AccountID != "" {
 		secretKeyErr = s.config.SecretKeyStore.DeleteSecretKey(s.state.AccountID)
 	}
-	s.lockSession()
-	s.name = ""
-	s.forgetBiometricUnlock()
-	s.removeCache()
-	s.state.Reset()
+	cacheErr := s.resetAccount()
 	s.notifySessionChange()
 	if err := s.state.Save(); err != nil {
 		return err
 	}
-	return secretKeyErr
+	return errors.Join(secretKeyErr, cacheErr)
 }
 
 // lockSuspendedSession locks Hisar when the server refuses the session because an admin suspended the account. Unlike

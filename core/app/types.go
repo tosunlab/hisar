@@ -474,7 +474,8 @@ type Config struct {
 	// SleepCountingClock reads, from a fixed origin, a clock that keeps counting while the device sleeps, which Go's
 	// timers do not (golang/go#24595); auto-lock measures idle time on it.
 	SleepCountingClock func() time.Duration
-	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
+	// OnLock runs under the service mutex whenever a session ends: a lock, a sign-out or an account switch, also from a
+	// locked session. It must not call the service.
 	OnLock func()
 	// OnRemoteChange runs after the backend synced a change another device made; the UI refreshes.
 	OnRemoteChange func()

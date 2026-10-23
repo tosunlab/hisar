@@ -1,3 +1,4 @@
+import Combine
 import UIKit
 import XCTest
 @testable import Hisar
@@ -24,7 +25,7 @@ final class PhoneApprovalTests: XCTestCase {
         backend.seedSignedIn()
         backend.allPendingApproval = allApproval
         let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore(), getCurrentDate: { [unowned self] in currentDate })
-        model.start { self.backend }
+        await model.start { self.backend }?.value
         await model.refreshPendingApproval()
         return model
     }
@@ -327,6 +328,60 @@ final class PhoneApprovalTests: XCTestCase {
         }
         XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["posted-while-away"])
         XCTAssertNil(model.presentedApproval, "a request found on returning is listed, not pushed into a sheet")
+    }
+
+    func testPollingUnchangedRequestsRedrawsNothing() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "first")])
+        var changeCount = 0
+        let subscription = model.objectWillChange.sink { changeCount += 1 }
+        await model.refreshPendingApproval()
+        await model.refreshPendingApproval()
+        XCTAssertEqual(changeCount, 0, "a poll that finds the same requests redraws the app")
+        backend.allPendingApproval.append(createApproval(requestID: "second", secondsLeft: 90))
+        await model.refreshPendingApproval()
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["first", "second"])
+        XCTAssertGreaterThan(changeCount, 0, "a new request is not shown")
+        subscription.cancel()
+    }
+
+    // Starts a poll that has read the open requests and waits for the returned closure before it returns them, as a slow
+    // poll on a phone.
+    private func startHeldPoll(of model: AppModel) async -> (poll: Task<Void, Never>, finish: () -> Void) {
+        let isListing = DispatchSemaphore(value: 0)
+        let mayFinish = DispatchSemaphore(value: 0)
+        backend.onListAllPendingApproval = {
+            isListing.signal()
+            mayFinish.wait()
+        }
+        let poll = Task { await model.refreshPendingApproval() }
+        while isListing.wait(timeout: .now()) == .timedOut {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        backend.onListAllPendingApproval = nil
+        return (poll, { mayFinish.signal() })
+    }
+
+    func testALateOlderListingKeepsANewerRequest() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "first")])
+        let (olderPoll, finishOlderPoll) = await startHeldPoll(of: model)
+        backend.withApprovalLock { backend.allPendingApproval.append(createApproval(requestID: "second", secondsLeft: 90)) }
+        await model.refreshPendingApproval(isOpeningNewRequest: true)
+        XCTAssertEqual(model.presentedApproval?.requestID, "second")
+        finishOlderPoll()
+        await olderPoll.value
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["first", "second"], "a poll that started earlier took the new request off the list")
+        XCTAssertEqual(model.presentedApproval?.requestID, "second", "a poll that started earlier closed the new request's sheet")
+    }
+
+    func testTurningMacApprovalsOffDuringAListingKeepsTheListEmpty() async {
+        let model = await createUnlockedModel(allApproval: [createApproval(requestID: "first")])
+        backend.withApprovalLock { backend.allPendingApproval.append(createApproval(requestID: "second", secondsLeft: 90)) }
+        let (poll, finishPoll) = await startHeldPoll(of: model)
+        await model.setMacApprovalAllowed(false)
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
+        finishPoll()
+        await poll.value
+        XCTAssertTrue(model.allPendingApproval.isEmpty, "a listing that started before approvals were turned off listed a request")
     }
 
     func testNothingWhileLocked() async {

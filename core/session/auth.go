@@ -82,6 +82,13 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Cli
 		PublicKeys: credential.keyset.GetPublicKeys(accountID),
 		Device:     device,
 	})
+	if apiclient.IsUnreachable(err) {
+		// The account may exist with an answer that never arrived: signing in with what was just registered finds out.
+		if signedIn, loginErr := LogIn(ctx, apiClient, email, password, secretKey, device); loginErr == nil {
+			sessionResponse, err = &apitypes.SessionResponse{Token: apiClient.Token, AccountID: accountID, DeviceID: signedIn.DeviceID}, nil
+			signedIn.Lock()
+		}
+	}
 	if err != nil {
 		credential.keyset.Wipe()
 		clear(credential.accountUnlockKey)
@@ -90,6 +97,10 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Cli
 	apiClient.Token = sessionResponse.Token
 
 	newSession := &Session{Client: apiClient, AccountID: accountID, DeviceID: sessionResponse.DeviceID, Email: email, Name: name, Keyset: credential.keyset}
+	newSession.verifiedAccount = &apitypes.Account{
+		AccountID: accountID, Salt: credential.salt, Argon2: credential.argon2Params,
+		EncKeyset: credential.encryptedKeyset, PublicKeys: credential.keyset.GetPublicKeys(accountID),
+	}
 	if _, err := newSession.CreateVault(ctx, "Personal", apitypes.VaultPersonal); err != nil {
 		clear(credential.accountUnlockKey)
 		return newSession, secretKey, nil, fmt.Errorf("create personal vault: %w", err)
@@ -204,7 +215,12 @@ func decryptAccountKeyset(account *apitypes.Account, apiClient *apiclient.Client
 		keyset.Wipe()
 		return nil, ErrKeyMismatch
 	}
+	// A cache without this account's row would be refused at every later launch, so it stays online-only instead.
+	if accountCache != nil && !isOffline && accountCache.SaveAccount(account) != nil {
+		accountCache = nil
+	}
 	unlockedSession := &Session{Client: apiClient, AccountID: account.AccountID, Email: account.Email, Name: account.Name, Role: account.Role, Keyset: keyset, Cache: accountCache}
+	unlockedSession.verifiedAccount = account
 	unlockedSession.isOffline.Store(isOffline)
 	return unlockedSession, nil
 }

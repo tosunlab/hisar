@@ -14,10 +14,7 @@ final class AccountLifecycleTests: XCTestCase {
     private func createUnlockedModel() async -> AppModel {
         backend.seedSignedIn()
         let model = AppModel(credentialIdentityStore: identityStore)
-        model.start { self.backend }
-        await model.refreshAll()
-        // start() refreshes in a Task of its own; a test that counts AutoFill publishes starts once both have published.
-        await waitUntil({ identityStore.replaceCount >= 2 }, "the refresh start() began did not publish AutoFill")
+        await model.start { self.backend }?.value
         return model
     }
 
@@ -38,6 +35,11 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "", newPassword: "a new master password", repeatedPassword: "a new master password"))
         XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: ""))
         XCTAssertTrue(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master password"))
+    }
+
+    func testUnknownSignedOutDeviceCount() {
+        XCTAssertEqual(AccountLifecycleLogic.describeSignedOutDevices(-1), "Any other devices were signed out; their count could not be recovered.")
+        XCTAssertEqual(AccountLifecycleLogic.describeSignedOutDevices(0), "No other devices were signed in.")
     }
 
     func testEmailConfirmationIgnoresCaseAndSpaces() {
@@ -107,6 +109,16 @@ final class AccountLifecycleTests: XCTestCase {
         await waitUntil({ backend.allCallName.contains("forgetNewAccountSecretKey") }, "the new Secret Key was not forgotten")
     }
 
+    func testDeleteAccountCleanupErrorStillSignsOut() async {
+        let model = await createUnlockedModel()
+        backend.accountDeletionCleanupError = BackendError(message: "The offline copy could not be removed.")
+        let isDeleted = await model.deleteAccount(password: FakeBackend.password, email: "alice@example.com")
+        XCTAssertFalse(isDeleted)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertTrue(model.allVault.isEmpty)
+        XCTAssertEqual(model.errorMessage, "The offline copy could not be removed.")
+    }
+
     func testDeleteAccountSignsOutAndRemovesAutoFillIdentities() async {
         let model = await createUnlockedModel()
         XCTAssertFalse(identityStore.allIdentity.isEmpty)
@@ -124,27 +136,9 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(model.noticeMessage, "Your Hisar account was deleted.")
     }
 
-    /// Holds a refresh at its last listing while change runs, as when the device is signed out or locks meanwhile.
-    private func finishRefresh(of model: AppModel, after change: () async -> Void) async {
-        let isListing = DispatchSemaphore(value: 0)
-        let mayFinish = DispatchSemaphore(value: 0)
-        backend.onListAllPasskey = {
-            isListing.signal()
-            mayFinish.wait()
-        }
-        let refresh = Task { await model.refreshAll() }
-        while isListing.wait(timeout: .now()) == .timedOut {
-            try? await Task.sleep(nanoseconds: 10_000_000)
-        }
-        await change()
-        backend.onListAllPasskey = nil
-        mayFinish.signal()
-        await refresh.value
-    }
-
     func testRefreshFinishingAfterSignOutBringsNothingBack() async {
         let model = await createUnlockedModel()
-        await finishRefresh(of: model) {
+        await backend.finishRefresh(of: model) {
             backend.status = .signedOut
             model.handleLockedEvent()
             await waitUntil({ identityStore.allIdentity.isEmpty }, "signing out did not clear AutoFill")
@@ -158,12 +152,22 @@ final class AccountLifecycleTests: XCTestCase {
         let model = await createUnlockedModel()
         let allPublishedIdentity = identityStore.allIdentity
         let replaceCount = identityStore.replaceCount
-        await finishRefresh(of: model) { model.lock() }
+        await backend.finishRefresh(of: model) { model.lock() }
         XCTAssertEqual(model.screen, .locked)
         XCTAssertTrue(model.allVault.isEmpty, "the refresh restored the vaults behind the lock screen")
         XCTAssertTrue(model.allItemByVaultID.isEmpty, "the refresh restored the items behind the lock screen")
         XCTAssertEqual(identityStore.allIdentity, allPublishedIdentity, "a lock keeps the AutoFill identities")
         XCTAssertEqual(identityStore.replaceCount, replaceCount)
+    }
+
+    func testRefreshFinishingAfterANewerRefreshKeepsTheNewerLists() async {
+        let model = await createUnlockedModel()
+        await backend.finishRefresh(of: model) {
+            backend.onListAllPasskey = nil
+            backend.allFavoriteRecordID = ["family/netflix"]
+            await model.refreshAll()
+        }
+        XCTAssertEqual(model.listAllFavoriteReference().map(\.item.title), ["Netflix"], "the older refresh brought back the older lists")
     }
 
     func testSignedOutByServerShowsReasonAndClearsAutoFill() async throws {

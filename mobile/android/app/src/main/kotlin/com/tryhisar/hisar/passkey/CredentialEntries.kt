@@ -14,7 +14,7 @@ import androidx.credentials.provider.CreateEntry
 import androidx.credentials.provider.PasswordCredentialEntry
 import androidx.credentials.provider.PublicKeyCredentialEntry
 import com.tryhisar.hisar.model.Base64URL
-import java.util.concurrent.atomic.AtomicInteger
+import java.util.UUID
 import kotlinx.io.bytestring.ByteString
 
 /** What an entry of the system's sheet asks [CredentialActivity] to do, carried in the entry's pending intent. */
@@ -52,14 +52,13 @@ sealed interface CredentialPick {
             Create -> intent.putExtra(EXTRA_PICK, "create")
         }
 
-        private val requestCodes = AtomicInteger()
-
-        // Mutable, because the system adds the request to the intent; a request code per entry keeps the intents apart.
+        // Mutable, because the system adds the request to the intent. A random identifier per entry keeps every intent
+        // apart, also from those an earlier process of Hisar handed to a sheet that is still open, so none is rebound.
         fun buildPendingIntent(context: Context, pick: CredentialPick): PendingIntent = PendingIntent.getActivity(
             context,
-            requestCodes.incrementAndGet(),
-            write(pick, Intent(context, CredentialActivity::class.java)),
-            PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+            0,
+            write(pick, Intent(context, CredentialActivity::class.java).setIdentifier(UUID.randomUUID().toString())),
+            PendingIntent.FLAG_MUTABLE,
         )
     }
 }

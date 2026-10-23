@@ -44,7 +44,7 @@ func runEmergencyKit(ctx context.Context, flags *flag.FlagSet, args []string) er
 		if err := writeNewPrivateFile(*outputPath, document); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Saved your Emergency Kit to %s. Print it, then delete the file.\n", *outputPath)
+		fmt.Fprintf(standardError(), "Saved your Emergency Kit to %s. Print it, then delete the file.\n", *outputPath)
 		return nil
 	}()
 	return finishSession(currentState, unlockedSession, err)
@@ -56,10 +56,5 @@ func writeNewPrivateFile(path string, content []byte) error {
 	if err != nil {
 		return err
 	}
-	if _, err := file.Write(content); err != nil {
-		file.Close()
-		os.Remove(path)
-		return err
-	}
-	return file.Close()
+	return finishNewFile(path, content, file)
 }

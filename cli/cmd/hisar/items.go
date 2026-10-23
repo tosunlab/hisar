@@ -8,7 +8,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"text/tabwriter"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
@@ -42,7 +41,7 @@ func runListItems(ctx context.Context, access backend, flags *flag.FlagSet, args
 	if err != nil {
 		return err
 	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tTYPE\tTAGS\tID")
 	for _, vaultItem := range items {
 		if *tag != "" && !vaultItem.HasTag(*tag) {
@@ -96,13 +95,13 @@ func listFavoriteItems(ctx context.Context, access backend, vaultName string) er
 		}
 	}
 	if len(rows) == 0 {
-		fmt.Fprintln(os.Stderr, "No favorites yet. Add one with: hisar favorite <item> [-v vault]")
+		fmt.Fprintln(standardError(), "No favorites yet. Add one with: hisar favorite <item> [-v vault]")
 		return nil
 	}
 	slices.SortStableFunc(rows, func(first, second favoriteRow) int {
 		return strings.Compare(strings.ToLower(first.vaultItem.Overview.Title), strings.ToLower(second.vaultItem.Overview.Title))
 	})
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	fmt.Fprintln(writer, "TITLE\tUSERNAME\tURL\tTYPE\tVAULT\tID")
 	for _, row := range rows {
 		vaultItem := row.vaultItem
@@ -144,9 +143,9 @@ func setFavoriteFromCommandLine(ctx context.Context, access backend, flags *flag
 		return err
 	}
 	if isFavorite {
-		fmt.Fprintf(os.Stderr, "Added %q (%s) to Favorites.\n", vaultItem.Overview.Title, vault.Name)
+		fmt.Fprintf(standardError(), "Added %q (%s) to Favorites.\n", vaultItem.Overview.Title, vault.Name)
 	} else {
-		fmt.Fprintf(os.Stderr, "Removed %q (%s) from Favorites.\n", vaultItem.Overview.Title, vault.Name)
+		fmt.Fprintf(standardError(), "Removed %q (%s) from Favorites.\n", vaultItem.Overview.Title, vault.Name)
 	}
 	return nil
 }
@@ -211,7 +210,7 @@ func runAdd(ctx context.Context, access backend, flags *flag.FlagSet, args []str
 	if err := access.savePromptedItem(ctx, vault.ID, vaultItem); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Saved %q to %s.\n", vaultItem.Overview.Title, vault.Name)
+	fmt.Fprintf(standardError(), "Saved %q to %s.\n", vaultItem.Overview.Title, vault.Name)
 	return nil
 }
 
@@ -238,7 +237,7 @@ func runEdit(ctx context.Context, access backend, flags *flag.FlagSet, args []st
 	if err := access.savePromptedItem(ctx, vault.ID, vaultItem); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Saved %q.\n", vaultItem.Overview.Title)
+	fmt.Fprintf(standardError(), "Saved %q.\n", vaultItem.Overview.Title)
 	return nil
 }
 
@@ -262,6 +261,6 @@ func runRemove(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err := access.deleteItem(ctx, vault.ID, vaultItem.ID); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Deleted %q.\n", vaultItem.Overview.Title)
+	fmt.Fprintf(standardError(), "Deleted %q.\n", vaultItem.Overview.Title)
 	return nil
 }

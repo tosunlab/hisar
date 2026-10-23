@@ -166,7 +166,7 @@ func main() {
 	option, args, err := parseGlobalOption(os.Args[1:])
 	switch {
 	case err != nil:
-		fmt.Fprintln(os.Stderr, "hisar:", err)
+		fmt.Fprintln(standardError(), "hisar:", err)
 		printUsage(os.Stderr)
 		os.Exit(2)
 	case option.isVersion:
@@ -188,7 +188,7 @@ func main() {
 	defer stop()
 	flags := flag.NewFlagSet(selected.name, flag.ContinueOnError)
 	flags.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: hisar %s %s\n", selected.name, selected.argumentUsage)
+		fmt.Fprintf(standardError(), "usage: hisar %s %s\n", selected.name, selected.argumentUsage)
 		flags.PrintDefaults()
 	}
 	err = runCommand(ctx, selected, option.isStandalone, flags, args[1:])
@@ -196,7 +196,7 @@ func main() {
 	updateMessage, isUpdateRequired := describeUpdateRequired(err)
 	switch {
 	case isUpdateRequired:
-		fmt.Fprintln(os.Stderr, "hisar:", updateMessage)
+		fmt.Fprintln(standardError(), "hisar:", updateMessage)
 		os.Exit(1)
 	case errors.As(err, &exitCode):
 		os.Exit(int(exitCode))
@@ -206,7 +206,7 @@ func main() {
 	case errors.Is(err, flag.ErrHelp):
 		os.Exit(2)
 	case err != nil:
-		fmt.Fprintln(os.Stderr, "hisar:", err)
+		fmt.Fprintln(standardError(), "hisar:", escapeControlCharacters(err.Error()))
 		os.Exit(1)
 	}
 }

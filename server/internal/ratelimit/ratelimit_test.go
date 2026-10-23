@@ -1,11 +1,26 @@
 package ratelimit
 
 import (
+	"strconv"
 	"testing"
 	"time"
 
 	"golang.org/x/time/rate"
 )
+
+func TestManyFreshKeysDoNotSlowEveryRequest(t *testing.T) {
+	limiter := New(rate.Every(time.Hour), 1)
+	deadline := time.Now().Add(5 * time.Second)
+	for index := range 20 * maximumKeyCount {
+		limiter.Allow(strconv.Itoa(index))
+		if index%1000 == 0 && time.Now().After(deadline) {
+			t.Fatalf("%d fresh keys took over 5 s: each request walks every key", index)
+		}
+	}
+	if limiter.Allow("0") {
+		t.Error("a key seen moments ago was forgotten, and its burst refilled")
+	}
+}
 
 func TestLimiterAllowsABurstPerKey(t *testing.T) {
 	limiter := NewDaily(2)

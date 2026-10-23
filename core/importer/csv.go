@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strconv"
 	"strings"
 
 	"github.com/tryhisar/hisar/core/item"
@@ -23,6 +24,7 @@ const (
 	columnType     = "type"
 	columnArchived = "archived"
 	columnFavorite = "favorite"
+	columnReprompt = "reprompt"
 )
 
 var columnAliases = map[string]string{
@@ -39,11 +41,12 @@ var columnAliases = map[string]string{
 	"type":     columnType,
 	"archived": columnArchived,
 	"favorite": columnFavorite, "fav": columnFavorite,
+	"reprompt": columnReprompt,
 }
 
 // ignoredColumns holds export metadata that is not worth keeping as a field.
 var ignoredColumns = map[string]bool{
-	"reprompt": true, "httprealm": true, "formactionorigin": true, "guid": true,
+	"httprealm": true, "formactionorigin": true, "guid": true,
 	"timecreated": true, "timelastused": true, "timepasswordchanged": true, "created": true, "modified": true, "last modified": true,
 }
 
@@ -103,7 +106,11 @@ func buildCSVLayout(columnNames []string) (*csvLayout, error) {
 	return layout, nil
 }
 
-func createCSVReader(content []byte) *csv.Reader {
+// maxCSVColumns bounds the values of a row: the CSV reader holds a string for each, so a line of only commas would take
+// many times the file's size.
+const maxCSVColumns = 1000
+
+func createCSVReader(content []byte) (*csv.Reader, error) {
 	reader := csv.NewReader(bytes.NewReader(content))
 	reader.FieldsPerRecord = -1
 	firstLine, _, _ := bytes.Cut(content, []byte("\n"))
@@ -112,7 +119,32 @@ func createCSVReader(content []byte) *csv.Reader {
 	} else if bytes.Count(firstLine, []byte("\t")) > bytes.Count(firstLine, []byte(",")) {
 		reader.Comma = '\t'
 	}
-	return reader
+	if err := checkCSVColumnCount(content, byte(reader.Comma)); err != nil {
+		return nil, err
+	}
+	return reader, nil
+}
+
+// checkCSVColumnCount refuses a file with a row of more than maxCSVColumns values before the CSV reader splits it.
+// Separators and line breaks inside double quotes belong to a value.
+func checkCSVColumnCount(content []byte, separator byte) error {
+	line, columnCount, isQuoted := 1, 1, false
+	for _, character := range content {
+		switch {
+		case character == '"':
+			isQuoted = !isQuoted
+		case character == '\n':
+			if !isQuoted {
+				columnCount = 1
+			}
+			line++
+		case character == separator && !isQuoted:
+			if columnCount++; columnCount > maxCSVColumns {
+				return fmt.Errorf("the CSV file has more than %d columns near line %d", maxCSVColumns, line)
+			}
+		}
+	}
+	return nil
 }
 
 // convertCSVError keeps the position of a syntax error and drops everything else, which could contain values.
@@ -125,7 +157,11 @@ func convertCSVError(err error) error {
 }
 
 func detectCSVFormat(content []byte) (string, error) {
-	columnNames, err := createCSVReader(content).Read()
+	reader, err := createCSVReader(content)
+	if err != nil {
+		return "", err
+	}
+	columnNames, err := reader.Read()
 	if errors.Is(err, io.EOF) {
 		return "", ErrEmptyFile
 	}
@@ -151,7 +187,10 @@ func detectCSVFormat(content []byte) (string, error) {
 }
 
 func parseCSV(content []byte, format string) (*Result, error) {
-	reader := createCSVReader(content)
+	reader, err := createCSVReader(content)
+	if err != nil {
+		return nil, err
+	}
 	columnNames, err := reader.Read()
 	if errors.Is(err, io.EOF) {
 		return nil, ErrEmptyFile
@@ -172,19 +211,22 @@ func parseCSV(content []byte, format string) (*Result, error) {
 		if err != nil {
 			return nil, convertCSVError(err)
 		}
-		vaultItem, reason := convertCSVRecord(layout, values, format)
+		vaultItem, reason := convertCSVRecord(layout, values, format, &result.Skipped)
 		if reason != "" {
 			result.Skipped = append(result.Skipped, SkippedEntry{Title: describeEntry(layout.getValue(values, columnTitle)), Reason: reason})
 			continue
 		}
 		if finishItem(&vaultItem) {
 			result.Items = append(result.Items, vaultItem)
+			if format == FormatBitwardenCSV && layout.getValue(values, columnReprompt) == strconv.Itoa(bitwardenRepromptPassword) {
+				result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: bitwardenRepromptReason})
+			}
 		}
 	}
 	return result, nil
 }
 
-func convertCSVRecord(layout *csvLayout, values []string, format string) (item.Item, string) {
+func convertCSVRecord(layout *csvLayout, values []string, format string, skipped *[]SkippedEntry) (item.Item, string) {
 	getValue := func(column string) string { return layout.getValue(values, column) }
 	if format == FormatOnePasswordCSV && strings.EqualFold(strings.TrimSpace(getValue(columnArchived)), "true") {
 		return item.Item{}, "archived in 1Password"
@@ -206,7 +248,7 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 		return item.Item{}, ""
 	}
 	if format == FormatLastPassCSV && isLastPassSecureNoteURL(getValue(columnURL)) && isLastPassTypedNote(getValue(columnNotes)) {
-		vaultItem, reason := convertLastPassNote(getValue(columnTitle), getValue(columnNotes))
+		vaultItem, reason := convertLastPassNote(getValue(columnTitle), getValue(columnNotes), skipped)
 		if reason == "" {
 			vaultItem.IsFavorite = isCSVTrue(getValue(columnFavorite))
 			vaultItem.Overview.Tags = splitCSVTags(getValue(columnTags), format)
@@ -230,11 +272,31 @@ func convertCSVRecord(layout *csvLayout, values []string, format string) (item.I
 		vaultItem.Details.Fields = append(vaultItem.Details.Fields, parseBitwardenCSVFields(getValue(columnFields))...)
 	}
 	for _, index := range layout.extraIndexes {
-		if index < len(values) && strings.TrimSpace(values[index]) != "" {
-			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: layout.columnNames[index], Value: values[index]})
+		if index >= len(values) {
+			continue
+		}
+		name, value := layout.columnNames[index], values[index]
+		isSecret := isSecretColumn(name)
+		if value == "" || (!isSecret && strings.TrimSpace(value) == "") {
+			continue
+		}
+		vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: isSecret})
+	}
+	// A row with more values than the header names, such as an unquoted comma, keeps them, concealed since they may be
+	// part of a password.
+	for index := len(layout.columnNames); index < len(values); index++ {
+		if values[index] != "" {
+			vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: fmt.Sprintf("Column %d", index+1), Value: values[index], Concealed: true})
 		}
 	}
 	return vaultItem, ""
+}
+
+// isSecretColumn reports whether a column that became a field holds a secret: a second password or one-time password
+// column, or one named like a secret, such as "API key".
+func isSecretColumn(name string) bool {
+	column := columnAliases[normalizeColumnName(name)]
+	return column == columnPassword || column == columnOTP || isSecretFieldName(name)
 }
 
 // splitCSVTags reads the tags column. A Bitwarden folder is one tag, and so is a LastPass folder, whose nested folders

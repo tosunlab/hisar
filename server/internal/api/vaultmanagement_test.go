@@ -1,6 +1,7 @@
 package api
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -170,6 +171,64 @@ func TestVaultAccessIsCheckedBeforeTheRequest(t *testing.T) {
 	}
 	_, _, err = stranger.Client.PutItem(ctx, work.ID, uuid.NewString(), "", &apitypes.PutItemRequest{Revision: uuid.NewString(), Overview: []byte{1}, Details: []byte{1}})
 	expectStatus(t, "stranger saves an item", err, http.StatusNotFound)
+}
+
+// TestTombstoneNeedsAnExistingItem: a deletion replaces an item, so a tombstone for an item that never existed, which no
+// app reads or shows, is refused.
+func TestTombstoneNeedsAnExistingItem(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", apitypes.VaultShared))
+
+	tombstone := &apitypes.PutItemRequest{Revision: uuid.NewString(), Deleted: true, Overview: []byte{1}, Details: []byte{1}, KeyGeneration: work.KeyGeneration}
+	_, _, err := alice.Client.PutItem(ctx, work.ID, uuid.NewString(), "", tombstone)
+	var apiError *apiclient.APIError
+	if !errors.As(err, &apiError) || apiError.Status != http.StatusBadRequest || apiError.Message != "invalid item" {
+		t.Fatalf("a tombstone for a new item: %v", err)
+	}
+	if changes := requireValue[*apitypes.ChangesResponse](t)(alice.Client.ListChanges(ctx, work.ID, 0, 0)); len(changes.Items) != 0 {
+		t.Errorf("the refused tombstone was stored: %+v", changes.Items)
+	}
+	saved := createTestItem(t, alice, work, item.Item{Overview: item.Overview{Title: "Wiki"}})
+	if _, err := alice.DeleteItem(ctx, work, &saved); err != nil {
+		t.Errorf("deleting an existing item: %v", err)
+	}
+}
+
+// TestChangesOfLargestItemsFitAResponse: a vault of items at the largest allowed size still syncs, in pages smaller than
+// what an app reads of one response.
+func TestChangesOfLargestItemsFitAResponse(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	work := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", apitypes.VaultShared))
+	const itemCount = 50
+	details := bytes.Repeat([]byte{7}, 1<<20)
+	for range itemCount {
+		request := &apitypes.PutItemRequest{Revision: uuid.NewString(), Overview: []byte{1}, Details: details, KeyGeneration: work.KeyGeneration}
+		if _, _, err := alice.Client.PutItem(ctx, work.ID, uuid.NewString(), "", request); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	var since int64
+	var itemTotal, pageCount int
+	for {
+		page, err := alice.Client.ListChanges(ctx, work.ID, since, 0)
+		if err != nil {
+			t.Fatalf("page %d: %v", pageCount+1, err)
+		}
+		itemTotal += len(page.Items)
+		pageCount++
+		since = page.NextSeq
+		if !page.More {
+			break
+		}
+	}
+	if itemTotal != itemCount || pageCount < 2 {
+		t.Errorf("synced %d items in %d pages", itemTotal, pageCount)
+	}
 }
 
 func createTestItem(t *testing.T, owner *session.Session, vault *session.Vault, vaultItem item.Item) item.Item {

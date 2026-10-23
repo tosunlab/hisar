@@ -994,3 +994,57 @@ func TestConcurrentTeamRemovalsKeepAnOwner(t *testing.T) {
 		t.Errorf("team members after the race: %d", memberCount)
 	}
 }
+
+func TestOrganizationInvitationsOfADemotedOrRemovedAdminGrantNothing(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	caller := apiCaller{t: t, baseURL: baseURL}
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
+	dave := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", apitypes.RoleMember)
+	acme := caller.createOrganization(alice, "Acme")
+	caller.joinOrganization(alice, bob, acme.ID, apitypes.OrganizationRoleAdmin)
+	alicePath := organizationPath(acme.ID, "members", alice.AccountID)
+
+	receivedInvitationID := func(recipient *session.Session) string {
+		t.Helper()
+		var organizations apitypes.OrganizationList
+		caller.call(recipient, "GET", "/api/v1/organizations", nil, http.StatusOK, &organizations)
+		if len(organizations.Invitations) != 1 {
+			t.Fatalf("%s's invitations: %+v", recipient.Email, organizations.Invitations)
+		}
+		return organizations.Invitations[0].ID
+	}
+	refuseInvitation := func(recipient *session.Session, invitationID string) {
+		t.Helper()
+		var organizations apitypes.OrganizationList
+		caller.call(recipient, "GET", "/api/v1/organizations", nil, http.StatusOK, &organizations)
+		if len(organizations.Invitations) != 0 {
+			t.Errorf("%s is still offered the invitation: %+v", recipient.Email, organizations.Invitations)
+		}
+		var organization apitypes.Organization
+		caller.call(bob, "GET", organizationPath(acme.ID), nil, http.StatusOK, &organization)
+		if len(organization.Invitations) != 0 {
+			t.Errorf("the organization still lists the invitation: %+v", organization.Invitations)
+		}
+		caller.call(recipient, "POST", "/api/v1/organization-invitations/"+invitationID+"/accept", nil, http.StatusNotFound, nil)
+		caller.call(recipient, "GET", "/api/v1/organizations", nil, http.StatusOK, &organizations)
+		if len(organizations.Organizations) != 0 {
+			t.Errorf("%s joined through the invitation: %+v", recipient.Email, organizations.Organizations)
+		}
+	}
+
+	caller.call(alice, "POST", organizationPath(acme.ID, "invitations"), apitypes.OrganizationInvitationRequest{Email: carol.Email, Role: apitypes.OrganizationRoleAdmin},
+		http.StatusAccepted, nil)
+	carolInvitationID := receivedInvitationID(carol)
+	caller.call(bob, "PUT", alicePath, apitypes.SetOrganizationRoleRequest{Role: apitypes.OrganizationRoleMember}, http.StatusNoContent, nil)
+	refuseInvitation(carol, carolInvitationID)
+
+	caller.call(bob, "PUT", alicePath, apitypes.SetOrganizationRoleRequest{Role: apitypes.OrganizationRoleAdmin}, http.StatusNoContent, nil)
+	caller.call(alice, "POST", organizationPath(acme.ID, "invitations"), apitypes.OrganizationInvitationRequest{Email: dave.Email, Role: apitypes.OrganizationRoleAdmin},
+		http.StatusAccepted, nil)
+	daveInvitationID := receivedInvitationID(dave)
+	caller.call(bob, "DELETE", alicePath, nil, http.StatusNoContent, nil)
+	refuseInvitation(dave, daveInvitationID)
+}

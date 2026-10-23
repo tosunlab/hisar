@@ -292,7 +292,7 @@ type connectionAgent struct {
 	mutex    sync.Mutex
 	bindings []sessionBinding
 	// unlockApproval is set when the approval window unlocked Hisar for this connection; its signatures then do not ask
-	// again, except that a never-remembered client gets only the first signature after the unlock.
+	// again until Hisar locks, except that a never-remembered client gets only the first signature after the unlock.
 	unlockApproval *grantedUnlock
 }
 
@@ -340,18 +340,31 @@ func (connection *connectionAgent) listResolvedKeyUnlocking(request ApprovalRequ
 	if err != nil {
 		return nil, err
 	}
+	// Hisar may have locked, signed out or changed account while the dialog was open: that unlock grants nothing.
+	if connection.server.getApprovalEpoch() != epoch {
+		return nil, ErrLocked
+	}
 	connection.mutex.Lock()
 	connection.unlockApproval = &grantedUnlock{isRemembered: result.IsRemembered, epoch: epoch}
 	connection.mutex.Unlock()
-	return connection.listResolvedKeys()
+	resolvedKeys, err = connection.listResolvedKeys()
+	if err == nil && connection.server.getApprovalEpoch() != epoch {
+		return nil, ErrLocked
+	}
+	return resolvedKeys, err
 }
 
 // useUnlockApproval returns the unlock that covers a signature, if any, and marks it used. A never-remembered request
-// is covered only by an unlock no signature has used yet: its app may have become an agent host since.
+// is covered only by an unlock no signature has used yet: its app may have become an agent host since. An unlock from
+// before Hisar last locked covers nothing.
 func (connection *connectionAgent) useUnlockApproval(isNeverRemembered bool) (grantedUnlock, bool) {
+	epoch := connection.server.getApprovalEpoch()
 	connection.mutex.Lock()
 	defer connection.mutex.Unlock()
 	unlock := connection.unlockApproval
+	if unlock != nil && unlock.epoch != epoch {
+		connection.unlockApproval, unlock = nil, nil
+	}
 	if unlock == nil || (isNeverRemembered && unlock.hasSigned) {
 		return grantedUnlock{}, false
 	}
@@ -395,6 +408,7 @@ func (connection *connectionAgent) Sign(publicKey ssh.PublicKey, data []byte) (*
 
 func (connection *connectionAgent) SignWithFlags(publicKey ssh.PublicKey, data []byte, flags agent.SignatureFlags) (*ssh.Signature, error) {
 	request := connection.buildRequest()
+	epoch := connection.server.getApprovalEpoch()
 	request.Fingerprint = ssh.FingerprintSHA256(publicKey)
 	request.SignatureNamespace, _ = parseSignatureNamespace(data)
 	if err := connection.checkSessionBinding(data); err != nil {
@@ -428,6 +442,10 @@ func (connection *connectionAgent) SignWithFlags(publicKey ssh.PublicKey, data [
 		}
 	} else if err := connection.server.requestApproval(connection.ctx, request); err != nil {
 		return nil, err
+	}
+	// The key was read before the approval; Hisar may have locked or changed account while it was open.
+	if connection.server.getApprovalEpoch() != epoch {
+		return nil, ErrLocked
 	}
 	// The harness may have exited, or Settings revoked its session, while the dialog was open or before the exit watch
 	// saw it: an ended agent session signs nothing.

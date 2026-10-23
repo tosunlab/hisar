@@ -46,7 +46,9 @@ func serveShareLinkAPI(t *testing.T, testService unlockedTestService) *fakeShare
 	}))
 	t.Cleanup(httpServer.Close)
 	service.mutex.Lock()
-	service.unlockedSession.Client.BaseURL = httpServer.URL
+	client := *service.unlockedSession.Client
+	client.BaseURL = httpServer.URL
+	service.unlockedSession.Client = &client
 	service.mutex.Unlock()
 	return api
 }

@@ -28,18 +28,24 @@ func TestStreamEvents(t *testing.T) {
 	apiClient := New(testServer.URL)
 	apiClient.Token = "token"
 	var events []Event
-	err := apiClient.StreamEvents(context.Background(), func(event Event) { events = append(events, event) })
+	openCount := 0
+	err := apiClient.StreamEvents(context.Background(), func() {
+		if len(events) > 0 {
+			t.Error("the stream opened after an event")
+		}
+		openCount++
+	}, func(event Event) { events = append(events, event) })
 	if err != nil {
 		t.Fatalf("stream ended with %v", err)
 	}
-	if len(events) != 3 || events[0].Name != "vault-changed" || string(events[0].Data) != `{"vaultID":"v1","seq":7}` ||
+	if openCount != 1 || len(events) != 3 || events[0].Name != "vault-changed" || string(events[0].Data) != `{"vaultID":"v1","seq":7}` ||
 		events[1].Name != "vaults-changed" || string(events[2].Data) != "first\nsecond" {
-		t.Errorf("events = %+v", events)
+		t.Errorf("opened %d times, events = %+v", openCount, events)
 	}
 
 	apiClient.Token = "wrong"
-	if err := apiClient.StreamEvents(context.Background(), func(Event) {}); !IsStatus(err, http.StatusUnauthorized) {
-		t.Errorf("unauthorized stream: %v", err)
+	if err := apiClient.StreamEvents(context.Background(), func() { openCount++ }, func(Event) {}); !IsStatus(err, http.StatusUnauthorized) || openCount != 1 {
+		t.Errorf("unauthorized stream: %v, opened %d times", err, openCount)
 	}
 }
 
@@ -66,7 +72,7 @@ func TestStreamEventsOutlivesRequestTimeoutAndStopsWithContext(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 300*time.Millisecond)
 	defer cancel()
 	startedAt := time.Now()
-	err := apiClient.StreamEvents(ctx, func(Event) {})
+	err := apiClient.StreamEvents(ctx, nil, func(Event) {})
 	if !errors.Is(err, context.DeadlineExceeded) || time.Since(startedAt) < 250*time.Millisecond {
 		t.Errorf("stream ended after %v with %v; the request timeout must not apply", time.Since(startedAt), err)
 	}

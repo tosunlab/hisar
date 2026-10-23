@@ -334,6 +334,53 @@ func TestCommandsRunThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestCommandsPreferAVaultIDOverAName(t *testing.T) {
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		if request.Type == cliprotocol.TypeListVault {
+			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "mine-id", Name: "team-id", Type: "personal", Role: "owner"}, {ID: "team-id", Name: "Team", Type: "shared", Role: "owner"}}}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	if _, _, err := runCapturingOutput(t, false, "", "ls", "-v", "team-id"); err != nil {
+		t.Fatalf("ls by ID: %v", err)
+	}
+	if requests := app.findRequest(cliprotocol.TypeListItem); len(requests) != 1 || requests[0].VaultID != "team-id" {
+		t.Errorf("a vault named like another vault's ID took its place: item requests %+v", requests)
+	}
+}
+
+func TestTextOthersWroteCannotDriveTheTerminal(t *testing.T) {
+	const hostile = "Eve\x1b]52;c;ZWNobyBoaQ==\x07\u009b"
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		switch request.Type {
+		case cliprotocol.TypeAccount:
+			return cliprotocol.AccountResult{AccountID: "ABC123", Name: hostile, Email: "eve@example.com", Role: "member", Server: "https://hisar.example.com"}, nil
+		case cliprotocol.TypeListVault:
+			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"}, {ID: "shared-id", Name: hostile, Type: "shared", Role: "editor"}}}, nil
+		case cliprotocol.TypeListItem:
+			return cliprotocol.ItemListResult{Items: []cliprotocol.Item{{ID: "shared-item", Title: hostile, Username: hostile}}}, nil
+		case cliprotocol.TypeGetItem:
+			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "shared-item", Title: hostile, Notes: "line one\n" + hostile, Fields: []cliprotocol.Field{{Name: hostile, Value: hostile}}}}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	for _, args := range [][]string{{"whoami"}, {"vaults"}, {"ls"}, {"get", "shared-item"}} {
+		stdout, _, err := runCapturingOutput(t, false, "", args...)
+		if err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if strings.ContainsAny(stdout, "\x1b\x07\u009b") || !strings.Contains(stdout, `Eve\x1b]52;c;ZWNobyBoaQ==\x07\x9b`) {
+			t.Errorf("%v: %q", args, stdout)
+		}
+	}
+}
+
 func TestListItemsByTagThroughTheApp(t *testing.T) {
 	app := startFakeApp(t)
 	stdout, _, err := runCapturingOutput(t, false, "", "ls")

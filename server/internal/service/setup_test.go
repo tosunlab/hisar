@@ -204,7 +204,7 @@ func TestSetupStepsRunInOrderAndDoneIsFinal(t *testing.T) {
 		{settings.SetupNeedsAdmin, settings.SetupNeedsChecks},
 		{settings.SetupNeedsChecks, settings.SetupNeedsInvitePolicy},
 	} {
-		if err := s.moveSetup(ctx, admin.ID, step[0], step[1]); !errors.Is(err, errSetupStep) {
+		if err := s.moveSetup(ctx, admin.ID, true, step[0], step[1]); !errors.Is(err, errSetupStep) {
 			t.Errorf("%s step after done: %v", step[0], err)
 		}
 	}

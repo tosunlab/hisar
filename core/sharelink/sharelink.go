@@ -89,8 +89,7 @@ func ListAvailableFieldKeys(vaultItem *item.Item) []string {
 		keys = append(keys, FieldURLs)
 	}
 	for index, field := range vaultItem.Details.Fields {
-		// A server's SSH key field holds the ID of an item the recipient cannot open.
-		if field.Value != "" && !(vaultItem.IsCategory(item.CategoryServer) && strings.EqualFold(field.Name, item.FieldSSHKey)) {
+		if field.Value != "" && isShareableField(vaultItem, field) {
 			keys = append(keys, GetCustomFieldKey(index))
 		}
 	}
@@ -142,6 +141,16 @@ func parseCustomFieldKey(key string, vaultItem *item.Item) (int, bool) {
 	return index, true
 }
 
+// isShareableField reports whether a custom field may go into a link. A server's SSH key field holds the ID of an item
+// the recipient cannot open, and an otpauth:// value is a one-time password secret whatever field holds it, as one does
+// after a login becomes another category.
+func isShareableField(vaultItem *item.Item, field item.Field) bool {
+	if vaultItem.IsCategory(item.CategoryServer) && strings.EqualFold(field.Name, item.FieldSSHKey) {
+		return false
+	}
+	return !strings.HasPrefix(strings.ToLower(strings.TrimSpace(field.Value)), "otpauth://")
+}
+
 // BuildItemPayload copies only the chosen fields; key material (SSH private keys, passkeys, one-time password secrets) has no key.
 func BuildItemPayload(vaultItem *item.Item, fieldKeys []string) (*Payload, error) {
 	payload := &Payload{Version: PayloadVersion, Title: limitText(vaultItem.Overview.Title, MaxTitleLength), Fields: []Field{}}
@@ -151,8 +160,12 @@ func BuildItemPayload(vaultItem *item.Item, fieldKeys []string) (*Payload, error
 			isChosen[key] = true
 			continue
 		}
-		if _, isCustom := parseCustomFieldKey(key, vaultItem); !isCustom {
+		index, isCustom := parseCustomFieldKey(key, vaultItem)
+		if !isCustom {
 			return nil, fmt.Errorf("unknown field %q", key)
+		}
+		if field := vaultItem.Details.Fields[index]; !isShareableField(vaultItem, field) {
+			return nil, fmt.Errorf("%q can't be shared: SSH private keys, passkeys and one-time password secrets never leave Hisar", field.Name)
 		}
 		isChosen[key] = true
 	}

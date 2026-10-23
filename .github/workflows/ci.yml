@@ -28,6 +28,8 @@ env:
 jobs:
   changes:
     name: Check what the pull request changes
+    # A pull request labeled disable-all-ci runs no job: every job below either checks the label itself or needs this one.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -38,6 +40,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Check packaging toolchain pins
+        run: bash scripts/check-go-toolchain.sh
+      - name: Test release and CI input selection
+        run: bash scripts/test-app-paths.sh
       - name: Compare the pull request with its base
         id: changes
         env:
@@ -49,6 +55,7 @@ jobs:
 
   go:
     name: Go gofmt, vet, tests and end-to-end test
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -75,7 +82,7 @@ jobs:
           cache-dependency-path: admin/package-lock.json
       - name: Check gofmt
         run: |
-          allUnformatted=$(gofmt -l $(git ls-files "*.go"))
+          allUnformatted=$(git ls-files -z "*.go" | xargs -0 gofmt -l)
           if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
       - name: go vet
         run: make vet
@@ -98,6 +105,7 @@ jobs:
 
   server-image-check:
     name: Server Docker image build and boot
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -179,9 +187,9 @@ jobs:
     timeout-minutes: 30
     container: node:24-trixie
     steps:
-      - name: Install git, GTK 4 and WebKitGTK
-        run: apt-get update -qq && apt-get install -y -qq git libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install GTK 4 and WebKitGTK
+        run: bash scripts/ci-apt-install.sh libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -229,13 +237,14 @@ jobs:
 
   extension:
     name: Extension tests, Chromium end-to-end tests and zip
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container: mcr.microsoft.com/playwright:v1.63.0-noble
     steps:
-      - name: Install git, make and zip
-        run: apt-get update -qq && apt-get install -y -qq git make zip >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make and zip
+        run: bash scripts/ci-apt-install.sh make zip
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           cache: npm
@@ -251,6 +260,7 @@ jobs:
 
   raycast:
     name: Raycast extension typecheck, tests, lint and build
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -264,6 +274,7 @@ jobs:
 
   omp:
     name: omp plugin typecheck, tests and lint
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -275,6 +286,7 @@ jobs:
 
   share-link-page:
     name: Share link page in Chromium against the server
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container: mcr.microsoft.com/playwright:v1.63.0-noble
@@ -286,9 +298,9 @@ jobs:
           POSTGRES_DB: hisar
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
-      - name: Install git, make and curl
-        run: apt-get update -qq && apt-get install -y -qq git make curl >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make
+        run: bash scripts/ci-apt-install.sh make
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -314,9 +326,9 @@ jobs:
           POSTGRES_DB: hisar
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
-      - name: Install git and make
-        run: apt-get update -qq && apt-get install -y -qq git make >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make
+        run: bash scripts/ci-apt-install.sh make
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -415,8 +427,12 @@ jobs:
           heap-size: 576M
           disk-size: 8192M
           emulator-boot-timeout: 900
-          # The step before built mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
-          script: ./scripts/test-android-ui.sh
+          # An app's "isn't responding" dialog takes the window focus from the app under test, and this image's Pixel Launcher
+          # sometimes stops responding about 27 seconds after boot; with error dialogs hidden, Android closes such an app
+          # instead. The step before built mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
+          script: |
+            adb shell settings put global hide_error_dialogs 1
+            ./scripts/test-android-ui.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         # A job stopped at its timeout is cancelled rather than failed; its reports explain why.
         if: failure() || cancelled()

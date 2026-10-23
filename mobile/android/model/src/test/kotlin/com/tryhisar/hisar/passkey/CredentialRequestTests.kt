@@ -71,6 +71,16 @@ class CredentialRequestTests {
     }
 
     @Test
+    fun testAppRelyingPartyThatIsNotADomainIsRefusedBeforeAnyRequest() {
+        backend.seedSignedIn()
+        val caller = CredentialCaller.App(gitHubApp, "GitHub")
+        for (relyingPartyID in listOf("evil.example/x?", "user@evil.example", "evil.example:8443", "evil.example#", "127.0.0.1", "github.com.", " ")) {
+            assertNull(access.resolveRelyingParty(caller, relyingPartyID), relyingPartyID)
+        }
+        assertTrue(allAskedRelyingParty.isEmpty(), "asked $allAskedRelyingParty")
+    }
+
+    @Test
     fun testAppTheRelyingPartyVouchesForGetsItsPasskeysAndHisarsClientData() {
         backend.seedSignedIn()
         allVouchingRelyingParty["github.com"] = gitHubApp

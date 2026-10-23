@@ -2,6 +2,8 @@ package cache
 
 import (
 	"database/sql"
+	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,6 +26,87 @@ func TestOpenCreatesPrivateFile(t *testing.T) {
 	fileInfo, err := os.Stat(path)
 	if err != nil || fileInfo.Mode().Perm() != 0o600 {
 		t.Fatalf("mode: %v %v", fileInfo, err)
+	}
+}
+
+func TestOpenMakesAnExistingFilePrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cache.db")
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	testCache, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	testCache.Close()
+	if fileInfo, err := os.Stat(path); err != nil || fileInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("mode: %v %v", fileInfo, err)
+	}
+}
+
+func TestIsCorruptOnlyAcceptsPositiveSQLiteCorruption(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "cache.db")
+	if err := os.WriteFile(path, []byte("this is not a SQLite database, but it is long enough to have a header"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Open(path)
+	if err == nil || !IsCorrupt(fmt.Errorf("open failed: %w", err)) {
+		t.Fatalf("invalid SQLite format was not classified as corrupt: %v", err)
+	}
+	for _, err := range []error{nil, os.ErrPermission, errors.New("database disk image is malformed"), &os.PathError{Op: "open", Path: path, Err: os.ErrPermission}} {
+		if IsCorrupt(err) {
+			t.Errorf("a non-SQLite error was classified as corrupt: %v", err)
+		}
+	}
+}
+
+func TestCheckAccountAcceptsOnlyOneBoundAccountOrAnEmptyCache(t *testing.T) {
+	testCache, _ := openTestCache(t)
+	if err := testCache.CheckAccount("ABC123"); err != nil {
+		t.Fatalf("empty cache refused: %v", err)
+	}
+	if err := testCache.SaveAccount(&apitypes.Account{AccountID: "ABC123"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := testCache.CheckAccount("ABC123"); err != nil {
+		t.Errorf("own cache refused: %v", err)
+	}
+	if err := testCache.CheckAccount("DEF456"); !errors.Is(err, ErrAccountMismatch) {
+		t.Errorf("another account's cache accepted: %v", err)
+	}
+	if err := testCache.SaveAccount(&apitypes.Account{AccountID: "DEF456"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := testCache.CheckAccount("ABC123"); !errors.Is(err, ErrAccountMismatch) {
+		t.Errorf("mixed-account cache accepted: %v", err)
+	}
+	if err := testCache.CheckAccount("DEF456"); !errors.Is(err, ErrAccountMismatch) {
+		t.Errorf("mixed-account cache accepted for the other account: %v", err)
+	}
+}
+
+func TestCheckAccountRefusesUnboundData(t *testing.T) {
+	for _, table := range []string{"vaults", "items", "account_preferences", "website_icons"} {
+		t.Run(table, func(t *testing.T) {
+			testCache, _ := openTestCache(t)
+			var err error
+			switch table {
+			case "vaults":
+				err = testCache.ReplaceVaults([]apitypes.Vault{{ID: "vault"}})
+			case "items":
+				err = testCache.ApplyChanges("vault", []apitypes.Item{{ID: "item"}}, 1)
+			case "account_preferences":
+				err = testCache.SaveAccountPreferences("ABC123", &apitypes.AccountPreferences{})
+			case "website_icons":
+				err = testCache.SaveWebsiteIcon("lookup", []byte("sealed icon"))
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err := testCache.CheckAccount("ABC123"); !errors.Is(err, ErrAccountMismatch) {
+				t.Errorf("unbound %s data accepted: %v", table, err)
+			}
+		})
 	}
 }
 

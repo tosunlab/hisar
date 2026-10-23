@@ -37,6 +37,13 @@ type ShareLinkDescriber interface {
 	DescribeShareLink(request *cliprotocol.Request) (title string, fieldLabels []string)
 }
 
+// SessionBinder is a Handler whose answers come from the session the app has open. BindSession runs as each request
+// arrives, before any approval, and HandleRequest gets the context it returns: a request approved for one session then
+// never answers from the next one, after a lock, a sign-out or an account switch.
+type SessionBinder interface {
+	BindSession(ctx context.Context) context.Context
+}
+
 type ServerConfig struct {
 	Handler  Handler
 	Approver Approver
@@ -253,6 +260,9 @@ func buildErrorResponse(requestID string, err error) cliprotocol.Response {
 func (s *Server) answerRequest(ctx context.Context, client *connectionPeer, request *cliprotocol.Request) (any, error) {
 	if !s.config.IsEnabled() {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorIntegrationDisabled, "the Hisar app does not let the command-line tool use it")
+	}
+	if binder, isBinder := s.config.Handler.(SessionBinder); isBinder {
+		ctx = binder.BindSession(ctx)
 	}
 	s.applyAgentHost(client)
 	hello := s.config.Handler.GetHello()

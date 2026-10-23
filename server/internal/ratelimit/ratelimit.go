@@ -20,6 +20,9 @@ type Limiter struct {
 	every   rate.Limit
 	burst   int
 	buckets map[string]*bucket
+	// sweepAt is the key count at which Allow next forgets idle keys: twice what the last sweep kept, so many keys
+	// that are all still fresh cost one sweep per doubling rather than one per request.
+	sweepAt int
 }
 
 type bucket struct {
@@ -28,7 +31,7 @@ type bucket struct {
 }
 
 func New(every rate.Limit, burst int) *Limiter {
-	return &Limiter{every: every, burst: burst, buckets: map[string]*bucket{}}
+	return &Limiter{every: every, burst: burst, buckets: map[string]*bucket{}, sweepAt: maximumKeyCount}
 }
 
 // NewDaily allows count requests per key a day, all of them at once if the key has been quiet.
@@ -40,12 +43,13 @@ func (limiter *Limiter) Allow(key string) bool {
 	limiter.mutex.Lock()
 	defer limiter.mutex.Unlock()
 	now := time.Now()
-	if len(limiter.buckets) > maximumKeyCount {
+	if len(limiter.buckets) > limiter.sweepAt {
 		for bucketKey, entry := range limiter.buckets {
 			if now.Sub(entry.seen) > idleKeyLifetime {
 				delete(limiter.buckets, bucketKey)
 			}
 		}
+		limiter.sweepAt = max(maximumKeyCount, 2*len(limiter.buckets))
 	}
 	entry, isFound := limiter.buckets[key]
 	if !isFound {

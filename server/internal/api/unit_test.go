@@ -2,10 +2,12 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -102,6 +104,24 @@ func TestClientIP(t *testing.T) {
 	}
 }
 
+func TestTrustedProxyEntryMustBeAnAddress(t *testing.T) {
+	server := &Server{config: Config{TrustProxy: true}}
+	app := fiber.New()
+	app.Get("/", func(c fiber.Ctx) error { return c.SendString(server.getClientIP(c)) })
+	_, peerIP := sendGet(t, app, "/", nil)
+	for forwardedFor, want := range map[string]string{
+		"6.6.6.6, bucket-of-my-choice": peerIP,
+		"6.6.6.6, 1.2.3.4:5678":        peerIP,
+		"::ffff:1.2.3.4":               "1.2.3.4",
+		"fe80::1%choice":               "fe80::1",
+		" 2001:db8::1 ":                "2001:db8::1",
+	} {
+		if _, clientIP := sendGet(t, app, "/", map[string]string{"X-Forwarded-For": forwardedFor}); clientIP != want {
+			t.Errorf("X-Forwarded-For %q: %s, want %s", forwardedFor, clientIP, want)
+		}
+	}
+}
+
 func TestErrorHandlerAnswersAnItemConflictWithTheCurrentItem(t *testing.T) {
 	app := fiber.New(fiber.Config{ErrorHandler: handleError})
 	app.Get("/conflict", func(c fiber.Ctx) error {
@@ -165,6 +185,21 @@ func TestErrorHandler(t *testing.T) {
 	}
 	if response.Header.Get("X-Frame-Options") != "DENY" || response.Header.Get("Cache-Control") != "no-store" {
 		t.Errorf("security headers missing: %v", response.Header)
+	}
+}
+
+func TestInternalErrorLogLeavesCapabilitiesOut(t *testing.T) {
+	app := fiber.New(fiber.Config{ErrorHandler: handleError})
+	app.Get("/invite/:token", func(c fiber.Ctx) error { return errors.New("database is down") })
+	var logged bytes.Buffer
+	previousWriter := log.Writer()
+	log.SetOutput(&logged)
+	t.Cleanup(func() { log.SetOutput(previousWriter) })
+	if status, _ := sendGet(t, app, "/invite/secret-invite-token", nil); status != fiber.StatusInternalServerError {
+		t.Fatalf("status %d", status)
+	}
+	if strings.Contains(logged.String(), "secret-invite-token") || !strings.Contains(logged.String(), "GET /invite/:token: database is down") {
+		t.Errorf("log: %q", logged.String())
 	}
 }
 
@@ -247,6 +282,56 @@ func TestNormalEndpointsKeepSmallBodyLimit(t *testing.T) {
 	}
 	if response.StatusCode != fiber.StatusRequestEntityTooLarge {
 		t.Errorf("3 MB body on a normal endpoint: %d", response.StatusCode)
+	}
+}
+
+func TestHandlerContextEndsAtTheRequestTimeout(t *testing.T) {
+	server, err := NewServer(nil, generateSecrets(), Config{RequestTimeout: 50 * time.Millisecond})
+	if err != nil {
+		t.Fatal(err)
+	}
+	app := server.CreateApp()
+	app.Get("/slow", func(c fiber.Ctx) error {
+		select {
+		case <-c.Context().Done():
+			return c.SendString(c.Context().Err().Error())
+		case <-time.After(3 * time.Second):
+			return c.SendString("the context never ended")
+		}
+	})
+	request := httptest.NewRequest("GET", "/slow", nil)
+	response, err := app.Test(request, fiber.TestConfig{Timeout: 5 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(response.Body)
+	if string(body) != context.DeadlineExceeded.Error() {
+		t.Errorf("handler context: %s", body)
+	}
+}
+
+type stalledReader struct{ ctx context.Context }
+
+func (reader stalledReader) Read([]byte) (int, error) {
+	select {
+	case <-reader.ctx.Done():
+		return 0, reader.ctx.Err()
+	case <-time.After(3 * time.Second):
+		return 0, errors.New("the stalled download was never canceled")
+	}
+}
+
+func (stalledReader) Close() error { return nil }
+
+func TestStalledUpdateDownloadIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	connection, peer := net.Pipe()
+	defer connection.Close()
+	defer peer.Close()
+	reader := newDeadlineExtendingReader(stalledReader{ctx}, cancel, connection, 50*time.Millisecond)
+	defer reader.Close()
+	if _, err := reader.Read(make([]byte, 1)); !errors.Is(err, context.Canceled) {
+		t.Errorf("read from a stalled source: %v", err)
 	}
 }
 

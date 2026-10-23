@@ -172,30 +172,43 @@ func (s *Service) CreateShareInvitation(ctx context.Context, actor Actor, vaultI
 	if !s.allowInvitation(actor, s.Limiters.ShareInvitationAccount, s.Limiters.ShareInvitationIP) {
 		return errTooManyInvitation
 	}
-	invitationID, err := s.store.UpsertShareInvitation(ctx, &store.ShareInvitation{VaultID: vaultID, Email: email, Role: request.Role, InvitedBy: inviter.ID}, s.InviteTTL)
+	invitation := &store.ShareInvitation{VaultID: vaultID, Email: email, Role: request.Role, InvitedBy: inviter.ID}
+	invitationID, err := s.store.UpsertShareInvitation(ctx, invitation, s.InviteTTL)
 	if err != nil {
 		return err
 	}
+	invitation.ID = invitationID
 	s.recordAudit(ctx, actor, auditShareInvitationSent, map[string]string{"vault": vaultID, "invitation": invitationID, "email": email, "role": request.Role})
-	s.runInBackground(func(ctx context.Context) { s.notifyShareInvitation(ctx, inviter, email, request.Role) })
+	s.runInBackground(func(ctx context.Context) { s.notifyShareInvitation(ctx, inviter, invitation) })
 	return nil
 }
 
-func (s *Service) notifyShareInvitation(ctx context.Context, inviter *store.Account, email, role string) {
+func (s *Service) notifyShareInvitation(ctx context.Context, inviter *store.Account, invitation *store.ShareInvitation) {
+	email, role := invitation.Email, invitation.Role
 	recipient, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
 	case err == nil:
+		emailConfigured := s.isEmailConfigured()
+		if err := s.store.CheckPendingShareInvitation(ctx, invitation); err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				log.Printf("share invitation: %v", err)
+			}
+			return
+		}
 		s.publishShareInvitationsChanged(recipient.ID)
-		if s.isEmailConfigured() {
+		if emailConfigured {
 			s.sendEmail(ctx, composeShareInvitationEmail(inviter, email, role))
 		}
 	case errors.Is(err, store.ErrNotFound):
 		if !s.mayCreateSignUpInvite(inviter) {
 			return
 		}
-		token, expiresAt, err := s.newInviteToken(ctx, email, apitypes.RoleMember, &inviter.ID)
-		if err != nil {
-			log.Printf("share invitation: %v", err)
+		token := generateToken()
+		expiresAt := time.Now().Add(s.InviteTTL)
+		if err := s.store.CreateShareSignUpInvite(ctx, invitation, hashToken(token), expiresAt); err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				log.Printf("share invitation: %v", err)
+			}
 			return
 		}
 		s.sendEmail(ctx, composeShareSignUpEmail(inviter, email, role, s.buildInviteLink(token), token, expiresAt))

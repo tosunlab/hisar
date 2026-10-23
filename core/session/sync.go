@@ -8,11 +8,18 @@ import (
 )
 
 // forEachChangePage calls handle with every page of a vault's changes after since, and returns the last page's NextSeq.
+// A page that announces more changes must carry some and move NextSeq past since, or the loop would never end.
 func (s *Session) forEachChangePage(ctx context.Context, vaultID string, since int64, handle func(page *apitypes.ChangesResponse) error) (int64, error) {
 	for {
 		page, err := s.Client.ListChanges(ctx, vaultID, since, 0)
 		if err != nil {
 			return since, err
+		}
+		switch {
+		case page.NextSeq < since:
+			return since, ErrRollback
+		case page.More && (page.NextSeq == since || len(page.Items) == 0):
+			return since, ErrChangesStalled
 		}
 		if err := handle(page); err != nil {
 			return since, err
@@ -80,10 +87,6 @@ func (s *Session) syncVault(ctx context.Context, vault *Vault) ([]apitypes.Item,
 		return nil, err
 	}
 	since, err = s.forEachChangePage(ctx, vault.ID, since, func(page *apitypes.ChangesResponse) error {
-		if page.NextSeq < since {
-			return ErrRollback
-		}
-		since = page.NextSeq
 		return s.Cache.ApplyChanges(vault.ID, page.Items, page.NextSeq)
 	})
 	if apiclient.IsUnreachable(err) {

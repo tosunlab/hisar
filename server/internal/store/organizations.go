@@ -106,6 +106,12 @@ type vaultAccountKey struct {
 	accountID string
 }
 
+// isInvitedByAdmin holds for an organization invitation i whose inviter is still an admin of its organization: an
+// invitation carries its inviter's authority, so one from an admin who was demoted or removed can no longer be accepted.
+const isInvitedByAdmin = `EXISTS (SELECT 1 FROM organization_members inviter_membership
+	WHERE inviter_membership.organization_id = i.organization_id AND inviter_membership.account_id = i.invited_by
+	AND inviter_membership.role = 'admin')`
+
 func lockOrganization(ctx context.Context, transaction pgx.Tx, organizationID string) error {
 	var isLocked bool
 	err := transaction.QueryRow(ctx, `SELECT true FROM organizations WHERE id = $1 FOR UPDATE`, organizationID).Scan(&isLocked)
@@ -217,7 +223,7 @@ func (s *Store) changeOrganization(ctx context.Context, organizationID string, i
 // among the team grants condition selects from team_vaults tv joined with team_members tm.
 func listEntitledRoles(ctx context.Context, database queryer, condition string, arguments ...any) (map[vaultAccountKey]string, error) {
 	rows, err := database.Query(ctx, `
-		SELECT tv.vault_id::text, tm.account_id, tv.role
+		SELECT DISTINCT tv.vault_id::text, tm.account_id, tv.role
 		FROM team_vaults tv JOIN team_members tm ON tm.team_id = tv.team_id
 		WHERE `+condition, arguments...)
 	if err != nil {
@@ -348,6 +354,10 @@ func reconcileOrganizationVaults(ctx context.Context, transaction pgx.Tx, organi
 // CreateOrganization creates an organization with the account as its first admin.
 func (s *Store) CreateOrganization(ctx context.Context, organizationID, name, accountID string) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var creatorID string
+		if err := transaction.QueryRow(ctx, `SELECT id FROM accounts WHERE id = $1 FOR SHARE`, accountID).Scan(&creatorID); err != nil {
+			return convertNoRowsToNotFound(err)
+		}
 		if _, err := transaction.Exec(ctx, `INSERT INTO organizations (id, name, created_by) VALUES ($1, $2, $3)`,
 			organizationID, name, accountID); err != nil {
 			return err
@@ -461,8 +471,8 @@ func (s *Store) GetOrganization(ctx context.Context, organizationID, accountID s
 			return nil
 		}
 		invitationRows, err := transaction.Query(ctx, `
-			SELECT id::text, organization_id::text, email, role, invited_by, created_at, expires_at
-			FROM organization_invitations WHERE organization_id = $1 AND expires_at > now() ORDER BY created_at`, organizationID)
+			SELECT i.id::text, i.organization_id::text, i.email, i.role, i.invited_by, i.created_at, i.expires_at
+			FROM organization_invitations i WHERE i.organization_id = $1 AND i.expires_at > now() AND `+isInvitedByAdmin+` ORDER BY i.created_at`, organizationID)
 		if err != nil {
 			return err
 		}
@@ -545,6 +555,31 @@ func (s *Store) UpsertOrganizationInvitation(ctx context.Context, invitation *Or
 	return invitationID, change, err
 }
 
+const isPendingOrganizationInvitation = `i.id = $1 AND i.email = $2 AND i.invited_by = $3 AND i.role = $4
+	AND i.expires_at > now() AND ` + isInvitedByAdmin
+
+func (s *Store) CheckPendingOrganizationInvitation(ctx context.Context, invitation *OrganizationInvitation) error {
+	var exists int
+	err := s.pool.QueryRow(ctx, `SELECT 1 FROM organization_invitations i WHERE `+isPendingOrganizationInvitation,
+		invitation.ID, invitation.Email, invitation.InvitedBy, invitation.Role).Scan(&exists)
+	return convertNoRowsToNotFound(err)
+}
+
+// CreateOrganizationSignUpInvite mints a member sign-up token only while its source invitation is still pending.
+func (s *Store) CreateOrganizationSignUpInvite(ctx context.Context, invitation *OrganizationInvitation, tokenHash []byte, expiresAt time.Time) error {
+	tag, err := s.pool.Exec(ctx, `
+		INSERT INTO invites (token_hash, email, role, created_by, expires_at)
+		SELECT $5, i.email, 'member', i.invited_by, $6 FROM organization_invitations i WHERE `+isPendingOrganizationInvitation,
+		invitation.ID, invitation.Email, invitation.InvitedBy, invitation.Role, tokenHash, expiresAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 func isOrganizationMemberEmail(ctx context.Context, database queryer, organizationID, email string) (bool, error) {
 	var isMember bool
 	err := database.QueryRow(ctx, `
@@ -562,7 +597,7 @@ func (s *Store) ListReceivedOrganizationInvitations(ctx context.Context, email s
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id::text, i.organization_id::text, i.email, i.role, i.invited_by, i.created_at, i.expires_at, o.name, a.name, a.email
 		FROM organization_invitations i JOIN organizations o ON o.id = i.organization_id JOIN accounts a ON a.id = i.invited_by
-		WHERE i.email = $1 AND i.expires_at > now()
+		WHERE i.email = $1 AND i.expires_at > now() AND `+isInvitedByAdmin+`
 		ORDER BY i.created_at`, email)
 	if err != nil {
 		return nil, err
@@ -575,8 +610,8 @@ func (s *Store) ListReceivedOrganizationInvitations(ctx context.Context, email s
 	})
 }
 
-// answerOrganizationInvitation deletes an unexpired invitation to email under its organization's lock, adding the
-// account as a member when it accepts, and returns the organization.
+// answerOrganizationInvitation deletes an unexpired invitation to email whose inviter is still an admin, under its
+// organization's lock, adding the account as a member when it accepts, and returns the organization.
 func (s *Store) answerOrganizationInvitation(ctx context.Context, invitationID, accountID, email string, isAccepted bool) (string, *OrganizationChange, error) {
 	var organizationID string
 	if err := s.pool.QueryRow(ctx, `SELECT organization_id::text FROM organization_invitations WHERE id = $1 AND email = $2 AND expires_at > now()`,
@@ -584,9 +619,16 @@ func (s *Store) answerOrganizationInvitation(ctx context.Context, invitationID, 
 		return "", nil, convertNoRowsToNotFound(err)
 	}
 	change, err := s.changeOrganization(ctx, organizationID, false, func(transaction pgx.Tx, change *OrganizationChange) error {
+		if isAccepted {
+			var memberID string
+			if err := transaction.QueryRow(ctx, `SELECT id FROM accounts WHERE id = $1 FOR SHARE`, accountID).Scan(&memberID); err != nil {
+				return convertNoRowsToNotFound(err)
+			}
+		}
 		var role, invitedBy string
 		if err := transaction.QueryRow(ctx, `
-			DELETE FROM organization_invitations WHERE id = $1 AND email = $2 AND expires_at > now() RETURNING role, invited_by`,
+			DELETE FROM organization_invitations i WHERE i.id = $1 AND i.email = $2 AND i.expires_at > now() AND `+isInvitedByAdmin+`
+			RETURNING i.role, i.invited_by`,
 			invitationID, email).Scan(&role, &invitedBy); err != nil {
 			return convertNoRowsToNotFound(err)
 		}
@@ -846,14 +888,17 @@ func (s *Store) CreateOrganizationVault(ctx context.Context, vault *Vault, owner
 // ListVaultKeyRequests returns the key requests of the organization vaults the account owns.
 func (s *Store) ListVaultKeyRequests(ctx context.Context, accountID string) ([]VaultKeyRequest, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT tv.vault_id::text, tv.role, v.key_generation, a.id, a.email, a.name, a.role, a.kem_pub, a.sign_pub, a.kem_sig
-		FROM vault_access mine
-		JOIN vaults v ON v.id = mine.vault_id
-		JOIN team_vaults tv ON tv.vault_id = mine.vault_id
-		JOIN team_members tm ON tm.team_id = tv.team_id
-		JOIN accounts a ON a.id = tm.account_id
-		WHERE mine.account_id = $1 AND mine.role = 'owner'
-			AND NOT EXISTS (SELECT 1 FROM vault_access other WHERE other.vault_id = tv.vault_id AND other.account_id = tm.account_id)`, accountID)
+		SELECT grants.vault_id::text, grants.role, v.key_generation, a.id, a.email, a.name, a.role, a.kem_pub, a.sign_pub, a.kem_sig
+		FROM (
+			SELECT DISTINCT tv.vault_id, tm.account_id, tv.role
+			FROM vault_access mine
+			JOIN team_vaults tv ON tv.vault_id = mine.vault_id
+			JOIN team_members tm ON tm.team_id = tv.team_id
+			WHERE mine.account_id = $1 AND mine.role = 'owner'
+				AND NOT EXISTS (SELECT 1 FROM vault_access other WHERE other.vault_id = tv.vault_id AND other.account_id = tm.account_id)
+		) grants
+		JOIN vaults v ON v.id = grants.vault_id
+		JOIN accounts a ON a.id = grants.account_id`, accountID)
 	if err != nil {
 		return nil, err
 	}
@@ -892,7 +937,7 @@ func (s *Store) ListVaultKeyRequests(ctx context.Context, accountID string) ([]V
 // ListWaitingVaultKeys returns the organization vaults the account's teams entitle it to and it has no key for.
 func (s *Store) ListWaitingVaultKeys(ctx context.Context, accountID string) ([]WaitingVaultKey, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT tv.vault_id::text, tv.organization_id::text, tv.role
+		SELECT DISTINCT tv.vault_id::text, tv.organization_id::text, tv.role
 		FROM team_members tm JOIN team_vaults tv ON tv.team_id = tm.team_id
 		WHERE tm.account_id = $1
 			AND NOT EXISTS (SELECT 1 FROM vault_access a WHERE a.vault_id = tv.vault_id AND a.account_id = $1)`, accountID)

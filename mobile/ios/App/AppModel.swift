@@ -66,6 +66,10 @@ final class AppModel: ObservableObject {
     @Published private(set) var credentialImportProgress: ImportProgress?
     @Published private(set) var isImportingCredentials = false
     @Published var credentialImportMessage: String?
+    private var startedRefreshCount: UInt64 = 0
+    private var shownRefresh: UInt64 = 0
+    private var startedApprovalListCount: UInt64 = 0
+    private var shownApprovalList: UInt64 = 0
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
@@ -96,7 +100,10 @@ final class AppModel: ObservableObject {
         self.receiveExportedCredentials = receiveExportedCredentials
     }
 
-    func start(createBackend: () throws -> VaultBackend) {
+    /// Returns the work start() begins, the first refresh and the version check, or nil when the backend failed. The app
+    /// lets it run; a test awaits it, so its own changes come after the first lists.
+    @discardableResult
+    func start(createBackend: () throws -> VaultBackend) -> Task<Void, Never>? {
         do {
             let backend = try createBackend()
             self.backend = backend
@@ -104,12 +111,16 @@ final class AppModel: ObservableObject {
             isWebsiteIconsEnabled = backend.isWebsiteIconsEnabled()
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
-            if status.isUnlocked {
-                Task { await refreshAll() }
+            clearIdentitiesWhenSignedOut()
+            let firstRefresh = status.isUnlocked ? Task { await refreshAll() } : nil
+            let versionCheck = Task { await checkMinimumVersion() }
+            return Task {
+                await firstRefresh?.value
+                await versionCheck.value
             }
-            Task { await checkMinimumVersion() }
         } catch {
             screen = .failed(describeError(error))
+            return nil
         }
     }
 
@@ -164,6 +175,8 @@ final class AppModel: ObservableObject {
             allOrganization = []
             allOrganizationInvitation = []
             waitingVaultKeys = WaitingVaultKeys()
+            newSecretKey = nil
+            isBiometricOfferShown = false
             selectedTab = .vaults
             clearAllApproval()
             forgetWebsiteIcons()
@@ -309,7 +322,11 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func signOut() async -> Bool {
-        guard let newStatus = await perform({ try $0.signOut() }) else { return false }
+        // Signing out always finishes on this phone; an error says what it could not confirm, so the status still changes.
+        guard let newStatus = await perform({ try $0.signOut() }) else {
+            refreshStatus()
+            return false
+        }
         applyStatus(newStatus)
         await credentialIdentityStore.removeAllIdentity()
         return true
@@ -344,6 +361,7 @@ final class AppModel: ObservableObject {
         isInForeground = true
         defer {
             enteredBackgroundAt = nil
+            clearIdentitiesWhenSignedOut()
             if status.isUnlocked, status.updateRequired == nil, let backend {
                 backend.reconnectEvents()
                 startApprovalPolling()
@@ -361,11 +379,22 @@ final class AppModel: ObservableObject {
         }
     }
 
+    // A remote change that comes while a refresh lists may be missing from its lists, so that refresh lists again, whoever
+    // started it: the first refresh, an unlock or a pull to refresh as much as a remote change.
+    func refreshAll() async {
+        repeat {
+            isRefreshRequestedAgain = false
+            await refreshAllOnce()
+        } while isRefreshRequestedAgain && status.isUnlocked
+    }
+
     // Listing the share invitations also completes the shares people accepted, and listing the waiting vault keys gives
     // team members the keys of the organization vaults this user owns, as the Mac's sync does. Both run before the vaults
     // are listed, so a vault rotated meanwhile is listed with its new key.
-    func refreshAll() async {
+    private func refreshAllOnce() async {
         guard status.isUnlocked else { return }
+        startedRefreshCount += 1
+        let refresh = startedRefreshCount
         isRefreshing = true
         defer { isRefreshing = false }
         guard let result = await perform(isBusyShown: false, { backend -> RefreshResult in
@@ -392,19 +421,24 @@ final class AppModel: ObservableObject {
         // them back, nor put a signed-out account's logins back into AutoFill. A lock keeps what AutoFill already has.
         refreshStatus()
         guard status.isUnlocked else { return }
-        allVault = result.allVault.sorted { Self.sortVault($0, $1) }
-        allItemByVaultID = result.allItemByVaultID
-        allPasskey = result.allPasskey
-        if let shareInvitations = result.shareInvitations {
-            applyShareInvitations(shareInvitations)
+        // Refreshes can finish out of order: one that started earlier than the lists shown lists older data.
+        if refresh > shownRefresh {
+            shownRefresh = refresh
+            allVault = result.allVault.sorted { Self.sortVault($0, $1) }
+            allItemByVaultID = result.allItemByVaultID
+            allPasskey = result.allPasskey
+            if let shareInvitations = result.shareInvitations {
+                applyShareInvitations(shareInvitations)
+            }
+            // Offline both fail; the last organizations keep naming the vault groups.
+            if let organizations = result.organizations {
+                applyOrganizations(organizations)
+            }
+            if let waitingVaultKeys = result.waitingVaultKeys {
+                self.waitingVaultKeys = waitingVaultKeys
+            }
         }
-        // Offline both fail; the last organizations keep naming the vault groups.
-        if let organizations = result.organizations {
-            applyOrganizations(organizations)
-        }
-        if let waitingVaultKeys = result.waitingVaultKeys {
-            self.waitingVaultKeys = waitingVaultKeys
-        }
+        // Removed vaults are listed only once, so even an older refresh keeps them.
         addAllRemovedVaultNotice(result.allRemovedVault)
         await publishAllCredentialIdentity()
     }
@@ -426,16 +460,17 @@ final class AppModel: ObservableObject {
             isRefreshRequestedAgain = true
             return
         }
-        Task {
-            repeat {
-                isRefreshRequestedAgain = false
-                await refreshAll()
-            } while isRefreshRequestedAgain && status.isUnlocked
-        }
+        Task { await refreshAll() }
     }
 
     private func publishAllCredentialIdentity() async {
         await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference(), allPasskey: allPasskey))
+    }
+
+    // A sign-out in the AutoFill extension, or a removal the system refused, leaves identities a signed-out app must not offer.
+    private func clearIdentitiesWhenSignedOut() {
+        guard !status.isSignedIn else { return }
+        Task { await credentialIdentityStore.removeAllIdentity() }
     }
 
     private static func sortVault(_ first: VaultSummary, _ second: VaultSummary) -> Bool {
@@ -1102,7 +1137,8 @@ final class AppModel: ObservableObject {
     func changeMasterPassword(currentPassword: String, newPassword: String) async -> CredentialChangeResult? {
         guard let result = await perform({ try $0.changeMasterPassword(currentPassword: currentPassword, newPassword: newPassword) }) else { return nil }
         applyStatus(result.status)
-        showNotice("Master password changed. \(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount))")
+        let warning = result.localError.isEmpty ? "" : " \(result.localError)"
+        showNotice("Master password changed. \(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount))\(warning)")
         return result
     }
 
@@ -1125,7 +1161,10 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func deleteAccount(password: String, email: String) async -> Bool {
-        guard let newStatus = await perform({ try $0.deleteAccount(password: password, email: email) }) else { return false }
+        guard let newStatus = await perform({ try $0.deleteAccount(password: password, email: email) }) else {
+            refreshStatus()
+            return false
+        }
         applyStatus(newStatus)
         await credentialIdentityStore.removeAllIdentity()
         newSecretKey = nil
@@ -1226,6 +1265,7 @@ final class AppModel: ObservableObject {
                 allFinishedApprovalID.insert(approval.requestID)
             }
             allPendingApproval = []
+            shownApprovalList = startedApprovalListCount
             presentedApproval = nil
         }
         return true
@@ -1258,13 +1298,22 @@ final class AppModel: ObservableObject {
     // refreshPendingApproval lists the open requests; with isOpeningNewRequest, a request seen for the first time opens the sheet.
     func refreshPendingApproval(isOpeningNewRequest: Bool = false) async {
         guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
+        startedApprovalListCount += 1
+        let approvalList = startedApprovalListCount
         guard let allApproval = try? await runInBackground({ try backend.listAllPendingApproval() }) else { return }
-        guard status.isUnlocked else { return }
+        // Listings run at once and can finish out of order: a poll that started before a request's own listing must not
+        // take that request back off the list and close its sheet.
+        guard status.isUnlocked, approvalList > shownApprovalList else { return }
+        shownApprovalList = approvalList
         let now = getCurrentDate()
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
         let firstNewApproval = allOpenApproval.first { !allSeenApprovalID.contains($0.requestID) }
         allSeenApprovalID.formUnion(allOpenApproval.map(\.requestID))
-        allPendingApproval = allOpenApproval
+        // Assigning publishes even an equal list, and the poll would then redraw every screen every 15 seconds. A switch
+        // whose tap ends during that redraw ignores the tap.
+        if allOpenApproval != allPendingApproval {
+            allPendingApproval = allOpenApproval
+        }
         if isOpeningNewRequest, presentedApproval == nil, let firstNewApproval {
             presentApproval(firstNewApproval)
         }
@@ -1347,6 +1396,8 @@ final class AppModel: ObservableObject {
         approvalExpiryTask?.cancel()
         approvalExpiryTask = nil
         allPendingApproval = []
+        // A listing still running started before the clear and must not bring the requests back.
+        shownApprovalList = startedApprovalListCount
         presentedApproval = nil
         isAnsweringApproval = false
         isApprovalPasswordRequired = false

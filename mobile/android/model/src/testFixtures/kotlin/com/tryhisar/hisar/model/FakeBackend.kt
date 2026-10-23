@@ -24,6 +24,9 @@ open class FakeBackend : VaultBackend {
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var isOffline = false
+
+    /** While set, deleting the account succeeds on the server and then reports that the local cache stayed. */
+    var isCacheRemovalFailing = false
     val allCopiedField = mutableListOf<String>()
     val allCallName = mutableListOf<String>()
     var nextItemNumber = 1
@@ -33,6 +36,8 @@ open class FakeBackend : VaultBackend {
      * refresh that listed everything is still in flight.
      */
     var onListAllPasskey: (() -> Unit)? = null
+    /** Runs when the open requests have been read and before they are returned: a test can hold an older listing while a newer one runs. */
+    @Volatile var onListAllPendingApproval: (() -> Unit)? = null
     var allMember: MutableList<Member> = mutableListOf()
     var allVaultMemberByVaultID: MutableMap<String, MutableList<Member>> = mutableMapOf()
     val allInvitedEmail = mutableListOf<String>()
@@ -344,8 +349,10 @@ open class FakeBackend : VaultBackend {
 
     override fun signOut(): VaultStatus {
         record("signOut")
-        // As the backend does, signing out keeps only the server, so the sign-in form opens on it.
+        // As the backend does, signing out keeps only the server, so the sign-in form opens on it. Offline it still signs
+        // out on this device, then reports that the server was not told.
         status = VaultStatus.signedOut.copy(server = status.server)
+        if (isOffline) throw BackendError(SIGN_OUT_OFFLINE_MESSAGE)
         return status
     }
 
@@ -650,6 +657,17 @@ open class FakeBackend : VaultBackend {
         return relyingPartyID
     }
 
+    // A lower-case domain name with a dot and no IP address, as core/passkey accepts it; the public suffix check is Go's.
+    override fun validatePasskeyRelyingPartyID(relyingPartyID: String): String {
+        record("validatePasskeyRelyingPartyID")
+        val normalized = relyingPartyID.trim().lowercase()
+        val label = "[a-z0-9]([a-z0-9-]*[a-z0-9])?"
+        if (!Regex("^($label\\.)+$label$").matches(normalized) || Regex("^[0-9.]+$").matches(normalized)) {
+            throw BackendError("the relying party ID does not belong to the origin")
+        }
+        return normalized
+    }
+
     override fun buildAndroidAppOrigin(certificateSHA256: ByteString): String =
         "android:apk-key-hash:" + Base64URL.encode(certificateSHA256)
 
@@ -673,7 +691,9 @@ open class FakeBackend : VaultBackend {
     // Phone approvals: the Mac's requests are seeded and answers recorded. Listing is not recorded, as it runs in the background.
     override fun listAllPendingApproval(): List<PhoneApproval> {
         requireUnlocked()
-        return withApprovalLock { allPendingApproval.toList() }
+        val allApproval = withApprovalLock { allPendingApproval.toList() }
+        onListAllPendingApproval?.invoke()
+        return allApproval
     }
 
     override fun approveApproval(requestID: String, isRemembered: Boolean) {
@@ -933,6 +953,7 @@ open class FakeBackend : VaultBackend {
         if (password != currentPassword) throw BackendError("The master password is not correct")
         isAccountDeleted = true
         status = VaultStatus.signedOut
+        if (isCacheRemovalFailing) throw BackendError(CACHE_REMOVAL_MESSAGE)
         return status
     }
 
@@ -1204,6 +1225,8 @@ open class FakeBackend : VaultBackend {
         const val PASSWORD = "correct horse battery"
         const val SECRET_KEY = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
         const val ONE_TIME_PASSWORD = "otpauth://totp/GitHub:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // gitleaks:allow, the RFC 6238 test secret
+        const val SIGN_OUT_OFFLINE_MESSAGE = "Signed out on this device, but the server could not be reached to end the session"
+        const val CACHE_REMOVAL_MESSAGE = "The account was deleted, but this device's copy of the vaults could not be removed"
         private const val ORGANIZATION_NOT_FOUND =
             "That organization, team, person or vault was not found, or you are no longer in the organization"
         val oneTimeCode = OneTimeCode(code = "287082", expiresAt = "2027-01-15T08:00:30Z", period = 30)

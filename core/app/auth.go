@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -62,6 +63,9 @@ func describeServer(server string) string {
 }
 
 func (s *Service) SignIn(server, email, secretKeyText, password string) (Status, error) {
+	s.mutex.Lock()
+	epoch := s.sessionEpoch
+	s.mutex.Unlock()
 	server, err := resolveServer(server)
 	if err != nil {
 		return Status{}, err
@@ -84,23 +88,29 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 	if err != nil {
 		return Status{}, convertError(err)
 	}
+	// The Secret Key goes into the keychain before anything on this device changes: without it the session could
+	// never be unlocked again.
+	if err := s.config.SecretKeyStore.StoreSecretKey(secretKey); err != nil {
+		loggedIn.Lock()
+		loggedIn.Client.Logout(ctx)
+		return Status{}, fmt.Errorf("could not save the Secret Key to the keychain: %w", err)
+	}
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.lockSession()
-	s.forgetBiometricUnlock()
-	s.removeCache()
-	s.state.Reset()
-	s.signedOutReason = ""
+	if epoch != s.sessionEpoch {
+		loggedIn.Lock()
+		loggedIn.Client.Logout(ctx)
+		return s.buildStatus(), errUnlockInterrupted
+	}
+	if err := s.resetAccount(); err != nil {
+		log.Printf("sign-in could not delete the previous account's offline copy: %v", err)
+	}
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, loggedIn.Email, loggedIn.AccountID, loggedIn.Client.Token
 	s.state.LastServer = server
 	if err := s.state.Save(); err != nil {
 		loggedIn.Lock()
 		return Status{}, err
-	}
-	if err := s.config.SecretKeyStore.StoreSecretKey(secretKey); err != nil {
-		loggedIn.Lock()
-		return Status{}, fmt.Errorf("could not save the Secret Key to the keychain: %w", err)
 	}
 	s.notifySessionChange()
 	s.attachCache(ctx, loggedIn)
@@ -132,6 +142,9 @@ func parseInvite(invite string) (server, token string, err error) {
 }
 
 func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, error) {
+	s.mutex.Lock()
+	epoch := s.sessionEpoch
+	s.mutex.Unlock()
 	server, token, err := parseInvite(invite)
 	if err != nil {
 		return SignUpResult{}, err
@@ -148,23 +161,37 @@ func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, er
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKey(ctx, s.createClient(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo())
-	if err != nil {
+	if signedUp == nil {
 		return SignUpResult{}, convertError(err)
+	}
+	if err != nil {
+		signedUp.Lock()
+		clear(accountUnlockKey)
+		return SignUpResult{SecretKey: secretKey.Encode()}, convertError(err)
 	}
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.lockSession()
-	s.forgetBiometricUnlock()
-	s.removeCache()
-	s.state.Reset()
-	s.signedOutReason = ""
+	if epoch != s.sessionEpoch {
+		signedUp.Lock()
+		clear(accountUnlockKey)
+		keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
+		signedUp.Client.Logout(ctx)
+		result := SignUpResult{Status: s.buildStatus(), SecretKey: secretKey.Encode()}
+		if keychainErr != nil {
+			return result, fmt.Errorf("account created, but sign-up was interrupted and the Secret Key could not be saved (%v); write it down: %s", keychainErr, result.SecretKey)
+		}
+		return result, fmt.Errorf("account created, but sign-up was interrupted; write down your Secret Key: %s", result.SecretKey)
+	}
+	if err := s.resetAccount(); err != nil {
+		log.Printf("sign-up could not delete the previous account's offline copy: %v", err)
+	}
 	s.state.Server, s.state.Email, s.state.AccountID, s.state.Token = server, strings.ToLower(strings.TrimSpace(email)), signedUp.AccountID, signedUp.Client.Token
 	s.state.LastServer = server
 	if err := s.state.Save(); err != nil {
 		signedUp.Lock()
 		clear(accountUnlockKey)
-		return SignUpResult{}, err
+		return SignUpResult{SecretKey: secretKey.Encode()}, err
 	}
 	keychainErr := s.config.SecretKeyStore.StoreSecretKey(secretKey)
 	s.notifySessionChange()
@@ -186,7 +213,7 @@ func (s *Service) Unlock(password string) (Status, error) {
 		s.mutex.Unlock()
 		return Status{}, ErrSignedOut
 	}
-	server, token, accountID := s.state.Server, s.state.Token, s.state.AccountID
+	server, token, accountID, epoch := s.state.Server, s.state.Token, s.state.AccountID, s.sessionEpoch
 	accountCache := s.getCache()
 	s.mutex.Unlock()
 
@@ -212,8 +239,9 @@ func (s *Service) Unlock(password string) (Status, error) {
 
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	s.lockSession()
-	s.openSession(unlocked)
+	if err := s.openUnlockedSession(unlocked, epoch); err != nil {
+		return s.buildStatus(), err
+	}
 	s.recordPasswordUnlock()
 	return s.buildStatus(), nil
 }
@@ -221,24 +249,54 @@ func (s *Service) Unlock(password string) (Status, error) {
 func (s *Service) SignOut() (Status, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	var logoutErr, keychainErr error
 	if s.state.IsLoggedIn() {
 		apiClient := s.createClient(s.state.Server)
 		apiClient.Token = s.state.Token
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		apiClient.Logout(ctx)
+		if err := apiClient.Logout(ctx); err != nil && !apiclient.IsStatus(err, http.StatusUnauthorized) {
+			logoutErr = fmt.Errorf("signed out here, but Hisar could not reach the server to end this device's session there: %w", err)
+		}
 		cancel()
 		if err := s.config.SecretKeyStore.DeleteSecretKey(s.state.AccountID); err != nil {
-			return s.buildStatus(), err
+			keychainErr = fmt.Errorf("signed out, but the Secret Key could not be removed from the keychain: %w", err)
 		}
+	}
+	cacheErr := s.resetAccount()
+	s.notifySessionChange()
+	return s.buildStatus(), errors.Join(s.state.Save(), logoutErr, keychainErr, cacheErr)
+}
+
+var errUnlockInterrupted = errors.New("Hisar was locked or signed out while unlocking; try again")
+
+// openUnlockedSession installs a session unlocked without the mutex in epoch, unless that session ended meanwhile (a
+// sign-out, an account switch) or another unlock got there first; either way it wipes what it did not install.
+func (s *Service) openUnlockedSession(unlocked *session.Session, epoch uint64) error {
+	if epoch != s.sessionEpoch {
+		unlocked.Lock()
+		return errUnlockInterrupted
+	}
+	if s.unlockedSession != nil {
+		unlocked.Lock()
+		return nil
+	}
+	s.openSession(unlocked)
+	return nil
+}
+
+// resetAccount ends the signed-in account, locked or unlocked, before another account or none replaces it. Its error
+// is the offline cache it could not delete; everything else is gone either way.
+func (s *Service) resetAccount() error {
+	if s.unlockedSession == nil {
+		s.endSession()
 	}
 	s.lockSession()
 	s.name = ""
 	s.signedOutReason = ""
 	s.forgetBiometricUnlock()
-	s.removeCache()
+	cacheErr := s.removeCache()
 	s.state.Reset()
-	s.notifySessionChange()
-	return s.buildStatus(), s.state.Save()
+	return cacheErr
 }
 
 // OpenUnlockedSession makes a session the caller unlocked itself the service's own, signed in to server with token;

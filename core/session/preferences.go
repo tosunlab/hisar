@@ -61,6 +61,9 @@ func (s *Session) openPreferences(record *apitypes.AccountPreferences) (*Prefere
 		return preferences, nil
 	}
 	plaintext, err := crypt.OpenAccountPreferences(s.Keyset.UserKey, s.AccountID, record.Ciphertext)
+	if errors.Is(err, crypt.ErrDecrypt) || errors.Is(err, crypt.ErrShortCipher) || errors.Is(err, crypt.ErrBadVersion) {
+		return nil, &unsealedPreferencesError{revision: record.Revision, err: err}
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -79,6 +82,17 @@ func (s *Session) openPreferences(record *apitypes.AccountPreferences) (*Prefere
 	}
 	return preferences, nil
 }
+
+// unsealedPreferencesError marks an envelope this app cannot authenticate, which a session token alone can store.
+// Writers keep this record on v1 and add new data in plaintext JSON fields.
+type unsealedPreferencesError struct {
+	revision int64
+	err      error
+}
+
+func (err *unsealedPreferencesError) Error() string { return err.err.Error() }
+
+func (err *unsealedPreferencesError) Unwrap() error { return err.err }
 
 func (s *Session) sealPreferences(preferences *Preferences) ([]byte, error) {
 	fields := map[string]any{}
@@ -99,10 +113,14 @@ func (s *Session) fetchPreferences(ctx context.Context) (*Preferences, error) {
 	if err != nil {
 		return nil, err
 	}
+	preferences, err := s.openPreferences(record)
+	if err != nil {
+		return nil, err
+	}
 	if s.Cache != nil {
 		s.Cache.SaveAccountPreferences(s.AccountID, record)
 	}
-	return s.openPreferences(record)
+	return preferences, nil
 }
 
 // LoadPreferences reads the record from the server, or from the cache while the server is unreachable; with nothing
@@ -125,18 +143,28 @@ func (s *Session) LoadPreferences(ctx context.Context) (*Preferences, error) {
 }
 
 // UpdateFavorites saves change on top of known, the record this device last read (nil to read it first). When another
-// device saved in between, the server answers 409 and the change is applied again to the newer record.
+// device saved in between, the server answers 409 and the change is applied again to the newer record. A record no key
+// of the account sealed is replaced by known with the change, so it cannot stop favorites from being saved.
 func (s *Session) UpdateFavorites(ctx context.Context, known *Preferences, change FavoriteChange) (*Preferences, error) {
 	current := known
 	for range maxPreferencesAttempts {
+		isReplacing := false
 		if current == nil {
 			var err error
-			if current, err = s.fetchPreferences(ctx); err != nil {
+			current, err = s.fetchPreferences(ctx)
+			var unsealed *unsealedPreferencesError
+			switch {
+			case errors.As(err, &unsealed):
+				current, isReplacing = &Preferences{Revision: unsealed.revision, FavoriteItemIDs: []string{}, otherFields: map[string]json.RawMessage{}}, true
+				if known != nil {
+					current.FavoriteItemIDs, current.otherFields = known.FavoriteItemIDs, known.otherFields
+				}
+			case err != nil:
 				return nil, err
 			}
 		}
 		next := &Preferences{Revision: current.Revision, FavoriteItemIDs: change.apply(current.FavoriteItemIDs), otherFields: current.otherFields}
-		if slices.Equal(next.FavoriteItemIDs, current.FavoriteItemIDs) {
+		if !isReplacing && slices.Equal(next.FavoriteItemIDs, current.FavoriteItemIDs) {
 			if current != known {
 				return current, nil
 			}

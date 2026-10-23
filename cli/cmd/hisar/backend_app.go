@@ -32,6 +32,8 @@ func (access appBackend) listItems(ctx context.Context, vaultID string) ([]item.
 	return listAppItems(ctx, access.client, vaultID)
 }
 
+func (appBackend) listsItemSummaries() bool { return true }
+
 func (access appBackend) getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error) {
 	return getAppItem(ctx, access.client, vaultID, itemID)
 }
@@ -278,7 +280,7 @@ func importThroughApp(ctx context.Context, client *appClient, vaultID string, qu
 			return savedCount, fmt.Errorf("stopped after importing %d of %d items: %w", savedCount, len(queuedItems), err)
 		}
 		for _, failure := range importResult.Failures {
-			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", failure.Title, failure.Message)
+			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", failure.Title, escapeControlCharacters(failure.Message))
 		}
 		fmt.Fprintf(os.Stderr, "\rImported %d of %d", savedCount, len(queuedItems))
 	}

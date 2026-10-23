@@ -123,6 +123,25 @@ func TestShareLinksListAndRevokeThroughTheApp(t *testing.T) {
 	}
 }
 
+// A share link ID is base64url, so it can start with "-"; revoke must take it as the ID, not as an option, with or
+// without "--" before it.
+func TestShareLinkRevokeTakesAnIDThatStartsWithADash(t *testing.T) {
+	app := startFakeApp(t)
+	app.answer = answerFakeShareLinkRequest
+	for _, args := range [][]string{{"share-link", "revoke", "-acqSMfy9xieWUnq4TDCRA"}, {"share-link", "revoke", "--", "-acqSMfy9xieWUnq4TDCRA"}} {
+		if _, stderr, err := runCapturingOutput(t, false, "", args...); err != nil || !strings.Contains(stderr, "Revoked") {
+			t.Fatalf("%v: %v %s", args, err, stderr)
+		}
+	}
+	revoke := app.findRequest(cliprotocol.TypeRevokeShareLink)
+	if len(revoke) != 2 || revoke[0].ShareLinkID != "-acqSMfy9xieWUnq4TDCRA" || revoke[1].ShareLinkID != "-acqSMfy9xieWUnq4TDCRA" {
+		t.Errorf("revoke requests %+v", revoke)
+	}
+	if _, _, err := runCapturingOutput(t, false, "", "share-link", "revoke", "--", "a", "b"); !errors.Is(err, errUsage) {
+		t.Errorf("two IDs: %v", err)
+	}
+}
+
 func startPublicShareLinkServer(t *testing.T, payload *sharelink.Payload, passphrase []byte, maxViews int) (string, *atomic.Int32) {
 	t.Helper()
 	sealed, err := sharelink.Seal(payload, passphrase)

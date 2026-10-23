@@ -2,6 +2,7 @@ package com.tryhisar.hisar.app
 
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.AccountLifecycleLogic
+import com.tryhisar.hisar.model.CredentialChangeResult
 import com.tryhisar.hisar.model.DeletionOrganization
 import com.tryhisar.hisar.model.DeletionVault
 import com.tryhisar.hisar.model.FakeBackend
@@ -32,6 +33,12 @@ class AccountLifecycleTests {
         assertFalse(AccountLifecycleLogic.canChangePassword("", "a new master password", "a new master password"))
         assertFalse(AccountLifecycleLogic.canChangePassword("old password", "a new master password", ""))
         assertTrue(AccountLifecycleLogic.canChangePassword("old password", "a new master password", "a new master password"))
+    }
+
+    @Test
+    fun testUnknownSignedOutDeviceCount() {
+        assertEquals("Any other devices were signed out; their count could not be recovered.", AccountLifecycleLogic.describeSignedOutDevices(-1))
+        assertEquals("No other devices were signed in.", AccountLifecycleLogic.describeSignedOutDevices(0))
     }
 
     @Test
@@ -79,6 +86,16 @@ class AccountLifecycleTests {
     }
 
     @Test
+    fun testCommittedReplacementDecodesLocalWarningWithoutLosingTheKeyOrKit() {
+        val json = """{"status":{"state":"unlocked"},"secretKey":"H1-NEW-SECRET","signedOutDeviceCount":-1,"keychainError":"","localError":"credentials were changed; offline copy could not be deleted","emergencyKitPath":"/tmp/EmergencyKit/new.pdf"}"""
+        val result = backendJson.decodeFromString<CredentialChangeResult>(json)
+        assertEquals("H1-NEW-SECRET", result.secretKey)
+        assertEquals("/tmp/EmergencyKit/new.pdf", result.emergencyKitPath)
+        assertTrue(result.localError.contains("offline copy could not be deleted"))
+        assertEquals(-1, result.signedOutDeviceCount)
+    }
+
+    @Test
     fun testChangeMasterPassword() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()
@@ -116,5 +133,17 @@ class AccountLifecycleTests {
         assertEquals(Screen.SignedOut, model.screen.value)
         assertTrue(model.unlockedData.value.allVault.isEmpty())
         assertEquals("Your Hisar account was deleted.", model.notice.value)
+    }
+
+    @Test
+    fun testDeleteAccountCleanupErrorStillSignsOut() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        harness.backend.isCacheRemovalFailing = true
+        assertFalse(model.settings.deleteAccount(FakeBackend.PASSWORD, "alice@example.com"))
+        assertTrue(harness.backend.isAccountDeleted)
+        assertEquals(Screen.SignedOut, model.screen.value)
+        assertTrue(model.unlockedData.value.allVault.isEmpty())
+        assertEquals(FakeBackend.CACHE_REMOVAL_MESSAGE, model.errorMessage.value)
     }
 }

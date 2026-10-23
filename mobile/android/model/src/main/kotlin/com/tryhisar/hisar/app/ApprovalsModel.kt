@@ -31,6 +31,8 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     private val mutableApprovalErrorMessage = MutableStateFlow<String?>(null)
     private val allFinishedApprovalID = mutableSetOf<String>()
     private val allSeenApprovalID = mutableSetOf<String>()
+    private var startedApprovalListCount = 0L
+    private var shownApprovalList = 0L
     private var pollJob: Job? = null
     private var expiryJob: Job? = null
 
@@ -75,8 +77,12 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     /** Lists the open requests; with [isOpeningNewRequest], a request seen for the first time opens its sheet. */
     suspend fun refreshPendingApproval(isOpeningNewRequest: Boolean = false) {
         if (!context.status.value.isUnlocked || !context.isInForeground.value || !context.isMacApprovalAllowed.value) return
+        val approvalList = ++startedApprovalListCount
         val allApproval = context.attempt { it.listAllPendingApproval() } ?: return
-        if (!context.status.value.isUnlocked) return
+        // Listings run at once and can finish out of order: a poll that started before a request's own listing must not
+        // take that request back off the list and close its sheet.
+        if (!context.status.value.isUnlocked || approvalList <= shownApprovalList) return
+        shownApprovalList = approvalList
         val date = now()
         val allOpenApproval = allApproval.filter { it.requestID !in allFinishedApprovalID && !it.isExpired(date) }
         val firstNewApproval = allOpenApproval.firstOrNull { it.requestID !in allSeenApprovalID }
@@ -198,6 +204,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     private fun finishAll() {
         allFinishedApprovalID += mutableAllPendingApproval.value.map { it.requestID }
         mutableAllPendingApproval.value = emptyList()
+        shownApprovalList = startedApprovalListCount
         mutablePresentedApproval.value = null
     }
 
@@ -234,6 +241,8 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         expiryJob?.cancel()
         expiryJob = null
         mutableAllPendingApproval.value = emptyList()
+        // A listing still running started before the clear and must not bring the requests back.
+        shownApprovalList = startedApprovalListCount
         mutablePresentedApproval.value = null
         mutableIsAnsweringApproval.value = false
         mutableIsApprovalPasswordRequired.value = false

@@ -2,6 +2,10 @@ MODULES := core server cli mobile
 CLI_TARGETS := linux/amd64 linux/arm64 darwin/arm64 darwin/amd64 windows/amd64 windows/arm64
 WAILS_VERSION := v3.0.0-beta.23
 
+override GOTOOLCHAIN := $(shell bash scripts/go-toolchain.sh)
+$(if $(strip $(GOTOOLCHAIN)),,$(error go.work must name the release toolchain))
+export GOTOOLCHAIN
+
 .PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end build-extension test-raycast test-omp test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui install-android-sdk build-android-aar build-android test-android test-android-ui generate-themes
 
 build: build-admin
@@ -107,8 +111,10 @@ build-ios:
 	xcodebuild build-for-testing -project $(IOS_PROJECT) -scheme Hisar -destination "id=$(IOS_SIMULATOR_ID)" $(IOS_DERIVED_DATA_FLAG) -quiet
 	xcodebuild build -project $(IOS_PROJECT) -scheme "Hisar Personal Team" -destination "id=$(IOS_SIMULATOR_ID)" $(IOS_DERIVED_DATA_FLAG) -quiet
 
-# IOS_TESTS_PREBUILT=1 runs the tests make build-ios built, as CI does, instead of building them again.
+# IOS_TESTS_PREBUILT=1 runs the tests make build-ios built, as CI does, instead of building them again. The tests start once the
+# simulator has finished booting; bootstatus boots it if it is not running.
 test-ios:
+	xcrun simctl bootstatus "$(IOS_SIMULATOR_ID)" -b
 	xcodebuild $(if $(IOS_TESTS_PREBUILT),test-without-building -scheme Hisar,test -scheme HisarUnitTests) -only-testing:HisarTests \
 		-project $(IOS_PROJECT) -destination "id=$(IOS_SIMULATOR_ID)" $(IOS_DERIVED_DATA_FLAG)
 

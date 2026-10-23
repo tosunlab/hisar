@@ -121,7 +121,8 @@ only Android calls:
   per-use Keystore key, and the next `Biometric.Authenticate` puts it in the prompt.
 - `androidapps.go`: logins linked to Android apps (`ListAllLoginForAndroidApp`, `GetLoginForAndroidApp`,
   `GetOneTimeCodeForAndroidApp`, `AddAndroidApp`, `RemoveAndroidApp`) and `ListAllLoginWebsite` for Digital Asset Links.
-- `BuildAndroidAppOrigin` and `BuildPasskeyClientData`, package functions for passkeys that a native app asks for.
+- `BuildAndroidAppOrigin`, `BuildPasskeyClientData` and `ValidatePasskeyRelyingPartyID`, package functions for passkeys
+  that a native app asks for.
 
 `cmd/hisar-ui-test-mac` plays the user's Mac in the Android phone approval UI test, which `scripts/test-android-ui.sh`
 starts it for: it signs up, sends the phone real approval requests, and saves each answer it verified in the Personal vault.
@@ -132,7 +133,7 @@ starts it for: it signs up, sends the phone real approval requests, and saves ea
 |---|---|
 | `:model` `com.tryhisar.hisar.model` | Plain JVM, no Android: `Models.kt` (HisarKit's JSON types, decoded with `backendJson`), `VaultBackend` (one method per HisarKit call, with the iPhone app's names and argument order), the logic the screens share (`VaultLogic`, `OrganizationLogic`, …), `theme/ThemePalettes.kt` (written by `make generate-themes`) |
 | `:model` `com.tryhisar.hisar.app` | The app model, the port of the iPhone app's `AppModel`. `AppModel` holds the status, the screen, `UnlockedData` (what an unlock loads), the lifecycle, events and notices; one area model per feature holds the rest (`SignInModel`, `LockModel`, `VaultsModel`, `ItemModel`, `ItemEditorModel`, `SharingModel`, `OrganizationsModel`, `SettingsModel`, `ApprovalsModel`, …). An area model takes the `ModelContext`, which `AppModel` implements, and `AppModel` creates it in one line (`val vaults = VaultsModel(this)`) |
-| `:model` `com.tryhisar.hisar.autofill` | AutoFill's logic: `FillRequestParser`, `LoginMatcher` (an app's linked logins first, then the sites that vouch for it), `AssetLinks`, `AutoFillModel`, `SavedLogin` |
+| `:model` `com.tryhisar.hisar.autofill` | AutoFill's logic: `FillRequestParser`, `LoginMatcher` (an app's linked logins first, then the sites that vouch for it), `AssetLinks`, `AssetLinksReader` (the password and native-passkey reader, with shared workers, at most 64 queued reads and 128 cached answers), `AutoFillModel`, `SavedLogin` |
 | `:model` `src/testFixtures` | `FakeBackend` and `AppModelHarness`, used by the JVM tests of both modules and by the instrumented tests |
 | `:app` `com.tryhisar.hisar` | `HisarApplication` (the process's one HisarKit backend, shared by the app and AutoFill), `MainActivity`, `AppViewModel` (owns `AppModel`, reports background and foreground), `ScreenshotSetting` |
 | `:app` `backend` | `HisarKitBackend`: `VaultBackend` over the AAR, never on the main thread, Go errors as `BackendError` |
@@ -257,6 +258,9 @@ make test-android-ui     # instrumented tests on the one emulator or ANDROID_SER
 gofmt -l $(git ls-files '*.go')
 ```
 
+Make selects the exact `go.work` toolchain even if `GOTOOLCHAIN` is set in your environment or Make arguments.
+The first use needs network access unless that release is already cached.
+
 The Android targets need `ANDROID_HOME` (the SDK, with the command-line tools in `cmdline-tools/latest`),
 `ANDROID_NDK_HOME` (`$ANDROID_HOME/ndk/30.0.16248370`) and JDK 21 for the Gradle daemon
 (`gradle/gradle-daemon-jvm.properties`). `make generate-themes` writes `ThemePalettes.kt`, with the Swift palettes and
@@ -269,6 +273,19 @@ it plans the version (`scripts/plan-release.sh`), pushes the `<app>-X.Y.Z` tag (
 `publish-<app>` before `publish.yml` publishes it. What an app is built from lives in `scripts/app-paths.sh`, shared with
 `scripts/detect-app-changes.sh`; a new build input of an app goes there. A release's install text is
 `.github/release-notes/<app>.md`, and `scripts/check-release-files.sh` lists the files each release must have.
+
+Local Make builds, packaging scripts, mobile bindings and direct Wails tasks select the exact `toolchain` release in
+`go.work` through `scripts/go-toolchain.sh`, even when the installed compiler is newer or mobile sets `GOWORK=off`.
+Docker and Flatpak pin the same release independently and disable automatic toolchain switching.
+CI runs `bash scripts/check-go-toolchain.sh` to reject drift from `go.work`.
+The CI changes job also runs `bash scripts/test-app-paths.sh` to check that a Docker-context-only change selects server
+releases and admin/image CI.
+
+Sparkle consumers run `scripts/download-sparkle.sh` before linking, copying the framework or signing an update.
+The downloader checks the archive SHA-256 on every use and compares extracted cache bytes, permissions and symlinks
+with a fresh extraction. Matching caches stay in place for concurrent universal builds. A failed Python comparison
+stops the build without replacing the cache. The macOS desktop job runs `bash scripts/test-download-sparkle.sh` to
+check cache repair, concurrent reuse and Python failures.
 
 ## Tests
 

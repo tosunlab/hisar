@@ -89,6 +89,9 @@ export function getMasterPasswordFeedback(password: string): MasterPasswordFeedb
 }
 
 export function describeSignedOutDevices(signedOutDeviceCount: number): string {
+  if (signedOutDeviceCount < 0) {
+    return "Any other devices were signed out; their count could not be recovered.";
+  }
   if (signedOutDeviceCount === 0) {
     return "No other devices were signed in.";
   }

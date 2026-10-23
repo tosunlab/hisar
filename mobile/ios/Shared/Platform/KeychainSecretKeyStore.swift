@@ -48,13 +48,17 @@ final class KeychainSecretKeyStore: NSObject, HisarkitSecretKeyStoreProtocol {
         return secretKey
     }
 
+    // Updating in place keeps the stored Secret Key until the new one is written.
     func storeSecretKey(_ accountID: String?, secretKey: String?) throws {
         let query = buildQuery(accountID: accountID ?? "")
-        SecItemDelete(query as CFDictionary)
-        var attributes = query
-        attributes[kSecValueData as String] = Data((secretKey ?? "").utf8)
-        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(attributes as CFDictionary, nil)
+        let attributes: [String: Any] = [
+            kSecValueData as String: Data((secretKey ?? "").utf8),
+            kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly,
+        ]
+        var status = SecItemUpdate(query as CFDictionary, attributes as CFDictionary)
+        if status == errSecItemNotFound {
+            status = SecItemAdd(query.merging(attributes) { $1 } as CFDictionary, nil)
+        }
         guard status == errSecSuccess else {
             throw KeychainError(status: status, operation: "save the Secret Key")
         }

@@ -24,6 +24,10 @@ const (
 	maxRotatedItemCount   = 50000
 )
 
+// maxChangeBytes is a soft ciphertext budget. One item can cross it; with the per-item limits, base64 and JSON metadata
+// still keep the response below the 64 MiB the apps read.
+const maxChangeBytes = 16 << 20
+
 var (
 	errReadOnly                = newError(KindForbidden, "read only")
 	errOrganizationVaultAccess = newError(KindInvalid, "access to an organization vault comes from its teams")
@@ -194,9 +198,11 @@ func (s *Service) RemoveAccess(ctx context.Context, actor Actor, vaultID, target
 	if role != apitypes.VaultOwner {
 		return ErrOwnerOnly
 	}
-	switch err := s.store.RemoveAccess(ctx, vaultID, targetAccountID); {
+	switch err := s.store.RemoveAccess(ctx, vaultID, actor.AccountID, targetAccountID); {
 	case errors.Is(err, store.ErrOrganizationVault):
 		return errOrganizationVaultAccess
+	case errors.Is(err, store.ErrNotOwner):
+		return ErrOwnerOnly
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case err != nil:
@@ -229,8 +235,9 @@ func convertToProtoItem(storeItem *store.Item) apitypes.Item {
 	return apitypes.Item{ID: storeItem.ID, Revision: storeItem.Revision, Seq: storeItem.Seq, Deleted: storeItem.Deleted, Overview: storeItem.Overview, Details: storeItem.Details, UpdatedAt: storeItem.UpdatedAt, UpdatedBy: storeItem.UpdatedBy}
 }
 
-// ListChanges returns up to limit changes after since. NextSeq below the client's since signals a server rollback;
-// it is not clamped. A vault the caller cannot see is not found before since and limit are checked.
+// ListChanges returns up to limit changes after since, fewer when they hold more than maxChangeBytes. NextSeq below the
+// client's since signals a server rollback; it is not clamped. A vault the caller cannot see is not found before since
+// and limit are checked.
 func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, since int64, limit int) (apitypes.ChangesResponse, error) {
 	if _, err := s.GetVaultRole(ctx, actor, vaultID); err != nil {
 		return apitypes.ChangesResponse{}, err
@@ -241,7 +248,7 @@ func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, 
 	if limit < 1 || limit > MaxChangeLimit {
 		return apitypes.ChangesResponse{}, newError(KindInvalid, "invalid limit")
 	}
-	items, vaultSeq, err := s.store.ListChanges(ctx, vaultID, since, limit)
+	items, vaultSeq, isMore, err := s.store.ListChanges(ctx, vaultID, since, limit, maxChangeBytes)
 	if err != nil {
 		return apitypes.ChangesResponse{}, err
 	}
@@ -249,7 +256,7 @@ func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, 
 	for index := range items {
 		response.Items = append(response.Items, convertToProtoItem(&items[index]))
 	}
-	if len(items) == limit {
+	if isMore {
 		response.More = true
 		response.NextSeq = items[len(items)-1].Seq
 	} else if len(items) > 0 {
@@ -284,7 +291,7 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	if err := s.CheckItemWrite(ctx, actor, vaultID); err != nil {
 		return 0, err
 	}
-	if !IsValidUUID(itemID) || !IsValidUUID(request.Revision) || (baseRevision != "" && !IsValidUUID(baseRevision)) ||
+	if !IsValidUUID(itemID) || !IsValidUUID(request.Revision) || (baseRevision != "" && !IsValidUUID(baseRevision)) || (request.Deleted && baseRevision == "") ||
 		len(request.Overview) == 0 || len(request.Overview) > maxOverview ||
 		len(request.Details) == 0 || len(request.Details) > maxDetails || request.KeyGeneration < 0 {
 		return 0, newError(KindInvalid, "invalid item")
@@ -292,6 +299,10 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	storeItem := &store.Item{ID: itemID, Revision: request.Revision, Deleted: request.Deleted, Overview: request.Overview, Details: request.Details, UpdatedBy: actor.AccountID}
 	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, request.KeyGeneration, storeItem)
 	switch {
+	case errors.Is(err, store.ErrNotFound):
+		return 0, ErrNotFound
+	case errors.Is(err, store.ErrReadOnly):
+		return 0, errReadOnly
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return 0, ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
@@ -338,6 +349,8 @@ func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID str
 	}
 	currentStoreItem, err := s.store.MoveItem(ctx, move)
 	switch {
+	case errors.Is(err, store.ErrReadOnly):
+		return apitypes.MoveItemResponse{}, errReadOnly
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return apitypes.MoveItemResponse{}, ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
@@ -389,7 +402,9 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 	if len(request.EncName) == 0 || len(request.EncName) > maxEncName || request.KeyGeneration < 0 {
 		return newError(KindInvalid, "invalid vault name")
 	}
-	switch err := s.store.RenameVault(ctx, vaultID, request.EncName, request.KeyGeneration); {
+	switch err := s.store.RenameVault(ctx, vaultID, actor.AccountID, request.EncName, request.KeyGeneration); {
+	case errors.Is(err, store.ErrNotOwner):
+		return ErrOwnerOnly
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case errors.Is(err, store.ErrConflict):

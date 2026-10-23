@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
@@ -31,6 +32,8 @@ type offlineTestServer struct {
 	preferences                apitypes.AccountPreferences
 	preferencePuts             int
 	isPreferenceConflictForced bool
+	isChangesStalled           bool
+	changeRequestCount         int
 }
 
 func (server *offlineTestServer) setUnreachable(isUnreachable bool) {
@@ -69,7 +72,12 @@ func (server *offlineTestServer) createHandler() http.Handler {
 	})
 	mux.HandleFunc("GET /api/v1/vaults/{vaultID}/changes", func(writer http.ResponseWriter, request *http.Request) {
 		server.sinceValues = append(server.sinceValues, request.URL.Query().Get("since"))
+		server.changeRequestCount++
 		since, _ := strconv.ParseInt(request.URL.Query().Get("since"), 10, 64)
+		if server.isChangesStalled {
+			writeJSON(writer, apitypes.ChangesResponse{Items: []apitypes.Item{}, NextSeq: since, More: true})
+			return
+		}
 		response := apitypes.ChangesResponse{Items: []apitypes.Item{}, NextSeq: server.seq}
 		for _, storedItem := range server.itemsByID {
 			if storedItem.Seq > since {
@@ -331,4 +339,225 @@ func TestListAllItemRedownloadsUndecryptableCache(t *testing.T) {
 	if titles := listTitles(t, unlockedSession); strings.Join(titles, ",") != "Netflix" {
 		t.Errorf("titles after a corrupted cache = %v", titles)
 	}
+}
+
+func TestListItemsRefusesChangePagesThatDoNotAdvance(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	for name, accountCache := range map[string]Cache{"cached": openTestCache(t), "uncached": nil} {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		unlockedSession, err := Unlock(ctx, account.apiClient, accountCache, account.password, account.secretKey)
+		if err != nil {
+			t.Fatal(err)
+		}
+		vaults, err := unlockedSession.ListVaults(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		account.server.mutex.Lock()
+		account.server.isChangesStalled, account.server.changeRequestCount = true, 0
+		account.server.mutex.Unlock()
+		_, err = unlockedSession.ListItems(ctx, &vaults[0])
+		if !errors.Is(err, ErrChangesStalled) || account.server.changeRequestCount != 1 {
+			t.Errorf("%s: a page with more changes but no progress: %v after %d requests", name, err, account.server.changeRequestCount)
+		}
+		account.server.mutex.Lock()
+		account.server.isChangesStalled = false
+		account.server.mutex.Unlock()
+		unlockedSession.Lock()
+		cancel()
+	}
+}
+
+func TestServerRecordsThatFailVerificationKeepTheCachedCopy(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	testCache := openTestCache(t)
+	ctx := context.Background()
+	unlockedSession, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if titles := listTitles(t, unlockedSession); len(titles) != 0 {
+		t.Fatalf("titles = %v", titles)
+	}
+	if _, err := unlockedSession.UpdateFavorites(ctx, nil, FavoriteChange{AddItemIDs: []string{"item-a"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := unlockedSession.LoadPreferences(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	account.server.mutex.Lock()
+	account.server.account.EncKeyset = []byte("not a keyset")
+	account.server.vaults = []apitypes.Vault{{ID: "vault-forged", Type: apitypes.VaultShared, EncName: []byte("x"), Role: apitypes.VaultOwner, WrappedKey: []byte("x")}}
+	account.server.preferences.Ciphertext = []byte("not ciphertext")
+	account.server.mutex.Unlock()
+	if _, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey); !errors.Is(err, ErrBadCredentials) {
+		t.Errorf("unlock with a forged keyset: %v", err)
+	}
+	if _, err := unlockedSession.ListVaults(ctx); err == nil {
+		t.Error("a vault whose key does not open was listed")
+	}
+	if _, err := unlockedSession.LoadPreferences(ctx); err == nil {
+		t.Error("preferences that do not open were loaded")
+	}
+
+	account.server.setUnreachable(true)
+	offlineSession, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatalf("offline unlock after the server sent a forged keyset: %v", err)
+	}
+	defer offlineSession.Lock()
+	if vaults, err := offlineSession.ListVaults(ctx); err != nil || len(vaults) != 1 || vaults[0].ID != account.vaultID {
+		t.Errorf("offline vaults after the server sent a forged list: %+v %v", vaults, err)
+	}
+	if preferences, err := offlineSession.LoadPreferences(ctx); err != nil || !preferences.IsFavorite("item-a") {
+		t.Errorf("offline preferences after the server sent forged ones: %+v %v", preferences, err)
+	}
+}
+
+func TestAttachCacheKeepsTheVerifiedOfflineAccount(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	testCache := openTestCache(t)
+	ctx := context.Background()
+	unlocked, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlocked.Lock()
+	account.server.mutex.Lock()
+	account.server.account.EncKeyset = []byte("forged account on attach")
+	account.server.mutex.Unlock()
+	if err := unlocked.AttachCache(ctx, testCache); !errors.Is(err, ErrKeyMismatch) {
+		t.Fatalf("attach forged account: %v", err)
+	}
+	account.server.setUnreachable(true)
+	offline, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatalf("AttachCache poisoned the last verified offline account: %v", err)
+	}
+	offline.Lock()
+}
+
+func TestExisting128MiBAccountStillUnlocksOnlineAndOffline(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	ctx := context.Background()
+	unlocked, err := Unlock(ctx, account.apiClient, nil, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlocked.Lock()
+	params := crypt.Argon2Params{Time: 2, MemoryKiB: 128 * 1024, Threads: 1}
+	salt := crypt.GenerateSalt()
+	keys, err := crypt.DeriveKeys(account.password, salt, params, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer keys.Wipe()
+	envelope, err := unlocked.Keyset.Encrypt(keys.AccountUnlockKey, account.secretKey.AccountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	account.server.mutex.Lock()
+	account.server.account.Salt, account.server.account.Argon2, account.server.account.EncKeyset = salt, params, envelope
+	account.server.mutex.Unlock()
+	testCache := openTestCache(t)
+	online, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatalf("128 MiB account no longer unlocks online: %v", err)
+	}
+	online.Lock()
+	account.server.setUnreachable(true)
+	offline, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatalf("128 MiB account no longer unlocks offline: %v", err)
+	}
+	offline.Lock()
+}
+
+type failingAccountCache struct {
+	Cache
+	saveError error
+}
+
+func (accountCache *failingAccountCache) SaveAccount(account *apitypes.Account) error {
+	if accountCache.saveError != nil {
+		return accountCache.saveError
+	}
+	return accountCache.Cache.SaveAccount(account)
+}
+
+func TestAttachCacheWaitsForSavedAccount(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	testCache := openTestCache(t)
+	ctx := context.Background()
+	unlocked, err := Unlock(ctx, account.apiClient, nil, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlocked.Lock()
+	saveError := errors.New("account could not be saved")
+	accountCache := &failingAccountCache{Cache: testCache, saveError: saveError}
+	if err := unlocked.AttachCache(ctx, accountCache); !errors.Is(err, saveError) {
+		t.Fatalf("cache attachment error = %v", err)
+	}
+	if unlocked.Cache != nil {
+		t.Error("a cache with no saved account was attached")
+	}
+	if _, err := unlocked.ListVaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if vaults, err := testCache.ListVaults(); err != nil || len(vaults) != 0 {
+		t.Errorf("failed attachment wrote unbound vault rows: %d, %v", len(vaults), err)
+	}
+	accountCache.saveError = nil
+	if err := unlocked.AttachCache(ctx, accountCache); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := unlocked.ListVaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if cached, err := testCache.LoadAccount(account.secretKey.AccountID); err != nil || cached == nil {
+		t.Errorf("successful attachment did not save the account: %v", err)
+	}
+	if vaults, err := testCache.ListVaults(); err != nil || len(vaults) != 1 {
+		t.Errorf("successful attachment did not cache vaults: %d, %v", len(vaults), err)
+	}
+}
+
+func TestUnlockKeepsTheCacheOnlyWhenItSavedTheAccount(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	testCache := openTestCache(t)
+	ctx := context.Background()
+	saveError := errors.New("database is locked")
+	accountCache := &failingAccountCache{Cache: testCache, saveError: saveError}
+	unlocked, err := Unlock(ctx, account.apiClient, accountCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if unlocked.Cache != nil {
+		t.Error("a cache with no saved account was attached")
+	}
+	if _, err := unlocked.ListVaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	unlocked.Lock()
+	if err := testCache.CheckAccount(account.secretKey.AccountID); err != nil {
+		t.Fatalf("a failed account save left a cache later launches refuse: %v", err)
+	}
+
+	accountCache.saveError = nil
+	online, err := Unlock(ctx, account.apiClient, accountCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := online.ListVaults(ctx); err != nil {
+		t.Fatal(err)
+	}
+	online.Lock()
+	account.server.setUnreachable(true)
+	offline, err := Unlock(ctx, account.apiClient, testCache, account.password, account.secretKey)
+	if err != nil {
+		t.Fatalf("offline unlock after the account was saved: %v", err)
+	}
+	offline.Lock()
 }

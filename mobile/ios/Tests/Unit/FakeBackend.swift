@@ -36,6 +36,9 @@ class FakeBackend: VaultBackend {
     var isShareAwaitingUnlockFailing = false
     var allAnsweredInvitation: [String] = []
     var allPendingApproval: [PhoneApproval] = []
+    /// Runs when the open requests have been read and before they are returned: a test can hold an older listing while a
+    /// newer one runs.
+    var onListAllPendingApproval: (() -> Void)?
     var allApprovalAnswer: [String] = []
     var allDevice: [Device] = []
     var isMacApprovalAllowedValue = true
@@ -44,6 +47,10 @@ class FakeBackend: VaultBackend {
     var preparedIcon: Data?
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
+    /// The backend signs out on the phone even when it could not confirm everything, then reports that.
+    var signOutError: BackendError?
+    /// What the backend reports when the account is deleted but this phone's copy could not be removed.
+    var accountDeletionCleanupError: BackendError?
     var allCopiedReference: [String] = []
     var allPendingRemovedVault: [RemovedVaultNotice] = []
     var allDeletionRequest: [VaultDeletionRequest] = []
@@ -336,6 +343,7 @@ class FakeBackend: VaultBackend {
         let lastServer = status.server
         status = .signedOut
         status.server = lastServer
+        if let signOutError { throw signOutError }
         return status
     }
 
@@ -602,7 +610,9 @@ extension FakeBackend {
 extension FakeBackend {
     func listAllPendingApproval() throws -> [PhoneApproval] {
         try requireUnlocked()
-        return withApprovalLock { allPendingApproval }
+        let allApproval = withApprovalLock { allPendingApproval }
+        onListAllPendingApproval?()
+        return allApproval
     }
 
     func approveApproval(requestID: String, isRemembered: Bool) throws {
@@ -864,6 +874,7 @@ extension FakeBackend {
         guard password == currentPassword else { throw BackendError(message: "The master password is not correct") }
         isAccountDeleted = true
         status = .signedOut
+        if let accountDeletionCleanupError { throw accountDeletionCleanupError }
         return status
     }
 
@@ -1115,6 +1126,28 @@ extension FakeBackend {
             guard let index = organization.allTeam.firstIndex(where: { $0.id == teamID }) else { return }
             change(&organization.allTeam[index])
         }
+    }
+}
+
+extension FakeBackend {
+    /// Holds a refresh at its last listing while change runs, as when the device is signed out, locks or hears of a
+    /// remote change meanwhile.
+    @MainActor
+    func finishRefresh(of model: AppModel, after change: () async -> Void) async {
+        let isListing = DispatchSemaphore(value: 0)
+        let mayFinish = DispatchSemaphore(value: 0)
+        onListAllPasskey = {
+            isListing.signal()
+            mayFinish.wait()
+        }
+        let refresh = Task { await model.refreshAll() }
+        while isListing.wait(timeout: .now()) == .timedOut {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        await change()
+        onListAllPasskey = nil
+        mayFinish.signal()
+        await refresh.value
     }
 }
 

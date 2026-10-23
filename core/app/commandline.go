@@ -78,13 +78,40 @@ func convertCommandLineError(err error) error {
 	return cliprotocol.NewError(cliprotocol.ErrorInternal, err.Error())
 }
 
+type sessionEpochKey struct{}
+
+var errCommandLineSessionEnded = cliprotocol.NewError(cliprotocol.ErrorDenied, errSessionEnded.Error())
+
+// BindSession ties a request to the session it arrived in (clisocket.SessionBinder).
+func (bridge *CommandLineBridge) BindSession(ctx context.Context) context.Context {
+	s := bridge.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return context.WithValue(ctx, sessionEpochKey{}, s.sessionEpoch)
+}
+
+// HandleRequest answers only from the session the request arrived in, and drops an answer read from a later one; a
+// launcher's lock is the one request that ends that session itself.
 func (bridge *CommandLineBridge) HandleRequest(ctx context.Context, request *cliprotocol.Request) (any, error) {
-	result, err := bridge.answer(ctx, request)
+	epoch, isBound := ctx.Value(sessionEpochKey{}).(uint64)
+	if !isBound || !bridge.service.isSessionEpoch(epoch) {
+		return nil, errCommandLineSessionEnded
+	}
+	result, err := bridge.answer(ctx, epoch, request)
+	if request.Type != cliprotocol.TypeLauncherLock && !bridge.service.isSessionEpoch(epoch) {
+		return nil, errCommandLineSessionEnded
+	}
 	return result, convertCommandLineError(err)
 }
 
-// answer gives an ordinary hisar command inside an agent harness agent rules, whichever request it sends.
-func (bridge *CommandLineBridge) answer(ctx context.Context, request *cliprotocol.Request) (any, error) {
+// answer gives an ordinary hisar command inside an agent harness agent rules, whichever request it sends; epoch is the
+// session the request arrived in.
+func (bridge *CommandLineBridge) answer(ctx context.Context, epoch uint64, request *cliprotocol.Request) (any, error) {
+	bound := CommandLineBridge{service: &Service{serviceState: bridge.service.serviceState, requestEpoch: &epoch}}
+	return bound.dispatch(ctx, epoch, request)
+}
+
+func (bridge *CommandLineBridge) dispatch(ctx context.Context, epoch uint64, request *cliprotocol.Request) (any, error) {
 	switch {
 	case cliprotocol.IsAgentRequest(request.Type):
 		return bridge.answerAgentRequest(request)
@@ -92,12 +119,12 @@ func (bridge *CommandLineBridge) answer(ctx context.Context, request *cliprotoco
 		return bridge.answerLauncherRequest(request)
 	}
 	if _, isInside := clisocket.GetAgentSession(ctx); isInside {
-		return bridge.answerAgentSessionRequest(request)
+		return bridge.answerAgentSessionRequest(epoch, request)
 	}
-	return bridge.answerCommandLineRequest(request)
+	return bridge.answerCommandLineRequest(epoch, request)
 }
 
-func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.Request) (any, error) {
+func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request *cliprotocol.Request) (any, error) {
 	if result, isHandled, err := bridge.answerOrganizationRequest(request); isHandled {
 		return result, err
 	}
@@ -137,7 +164,7 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.R
 		if request.Export == nil {
 			return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the export is missing")
 		}
-		result, err := s.writeExportFile(request.Export.Format, request.Export.Passphrase, request.Export.Path)
+		result, err := s.writeExportFile(request.Export.Format, request.Export.Passphrase, request.Export.Path, epoch)
 		return cliprotocol.ExportResult{Path: result.Path, VaultCount: result.VaultCount, ItemCount: result.ItemCount}, err
 	case cliprotocol.TypeListItem:
 		details, err := s.ListItems(request.VaultID)

@@ -25,27 +25,49 @@ func scanItem(row pgx.CollectableRow) (Item, error) {
 	return item, err
 }
 
-// ListChanges returns items with seq > since, and the vault's current seq.
-func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, limit int) (items []Item, vaultSeq int64, err error) {
+// ListChanges returns items with seq > since, and the vault's current seq. A page ends after limit items, or once its
+// sealed overviews and details reach maxBytes. One item can cross the budget; the first item is always included.
+// isMore reports that the page ended at one of those bounds.
+func (s *Store) ListChanges(ctx context.Context, vaultID string, since int64, limit int, maxBytes int64) (items []Item, vaultSeq int64, isMore bool, err error) {
 	if err := s.pool.QueryRow(ctx, `SELECT seq FROM vaults WHERE id = $1`, vaultID).Scan(&vaultSeq); err != nil {
-		return nil, 0, convertNoRowsToNotFound(err)
+		return nil, 0, false, convertNoRowsToNotFound(err)
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, revision, seq, deleted, overview, details, updated_at, updated_by
-		FROM items WHERE vault_id = $1 AND seq > $2 ORDER BY seq LIMIT $3`, vaultID, since, limit)
+		SELECT id, revision, seq, deleted, CASE WHEN fits THEN overview END, CASE WHEN fits THEN details END, updated_at, updated_by, fits
+		FROM (
+			SELECT *, sum(octet_length(overview) + octet_length(details)) OVER (ORDER BY seq) - octet_length(overview) - octet_length(details) < $4 AS fits
+			FROM items WHERE vault_id = $1 AND seq > $2 ORDER BY seq LIMIT $3
+		) page ORDER BY seq`, vaultID, since, limit, maxBytes)
 	if err != nil {
-		return nil, 0, err
+		return nil, 0, false, err
 	}
-	items, err = pgx.CollectRows(rows, scanItem)
-	return items, vaultSeq, err
+	defer rows.Close()
+	rowCount := 0
+	for rows.Next() {
+		rowCount++
+		var item Item
+		var fits bool
+		if err := rows.Scan(&item.ID, &item.Revision, &item.Seq, &item.Deleted, &item.Overview, &item.Details, &item.UpdatedAt, &item.UpdatedBy, &fits); err != nil {
+			return nil, 0, false, err
+		}
+		if fits {
+			items = append(items, item)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, false, err
+	}
+	return items, vaultSeq, rowCount == limit || len(items) < rowCount, nil
 }
 
 // PutItem writes a new revision if baseRevision matches the stored one ("" for a new item).
 // On ErrConflict the current item is returned; it is nil when the item does not exist.
 // Re-sending an already stored revision is a no-op so that clients can retry safely.
 // It locks only the vault, since an item write changes no access (§5.11), and, before any revision check, returns
-// ErrStaleKeyGeneration or ErrKeyGenerationMissing unless the vault accepts keyGeneration, so an item sealed with a key a
-// rotation replaced is never stored.
+// ErrNotFound unless item.UpdatedBy is a member, ErrReadOnly when it is a reader, and ErrStaleKeyGeneration or
+// ErrKeyGenerationMissing unless the vault accepts keyGeneration, so an item sealed with a key a rotation replaced is
+// never stored. The role is read under the vault's lock, which every access change takes, so a member removed meanwhile
+// cannot write.
 func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, keyGeneration int64, item *Item) (*Item, error) {
 	var current *Item
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) (err error) {
@@ -59,6 +81,9 @@ func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, keyGe
 func putItem(ctx context.Context, transaction pgx.Tx, vaultID, baseRevision string, keyGeneration int64, item *Item) (*Item, error) {
 	vault, err := lockVaultRow(ctx, transaction, vaultID)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireVaultWriter(ctx, transaction, vaultID, item.UpdatedBy); err != nil {
 		return nil, err
 	}
 	if err := vault.checkItemKeyGeneration(keyGeneration); err != nil {
@@ -123,7 +148,8 @@ type ItemMove struct {
 }
 
 // MoveItem moves the item in one transaction, so it is never in both vaults or in neither. It locks only the two
-// vaults, since a move changes no access (§5.11). It refuses with ErrConflict, returning the current item, unless
+// vaults, since a move changes no access (§5.11). It refuses with ErrNotFound unless the account is a member of the
+// source vault and with ErrReadOnly when it reads it only; with ErrConflict, returning the current item, unless
 // BaseRevision is the item's live revision in the source vault; with ErrExists when the target vault has a live item
 // with the same ID; with ErrTargetNotWritable unless the account may write the target vault; and with
 // ErrStaleKeyGeneration or ErrKeyGenerationMissing unless both vaults accept the key generations the item is sealed
@@ -138,6 +164,9 @@ func (s *Store) MoveItem(ctx context.Context, move *ItemMove) (*Item, error) {
 		source, target := vaultsByID[move.SourceVaultID], vaultsByID[move.TargetVaultID]
 		if source == nil || target == nil {
 			return ErrNotFound
+		}
+		if err := requireVaultWriter(ctx, transaction, move.SourceVaultID, move.AccountID); err != nil {
+			return err
 		}
 		var targetRole string
 		err = transaction.QueryRow(ctx, `SELECT role FROM vault_access WHERE vault_id = $1 AND account_id = $2`, move.TargetVaultID, move.AccountID).Scan(&targetRole)

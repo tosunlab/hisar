@@ -28,7 +28,23 @@ type Client struct {
 }
 
 func New(baseURL string) *Client {
-	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), HTTP: &http.Client{Timeout: 30 * time.Second}}
+	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), HTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: CheckRedirect}}
+}
+
+// CheckRedirect follows a redirect only within TLS once a request used it, and keeps the Authorization header for the
+// origin (scheme, host and port) it was set for; Go's own check keeps it for another port or scheme of the same host.
+func CheckRedirect(request *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	initial := via[0].URL
+	if initial.Scheme == "https" && request.URL.Scheme != "https" {
+		return ErrInsecureRedirect
+	}
+	if request.URL.Scheme != initial.Scheme || request.URL.Host != initial.Host {
+		request.Header.Del("Authorization")
+	}
+	return nil
 }
 
 type APIError struct {
@@ -43,6 +59,9 @@ func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Mess
 // ErrAccountSuspended is the server's 403 with apitypes.AccountSuspendedMessage: an admin suspended the account. It is
 // not an APIError, so no check for a plain 403 mistakes it for another refusal, and the device keeps its session.
 var ErrAccountSuspended = errors.New(apitypes.AccountSuspendedMessage)
+
+// ErrInsecureRedirect is a redirect from https to plain http, which would expose the bearer and the traffic.
+var ErrInsecureRedirect = errors.New("the server redirected from https to an unencrypted http address")
 
 // readError returns the error of an answer that is not a success, from its status and JSON body.
 func readError(status int, data []byte) error {
@@ -106,7 +125,7 @@ func IsKeyChanged(err error) bool {
 func IsUnreachable(err error) bool {
 	var urlError *url.Error
 	if errors.As(err, &urlError) {
-		return true
+		return !errors.Is(err, ErrInsecureRedirect)
 	}
 	return IsStatus(err, http.StatusBadGateway) || IsStatus(err, http.StatusServiceUnavailable) || IsStatus(err, http.StatusGatewayTimeout)
 }

@@ -18,8 +18,10 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -146,6 +148,18 @@ class AppModelCoreTests {
     }
 
     @Test
+    fun testARemoteChangeDuringAnotherRefreshListsAgain() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        runCurrent()
+        finishRefresh(harness, model) {
+            harness.backend.allVault += VaultSummary(id = "shared-with-me", name = "Deploy keys", type = "shared", role = Member.VAULT_ROLE_READER, itemCount = 0)
+            model.handleRemoteChange()
+        }
+        assertNotNull(model.unlockedData.value.findVault("shared-with-me"), "the refresh listed the vaults before the change and nothing listed them again")
+    }
+
+    @Test
     fun testRefreshFinishingAfterSignOutBringsNothingBack() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()
@@ -168,6 +182,23 @@ class AppModelCoreTests {
         assertEquals(Screen.Locked, model.screen.value)
         assertTrue(model.unlockedData.value.allVault.isEmpty(), "the refresh restored the vaults behind the lock screen")
         assertTrue(model.unlockedData.value.allItemByVaultID.isEmpty(), "the refresh restored the items behind the lock screen")
+    }
+
+    // The backend runs inline, so a refresh started from its last listing finishes before the first one does.
+    @Test
+    fun testRefreshFinishingAfterANewerRefreshKeepsTheNewerLists() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.seedSignedIn()
+        val model = harness.createModel(ioDispatcher = Dispatchers.Unconfined).also { it.start { harness.backend } }
+        runCurrent()
+        harness.backend.onListAllPasskey = {
+            harness.backend.onListAllPasskey = null
+            harness.backend.allFavoriteRecordID = mutableSetOf("family/netflix")
+            runBlocking { model.refreshAll() }
+        }
+        model.refreshAll()
+        runCurrent()
+        assertEquals(listOf("Netflix"), model.unlockedData.value.listAllFavoriteReference().map { it.item.title }, "the older refresh brought back the older lists")
     }
 
     @Test

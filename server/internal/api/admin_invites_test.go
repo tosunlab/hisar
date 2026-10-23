@@ -272,3 +272,66 @@ func TestAdminInvitesNeedAnAdmin(t *testing.T) {
 		t.Errorf("invites %d, then %d", before, after)
 	}
 }
+
+func TestAdminInviteNeedsItsCreatorToStillBeAnActiveAdmin(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	first := signUpAccountWithRole(t, server, baseURL, "first@example.com", apitypes.RoleAdmin)
+	second := signUpAccountWithRole(t, server, baseURL, "second@example.com", apitypes.RoleAdmin)
+	firstPath := adminAccountsPath + "/" + first.session.AccountID
+	refuseInvite := func(created apitypes.AdminInviteCreated) {
+		t.Helper()
+		for _, listed := range listAdminInvites(t, baseURL, second.session.Client.Token) {
+			if listed.ID == created.Invite.ID {
+				t.Errorf("dashboard lists unusable admin invite %s as pending", listed.ID)
+			}
+		}
+		if status, _ := sendRawRequest(t, baseURL, second.session.Client.Token, "POST", adminInvitesPath+"/"+created.Invite.ID+"/resend", nil); status != http.StatusNotFound {
+			t.Errorf("resend unusable admin invite: %d", status)
+		}
+		token := getInviteToken(t, created.Link)
+		if response, _ := fetchInvitePage(t, baseURL, token); response.StatusCode != http.StatusNotFound {
+			t.Errorf("invite page of %s: %d", created.Invite.Email, response.StatusCode)
+		}
+		if _, err := signUpWithInvite(ctx, baseURL, token, created.Invite.Email); !apiclient.IsStatus(err, http.StatusForbidden) {
+			t.Errorf("%s signed up with the admin invite: %v", created.Invite.Email, err)
+		}
+	}
+
+	memberInvite := createAdminInvite(t, baseURL, first.session.Client.Token, "member-invitee@example.com", apitypes.RoleMember)
+	demotedInvite := createAdminInvite(t, baseURL, first.session.Client.Token, "carol@example.com", apitypes.RoleAdmin)
+	if status, body := sendRawRequest(t, baseURL, second.session.Client.Token, "PUT", firstPath+"/role",
+		apitypes.AdminRoleChangeRequest{Role: apitypes.RoleMember, Proof: proveAdmin(t, second)}); status != http.StatusNoContent {
+		t.Fatalf("demote: %d %s", status, body)
+	}
+	refuseInvite(demotedInvite)
+	if count := getPendingInviteCount(t, baseURL, second.session.Client.Token); count != 1 {
+		t.Errorf("pending invites after demotion: %d, want only the member invite", count)
+	}
+	if _, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, memberInvite.Link), "member-invitee@example.com"); err != nil {
+		t.Errorf("a member invite of a demoted admin: %v", err)
+	}
+
+	if status, body := sendRawRequest(t, baseURL, second.session.Client.Token, "PUT", firstPath+"/role",
+		apitypes.AdminRoleChangeRequest{Role: apitypes.RoleAdmin, Proof: proveAdmin(t, second)}); status != http.StatusNoContent {
+		t.Fatalf("promote: %d %s", status, body)
+	}
+	if count := getPendingInviteCount(t, baseURL, second.session.Client.Token); count != 1 {
+		t.Errorf("pending invites after promotion: %d, want revived admin invite", count)
+	}
+	revived, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, demotedInvite.Link), demotedInvite.Invite.Email)
+	if err != nil {
+		t.Fatalf("revived admin invite: %v", err)
+	}
+	suspendedInvite := createAdminInvite(t, baseURL, first.session.Client.Token, "dave@example.com", apitypes.RoleAdmin)
+	if status, body := sendRawRequest(t, baseURL, second.session.Client.Token, "POST", firstPath+"/suspend", nil); status != http.StatusNoContent {
+		t.Fatalf("suspend: %d %s", status, body)
+	}
+	refuseInvite(suspendedInvite)
+	if count := getPendingInviteCount(t, baseURL, second.session.Client.Token); count != 0 {
+		t.Errorf("pending invites after suspension: %d", count)
+	}
+	if account, err := revived.Client.GetAccount(ctx); err != nil || account.Role != apitypes.RoleAdmin {
+		t.Errorf("already-redeemed admin after issuer suspension: %+v %v", account, err)
+	}
+}

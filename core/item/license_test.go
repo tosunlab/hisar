@@ -32,7 +32,7 @@ func TestReadAndWriteSoftwareLicense(t *testing.T) {
 	wantFields := []Field{
 		{Name: FieldProduct, Value: "Sketch"},
 		{Name: FieldVersion, Value: "100"},
-		{Name: FieldLicenseKey, Value: "ABCD-EFGH", Concealed: true},
+		{Name: FieldLicenseKey, Value: " ABCD-EFGH ", Concealed: true},
 		{Name: FieldLicensedTo, Value: "Alice Example"},
 		{Name: FieldEmail, Value: "alice@example.com"},
 		{Name: FieldPurchaseDate, Value: "2024-03-09"},

@@ -16,9 +16,10 @@ import StatusView from "./components/StatusView.vue";
 import VaultView from "./components/VaultView.vue";
 import AppIcon from "./components/AppIcon.vue";
 
-const props = withDefaults(defineProps<{ pollIntervalMilliseconds?: number; pollLimit?: number }>(), {
+const props = withDefaults(defineProps<{ pollIntervalMilliseconds?: number; pollLimit?: number; statusIntervalMilliseconds?: number }>(), {
   pollIntervalMilliseconds: 1000,
   pollLimit: 120,
+  statusIntervalMilliseconds: 2000,
 });
 
 const popupState = ref<PopupState>();
@@ -33,15 +34,38 @@ const noticeMessage = ref("");
 const isSettingsOpen = ref(false);
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let pollTimer: ReturnType<typeof setTimeout> | undefined;
+let statusTimer: ReturnType<typeof setTimeout> | undefined;
 
-async function refreshState(shouldReconnect = false): Promise<void> {
+async function refreshState(shouldReconnect = false, isOverOpenConnection = false): Promise<void> {
   try {
-    popupState.value = await sendToBackground<PopupState>({ type: "popup.getState", shouldReconnect });
+    popupState.value = await sendToBackground<PopupState>(
+      isOverOpenConnection ? { type: "popup.getState", isOverOpenConnection } : { type: "popup.getState", shouldReconnect },
+    );
     errorMessage.value = "";
   } catch (error) {
     errorMessage.value = describeError(error);
   }
 }
+
+// While the vault is shown, the popup checks Hisar's state, so locking, signing out or another account's sign-in drops
+// what it shows, revealed secrets included.
+function watchStatus(): void {
+  statusTimer = setTimeout(async () => {
+    await refreshState(false, true);
+    statusTimer = undefined;
+    if (popupState.value?.view === "unlocked") watchStatus();
+  }, props.statusIntervalMilliseconds);
+}
+watch(
+  () => popupState.value?.view,
+  (view) => {
+    if (view === "unlocked" && statusTimer === undefined) watchStatus();
+  },
+);
+watch(
+  () => popupState.value?.email,
+  () => (openedItem.value = undefined),
+);
 
 function stopPolling(): void {
   if (pollTimer !== undefined) clearTimeout(pollTimer);
@@ -114,6 +138,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopPolling();
+  if (statusTimer !== undefined) clearTimeout(statusTimer);
   if (noticeTimer !== undefined) clearTimeout(noticeTimer);
 });
 </script>
@@ -143,7 +168,7 @@ onBeforeUnmount(() => {
     <SettingsView v-if="isSettingsOpen" @close="isSettingsOpen = false" />
     <p v-else-if="!popupState" class="muted connecting" data-testid="connecting">Connecting to Hisar…</p>
     <PairingView v-else-if="popupState.view === 'not-paired'" @paired="refreshState()" />
-    <section v-else-if="popupState.view === 'unlocked'" class="unlocked" data-testid="unlocked-view">
+    <section v-else-if="popupState.view === 'unlocked'" :key="popupState.email" class="unlocked" data-testid="unlocked-view">
       <div class="segments" role="tablist">
         <button
           type="button"

@@ -21,6 +21,30 @@ final class KeychainSecretKeyStoreTests: XCTestCase {
         XCTAssertNoThrow(try store.deleteSecretKey("ACCOUNT1"), "deleting twice is fine")
     }
 
+    func testReplacingTheSecretKeyUpdatesTheStoredItemInPlace() throws {
+        try store.storeSecretKey("ACCOUNT3", secretKey: "H1-ACCOUNT3-AAAAA")
+        let firstReference = try readPersistentReference(accountID: "ACCOUNT3")
+        try store.storeSecretKey("ACCOUNT3", secretKey: "H1-ACCOUNT3-BBBBB")
+        XCTAssertEqual(try readPersistentReference(accountID: "ACCOUNT3"), firstReference, "the old item was deleted before the new one was added")
+        var error: NSError?
+        XCTAssertEqual(store.loadSecretKey("ACCOUNT3", error: &error), "H1-ACCOUNT3-BBBBB")
+    }
+
+    private func readPersistentReference(accountID: String) throws -> Data {
+        var query: [String: Any] = [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "com.tryhisar.hisar.tests.secret-key",
+            kSecAttrAccount as String: accountID,
+            kSecReturnPersistentRef as String: true,
+        ]
+        if let accessGroup = HisarConfiguration.current.keychainAccessGroup {
+            query[kSecAttrAccessGroup as String] = accessGroup
+        }
+        var result: AnyObject?
+        XCTAssertEqual(SecItemCopyMatching(query as CFDictionary, &result), errSecSuccess)
+        return try XCTUnwrap(result as? Data)
+    }
+
     func testSharedAccessGroupIsUsedInTheSimulator() throws {
         XCTAssertNotNil(HisarConfiguration.current.keychainAccessGroup)
         XCTAssertTrue(HisarConfiguration.current.keychainAccessGroup?.hasSuffix("com.tryhisar.hisar.shared") ?? false)

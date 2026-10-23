@@ -66,6 +66,7 @@ final class OneTimeCodeUITests: HisarUITestCase {
         app.buttons["autofill-login-Example"].tap()
         let passwordResult = readResult()
         let prefix = "Filled code-user with a password of 15 characters and copied the one-time code "
+        XCTAssertTrue(passwordResult.hasPrefix(prefix), passwordResult)
         checkCurrentCode(String(passwordResult.dropFirst(prefix.count)), startedAt: passwordStartedAt)
     }
 

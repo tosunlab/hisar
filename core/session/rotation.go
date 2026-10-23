@@ -61,7 +61,12 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, accessGrants
 		return err
 	}
 	for _, protoItem := range protoItems {
-		rotated, err := reencryptItem(vault.Key, vault.ID, newVaultKey, vault.ID, &protoItem)
+		var rotated *reencryptedItem
+		if protoItem.Deleted {
+			rotated, err = sealTombstone(newVaultKey, vault.ID, protoItem.ID)
+		} else {
+			rotated, err = reencryptItem(vault.Key, vault.ID, newVaultKey, vault.ID, &protoItem)
+		}
 		if err != nil {
 			return err
 		}
@@ -80,8 +85,9 @@ func (s *Session) RotateVaultKey(ctx context.Context, vault *Vault, accessGrants
 	return nil
 }
 
-// RemoveVaultMember removes a member and rotates the vault key so they cannot read future changes.
-// It retries when the vault changes during the rotation.
+// RemoveVaultMember removes a member and rotates the vault key so they cannot read future changes. Each attempt starts
+// from the vault's current key, since another owner may have rotated it, and it retries when the vault changes during
+// the rotation.
 func (s *Session) RemoveVaultMember(ctx context.Context, vault *Vault, accountID string) error {
 	if vault.Type == apitypes.VaultOrganization {
 		return ErrOrganizationVaultAccess
@@ -90,6 +96,9 @@ func (s *Session) RemoveVaultMember(ctx context.Context, vault *Vault, accountID
 		return errors.New("owners cannot remove themselves from a vault")
 	}
 	for attempt := 1; ; attempt++ {
+		if err := s.reloadVaults(ctx, vault); err != nil {
+			return err
+		}
 		vaultMembers, err := s.Client.ListVaultMembers(ctx, vault.ID)
 		if err != nil {
 			return err

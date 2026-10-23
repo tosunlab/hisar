@@ -29,6 +29,7 @@ type exportedVaultPlan struct {
 	target           cliprotocol.Vault
 	isNewVault       bool
 	items            []item.Item
+	existingItems    []item.Item
 	duplicateIndexes []int
 }
 
@@ -48,7 +49,7 @@ func decodeHisarExport(format string, content []byte) (*export.Document, error) 
 		document, err := export.Decode(content, passphrase)
 		clear(passphrase)
 		if errors.Is(err, export.ErrWrongPassphrase) && attempt < attemptCount {
-			fmt.Fprintln(os.Stderr, "That passphrase doesn't open this export. Try again.")
+			fmt.Fprintln(standardError(), "That passphrase doesn't open this export. Try again.")
 			continue
 		}
 		return document, err
@@ -89,6 +90,7 @@ func planHisarImport(ctx context.Context, access backend, document *export.Docum
 				return nil, err
 			}
 			plan.duplicateIndexes = importer.FindDuplicateIndexes(plan.items, existingItems)
+			plan.existingItems = existingItems
 		}
 		plans = append(plans, plan)
 	}
@@ -125,10 +127,10 @@ func printHisarImportPreview(fileName string, document *export.Document, format 
 	if format == export.FormatEncrypted {
 		formatName = "Hisar encrypted export"
 	}
-	fmt.Fprintf(os.Stderr, "File:    %s\n", fileName)
-	fmt.Fprintf(os.Stderr, "Format:  %s, made %s", formatName, document.ExportedAt.Local().Format("2 January 2006"))
+	fmt.Fprintf(standardError(), "File:    %s\n", fileName)
+	fmt.Fprintf(standardError(), "Format:  %s, made %s", formatName, document.ExportedAt.Local().Format("2 January 2006"))
 	if document.Account.Email != "" {
-		fmt.Fprintf(os.Stderr, " from %s", document.Account.Email)
+		fmt.Fprintf(standardError(), " from %s", document.Account.Email)
 	}
 	fmt.Fprintln(os.Stderr)
 	for _, plan := range plans {
@@ -140,7 +142,7 @@ func printHisarImportPreview(fileName string, document *export.Document, format 
 		if len(plan.duplicateIndexes) > 0 {
 			summary += fmt.Sprintf(", %d already there", len(plan.duplicateIndexes))
 		}
-		fmt.Fprintf(os.Stderr, "  %s → %s: %s\n", plan.exported.Name, target, summary)
+		fmt.Fprintf(standardError(), "  %s → %s: %s\n", plan.exported.Name, target, summary)
 	}
 }
 
@@ -158,6 +160,10 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 	for _, plan := range plans {
 		duplicateCount += len(plan.duplicateIndexes)
 	}
+	canCompareContent := !access.listsItemSummaries()
+	if !canCompareContent && duplicateCount > 0 {
+		fmt.Fprintln(os.Stderr, "Duplicate contents could not be compared through the Hisar app. Skipped duplicates keep the source file.")
+	}
 	isSkippingDuplicate := !option.isIncludingDuplicate
 	if !option.isConfirmed && isSkippingDuplicate && duplicateCount > 0 {
 		isIncluding, err := confirm(fmt.Sprintf("Also import the %s already there?", formatItemCount(duplicateCount)))
@@ -165,6 +171,19 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 			return err
 		}
 		isSkippingDuplicate = !isIncluding
+	}
+	hasUncomparedDuplicates := !canCompareContent && isSkippingDuplicate && duplicateCount > 0
+	if hasUncomparedDuplicates {
+		fmt.Fprintf(standardError(), "Keep %s: %s skipped as duplicates could not be compared through the Hisar app.\n", path, formatItemCount(duplicateCount))
+	}
+	var skipped []importer.SkippedEntry
+	if canCompareContent && isSkippingDuplicate {
+		for _, plan := range plans {
+			if plan.isNewVault || len(plan.duplicateIndexes) == 0 {
+				continue
+			}
+			skipped = append(skipped, importer.FindUnsavedDuplicates(plan.items, plan.existingItems, importer.FindDuplicateMatches(plan.items, plan.existingItems))...)
+		}
 	}
 	queuedCount, newVaultCount := 0, 0
 	for index := range plans {
@@ -175,7 +194,7 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 		}
 	}
 	if queuedCount == 0 && newVaultCount == 0 {
-		fmt.Fprintln(os.Stderr, "Nothing to import.")
+		fmt.Fprintln(standardError(), "Nothing to import.")
 		return nil
 	}
 	if !option.isConfirmed {
@@ -208,8 +227,12 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 			return err
 		}
 	}
-	fmt.Fprintf(os.Stderr, "Imported %s.\n", formatItemCount(savedCount))
-	if format == export.FormatPlain {
+	fmt.Fprintf(standardError(), "Imported %s.\n", formatItemCount(savedCount))
+	leftCount := importer.CountLeftBehind(queuedCount-savedCount, skipped)
+	if leftCount > 0 {
+		fmt.Fprintf(standardError(), "Keep %s: %d of its entries are not in Hisar.\n", path, leftCount)
+	}
+	if format == export.FormatPlain && !hasUncomparedDuplicates && leftCount == 0 {
 		return offerToDeleteImportFile(path, option.isConfirmed)
 	}
 	return nil

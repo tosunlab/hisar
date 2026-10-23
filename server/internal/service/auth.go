@@ -7,8 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
@@ -23,11 +23,12 @@ import (
 const maxKeysetSize = 1024
 
 var (
-	errInvalidInvite    = newError(KindForbidden, "invalid invite")
-	errInvalidLogin     = newError(KindInvalid, "invalid login request")
-	errLoginFailed      = newError(KindUnauthorized, "login failed")
-	errAccountSuspended = newError(KindForbidden, apitypes.AccountSuspendedMessage)
-	ErrUnauthorized     = newError(KindUnauthorized, "unauthorized")
+	errInvalidInvite      = newError(KindForbidden, "invalid invite")
+	errInvalidLogin       = newError(KindInvalid, "invalid login request")
+	errLoginFailed        = newError(KindUnauthorized, "login failed")
+	errAccountSuspended   = newError(KindForbidden, apitypes.AccountSuspendedMessage)
+	ErrUnauthorized       = newError(KindUnauthorized, "unauthorized")
+	errInvalidAccountName = newError(KindInvalid, fmt.Sprintf("The name must be 1 to %d characters, without line breaks or other control characters.", apitypes.MaxOrganizationNameLength))
 )
 
 func generateToken() string {
@@ -134,13 +135,17 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 	}
 	switch {
 	case !crypt.IsValidAccountID(request.AccountID),
-		strings.TrimSpace(request.Name) == "",
 		len(request.Salt) != crypt.SaltSize,
 		request.Argon2.Validate() != nil,
 		len(request.EncKeyset) == 0 || len(request.EncKeyset) > maxKeysetSize,
 		request.PublicKeys.Verify(request.AccountID) != nil,
 		!isValidDevice(request.Device):
 		return apitypes.SessionResponse{}, newError(KindInvalid, "invalid registration")
+	}
+	// Account names follow the rule of organization and team names.
+	name, isValidName := apitypes.CleanOrganizationName(request.Name)
+	if !isValidName {
+		return apitypes.SessionResponse{}, errInvalidAccountName
 	}
 	if _, err := s.keys.OpaqueServer.Deserialize.RegistrationRecord(request.Record); err != nil {
 		return apitypes.SessionResponse{}, newError(KindInvalid, "invalid registration record")
@@ -149,7 +154,7 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 	account := &store.Account{
 		ID:           request.AccountID,
 		Email:        email,
-		Name:         strings.TrimSpace(request.Name),
+		Name:         name,
 		Argon2Params: argon2ParamsJSON,
 		Salt:         request.Salt,
 		OpaqueRecord: request.Record,
@@ -194,6 +199,7 @@ func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRe
 	}
 	var clientRecord *opaque.ClientRecord
 	var accountID string
+	var recordHash []byte
 	account, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -209,14 +215,14 @@ func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRe
 		if err != nil {
 			return apitypes.LoginStartResponse{}, err
 		}
-		accountID = account.ID
+		accountID, recordHash = account.ID, store.HashOpaqueRecord(account.OpaqueRecord)
 		clientRecord = &opaque.ClientRecord{RegistrationRecord: registrationRecord, CredentialIdentifier: []byte(account.ID), ClientIdentity: []byte(account.ID)}
 	}
 	keyExchange2, serverOutput, err := s.keys.OpaqueServer.GenerateKE2(keyExchange1, clientRecord)
 	if err != nil {
 		return apitypes.LoginStartResponse{}, errInvalidLogin
 	}
-	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC})
+	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC, recordHash: recordHash})
 	clear(serverOutput.SessionSecret)
 	return apitypes.LoginStartResponse{LoginID: loginID, KE2: keyExchange2.Serialize()}, nil
 }
@@ -233,13 +239,14 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 	if err != nil || s.keys.OpaqueServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
-	// Suspension is checked only now, after the proof, so the answer never tells someone without the password.
+	// Suspension is checked only now, after the proof, so the answer never tells someone without the password. A login
+	// started before a credential change is refused like a wrong password.
 	token, device, newSession := s.newSession(pending.accountID, request.Device)
-	switch err := s.store.CreateDeviceSession(ctx, device, newSession); {
+	switch err := s.store.CreateDeviceSession(ctx, device, newSession, pending.recordHash); {
 	case errors.Is(err, store.ErrAccountSuspended):
 		s.recordAudit(ctx, Actor{AccountID: pending.accountID, IP: actor.IP}, auditLoginRefusedSuspended, nil)
 		return apitypes.SessionResponse{}, errAccountSuspended
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrConflict):
 		return apitypes.SessionResponse{}, errLoginFailed
 	case err != nil:
 		return apitypes.SessionResponse{}, err
@@ -266,20 +273,28 @@ type loginCache struct {
 	mutex           sync.Mutex
 	ttl             time.Duration
 	pendingRequests map[string]*pendingLogin
+	// sweepAt is the count at which put next drops expired logins: twice what the last sweep kept, so many logins
+	// that are all still pending cost one sweep per doubling rather than one per login.
+	sweepAt int
 }
 
+const minimumLoginSweepCount = 1024
+
 func newLoginCache(ttl time.Duration) *loginCache {
-	return &loginCache{ttl: ttl, pendingRequests: map[string]*pendingLogin{}}
+	return &loginCache{ttl: ttl, pendingRequests: map[string]*pendingLogin{}, sweepAt: minimumLoginSweepCount}
 }
 
 func (c *loginCache) put(pending *pendingLogin) string {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	now := time.Now()
-	for existingLoginID, existingLogin := range c.pendingRequests {
-		if now.After(existingLogin.expires) {
-			delete(c.pendingRequests, existingLoginID)
+	if len(c.pendingRequests) >= c.sweepAt {
+		for existingLoginID, existingLogin := range c.pendingRequests {
+			if now.After(existingLogin.expires) {
+				delete(c.pendingRequests, existingLoginID)
+			}
 		}
+		c.sweepAt = max(minimumLoginSweepCount, 2*len(c.pendingRequests))
 	}
 	pending.expires = now.Add(c.ttl)
 	loginID := generateToken()

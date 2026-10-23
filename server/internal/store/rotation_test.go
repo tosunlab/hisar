@@ -66,7 +66,7 @@ func TestRotateVault(t *testing.T) {
 	if len(vaults) != 1 || string(vaults[0].EncName) != "new-name" || vaults[0].WrappedKey[0] != 9 {
 		t.Errorf("owner vault after rotation: %+v", vaults)
 	}
-	changes, vaultSeq, err := database.ListChanges(ctx, vaultID, 2, 100)
+	changes, vaultSeq, _, err := database.ListChanges(ctx, vaultID, 2, 100, 1<<20)
 	if err != nil || len(changes) != 2 || vaultSeq != 4 {
 		t.Fatalf("changes after rotation: %d items, seq %d, %v", len(changes), vaultSeq, err)
 	}

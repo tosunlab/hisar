@@ -1,6 +1,9 @@
 package service
 
-import "context"
+import (
+	"context"
+	"log"
+)
 
 // auditType is a key of auditTypes. recordAudit takes nothing else, so a type name written as a string does not
 // compile, and TestEveryAuditTypeHasALabel checks that every key has its row.
@@ -146,7 +149,8 @@ var auditTypes = [auditTypeCount]struct{ name, group, label string }{
 	auditAdminAuditExported:          {"admin_audit_exported", auditGroupAdmin, "Audit log exported"},
 }
 
-// recordAudit keeps the trail of who changed what; a failure to record does not fail the request.
+// recordAudit keeps the trail of who changed what. The change it records is already made, so a failure to record does
+// not fail the request; it is logged, for the operator's monitoring.
 func (s *Service) recordAudit(ctx context.Context, actor Actor, eventType auditType, detail any) {
 	var accountID, deviceID *string
 	if actor.AccountID != "" {
@@ -155,5 +159,7 @@ func (s *Service) recordAudit(ctx context.Context, actor Actor, eventType auditT
 	if actor.DeviceID != "" {
 		deviceID = &actor.DeviceID
 	}
-	s.store.RecordAudit(ctx, accountID, deviceID, auditTypes[eventType].name, detail, actor.IP)
+	if err := s.store.RecordAudit(ctx, accountID, deviceID, auditTypes[eventType].name, detail, actor.IP); err != nil {
+		log.Printf("audit event %s not recorded: %v", auditTypes[eventType].name, err)
+	}
 }

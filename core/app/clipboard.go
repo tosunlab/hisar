@@ -38,10 +38,33 @@ func (s *Service) copyText(text string) error {
 		s.clipboardClearTimer.Stop()
 	}
 	clipboard := s.config.Clipboard
-	s.clipboardClearTimer = time.AfterFunc(s.config.ClipboardClearAfter, func() {
+	s.clearCopiedText = func() {
 		if current, ok := clipboard.GetText(); ok && current == text {
 			clipboard.SetText("")
 		}
-	})
+	}
+	s.clipboardClearTimer = time.AfterFunc(s.config.ClipboardClearAfter, s.clearCopiedText)
 	return nil
+}
+
+// ClearCopiedText clears a copy whose delayed clear is still pending, if the clipboard still holds it: the app calls it
+// as it quits, which would otherwise drop the delayed clear and leave the copy on the clipboard.
+func ClearCopiedText(s *Service) {
+	s.mutex.Lock()
+	clearCopiedText := s.takePendingClear()
+	s.mutex.Unlock()
+	if clearCopiedText != nil {
+		clearCopiedText()
+	}
+}
+
+// takePendingClear stops the delayed clear of a copy and returns it, or nil when none is pending. The caller holds the
+// mutex.
+func (s *Service) takePendingClear() func() {
+	timer, clearCopiedText := s.clipboardClearTimer, s.clearCopiedText
+	s.clipboardClearTimer, s.clearCopiedText = nil, nil
+	if timer == nil || !timer.Stop() {
+		return nil
+	}
+	return clearCopiedText
 }

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -127,7 +128,7 @@ func GetPath(environmentVariable, fileName string) (string, error) {
 
 func Load(path string) (*State, error) {
 	state := &State{path: path}
-	encodedState, err := os.ReadFile(path)
+	encodedState, err := readPrivateFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return nil, err
 	}
@@ -145,19 +146,55 @@ func Load(path string) (*State, error) {
 	return state, nil
 }
 
+// readPrivateFile reads the state and first makes a file others can read readable only by the user, since it holds the
+// bearer token; Save would only replace it at the next change.
+func readPrivateFile(path string) ([]byte, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Mode().Perm()&0o077 != 0 {
+		if err := file.Chmod(0o600); err != nil {
+			return nil, fmt.Errorf("%s: make it readable only by you: %w", path, err)
+		}
+	}
+	return io.ReadAll(file)
+}
+
+// Save writes a new file readable only by the user and renames it over the state, so it never writes through a file
+// another process put in the directory.
 func (s *State) Save() error {
-	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
+	directory := filepath.Dir(s.path)
+	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return err
 	}
 	encodedState, err := json.MarshalIndent(s, "", "  ")
 	if err != nil {
 		return err
 	}
-	temporaryPath := s.path + ".tmp"
-	if err := os.WriteFile(temporaryPath, encodedState, 0o600); err != nil {
+	temporaryFile, err := os.CreateTemp(directory, filepath.Base(s.path)+".*.tmp")
+	if err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, s.path)
+	_, err = temporaryFile.Write(encodedState)
+	if err == nil {
+		err = temporaryFile.Sync()
+	}
+	if closeErr := temporaryFile.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(temporaryFile.Name(), s.path)
+	}
+	if err != nil {
+		os.Remove(temporaryFile.Name())
+	}
+	return err
 }
 
 // Reset forgets the account, session, pins and seqs but keeps the file location and the device preferences.

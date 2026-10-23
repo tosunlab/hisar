@@ -385,6 +385,22 @@ func TestLockEndsAgentApprovalsAndRememberedSecrets(t *testing.T) {
 	}
 }
 
+func TestLockDuringAnAgentDialogDeniesTheRequest(t *testing.T) {
+	fixture := createAgentFixture(t)
+	client := fixture.connectAgent(t)
+	fixture.agentApprover.set(nil, true)
+	fixture.agentApprover.onApprove = fixture.approvals.ClearAll
+	if code := getErrorCode(client.send(t, cliprotocol.Request{Type: cliprotocol.TypeAgentRevealSecret, References: []string{stripeReference}})); code != cliprotocol.ErrorDenied {
+		t.Errorf("a request approved in a dialog that outlived the lock: %q", code)
+	}
+	fixture.agentHandler.mutex.Lock()
+	handledTypes := fixture.agentHandler.types
+	fixture.agentHandler.mutex.Unlock()
+	if len(handledTypes) != 0 {
+		t.Errorf("the handler answered a request approved before the lock: %q", handledTypes)
+	}
+}
+
 func TestAgentHelloReportsTheAgentApproval(t *testing.T) {
 	fixture := createAgentFixture(t)
 	client := fixture.connectAgent(t)

@@ -40,10 +40,11 @@ jobs:
     env:
       TAG: ${{ inputs.tag }}
     steps:
+      # The commit the Release run tagged, not the tag, which could be moved during the run.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ inputs.tag }}
-      # Checking out a tag can drop its annotation, which holds the release notes.
+          ref: ${{ github.sha }}
+      # The tag's annotation holds the release notes.
       - name: Fetch the annotated tag
         run: git fetch --force origin "+refs/tags/$TAG:refs/tags/$TAG"
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -57,17 +58,17 @@ jobs:
           cache-dependency-path: desktop/frontend/package-lock.json
       - name: Select Xcode
         run: sudo xcode-select -s "$XCODE_PATH" && xcodebuild -version
-      - name: Check the version and the Sparkle key
+      # Only whether the Sparkle key is set: the key itself reaches no step before "Sign the Sparkle update".
+      - name: Check the version and that the Sparkle key is set
         env:
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          HAS_SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY != '' }}
         run: |
           version=${TAG#desktop-}
           bash scripts/get-build-number.sh "$version"
           case "$version" in *-*) isCustomBuild=true ;; *) isCustomBuild=false ;; esac
-          if ! $isCustomBuild; then
-            test -n "$SPARKLE_PRIVATE_KEY" || { echo "set the repository secret SPARKLE_PRIVATE_KEY (Sparkle's EdDSA private key)"; exit 1; }
-            umask 077
-            printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-private-key"
+          if ! $isCustomBuild && ! $HAS_SPARKLE_PRIVATE_KEY; then
+            echo "set the repository secret SPARKLE_PRIVATE_KEY (Sparkle's EdDSA private key)"
+            exit 1
           fi
           echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "IS_CUSTOM_BUILD=$isCustomBuild" >> "$GITHUB_ENV"
@@ -131,7 +132,10 @@ jobs:
       # The tag's annotation is the release notes; a lightweight tag gets "Hisar <version>".
       - name: Sign the Sparkle update
         if: env.IS_CUSTOM_BUILD == 'false'
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
         run: |
+          (umask 077 && printf '%s' "$SPARKLE_PRIVATE_KEY" > "$RUNNER_TEMP/sparkle-private-key")
           : > "$RUNNER_TEMP/release-notes.md"
           if [ "$(git cat-file -t "refs/tags/$TAG")" = tag ]; then
             git tag -l --format='%(contents:subject)%0a%0a%(contents:body)' "$TAG" > "$RUNNER_TEMP/release-notes.md"
@@ -170,11 +174,11 @@ jobs:
     env:
       TAG: ${{ inputs.tag }}
     steps:
-      - name: Install git, GTK 4 and WebKitGTK
-        run: apt-get update -qq && apt-get install -y -qq git libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: ${{ github.sha }}
+      - name: Install GTK 4 and WebKitGTK
+        run: bash scripts/ci-apt-install.sh libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -225,7 +229,7 @@ jobs:
       # The image has git, Node and flatpak-builder.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          ref: refs/tags/${{ inputs.tag }}
+          ref: ${{ github.sha }}
       - run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - name: Build the Flatpak
         run: bash scripts/package-desktop-flatpak.sh "${TAG#desktop-}"

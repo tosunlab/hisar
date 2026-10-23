@@ -406,13 +406,13 @@ func TestAppcastWaitsOutTheRateLimit(t *testing.T) {
 	}
 }
 
-func TestOpenFileStreamsAssetsThroughTheAPI(t *testing.T) {
+func TestOpenFileStreamsTheArchiveThroughTheAPI(t *testing.T) {
 	fake := startFake(t)
-	release := addRelease(fake, "0.2.0", "")
+	addRelease(fake, "0.2.0", "")
 	firstHalf, secondHalf := bytes.Repeat([]byte("a"), 64<<10), bytes.Repeat([]byte("b"), 64<<10)
 	releaseSecondHalf := make(chan struct{})
 	fake.BeforeDownload = func(writer http.ResponseWriter, request *http.Request, assetName string) bool {
-		if assetName != "Hisar-0.2.0.dmg" {
+		if assetName != "Hisar-0.2.0.zip" {
 			return true
 		}
 		writer.Header().Set("Content-Length", fmt.Sprint(len(firstHalf)+len(secondHalf)))
@@ -428,21 +428,11 @@ func TestOpenFileStreamsAssetsThroughTheAPI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	content, _ := io.ReadAll(reader)
-	reader.Close()
-	if archive := release.Assets[1].Content; size != int64(len(archive)) || !bytes.Equal(content, archive) {
-		t.Errorf("zip: %d %q", size, content)
-	}
-
-	reader, size, err = source.OpenFile(context.Background(), "0.2.0", "Hisar-0.2.0.dmg")
-	if err != nil {
-		t.Fatal(err)
-	}
 	if size != int64(len(firstHalf)+len(secondHalf)) {
 		t.Errorf("size = %d", size)
 	}
 	close(releaseSecondHalf)
-	content, _ = io.ReadAll(reader)
+	content, _ := io.ReadAll(reader)
 	reader.Close()
 	if !bytes.Equal(content, append(firstHalf, secondHalf...)) {
 		t.Errorf("streamed %d bytes", len(content))
@@ -457,7 +447,7 @@ func TestOpenFileStreamsAssetsThroughTheAPI(t *testing.T) {
 		}
 	}
 	storageAuthorizations := fake.GetStorageAuthorizations()
-	if len(storageAuthorizations) != 3 {
+	if len(storageAuthorizations) != 2 {
 		t.Errorf("storage asked %d times", len(storageAuthorizations))
 	}
 	for _, authorization := range storageAuthorizations {
@@ -486,12 +476,14 @@ func TestOpenFileWithoutToken(t *testing.T) {
 	}
 }
 
-func TestOpenFileRefusesUnlistedFiles(t *testing.T) {
+func TestOpenFileServesOnlyTheUpdateArchive(t *testing.T) {
 	fake := startFake(t)
 	addRelease(fake, "0.2.0", "")
 	fake.AddRelease(createRelease("0.1.0", "", true))
 	source := createSource(t, fake.URL, testToken, &testClock{now: time.Now()})
 	cases := [][2]string{
+		{"0.2.0", "Hisar-0.2.0.dmg"},
+		{"0.2.0", "update.json"},
 		{"0.2.0", "Hisar-0.3.0.zip"},
 		{"0.1.0", "Hisar-0.1.0.dmg"},
 		{"0.3.0", "Hisar-0.3.0.zip"},

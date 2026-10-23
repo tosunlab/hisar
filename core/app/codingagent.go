@@ -315,7 +315,7 @@ func (s *Service) locateAgentItem(vaultID, itemID string) (clisocket.AgentSecret
 
 // answerAgentSessionRequest answers what clisocket lets an ordinary hisar command inside an agent harness send, among
 // the agent-visible vaults only: a hidden vault fails like one that does not exist.
-func (bridge *CommandLineBridge) answerAgentSessionRequest(request *cliprotocol.Request) (any, error) {
+func (bridge *CommandLineBridge) answerAgentSessionRequest(epoch uint64, request *cliprotocol.Request) (any, error) {
 	s := bridge.service
 	switch request.Type {
 	case cliprotocol.TypeListVault:
@@ -335,7 +335,7 @@ func (bridge *CommandLineBridge) answerAgentSessionRequest(request *cliprotocol.
 		if !slices.Contains(s.ListAgentVaultIDs(), request.VaultID) {
 			return nil, fmt.Errorf("vault %w", ErrNotFound)
 		}
-		return bridge.answerCommandLineRequest(request)
+		return bridge.answerCommandLineRequest(epoch, request)
 	case cliprotocol.TypeResolveSecret:
 		s.mutex.Lock()
 		defer s.mutex.Unlock()

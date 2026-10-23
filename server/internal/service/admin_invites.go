@@ -24,8 +24,7 @@ const (
 	inviteExpired = "expired"
 )
 
-// inviteState is pending until the invite is used or its expiry passes, the same rule the sign-up and the invite page
-// apply in SQL.
+// inviteState checks use and expiry after the store has filtered unused invites by their issuer's current authority.
 func inviteState(invite *store.AdminInvite, now time.Time) string {
 	switch {
 	case invite.UsedAt != nil:
@@ -79,8 +78,11 @@ func (s *Service) CreateAdminInvite(ctx context.Context, actor Actor, request *a
 	if err != nil {
 		return nil, err
 	}
-	token, _, err := s.newInviteToken(ctx, email, request.Role, &inviter.ID)
-	if err != nil {
+	token := generateToken()
+	switch err := s.store.CreateAdminInvite(ctx, hashToken(token), email, request.Role, inviter.ID, time.Now().Add(s.InviteTTL)); {
+	case errors.Is(err, store.ErrActorNotAdmin):
+		return nil, ErrAdminOnly
+	case err != nil:
 		return nil, err
 	}
 	created, err := s.store.GetAdminInvite(ctx, hashToken(token))
@@ -124,6 +126,9 @@ func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID s
 	replaced, err := s.store.ReplaceInvite(ctx, invite.TokenHash, hashToken(token), inviter.ID, time.Now().Add(s.InviteTTL))
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errInviteGone
+	}
+	if errors.Is(err, store.ErrActorNotAdmin) {
+		return nil, ErrAdminOnly
 	}
 	if err != nil {
 		return nil, err

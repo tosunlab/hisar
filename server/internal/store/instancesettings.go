@@ -18,9 +18,15 @@ func (s *Store) GetInstanceSettings(ctx context.Context) ([]byte, error) {
 }
 
 // UpdateInstanceSettings replaces the settings document with what update makes of the current one, holding the row
-// locked so concurrent saves apply one after the other. An error from update leaves the row unchanged.
-func (s *Store) UpdateInstanceSettings(ctx context.Context, updatedBy string, update func(document []byte) ([]byte, error)) error {
+// locked so concurrent saves apply one after the other. An admin's change (isByAdmin) needs updatedBy to still be an
+// active admin (ErrActorNotAdmin); setup's own changes do not. An error from update leaves the row unchanged.
+func (s *Store) UpdateInstanceSettings(ctx context.Context, updatedBy string, isByAdmin bool, update func(document []byte) ([]byte, error)) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		if isByAdmin {
+			if err := requireActiveAdmin(ctx, transaction, updatedBy); err != nil {
+				return err
+			}
+		}
 		if _, err := transaction.Exec(ctx, `INSERT INTO instance_settings (id, settings) VALUES (1, '{}') ON CONFLICT (id) DO NOTHING`); err != nil {
 			return err
 		}

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -143,6 +142,8 @@ func (access *standaloneBackend) listItems(ctx context.Context, vaultID string) 
 	access.itemsByVaultID[vaultID] = items
 	return items, nil
 }
+
+func (*standaloneBackend) listsItemSummaries() bool { return false }
 
 func (access *standaloneBackend) getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error) {
 	items, err := access.listItems(ctx, vaultID)
@@ -490,14 +491,14 @@ func (access *standaloneBackend) completeAcceptedShares(ctx context.Context, inv
 	if !isAnyAccepted {
 		return nil, nil
 	}
-	fmt.Fprintln(os.Stderr, "Someone accepted your invitation; unlock to finish sharing.")
+	fmt.Fprintln(standardError(), "Someone accepted your invitation; unlock to finish sharing.")
 	if err := access.requireSession(ctx); err != nil {
 		return nil, err
 	}
 	vaultNamesByID := map[string]string{}
 	completedShares, completeErr := access.unlockedSession.CompleteAcceptedShares(ctx)
 	for _, completed := range completedShares {
-		fmt.Fprintf(os.Stderr, "Shared %q with %s as %s. Their security code: %s\n", completed.VaultName, completed.Recipient.Email, completed.Role,
+		fmt.Fprintf(standardError(), "Shared %q with %s as %s. Their security code: %s\n", completed.VaultName, completed.Recipient.Email, completed.Role,
 			crypt.FormatKeyFingerprint(completed.Recipient.PublicKeys.Sign))
 	}
 	if vaults, err := access.unlockedSession.ListVaults(ctx); err == nil {

@@ -48,6 +48,14 @@ function showEmergencyKit(result: SignUpResult): void {
   signUpResult.value = result;
   step.value = "emergencyKit";
 }
+
+// leaveEmergencyKit drops the Secret Key and zeroes the kit's bytes once the admin saved them; the downloaded file and
+// copies the browser made are out of the page's reach.
+function leaveEmergencyKit(): void {
+  signUpResult.value?.emergencyKitPdf?.fill(0);
+  signUpResult.value = null;
+  step.value = "checks";
+}
 </script>
 
 <template>
@@ -60,7 +68,7 @@ function showEmergencyKit(result: SignUpResult): void {
       <p v-else-if="!step" class="hint">Loading…</p>
       <p v-else-if="step === 'account' && !inviteToken" class="error" role="alert">{{ invalidSetupLinkMessage }}</p>
       <AccountStep v-else-if="step === 'account'" :invite-token="inviteToken" @signed-up="showEmergencyKit" />
-      <EmergencyKitStep v-else-if="step === 'emergencyKit' && signUpResult" :result="signUpResult" @continue="step = 'checks'" />
+      <EmergencyKitStep v-else-if="step === 'emergencyKit' && signUpResult" :result="signUpResult" @continue="leaveEmergencyKit" />
       <ChecksStep v-else-if="step === 'checks'" @continue="step = 'invitePolicy'" />
       <InvitePolicyStep v-else-if="step === 'invitePolicy'" @done="emit('leave')" />
     </div>

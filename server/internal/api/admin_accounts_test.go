@@ -141,7 +141,7 @@ func TestAdminAccountsSuspendAndReactivate(t *testing.T) {
 		body != `{"error":"This account is suspended. Contact the admin of the Hisar server."}` {
 		t.Errorf("the suspended member's request: %d %s", status, body)
 	}
-	if err := member.session.Client.StreamEvents(ctx, func(apiclient.Event) {}); !errors.Is(err, apiclient.ErrAccountSuspended) {
+	if err := member.session.Client.StreamEvents(ctx, nil, func(apiclient.Event) {}); !errors.Is(err, apiclient.ErrAccountSuspended) {
 		t.Errorf("the suspended member's event stream: %v", err)
 	}
 	if queryValue[int](t, databaseURL, `SELECT count(*)::int FROM devices WHERE account_id = $1 AND revoked_at IS NULL`, memberID) != 1 {

@@ -37,7 +37,7 @@ func TestBrowserCards(t *testing.T) {
 	if cards := result.(browserprotocol.CardListResult).Cards; code != "" || !reflect.DeepEqual(cards, want) {
 		t.Fatalf("cards.list = %+v %s\nwant %+v", cards, code, want)
 	}
-	if encoded, _ := json.Marshal(result); strings.Contains(string(encoded), "4111") || strings.Contains(string(encoded), "123") {
+	if encoded, _ := json.Marshal(result); strings.Contains(string(encoded), "4111") || strings.Contains(string(encoded), `"123"`) {
 		t.Errorf("cards.list carries a number or security code: %s", encoded)
 	}
 
@@ -63,5 +63,39 @@ func TestBrowserCards(t *testing.T) {
 	service.Lock()
 	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "cards.fill", Token: token, VaultID: personalID, ItemID: visa.ID}); code != browserprotocol.ErrorLocked {
 		t.Errorf("cards.fill while locked = %s", code)
+	}
+}
+
+func TestBrowserCardFillTrimsSecurityCodeWithoutChangingStoredSecrets(t *testing.T) {
+	testBridge := createBrowserTestBridge(t)
+	service, personalID := testBridge.testService.service, testBridge.testService.personalID
+	token := testBridge.pair(t, "chrome-1")
+	for _, test := range []struct {
+		code string
+		want string
+	}{
+		{" 123 ", "123"},
+		{" ", ""},
+	} {
+		t.Run(test.code, func(t *testing.T) {
+			saved, err := service.SaveItem(personalID, ItemDetail{
+				Category: item.CategoryCreditCard, Title: "Visa",
+				Card: &ItemCard{Number: "4111111111111111", SecurityCode: test.code, PIN: " 0000\n"},
+			})
+			if err != nil {
+				t.Fatal(err)
+			}
+			fill, code := testBridge.sendRequest(browserprotocol.Request{Type: "cards.fill", Token: token, VaultID: personalID, ItemID: saved.ID})
+			if code != "" || fill.(browserprotocol.CardFillResult).SecurityCode != test.want {
+				t.Errorf("cards.fill = %+v %s, want security code %q", fill, code, test.want)
+			}
+			stored, err := service.GetItem(personalID, saved.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if stored.Card.SecurityCode != test.code || stored.Card.PIN != " 0000\n" {
+				t.Errorf("stored card secrets changed: %+v", stored.Card)
+			}
+		})
 	}
 }

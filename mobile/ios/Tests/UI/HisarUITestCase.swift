@@ -42,8 +42,8 @@ class HisarUITestCase: XCTestCase {
     }
 
     // Waits until the element takes a tap: a row behind a closing sheet, or a button of a dialog still animating in, exists
-    // before it is hittable. iOS's Save Password sheet can come up seconds after a save, later than dismissSavePasswordPrompt
-    // looks for it, and cover the app; it is dismissed here too.
+    // before it is hittable. iOS's Save Password sheet can come up seconds after signing in or changing the master password,
+    // later than dismissSavePasswordPrompt looks for it, and cover the app; it is dismissed here too.
     func waitForHittable(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -143,9 +143,11 @@ class HisarUITestCase: XCTestCase {
     }
 
     // On a slow simulator the keyboard focus comes a moment after the tap, and typing before it fails, so it waits for the focus
-    // and taps again if it does not come.
+    // and taps again if it does not come. Only a field the form has not created yet is dragged to: tap() scrolls one that exists
+    // just into view, while a drag can carry it under the navigation bar, where it still counts as hittable and taps land on
+    // the bar.
     func type(_ text: String, into element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        if !element.waitForExistence(timeout: 5) || !element.isHittable {
+        if !element.waitForExistence(timeout: 5) {
             scrollTo(element)
         }
         let hasFocus = NSPredicate(format: "hasKeyboardFocus == true")
@@ -190,7 +192,8 @@ class HisarUITestCase: XCTestCase {
         if notNowButton.waitForExistence(timeout: 2) {
             notNowButton.tap()
         }
-        waitFor(app.buttons["vault-Personal"])
+        // The vaults exist under the Secret Key screen and the Face ID offer; they take a tap only once both have closed.
+        waitForHittable(app.buttons["vault-Personal"])
         return secretKey
     }
 

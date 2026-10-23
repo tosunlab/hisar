@@ -60,6 +60,8 @@ type pendingBrowserPairing struct {
 	code       string
 	expiresAt  time.Time
 	attempts   int
+	// sessionEpoch is the session pairing started in; a lock, sign-out or account switch since ends the pairing.
+	sessionEpoch uint64
 }
 
 // BrowserBridge answers the browser extension (browserprotocol.Handler) and is bound to the UI for Settings.
@@ -243,7 +245,11 @@ func (bridge *BrowserBridge) startPairing(request *browserprotocol.Request) erro
 	if strings.TrimSpace(request.InstanceID) == "" {
 		return browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "instanceID is required")
 	}
-	if !bridge.service.GetStatus().isSignedIn() {
+	s := bridge.service
+	s.mutex.Lock()
+	isSignedIn, epoch := s.state.IsLoggedIn(), s.sessionEpoch
+	s.mutex.Unlock()
+	if !isSignedIn {
 		return browserprotocol.NewError(browserprotocol.ErrorSignedOut, "sign in to Hisar first")
 	}
 	code, err := generatePairingCode()
@@ -254,7 +260,7 @@ func (bridge *BrowserBridge) startPairing(request *browserprotocol.Request) erro
 	if browserName == "" {
 		browserName = "Browser"
 	}
-	pending := &pendingBrowserPairing{instanceID: request.InstanceID, browser: browserName, code: code, expiresAt: bridge.service.config.Now().Add(browserPairingLifetime)}
+	pending := &pendingBrowserPairing{instanceID: request.InstanceID, browser: browserName, code: code, expiresAt: s.config.Now().Add(browserPairingLifetime), sessionEpoch: epoch}
 	bridge.mutex.Lock()
 	bridge.pendingPairing = pending
 	bridge.mutex.Unlock()
@@ -299,6 +305,9 @@ func (bridge *BrowserBridge) finishPairing(request *browserprotocol.Request) (an
 	s := bridge.service
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if s.sessionEpoch != pending.sessionEpoch {
+		return nil, browserprotocol.NewError(browserprotocol.ErrorPairingFailed, "Hisar locked, signed out or switched accounts since pairing started; start pairing again")
+	}
 	now := s.config.Now()
 	s.state.PairedBrowsers = slices.DeleteFunc(s.state.PairedBrowsers, func(paired localstate.PairedBrowser) bool {
 		return paired.InstanceID == pending.instanceID

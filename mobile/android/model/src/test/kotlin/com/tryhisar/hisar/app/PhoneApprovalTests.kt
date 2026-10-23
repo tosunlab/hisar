@@ -8,6 +8,8 @@ import com.tryhisar.hisar.model.backendJson
 import com.tryhisar.hisar.model.parseTimestamp
 import java.io.ByteArrayInputStream
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -15,7 +17,11 @@ import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
@@ -379,6 +385,77 @@ class PhoneApprovalTests {
         assertTrue(approvals.allPendingApproval.value.isEmpty())
         approvals.refreshPendingApproval()
         assertTrue(approvals.allPendingApproval.value.isEmpty(), "finished requests are not shown again")
+    }
+
+    @Test
+    fun testPollingUnchangedRequestsRedrawsNothing() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModel(harness, listOf(createApproval("first")))
+        val allShownList = mutableListOf<List<PhoneApproval>>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { model.approvals.allPendingApproval.collect { allShownList += it } }
+        model.approvals.refreshPendingApproval()
+        model.approvals.refreshPendingApproval()
+        runCurrent()
+        assertEquals(1, allShownList.size, "a poll that finds the same requests redraws the app")
+        harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90))
+        model.approvals.refreshPendingApproval()
+        runCurrent()
+        assertEquals(listOf("first", "second"), allShownList.last().map { it.requestID }, "a new request is not shown")
+    }
+
+    // Backend calls run on real threads here, so one listing can be held while another runs.
+    private suspend fun TestScope.createUnlockedModelOnThreads(harness: AppModelHarness, allApproval: List<PhoneApproval>): AppModel {
+        harness.currentDate = currentDate
+        harness.backend.seedSignedIn()
+        harness.backend.allPendingApproval = allApproval.toMutableList()
+        val model = harness.createModel(Dispatchers.IO).also { it.start { harness.backend } }
+        model.approvals.refreshPendingApproval()
+        runCurrent()
+        return model
+    }
+
+    // Starts a poll that has read the open requests and waits for the returned function before it returns them, as a slow
+    // poll on a phone.
+    private fun TestScope.startHeldPoll(harness: AppModelHarness, model: AppModel): Pair<Job, () -> Unit> {
+        val isListing = CountDownLatch(1)
+        val mayFinish = CountDownLatch(1)
+        harness.backend.onListAllPendingApproval = {
+            isListing.countDown()
+            mayFinish.await(10, TimeUnit.SECONDS)
+        }
+        val poll = launch { model.approvals.refreshPendingApproval() }
+        runCurrent()
+        assertTrue(isListing.await(10, TimeUnit.SECONDS), "the poll did not list the requests")
+        harness.backend.onListAllPendingApproval = null
+        return poll to { mayFinish.countDown() }
+    }
+
+    @Test
+    fun testALateOlderListingKeepsANewerRequest() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))
+        val (olderPoll, finishOlderPoll) = startHeldPoll(harness, model)
+        harness.backend.withApprovalLock { harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90)) }
+        model.approvals.refreshPendingApproval(isOpeningNewRequest = true)
+        assertEquals("second", model.approvals.presentedApproval.value?.requestID)
+        finishOlderPoll()
+        olderPoll.join()
+        assertEquals(listOf("first", "second"), model.approvals.allPendingApproval.value.map { it.requestID }, "a poll that started earlier took the new request off the list")
+        assertEquals("second", model.approvals.presentedApproval.value?.requestID, "a poll that started earlier closed the new request's sheet")
+    }
+
+    @Test
+    fun testTurningMacApprovalsOffDuringAListingKeepsTheListEmpty() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))
+        harness.backend.withApprovalLock { harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90)) }
+        val (poll, finishPoll) = startHeldPoll(harness, model)
+        assertTrue(model.settings.setMacApprovalAllowed(false))
+        runCurrent()
+        assertTrue(model.approvals.allPendingApproval.value.isEmpty())
+        finishPoll()
+        poll.join()
+        assertTrue(model.approvals.allPendingApproval.value.isEmpty(), "a listing that started before approvals were turned off listed a request")
     }
 
     @Test

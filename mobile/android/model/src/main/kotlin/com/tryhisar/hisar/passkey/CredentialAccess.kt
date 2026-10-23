@@ -68,7 +68,11 @@ class CredentialAccess(
         } catch (_: BackendError) {
             null
         }
-        is CredentialCaller.App -> requestedRelyingPartyID.lowercase().takeIf { it.isNotEmpty() && relyingPartyVerifier.isVouchingFor(it, caller.app) }
+        is CredentialCaller.App -> try {
+            backend.validatePasskeyRelyingPartyID(requestedRelyingPartyID).takeIf { relyingPartyVerifier.isVouchingFor(it, caller.app) }
+        } catch (_: BackendError) {
+            null
+        }
     }
 
     /** A browser's own hash, or client data Hisar writes for an app; null when a browser sent no hash. */
