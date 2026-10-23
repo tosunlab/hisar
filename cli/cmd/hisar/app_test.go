@@ -145,9 +145,9 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 	switch request.Type {
 	case cliprotocol.TypeAccount:
 		return cliprotocol.AccountResult{AccountID: "ABC123", Name: "Alice", Email: "alice@example.com", Role: "admin", Server: "https://hisar.example.com"}, nil
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"}, {ID: "family-id", Name: "Family", Type: "shared", Role: "reader"}}}, nil
-	case cliprotocol.TypeListItem:
+	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 		return cliprotocol.ItemListResult{Items: []cliprotocol.Item{
 			{ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Tags: []string{"work", "dev"}, HasOneTimePassword: true},
 			{ID: "bank-id", Revision: "r2", Title: "Bank", Username: "alice", Tags: []string{"Finance"}},
@@ -338,7 +338,7 @@ func TestCommandsPreferAVaultIDOverAName(t *testing.T) {
 	app := startFakeApp(t)
 	app.mutex.Lock()
 	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
-		if request.Type == cliprotocol.TypeListVault {
+		if request.Type == cliprotocol.TypeListVault || request.Type == cliprotocol.TypeReadVault {
 			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "mine-id", Name: "team-id", Type: "personal", Role: "owner"}, {ID: "team-id", Name: "Team", Type: "shared", Role: "owner"}}}, nil
 		}
 		return answerFakeVaultRequest(request)
@@ -347,7 +347,7 @@ func TestCommandsPreferAVaultIDOverAName(t *testing.T) {
 	if _, _, err := runCapturingOutput(t, false, "", "ls", "-v", "team-id"); err != nil {
 		t.Fatalf("ls by ID: %v", err)
 	}
-	if requests := app.findRequest(cliprotocol.TypeListItem); len(requests) != 1 || requests[0].VaultID != "team-id" {
+	if requests := app.findRequest(cliprotocol.TypeReadItem); len(requests) != 1 || requests[0].VaultID != "team-id" {
 		t.Errorf("a vault named like another vault's ID took its place: item requests %+v", requests)
 	}
 }
@@ -360,9 +360,9 @@ func TestTextOthersWroteCannotDriveTheTerminal(t *testing.T) {
 		switch request.Type {
 		case cliprotocol.TypeAccount:
 			return cliprotocol.AccountResult{AccountID: "ABC123", Name: hostile, Email: "eve@example.com", Role: "member", Server: "https://hisar.example.com"}, nil
-		case cliprotocol.TypeListVault:
+		case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"}, {ID: "shared-id", Name: hostile, Type: "shared", Role: "editor"}}}, nil
-		case cliprotocol.TypeListItem:
+		case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 			return cliprotocol.ItemListResult{Items: []cliprotocol.Item{{ID: "shared-item", Title: hostile, Username: hostile}}}, nil
 		case cliprotocol.TypeGetItem:
 			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "shared-item", Title: hostile, Notes: "line one\n" + hostile, Fields: []cliprotocol.Field{{Name: hostile, Value: hostile}}}}, nil
@@ -422,8 +422,8 @@ func TestListItemsByTagThroughTheApp(t *testing.T) {
 	if _, _, err := runCapturingOutput(t, false, "", "ls", "--tag", "work"); err == nil || !strings.Contains(err.Error(), "does not list tags") {
 		t.Errorf("ls --tag through an older app: %v", err)
 	}
-	if _, _, err := runCapturingOutput(t, false, "", "ls"); err != nil {
-		t.Errorf("ls through an older app: %v", err)
+	if _, _, err := runCapturingOutput(t, false, "", "ls"); err == nil || !strings.Contains(err.Error(), "unreadable records") {
+		t.Errorf("ls silently accepted an older app: %v", err)
 	}
 }
 

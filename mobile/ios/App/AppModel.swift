@@ -437,7 +437,7 @@ final class AppModel: ObservableObject {
                 allItemByVaultID[vault.id] = try backend.listAllItem(vaultID: vault.id)
             }
             return RefreshResult(
-                allVault: allVault, allItemByVaultID: allItemByVaultID, allPasskey: (try? backend.listAllPasskey()) ?? [],
+                allVault: allVault, allItemByVaultID: allItemByVaultID, allPasskey: try? backend.listAllPasskey(),
                 shareInvitations: shareInvitations, allRemovedVault: allRemovedVault, organizations: organizations, waitingVaultKeys: waitingVaultKeys
             )
         }) else {
@@ -453,7 +453,7 @@ final class AppModel: ObservableObject {
             shownRefresh = refresh
             allVault = result.allVault.sorted { Self.sortVault($0, $1) }
             allItemByVaultID = result.allItemByVaultID
-            allPasskey = result.allPasskey
+            if let passkeys = result.allPasskey { allPasskey = passkeys }
             if let shareInvitations = result.shareInvitations {
                 applyShareInvitations(shareInvitations)
             }
@@ -467,13 +467,13 @@ final class AppModel: ObservableObject {
         }
         // Removed vaults are listed only once, so even an older refresh keeps them.
         addAllRemovedVaultNotice(result.allRemovedVault)
-        await publishAllCredentialIdentity()
+        if result.allPasskey != nil { await publishAllCredentialIdentity() }
     }
 
     private struct RefreshResult {
         var allVault: [VaultSummary]
         var allItemByVaultID: [String: [ItemDetail]]
-        var allPasskey: [StoredPasskey]
+        var allPasskey: [StoredPasskey]?
         var shareInvitations: ShareInvitations?
         var allRemovedVault: [RemovedVaultNotice]
         var organizations: Organizations?
@@ -491,6 +491,8 @@ final class AppModel: ObservableObject {
     }
 
     private func publishAllCredentialIdentity() async {
+        guard allVault.allSatisfy({ $0.readIssues.isEmpty }),
+              allItemByVaultID.values.allSatisfy({ $0.allSatisfy { $0.readIssue == nil } }) else { return }
         await credentialIdentityStore.replaceAllIdentity(VaultLogic.buildAllCredentialIdentity(listAllItemReference(), allPasskey: allPasskey))
     }
 
@@ -507,6 +509,8 @@ final class AppModel: ObservableObject {
         return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending
     }
 
+    /// Lists one vault again. Its summary takes the healthy count and the records that did not open from this listing,
+    /// so a record that stopped opening is disclosed even though the item list hides it.
     func refreshVault(vaultID: String) async {
         guard let allItem = await perform(isBusyShown: false, { try $0.listAllItem(vaultID: vaultID) }) else {
             refreshStatus()
@@ -515,6 +519,10 @@ final class AppModel: ObservableObject {
         refreshStatus()
         guard status.isUnlocked else { return }
         allItemByVaultID[vaultID] = allItem
+        if let index = allVault.firstIndex(where: { $0.id == vaultID }) {
+            allVault[index].itemCount = allItem.filter { $0.readIssue == nil }.count
+            allVault[index].readIssues = allVault[index].readIssues.filter { $0.itemId == nil } + allItem.compactMap(\.readIssue)
+        }
     }
 
     func findVault(vaultID: String) -> VaultSummary? {
@@ -524,7 +532,7 @@ final class AppModel: ObservableObject {
     func listAllItemReference(vaultID: String? = nil) -> [VaultItemReference] {
         let allSelectedVault = allVault.filter { vaultID == nil || $0.id == vaultID }
         let allReference = allSelectedVault.flatMap { vault in
-            (allItemByVaultID[vault.id] ?? []).map { VaultItemReference(vaultID: vault.id, vaultName: vault.name, item: $0) }
+            (allItemByVaultID[vault.id] ?? []).filter { $0.readIssue == nil }.map { VaultItemReference(vaultID: vault.id, vaultName: vault.name, item: $0) }
         }
         return VaultLogic.sortAllItem(allReference)
     }
@@ -545,7 +553,7 @@ final class AppModel: ObservableObject {
     }
 
     func countItem(vaultID: String) -> Int {
-        allItemByVaultID[vaultID]?.count ?? findVault(vaultID: vaultID)?.itemCount ?? 0
+        allItemByVaultID[vaultID]?.filter { $0.readIssue == nil }.count ?? findVault(vaultID: vaultID)?.itemCount ?? 0
     }
 
     func loadItem(vaultID: String, itemID: String) async -> ItemDetail? {
@@ -556,6 +564,24 @@ final class AppModel: ObservableObject {
         guard let vault = await perform({ try $0.createVault(name: name) }) else { return nil }
         addVault(vault)
         return vault
+    }
+
+    /// Deletes the unreadable record the user reviewed, named by its revision; a changed record is refused.
+    func deleteUnreadableRecord(_ issue: ReadIssue) async {
+        let deleted: Void? = await perform { backend in
+            if let itemID = issue.itemId {
+                try backend.deleteUnreadableItem(vaultID: issue.vaultId, itemID: itemID, revision: issue.revision ?? "")
+            } else {
+                try backend.deleteUnreadableVault(vaultID: issue.vaultId, revision: issue.revision ?? "")
+            }
+        }
+        if deleted != nil { await refreshAll() }
+    }
+
+    /// Names a vault whose name did not open, only while its record is still the one the user reviewed.
+    func repairVaultName(_ issue: ReadIssue, name: String) async {
+        let repaired = await perform { try $0.repairVaultName(vaultID: issue.vaultId, revision: issue.revision ?? "", name: name) }
+        if repaired != nil { await refreshAll() }
     }
 
     private func addVault(_ vault: VaultSummary) {

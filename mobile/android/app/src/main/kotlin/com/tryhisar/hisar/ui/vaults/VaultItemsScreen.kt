@@ -46,6 +46,7 @@ import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.VaultActions
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.ReadIssue
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ToolbarIconButton
@@ -70,6 +71,9 @@ private val allAddItemChoice = listOf(
 private sealed interface VaultDialog {
     data class Rename(val name: String) : VaultDialog
 
+    /** Names a vault whose name did not open; the app refuses it once the record is no longer the reviewed one. */
+    data class RepairName(val issue: ReadIssue) : VaultDialog
+
     data object Leave : VaultDialog
 
     data class Blocked(val reason: String) : VaultDialog
@@ -89,24 +93,25 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     var dialog by remember { mutableStateOf<VaultDialog?>(null) }
     var isAddMenuShown by remember { mutableStateOf(false) }
     var isActionMenuShown by remember { mutableStateOf(false) }
+    var issueToDelete by remember { mutableStateOf<ReadIssue?>(null) }
 
     LaunchedEffect(Unit) { model.reportActivity() }
-    LaunchedEffect(vault) { vaultActions = vault?.let { model.vaults.loadVaultActions(vaultID) } }
+    LaunchedEffect(vault) { vaultActions = vault?.takeIf { it.readIssues.none { issue -> issue.kind == "vault-key" } }?.let { model.vaults.loadVaultActions(vaultID) } }
     LaunchedEffect(vault == null) { if (vault == null) stack.pop() }
     vault ?: return
 
-    val isWritable = vault.type == VaultSummary.TYPE_PERSONAL || vault.role != Member.VAULT_ROLE_READER
+    val isWritable = vault.readIssues.none { it.kind == "vault-key" } && (vault.type == VaultSummary.TYPE_PERSONAL || vault.role != Member.VAULT_ROLE_READER)
     val isShared = vault.type == VaultSummary.TYPE_SHARED || vault.isOrganization
     val openSharing = {
         stack.push(if (vault.isOrganization) VaultsDestination.OrganizationVaultSharing(vaultID, vault.organizationID) else VaultsDestination.VaultSharing(vaultID))
     }
-    val allMatch = VaultLogic.filterAllItem(data.listAllItemReference(vaultID), searchText)
+    val allMatch = VaultLogic.filterAllItem(data.listAllItemReference(vaultID), searchText).filter { it.item.readIssue == null }
 
     PushedListScaffold(
         title = vault.name,
         onBack = stack::pop,
         onRefresh = { model.vaults.refreshVault(vaultID) },
-        isEmpty = allMatch.isEmpty(),
+        isEmpty = allMatch.isEmpty() && vault.readIssues.isEmpty(),
         emptyContent = { if (searchText.isEmpty()) NoItemsYet(isWritable) else NoSearchResults(searchText) },
         searchField = { SearchField(searchText, { searchText = it }, "Search ${vault.name}", testTag = "vault-search") },
         actions = {
@@ -145,11 +150,30 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         },
     ) {
         if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
+        if (vault.readIssues.isNotEmpty()) {
+            cardSection("read-issues", vault.readIssues, rowKey = { "${it.vaultId}/${it.itemId}/${it.kind}" }) { issue ->
+                Column {
+                    Text("${vault.readIssues.size} unreadable records. ${issue.kind}. ${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.warning)
+                    PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-unreadable-$vaultID")
+                    if (issue.canRename) PlainButton("Repair vault name", { dialog = VaultDialog.RepairName(issue) }, testTag = "repair-vault-name")
+                    if (issue.canDelete) PlainButton("Delete unreadable data…", { issueToDelete = issue }, testTag = "delete-unreadable-${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.destructive)
+                }
+            }
+        }
         cardSection("items", allMatch, rowKey = { it.id }, dividerStart = { ItemRowTextStart }) { reference ->
             FavoriteSwipeRow(model, vaultID, reference.item, isLeading = true) {
                 ItemRow(model, reference.item, "item-${reference.item.title}", onClick = { stack.push(VaultsDestination.Item(vaultID, reference.item.id)) })
             }
         }
+    }
+    issueToDelete?.let { issue ->
+        AlertDialog(
+            onDismissRequest = { issueToDelete = null },
+            title = { Text("Permanently delete unreadable data?") },
+            text = { Text(if (issue.itemId.isEmpty()) "This deletes the vault and every item in it on all devices. This cannot be undone." else "This deletes the unreadable item on every device. This cannot be undone.") },
+            confirmButton = { PlainButton("Permanently delete", { issueToDelete = null; scope.launch { model.vaults.deleteUnreadableRecord(issue) } }, testTag = "delete-unreadable-confirm", color = HisarTheme.colors.destructive) },
+            dismissButton = { PlainButton("Cancel", { issueToDelete = null }, testTag = "delete-unreadable-cancel") },
+        )
     }
 
     when (val current = dialog) {
@@ -159,6 +183,14 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
             onRename = { name ->
                 dialog = null
                 scope.launch { model.vaults.renameVault(vaultID, name) }
+            },
+        )
+        is VaultDialog.RepairName -> RenameVaultDialog(
+            initialName = "",
+            onDismiss = { dialog = null },
+            onRename = { name ->
+                dialog = null
+                scope.launch { model.vaults.repairVaultName(current.issue, name) }
             },
         )
         VaultDialog.Leave -> AlertDialog(

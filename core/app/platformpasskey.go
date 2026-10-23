@@ -60,10 +60,15 @@ func convertToStoredPasskeys(matches []passkeyMatch) []StoredPasskey {
 	return storedPasskeys
 }
 
+// ListPasskeys lists every passkey for the iPhone's credential identity store, which it replaces, so it refuses a view
+// missing a record that did not open: its passkeys would leave the store.
 func ListPasskeys(s *Service) ([]StoredPasskey, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	matches, err := s.loadPasskeys(context.Background(), "")
+	if err == nil {
+		err = s.checkCompleteRead("")
+	}
 	if err != nil {
 		return nil, convertPasskeyError(err)
 	}

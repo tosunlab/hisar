@@ -1,6 +1,9 @@
 package cliprotocol
 
-import "slices"
+import (
+	"github.com/tryhisar/hisar/core/session"
+	"slices"
+)
 
 type HelloResult struct {
 	ProtocolVersion int    `json:"protocolVersion"`
@@ -36,7 +39,8 @@ type Vault struct {
 }
 
 type VaultListResult struct {
-	Vaults []Vault `json:"vaults"`
+	Vaults []Vault             `json:"vaults"`
+	Issues []session.ReadIssue `json:"issues,omitempty"`
 }
 
 type VaultResult struct {
@@ -73,7 +77,8 @@ type Item struct {
 }
 
 type ItemListResult struct {
-	Items []Item `json:"items"`
+	Items  []Item              `json:"items"`
+	Issues []session.ReadIssue `json:"issues,omitempty"`
 }
 
 type ItemResult struct {

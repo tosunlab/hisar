@@ -199,15 +199,28 @@ func (s *Service) collectPasskeys(relyingPartyID string) []passkeyMatch {
 	return matches
 }
 
-// loadPasskeys runs under the service mutex.
+// loadPasskeys collects the passkeys of the records that open. A record that did not open may hold another, so a
+// decision that one is absent goes through isPasskeyExcluded or checkCompleteRead. It runs under the service mutex.
 func (s *Service) loadPasskeys(ctx context.Context, relyingPartyID string) ([]passkeyMatch, error) {
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, err
 	}
 	return s.collectPasskeys(relyingPartyID), nil
+}
+
+// isPasskeyExcluded reports whether matches hold one of excludedIDs; without one found, the answer needs a view in which
+// every record opened. It runs under the service mutex.
+func (s *Service) isPasskeyExcluded(matches []passkeyMatch, excludedIDs [][]byte) (bool, error) {
+	if isAnyPasskeyExcluded(matches, excludedIDs) {
+		return true, nil
+	}
+	if len(excludedIDs) == 0 {
+		return false, nil
+	}
+	return false, s.checkCompleteRead("")
 }
 
 func filterAllowedPasskeys(matches []passkeyMatch, allowedIDs [][]byte) []passkeyMatch {
@@ -272,6 +285,10 @@ func resolvePlatformPasskeyTarget(requestedRelyingPartyID string) (passkeyTarget
 func (s *Service) preparePasskeySave(ctx context.Context, target passkeyTarget, excludedIDs [][]byte) (browserprotocol.PasskeyPrepareResult, error) {
 	s.mutex.Lock()
 	matches, err := s.loadPasskeys(ctx, target.relyingPartyID)
+	isExcluded := false
+	if err == nil {
+		isExcluded, err = s.isPasskeyExcluded(matches, excludedIDs)
+	}
 	s.mutex.Unlock()
 	if err != nil {
 		return browserprotocol.PasskeyPrepareResult{}, err
@@ -280,7 +297,7 @@ func (s *Service) preparePasskeySave(ctx context.Context, target passkeyTarget, 
 	if err != nil {
 		return browserprotocol.PasskeyPrepareResult{}, err
 	}
-	return browserprotocol.PasskeyPrepareResult{IsExcluded: isAnyPasskeyExcluded(matches, excludedIDs), Logins: logins}, nil
+	return browserprotocol.PasskeyPrepareResult{IsExcluded: isExcluded, Logins: logins}, nil
 }
 
 type passkeyUser struct {
@@ -351,7 +368,9 @@ func (s *Service) savePasskey(ctx context.Context, save passkeySave, createCrede
 	if err != nil {
 		return savedPasskey{}, err
 	}
-	if isAnyPasskeyExcluded(matches, save.excludedIDs) {
+	if isExcluded, err := s.isPasskeyExcluded(matches, save.excludedIDs); err != nil {
+		return savedPasskey{}, err
+	} else if isExcluded {
 		return savedPasskey{}, errPasskeyExcluded
 	}
 	creation, err := createCredential()

@@ -438,8 +438,16 @@ func TestItemWritesAfterAnotherOwnerRotated(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		test.apiServer.mutex.Lock()
+		var generation int64
+		for _, current := range test.apiServer.vaults {
+			if current.ID == vaultID {
+				generation = current.KeyGeneration
+			}
+		}
+		test.apiServer.mutex.Unlock()
 		bobSession := &session.Session{Client: unlockedSession.Client, AccountID: bob.AccountID, Keyset: bobKeyset}
-		items, err := bobSession.ListItems(ctx, &session.Vault{ID: vaultID, Type: apitypes.VaultOrganization, Role: apitypes.VaultEditor, Key: bobKey})
+		items, err := bobSession.ListItems(ctx, &session.Vault{ID: vaultID, Type: apitypes.VaultOrganization, Role: apitypes.VaultEditor, Key: bobKey, KeyGeneration: generation})
 		if err != nil {
 			t.Fatalf("Bob opens the vault: %v", err)
 		}

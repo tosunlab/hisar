@@ -73,6 +73,7 @@ func (s *Service) ListVaults(ctx context.Context, actor Actor) ([]apitypes.Vault
 		vaults = append(vaults, apitypes.Vault{
 			ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey,
 			OrganizationID: vault.OrganizationID, NeedsRotation: vault.NeedsRotation, KeyGeneration: vault.KeyGeneration, AccessRevision: vault.AccessRevision,
+			IsPersonalExtra: vault.IsPersonalExtra,
 		})
 	}
 	return vaults, nil
@@ -249,11 +250,11 @@ func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, 
 	if limit < 1 || limit > MaxChangeLimit {
 		return apitypes.ChangesResponse{}, newError(KindInvalid, "invalid limit")
 	}
-	items, vaultSeq, isMore, err := s.store.ListChanges(ctx, vaultID, since, limit, maxChangeBytes)
+	items, vaultSeq, generation, isMore, err := s.store.ListChangesSnapshot(ctx, actor.AccountID, vaultID, since, limit, maxChangeBytes)
 	if err != nil {
 		return apitypes.ChangesResponse{}, err
 	}
-	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(items)), NextSeq: vaultSeq}
+	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(items)), NextSeq: vaultSeq, KeyGeneration: generation}
 	for index := range items {
 		response.Items = append(response.Items, convertToProtoItem(&items[index]))
 	}
@@ -401,13 +402,28 @@ func (s *Service) GetItemHistory(ctx context.Context, actor Actor, vaultID, item
 }
 
 func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.RenameVaultRequest) error {
+	return s.renameVault(ctx, actor, vaultID, request.EncName, request.KeyGeneration, nil)
+}
+
+// RepairVaultName replaces a sealed name the owner's app could not open, only while the vault is still as reviewed.
+func (s *Service) RepairVaultName(ctx context.Context, actor Actor, vaultID string, request *apitypes.RepairVaultNameRequest) error {
+	return s.renameVault(ctx, actor, vaultID, request.EncName, request.Review.KeyGeneration, convertToStoreReview(request.Review))
+}
+
+func convertToStoreReview(review apitypes.VaultReview) *store.VaultReview {
+	return &store.VaultReview{EncName: review.EncName, WrappedKey: review.WrappedKey, KeyGeneration: review.KeyGeneration}
+}
+
+var errReviewChanged = newError(KindConflict, "the vault changed since it was reviewed; review it again")
+
+func (s *Service) renameVault(ctx context.Context, actor Actor, vaultID string, encName []byte, keyGeneration int64, review *store.VaultReview) error {
 	if err := s.requireVaultOwner(ctx, actor, vaultID); err != nil {
 		return err
 	}
-	if len(request.EncName) == 0 || len(request.EncName) > maxEncName || request.KeyGeneration < 0 {
+	if len(encName) == 0 || len(encName) > maxEncName || keyGeneration < 0 {
 		return newError(KindInvalid, "invalid vault name")
 	}
-	switch err := s.store.RenameVault(ctx, vaultID, actor.AccountID, request.EncName, request.KeyGeneration); {
+	switch err := s.store.RenameVault(ctx, vaultID, actor.AccountID, encName, keyGeneration, review); {
 	case errors.Is(err, store.ErrKeyGenerationMissing), errors.Is(err, store.ErrRotationPending):
 		return convertTransitionError(err)
 	case errors.Is(err, store.ErrStaleKeyGeneration):
@@ -416,6 +432,8 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 		return ErrOwnerOnly
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
+	case errors.Is(err, store.ErrReviewChanged):
+		return errReviewChanged
 	case errors.Is(err, store.ErrConflict):
 		return newError(KindConflict, "the vault key changed since the name was encrypted; sync and try again")
 	case err != nil:
@@ -428,6 +446,16 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 
 // DeleteVault deletes a vault the caller owns, with its items or after moving them, already re-encrypted, to another vault.
 func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.DeleteVaultRequest) error {
+	return s.deleteVault(ctx, actor, vaultID, request, nil)
+}
+
+// DeleteUnreadableVault deletes a vault the owner's app could not open, with every item, only while it is still as
+// reviewed.
+func (s *Service) DeleteUnreadableVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.DeleteUnreadableVaultRequest) error {
+	return s.deleteVault(ctx, actor, vaultID, &apitypes.DeleteVaultRequest{IsDeletingItems: true}, convertToStoreReview(request.Review))
+}
+
+func (s *Service) deleteVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.DeleteVaultRequest, review *store.VaultReview) error {
 	if err := s.requireVaultOwner(ctx, actor, vaultID); err != nil {
 		return err
 	}
@@ -459,10 +487,13 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 	formerMemberIDs, err := s.store.DeleteVault(ctx, store.VaultDeletion{
 		VaultID: vaultID, AccountID: actor.AccountID, MoveToVaultID: request.MoveToVaultID,
 		MovedItems: movedItems, IsDeletingItems: request.IsDeletingItems, MoveToKeyGeneration: request.MoveToKeyGeneration, KeyGeneration: request.KeyGeneration,
+		Review: review,
 	})
 	switch {
 	case errors.Is(err, store.ErrNotOwner):
 		return ErrOwnerOnly
+	case errors.Is(err, store.ErrReviewChanged):
+		return errReviewChanged
 	case errors.Is(err, store.ErrPersonalVault):
 		return newError(KindInvalid, "personal vaults can't be deleted")
 	case errors.Is(err, store.ErrOnlyVault):

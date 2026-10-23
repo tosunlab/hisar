@@ -90,7 +90,7 @@ func (s *Session) onlineVault(ctx context.Context, id string) (*Vault, error) {
 			return nil, fmt.Errorf("vault %s: %w", id, err)
 		}
 		return &Vault{ID: id, Type: proto.Type, Name: string(name), Role: proto.Role, Key: key,
-			OrganizationID: proto.OrganizationID, KeyGeneration: proto.KeyGeneration, AccessRevision: proto.AccessRevision, NeedsRotation: proto.NeedsRotation}, nil
+			OrganizationID: proto.OrganizationID, KeyGeneration: proto.KeyGeneration, AccessRevision: proto.AccessRevision, NeedsRotation: proto.NeedsRotation, IsPersonalExtra: proto.IsPersonalExtra, record: proto}, nil
 	}
 	return nil, fmt.Errorf("vault %s: %w", id, ErrNotFound)
 }

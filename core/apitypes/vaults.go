@@ -14,6 +14,8 @@ type Vault struct {
 	// KeyGeneration counts the vault's keys: 1 at creation, one more after every rotation. Missing from older servers.
 	KeyGeneration  int64 `json:"keyGeneration,omitempty"`
 	AccessRevision int64 `json:"accessRevision,omitempty"`
+	// IsPersonalExtra identifies a preserved legacy duplicate, never the designated primary.
+	IsPersonalExtra bool `json:"isPersonalExtra,omitempty"`
 }
 
 // CreateVaultRequest: an organization vault names its organization and the team that is given it as owner;
@@ -88,4 +90,24 @@ type DeleteVaultRequest struct {
 	IsDeletingItems     bool        `json:"deleteItems,omitempty"`
 	MoveToKeyGeneration int64       `json:"moveToKeyGeneration,omitempty"`
 	KeyGeneration       int64       `json:"keyGeneration,omitempty"`
+}
+
+// VaultReview is the vault record a recovery action was reviewed against: its sealed name, the caller's wrapped key and
+// the key generation, as the server listed them. The server refuses the action (409) once any of them changed, so a
+// record another device repaired needs a new review.
+type VaultReview struct {
+	EncName       []byte `json:"encName"`
+	WrappedKey    []byte `json:"wrappedKey"`
+	KeyGeneration int64  `json:"keyGeneration"`
+}
+
+// RepairVaultNameRequest replaces an unreadable sealed name with EncName, sealed with the reviewed key generation.
+type RepairVaultNameRequest struct {
+	Review  VaultReview `json:"review"`
+	EncName []byte      `json:"encName"`
+}
+
+// DeleteUnreadableVaultRequest deletes a vault and every item in it, only while it is still as reviewed.
+type DeleteUnreadableVaultRequest struct {
+	Review VaultReview `json:"review"`
 }

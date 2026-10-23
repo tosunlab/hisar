@@ -76,49 +76,69 @@ func (s *Session) createVault(ctx context.Context, name string, request *apitype
 	}
 	request.ID, request.EncName, request.WrappedKey = vaultID, encryptedName, wrappedKey
 	if err := s.Client.CreateVault(ctx, request); err != nil {
+		if request.Type == apitypes.VaultPersonal && apiclient.IsStatus(err, http.StatusConflict) {
+			result, readErr := s.ReadVaults(ctx)
+			if readErr != nil {
+				clear(vaultKey)
+				return nil, readErr
+			}
+			var primary *Vault
+			for index := range result.Vaults {
+				vault := &result.Vaults[index]
+				if vault.Type == apitypes.VaultPersonal && !vault.IsPersonalExtra {
+					primary = vault
+				} else {
+					clear(vault.Key)
+				}
+			}
+			clear(vaultKey)
+			if primary != nil {
+				return primary, nil
+			}
+			return nil, ErrIncompleteRead
+		}
 		return nil, err
+	}
+	record := apitypes.Vault{
+		ID: vaultID, Type: request.Type, EncName: encryptedName, Role: apitypes.VaultOwner, WrappedKey: wrappedKey,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1,
 	}
 	return &Vault{
 		ID: vaultID, Type: request.Type, Name: name, Role: apitypes.VaultOwner, Key: vaultKey,
-		OrganizationID: request.OrganizationID, KeyGeneration: 1,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1, record: record,
 	}, nil
 }
 
+// ListVaults requires a complete readable inventory. Recovery views use ReadVaults.
 func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
-	protoVaults, isFetched, err := s.listProtoVaults(ctx)
+	result, err := s.ReadVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
-	vaults := make([]Vault, 0, len(protoVaults))
-	for _, protoVault := range protoVaults {
-		vaultKey, err := s.Keyset.UnwrapVaultKey(protoVault.ID, s.AccountID, protoVault.WrappedKey)
-		if err != nil {
-			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
-		}
-		name, err := crypt.OpenVaultName(vaultKey, protoVault.ID, protoVault.EncName)
-		if err != nil {
-			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
-		}
-		vaults = append(vaults, Vault{
-			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
-			OrganizationID: protoVault.OrganizationID, KeyGeneration: protoVault.KeyGeneration, NeedsRotation: protoVault.NeedsRotation, AccessRevision: protoVault.AccessRevision,
-		})
+	if len(result.Issues) != 0 {
+		return nil, ErrIncompleteRead
 	}
-	if isFetched && s.Cache != nil {
-		if err := s.replaceCachedVaults(protoVaults); err != nil {
-			return nil, err
-		}
-	}
-	return vaults, nil
+	return result.Vaults, nil
 }
 
+// FindVault finds a vault by ID, or by name only in a complete inventory: a vault whose key or name did not open may
+// carry the same name, so a name match among the others proves neither uniqueness nor absence (ErrIncompleteRead).
 func (s *Session) FindVault(ctx context.Context, nameOrID string) (*Vault, error) {
-	vaults, err := s.ListVaults(ctx)
+	result, err := s.ReadVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
+	vaults := result.Vaults
 	for i := range vaults {
-		if vaults[i].ID == nameOrID || strings.EqualFold(vaults[i].Name, nameOrID) {
+		if vaults[i].ID == nameOrID {
+			return &vaults[i], nil
+		}
+	}
+	if len(result.Issues) != 0 {
+		return nil, ErrIncompleteRead
+	}
+	for i := range vaults {
+		if strings.EqualFold(vaults[i].Name, nameOrID) {
 			return &vaults[i], nil
 		}
 	}
@@ -195,6 +215,9 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 	if vault.Role != apitypes.VaultOwner {
 		return ErrNotVaultOwner
 	}
+	if vault.NameUnreadable {
+		return s.repairVaultName(ctx, vault, apitypes.VaultReview{EncName: vault.record.EncName, WrappedKey: vault.record.WrappedKey, KeyGeneration: vault.record.KeyGeneration}, name)
+	}
 	encryptedName, err := crypt.SealVaultName(vault.Key, vault.ID, []byte(name))
 	if err != nil {
 		return err
@@ -204,6 +227,7 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 		return err
 	}
 	vault.Name = name
+	vault.record.EncName = encryptedName
 	return nil
 }
 
@@ -230,7 +254,7 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 	if vault.Role != apitypes.VaultOwner {
 		return 0, ErrNotVaultOwner
 	}
-	if vault.Type == apitypes.VaultPersonal {
+	if vault.Type == apitypes.VaultPersonal && !vault.IsPersonalExtra {
 		return 0, ErrPersonalVault
 	}
 	if deletion.MoveTo == nil {

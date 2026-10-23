@@ -149,7 +149,7 @@ func (s *Service) findBrowserItem(ctx context.Context, vaultID, itemID string) (
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, "", err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, "", err
 	}
 	vault := s.vaultsByID[vaultID]
@@ -267,7 +267,7 @@ func (s *Service) listWritableBrowserVaults(ctx context.Context) ([]browserproto
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, err
 	}
 	vaults := []browserprotocol.VaultSummary{}

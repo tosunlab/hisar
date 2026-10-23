@@ -131,7 +131,7 @@ func countPersonalVaults(t *testing.T, databaseURL, email string) int {
 func TestResumingASignUpWhosePersonalVaultAnswerWasLostKeepsOneVault(t *testing.T) {
 	baseURL, server, databaseURL, _ := setupLifecycleServer(t)
 	email := "lost-vault-answer@example.com"
-	service, operationID := signUpLosingAnswer(t, baseURL, server, email, isRequest(http.MethodPost, "/api/v1/vaults"))
+	service, operationID := signUpLosingAnswer(t, baseURL, server, email, isRequest(http.MethodPost, "/api/v1/vaults/personal"))
 	if got := countPersonalVaults(t, databaseURL, email); got != 1 {
 		t.Fatalf("the server holds %d Personal vaults before the resume", got)
 	}
@@ -173,7 +173,7 @@ type holdVaultCreations struct {
 }
 
 func (transport *holdVaultCreations) RoundTrip(request *http.Request) (*http.Response, error) {
-	if isRequest(http.MethodPost, "/api/v1/vaults")(request) {
+	if isRequest(http.MethodPost, "/api/v1/vaults/personal")(request) {
 		transport.arrived <- struct{}{}
 		<-transport.release
 	}

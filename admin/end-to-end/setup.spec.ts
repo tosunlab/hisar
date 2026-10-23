@@ -119,7 +119,7 @@ test("refuses an earlier setup invite before staging and accepts the latest link
 
 test("recovers interrupted Personal vault setup after restart using the saved kit", async ({ page }) => {
   const { fixture } = await startFreshFixture();
-  await page.context().route("**/api/v1/vaults", (route) => route.request().method() === "POST"
+  await page.context().route("**/api/v1/vaults/personal", (route) => route.request().method() === "POST"
     ? route.fulfill({ status: 500, contentType: "application/json", body: '{"error":"internal error"}' }) : route.fallback());
   await page.goto(fixture.setupURL);
   await fillAccountStep(page, "ada@example.com");
@@ -129,7 +129,7 @@ test("recovers interrupted Personal vault setup after restart using the saved ki
   await expect(page.getByTestId("setup-recovery")).toContainText("setup still needs to finish", { timeout: 30_000 });
   await page.reload();
   await expect(page.getByTestId("setup-recovery")).toContainText("setup still needs to finish");
-  await page.context().unroute("**/api/v1/vaults");
+  await page.context().unroute("**/api/v1/vaults/personal");
   await resume(page, secretKey);
   await confirmDelivery(page);
   await saveScreenshot(page, "a05-partial-setup-recovered");

@@ -1532,6 +1532,26 @@ export const previewApi = {
     allPreviewItemByVaultID[vaultID] = allPreviewItemByVaultID[vaultID].filter((vaultItem) => vaultItem.id !== itemID);
     return resolveAfterDelay(undefined);
   },
+  deleteUnreadableItem: (vaultID: string, itemID: string, revision: string) => {
+    const record = allPreviewItemByVaultID[vaultID]?.find((item) => item.id === itemID && item.revision === revision && item.readIssue?.canDelete);
+    if (!record) return Promise.reject(new Error("The unreadable record changed"));
+    allPreviewItemByVaultID[vaultID] = allPreviewItemByVaultID[vaultID].filter((item) => item.id !== itemID);
+    return resolveAfterDelay(undefined);
+  },
+  deleteUnreadableVault: (vaultID: string, revision: string) => {
+    const index = allPreviewVault.findIndex((vault) => vault.id === vaultID && vault.readIssues?.some((issue) => issue.canDelete && !issue.itemId && issue.revision === revision));
+    if (index < 0) return Promise.reject(new Error("The unreadable vault changed"));
+    allPreviewVault.splice(index, 1);
+    delete allPreviewItemByVaultID[vaultID];
+    return resolveAfterDelay(undefined);
+  },
+  repairVaultName: (vaultID: string, revision: string, name: string) => {
+    const vault = allPreviewVault.find((candidate) => candidate.id === vaultID && candidate.readIssues?.some((issue) => issue.canRename && issue.revision === revision));
+    if (!vault) return Promise.reject(new Error("The unreadable vault changed"));
+    vault.name = name.trim();
+    vault.readIssues = vault.readIssues?.filter((issue) => issue.itemId);
+    return resolveAfterDelay(buildPreviewVaultSummary(vault));
+  },
   generatePassword: (config: PasswordConfig) => {
     const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ" + (config.digits ? "23456789" : "") + (config.symbols ? "!@#$%^&*-_=+?" : "");
     const allRandom = crypto.getRandomValues(new Uint32Array(config.length || 24));

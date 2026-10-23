@@ -36,7 +36,7 @@ func TestGenerationOmissionRefusedOnEveryRotatedWrite(t *testing.T) {
 			t.Fatalf("item deleted=%v with omitted generation: %v", deleted, err)
 		}
 	}
-	if err := database.RenameVault(ctx, rotatedID, "AAAAAA", []byte("legacy"), 0); !errors.Is(err, ErrKeyGenerationMissing) {
+	if err := database.RenameVault(ctx, rotatedID, "AAAAAA", []byte("legacy"), 0, nil); !errors.Is(err, ErrKeyGenerationMissing) {
 		t.Fatalf("rename: %v", err)
 	}
 	if _, err := database.GrantAccess(ctx, rotatedID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte("legacy"), GrantedBy: "AAAAAA"}, 0); !errors.Is(err, ErrKeyGenerationMissing) {

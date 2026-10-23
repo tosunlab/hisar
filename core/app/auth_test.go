@@ -180,7 +180,7 @@ func startRegisteringServer(t *testing.T, refuseVault bool) string {
 		defer vaultsMutex.Unlock()
 		writeJSON(writer, http.StatusOK, vaults)
 	})
-	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/vaults/personal", func(writer http.ResponseWriter, request *http.Request) {
 		if refuseVault {
 			writeJSON(writer, http.StatusInternalServerError, apitypes.Error{Error: "database unavailable"})
 			return

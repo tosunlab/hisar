@@ -22,7 +22,7 @@ func setInteractiveTerminal(t *testing.T, isInteractive bool) {
 
 func answerVaultDataRequest(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
 	switch request.Type {
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{
 			{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner", ItemCount: 2},
 			{ID: "work-id", Name: "Work", Type: "shared", Role: "owner", ItemCount: 3},
@@ -52,7 +52,7 @@ func answerVaultDataRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		return cliprotocol.VaultDeletionResult{}, nil
 	case cliprotocol.TypeExport:
 		return cliprotocol.ExportResult{Path: request.Export.Path, VaultCount: 3, ItemCount: 6}, nil
-	case cliprotocol.TypeListItem:
+	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 		if request.VaultID == "work-id" {
 			return cliprotocol.ItemListResult{Items: []cliprotocol.Item{{ID: "shop-id", Revision: "r1", Title: "shop"}}}, nil
 		}

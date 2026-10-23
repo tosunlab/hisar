@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 // backend is the account a command works on: through the Hisar app (appBackend) or signed in on its own
@@ -19,6 +20,8 @@ type backend interface {
 	listVaults(ctx context.Context) ([]cliprotocol.Vault, error)
 	createVault(ctx context.Context, name string) (cliprotocol.Vault, error)
 	listItems(ctx context.Context, vaultID string) ([]item.Item, error)
+	readVaults(ctx context.Context) (cliprotocol.VaultListResult, error)
+	readItems(ctx context.Context, vaultID string) (session.ItemReadResult, error)
 	// listsItemSummaries reports whether listItems omits content needed for import duplicate comparisons.
 	listsItemSummaries() bool
 	getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error)

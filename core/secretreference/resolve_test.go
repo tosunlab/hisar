@@ -2,6 +2,7 @@ package secretreference
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -14,15 +15,17 @@ type memorySource struct {
 	itemsByVault   map[string][]item.Item
 	listItemCount  int
 	vaultListError error
+	isIncomplete   bool
+	incompleteIDs  []string
 }
 
-func (source *memorySource) ListVaults() ([]Vault, error) {
-	return source.vaults, source.vaultListError
+func (source *memorySource) ListVaults() (Inventory, error) {
+	return Inventory{Vaults: source.vaults, IsComplete: !source.isIncomplete}, source.vaultListError
 }
 
-func (source *memorySource) ListItems(vaultID string) ([]item.Item, error) {
+func (source *memorySource) ListItems(vaultID string) (ItemList, error) {
 	source.listItemCount++
-	return source.itemsByVault[vaultID], nil
+	return ItemList{Items: source.itemsByVault[vaultID], IsComplete: !slices.Contains(source.incompleteIDs, vaultID)}, nil
 }
 
 const rfcOneTimePassword = "otpauth://totp/Example?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ"
@@ -141,6 +144,37 @@ func TestResolveAllSourceError(t *testing.T) {
 	source.vaultListError = sourceError
 	if _, err := ResolveAll(source, []string{"hisar://Personal/GitHub/password"}, time.Now()); !errors.Is(err, sourceError) {
 		t.Errorf("source error = %v", err)
+	}
+}
+
+// A vault that did not open may have any name, so a name never resolves beside it; an ID always does.
+func TestVaultNamesNeedACompleteInventory(t *testing.T) {
+	source := createTestSource()
+	source.isIncomplete = true
+	_, err := ResolveAll(source, []string{"hisar://Personal/GitHub/password", "hisar://Team%2FOps/Ops/password"}, time.Now())
+	var resolveError *Error
+	if !errors.As(err, &resolveError) || strings.Count(err.Error(), "use the vault's ID instead") != 2 {
+		t.Errorf("names in an incomplete inventory: %v", err)
+	}
+	resolvedReferences, err := ResolveAll(source, []string{"hisar://vault-personal/GitHub/password", "hisar://vault-team/Ops/password"}, time.Now())
+	if err != nil || resolvedReferences[0].Value != "github-password" || resolvedReferences[1].Value != "ops-password" {
+		t.Errorf("IDs in an incomplete inventory: %+v %v", resolvedReferences, err)
+	}
+}
+
+// An item that did not open may have any title, so a title never resolves in its vault; an ID always does, and other
+// vaults are unaffected.
+func TestItemTitlesNeedACompleteItemList(t *testing.T) {
+	source := createTestSource()
+	source.incompleteIDs = []string{"vault-personal"}
+	_, err := ResolveAll(source, []string{"hisar://Personal/GitHub/password"}, time.Now())
+	var resolveError *Error
+	if !errors.As(err, &resolveError) || strings.Contains(err.Error(), "github-password") {
+		t.Errorf("a title in an incomplete item list: %v", err)
+	}
+	resolvedReferences, err := ResolveAll(source, []string{"hisar://Personal/item-github/password", "hisar://Team%2FOps/Ops/password"}, time.Now())
+	if err != nil || resolvedReferences[0].Value != "github-password" || resolvedReferences[1].Value != "ops-password" {
+		t.Errorf("an ID in an incomplete item list, a title elsewhere: %+v %v", resolvedReferences, err)
 	}
 }
 

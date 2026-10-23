@@ -39,7 +39,7 @@ fun VaultRow(vault: VaultSummary, itemCount: Int, onClick: () -> Unit) {
         else -> "Shared · $role" to Icons.Outlined.Group
     }
     NavigationRow(testTag = "vault-${vault.name}", onClick = onClick, badge = itemCount, leading = { RowSymbol(icon) }) {
-        TitleAndSubtitle(vault.name, subtitle)
+        TitleAndSubtitle(vault.name, if (vault.readIssues.isNotEmpty()) "${vault.readIssues.size} unreadable records. Retry or repair." else if (vault.isPersonalExtra) "Legacy Personal vault. Recover items before deleting." else subtitle)
     }
 }
 

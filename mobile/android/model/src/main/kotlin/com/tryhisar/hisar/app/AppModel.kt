@@ -292,7 +292,7 @@ class AppModel(
                 attemptCall<List<FavoriteItem>> { backend.listAllFavoriteItem() }
                 val allItemByVaultID = allVault.associate { it.id to backend.listAllItem(it.id) }
                 RefreshResult(
-                    allVault, allItemByVaultID, attemptCall { backend.listAllPasskey() }.orEmpty(),
+                    allVault, allItemByVaultID, attemptCall { backend.listAllPasskey() },
                     shareInvitations, allRemovedVault, organizations, waitingVaultKeys,
                 )
             }
@@ -311,7 +311,7 @@ class AppModel(
                 data.copy(
                     allVault = result.allVault.sortedWith(vaultOrder),
                     allItemByVaultID = result.allItemByVaultID,
-                    allPasskey = result.allPasskey,
+                    allPasskey = result.allPasskey ?: data.allPasskey,
                     allReceivedInvitation = result.shareInvitations?.allReceived ?: data.allReceivedInvitation,
                     allWaitingInvitation = result.shareInvitations?.allWaiting ?: data.allWaitingInvitation,
                     // Offline both fail; the last organizations keep naming the vault groups.
@@ -329,7 +329,7 @@ class AppModel(
     private class RefreshResult(
         val allVault: List<VaultSummary>,
         val allItemByVaultID: Map<String, List<ItemDetail>>,
-        val allPasskey: List<StoredPasskey>,
+        val allPasskey: List<StoredPasskey>?,
         val shareInvitations: ShareInvitations?,
         val allRemovedVault: List<RemovedVaultNotice>,
         val organizations: Organizations?,

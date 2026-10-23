@@ -99,7 +99,7 @@ func (api *fakeAPI) handler() http.Handler {
 		defer api.mutex.Unlock()
 		writeJSON(writer, http.StatusOK, api.vaults)
 	})
-	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+	createVault := func(writer http.ResponseWriter, request *http.Request) {
 		var createRequest apitypes.CreateVaultRequest
 		if err := json.NewDecoder(request.Body).Decode(&createRequest); err != nil {
 			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
@@ -113,7 +113,9 @@ func (api *fakeAPI) handler() http.Handler {
 		})
 		api.itemsByVaultID[createRequest.ID] = map[string]apitypes.Item{}
 		writer.WriteHeader(http.StatusCreated)
-	})
+	}
+	mux.HandleFunc("POST /api/v1/vaults", createVault)
+	mux.HandleFunc("POST /api/v1/vaults/personal", createVault)
 	mux.HandleFunc("GET /api/v1/vaults/{vaultID}/changes", func(writer http.ResponseWriter, request *http.Request) {
 		api.mutex.Lock()
 		defer api.mutex.Unlock()
@@ -121,7 +123,13 @@ func (api *fakeAPI) handler() http.Handler {
 		for _, storedItem := range api.itemsByVaultID[request.PathValue("vaultID")] {
 			items = append(items, storedItem)
 		}
-		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: items, NextSeq: api.seq})
+		generation := int64(1)
+		for _, vault := range api.vaults {
+			if vault.ID == request.PathValue("vaultID") {
+				generation = max(int64(1), vault.KeyGeneration)
+			}
+		}
+		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: items, NextSeq: api.seq, KeyGeneration: generation})
 	})
 	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", func(writer http.ResponseWriter, request *http.Request) {
 		var putRequest apitypes.PutItemRequest

@@ -153,6 +153,8 @@ func (s *Service) lockSession() {
 		clearItemKeys(s.pendingImport.queuedItems)
 	}
 	s.itemsByVaultID = nil
+	s.vaultReadIssues = nil
+	s.itemReadIssuesByVaultID = nil
 	s.favorites = nil
 	s.pendingImport = nil
 	s.forgetWebsiteIconKeys()

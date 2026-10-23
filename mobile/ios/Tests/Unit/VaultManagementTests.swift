@@ -152,4 +152,45 @@ final class VaultManagementTests: XCTestCase {
         XCTAssertTrue(withPassword.path.hasSuffix(".json"))
         model.removeExport(withPassword)
     }
+    func testUnreadableRecordsRemainExplicitBesideHealthyItems() throws {
+        let vault = try JSONDecoder().decode(VaultSummary.self, from: Data(#"{"id":"v","name":"Private","type":"personal","role":"owner","itemCount":1,"readIssues":[{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}]}"#.utf8))
+        let items = try JSONDecoder().decode([ItemDetail].self, from: Data(#"[{"id":"healthy","title":"Still available"},{"id":"bad","revision":"r1","title":"Unreadable item bad","readIssue":{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}}]"#.utf8))
+        XCTAssertEqual(vault.itemCount, 1)
+        XCTAssertEqual(vault.readIssues.first?.revision, "r1")
+        XCTAssertEqual(vault.readIssues.first?.canDelete, true)
+        XCTAssertEqual(items.filter { $0.readIssue == nil }.map(\.id), ["healthy"])
+        XCTAssertEqual(items.first { $0.readIssue != nil }?.readIssue?.itemId, "bad")
+    }
+
+    func testNewlyUnreadableItemAfterVaultRefreshRemainsDisclosed() async throws {
+        let model = await createUnlockedModel()
+        let healthyCount = model.countItem(vaultID: "personal")
+        let issue = ReadIssue(vaultId: "personal", itemId: "bad", revision: "r1", kind: "item", canRename: false, canDelete: true)
+        var placeholder = ItemDetail(id: "bad", revision: "r1", title: "Unreadable item bad")
+        placeholder.readIssue = issue
+        backend.allItemByVaultID["personal", default: []].append(placeholder)
+        await model.refreshVault(vaultID: "personal")
+        let personal = try XCTUnwrap(model.findVault(vaultID: "personal"))
+        XCTAssertEqual(personal.readIssues, [issue])
+        XCTAssertEqual(personal.itemCount, healthyCount)
+        XCTAssertFalse(model.listAllItemReference(vaultID: "personal").contains { $0.item.id == "bad" })
+    }
+
+    func testUnreadableVaultRecoveryNamesTheReviewedRevision() async throws {
+        let model = await createUnlockedModel()
+        let reviewed = ReadIssue(vaultId: "work", itemId: nil, revision: "review-1", kind: "vault-name", canRename: true, canDelete: true)
+        let work = try XCTUnwrap(backend.allVault.firstIndex { $0.id == "work" })
+        var current = reviewed
+        current.revision = "review-2"
+        backend.allVault[work].readIssues = [current]
+        await model.refreshAll()
+        await model.repairVaultName(reviewed, name: "Work")
+        await model.deleteUnreadableRecord(reviewed)
+        XCTAssertNotNil(model.errorMessage, "a stale review was not refused")
+        XCTAssertNotNil(model.findVault(vaultID: "work"), "a stale review deleted the vault")
+        let shown = try XCTUnwrap(model.findVault(vaultID: "work")?.readIssues.first)
+        await model.repairVaultName(shown, name: "Work")
+        XCTAssertEqual(model.findVault(vaultID: "work")?.name, "Work")
+        XCTAssertEqual(model.findVault(vaultID: "work")?.readIssues, [])
+    }
 }

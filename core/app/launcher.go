@@ -93,15 +93,15 @@ func (s *Service) listLauncherItems() (cliprotocol.LauncherItemListResult, error
 	vaults := slices.SortedFunc(maps.Values(s.vaultsByID), func(first, second *session.Vault) int {
 		return cmp.Or(strings.Compare(strings.ToLower(first.Name), strings.ToLower(second.Name)), strings.Compare(first.ID, second.ID))
 	})
-	vaultNames := countVaultNames(s.vaultsByID)
+	vaultNames := countVaultNames(s.listSecretVaults(isAnyVault))
 	for _, vault := range vaults {
-		items, err := s.unlockedSession.ListItems(ctx, vault)
+		read, err := s.readVaultItems(ctx, vault)
 		if err != nil {
-			return result, convertError(err)
+			return result, err
 		}
-		s.itemsByVaultID[vault.ID] = items
+		items := read.Items
 		result.Vaults = append(result.Vaults, cliprotocol.LauncherVault{ID: vault.ID, Name: vault.Name})
-		itemTitles := countItemTitles(items)
+		itemTitles := countItemTitles(s.listSecretItems(vault.ID))
 		for index := range items {
 			vaultItem := &items[index]
 			reference := buildItemReference(vault, vaultItem, vaultNames, itemTitles)

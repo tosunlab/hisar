@@ -26,14 +26,15 @@ func (s *Service) listLoginsForURL(ctx context.Context, pageURL string) ([]brows
 }
 
 // listLogins loads every vault's items if needed and returns the items that AutoFill may fill and isMatch accepts, as
-// sorted logins and by "vaultID/itemID". It calls isMatch with s.mutex held.
+// sorted logins and by "vaultID/itemID". A record that did not open is left out, so the result tells what can be
+// filled, never that a login is missing. It calls isMatch with s.mutex held.
 func (s *Service) listLogins(ctx context.Context, isMatch func(*item.Item) bool) ([]browserprotocol.Login, map[string]item.Item, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, nil, err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, nil, err
 	}
 	logins := []browserprotocol.Login{}
@@ -78,6 +79,15 @@ func (s *Service) requireUnlockedWithoutActivity() error {
 }
 
 func (s *Service) loadItemsOfAllVault(ctx context.Context) error {
+	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
+		return err
+	}
+	return s.checkCompleteRead("")
+}
+
+// loadReadableItemsOfAllVault reads every vault not loaded yet, keeping the records that open and an issue for each one
+// that does not.
+func (s *Service) loadReadableItemsOfAllVault(ctx context.Context) error {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if s.vaultsByID == nil {
@@ -89,11 +99,9 @@ func (s *Service) loadItemsOfAllVault(ctx context.Context) error {
 		if _, isLoaded := s.itemsByVaultID[vaultID]; isLoaded {
 			continue
 		}
-		items, err := s.unlockedSession.ListItems(ctx, vault)
-		if err != nil {
-			return convertError(err)
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return err
 		}
-		s.itemsByVaultID[vaultID] = items
 	}
 	return nil
 }
@@ -226,6 +234,8 @@ func ListLoginWebsites(s *Service) ([]LoginWebsite, error) {
 	return websites, nil
 }
 
+// checkLogin tells the extension whether a submitted login is saved already. "new" and "changed" rest on no other login
+// matching, so they need a view in which every record opened.
 func (s *Service) checkLogin(ctx context.Context, pageURL, username, password string) (browserprotocol.CheckResult, error) {
 	logins, itemsByKey, err := s.listLoginsForURL(ctx, pageURL)
 	if err != nil {
@@ -240,13 +250,19 @@ func (s *Service) checkLogin(ctx context.Context, pageURL, username, password st
 	if len(candidates) == 0 && strings.TrimSpace(username) == "" && len(logins) == 1 {
 		candidates = logins
 	}
-	if len(candidates) == 0 {
-		return browserprotocol.CheckResult{Status: "new"}, nil
-	}
 	for _, candidate := range candidates {
 		if itemsByKey[candidate.VaultID+"/"+candidate.ItemID].Details.Password == password {
 			return browserprotocol.CheckResult{Status: "unchanged", VaultID: candidate.VaultID, ItemID: candidate.ItemID, Title: candidate.Title}, nil
 		}
+	}
+	s.mutex.Lock()
+	err = s.checkCompleteRead("")
+	s.mutex.Unlock()
+	if err != nil {
+		return browserprotocol.CheckResult{}, err
+	}
+	if len(candidates) == 0 {
+		return browserprotocol.CheckResult{Status: "new"}, nil
 	}
 	first := candidates[0]
 	return browserprotocol.CheckResult{Status: "changed", VaultID: first.VaultID, ItemID: first.ItemID, Title: first.Title}, nil

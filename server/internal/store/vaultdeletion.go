@@ -1,6 +1,7 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 
@@ -14,7 +15,32 @@ var (
 	ErrVaultNotEmpty     = errors.New("store: the vault has items")
 	ErrTargetNotWritable = errors.New("store: the target vault is not writable")
 	ErrOnlyOwner         = errors.New("store: the only owner cannot leave the vault")
+	ErrReviewChanged     = errors.New("store: the vault changed since it was reviewed")
 )
+
+// VaultReview is the vault record a recovery action was reviewed against (apitypes.VaultReview).
+type VaultReview struct {
+	EncName       []byte
+	WrappedKey    []byte
+	KeyGeneration int64
+}
+
+// checkReview returns ErrReviewChanged unless the vault's sealed name, the account's wrapped key and the key generation
+// are still the reviewed ones. It runs under the vault's lock, so nothing changes them before the action commits.
+func checkReview(ctx context.Context, transaction pgx.Tx, vaultID, accountID string, vault *lockedVault, review *VaultReview) error {
+	if review == nil {
+		return nil
+	}
+	var encName, wrappedKey []byte
+	if err := transaction.QueryRow(ctx, `SELECT v.enc_name, a.wrapped_key FROM vaults v JOIN vault_access a ON a.vault_id = v.id WHERE v.id = $1 AND a.account_id = $2`,
+		vaultID, accountID).Scan(&encName, &wrappedKey); err != nil {
+		return convertNoRowsToNotFound(err)
+	}
+	if vault.keyGeneration != review.KeyGeneration || !bytes.Equal(encName, review.EncName) || !bytes.Equal(wrappedKey, review.WrappedKey) {
+		return ErrReviewChanged
+	}
+	return nil
+}
 
 // MovedItem is an item re-encrypted for the target vault; BaseRevision is its revision in the deleted vault.
 type MovedItem struct {
@@ -26,7 +52,7 @@ type MovedItem struct {
 }
 
 // VaultDeletion: with MoveToVaultID, MovedItems must be exactly the vault's live items at their current revisions, sealed
-// with the target vault's key of MoveToKeyGeneration.
+// with the target vault's key of MoveToKeyGeneration. With Review, the vault must still be as reviewed.
 type VaultDeletion struct {
 	VaultID             string
 	AccountID           string
@@ -35,10 +61,12 @@ type VaultDeletion struct {
 	IsDeletingItems     bool
 	MoveToKeyGeneration int64
 	KeyGeneration       int64
+	Review              *VaultReview
 }
 
 // RenameVault checks owner authority and the current key policy under the vault lock before storing the sealed name.
-func (s *Store) RenameVault(ctx context.Context, vaultID, renamedBy string, encName []byte, keyGeneration int64) error {
+// With review, the vault must still be as reviewed (ErrReviewChanged).
+func (s *Store) RenameVault(ctx context.Context, vaultID, renamedBy string, encName []byte, keyGeneration int64, review *VaultReview) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, vaultID)
 		if err != nil {
@@ -48,6 +76,9 @@ func (s *Store) RenameVault(ctx context.Context, vaultID, renamedBy string, encN
 			return err
 		}
 		if err := vault.checkItemKeyGeneration(keyGeneration); err != nil {
+			return err
+		}
+		if err := checkReview(ctx, transaction, vaultID, renamedBy, vault, review); err != nil {
 			return err
 		}
 		_, err = transaction.Exec(ctx, `UPDATE vaults SET enc_name = $2 WHERE id = $1`, vaultID, encName)
@@ -92,8 +123,17 @@ func (s *Store) DeleteVault(ctx context.Context, deletion VaultDeletion) ([]stri
 		if role != "owner" {
 			return ErrNotOwner
 		}
+		if err := checkReview(ctx, transaction, deletion.VaultID, deletion.AccountID, vault, deletion.Review); err != nil {
+			return err
+		}
 		if vault.vaultType == "personal" {
-			return ErrPersonalVault
+			var isPrimary bool
+			if err := transaction.QueryRow(ctx, `SELECT $1::uuid = (SELECT id FROM vaults WHERE created_by = $2 AND type = 'personal' ORDER BY created_at, id LIMIT 1)`, deletion.VaultID, deletion.AccountID).Scan(&isPrimary); err != nil {
+				return err
+			}
+			if isPrimary {
+				return ErrPersonalVault
+			}
 		}
 		var vaultCount int
 		if err := transaction.QueryRow(ctx, `SELECT count(*) FROM vault_access WHERE account_id = $1`, deletion.AccountID).Scan(&vaultCount); err != nil {

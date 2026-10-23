@@ -138,7 +138,7 @@ func TestStagedRotationRejectsConcurrentChanges(t *testing.T) {
 				item.Details = []byte("concurrent edit")
 				_, err = database.PutItem(ctx, vaultID, base, 1, item)
 			case "name":
-				err = database.RenameVault(ctx, vaultID, "AAAAAA", []byte("concurrent name"), 1)
+				err = database.RenameVault(ctx, vaultID, "AAAAAA", []byte("concurrent name"), 1, nil)
 			case "access":
 				_, err = database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte("old-b"), GrantedBy: "AAAAAA"}, 1)
 			case "owner":
@@ -190,7 +190,7 @@ func TestOwnerRemovalBlocksExposedGenerationUntilRotation(t *testing.T) {
 	if _, err := database.PutItem(ctx, vaultID, "", 1, item); !errors.Is(err, ErrRotationPending) {
 		t.Fatalf("exposed key write: %v", err)
 	}
-	if err := database.RenameVault(ctx, vaultID, "AAAAAA", []byte("new"), 1); !errors.Is(err, ErrRotationPending) {
+	if err := database.RenameVault(ctx, vaultID, "AAAAAA", []byte("new"), 1, nil); !errors.Is(err, ErrRotationPending) {
 		t.Fatalf("exposed name: %v", err)
 	}
 	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "CCCCCC", Role: "reader", WrappedKey: []byte("old"), GrantedBy: "AAAAAA"}, 1); !errors.Is(err, ErrRotationPending) {

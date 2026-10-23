@@ -124,7 +124,7 @@ func TestAdminSetupKeepsTheSecretKeyWhenThePersonalVaultFails(t *testing.T) {
 	setupToken := startSetup(t, server)
 	proxy := httputil.NewSingleHostReverseProxy(requireValue[*url.URL](t)(url.Parse(baseURL)))
 	failingVaults := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method == http.MethodPost && request.URL.Path == "/api/v1/vaults" {
+		if request.Method == http.MethodPost && request.URL.Path == "/api/v1/vaults/personal" {
 			http.Error(writer, `{"error":"internal error"}`, http.StatusInternalServerError)
 			return
 		}

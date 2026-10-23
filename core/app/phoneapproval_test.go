@@ -603,10 +603,10 @@ func TestPhoneApprovalDoesNotDependOnTheLastSyncBeingOnline(t *testing.T) {
 	}
 	test.apiServer.setUnreachable(true)
 	test.service.ListVaults()
-	test.apiServer.setUnreachable(false)
 	if !test.service.GetStatus().IsOffline {
 		t.Fatal("the test did not leave the session offline")
 	}
+	test.apiServer.setUnreachable(false)
 	if !test.phoneApprover.IsPhoneApprovalAvailable() {
 		t.Error("an offline flag from an earlier sync hid the phone")
 	}

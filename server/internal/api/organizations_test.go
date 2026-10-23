@@ -522,6 +522,7 @@ func TestOrganizationVaultRotationFromAStaleKey(t *testing.T) {
 	if err := alice.RotateVaultKey(ctx, production, grants); err != nil {
 		t.Fatalf("the first rotation: %v", err)
 	}
+	// Bob's copy names a key generation the server replaced, so the staged rotation is refused before anything is staged.
 	expectStatus(t, "a second rotation from the same key", bob.RotateVaultKey(ctx, bobProduction, grants), http.StatusConflict)
 
 	if listed, _ := findListedVault(t, alice, production.ID); listed.KeyGeneration != 2 {

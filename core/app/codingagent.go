@@ -56,17 +56,16 @@ type agentSecretSource struct {
 	serviceSecretSource
 }
 
-func (source agentSecretSource) ListVaults() ([]secretreference.Vault, error) {
-	vaults, err := source.serviceSecretSource.ListVaults()
-	if err != nil {
-		return nil, err
+func (source agentSecretSource) ListVaults() (secretreference.Inventory, error) {
+	if err := source.loadVaults(); err != nil {
+		return secretreference.Inventory{}, err
 	}
-	return slices.DeleteFunc(vaults, func(vault secretreference.Vault) bool { return !source.service.isAgentVault(vault.ID) }), nil
+	return source.service.listSecretVaults(source.service.isAgentVault), nil
 }
 
-func (source agentSecretSource) ListItems(vaultID string) ([]item.Item, error) {
+func (source agentSecretSource) ListItems(vaultID string) (secretreference.ItemList, error) {
 	if !source.service.isAgentVault(vaultID) {
-		return nil, fmt.Errorf("vault %w", ErrNotFound)
+		return secretreference.ItemList{}, fmt.Errorf("vault %w", ErrNotFound)
 	}
 	return source.serviceSecretSource.ListItems(vaultID)
 }
@@ -107,12 +106,11 @@ func (s *Service) listAgentVaultSummaries() (cliprotocol.AgentVaultListResult, e
 		return result, err
 	}
 	for _, vault := range vaults {
-		items, err := s.unlockedSession.ListItems(ctx, vault)
+		read, err := s.readVaultItems(ctx, vault)
 		if err != nil {
-			return result, convertError(err)
+			return result, err
 		}
-		s.itemsByVaultID[vault.ID] = items
-		result.Vaults = append(result.Vaults, cliprotocol.AgentVault{ID: vault.ID, Name: vault.Name, ItemCount: len(items)})
+		result.Vaults = append(result.Vaults, cliprotocol.AgentVault{ID: vault.ID, Name: vault.Name, ItemCount: len(read.Items)})
 	}
 	return result, nil
 }
@@ -177,15 +175,15 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 			return result, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("no vault available to agents is named %q", vaultQuery))
 		}
 	}
-	vaultNames := countVaultNames(s.vaultsByID)
+	vaultNames := countVaultNames(s.listSecretVaults(isAnyVault))
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, vault := range vaults {
-		items, err := s.unlockedSession.ListItems(ctx, vault)
+		read, err := s.readVaultItems(ctx, vault)
 		if err != nil {
-			return result, convertError(err)
+			return result, err
 		}
-		s.itemsByVaultID[vault.ID] = items
-		itemTitles := countItemTitles(items)
+		items := read.Items
+		itemTitles := countItemTitles(s.listSecretItems(vault.ID))
 		for index := range items {
 			vaultItem := &items[index]
 			if !isAgentSearchMatch(vault.Name, vaultItem, normalizedQuery) {
@@ -226,16 +224,16 @@ func (s *Service) buildAgentReferences(source agentSecretSource, request *clipro
 		reference.Field = secretreference.FieldOneTimeCode
 		return []string{reference.String()}, nil
 	}
-	vaults, err := source.ListVaults()
+	inventory, err := source.ListVaults()
 	if err != nil {
 		return nil, err
 	}
-	for _, vault := range vaults {
+	for _, vault := range inventory.Vaults {
 		items, err := source.ListItems(vault.ID)
 		if err != nil {
 			return nil, err
 		}
-		if slices.ContainsFunc(items, func(vaultItem item.Item) bool { return vaultItem.ID == request.ItemID }) {
+		if slices.ContainsFunc(items.Items, func(vaultItem item.Item) bool { return vaultItem.ID == request.ItemID }) {
 			return []string{secretreference.Reference{Vault: vault.ID, Item: request.ItemID, Field: secretreference.FieldOneTimeCode}.String()}, nil
 		}
 	}
@@ -306,11 +304,11 @@ func (s *Service) locateAgentItem(vaultID, itemID string) (clisocket.AgentSecret
 	if err != nil {
 		return clisocket.AgentSecret{}, err
 	}
-	index := slices.IndexFunc(items, func(vaultItem item.Item) bool { return vaultItem.ID == itemID })
+	index := slices.IndexFunc(items.Items, func(vaultItem item.Item) bool { return vaultItem.ID == itemID })
 	if index < 0 {
 		return clisocket.AgentSecret{}, fmt.Errorf("item %w", ErrNotFound)
 	}
-	return clisocket.AgentSecret{VaultID: vaultID, ItemID: itemID, VaultName: vault.Name, ItemTitle: items[index].Overview.Title}, nil
+	return clisocket.AgentSecret{VaultID: vaultID, ItemID: itemID, VaultName: vault.Name, ItemTitle: items.Items[index].Overview.Title}, nil
 }
 
 // answerAgentSessionRequest answers what clisocket lets an ordinary hisar command inside an agent harness send, among
@@ -318,7 +316,7 @@ func (s *Service) locateAgentItem(vaultID, itemID string) (clisocket.AgentSecret
 func (bridge *CommandLineBridge) answerAgentSessionRequest(epoch uint64, request *cliprotocol.Request) (any, error) {
 	s := bridge.service
 	switch request.Type {
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		summaries, err := s.ListVaults()
 		if err != nil {
 			return nil, err
@@ -327,11 +325,15 @@ func (bridge *CommandLineBridge) answerAgentSessionRequest(epoch uint64, request
 		result := cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{}}
 		for _, summary := range summaries {
 			if slices.Contains(agentVaultIDs, summary.ID) {
+				if request.Type == cliprotocol.TypeListVault && len(summary.ReadIssues) != 0 {
+					return nil, session.ErrIncompleteRead
+				}
+				result.Issues = append(result.Issues, summary.ReadIssues...)
 				result.Vaults = append(result.Vaults, convertToCommandLineVault(summary))
 			}
 		}
 		return result, nil
-	case cliprotocol.TypeListItem, cliprotocol.TypeGetItem:
+	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem, cliprotocol.TypeGetItem:
 		if !slices.Contains(s.ListAgentVaultIDs(), request.VaultID) {
 			return nil, fmt.Errorf("vault %w", ErrNotFound)
 		}

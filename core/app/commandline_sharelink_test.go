@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/http/httputil"
@@ -15,6 +16,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/core/sharelink"
 )
 
@@ -193,5 +195,25 @@ func TestCommandLineShareLinkDescription(t *testing.T) {
 	testService.service.Lock()
 	if title, labels := bridge.DescribeShareLink(request); title != "git" || strings.Join(labels, ",") != "URL" {
 		t.Errorf("locked description %q %v", title, labels)
+	}
+}
+
+// A vault or item that did not open may have the name or title asked for, so hisar share-link refuses names beside one.
+func TestCommandLineItemLookupRefusesNamesAmongUnreadableRecords(t *testing.T) {
+	f := createUnlockedTestService(t)
+	saveTestItem(t, f.service, f.personalID, ItemDetail{Title: "Deploy", Password: "test-only"})
+	if _, _, err := f.service.resolveCommandLineItem("Personal", "Deploy"); err != nil {
+		t.Fatalf("lookup among readable records: %v", err)
+	}
+	judgeCorruptFamilyName(t, f)
+	if _, _, err := f.service.resolveCommandLineItem("Personal", "Deploy"); !errors.Is(err, session.ErrIncompleteRead) {
+		t.Errorf("vault name lookup beside an unreadable vault name: %v, want an incomplete read", err)
+	}
+
+	f = createUnlockedTestService(t)
+	saveTestItem(t, f.service, f.personalID, ItemDetail{Title: "Deploy", Password: "test-only"})
+	injectJudgeBadItem(t, f)
+	if _, _, err := f.service.resolveCommandLineItem("Personal", "Deploy"); !errors.Is(err, session.ErrIncompleteRead) {
+		t.Errorf("title lookup beside an unreadable item: %v, want an incomplete read", err)
 	}
 }

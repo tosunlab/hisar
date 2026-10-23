@@ -38,6 +38,7 @@ Five Go modules joined by `go.work`, plus six non-Go apps.
 | `item` | The plaintext item model and its categories (`schema.go`: types kept as named fields; `card.go`, `identity.go`, `apicredential.go`, `license.go`, `server.go`, `database.go`, `address.go`, whose fields identities and cards share), the chosen icon and its presets (`icon.go`), the Android apps a login fills into, stored among its URLs as `androidapp://<package>?sha256=<certificate>` so older apps keep them (`androidapp.go`), `LookupField`, the password generator |
 | `itemicon` | Icon images: normalizing uploads and website icons into small PNGs, and fetching website icons from public https sites only |
 | `cache` | The offline SQLite copy of the server's encrypted records, and the device's sealed website icons |
+| `snapshot` | A vault's published cache snapshot as `session` sees it (`Checkpoint`, the `Staging` that publishes one), without SQLite: `session` must never import `cache`, because the admin dashboard's wasm build imports `session` |
 | `localstate` | `state.json` (session state plus embedded device `Settings`) and the Secret Key in the keychain (`ErrNoSecretService` when Linux has no keyring) |
 | `app` | The backend of the Mac, iPhone and Android apps, bound to the UI (see below) |
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |

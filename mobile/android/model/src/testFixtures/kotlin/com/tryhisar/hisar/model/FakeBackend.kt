@@ -502,6 +502,28 @@ open class FakeBackend : VaultBackend {
         allPasskey.removeAll { it.vaultID == vaultID && it.itemID == itemID }
     }
 
+    override fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String) {
+        requireUnlocked()
+        if (allItemByVaultID[vaultID]?.any { it.id == itemID && it.revision == revision && it.readIssue?.canDelete == true } != true) throw BackendError("The unreadable record changed")
+        allItemByVaultID[vaultID]?.removeAll { it.id == itemID }
+        allVault = allVault.map { if (it.id == vaultID) it.copy(readIssues = it.readIssues.filter { issue -> issue.itemId != itemID }) else it }.toMutableList()
+    }
+
+    override fun deleteUnreadableVault(vaultID: String, revision: String) {
+        requireUnlocked()
+        if (allVault.none { it.id == vaultID && it.readIssues.any { issue -> issue.canDelete && issue.itemId.isEmpty() && issue.revision == revision } }) throw BackendError("The unreadable vault changed")
+        allVault.removeAll { it.id == vaultID }
+        allItemByVaultID.remove(vaultID)
+    }
+
+    override fun repairVaultName(vaultID: String, revision: String, name: String): VaultSummary {
+        requireUnlocked()
+        val index = allVault.indexOfFirst { it.id == vaultID && it.readIssues.any { issue -> issue.canRename && issue.revision == revision } }
+        if (index < 0) throw BackendError("The unreadable vault changed")
+        allVault[index] = allVault[index].copy(name = name.trim(), readIssues = allVault[index].readIssues.filter { it.itemId.isNotEmpty() })
+        return allVault[index]
+    }
+
     override fun getOneTimeCode(vaultID: String, itemID: String): OneTimeCode {
         record("getOneTimeCode")
         if (!getItem(vaultID, itemID).hasOneTimePassword) throw BackendError("One-time password not found")

@@ -46,3 +46,18 @@ func (hisar *Hisar) ExportAllData(format, passphrase, password, directory string
 	releaseMemory()
 	return encodeJSON(result, err)
 }
+
+func (hisar *Hisar) DeleteUnreadableItem(vaultID, itemID, revision string) error {
+	return hisar.service.DeleteUnreadableItem(vaultID, itemID, revision)
+}
+
+// DeleteUnreadableVault and RepairVaultName act only on the unreadable vault record the user reviewed: revision is the
+// issue's revision (app.Service.DeleteUnreadableVault).
+func (hisar *Hisar) DeleteUnreadableVault(vaultID, revision string) error {
+	return hisar.service.DeleteUnreadableVault(vaultID, revision)
+}
+
+// RepairVaultName returns app.VaultSummary as JSON.
+func (hisar *Hisar) RepairVaultName(vaultID, revision, name string) (string, error) {
+	return encodeJSON(hisar.service.RepairVaultName(vaultID, revision, name))
+}
