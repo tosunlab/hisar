@@ -26,6 +26,10 @@ QUIET_CORES = 0.25
 QUIET_SECONDS = 30
 WAIT_LIMIT_SECONDS = 900
 REPORT_BIN_SECONDS = 30
+# On the GitHub macOS runners apsd and diagnosticd stay busy for the whole job at about the same rate (0.4 to 0.8 cores
+# together for 15 minutes after the prewarm in job 120658368484), so they are not post-boot work and never quiet down; the
+# wait leaves them out, and the report shows them.
+STEADY_PROCESSES = {"apsd", "diagnosticd"}
 # On a loaded runner one ps over the process table took over 10 s (job 120643275783); a slow or failed sample is skipped.
 COMMAND_TIMEOUT_SECONDS = 60
 STALE_SECONDS = 120
@@ -145,8 +149,9 @@ def wait(path):
             begin = max(index for index, sample in enumerate(samples) if end - sample["t"] >= QUIET_SECONDS)
             window = samples[begin:]
             by_name = used(window)
-            cores = sum(by_name.values()) / (end - window[0]["t"])
-            status = f"{cores:.2f} cores over the last {QUIET_SECONDS} s ({busiest(by_name)})"
+            wave = collections.Counter({name: seconds for name, seconds in by_name.items() if name not in STEADY_PROCESSES})
+            cores = sum(wave.values()) / (end - window[0]["t"])
+            status = f"{cores:.2f} cores over the last {QUIET_SECONDS} s besides apsd and diagnosticd ({busiest(wave)})"
             if cores < QUIET_CORES:
                 print(f"The simulator is quiet: {status}, {end - samples[0]['t']:.0f} s after recording began")
                 return
