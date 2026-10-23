@@ -63,10 +63,17 @@ stop_stall_sampler() {
   wait "$pid" 2>/dev/null || true
 }
 stop_load_recorder() {
-  [ -n "$UI_TEST_LOAD_RECORDER" ] || return 0
-  kill -TERM "$UI_TEST_LOAD_RECORDER" 2>/dev/null || true
-  wait "$UI_TEST_LOAD_RECORDER" 2>/dev/null || true
+  local pid=$UI_TEST_LOAD_RECORDER
+  [ -n "$pid" ] || return 0
   UI_TEST_LOAD_RECORDER=
+  # The recorder stops within one sample of SIGTERM; one still running after 5 s is killed.
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.5
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
 }
 # xcodebuild boots its own clones of the simulator, and a booted simulator cannot be cloned. The tests start once the
 # simulator has run its deferred post-boot work (mobile/ios/scripts/wait-for-post-boot-work.sh: the poster prewarm comes
