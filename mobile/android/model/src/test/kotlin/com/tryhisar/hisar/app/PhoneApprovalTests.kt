@@ -452,7 +452,7 @@ class PhoneApprovalTests {
         val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))
         val (olderPoll, finishOlderPoll) = startHeldListing(harness) { model.approvals.refreshPendingApproval() }
         harness.backend.withApprovalLock { harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90)) }
-        finish("the request's listing", launch { model.approvals.refreshPendingApproval(isOpeningNewRequest = true) })
+        finish("the request's listing", launch { model.approvals.refreshPendingApproval(announcedRequestID = "second") })
         assertEquals("second", model.approvals.presentedApproval.value?.requestID)
         finishOlderPoll()
         finish("the older poll", olderPoll)
@@ -465,12 +465,56 @@ class PhoneApprovalTests {
         val harness = AppModelHarness(this)
         val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))
         harness.backend.withApprovalLock { harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90)) }
-        val (requestListing, finishRequestListing) = startHeldListing(harness) { model.approvals.refreshPendingApproval(isOpeningNewRequest = true) }
+        val (requestListing, finishRequestListing) = startHeldListing(harness) { model.approvals.refreshPendingApproval(announcedRequestID = "second") }
         finish("the poll", launch { model.approvals.refreshPendingApproval() })
         assertEquals(listOf("first", "second"), model.approvals.allPendingApproval.value.map { it.requestID })
         finishRequestListing()
         finish("the request's listing", requestListing)
         assertEquals("second", model.approvals.presentedApproval.value?.requestID, "a poll that overtook the new request's listing kept its sheet from opening")
+    }
+
+    @Test
+    fun testTwoRequestsListedTogetherOpenTheFirstSheet() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))
+        harness.backend.withApprovalLock {
+            harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90))
+            harness.backend.allPendingApproval.add(createApproval("third", secondsLeft = 90))
+        }
+        val (secondListing, finishSecondListing) = startHeldListing(harness) { model.approvals.refreshPendingApproval(announcedRequestID = "second") }
+        val (thirdListing, finishThirdListing) = startHeldListing(harness) { model.approvals.refreshPendingApproval(announcedRequestID = "third") }
+        finishSecondListing()
+        finish("the second request's listing", secondListing)
+        finishThirdListing()
+        finish("the third request's listing", thirdListing)
+        assertEquals(listOf("first", "second", "third"), model.approvals.allPendingApproval.value.map { it.requestID })
+        assertEquals("second", model.approvals.presentedApproval.value?.requestID, "two requests listed by both their listings opened no sheet")
+    }
+
+    @Test
+    fun testClosingASheetKeepsEarlierRequestsFromOpeningOne() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))
+        model.approvals.reviewApproval(model.approvals.allPendingApproval.value[0])
+        harness.backend.withApprovalLock { harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90)) }
+        val (requestListing, finishRequestListing) = startHeldListing(harness) { model.approvals.refreshPendingApproval(announcedRequestID = "second") }
+        model.approvals.closeApprovalSheet()
+        finish("the poll", launch { model.approvals.refreshPendingApproval() })
+        finishRequestListing()
+        finish("the request's listing", requestListing)
+        assertEquals(listOf("first", "second"), model.approvals.allPendingApproval.value.map { it.requestID })
+        assertNull(model.approvals.presentedApproval.value, "a request announced before the user closed a sheet opened one")
+    }
+
+    @Test
+    fun testARequestAnnouncedAfterClosingASheetOpensIt() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))
+        model.approvals.reviewApproval(model.approvals.allPendingApproval.value[0])
+        model.approvals.closeApprovalSheet()
+        harness.backend.withApprovalLock { harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90)) }
+        finish("the request's listing", launch { model.approvals.refreshPendingApproval(announcedRequestID = "second") })
+        assertEquals("second", model.approvals.presentedApproval.value?.requestID)
     }
 
     @Test
