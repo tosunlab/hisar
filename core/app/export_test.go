@@ -21,7 +21,7 @@ func TestEmergencyKitReplacesAnOpenFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	service.config.FileSaver.(*fakeFileSaver).path = path
-	kit := emergencykit.Kit{Name: "A", Email: "a@example.com", Server: "https://hisar.example.com", SecretKey: "H1-TEST", CreatedAt: time.Now()}
+	kit := emergencykit.Kit{Name: "A", Email: "a@example.com", Server: "https://hisar.example.com", SecretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", CreatedAt: time.Now()}
 	if _, err := service.writeEmergencyKit(kit, service.sessionEpoch); err != nil {
 		t.Fatal(err)
 	}

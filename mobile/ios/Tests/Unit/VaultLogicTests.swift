@@ -1,3 +1,4 @@
+import CoreImage
 import XCTest
 @testable import Hisar
 
@@ -203,6 +204,53 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertNil(SignInLink.parse("https://hisar.example.com/invite/abc"))
         XCTAssertNil(SignInLink.parse("hisar://sign-in"))
         XCTAssertNil(SignInLink.parse("hisar://other?server=x"))
+    }
+
+    func testPlainTextEmergencyKitPreservesBytesAndRejectsInvalidPayloads() {
+        let payload = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL2hpc2FyLmV4YW1wbGUvYT94PW9uZSt0d29cdTAwMjZ5PSUyMCIsImVtYWlsIjoiYWxwZXIra2l0QHRyeWhpc2FyLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        XCTAssertEqual(SignInLink.parse(payload), SignInLink(server: "https://hisar.example/a?x=one+two&y=%20", email: "alper+kit@tryhisar.com", secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"))
+        XCTAssertNil(InviteLink.parse(payload))
+        for invalid in [payload + "=", payload + "\n", payload.replacingOccurrences(of: "HISARKIT1 ", with: "HISARKIT2 "), "HISARKIT1 e30", "HISARKIT1:", "HISARKIT1 _w"] {
+            XCTAssertNil(SignInLink.parse(invalid), invalid)
+        }
+        for json in [#"{"server":"https://h","email":"a@b","secretKey":1}"#, #"{"server":"https://h","email":"a@b","secretKey":"H1-INVALID"}"#, #"{"server":"javascript:bad","email":"a@b","secretKey":"H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"}"#] {
+            let encoded = Data(json.utf8).base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+            XCTAssertNil(SignInLink.parse("HISARKIT1 " + encoded))
+        }
+        let unicodeJSON = #"{"server":"https://hisar.example/İstanbul/東京","email":"élève+🔐@example.test","secretKey":"H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"}"#
+        func encode(_ data: Data) -> String {
+            "HISARKIT1 " + data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        }
+        XCTAssertEqual(SignInLink.parse(encode(Data(unicodeJSON.utf8))), SignInLink(server: "https://hisar.example/İstanbul/東京", email: "élève+🔐@example.test", secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"))
+        for encoding in [String.Encoding.utf16, .utf16LittleEndian, .utf16BigEndian, .utf32, .utf32LittleEndian, .utf32BigEndian] {
+            XCTAssertNil(SignInLink.parse(encode(unicodeJSON.data(using: encoding)!)), "\(encoding)")
+        }
+        let malformed = Data(unicodeJSON.utf8) + Data([0xC3, 0x28])
+        XCTAssertNil(SignInLink.parse(encode(malformed)))
+        XCTAssertEqual(SignInLink.parse("hisar://sign-in?secretKey=%20key%2Bbytes%20")?.secretKey, " key+bytes ")
+    }
+
+    func testPlainTextEmergencyKitWithInternationalServerName() {
+        let payload = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL-S-i-OBiC50ZXN0Ojg0NDMiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        XCTAssertEqual(SignInLink.parse(payload), SignInLink(server: "https://例え.test:8443", email: "李雷@例え.test", secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"))
+        let withUser = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL3VzZXJA5L6L44GILnRlc3QiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        XCTAssertNil(SignInLink.parse(withUser))
+    }
+
+    func testPlainTextAndLegacyKitFramesDecodeForSignIn() throws {
+        let payloads = [
+            "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL2hpc2FyLmV4YW1wbGUvYT94PW9uZSt0d29cdTAwMjZ5PSUyMCIsImVtYWlsIjoiYWxwZXIra2l0QHRyeWhpc2FyLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ",
+            "hisar://sign-in?server=https%3A%2F%2Fhisar.example%2Fa%3Fx%3Done%2Btwo%26y%3D%2520&email=alper%2Bkit%40tryhisar.com&secretKey=H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M",
+        ]
+        for payload in payloads {
+            let filter = try XCTUnwrap(CIFilter(name: "CIQRCodeGenerator", parameters: ["inputMessage": Data(payload.utf8), "inputCorrectionLevel": "M"]))
+            let image = try XCTUnwrap(filter.outputImage?.transformed(by: CGAffineTransform(scaleX: 6, y: 6)))
+            let detector = try XCTUnwrap(CIDetector(ofType: CIDetectorTypeQRCode, context: CIContext(options: [.useSoftwareRenderer: true]), options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+            let decoded = try XCTUnwrap((detector.features(in: image).first as? CIQRCodeFeature)?.messageString)
+            XCTAssertEqual(decoded, payload)
+            XCTAssertEqual(SignInLink.parse(decoded)?.secretKey, "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M")
+            XCTAssertEqual(SignInLink.parse(decoded)?.email, "alper+kit@tryhisar.com")
+        }
     }
 
     func testInviteLinkFromInvitePage() {

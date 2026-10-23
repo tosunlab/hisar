@@ -39,6 +39,11 @@ The signing script checks the profile, embeds it, and emits the authorized entit
 wrapper only after a protected readback succeeds. A missing profile leaves password unlock available and shows the setup
 error instead of claiming that Touch ID protection is active. Enrollment changes require password fallback and fresh setup.
 
+For the printable kit QR smoke on macOS, run `HISAR_TEST_KIT_PDF=/tmp/hisar-kit.pdf go test ./core/emergencykit -run
+TestGenerateProducesSinglePagePDF -count=1` from the repository root, then
+`swift scripts/test-emergency-kit-qr.swift /tmp/hisar-kit.pdf`. This renders the actual PDF and decodes its QR with Vision.
+It does not verify external camera applications or signed Touch ID behavior.
+
 ### DMG and releases
 
 `make package-desktop-dmg VERSION=0.1.0` builds a universal (Apple silicon and Intel) `Hisar.app` with Sparkle embedded,

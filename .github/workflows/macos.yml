@@ -93,6 +93,10 @@ jobs:
         run: go -C desktop test -count=1 -v ./biometric/
       - name: Test Touch ID provisioning boundary
         run: python3 scripts/test-desktop-keychain-entitlements.py
+      - name: Decode the printable Emergency Kit QR
+        run: |
+          HISAR_TEST_KIT_PDF="$RUNNER_TEMP/emergency-kit.pdf" go -C core test -count=1 -run TestGenerateProducesSinglePagePDF ./emergencykit
+          swift scripts/test-emergency-kit-qr.swift "$RUNNER_TEMP/emergency-kit.pdf"
       - name: Pasteboard tests
         run: go -C desktop test -count=1 -v ./pasteboard/
       - name: Test Sparkle cache verification
