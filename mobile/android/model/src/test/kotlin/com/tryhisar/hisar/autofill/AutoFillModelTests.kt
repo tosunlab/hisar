@@ -638,6 +638,24 @@ class AutoFillModelTests {
         assertEquals(listOf(Unit, Unit), allUnlockCompletion)
     }
 
+    @Test
+    fun testSharedPasskeyDestinationRequiresExplicitSelection() = runTest {
+        backend.seedSignedIn()
+        backend.allItemByVaultID["family"]?.add(ItemDetail(id = "attacker", category = "login", title = "AAA shared", username = "victim", allURL = listOf("https://example.com")))
+        val model = createModel()
+        val request = PasskeyRegistrationRequest("example.com", "victim", ByteString(9), clientDataHash)
+        model.prepareInterfaceForPasskeyRegistration(request)
+        assertNull(model.selectedRegistrationLoginID.value)
+        assertEquals(false, model.passkeyRegistrationOptions.value?.allLogin?.first()?.isPersonal)
+        model.savePasskey()
+        assertEquals("personal", backend.allPasskey.last().vaultID)
+        model.prepareInterfaceForPasskeyRegistration(request)
+        model.selectedRegistrationLoginID.value = "family/attacker"
+        model.savePasskey()
+        assertEquals("family", backend.allPasskey.last().vaultID)
+        assertEquals(2, allRegistration.size)
+    }
+
     private fun linkBankLogin(app: AndroidApp) {
         backend.addAndroidApp("personal", "bank", app.packageName, app.certificateSHA256)
         backend.allCallName.clear()

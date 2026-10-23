@@ -445,7 +445,7 @@ class AutoFillModel(
         val options = performWithinUnlock { it.preparePasskeyRegistration(request.relyingPartyID, request.allExcludedCredentialID) } ?: return
         mutablePasskeyRegistrationOptions.value = options
         val userName = request.userName.trim()
-        selectedRegistrationLoginID.value = options.allLogin.firstOrNull { userName.isNotEmpty() && it.username.equals(userName, ignoreCase = true) }?.id
+        selectedRegistrationLoginID.value = options.allLogin.firstOrNull { it.isPersonal && userName.isNotEmpty() && it.username.equals(userName, ignoreCase = true) }?.id
     }
 
     /** Saves the passkey to the chosen login, or to a new login in the Personal vault, once the device owner confirms. */
