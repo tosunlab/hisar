@@ -137,10 +137,32 @@ func (s *Session) FindVault(ctx context.Context, nameOrID string) (*Vault, error
 	if len(result.Issues) != 0 {
 		return nil, ErrIncompleteRead
 	}
+	return selectVault(vaults, nameOrID)
+}
+
+// selectVault picks the vault with this ID, else the one vault with this name ignoring case; a name several vaults have
+// is refused with their IDs, so the caller can choose one. vaults must be a complete inventory.
+func selectVault(vaults []Vault, nameOrID string) (*Vault, error) {
 	for i := range vaults {
-		if strings.EqualFold(vaults[i].Name, nameOrID) {
+		if vaults[i].ID == nameOrID {
 			return &vaults[i], nil
 		}
+	}
+	matches := []*Vault{}
+	for index := range vaults {
+		if strings.EqualFold(vaults[index].Name, nameOrID) {
+			matches = append(matches, &vaults[index])
+		}
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	if len(matches) > 1 {
+		candidates := make([]string, 0, len(matches))
+		for _, vault := range matches {
+			candidates = append(candidates, fmt.Sprintf("%s (name %q, type %s, role %s)", vault.ID, vault.Name, vault.Type, vault.Role))
+		}
+		return nil, fmt.Errorf("%d vaults are named %q; use an ID instead: %s", len(matches), nameOrID, strings.Join(candidates, ", "))
 	}
 	return nil, fmt.Errorf("vault %q: %w", nameOrID, ErrNotFound)
 }

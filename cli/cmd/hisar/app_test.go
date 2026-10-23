@@ -695,6 +695,53 @@ func TestEditingAServerKeepsOrRemovesItsSSHKey(t *testing.T) {
 	}
 }
 
+func TestEditingAServerTakesAnIDThatTheLinkedKeyHasAsItsTitle(t *testing.T) {
+	const keyID = "12345678-1234-4234-8234-123456789abc"
+	originalReader := stdinReader
+	defer func() { stdinReader = originalReader }()
+	vaultItems := []item.Item{
+		{ID: "shadow-id", Overview: item.Overview{Title: keyID, Category: item.CategorySSHKey}},
+		{ID: keyID, Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey}},
+	}
+	stdinReader = bufio.NewReader(strings.NewReader("\n\n\n\n\n\n" + keyID + "\n"))
+	vaultItem := item.Item{Overview: item.Overview{Title: "Build", Category: item.CategoryServer}}
+	item.WriteServer(&vaultItem, item.Server{Host: "build.example.com", SSHKeyID: "shadow-id"}, nil)
+	if err := promptServer(&vaultItem, vaultItems); err != nil {
+		t.Fatal(err)
+	}
+	if server, _ := item.ReadServer(&vaultItem); server.SSHKeyID != keyID {
+		t.Errorf("typed ID %s linked %q", keyID, server.SSHKeyID)
+	}
+}
+
+func TestServerSSHKeyTakesAnIDThatAnotherKeyHasAsItsTitle(t *testing.T) {
+	const keyID = "12345678-1234-4234-8234-123456789abc"
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		if request.Type == cliprotocol.TypeListItem {
+			return cliprotocol.ItemListResult{Items: []cliprotocol.Item{
+				{ID: keyID, Category: item.CategorySSHKey, Title: "Deploy"}, {ID: "shadow-id", Category: item.CategorySSHKey, Title: keyID},
+				{ID: "twin-a", Category: item.CategorySSHKey, Title: "Twin"}, {ID: "twin-b", Category: item.CategorySSHKey, Title: "twin"},
+			}}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	input := "Build server\nbuild.example.com\n\ndeploy\nserver-password\n\ntwin\n" + keyID + "\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "server")
+	if err != nil {
+		t.Fatalf("add --type server: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "twin-a") || !strings.Contains(stderr, "twin-b") {
+		t.Errorf("two keys titled twin, without their IDs: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	if added.Fields == nil || !slices.Contains(*added.Fields, cliprotocol.Field{Name: item.FieldSSHKey, Value: keyID}) {
+		t.Errorf("the server links %+v, not the key with ID %s", added.Fields, keyID)
+	}
+}
+
 func TestEditingAnAddressKeepsItsStreetOnAnEmptyLine(t *testing.T) {
 	originalReader := stdinReader
 	defer func() { stdinReader = originalReader }()

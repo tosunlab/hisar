@@ -248,6 +248,53 @@ func TestAgentSearchReturnsMetadataAndReferencesButNeverValues(t *testing.T) {
 	}
 }
 
+func TestAgentSearchKeepsToTheNamedVaultAndIgnoresHiddenNames(t *testing.T) {
+	test := createCodingAgentTest(t)
+	test.makePersonalAvailable(t)
+	service := test.testService.Service
+	personalID := test.testService.PersonalVaultID
+	findPasswordReference := func() string {
+		t.Helper()
+		var searchOutput mcpserver.SearchItemsOutput
+		test.mustCall(t, "search_items", map[string]any{"query": "github"}, &searchOutput)
+		for _, field := range searchOutput.Items[0].Fields {
+			if field.Label == "password" {
+				return field.Reference
+			}
+		}
+		t.Fatalf("no password reference in %+v", searchOutput.Items)
+		return ""
+	}
+	before := findPasswordReference()
+	if _, err := service.CreateVault("PERSONAL"); err != nil {
+		t.Fatal(err)
+	}
+	if after := findPasswordReference(); after != before {
+		t.Errorf("a vault agents cannot see changed a reference from %s to %s", before, after)
+	}
+
+	shadowVault, err := service.CreateVault(personalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveItem(shadowVault.ID, app.ItemDetail{Title: "Shadow", Password: "shadow-password"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetVaultAvailableToAgents(shadowVault.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	var searchOutput mcpserver.SearchItemsOutput
+	test.mustCall(t, "search_items", map[string]any{"query": "", "vault": personalID}, &searchOutput)
+	if searchOutput.TotalCount != 2 {
+		t.Errorf("search in vault %s found %d items, want its 2", personalID, searchOutput.TotalCount)
+	}
+	for _, found := range searchOutput.Items {
+		if found.VaultID != personalID {
+			t.Errorf("search by vault ID also returned %q from vault %s, which is named that ID", found.Title, found.VaultID)
+		}
+	}
+}
+
 func TestAgentGetSecretNeedsApprovalForTheItem(t *testing.T) {
 	test := createCodingAgentTest(t)
 	test.makePersonalAvailable(t)

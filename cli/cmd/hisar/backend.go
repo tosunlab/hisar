@@ -74,23 +74,9 @@ type backend interface {
 
 var errNoOneTimeCode = errors.New("the item has no one-time password")
 
-// findVaultByNameOrID matches the vault's ID, else the first vault with that name, ignoring case.
+// findVaultByNameOrID resolves an ID or an unambiguous case-insensitive name.
 func findVaultByNameOrID(ctx context.Context, access backend, nameOrID string) (cliprotocol.Vault, error) {
-	vaults, err := access.listVaults(ctx)
-	if err != nil {
-		return cliprotocol.Vault{}, err
-	}
-	for _, vault := range vaults {
-		if vault.ID == nameOrID {
-			return vault, nil
-		}
-	}
-	for _, vault := range vaults {
-		if strings.EqualFold(vault.Name, nameOrID) {
-			return vault, nil
-		}
-	}
-	return cliprotocol.Vault{}, fmt.Errorf("vault %q: not found", nameOrID)
+	return findBackendVault(ctx, access, nameOrID)
 }
 
 // findBackendItem finds the item a query names in the vault, and returns it with its secrets.
@@ -105,7 +91,7 @@ func findBackendItem(ctx context.Context, access backend, vaultName, query strin
 	}
 	summary, err := findItem(items, query)
 	if err != nil {
-		return vault, nil, err
+		return vault, nil, fmt.Errorf("vault %q [%s], type %s, role %s: %w", vault.Name, vault.ID, vault.Type, vault.Role, err)
 	}
 	vaultItem, err := access.getItem(ctx, vault.ID, summary.ID)
 	return vault, vaultItem, err
@@ -117,6 +103,11 @@ func findBackendVault(ctx context.Context, access backend, nameOrID string) (cli
 	if err != nil {
 		return cliprotocol.Vault{}, err
 	}
+	return selectVault(vaults, nameOrID)
+}
+
+// selectVault picks the vault with this ID, else the one vault with this name ignoring case.
+func selectVault(vaults []cliprotocol.Vault, nameOrID string) (cliprotocol.Vault, error) {
 	for _, vault := range vaults {
 		if vault.ID == nameOrID {
 			return vault, nil
@@ -136,7 +127,7 @@ func findBackendVault(ctx context.Context, access backend, nameOrID string) (cli
 	}
 	iDs := []string{}
 	for _, vault := range matches {
-		iDs = append(iDs, vault.ID)
+		iDs = append(iDs, describeVault(vault))
 	}
 	return cliprotocol.Vault{}, fmt.Errorf("%d vaults are named %q; use an ID instead: %s", len(matches), nameOrID, strings.Join(iDs, ", "))
 }
@@ -149,6 +140,16 @@ func refuseExistingOutput(path string) error {
 		return err
 	}
 	return nil
+}
+
+// describeVault tells apart vaults that share a name.
+func describeVault(vault cliprotocol.Vault) string {
+	return fmt.Sprintf("%s (name %q, type %s, role %s, organization %q)", vault.ID, vault.Name, vault.Type, vault.Role, vault.OrganizationID)
+}
+
+// formatVaultChoice names a vault in a list to choose from, with what tells it apart from a vault of the same name.
+func formatVaultChoice(vault cliprotocol.Vault) string {
+	return fmt.Sprintf("%s [%s] (type %s, role %s)", vault.Name, vault.ID, vault.Type, vault.Role)
 }
 
 // writeNewFile never replaces an existing file and creates it readable only by the user.

@@ -178,6 +178,68 @@ func TestCommandLineShareLinksThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestCommandLineShareLinkSharesOnlyTheNamedItem(t *testing.T) {
+	test := createCommandLineTest(t)
+	service := test.testService.service
+	personalID := test.testService.personalID
+	api := serveShareLinkAPI(t, test.testService)
+	save := func(vaultID, title, password string) string {
+		t.Helper()
+		saved, err := service.SaveItem(vaultID, ItemDetail{Title: title, Password: password})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return saved.ID
+	}
+	first, second := save(personalID, "Deploy", "first-deploy"), save(personalID, "DEPLOY", "second-deploy")
+	target := save(personalID, "Target", "target-password")
+	save(personalID, target, "shadow-password")
+	if _, err := service.RenameVault(test.testService.familyID, "PERSONAL"); err != nil {
+		t.Fatal(err)
+	}
+	save(test.testService.familyID, "Target", "family-password")
+	shadowVault, err := service.CreateVault(personalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	save(shadowVault.ID, "Target", "shadow-vault-password")
+
+	share := func(vault, query string) (cliprotocol.ShareLinkResult, string) {
+		t.Helper()
+		var created cliprotocol.ShareLinkResult
+		failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeCreateShareLink, Vault: vault, Query: query,
+			ShareLink: &cliprotocol.ShareLinkChange{Fields: []string{"password"}, ExpiresInSeconds: 3600, MaxViews: 1}}, &created)
+		return created, failure
+	}
+	if _, failure := share(personalID, "deploy"); !strings.Contains(failure, first) || !strings.Contains(failure, second) || !strings.Contains(failure, personalID) {
+		t.Errorf("two items titled deploy: %q", failure)
+	}
+	if _, failure := share("personal", "target"); !strings.Contains(failure, personalID) || !strings.Contains(failure, test.testService.familyID) {
+		t.Errorf("two vaults named personal: %q", failure)
+	}
+	api.mutex.Lock()
+	createdCount := api.createdCounter
+	api.mutex.Unlock()
+	if createdCount != 0 {
+		t.Fatalf("an ambiguous request created %d share links", createdCount)
+	}
+	created, failure := share(personalID, target)
+	if failure != "" {
+		t.Fatalf("explicit IDs: %s", failure)
+	}
+	fetched, err := sharelink.Fetch(context.Background(), nil, created.ShareLink.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, err := fetched.Open(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(payload.Fields) != 1 || payload.Fields[0].Value != "target-password" {
+		t.Errorf("the vault and item IDs shared %+v, not the item they name", payload.Fields)
+	}
+}
+
 func TestCommandLineShareLinkDescription(t *testing.T) {
 	testService := createUnlockedTestService(t)
 	bridge := NewCommandLineBridge(testService.service, clisocket.NewSessionApprovals(0, nil, nil))
@@ -198,22 +260,24 @@ func TestCommandLineShareLinkDescription(t *testing.T) {
 	}
 }
 
-// A vault or item that did not open may have the name or title asked for, so hisar share-link refuses names beside one.
 func TestCommandLineItemLookupRefusesNamesAmongUnreadableRecords(t *testing.T) {
 	f := createUnlockedTestService(t)
-	saveTestItem(t, f.service, f.personalID, ItemDetail{Title: "Deploy", Password: "test-only"})
-	if _, _, err := f.service.resolveCommandLineItem("Personal", "Deploy"); err != nil {
-		t.Fatalf("lookup among readable records: %v", err)
+	deploy, err := f.service.SaveItem(f.personalID, ItemDetail{Title: "Deploy", Password: "test-only"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	injectJudgeBadItem(t, f)
+	if _, _, err := f.service.resolveCommandLineItem(f.personalID, "Deploy"); !errors.Is(err, session.ErrIncompleteRead) {
+		t.Errorf("title lookup beside an unreadable item: %v, want an incomplete read", err)
+	}
+	if _, found, err := f.service.resolveCommandLineItem(f.personalID, deploy.ID); err != nil || found.ID != deploy.ID {
+		t.Errorf("item ID lookup beside an unreadable item: %+v %v", found, err)
 	}
 	judgeCorruptFamilyName(t, f)
-	if _, _, err := f.service.resolveCommandLineItem("Personal", "Deploy"); !errors.Is(err, session.ErrIncompleteRead) {
+	if _, _, err := f.service.resolveCommandLineItem("Personal", deploy.ID); !errors.Is(err, session.ErrIncompleteRead) {
 		t.Errorf("vault name lookup beside an unreadable vault name: %v, want an incomplete read", err)
 	}
-
-	f = createUnlockedTestService(t)
-	saveTestItem(t, f.service, f.personalID, ItemDetail{Title: "Deploy", Password: "test-only"})
-	injectJudgeBadItem(t, f)
-	if _, _, err := f.service.resolveCommandLineItem("Personal", "Deploy"); !errors.Is(err, session.ErrIncompleteRead) {
-		t.Errorf("title lookup beside an unreadable item: %v, want an incomplete read", err)
+	if vaultID, _, err := f.service.resolveCommandLineItem(f.personalID, deploy.ID); err != nil || vaultID != f.personalID {
+		t.Errorf("vault ID lookup beside an unreadable vault name: %s %v", vaultID, err)
 	}
 }

@@ -73,6 +73,19 @@ terminal only when it may use them. Details: [docs/DESIGN.md](../docs/DESIGN.md)
 
 ## Discover objects before selecting them
 
+`hisar vaults` lists vault IDs, types, and your roles without revealing item values.
+Use `hisar ls -v <vault-ID>` to list item metadata and IDs. `--tag <tag>` filters that list.
+Unique names still work, but duplicate names or titles now fail with candidate IDs instead of selecting the first match.
+An ID always selects its own vault or item, even when another one is named that ID. This holds wherever a name is accepted, including
+`hisar share-link`, a server's SSH key, and the vault choices of `hisar import <.env>` and `hisar vault delete`, which list each
+vault's ID, type and your role.
+Use `hisar get -v <vault-ID> <item-ID> -f <field>` when you intend to read one value.
+Raw field output stays byte-preserving.
+
+For MCP, call `list_vaults`, then `search_items` with the intended vault ID; an ID searches that vault only.
+Use the returned item IDs and ready-made field references rather than constructing a reference from ambiguous names.
+These discovery tools return metadata, not secret values.
+
 For file imports, run `hisar import <file> --dry-run` to review source groups and destination access.
 Unmapped groups default to Personal. Map a shared group explicitly with
 `--map '<source-group-ID>=<destination-vault-ID>'`, repeated for each group you want to redirect.

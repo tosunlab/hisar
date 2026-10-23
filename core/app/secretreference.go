@@ -128,7 +128,8 @@ func (bridge *CommandLineBridge) DescribeSecrets(references []string) []string {
 
 // nameCounts counts vault names or item titles as the resolver matches them (strings.EqualFold), so a reference can
 // tell a name that finds one vault or item from a name that finds several. IDs count too: the resolver tries them
-// first, so a name that is another vault's or item's ID finds that one.
+// first, so a name that is another vault's or item's ID finds that one. Count exactly the vaults the reference's resolver
+// searches: a vault it never sees must not change the reference.
 type nameCounts map[string]int
 
 // countVaultNames counts nothing in an incomplete inventory, whose names the resolver refuses, so references use IDs.

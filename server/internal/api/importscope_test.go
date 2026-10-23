@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -62,5 +63,23 @@ func TestImportRequiresReviewedCurrentMembership(t *testing.T) {
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusBadRequest {
 		t.Fatalf("scope-less import returned %d", response.StatusCode)
+	}
+}
+
+func TestStandaloneVaultSelectionRejectsDuplicateNames(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	first := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Work", apitypes.VaultShared))
+	second := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "WORK", apitypes.VaultShared))
+	if vault, err := alice.FindVault(ctx, "work"); err == nil || vault != nil || !strings.Contains(err.Error(), first.ID) || !strings.Contains(err.Error(), second.ID) || !strings.Contains(err.Error(), "shared") {
+		t.Fatalf("ambiguous standalone selection: %+v %v", vault, err)
+	}
+	shadow := requireValue[*session.Vault](t)(alice.CreateVault(ctx, first.ID, apitypes.VaultShared))
+	if vault, err := alice.FindVault(ctx, first.ID); err != nil || vault.ID != first.ID {
+		t.Fatalf("name shadowed exact ID: %+v %v", vault, err)
+	}
+	if vault, err := alice.FindVault(ctx, shadow.ID); err != nil || vault.ID != shadow.ID {
+		t.Fatalf("shadow ID not selectable: %+v %v", vault, err)
 	}
 }

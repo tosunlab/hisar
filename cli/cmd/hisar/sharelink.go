@@ -400,7 +400,7 @@ func runWithItem(ctx context.Context, vaultName, query string, action func(*sess
 		}
 		vaultItem, err := findItem(items, query)
 		if err != nil {
-			return err
+			return fmt.Errorf("vault %q [%s], type %s, role %s: %w", vault.Name, vault.ID, vault.Type, vault.Role, err)
 		}
 		return action(unlockedSession, vault, vaultItem)
 	}()

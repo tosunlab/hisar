@@ -138,7 +138,7 @@ func setFavoriteFromCommandLine(ctx context.Context, access backend, flags *flag
 	}
 	vaultItem, err := findItem(items, positionals[0])
 	if err != nil {
-		return err
+		return fmt.Errorf("vault %q [%s], type %s, role %s: %w", vault.Name, vault.ID, vault.Type, vault.Role, err)
 	}
 	if err := access.setItemFavorite(ctx, vault.ID, vaultItem.ID, isFavorite); err != nil {
 		return err
