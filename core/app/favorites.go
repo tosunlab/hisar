@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"maps"
 	"slices"
 	"strings"
 	"time"
@@ -44,7 +45,7 @@ func (s *Service) ListFavoriteItems() ([]FavoriteItem, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if !s.reloadAllVaultItem(ctx) {
-		if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
+		if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 			return nil, err
 		}
 	}
@@ -97,15 +98,16 @@ func (s *Service) SetItemFavorite(vaultID, itemID string, isFavorite bool) error
 	})
 }
 
-// updateFavorites syncs every vault first, so favorites of items that no longer exist anywhere can be dropped with the change.
+// updateFavorites syncs every vault first, so favorites of items that no longer exist anywhere can be dropped with the
+// change; that happens only when the server answered every read in full, never from a cached or partial view.
 func (s *Service) updateFavorites(ctx context.Context, buildChange func() (session.FavoriteChange, error)) error {
-	isSynced := s.reloadAllVaultItem(ctx)
+	isAuthoritative := s.reloadAllVaultItem(ctx)
 	s.loadFavoritesOnce(ctx)
 	change, err := buildChange()
 	if err != nil {
 		return err
 	}
-	if isSynced && !s.unlockedSession.IsOffline() {
+	if isAuthoritative {
 		change.RemoveItemIDs = append(change.RemoveItemIDs, s.listUnreachableFavoriteItemIDs(change.AddItemIDs)...)
 	}
 	preferences, err := s.unlockedSession.UpdateFavorites(ctx, s.favorites, change)
@@ -116,18 +118,21 @@ func (s *Service) updateFavorites(ctx context.Context, buildChange func() (sessi
 	return nil
 }
 
-// reloadAllVaultItem lists the vaults and their items again; on failure the previous ones stay.
+// reloadAllVaultItem lists the vaults and their items again; on failure the previous view stays, with its issues and
+// provenance. It reports whether the server listed every vault and item in full (loadReadableItemsOfAllVault).
 func (s *Service) reloadAllVaultItem(ctx context.Context) bool {
 	if err := s.loadVaults(ctx); err != nil {
 		return false
 	}
-	previousItems := s.itemsByVaultID
+	isInventoryAuthoritative := !s.unlockedSession.IsOffline() && len(s.vaultReadIssues) == 0
+	previousItems, previousIssues, previousProvenance := s.itemsByVaultID, maps.Clone(s.itemReadIssuesByVaultID), maps.Clone(s.itemProvenanceByVaultID)
 	s.itemsByVaultID = map[string][]item.Item{}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
-		s.itemsByVaultID = previousItems
+	isAuthoritative, err := s.loadReadableItemsOfAllVault(ctx)
+	if err != nil {
+		s.itemsByVaultID, s.itemReadIssuesByVaultID, s.itemProvenanceByVaultID = previousItems, previousIssues, previousProvenance
 		return false
 	}
-	return true
+	return isInventoryAuthoritative && isAuthoritative
 }
 
 func (s *Service) listUnreachableFavoriteItemIDs(keptItemIDs []string) []string {

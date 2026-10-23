@@ -507,7 +507,7 @@ func TestVaultManagementAndExportThroughTheCommandLine(t *testing.T) {
 
 	exportPath := filepath.Join(t.TempDir(), "export.hisar")
 	var exported cliprotocol.ExportResult
-	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: ExportFormatEncrypted, Passphrase: "a long export passphrase", Path: exportPath}}, &exported)
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: ExportFormatEncrypted, Passphrase: "a long export passphrase", Path: exportPath, AcceptProvenance: true}}, &exported)
 	if exported.ItemCount != 2 || exported.VaultCount != 1 || exported.Path != exportPath {
 		t.Errorf("export: %+v", exported)
 	}
@@ -515,7 +515,7 @@ func TestVaultManagementAndExportThroughTheCommandLine(t *testing.T) {
 	if document, err := export.Decode(content, []byte("a long export passphrase")); err != nil || document.CountItem() != 2 {
 		t.Errorf("decode: %v", err)
 	}
-	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: ExportFormatPlain, Path: exportPath}}, nil); !strings.Contains(failure, "already exists") {
+	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: ExportFormatPlain, Path: exportPath, AcceptProvenance: true}}, nil); !strings.Contains(failure, "already exists") {
 		t.Errorf("the export replaced a file: %q", failure)
 	}
 }

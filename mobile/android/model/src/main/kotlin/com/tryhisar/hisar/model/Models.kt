@@ -1089,7 +1089,7 @@ data class RemovedVaultNotice(val id: String, val name: String, val message: Str
 data class ExportOptions(val isBiometricAvailable: Boolean, val minPassphraseLength: Int)
 
 @Serializable
-data class ExportResult(val path: String, val vaultCount: Int, val itemCount: Int)
+data class ExportResult(val path: String, val vaultCount: Int, val itemCount: Int, val warning: String = "")
 
 enum class ExportFormat(val id: String, val label: String) {
     ENCRYPTED("encrypted", "Encrypted export"),

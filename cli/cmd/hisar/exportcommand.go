@@ -129,6 +129,7 @@ func runExport(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err != nil {
 		return err
 	}
+	printExportProvenance(result.Provenance)
 	fmt.Fprintf(standardError(), "Exported %s from %s to %s.\n", formatItemCount(result.ItemCount), formatVaultCount(result.VaultCount), *outputPath)
 	if *format == cliprotocol.ExportFormatPlain {
 		fmt.Fprintln(standardError(), "It is not encrypted; delete it when you are done.")
@@ -143,4 +144,24 @@ func formatVaultCount(count int) string {
 		return "1 vault"
 	}
 	return fmt.Sprintf("%d vaults", count)
+}
+
+func printExportProvenance(provenance *export.Provenance) {
+	if provenance == nil {
+		return
+	}
+	if provenance.IsCachedCopy() {
+		fmt.Fprintln(standardError(), "Cached copy. Changes since this device's completed syncs may be absent.")
+	}
+	for _, checkpoint := range provenance.Vaults {
+		if checkpoint.HasCompletedSync {
+			fmt.Fprintf(standardError(), "  Vault %s last completed sync %s.\n", checkpoint.VaultID, checkpoint.CompletedAt)
+		}
+	}
+	if provenance.IsPartial() {
+		fmt.Fprintln(standardError(), "Partial copy. Known omissions follow.")
+	}
+	for _, omission := range provenance.Omissions {
+		fmt.Fprintf(standardError(), "  %s vault=%s item=%s revision=%s\n", omission.Kind, omission.VaultID, omission.ItemID, omission.Revision)
+	}
 }

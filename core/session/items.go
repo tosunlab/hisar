@@ -15,14 +15,15 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 )
 
-// ListItems requires a complete readable result: every record opened (ErrIncompleteRead otherwise). Recovery views use
-// ReadItems.
+// ListItems requires a complete readable result: every record opened, and an acquisition that reached the end of the
+// vault's changes. A vault never synced to the end, or a cache without that evidence, is not proof that items are
+// absent (ErrIncompleteRead). Recovery views use ReadItems.
 func (s *Session) ListItems(ctx context.Context, vault *Vault) ([]item.Item, error) {
 	result, err := s.ReadItems(ctx, vault)
 	if err != nil {
 		return nil, err
 	}
-	if len(result.Issues) != 0 {
+	if len(result.Issues) != 0 || !result.Provenance.HasCompletedSync {
 		return nil, ErrIncompleteRead
 	}
 	return result.Items, nil

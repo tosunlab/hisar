@@ -45,14 +45,16 @@ const (
 	FeatureOrganizations = "organizations"
 	// FeatureAgentRunInputs: agent.secrets.resolve takes Request.Stdin and Request.Environment and shows them in the
 	// approval; hisar mcp refuses a command with literal stdin or env-file values on an app without it.
-	FeatureAgentRunInputs = "agent-run-inputs"
-	FeatureReadIssues     = "read-issues"
+	FeatureAgentRunInputs   = "agent-run-inputs"
+	FeatureExportProvenance = "export-provenance"
+	FeatureReadIssues       = "read-issues"
 )
 
 // ListFeatures returns the features this build of the app announces in hello, then every launcher request type, so a
 // launcher checks the exact request it is about to send.
 func ListFeatures() []string {
 	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations, FeatureAgentRunInputs, FeatureSignedSharing}
+	features = append(features, FeatureExportProvenance)
 	features = append(features, FeatureReadIssues)
 	return append(features, ListLauncherRequestTypes()...)
 }

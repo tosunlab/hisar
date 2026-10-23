@@ -1577,6 +1577,7 @@ struct ExportResult: Codable, Equatable {
     var path: String
     var vaultCount: Int
     var itemCount: Int
+    var warning: String? = nil
 }
 
 enum ExportFormat: String, CaseIterable, Identifiable {

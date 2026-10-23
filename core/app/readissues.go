@@ -15,9 +15,9 @@ func (s *Service) setItemReadIssues(vaultID string, issues []session.ReadIssue) 
 	s.itemReadIssuesByVaultID[vaultID] = issues
 }
 
-// readVaultItems reads a vault's items into the loaded view: the records that open, and an issue for each one that does
-// not. Whoever uses healthy records reads through it; whoever decides from an item's absence also calls
-// checkCompleteRead. It needs s.mutex.
+// readVaultItems reads a vault's items into the loaded view: the records that open, an issue for each one that does
+// not, and where the acquisition came from. Whoever uses healthy records reads through it; whoever decides from an
+// item's absence also calls checkCompleteRead. It needs s.mutex.
 func (s *Service) readVaultItems(ctx context.Context, vault *session.Vault) (session.ItemReadResult, error) {
 	result, err := s.unlockedSession.ReadItems(ctx, vault)
 	if err != nil {
@@ -25,19 +25,37 @@ func (s *Service) readVaultItems(ctx context.Context, vault *session.Vault) (ses
 	}
 	s.itemsByVaultID[vault.ID] = result.Items
 	s.setItemReadIssues(vault.ID, result.Issues)
+	if s.itemProvenanceByVaultID == nil {
+		s.itemProvenanceByVaultID = map[string]session.ReadProvenance{}
+	}
+	s.itemProvenanceByVaultID[vault.ID] = result.Provenance
 	return result, nil
 }
 
-// checkCompleteRead returns ErrIncompleteRead while the loaded view of vaultID, or of any vault for "", is missing a
-// record that did not open. It needs s.mutex.
+// hasReadVaultItems reports whether the loaded items of vaultID come from a read, not only from items saved since. It
+// needs s.mutex.
+func (s *Service) hasReadVaultItems(vaultID string) bool {
+	_, isLoaded := s.itemsByVaultID[vaultID]
+	_, hasProvenance := s.itemProvenanceByVaultID[vaultID]
+	return isLoaded && hasProvenance
+}
+
+// isItemListComplete reports whether the loaded items of vaultID are all of its items: every record opened, and they
+// come from an acquisition that reached the end of the vault's changes. It needs s.mutex.
+func (s *Service) isItemListComplete(vaultID string) bool {
+	return s.hasReadVaultItems(vaultID) && len(s.itemReadIssuesByVaultID[vaultID]) == 0 && s.itemProvenanceByVaultID[vaultID].HasCompletedSync
+}
+
+// checkCompleteRead returns ErrIncompleteRead while the loaded view of vaultID, or of any vault for "", may be missing
+// an item: a vault or record did not open, or a vault's items never synced to the end. It needs s.mutex.
 func (s *Service) checkCompleteRead(vaultID string) error {
 	for _, issue := range s.vaultReadIssues {
 		if vaultID == "" || issue.VaultID == vaultID {
 			return session.ErrIncompleteRead
 		}
 	}
-	for issueVaultID, issues := range s.itemReadIssuesByVaultID {
-		if len(issues) != 0 && (vaultID == "" || issueVaultID == vaultID) {
+	for loadedVaultID := range s.itemsByVaultID {
+		if (vaultID == "" || loadedVaultID == vaultID) && !s.isItemListComplete(loadedVaultID) {
 			return session.ErrIncompleteRead
 		}
 	}
@@ -56,6 +74,14 @@ func (s *Service) GetReadIssues() ([]session.ReadIssue, error) {
 		issues = append(issues, itemIssues...)
 	}
 	return issues, nil
+}
+
+// getItemProvenance returns where the loaded items of vaultID came from, if they are loaded.
+func (s *Service) getItemProvenance(vaultID string) (session.ReadProvenance, bool) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	provenance, isLoaded := s.itemProvenanceByVaultID[vaultID]
+	return provenance, isLoaded
 }
 
 // DeleteUnreadableItem only deletes the exact issue the user reviewed.

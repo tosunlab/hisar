@@ -1,6 +1,7 @@
 package cliprotocol
 
 import (
+	"github.com/tryhisar/hisar/core/export"
 	"github.com/tryhisar/hisar/core/session"
 	"slices"
 )
@@ -76,9 +77,12 @@ type Item struct {
 	Fingerprint        string    `json:"fingerprint,omitempty"`
 }
 
+// ItemListResult answers items.list and items.read. Provenance, on items.read only, says where the items came from and
+// whether their vault ever synced to the end; without that, missing items are not known to be absent.
 type ItemListResult struct {
-	Items  []Item              `json:"items"`
-	Issues []session.ReadIssue `json:"issues,omitempty"`
+	Items      []Item                  `json:"items"`
+	Issues     []session.ReadIssue     `json:"issues,omitempty"`
+	Provenance *session.ReadProvenance `json:"provenance,omitempty"`
 }
 
 type ItemResult struct {
@@ -137,15 +141,17 @@ const (
 
 // ExportChange: the app writes the file at Path itself, so private keys never cross the socket; it never replaces a file.
 type ExportChange struct {
-	Format     string `json:"format"`
-	Passphrase string `json:"passphrase,omitempty"`
-	Path       string `json:"path"`
+	Format           string `json:"format"`
+	Passphrase       string `json:"passphrase,omitempty"`
+	Path             string `json:"path"`
+	AcceptProvenance bool   `json:"acceptProvenance,omitempty"`
 }
 
 type ExportResult struct {
-	Path       string `json:"path"`
-	VaultCount int    `json:"vaultCount"`
-	ItemCount  int    `json:"itemCount"`
+	Path       string             `json:"path"`
+	VaultCount int                `json:"vaultCount"`
+	ItemCount  int                `json:"itemCount"`
+	Provenance *export.Provenance `json:"provenance,omitempty"`
 }
 
 type CodeResult struct {

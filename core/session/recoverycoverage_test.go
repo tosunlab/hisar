@@ -25,6 +25,28 @@ func r08Response(status int, value any) *http.Response {
 	return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(string(body)))}
 }
 
+func TestR08StrictConsumerRejectsUnknownOfflineCoverage(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	ctx := context.Background()
+	unlocked, err := Unlock(ctx, account.apiClient, openTestCache(t), account.password, account.secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlocked.Lock()
+	vaults, err := unlocked.ListVaults(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := unlocked.SaveItem(ctx, &vaults[0], &item.Item{Overview: item.Overview{Title: "Exists remotely"}}); err != nil {
+		t.Fatal(err)
+	}
+	account.server.setUnreachable(true)
+	items, err := unlocked.ListItems(ctx, &vaults[0])
+	if !errors.Is(err, ErrIncompleteRead) {
+		t.Fatalf("strict consumer received false absence from never-synced inventory: items=%+v err=%v", items, err)
+	}
+}
+
 func TestR08InterruptedPagesPreservePublishedSnapshot(t *testing.T) {
 	for _, failure := range []string{"http500", "unreachable", "cancel", "concurrent-local-write"} {
 		t.Run(failure, func(t *testing.T) {

@@ -97,6 +97,8 @@ func planHisarImport(ctx context.Context, access backend, document *export.Docum
 	return plans, nil
 }
 
+// findImportTarget never matches a recovery container (export.Vault.NameUnreadable) by name: its label is not a name
+// anyone gave a vault, so its items go into a new vault under that label.
 func findImportTarget(vaults []cliprotocol.Vault, exported export.Vault) (cliprotocol.Vault, bool) {
 	isWritable := func(vault cliprotocol.Vault) bool {
 		return apitypes.CanWriteItems(vault.Role)
@@ -105,6 +107,9 @@ func findImportTarget(vaults []cliprotocol.Vault, exported export.Vault) (clipro
 		if exported.Type == apitypes.VaultPersonal && vault.Type == apitypes.VaultPersonal {
 			return vault, false
 		}
+	}
+	if exported.NameUnreadable {
+		return cliprotocol.Vault{Name: exported.Name}, true
 	}
 	for _, candidateName := range []string{exported.Name, exported.Name + " (imported)"} {
 		for _, vault := range vaults {
@@ -142,7 +147,11 @@ func printHisarImportPreview(fileName string, document *export.Document, format 
 		if len(plan.duplicateIndexes) > 0 {
 			summary += fmt.Sprintf(", %d already there", len(plan.duplicateIndexes))
 		}
-		fmt.Fprintf(standardError(), "  %s → %s: %s\n", plan.exported.Name, target, summary)
+		source := plan.exported.Name
+		if plan.exported.NameUnreadable {
+			source += " (name unreadable)"
+		}
+		fmt.Fprintf(standardError(), "  %s → %s: %s\n", source, target, summary)
 	}
 }
 
@@ -150,6 +159,11 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 	document, err := decodeHisarExport(format, content)
 	if err != nil {
 		return err
+	}
+	printExportProvenance(document.Provenance)
+	retainSource := document.Provenance.IsCachedCopy() || document.Provenance.IsPartial()
+	if retainSource {
+		fmt.Fprintln(standardError(), "Keep the source file. This copy does not establish complete recovery of the account.")
 	}
 	plans, err := planHisarImport(ctx, access, document, option)
 	if err != nil {
@@ -232,7 +246,7 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 	if leftCount > 0 {
 		fmt.Fprintf(standardError(), "Keep %s: %d of its entries are not in Hisar.\n", path, leftCount)
 	}
-	if format == export.FormatPlain && !hasUncomparedDuplicates && leftCount == 0 {
+	if format == export.FormatPlain && !hasUncomparedDuplicates && leftCount == 0 && !retainSource {
 		return offerToDeleteImportFile(path, option.isConfirmed)
 	}
 	return nil

@@ -45,6 +45,7 @@ type serviceState struct {
 	itemsByVaultID               map[string][]item.Item
 	vaultReadIssues              []session.ReadIssue
 	itemReadIssuesByVaultID      map[string][]session.ReadIssue
+	itemProvenanceByVaultID      map[string]session.ReadProvenance
 	favorites                    *session.Preferences
 	lockTimer                    *time.Timer
 	lockDeadline                 time.Duration

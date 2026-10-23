@@ -576,8 +576,13 @@ func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error
 	return s.describeItem(&vaultItem), nil
 }
 
+// replaceCachedItem puts a saved item into its vault's loaded items. In a vault not read yet the list holds only this
+// item, so it has no read provenance and the next reader that needs the vault reads all of it (hasReadVaultItems).
 func (s *Service) replaceCachedItem(vaultID string, vaultItem item.Item) {
-	items := s.itemsByVaultID[vaultID]
+	items, isLoaded := s.itemsByVaultID[vaultID]
+	if !isLoaded {
+		delete(s.itemProvenanceByVaultID, vaultID)
+	}
 	for index := range items {
 		if items[index].ID == vaultItem.ID {
 			items[index] = vaultItem

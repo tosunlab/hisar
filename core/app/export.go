@@ -38,9 +38,11 @@ type ExportRequest struct {
 }
 
 type ExportResult struct {
-	Path       string `json:"path"`
-	VaultCount int    `json:"vaultCount"`
-	ItemCount  int    `json:"itemCount"`
+	Path       string             `json:"path"`
+	VaultCount int                `json:"vaultCount"`
+	ItemCount  int                `json:"itemCount"`
+	Provenance *export.Provenance `json:"provenance,omitempty"`
+	Warning    string             `json:"warning,omitempty"`
 }
 
 func (s *Service) GetExportOptions() ExportOptions {
@@ -213,14 +215,16 @@ func (s *Service) buildExport(format, passphrase string, epoch uint64) ([]byte, 
 	s.noteActivity()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
 	defer cancel()
-	vaults, err := export.Collect(ctx, s.unlockedSession)
+	collection, err := export.Collect(ctx, s.unlockedSession)
 	account := export.Account{Email: s.state.Email, Server: s.state.Server}
 	s.mutex.Unlock()
 	if err != nil {
 		return nil, ExportResult{}, convertError(err)
 	}
-	document := export.Build(account, vaults, s.config.Now())
-	result := ExportResult{VaultCount: len(document.Vaults), ItemCount: document.CountItem()}
+	document := export.Build(account, collection.Vaults, s.config.Now())
+	document.Provenance = &collection.Provenance
+	result := ExportResult{VaultCount: len(document.Vaults), ItemCount: document.CountItem(), Provenance: document.Provenance}
+	result.Warning = collection.Provenance.Message()
 	if format == ExportFormatPlain {
 		content, err := export.EncodePlain(document)
 		return content, result, err

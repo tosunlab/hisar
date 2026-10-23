@@ -45,7 +45,7 @@ func (source *sessionSecretSource) ListItems(vaultID string) (secretreference.It
 	if err != nil {
 		return secretreference.ItemList{}, err
 	}
-	return secretreference.ItemList{Items: read.Items, IsComplete: len(read.Issues) == 0}, nil
+	return secretreference.ItemList{Items: read.Items, IsComplete: len(read.Issues) == 0 && read.Provenance.HasCompletedSync}, nil
 }
 
 // checkReferences parses every reference before anything is asked, so a typo never opens an approval.

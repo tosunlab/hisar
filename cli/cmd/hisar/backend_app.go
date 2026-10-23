@@ -100,6 +100,10 @@ func (access appBackend) leaveVault(ctx context.Context, vaultID string) error {
 }
 
 func (access appBackend) writeExport(ctx context.Context, change cliprotocol.ExportChange) (cliprotocol.ExportResult, error) {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureExportProvenance) {
+		return cliprotocol.ExportResult{}, errors.New("update the Hisar app to export cached-copy provenance and omissions")
+	}
+	change.AcceptProvenance = true
 	var result cliprotocol.ExportResult
 	err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &change}, &result)
 	return result, err

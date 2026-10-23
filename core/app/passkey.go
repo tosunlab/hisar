@@ -205,7 +205,7 @@ func (s *Service) loadPasskeys(ctx context.Context, relyingPartyID string) ([]pa
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, err
 	}
-	if err := s.loadReadableItemsOfAllVault(ctx); err != nil {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, err
 	}
 	return s.collectPasskeys(relyingPartyID), nil

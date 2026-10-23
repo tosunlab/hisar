@@ -288,6 +288,9 @@ struct ExportDataForm: View {
         Form {
             if let result {
                 Section {
+                    if let warning = result.warning, !warning.isEmpty {
+                        Text(warning).foregroundStyle(.themeWarning).accessibilityIdentifier("export-provenance")
+                    }
                     ShareLink(item: URL(fileURLWithPath: result.path), preview: SharePreview(URL(fileURLWithPath: result.path).lastPathComponent, image: Image(systemName: "doc"))) {
                         Label("Save or Share Export", systemImage: "square.and.arrow.up")
                     }
@@ -310,6 +313,7 @@ struct ExportDataForm: View {
                     Text("Format")
                 } footer: {
                     Text("Every vault you can open, with logins, notes, one-time code secrets, SSH keys and other fields. hisar import reads both formats.")
+                    Text("Offline exports are cached copies. Changes since completed syncs may be absent. The result and file report known omissions.")
                 }
                 if format == .encrypted {
                     Section {

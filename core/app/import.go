@@ -249,12 +249,14 @@ func (s *Service) loadEditableVaultItem(ctx context.Context, vaultID string) (*s
 	if vault.Role == apitypes.VaultReader {
 		return nil, nil, errReadOnlyVault
 	}
-	existingItems, err := s.unlockedSession.ListItems(ctx, vault)
+	read, err := s.readVaultItems(ctx, vault)
 	if err != nil {
-		return nil, nil, convertError(err)
+		return nil, nil, err
 	}
-	s.itemsByVaultID[vault.ID] = existingItems
-	return vault, existingItems, nil
+	if !s.isItemListComplete(vault.ID) {
+		return nil, nil, session.ErrIncompleteRead
+	}
+	return vault, read.Items, nil
 }
 
 func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
