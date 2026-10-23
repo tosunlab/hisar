@@ -31,14 +31,19 @@ final class FaceIDUITests: HisarUITestCase {
     }
 
     // Face ID ignores a match posted before it asks, and its prompt is not an element the test can wait for, so the match
-    // repeats until the app goes on.
+    // repeats until the app goes on. When Face ID fails instead, the app shows why and asks no more, so the test stops there.
     private func matchFace(until isDone: () -> Bool, file: StaticString = #filePath, line: UInt = #line) {
+        let errorMessage = app.descendants(matching: .any)["error-message"].firstMatch
         let deadline = Date().addingTimeInterval(30)
         repeat {
             matchFace()
             let retry = Date().addingTimeInterval(2)
             while Date() < retry {
                 if isDone() {
+                    return
+                }
+                if errorMessage.exists {
+                    XCTFail("Face ID failed and the app shows \"\(errorMessage.label)\"", file: file, line: line)
                     return
                 }
                 Thread.sleep(forTimeInterval: 0.2)
@@ -70,10 +75,12 @@ final class FaceIDUITests: HisarUITestCase {
         signUp(inviteLink: inviteLink, email: "ios-face-id@example.com", name: "iOS Face ID", isBiometricOfferExpected: true)
 
         saveScreenshot("face-id-offer")
-        app.buttons["biometric-offer-turn-on"].tap()
+        let turnOnButton = app.buttons["biometric-offer-turn-on"]
+        turnOnButton.tap()
         allowFaceIDIfAsked()
-        matchFace(until: { app.buttons["vault-Personal"].exists })
-        waitFor(app.buttons["vault-Personal"], timeout: 20)
+        // The vaults are already under the offer, so the offer closing is what shows that Face ID is on.
+        matchFace(until: { !turnOnButton.exists })
+        waitForHittable(app.buttons["vault-Personal"])
 
         openSettings("open-security")
         let toggle = app.switches["biometric-toggle"]

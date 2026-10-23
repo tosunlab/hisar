@@ -192,7 +192,8 @@ class HisarUITestCase: XCTestCase {
         if notNowButton.waitForExistence(timeout: 2) {
             notNowButton.tap()
         }
-        waitFor(app.buttons["vault-Personal"])
+        // The vaults exist under the Secret Key screen and the Face ID offer; they take a tap only once both have closed.
+        waitForHittable(app.buttons["vault-Personal"])
         return secretKey
     }
 
