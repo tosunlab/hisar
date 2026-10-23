@@ -194,9 +194,18 @@ class HisarUITestCase: XCTestCase {
             return
         }
         element.typeText(text)
-        let isShown = NSPredicate { _, _ in typedText.isShown(byValue: element.value as? String, placeholder: element.placeholderValue) }
-        let result = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: isShown, object: element)], timeout: 30)
-        XCTAssertEqual(result, .completed, "\(element) shows \"\(element.value as? String ?? "")\", not \"\(typedText.expected)\"", file: file, line: line)
+        let isShown = waitUntil(timeout: 30) { typedText.isShown(byValue: element.value as? String, placeholder: element.placeholderValue) }
+        XCTAssertTrue(isShown, "\(element) shows \"\(element.value as? String ?? "")\", not \"\(typedText.expected)\"", file: file, line: line)
+    }
+
+    // Waits until isTrue holds, checking it about once a second. An XCTNSPredicateExpectation with an element as its object
+    // captures the app's whole accessibility hierarchy on the main thread whenever a check is false, to describe the element.
+    // In job 120468910610 the typing wait's first check came before the keys landed, and that capture took 36.94 s, so the
+    // 30 s wait ran out without checking again although the field had shown its typed text for 34 s. Here the predicate reads
+    // the element itself, and XCTest has no element to describe.
+    private func waitUntil(timeout: TimeInterval, _ isTrue: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in isTrue() }, object: nil)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
     // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.

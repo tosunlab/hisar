@@ -46,7 +46,7 @@ final class SharingUITests: HisarUITestCase {
         choose("new-vault", from: "new-menu")
         type("Deploy keys", into: app.textFields["new-vault-name"])
         let createButton = app.buttons["new-vault-create"]
-        XCTAssertTrue(createButton.wait(for: \.isEnabled, toEqual: true, timeout: 30), "Create waits until Where is loaded")
+        XCTAssertTrue(waitUntil(timeout: 30) { createButton.isEnabled }, "Create waits until Where is loaded")
         createButton.tap()
         waitFor(app.navigationBars["Deploy keys"], timeout: 60)
 

@@ -58,11 +58,11 @@ final class FaceIDUITests: HisarUITestCase {
 
     private func allowFaceIDIfAsked() {
         let allowButton = springboard.alerts.buttons["Allow"].exists ? springboard.alerts.buttons["Allow"] : app.alerts.buttons["Allow"]
-        if allowButton.waitForExistence(timeout: 3) {
+        if waitUntil(timeout: 3, { allowButton.exists }) {
             allowButton.tap()
         }
         let okButton = springboard.alerts.buttons["OK"]
-        if okButton.waitForExistence(timeout: 1) {
+        if waitUntil(timeout: 1, { okButton.exists }) {
             okButton.tap()
         }
     }
