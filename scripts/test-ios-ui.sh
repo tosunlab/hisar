@@ -44,33 +44,11 @@ WORKERS=${IOS_UI_TEST_WORKERS:-1}
 PARALLEL=(-parallel-testing-enabled NO)
 if [ "$WORKERS" -gt 1 ]; then PARALLEL=(-parallel-testing-enabled YES -parallel-testing-worker-count "$WORKERS"); fi
 
-# xcodebuild boots its own clones of the simulator, and a booted simulator cannot be cloned.
-#
-# bootstatus returns once SpringBoard is up, but the simulator then runs a wave of background tasks (post-install and
-# first-unlock work, dyld closures, and SpringBoard's poster prewarm, which renders every wallpaper through its extension). On
-# a 3-core runner that wave can start minutes after bootstatus and keep the cores busy for two more, and a first test in it
-# loses taps. The prewarm runs once per boot and is the wave's longest task, so its completion is when the tests can start.
-# The simulator's log keeps earlier boots (log show --last boot does not tell them apart), so the query starts at the
-# moment this boot's launchd_sim started.
-wait_for_post_boot_work() {
-  local predicate='process == "dasd" AND eventMessage BEGINSWITH "COMPLETED <_DASActivity: \"com.apple.springboard.posterboardupdate.prewarm:"'
-  local deadline=$((SECONDS + 600)) launchd_pid boot_time
-  launchd_pid=$(pgrep -f "launchd_sim .*/Devices/$SIMULATOR_ID/data/")
-  # In UTC with an explicit offset: log show reads a time without one in its own zone, which need not be the caller's TZ.
-  boot_time=$(LC_ALL=C date -j -u -f "%a %b %d %T %Y" "$(TZ=UTC LC_ALL=C ps -o lstart= -p "$launchd_pid" | xargs)" "+%Y-%m-%d %H:%M:%S+0000")
-  echo "Waiting for the simulator's post-boot background work (SpringBoard's poster prewarm), booted at $boot_time"
-  until xcrun simctl spawn "$SIMULATOR_ID" log show --start "$boot_time" --style compact --predicate "$predicate" 2>/dev/null | grep -q COMPLETED; do
-    if [ "$SECONDS" -ge "$deadline" ]; then
-      echo "the simulator's poster prewarm did not complete within 10 minutes of booting" >&2
-      return 1
-    fi
-    sleep 2
-  done
-  echo "The simulator's post-boot background work finished"
-}
+# xcodebuild boots its own clones of the simulator, and a booted simulator cannot be cloned. The tests start once the simulator
+# has run its post-boot background work (mobile/ios/scripts/wait-for-post-boot-work.sh).
 if [ "$WORKERS" -eq 1 ]; then
   xcrun simctl bootstatus "$SIMULATOR_ID" -b
-  wait_for_post_boot_work
+  "$ROOT/mobile/ios/scripts/wait-for-post-boot-work.sh" "$SIMULATOR_ID"
 fi
 
 # XCTest fails a stalled app with "main thread busy for 30.0s" and no frame, so a sampler records what the main thread
