@@ -146,7 +146,7 @@ class HisarUITestCase: XCTestCase {
     // and taps again if it does not come. Only a field the form has not created yet is dragged to: tap() scrolls one that exists
     // just into view, while a drag can carry it under the navigation bar, where it still counts as hittable and taps land on
     // the bar.
-    func type(_ text: String, into element: XCUIElement, normalizedBy normalize: @escaping (String) -> String = { $0 }, file: StaticString = #filePath, line: UInt = #line) {
+    func type(_ text: String, into element: XCUIElement, normalizedBy normalize: ((String) -> String)? = nil, file: StaticString = #filePath, line: UInt = #line) {
         if focus(element, file: file, line: line) {
             typeText(text, into: element, normalizedBy: normalize, file: file, line: line)
         }
@@ -182,10 +182,13 @@ class HisarUITestCase: XCTestCase {
     // come back, 19 seconds later in job 120358912010, and a tap meanwhile acts on part of the text. So typing waits until the
     // field shows exactly its end state (TypedText): `showing` when the typing also deletes, and both sides through the
     // field's own formatter when it has one (CardInput).
-    func typeText(_ text: String, into element: XCUIElement, showing: String? = nil, normalizedBy normalize: @escaping (String) -> String = { $0 }, file: StaticString = #filePath, line: UInt = #line) {
+    func typeText(_ text: String, into element: XCUIElement, showing: String? = nil, normalizedBy normalize: ((String) -> String)? = nil, file: StaticString = #filePath, line: UInt = #line) {
         let typedText: TypedText
         do {
             typedText = try TypedText(typed: text, showing: showing, before: element.value as? String, placeholder: element.placeholderValue, isSecure: element.elementType == .secureTextField, normalize: normalize)
+        } catch TypedText.UnshownError.secureFormattedNotEmpty {
+            XCTFail("\(element) is secure and not empty, so what it holds cannot be formatted with \"\(text)\"; clear it first or pass `showing`", file: file, line: line)
+            return
         } catch {
             XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
             return
