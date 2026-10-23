@@ -104,6 +104,8 @@ func (s *Service) authenticateExport(password string) (uint64, error) {
 		_, epoch, err := s.loadVerifiedSecretKey(password)
 		return epoch, err
 	case s.isTouchIDAvailable():
+		s.biometricMutex.Lock()
+		defer s.biometricMutex.Unlock()
 		return epoch, s.config.Biometric.Authenticate("export your Hisar data")
 	}
 	return 0, errExportNeedsPassword

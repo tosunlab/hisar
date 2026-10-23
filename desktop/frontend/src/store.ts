@@ -422,7 +422,7 @@ export async function acceptTouchIDOffer(): Promise<boolean> {
     if (generation !== sessionGeneration) return false;
     store.status = status;
     finishTouchIDOffer();
-    showNotice("Touch ID unlock is on");
+    if (!store.status.biometricSetupError) showNotice("Touch ID unlock is on");
     return true;
   } catch (error) {
     if (generation !== sessionGeneration) return false;
@@ -498,7 +498,7 @@ export async function enableBiometricUnlock(password: string): Promise<boolean> 
   if (generation !== sessionGeneration) return false;
   if (status) {
     store.status = status;
-    showNotice("Touch ID unlock is on");
+    if (!status.biometricSetupError) showNotice("Touch ID unlock is on");
   }
   return status !== undefined;
 }

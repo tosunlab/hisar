@@ -20,7 +20,9 @@ func (hisar *Hisar) ApproveApproval(requestID string, isRemembered bool) error {
 	if hisar.biometric == nil || !hisar.biometric.IsAvailable() {
 		return errBiometricUnavailable
 	}
-	if err := hisar.biometric.Authenticate("approve this request from your Mac"); err != nil {
+	if err := app.NewApprovalUnlocker(hisar.service, nil).ConfirmWithTouchID(func() error {
+		return hisar.biometric.Authenticate("approve this request from your Mac")
+	}); err != nil {
 		return err
 	}
 	return app.AnswerPhoneApproval(hisar.service, requestID, true, isRemembered)

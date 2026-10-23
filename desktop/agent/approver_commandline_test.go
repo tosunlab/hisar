@@ -18,6 +18,8 @@ type fakeUnlocker struct {
 	correctPassword      string
 	passwords            []string
 	touchIDUnlockCount   int
+	// touchIDMutex stands for Hisar's own Touch ID unlock or setup, which ConfirmWithTouchID waits for.
+	touchIDMutex sync.Mutex
 }
 
 func (unlocker *fakeUnlocker) IsLocked() bool {
@@ -37,6 +39,12 @@ func (unlocker *fakeUnlocker) UnlockWithTouchID(authenticate func(reason string)
 	unlocker.touchIDUnlockCount++
 	unlocker.isLocked = false
 	return nil
+}
+
+func (unlocker *fakeUnlocker) ConfirmWithTouchID(authenticate func() error) error {
+	unlocker.touchIDMutex.Lock()
+	defer unlocker.touchIDMutex.Unlock()
+	return authenticate()
 }
 
 func (unlocker *fakeUnlocker) UnlockWithPassword(password string) error {
@@ -238,5 +246,26 @@ func TestCommandLineApprovalWithPasswordWhileUnlocked(t *testing.T) {
 	}
 	if approver.RespondWithPassword("unknown", "correct horse battery", false) {
 		t.Error("a password answered an unknown request")
+	}
+}
+
+func TestTouchIDApprovalWaitsForHisarsOwnTouchIDCheck(t *testing.T) {
+	biometric := createWaitingBiometric()
+	emitter := createFakeEmitter()
+	unlocker := &fakeUnlocker{}
+	approver := NewApprover(ApproverConfig{Biometric: biometric, Emit: emitter.emit, Unlocker: unlocker})
+	unlocker.touchIDMutex.Lock()
+	resultChannel := startApproval(approver, context.Background(), createTestRequest())
+	approver.Respond(waitForApprovalEvent(t, emitter).RequestID, true, false)
+	select {
+	case <-biometric.startedChannel:
+		t.Fatal("the approval's Touch ID started during Hisar's own Touch ID check")
+	case <-time.After(200 * time.Millisecond):
+	}
+	unlocker.touchIDMutex.Unlock()
+	biometric.waitForStart(t)
+	biometric.resultChannel <- nil
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed {
+		t.Errorf("result = %+v", result)
 	}
 }

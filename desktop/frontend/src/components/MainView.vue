@@ -658,6 +658,7 @@ onBeforeUnmount(() => {
       <div class="title-bar"></div>
       <div class="detail-content">
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+        <p v-if="store.status.biometricSetupError" class="error" role="status" data-testid="biometric-setup-error">{{ store.status.biometricSetupError }}</p>
         <SSHKeyForm v-if="store.editorMode === 'create-ssh-key'" />
         <ItemEditor v-else-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
         <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :vault-type="selectedVault?.type ?? ''" />

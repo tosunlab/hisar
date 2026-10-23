@@ -30,7 +30,9 @@ type Service struct {
 
 // serviceState is shared by the app and request-scoped CLI views, including their mutex.
 type serviceState struct {
-	mutex           sync.Mutex
+	mutex sync.Mutex
+	// biometricMutex owns the platform's single-use authentication context, never logical session locking.
+	biometricMutex  sync.Mutex
 	config          Config
 	state           *localstate.State
 	unlockedSession *session.Session
@@ -49,6 +51,8 @@ type serviceState struct {
 	name                         string
 	hasPasswordUnlockSinceLaunch bool
 	biometricClock               biometricPasswordClock
+	biometricSetupError          string
+	biometricSetupRevision       uint64
 	newAccountSecretKey          *crypt.SecretKey
 	newAccountUnlockKey          []byte
 	localCache                   *cache.Cache
@@ -196,6 +200,12 @@ func (s *Service) buildStatus() Status {
 	status.BiometricAvailable = s.config.Biometric != nil && s.config.Biometric.IsAvailable()
 	status.BiometricEnabled = len(s.state.BiometricUnlock) > 0
 	status.BiometricReady = status.State == StateLocked && s.isBiometricReady()
+	status.BiometricSetupError = s.biometricSetupError
+	if status.BiometricEnabled && status.BiometricSetupError == "" {
+		if migrator, ok := s.config.Biometric.(BiometricKeyMigrator); ok && !migrator.IsKeyProtected(s.state.AccountID) {
+			status.BiometricSetupError = fmt.Sprintf("%s needs a password unlock to update its keychain protection. Your master password still unlocks Hisar.", s.config.BiometricName)
+		}
+	}
 	status.AutoLockSeconds = int(s.getAutoLockAfter() / time.Second)
 	status.UpdateRequired = s.getUpdateRequirement()
 	return status

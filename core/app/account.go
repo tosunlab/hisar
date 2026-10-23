@@ -165,24 +165,46 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 	if persistedKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID); err != nil || persistedKey.Encode() != credentialChange.SecretKey.Encode() {
 		result.KeychainError = "the current keychain or environment does not retain the new credentials; protected local recovery remains required"
 	}
+	s.biometricSetupRevision++
 	if len(s.state.BiometricUnlock) > 0 {
-		// Only a platform with a BiometricKeyPreparer needs a prompt to store the key; a keychain stores it silently.
-		if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() {
+		setup, setupErr := s.snapshotBiometricSetup()
+		if setupErr != nil {
 			s.forgetBiometricUnlock()
-		} else if s.config.BiometricKeyPreparer != nil && s.authenticateToStoreBiometricKey("keep biometric unlock on for Hisar") != nil {
-			s.forgetBiometricUnlock()
-		} else if _, err := s.sealBiometricUnlock(credentialChange.AccountUnlockKey); err != nil {
-			s.forgetBiometricUnlock()
+		} else {
+			reason := ""
+			if s.config.BiometricKeyPreparer != nil {
+				reason = "keep biometric unlock on for Hisar"
+			}
+			s.mutex.Unlock()
+			s.biometricMutex.Lock()
+			sealed, isStored, setupErr := s.storeBiometricUnlock(setup, credentialChange.AccountUnlockKey, reason)
+			s.mutex.Lock()
+			switch {
+			case setupErr == nil && s.requireBiometricSetup(setup) == nil:
+				s.state.BiometricUnlock = sealed
+				s.biometricSetupRevision++
+				s.biometricSetupError = ""
+			case isStored:
+				s.discardStoredBiometricKey(setup.accountID)
+			case s.state.AccountID == setup.accountID:
+				// The sealed state opens the account unlock key this change replaced.
+				s.forgetBiometricUnlock()
+			}
+			s.biometricMutex.Unlock()
 		}
 	}
-	if pending.OperationID != "" {
-		s.state.RecoveryOperationID = pending.OperationID
+	// The remote change is committed, so a lock or disabled Touch ID during the reseal must not skip saving it. After a
+	// sign-out or account switch the state is not this account's; the recovery record below still finishes.
+	if s.state.AccountID == result.identity.accountID {
+		if pending.OperationID != "" {
+			s.state.RecoveryOperationID = pending.OperationID
+		}
+		s.recordPasswordUnlock()
+		if err := errors.Join(cacheErr, s.state.Save()); err != nil {
+			result.LocalError = fmt.Sprintf("your credentials were changed, but this device could not finish saving the change: %v", err)
+		}
 	}
-	s.recordPasswordUnlock()
 	result.Status = s.buildStatus()
-	if err := errors.Join(cacheErr, s.state.Save()); err != nil {
-		result.LocalError = fmt.Sprintf("your credentials were changed, but this device could not finish saving the change: %v", err)
-	}
 	if pending.OperationID != "" {
 		pending.Phase = "delivery-pending"
 		pending.ManualUnlock = result.KeychainError != ""

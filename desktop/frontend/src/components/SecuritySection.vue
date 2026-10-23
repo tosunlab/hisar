@@ -46,13 +46,16 @@ async function submitSaveEmergencyKit(): Promise<void> {
             <strong>Unlock with Touch ID</strong>
             <p class="muted">
               {{
-                store.status.biometricAvailable
-                  ? "Touch ID unlocks Hisar after it locks. Your master password is still needed when Hisar starts and at least every 14 days."
-                  : isMacPlatform()
-                    ? "Touch ID is not available on this Mac."
-                    : "Unlocking with a fingerprint is not available on this computer yet; Hisar unlocks with your master password."
+                store.status.biometricSetupError
+                  ? "Touch ID protection is pending. Unlock with your master password until setup is complete."
+                  : store.status.biometricAvailable
+                    ? "Touch ID unlocks Hisar after it locks. Your master password is still needed when Hisar starts and at least every 14 days."
+                    : isMacPlatform()
+                      ? "Touch ID is not available on this Mac."
+                      : "Unlocking with a fingerprint is not available on this computer yet; Hisar unlocks with your master password."
               }}
             </p>
+            <p v-if="store.status.biometricSetupError" class="error" role="status" data-testid="biometric-setup-error">{{ store.status.biometricSetupError }}</p>
           </div>
           <button
             v-if="store.status.biometricEnabled"
@@ -60,7 +63,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             :disabled="store.isBusy"
             @click="disableBiometricUnlock"
           >
-            Turn off
+            {{ store.status.biometricSetupError ? "Remove saved setup" : "Turn off" }}
           </button>
           <button
             v-else-if="!isEnablingTouchID"

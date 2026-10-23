@@ -31,6 +31,14 @@ open desktop/bin/Hisar.app
 
 For development with hot reload: `cd desktop && wails3 dev`.
 
+Touch ID wrapping keys use the macOS data-protection keychain. Ad-hoc builds can use password unlock but cannot set up
+OS-protected Touch ID. For a team-signed local build, set `HISAR_SIGNING_IDENTITY` and
+`HISAR_MACOS_PROVISIONING_PROFILE` to a matching macOS Developer ID profile. The profile must authorize team
+`589NVZWDWZ`, the app's bundle identifier, and keychain group `589NVZWDWZ.<bundle identifier>`. An iOS profile does not work.
+The signing script checks the profile, embeds it, and emits the authorized entitlements. Password unlock migrates an old
+wrapper only after a protected readback succeeds. A missing profile leaves password unlock available and shows the setup
+error instead of claiming that Touch ID protection is active. Enrollment changes require password fallback and fresh setup.
+
 ### DMG and releases
 
 `make package-desktop-dmg VERSION=0.1.0` builds a universal (Apple silicon and Intel) `Hisar.app` with Sparkle embedded,
@@ -50,7 +58,8 @@ builds on a GitHub-hosted macOS runner and Linux runners. The GitHub prerelease 
 Nobody gets it as an automatic update until the run's Publish job is approved, which renames the file to `update.json` and
 marks the release as the latest. A custom build such as `desktop-1.0.0-alpha-test` has no zip or update and can't be
 published. The build needs the repository secrets `SPARKLE_PRIVATE_KEY`; `MACOS_SIGNING_CERTIFICATE` (the team's
-Developer ID Application `.p12`, base64) and `MACOS_SIGNING_CERTIFICATE_PASSWORD`; and the App Store Connect API key that
+Developer ID Application `.p12`, base64), `MACOS_SIGNING_CERTIFICATE_PASSWORD`, and `MACOS_PROVISIONING_PROFILE` (a matching
+macOS Developer ID provisioning profile, base64); and the App Store Connect API key that
 notarizes the app and the DMG: `APPLE_NOTARY_KEY` (the `.p8`, base64), `APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_ISSUER_ID`.
 
 ### Automatic updates

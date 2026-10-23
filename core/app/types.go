@@ -20,9 +20,10 @@ type Status struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`
 	// BiometricReady means Touch ID can unlock now: enabled, and the master password was used since launch and recently.
-	BiometricAvailable bool `json:"biometricAvailable"`
-	BiometricEnabled   bool `json:"biometricEnabled"`
-	BiometricReady     bool `json:"biometricReady"`
+	BiometricAvailable  bool   `json:"biometricAvailable"`
+	BiometricEnabled    bool   `json:"biometricEnabled"`
+	BiometricReady      bool   `json:"biometricReady"`
+	BiometricSetupError string `json:"biometricSetupError,omitempty"`
 	// IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
 	IsOffline bool `json:"isOffline"`
 	// AutoLockSeconds is how long Hisar stays unlocked without activity.
@@ -47,6 +48,13 @@ type Biometric interface {
 type BiometricKeyPreparer interface {
 	PrepareStoreKey(accountID string) error
 	PrepareLoadKey(accountID string) error
+}
+
+// BiometricKeyMigrator upgrades an existing OS wrapper only after password unlock.
+// IsKeyProtected must not prompt and must reject any still-readable legacy wrapper.
+type BiometricKeyMigrator interface {
+	IsKeyProtected(accountID string) bool
+	MigrateKey(accountID string, sealedUnlockKey []byte) error
 }
 
 type VaultSummary struct {

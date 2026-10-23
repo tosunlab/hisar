@@ -265,7 +265,7 @@ export function EnableBiometricUnlock(password: string): $CancellablePromise<$mo
 }
 
 /**
- * EnableNewAccountBiometricUnlock is the one-click offer after sign up; it uses the account unlock key kept from sign up.
+ * EnableNewAccountBiometricUnlock uses an owned copy of the account unlock key kept from sign up.
  */
 export function EnableNewAccountBiometricUnlock(): $CancellablePromise<$models.Status> {
     return $Call.ByID(534915375);

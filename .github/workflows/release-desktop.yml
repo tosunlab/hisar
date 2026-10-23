@@ -18,6 +18,8 @@ on:
         required: false
       MACOS_SIGNING_CERTIFICATE_PASSWORD:
         required: false
+      MACOS_PROVISIONING_PROFILE:
+        required: false
       APPLE_NOTARY_KEY:
         required: false
       APPLE_NOTARY_KEY_ID:
@@ -78,13 +80,12 @@ jobs:
           echo "$RUNNER_TEMP/dmgbuild/bin" >> "$GITHUB_PATH"
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
           make install-wails
-      # The team's Developer ID Application identity (589NVZWDWZ), in a keychain that lives only for this job, and the
-      # App Store Connect API key that notarizes the app and the DMG. A team identity keeps the designated requirement the
-      # same across releases, so the Touch ID key in the login keychain stays readable after an update.
+      # The Developer ID identity and matching macOS profile authorize the data-protection keychain.
       - name: Import the signing identity and the notary key
         env:
           MACOS_SIGNING_CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
           MACOS_SIGNING_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+          MACOS_PROVISIONING_PROFILE: ${{ secrets.MACOS_PROVISIONING_PROFILE }}
           APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
           APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
           APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
@@ -94,11 +95,17 @@ jobs:
             echo "No MACOS_SIGNING_CERTIFICATE: this custom build is ad-hoc signed and not notarized"
             exit 0
           fi
+          if [ -z "$MACOS_PROVISIONING_PROFILE" ]; then
+            echo "set MACOS_PROVISIONING_PROFILE to a base64 macOS Developer ID profile with this app's keychain access group"
+            exit 1
+          fi
           if [ -z "$APPLE_NOTARY_KEY" ] || [ -z "$APPLE_NOTARY_KEY_ID" ] || [ -z "$APPLE_NOTARY_ISSUER_ID" ]; then
             echo "set the repository secrets APPLE_NOTARY_KEY (base64 .p8), APPLE_NOTARY_KEY_ID and APPLE_NOTARY_ISSUER_ID"
             exit 1
           fi
           umask 077
+          printf '%s' "$MACOS_PROVISIONING_PROFILE" | base64 --decode > "$RUNNER_TEMP/Hisar.provisionprofile"
+          echo "HISAR_MACOS_PROVISIONING_PROFILE=$RUNNER_TEMP/Hisar.provisionprofile" >> "$GITHUB_ENV"
           printf '%s' "$APPLE_NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary-key.p8"
           {
             echo "HISAR_NOTARY_KEY=$RUNNER_TEMP/notary-key.p8"

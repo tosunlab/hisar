@@ -14,6 +14,7 @@ serverPaths=(server/ admin/ deploy/Dockerfile .dockerignore .github/workflows/re
 cliPaths=(cli/ scripts/package-cli-release.sh .github/workflows/release-cli.yml "${releasePaths[@]}" "${sharedGoPaths[@]}")
 desktopPaths=(desktop/ cli/ omp/ scripts/download-sparkle.sh scripts/get-build-number.sh scripts/package-desktop-dmg.sh
   scripts/package-desktop-flatpak.sh scripts/package-desktop-linux.sh scripts/package-desktop-update.sh
+  scripts/desktop-keychain-entitlements.py scripts/test-desktop-keychain-entitlements.py
   scripts/sign-desktop-app.sh scripts/test-desktop-linux-package.sh scripts/test-download-sparkle.sh
   .github/workflows/release-desktop.yml "${releasePaths[@]}" "${sharedGoPaths[@]}")
 phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh scripts/ui-test-parts.sh "${sharedGoPaths[@]}")
