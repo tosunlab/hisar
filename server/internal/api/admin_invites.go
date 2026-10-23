@@ -41,7 +41,13 @@ func (s *Server) handleRevokeAdminInvite(c fiber.Ctx) error {
 }
 
 func (s *Server) handleResendAdminInvite(c fiber.Ctx) error {
-	created, err := s.service.ResendAdminInvite(c.Context(), s.getActor(c), c.Params("invite"))
+	var request apitypes.AdminInviteResendRequest
+	if len(c.Body()) != 0 {
+		if err := decodeBody(c, &request); err != nil {
+			return err
+		}
+	}
+	created, err := s.service.ResendAdminInvite(c.Context(), s.getActor(c), c.Params("invite"), &request)
 	if err != nil {
 		return err
 	}

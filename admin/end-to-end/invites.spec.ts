@@ -39,6 +39,10 @@ async function inviteToHisar(page: Page, email: string, role = "Member"): Promis
   const dialog = page.getByRole("dialog", { name: "Invite to Hisar" });
   await dialog.getByLabel("Email").fill(email);
   await dialog.getByLabel(role, { exact: true }).check();
+  if (role === "Admin") {
+    await dialog.getByLabel("Your Secret Key").fill(running.fixture.secretKey);
+    await dialog.getByLabel("Your master password").fill(running.fixture.password);
+  }
   await dialog.getByRole("button", { name: "Create invite" }).click();
 }
 
@@ -90,6 +94,11 @@ test("resends an invite: the old link stops working and the new one opens the in
   await inviteToHisar(page, email, "Admin");
   const oldLink = await readLink(page);
   await findRow(page, email).getByRole("button", { name: "Resend" }).click();
+  const dialog = page.getByRole("dialog", { name: "Resend admin invite" });
+  expect((await fetchInvitePage(oldLink)).status).toBe(200);
+  await dialog.getByLabel("Your Secret Key").fill(running.fixture.secretKey);
+  await dialog.getByLabel("Your master password").fill(running.fixture.password);
+  await dialog.getByRole("button", { name: "Resend invite" }).click();
   await expect.poll(() => readLink(page)).not.toBe(oldLink);
   const newLink = await readLink(page);
   await expect(findRow(page, email)).toHaveCount(1);
@@ -97,6 +106,28 @@ test("resends an invite: the old link stops working and the new one opens the in
   expect((await fetchInvitePage(oldLink)).status).toBe(404);
   expect((await fetchInvitePage(newLink)).status).toBe(200);
   await saveScreenshot(page, "a3-resent");
+});
+
+test("refuses bearer-only admin issuance and asks for the master password", async ({ page }) => {
+  const email = createEmail("proof");
+  const response = await fetch(`${running.fixture.baseURL}/api/v1/admin/invites`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${running.fixture.token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ email, role: "admin" }),
+  });
+  expect(response.status).toBe(403);
+  await openInvites(page);
+  await page.getByRole("button", { name: "Invite to Hisar…" }).click();
+  const dialog = page.getByRole("dialog", { name: "Invite to Hisar" });
+  await dialog.getByLabel("Email").fill(email);
+  await dialog.getByLabel("Admin", { exact: true }).check();
+  await dialog.getByLabel("Your Secret Key").fill(running.fixture.secretKey);
+  await dialog.getByLabel("Your master password").fill("not the master password");
+  await dialog.getByRole("button", { name: "Create invite" }).click();
+  await expect(dialog.getByRole("alert")).toHaveText("incorrect email, master password or Secret Key", { timeout: 30_000 });
+  await expect(findRow(page, email)).toHaveCount(0);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+  await expect(dialog).toHaveCount(0);
 });
 
 test("refuses an email that already has an account", async ({ page }) => {

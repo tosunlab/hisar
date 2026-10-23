@@ -74,16 +74,21 @@ func (s *Service) CreateAdminInvite(ctx context.Context, actor Actor, request *a
 	if err := s.refuseExistingAccount(ctx, email); err != nil {
 		return nil, err
 	}
+	admin := store.AdminActor{AccountID: actor.AccountID}
+	if request.Role == apitypes.RoleAdmin {
+		pending, err := s.finishReauthentication(ctx, actor, request.Proof.ReauthenticationID, request.Proof.KE3)
+		if err != nil {
+			return nil, err
+		}
+		admin = provenAdmin(actor, pending)
+	}
 	inviter, err := s.store.GetAccountByID(ctx, actor.AccountID)
 	if err != nil {
 		return nil, err
 	}
 	token := generateToken()
-	switch err := s.store.CreateAdminInvite(ctx, hashToken(token), email, request.Role, inviter.ID, time.Now().Add(s.InviteTTL)); {
-	case errors.Is(err, store.ErrActorNotAdmin):
-		return nil, ErrAdminOnly
-	case err != nil:
-		return nil, err
+	if err := s.store.CreateAdminInvite(ctx, hashToken(token), email, request.Role, admin, time.Now().Add(s.InviteTTL)); err != nil {
+		return nil, convertAdminAccountError(err)
 	}
 	created, err := s.store.GetAdminInvite(ctx, hashToken(token))
 	if err != nil {
@@ -110,7 +115,7 @@ func (s *Service) RevokeAdminInvite(ctx context.Context, actor Actor, inviteID s
 
 // ResendAdminInvite replaces a pending invite with a fresh one for the same email and role, sent by the admin, so the
 // old link stops working and the new one gets the full lifetime.
-func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID string) (*apitypes.AdminInviteCreated, error) {
+func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID string, request *apitypes.AdminInviteResendRequest) (*apitypes.AdminInviteCreated, error) {
 	invite, err := s.getPendingAdminInvite(ctx, inviteID)
 	if err != nil {
 		return nil, err
@@ -118,20 +123,25 @@ func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID s
 	if err := s.refuseExistingAccount(ctx, invite.Email); err != nil {
 		return nil, err
 	}
+	admin := store.AdminActor{AccountID: actor.AccountID}
+	if invite.Role == apitypes.RoleAdmin {
+		pending, err := s.finishReauthentication(ctx, actor, request.Proof.ReauthenticationID, request.Proof.KE3)
+		if err != nil {
+			return nil, err
+		}
+		admin = provenAdmin(actor, pending)
+	}
 	inviter, err := s.store.GetAccountByID(ctx, actor.AccountID)
 	if err != nil {
 		return nil, err
 	}
 	token := generateToken()
-	replaced, err := s.store.ReplaceInvite(ctx, invite.TokenHash, hashToken(token), inviter.ID, time.Now().Add(s.InviteTTL))
+	replaced, err := s.store.ReplaceInvite(ctx, invite.TokenHash, hashToken(token), admin, time.Now().Add(s.InviteTTL))
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errInviteGone
 	}
-	if errors.Is(err, store.ErrActorNotAdmin) {
-		return nil, ErrAdminOnly
-	}
 	if err != nil {
-		return nil, err
+		return nil, convertAdminAccountError(err)
 	}
 	s.recordAudit(ctx, actor, auditAdminInviteResent, map[string]string{"email": replaced.Email, "role": replaced.Role})
 	return s.emailAdminInvite(ctx, inviter, replaced, token), nil
