@@ -185,8 +185,12 @@ Take a backup before applying a migration that changes existing tables.
 
 Back up nightly and copy off the server:
 
-- `docker compose exec postgres pg_dump -U hisar hisar` (ciphertext only, but still keep it encrypted, e.g. with `age`)
-- the `hisar-data` volume (`hisar-secrets.json`)
+- `docker compose exec postgres pg_dump -U hisar hisar`. The dump contains encrypted vault payloads, plaintext account and sharing metadata, audit events and instance settings. It is sensitive, not ciphertext-only. Encrypt it, for example with `age`.
+- the `hisar-data` volume (`hisar-secrets.json`). Keep it with the matching database backup for recovery, but restrict access to both.
+
+The [database schema](../server/internal/store/migrations/00001_init.sql) records emails, devices, access grants and audit IPs outside the encrypted item payloads. [Organization names and rosters](../server/internal/store/migrations/00008_organizations.sql) are also plaintext. Operational credentials have different protection from vault keys, as described under **Email** above. Treat both backup components as sensitive. Possession of server secrets does not itself supply vault decryption keys.
+
+A native client's offline cache is not a substitute for a server backup. It contains only records that device has downloaded and may omit whole unsynced vaults or newer writes. See [the cache and export limits](../docs/DESIGN.md#91-desktop--wails-v3-go--vuetypescript).
 
 ## Building from source
 

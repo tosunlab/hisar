@@ -50,8 +50,8 @@ type RunInput struct {
 
 type RunOutput struct {
 	ExitCode          int      `json:"exitCode" jsonschema:"the command's exit code; 128 + the signal number when a signal ended it"`
-	Stdout            string   `json:"stdout" jsonschema:"standard output with every secret value replaced by <concealed by hisar>"`
-	Stderr            string   `json:"stderr" jsonschema:"standard error with every secret value replaced by <concealed by hisar>"`
+	Stdout            string   `json:"stdout" jsonschema:"standard output after exact-value masking; short or transformed secrets can still appear"`
+	Stderr            string   `json:"stderr" jsonschema:"standard error after exact-value masking; short or transformed secrets can still appear"`
 	IsStdoutTruncated bool     `json:"isStdoutTruncated" jsonschema:"stdout was longer than 64 KiB; its first and last 32 KiB are kept"`
 	IsStderrTruncated bool     `json:"isStderrTruncated" jsonschema:"stderr was longer than 64 KiB; its first and last 32 KiB are kept"`
 	DurationSeconds   float64  `json:"durationSeconds"`

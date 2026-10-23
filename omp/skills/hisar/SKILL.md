@@ -1,13 +1,15 @@
 ---
 name: hisar
-description: Use the user's secrets from Hisar (passwords, API tokens, keys) in a command without seeing them. Read before using a Hisar tool or running any hisar command, or when a task needs a credential.
+description: Pass Hisar secret references to approved commands without copying values into chat. Commands receive real secrets; output masking is not containment. Read before using a Hisar tool or running any hisar command, or when a task needs a credential.
 ---
 
 # Hisar
 
-Hisar keeps the user's secrets. This plugin connects omp to Hisar's MCP server, whose tools omp names `mcp__hisar_list_vaults`, `mcp__hisar_search_items` and `mcp__hisar_run_with_secrets`. omp may offer them as tool devices instead: write the JSON arguments to `xd://mcp__hisar_run_with_secrets` and so on. None of them returns a secret value. A command gets the values in its environment or on its standard input, and Hisar masks them in what the command prints. Each use opens an approval window in the Hisar app, and the user decides there.
+Hisar keeps the user's secrets. This plugin connects omp to Hisar's MCP server, whose tools omp names `mcp__hisar_list_vaults`, `mcp__hisar_search_items` and `mcp__hisar_run_with_secrets`. omp may offer them as tool devices instead: write the JSON arguments to `xd://mcp__hisar_run_with_secrets` and so on. List and search return metadata and references, not secret values. A command receives the real values in its environment or on its standard input. Hisar masks recognized exact values in output, but values shorter than 4 bytes, transformed output and other disclosure channels are not protected. Each use opens an approval window in the Hisar app, and the user decides there.
 
 Never print a secret. The plugin blocks `hisar read`, `hisar get`, `hisar export` and `hisar run --no-masking`.
+
+Masking is not containment. Run only the intended command, and never use output, a file or a network request to reveal a granted secret. `--no-reveal` removes direct value-returning MCP tools, not the command's ability to disclose values. The [command runner](../../../cli/mcpserver/run.go) and [masker](../../../cli/internal/masking/masking.go) define these limits.
 
 ## Find the reference
 
