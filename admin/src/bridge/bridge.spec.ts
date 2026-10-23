@@ -93,4 +93,21 @@ describe("Bridge", () => {
     worker.fail("");
     await expect(call).rejects.toThrow("The admin dashboard could not load Hisar's encryption code. Reload the page.");
   });
+
+  it("keeps recovery export and acknowledgement as separate operations", async () => {
+    const worker = new FakeWorker();
+    const bridge = new Bridge(() => worker);
+    const pending = bridge.listPendingRecovery();
+    worker.answer({ id: 1, value: [{ operationId: "op", kind: "signup", origin: "https://hisar.test", accountId: "account", email: "ada@example.com", name: "Ada", phase: "delivery-pending", revision: 1 }] });
+    await expect(pending).resolves.toHaveLength(1);
+    const exported = bridge.exportPendingRecoveryEmergencyKit("op", "password");
+    const pdf = new Uint8Array([37, 80, 68, 70]);
+    worker.answer({ id: 2, value: pdf });
+    await expect(exported).resolves.toEqual(pdf);
+    expect(worker.allRequest.some((request) => request.type === "acknowledgePendingRecovery")).toBe(false);
+    const acknowledged = bridge.acknowledgePendingRecovery("op", "password");
+    worker.answer({ id: 3, value: undefined });
+    await expect(acknowledged).resolves.toBeUndefined();
+    expect(worker.allRequest.at(-1)).toMatchObject({ type: "acknowledgePendingRecovery", operationId: "op" });
+  });
 });

@@ -141,7 +141,7 @@ func TestBiometricUnlockPreparesTheKeyFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	newAccountUnlockKey := crypt.GenerateKey()
-	changeMasterPassword := func(context.Context, *session.Session, []byte, crypt.SecretKey) (*session.CredentialChange, error) {
+	changeMasterPassword := func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
 		secretKey, _ := service.config.SecretKeyStore.LoadSecretKey(accountID)
 		return &session.CredentialChange{SecretKey: secretKey, AccountUnlockKey: append([]byte(nil), newAccountUnlockKey...)}, nil
 	}

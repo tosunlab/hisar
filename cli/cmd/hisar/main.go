@@ -36,7 +36,7 @@ type command struct {
 
 var commands = []command{
 	{name: "status", argumentUsage: "[--json]", summary: "show whether hisar uses the Hisar app or its own sign-in, and the account; --json prints mode, state and account", run: runStatus, runThroughApp: runStatusThroughApp},
-	{name: "signup", argumentUsage: "<invite-link>", summary: "create your account from an invite", run: runSignup, appAlternative: "create the account in the Hisar app"},
+	{name: "signup", argumentUsage: "[-o file] [-y] <invite-link>", summary: "create your account from an invite with durable recovery", run: runSignup, appAlternative: "create the account in the Hisar app"},
 	{name: "login", summary: "sign in on this device", run: runLogin, appAlternative: "sign in to the Hisar app"},
 	{name: "logout", summary: "sign out on this device", run: runLogout, appAlternative: "sign out in the Hisar app"},
 	{name: "whoami", summary: "show the signed-in account", withBackend: runWhoami},
@@ -66,7 +66,7 @@ var commands = []command{
 	{name: "team", argumentUsage: "<action> <org> <team> [arguments]", summary: "manage an organization's teams (" + teamUsage + ")", withBackend: runTeam},
 	{name: "share-link", argumentUsage: "<item>|--text|open <url>|revoke <id>", summary: "share an item or text with anyone through an end-to-end encrypted link (--field, --expires 1h|1d|7d|30d, --views, --passphrase)", run: runShareLink, isLocal: true},
 	{name: "share-links", summary: "list your live share links", withBackend: runListShareLinks},
-	{name: "account", argumentUsage: "change-password|replace-secret-key [-o file]|delete", summary: "change your master password, replace your Secret Key (with a new Emergency Kit) or delete your account", run: runAccount, appAlternative: "use the Hisar app under Settings → Security (master password, Secret Key) or Settings → Account (delete)"},
+	{name: "account", argumentUsage: "change-password|replace-secret-key [-o file]|delete|pending [list|resume|kit|acknowledge|discard]", summary: "change credentials, delete your account, or resume protected setup and Emergency Kit delivery", run: runAccount, appAlternative: "use the Hisar app under Settings → Security (master password, Secret Key) or Settings → Account (delete), or its pending recovery screen"},
 	{name: "emergency-kit", argumentUsage: "[-o file]", summary: "save your Emergency Kit PDF (sign-in address, email, Secret Key)", run: runEmergencyKit, appAlternative: "save it in the Hisar app under Settings → Security → Emergency Kit"},
 	{name: "devices", summary: "list your signed-in devices", withBackend: runListDevices},
 	{name: "revoke-device", argumentUsage: "<id>", summary: "sign out a device", withBackend: runRevokeDevice},

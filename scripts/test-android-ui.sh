@@ -110,7 +110,7 @@ CROSS_DEVICE_EMAIL="android-cross-device-$(date +%s)-$RANDOM@example.com"
 CROSS_DEVICE_PASSWORD=cross-device-master-password
 CROSS_DEVICE_NEW_PASSWORD=cross-device-new-master-password
 printf '%s\nCommand Line\n%s\n%s\n' "$CROSS_DEVICE_EMAIL" "$CROSS_DEVICE_PASSWORD" "$CROSS_DEVICE_PASSWORD" |
-  HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup "$(ui_test_create_invite "$CROSS_DEVICE_EMAIL")" 2>"$T/other-device-signup.txt"
+  HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup -y -o "$T/other-device-emergency-kit.pdf" "$(ui_test_create_invite "$CROSS_DEVICE_EMAIL")" 2>"$T/other-device-signup.txt"
 CROSS_DEVICE_SECRET_KEY=$(grep -oE 'H1-[0-9A-Z-]+' "$T/other-device-signup.txt")
 other_device() { HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=$CROSS_DEVICE_SECRET_KEY "$ROOT/bin/hisar" "$@"; }
 answer_as_other_device() {

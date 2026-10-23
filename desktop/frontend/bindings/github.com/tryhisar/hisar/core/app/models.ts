@@ -91,6 +91,9 @@ export interface CredentialChangeResult {
      * LocalError reports local finalization failures after the credentials have already changed.
      */
     "localError": string;
+    "pendingOperationId": string;
+    "setupState": string;
+    "problems": string[] | null;
 }
 
 export interface DeletionOrganization {
@@ -564,6 +567,24 @@ export interface PasswordConfig {
 }
 
 /**
+ * PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out.
+ */
+export interface PendingRecoverySummary {
+    "operationId": string;
+    "kind": string;
+    "origin": string;
+    "accountId": string;
+    "email": string;
+    "name": string;
+    "phase": string;
+    "kitSaved": boolean;
+    "problems": string[] | null;
+    "manualUnlock": boolean;
+    "keychainProtected": boolean;
+    "revision": number;
+}
+
+/**
  * Person is the user or someone they share a vault with. SecurityCode is derived from their signing key; IsKeyChanged
  * means it differs from the key pinned when this device first shared with them.
  */
@@ -698,6 +719,9 @@ export interface ShareLinkRequest {
 export interface SignUpResult {
     "status": Status;
     "secretKey": string;
+    "pendingOperationId": string;
+    "setupState": string;
+    "problems": string[] | null;
 }
 
 export interface Status {

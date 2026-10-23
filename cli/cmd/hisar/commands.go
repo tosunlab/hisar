@@ -80,6 +80,8 @@ func finishSession(currentState *localstate.State, currentSession *session.Sessi
 }
 
 func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	outputPath := flags.String("o", "Hisar Emergency Kit.pdf", "where to save the new Emergency Kit PDF")
+	isYes := flags.Bool("y", false, "acknowledge the saved Emergency Kit and finish setup without another prompt")
 	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
@@ -87,14 +89,18 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	if len(positionals) != 1 {
 		return errUsage
 	}
-	server, token, err := parseInvite(positionals[0])
+	_, _, err = parseInvite(positionals[0])
 	if err != nil {
 		return err
 	}
 	// Before anything reaches the server: inside an agent harness loadState refuses, and an account created first
 	// would be lost with its Secret Key.
-	currentState, err := loadState()
+	_, err = loadState()
 	if err != nil {
+		return err
+	}
+	// With a keychain the account is registered before its kit is written, so a taken kit path is refused first.
+	if err := refuseExistingOutput(*outputPath); err != nil {
 		return err
 	}
 
@@ -112,35 +118,48 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	}
 	defer clear(password)
 
-	fmt.Fprintln(standardError(), "Creating account...")
-	currentSession, secretKey, err := session.SignUp(ctx, createClient(server), token, email, name, password, getDeviceInfo())
-	if currentSession == nil {
-		return err
-	}
-	defer currentSession.Lock()
-
-	// The account exists, and nobody can sign in to it without this key: show it before anything else can fail.
-	fmt.Fprintf(standardError(), `
-Account created. This is your Secret Key:
-
-    %s
-
-Write it down and keep it with your master password somewhere safe, or save
-your Emergency Kit with "hisar emergency-kit". You need both to sign in on a
-new device. A forgotten master password cannot be recovered by anyone,
-including Hisar.
-`, secretKey.Encode())
+	fmt.Fprintln(standardError(), "Preparing account. The new Secret Key must reach the OS keychain or a saved Emergency Kit before registration can finish.")
+	service, err := newRecoveryService(*outputPath)
 	if err != nil {
-		fmt.Fprintf(standardError(), "warning: %v\n", err)
-	}
-
-	currentState.Reset()
-	currentState.Server, currentState.Email, currentState.AccountID, currentState.Token = server, strings.ToLower(email), currentSession.AccountID, currentSession.Client.Token
-	if err := currentState.Save(); err != nil {
 		return err
 	}
-	if err := localstate.StoreSecretKey(secretKey); err != nil {
-		fmt.Fprintf(standardError(), "warning: could not save Secret Key to keychain: %v\n", err)
+	result, err := service.SignUp(positionals[0], email, name, string(password))
+	if err != nil {
+		return err
+	}
+	if result.SecretKey == "" {
+		printPendingRecovery(result.PendingOperationID, result.SetupState, result.Problems)
+		return errors.New("account setup is pending; resume its protected operation instead of registering again")
+	}
+	path, saveErr := service.SavePendingRecoveryEmergencyKit(result.PendingOperationID, string(password))
+	if saveErr != nil {
+		return fmt.Errorf("setup is pending and the Emergency Kit could not be saved: %w", saveErr)
+	}
+	fmt.Fprintf(standardError(), "Saved your Emergency Kit to %s.\n", path)
+	wasManual := result.SetupState == "awaiting-kit"
+	if wasManual {
+		if err := confirmUnlessYes(*isYes, "Keep this saved Emergency Kit. Create the account with its Secret Key now?"); err != nil {
+			return err
+		}
+		if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
+			return err
+		}
+		result, err = service.ResumePendingRecovery(result.PendingOperationID, string(password))
+		if err != nil {
+			return err
+		}
+	}
+	if result.SetupState != "delivery-pending" {
+		printPendingRecovery(result.PendingOperationID, result.SetupState, result.Problems)
+		return errors.New("account setup has not finished; keep its Emergency Kit and resume the pending operation")
+	}
+	fmt.Fprintf(standardError(), "Account created. This is your Secret Key:\n\n    %s\n\nKeep it and your master password safe. You need both to sign in on a new device.\n", result.SecretKey)
+	if *isYes || wasManual {
+		if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
+			return err
+		}
+	} else {
+		printPendingRecovery(result.PendingOperationID, result.SetupState, result.Problems)
 	}
 	return nil
 }

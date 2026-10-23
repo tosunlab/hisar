@@ -1,4 +1,4 @@
-import type { CredentialChangeResult, SignUpResult } from "./api";
+import type { CredentialChangeResult, PendingRecoverySummary, SignUpResult, Status } from "./api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   allTestVault,
@@ -479,7 +479,7 @@ it("judge refuses a sign-up Secret Key response that arrives after lock", async 
   const pending = storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
   api.getStatus.mockResolvedValue(createStatus("locked"));
   await storeModule.handleLocked();
-  finish({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+  finish({ status: createStatus("unlocked"), secretKey: "H1-SECRET", pendingOperationId: "", setupState: "", problems: [] });
   await pending;
   expect(store.pendingSecretKey).toBe("");
   expect(store.status.state).toBe("locked");
@@ -493,8 +493,92 @@ it("refuses a replacement Secret Key response that arrives after lock", async ()
   const pending = storeModule.replaceSecretKey("password");
   api.getStatus.mockResolvedValue(createStatus("locked"));
   await storeModule.handleLocked();
-  finish({ status: createStatus("unlocked"), secretKey: "H1-REPLACEMENT", signedOutDeviceCount: 1, keychainError: "", localError: "" });
+  finish({ status: createStatus("unlocked"), secretKey: "H1-REPLACEMENT", signedOutDeviceCount: 1, keychainError: "", localError: "", pendingOperationId: "", setupState: "", problems: [] });
   expect(await pending).toBeUndefined();
   expect(store.pendingSecretKey).toBe("");
   expect(store.status.state).toBe("locked");
+});
+
+it("does not install a staged signup when lock occurs during journal refresh", async () => {
+  resetStore();
+  const journal = Promise.withResolvers<PendingRecoverySummary[]>();
+  api.signUp.mockResolvedValue({
+    status: createStatus("unlocked"), secretKey: "H1-SECRET", pendingOperationId: "pending",
+    setupState: "delivery-pending", problems: ["The keychain could not save the key."],
+  });
+  api.listPendingRecovery.mockReturnValue(journal.promise);
+  const pending = storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "password");
+  await Promise.resolve();
+  api.getStatus.mockResolvedValue(createStatus("locked"));
+  await storeModule.handleLocked();
+  journal.resolve([]);
+  expect(await pending).toBe(false);
+  expect(store.status.state).toBe("locked");
+  expect(store.pendingSecretKey).toBe("");
+});
+
+it("ignores a password unlock response that arrives after a newer lock", async () => {
+  resetStore();
+  store.status = createStatus("locked");
+  const unlocked = Promise.withResolvers<Status>();
+  api.unlock.mockReturnValue(unlocked.promise);
+  const pending = storeModule.unlock("password");
+  api.getStatus.mockResolvedValue(createStatus("locked"));
+  await storeModule.handleLocked();
+  unlocked.resolve(createStatus("unlocked"));
+  expect(await pending).toBe(false);
+  expect(store.status.state).toBe("locked");
+});
+
+it("discovers undelivered recovery on restart without automatically unlocking", async () => {
+  resetStore();
+  Object.assign(store, { pendingRecovery: [], isRecoveryOpen: false });
+  api.getStatus.mockResolvedValue(createStatus("locked"));
+  api.listPendingRecovery.mockResolvedValue([{
+    operationId: "pending", kind: "signup", origin: "https://hisar.test", accountId: "account",
+    email: "alice@example.com", name: "Alice", phase: "delivery-pending", kitSaved: false,
+    manualUnlock: false, problems: [],
+  }]);
+  await storeModule.loadStatus();
+  expect(store.isRecoveryOpen).toBe(true);
+  expect(store.pendingRecovery[0].phase).toBe("delivery-pending");
+  expect(store.status.state).toBe("locked");
+  expect(api.resumePendingRecovery).not.toHaveBeenCalled();
+});
+
+it("keeps Finish later when the status is read again", async () => {
+  resetStore();
+  const pending = {
+    operationId: "pending", kind: "signup", origin: "https://hisar.test", accountId: "account",
+    email: "alice@example.com", name: "Alice", phase: "manual-unlock", revision: 2, kitSaved: true,
+    keychainProtected: false, manualUnlock: true, problems: [],
+  };
+  Object.assign(store, { status: createStatus("locked"), pendingRecovery: [pending], isRecoveryOpen: false });
+  api.getStatus.mockResolvedValue(createStatus("unlocked"));
+  api.listPendingRecovery.mockResolvedValue([pending]);
+  api.listAllVault.mockResolvedValue([allTestVault[0]]);
+  api.listAllItem.mockResolvedValue([]);
+  await storeModule.handleUnlockedElsewhere();
+  expect(store.status.state).toBe("unlocked");
+  expect(store.pendingRecovery).toHaveLength(1);
+  expect(store.isRecoveryOpen).toBe(false);
+});
+
+it("keeps committed signup warnings visible after loading the unlocked account", async () => {
+  resetStore();
+  api.signUp.mockResolvedValue({
+    status: createStatus("unlocked"), secretKey: "H1-NEW", pendingOperationId: "pending",
+    setupState: "needs-finishing", problems: ["Recovery progress could not be saved."],
+  });
+  api.listPendingRecovery.mockResolvedValue([{
+    operationId: "pending", kind: "signup", origin: "https://hisar.test", accountId: "account",
+    email: "alice@example.com", name: "Alice", phase: "outcome-unknown", revision: 1,
+    kitSaved: false, keychainProtected: true, manualUnlock: false, problems: [],
+  }]);
+  api.listAllVault.mockResolvedValue([allTestVault[0]]);
+  api.listAllItem.mockResolvedValue([]);
+  await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "password");
+  expect(store.status.state).toBe("unlocked");
+  expect(store.recoveryFactor?.secretKey).toBe("H1-NEW");
+  expect(store.errorMessage).toContain("Recovery progress could not be saved.");
 });

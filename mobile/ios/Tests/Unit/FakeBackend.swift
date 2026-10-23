@@ -28,6 +28,8 @@ class FakeBackend: VaultBackend {
     /// Runs when a refresh lists the passkeys, its last call, after the unlock check: a test can sign out or lock while a
     /// refresh that listed everything is still in flight.
     var onListAllPasskey: (() -> Void)?
+    /// Runs while a pending recovery's Emergency Kit is prepared: a test can lock or sign out meanwhile.
+    var onExportPendingRecoveryEmergencyKit: (() -> Void)?
     var allMember: [Member] = []
     var allVaultMemberByVaultID: [String: [Member]] = [:]
     var allInvitedEmail: [String] = []
@@ -59,6 +61,12 @@ class FakeBackend: VaultBackend {
     var currentSecretKey = FakeBackend.secretKey
     var deletionPreview = AccountDeletionPreview(email: "alice@example.com", planVersion: "reviewed-plan")
     var isAccountDeleted = false
+    var allPendingRecovery: [PendingRecovery] = []
+    var pendingRecoveryPassword = FakeBackend.password
+    var pendingRecoverySecretKey = FakeBackend.secretKey
+    var isPendingRecoveryFactorAvailable = true
+    var pendingSignUpResult: SignUpResult?
+    var pendingCredentialChangeResult: CredentialChangeResult?
     /// The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence.
     var allOrganization: [Organization] = []
     var allOrganizationInvitation: [OrganizationInvitation] = []
@@ -269,11 +277,14 @@ class FakeBackend: VaultBackend {
 
     // The server's answer to the next version check; nil means it accepts this version.
     var serverUpdateRequirement: UpdateRequirement?
+    var onCheckMinimumVersion: (() -> Void)?
 
     func checkMinimumVersion() -> VaultStatus {
         record("checkMinimumVersion")
         status.updateRequired = serverUpdateRequirement
-        return status
+        let answer = status
+        onCheckMinimumVersion?()
+        return answer
     }
 
     func signIn(server: String, email: String, secretKey: String, password: String) throws -> VaultStatus {
@@ -290,6 +301,7 @@ class FakeBackend: VaultBackend {
     func signUp(inviteLink: String, email: String, name: String, password: String) throws -> SignUpResult {
         record("signUp")
         guard inviteLink.contains("/invite/") else { throw BackendError(message: "Invalid invite link") }
+        if let pendingSignUpResult { return pendingSignUpResult }
         seedSignedIn()
         allItemByVaultID = ["personal": [], "family": []]
         status.email = email
@@ -854,6 +866,7 @@ extension FakeBackend {
 
     func changeMasterPassword(currentPassword: String, newPassword: String) throws -> CredentialChangeResult {
         record("changeMasterPassword")
+        if let pendingCredentialChangeResult { return pendingCredentialChangeResult }
         try requireUnlocked()
         guard currentPassword == self.currentPassword else { throw BackendError(message: "The master password is not correct") }
         guard newPassword.count >= 10 else { throw BackendError(message: "Use a master password with at least 10 characters") }
@@ -863,6 +876,7 @@ extension FakeBackend {
 
     func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult {
         record("replaceSecretKey")
+        if let pendingCredentialChangeResult { return pendingCredentialChangeResult }
         try requireUnlocked()
         guard password == currentPassword else { throw BackendError(message: "The master password is not correct") }
         currentSecretKey = "H1-ABC123-ZZZZZ-YYYYY-XXXXX-WWWWW-VVVVVV"
@@ -888,6 +902,78 @@ extension FakeBackend {
         status = .signedOut
         if let accountDeletionCleanupError { throw accountDeletionCleanupError }
         return status
+    }
+
+    func listPendingRecovery() throws -> [PendingRecovery] {
+        record("listPendingRecovery")
+        return allPendingRecovery
+    }
+
+    func resumePendingRecovery(operationID: String, password: String) throws -> SignUpResult {
+        record("resumePendingRecovery")
+        guard password == pendingRecoveryPassword,
+              let index = allPendingRecovery.firstIndex(where: { $0.operationId == operationID }) else {
+            throw BackendError(message: "The recovery password is not correct.")
+        }
+        guard allPendingRecovery[index].phase != "awaiting-kit" else { throw BackendError(message: "Save and confirm the Emergency Kit before continuing.") }
+        guard allPendingRecovery[index].keychainProtected || isPendingRecoveryFactorAvailable else {
+            throw BackendError(message: "Enter the Secret Key from your saved Emergency Kit.")
+        }
+        allPendingRecovery[index].phase = "delivery-pending"
+        return SignUpResult(status: status, secretKey: pendingRecoverySecretKey, pendingOperationId: operationID, setupState: "delivery-pending", problems: allPendingRecovery[index].problems)
+    }
+
+    func resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String) throws -> SignUpResult {
+        record("resumePendingRecoveryWithSecretKey")
+        guard secretKey == pendingRecoverySecretKey,
+              priorSecretKey.isEmpty || priorSecretKey == currentSecretKey else {
+            throw BackendError(message: "The Secret Key does not match this recovery.")
+        }
+        isPendingRecoveryFactorAvailable = true
+        return try resumePendingRecovery(operationID: operationID, password: password)
+    }
+
+    func discardPreparedRecovery(operationID: String, password: String) throws {
+        record("discardPreparedRecovery")
+        guard password == pendingRecoveryPassword,
+              let recovery = allPendingRecovery.first(where: { $0.operationId == operationID }),
+              recovery.phase == "awaiting-kit" || recovery.phase == "prepared" else {
+            throw BackendError(message: "Only an uncommitted setup can be discarded.")
+        }
+        allPendingRecovery.removeAll { $0.operationId == operationID }
+    }
+
+    func exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: URL) throws -> PendingRecoveryExport {
+        record("exportPendingRecoveryEmergencyKit")
+        onExportPendingRecoveryEmergencyKit?()
+        guard password == pendingRecoveryPassword,
+              let index = allPendingRecovery.firstIndex(where: { $0.operationId == operationID }),
+              allPendingRecovery[index].phase != "outcome-unknown" else {
+            throw BackendError(message: "Resume this recovery before preparing the Emergency Kit.")
+        }
+        guard allPendingRecovery[index].keychainProtected || isPendingRecoveryFactorAvailable else {
+            throw BackendError(message: "Enter the Secret Key from your saved Emergency Kit.")
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
+        try Data("%PDF-1.7".utf8).write(to: path)
+        allPendingRecovery[index].kitSaved = true
+        return PendingRecoveryExport(secretKey: pendingRecoverySecretKey, path: path.path)
+    }
+
+    func acknowledgePendingRecovery(operationID: String, password: String) throws {
+        record("acknowledgePendingRecovery")
+        guard password == pendingRecoveryPassword,
+              let recovery = allPendingRecovery.first(where: { $0.operationId == operationID }),
+              (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit"), recovery.kitSaved else {
+            throw BackendError(message: "Save the new Emergency Kit before finishing recovery.")
+        }
+        if recovery.phase == "awaiting-kit" || recovery.manualUnlock {
+            let index = allPendingRecovery.firstIndex { $0.operationId == operationID }!
+            allPendingRecovery[index].phase = recovery.phase == "awaiting-kit" ? "prepared" : "manual-unlock"
+        } else {
+            allPendingRecovery.removeAll { $0.operationId == operationID }
+        }
     }
 
     func dismissSignedOutReason() -> VaultStatus {

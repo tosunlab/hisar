@@ -135,6 +135,12 @@ interface VaultBackend {
     fun replaceSecretKey(password: String, directory: File): CredentialChangeResult
     fun previewAccountDeletion(): AccountDeletionPreview
     fun deleteAccountWithPlan(password: String, email: String, planVersion: String): VaultStatus
+    fun listPendingRecovery(): List<PendingRecovery>
+    fun resumePendingRecovery(operationID: String, password: String): SignUpResult
+    fun resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String): SignUpResult
+    fun discardPreparedRecovery(operationID: String, password: String)
+    fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport
+    fun acknowledgePendingRecovery(operationID: String, password: String)
     fun dismissSignedOutReason(): VaultStatus
     fun copySecretReference(vaultID: String, itemID: String, fieldName: String): String
     fun isMacApprovalAllowed(): Boolean

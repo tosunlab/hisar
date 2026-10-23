@@ -57,6 +57,13 @@ class SettingsModel(private val context: ModelContext) {
 
     suspend fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult? = context.runInModel {
         val result = context.perform { it.changeMasterPassword(currentPassword, newPassword) } ?: return@runInModel null
+        if (result.pendingOperationId.isNotEmpty()) {
+            context.refreshStatus()
+            context.refreshPendingRecovery()
+            context.errorMessage.value = (result.problems + listOf(result.localError, result.keychainError))
+                .filter { it.isNotEmpty() }.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n")
+            return@runInModel result
+        }
         context.applyStatus(result.status)
         val warning = result.localError.takeIf { it.isNotEmpty() }?.let { " $it" }.orEmpty()
         context.showNotice("Master password changed. ${AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)}$warning")
@@ -65,6 +72,14 @@ class SettingsModel(private val context: ModelContext) {
 
     suspend fun replaceSecretKey(password: String): CredentialChangeResult? {
         val result = context.perform { it.replaceSecretKey(password, createFolder("EmergencyKit")) } ?: return null
+        if (result.pendingOperationId.isNotEmpty()) {
+            removeFolder(result.emergencyKitPath)
+            context.refreshStatus()
+            context.refreshPendingRecovery()
+            context.errorMessage.value = (result.problems + listOf(result.localError, result.keychainError))
+                .filter { it.isNotEmpty() }.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n")
+            return result
+        }
         context.applyStatus(result.status)
         return result
     }

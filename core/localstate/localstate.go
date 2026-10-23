@@ -39,13 +39,14 @@ func classifyKeyringError(err error, checkSecretService func() error) error {
 }
 
 type State struct {
-	Server    string            `json:"server"`
-	Email     string            `json:"email"`
-	AccountID string            `json:"accountId"`
-	Token     string            `json:"token"`
-	DeviceID  string            `json:"deviceId"`
-	Pins      map[string][]byte `json:"pins,omitempty"`
-	Seqs      map[string]int64  `json:"seqs,omitempty"`
+	Server              string            `json:"server"`
+	Email               string            `json:"email"`
+	AccountID           string            `json:"accountId"`
+	Token               string            `json:"token"`
+	DeviceID            string            `json:"deviceId"`
+	Pins                map[string][]byte `json:"pins,omitempty"`
+	Seqs                map[string]int64  `json:"seqs,omitempty"`
+	RecoveryOperationID string            `json:"recoveryOperationId,omitempty"`
 
 	// BiometricUnlock is the account unlock key sealed with a key kept in the OS keychain.
 	BiometricUnlock      []byte    `json:"biometricUnlock,omitempty"`

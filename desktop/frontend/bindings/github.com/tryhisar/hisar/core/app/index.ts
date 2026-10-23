@@ -53,6 +53,7 @@ export type {
     Organizations,
     PairedBrowser,
     PasswordConfig,
+    PendingRecoverySummary,
     Person,
     ReceivedShareInvitation,
     RememberedAgentSecret,

@@ -59,16 +59,20 @@ func (s *Session) ChangeMasterPassword(ctx context.Context, currentPassword, new
 	if bytes.Equal(currentPassword, newPassword) {
 		return nil, ErrSamePassword
 	}
-	return s.changeCredentials(ctx, apitypes.CredentialChangeMasterPassword, currentPassword, secretKey, newPassword, secretKey)
+	return s.changeCredentials(ctx, apitypes.CredentialChangeMasterPassword, currentPassword, secretKey, newPassword, secretKey, nil)
 }
 
 // ReplaceSecretKey keeps the master password and the account ID; the old Secret Key and Emergency Kit stop working.
 func (s *Session) ReplaceSecretKey(ctx context.Context, password []byte, currentSecretKey crypt.SecretKey) (*CredentialChange, error) {
+	return s.ReplaceSecretKeyWithRecovery(ctx, password, currentSecretKey, nil)
+}
+
+func (s *Session) ReplaceSecretKeyWithRecovery(ctx context.Context, password []byte, currentSecretKey crypt.SecretKey, stage StagePendingFactor) (*CredentialChange, error) {
 	newSecretKey, err := crypt.GenerateSecretKey(s.AccountID)
 	if err != nil {
 		return nil, err
 	}
-	return s.changeCredentials(ctx, apitypes.CredentialChangeSecretKey, password, currentSecretKey, password, newSecretKey)
+	return s.changeCredentials(ctx, apitypes.CredentialChangeSecretKey, password, currentSecretKey, password, newSecretKey, stage)
 }
 
 type verifiedAccount struct {
@@ -158,7 +162,7 @@ func strongerArgon2Params(current crypt.Argon2Params) crypt.Argon2Params {
 	return params
 }
 
-func (s *Session) changeCredentials(ctx context.Context, change string, currentPassword []byte, currentSecretKey crypt.SecretKey, newPassword []byte, newSecretKey crypt.SecretKey) (*CredentialChange, error) {
+func (s *Session) changeCredentials(ctx context.Context, change string, currentPassword []byte, currentSecretKey crypt.SecretKey, newPassword []byte, newSecretKey crypt.SecretKey, stage StagePendingFactor) (*CredentialChange, error) {
 	verified, err := s.verifyCurrentCredentials(ctx, currentPassword, currentSecretKey)
 	if err != nil {
 		return nil, err
@@ -182,7 +186,7 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	if err != nil {
 		return nil, err
 	}
-	response, err := s.Client.ChangeCredentials(ctx, &apitypes.ChangeCredentialsRequest{
+	request := &apitypes.ChangeCredentialsRequest{
 		ReauthenticationID: proof.ReauthenticationID,
 		KE3:                proof.KE3,
 		Change:             change,
@@ -190,7 +194,13 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 		Salt:               credential.salt,
 		Argon2:             credential.argon2Params,
 		EncKeyset:          credential.encryptedKeyset,
-	})
+	}
+	if stage != nil {
+		if err := stage(PendingFactor{Kind: "replace-secret-key", SecretKey: newSecretKey.Encode(), PriorSecretKey: currentSecretKey.Encode(), EncryptedKeyset: credential.encryptedKeyset, PriorEncryptedKeyset: verified.account.EncKeyset, Credentials: request}); err != nil {
+			return nil, err
+		}
+	}
+	response, err := s.Client.ChangeCredentials(ctx, request)
 	if err != nil {
 		if !apiclient.IsUnreachable(err) || !s.holdsKeyset(ctx, credential.encryptedKeyset) {
 			return nil, convertReauthenticationError(err)

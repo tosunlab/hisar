@@ -132,7 +132,7 @@ func (s *Service) RegisterStart(ctx context.Context, request *apitypes.RegisterS
 func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apitypes.RegisterFinishRequest) (apitypes.SessionResponse, error) {
 	email := apitypes.NormalizeEmail(request.Email)
 	if err := s.checkInvite(ctx, request.Invite, email); err != nil {
-		return apitypes.SessionResponse{}, err
+		return apitypes.SessionResponse{}, s.registrationRefusal(ctx, request.AccountID, err)
 	}
 	switch {
 	case !crypt.IsValidAccountID(request.AccountID),
@@ -167,9 +167,9 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 	token, device, newSession := s.newSession(account.ID, request.Device)
 	switch err := s.store.RedeemInvite(ctx, hashToken(request.Invite), account, device, newSession); {
 	case errors.Is(err, store.ErrNotFound):
-		return apitypes.SessionResponse{}, errInvalidInvite
+		return apitypes.SessionResponse{}, s.registrationRefusal(ctx, request.AccountID, errInvalidInvite)
 	case errors.Is(err, store.ErrExists):
-		return apitypes.SessionResponse{}, newError(KindConflict, "account already exists")
+		return apitypes.SessionResponse{}, s.registrationRefusal(ctx, request.AccountID, newError(KindConflict, "account already exists"))
 	case err != nil:
 		return apitypes.SessionResponse{}, err
 	}
@@ -178,6 +178,20 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 		log.Printf("setup: %v", err)
 	}
 	return apitypes.SessionResponse{Token: token, AccountID: account.ID, DeviceID: device.ID}, nil
+}
+
+func (s *Service) registrationRefusal(ctx context.Context, accountID string, refusal error) error {
+	if !crypt.IsValidAccountID(accountID) {
+		return refusal
+	}
+	if _, err := s.store.GetAccountByID(ctx, accountID); !errors.Is(err, store.ErrNotFound) {
+		return refusal
+	}
+	var domainError *Error
+	if !errors.As(refusal, &domainError) {
+		return refusal
+	}
+	return newError(domainError.Kind, apitypes.RegistrationNotCommittedMessage)
 }
 
 func (s *Service) newSession(accountID string, deviceInfo apitypes.DeviceInfo) (string, *store.Device, *store.Session) {

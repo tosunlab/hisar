@@ -5,11 +5,13 @@ import { currentPath, navigate } from "./navigation";
 import { findSection, sections } from "./sections";
 import SetupView from "./views/SetupView.vue";
 import SignInView from "./views/SignInView.vue";
+import { listRecovery } from "./bridge/recoveryStorage";
 
 const currentSection = computed(() => findSection(currentPath.value));
 const isSetupPage = computed(() => currentPath.value.replace(/\/+$/, "") === "/admin/setup");
 const isSigningOut = ref(false);
 const signOutError = ref("");
+const recoveryError = ref("");
 
 // leaveSetup opens the dashboard, signed in or at sign-in, and drops the setup invite from the address bar.
 function leaveSetup(): void {
@@ -21,7 +23,16 @@ function followHistory(): void {
   currentPath.value = window.location.pathname;
 }
 
-onMounted(() => window.addEventListener("popstate", followHistory));
+onMounted(async () => {
+  window.addEventListener("popstate", followHistory);
+  if (!isSetupPage.value) {
+    try {
+      if ((await listRecovery()).length > 0) navigate("/admin/setup");
+    } catch (error) {
+      recoveryError.value = getErrorMessage(error);
+    }
+  }
+});
 onUnmounted(() => window.removeEventListener("popstate", followHistory));
 
 async function submitSignOut(): Promise<void> {
@@ -38,6 +49,7 @@ async function submitSignOut(): Promise<void> {
 </script>
 
 <template>
+  <p v-if="recoveryError" class="error" role="alert">{{ recoveryError }}</p>
   <SetupView v-if="isSetupPage" @leave="leaveSetup" />
   <SignInView v-else-if="!auth.session" />
   <div v-else class="shell">

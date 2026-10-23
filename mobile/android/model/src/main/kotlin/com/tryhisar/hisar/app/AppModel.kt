@@ -63,6 +63,7 @@ class AppModel(
     private var isRefreshRequestedAgain = false
     private var startedRefreshCount = 0L
     private var shownRefresh = 0L
+    private var statusEpoch = 0L
 
     override val status: StateFlow<VaultStatus> = mutableStatus.asStateFlow()
     override val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
@@ -96,6 +97,7 @@ class AppModel(
     val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
+    val pendingRecovery = PendingRecoveryModel(this) { signIn.finishNewSecretKey() }
     val credentialImport = CredentialImportModel(this)
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)
@@ -130,6 +132,7 @@ class AppModel(
         applyStatus(started.status)
         if (status.value.isUnlocked) scope.launch { refreshAll() }
         scope.launch { checkMinimumVersion() }
+        refreshPendingRecovery()
     }
 
     private class StartedBackend(
@@ -151,9 +154,10 @@ class AppModel(
     // Offline the backend keeps what it knew, so a failed check never blocks the app.
     suspend fun checkMinimumVersion() {
         if (backend == null) return
+        val epoch = statusEpoch
         mutableIsCheckingMinimumVersion.value = true
         try {
-            attempt { it.checkMinimumVersion() }?.let(::applyStatus)
+            attempt { it.checkMinimumVersion() }?.let { if (epoch == statusEpoch) applyStatus(it) }
         } finally {
             mutableIsCheckingMinimumVersion.value = false
         }
@@ -165,6 +169,7 @@ class AppModel(
 
     override fun applyStatus(newStatus: VaultStatus) {
         val previous = mutableStatus.value
+        if (previous.state != newStatus.state || previous.email != newStatus.email || previous.server != newStatus.server) statusEpoch++
         mutableStatus.value = newStatus
         mutableScreen.value = when {
             newStatus.updateRequired != null -> Screen.UpdateRequired(newStatus.updateRequired)
@@ -223,6 +228,11 @@ class AppModel(
 
     override suspend fun refreshStatus() {
         attempt { it.getStatus() }?.let(::applyStatus)
+    }
+
+    override suspend fun refreshPendingRecovery() {
+        pendingRecovery.refresh()
+        if (pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
     }
 
     suspend fun lock() {

@@ -897,7 +897,8 @@ func TestStandaloneOnlyCommandsPointToTheApp(t *testing.T) {
 
 func TestRemovedRecoveryCommandsPointToTheEmergencyKit(t *testing.T) {
 	startFakeApp(t)
-	for _, commandName := range []string{"recover", "recovery-setup", "recovery-enable", "recovery-start", "recovery-list", "recovery-complete"} {
+	removedCommands := []string{"recover", "recovery-setup", "recovery-enable", "recovery-start", "recovery-list", "recovery-complete"}
+	for _, commandName := range removedCommands {
 		for _, isStandaloneForced := range []bool{false, true} {
 			_, _, err := runCapturingOutput(t, isStandaloneForced, "", commandName, "anything")
 			if err == nil || err.Error() != "account recovery was removed; sign in with your Emergency Kit" {
@@ -907,8 +908,16 @@ func TestRemovedRecoveryCommandsPointToTheEmergencyKit(t *testing.T) {
 	}
 	var usage strings.Builder
 	printUsage(&usage)
-	if strings.Contains(usage.String(), "recover") {
-		t.Errorf("usage lists recovery commands:\n%s", usage.String())
+	for _, line := range strings.Split(usage.String(), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		for _, commandName := range removedCommands {
+			if fields[0] == commandName {
+				t.Errorf("usage lists removed recovery command %s", commandName)
+			}
+		}
 	}
 }
 
@@ -1048,6 +1057,37 @@ func TestSignupInsideAHarnessReachesNoServer(t *testing.T) {
 				t.Errorf("the server got %q", requestPaths)
 			}
 		})
+	}
+}
+
+func TestSignupRefusesAnExistingKitPathBeforeReachingTheServer(t *testing.T) {
+	var requestPaths []string
+	var mutex sync.Mutex
+	apiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		mutex.Lock()
+		requestPaths = append(requestPaths, request.URL.Path)
+		mutex.Unlock()
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer apiServer.Close()
+	t.Setenv("HISAR_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv(standaloneEnvironment, "1")
+	t.Setenv("HISAR_SECRET_KEY", "A3-ABCDEF-ABCDEF-ABCDE-FGHIJ-KLMNO-PQRST")
+	kitPath := filepath.Join(t.TempDir(), "Hisar Emergency Kit.pdf")
+	if err := os.WriteFile(kitPath, []byte("an earlier kit"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input := "a@example.com\nA\npw-long-enough\npw-long-enough\n"
+	if _, _, err := runCapturingOutput(t, false, input, "signup", "-o", kitPath, "-y", apiServer.URL+"/invite/token"); err == nil {
+		t.Fatal("signup accepted a kit path that is taken")
+	}
+	if content, err := os.ReadFile(kitPath); err != nil || string(content) != "an earlier kit" {
+		t.Fatalf("the earlier kit changed: %q %v", content, err)
+	}
+	mutex.Lock()
+	defer mutex.Unlock()
+	if len(requestPaths) != 0 {
+		t.Errorf("signup reached the server before checking its kit path: %q", requestPaths)
 	}
 }
 

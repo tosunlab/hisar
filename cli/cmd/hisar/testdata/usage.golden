@@ -2,7 +2,7 @@ usage: hisar [--standalone] <command> [arguments]
 
 commands:
   status             [--json]                            show whether hisar uses the Hisar app or its own sign-in, and the account; --json prints mode, state and account
-  signup             <invite-link>                       create your account from an invite
+  signup             [-o file] [-y] <invite-link>        create your account from an invite with durable recovery
   login                                                  sign in on this device
   logout                                                 sign out on this device
   whoami                                                 show the signed-in account
@@ -32,7 +32,7 @@ commands:
   team               <action> <org> <team> [arguments]   manage an organization's teams (create <org> <team> | rename <org> <team> <name> | delete <org> <team> [-y] | add <org> <team> <email> | remove <org> <team> <email>)
   share-link         <item>|--text|open <url>|revoke <id> share an item or text with anyone through an end-to-end encrypted link (--field, --expires 1h|1d|7d|30d, --views, --passphrase)
   share-links                                            list your live share links
-  account            change-password|replace-secret-key [-o file]|delete change your master password, replace your Secret Key (with a new Emergency Kit) or delete your account
+  account            change-password|replace-secret-key [-o file]|delete|pending [list|resume|kit|acknowledge|discard] change credentials, delete your account, or resume protected setup and Emergency Kit delivery
   emergency-kit      [-o file]                           save your Emergency Kit PDF (sign-in address, email, Secret Key)
   devices                                                list your signed-in devices
   revoke-device      <id>                                sign out a device

@@ -65,7 +65,7 @@ get_invite_code() { grep -oE '/invite/[A-Za-z0-9_-]+' | head -1 | cut -d/ -f3; }
 ALICE_INV=$("$BIN/hisar-server" invite --email alice@example.com </dev/null | tail -1)
 expect "admin invite" "$ALICE_INV" "$HISAR_PUBLIC_URL/invite/"
 
-printf 'alice@example.com\nAlice\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/alice.json HISAR_SECRET_KEY=- hisar signup "$ALICE_INV" 2>"$T/alice-signup.txt"
+printf 'alice@example.com\nAlice\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/alice.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/alice-emergency-kit.pdf" "$ALICE_INV" 2>"$T/alice-signup.txt"
 ALICE_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/alice-signup.txt")
 expect "alice signup" "$ALICE_SK" "H1-"
 A() { HISAR_STATE=$T/alice.json HISAR_SECRET_KEY=$ALICE_SK hisar "$@"; }
@@ -127,7 +127,7 @@ BOB_INVITE_PAGE=$(curl -s "$HISAR_PUBLIC_URL/invite/$BOB_CODE")
 expect "the emailed invite link opens a page naming the inviter" "$BOB_INVITE_PAGE" "Alice (alice@example.com)</span> invited you to Hisar"
 expect "the invite page shows the code to paste" "$BOB_INVITE_PAGE" "data-testid=\"invite-code\">$BOB_CODE</code>"
 expect "the invite page opens the app with the invite" "$BOB_INVITE_PAGE" "href=\"hisar://invite/$BOB_CODE?server=http%3A%2F%2F127.0.0.1%3A$PORT\""
-printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup "$HISAR_PUBLIC_URL/invite/$BOB_CODE" 2>"$T/bob-signup.txt"
+printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/bob-emergency-kit.pdf" "$HISAR_PUBLIC_URL/invite/$BOB_CODE" 2>"$T/bob-signup.txt"
 BOB_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/bob-signup.txt")
 expect "bob signs up from the emailed code" "$BOB_SK" "H1-"
 expect "a used invite's page says it isn't valid" "$(curl -s -w ' %{http_code}' "$HISAR_PUBLIC_URL/invite/$BOB_CODE")" "This invite isn't valid</h1>"
@@ -166,7 +166,7 @@ expect "alice sees edit" "$(printf '%s\n' "$PW" | A get netflix -v Family -f not
 expect "bob invites by email too" "$(B invite eve@example.com 2>&1)" "Invitation sent to eve@example.com."
 
 CAROL_INV=$("$BIN/hisar-server" invite --email carol@example.com </dev/null | tail -1)
-printf 'carol@example.com\nCarol\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=- hisar signup "$CAROL_INV" 2>"$T/carol-signup.txt"
+printf 'carol@example.com\nCarol\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/carol-emergency-kit.pdf" "$CAROL_INV" 2>"$T/carol-signup.txt"
 CAROL_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/carol-signup.txt")
 C() { HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=$CAROL_SK hisar "$@"; }
 printf '%s\n' "$PW" | A vault-create Work 2>/dev/null
@@ -298,11 +298,11 @@ expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n
 CONTROL_NAME=$'Eve\033]52;c;ZWNobyBoaQ==\007\302\233'
 CONTROL_INV=$("$BIN/hisar-server" invite --email terminal-controls@example.com </dev/null | tail -1)
 REFUSED_SIGNUP=$(printf 'terminal-controls@example.com\n%s\n%s\n%s\n' "$CONTROL_NAME" "$PW" "$PW" |
-  HISAR_STATE=$T/terminal-refused.json HISAR_SECRET_KEY=- hisar signup "$CONTROL_INV" 2>&1 || true)
+  HISAR_STATE=$T/terminal-refused.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/terminal-refused-kit.pdf" "$CONTROL_INV" 2>&1 || true)
 [[ "$REFUSED_SIGNUP" != *H1-* ]] || fail "signup accepted a name with terminal controls: $REFUSED_SIGNUP"
 echo "ok   signup refuses a name with terminal controls"
 printf 'terminal-controls@example.com\nEve\n%s\n%s\n' "$PW" "$PW" |
-  HISAR_STATE=$T/terminal-signup.json HISAR_SECRET_KEY=- hisar signup "$CONTROL_INV" >"$T/terminal-signup.stdout" 2>"$T/terminal-signup.stderr"
+  HISAR_STATE=$T/terminal-signup.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/terminal-emergency-kit.pdf" "$CONTROL_INV" >"$T/terminal-signup.stdout" 2>"$T/terminal-signup.stderr"
 CONTROL_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/terminal-signup.stderr")
 expect "older-account signup" "$CONTROL_SK" "H1-"
 printf "UPDATE accounts SET name = :'name' WHERE email = 'terminal-controls@example.com'\n" |
@@ -425,7 +425,7 @@ expect "the new master password unlocks" "$(printf '%s\n' "$NEW_PW" | A get gith
 expect "password change email" "$(wait_for_mail alice@example.com "$ALICE_MAIL_COUNT")" "Your other device was signed out."
 expect "the other device signs in with the new master password" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$NEW_PW" | HISAR_STATE=$T/alice3.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
 
-expect "replace Secret Key" "$(printf '%s\ny\n' "$NEW_PW" | A account replace-secret-key -o "$T/new-kit.pdf" 2>"$T/replace.txt"; cat "$T/replace.txt")" "Saved your new Emergency Kit to $T/new-kit.pdf"
+expect "replace Secret Key" "$(printf '%s\n' "$NEW_PW" | A account replace-secret-key -y -o "$T/new-kit.pdf" 2>"$T/replace.txt"; cat "$T/replace.txt")" "Saved your new Emergency Kit to $T/new-kit.pdf"
 NEW_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/replace.txt" | head -1)
 [[ -n "$NEW_SK" && "$NEW_SK" != "$ALICE_SK" ]] || fail "no new Secret Key: $(cat "$T/replace.txt")"
 expect "the new Emergency Kit is a private PDF" "$(head -c 5 "$T/new-kit.pdf") $(stat -c %a "$T/new-kit.pdf" 2>/dev/null || stat -f %Lp "$T/new-kit.pdf")" "%PDF- 600"
@@ -442,7 +442,7 @@ expect "the new Emergency Kit signs in on a new device" "$(printf 'http://127.0.
 PW=$NEW_PW
 
 DORA_INV=$("$BIN/hisar-server" invite --email dora@example.com </dev/null | tail -1)
-printf 'dora@example.com\nDora\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=- hisar signup "$DORA_INV" 2>"$T/dora-signup.txt"
+printf 'dora@example.com\nDora\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/dora-emergency-kit.pdf" "$DORA_INV" 2>"$T/dora-signup.txt"
 DORA_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/dora-signup.txt")
 D() { HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=$DORA_SK hisar "$@"; }
 printf '%s\n' "$PW" | D vault-create Garden 2>/dev/null

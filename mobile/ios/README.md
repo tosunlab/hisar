@@ -22,6 +22,16 @@ Account deletion carries the `planVersion` of the preview the user reviewed into
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
 An absent plan version never enables the delete button.
 
+`RootView` presents pending account recovery independently of the signed-in, locked, and signed-out screens.
+`ListPendingRecovery` supplies account metadata, not the new Secret Key. The user chooses a record and enters its
+master password to resume setup or prepare an Emergency Kit. The kit and Secret Key remain visible until the user
+closes recovery, changes accounts, or locks the app. Closing removes the temporary PDF but keeps the protected journal.
+Only **I saved the new Emergency Kit** calls `AcknowledgePendingRecovery`. Without the OS keychain, setup stops before
+the remote change until the user saves and confirms the new kit. After a restart, the user supplies the saved kit's
+Secret Key through `ResumePendingRecoveryWithSecretKey`. Metadata-only manual-unlock records remain visible for
+future sign-ins. `DiscardPreparedRecovery` removes only a setup for which no remote change was sent.
+The Android root screen and `PendingRecoveryModel` use the same protocol and test names.
+
 ## Build and test
 
 Requirements: Xcode with an iOS simulator runtime, Go, and for regenerating the project XcodeGen 2.46.0

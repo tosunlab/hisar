@@ -41,6 +41,8 @@ export const auth = reactive<{ session: AdminSession | null }>({
   session: storedSession ? (JSON.parse(storedSession) as AdminSession) : null,
 });
 
+let sessionGeneration = 0;
+
 function saveSession(session: AdminSession | null): void {
   if (session) {
     sessionStorage.setItem(sessionStorageKey, JSON.stringify(session));
@@ -93,7 +95,11 @@ async function revokeDeviceIgnoringFailure(deviceId: string, token: string): Pro
 }
 
 export async function signIn(email: string, secretKey: string, password: string): Promise<void> {
+  const generation = ++sessionGeneration;
   const signedIn = await bridge.signIn(email, secretKey, password);
+  if (generation !== sessionGeneration) {
+    throw new Error("The sign-in was cancelled.");
+  }
   if (signedIn.role !== "admin") {
     await revokeDeviceIgnoringFailure(signedIn.deviceId, signedIn.token);
     throw new Error(notAdminMessage);
@@ -103,16 +109,33 @@ export async function signIn(email: string, secretKey: string, password: string)
 
 // signUp creates the first admin with the setup invite and signs the dashboard in as that admin.
 export async function signUp(inviteToken: string, email: string, name: string, password: string): Promise<SignUpResult> {
+  const generation = ++sessionGeneration;
   const signedUp = await bridge.signUp(inviteToken, email, name, password);
-  saveSession({ token: signedUp.token, accountId: signedUp.accountId, deviceId: signedUp.deviceId, name: name.trim() });
+  if (generation === sessionGeneration && signedUp.token && (!signedUp.setupState || signedUp.setupState === "delivery-pending")) {
+    saveSession({ token: signedUp.token, accountId: signedUp.accountId, deviceId: signedUp.deviceId, name: name.trim() });
+  }
   return signedUp;
 }
 
-export async function signOut(): Promise<void> {
-  if (auth.session) {
-    await revokeDevice(auth.session.deviceId);
+
+export async function resumeSetup(operationId: string, password: string, name: string, secretKey: string, priorSecretKey: string): Promise<SignUpResult> {
+  const generation = ++sessionGeneration;
+  const result = await bridge.resumePendingRecovery(operationId, password, secretKey, priorSecretKey);
+  if (generation !== sessionGeneration) {
+    throw new Error("The recovery was cancelled.");
   }
+  if (result.token && result.setupState === "delivery-pending") {
+    saveSession({ token: result.token, accountId: result.accountId, deviceId: result.deviceId, name });
+  }
+  return result;
+}
+export async function signOut(): Promise<void> {
+  sessionGeneration++;
+  const session = auth.session;
   saveSession(null);
+  if (session) {
+    await revokeDevice(session.deviceId, session.token);
+  }
 }
 
 export function getServer(): Promise<AdminServer> {

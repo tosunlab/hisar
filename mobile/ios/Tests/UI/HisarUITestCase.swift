@@ -216,11 +216,7 @@ class HisarUITestCase: XCTestCase {
         saveScreenshot("create-account")
         scrollTo(app.buttons["sign-in-submit"])
         app.buttons["sign-in-submit"].tap()
-        let secretKeyText = app.staticTexts["new-secret-key"]
-        waitFor(secretKeyText, timeout: 60)
-        let secretKey = secretKeyText.label
-        saveScreenshot("new-secret-key")
-        app.buttons["new-secret-key-done"].tap()
+        let secretKey = finishPendingRecovery(email: email, password: Self.masterPassword)
         let notNowButton = app.buttons["biometric-offer-not-now"]
         if isBiometricOfferExpected {
             waitFor(notNowButton, timeout: 10)
@@ -231,6 +227,53 @@ class HisarUITestCase: XCTestCase {
         }
         // The vaults exist under the Secret Key screen and the Face ID offer; they take a tap only once both have closed.
         waitForHittable(app.buttons["vault-Personal"])
+        return secretKey
+    }
+
+    @discardableResult
+    func finishPendingRecovery(email: String, password: String, restartAfterPreparingKit: Bool = false) -> String {
+        let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pending-recovery-' AND label CONTAINS %@ AND NOT label CONTAINS 'manual-unlock'", email)).firstMatch
+        waitFor(account, timeout: 60)
+        account.tap()
+        let phase = app.staticTexts["pending-recovery-phase"]
+        let isPrecommit = phase.label == "awaiting-kit"
+        let passwordField = app.secureTextFields["pending-recovery-password"]
+        type(password, into: passwordField)
+        scrollTo(app.buttons["pending-recovery-export"])
+        app.buttons["pending-recovery-export"].tap()
+        let key = app.staticTexts["pending-recovery-secret-key"]
+        waitFor(key, timeout: 60)
+        let secretKey = key.label
+        saveScreenshot("pending-recovery-kit")
+        if restartAfterPreparingKit {
+            app.launchArguments.removeAll { $0 == "-HisarResetState" }
+            app.terminate()
+            app.launch()
+            waitFor(account, timeout: 60)
+            account.tap()
+        }
+        type(password, into: passwordField)
+        scrollTo(app.buttons["pending-recovery-acknowledge"])
+        app.buttons["pending-recovery-acknowledge"].tap()
+        if isPrecommit {
+            let prepared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'prepared'"), object: phase)
+            wait(for: [prepared], timeout: 60)
+            type(secretKey, into: app.secureTextFields["pending-recovery-input-secret-key"])
+            type(password, into: passwordField)
+            scrollTo(app.buttons["pending-recovery-resume"])
+            app.buttons["pending-recovery-resume"].tap()
+            let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'delivery-pending'"), object: phase)
+            wait(for: [committed], timeout: 60)
+            type(password, into: passwordField)
+            scrollTo(app.buttons["pending-recovery-acknowledge"])
+            app.buttons["pending-recovery-acknowledge"].tap()
+            let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO OR label == 'manual-unlock'"), object: phase)
+            wait(for: [finished], timeout: 60)
+            if phase.exists {
+                scrollTo(app.buttons["pending-recovery-later"])
+                app.buttons["pending-recovery-later"].tap()
+            }
+        }
         return secretKey
     }
 

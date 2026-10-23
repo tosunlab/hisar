@@ -29,6 +29,7 @@ import type {
   ShareLinkField,
   ShareLinkRequest,
   SignUpResult,
+  PendingRecoverySummary,
   SSHAgentStatus,
   SSHKeyType,
   Status,
@@ -51,6 +52,23 @@ const previewParameter = new URLSearchParams(window.location.search);
 
 // &organizations=none starts outside any organization: no organization vaults, invitations or waiting keys.
 const hasPreviewOrganizations = previewParameter.get("organizations") !== "none";
+
+let previewRecovery: PendingRecoverySummary[] = previewParameter.has("recovery")
+  ? [{
+      operationId: "preview-recovery",
+      kind: "signup",
+      origin: "https://preview.hisar.test",
+      accountId: "preview-account",
+      email: "preview@example.com",
+      name: "Preview account",
+      phase: previewParameter.get("recovery") === "complete" ? "delivery-pending" : "needs-finishing",
+      kitSaved: false,
+      manualUnlock: false,
+      problems: ["Preview only. This screen does not contact a server or recover real keys."],
+      keychainProtected: true,
+      revision: 1,
+    }]
+  : [];
 
 const allPreviewVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
@@ -1400,7 +1418,7 @@ export const previewApi = {
   },
   signUp: (): Promise<SignUpResult> => {
     previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M" });
+    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
   },
   unlock: () => {
     previewState = "unlocked";
@@ -1918,6 +1936,20 @@ export const previewApi = {
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   forgetNewAccountSecretKey: () => Promise.resolve(),
+  listPendingRecovery: () => resolveAfterDelay(previewRecovery.map((entry) => ({ ...entry }))),
+  resumePendingRecovery: (_operationID: string, password: string): Promise<SignUpResult> => {
+    if (password.length < 4) return Promise.reject(new Error("The password could not open this preview recovery operation."));
+    previewRecovery = previewRecovery.map((entry) => ({ ...entry, phase: "delivery-pending", problems: [] }));
+    previewState = "unlocked";
+    return resolveAfterDelay({ status: previewStatus(), secretKey: "", pendingOperationId: "preview-recovery", setupState: "delivery-pending", problems: [] });
+  },
+  savePendingRecoveryEmergencyKit: (_operationID: string, password: string) => password.length < 4
+    ? Promise.reject(new Error("The password could not open this preview recovery operation."))
+    : resolveAfterDelay("/Preview/Hisar Emergency Kit.pdf"),
+  acknowledgePendingRecovery: () => {
+    previewRecovery = [];
+    return Promise.resolve();
+  },
   changeMasterPassword: (currentPassword: string) =>
     currentPassword.length < 4
       ? Promise.reject(new Error("the master password is not correct"))

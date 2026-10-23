@@ -5,6 +5,7 @@ import com.tryhisar.hisar.HisarApplication
 import com.tryhisar.hisar.HisarUITestCase
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.VaultBackend
+import com.tryhisar.hisar.platform.createTemporaryDirectory
 import com.tryhisar.hisar.platform.requireArgument
 import org.junit.Assert.assertTrue
 
@@ -17,6 +18,9 @@ fun signUpWithLogins(accountPrefix: String, vararg allLogin: ItemDetail) {
         requireArgument("HISAR_UI_TEST_${accountPrefix}INVITE_LINK"), requireArgument("HISAR_UI_TEST_${accountPrefix}EMAIL"), "Android AutoFill", HisarUITestCase.MASTER_PASSWORD,
     )
     assertTrue("signed up: ${signedUp.status}", signedUp.status.isUnlocked)
+    // Until its Emergency Kit is saved and confirmed, a new account's setup stays pending, and Hisar opens on it.
+    testBackend.exportPendingRecoveryEmergencyKit(signedUp.pendingOperationId, HisarUITestCase.MASTER_PASSWORD, createTemporaryDirectory("emergency-kit"))
+    testBackend.acknowledgePendingRecovery(signedUp.pendingOperationId, HisarUITestCase.MASTER_PASSWORD)
     val personal = testBackend.listAllVault().single { it.name == "Personal" }
     for (login in allLogin) testBackend.saveItem(personal.id, login)
 }

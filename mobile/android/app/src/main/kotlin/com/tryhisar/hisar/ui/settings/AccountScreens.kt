@@ -38,6 +38,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -374,7 +375,7 @@ fun ReplaceSecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                 scope.launch {
                     model.settings.replaceSecretKey(enteredPassword)?.let {
                         password = ""
-                        result = it
+                        if (it.pendingOperationId.isEmpty()) result = it else onBack()
                     }
                 }
             },
@@ -521,6 +522,159 @@ private fun DestructiveButton(text: String, onClick: () -> Unit, testTag: String
             CircularProgressIndicator(Modifier.size(22.dp), color = Color.White, strokeWidth = 2.dp)
         } else {
             Text(text, style = HisarType.body, color = if (isActive) Color.White else colors.label.copy(alpha = 0.6f))
+        }
+    }
+}
+
+@Composable
+fun PendingRecoveryScreen(model: AppModel) {
+    val status by model.status.collectAsStateWithLifecycle()
+    val records by model.pendingRecovery.allRecovery.collectAsStateWithLifecycle()
+    val export by model.pendingRecovery.export.collectAsStateWithLifecycle()
+    val isBusy by model.isBusy.collectAsStateWithLifecycle()
+    val error by model.errorMessage.collectAsStateWithLifecycle()
+    var selectedID by rememberSaveable { mutableStateOf<String?>(null) }
+    var password by remember { mutableStateOf("") }
+    var secretKey by remember { mutableStateOf("") }
+    var priorSecretKey by remember { mutableStateOf("") }
+    var isDiscardConfirmationShown by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    LaunchedEffect(status.state, status.email, status.server) {
+        password = ""
+        secretKey = ""
+        priorSecretKey = ""
+        isDiscardConfirmationShown = false
+    }
+    BackHandler { model.pendingRecovery.close() }
+    SettingsScreen("Account recovery", model.pendingRecovery::close, isTitleInline = true) {
+        FormSection {
+            FormRow {
+                Text("Account setup needs finishing. These records stay on this phone until you save the new Emergency Kit and confirm it. Your current account stays unchanged unless you explicitly resume another account.")
+            }
+        }
+        FormSection(header = "Choose an account") {
+            records.forEach { recovery ->
+                FormButtonRow(
+                    "${recovery.email}\n${recovery.origin}\n${recovery.kind}\n${recovery.phase}",
+                    {
+                        password = ""
+                        secretKey = ""
+                        priorSecretKey = ""
+                        model.pendingRecovery.clearExport()
+                        selectedID = recovery.operationId
+                    },
+                    testTag = "pending-recovery-${recovery.operationId}",
+                )
+            }
+        }
+        records.firstOrNull { it.operationId == selectedID }?.let { recovery ->
+            FormSection(
+                header = recovery.email,
+                footer = { Text("Use the password you chose for this change. Resume may switch the account open on this phone. Preparing a kit does not confirm that you saved it.") },
+            ) {
+                LabeledRow("Server", recovery.origin)
+                FormRow { Text(recovery.phase, Modifier.testTag("pending-recovery-phase")) }
+                recovery.problems.forEach { FormRow { Text(it) } }
+                if (!recovery.keychainProtected) {
+                    FormRow { Text("The OS keychain is unavailable. Save the Emergency Kit before continuing. After a restart, enter the Secret Key from that kit. Hisar does not store the Secret Key in this recovery record.") }
+                    if (recovery.phase == "awaiting-kit" || recovery.phase == "prepared") {
+                        FormRow { Text("No server change has been sent for this setup. If Hisar restarted before you saved a kit, discard this setup and start again.") }
+                    }
+                    FormTextField(
+                        secretKey, { secretKey = it }, placeholder = "Secret Key from saved Emergency Kit",
+                        testTag = "pending-recovery-input-secret-key", isSecure = true,
+                    )
+                    if (recovery.kind != "signup") {
+                        FormTextField(
+                            priorSecretKey, { priorSecretKey = it }, placeholder = "Previous Secret Key, if requested",
+                            testTag = "pending-recovery-input-prior-secret-key", isSecure = true,
+                        )
+                    }
+                }
+                FormTextField(
+                    password, { password = it }, placeholder = "Master password for this recovery",
+                    testTag = "pending-recovery-password", isSecure = true,
+                )
+                FormButtonRow(
+                    if (recovery.phase == "manual-unlock") "Sign in with saved Emergency Kit" else "Resume account setup",
+                    {
+                        val entered = password
+                        val enteredKey = secretKey
+                        val enteredPriorKey = priorSecretKey
+                        password = ""
+                        secretKey = ""
+                        priorSecretKey = ""
+                        scope.launch { model.pendingRecovery.resume(recovery.operationId, entered, enteredKey, enteredPriorKey) }
+                    },
+                    testTag = "pending-recovery-resume",
+                    enabled = password.isNotEmpty() && !isBusy && recovery.phase != "awaiting-kit",
+                )
+                FormButtonRow(
+                    "Prepare Emergency Kit",
+                    {
+                        val entered = password
+                        password = ""
+                        secretKey = ""
+                        priorSecretKey = ""
+                        scope.launch { model.pendingRecovery.exportKit(recovery.operationId, entered) }
+                    },
+                    testTag = "pending-recovery-export",
+                    enabled = password.isNotEmpty() && !isBusy && recovery.phase != "outcome-unknown",
+                )
+                export?.let {
+                    SecretKeyRow(it.secretKey, "pending-recovery-secret-key")
+                    EmergencyKitRows(model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit")
+                }
+                FormButtonRow(
+                    "I saved the new Emergency Kit",
+                    {
+                        val entered = password
+                        password = ""
+                        secretKey = ""
+                        priorSecretKey = ""
+                        scope.launch { model.pendingRecovery.acknowledge(recovery.operationId, entered) }
+                    },
+                    testTag = "pending-recovery-acknowledge",
+                    enabled = password.isNotEmpty() && !isBusy && recovery.kitSaved &&
+                        (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit"),
+                )
+                if (recovery.phase == "awaiting-kit" || recovery.phase == "prepared") {
+                    FormButtonRow(
+                        "Discard uncommitted setup", { isDiscardConfirmationShown = true }, testTag = "pending-recovery-discard",
+                        color = HisarTheme.colors.destructive, enabled = password.isNotEmpty() && !isBusy,
+                    )
+                }
+            }
+        }
+        if (isBusy) {
+            FormSection {
+                Box(Modifier.fillMaxWidth().heightIn(min = 52.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(Modifier.size(22.dp).testTag("pending-recovery-progress"), strokeWidth = 2.dp)
+                }
+            }
+        }
+        error?.let { FormSection { ErrorBanner(it) } }
+        ClearSection {
+            ProminentButton("Finish later", model.pendingRecovery::close, testTag = "pending-recovery-later")
+        }
+    }
+    if (isDiscardConfirmationShown) {
+        records.firstOrNull { it.operationId == selectedID }?.let { recovery ->
+            ConfirmationDialog(
+                title = "Discard this uncommitted setup?",
+                message = "No server change has been sent. This removes only the local prepared setup so you can start again.",
+                confirmLabel = "Discard setup",
+                confirmTestTag = "pending-recovery-discard-confirm",
+                onConfirm = {
+                    val entered = password
+                    password = ""
+                    secretKey = ""
+                    priorSecretKey = ""
+                    isDiscardConfirmationShown = false
+                    scope.launch { model.pendingRecovery.discard(recovery.operationId, entered) }
+                },
+                onDismiss = { isDiscardConfirmationShown = false },
+            )
         }
     }
 }

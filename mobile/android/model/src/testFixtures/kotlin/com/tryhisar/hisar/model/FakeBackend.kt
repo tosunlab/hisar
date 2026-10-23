@@ -66,6 +66,12 @@ open class FakeBackend : VaultBackend {
     var currentSecretKey = SECRET_KEY
     var deletionPreview = AccountDeletionPreview(email = "alice@example.com", planVersion = "reviewed-plan")
     var isAccountDeleted = false
+    var allPendingRecovery: MutableList<PendingRecovery> = mutableListOf()
+    var pendingRecoveryPassword = PASSWORD
+    var pendingRecoverySecretKey = SECRET_KEY
+    var isPendingRecoveryFactorAvailable = true
+    var pendingSignUpResult: SignUpResult? = null
+    var pendingCredentialChangeResult: CredentialChangeResult? = null
     /** The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence. */
     var allOrganization: MutableList<Organization> = mutableListOf()
     var allOrganizationInvitation: MutableList<OrganizationInvitation> = mutableListOf()
@@ -289,10 +295,14 @@ open class FakeBackend : VaultBackend {
         return status
     }
 
+    var onCheckMinimumVersion: (() -> Unit)? = null
+
     override fun checkMinimumVersion(): VaultStatus {
         record("checkMinimumVersion")
         status = status.copy(updateRequired = serverUpdateRequirement)
-        return status
+        val answer = status
+        onCheckMinimumVersion?.invoke()
+        return answer
     }
 
     override fun signIn(server: String, email: String, secretKey: String, password: String): VaultStatus {
@@ -306,6 +316,7 @@ open class FakeBackend : VaultBackend {
     override fun signUp(inviteLink: String, email: String, name: String, password: String): SignUpResult {
         record("signUp")
         if ("/invite/" !in inviteLink) throw BackendError("Invalid invite link")
+        pendingSignUpResult?.let { return it }
         seedSignedIn()
         allItemByVaultID = mutableMapOf("personal" to mutableListOf(), "family" to mutableListOf())
         status = status.copy(email = email, name = name)
@@ -936,6 +947,7 @@ open class FakeBackend : VaultBackend {
 
     override fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult {
         record("changeMasterPassword")
+        pendingCredentialChangeResult?.let { return it }
         requireUnlocked()
         if (currentPassword != this.currentPassword) throw BackendError("The master password is not correct")
         if (newPassword.length < 10) throw BackendError("Use a master password with at least 10 characters")
@@ -945,6 +957,7 @@ open class FakeBackend : VaultBackend {
 
     override fun replaceSecretKey(password: String, directory: File): CredentialChangeResult {
         record("replaceSecretKey")
+        pendingCredentialChangeResult?.let { return it }
         requireUnlocked()
         if (password != currentPassword) throw BackendError("The master password is not correct")
         currentSecretKey = "H1-ABC123-ZZZZZ-YYYYY-XXXXX-WWWWW-VVVVVV"
@@ -968,6 +981,75 @@ open class FakeBackend : VaultBackend {
         status = VaultStatus.signedOut
         if (isCacheRemovalFailing) throw BackendError(CACHE_REMOVAL_MESSAGE)
         return status
+    }
+
+    override fun listPendingRecovery(): List<PendingRecovery> {
+        record("listPendingRecovery")
+        return allPendingRecovery.toList()
+    }
+
+    override fun resumePendingRecovery(operationID: String, password: String): SignUpResult {
+        record("resumePendingRecovery")
+        val index = allPendingRecovery.indexOfFirst { it.operationId == operationID }
+        if (password != pendingRecoveryPassword || index < 0) throw BackendError("The recovery password is not correct.")
+        if (allPendingRecovery[index].phase == "awaiting-kit") throw BackendError("Save and confirm the Emergency Kit before continuing.")
+        if (!allPendingRecovery[index].keychainProtected && !isPendingRecoveryFactorAvailable) {
+            throw BackendError("Enter the Secret Key from your saved Emergency Kit.")
+        }
+        allPendingRecovery[index] = allPendingRecovery[index].copy(phase = "delivery-pending")
+        return SignUpResult(status, pendingRecoverySecretKey, operationID, "delivery-pending", allPendingRecovery[index].problems)
+    }
+
+    override fun resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String): SignUpResult {
+        record("resumePendingRecoveryWithSecretKey")
+        if (secretKey != pendingRecoverySecretKey || (priorSecretKey.isNotEmpty() && priorSecretKey != currentSecretKey)) {
+            throw BackendError("The Secret Key does not match this recovery.")
+        }
+        isPendingRecoveryFactorAvailable = true
+        return resumePendingRecovery(operationID, password)
+    }
+
+    override fun discardPreparedRecovery(operationID: String, password: String) {
+        record("discardPreparedRecovery")
+        val recovery = allPendingRecovery.firstOrNull { it.operationId == operationID }
+        if (password != pendingRecoveryPassword || recovery == null || (recovery.phase != "awaiting-kit" && recovery.phase != "prepared")) {
+            throw BackendError("Only an uncommitted setup can be discarded.")
+        }
+        allPendingRecovery.removeAll { it.operationId == operationID }
+    }
+
+    /** Runs while a pending recovery's Emergency Kit is prepared: a test can lock or sign out meanwhile. */
+    var onExportPendingRecoveryEmergencyKit: (() -> Unit)? = null
+
+    override fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport {
+        record("exportPendingRecoveryEmergencyKit")
+        onExportPendingRecoveryEmergencyKit?.invoke()
+        val index = allPendingRecovery.indexOfFirst { it.operationId == operationID }
+        if (password != pendingRecoveryPassword || index < 0 || allPendingRecovery[index].phase == "outcome-unknown") {
+            throw BackendError("Resume this recovery before preparing the Emergency Kit.")
+        }
+        if (!allPendingRecovery[index].keychainProtected && !isPendingRecoveryFactorAvailable) {
+            throw BackendError("Enter the Secret Key from your saved Emergency Kit.")
+        }
+        val kit = writeEmergencyKit(directory)
+        allPendingRecovery[index] = allPendingRecovery[index].copy(kitSaved = true)
+        return PendingRecoveryExport(pendingRecoverySecretKey, kit.path)
+    }
+
+    override fun acknowledgePendingRecovery(operationID: String, password: String) {
+        record("acknowledgePendingRecovery")
+        val recovery = allPendingRecovery.firstOrNull { it.operationId == operationID }
+        if (password != pendingRecoveryPassword || recovery == null ||
+            (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit") || !recovery.kitSaved
+        ) {
+            throw BackendError("Save the new Emergency Kit before finishing recovery.")
+        }
+        if (recovery.phase == "awaiting-kit" || recovery.manualUnlock) {
+            val index = allPendingRecovery.indexOfFirst { it.operationId == operationID }
+            allPendingRecovery[index] = recovery.copy(phase = if (recovery.phase == "awaiting-kit") "prepared" else "manual-unlock")
+        } else {
+            allPendingRecovery.removeAll { it.operationId == operationID }
+        }
     }
 
     override fun dismissSignedOutReason(): VaultStatus {

@@ -464,6 +464,34 @@ final class HisarKitBackend: VaultBackend {
         try decode(VaultStatus.self, from: callReturningText { hisar.deleteAccount(withPlan: password, email: email, planVersion: planVersion, error: $0) })
     }
 
+    func listPendingRecovery() throws -> [PendingRecovery] {
+        try decode([PendingRecovery]?.self, from: callReturningText { hisar.listPendingRecovery($0) }) ?? []
+    }
+
+    func resumePendingRecovery(operationID: String, password: String) throws -> SignUpResult {
+        try decode(SignUpResult.self, from: callReturningText { hisar.resumePendingRecovery(operationID, password: password, error: $0) })
+    }
+
+    func resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String) throws -> SignUpResult {
+        try decode(SignUpResult.self, from: callReturningText {
+            hisar.resumePendingRecovery(withSecretKey: operationID, password: password, secretKey: secretKey, priorSecretKey: priorSecretKey, error: $0)
+        })
+    }
+
+    func discardPreparedRecovery(operationID: String, password: String) throws {
+        try callReturningNothing { try hisar.discardPreparedRecovery(operationID, password: password) }
+    }
+
+    func exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: URL) throws -> PendingRecoveryExport {
+        try decode(PendingRecoveryExport.self, from: callReturningText {
+            hisar.exportPendingRecoveryEmergencyKit(operationID, password: password, directory: directory.path, error: $0)
+        })
+    }
+
+    func acknowledgePendingRecovery(operationID: String, password: String) throws {
+        try callReturningNothing { try hisar.acknowledgePendingRecovery(operationID, password: password) }
+    }
+
     func dismissSignedOutReason() -> VaultStatus {
         (try? decode(VaultStatus.self, from: hisar.dismissSignedOutReason())) ?? getStatus()
     }

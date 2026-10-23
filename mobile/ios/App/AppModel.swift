@@ -70,6 +70,11 @@ final class AppModel: ObservableObject {
     private var shownRefresh: UInt64 = 0
     private var startedApprovalListCount: UInt64 = 0
     private var shownApprovalList: UInt64 = 0
+    @Published private(set) var allPendingRecovery: [PendingRecovery] = []
+    @Published var isPendingRecoveryShown = false
+    @Published private(set) var pendingRecoveryExport: PendingRecoveryExport?
+    private var lifecycleEpoch: UInt64 = 0
+    private var pendingDeliveryGeneration: UInt64 = 0
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
@@ -120,9 +125,11 @@ final class AppModel: ObservableObject {
             clearIdentitiesWhenSignedOut()
             let firstRefresh = status.isUnlocked ? Task { await refreshAll() } : nil
             let versionCheck = Task { await checkMinimumVersion() }
+            let pendingRecovery = Task { await refreshPendingRecovery() }
             return Task {
                 await firstRefresh?.value
                 await versionCheck.value
+                await pendingRecovery.value
             }
         } catch {
             screen = .failed(describeError(error))
@@ -133,9 +140,10 @@ final class AppModel: ObservableObject {
     // Offline the backend keeps what it knew, so a failed check never blocks the app.
     func checkMinimumVersion() async {
         guard let backend else { return }
+        let epoch = lifecycleEpoch
         isCheckingMinimumVersion = true
         defer { isCheckingMinimumVersion = false }
-        guard let newStatus = try? await runInBackground({ backend.checkMinimumVersion() }) else { return }
+        guard let newStatus = try? await runInBackground({ backend.checkMinimumVersion() }), epoch == lifecycleEpoch else { return }
         applyStatus(newStatus)
         if newStatus.isUnlocked && newStatus.updateRequired == nil && isInForeground {
             startApprovalPolling()
@@ -157,6 +165,10 @@ final class AppModel: ObservableObject {
     private func applyStatus(_ newStatus: VaultStatus) {
         let wasUnlocked = status.isUnlocked
         let wasSignedIn = status.isSignedIn
+        if status.state != newStatus.state || status.email != newStatus.email || status.server != newStatus.server {
+            lifecycleEpoch += 1
+            clearPendingRecoveryExport()
+        }
         status = newStatus
         if wasSignedIn && !newStatus.isSignedIn {
             Task { await credentialIdentityStore.removeAllIdentity() }
@@ -262,6 +274,15 @@ final class AppModel: ObservableObject {
         let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let result = await perform({ try $0.signUp(inviteLink: inviteLink, email: email, name: name, password: password) }) else { return false }
+        if !result.pendingOperationId.isEmpty {
+            refreshStatus()
+            // The backend's first sync can report its change before this status arrives, when it is ignored.
+            if status.isUnlocked { await refreshAll() }
+            await refreshPendingRecovery()
+            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            errorMessage = result.problems.isEmpty ? nil : result.problems.joined(separator: "\n")
+            return true
+        }
         newSecretKey = result.secretKey
         applyStatus(result.status)
         await refreshAll()
@@ -1140,6 +1161,16 @@ final class AppModel: ObservableObject {
         removeEmergencyKitFile(path: export.emergencyKitPath)
     }
 
+    /// Exports and Emergency Kits, a pending recovery's included, live in the temporary folder only while their screen is
+    /// open, and no screen outlives the process. Whatever a killed process left there is deleted at launch, before any
+    /// account opens. The prefixes are those of the folders the exports and kits are written to.
+    static func deleteLeftoverKitFiles(in directory: URL = FileManager.default.temporaryDirectory) {
+        let allName = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? []
+        for name in allName where ["Export-", "EmergencyKit-", "PendingRecovery-"].contains(where: { name.hasPrefix($0) }) {
+            try? FileManager.default.removeItem(at: directory.appendingPathComponent(name))
+        }
+    }
+
     func removeEmergencyKitFile(path: String) {
         guard !path.isEmpty else { return }
         try? FileManager.default.removeItem(at: URL(fileURLWithPath: path).deletingLastPathComponent())
@@ -1147,6 +1178,15 @@ final class AppModel: ObservableObject {
 
     func changeMasterPassword(currentPassword: String, newPassword: String) async -> CredentialChangeResult? {
         guard let result = await perform({ try $0.changeMasterPassword(currentPassword: currentPassword, newPassword: newPassword) }) else { return nil }
+        if !result.pendingOperationId.isEmpty {
+            refreshStatus()
+            await refreshPendingRecovery()
+            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            var seen = Set<String>()
+            let problems = (result.problems + [result.localError, result.keychainError]).filter { !$0.isEmpty && seen.insert($0).inserted }
+            errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
+            return result
+        }
         applyStatus(result.status)
         let warning = result.localError.isEmpty ? "" : " \(result.localError)"
         showNotice("Master password changed. \(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount))\(warning)")
@@ -1156,6 +1196,16 @@ final class AppModel: ObservableObject {
     func replaceSecretKey(password: String) async -> CredentialChangeResult? {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
         guard let result = await perform({ try $0.replaceSecretKey(password: password, directory: directory) }) else { return nil }
+        if !result.pendingOperationId.isEmpty {
+            removeEmergencyKitFile(path: result.emergencyKitPath)
+            refreshStatus()
+            await refreshPendingRecovery()
+            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            var seen = Set<String>()
+            let problems = (result.problems + [result.localError, result.keychainError]).filter { !$0.isEmpty && seen.insert($0).inserted }
+            errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
+            return result
+        }
         applyStatus(result.status)
         return result
     }
@@ -1187,6 +1237,93 @@ final class AppModel: ObservableObject {
     func dismissSignedOutReason() {
         guard let backend else { return }
         applyStatus(backend.dismissSignedOutReason())
+    }
+
+    func refreshPendingRecovery() async {
+        guard let backend else { return }
+        let records: [PendingRecovery]
+        do {
+            records = try await runInBackground { try backend.listPendingRecovery() }
+        } catch {
+            if errorMessage == nil { errorMessage = describeError(error) }
+            return
+        }
+        let hadNone = allPendingRecovery.isEmpty
+        allPendingRecovery = records
+        if records.isEmpty { closePendingRecovery() }
+        else if hadNone { isPendingRecoveryShown = true }
+    }
+
+    func clearPendingRecoveryExport() {
+        pendingDeliveryGeneration += 1
+        if let export = pendingRecoveryExport { removeEmergencyKitFile(path: export.path) }
+        pendingRecoveryExport = nil
+    }
+
+    func closePendingRecovery() {
+        clearPendingRecoveryExport()
+        isPendingRecoveryShown = false
+    }
+
+    func resumePendingRecovery(operationID: String, password: String, secretKey: String = "", priorSecretKey: String = "") async {
+        let epoch = lifecycleEpoch
+        let result = await perform {
+            if secretKey.isEmpty { return try $0.resumePendingRecovery(operationID: operationID, password: password) }
+            return try $0.resumePendingRecoveryWithSecretKey(
+                operationID: operationID, password: password,
+                secretKey: VaultLogic.formatSecretKey(secretKey), priorSecretKey: VaultLogic.formatSecretKey(priorSecretKey)
+            )
+        }
+        guard let result, epoch == lifecycleEpoch else {
+            let recoveryError = errorMessage
+            await refreshPendingRecovery()
+            if let recoveryError { errorMessage = recoveryError }
+            return
+        }
+        refreshStatus()
+        if status.isUnlocked { await refreshAll() }
+        await refreshPendingRecovery()
+        if !result.problems.isEmpty { errorMessage = result.problems.joined(separator: "\n") }
+    }
+
+    func discardPreparedRecovery(operationID: String, password: String) async {
+        guard await perform({ try $0.discardPreparedRecovery(operationID: operationID, password: password) }) != nil else { return }
+        clearPendingRecoveryExport()
+        await refreshPendingRecovery()
+    }
+
+    func exportPendingRecoveryKit(operationID: String, password: String) async {
+        clearPendingRecoveryExport()
+        let epoch = lifecycleEpoch
+        let generation = pendingDeliveryGeneration
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("PendingRecovery-\(UUID().uuidString)", isDirectory: true)
+        let result = await perform { try $0.exportPendingRecoveryEmergencyKit(operationID: operationID, password: password, directory: directory) }
+        guard let result, epoch == lifecycleEpoch, generation == pendingDeliveryGeneration else {
+            try? FileManager.default.removeItem(at: directory)
+            // A lock, sign-out or account switch hides the Secret Key; a newer export, another record or closing the
+            // screen is the user's own choice and needs no word.
+            if result != nil && epoch != lifecycleEpoch {
+                errorMessage = "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again."
+            }
+            return
+        }
+        pendingRecoveryExport = result
+        await refreshPendingRecovery()
+    }
+
+    func acknowledgePendingRecovery(operationID: String, password: String) async {
+        let epoch = lifecycleEpoch
+        let recovery = allPendingRecovery.first { $0.operationId == operationID }
+        guard await perform({ try $0.acknowledgePendingRecovery(operationID: operationID, password: password) }) != nil else { return }
+        guard epoch == lifecycleEpoch else { return }
+        clearPendingRecoveryExport()
+        await refreshPendingRecovery()
+        if epoch == lifecycleEpoch, recovery?.kind == "signup", recovery?.phase == "delivery-pending",
+           recovery?.manualUnlock == false, recovery?.email == status.email,
+           recovery?.origin == status.server, status.isUnlocked && status.biometricAvailable && !status.biometricEnabled {
+            newSecretKey = ""
+            isBiometricOfferShown = true
+        }
     }
 
     // setTheme shows the theme at once and goes back to the one in use when it cannot be saved.

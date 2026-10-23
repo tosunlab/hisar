@@ -70,7 +70,7 @@ PARTNER_EMAIL="$EMAIL_PREFIX-partner-$(date +%s)-$RANDOM@example.com"
 PARTNER_NAME="$UI_TEST_PLATFORM_NAME Partner"
 PARTNER_PASSWORD='partner master password'
 printf '%s\n%s\n%s\n%s\n' "$PARTNER_EMAIL" "$PARTNER_NAME" "$PARTNER_PASSWORD" "$PARTNER_PASSWORD" |
-  HISAR_STATE=$T/partner.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup "$(ui_test_create_invite "$PARTNER_EMAIL")" 2>"$T/partner-signup.txt"
+  HISAR_STATE=$T/partner.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup -y -o "$T/partner-emergency-kit.pdf" "$(ui_test_create_invite "$PARTNER_EMAIL")" 2>"$T/partner-signup.txt"
 PARTNER_SECRET_KEY=$(grep -oE 'H1-[0-9A-Z-]+' "$T/partner-signup.txt")
 partner() { HISAR_STATE=$T/partner.json HISAR_SECRET_KEY=$PARTNER_SECRET_KEY "$ROOT/bin/hisar" "$@"; }
 partner_unlocked() { printf '%s\n' "$PARTNER_PASSWORD" | partner "$@"; }

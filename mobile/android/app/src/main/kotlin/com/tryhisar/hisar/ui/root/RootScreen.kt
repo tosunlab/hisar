@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
@@ -38,6 +39,7 @@ import com.tryhisar.hisar.ui.components.exposeTestTags
 import com.tryhisar.hisar.ui.components.performConfirmHaptic
 import com.tryhisar.hisar.ui.lock.LockScreen
 import com.tryhisar.hisar.ui.settings.CredentialImportScreen
+import com.tryhisar.hisar.ui.settings.PendingRecoveryScreen
 import com.tryhisar.hisar.ui.signin.BiometricOfferScreen
 import com.tryhisar.hisar.ui.signin.NewSecretKeyScreen
 import com.tryhisar.hisar.ui.signin.SignInScreen
@@ -65,6 +67,8 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val credentialImportSheet by model.credentialImport.sheet.collectAsStateWithLifecycle()
         val credentialImportMessage by model.credentialImport.message.collectAsStateWithLifecycle()
         val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
+        val pendingRecovery by model.pendingRecovery.allRecovery.collectAsStateWithLifecycle()
+        val isRecoveryShown by model.pendingRecovery.isShown.collectAsStateWithLifecycle()
         val view = LocalView.current
         val scope = rememberCoroutineScope()
 
@@ -91,12 +95,19 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
             }
 
             credentialImportSheet?.let { sheet ->
-                if (screen == Screen.Unlocked && newAccountStep == null) CredentialImportScreen(model, sheet)
+                if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) CredentialImportScreen(model, sheet)
             }
 
             presentedApproval?.let { approval ->
-                if (screen == Screen.Unlocked && newAccountStep == null) PhoneApprovalSheet(model, approval)
+                if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) PhoneApprovalSheet(model, approval)
             }
+
+            if (pendingRecovery.isNotEmpty() && !isRecoveryShown) {
+                Box(Modifier.align(Alignment.TopCenter).background(HisarTheme.colors.systemBackground).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp)) {
+                    PlainButton("Finish account recovery", model.pendingRecovery::open, testTag = "pending-recovery-open")
+                }
+            }
+            if (isRecoveryShown) PendingRecoveryScreen(model)
 
             AnimatedVisibility(
                 visible = notice != null,

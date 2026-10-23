@@ -18,7 +18,7 @@ func commitFixtureSecretKeyReplacement(t *testing.T, service *Service) Credentia
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := service.changeCredentials(testMasterPassword, func(context.Context, *session.Session, []byte, crypt.SecretKey) (*session.CredentialChange, error) {
+	result, err := service.changeCredentials(testMasterPassword, func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
 		return &session.CredentialChange{SecretKey: key}, nil
 	})
 	if err != nil {
@@ -88,8 +88,10 @@ func TestMobileReplacementKitFailureKeepsCommittedCredentials(t *testing.T) {
 	if err := json.Unmarshal(encoded, &fields); err != nil {
 		t.Fatal(err)
 	}
-	if len(fields) != 5 {
-		t.Fatalf("the private continuation identity changed the JSON fields: %s", encoded)
+	for _, name := range []string{"identity", "epoch", "accountId", "accountID"} {
+		if _, isPresent := fields[name]; isPresent {
+			t.Fatalf("the private continuation identity reached the JSON result: %s", encoded)
+		}
 	}
 	var visible CredentialChangeResult
 	if err := json.Unmarshal(encoded, &visible); err != nil {

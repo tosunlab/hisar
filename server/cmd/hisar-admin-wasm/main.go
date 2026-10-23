@@ -17,7 +17,6 @@ import (
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/emergencykit"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -34,12 +33,15 @@ type signInResult struct {
 // signUpResult carries the Secret Key even when the Personal vault or the Emergency Kit failed, because the account
 // exists by then and the page must show the key. The kit itself is set on the result as a Uint8Array.
 type signUpResult struct {
-	Token              string `json:"token"`
-	AccountID          string `json:"accountId"`
-	DeviceID           string `json:"deviceId"`
-	SecretKey          string `json:"secretKey"`
-	PersonalVaultError string `json:"personalVaultError,omitempty"`
-	EmergencyKitError  string `json:"emergencyKitError,omitempty"`
+	Token              string   `json:"token"`
+	AccountID          string   `json:"accountId"`
+	DeviceID           string   `json:"deviceId"`
+	SecretKey          string   `json:"secretKey"`
+	PersonalVaultError string   `json:"personalVaultError,omitempty"`
+	EmergencyKitError  string   `json:"emergencyKitError,omitempty"`
+	PendingOperationID string   `json:"pendingOperationId"`
+	SetupState         string   `json:"setupState"`
+	Problems           []string `json:"problems"`
 }
 
 const invalidSetupLinkMessage = "This setup link is no longer valid. Use the link in the latest server log."
@@ -49,6 +51,12 @@ func main() {
 	hisar.Set("signIn", exportCall(signIn))
 	hisar.Set("reauthenticate", exportCall(reauthenticate))
 	hisar.Set("signUp", exportCall(signUp))
+	hisar.Set("listPendingRecovery", exportCall(listPendingRecovery))
+	hisar.Set("resumePendingRecovery", exportCall(resumePendingRecovery))
+	hisar.Set("exportPendingRecoveryEmergencyKit", exportCall(exportPendingRecoveryEmergencyKit))
+	hisar.Set("acknowledgePendingRecovery", exportCall(acknowledgePendingRecovery))
+	hisar.Set("resumePendingRecoveryWithSecretKey", exportCall(resumePendingRecovery))
+	hisar.Set("discardPreparedRecovery", exportCall(discardPreparedRecovery))
 	js.Global().Set("hisar", hisar)
 	select {}
 }
@@ -168,31 +176,29 @@ func signUp(ctx context.Context, arguments []string) (js.Value, error) {
 	password := []byte(arguments[3])
 	defer clear(password)
 	client := newClient()
-	signedUp, secretKey, err := session.SignUp(ctx, client, inviteToken, email, name, password, dashboardDevice)
-	if err != nil && client.Token == "" {
+	stage, pending := prepareRecovery(email, name, password)
+	signedUp, secretKey, err := session.SignUpWithRecovery(ctx, client, inviteToken, email, name, password, dashboardDevice, stage)
+	if signedUp == nil {
+		if pending.envelope != "" {
+			if errors.Is(err, session.ErrRecoveryDeliveryRequired) {
+				return toJavaScript(signUpResult{SecretKey: secretKey.Encode(), PendingOperationID: pending.metadata.OperationID, SetupState: "awaiting-kit", Problems: pending.metadata.Problems})
+			}
+			return toJavaScript(signUpResult{PendingOperationID: pending.metadata.OperationID, SetupState: "outcome-unknown", Problems: []string{"The remote account setup is not confirmed. Do not register again. Resume this protected recovery operation."}})
+		}
 		if apiclient.IsStatus(err, http.StatusForbidden) {
 			return js.Undefined(), errors.New(invalidSetupLinkMessage)
 		}
 		return js.Undefined(), err
 	}
-	signedUp.Lock()
-	created := signUpResult{Token: client.Token, AccountID: signedUp.AccountID, DeviceID: signedUp.DeviceID, SecretKey: secretKey.Encode()}
+	defer signedUp.Lock()
+	pending.metadata.Phase = "delivery-pending"
 	if err != nil {
-		created.PersonalVaultError = describeError(err)
+		pending.metadata.Phase = "needs-finishing"
+		pending.metadata.Problems = []string{"The account was created, but its Personal vault could not finish. Resume account setup."}
 	}
-	document, err := emergencykit.Generate(emergencykit.Kit{Name: name, Email: email, Server: client.BaseURL, SecretKey: created.SecretKey, CreatedAt: time.Now()})
-	if err != nil {
-		created.EmergencyKitError = err.Error()
+	if err := saveRecovery(pending); err != nil {
+		pending.metadata.Phase = "needs-finishing"
+		pending.metadata.Problems = append(pending.metadata.Problems, "Recovery progress could not be saved. The original protected record remains available.")
 	}
-	result, err := toJavaScript(created)
-	if err != nil {
-		return js.Undefined(), err
-	}
-	if document != nil {
-		emergencyKit := js.Global().Get("Uint8Array").New(len(document))
-		js.CopyBytesToJS(emergencyKit, document)
-		clear(document)
-		result.Set("emergencyKitPdf", emergencyKit)
-	}
-	return result, nil
+	return toJavaScript(signUpResult{Token: client.Token, AccountID: signedUp.AccountID, DeviceID: signedUp.DeviceID, SecretKey: secretKey.Encode(), PendingOperationID: pending.metadata.OperationID, SetupState: pending.metadata.Phase, Problems: pending.metadata.Problems})
 }

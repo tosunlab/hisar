@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -35,8 +36,35 @@ func (s *Session) CreateOrganizationVault(ctx context.Context, name, organizatio
 	return s.createVault(ctx, name, &apitypes.CreateVaultRequest{Type: apitypes.VaultOrganization, OrganizationID: organizationID, TeamID: teamID})
 }
 
+// EnsurePersonalVault creates the Personal vault under vaultID unless the account already has one. A sign-up chooses
+// vaultID before it registers, so resumes that run at the same time create the same vault and the server refuses all
+// but the first; an empty vaultID gets a new one.
+func (s *Session) EnsurePersonalVault(ctx context.Context, vaultID string) error {
+	if found, err := s.hasPersonalVault(ctx); err != nil || found {
+		return err
+	}
+	_, err := s.createVault(ctx, "Personal", &apitypes.CreateVaultRequest{ID: vaultID, Type: apitypes.VaultPersonal})
+	if apiclient.IsStatus(err, http.StatusConflict) {
+		if found, listErr := s.hasPersonalVault(ctx); listErr == nil && found {
+			return nil
+		}
+	}
+	return err
+}
+
+func (s *Session) hasPersonalVault(ctx context.Context) (bool, error) {
+	vaults, err := s.Client.ListVaults(ctx)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(vaults, func(vault apitypes.Vault) bool { return vault.Type == apitypes.VaultPersonal }), nil
+}
+
 func (s *Session) createVault(ctx context.Context, name string, request *apitypes.CreateVaultRequest) (*Vault, error) {
-	vaultID := uuid.NewString()
+	vaultID := request.ID
+	if vaultID == "" {
+		vaultID = uuid.NewString()
+	}
 	vaultKey := crypt.GenerateKey()
 	encryptedName, err := crypt.SealVaultName(vaultKey, vaultID, []byte(name))
 	if err != nil {

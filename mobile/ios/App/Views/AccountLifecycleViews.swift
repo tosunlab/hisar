@@ -241,7 +241,8 @@ struct ReplaceSecretKeyView: View {
         Task {
             if let replaced = await model.replaceSecretKey(password: enteredPassword) {
                 password = ""
-                result = replaced
+                if replaced.pendingOperationId.isEmpty { result = replaced }
+                else { dismiss() }
             }
         }
     }
@@ -382,6 +383,152 @@ struct DeleteAccountView: View {
                 isPreviewLoading = false
                 model.errorMessage = deletionError
             }
+        }
+    }
+}
+
+struct PendingRecoveryView: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var selectedID: String?
+    @State private var password = ""
+    @State private var secretKey = ""
+    @State private var priorSecretKey = ""
+    @State private var isDiscardConfirmationShown = false
+
+    private func clearCredentials() {
+        password = ""
+        secretKey = ""
+        priorSecretKey = ""
+        isDiscardConfirmationShown = false
+    }
+
+    private var selected: PendingRecovery? {
+        model.allPendingRecovery.first { $0.operationId == selectedID }
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Account setup needs finishing. These records stay on this phone until you save the new Emergency Kit and confirm it. Your current account stays unchanged unless you explicitly resume another account.")
+                }
+                Section("Choose an account") {
+                    ForEach(model.allPendingRecovery) { recovery in
+                        Button {
+                            clearCredentials()
+                            model.clearPendingRecoveryExport()
+                            selectedID = recovery.operationId
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(recovery.email)
+                                Text(recovery.origin).font(.caption)
+                                Text(recovery.kind).font(.caption)
+                                Text(recovery.phase).font(.caption)
+                            }
+                        }
+                        .accessibilityIdentifier("pending-recovery-\(recovery.operationId)")
+                    }
+                }
+                if let recovery = selected {
+                    Section {
+                        Text(recovery.origin)
+                        Text(recovery.phase)
+                            .accessibilityIdentifier("pending-recovery-phase")
+                        if !recovery.keychainProtected {
+                            Text("The OS keychain is unavailable. Save the Emergency Kit before continuing. After a restart, enter the Secret Key from that kit. Hisar does not store the Secret Key in this recovery record.")
+                            if recovery.phase == "awaiting-kit" || recovery.phase == "prepared" {
+                                Text("No server change has been sent for this setup. If Hisar restarted before you saved a kit, discard this setup and start again.")
+                            }
+                        }
+                        if !recovery.keychainProtected {
+                            SecureField("Secret Key from saved Emergency Kit", text: $secretKey)
+                                .accessibilityIdentifier("pending-recovery-input-secret-key")
+                            if recovery.kind != "signup" {
+                                SecureField("Previous Secret Key, if requested", text: $priorSecretKey)
+                                    .accessibilityIdentifier("pending-recovery-input-prior-secret-key")
+                            }
+                        }
+                        ForEach(recovery.problems, id: \.self) { Text($0) }
+                        SecureField("Master password for this recovery", text: $password)
+                            .textContentType(.password)
+                            .accessibilityIdentifier("pending-recovery-password")
+                        Button(recovery.phase == "manual-unlock" ? "Sign in with saved Emergency Kit" : "Resume account setup") {
+                            let enteredPassword = password
+                            let enteredKey = secretKey
+                            let enteredPriorKey = priorSecretKey
+                            clearCredentials()
+                            Task {
+                                await model.resumePendingRecovery(operationID: recovery.operationId, password: enteredPassword, secretKey: enteredKey, priorSecretKey: enteredPriorKey)
+                            }
+                        }
+                        .disabled(password.isEmpty || model.isBusy || recovery.phase == "awaiting-kit")
+                        .accessibilityIdentifier("pending-recovery-resume")
+                        Button("Prepare Emergency Kit") {
+                            let enteredPassword = password
+                            clearCredentials()
+                            Task { await model.exportPendingRecoveryKit(operationID: recovery.operationId, password: enteredPassword) }
+                        }
+                        .disabled(password.isEmpty || model.isBusy || recovery.phase == "outcome-unknown")
+                        .accessibilityIdentifier("pending-recovery-export")
+                        if let export = model.pendingRecoveryExport {
+                            Text(export.secretKey)
+                                .font(.body.monospaced())
+                                .textSelection(.enabled)
+                                .accessibilityIdentifier("pending-recovery-secret-key")
+                            ShareLink(item: URL(fileURLWithPath: export.path), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
+                                Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
+                            }
+                            .accessibilityIdentifier("pending-recovery-share-kit")
+                        }
+                        Button("I saved the new Emergency Kit") {
+                            let enteredPassword = password
+                            clearCredentials()
+                            Task { await model.acknowledgePendingRecovery(operationID: recovery.operationId, password: enteredPassword) }
+                        }
+                        .disabled(password.isEmpty || model.isBusy || !recovery.kitSaved || (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit"))
+                        .accessibilityIdentifier("pending-recovery-acknowledge")
+                        if recovery.phase == "awaiting-kit" || recovery.phase == "prepared" {
+                            Button("Discard uncommitted setup", role: .destructive) { isDiscardConfirmationShown = true }
+                                .disabled(password.isEmpty || model.isBusy)
+                                .accessibilityIdentifier("pending-recovery-discard")
+                        }
+                    } header: {
+                        Text(recovery.email)
+                    } footer: {
+                        Text("Use the password you chose for this change. Resume may switch the account open on this phone. Preparing a kit does not confirm that you saved it.")
+                    }
+                }
+                if model.isBusy {
+                    Section {
+                        ProgressView("Finishing account recovery")
+                            .accessibilityIdentifier("pending-recovery-progress")
+                    }
+                }
+                if let message = model.errorMessage { Section { ErrorBanner(message: message) } }
+                Section {
+                    Button("Finish later") { model.closePendingRecovery() }
+                        .accessibilityIdentifier("pending-recovery-later")
+                }
+            }
+            .applyThemedListBackground()
+            .navigationTitle("Account recovery")
+        }
+        .confirmationDialog("Discard this uncommitted setup?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
+            Button("Discard setup", role: .destructive) {
+                guard let recovery = selected else { return }
+                let enteredPassword = password
+                clearCredentials()
+                Task { await model.discardPreparedRecovery(operationID: recovery.operationId, password: enteredPassword) }
+            }
+            .accessibilityIdentifier("pending-recovery-discard-confirm")
+        } message: {
+            Text("No server change has been sent. This removes only the local prepared setup so you can start again.")
+        }
+        .onChange(of: model.status.state) { _, _ in clearCredentials() }
+        .onChange(of: model.status.email) { _, _ in clearCredentials() }
+        .onDisappear {
+            clearCredentials()
+            model.clearPendingRecoveryExport()
         }
     }
 }

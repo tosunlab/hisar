@@ -75,6 +75,19 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(status.signedOutReason, "This device was signed out.")
     }
 
+    func testPendingResultPreservesCommittedKeyAndProblems() throws {
+        let json = #"{"status":{"state":"signed-out"},"secretKey":"H1-NEW-SECRET","pendingOperationId":"pending-1","setupState":"needs-finishing","problems":["The keychain is unavailable."],"localError":"The offline copy could not finish."}"#
+        let result = try JSONDecoder().decode(CredentialChangeResult.self, from: Data(json.utf8))
+        XCTAssertEqual(result.secretKey, "H1-NEW-SECRET")
+        XCTAssertEqual(result.pendingOperationId, "pending-1")
+        XCTAssertEqual(result.setupState, "needs-finishing")
+        XCTAssertEqual(result.problems, ["The keychain is unavailable."])
+        XCTAssertEqual(result.localError, "The offline copy could not finish.")
+        let signup = try JSONDecoder().decode(SignUpResult.self, from: Data(json.utf8))
+        XCTAssertEqual(signup.pendingOperationId, "pending-1")
+        XCTAssertEqual(signup.problems, result.problems)
+    }
+
     func testSigningOutKeepsTheServerForSigningBackIn() async {
         let model = await createUnlockedModel()
         let server = model.status.server
@@ -136,6 +149,183 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(model.noticeMessage, "Your Hisar account was deleted.")
     }
 
+    func testDeletionRejectsChangedPlanUntilReviewedAgain() async throws {
+        let model = await createUnlockedModel()
+        let loaded = await model.loadAccountDeletionPreview()
+        let reviewed = try XCTUnwrap(loaded)
+        backend.deletionPreview.planVersion = "new-plan"
+        let refused = await model.deleteAccount(password: FakeBackend.password, email: reviewed.email, planVersion: reviewed.planVersion)
+        XCTAssertFalse(refused)
+        XCTAssertFalse(backend.isAccountDeleted)
+        XCTAssertEqual(model.screen, .unlocked)
+        let reloaded = await model.loadAccountDeletionPreview()
+        let refreshed = try XCTUnwrap(reloaded)
+        let deleted = await model.deleteAccount(password: FakeBackend.password, email: refreshed.email, planVersion: refreshed.planVersion)
+        XCTAssertTrue(deleted)
+    }
+
+    private func seedPendingRecovery(phase: String = "outcome-unknown") {
+        backend.allPendingRecovery = [
+            PendingRecovery(operationId: "pending-1", kind: "signup", origin: "https://recovery.example", accountId: "pending-account", email: "pending@example.com", name: "Pending", phase: phase, kitSaved: false, problems: ["The keychain is unavailable. Use your master password to finish."]),
+        ]
+    }
+
+    func testPendingRecoverySurvivesModelRestartWithoutSigningIn() async throws {
+        seedPendingRecovery()
+        let first = AppModel(credentialIdentityStore: identityStore)
+        first.start { self.backend }
+        await first.refreshPendingRecovery()
+        XCTAssertTrue(first.isPendingRecoveryShown)
+        first.closePendingRecovery()
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+        let restarted = AppModel(credentialIdentityStore: identityStore)
+        restarted.start { self.backend }
+        await restarted.refreshPendingRecovery()
+        XCTAssertTrue(restarted.isPendingRecoveryShown)
+        XCTAssertEqual(restarted.allPendingRecovery.first?.email, "pending@example.com")
+        XCTAssertEqual(restarted.screen, .signedOut)
+        await restarted.resumePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertEqual(restarted.screen, .signedOut)
+        XCTAssertEqual(restarted.allPendingRecovery.first?.phase, "delivery-pending")
+        await restarted.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)
+        let export = try XCTUnwrap(restarted.pendingRecoveryExport)
+        XCTAssertEqual(export.secretKey, FakeBackend.secretKey)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: export.path))
+        XCTAssertEqual(restarted.screen, .signedOut)
+        await restarted.acknowledgePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertTrue(restarted.allPendingRecovery.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: export.path))
+    }
+
+    func testPendingRecoveryRequiresPasswordAndExplicitKitAcknowledgement() async {
+        seedPendingRecovery(phase: "delivery-pending")
+        let model = AppModel(credentialIdentityStore: identityStore)
+        model.start { self.backend }
+        await model.refreshPendingRecovery()
+        await model.exportPendingRecoveryKit(operationID: "pending-1", password: "wrong")
+        XCTAssertNil(model.pendingRecoveryExport)
+        await model.acknowledgePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+        await model.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)
+        model.closePendingRecovery()
+        XCTAssertNil(model.pendingRecoveryExport)
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+        XCTAssertTrue(backend.allPendingRecovery[0].kitSaved)
+    }
+
+    func testLockWhilePreparingTheKitHidesItAndSaysToPrepareItAgain() async {
+        let model = await createUnlockedModel()
+        seedPendingRecovery(phase: "delivery-pending")
+        await model.refreshPendingRecovery()
+        let isPreparing = DispatchSemaphore(value: 0)
+        let mayFinish = DispatchSemaphore(value: 0)
+        backend.onExportPendingRecoveryEmergencyKit = {
+            isPreparing.signal()
+            mayFinish.wait()
+        }
+        let export = Task { await model.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password) }
+        while isPreparing.wait(timeout: .now()) == .timedOut {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        model.lock()
+        backend.onExportPendingRecoveryEmergencyKit = nil
+        mayFinish.signal()
+        await export.value
+        XCTAssertNil(model.pendingRecoveryExport)
+        XCTAssertEqual(model.errorMessage, "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again.")
+        await model.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertEqual(model.pendingRecoveryExport?.secretKey, FakeBackend.secretKey)
+    }
+
+    func testLaunchDeletesKitFilesTheLastProcessLeft() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("LaunchCleanup-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let allLeftover = ["PendingRecovery-1/Hisar Emergency Kit.pdf", "EmergencyKit-1/Hisar Emergency Kit.pdf", "Export-1/hisar-export.json"]
+            .map { directory.appendingPathComponent($0) }
+        let kept = directory.appendingPathComponent("Other-1/notes.txt")
+        for file in allLeftover + [kept] {
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("x".utf8).write(to: file)
+        }
+
+        AppModel.deleteLeftoverKitFiles(in: directory)
+
+        for file in allLeftover {
+            XCTAssertFalse(FileManager.default.fileExists(atPath: file.path), "\(file.lastPathComponent) outlived the process that wrote it")
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: kept.path))
+    }
+
+    func testPendingSignupKeepsProblemsWithoutApplyingStaleStatus() async {
+        seedPendingRecovery()
+        var staleStatus = VaultStatus.signedOut
+        staleStatus.state = VaultStatus.stateUnlocked
+        backend.pendingSignUpResult = SignUpResult(status: staleStatus, secretKey: "", pendingOperationId: "pending-1", setupState: "outcome-unknown", problems: ["The server response was lost."])
+        let model = AppModel(credentialIdentityStore: identityStore)
+        model.start { self.backend }
+        await model.refreshPendingRecovery()
+        let accepted = await model.signUp(inviteLink: "https://recovery.example/invite/test", email: "pending@example.com", name: "Pending", password: FakeBackend.password)
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertNil(model.newSecretKey)
+        XCTAssertTrue(model.isPendingRecoveryShown)
+        XCTAssertEqual(model.errorMessage, "The server response was lost.")
+    }
+
+    func testPendingSignupThatInstalledTheAccountShowsItsVaults() async {
+        let model = AppModel(credentialIdentityStore: identityStore)
+        model.start { self.backend }
+        backend.seedSignedIn()
+        seedPendingRecovery(phase: "delivery-pending")
+        backend.pendingSignUpResult = SignUpResult(status: backend.status, secretKey: "", pendingOperationId: "pending-1", setupState: "delivery-pending", problems: [])
+        let accepted = await model.signUp(inviteLink: "https://recovery.example/invite/test", email: "pending@example.com", name: "Pending", password: FakeBackend.password)
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(model.screen, .unlocked)
+        XCTAssertEqual(model.allVault.map(\.name).sorted(), ["Family", "Personal"])
+        XCTAssertTrue(model.isPendingRecoveryShown)
+    }
+
+    func testPendingReplacementKeepsRecoveryAndLocalProblems() async throws {
+        let model = await createUnlockedModel()
+        seedPendingRecovery(phase: "needs-finishing")
+        backend.pendingCredentialChangeResult = CredentialChangeResult(
+            status: backend.status, secretKey: FakeBackend.secretKey, localError: "The keychain is unavailable.",
+            pendingOperationId: "pending-1", setupState: "needs-finishing", problems: ["The keychain is unavailable."]
+        )
+        let result = await model.replaceSecretKey(password: FakeBackend.password)
+        XCTAssertEqual(result?.pendingOperationId, "pending-1")
+        XCTAssertTrue(model.isPendingRecoveryShown)
+        XCTAssertEqual(model.errorMessage, "The keychain is unavailable.")
+        model.closePendingRecovery()
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+        await model.refreshPendingRecovery()
+        await model.resumePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
+        await model.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)
+        let exported = try XCTUnwrap(model.pendingRecoveryExport)
+        model.lock()
+        XCTAssertNil(model.pendingRecoveryExport)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: exported.path))
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+    }
+
+    /// Holds a refresh at its last listing while change runs, as when the device is signed out or locks meanwhile.
+    private func finishRefresh(of model: AppModel, after change: () async -> Void) async {
+        let isListing = DispatchSemaphore(value: 0)
+        let mayFinish = DispatchSemaphore(value: 0)
+        backend.onListAllPasskey = {
+            isListing.signal()
+            mayFinish.wait()
+        }
+        let refresh = Task { await model.refreshAll() }
+        while isListing.wait(timeout: .now()) == .timedOut {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        await change()
+        backend.onListAllPasskey = nil
+        mayFinish.signal()
+        await refresh.value
+    }
+
     func testRefreshFinishingAfterSignOutBringsNothingBack() async {
         let model = await createUnlockedModel()
         await backend.finishRefresh(of: model) {
@@ -182,19 +372,69 @@ final class AccountLifecycleTests: XCTestCase {
         model.dismissSignedOutReason()
         XCTAssertEqual(model.status.signedOutReason, "")
     }
+    func testManualRecoveryRequiresSavedKitAfterRestart() async throws {
+        seedPendingRecovery(phase: "awaiting-kit")
+        backend.allPendingRecovery[0].manualUnlock = true
+        let first = AppModel(credentialIdentityStore: identityStore)
+        first.start { self.backend }
+        await first.refreshPendingRecovery()
+        await first.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)
+        let kit = try XCTUnwrap(first.pendingRecoveryExport)
+        await first.acknowledgePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertEqual(first.allPendingRecovery.first?.phase, "prepared")
+        backend.isPendingRecoveryFactorAvailable = false
+        let restarted = AppModel(credentialIdentityStore: identityStore)
+        restarted.start { self.backend }
+        await restarted.refreshPendingRecovery()
+        await restarted.resumePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertEqual(restarted.allPendingRecovery.first?.phase, "prepared")
+        await restarted.resumePendingRecovery(operationID: "pending-1", password: FakeBackend.password, secretKey: "wrong")
+        XCTAssertEqual(restarted.allPendingRecovery.first?.phase, "prepared")
+        await restarted.resumePendingRecovery(operationID: "pending-1", password: FakeBackend.password, secretKey: kit.secretKey)
+        XCTAssertEqual(restarted.allPendingRecovery.first?.phase, "delivery-pending")
+        await restarted.acknowledgePendingRecovery(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertEqual(restarted.allPendingRecovery.first?.phase, "manual-unlock")
+        XCTAssertEqual(restarted.screen, .signedOut)
+        XCTAssertTrue(backend.allCallName.contains("resumePendingRecoveryWithSecretKey"))
+    }
 
-    func testDeletionRejectsChangedPlanUntilReviewedAgain() async throws {
+    func testOnlyUncommittedRecoveryCanBeDiscarded() async {
+        seedPendingRecovery(phase: "awaiting-kit")
+        backend.isPendingRecoveryFactorAvailable = false
+        let model = AppModel(credentialIdentityStore: identityStore)
+        model.start { self.backend }
+        await model.refreshPendingRecovery()
+        await model.discardPreparedRecovery(operationID: "pending-1", password: "wrong")
+        XCTAssertEqual(model.allPendingRecovery.count, 1)
+        await model.discardPreparedRecovery(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertTrue(model.allPendingRecovery.isEmpty)
+        seedPendingRecovery(phase: "outcome-unknown")
+        await model.refreshPendingRecovery()
+        await model.discardPreparedRecovery(operationID: "pending-1", password: FakeBackend.password)
+        XCTAssertEqual(model.allPendingRecovery.count, 1)
+        XCTAssertEqual(model.screen, .signedOut)
+    }
+
+    func testVersionCheckFinishingAfterSignOutDoesNotRestoreAccount() async {
         let model = await createUnlockedModel()
-        let loaded = await model.loadAccountDeletionPreview()
-        let reviewed = try XCTUnwrap(loaded)
-        backend.deletionPreview.planVersion = "new-plan"
-        let refused = await model.deleteAccount(password: FakeBackend.password, email: reviewed.email, planVersion: reviewed.planVersion)
-        XCTAssertFalse(refused)
-        XCTAssertFalse(backend.isAccountDeleted)
-        XCTAssertEqual(model.screen, .unlocked)
-        let reloaded = await model.loadAccountDeletionPreview()
-        let refreshed = try XCTUnwrap(reloaded)
-        let deleted = await model.deleteAccount(password: FakeBackend.password, email: refreshed.email, planVersion: refreshed.planVersion)
-        XCTAssertTrue(deleted)
+        await model.checkMinimumVersion()
+        backend.onCheckMinimumVersion = {
+            self.backend.status = .signedOut
+            DispatchQueue.main.sync {
+                MainActor.assumeIsolated { model.handleLockedEvent() }
+            }
+        }
+        await model.checkMinimumVersion()
+        backend.onCheckMinimumVersion = nil
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertTrue(model.allVault.isEmpty)
+        XCTAssertNil(model.newSecretKey)
+    }
+
+    func testPendingRecoveryRefreshDoesNotDiscardActionError() async {
+        let model = await createUnlockedModel()
+        model.errorMessage = "The recovery password is not correct."
+        await model.refreshPendingRecovery()
+        XCTAssertEqual(model.errorMessage, "The recovery password is not correct.")
     }
 }

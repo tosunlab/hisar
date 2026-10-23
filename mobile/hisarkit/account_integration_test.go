@@ -30,6 +30,7 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 		SecretKey            string `json:"secretKey"`
 		SignedOutDeviceCount int    `json:"signedOutDeviceCount"`
 		EmergencyKitPath     string `json:"emergencyKitPath"`
+		PendingOperationID   string `json:"pendingOperationId"`
 	}
 	if _, err := hisar.ChangeMasterPassword("wrong password", newPassword); err == nil {
 		t.Error("changed with a wrong master password")
@@ -49,8 +50,11 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 	if !strings.HasPrefix(replaced.SecretKey, "H1-") || replaced.SecretKey == signUp.SecretKey {
 		t.Fatalf("new Secret Key: %+v", replaced)
 	}
-	if document, err := os.ReadFile(replaced.EmergencyKitPath); err != nil || !strings.HasPrefix(string(document), "%PDF-") || !strings.HasPrefix(replaced.EmergencyKitPath, kitDirectory) {
-		t.Errorf("new Emergency Kit at %q: %v", replaced.EmergencyKitPath, err)
+	kit := decodeJSON[struct {
+		Path string `json:"path"`
+	}](t)(hisar.ExportPendingRecoveryEmergencyKit(replaced.PendingOperationID, newPassword, kitDirectory))
+	if document, err := os.ReadFile(kit.Path); err != nil || !strings.HasPrefix(string(document), "%PDF-") || !strings.HasPrefix(kit.Path, kitDirectory) {
+		t.Errorf("new Emergency Kit at %q: %v", kit.Path, err)
 	}
 	accountID := strings.Split(replaced.SecretKey, "-")[1]
 	if storedSecretKey, err := secretKeyStore.LoadSecretKey(accountID); err != nil || storedSecretKey != replaced.SecretKey {

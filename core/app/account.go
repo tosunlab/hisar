@@ -23,8 +23,11 @@ type CredentialChangeResult struct {
 	// KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
 	KeychainError string `json:"keychainError"`
 	// LocalError reports local finalization failures after the credentials have already changed.
-	LocalError string `json:"localError"`
-	identity   credentialChangeIdentity
+	LocalError         string `json:"localError"`
+	identity           credentialChangeIdentity
+	PendingOperationID string   `json:"pendingOperationId"`
+	SetupState         string   `json:"setupState"`
+	Problems           []string `json:"problems"`
 }
 
 type credentialChangeIdentity struct {
@@ -95,34 +98,46 @@ func convertAccountDeletionError(err error) error {
 func (s *Service) ChangeMasterPassword(currentPassword, newPassword string) (CredentialChangeResult, error) {
 	newPasswordBytes := []byte(newPassword)
 	defer clear(newPasswordBytes)
-	return s.changeCredentials(currentPassword, func(ctx context.Context, unlockedSession *session.Session, currentPasswordBytes []byte, secretKey crypt.SecretKey) (*session.CredentialChange, error) {
+	return s.changeCredentials(currentPassword, func(ctx context.Context, unlockedSession *session.Session, currentPasswordBytes []byte, secretKey crypt.SecretKey, stage session.StagePendingFactor) (*session.CredentialChange, error) {
 		return unlockedSession.ChangeMasterPassword(ctx, currentPasswordBytes, newPasswordBytes, secretKey)
 	})
 }
 
 // ReplaceSecretKey makes a new Secret Key; the old one and its Emergency Kit stop working, and other devices are signed out.
 func (s *Service) ReplaceSecretKey(password string) (CredentialChangeResult, error) {
-	return s.changeCredentials(password, func(ctx context.Context, unlockedSession *session.Session, passwordBytes []byte, secretKey crypt.SecretKey) (*session.CredentialChange, error) {
-		return unlockedSession.ReplaceSecretKey(ctx, passwordBytes, secretKey)
+	return s.changeCredentials(password, func(ctx context.Context, unlockedSession *session.Session, passwordBytes []byte, secretKey crypt.SecretKey, stage session.StagePendingFactor) (*session.CredentialChange, error) {
+		return unlockedSession.ReplaceSecretKeyWithRecovery(ctx, passwordBytes, secretKey, stage)
 	})
 }
 
-func (s *Service) changeCredentials(password string, change func(context.Context, *session.Session, []byte, crypt.SecretKey) (*session.CredentialChange, error)) (CredentialChangeResult, error) {
+func (s *Service) changeCredentials(password string, change func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error)) (CredentialChangeResult, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
 		return CredentialChangeResult{}, err
 	}
-	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID)
-	if err != nil {
-		return CredentialChangeResult{}, fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
-	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
+	secretKey, err := s.loadAccountSecretKey(s.state.Server, s.state.AccountID, s.state.RecoveryOperationID, passwordBytes)
+	if err != nil {
+		return CredentialChangeResult{}, fmt.Errorf("the Secret Key is missing from the keychain or protected recovery storage: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	credentialChange, err := change(ctx, s.unlockedSession, passwordBytes, secretKey)
+	stage, pending := s.stagePendingRecovery(s.state.Server, s.state.Email, s.name, passwordBytes)
+	credentialChange, err := change(ctx, s.unlockedSession, passwordBytes, secretKey, stage)
 	if err != nil {
+		if pending.OperationID != "" {
+			if errors.Is(err, session.ErrRecoveryDeliveryRequired) {
+				s.recoveryMutex.Lock()
+				stagedKey := s.pendingRecoveryFactors[pending.OperationID].SecretKey
+				s.recoveryMutex.Unlock()
+				return CredentialChangeResult{Status: s.buildStatus(), SecretKey: stagedKey, PendingOperationID: pending.OperationID, SetupState: pending.Phase, Problems: pending.Problems}, nil
+			}
+			pending.Problems = []string{"The credential change's remote outcome is not confirmed. Keep this recovery record and resume it when connected."}
+			_ = s.updatePendingRecovery(pending)
+			return CredentialChangeResult{Status: s.buildStatus(), PendingOperationID: pending.OperationID, SetupState: "outcome-unknown", Problems: pending.Problems}, nil
+		}
 		return CredentialChangeResult{}, convertAccountError(err)
 	}
 	defer clear(credentialChange.AccountUnlockKey)
@@ -144,8 +159,11 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 		s.newAccountSecretKey = &newSecretKey
 		result.SecretKey = newSecretKey.Encode()
 		if err := s.config.SecretKeyStore.StoreSecretKey(newSecretKey); err != nil {
-			result.KeychainError = fmt.Sprintf("the new Secret Key could not be saved to the keychain (%v); save the Emergency Kit now", err)
+			result.KeychainError = "the new Secret Key could not be saved to the keychain; save its Emergency Kit from pending recovery"
 		}
+	}
+	if persistedKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID); err != nil || persistedKey.Encode() != credentialChange.SecretKey.Encode() {
+		result.KeychainError = "the current keychain or environment does not retain the new credentials; protected local recovery remains required"
 	}
 	if len(s.state.BiometricUnlock) > 0 {
 		// Only a platform with a BiometricKeyPreparer needs a prompt to store the key; a keychain stores it silently.
@@ -157,10 +175,30 @@ func (s *Service) changeCredentials(password string, change func(context.Context
 			s.forgetBiometricUnlock()
 		}
 	}
+	if pending.OperationID != "" {
+		s.state.RecoveryOperationID = pending.OperationID
+	}
 	s.recordPasswordUnlock()
 	result.Status = s.buildStatus()
 	if err := errors.Join(cacheErr, s.state.Save()); err != nil {
 		result.LocalError = fmt.Sprintf("your credentials were changed, but this device could not finish saving the change: %v", err)
+	}
+	if pending.OperationID != "" {
+		pending.Phase = "delivery-pending"
+		pending.ManualUnlock = result.KeychainError != ""
+		pending.Problems = []string{}
+		if result.KeychainError != "" {
+			pending.Problems = append(pending.Problems, "The keychain is unavailable. Keep its Emergency Kit. You will need its Secret Key to sign in after locking or restarting.")
+		}
+		if result.LocalError != "" {
+			pending.Problems = append(pending.Problems, result.LocalError)
+			pending.Phase = "needs-finishing"
+		}
+		if err := s.updatePendingRecovery(pending); err != nil {
+			pending.Problems = append(pending.Problems, "Recovery progress could not be saved. The original protected record remains available.")
+			pending.Phase = "needs-finishing"
+		}
+		result.PendingOperationID, result.SetupState, result.Problems = pending.OperationID, pending.Phase, pending.Problems
 	}
 	return result, nil
 }
@@ -227,12 +265,12 @@ func (s *Service) DeleteAccountWithPlan(password, email, planVersion string) (St
 	if !strings.EqualFold(strings.TrimSpace(email), s.state.Email) {
 		return Status{}, convertAccountError(session.ErrEmailMismatch)
 	}
-	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID)
-	if err != nil {
-		return Status{}, fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
-	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
+	secretKey, err := s.loadAccountSecretKey(s.state.Server, s.state.AccountID, s.state.RecoveryOperationID, passwordBytes)
+	if err != nil {
+		return Status{}, errors.New("the Secret Key could not be opened from the keychain or protected recovery storage")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if err := s.unlockedSession.DeleteAccount(ctx, passwordBytes, secretKey, email, planVersion); err != nil {

@@ -62,8 +62,9 @@ func (notifier *fakeLockNotifier) getLockedCount() int {
 }
 
 type memorySecretKeyStore struct {
-	mutex       sync.Mutex
-	byAccountID map[string]crypt.SecretKey
+	mutex        sync.Mutex
+	byAccountID  map[string]crypt.SecretKey
+	recoveryKeys map[string][]byte
 }
 
 func createMemorySecretKeyStore() *memorySecretKeyStore {

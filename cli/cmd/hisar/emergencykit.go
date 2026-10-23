@@ -2,10 +2,8 @@ package main
 
 import (
 	"context"
-	"errors"
 	"flag"
 	"fmt"
-	"io/fs"
 	"os"
 	"time"
 
@@ -17,9 +15,7 @@ func runEmergencyKit(ctx context.Context, flags *flag.FlagSet, args []string) er
 	if _, err := parse(flags, args); err != nil {
 		return err
 	}
-	if _, err := os.Stat(*outputPath); err == nil {
-		return fmt.Errorf("%s already exists; choose another file with -o", *outputPath)
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	if err := refuseExistingOutput(*outputPath); err != nil {
 		return err
 	}
 	currentState, unlockedSession, err := unlock(ctx)

@@ -25,7 +25,13 @@ func (hisar *Hisar) ReplaceSecretKey(password, directory string) (string, error)
 		return "", err
 	}
 	replacement := secretKeyReplacement{CredentialChangeResult: result}
-	if kit, err := app.ExportNewSecretKeyEmergencyKitToDirectory(hisar.service, result, directory); err == nil {
+	if result.PendingOperationID != "" {
+		return encodeJSON(replacement, nil)
+	}
+	kit, kitErr := app.ExportNewSecretKeyEmergencyKitToDirectory(hisar.service, result, directory)
+	if kitErr != nil {
+		replacement.LocalError = "Your Secret Key changed, but its Emergency Kit could not be saved. Resume recovery delivery."
+	} else {
 		replacement.EmergencyKitPath = kit.Path
 	}
 	return encodeJSON(replacement, nil)

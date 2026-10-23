@@ -134,15 +134,15 @@ func (s *Service) loadVerifiedSecretKey(password string) (crypt.SecretKey, uint6
 		return crypt.SecretKey{}, 0, err
 	}
 	apiClient, accountCache := s.unlockedSession.Client, s.unlockedSession.Cache
-	accountID, epoch := s.state.AccountID, s.sessionEpoch
+	accountID, epoch, origin, recoveryOperationID := s.state.AccountID, s.sessionEpoch, s.state.Server, s.state.RecoveryOperationID
 	s.mutex.Unlock()
 
-	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(accountID)
-	if err != nil {
-		return crypt.SecretKey{}, 0, fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
-	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
+	secretKey, err := s.loadAccountSecretKey(origin, accountID, recoveryOperationID, passwordBytes)
+	if err != nil {
+		return crypt.SecretKey{}, 0, fmt.Errorf("the Secret Key is missing from the keychain or protected recovery storage: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	accountUnlockKey, err := session.DeriveAccountUnlockKey(ctx, apiClient, accountCache, passwordBytes, secretKey)

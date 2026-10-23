@@ -1,3 +1,6 @@
+import type { RecoveryMetadata } from "./recoveryStorage";
+export type { RecoveryMetadata } from "./recoveryStorage";
+
 export interface SignInResult {
   token: string;
   accountId: string;
@@ -22,17 +25,30 @@ export interface SignUpResult {
   personalVaultError?: string;
   emergencyKitPdf?: Uint8Array<ArrayBuffer>;
   emergencyKitError?: string;
+  pendingOperationId?: string;
+  setupState?: string;
+  problems?: string[];
 }
 
 export type BridgeRequest =
   | { type: "signIn"; email: string; secretKey: string; password: string }
   | { type: "reauthenticate"; token: string; email: string; secretKey: string; password: string; action?: string; targetAccountID?: string; planVersion?: string }
-  | { type: "signUp"; inviteToken: string; email: string; name: string; password: string };
+  | { type: "signUp"; inviteToken: string; email: string; name: string; password: string }
+  | { type: "listPendingRecovery" }
+  | { type: "resumePendingRecoveryWithSecretKey"; operationId: string; password: string; secretKey: string; priorSecretKey: string }
+  | { type: "exportPendingRecoveryEmergencyKit"; operationId: string; password: string }
+  | { type: "acknowledgePendingRecovery"; operationId: string; password: string }
+  | { type: "discardPreparedRecovery"; operationId: string; password: string };
 
 export interface BridgeResult {
   signIn: SignInResult;
   reauthenticate: ReauthenticationProof;
   signUp: SignUpResult;
+  listPendingRecovery: RecoveryMetadata[];
+  resumePendingRecoveryWithSecretKey: SignUpResult;
+  exportPendingRecoveryEmergencyKit: Uint8Array<ArrayBuffer>;
+  acknowledgePendingRecovery: void;
+  discardPreparedRecovery: void;
 }
 
 export type WorkerRequest = BridgeRequest & { id: number };
@@ -82,6 +98,26 @@ export class Bridge {
 
   signUp(inviteToken: string, email: string, name: string, password: string): Promise<SignUpResult> {
     return this.call({ type: "signUp", inviteToken, email, name, password });
+  }
+
+  listPendingRecovery(): Promise<RecoveryMetadata[]> {
+    return this.call({ type: "listPendingRecovery" });
+  }
+
+  resumePendingRecovery(operationId: string, password: string, secretKey = "", priorSecretKey = ""): Promise<SignUpResult> {
+    return this.call({ type: "resumePendingRecoveryWithSecretKey", operationId, password, secretKey, priorSecretKey });
+  }
+
+  exportPendingRecoveryEmergencyKit(operationId: string, password: string): Promise<Uint8Array<ArrayBuffer>> {
+    return this.call({ type: "exportPendingRecoveryEmergencyKit", operationId, password });
+  }
+
+  acknowledgePendingRecovery(operationId: string, password: string): Promise<void> {
+    return this.call({ type: "acknowledgePendingRecovery", operationId, password });
+  }
+
+  discardPreparedRecovery(operationId: string, password: string): Promise<void> {
+    return this.call({ type: "discardPreparedRecovery", operationId, password });
   }
 
   private call<Type extends BridgeRequest["type"]>(request: Extract<BridgeRequest, { type: Type }>): Promise<BridgeResult[Type]> {
