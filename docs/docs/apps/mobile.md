@@ -1,10 +1,15 @@
+---
+sidebar_position: 5
+sidebar_label: iPhone and Android
+---
+
 # Hisar Mobile
 
-The iPhone and Android apps on top of the gomobile-bound `core`. See [docs/DESIGN.md](../docs/DESIGN.md#93-mobile--gomobile--native-ui).
+The iPhone and Android apps on top of the gomobile-bound `core`. See [Design](../design.md#93-mobile--gomobile--native-ui).
 
 - `hisarkit/`: the Go backend, built into `build/HisarKit.xcframework` with `make build-ios-framework` and into
   `build/HisarKit.aar` with `make build-android-aar`.
-- `ios/`: the iOS app and AutoFill extension; see [ios/README.md](ios/README.md).
+- `ios/`: the iOS app and AutoFill extension; see [iOS app](./ios.md).
 - `android/`: the Android app, below.
 - `cmd/hisar-ui-test-mac`: plays the user's Mac in the Android phone approval UI test.
 

@@ -19,7 +19,7 @@ ACCEPT = ", ".join(("application/vnd.oci.image.index.v1+json",
 
 
 def image_inputs():
-    paths = [ROOT / "deploy/Dockerfile", *sorted((ROOT / ".github/workflows").glob("*.yml"))]
+    paths = [ROOT / "deploy/Dockerfile", ROOT / "docs/Dockerfile", *sorted((ROOT / ".github/workflows").glob("*.yml"))]
     images = set()
     for path in paths:
         for number, line in enumerate(path.read_text().splitlines(), 1):

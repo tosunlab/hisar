@@ -47,7 +47,8 @@ case "$app" in
     done
     ;;
   extension) allExpected=(release-evidence.json "hisar-extension-$version.zip") ;;
-  *) echo "unknown app $app (server, cli, desktop or extension)" >&2; exit 1 ;;
+  docs) allExpected=(release-evidence.json) ;;
+  *) echo "unknown app $app (server, cli, desktop, extension or docs)" >&2; exit 1 ;;
 esac
 
 cd "$directory"

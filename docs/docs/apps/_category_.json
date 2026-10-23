@@ -1,0 +1,5 @@
+{
+  "label": "Apps",
+  "position": 2,
+  "link": {"type": "generated-index", "slug": "/apps", "description": "The Mac and Linux app, the command-line tool, the browser extension and the phone apps: how they are built, run and tested."}
+}

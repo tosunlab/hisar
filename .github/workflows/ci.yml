@@ -263,6 +263,27 @@ jobs:
           path: extension/hisar-extension-*.zip
           retention-days: 14
 
+  docs:
+    name: Docs site typecheck, build and image
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+      - run: make test-docs
+      - name: Build the image and check that it serves the site
+        run: |
+          docker build --quiet --tag hisar-docs docs
+          docker run --detach --rm --name hisar-docs --publish 127.0.0.1:8082:8080 hisar-docs
+          for _ in $(seq 20); do curl --silent --fail --output /dev/null http://127.0.0.1:8082/ && break; sleep 1; done
+          curl --silent --fail --output /dev/null http://127.0.0.1:8082/apps/cli/
+          docker stop hisar-docs
+
   raycast:
     name: Raycast extension typecheck, tests, lint and build
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}

@@ -18,6 +18,8 @@ ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "scripts/release-evidence.py"
 PUBLISH = ROOT / ".github/workflows/publish.yml"
 SERVER_IMAGE = "ghcr.io/tosunlab/hisar-server"
+# Each image app's image and the workflow that must have attested it.
+IMAGES = {"server": (SERVER_IMAGE, "release-server.yml"), "docs": ("ghcr.io/tosunlab/hisar-docs", "release-docs.yml")}
 
 
 def workflow_script(workflow, containing):
@@ -144,13 +146,13 @@ class ReleaseEvidenceTests(unittest.TestCase):
     def publish_step(self, containing, runner_temp):
         """Run the publish.yml step containing the given text as GitHub runs a bash step, in the default-branch checkout."""
         env = dict(self.env, APP=self.app, TAG=self.tag, VERSION=self.tag.removeprefix(self.app + "-"),
-                   SOURCE_SHA=self.sha, RUNNER_TEMP=str(runner_temp), SERVER_IMAGE=SERVER_IMAGE)
+                   SOURCE_SHA=self.sha, RUNNER_TEMP=str(runner_temp))
         return subprocess.run(["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c",
                                workflow_script(PUBLISH, containing)], cwd=self.repository, env=env, text=True,
                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
 
     def test_each_app_attests_every_delivered_file(self):
-        for app in ("server", "cli", "desktop", "extension"):
+        for app in ("server", "cli", "desktop", "extension", "docs"):
             with self.subTest(app=app):
                 for path in self.directory.iterdir():
                     path.unlink()
@@ -160,13 +162,13 @@ class ReleaseEvidenceTests(unittest.TestCase):
                 self.verify()
                 calls = [json.loads(line) for line in self.log.read_text().splitlines()]
                 expected = {str(path) for path in self.directory.iterdir()}
-                if app == "server":
-                    expected.add("oci://ghcr.io/tosunlab/hisar-server@" + self.env["IMAGE_DIGEST"])
+                if app in IMAGES:
+                    expected.add(f"oci://{IMAGES[app][0]}@" + self.env["IMAGE_DIGEST"])
                 self.assertEqual({call[2] for call in calls}, expected)
                 for call in calls:
                     flags = dict(zip(call[3:-1:2], call[4:-1:2]))
                     self.assertEqual(flags["--repo"], "tosunlab/hisar")
-                    workflow = "release-server.yml" if call[2].startswith("oci://") else "release.yml"
+                    workflow = IMAGES[app][1] if call[2].startswith("oci://") else "release.yml"
                     self.assertEqual(flags["--signer-workflow"], "tosunlab/hisar/.github/workflows/" + workflow)
                     self.assertEqual(flags["--source-digest"], self.sha)
                     self.assertEqual(flags["--signer-digest"], self.sha)
@@ -243,11 +245,26 @@ class ReleaseEvidenceTests(unittest.TestCase):
         (self.directory / "update-unpublished.json").rename(self.directory / "update.json")
         self.verify()
 
-    def test_server_requires_full_image_digest(self):
-        self.fixture("server")
-        for digest in ("", "latest", "sha256:1234"):
-            self.env["IMAGE_DIGEST"] = digest
-            self.create(success=False)
+    def test_image_apps_require_full_image_digest(self):
+        for app in IMAGES:
+            with self.subTest(app=app):
+                self.fixture(app)
+                for digest in ("", "latest", "sha256:1234"):
+                    self.env["IMAGE_DIGEST"] = digest
+                    self.create(success=False)
+
+    def test_evidence_naming_another_apps_image_is_rejected(self):
+        for app, other in (("docs", "server"), ("server", "docs")):
+            with self.subTest(app=app):
+                for path in self.directory.iterdir():
+                    path.unlink()
+                self.fixture(app)
+                self.create()
+                evidence = self.directory / "release-evidence.json"
+                record = json.loads(evidence.read_text())
+                record["image"]["name"] = IMAGES[other][0]
+                evidence.write_text(json.dumps(record))
+                self.verify(success=False)
 
     def test_cli_cannot_omit_supported_platform_from_archive_manifest(self):
         self.fixture("cli")
@@ -293,15 +310,19 @@ class ReleaseEvidenceTests(unittest.TestCase):
         substituted = self.publish_step("gh release download", self.root / "substituted")
         self.assertNotEqual(substituted.returncode, 0, substituted.stdout)
 
-    def test_publication_points_every_public_server_tag_at_the_verified_digest(self):
-        self.fixture("server")
-        self.create()
-        verified, replaced = self.env["IMAGE_DIGEST"], "sha256:" + "b" * 64
-        public = [f"{SERVER_IMAGE}:{tag}" for tag in ("1.2.3", "1.2", "latest")]
-        self.registry.write_text(json.dumps({"digests": [verified, replaced], "tags": dict.fromkeys(public, replaced)}))
-        result = self.publish_step("imagetools create", self.root)
-        self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertEqual(json.loads(self.registry.read_text())["tags"], dict.fromkeys(public, verified))
+    def test_publication_points_every_public_image_tag_at_the_verified_digest(self):
+        for app in IMAGES:
+            with self.subTest(app=app):
+                for path in self.directory.iterdir():
+                    path.unlink()
+                self.fixture(app)
+                self.create()
+                verified, replaced = self.env["IMAGE_DIGEST"], "sha256:" + "b" * 64
+                public = [f"{IMAGES[app][0]}:{tag}" for tag in ("1.2.3", "1.2", "latest")]
+                self.registry.write_text(json.dumps({"digests": [verified, replaced], "tags": dict.fromkeys(public, replaced)}))
+                result = self.publish_step("imagetools create", self.root)
+                self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(json.loads(self.registry.read_text())["tags"], dict.fromkeys(public, verified))
 
     def test_image_verifier_rejects_mutable_docker_and_workflow_images(self):
         scripts = self.root / "scripts"
@@ -310,14 +331,19 @@ class ReleaseEvidenceTests(unittest.TestCase):
         checker.write_bytes((ROOT / "scripts/check-build-images.py").read_bytes())
         deploy = self.root / "deploy"
         deploy.mkdir()
+        docs = self.root / "docs"
+        docs.mkdir()
         workflows = self.root / ".github/workflows"
         workflows.mkdir(parents=True)
         dockerfile = deploy / "Dockerfile"
+        docs_dockerfile = docs / "Dockerfile"
         workflow = workflows / "release.yml"
         pinned = "node:24@sha256:" + "a" * 64
-        for docker_image, workflow_image, success in (
-                ("node:24", pinned, False), (pinned, "node:24", False), (pinned, pinned, True)):
+        for docker_image, docs_image, workflow_image, success in (
+                ("node:24", pinned, pinned, False), (pinned, "node:24", pinned, False),
+                (pinned, pinned, "node:24", False), (pinned, pinned, pinned, True)):
             dockerfile.write_text("FROM " + docker_image + " AS build\n")
+            docs_dockerfile.write_text("FROM " + docs_image + " AS build\n")
             workflow.write_text("jobs:\n  build:\n    container: " + workflow_image + "\n")
             result = subprocess.run([sys.executable, str(checker)], text=True,
                                     stdout=subprocess.PIPE, stderr=subprocess.STDOUT)

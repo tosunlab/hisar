@@ -1,7 +1,12 @@
+---
+sidebar_position: 6
+sidebar_label: iOS app
+---
+
 # Hisar for iOS
 
 SwiftUI app and AutoFill Credential Provider extension on top of `HisarKit.xcframework`, the Go backend from
-`mobile/hisarkit` (see [DESIGN.md §9.3](../../docs/DESIGN.md#93-mobile--gomobile--native-ui)). Deployment target iOS 26.
+`mobile/hisarkit` (see [Design §9.3](../design.md#93-mobile--gomobile--native-ui)). Deployment target iOS 26.
 
 ```
 project.yml              XcodeGen spec; Hisar.xcodeproj is generated from it and committed
@@ -14,7 +19,7 @@ Tests/Unit/              XCTest with a fake backend, plus Keychain, pasteboard a
 Tests/UI/                XCUITests against a real hisar-server (scripts/test-ios-ui.sh)
 ```
 
-Item icons (DESIGN.md §4.5): the editor's icon opens `IconPickerView` (Automatic, presets, colors, Choose photo); `ItemIcon`
+Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerView` (Automatic, presets, colors, Choose photo); `ItemIcon`
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
 

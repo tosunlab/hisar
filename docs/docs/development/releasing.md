@@ -1,6 +1,11 @@
+---
+sidebar_position: 1
+sidebar_label: CI and releases
+---
+
 # CI and releases
 
-How GitHub Actions tests pull requests, and how `server`, `cli`, `desktop` and `extension` releases are cut, built and published. Deploying a released server image: [deploy/README.md](../deploy/README.md).
+How GitHub Actions tests pull requests, and how `server`, `cli`, `desktop`, `extension` and `docs` releases are cut, built and published. Deploying a released server image: [Self-hosting](../self-hosting.md).
 
 GitHub Actions runs CI on pull requests, on manual runs (Actions → CI → Run workflow) and on a release that asks for it, never
 on pushes to `main`: a merge was already tested as its pull request. A new push to a pull request cancels its running CI.
@@ -11,7 +16,7 @@ on pushes to `main`: a merge was already tested as its pull request. A new push 
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
 binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
 (typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip),
-the share link page in Chromium against the server, the admin dashboard (typecheck, tests, the `admin/src/themes.css`
+the share link page in Chromium against the server, the docs site (typecheck, build, and its image built and served once), the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
 release APKs, lint and the JVM tests in one job, and the instrumented tests on x86_64 API 36 emulators against a local server in
@@ -44,10 +49,10 @@ about the same as the Mac app job.
 
 ## Releases
 
-Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z` and `extension-X.Y.Z`. Each release is one run of
+Releases are tags without a `v`: `server-X.Y.Z`, `cli-X.Y.Z`, `desktop-X.Y.Z`, `extension-X.Y.Z` and `docs-X.Y.Z`. Each release is one run of
 Actions → Release → Run workflow (or `gh workflow run release.yml -f app=server -f type=minor`), on `main`:
 
-- **App**: `server`, `cli`, `desktop` or `extension`.
+- **App**: `server`, `cli`, `desktop`, `extension` or `docs`.
 - **Release type**: `patch`, `minor` or `major` bumps the app's newest `<app>-X.Y.Z` tag (`0.1.14` → `0.1.15`, `0.2.0`,
   `1.0.0`; an app's first release is `0.1.0`), and `custom` takes **Version** as it is: `0.2.1`, or `0.3.0-rc1` for a custom
   build that is built the same way, marked "(custom build)" and can never be published. A custom build may run on any branch.
@@ -56,7 +61,8 @@ Actions → Release → Run workflow (or `gh workflow run release.yml -f app=ser
 The run then goes on by itself (`scripts/plan-release.sh` plans it):
 
 1. **Plan**: the next version, which must be newer than the previous release and not tagged yet, and the commits since the
-   previous release that change what the app is built from (`scripts/app-paths.sh`, without tests and docs). It refuses a
+   previous release that change what the app is built from (`scripts/app-paths.sh`, without tests, and without Markdown
+   except for the docs site, which is made of it). It refuses a
    release without such commits, and warns about a patch release with a breaking change (`feat(core)!: …` or a
    `BREAKING CHANGE:` footer). The run summary shows the plan.
 2. **CI** runs every `ci.yml` job on the exact event commit, plus the desktop jobs in `macos.yml` for desktop releases.
@@ -64,17 +70,18 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
 3. **Tag**: the annotated tag on that commit; its message is the title and the changes, which the desktop app's Sparkle
    update shows as release notes. The deploy key in `RELEASE_DEPLOY_KEY` pushes it, past the tag ruleset.
 4. **Build**: `release-<app>.yml`, which only the Release workflow calls. The desktop app builds the Mac DMG and Sparkle update
-   and the Linux packages and Flatpak (amd64 and arm64); the server pushes `ghcr.io/tosunlab/hisar-server:X.Y.Z`.
+   and the Linux packages and Flatpak (amd64 and arm64); the server pushes `ghcr.io/tosunlab/hisar-server:X.Y.Z` and the
+   docs site `ghcr.io/tosunlab/hisar-docs:X.Y.Z` (both amd64 and arm64).
    Every builder checks out the immutable event SHA, not the release tag.
 5. **Prerelease** contains every release file and `release-evidence.json`. The evidence binds the commit, test results, workflow
-   run, file digests, and server image digest. Keyless GitHub artifact attestations cover every final file and the server image
-   index after packaging and signing. The run verifies them and rejects a moved release tag before creating the prerelease.
+   run, file digests, and the server or docs image digest. Keyless GitHub artifact attestations cover every final file and the
+   image index after packaging and signing. The run verifies them and rejects a moved release tag before creating the prerelease.
 6. **Publish**: waits in the environment `publish-<app>` until a reviewer approves it (Review deployments on the run). A newer
    release of the app that reaches this step replaces an older one still waiting. It refuses a version older than the app's
    published release, verifies the evidence and attestations against the tag's full source SHA with the verifier from that
    commit, not from the default branch, then
-   - server: points `ghcr.io/tosunlab/hisar-server:X.Y.Z`, `:X.Y` and `:latest` at the verified immutable image digest, so a
-     version tag moved after the build is reset;
+   - server and docs: points `ghcr.io/tosunlab/hisar-server` or `hisar-docs` `:X.Y.Z`, `:X.Y` and `:latest` at the verified
+     immutable image digest, so a version tag moved after the build is reset;
    - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every Mac app as an
      automatic update;
    - all: rewrites the notes to cover every change since the published release, turns the prerelease into a release and marks
@@ -82,8 +89,9 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
 
 A failed run continues with Re-run failed jobs; a new run refuses the tag it already pushed. Actions → Publish → Run workflow
 publishes an existing prerelease by hand, through the same approval and attestation verification. Old prereleases without
-evidence cannot use this path. Actions → Release server image → Run workflow on a branch first runs mandatory exact-SHA CI,
-then pushes only `ghcr.io/tosunlab/hisar-server:sha-<commit>`, with an image attestation, for testing.
+evidence cannot use this path. Actions → Release server image (or Release docs image) → Run workflow on a branch first runs
+mandatory exact-SHA CI, then pushes only `ghcr.io/tosunlab/hisar-server:sha-<commit>` (or `hisar-docs:sha-<commit>`), with
+an image attestation, for testing.
 
 ## Verify release artifacts
 
@@ -107,14 +115,15 @@ gh attestation verify "oci://ghcr.io/tosunlab/hisar-server@$digest" --repo tosun
   --signer-digest "$commit" --source-digest "$commit" --deny-self-hosted-runners
 ```
 
-The image signer is the reusable server workflow. File signers are the release assembly workflow.
+For the docs site, do the same with `ghcr.io/tosunlab/hisar-docs` and `release-docs.yml`.
+The image signer is the reusable server or docs workflow. File signers are the release assembly workflow.
 Verification constrains repository, workflow identity, source commit, and signer commit. A missing or invalid attestation
 is a failure, not permission to trust a checksum instead. These checks identify the authorized workflow and its claims.
 They do not prove that source, dependencies, or a compromised authorized builder are benign.
 
 ## Update pinned build images
 
-`deploy/Dockerfile` and the build and CI workflow container images use multiarchitecture SHA-256 manifest digests.
+`deploy/Dockerfile`, `docs/Dockerfile` and the build and CI workflow container images use multiarchitecture SHA-256 manifest digests.
 The BuildKit builder image is pinned too. No image layers are pulled by these checks.
 
 1. Run `python3 scripts/check-build-images.py --resolve-tags` to print current upstream tag digests.

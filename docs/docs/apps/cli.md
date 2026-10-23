@@ -1,12 +1,17 @@
+---
+sidebar_position: 2
+sidebar_label: Command-line tool
+---
+
 # Hisar command-line tool
 
-`hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`), runs commands with your secrets and masks them in the output, and serves them to coding agents over MCP. Design: [docs/DESIGN.md §9.4](../docs/DESIGN.md#94-cli).
+`hisar` lists, reads and edits your items from a terminal or a script (`hisar --help`), runs commands with your secrets and masks them in the output, and serves them to coding agents over MCP. Design: [Design §9.4](../design.md#94-cli).
 
 ## Install
 
 **On a Mac with the Hisar app**, the app includes it: Settings → Developer tools → **Install command-line tool**. `hisar` then works
 through the running app, which asks you to approve each terminal with Touch ID; `hisar status` shows whether it uses the app.
-Details: [desktop/README.md](../desktop/README.md#command-line-tool).
+Details: [Desktop app](./desktop.md#command-line-tool).
 
 **Keep the app running.** SSH clients, `git` and commit signing reach Hisar through `~/.hisar/agent.sock`, and they cannot start the
 app themselves: while Hisar is not running they fail at once with "Connection refused" or "Permission denied (publickey)". So the app
@@ -18,7 +23,7 @@ for it, and otherwise says "Hisar isn't running. Open the Hisar app and try agai
 (github.com/tosunlab/hisar → Releases): `hisar-<version>-<os>-<arch>.tar.gz` for Linux and macOS,
 `.zip` for Windows, and `SHA256SUMS`. Check the download before you run it, then put `hisar` on your `PATH`:
 
-For releases with `release-evidence.json`, also [verify the artifact attestation](../docs/RELEASING.md#verify-release-artifacts) before extraction.
+For releases with `release-evidence.json`, also [verify the artifact attestation](../development/releasing.md#verify-release-artifacts) before extraction.
 The checksum file detects corruption but is not independent proof of who built the archive.
 
 ```sh
@@ -68,7 +73,7 @@ session: other `hisar` commands in it don't ask again until 10 minutes after the
 `.env` it reads holds references instead of values. Masking reduces accidental disclosure in output and transcripts, but cannot
 prevent the command from revealing a granted secret. The command itself has the values,
 and an agent that can run `hisar read` in an approved terminal can read them. An approval covers every vault, so approve an agent's
-terminal only when it may use them. Details: [docs/DESIGN.md](../docs/DESIGN.md) §9.4.1. For agents that speak MCP, `hisar mcp`
+terminal only when it may use them. Details: [Design](../design.md) §9.4.1. For agents that speak MCP, `hisar mcp`
 (below) is narrower: it sees only the vaults you choose and asks per command.
 
 ## Discover objects before selecting them
@@ -126,7 +131,7 @@ access in Hisar.", which the agent can relay to you. Approvals and allowed secre
 Limits: a command run with secrets has the real values and can write them to a file, send them elsewhere or print them encoded,
 which masking does not catch, so approve only commands you would run yourself; allowing secrets for an hour lets the agent run any
 command with them for that hour. A value from `get_secret` is in the agent's transcript and logs. Details:
-[docs/DESIGN.md](../docs/DESIGN.md) §9.4.2.
+[Design](../design.md) §9.4.2.
 
 ### Claude Code
 
@@ -184,7 +189,7 @@ and its status line shows whether Hisar is locked. The command still receives th
    environment, the agent runs `hisar run --env-file .env -- <command>` in its shell instead.
 
 Every `hisar` command omp runs, in its shell or as `hisar mcp`, gets the coding-agent rules
-([docs/DESIGN.md](../docs/DESIGN.md) §9.4.4): it sees only the vaults available to agents, `hisar run` asks once per secret for each omp
+([Design](../design.md) §9.4.4): it sees only the vaults available to agents, `hisar run` asks once per secret for each omp
 session, `hisar read` and `hisar get` ask per item, and changes to items are refused. The approval names omp and the app it runs in
 ("omp in Tern wants to use 1 secret"). Approvals end when that omp exits or Hisar locks. ssh and git inside omp get only the SSH
 keys in vaults available to agents. The app omp runs in, such as Tern, becomes an agent host: its other processes without a

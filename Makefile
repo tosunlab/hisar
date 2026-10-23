@@ -6,7 +6,7 @@ override GOTOOLCHAIN := $(shell bash scripts/go-toolchain.sh)
 $(if $(strip $(GOTOOLCHAIN)),,$(error go.work must name the release toolchain))
 export GOTOOLCHAIN
 
-.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end build-extension test-raycast test-omp test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui install-android-sdk build-android-aar build-android test-android test-android-ui generate-themes
+.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end build-extension test-raycast build-docs test-docs test-omp test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui install-android-sdk build-android-aar build-android test-android test-android-ui generate-themes
 
 build: build-admin
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -161,6 +161,13 @@ test-share-link-page:
 
 build-extension:
 	cd extension && npm ci --no-audit --no-fund && npm run build && npm run package
+
+# The docs site (docs/, Docusaurus); test-docs typechecks and builds it, the image is docs/Dockerfile.
+build-docs:
+	cd docs && npm ci --no-audit --no-fund && npm run build
+
+test-docs:
+	cd docs && npm ci --no-audit --no-fund && npm run typecheck && npm run build
 
 # The Raycast extension; its build writes raycast/dist and never installs into Raycast (npm run dev does, for development).
 test-raycast:

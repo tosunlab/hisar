@@ -2,11 +2,11 @@
 
 Hisar is an end-to-end encrypted password, SSH-key and secrets manager: the server stores only ciphertext, and keys are
 derived on devices from the master password and a Secret Key. Cryptography, protocols and product decisions are in
-[docs/DESIGN.md](docs/DESIGN.md); this file says where code lives and where new code goes.
+[Design](docs/docs/design.md); this file says where code lives and where new code goes.
 
 ## Modules
 
-Five Go modules joined by `go.work`, plus six non-Go apps.
+Five Go modules joined by `go.work`, plus seven non-Go apps.
 
 | Module | Builds | May import |
 |---|---|---|
@@ -19,6 +19,7 @@ Five Go modules joined by `go.work`, plus six non-Go apps.
 | `raycast/` | The Raycast extension (TypeScript), installed in Raycast's development mode; it talks to the desktop app on `cli.sock` as a launcher | none |
 | `omp/` | The Hisar plugin for omp (TypeScript, Bun), which `omp plugin link` loads: an extension, the `hisar` skill and the `hisar mcp --no-reveal` MCP server; it runs `hisar` and never imports Hisar code | none |
 | `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
+| `docs/` | The documentation site at docs.tryhisar.com (Docusaurus, TypeScript), built into the `hisar-docs` image by `docs/Dockerfile`. Every document is a page under `docs/docs/`: `design.md` (the security model and design), `self-hosting.md`, one page per app under `apps/`, and `development/` (releasing, the copy glossary, the logo) | none |
 | `mobile/ios/` | The iOS app (Swift), on top of HisarKit | none |
 | `mobile/android/` | The Android app (Kotlin, Jetpack Compose, Gradle) on top of `HisarKit.aar`: `:model`, a JVM module with the app model and its tests, and `:app`, the Android app | none |
 
@@ -248,6 +249,7 @@ make build build-cli-all # hisar-server with the admin dashboard (needs Node 24)
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
+make test-docs           # the docs site's typecheck and build; make build-docs builds it alone
 make test-omp            # the omp plugin's typecheck, tests and format check (needs Bun)
 make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
@@ -268,12 +270,12 @@ The Android targets need `ANDROID_HOME` (the SDK, with the command-line tools in
 the desktop and admin `themes.css`, from `assets/themes/themes.json`.
 ## Releases
 
-One run of Actions → Release per release (`gh workflow run release.yml -f app=<server|cli|desktop|extension> -f type=<patch|minor|major|custom> [-f version=X.Y.Z]`):
+One run of Actions → Release per release (`gh workflow run release.yml -f app=<server|cli|desktop|extension|docs> -f type=<patch|minor|major|custom> [-f version=X.Y.Z]`):
 it plans the version (`scripts/plan-release.sh`), requires full CI on the exact release SHA and macOS tests for desktop,
-pushes the `<app>-X.Y.Z` tag, and builds through `release-<app>.yml`. It attests every delivered file and the server image
-digest, creates the GitHub prerelease, then verifies that evidence before approval-gated publication in `publish-<app>`.
-Dry runs only plan. Custom builds require the same tests and cannot publish. `runTests=false` is not supported.
-What an app is built from lives in `scripts/app-paths.sh`, shared with
+pushes the `<app>-X.Y.Z` tag, and builds through `release-<app>.yml`. It attests every delivered file and the server and
+docs image digests, creates the GitHub prerelease, then verifies that evidence before approval-gated publication in
+`publish-<app>`. Dry runs only plan. Custom builds require the same tests and cannot publish. `runTests=false` is not
+supported. What an app is built from lives in `scripts/app-paths.sh`, shared with
 `scripts/detect-app-changes.sh`; a new build input of an app goes there. A release's install text is
 `.github/release-notes/<app>.md`, and `scripts/check-release-files.sh` lists the files each release must have.
 
@@ -283,7 +285,7 @@ Docker and Flatpak pin the same release independently and disable automatic tool
 CI runs `bash scripts/check-go-toolchain.sh` to reject drift from `go.work`.
 The CI changes job also runs `bash scripts/test-app-paths.sh` to check that a Docker-context-only change selects server
 releases and admin/image CI.
-Release verification and the build-image digest update procedure are in docs/RELEASING.md.
+Release verification and the build-image digest update procedure are in `docs/docs/development/releasing.md`.
 `python3 scripts/check-build-images.py` rejects unpinned build images. `--registry` verifies pinned registry manifest bytes
 and both Linux architectures without pulling layers. `python3 scripts/test-release-evidence.py` exercises fail-closed
 test evidence, tag movement, artifact substitution, and repository/workflow-bound attestation verification.

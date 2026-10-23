@@ -12,7 +12,7 @@ on:
       app:
         description: What to release
         type: choice
-        options: [server, cli, desktop, extension]
+        options: [server, cli, desktop, extension, docs]
       type:
         description: "Release type: patch, minor or major bumps the last version; custom takes the version below"
         type: choice
@@ -158,10 +158,23 @@ jobs:
     with:
       tag: ${{ needs.plan.outputs.tag }}
 
+  build-docs:
+    name: Build
+    needs: [plan, tag]
+    if: ${{ !cancelled() && needs.tag.result == 'success' && inputs.app == 'docs' }}
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    uses: ./.github/workflows/release-docs.yml
+    with:
+      tag: ${{ needs.plan.outputs.tag }}
+
   release:
     name: Create the GitHub prerelease
-    needs: [plan, ci, macos, tag, build-server, build-cli, build-desktop, build-extension]
-    if: ${{ !cancelled() && needs.tag.result == 'success' && needs.ci.result == 'success' && (inputs.app != 'desktop' || needs.macos.result == 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (needs.build-server.result == 'success' || needs.build-cli.result == 'success' || needs.build-desktop.result == 'success' || needs.build-extension.result == 'success') }}
+    needs: [plan, ci, macos, tag, build-server, build-cli, build-desktop, build-extension, build-docs]
+    if: ${{ !cancelled() && needs.tag.result == 'success' && needs.ci.result == 'success' && (inputs.app != 'desktop' || needs.macos.result == 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (needs.build-server.result == 'success' || needs.build-cli.result == 'success' || needs.build-desktop.result == 'success' || needs.build-extension.result == 'success' || needs.build-docs.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -182,8 +195,9 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+      # The server and docs releases are images, not files.
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
-        if: inputs.app != 'server'
+        if: inputs.app != 'server' && inputs.app != 'docs'
         with:
           pattern: release-files-${{ inputs.app }}-*
           path: release-files
@@ -192,7 +206,7 @@ jobs:
         env:
           CI_RESULT: ${{ needs.ci.result }}
           MACOS_RESULT: ${{ needs.macos.result }}
-          IMAGE_DIGEST: ${{ needs.build-server.outputs.digest }}
+          IMAGE_DIGEST: ${{ needs.build-server.outputs.digest || needs.build-docs.outputs.digest }}
         run: |
           mkdir -p release-files
           python3 scripts/release-evidence.py create "$APP" "$TAG" "$GITHUB_SHA" release-files
@@ -207,7 +221,7 @@ jobs:
         with:
           subject-path: release-files/*
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        if: inputs.app == 'server'
+        if: inputs.app == 'server' || inputs.app == 'docs'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}

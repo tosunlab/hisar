@@ -10,7 +10,7 @@ Open an issue with the bug report or feature request template. Say which app (Ma
 
 ## Before you write code
 
-- **The design comes first.** [docs/DESIGN.md](docs/DESIGN.md) is the source of truth for the security model, the data model and the sync protocol. A change that touches any of them starts as a change to that document, in the same pull request or an earlier one.
+- **The design comes first.** [Design](docs/docs/design.md) is the source of truth for the security model, the data model and the sync protocol. A change that touches any of them starts as a change to that document, in the same pull request or an earlier one.
 - **Know where code goes.** [CLAUDE.md](CLAUDE.md) maps every package, says which module may import which, lists the conventions, and names the things that must never break (wire JSON tags, HTTP routes, CLI commands and flags, the `core/crypt` formats and their frozen test vectors, the mobile framework's exported API). Read it before a change outside one package.
 - **Set up locally.** The [Development](README.md#development) section of the README has the Postgres container, the environment variable and the `make` targets; the desktop, mobile and extension READMEs cover their apps.
 - **Ask first for big things.** For a new feature or a change in behaviour, open an issue before the pull request, so that the shape is agreed before the work.
@@ -19,9 +19,9 @@ Open an issue with the bug report or feature request template. Say which app (Ma
 
 - Branch from `main` and open one pull request per change. Keep refactors out of a feature pull request.
 - Add or change tests with the code. Go tests sit next to their package, the desktop app and the extension have frontend tests, the phones have unit and UI tests; [CLAUDE.md § Tests](CLAUDE.md#tests) says how each suite runs.
-- Update the documentation the change makes wrong: the README, the app's README, `docs/DESIGN.md` and `CLAUDE.md`.
+- Update the documentation the change makes wrong: the README, the app's page in `docs/docs/apps/`, `docs/docs/design.md` and `CLAUDE.md`.
 - `make vet test` must pass. The CI runs gofmt, vet, the Go tests against Postgres, the CLI build for every platform, the end-to-end test of the built binaries, the server image, the desktop frontend, the extension, the admin dashboard, and the Mac, iPhone and Android apps when a change touches what they are built from. It runs on every push to a pull request and never on `main`.
-- The Mac and iPhone jobs are expensive and each runs only when what it is built from changes; `scripts/app-paths.sh` lists the paths per app (`core/` and `go.work` are in both lists, `mobile/` is only in the iPhone's, `desktop/` and `cli/` only in the Mac's). Labels steer them: `skip-ios` skips the iPhone job and `skip-android` the Android jobs in `ci.yml`, for changes whose builds and tests already passed locally; `run-macos` forces the Mac and iPhone jobs; `disable-all-ci` runs no job in either workflow, for rebasing a stack whose layers already passed CI. Add a label before pushing: a run reads the labels the pull request has when it starts. Details: [docs/RELEASING.md](docs/RELEASING.md).
+- The Mac and iPhone jobs are expensive and each runs only when what it is built from changes; `scripts/app-paths.sh` lists the paths per app (`core/` and `go.work` are in both lists, `mobile/` is only in the iPhone's, `desktop/` and `cli/` only in the Mac's). Labels steer them: `skip-ios` skips the iPhone job and `skip-android` the Android jobs in `ci.yml`, for changes whose builds and tests already passed locally; `run-macos` forces the Mac and iPhone jobs; `disable-all-ci` runs no job in either workflow, for rebasing a stack whose layers already passed CI. Add a label before pushing: a run reads the labels the pull request has when it starts. Details: [CI and releases](docs/docs/development/releasing.md).
 - A maintainer reviews the pull request, and it merges once CI is green. Nothing lands on `main` without a pull request: a merge was already tested as one.
 
 ## Commit messages
@@ -43,4 +43,4 @@ The short version of [CLAUDE.md § Conventions](CLAUDE.md#conventions):
 
 ## Releases
 
-Maintainers cut releases from `main` with the Release workflow; the steps, the tag names and the publish approval are in [docs/RELEASING.md](docs/RELEASING.md).
+Maintainers cut releases from `main` with the Release workflow; the steps, the tag names and the publish approval are in [CI and releases](docs/docs/development/releasing.md).

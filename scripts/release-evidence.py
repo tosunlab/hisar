@@ -11,8 +11,10 @@ import sys
 
 
 EVIDENCE = "release-evidence.json"
-SERVER_IMAGE = "ghcr.io/tosunlab/hisar-server"
-APPS = {"cli", "server", "desktop", "extension"}
+# The apps released as images: their registry name and the workflow whose attestation vouches for the image index.
+IMAGES = {"server": ("ghcr.io/tosunlab/hisar-server", "release-server.yml"),
+          "docs": ("ghcr.io/tosunlab/hisar-docs", "release-docs.yml")}
+APPS = {"cli", "server", "desktop", "extension", "docs"}
 
 
 def require(condition, message):
@@ -57,9 +59,9 @@ def validate(record, app, tag, sha, repository, directory):
     require(record.get("files") == files(directory), "release file set or bytes differ from test evidence")
     require(re.fullmatch(r"[1-9][0-9]*", record.get("runID", "")), "missing release workflow run")
     image = record.get("image")
-    if app == "server":
-        require(isinstance(image, dict) and image.get("name") == SERVER_IMAGE
-                and re.fullmatch(r"sha256:[0-9a-f]{64}", image.get("digest", "")), "missing immutable server image digest")
+    if app in IMAGES:
+        require(isinstance(image, dict) and image.get("name") == IMAGES[app][0]
+                and re.fullmatch(r"sha256:[0-9a-f]{64}", image.get("digest", "")), f"missing immutable {app} image digest")
     else:
         require(image is None, "unexpected image evidence")
 
@@ -91,7 +93,7 @@ def main():
                   "tests": {"ci": os.environ["CI_RESULT"],
                             "macos": os.environ.get("MACOS_RESULT") if app == "desktop" else "not-required"},
                   "files": files(directory),
-                  "image": {"name": SERVER_IMAGE, "digest": os.environ.get("IMAGE_DIGEST", "")} if app == "server" else None}
+                  "image": {"name": IMAGES[app][0], "digest": os.environ.get("IMAGE_DIGEST", "")} if app in IMAGES else None}
         validate(record, app, tag, sha, repository, directory)
         evidence.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     elif command == "verify":
@@ -104,7 +106,8 @@ def main():
         for path in sorted(directory.iterdir()):
             attest(str(path), repository, "release.yml", sha)
         if record["image"]:
-            attest(f"oci://{SERVER_IMAGE}@{record['image']['digest']}", repository, "release-server.yml", sha)
+            name, workflow = IMAGES[app]
+            attest(f"oci://{name}@{record['image']['digest']}", repository, workflow, sha)
     else:
         raise ValueError(f"unknown command: {command}")
 
