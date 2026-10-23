@@ -50,8 +50,6 @@ Actions → Release → Run workflow (or `gh workflow run release.yml -f app=ser
   `1.0.0`; an app's first release is `0.1.0`), and `custom` takes **Version** as it is: `0.2.1`, or `0.3.0-rc1` for a custom
   build that is built the same way, marked "(custom build)" and can never be published. A custom build may run on any branch.
 - **Dry run**: only the plan.
-- **Run tests**: also runs `ci.yml` on the commit, plus `macos.yml` for the desktop app, before tagging it. Off by default:
-  pull requests ran them already, and a release should be quick when a fix has to go out.
 
 The run then goes on by itself (`scripts/plan-release.sh` plans it):
 
@@ -59,25 +57,74 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
    previous release that change what the app is built from (`scripts/app-paths.sh`, without tests and docs). It refuses a
    release without such commits, and warns about a patch release with a breaking change (`feat(core)!: …` or a
    `BREAKING CHANGE:` footer). The run summary shows the plan.
-2. **CI**, only with **Run tests**: `ci.yml` for the commit, plus `macos.yml` for the desktop app.
+2. **CI** runs every `ci.yml` job on the exact event commit, plus the desktop jobs in `macos.yml` for desktop releases.
+   Successful tests are mandatory, including custom builds. There is no `runTests=false` bypass. A dry run stops after the plan.
 3. **Tag**: the annotated tag on that commit; its message is the title and the changes, which the desktop app's Sparkle
    update shows as release notes. The deploy key in `RELEASE_DEPLOY_KEY` pushes it, past the tag ruleset.
 4. **Build**: `release-<app>.yml`, which only the Release workflow calls. The desktop app builds the Mac DMG and Sparkle update
    and the Linux packages and Flatpak (amd64 and arm64); the server pushes `ghcr.io/tosunlab/hisar-server:X.Y.Z`.
-5. **Prerelease**: the GitHub prerelease with every file at once (`scripts/check-release-files.sh` checks them first), its
-   changes and the app's install text from `.github/release-notes/<app>.md`. Nobody gets it yet.
+   Every builder checks out the immutable event SHA, not the release tag.
+5. **Prerelease** contains every release file and `release-evidence.json`. The evidence binds the commit, test results, workflow
+   run, file digests, and server image digest. Keyless GitHub artifact attestations cover every final file and the server image
+   index after packaging and signing. The run verifies them and rejects a moved release tag before creating the prerelease.
 6. **Publish**: waits in the environment `publish-<app>` until a reviewer approves it (Review deployments on the run). A newer
    release of the app that reaches this step replaces an older one still waiting. It refuses a version older than the app's
-   published release, then
-   - server: points `ghcr.io/tosunlab/hisar-server:latest` and `:X.Y` at `:X.Y.Z`;
+   published release, verifies the evidence and attestations against the tag's full source SHA with the verifier from that
+   commit, not from the default branch, then
+   - server: points `ghcr.io/tosunlab/hisar-server:X.Y.Z`, `:X.Y` and `:latest` at the verified immutable image digest, so a
+     version tag moved after the build is reset;
    - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every Mac app as an
      automatic update;
    - all: rewrites the notes to cover every change since the published release, turns the prerelease into a release and marks
      it latest.
 
 A failed run continues with Re-run failed jobs; a new run refuses the tag it already pushed. Actions → Publish → Run workflow
-publishes an existing prerelease by hand, through the same approval. Actions → Release server image → Run workflow on a branch
-pushes only `ghcr.io/tosunlab/hisar-server:sha-<commit>`, for testing.
+publishes an existing prerelease by hand, through the same approval and attestation verification. Old prereleases without
+evidence cannot use this path. Actions → Release server image → Run workflow on a branch first runs mandatory exact-SHA CI,
+then pushes only `ghcr.io/tosunlab/hisar-server:sha-<commit>`, with an image attestation, for testing.
+
+## Verify release artifacts
+
+Use a recent GitHub CLI with `gh attestation verify`. Choose the full commit SHA from an independently reviewed source
+commit, not only a downloaded evidence document or a movable tag. Set `commit` to that SHA.
+For a downloaded CLI archive, desktop file, extension zip, checksum file, or `release-evidence.json`, run:
+
+```sh
+gh attestation verify <file> --repo tosunlab/hisar \
+  --signer-workflow tosunlab/hisar/.github/workflows/release.yml \
+  --signer-digest "$commit" --source-digest "$commit" --deny-self-hosted-runners
+```
+
+Verify every file you use. For the server, verify `release-evidence.json` with the command above, read its `image.digest`,
+then verify and run that digest, not a mutable image tag:
+
+```sh
+digest=$(jq -r .image.digest release-evidence.json)
+gh attestation verify "oci://ghcr.io/tosunlab/hisar-server@$digest" --repo tosunlab/hisar \
+  --signer-workflow tosunlab/hisar/.github/workflows/release-server.yml \
+  --signer-digest "$commit" --source-digest "$commit" --deny-self-hosted-runners
+```
+
+The image signer is the reusable server workflow. File signers are the release assembly workflow.
+Verification constrains repository, workflow identity, source commit, and signer commit. A missing or invalid attestation
+is a failure, not permission to trust a checksum instead. These checks identify the authorized workflow and its claims.
+They do not prove that source, dependencies, or a compromised authorized builder are benign.
+
+## Update pinned build images
+
+`deploy/Dockerfile` and the build and CI workflow container images use multiarchitecture SHA-256 manifest digests.
+The BuildKit builder image is pinned too. No image layers are pulled by these checks.
+
+1. Run `python3 scripts/check-build-images.py --resolve-tags` to print current upstream tag digests.
+2. Review upstream changes and replace the selected digest in every reference to that image.
+   Keep the Go tag synchronized with `go.work` using `bash scripts/check-go-toolchain.sh`.
+3. Run `python3 scripts/check-build-images.py --registry` to verify pinned manifest bytes and support for both
+   `linux/amd64` and `linux/arm64`. Run `python3 scripts/check-build-images.py` for the offline pin check.
+4. Run `bash scripts/test-app-paths.sh` and the affected image or packaging CI jobs before release.
+
+The update process does not claim reproducible builds. Hosted runner images, package repositories, and other tools
+remain separate build inputs. `scripts/app-paths.sh` includes the release workflows and evidence scripts, so changes to
+these inputs select the affected releases.
 
 ## Repository secrets and environments
 

@@ -268,9 +268,11 @@ the desktop and admin `themes.css`, from `assets/themes/themes.json`.
 ## Releases
 
 One run of Actions → Release per release (`gh workflow run release.yml -f app=<server|cli|desktop|extension> -f type=<patch|minor|major|custom> [-f version=X.Y.Z]`):
-it plans the version (`scripts/plan-release.sh`), pushes the `<app>-X.Y.Z` tag (CI only with `-f runTests=true`), builds through
-`release-<app>.yml` (only callable from Release), creates the GitHub prerelease and waits for approval in the environment
-`publish-<app>` before `publish.yml` publishes it. What an app is built from lives in `scripts/app-paths.sh`, shared with
+it plans the version (`scripts/plan-release.sh`), requires full CI on the exact release SHA and macOS tests for desktop,
+pushes the `<app>-X.Y.Z` tag, and builds through `release-<app>.yml`. It attests every delivered file and the server image
+digest, creates the GitHub prerelease, then verifies that evidence before approval-gated publication in `publish-<app>`.
+Dry runs only plan. Custom builds require the same tests and cannot publish. `runTests=false` is not supported.
+What an app is built from lives in `scripts/app-paths.sh`, shared with
 `scripts/detect-app-changes.sh`; a new build input of an app goes there. A release's install text is
 `.github/release-notes/<app>.md`, and `scripts/check-release-files.sh` lists the files each release must have.
 
@@ -280,6 +282,10 @@ Docker and Flatpak pin the same release independently and disable automatic tool
 CI runs `bash scripts/check-go-toolchain.sh` to reject drift from `go.work`.
 The CI changes job also runs `bash scripts/test-app-paths.sh` to check that a Docker-context-only change selects server
 releases and admin/image CI.
+Release verification and the build-image digest update procedure are in docs/RELEASING.md.
+`python3 scripts/check-build-images.py` rejects unpinned build images. `--registry` verifies pinned registry manifest bytes
+and both Linux architectures without pulling layers. `python3 scripts/test-release-evidence.py` exercises fail-closed
+test evidence, tag movement, artifact substitution, and repository/workflow-bound attestation verification.
 
 Sparkle consumers run `scripts/download-sparkle.sh` before linking, copying the framework or signing an update.
 The downloader checks the archive SHA-256 on every use and compares extracted cache bytes, permissions and symlinks

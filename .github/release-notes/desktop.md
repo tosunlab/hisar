@@ -7,3 +7,16 @@
 **Claude Code and Codex:** connect them in Settings → Developer tools → Coding agents. Hisar adds its MCP server, `hisar mcp --no-reveal`, to Claude Code's user settings or to Codex's `config.toml` with a tool timeout long enough for approvals, and never changes a server named `hisar` that you added yourself. Commands they run in their shells follow the coding-agent rules, as omp's do.
 
 Check downloads against the `SHA256SUMS-*` files: `sha256sum -c --ignore-missing SHA256SUMS-linux-amd64`.
+
+Before installing, verify each downloaded DMG, zip, Linux package, AppImage, or Flatpak with a recent GitHub CLI.
+Set `commit` to the full independently reviewed source commit SHA and `file` to the downloaded file:
+
+```sh
+gh attestation verify "$file" --repo tosunlab/hisar \
+  --signer-workflow tosunlab/hisar/.github/workflows/release.yml \
+  --signer-digest "$commit" --source-digest "$commit" --deny-self-hosted-runners
+```
+
+Verify checksum files, `update.json`, and `release-evidence.json` the same way. The update asset is attested before its
+publication rename, with identical bytes. macOS signing and notarization remain separate checks.
+Attestations identify workflow and source, not protection against a compromised authorized builder.

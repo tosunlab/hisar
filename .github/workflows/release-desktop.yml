@@ -170,7 +170,7 @@ jobs:
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
-    container: node:24-trixie
+    container: node:24-trixie@sha256:ff054b356ab93ed540518ca23cfcd9840e5256dd04db5a8d8afc43f4ecc7c9f8
     env:
       TAG: ${{ inputs.tag }}
     steps:
@@ -221,7 +221,7 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 60
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51@sha256:78d969b18225ae107ca29497bf09c4a3f791e5f1838a9a912a529d0024fb6210
       options: --privileged
     env:
       TAG: ${{ inputs.tag }}
