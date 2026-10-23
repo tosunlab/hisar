@@ -27,11 +27,13 @@ func TestRotateVault(t *testing.T) {
 
 	createRotation := func(rotatedItems []RotatedItem) VaultRotation {
 		return VaultRotation{
-			VaultID:   vaultID,
-			EncName:   []byte("new-name"),
-			Accesses:  []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}},
-			Items:     rotatedItems,
-			RotatedBy: "AAAAAA",
+			VaultID:          vaultID,
+			EncName:          []byte("new-name"),
+			Accesses:         []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}},
+			Items:            rotatedItems,
+			RotatedBy:        "AAAAAA",
+			AccessRevision:   3,
+			MetadataRevision: 1,
 		}
 	}
 	rotateItem := func(vaultItem *Item, baseRevision string) RotatedItem {

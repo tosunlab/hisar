@@ -15,7 +15,7 @@ import (
 // Size limits of what vault and item requests carry.
 const (
 	maxEncName            = 1024
-	maxWrappedKey         = 4096
+	maxWrappedKey         = apitypes.MaxVaultWrappedKeyBytes
 	maxOverview           = 64 << 10
 	maxDetails            = 1 << 20
 	DefaultChangeLimit    = 500
@@ -159,8 +159,8 @@ func (s *Service) SetAccess(ctx context.Context, actor Actor, vaultID, targetAcc
 	isNewMember, err := s.store.GrantAccess(ctx, vaultID,
 		store.Member{AccountID: targetAccountID, Role: request.Role, WrappedKey: request.WrappedKey, GrantedBy: actor.AccountID}, request.KeyGeneration)
 	switch {
-	case errors.Is(err, store.ErrKeyGenerationMissing):
-		return errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrKeyGenerationMissing), errors.Is(err, store.ErrRotationPending):
+		return convertTransitionError(err)
 	case errors.Is(err, store.ErrNoInvitation):
 		return newError(KindConflict, "this person has not accepted an invitation to this vault")
 	case errors.Is(err, store.ErrNotEntitled):
@@ -209,6 +209,7 @@ func (s *Service) RemoveAccess(ctx context.Context, actor Actor, vaultID, target
 		return err
 	}
 	s.recordAudit(ctx, actor, auditVaultAccessRemoved, map[string]string{"vault": vaultID, "account": targetAccountID})
+	s.publishVaultsChangedToMembers(ctx, vaultID)
 	s.publishVaultsChanged(targetAccountID)
 	return nil
 }
@@ -307,6 +308,8 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 		return 0, ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
 		return 0, errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrRotationPending):
+		return 0, convertTransitionError(err)
 	case errors.Is(err, store.ErrConflict):
 		conflict := &ItemConflictError{}
 		if currentStoreItem != nil {
@@ -355,6 +358,8 @@ func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID str
 		return apitypes.MoveItemResponse{}, ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
 		return apitypes.MoveItemResponse{}, errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrRotationPending):
+		return apitypes.MoveItemResponse{}, convertTransitionError(err)
 	case errors.Is(err, store.ErrConflict):
 		conflict := &ItemConflictError{}
 		if currentStoreItem != nil {
@@ -403,8 +408,8 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 		return newError(KindInvalid, "invalid vault name")
 	}
 	switch err := s.store.RenameVault(ctx, vaultID, actor.AccountID, request.EncName, request.KeyGeneration); {
-	case errors.Is(err, store.ErrKeyGenerationMissing):
-		return errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrKeyGenerationMissing), errors.Is(err, store.ErrRotationPending):
+		return convertTransitionError(err)
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return newError(KindConflict, "the vault key changed since the name was encrypted; sync and try again")
 	case errors.Is(err, store.ErrNotOwner):
@@ -468,6 +473,8 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 		return ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
 		return errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrRotationPending):
+		return convertTransitionError(err)
 	case errors.Is(err, store.ErrConflict):
 		return newError(KindConflict, "the vault changed while its items were moved; try again")
 	case errors.Is(err, store.ErrExists):
@@ -500,6 +507,9 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.RotateVaultRequest) error {
 	if err := s.requireVaultOwner(ctx, actor, vaultID); err != nil {
 		return err
+	}
+	if request.AccessRevision <= 0 || request.MetadataRevision <= 0 {
+		return newError(KindInvalid, "update Hisar to rotate vault keys with a checked snapshot")
 	}
 	errInvalidRotation := newError(KindInvalid, "invalid rotation")
 	if len(request.EncName) == 0 || len(request.EncName) > maxEncName ||
@@ -553,11 +563,11 @@ func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, 
 	}
 	err = s.store.RotateVault(ctx, store.VaultRotation{
 		VaultID: vaultID, EncName: request.EncName, Accesses: members, Items: rotatedItems, RotatedBy: actor.AccountID,
-		KeyGeneration: request.KeyGeneration,
+		KeyGeneration: request.KeyGeneration, AccessRevision: request.AccessRevision, MetadataRevision: request.MetadataRevision,
 	})
 	switch {
-	case errors.Is(err, store.ErrKeyGenerationMissing):
-		return errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrKeyGenerationMissing), errors.Is(err, store.ErrRotationPending):
+		return convertTransitionError(err)
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return ErrKeyChanged
 	case errors.Is(err, store.ErrConflict):

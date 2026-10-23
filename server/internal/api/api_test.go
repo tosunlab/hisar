@@ -377,9 +377,9 @@ func TestEndToEnd(t *testing.T) {
 		}
 
 		staleRequest := &apitypes.RotateVaultRequest{
-			KeyGeneration: trip.KeyGeneration,
-			EncName:       []byte{1},
-			Accesses:      []apitypes.RotatedAccess{{AccountID: alice.AccountID, Role: apitypes.VaultOwner, WrappedKey: []byte{1}}},
+			AccessRevision: 1, MetadataRevision: 1, KeyGeneration: trip.KeyGeneration,
+			EncName:  []byte{1},
+			Accesses: []apitypes.RotatedAccess{{AccountID: alice.AccountID, Role: apitypes.VaultOwner, WrappedKey: []byte{1}}},
 		}
 		if err := alice.Client.RotateVault(ctx, trip.ID, staleRequest); !apiclient.IsStatus(err, http.StatusConflict) {
 			t.Errorf("rotation without the vault's items: %v", err)

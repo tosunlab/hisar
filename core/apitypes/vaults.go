@@ -9,7 +9,7 @@ type Vault struct {
 	WrappedKey []byte `json:"wrappedKey"`
 	// OrganizationID is set for organization vaults only.
 	OrganizationID string `json:"organizationId,omitempty"`
-	// NeedsRotation is set when someone lost access through a team and an owner's app has not rotated the key since.
+	// NeedsRotation remains set after owner removal until an owner's app commits the replacement key generation.
 	NeedsRotation bool `json:"needsRotation,omitempty"`
 	// KeyGeneration counts the vault's keys: 1 at creation, one more after every rotation. Missing from older servers.
 	KeyGeneration  int64 `json:"keyGeneration,omitempty"`
@@ -55,13 +55,14 @@ type RotatedItem struct {
 	Details      []byte `json:"details"`
 }
 
-// RotateVaultRequest replaces the vault key: every member's wrapped key and every item, re-encrypted. KeyGeneration
-// identifies the key being replaced. Omission is accepted only for unrotated nonorganization vaults.
+// RotateVaultRequest is the bounded legacy aggregate route. AccessRevision and MetadataRevision bind its snapshot.
 type RotateVaultRequest struct {
-	EncName       []byte          `json:"encName"`
-	Accesses      []RotatedAccess `json:"access"`
-	Items         []RotatedItem   `json:"items"`
-	KeyGeneration int64           `json:"keyGeneration,omitempty"`
+	EncName          []byte          `json:"encName"`
+	Accesses         []RotatedAccess `json:"access"`
+	Items            []RotatedItem   `json:"items"`
+	KeyGeneration    int64           `json:"keyGeneration,omitempty"`
+	AccessRevision   int64           `json:"accessRevision,omitempty"`
+	MetadataRevision int64           `json:"metadataRevision,omitempty"`
 }
 
 // RenameVaultRequest identifies the key used for the name. Omission is accepted only for unrotated nonorganization vaults.
@@ -79,9 +80,8 @@ type MovedItem struct {
 	Details      []byte `json:"details"`
 }
 
-// DeleteVaultRequest: a vault with live items needs either MoveToVaultID with every live item in MovedItems,
-// or IsDeletingItems. KeyGeneration identifies the source; MoveToKeyGeneration identifies the destination.
-// Rotated vaults require explicit generations.
+// DeleteVaultRequest deletes items or supplies a bounded legacy move. KeyGeneration identifies the source;
+// MoveToKeyGeneration identifies the destination. Rotated vaults require explicit generations.
 type DeleteVaultRequest struct {
 	MoveToVaultID       string      `json:"moveToVaultId,omitempty"`
 	MovedItems          []MovedItem `json:"movedItems,omitempty"`

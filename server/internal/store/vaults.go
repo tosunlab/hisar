@@ -15,6 +15,7 @@ var (
 	ErrStaleKeyGeneration = errors.New("store: not the vault's current key generation")
 	// ErrKeyGenerationMissing asks legacy writers to update after rotation or for organization vaults.
 	ErrKeyGenerationMissing = errors.New("store: this vault needs an explicit key generation")
+	ErrRotationPending      = errors.New("store: finish the pending vault key rotation before changing ciphertext")
 	ErrReadOnly             = errors.New("store: the account only reads the vault")
 )
 
@@ -144,12 +145,13 @@ func requireVaultWriter(ctx context.Context, transaction pgx.Tx, vaultID, accoun
 
 // lockedVault is a vault whose row the transaction holds.
 type lockedVault struct {
-	vaultType      string
-	organizationID string
-	seq            int64
-	keyGeneration  int64
-	accessRevision int64
-	needsRotation  bool
+	vaultType        string
+	organizationID   string
+	seq              int64
+	keyGeneration    int64
+	accessRevision   int64
+	needsRotation    bool
+	metadataRevision int64
 }
 
 // lockVault locks the vault's organization, when it has one, and then the vault: the order of every change to an
@@ -194,7 +196,7 @@ func lockVaultRow(ctx context.Context, transaction pgx.Tx, vaultID string) (*loc
 // is not in the result.
 func lockVaults(ctx context.Context, transaction pgx.Tx, vaultIDs []string) (map[string]*lockedVault, error) {
 	rows, err := transaction.Query(ctx, `
-		SELECT id::text, type, coalesce(organization_id::text, ''), seq, key_generation, access_revision, needs_rotation FROM vaults
+		SELECT id::text, type, coalesce(organization_id::text, ''), seq, key_generation, needs_rotation, access_revision, metadata_revision FROM vaults
 		WHERE id = ANY($1::uuid[]) ORDER BY id FOR UPDATE`, vaultIDs)
 	if err != nil {
 		return nil, err
@@ -202,7 +204,7 @@ func lockVaults(ctx context.Context, transaction pgx.Tx, vaultIDs []string) (map
 	vaultsByID := map[string]*lockedVault{}
 	var vaultID string
 	var scanned lockedVault
-	_, err = pgx.ForEachRow(rows, []any{&vaultID, &scanned.vaultType, &scanned.organizationID, &scanned.seq, &scanned.keyGeneration, &scanned.accessRevision, &scanned.needsRotation}, func() error {
+	_, err = pgx.ForEachRow(rows, []any{&vaultID, &scanned.vaultType, &scanned.organizationID, &scanned.seq, &scanned.keyGeneration, &scanned.needsRotation, &scanned.accessRevision, &scanned.metadataRevision}, func() error {
 		vault := scanned
 		vaultsByID[vaultID] = &vault
 		return nil
@@ -215,9 +217,9 @@ func (vault *lockedVault) acceptsKeyGeneration(keyGeneration int64) bool {
 	return keyGeneration == vault.keyGeneration || keyGeneration == 0 && vault.keyGeneration == 1 && vault.organizationID == ""
 }
 
-// checkItemKeyGeneration refuses items sealed with the vault key of keyGeneration unless the vault accepts it:
-// ErrKeyGenerationMissing requests a client update; ErrStaleKeyGeneration names a replaced key.
-func (vault *lockedVault) checkItemKeyGeneration(keyGeneration int64) error {
+// checkKeyGeneration refuses a key generation the vault does not accept: ErrKeyGenerationMissing requests a client
+// update.
+func (vault *lockedVault) checkKeyGeneration(keyGeneration int64) error {
 	switch {
 	case vault.acceptsKeyGeneration(keyGeneration):
 		return nil
@@ -225,6 +227,18 @@ func (vault *lockedVault) checkItemKeyGeneration(keyGeneration int64) error {
 		return ErrKeyGenerationMissing
 	}
 	return ErrStaleKeyGeneration
+}
+
+// checkItemKeyGeneration refuses items sealed with the vault key of keyGeneration unless the vault accepts it, and
+// blocks writes under a key that pending rotation exposed (ErrRotationPending).
+func (vault *lockedVault) checkItemKeyGeneration(keyGeneration int64) error {
+	if err := vault.checkKeyGeneration(keyGeneration); err != nil {
+		return err
+	}
+	if vault.needsRotation {
+		return ErrRotationPending
+	}
+	return nil
 }
 
 func (s *Store) ListMembers(ctx context.Context, vaultID string) ([]Member, error) {
@@ -252,6 +266,8 @@ func (s *Store) SetAccess(ctx context.Context, vaultID string, member Member) er
 // account only when it accepted a share invitation from a current owner, consuming it (ErrNoInvitation), and otherwise changes an existing
 // member's role. An organization vault adds only an account its teams entitle to exactly that role (ErrNotEntitled) and
 // never changes a member's role (ErrRoleFromTeams). Rotated vaults require the current explicit generation.
+// Pending rotation refuses key delivery even when the supplied generation is current, but only after the membership
+// checks, so a grant that can never succeed is refused for that reason and not for the vault's key state.
 func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, keyGeneration int64) (isNewMember bool, err error) {
 	err = s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, vaultID)
@@ -261,7 +277,7 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 		if err := requireVaultOwner(ctx, transaction, vaultID, member.GrantedBy); err != nil {
 			return err
 		}
-		if err := vault.checkItemKeyGeneration(keyGeneration); err != nil {
+		if err := vault.checkKeyGeneration(keyGeneration); err != nil {
 			return err
 		}
 		currentRole, err := queryVaultRole(ctx, transaction, vaultID, member.AccountID)
@@ -285,6 +301,9 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 		case isNewMember:
 			return ErrNoInvitation
 		}
+		if vault.needsRotation {
+			return ErrRotationPending
+		}
 		_, err = transaction.Exec(ctx, `
 			INSERT INTO vault_access (vault_id, account_id, wrapped_key, role, granted_by) VALUES ($1, $2, $3, $4, $5)
 			ON CONFLICT (vault_id, account_id) DO UPDATE SET wrapped_key = $3, role = $4, granted_by = $5, granted_at = now()`,
@@ -294,7 +313,7 @@ func (s *Store) GrantAccess(ctx context.Context, vaultID string, member Member, 
 	return isNewMember, err
 }
 
-// RemoveAccess removes a member and their wrapped key; removedBy must be an owner (ErrNotOwner), checked under the
+// RemoveAccess removes a member and their wrapped key and marks rotation pending; removedBy must be an owner, under the
 // vault's lock, so of two owners who remove each other at once only the first succeeds. Access to an organization vault
 // comes from its teams (ErrOrganizationVault).
 func (s *Store) RemoveAccess(ctx context.Context, vaultID, removedBy, accountID string) error {
@@ -316,6 +335,7 @@ func (s *Store) RemoveAccess(ctx context.Context, vaultID, removedBy, accountID 
 		if commandTag.RowsAffected() == 0 {
 			return ErrNotFound
 		}
-		return nil
+		_, err = transaction.Exec(ctx, `UPDATE vaults SET needs_rotation = true WHERE id = $1`, vaultID)
+		return err
 	})
 }

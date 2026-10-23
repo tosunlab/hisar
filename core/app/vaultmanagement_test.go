@@ -82,6 +82,23 @@ func (server *fakeAPIServer) addVaultManagementRoutes(mux *http.ServeMux) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID := request.PathValue("vaultID")
+		accountID := request.PathValue("accountID")
+		if accountID != server.accountID && server.getVaultRole(vaultID) == apitypes.VaultOwner {
+			accesses := server.accessesByVaultID[vaultID]
+			index := slices.IndexFunc(accesses, func(access apitypes.RotatedAccess) bool { return access.AccountID == accountID })
+			if index < 0 {
+				writeJSON(writer, 404, apitypes.Error{Error: "not found"})
+				return
+			}
+			server.accessesByVaultID[vaultID] = slices.Delete(accesses, index, index+1)
+			for index := range server.vaults {
+				if server.vaults[index].ID == vaultID {
+					server.vaults[index].NeedsRotation = true
+				}
+			}
+			writer.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if request.PathValue("accountID") != server.accountID || server.getVaultRole(vaultID) == "" {
 			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
 			return

@@ -38,8 +38,8 @@ const (
 	maxMoveBody = 4 << 20
 )
 
-// rotationPath matches the requests that carry a whole vault: its rotation and its deletion.
-var rotationPath = regexp.MustCompile(`^/api/v1/vaults/[^/]+/(rotate|delete)$`)
+// rotationPath permits authenticated bounded transition uploads as well as legacy aggregate requests.
+var rotationPath = regexp.MustCompile(`^/api/v1/vaults/[^/]+/(rotate|delete|transitions(/[^/]+/(items|access))?)$`)
 
 type Config struct {
 	// Config holds what the service reads: the public URL.
@@ -233,6 +233,14 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Put("/vaults/:vault/access/:account", s.requireSession, s.handleSetAccess)
 	apiGroup.Delete("/vaults/:vault/access/:account", s.requireSession, s.handleRemoveAccess)
 	apiGroup.Post("/vaults/:vault/rotate", s.requireSession, s.handleRotateVault)
+	apiGroup.Post("/vaults/:vault/transitions", s.requireSession, s.handleBeginVaultTransition)
+	apiGroup.Get("/vaults/:vault/transitions", s.requireSession, s.handleVaultTransitionProtocol)
+	apiGroup.Get("/vaults/:vault/transitions/:transition", s.requireSession, s.handleGetVaultTransition)
+	apiGroup.Get("/vaults/:vault/transitions/:transition/items", s.requireSession, s.handleListVaultTransitionItems)
+	apiGroup.Post("/vaults/:vault/transitions/:transition/items", s.requireSession, s.handleStageVaultItems)
+	apiGroup.Post("/vaults/:vault/transitions/:transition/access", s.requireSession, s.handleStageVaultAccess)
+	apiGroup.Post("/vaults/:vault/transitions/:transition/commit", s.requireSession, s.handleCommitVaultTransition)
+	apiGroup.Post("/vaults/:vault/transitions/:transition/abort", s.requireSession, s.handleAbortVaultTransition)
 	apiGroup.Put("/vaults/:vault/name", s.requireSession, s.handleRenameVault)
 	apiGroup.Post("/vaults/:vault/delete", s.requireSession, s.handleDeleteVault)
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListChanges)

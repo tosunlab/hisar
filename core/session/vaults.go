@@ -222,44 +222,28 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 		return 0, ErrTargetNotWritable
 	}
 	for attempt := 1; ; attempt++ {
-		var request *apitypes.DeleteVaultRequest
-		err := s.sendSealed(ctx, func() error {
-			var err error
-			if request, err = s.buildVaultMove(ctx, vault, target); err != nil {
-				return err
+		op, err := s.Client.BeginVaultTransition(ctx, vault.ID, &apitypes.BeginVaultTransitionRequest{
+			Protocol: apitypes.VaultTransitionProtocol, ID: uuid.NewString(), Kind: "delete-move",
+			KeyGeneration: vault.KeyGeneration, TargetID: target.ID, TargetKeyGeneration: target.KeyGeneration,
+		})
+		var moved int
+		if err == nil {
+			moved, err = s.stageVaultItems(ctx, vault, target, target.Key, op)
+			if err == nil {
+				_, err = s.commitVaultTransition(ctx, vault.ID, op, nil)
 			}
-			return s.Client.DeleteVault(ctx, vault.ID, request)
-		}, vault, target)
+			s.abandonVaultTransition(ctx, vault.ID, op.ID)
+		}
 		if apiclient.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
+			if err := s.reloadVaults(ctx, vault, target); err != nil {
+				return 0, err
+			}
 			continue
 		}
 		if err != nil {
 			return 0, err
 		}
 		s.noteOwnRemoval(vault.ID)
-		return len(request.MovedItems), nil
+		return moved, nil
 	}
-}
-
-func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*apitypes.DeleteVaultRequest, error) {
-	protoItems, err := s.listProtoItems(ctx, vault)
-	if err != nil {
-		return nil, err
-	}
-	request := &apitypes.DeleteVaultRequest{KeyGeneration: vault.KeyGeneration, MoveToVaultID: target.ID, MoveToKeyGeneration: target.KeyGeneration, MovedItems: []apitypes.MovedItem{}}
-	for index := range protoItems {
-		protoItem := &protoItems[index]
-		if protoItem.Deleted {
-			continue
-		}
-		// The item keeps its ID; the new AAD binds the target vault ID and a new revision.
-		moved, err := reencryptItem(vault.Key, vault.ID, target.Key, target.ID, protoItem)
-		if err != nil {
-			return nil, err
-		}
-		request.MovedItems = append(request.MovedItems, apitypes.MovedItem{
-			ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: moved.revision, Overview: moved.overview, Details: moved.details,
-		})
-	}
-	return request, nil
 }

@@ -202,10 +202,12 @@ func TestRotateVaultCannotAddMember(t *testing.T) {
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
 	rotation := VaultRotation{
-		VaultID:   vaultID,
-		EncName:   []byte("new-name"),
-		Accesses:  []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}, {AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{9}}},
-		RotatedBy: "AAAAAA",
+		VaultID:          vaultID,
+		EncName:          []byte("new-name"),
+		Accesses:         []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}, {AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{9}}},
+		RotatedBy:        "AAAAAA",
+		AccessRevision:   2,
+		MetadataRevision: 1,
 	}
 	if err := database.RotateVault(ctx, rotation); !errors.Is(err, ErrNotMember) {
 		t.Fatalf("rotation adding Bob: %v", err)

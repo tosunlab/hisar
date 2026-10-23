@@ -19,23 +19,21 @@ type RotatedItem struct {
 	Details      []byte
 }
 
-// VaultRotation: KeyGeneration is the generation of the key being replaced; rotated and organization vaults require it.
+// VaultRotation identifies the source key, access and metadata snapshots for a bounded aggregate rotation.
 type VaultRotation struct {
-	VaultID       string
-	EncName       []byte
-	Accesses      []Member
-	Items         []RotatedItem
-	RotatedBy     string
-	KeyGeneration int64
+	VaultID          string
+	EncName          []byte
+	Accesses         []Member
+	Items            []RotatedItem
+	RotatedBy        string
+	KeyGeneration    int64
+	AccessRevision   int64
+	MetadataRevision int64
 }
 
-// RotateVault replaces the vault name, all access grants and all items in one transaction, increments the vault's key
-// generation and clears needs_rotation. RotatedBy must be an owner (ErrNotOwner). It returns ErrConflict unless
-// rotation.Items matches the stored items and revisions exactly. A stale rotation.KeyGeneration returns
-// ErrStaleKeyGeneration, so two owners rotating from the same key cannot both succeed, and an omitted one where the
-// generation policy requires it returns ErrKeyGenerationMissing. It returns ErrNotMember when it would add an account;
-// an organization vault must keep exactly its members with their roles (ErrRotationMembers), since its teams decide them.
-// Item history is dropped because it is encrypted with the previous key.
+// RotateVault is the bounded aggregate route. It compares all item revisions and authority/metadata revisions,
+// atomically replaces the name, grants and items, and increments the generation. The rotating owner stays an owner.
+// Organization grants retain every current member and role. Old-key history is replaced, not appended.
 func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		vault, err := lockVault(ctx, transaction, rotation.VaultID)
@@ -50,6 +48,13 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 				return ErrKeyGenerationMissing
 			}
 			return ErrStaleKeyGeneration
+		}
+		if rotation.AccessRevision != vault.accessRevision || rotation.MetadataRevision != vault.metadataRevision {
+			return ErrConflict
+		}
+		before, err := HistoryUsage(ctx, transaction, rotation.VaultID)
+		if err != nil {
+			return err
 		}
 
 		rows, err := transaction.Query(ctx, `SELECT id, revision FROM items WHERE vault_id = $1`, rotation.VaultID)
@@ -99,15 +104,17 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 			rotation.VaultID, rotation.EncName); err != nil {
 			return err
 		}
-		if _, err := transaction.Exec(ctx, `DELETE FROM vault_access WHERE vault_id = $1`, rotation.VaultID); err != nil {
-			return err
-		}
+		keptAccountIDs := make([]string, 0, len(rotation.Accesses))
 		for _, access := range rotation.Accesses {
 			if _, err := transaction.Exec(ctx,
-				`INSERT INTO vault_access (vault_id, account_id, wrapped_key, role, granted_by) VALUES ($1, $2, $3, $4, $5)`,
+				`UPDATE vault_access SET wrapped_key=$3,role=$4,granted_by=$5,granted_at=now() WHERE vault_id=$1 AND account_id=$2`,
 				rotation.VaultID, access.AccountID, access.WrappedKey, access.Role, rotation.RotatedBy); err != nil {
 				return err
 			}
+			keptAccountIDs = append(keptAccountIDs, access.AccountID)
+		}
+		if _, err := transaction.Exec(ctx, `DELETE FROM vault_access WHERE vault_id=$1 AND NOT(account_id=ANY($2::text[]))`, rotation.VaultID, keptAccountIDs); err != nil {
+			return err
 		}
 		if _, err := transaction.Exec(ctx, `DELETE FROM item_history WHERE vault_id = $1`, rotation.VaultID); err != nil {
 			return err
@@ -128,8 +135,10 @@ func (s *Store) RotateVault(ctx context.Context, rotation VaultRotation) error {
 				return err
 			}
 		}
-		_, err = transaction.Exec(ctx, `UPDATE vaults SET seq = $2 WHERE id = $1`, rotation.VaultID, vaultSeq)
-		return err
+		if _, err := transaction.Exec(ctx, `UPDATE vaults SET seq = $2 WHERE id = $1`, rotation.VaultID, vaultSeq); err != nil {
+			return err
+		}
+		return CheckHistoryGrowth(ctx, transaction, rotation.VaultID, before, false)
 	})
 }
 
