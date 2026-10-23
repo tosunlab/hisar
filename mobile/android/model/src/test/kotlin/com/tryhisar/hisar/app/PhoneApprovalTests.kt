@@ -518,6 +518,20 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testClosingASheetRightAfterARequestArrivesKeepsItClosed() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))
+        model.approvals.reviewApproval(model.approvals.allPendingApproval.value[0])
+        harness.backend.withApprovalLock { harness.backend.allPendingApproval.add(createApproval("second", secondsLeft = 90)) }
+        // The event's listing runs in a coroutine that starts after the user has closed the sheet.
+        model.approvals.handleApprovalEvent(PhoneApproval.EVENT_REQUESTED, "second")
+        model.approvals.closeApprovalSheet()
+        runCurrentUntil("the request's listing") { model.approvals.allPendingApproval.value.size == 2 }
+        assertEquals(listOf("first", "second"), model.approvals.allPendingApproval.value.map { it.requestID })
+        assertNull(model.approvals.presentedApproval.value, "a request that arrived before the user closed a sheet opened one")
+    }
+
+    @Test
     fun testTurningMacApprovalsOffDuringAListingKeepsTheListEmpty() = runTest {
         val harness = AppModelHarness(this)
         val model = createUnlockedModelOnThreads(harness, listOf(createApproval("first")))

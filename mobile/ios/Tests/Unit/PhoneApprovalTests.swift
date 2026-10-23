@@ -437,6 +437,21 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(model.presentedApproval?.requestID, "second")
     }
 
+    func testClosingASheetRightAfterARequestArrivesKeepsItClosed() async {
+        let model = await createModelListedByItsFirstPoll(allApproval: [createApproval(requestID: "first")])
+        model.reviewApproval(model.allPendingApproval[0])
+        backend.withApprovalLock { backend.allPendingApproval.append(createApproval(requestID: "second", secondsLeft: 90)) }
+        // The event's listing runs in a task that starts after the user has closed the sheet.
+        model.handleApprovalEvent(name: PhoneApproval.eventRequested, requestID: "second")
+        model.closeApprovalSheet()
+        let deadline = Date().addingTimeInterval(10)
+        while model.allPendingApproval.count < 2 && Date() < deadline {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        XCTAssertEqual(model.allPendingApproval.map(\.requestID), ["first", "second"])
+        XCTAssertNil(model.presentedApproval, "a request that arrived before the user closed a sheet opened one")
+    }
+
     func testTurningMacApprovalsOffDuringAListingKeepsTheListEmpty() async {
         let model = await createModelListedByItsFirstPoll(allApproval: [createApproval(requestID: "first")])
         backend.withApprovalLock { backend.allPendingApproval.append(createApproval(requestID: "second", secondsLeft: 90)) }

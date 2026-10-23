@@ -75,7 +75,11 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
 
     fun handleApprovalEvent(eventName: String, requestID: String) {
         when (eventName) {
-            PhoneApproval.EVENT_REQUESTED -> if (context.isInForeground.value) context.scope.launch { refreshPendingApproval(announcedRequestID = requestID) }
+            // Recorded now, not in the listing's coroutine: a sheet the user closes before it runs must still cancel it.
+            PhoneApproval.EVENT_REQUESTED -> if (context.isInForeground.value) {
+                recordAnnouncedApproval(requestID)
+                context.scope.launch { refreshPendingApproval() }
+            }
             PhoneApproval.EVENT_ANSWERED, PhoneApproval.EVENT_RESOLVED -> removeApproval(requestID)
         }
     }
@@ -85,8 +89,8 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
      * or a newer one that overtakes it, opens its sheet when none is open.
      */
     suspend fun refreshPendingApproval(announcedRequestID: String? = null) {
+        if (announcedRequestID != null) recordAnnouncedApproval(announcedRequestID)
         if (!context.status.value.isUnlocked || !context.isInForeground.value || !context.isMacApprovalAllowed.value) return
-        if (announcedRequestID != null) allAnnouncedApproval += AnnouncedApproval(announcedRequestID, startedApprovalListCount)
         val approvalList = ++startedApprovalListCount
         val allApproval = context.attempt { it.listAllPendingApproval() } ?: return
         // Listings run at once and can finish out of order: a poll that started before a request's own listing must not
@@ -98,6 +102,11 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         openAnnouncedApproval(approvalList)
         closeSheetOfFinishedApproval()
         startExpiryCheck()
+    }
+
+    private fun recordAnnouncedApproval(requestID: String) {
+        if (!context.status.value.isUnlocked || !context.isInForeground.value || !context.isMacApprovalAllowed.value) return
+        allAnnouncedApproval += AnnouncedApproval(requestID, startedApprovalListCount)
     }
 
     // Opens the first announced request this listing shows, when no sheet is open. A request this listing reflects leaves

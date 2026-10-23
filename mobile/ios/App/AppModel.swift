@@ -1299,7 +1299,9 @@ final class AppModel: ObservableObject {
         switch name {
         case PhoneApproval.eventRequested:
             guard isInForeground else { return }
-            Task { await refreshPendingApproval(announcedRequestID: requestID) }
+            // Recorded now, not in the listing's task: a sheet the user closes before that task runs must still cancel it.
+            recordAnnouncedApproval(requestID: requestID)
+            Task { await refreshPendingApproval() }
         case PhoneApproval.eventAnswered, PhoneApproval.eventResolved:
             removeApproval(requestID: requestID)
         default:
@@ -1310,10 +1312,10 @@ final class AppModel: ObservableObject {
     // refreshPendingApproval lists the open requests. announcedRequestID is a request the Mac announced: the first listing
     // that shows it, this one or a newer one that overtakes it, opens its sheet when none is open.
     func refreshPendingApproval(announcedRequestID: String? = nil) async {
-        guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
         if let announcedRequestID {
-            allAnnouncedApproval.append(AnnouncedApproval(requestID: announcedRequestID, listedAfter: startedApprovalListCount))
+            recordAnnouncedApproval(requestID: announcedRequestID)
         }
+        guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
         startedApprovalListCount += 1
         let approvalList = startedApprovalListCount
         guard let allApproval = try? await runInBackground({ try backend.listAllPendingApproval() }) else { return }
@@ -1331,6 +1333,11 @@ final class AppModel: ObservableObject {
         openAnnouncedApproval(listedIn: approvalList)
         closeSheetOfFinishedApproval()
         startApprovalExpiryCheck()
+    }
+
+    private func recordAnnouncedApproval(requestID: String) {
+        guard status.isUnlocked, isInForeground, isMacApprovalAllowed else { return }
+        allAnnouncedApproval.append(AnnouncedApproval(requestID: requestID, listedAfter: startedApprovalListCount))
     }
 
     // Opens the first announced request this listing shows, when no sheet is open. A request this listing reflects leaves
