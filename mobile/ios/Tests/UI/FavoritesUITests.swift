@@ -18,8 +18,8 @@ final class FavoritesUITests: HisarUITestCase {
         app.buttons["editor-icon"].tap()
         app.buttons["icon-color-orange"].tap()
         app.buttons["icon-preset-cloud"].tap()
-        let cloudPreset = app.buttons["icon-preset-cloud"]
-        XCTAssertTrue(waitUntil(timeout: 10) { cloudPreset.isSelected }, "the cloud preset is selected")
+        let isCloudSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: app.buttons["icon-preset-cloud"])
+        XCTAssertEqual(XCTWaiter().wait(for: [isCloudSelected], timeout: 10), .completed, "the cloud preset is selected")
         XCTAssertTrue(app.buttons["icon-color-orange"].isSelected, "the orange color stays chosen")
         saveScreenshot("item-icon-picker")
         app.buttons["icon-done"].tap()

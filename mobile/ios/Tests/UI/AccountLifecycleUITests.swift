@@ -33,7 +33,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         XCTAssertTrue(newSecretKey.hasPrefix("H1-"), newSecretKey)
         saveScreenshot("account-life-new-secret-key\(screenshotSuffix)")
 
-        if waitUntil(timeout: 2, { self.app.secureTextFields["unlock-password"].exists }) {
+        if app.secureTextFields["unlock-password"].waitForExistence(timeout: 2) {
             type(Self.newMasterPassword, into: app.secureTextFields["unlock-password"])
             app.buttons["unlock-submit"].tap()
         }
