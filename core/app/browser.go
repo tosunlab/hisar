@@ -73,6 +73,7 @@ type BrowserBridge struct {
 	installations  []browserprotocol.BrowserInstallation
 	// unlockFailures holds each paired browser's recent wrong master passwords (unlockWithPassword).
 	unlockFailures map[[sha256.Size]byte][]time.Time
+	pendingSaves   map[string]pendingBrowserSave
 }
 
 func NewBrowserBridge(service *Service, config BrowserBridgeConfig) *BrowserBridge {
@@ -140,11 +141,13 @@ func (bridge *BrowserBridge) handleRequest(ctx context.Context, request *browser
 		result, err := bridge.service.getOneTimeCodeForFill(ctx, request.VaultID, request.ItemID, request.URL)
 		return result, convertBrowserError(err)
 	case "logins.check":
-		result, err := bridge.service.checkLogin(ctx, request.URL, request.Username, request.Password)
-		return result, convertBrowserError(err)
+		return nil, browserprotocol.NewError(browserprotocol.ErrorUpdateRequired, "update the browser extension to review saves in the Hisar popup")
+	case "logins.prepare":
+		return bridge.checkLoginForSave(ctx, request)
+	case "logins.review":
+		return nil, bridge.reviewCheckedLogin(request)
 	case "logins.save":
-		result, err := bridge.service.saveLogin(ctx, request)
-		return result, convertBrowserError(err)
+		return bridge.saveCheckedLogin(ctx, request)
 	case "addresses.list":
 		addresses, _, err := bridge.service.listAddressSources(ctx)
 		return browserprotocol.AddressListResult{Addresses: addresses}, convertBrowserError(err)

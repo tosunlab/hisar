@@ -40,6 +40,7 @@ export interface RequestOptions {
   timeoutMilliseconds?: number;
   pairingToken?: string;
   isOverOpenConnection?: boolean;
+  isStillValid?: () => boolean;
 }
 
 interface Connection {
@@ -121,7 +122,7 @@ export class NativeClient {
     else await this.connect();
     const connection = this.connection;
     if (!connection || connection.isClosed) throw new HisarError("desktop-unavailable", "Hisar disconnected");
-    return this.send(connection, type, parameters, options.timeoutMilliseconds ?? this.options.requestTimeoutMilliseconds ?? 15000, options.pairingToken);
+    return this.send(connection, type, parameters, options.timeoutMilliseconds ?? this.options.requestTimeoutMilliseconds ?? 15000, options.pairingToken, options.isStillValid);
   }
 
   disconnect(): void {
@@ -145,6 +146,7 @@ export class NativeClient {
     parameters: RequestMap[Type]["parameters"],
     timeoutMilliseconds: number,
     pairingToken?: string,
+    isStillValid?: () => boolean,
   ): Promise<RequestMap[Type]["result"]> {
     const id = this.options.createID();
     const frame: Record<string, unknown> = { ...parameters, id, type };
@@ -156,6 +158,7 @@ export class NativeClient {
       frame.token = token;
     }
     if (connection.isClosed) throw new HisarError("desktop-unavailable", "Hisar disconnected");
+    if (isStillValid && !isStillValid()) throw new HisarError("not-found", "This save offer has expired");
     if (new TextEncoder().encode(JSON.stringify(frame)).length > maximumMessageBytes) throw new HisarError("invalid-request", "This request is too large for Hisar");
     return new Promise<RequestMap[Type]["result"]>((resolve, reject) => {
       const timer = setTimeout(() => {

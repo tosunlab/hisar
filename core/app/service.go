@@ -23,7 +23,8 @@ import (
 // Service may be a request-scoped view; callbacks and goroutines that outlive a request must retain only its shared state.
 type Service struct {
 	*serviceState
-	requestEpoch *uint64
+	requestEpoch        *uint64
+	requestBrowserToken string
 }
 
 // serviceState is shared by the app and request-scoped CLI views, including their mutex.

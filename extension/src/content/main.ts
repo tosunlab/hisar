@@ -1,4 +1,4 @@
-import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse, SaveOfferView } from "../shared/messages";
+import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
 import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
 import { featureAddresses, featureCards, featureIdentities } from "../shared/protocol";
@@ -16,18 +16,11 @@ import {
   probeFrame,
 } from "./fill";
 import { InlineMenuController } from "./inline-menu/controller";
-import { showSaveBar } from "./save-bar";
 
 function sendToBackground<Result>(message: ContentToBackgroundMessage): Promise<MessageResponse<Result>> {
   return chrome.runtime.sendMessage(message);
 }
 
-function presentSaveOffer(offer: SaveOfferView): void {
-  showSaveBar(document, offer, async (action, edits) => {
-    const response = await sendToBackground<Record<string, never>>({ type: "content.actOnSaveOffer", offerID: offer.offerID, action, edits });
-    return response.ok ? { ok: true } : { ok: false, message: response.error.message };
-  });
-}
 
 export function handleBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
   // A fill focuses the fields it writes; the menu must not open again on them.
@@ -88,10 +81,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       inlineMenu.dismissMenu(message.sessionID);
       return fillIdentityIntoScopeOf(document, field, message.identity);
     }
-    case "content.showSaveOffer":
-      if (window.top !== window) return false;
-      presentSaveOffer(message.offer);
-      return true;
     case "content.isInlineMenuVisible":
       return inlineMenu.isMenuInteractionAllowed(message.sessionID);
     case "content.resizeInlineMenu":
@@ -157,13 +146,6 @@ function startContentScript(): void {
       sendToBackground(message).catch(() => undefined);
     },
   });
-  if (window.top === window) {
-    sendToBackground<SaveOfferView | null>({ type: "content.getPendingSaveOffer" })
-      .then((response) => {
-        if (response.ok && response.result) presentSaveOffer(response.result);
-      })
-      .catch(() => undefined);
-  }
 }
 
 const globalScope = globalThis as typeof globalThis & { isHisarContentScriptLoaded?: boolean };

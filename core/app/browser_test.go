@@ -45,6 +45,17 @@ func (testBridge *browserTestBridge) sendRequest(request browserprotocol.Request
 	return result, "unexpected: " + err.Error()
 }
 
+func (testBridge *browserTestBridge) saveConfirmed(request browserprotocol.Request) (any, string) {
+	check := request
+	check.Type, check.TabID = "logins.prepare", "1"
+	result, code := testBridge.sendRequest(check)
+	if code != "" {
+		return nil, code
+	}
+	request.SaveContext = result.(browserprotocol.CheckResult).SaveContext
+	return testBridge.sendRequest(request)
+}
+
 func (testBridge *browserTestBridge) pair(t *testing.T, instanceID string) string {
 	t.Helper()
 	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "pair.start", InstanceID: instanceID, Browser: "Chrome"}); code != "" {
@@ -198,10 +209,12 @@ func checkBrowserFlow(t *testing.T, service *Service, personalID string) {
 		t.Fatalf("match over the host: %+v", responses)
 	}
 	itemID := logins[0].(map[string]any)["itemID"].(string)
+	checkResponses := sendMessages(fmt.Sprintf(`{"id":"check","type":"logins.prepare","token":%q,"tabID":"1","url":"https://shop.example.org/signin","username":"desktop","password":"shop-password"}`, token))
+	saveContext := checkResponses[0].Result.(map[string]any)["saveContext"].(string)
 	responses = sendMessages(
 		fmt.Sprintf(`{"id":"4","type":"logins.fill","token":%q,"vaultID":%q,"itemID":%q,"url":"https://intranet.example.com/login"}`, token, personalID, itemID),
 		fmt.Sprintf(`{"id":"5","type":"logins.fill","token":%q,"vaultID":%q,"itemID":%q,"url":"https://phishing.example.net/login"}`, token, personalID, itemID),
-		fmt.Sprintf(`{"id":"6","type":"logins.save","token":%q,"url":"https://shop.example.org/signin","username":"desktop","password":"shop-password"}`, token),
+		fmt.Sprintf(`{"id":"6","type":"logins.save","token":%q,"saveContext":%q,"url":"https://shop.example.org/signin","username":"desktop","password":"shop-password"}`, token, saveContext),
 		`{"id":"7","type":"status","token":"wrong"}`,
 	)
 	if len(responses) != 4 || responses[0].Result.(map[string]any)["password"] != "intranet-password" {
@@ -274,13 +287,13 @@ func TestBrowserLogins(t *testing.T) {
 		{"ALPER", "new-password", "changed"},
 		{"someone-else", "x", "new"},
 	} {
-		check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.check", Token: token, URL: "https://github.com/login", Username: testCase.username, Password: testCase.password})
+		check, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.prepare", Token: token, TabID: "1", URL: "https://github.com/login", Username: testCase.username, Password: testCase.password})
 		if code != "" || check.(browserprotocol.CheckResult).Status != testCase.want {
 			t.Errorf("check %s: %+v %s", testCase.username, check, code)
 		}
 	}
 
-	saved, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.save", Token: token, URL: "https://www.example.com/account/login?next=/", Username: "new@example.com", Password: "fresh-password"})
+	saved, code := testBridge.saveConfirmed(browserprotocol.Request{Type: "logins.save", Token: token, URL: "https://www.example.com/account/login?next=/", Username: "new@example.com", Password: "fresh-password"})
 	if code != "" || saved.(browserprotocol.SaveResult).VaultID != testBridge.testService.personalID {
 		t.Fatalf("save new: %+v %s", saved, code)
 	}
@@ -288,13 +301,13 @@ func TestBrowserLogins(t *testing.T) {
 	if err != nil || created.Title != "example.com" || created.URLs[0] != "https://www.example.com" || created.Password != "fresh-password" {
 		t.Errorf("created login: %+v %v", created, err)
 	}
-	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.save", Token: token, URL: "https://github.com/login", Username: "alper", Password: "rotated", VaultID: testBridge.testService.personalID, ItemID: github.ID}); code != "" {
+	if _, code := testBridge.saveConfirmed(browserprotocol.Request{Type: "logins.save", Token: token, URL: "https://github.com/login", Username: "alper", Password: "rotated", VaultID: testBridge.testService.personalID, ItemID: github.ID}); code != "" {
 		t.Fatalf("update: %s", code)
 	}
 	if updated, _ := service.GetItem(testBridge.testService.personalID, github.ID); updated.Password != "rotated" || updated.URLs[0] != "https://github.com" {
 		t.Errorf("updated login: %+v", updated)
 	}
-	if _, code := testBridge.sendRequest(browserprotocol.Request{Type: "logins.save", Token: token, URL: "https://evil.net/", Username: "alper", Password: "stolen", VaultID: testBridge.testService.personalID, ItemID: github.ID}); code != browserprotocol.ErrorNoMatch {
+	if _, code := testBridge.saveConfirmed(browserprotocol.Request{Type: "logins.save", Token: token, URL: "https://evil.net/", Username: "alper", Password: "stolen", VaultID: testBridge.testService.personalID, ItemID: github.ID}); code != browserprotocol.ErrorInvalidRequest {
 		t.Errorf("update from another site: %s", code)
 	}
 
