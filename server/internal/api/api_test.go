@@ -41,6 +41,10 @@ var testServerSecrets = generateSecrets()
 
 // Requires HISAR_TEST_DATABASE_URL pointing at a disposable database: the public schema is dropped.
 func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL string) {
+	return setupServerWithConfig(t, Config{Config: service.Config{PublicURL: "https://hisar.test"}})
+}
+
+func setupServerWithConfig(t *testing.T, config Config) (baseURL string, server *Server, databaseURL string) {
 	t.Helper()
 	databaseURL = os.Getenv("HISAR_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -69,8 +73,8 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { listener.Close() })
-	trustedOrigin := "http://" + listener.Addr().String()
-	server, err = NewServer(database, testServerSecrets, Config{Config: service.Config{PublicURL: trustedOrigin}})
+	config.PublicURL = "http://" + listener.Addr().String()
+	server, err = NewServer(database, testServerSecrets, config)
 	if err != nil {
 		t.Fatal(err)
 	}

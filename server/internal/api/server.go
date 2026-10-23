@@ -80,6 +80,9 @@ type Server struct {
 
 // NewServer reads the stored instance settings, when it has a database, and refuses settings that fail Validate.
 func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
+	if config.PendingLoginCapacity < 0 || config.LimiterKeyCapacity < 0 || config.LimiterTotalCapacity < 0 {
+		return nil, fmt.Errorf("resource capacities must be positive")
+	}
 	opaqueConfiguration := pake.NewConfig()
 	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
 	if err != nil {
@@ -145,14 +148,15 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	if err := reauthenticationServer.SetKeyMaterial(serverKeyMaterial); err != nil {
 		return nil, err
 	}
+	factory := ratelimit.NewFactory(config.LimiterKeyCapacity, config.LimiterTotalCapacity)
 	server := &Server{
 		config:               config,
 		events:               realtime.NewBroker(),
-		limiter:              ratelimit.New(rate.Every(6*time.Second), effectiveSettings.AuthBurst),
-		updateLimiter:        ratelimit.New(rate.Every(10*time.Second), 20),
-		shareLinkReadLimiter: newShareLinkReadLimiter(),
-		invitePageLimiter:    newInvitePageLimiter(),
-		versionCheckLimiter:  newVersionCheckLimiter(),
+		limiter:              factory.New(rate.Every(6*time.Second), effectiveSettings.AuthBurst),
+		updateLimiter:        factory.New(rate.Every(10*time.Second), 20),
+		shareLinkReadLimiter: factory.New(rate.Every(shareLinkReadInterval), shareLinkReadBurst),
+		invitePageLimiter:    factory.New(rate.Every(2*time.Second), 30),
+		versionCheckLimiter:  factory.New(rate.Every(2*time.Second), 30),
 	}
 	server.instanceSettings.Store(&effectiveSettings)
 	keys := service.Keys{OpaqueConfiguration: opaqueConfiguration, OpaqueServer: opaqueServer, HMACKey: secrets.HMACKey,
@@ -161,7 +165,7 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 		Current: &server.instanceSettings, Defaults: defaultSettings, Environment: config.Environment,
 		// A new auth burst applies to the limiter at once, in the order of the saves.
 		OnSave: func(saved settings.Settings) { server.limiter.SetBurst(saved.AuthBurst) },
-	})
+	}, factory)
 	return server, nil
 }
 

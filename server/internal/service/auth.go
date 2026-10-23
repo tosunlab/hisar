@@ -18,6 +18,7 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/pake"
+	"github.com/tryhisar/hisar/server/internal/boundedstate"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -239,6 +240,9 @@ func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRe
 	}
 	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC, recordHash: recordHash, purpose: pake.Login})
 	clear(serverOutput.SessionSecret)
+	if loginID == "" {
+		return apitypes.LoginStartResponse{}, newError(KindTooManyRequests, "too many pending sign-ins; try again shortly")
+	}
 	return apitypes.LoginStartResponse{LoginID: loginID, KE2: keyExchange2.Serialize()}, nil
 }
 
@@ -247,6 +251,9 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 		return apitypes.SessionResponse{}, newError(KindInvalid, "invalid device")
 	}
 	pending := s.loginCache.take(request.LoginID)
+	if pending != nil {
+		defer pending.erase()
+	}
 	if pending == nil || pending.accountID == "" || pending.sessionTokenHash != nil || pending.purpose != pake.Login {
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
@@ -286,49 +293,60 @@ type pendingLogin struct {
 	reauthenticationServer *opaque.Server
 }
 
-// loginCache holds the server side of logins between their two requests, for a short time.
+// loginCache owns the combined login and reauthentication capacity.
 type loginCache struct {
 	mutex           sync.Mutex
 	ttl             time.Duration
-	pendingRequests map[string]*pendingLogin
-	// sweepAt is the count at which put next drops expired logins: twice what the last sweep kept, so many logins
-	// that are all still pending cost one sweep per doubling rather than one per login.
-	sweepAt int
+	pendingRequests *boundedstate.Table[*pendingLogin]
 }
 
-const minimumLoginSweepCount = 1024
+const maximumPendingLogins = 16_384
 
-func newLoginCache(ttl time.Duration) *loginCache {
-	return &loginCache{ttl: ttl, pendingRequests: map[string]*pendingLogin{}, sweepAt: minimumLoginSweepCount}
+func newLoginCache(ttl time.Duration, capacity int) *loginCache {
+	if capacity == 0 {
+		capacity = maximumPendingLogins
+	}
+	return &loginCache{ttl: ttl, pendingRequests: boundedstate.New[*pendingLogin](capacity, nil)}
+}
+
+func (pending *pendingLogin) erase() {
+	clear(pending.clientMAC)
+	clear(pending.sessionTokenHash)
+	clear(pending.recordHash)
+}
+
+func (c *loginCache) maintain() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.pendingRequests.Expire(time.Now(), 1024, (*pendingLogin).erase)
 }
 
 func (c *loginCache) put(pending *pendingLogin) string {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	now := time.Now()
-	if len(c.pendingRequests) >= c.sweepAt {
-		for existingLoginID, existingLogin := range c.pendingRequests {
-			if now.After(existingLogin.expires) {
-				delete(c.pendingRequests, existingLoginID)
-			}
-		}
-		c.sweepAt = max(minimumLoginSweepCount, 2*len(c.pendingRequests))
-	}
+	c.pendingRequests.Expire(now, 32, (*pendingLogin).erase)
 	pending.expires = now.Add(c.ttl)
+	// The request's actor may retain its token hash after this exchange expires.
+	pending.sessionTokenHash = append([]byte(nil), pending.sessionTokenHash...)
 	loginID := generateToken()
-	c.pendingRequests[loginID] = pending
+	if !c.pendingRequests.Insert(boundedstate.Key(loginID), pending, pending.expires) {
+		pending.erase()
+		return ""
+	}
 	return loginID
 }
 
 func (c *loginCache) take(loginID string) *pendingLogin {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	pending, ok := c.pendingRequests[loginID]
-	if !ok {
+	entry := c.pendingRequests.Get(boundedstate.Key(loginID))
+	if entry == nil {
 		return nil
 	}
-	delete(c.pendingRequests, loginID)
-	if time.Now().After(pending.expires) {
+	pending := c.pendingRequests.Remove(entry)
+	if !time.Now().Before(pending.expires) {
+		pending.erase()
 		return nil
 	}
 	return pending

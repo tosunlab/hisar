@@ -179,6 +179,7 @@ func (s *Service) ChangeAccountRole(ctx context.Context, actor Actor, accountID 
 	if err != nil {
 		return err
 	}
+	defer pending.erase()
 	if err := s.store.SetAccountRole(ctx, provenAdmin(actor, pending), accountID, request.Role); err != nil {
 		return convertAdminAccountError(err)
 	}
@@ -206,6 +207,7 @@ func (s *Service) DeleteAccountAsAdmin(ctx context.Context, actor Actor, account
 	if err != nil {
 		return err
 	}
+	defer pending.erase()
 	deleted, err := s.store.DeleteAccountAsAdmin(ctx, provenAdmin(actor, pending), accountID, request.PlanVersion)
 	if err != nil {
 		return convertAdminAccountError(err)

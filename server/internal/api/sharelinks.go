@@ -4,20 +4,14 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
-	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 const (
 	shareLinkReadBurst    = 30
 	shareLinkReadInterval = 2 * time.Second
 )
-
-func newShareLinkReadLimiter() *ratelimit.Limiter {
-	return ratelimit.New(rate.Every(shareLinkReadInterval), shareLinkReadBurst)
-}
 
 func (s *Server) handleCreateShareLink(c fiber.Ctx) error {
 	var request apitypes.CreateShareLinkRequest

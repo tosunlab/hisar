@@ -2,14 +2,11 @@ package api
 
 import (
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/appversion"
-	"github.com/tryhisar/hisar/server/internal/ratelimit"
 )
 
 const extensionStoreURL = "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf"
@@ -42,10 +39,6 @@ func (s *Server) requireMinimumVersion(c fiber.Ctx) error {
 		MinimumVersion: minimumVersion,
 		UpdateURL:      updateURLsByClient[client],
 	})
-}
-
-func newVersionCheckLimiter() *ratelimit.Limiter {
-	return ratelimit.New(rate.Every(2*time.Second), 30)
 }
 
 func (s *Server) limitVersionCheckRate(c fiber.Ctx) error {

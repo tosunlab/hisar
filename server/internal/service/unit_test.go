@@ -8,12 +8,14 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
 	"github.com/tryhisar/hisar/server/internal/store"
+	"golang.org/x/time/rate"
 )
 
 func TestExpiredApprovalLeavesMemoryWithoutANewApproval(t *testing.T) {
-	service := &Service{Approvals: newApprovalRelay(), events: realtime.NewBroker()}
+	service := &Service{Approvals: newApprovalRelay(ratelimit.New(rate.Every(approvalRateEvery), ApprovalRateBurst)), events: realtime.NewBroker()}
 	start := time.Now()
 	var now atomic.Int64
 	now.Store(start.UnixNano())
@@ -35,7 +37,7 @@ func TestExpiredApprovalLeavesMemoryWithoutANewApproval(t *testing.T) {
 }
 
 func TestLoginCache(t *testing.T) {
-	cache := newLoginCache(50 * time.Millisecond)
+	cache := newLoginCache(50*time.Millisecond, 0)
 	loginID := cache.put(&pendingLogin{accountID: "A"})
 	if pending := cache.take(loginID); pending == nil || pending.accountID != "A" {
 		t.Fatal("take failed")
@@ -54,7 +56,7 @@ func TestLoginCache(t *testing.T) {
 }
 
 func TestManyPendingLoginsDoNotSlowEveryLogin(t *testing.T) {
-	cache := newLoginCache(time.Hour)
+	cache := newLoginCache(time.Hour, 0)
 	deadline := time.Now().Add(5 * time.Second)
 	var firstLoginID string
 	for index := range 200_000 {

@@ -10,6 +10,7 @@ import (
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
 )
 
@@ -42,19 +43,17 @@ func (approval *storedApproval) isOpen(now time.Time) bool {
 
 // ApprovalRelay keeps sealed phone approvals in memory; it never sees what they say.
 type ApprovalRelay struct {
-	mutex                sync.Mutex
-	now                  func() time.Time
-	approvalsByAccount   map[string]map[string]*storedApproval
-	limitersByAccount    map[string]*rate.Limiter
-	limiterLastUsedTimes map[string]time.Time
+	mutex              sync.Mutex
+	now                func() time.Time
+	approvalsByAccount map[string]map[string]*storedApproval
+	limiter            *ratelimit.Limiter
 }
 
-func newApprovalRelay() *ApprovalRelay {
+func newApprovalRelay(limiter *ratelimit.Limiter) *ApprovalRelay {
 	return &ApprovalRelay{
-		now:                  time.Now,
-		approvalsByAccount:   map[string]map[string]*storedApproval{},
-		limitersByAccount:    map[string]*rate.Limiter{},
-		limiterLastUsedTimes: map[string]time.Time{},
+		now:                time.Now,
+		approvalsByAccount: map[string]map[string]*storedApproval{},
+		limiter:            limiter,
 	}
 }
 
@@ -69,7 +68,7 @@ func (relay *ApprovalRelay) SetClock(now func() time.Time) {
 func (relay *ApprovalRelay) ResetRateLimits() {
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
-	relay.limitersByAccount = map[string]*rate.Limiter{}
+	relay.limiter = ratelimit.New(rate.Every(approvalRateEvery), ApprovalRateBurst)
 }
 
 // IsKept reports whether the relay still holds an approval, for tests.
@@ -92,12 +91,6 @@ func (relay *ApprovalRelay) removeExpired(now time.Time) {
 			delete(relay.approvalsByAccount, accountID)
 		}
 	}
-	for accountID, lastUsedTime := range relay.limiterLastUsedTimes {
-		if now.Sub(lastUsedTime) > 10*time.Minute {
-			delete(relay.limitersByAccount, accountID)
-			delete(relay.limiterLastUsedTimes, accountID)
-		}
-	}
 }
 
 // Run drops approvals past their retention every interval until ctx ends, so a sealed request does not stay in memory
@@ -113,6 +106,7 @@ func (relay *ApprovalRelay) Run(ctx context.Context, interval time.Duration) {
 			relay.mutex.Lock()
 			relay.removeExpired(relay.now())
 			relay.mutex.Unlock()
+			relay.limiter.Maintain()
 		}
 	}
 }
@@ -121,21 +115,13 @@ func (relay *ApprovalRelay) Run(ctx context.Context, interval time.Duration) {
 func (relay *ApprovalRelay) Allow(accountID string) bool {
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
-	limiter, isFound := relay.limitersByAccount[accountID]
-	if !isFound {
-		limiter = rate.NewLimiter(rate.Every(approvalRateEvery), ApprovalRateBurst)
-		relay.limitersByAccount[accountID] = limiter
-	}
-	relay.limiterLastUsedTimes[accountID] = relay.now()
-	return limiter.Allow()
+	return relay.limiter.Allow(accountID)
 }
 
 func (relay *ApprovalRelay) removeForAccount(accountID string) {
 	relay.mutex.Lock()
 	defer relay.mutex.Unlock()
 	delete(relay.approvalsByAccount, accountID)
-	delete(relay.limitersByAccount, accountID)
-	delete(relay.limiterLastUsedTimes, accountID)
 }
 
 // find returns an approval of the account that is still within its retention; the caller holds the mutex.
