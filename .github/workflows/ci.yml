@@ -28,6 +28,8 @@ env:
 jobs:
   changes:
     name: Check what the pull request changes
+    # A pull request labeled disable-all-ci runs no job: every job below either checks the label itself or needs this one.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -53,6 +55,7 @@ jobs:
 
   go:
     name: Go gofmt, vet, tests and end-to-end test
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
@@ -102,6 +105,7 @@ jobs:
 
   server-image-check:
     name: Server Docker image build and boot
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
@@ -233,6 +237,7 @@ jobs:
 
   extension:
     name: Extension tests, Chromium end-to-end tests and zip
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     container: mcr.microsoft.com/playwright:v1.63.0-noble
@@ -255,6 +260,7 @@ jobs:
 
   raycast:
     name: Raycast extension typecheck, tests, lint and build
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -268,6 +274,7 @@ jobs:
 
   omp:
     name: omp plugin typecheck, tests and lint
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -279,6 +286,7 @@ jobs:
 
   share-link-page:
     name: Share link page in Chromium against the server
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     container: mcr.microsoft.com/playwright:v1.63.0-noble

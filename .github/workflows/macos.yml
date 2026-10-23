@@ -36,8 +36,9 @@ env:
 jobs:
   changes:
     name: Check what the pull request changes
-    # Adding another label changes no file, so it runs nothing.
-    if: github.event.action != 'labeled' || github.event.label.name == 'run-macos'
+    # Adding another label changes no file, so it runs nothing. A pull request labeled disable-all-ci runs no job: every
+    # other job needs this one.
+    if: (github.event.action != 'labeled' || github.event.label.name == 'run-macos') && !contains(github.event.pull_request.labels.*.name, 'disable-all-ci')
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
