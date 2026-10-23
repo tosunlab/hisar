@@ -76,8 +76,10 @@ extension's screens and model through a debug-only preview in the app: launch wi
 `-HisarAutoFillPreview https://example.com/login` (passwords), `-HisarAutoFillOneTimeCodePreview <site>`,
 `-HisarAutoFillPasskeyPreview example.com` (passkey sign-in) or `-HisarAutoFillPasskeyRegistrationPreview example.com`
 (save passkey, with `-HisarAutoFillPasskeyUserName`, `-HisarAutoFillPasskeyUserHandle` and
-`-HisarAutoFillPasskeyClientDataHash`, base64url). The preview shows the produced credential ID, attestation object,
-authenticator data, signature and user handle so the UI test can verify them. The full flow (enable Hisar in Settings or with the "Turn on Hisar
+`-HisarAutoFillPasskeyClientDataHash`, base64url). `-HisarAutoFillPasskeyUserVerification` accepts `required`,
+`preferred` or `discouraged`, with `preferred` as the default. The simulator smoke uses `discouraged` and verifies UV=0.
+The preview shows the credential ID, attestation object, authenticator data, signature and user handle for verification.
+The full flow (enable Hisar in Settings or with the "Turn on Hisar
 AutoFill" button in the app's Settings, open a login page in Safari, tap the password field) should work once a team
 is set in `Configuration/Local.xcconfig`. That has not been verified yet, and neither has the system passkey flow
 (Safari offering Hisar for a passkey sign-in or "Save passkey"): both need the paid team.

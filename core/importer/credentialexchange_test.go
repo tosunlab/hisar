@@ -54,7 +54,7 @@ func TestParseCredentialExchangeLogins(t *testing.T) {
 		!githubPasskey.CreatedAt.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) || !bytes.Equal(githubPasskey.PRFSecret, bytes.Repeat([]byte{7}, 32)) {
 		t.Errorf("GitHub passkey = %+v", githubPasskey)
 	}
-	if _, err := passkey.SignAssertionWithClientDataHash("github.com", githubPasskey.RelyingPartyID, make([]byte, 32), githubPasskey.PrivateKey); err != nil {
+	if _, err := passkey.SignAssertionWithClientDataHash("github.com", githubPasskey.RelyingPartyID, make([]byte, 32), githubPasskey.PrivateKey, true); err != nil {
 		t.Errorf("the imported key does not sign: %v", err)
 	}
 
@@ -166,7 +166,7 @@ func TestParseCredentialExchangeSpecPayload(t *testing.T) {
 		!examplePasskey.CreatedAt.Equal(time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)) || !bytes.Equal(examplePasskey.PRFSecret, wantPRFSecret) {
 		t.Errorf("Example passkey = %+v", examplePasskey)
 	}
-	if _, err := passkey.SignAssertionWithClientDataHash("login.example.com", examplePasskey.RelyingPartyID, make([]byte, 32), examplePasskey.PrivateKey); err != nil {
+	if _, err := passkey.SignAssertionWithClientDataHash("login.example.com", examplePasskey.RelyingPartyID, make([]byte, 32), examplePasskey.PrivateKey, true); err != nil {
 		t.Errorf("the imported key does not sign: %v", err)
 	}
 

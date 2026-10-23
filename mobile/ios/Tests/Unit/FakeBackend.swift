@@ -20,6 +20,8 @@ class FakeBackend: VaultBackend {
     var favoriteErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
+    var verifyPasskey: (String) -> Bool = { _ in true }
+    func cancelPasskeyCeremonies() {}
     var isOffline = false
     var allCopiedField: [String] = []
     var allCallName: [String] = []
@@ -524,7 +526,7 @@ class FakeBackend: VaultBackend {
         var allLogin: [LoginMatch] = []
         for vault in allVault {
             for item in allItemByVaultID[vault.id] ?? [] where item.allURL.contains(where: { VaultLogic.extractHost($0).map { host.hasSuffix($0) || $0.hasSuffix(host) } ?? false }) {
-                allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name, hasOneTimePassword: item.hasOneTimePassword))
+                allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name, hasOneTimePassword: item.hasOneTimePassword, isPersonal: vault.type == "personal"))
             }
         }
         return allLogin
@@ -571,6 +573,7 @@ extension FakeBackend {
     func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult {
         record("createPasskey")
         try requireUnlocked()
+        if request.userVerification != "discouraged" && !verifyPasskey("Create a passkey for \(request.relyingPartyID)") { throw BackendError(message: "Passkey verification was cancelled.", code: BackendError.passkeyVerificationFailed) }
         guard !checkIsExcluded(relyingPartyID: request.relyingPartyID, allExcludedCredentialID: request.allExcludedCredentialID) else {
             throw BackendError(message: "Hisar already has a passkey for this account")
         }
@@ -605,9 +608,10 @@ extension FakeBackend {
         allItemByVaultID[vaultID]?[index] = item
     }
 
-    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult {
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data, userVerification: String) throws -> PasskeyAssertionResult {
         record("assertPasskey")
         try requireUnlocked()
+        if userVerification != "discouraged" && !verifyPasskey("Use your passkey for \(relyingPartyID)") { throw BackendError(message: "Passkey verification was cancelled.", code: BackendError.passkeyVerificationFailed) }
         guard clientDataHash.count == 32 else { throw BackendError(message: "the request is not valid") }
         guard let passkey = allPasskey.first(where: { $0.relyingPartyID == relyingPartyID && $0.credentialID == Base64URL.encode(credentialID) }) else {
             throw BackendError(message: "passkey not found")

@@ -205,6 +205,7 @@ func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyS
 		SecretKeyStore:      secretKeyStore,
 		ClipboardClearAfter: 100 * time.Millisecond,
 		Biometric:           createFakeBiometric(),
+		PasskeyVerifier:     passkeyVerifierFunc(func(context.Context, string) error { return nil }),
 		BiometricName:       "Touch ID",
 		FileSaver:           &fakeFileSaver{},
 		FileOpener:          &fakeFileOpener{},

@@ -13,10 +13,12 @@ final class HisarKitBackend: VaultBackend {
         guard let hisar = HisarkitNew(stateDirectory.path, deviceName, secretKeyStore, biometric, clipboard, eventListener, &error) else {
             throw HisarKitBackend.convertError(error ?? NSError(domain: "hisar", code: 1), biometryName: "Face ID")
         }
+        let passkeyVerifier = DeviceOwnerPasskeyVerifier()
+        hisar.setPasskeyVerifier(passkeyVerifier)
         hisar.setAppVersion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
         self.hisar = hisar
         self.biometryName = biometric?.getBiometryName() ?? "Face ID"
-        allRetainedAdapter = [secretKeyStore, biometric as AnyObject?, clipboard as AnyObject?, eventListener as AnyObject?].compactMap { $0 }
+        allRetainedAdapter = [secretKeyStore, passkeyVerifier, biometric as AnyObject?, clipboard as AnyObject?, eventListener as AnyObject?].compactMap { $0 }
     }
 
     private static func getDeviceName() -> String {
@@ -26,11 +28,14 @@ final class HisarKitBackend: VaultBackend {
 
     static func convertError(_ error: Error, biometryName: String) -> BackendError {
         var message = (error as NSError).localizedDescription
+        let prefix = BackendError.passkeyVerificationFailed + ": "
+        let code = message.hasPrefix(prefix) ? BackendError.passkeyVerificationFailed : nil
+        if code != nil { message = String(message.dropFirst(prefix.count)) }
         message = message.replacingOccurrences(of: "Touch ID", with: biometryName)
         if let first = message.first {
             message = first.uppercased() + message.dropFirst()
         }
-        return BackendError(message: message)
+        return BackendError(message: message, code: code)
     }
 
     private func callReturningText(_ operation: (NSErrorPointer) -> String) throws -> String {
@@ -364,6 +369,7 @@ final class HisarKitBackend: VaultBackend {
     }
 
     private struct PasskeyRegistrationPayload: Encodable {
+        var userVerification: String
         var relyingPartyId: String
         var userName: String
         var userHandle: String
@@ -394,6 +400,7 @@ final class HisarKitBackend: VaultBackend {
 
     func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult {
         let payload = PasskeyRegistrationPayload(
+            userVerification: request.userVerification,
             relyingPartyId: request.relyingPartyID, userName: request.userName, userHandle: Base64URL.encode(request.userHandle),
             clientDataHash: Base64URL.encode(request.clientDataHash), excludeCredentials: request.allExcludedCredentialID.map(Base64URL.encode),
             vaultID: vaultID, itemID: itemID
@@ -402,10 +409,16 @@ final class HisarKitBackend: VaultBackend {
         return try decode(PasskeyRegistrationResult.self, from: callReturningText { hisar.createPasskey(registrationJSON, error: $0) })
     }
 
-    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult {
-        try decode(PasskeyAssertionResult.self, from: callReturningText {
-            hisar.assertPasskey(relyingPartyID, credentialID: Base64URL.encode(credentialID), clientDataHash: Base64URL.encode(clientDataHash), error: $0)
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data, userVerification: String) throws -> PasskeyAssertionResult {
+        let request = ["relyingPartyId": relyingPartyID, "credentialId": Base64URL.encode(credentialID), "clientDataHash": Base64URL.encode(clientDataHash), "userVerification": userVerification]
+        let requestJSON = String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
+        return try decode(PasskeyAssertionResult.self, from: callReturningText {
+            hisar.assertPasskey(withPolicy: requestJSON, error: $0)
         })
+    }
+
+    func cancelPasskeyCeremonies() {
+        hisar.cancelPasskeyCeremonies()
     }
 
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail {

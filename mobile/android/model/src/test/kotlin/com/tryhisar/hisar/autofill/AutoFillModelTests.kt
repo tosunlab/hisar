@@ -44,7 +44,7 @@ class AutoFillModelTests {
     private val allAssertion = mutableListOf<PasskeyAssertionCredential>()
     private val allRegistration = mutableListOf<PasskeyRegistrationCredential>()
     private var rejectedRegistrationCount = 0
-    private val allUnlockCompletion = mutableListOf<Boolean>()
+    private val allUnlockCompletion = mutableListOf<Unit>()
     private val allDeviceOwnerReason = mutableListOf<String>()
     private var isDeviceOwnerConfirming = true
     private val events = MutableSharedFlow<BackendEvent>()
@@ -55,7 +55,7 @@ class AutoFillModelTests {
     private fun TestScope.createModel() = AutoFillModel(
         scope = backgroundScope,
         ioDispatcher = StandardTestDispatcher(testScheduler),
-        createBackend = { backend },
+        createBackend = { backend.also { it.verifyPasskey = { reason -> allDeviceOwnerReason += reason; isDeviceOwnerConfirming } } },
         events = events,
         verifier = { app, _ ->
             allVerifiedApp += app
@@ -69,12 +69,8 @@ class AutoFillModelTests {
             completeAssertion = { allAssertion += it },
             completeRegistration = { allRegistration += it },
             rejectExcludedRegistration = { rejectedRegistrationCount += 1 },
-            completeUnlock = { allUnlockCompletion += it },
+            completeUnlock = { allUnlockCompletion += Unit },
         ),
-        verifyDeviceOwner = { reason ->
-            allDeviceOwnerReason += reason
-            isDeviceOwnerConfirming
-        },
     )
 
     private fun websites(vararg allServiceIdentifier: String) = FillTarget.Websites(allServiceIdentifier.toList())
@@ -437,7 +433,7 @@ class AutoFillModelTests {
         assertTrue(allAssertion.isEmpty())
         model.unlock(FakeBackend.PASSWORD)
         assertEquals(listOf(ByteString(1, 1, 1)), allAssertion.map { it.credentialID })
-        assertTrue(allDeviceOwnerReason.isEmpty(), "the unlock in this request verified the user")
+        assertEquals(listOf("Use your passkey for github.com"), allDeviceOwnerReason, "the final concrete ceremony verifies afresh")
     }
 
     @Test
@@ -458,7 +454,6 @@ class AutoFillModelTests {
         model.selectPasskey(model.allMatchingPasskey.value.single())
         assertTrue(allAssertion.isEmpty())
         assertEquals(listOf(AutoFillModel.CancelReason.USER_CANCELED), allCancelReason)
-        assertFalse("assertPasskey" in backend.allCallName)
     }
 
     @Test
@@ -466,23 +461,23 @@ class AutoFillModelTests {
         backend.seedSignedIn()
         isDeviceOwnerConfirming = false
         val model = createModel()
-        val request = PasskeyAssertionRequest("github.com", clientDataHash, isUserVerificationDiscouraged = true)
+        val request = PasskeyAssertionRequest("github.com", clientDataHash, userVerification = "discouraged")
         model.prepareInterfaceToProvidePasskey(request, ByteString(1, 1, 1))
         assertTrue(allDeviceOwnerReason.isEmpty())
         assertEquals(1, allAssertion.size)
     }
 
     @Test
-    fun testPasskeyPickedAfterTheUnlockActionNeedsNoSecondCheck() = runTest {
+    fun testPasskeyPickedAfterTheUnlockActionRequiresFreshVerification() = runTest {
         backend.seedSignedIn()
         isDeviceOwnerConfirming = false
         val model = createModel()
         val request = PasskeyAssertionRequest("github.com", clientDataHash)
         model.prepare()
-        assertEquals(ByteString(1, 1, 1), model.providePasskeyWithoutUserInteraction(request, ByteString(1, 1, 1), isUserVerified = true)?.credentialID)
-        model.prepareInterfaceToProvidePasskey(request, ByteString(1, 1, 1), isUserVerified = true)
-        assertEquals(1, allAssertion.size)
-        assertTrue(allDeviceOwnerReason.isEmpty(), "the unlock action of this request verified the user")
+        assertNull(model.providePasskeyWithoutUserInteraction(request, ByteString(1, 1, 1)))
+        model.prepareInterfaceToProvidePasskey(request, ByteString(1, 1, 1))
+        assertTrue(allAssertion.isEmpty())
+        assertEquals(listOf("Use your passkey for github.com"), allDeviceOwnerReason)
     }
 
     @Test
@@ -500,7 +495,7 @@ class AutoFillModelTests {
     fun testPasskeyWithoutInteractionNeedsAnUnlockedProcess() = runTest {
         backend.seedSignedIn()
         val model = createModel()
-        val request = PasskeyAssertionRequest("github.com", clientDataHash, isUserVerificationDiscouraged = true)
+        val request = PasskeyAssertionRequest("github.com", clientDataHash, userVerification = "discouraged")
         assertNull(model.providePasskeyWithoutUserInteraction(request, ByteString(1, 1, 1)), "no backend is prepared yet")
         model.prepareCredentialList(websites("github.com"))
         assertEquals("alice-handle".encodeToByteString(), model.providePasskeyWithoutUserInteraction(request, ByteString(1, 1, 1))?.userHandle)
@@ -560,7 +555,6 @@ class AutoFillModelTests {
         model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest("shop.example", "buyer", ByteString(5), clientDataHash))
         model.savePasskey()
         assertEquals(listOf(AutoFillModel.CancelReason.USER_CANCELED), allCancelReason)
-        assertFalse("createPasskey" in backend.allCallName)
         assertTrue(allRegistration.isEmpty())
     }
 
@@ -570,7 +564,7 @@ class AutoFillModelTests {
         isDeviceOwnerConfirming = false
         val model = createModel()
         model.prepareInterfaceForPasskeyRegistration(
-            PasskeyRegistrationRequest("shop.example", "buyer", ByteString(5), clientDataHash, isUserVerificationDiscouraged = true),
+            PasskeyRegistrationRequest("shop.example", "buyer", ByteString(5), clientDataHash, userVerification = "discouraged"),
         )
         model.savePasskey()
         assertTrue(allDeviceOwnerReason.isEmpty())
@@ -589,7 +583,7 @@ class AutoFillModelTests {
         assertEquals(emptyList(), model.passkeyRegistrationOptions.value?.allLogin)
         assertNull(model.selectedRegistrationLoginID.value, "New login is the only choice")
         model.savePasskey()
-        assertTrue(allDeviceOwnerReason.isEmpty(), "the unlock in this request verified the user")
+        assertEquals(listOf("Create a passkey for shop.example"), allDeviceOwnerReason, "the final concrete ceremony verifies afresh")
         assertEquals(1, allRegistration.size)
         assertTrue(backend.allItemByVaultID["personal"].orEmpty().any { it.title == "shop.example" && it.allPasskey.size == 1 })
     }
@@ -637,11 +631,11 @@ class AutoFillModelTests {
         assertEquals(AutoFillModel.Screen.Locked, model.screen.value)
         assertTrue(allUnlockCompletion.isEmpty())
         model.unlock(FakeBackend.PASSWORD)
-        assertEquals(listOf(true), allUnlockCompletion, "the unlock verified the user for the passkey picked next")
+        assertEquals(listOf(Unit), allUnlockCompletion)
         assertEquals(AutoFillModel.Screen.Starting, model.screen.value, "the sheet lists the credentials, not Hisar")
         assertFalse("listAllPasskeyForRelyingParty" in backend.allCallName)
         model.prepareUnlock(noWebsite, null)
-        assertEquals(listOf(true, false), allUnlockCompletion, "an unlocked Hisar hands back at once, without verifying anyone")
+        assertEquals(listOf(Unit, Unit), allUnlockCompletion)
     }
 
     private fun linkBankLogin(app: AndroidApp) {

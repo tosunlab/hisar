@@ -28,7 +28,7 @@ export interface PasskeyPort {
   onDisconnect: { addListener(listener: () => void): void };
 }
 
-type PasskeyRequestType = "passkeys.list" | "passkeys.prepare" | "passkeys.create" | "passkeys.get" | PasskeySignalType;
+type PasskeyRequestType = "passkeys.list" | "passkeys.prepare" | "passkeys.create" | "passkeys.get" | "passkeys.cancel" | PasskeySignalType;
 
 export interface PasskeyDependencies {
   getDesktopView(): Promise<PopupView>;
@@ -153,8 +153,9 @@ export class PasskeyService {
       const desktopView = await this.dependencies.getDesktopView();
       if (desktopView !== "unlocked" && (desktopView !== "locked" || isConditional)) throw new HisarError("desktop-unavailable", desktopView);
       if (desktopView === "unlocked") await this.loadSession(session);
-    } catch {
-      this.post(port, { type: "fallback" });
+    } catch (error) {
+      const failure = toHisarError(error);
+      this.post(port, failure.code === "update-required" ? { type: "error", name: "NotSupportedError", message: failure.message } : { type: "fallback" });
       return undefined;
     }
     if (session.view === "no-passkeys") {
@@ -187,6 +188,8 @@ export class PasskeyService {
       topOrigin: session.frame.isCrossOrigin ? session.frame.topOrigin : undefined,
       isCrossOrigin: session.frame.isCrossOrigin,
       relyingPartyId: session.request.relyingPartyID,
+      userVerification: session.request.userVerification,
+      ceremonyId: session.sessionID,
     };
   }
 
@@ -206,6 +209,9 @@ export class PasskeyService {
   private finishSession(session: PasskeySession, message?: BackgroundToContentPasskeyMessage): void {
     if (session.isFinished) return;
     session.isFinished = true;
+    if (!message || message.type !== "credential") {
+      void this.dependencies.requestDesktop("passkeys.cancel", this.buildDesktopParameters(session)).catch(() => undefined);
+    }
     this.allSession.delete(session.sessionID);
     for (const resolve of session.allVisibilityCheck.values()) resolve(false);
     session.allVisibilityCheck.clear();

@@ -23,8 +23,10 @@ data class WebAuthnGetRequest(
     val relyingPartyID: String,
     val challenge: String,
     val allAllowedCredentialID: List<ByteString>,
-    val isUserVerificationDiscouraged: Boolean = false,
-)
+    val userVerification: String = "preferred",
+) {
+    val isUserVerificationDiscouraged: Boolean get() = userVerification == "discouraged"
+}
 
 /** A `navigator.credentials.create` request as Credential Manager passes it, with `authenticatorSelection.userVerification`. */
 data class WebAuthnCreateRequest(
@@ -34,8 +36,10 @@ data class WebAuthnCreateRequest(
     val challenge: String,
     val allAlgorithm: List<Int>,
     val allExcludedCredentialID: List<ByteString>,
-    val isUserVerificationDiscouraged: Boolean = false,
-)
+    val userVerification: String = "preferred",
+) {
+    val isUserVerificationDiscouraged: Boolean get() = userVerification == "discouraged"
+}
 
 /**
  * The WebAuthn JSON of Credential Manager: the caller's `requestJson`, and the registration and authentication responses
@@ -46,7 +50,10 @@ object WebAuthnJson {
         add(JsonPrimitive("internal"))
         add(JsonPrimitive("hybrid"))
     }
-    private const val USER_VERIFICATION_DISCOURAGED = "discouraged"
+    private fun readUserVerification(value: JsonElement?): String? {
+        val policy = if (value == null) "preferred" else readString(value)
+        return policy?.takeIf { it == "required" || it == "preferred" || it == "discouraged" }
+    }
 
     /** The request, or null when it is not a WebAuthn get request. */
     fun parseGetRequest(requestJSON: String): WebAuthnGetRequest? {
@@ -55,7 +62,7 @@ object WebAuthnJson {
             relyingPartyID = readString(request["rpId"]).orEmpty(),
             challenge = readString(request["challenge"])?.takeIf { it.isNotEmpty() } ?: return null,
             allAllowedCredentialID = readAllCredentialID(request["allowCredentials"]) ?: return null,
-            isUserVerificationDiscouraged = readString(request["userVerification"]) == USER_VERIFICATION_DISCOURAGED,
+            userVerification = readUserVerification(request["userVerification"]) ?: return null,
         )
     }
 
@@ -71,7 +78,7 @@ object WebAuthnJson {
             challenge = readString(request["challenge"])?.takeIf { it.isNotEmpty() } ?: return null,
             allAlgorithm = allParameter.mapNotNull { ((it as? JsonObject)?.get("alg") as? JsonPrimitive)?.intOrNull },
             allExcludedCredentialID = readAllCredentialID(request["excludeCredentials"]) ?: return null,
-            isUserVerificationDiscouraged = readString((request["authenticatorSelection"] as? JsonObject)?.get("userVerification")) == USER_VERIFICATION_DISCOURAGED,
+            userVerification = readUserVerification((request["authenticatorSelection"] as? JsonObject)?.get("userVerification")) ?: return null,
         )
     }
 

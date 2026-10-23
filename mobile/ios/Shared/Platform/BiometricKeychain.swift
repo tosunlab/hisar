@@ -141,15 +141,22 @@ final class BiometricKeychain: NSObject, HisarkitBiometricProtocol {
     }
 }
 
-// LocalAuthenticating asks the device owner to confirm with Face ID, Touch ID or the passcode.
-protocol LocalAuthenticating: AnyObject {
-    func authenticate(reason: String) async -> Bool
-}
-
-final class DeviceOwnerAuthenticator: LocalAuthenticating {
-    func authenticate(reason: String) async -> Bool {
+final class DeviceOwnerPasskeyVerifier: NSObject, HisarkitPasskeyVerifierProtocol {
+    func authenticatePasskey(_ reason: String?) throws {
         let context = LAContext()
+        context.touchIDAuthenticationAllowableReuseDuration = 0
         defer { context.invalidate() }
-        return (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) ?? false
+        let semaphore = DispatchSemaphore(value: 0)
+        var failure: Error?
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason ?? "Verify your passkey") { success, error in
+            if !success {
+                failure = error ?? NSError(domain: "HisarPasskey", code: 1, userInfo: [NSLocalizedDescriptionKey: "Passkey verification was cancelled."])
+            }
+            semaphore.signal()
+        }
+        guard semaphore.wait(timeout: .now() + 120) == .success else {
+            throw NSError(domain: "HisarPasskey", code: 2, userInfo: [NSLocalizedDescriptionKey: "Passkey verification expired."])
+        }
+        if let failure { throw failure }
     }
 }

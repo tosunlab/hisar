@@ -79,6 +79,7 @@ export interface FakeHostState {
   allLogin: FakeLogin[];
   pendingSaves?: Record<string, { token: string; tabID: string; url: string; username: string; password: string; itemID?: string; vaultID?: string; email: string; expiresAt: number }>;
   features?: string[];
+  isPasskeyVerificationDenied?: boolean;
   masterPassword?: string;
   allAddress?: FakeAddress[];
   allItem?: FakeItem[];

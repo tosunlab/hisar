@@ -22,6 +22,7 @@ type StoredPasskey struct {
 }
 
 type PasskeyRegistration struct {
+	UserVerification      string   `json:"userVerification"`
 	RelyingPartyID        string   `json:"relyingPartyId"`
 	UserName              string   `json:"userName"`
 	UserDisplayName       string   `json:"userDisplayName"`
@@ -122,8 +123,15 @@ func (s *Service) createPlatformPasskey(ctx context.Context, registration Passke
 	if err != nil {
 		return PasskeyRegistrationResult{}, err
 	}
-	saved, err := s.savePasskey(ctx, passkeySave{target: target, user: user, excludedIDs: excludedIDs, vaultID: registration.VaultID, itemID: registration.ItemID}, func() (passkey.Creation, error) {
-		return passkey.CreateCredentialWithClientDataHash(target.relyingPartyID, clientDataHash)
+	bound, authorization, err := s.authorizePasskey(ctx, registration.UserVerification, passkey.TypeCreate, target.relyingPartyID, false)
+	if err != nil {
+		return PasskeyRegistrationResult{}, err
+	}
+	saved, err := bound.savePasskey(ctx, passkeySave{target: target, user: user, excludedIDs: excludedIDs, vaultID: registration.VaultID, itemID: registration.ItemID}, func() (passkey.Creation, error) {
+		if err := authorization.consume(bound); err != nil {
+			return passkey.Creation{}, err
+		}
+		return passkey.CreateCredentialWithClientDataHash(target.relyingPartyID, clientDataHash, authorization.verified)
 	})
 	if err != nil {
 		return PasskeyRegistrationResult{}, err
@@ -137,12 +145,19 @@ func (s *Service) createPlatformPasskey(ctx context.Context, registration Passke
 	}, nil
 }
 
-func SignPasskeyForRelyingParty(s *Service, relyingPartyID, credentialID, clientDataHash string) (PasskeyAssertion, error) {
-	result, err := s.signPlatformPasskey(context.Background(), relyingPartyID, credentialID, clientDataHash)
+type PasskeyAssertionRequest struct {
+	RelyingPartyID   string `json:"relyingPartyId"`
+	CredentialID     string `json:"credentialId"`
+	ClientDataHash   string `json:"clientDataHash"`
+	UserVerification string `json:"userVerification"`
+}
+
+func SignPasskeyWithPolicy(s *Service, request PasskeyAssertionRequest) (PasskeyAssertion, error) {
+	result, err := s.signPlatformPasskey(context.Background(), request.RelyingPartyID, request.CredentialID, request.ClientDataHash, request.UserVerification)
 	return result, convertPasskeyError(err)
 }
 
-func (s *Service) signPlatformPasskey(ctx context.Context, relyingPartyID, encodedCredentialID, encodedClientDataHash string) (PasskeyAssertion, error) {
+func (s *Service) signPlatformPasskey(ctx context.Context, relyingPartyID, encodedCredentialID, encodedClientDataHash, policy string) (PasskeyAssertion, error) {
 	credentialID, err := decodeBase64URL(encodedCredentialID)
 	if err != nil {
 		return PasskeyAssertion{}, passkey.ErrInvalidRequest
@@ -155,8 +170,15 @@ func (s *Service) signPlatformPasskey(ctx context.Context, relyingPartyID, encod
 	if err != nil {
 		return PasskeyAssertion{}, err
 	}
-	storedPasskey, assertion, err := s.signWithPasskey(ctx, target.relyingPartyID, credentialID, "", "", nil, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
-		return passkey.SignAssertionWithClientDataHash(target.relyingPartyID, storedPasskey.RelyingPartyID, clientDataHash, storedPasskey.PrivateKey)
+	bound, authorization, err := s.authorizePasskey(ctx, policy, passkey.TypeGet, target.relyingPartyID, false)
+	if err != nil {
+		return PasskeyAssertion{}, err
+	}
+	storedPasskey, assertion, err := bound.signWithPasskey(ctx, target.relyingPartyID, credentialID, "", "", nil, func(storedPasskey item.Passkey) (passkey.Assertion, error) {
+		if err := authorization.consume(bound); err != nil {
+			return passkey.Assertion{}, err
+		}
+		return passkey.SignAssertionWithClientDataHash(target.relyingPartyID, storedPasskey.RelyingPartyID, clientDataHash, storedPasskey.PrivateKey, authorization.verified)
 	})
 	if err != nil {
 		return PasskeyAssertion{}, err

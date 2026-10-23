@@ -468,6 +468,7 @@ type Config struct {
 	GetSystemIdleDuration func() (time.Duration, bool)
 	ClipboardClearAfter   time.Duration
 	Biometric             Biometric
+	PasskeyVerifier       PasskeyVerifier
 	// BiometricName names the biometric check in messages, as in "turn on Touch ID unlock" and "the Touch ID key".
 	BiometricName string
 	// BiometricPasswordInterval is how long biometrics may unlock before the master password is required again.

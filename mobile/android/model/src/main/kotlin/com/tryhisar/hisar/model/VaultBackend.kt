@@ -107,7 +107,8 @@ interface VaultBackend {
     fun listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: List<ByteString>): List<StoredPasskey>
     fun preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: List<ByteString>): PasskeyRegistrationOptions
     fun createPasskey(request: PasskeyRegistrationRequest, vaultID: String, itemID: String): PasskeyRegistrationResult
-    fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString): PasskeyAssertionResult
+    fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString, userVerification: String): PasskeyAssertionResult
+    fun cancelPasskeyCeremonies()
 
     /** The relying party ID that a privileged browser's page at [origin] may use; throws when the origin may not use it. */
     fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String
@@ -164,10 +165,13 @@ interface VaultBackend {
 }
 
 /** A failure of a backend call, with a sentence a user can read. */
-class BackendError(override val message: String) : Exception(message) {
-    override fun equals(other: Any?): Boolean = other is BackendError && other.message == message
+class BackendError(override val message: String, val code: String? = null) : Exception(message) {
+    override fun equals(other: Any?): Boolean = other is BackendError && other.message == message && other.code == code
 
-    override fun hashCode(): Int = message.hashCode()
+    override fun hashCode(): Int = 31 * message.hashCode() + (code?.hashCode() ?: 0)
+    companion object {
+        const val PASSKEY_VERIFICATION_FAILED = "passkey-verification-failed"
+    }
 }
 
 /** The sentence to show for a failure. */

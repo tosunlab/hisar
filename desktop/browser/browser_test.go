@@ -189,7 +189,8 @@ func startTestServer(t *testing.T, handler browserprotocol.Handler, peerResolver
 		<-stopped
 	})
 	for range 100 {
-		if _, err := os.Stat(socketPath); err == nil {
+		if connection, err := net.Dial("unix", socketPath); err == nil {
+			connection.Close()
 			return socketPath
 		}
 		time.Sleep(10 * time.Millisecond)

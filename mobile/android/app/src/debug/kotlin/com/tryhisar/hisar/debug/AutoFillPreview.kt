@@ -63,7 +63,6 @@ object AutoFillPreview {
             },
             cancelRequest = { resultMessage.value = "Cancelled" },
             passkeyCompletion = AutoFillModel.PasskeyCompletion({}, {}, {}, {}),
-            verifyDeviceOwner = { false },
         )
         activity.lifecycleScope.launch { model.prepareCredentialList(FillTarget.Websites(listOf(serviceIdentifier)), kind) }
         return {

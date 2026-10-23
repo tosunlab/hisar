@@ -17,6 +17,7 @@ struct AutoFillPreviewView: View {
     static let passkeyUserNameArgument = "-HisarAutoFillPasskeyUserName"
     static let passkeyUserHandleArgument = "-HisarAutoFillPasskeyUserHandle"
     static let passkeyClientDataHashArgument = "-HisarAutoFillPasskeyClientDataHash"
+    static let passkeyUserVerificationArgument = "-HisarAutoFillPasskeyUserVerification"
 
     static func readMode() -> Mode? {
         if let serviceIdentifier = readArgumentValue(argument) {
@@ -26,8 +27,9 @@ struct AutoFillPreviewView: View {
             return .oneTimeCode(serviceIdentifier)
         }
         let clientDataHash = readArgumentValue(passkeyClientDataHashArgument).flatMap(Base64URL.decode) ?? Data(repeating: 0, count: 32)
+        let userVerification = readArgumentValue(passkeyUserVerificationArgument) ?? "preferred"
         if let relyingPartyID = readArgumentValue(passkeyArgument) {
-            return .passkeyAssertion(PasskeyAssertionRequest(relyingPartyID: relyingPartyID, clientDataHash: clientDataHash))
+            return .passkeyAssertion(PasskeyAssertionRequest(relyingPartyID: relyingPartyID, clientDataHash: clientDataHash, userVerification: userVerification))
         }
         if let relyingPartyID = readArgumentValue(passkeyRegistrationArgument) {
             return .passkeyRegistration(PasskeyRegistrationRequest(
@@ -35,7 +37,7 @@ struct AutoFillPreviewView: View {
                 userName: readArgumentValue(passkeyUserNameArgument) ?? "",
                 userHandle: readArgumentValue(passkeyUserHandleArgument).flatMap(Base64URL.decode) ?? Data("preview-user".utf8),
                 clientDataHash: clientDataHash,
-                allSupportedAlgorithm: [PasskeyRegistrationRequest.algorithmES256]
+                allSupportedAlgorithm: [PasskeyRegistrationRequest.algorithmES256], userVerification: userVerification
             ))
         }
         return nil

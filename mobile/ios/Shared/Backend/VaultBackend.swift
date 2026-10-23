@@ -84,7 +84,8 @@ protocol VaultBackend: AnyObject {
     func listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: [Data]) throws -> [StoredPasskey]
     func preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: [Data]) throws -> PasskeyRegistrationOptions
     func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult
-    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data, userVerification: String) throws -> PasskeyAssertionResult
+    func cancelPasskeyCeremonies()
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail
     func listAllPendingApproval() throws -> [PhoneApproval]
     func approveApproval(requestID: String, isRemembered: Bool) throws
@@ -121,6 +122,8 @@ protocol VaultBackend: AnyObject {
 
 struct BackendError: LocalizedError, Equatable {
     var message: String
+    var code: String? = nil
+    static let passkeyVerificationFailed = "passkey-verification-failed"
     var errorDescription: String? { message }
 }
 

@@ -52,7 +52,6 @@ class AutofillViewModel(application: Application, val request: AutofillRequest, 
         cancelRequest = { cancel() },
         // AutoFill's datasets carry no passkeys; Credential Manager brings those to CredentialActivity.
         passkeyCompletion = AutoFillModel.PasskeyCompletion({ cancel() }, { cancel() }, ::cancel, { cancel() }),
-        verifyDeviceOwner = { false },
     )
 
     init {

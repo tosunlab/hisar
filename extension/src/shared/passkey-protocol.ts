@@ -1,6 +1,8 @@
-import type { PasskeyPRFOutputJSON, SerializedPRFInput } from "./passkey";
+import type { PasskeyPRFOutputJSON, SerializedPRFInput, UserVerificationPolicy } from "./passkey";
 
 export interface DesktopPasskeyParameters {
+  userVerification?: UserVerificationPolicy;
+  ceremonyId?: string;
   origin: string;
   topOrigin?: string;
   isCrossOrigin?: boolean;
@@ -58,6 +60,7 @@ declare module "./protocol" {
     "passkeys.prepare": { parameters: { passkey: DesktopPasskeyParameters }; result: { isExcluded: boolean; logins: LoginSummary[] } };
     "passkeys.create": { parameters: { passkey: DesktopPasskeyParameters }; result: DesktopPasskeyCreation };
     "passkeys.get": { parameters: { passkey: DesktopPasskeyParameters }; result: DesktopPasskeyAssertion };
+    "passkeys.cancel": { parameters: { passkey: DesktopPasskeyParameters }; result: null };
     "passkeys.signalUnknownCredential": { parameters: { passkey: DesktopPasskeyParameters }; result: { changedPasskeyCount: number } };
     "passkeys.signalAllAcceptedCredentials": { parameters: { passkey: DesktopPasskeyParameters }; result: { changedPasskeyCount: number } };
     "passkeys.signalCurrentUserDetails": { parameters: { passkey: DesktopPasskeyParameters }; result: { changedPasskeyCount: number } };

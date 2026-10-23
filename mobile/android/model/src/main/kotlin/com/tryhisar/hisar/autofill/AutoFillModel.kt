@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.autofill
 
 import com.tryhisar.hisar.model.BackendEvent
+import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.Base64URL
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.LoginMatch
@@ -48,18 +49,13 @@ class AutoFillModel(
     copyOneTimeCode: (String) -> Unit,
     private val cancelRequest: (CancelReason) -> Unit,
     passkeyCompletion: PasskeyCompletion,
-    /** Asks the device owner to confirm with biometrics or the screen lock, with this reason as the title; false when declined. */
-    private val verifyDeviceOwner: suspend (reason: String) -> Boolean,
 ) {
-    /**
-     * How passkey requests end, and how the sheet's unlock action hands back once Hisar is unlocked: `isUserVerified` when
-     * the user unlocked Hisar for it, so the passkey picked next in the same sheet needs no second check.
-     */
+    /** Final passkey operations are verified by the native backend, not sheet continuation extras. */
     class PasskeyCompletion(
         val completeAssertion: (PasskeyAssertionCredential) -> Unit,
         val completeRegistration: (PasskeyRegistrationCredential) -> Unit,
         val rejectExcludedRegistration: () -> Unit,
-        val completeUnlock: (isUserVerified: Boolean) -> Unit,
+        val completeUnlock: () -> Unit,
     )
 
     /** Why a request ends without a credential. */
@@ -127,9 +123,8 @@ class AutoFillModel(
 
     private var pendingRequest: PendingCredentialRequest? = null
     private var pendingPasskeyCredentialID: ByteString? = null
+    private var requestEpoch: Long = 0
 
-    // The user unlocked Hisar or confirmed as the device owner during this request, so a passkey needs no second check.
-    private var isUserVerified = false
 
     // The sheet's "Unlock Hisar" action only unlocks; the sheet then asks again and lists the credentials itself.
     private var isUnlockOnly = false
@@ -144,7 +139,7 @@ class AutoFillModel(
     private val completeOneTimeCodeRequest: suspend (String) -> Unit = { value -> completeWithinUnlock { completeOneTimeCodeRequest(value) } }
     private val copyOneTimeCode: suspend (String) -> Unit = { value -> completeWithinUnlock { copyOneTimeCode(value) } }
     private val completeAssertion: suspend (PasskeyAssertionCredential) -> Unit = { value -> completeWithinUnlock { passkeyCompletion.completeAssertion(value) } }
-    private val completeUnlock: suspend (Boolean) -> Unit = { value -> completeWithinUnlock { passkeyCompletion.completeUnlock(value) } }
+    private val completeUnlock: suspend () -> Unit = { completeWithinUnlock { passkeyCompletion.completeUnlock() } }
     private val completeRegistration = passkeyCompletion.completeRegistration
     private val rejectExcludedRegistration = passkeyCompletion.rejectExcludedRegistration
 
@@ -237,7 +232,13 @@ class AutoFillModel(
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
-            if (mutableLockCount.value == lockCount) errorMessage.value = describeError(error)
+            if (mutableLockCount.value == lockCount) {
+                if ((error as? BackendError)?.code == BackendError.PASSKEY_VERIFICATION_FAILED) {
+                    cancelRequest(CancelReason.USER_CANCELED)
+                } else {
+                    errorMessage.value = describeError(error)
+                }
+            }
             null
         } finally {
             mutableIsBusy.value = false
@@ -280,7 +281,6 @@ class AutoFillModel(
 
     // What only an unlocked Hisar shows; the unlock loads it again for the request.
     private fun forgetUnlockedData() {
-        isUserVerified = false
         mutableAllMatchingLogin.value = emptyList()
         mutableAllOtherLogin.value = emptyList()
         mutableIsOtherLoginLoaded.value = false
@@ -293,9 +293,9 @@ class AutoFillModel(
     }
 
     private fun resetRequest(target: FillTarget, kind: RequestKind) {
+        endPasskeyCeremony()
         pendingRequest = null
         pendingPasskeyCredentialID = null
-        isUserVerified = false
         isUnlockOnly = false
         mutableLoginToLink.value = null
         mutableTarget.value = target
@@ -323,7 +323,7 @@ class AutoFillModel(
         isUnlockOnly = true
         val backend = prepare() ?: return
         if (!refreshStatus(backend)) return
-        if (mutableStatus.value.isUnlocked) withinUnlock { completeUnlock(false) }
+        if (mutableStatus.value.isUnlocked) withinUnlock { completeUnlock() }
     }
 
     /** A suggestion the user picked: filled at once when unlocked, else after the unlock. */
@@ -397,22 +397,17 @@ class AutoFillModel(
     private suspend fun handleUnlocked(newStatus: VaultStatus) {
         applyStatus(newStatus)
         if (!newStatus.isUnlocked) return
-        isUserVerified = true
         when {
-            isUnlockOnly -> completeUnlock(true)
+            isUnlockOnly -> completeUnlock()
             mutablePasskeyRegistrationRequest.value != null -> loadPasskeyRegistrationOptions()
             pendingRequest != null || pendingPasskeyCredentialID != null -> finishPendingRequest()
             else -> loadAllMatchingCredential()
         }
     }
 
-    /**
-     * A passkey the user picked in the system's sheet: signed at once when unlocked, after the device owner confirms, else
-     * after the unlock. [isUserVerified] when the sheet's unlock action of this request already verified the user.
-     */
-    suspend fun prepareInterfaceToProvidePasskey(request: PasskeyAssertionRequest, credentialID: ByteString, isUserVerified: Boolean = false) {
+    /** A concrete system-sheet selection; the backend verifies this final request before signing. */
+    suspend fun prepareInterfaceToProvidePasskey(request: PasskeyAssertionRequest, credentialID: ByteString) {
         resetRequest(FillTarget.Websites(emptyList()), RequestKind.PASSWORD)
-        this.isUserVerified = isUserVerified
         mutablePasskeyAssertionRequest.value = request
         pendingPasskeyCredentialID = credentialID
         val backend = prepare() ?: return
@@ -420,16 +415,17 @@ class AutoFillModel(
         if (mutableStatus.value.isUnlocked) finishPendingRequest()
     }
 
-    // Like passwords, only a backend that is prepared and still unlocked signs without user interaction, and only when the
-    // user needs no verification: the site discourages it, or [isUserVerified] says this request's unlock verified the user.
-    suspend fun providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: ByteString, isUserVerified: Boolean = false): PasskeyAssertionCredential? = withinUnlock {
-        if (!request.isUserVerificationDiscouraged && !isUserVerified) return@withinUnlock null
+    /** Discouraged verification can use the system sheet's presence confirmation without another prompt. */
+    suspend fun providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: ByteString): PasskeyAssertionCredential? = withinUnlock {
+        val epoch = requestEpoch
+        if (!request.isUserVerificationDiscouraged) return@withinUnlock null
         val backend = backend ?: return@withinUnlock null
         val result = withContext(ioDispatcher) {
             val status = backend.getStatus()
             if (!status.isUnlocked || status.updateRequired != null) return@withContext null
-            runCatching { backend.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash) }.getOrNull()
+            runCatching { backend.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash, request.userVerification) }.getOrNull()
         } ?: return@withinUnlock null
+        if (epoch != requestEpoch) return@withinUnlock null
         PasskeyAssertionCredential.create(request.relyingPartyID, request.clientDataHash, result)
     }
 
@@ -455,15 +451,16 @@ class AutoFillModel(
     /** Saves the passkey to the chosen login, or to a new login in the Personal vault, once the device owner confirms. */
     suspend fun savePasskey() {
         withinUnlock {
+            val epoch = requestEpoch
             val request = mutablePasskeyRegistrationRequest.value ?: return@withinUnlock
             val options = mutablePasskeyRegistrationOptions.value?.takeIf { !it.isExcluded } ?: return@withinUnlock
-            if (!verifyUser("Create a passkey for ${request.relyingPartyID}", request.isUserVerificationDiscouraged)) return@withinUnlock
             val login = options.allLogin.firstOrNull { it.id == selectedRegistrationLoginID.value }
             val backend = backend ?: return@withinUnlock
             mutableIsBusy.value = true
             try {
                 // Go commits before returning. Its public registration response must reach the site even after a lock.
                 val result = withContext(ioDispatcher) { backend.createPasskey(request, login?.vaultID.orEmpty(), login?.itemID.orEmpty()) }
+                if (epoch != requestEpoch) return@withinUnlock
                 val credential = PasskeyRegistrationCredential.create(request.relyingPartyID, request.clientDataHash, result)
                 if (credential == null) {
                     errorMessage.value = "Hisar could not read the new passkey."
@@ -473,7 +470,13 @@ class AutoFillModel(
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
-                if (currentCoroutineContext()[UnlockGeneration]?.count == mutableLockCount.value) errorMessage.value = describeError(error)
+                if (epoch == requestEpoch && currentCoroutineContext()[UnlockGeneration]?.count == mutableLockCount.value) {
+                    if ((error as? BackendError)?.code == BackendError.PASSKEY_VERIFICATION_FAILED) {
+                        cancelRequest(CancelReason.USER_CANCELED)
+                    } else {
+                        errorMessage.value = describeError(error)
+                    }
+                }
             } finally {
                 mutableIsBusy.value = false
             }
@@ -488,26 +491,15 @@ class AutoFillModel(
         withinUnlock {
             val request = mutablePasskeyAssertionRequest.value ?: return@withinUnlock
             val credentialID = Base64URL.decode(passkey.credentialID) ?: return@withinUnlock
-            if (!verifyUser("Use your passkey for ${request.relyingPartyID}", request.isUserVerificationDiscouraged)) return@withinUnlock
             assertPasskey(request, credentialID)
         }
     }
 
-    // Hisar asks the device owner again before a passkey is used or created, unless the user unlocked during this request
-    // or the site discourages user verification. Declining cancels the request.
-    private suspend fun verifyUser(reason: String, isDiscouraged: Boolean): Boolean {
-        if (isDiscouraged || isUserVerified) return true
-        val verified = withinUnlock { verifyDeviceOwner(reason) } ?: return false
-        if (!verified) {
-            cancelRequest(CancelReason.USER_CANCELED)
-            return false
-        }
-        isUserVerified = true
-        return true
-    }
 
     private suspend fun assertPasskey(request: PasskeyAssertionRequest, credentialID: ByteString): Boolean {
-        val result = performWithinUnlock { it.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash) } ?: return false
+        val epoch = requestEpoch
+        val result = performWithinUnlock { it.assertPasskey(request.relyingPartyID, credentialID, request.clientDataHash, request.userVerification) } ?: return false
+        if (epoch != requestEpoch) return false
         val credential = PasskeyAssertionCredential.create(request.relyingPartyID, request.clientDataHash, result)
         if (credential == null) {
             errorMessage.value = "Hisar could not read the passkey signature."
@@ -529,7 +521,6 @@ class AutoFillModel(
                     cancelRequest(CancelReason.CREDENTIAL_NOT_FOUND)
                     return@withinUnlock
                 }
-                if (!verifyUser("Use your passkey for ${passkeyRequest.relyingPartyID}", passkeyRequest.isUserVerificationDiscouraged)) return@withinUnlock
                 if (assertPasskey(passkeyRequest, credentialID)) return@withinUnlock
                 pendingPasskeyCredentialID = null
                 loadAllMatchingCredential()
@@ -621,7 +612,13 @@ class AutoFillModel(
         }
     }
 
+    fun endPasskeyCeremony() {
+        requestEpoch++
+        backend?.cancelPasskeyCeremonies()
+    }
+
     fun cancel() {
+        endPasskeyCeremony()
         cancelRequest(CancelReason.USER_CANCELED)
     }
 

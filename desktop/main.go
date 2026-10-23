@@ -162,6 +162,7 @@ func main() {
 			return agent.GetSSHRememberDuration(approvalPreference.GetSSHRememberSeconds())
 		},
 	})
+	app.SetPasskeyVerifier(vaultService, approver)
 	agentSessions := agentharness.NewSessions(nil)
 	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil, agentSessions)
 	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })

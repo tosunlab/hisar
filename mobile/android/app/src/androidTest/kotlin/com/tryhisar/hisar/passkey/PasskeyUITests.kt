@@ -60,11 +60,10 @@ class PasskeyUITests : HisarUITestCase() {
         turnOnHisarForPasskeys()
         application.statementByRelyingParty[RELYING_PARTY_ID] = buildStatement(callerApp)
 
-        // This emulator has no screen lock, so only unlocking Hisar in the request itself verifies the user: Hisar would
-        // otherwise ask the device owner, and fail, before it creates or signs.
+        // Without a screen lock this ceremony can establish presence, not user verification.
         val userHandle = "passkey-user-handle".toByteArray()
         testBackend.lock()
-        val registration = callCredentialManager(CredentialCallerActivity.MODE_CREATE_PASSKEY, buildCreateRequest(userHandle, "preferred")) {
+        val registration = callCredentialManager(CredentialCallerActivity.MODE_CREATE_PASSKEY, buildCreateRequest(userHandle, "discouraged")) {
             answerSheet("passkey-register-sheet", "Hisar") { device.hasObject(By.res("unlock-password")) }
             type(MASTER_PASSWORD, "unlock-password")
             tap("unlock-submit")
@@ -79,13 +78,14 @@ class PasskeyUITests : HisarUITestCase() {
         val registrationResponse = registered.getJSONObject("response")
         checkClientData(registrationResponse, "webauthn.create", REGISTRATION_CHALLENGE)
         val authenticatorData = decode(registrationResponse.getString("authenticatorData"))
+        assertFalse("unlocking Hisar is not verification for the final ceremony", isUserVerifiedFlagSet(authenticatorData))
         assertArrayEquals("the RP ID hash", sha256(RELYING_PARTY_ID.toByteArray()), authenticatorData.copyOfRange(0, 32))
         assertArrayEquals("the credential ID in the attested credential data", credentialID, authenticatorData.copyOfRange(55, 55 + credentialID.size))
         assertEquals(-7, registrationResponse.getInt("publicKeyAlgorithm"))
         val publicKey = KeyFactory.getInstance("EC").generatePublic(X509EncodedKeySpec(decode(registrationResponse.getString("publicKey"))))
 
         testBackend.lock()
-        val assertion = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(credentialID, "preferred")) {
+        val assertion = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(credentialID, "discouraged")) {
             answerSheet("passkey-unlock-sheet", "Unlock Hisar.*") { device.hasObject(By.res("unlock-password")) }
             saveScreenshot("passkey-unlock")
             type(MASTER_PASSWORD, "unlock-password")
@@ -96,6 +96,7 @@ class PasskeyUITests : HisarUITestCase() {
         val signedIn = JSONObject(assertion.removePrefix("signed-in "))
         assertArrayEquals(credentialID, decode(signedIn.getString("rawId")))
         val assertionResponse = signedIn.getJSONObject("response")
+        assertFalse("the signed assertion does not fabricate UV", isUserVerifiedFlagSet(decode(assertionResponse.getString("authenticatorData"))))
         assertArrayEquals(userHandle, decode(assertionResponse.getString("userHandle")))
         val clientDataJSON = checkClientData(assertionResponse, "webauthn.get", ASSERTION_CHALLENGE)
         val signedData = decode(assertionResponse.getString("authenticatorData")) + sha256(clientDataJSON)
@@ -137,11 +138,7 @@ class PasskeyUITests : HisarUITestCase() {
         assertEquals("deleting the passkey keeps the login", "passkey-user", readText("username-value"))
     }
 
-    /**
-     * With Hisar unlocked, using or creating a passkey asks the device owner first, by fingerprint here, unless the site
-     * discourages user verification or the user unlocked Hisar in this request; declining fails the request. API 37,
-     * where enrolling a fingerprint through Settings is known to work.
-     */
+    /** Native verification supplies signed UV. A sheet unlock never authorizes the final concrete challenge. */
     @Test
     @SdkSuppress(minSdkVersion = 37)
     fun testPasskeyAsksTheDeviceOwnerWhileUnlocked() {
@@ -160,7 +157,7 @@ class PasskeyUITests : HisarUITestCase() {
             application.statementByRelyingParty[RELYING_PARTY_ID] = buildStatement(callerApp)
 
             val createPrompt = By.text("Create a passkey for $RELYING_PARTY_ID")
-            val registration = callCredentialManager(CredentialCallerActivity.MODE_CREATE_PASSKEY, buildCreateRequest("uv-user-handle".toByteArray(), "preferred")) {
+            val registration = callCredentialManager(CredentialCallerActivity.MODE_CREATE_PASSKEY, buildCreateRequest("uv-user-handle".toByteArray(), "required")) {
                 answerSheet("passkey-uv-register-sheet", "Hisar") { device.hasObject(By.res("autofill-save-passkey")) }
                 tap("autofill-passkey-new-login")
                 tap("autofill-save-passkey")
@@ -177,6 +174,13 @@ class PasskeyUITests : HisarUITestCase() {
                 answerDeviceOwnerPrompt(fingerprints, signInPrompt, "passkey-uv-sign-in-prompt")
             }
             checkSignedIn(assertion, publicKey)
+            val required = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "required")) {
+                answerSheet("passkey-uv-required-sheet", "passkey-user") { device.hasObject(signInPrompt) || device.hasObject(callerOutcome) }
+                answerDeviceOwnerPrompt(fingerprints, signInPrompt, "passkey-uv-required-prompt")
+            }
+            checkSignedIn(required, publicKey)
+            val requiredResponse = JSONObject(required.removePrefix("signed-in ")).getJSONObject("response")
+            assertTrue("required signs UV after the native check", isUserVerifiedFlagSet(decode(requiredResponse.getString("authenticatorData"))))
 
             val declined = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "preferred")) {
                 answerSheet("passkey-uv-decline-sheet", "passkey-user") { device.hasObject(signInPrompt) || device.hasObject(callerOutcome) }
@@ -191,13 +195,15 @@ class PasskeyUITests : HisarUITestCase() {
             }
             saveScreenshot("passkey-uv-discouraged-signed-in")
             checkSignedIn(discouraged, publicKey)
+            val discouragedResponse = JSONObject(discouraged.removePrefix("signed-in ")).getJSONObject("response")
+            assertFalse("discouraged without a device-owner check has UV=0", isUserVerifiedFlagSet(decode(discouragedResponse.getString("authenticatorData"))))
 
             testBackend.lock()
             val afterUnlock = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSKEY, buildGetRequest(null, "preferred")) {
                 answerSheet("passkey-uv-unlock-sheet", "Unlock Hisar.*") { fingerprints.isPromptShown(100) }
                 fingerprints.touch()
                 answerSheet("passkey-uv-after-unlock-sheet", "passkey-user") { device.hasObject(callerOutcome) || device.hasObject(signInPrompt) }
-                assertFalse("the unlock in this request verified the user", device.hasObject(signInPrompt))
+                answerDeviceOwnerPrompt(fingerprints, signInPrompt, "passkey-uv-after-unlock-prompt")
             }
             saveScreenshot("passkey-uv-after-unlock-signed-in")
             checkSignedIn(afterUnlock, publicKey)

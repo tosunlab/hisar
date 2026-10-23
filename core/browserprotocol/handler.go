@@ -15,10 +15,18 @@ type Handler interface {
 // is reported as ErrorInternal.
 func Answer(ctx context.Context, handler Handler, message []byte) Response {
 	var request Request
-	if err := json.Unmarshal(message, &request); err != nil || request.ID == "" || request.Type == "" {
+	if err := json.Unmarshal(message, &request); err != nil {
 		return Response{ID: request.ID, Error: NewError(ErrorInvalidRequest, "the request is not valid")}
 	}
-	result, err := handler.HandleRequest(ctx, &request)
+	return AnswerRequest(ctx, handler, &request)
+}
+
+// AnswerRequest answers a decoded request, preserving the wire error contract.
+func AnswerRequest(ctx context.Context, handler Handler, request *Request) Response {
+	if request.ID == "" || request.Type == "" {
+		return Response{ID: request.ID, Error: NewError(ErrorInvalidRequest, "the request is not valid")}
+	}
+	result, err := handler.HandleRequest(ctx, request)
 	if err != nil {
 		var responseError *ResponseError
 		if !errors.As(err, &responseError) {

@@ -2,6 +2,7 @@ package com.tryhisar.hisar.passkey
 
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.os.Bundle
 import android.service.credentials.BeginGetCredentialOption
 import android.service.credentials.BeginGetCredentialRequest
@@ -12,9 +13,14 @@ import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.PasswordCredential
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.credentials.PublicKeyCredential
+import androidx.lifecycle.ViewModelProvider
+import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.filters.SdkSuppress
+import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.uiautomator.UiDevice
 import com.tryhisar.hisar.HisarTestApplication
+import com.tryhisar.hisar.MainActivity
 import com.tryhisar.hisar.autofill.AutoFillModel
 import com.tryhisar.hisar.autofill.InstalledApps
 import com.tryhisar.hisar.model.BackendEvent
@@ -27,6 +33,7 @@ import java.security.spec.ECGenParameterSpec
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -78,7 +85,7 @@ class CredentialCompletionTests {
         val app = checkNotNull(InstalledApps.readAndroidApp(application, application.packageName))
         backend.addAndroidApp("personal", "github", app.packageName, app.certificateSHA256)
         application.installFakeBackend(backend)
-        val viewModel = withContext(Dispatchers.Main) { CredentialViewModel(application, unlockIntent()) }
+        val viewModel = withContext(Dispatchers.Main) { CredentialViewModel(application, unlockIntent()).also { it.startWhenResumed() } }
         try {
             assertTrue(withContext(Dispatchers.IO) { backend.started.await(10, TimeUnit.SECONDS) })
             backend.lock()
@@ -95,19 +102,23 @@ class CredentialCompletionTests {
         assertEquals(1, offer?.credentialEntries?.size)
     }
 
-    @Test fun testCommittedRegistrationReturnsItsPublicResponseAfterLock() = runBlocking {
-        val backend = HeldBackend().apply { seedSignedIn() }
-        application.installFakeBackend(backend)
+    // A native app (this test app, which example.org vouches for) asks Hisar to save a passkey.
+    private fun createIntent(userVerification: String): Intent {
         val app = checkNotNull(InstalledApps.readAndroidApp(application, application.packageName))
         application.statementByRelyingParty["example.org"] =
             """[{"relation":["delegate_permission/common.get_login_creds"],"target":{"namespace":"android_app","package_name":"${app.packageName}","sha256_cert_fingerprints":["${app.certificateSHA256}"]}}]"""
         val signingInfo = checkNotNull(application.packageManager.getPackageInfo(application.packageName, PackageManager.GET_SIGNING_CERTIFICATES).signingInfo)
-        val json = """{"rp":{"id":"example.org","name":"Example"},"user":{"id":"aGFuZGxl","name":"alice","displayName":"Alice"},"challenge":"Y2hhbGxlbmdl","pubKeyCredParams":[{"type":"public-key","alg":-7}],"authenticatorSelection":{"userVerification":"discouraged"}}"""
+        val json = """{"rp":{"id":"example.org","name":"Example"},"user":{"id":"aGFuZGxl","name":"alice","displayName":"Alice"},"challenge":"Y2hhbGxlbmdl","pubKeyCredParams":[{"type":"public-key","alg":-7}],"authenticatorSelection":{"userVerification":"$userVerification"}}"""
         val request = CreatePublicKeyCredentialRequest(json)
         val platformRequest = CreateCredentialRequest(CallingAppInfo(application.packageName, signingInfo), PublicKeyCredential.TYPE_PUBLIC_KEY_CREDENTIAL, request.credentialData)
-        val intent = Intent().putExtra("com.tryhisar.hisar.passkey.PICK", "create")
+        return Intent().putExtra("com.tryhisar.hisar.passkey.PICK", "create")
             .putExtra(CredentialProviderService.EXTRA_CREATE_CREDENTIAL_REQUEST, platformRequest)
-        val viewModel = withContext(Dispatchers.Main) { CredentialViewModel(application, intent) }
+    }
+
+    @Test fun testCommittedRegistrationReturnsItsPublicResponseAfterLock() = runBlocking {
+        val backend = HeldBackend().apply { seedSignedIn() }
+        application.installFakeBackend(backend)
+        val viewModel = withContext(Dispatchers.Main) { CredentialViewModel(application, createIntent("discouraged")).also { it.startWhenResumed() } }
         withTimeout(5_000) { viewModel.model.passkeyRegistrationOptions.filterNotNull().first() }
         val save = launch(Dispatchers.Main) { viewModel.model.savePasskey() }
         try {
@@ -122,5 +133,44 @@ class CredentialCompletionTests {
         val response = withTimeout(5_000) { viewModel.result.filterNotNull().first() }
         assertNotNull(PendingIntentHandler.retrieveCreateCredentialResponse(PublicKeyCredential.TYPE_PUBLIC_KEY_CREDENTIAL, response))
         assertEquals(1, backend.allPasskey.count { it.relyingPartyID == "example.org" })
+    }
+
+    @Test fun testRotatingWhileTheDeviceOwnerPromptShowsKeepsThePasskeyCeremony() = runBlocking {
+        val backend = HeldBackend().apply { seedSignedIn() }
+        backend.verifyPasskey = {
+            backend.started.countDown()
+            backend.release.await(60, TimeUnit.SECONDS)
+        }
+        application.installFakeBackend(backend)
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val intent = createIntent("required").setClass(application, CredentialActivity::class.java)
+        // Credential Manager shows the activity over the calling app, which decides the rotation; Hisar's own app stands in for it.
+        val caller = ActivityScenario.launch(MainActivity::class.java)
+        try {
+            ActivityScenario.launch<CredentialActivity>(intent).use { scenario ->
+                lateinit var viewModel: CredentialViewModel
+                scenario.onActivity { viewModel = ViewModelProvider(it)[CredentialViewModel::class.java] }
+                assertNotNull("the save screen shows", withTimeoutOrNull(5_000) { viewModel.model.passkeyRegistrationOptions.filterNotNull().first() })
+                val save = launch(Dispatchers.Main) { viewModel.model.savePasskey() }
+                try {
+                    assertTrue("the device owner prompt is up", withContext(Dispatchers.IO) { backend.started.await(10, TimeUnit.SECONDS) })
+                    device.setOrientationLeft()
+                    val isRotated = withTimeoutOrNull(5_000) {
+                        while (application.resources.configuration.orientation != Configuration.ORIENTATION_LANDSCAPE) delay(50)
+                    }
+                    assertNotNull("the screen rotates", isRotated)
+                    InstrumentationRegistry.getInstrumentation().waitForIdleSync()
+                } finally {
+                    backend.release.countDown()
+                }
+                save.join()
+                val response = withTimeoutOrNull(5_000) { viewModel.result.filterNotNull().first() }
+                assertNotNull("the site gets its new passkey after the rotation", response?.let { PendingIntentHandler.retrieveCreateCredentialResponse(PublicKeyCredential.TYPE_PUBLIC_KEY_CREDENTIAL, it) })
+            }
+        } finally {
+            device.setOrientationNatural()
+            device.unfreezeRotation()
+            caller.close()
+        }
     }
 }

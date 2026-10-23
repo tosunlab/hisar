@@ -30,8 +30,8 @@ class AutoFillCompletionLockTests {
             hold("password", super.getLoginForService(vaultID, itemID, serviceIdentifier))
         override fun getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String) =
             hold("code", super.getOneTimeCodeForService(vaultID, itemID, serviceIdentifier))
-        override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString) =
-            hold("assert", super.assertPasskey(relyingPartyID, credentialID, clientDataHash))
+        override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString, userVerification: String) =
+            hold("assert", super.assertPasskey(relyingPartyID, credentialID, clientDataHash, userVerification))
         override fun createPasskey(request: PasskeyRegistrationRequest, vaultID: String, itemID: String) =
             hold("create", super.createPasskey(request, vaultID, itemID))
     }
@@ -40,12 +40,11 @@ class AutoFillCompletionLockTests {
     private val completions = mutableListOf<Any>()
     private val target = FillTarget.Websites(listOf("github.com"))
     private val hash = ByteString(ByteArray(32))
-    private fun TestScope.model(verify: suspend () -> Boolean = { true }) = AutoFillModel(
+    private fun TestScope.model() = AutoFillModel(
         scope = backgroundScope, ioDispatcher = Dispatchers.IO, createBackend = { backend }, events = events,
         verifier = { _, _ -> emptyList() }, completeRequest = { completions += it },
         completeOneTimeCodeRequest = { completions += it }, copyOneTimeCode = { completions += it }, cancelRequest = { completions += it },
-        passkeyCompletion = AutoFillModel.PasskeyCompletion({ completions += it }, { completions += it }, {}, { completions += it }),
-        verifyDeviceOwner = { verify() },
+        passkeyCompletion = AutoFillModel.PasskeyCompletion({ completions += it }, { completions += it }, {}, { completions += Unit }),
     )
     private suspend fun TestScope.lockDuring(model: AutoFillModel, call: String, operation: suspend () -> Unit) {
         backend.heldCall = call
@@ -133,7 +132,7 @@ class AutoFillCompletionLockTests {
         val model = model()
         model.prepareCredentialList(target)
         lockDuring(model, "assert") {
-            assertNull(model.providePasskeyWithoutUserInteraction(PasskeyAssertionRequest("github.com", hash), ByteString(1, 1, 1), isUserVerified = true))
+            assertNull(model.providePasskeyWithoutUserInteraction(PasskeyAssertionRequest("github.com", hash, userVerification = "discouraged"), ByteString(1, 1, 1)))
         }
     }
 
@@ -201,17 +200,18 @@ class AutoFillCompletionLockTests {
     @Test fun testDeviceOwnerAnswerCannotCompleteAfterLock() = runTest {
         for (verified in listOf(true, false)) {
             backend.seedSignedIn()
-            val checking = CompletableDeferred<Unit>()
-            val answer = CompletableDeferred<Boolean>()
-            val model = model { checking.complete(Unit); answer.await() }
+            val checking = CountDownLatch(1)
+            val answer = CountDownLatch(1)
+            backend.verifyPasskey = { checking.countDown(); check(answer.await(10, TimeUnit.SECONDS)); verified }
+            val model = model()
             model.prepareCredentialList(target, passkeyRequest = PasskeyAssertionRequest("github.com", hash))
             val passkey = model.allMatchingPasskey.value.single()
             val request = launch { model.selectPasskey(passkey) }
-            checking.await()
+            assertTrue(withContext(Dispatchers.IO) { checking.await(10, TimeUnit.SECONDS) })
             backend.lock()
             events.emit(BackendEvent.Locked)
             model.screen.first { it == AutoFillModel.Screen.Locked }
-            answer.complete(verified)
+            answer.countDown()
             request.join()
             assertTrue(completions.isEmpty(), "a pre-lock device-owner answer completed the request")
             assertEquals(AutoFillModel.Screen.Locked, model.screen.value)
