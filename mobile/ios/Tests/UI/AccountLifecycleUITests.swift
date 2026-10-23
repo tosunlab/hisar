@@ -40,7 +40,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         app.buttons["open-delete-account"].tap()
         saveScreenshot("account-life-delete-account-preview\(screenshotSuffix)")
         type(Self.newMasterPassword, into: app.secureTextFields["delete-account-password"])
-        type(email, into: app.textFields["delete-account-email"])
+        type(email, into: app.textFields["delete-account-email"], untilEnabled: app.buttons["delete-account-submit"])
         saveScreenshot("account-life-delete-account\(screenshotSuffix)")
         app.buttons["delete-account-submit"].tap()
         tapConfirmation(identifier: "delete-account-confirm")

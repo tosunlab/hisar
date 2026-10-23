@@ -45,6 +45,14 @@ func (hisar *Hisar) DeleteAccount(password, email string) (string, error) {
 	return encodeJSON(hisar.service.DeleteAccount(password, email))
 }
 
+func (hisar *Hisar) DeleteAccountWithPlan(password, email, planVersion string) (string, error) {
+	defer releaseMemory()
+	if password == "" {
+		return "", errors.New("enter your master password")
+	}
+	return encodeJSON(hisar.service.DeleteAccountWithPlan(password, email, planVersion))
+}
+
 func (hisar *Hisar) DismissSignedOutReason() string {
 	encoded, _ := encodeJSON(hisar.service.DismissSignedOutReason(), nil)
 	return encoded

@@ -138,8 +138,10 @@ private struct AutoFillListView: View {
             }
         }
         .applyThemedListStyle()
-        .searchable(text: $model.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all logins")
+        // The rows wait while a login fills or the logins load; the search field never does. Searching starts the load of every
+        // login, and a disabled field drops what is typed meanwhile.
         .disabled(model.isBusy)
+        .searchable(text: $model.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all logins")
     }
 
     private var sectionTitle: String {

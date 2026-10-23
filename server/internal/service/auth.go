@@ -265,9 +265,11 @@ type pendingLogin struct {
 	clientMAC []byte
 	expires   time.Time
 	// sessionTokenHash is set for a re-authentication, which never creates a session.
-	sessionTokenHash []byte
-	recordHash       []byte
-	purpose          pake.AuthPurpose
+	sessionTokenHash       []byte
+	recordHash             []byte
+	scope                  apitypes.ReauthenticationScope
+	purpose                pake.AuthPurpose
+	reauthenticationServer *opaque.Server
 }
 
 // loginCache holds the server side of logins between their two requests, for a short time.

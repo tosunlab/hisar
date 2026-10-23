@@ -132,13 +132,13 @@ func TestDeleteAccount(t *testing.T) {
 		t.Errorf("preview counts: %+v", preview)
 	}
 
-	if _, err := database.DeleteAccount(ctx, aliceID, aliceSession.TokenHash, HashOpaqueRecord([]byte{7})); !errors.Is(err, ErrConflict) {
+	if _, err := database.DeleteAccount(ctx, aliceID, aliceSession.TokenHash, HashOpaqueRecord([]byte{7}), reviewStoreDeletion(t, database, ctx, aliceID)); !errors.Is(err, ErrConflict) {
 		t.Fatalf("delete with a stale proof: %v", err)
 	}
 	if _, err := database.GetAccountByID(ctx, aliceID); err != nil {
 		t.Fatalf("refused deletion removed the account: %v", err)
 	}
-	deleted, err := database.DeleteAccount(ctx, aliceID, aliceSession.TokenHash, HashOpaqueRecord([]byte{1}))
+	deleted, err := database.DeleteAccount(ctx, aliceID, aliceSession.TokenHash, HashOpaqueRecord([]byte{1}), reviewStoreDeletion(t, database, ctx, aliceID))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -190,7 +190,7 @@ func TestDeleteAccountForgetsItsSettingsSave(t *testing.T) {
 	if err := database.UpdateInstanceSettings(ctx, "ALICE1", false, func(document []byte) ([]byte, error) { return document, nil }); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := database.DeleteAccount(ctx, "ALICE1", aliceSession.TokenHash, HashOpaqueRecord([]byte{1})); err != nil {
+	if _, err := database.DeleteAccount(ctx, "ALICE1", aliceSession.TokenHash, HashOpaqueRecord([]byte{1}), reviewStoreDeletion(t, database, ctx, "ALICE1")); err != nil {
 		t.Fatal(err)
 	}
 	if count := countQueryRow(t, database, `SELECT count(*) FROM instance_settings WHERE updated_by = 'ALICE1'`); count != 0 {
@@ -234,10 +234,13 @@ func TestDeleteAccountSeesOwnershipChangesThatCommitMeanwhile(t *testing.T) {
 		}
 		return nil
 	}, func() error {
-		_, err := database.DeleteAccount(ctx, "ALICE1", aliceSession.TokenHash, testRecordHash())
+		_, err := database.DeleteAccount(ctx, "ALICE1", aliceSession.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, "ALICE1"))
 		return err
 	})
-	if err != nil {
+	if !errors.Is(err, ErrDeletionPlanChanged) {
+		t.Fatalf("a deletion reviewed before the ownership changes: %v", err)
+	}
+	if _, err := database.DeleteAccount(ctx, "ALICE1", aliceSession.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, "ALICE1")); err != nil {
 		t.Fatal(err)
 	}
 	if vaultCount := countQueryRow(t, database, `SELECT count(*) FROM vaults WHERE id = $1`, coOwnedVault); vaultCount != 0 {
@@ -281,12 +284,59 @@ func TestProvenChangesAreCheckedAgainstARevocationThatCommitsMeanwhile(t *testin
 		t.Fatal(err)
 	}
 	if err := revokeMeanwhile(func() error {
-		_, err := database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash())
+		_, err := database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, "ALICE1"))
 		return err
 	}); !errors.Is(err, ErrNotFound) {
 		t.Errorf("an account deletion from a device revoked meanwhile: %v", err)
 	}
 	if _, err := database.GetAccountByID(ctx, "ALICE1"); err != nil {
 		t.Errorf("the account deletion of a revoked device went through: %v", err)
+	}
+}
+
+func TestDeletionPlanLinksSignupInvitesToTheirSources(t *testing.T) {
+	database := createTestStore(t)
+	ctx := context.Background()
+	_, inviterSession := createTestAccount(t, database, "INVTER", "inviter@example.com")
+	createTestAccount(t, database, "ADMIN1", "admin@example.com")
+	if _, err := database.pool.Exec(ctx, "UPDATE accounts SET role = 'admin' WHERE id = 'ADMIN1'"); err != nil {
+		t.Fatal(err)
+	}
+	share := createSignupSource(t, database, "share", "new@example.com")
+	organization := createSignupSource(t, database, "organization", "new@example.com")
+	for _, source := range []signupSource{share, organization} {
+		if err := source.mint([]byte(source.table)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inviterID := "INVTER"
+	if err := database.CreateInvite(ctx, []byte("standalone"), "new@example.com", "member", &inviterID, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	preview, err := database.PreviewAccountDeletion(ctx, inviterID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The two sources count once with their sign-up invites; the standalone invite to the same email counts too.
+	if preview.SentInvitationCount != 3 {
+		t.Errorf("sent invitations: %d", preview.SentInvitationCount)
+	}
+
+	// Another admin's resends keep the organization invitation's sign-up invite, which the deletion cancels with it.
+	if _, err := database.ReplaceInvite(ctx, []byte(organization.table), []byte("resent"), AdminActor{AccountID: "ADMIN1"}, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	planVersion := reviewStoreDeletion(t, database, ctx, inviterID)
+	if _, err := database.ReplaceInvite(ctx, []byte("resent"), []byte("resent-again"), AdminActor{AccountID: "ADMIN1"}, time.Now().Add(time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := database.DeleteAccount(ctx, inviterID, inviterSession.TokenHash, testRecordHash(), planVersion); !errors.Is(err, ErrDeletionPlanChanged) {
+		t.Fatalf("deletion of a plan reviewed before its source's sign-up invite changed: %v", err)
+	}
+	if _, err := database.DeleteAccount(ctx, inviterID, inviterSession.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, inviterID)); err != nil {
+		t.Fatal(err)
+	}
+	for _, hash := range []string{share.table, "resent-again", "standalone"} {
+		requireSignupTokenGone(t, database, []byte(hash))
 	}
 }

@@ -187,11 +187,19 @@ func (s *Store) ListSentShareInvitations(ctx context.Context, accountID string) 
 }
 
 // AcceptShareInvitation marks a pending invitation to email as accepted by accountID and returns its vault and acceptance time.
+// The account row is read FOR SHARE first, as for an organization invitation, so an acceptance that meets a deletion of the
+// account waits for it and then finds no account.
 func (s *Store) AcceptShareInvitation(ctx context.Context, invitationID, accountID, email string) (vaultID string, acceptedAt time.Time, err error) {
-	err = s.pool.QueryRow(ctx, `
-		UPDATE share_invitations i SET state = 'accepted', accepted_by = $2, accepted_at = now()
-		WHERE i.id = $1 AND i.email = $3 AND i.state = 'pending' AND i.expires_at > now() AND `+isInvitedByOwner+`
-		RETURNING i.vault_id, i.accepted_at`, invitationID, accountID, email).Scan(&vaultID, &acceptedAt)
+	err = s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var acceptorID string
+		if err := transaction.QueryRow(ctx, `SELECT id FROM accounts WHERE id = $1 FOR SHARE`, accountID).Scan(&acceptorID); err != nil {
+			return err
+		}
+		return transaction.QueryRow(ctx, `
+			UPDATE share_invitations i SET state = 'accepted', accepted_by = $2, accepted_at = now()
+			WHERE i.id = $1 AND i.email = $3 AND i.state = 'pending' AND i.expires_at > now() AND `+isInvitedByOwner+`
+			RETURNING i.vault_id, i.accepted_at`, invitationID, accountID, email).Scan(&vaultID, &acceptedAt)
+	})
 	return vaultID, acceptedAt, convertNoRowsToNotFound(err)
 }
 

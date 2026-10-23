@@ -77,8 +77,8 @@ class SettingsModel(private val context: ModelContext) {
 
     suspend fun loadAccountDeletionPreview(): AccountDeletionPreview? = context.perform(isBusyShown = false) { it.previewAccountDeletion() }
 
-    suspend fun deleteAccount(password: String, email: String): Boolean = context.runInModel {
-        val newStatus = context.perform { it.deleteAccount(password, email) }
+    suspend fun deleteAccount(password: String, email: String, planVersion: String): Boolean = context.runInModel {
+        val newStatus = context.perform { it.deleteAccountWithPlan(password, email, planVersion) }
         // A deletion the server made can still fail to clean up this phone; the status read again shows it signed out.
         if (newStatus == null) {
             context.refreshStatus()

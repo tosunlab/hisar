@@ -37,6 +37,17 @@ export interface AdminAccountDetail {
   devices: AdminDevice[];
 }
 
+export interface AccountDeletionPreview {
+  planVersion: string;
+  ownedVaults: { vaultId: string; type: string; otherMemberCount: number }[];
+  memberVaults: { vaultId: string; type: string; role: string }[];
+  organizations?: { organizationId: string; name: string; deleted: boolean; newAdminId?: string; newAdminName?: string }[];
+  shareLinkCount: number;
+  sentInvitationCount: number;
+  receivedInvitationCount: number;
+  deviceCount: number;
+}
+
 export const accountsPath = "/admin/accounts";
 
 export const roleLabels: Record<AccountRole, string> = { admin: "Admin", member: "Member" };
@@ -100,18 +111,24 @@ export function changeAccountRole(accountId: string, role: AccountRole, proof: R
   return request("PUT", `${accountPath(accountId)}/role`, { body: { role, proof } });
 }
 
-export function deleteAccount(accountId: string, email: string, proof: ReauthenticationProof): Promise<void> {
-  return request("POST", `${accountPath(accountId)}/delete`, { body: { email, proof } });
+export function previewAccountDeletion(accountId: string): Promise<AccountDeletionPreview> {
+  return request("GET", `${accountPath(accountId)}/deletion-preview`);
+}
+
+export function deleteAccount(accountId: string, email: string, proof: ReauthenticationProof, planVersion: string): Promise<void> {
+  return request("POST", `${accountPath(accountId)}/delete`, { body: { email, proof, planVersion } });
 }
 
 // proveAdmin proves the signed-in admin's master password to the server, for a change that asks for it again.
-export async function proveAdmin(secretKey: string, password: string): Promise<ReauthenticationProof> {
+export async function proveAdmin(secretKey: string, password: string, action?: string, targetAccountID?: string, planVersion?: string): Promise<ReauthenticationProof> {
   const session = auth.session;
   if (!session) {
     throw new Error("Sign in again.");
   }
   const { email } = await request<{ email: string }>("GET", "/account");
-  return bridge.reauthenticate(session.token, email, secretKey, password);
+  return action
+    ? bridge.reauthenticate(session.token, email, secretKey, password, action, targetAccountID, planVersion)
+    : bridge.reauthenticate(session.token, email, secretKey, password);
 }
 
 // readAccountId returns the account ID in a path under /admin/accounts/, or "" for the list. A segment that is not valid

@@ -66,9 +66,15 @@ func convertAccountError(err error) error {
 	return err
 }
 
+// convertAccountDeletionError asks for a new review only when the server says the plan changed; any other deletion
+// conflict (busy memberships, changed credentials) keeps the server's reason.
 func convertAccountDeletionError(err error) error {
-	if apiclient.IsStatus(err, http.StatusConflict) {
-		return errors.New("the account changed while it was being deleted; try again")
+	var apiError *apiclient.APIError
+	switch {
+	case apiclient.IsDeletionPlanChanged(err):
+		return errors.New("the deletion plan changed; review the deletion again before confirming")
+	case errors.As(err, &apiError) && apiError.Status == http.StatusConflict:
+		return errors.New(apiError.Message)
 	}
 	return convertAccountError(err)
 }
@@ -285,7 +291,7 @@ func printAccountDeletionPreview(output io.Writer, preview *session.AccountDelet
 
 func describeDeletionVault(vault session.DeletionVault) string {
 	if vault.Name == "" {
-		return "a vault"
+		return fmt.Sprintf("vault %s (name unavailable)", vault.ID)
 	}
 	return fmt.Sprintf("%q", vault.Name)
 }
@@ -318,7 +324,7 @@ func runDeleteAccount(ctx context.Context, flags *flag.FlagSet, args []string) e
 		if !strings.EqualFold(strings.TrimSpace(email), currentState.Email) {
 			return errors.New("the email does not match this account; nothing was deleted")
 		}
-		if err := unlockedSession.DeleteAccount(ctx, password, secretKey, email); err != nil {
+		if err := unlockedSession.DeleteAccount(ctx, password, secretKey, email, preview.PlanVersion); err != nil {
 			return convertAccountDeletionError(err)
 		}
 		isDeleted = true

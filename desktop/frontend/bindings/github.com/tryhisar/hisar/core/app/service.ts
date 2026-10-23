@@ -181,6 +181,10 @@ export function DeleteAccount(password: string, email: string): $CancellableProm
     return $Call.ByID(1353351385, password, email);
 }
 
+export function DeleteAccountWithPlan(password: string, email: string, planVersion: string): $CancellablePromise<$models.Status> {
+    return $Call.ByID(2677647674, password, email, planVersion);
+}
+
 /**
  * DeleteImportFile removes the export file after a finished import, since it holds every password in plain text. It
  * refuses while the file holds something Hisar did not save, an item that failed or an entry it skipped.

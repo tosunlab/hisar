@@ -112,7 +112,7 @@ final class AccountLifecycleTests: XCTestCase {
     func testDeleteAccountCleanupErrorStillSignsOut() async {
         let model = await createUnlockedModel()
         backend.accountDeletionCleanupError = BackendError(message: "The offline copy could not be removed.")
-        let isDeleted = await model.deleteAccount(password: FakeBackend.password, email: "alice@example.com")
+        let isDeleted = await model.deleteAccount(password: FakeBackend.password, email: "alice@example.com", planVersion: backend.deletionPreview.planVersion)
         XCTAssertFalse(isDeleted)
         XCTAssertEqual(model.screen, .signedOut)
         XCTAssertTrue(model.allVault.isEmpty)
@@ -124,10 +124,10 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertFalse(identityStore.allIdentity.isEmpty)
         let preview = await model.loadAccountDeletionPreview()
         XCTAssertEqual(preview?.email, "alice@example.com")
-        let isDeletedWithWrongEmail = await model.deleteAccount(password: FakeBackend.password, email: "bob@example.com")
+        let isDeletedWithWrongEmail = await model.deleteAccount(password: FakeBackend.password, email: "bob@example.com", planVersion: preview!.planVersion)
         XCTAssertFalse(isDeletedWithWrongEmail)
         XCTAssertEqual(model.screen, .unlocked)
-        let isDeleted = await model.deleteAccount(password: FakeBackend.password, email: "alice@example.com")
+        let isDeleted = await model.deleteAccount(password: FakeBackend.password, email: "alice@example.com", planVersion: preview!.planVersion)
         XCTAssertTrue(isDeleted)
         XCTAssertTrue(backend.isAccountDeleted)
         XCTAssertEqual(model.screen, .signedOut)
@@ -181,5 +181,20 @@ final class AccountLifecycleTests: XCTestCase {
         await waitUntil({ identityStore.allIdentity.isEmpty }, "the AutoFill identities were not removed")
         model.dismissSignedOutReason()
         XCTAssertEqual(model.status.signedOutReason, "")
+    }
+
+    func testDeletionRejectsChangedPlanUntilReviewedAgain() async throws {
+        let model = await createUnlockedModel()
+        let loaded = await model.loadAccountDeletionPreview()
+        let reviewed = try XCTUnwrap(loaded)
+        backend.deletionPreview.planVersion = "new-plan"
+        let refused = await model.deleteAccount(password: FakeBackend.password, email: reviewed.email, planVersion: reviewed.planVersion)
+        XCTAssertFalse(refused)
+        XCTAssertFalse(backend.isAccountDeleted)
+        XCTAssertEqual(model.screen, .unlocked)
+        let reloaded = await model.loadAccountDeletionPreview()
+        let refreshed = try XCTUnwrap(reloaded)
+        let deleted = await model.deleteAccount(password: FakeBackend.password, email: refreshed.email, planVersion: refreshed.planVersion)
+        XCTAssertTrue(deleted)
     }
 }

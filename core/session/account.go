@@ -40,6 +40,7 @@ type DeletionVault struct {
 }
 
 type AccountDeletionPreview struct {
+	PlanVersion             string
 	OwnedVaults             []DeletionVault
 	MemberVaults            []DeletionVault
 	ShareLinkCount          int
@@ -123,8 +124,16 @@ func Reauthenticate(ctx context.Context, client *apiclient.Client, email string,
 	return reauthenticate(ctx, client, email, password, secretKey, nil)
 }
 
+func ReauthenticateForScope(ctx context.Context, client *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey, scope apitypes.ReauthenticationScope) (apitypes.ReauthenticationProof, error) {
+	return reauthenticateForScope(ctx, client, email, password, secretKey, nil, scope)
+}
+
 // reauthenticate is Reauthenticate for a caller that holds the account's keyset, which the server's keyset must match.
 func reauthenticate(ctx context.Context, client *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey, sessionKeyset *crypt.Keyset) (apitypes.ReauthenticationProof, error) {
+	return reauthenticateForScope(ctx, client, email, password, secretKey, sessionKeyset, apitypes.ReauthenticationScope{})
+}
+
+func reauthenticateForScope(ctx context.Context, client *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey, sessionKeyset *crypt.Keyset, scope apitypes.ReauthenticationScope) (apitypes.ReauthenticationProof, error) {
 	verified, err := verifyCredentials(ctx, client, password, secretKey, sessionKeyset)
 	if err != nil {
 		return apitypes.ReauthenticationProof{}, err
@@ -133,7 +142,7 @@ func reauthenticate(ctx context.Context, client *apiclient.Client, email string,
 	if !strings.EqualFold(verified.account.Email, strings.TrimSpace(email)) {
 		return apitypes.ReauthenticationProof{}, ErrEmailMismatch
 	}
-	proof, _, err := proveCredentials(ctx, client, verified.currentKeys.AuthKey, verified.account.AccountID, nil)
+	proof, _, err := proveCredentialsForScope(ctx, client, verified.currentKeys.AuthKey, verified.account.AccountID, nil, scope)
 	return proof, err
 }
 
@@ -222,6 +231,9 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 	if err != nil {
 		return nil, err
 	}
+	if response.PlanVersion == "" {
+		return nil, errors.New("update the Hisar server to review an account deletion plan")
+	}
 	vaultNames := map[string]string{}
 	if vaults, err := s.ListVaults(ctx); err == nil {
 		for index := range vaults {
@@ -230,6 +242,7 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 		}
 	}
 	preview := &AccountDeletionPreview{
+		PlanVersion:             response.PlanVersion,
 		OwnedVaults:             []DeletionVault{},
 		MemberVaults:            []DeletionVault{},
 		ShareLinkCount:          response.ShareLinkCount,
@@ -252,17 +265,20 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 }
 
 // DeleteAccount proves the master password to the server with OPAQUE; the password itself never leaves the device.
-func (s *Session) DeleteAccount(ctx context.Context, password []byte, secretKey crypt.SecretKey, email string) error {
+func (s *Session) DeleteAccount(ctx context.Context, password []byte, secretKey crypt.SecretKey, email, planVersion string) error {
 	if !strings.EqualFold(strings.TrimSpace(email), s.Email) {
 		return ErrEmailMismatch
 	}
 	if secretKey.AccountID != s.AccountID {
 		return ErrBadCredentials
 	}
-	proof, err := reauthenticate(ctx, s.Client, email, password, secretKey, s.Keyset)
+	if planVersion == "" {
+		return errors.New("review the account deletion plan before confirming")
+	}
+	proof, err := reauthenticateForScope(ctx, s.Client, email, password, secretKey, s.Keyset, apitypes.ReauthenticationScope{Action: "account-delete", Target: s.AccountID, PlanVersion: planVersion})
 	if err != nil {
 		return err
 	}
-	err = s.Client.DeleteAccount(ctx, &apitypes.DeleteAccountRequest{ReauthenticationID: proof.ReauthenticationID, KE3: proof.KE3, Email: strings.TrimSpace(email)})
+	err = s.Client.DeleteAccount(ctx, &apitypes.DeleteAccountRequest{ReauthenticationID: proof.ReauthenticationID, KE3: proof.KE3, Email: strings.TrimSpace(email), PlanVersion: planVersion})
 	return convertReauthenticationError(err)
 }

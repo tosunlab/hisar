@@ -147,7 +147,7 @@ func TestAdminAuditExportOfADeletedAccount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := member.DeleteAccount(ctx, password, secretKey, "member@example.com"); err != nil {
+	if err := member.DeleteAccount(ctx, password, secretKey, "member@example.com", reviewSessionDeletion(t, member, ctx)); err != nil {
 		t.Fatal(err)
 	}
 	request := requireValue[*http.Request](t)(http.NewRequestWithContext(ctx, http.MethodGet, baseURL+"/api/v1/admin/audit.csv?account="+member.AccountID, nil))

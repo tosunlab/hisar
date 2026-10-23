@@ -49,7 +49,7 @@ enum AccountLifecycleLogic {
     }
 
     static func describeOrganization(_ organization: DeletionOrganization) -> String {
-        if organization.isDeleted { return "\(organization.name) is deleted with your account" }
+        if organization.isDeleted { return "\(organization.name), its vaults, and their items are deleted with your account" }
         if !organization.newAdminName.isEmpty { return "\(organization.newAdminName) becomes an admin of \(organization.name)" }
         return "You leave \(organization.name)"
     }

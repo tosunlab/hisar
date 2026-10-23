@@ -171,7 +171,8 @@ targets:
     templates: [IPhoneOnly]
     type: bundle.ui-testing
     platform: iOS
-    sources: [Tests/UI]
+    # CardInput is the editor's card formatter: typing waits for exactly what the editor shows.
+    sources: [Tests/UI, Shared/Backend/CardInput.swift]
     dependencies:
       - target: Hisar
     settings:

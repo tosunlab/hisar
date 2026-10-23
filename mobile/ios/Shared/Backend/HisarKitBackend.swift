@@ -460,8 +460,8 @@ final class HisarKitBackend: VaultBackend {
         try decode(AccountDeletionPreview.self, from: callReturningText { hisar.previewAccountDeletion($0) })
     }
 
-    func deleteAccount(password: String, email: String) throws -> VaultStatus {
-        try decode(VaultStatus.self, from: callReturningText { hisar.deleteAccount(password, email: email, error: $0) })
+    func deleteAccountWithPlan(password: String, email: String, planVersion: String) throws -> VaultStatus {
+        try decode(VaultStatus.self, from: callReturningText { hisar.deleteAccount(withPlan: password, email: email, planVersion: planVersion, error: $0) })
     }
 
     func dismissSignedOutReason() -> VaultStatus {

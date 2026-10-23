@@ -148,13 +148,13 @@ func TestIntegrationAccountLifecycle(t *testing.T) {
 		if err != nil || preview.Email != email || len(preview.OwnedVaults) != 1 || preview.OwnedVaults[0].Name != "Personal" || preview.DeviceCount != 2 {
 			t.Fatalf("preview: %+v %v", preview, err)
 		}
-		if _, err := mac.DeleteAccount(newPassword, "someone@example.com"); err == nil || !strings.Contains(err.Error(), "type the email") {
+		if _, err := mac.DeleteAccountWithPlan(newPassword, "someone@example.com", preview.PlanVersion); err == nil || !strings.Contains(err.Error(), "type the email") {
 			t.Errorf("another email: %v", err)
 		}
-		if _, err := mac.DeleteAccount("wrong password", email); err == nil {
+		if _, err := mac.DeleteAccountWithPlan("wrong password", email, preview.PlanVersion); err == nil {
 			t.Error("deleted with a wrong master password")
 		}
-		status, err := mac.DeleteAccount(newPassword, strings.ToUpper(email))
+		status, err := mac.DeleteAccountWithPlan(newPassword, strings.ToUpper(email), preview.PlanVersion)
 		if err != nil || status.State != StateSignedOut || status.Email != "" || status.SignedOutReason != "" {
 			t.Fatalf("delete: %+v %v", status, err)
 		}

@@ -103,9 +103,9 @@ func TestSessionLookupDoesNotDeadlockAccountDeletion(t *testing.T) {
 			go func() {
 				var err error
 				if isByAdmin {
-					_, err = database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "ADMIN1"}, "ALICE1")
+					_, err = database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "ADMIN1"}, "ALICE1", reviewStoreDeletion(t, database, ctx, "ALICE1"))
 				} else {
-					_, err = database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash())
+					_, err = database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, "ALICE1"))
 				}
 				deleted <- err
 			}()

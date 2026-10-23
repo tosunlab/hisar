@@ -477,13 +477,19 @@ export async function loadAccountDeletionPreview(): Promise<AccountDeletionPrevi
   return runAction(() => api.previewAccountDeletion());
 }
 
-export async function deleteAccount(password: string, email: string): Promise<boolean> {
-  const status = await runAction(() => api.deleteAccount(password, email));
-  if (status) {
-    await applyStatus(status);
-    showNotice("Your account was deleted");
+// deleteAccount reports a deletion the server made even when the sign-out it caused already reached this app; only the
+// status it returns is left out then, since a newer one is shown.
+export async function deleteAccount(password: string, email: string, planVersion: string): Promise<boolean> {
+  const generation = sessionGeneration;
+  const status = await runAction(() => api.deleteAccount(password, email, planVersion));
+  if (!status) {
+    return false;
   }
-  return status !== undefined;
+  if (generation === sessionGeneration) {
+    await applyStatus(status);
+  }
+  showNotice("Your account was deleted");
+  return true;
 }
 
 export async function dismissSignedOutReason(): Promise<void> {

@@ -146,7 +146,23 @@ class HisarUITestCase: XCTestCase {
     // and taps again if it does not come. Only a field the form has not created yet is dragged to: tap() scrolls one that exists
     // just into view, while a drag can carry it under the navigation bar, where it still counts as hittable and taps land on
     // the bar.
-    func type(_ text: String, into element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+    func type(_ text: String, into element: XCUIElement, normalizedBy normalize: ((String) -> String)? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        if focus(element, file: file, line: line) {
+            typeText(text, into: element, normalizedBy: normalize, file: file, line: line)
+        }
+    }
+
+    // A field whose placeholder is the very text to type, as the account deletion's email confirmation, cannot show that the
+    // text is in, but the control the text unlocks can: typing waits until `control` turns enabled, and it must not be before.
+    func type(_ text: String, into element: XCUIElement, untilEnabled control: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertFalse(control.isEnabled, "\(control) is enabled before \"\(text)\" is typed", file: file, line: line)
+        guard focus(element, file: file, line: line) else { return }
+        element.typeText(text)
+        let isEnabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: control)
+        XCTAssertEqual(XCTWaiter().wait(for: [isEnabled], timeout: 30), .completed, "\(control) did not turn enabled after typing \"\(text)\"", file: file, line: line)
+    }
+
+    private func focus(_ element: XCUIElement, file: StaticString, line: UInt) -> Bool {
         if !element.waitForExistence(timeout: 5) {
             scrollTo(element)
         }
@@ -155,11 +171,32 @@ class HisarUITestCase: XCTestCase {
             element.tap()
             if hasFocus.evaluate(with: element)
                 || XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: hasFocus, object: element)], timeout: 5) == .completed {
-                element.typeText(text)
-                return
+                return true
             }
         }
         XCTFail("\(element) did not take the keyboard focus", file: file, line: line)
+        return false
+    }
+
+    // The simulator's keyboard can insert typed characters long after typeText returns: it holds them until its suggestions
+    // come back, 19 seconds later in job 120358912010, and a tap meanwhile acts on part of the text. So typing waits until the
+    // field shows exactly its end state (TypedText): `showing` when the typing also deletes, and both sides through the
+    // field's own formatter when it has one (CardInput).
+    func typeText(_ text: String, into element: XCUIElement, showing: String? = nil, normalizedBy normalize: ((String) -> String)? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        let typedText: TypedText
+        do {
+            typedText = try TypedText(typed: text, showing: showing, before: element.value as? String, placeholder: element.placeholderValue, isSecure: element.elementType == .secureTextField, normalize: normalize)
+        } catch TypedText.UnshownError.secureFormattedNotEmpty {
+            XCTFail("\(element) is secure and not empty, so what it holds cannot be formatted with \"\(text)\"; clear it first or pass `showing`", file: file, line: line)
+            return
+        } catch {
+            XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
+            return
+        }
+        element.typeText(text)
+        let isShown = NSPredicate { _, _ in typedText.isShown(byValue: element.value as? String, placeholder: element.placeholderValue) }
+        let result = XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: isShown, object: element)], timeout: 30)
+        XCTAssertEqual(result, .completed, "\(element) shows \"\(element.value as? String ?? "")\", not \"\(typedText.expected)\"", file: file, line: line)
     }
 
     // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.

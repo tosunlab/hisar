@@ -30,7 +30,25 @@ func (s *Service) Reauthenticate(ctx context.Context, actor Actor, request *apit
 	if !s.Limiters.Reauthentication.Allow(actor.AccountID) {
 		return apitypes.ReauthenticateResponse{}, newError(KindTooManyRequests, "too many attempts; wait a minute and try again")
 	}
-	keyExchange1, err := s.keys.ReauthenticationServer.Deserialize.KE1(request.KE1)
+	reauthenticationServer := s.keys.ReauthenticationServer
+	if request.Scope != (apitypes.ReauthenticationScope{}) {
+		configuration, err := pake.NewAuthConfig(s.config.PublicURL, pake.Reauthenticate)
+		if err != nil {
+			return apitypes.ReauthenticateResponse{}, err
+		}
+		configuration, err = pake.WithReauthenticationScope(configuration, request.Scope)
+		if err != nil {
+			return apitypes.ReauthenticateResponse{}, newError(KindInvalid, "invalid account deletion proof scope")
+		}
+		reauthenticationServer, err = configuration.Server()
+		if err != nil {
+			return apitypes.ReauthenticateResponse{}, err
+		}
+		if err := reauthenticationServer.SetKeyMaterial(s.keys.OpaqueServer.ServerKeyMaterial); err != nil {
+			return apitypes.ReauthenticateResponse{}, err
+		}
+	}
+	keyExchange1, err := reauthenticationServer.Deserialize.KE1(request.KE1)
 	if err != nil {
 		return apitypes.ReauthenticateResponse{}, errInvalidLogin
 	}
@@ -55,16 +73,18 @@ func (s *Service) Reauthenticate(ctx context.Context, actor Actor, request *apit
 		registrationResponse = response.Serialize()
 	}
 	clientRecord := &opaque.ClientRecord{RegistrationRecord: registrationRecord, CredentialIdentifier: []byte(account.ID), ClientIdentity: []byte(account.ID)}
-	keyExchange2, serverOutput, err := s.keys.ReauthenticationServer.GenerateKE2(keyExchange1, clientRecord)
+	keyExchange2, serverOutput, err := reauthenticationServer.GenerateKE2(keyExchange1, clientRecord)
 	if err != nil {
 		return apitypes.ReauthenticateResponse{}, errInvalidLogin
 	}
 	reauthenticationID := s.loginCache.put(&pendingLogin{
-		accountID:        account.ID,
-		clientMAC:        serverOutput.ClientMAC,
-		sessionTokenHash: actor.TokenHash,
-		recordHash:       store.HashOpaqueRecord(account.OpaqueRecord),
-		purpose:          pake.Reauthenticate,
+		accountID:              account.ID,
+		clientMAC:              serverOutput.ClientMAC,
+		sessionTokenHash:       actor.TokenHash,
+		recordHash:             store.HashOpaqueRecord(account.OpaqueRecord),
+		scope:                  request.Scope,
+		purpose:                pake.Reauthenticate,
+		reauthenticationServer: reauthenticationServer,
 	})
 	clear(serverOutput.SessionSecret)
 	return apitypes.ReauthenticateResponse{ReauthenticationID: reauthenticationID, KE2: keyExchange2.Serialize(), RegistrationResponse: registrationResponse}, nil
@@ -72,12 +92,16 @@ func (s *Service) Reauthenticate(ctx context.Context, actor Actor, request *apit
 
 // finishReauthentication accepts a proof only from the session that started it.
 func (s *Service) finishReauthentication(ctx context.Context, actor Actor, reauthenticationID string, encodedKeyExchange3 []byte) (*pendingLogin, error) {
+	return s.finishScopedReauthentication(ctx, actor, reauthenticationID, encodedKeyExchange3, apitypes.ReauthenticationScope{})
+}
+
+func (s *Service) finishScopedReauthentication(ctx context.Context, actor Actor, reauthenticationID string, encodedKeyExchange3 []byte, scope apitypes.ReauthenticationScope) (*pendingLogin, error) {
 	pending := s.loginCache.take(reauthenticationID)
-	if pending == nil || pending.purpose != pake.Reauthenticate || pending.sessionTokenHash == nil || pending.accountID != actor.AccountID || !bytes.Equal(pending.sessionTokenHash, actor.TokenHash) {
+	if pending == nil || pending.scope != scope || pending.purpose != pake.Reauthenticate || pending.reauthenticationServer == nil || pending.sessionTokenHash == nil || pending.accountID != actor.AccountID || !bytes.Equal(pending.sessionTokenHash, actor.TokenHash) {
 		return nil, newError(KindForbidden, "the master password check expired; try again")
 	}
-	keyExchange3, err := s.keys.ReauthenticationServer.Deserialize.KE3(encodedKeyExchange3)
-	if err != nil || s.keys.ReauthenticationServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
+	keyExchange3, err := pending.reauthenticationServer.Deserialize.KE3(encodedKeyExchange3)
+	if err != nil || pending.reauthenticationServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
 		s.recordAudit(ctx, actor, auditReauthenticationFailed, nil)
 		return nil, errReauthenticationFailed
 	}
@@ -130,11 +154,23 @@ func (s *Service) ChangeCredentials(ctx context.Context, actor Actor, request *a
 }
 
 func (s *Service) PreviewAccountDeletion(ctx context.Context, actor Actor) (apitypes.AccountDeletionPreview, error) {
-	preview, err := s.store.PreviewAccountDeletion(ctx, actor.AccountID)
+	return s.previewAccountDeletion(ctx, actor.AccountID)
+}
+
+func (s *Service) PreviewAccountDeletionAsAdmin(ctx context.Context, actor Actor, accountID string) (apitypes.AccountDeletionPreview, error) {
+	if err := checkOtherAccount(actor, accountID); err != nil {
+		return apitypes.AccountDeletionPreview{}, err
+	}
+	return s.previewAccountDeletion(ctx, accountID)
+}
+
+func (s *Service) previewAccountDeletion(ctx context.Context, accountID string) (apitypes.AccountDeletionPreview, error) {
+	preview, err := s.store.PreviewAccountDeletion(ctx, accountID)
 	if err != nil {
 		return apitypes.AccountDeletionPreview{}, err
 	}
 	response := apitypes.AccountDeletionPreview{
+		PlanVersion:             preview.PlanVersion,
 		OwnedVaults:             make([]apitypes.DeletionOwnedVault, 0, len(preview.OwnedVaults)),
 		MemberVaults:            make([]apitypes.DeletionMemberVault, 0, len(preview.MemberVaults)),
 		ShareLinkCount:          preview.ShareLinkCount,
@@ -151,7 +187,7 @@ func (s *Service) PreviewAccountDeletion(ctx context.Context, actor Actor) (apit
 	}
 	for _, organization := range preview.Organizations {
 		response.Organizations = append(response.Organizations, apitypes.DeletionOrganization{
-			OrganizationID: organization.ID, Name: organization.Name, IsDeleted: organization.IsDeleted, NewAdminName: organization.NewAdminName,
+			OrganizationID: organization.ID, Name: organization.Name, IsDeleted: organization.IsDeleted, NewAdminName: organization.NewAdminName, NewAdminID: organization.NewAdminID,
 		})
 	}
 	return response, nil
@@ -159,6 +195,9 @@ func (s *Service) PreviewAccountDeletion(ctx context.Context, actor Actor) (apit
 
 // DeleteAccount deletes the account after a master password check and the typed email.
 func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apitypes.DeleteAccountRequest) error {
+	if request.PlanVersion == "" {
+		return newError(KindInvalid, "Update Hisar to review the account deletion plan before deleting.")
+	}
 	account, err := s.store.GetAccountByID(ctx, actor.AccountID)
 	if err != nil {
 		return err
@@ -166,12 +205,14 @@ func (s *Service) DeleteAccount(ctx context.Context, actor Actor, request *apity
 	if apitypes.NormalizeEmail(request.Email) != account.Email {
 		return newError(KindInvalid, "the email does not match this account")
 	}
-	pending, err := s.finishReauthentication(ctx, actor, request.ReauthenticationID, request.KE3)
+	pending, err := s.finishScopedReauthentication(ctx, actor, request.ReauthenticationID, request.KE3, apitypes.ReauthenticationScope{Action: "account-delete", Target: actor.AccountID, PlanVersion: request.PlanVersion})
 	if err != nil {
 		return err
 	}
-	deleted, err := s.store.DeleteAccount(ctx, actor.AccountID, actor.TokenHash, pending.recordHash)
+	deleted, err := s.store.DeleteAccount(ctx, actor.AccountID, actor.TokenHash, pending.recordHash, request.PlanVersion)
 	switch {
+	case errors.Is(err, store.ErrDeletionPlanChanged):
+		return ErrDeletionPlanChanged
 	case errors.Is(err, store.ErrDeletionBusy):
 		return errDeletionBusy
 	case errors.Is(err, store.ErrConflict):

@@ -18,6 +18,10 @@ Item icons (DESIGN.md §4.5): the editor's icon opens `IconPickerView` (Automati
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
 
+Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
+A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
+An absent plan version never enables the delete button.
+
 ## Build and test
 
 Requirements: Xcode with an iOS simulator runtime, Go, and for regenerating the project XcodeGen 2.46.0

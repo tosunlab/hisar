@@ -54,6 +54,9 @@ export class APIError extends Error {
   constructor(
     readonly status: number,
     message: string,
+    // isDeletionPlanChanged marks the 409 that refused an account deletion whose reviewed plan changed; every other
+    // deletion conflict keeps its own reason.
+    readonly isDeletionPlanChanged = false,
   ) {
     super(message);
   }
@@ -70,8 +73,8 @@ export async function send(method: string, path: string, { body, token = auth.se
     saveSession(null);
   }
   if (!response.ok) {
-    const body = (await response.json().catch(() => ({}))) as { error?: string };
-    throw new APIError(response.status, body.error ?? `The Hisar server answered ${response.status}.`);
+    const body = (await response.json().catch(() => ({}))) as { error?: string; deletionPlanChanged?: boolean };
+    throw new APIError(response.status, body.error ?? `The Hisar server answered ${response.status}.`, body.deletionPlanChanged === true);
   }
   return response;
 }

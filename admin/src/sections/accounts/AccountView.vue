@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { auth, getErrorMessage } from "../../api";
+import { APIError, auth, getErrorMessage } from "../../api";
 import type { ReauthenticationProof } from "../../bridge/bridge";
 import { navigate } from "../../navigation";
 import {
@@ -13,6 +13,7 @@ import {
   getAccount,
   ownAccountMessage,
   proveAdmin,
+  previewAccountDeletion,
   reactivateAccount,
   revokeAccountDevice,
   roleLabels,
@@ -21,6 +22,7 @@ import {
   suspendAccount,
   type AccountRole,
   type AdminAccountDetail,
+  type AccountDeletionPreview,
 } from "./accounts";
 
 type Dialog = "suspend" | "sign-out" | "role" | "delete";
@@ -41,11 +43,13 @@ const typedEmail = ref("");
 const secretKey = ref("");
 const password = ref("");
 const isSecretKeyShown = ref(false);
+const deletionPreview = ref<AccountDeletionPreview | null>(null);
+const isLoadingPlan = ref(false);
 
 const account = computed(() => detail.value?.account);
 const isOwnAccount = computed(() => account.value?.id === auth.session?.accountId);
 const isBusy = computed(() => step.value !== "");
-const canDelete = computed(() => typedEmail.value.trim().toLowerCase() === account.value?.email && secretKey.value !== "" && password.value !== "");
+const canDelete = computed(() => !!deletionPreview.value?.planVersion && !isLoadingPlan.value && typedEmail.value.trim().toLowerCase() === account.value?.email && secretKey.value !== "" && password.value !== "");
 
 async function load(): Promise<void> {
   try {
@@ -57,7 +61,7 @@ async function load(): Promise<void> {
 
 onMounted(load);
 
-function open(dialog: Dialog): void {
+async function open(dialog: Dialog): Promise<void> {
   openDialog.value = dialog;
   dialogError.value = "";
   actionError.value = "";
@@ -65,8 +69,27 @@ function open(dialog: Dialog): void {
   secretKey.value = "";
   password.value = "";
   isSecretKeyShown.value = false;
+  deletionPreview.value = null;
+  if (dialog === "delete") {
+    await loadDeletionPlan();
+  }
   if (dialog === "role" && account.value) {
     newRole.value = account.value.role === "admin" ? "member" : "admin";
+  }
+}
+
+async function loadDeletionPlan(): Promise<void> {
+  deletionPreview.value = null;
+  isLoadingPlan.value = true;
+  try {
+    const plan = await previewAccountDeletion(props.accountId);
+    if (openDialog.value === "delete") {
+      deletionPreview.value = plan;
+    }
+  } catch (error) {
+    dialogError.value = getErrorMessage(error);
+  } finally {
+    isLoadingPlan.value = false;
   }
 }
 
@@ -114,8 +137,32 @@ async function submitRole(): Promise<void> {
 }
 
 async function submitDelete(): Promise<void> {
-  if (await run((proof) => deleteAccount(props.accountId, typedEmail.value.trim(), proof!), true)) {
+  const plan = deletionPreview.value;
+  if (!canDelete.value || !plan || isBusy.value) {
+    return;
+  }
+  dialogError.value = "";
+  try {
+    step.value = "proving";
+    const proof = await proveAdmin(secretKey.value, password.value, "admin-account-delete", props.accountId, plan.planVersion);
+    step.value = "saving";
+    await deleteAccount(props.accountId, typedEmail.value.trim(), proof, plan.planVersion);
+    close();
     navigate(accountsPath);
+  } catch (error) {
+    secretKey.value = "";
+    password.value = "";
+    typedEmail.value = "";
+    if (error instanceof APIError && error.isDeletionPlanChanged) {
+      await loadDeletionPlan();
+      dialogError.value = deletionPreview.value
+        ? "The deletion plan changed. Review the latest consequences, type the email again, and enter your credentials for a fresh confirmation."
+        : dialogError.value;
+    } else {
+      dialogError.value = getErrorMessage(error);
+    }
+  } finally {
+    step.value = "";
   }
 }
 
@@ -232,6 +279,26 @@ function buttonLabel(idle: string, saving: string): string {
             The account is deleted with its vaults that have no other owner and their items, its access to other vaults, its organization
             memberships, devices, share links and invitations. Nobody can undo this. Hisar emails {{ account.email }} that an admin deleted it.
           </p>
+          <p v-if="isLoadingPlan" class="muted">Loading the current deletion plan…</p>
+          <p v-if="deletionPreview && !deletionPreview.planVersion" class="error" role="alert">Update this server before deleting an account. It cannot confirm the reviewed deletion plan.</p>
+          <ul v-if="deletionPreview" data-testid="deletion-consequences">
+            <li v-for="vault in deletionPreview.ownedVaults" :key="vault.vaultId">
+              Vault {{ vault.vaultId }} ({{ vault.type }}) and all its items are deleted.
+              {{ vault.otherMemberCount }} other people lose access.
+            </li>
+            <li v-for="vault in deletionPreview.memberVaults" :key="vault.vaultId">
+              Access to vault {{ vault.vaultId }} ({{ vault.type }}, {{ vault.role }}) is removed. The vault stays with its other owners.
+            </li>
+            <li v-for="organization in deletionPreview.organizations" :key="organization.organizationId">
+              <template v-if="organization.deleted">Organization {{ organization.name }} is deleted with its teams, vaults, and items.</template>
+              <template v-else-if="organization.newAdminId || organization.newAdminName">{{ organization.newAdminName || organization.newAdminId }} becomes an admin of {{ organization.name }}.</template>
+              <template v-else>Membership in {{ organization.name }} is removed.</template>
+            </li>
+            <li>{{ deletionPreview.shareLinkCount }} share links stop working.</li>
+            <li>{{ deletionPreview.sentInvitationCount }} sent invitations and {{ deletionPreview.receivedInvitationCount }} received invitations are removed.</li>
+            <li>{{ deletionPreview.deviceCount }} devices are signed out.</li>
+          </ul>
+          <p class="hint">Vault names are encrypted. The server can identify them only by ID.</p>
           <label>
             <span>Type {{ account.email }} to confirm</span>
             <input v-model="typedEmail" name="confirmEmail" type="email" autocomplete="off" spellcheck="false" :disabled="isBusy" required />

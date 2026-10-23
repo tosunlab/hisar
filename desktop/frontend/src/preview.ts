@@ -1929,6 +1929,7 @@ export const previewApi = {
   previewAccountDeletion: () =>
     resolveAfterDelay({
       email: "alper@tryhisar.com",
+      planVersion: "preview-plan-1",
       ownedVaults: [
         { id: "personal", name: "Personal", type: "personal", role: "owner", otherMemberCount: 0 },
         { id: "family", name: "Family", type: "shared", role: "owner", otherMemberCount: 2 },

@@ -30,7 +30,7 @@ func TestSettingsSaveDuringAdminDeletion(t *testing.T) {
 	}
 	deleted := make(chan error, 1)
 	go func() {
-		_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "ADMIN1"}, "ALICE1")
+		_, err := database.DeleteAccountAsAdmin(ctx, AdminActor{AccountID: "ADMIN1"}, "ALICE1", reviewStoreDeletion(t, database, ctx, "ALICE1"))
 		deleted <- err
 	}()
 	waitForStoreLock(t, database, ctx, "%FROM vaults WHERE id IN (SELECT vault_id%")

@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createApiMock, createStatus } from "../testing";
-import type { AccountDeletionPreview } from "../api";
+import type { AccountDeletionPreview, Status } from "../api";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -15,7 +15,7 @@ vi.mock("../api", async () => {
   };
 });
 
-const { store } = await import("../store");
+const { store, loadStatus } = await import("../store");
 const SettingsPanel = (await import("./SettingsPanel.vue")).default;
 const ChangeMasterPasswordDialog = (await import("./ChangeMasterPasswordDialog.vue")).default;
 const ReplaceSecretKeyDialog = (await import("./ReplaceSecretKeyDialog.vue")).default;
@@ -28,6 +28,7 @@ const strongPassword = "orange cactus harbor lantern";
 function createPreview(overrides: Partial<AccountDeletionPreview> = {}): AccountDeletionPreview {
   return {
     email: "alice@example.com",
+    planVersion: "plan-1",
     ownedVaults: [
       { id: "personal", name: "Personal", type: "personal", role: "owner", otherMemberCount: 0 },
       { id: "family", name: "Family", type: "shared", role: "owner", otherMemberCount: 2 },
@@ -197,6 +198,17 @@ describe("Delete account", () => {
     expect(consequences).toContain("3 devices are signed out, including this Mac.");
   });
 
+  it("names organization vaults by ID when their names cannot be decrypted", async () => {
+    api.previewAccountDeletion.mockResolvedValue(createPreview({
+      ownedVaults: [{ id: "organization-vault", name: "", type: "organization", role: "", otherMemberCount: 2 }],
+      organizations: [{ id: "org", name: "Organization", isDeleted: true, newAdminId: "", newAdminName: "" }],
+    }));
+    const wrapper = mount(DeleteAccountDialog);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="delete-account-owned-shared-vault"]').text()).toContain("organization-vault is deleted with its items: its organization is deleted");
+    expect(wrapper.find('[data-testid="delete-account-organization"]').text()).toContain("teams, vaults, and items");
+  });
+
   it("needs the master password and the typed email", async () => {
     api.previewAccountDeletion.mockResolvedValue(createPreview());
     api.deleteAccount.mockResolvedValue(createStatus("signed-out"));
@@ -211,9 +223,28 @@ describe("Delete account", () => {
     await wrapper.find('input[name="deleteAccountEmail"]').setValue(" Alice@Example.com ");
     expect(deleteButton().attributes("disabled")).toBeUndefined();
     await submitForm(wrapper);
-    expect(api.deleteAccount).toHaveBeenCalledWith("master password", expect.stringMatching(/^ ?Alice@Example\.com ?$/));
+    expect(api.deleteAccount).toHaveBeenCalledWith("master password", expect.stringMatching(/^ ?Alice@Example\.com ?$/), "plan-1");
     expect(store.status.state).toBe("signed-out");
     expect(wrapper.emitted("close")).toHaveLength(1);
+  });
+
+  it("reports a finished deletion even when its sign-out reached the app first", async () => {
+    api.previewAccountDeletion.mockResolvedValue(createPreview());
+    const deletion = Promise.withResolvers<Status>();
+    api.deleteAccount.mockReturnValue(deletion.promise);
+    api.getStatus.mockResolvedValue(createStatus("signed-out"));
+    const wrapper = mount(DeleteAccountDialog);
+    await flushPromises();
+    await wrapper.find('input[name="deleteAccountPassword"]').setValue("master password");
+    await wrapper.find('input[name="deleteAccountEmail"]').setValue("alice@example.com");
+    await submitForm(wrapper);
+    await loadStatus();
+    deletion.resolve(createStatus("signed-out"));
+    await flushPromises();
+    expect(store.noticeMessage).toBe("Your account was deleted");
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    expect(api.previewAccountDeletion).toHaveBeenCalledTimes(1);
+    expect(store.status.state).toBe("signed-out");
   });
 
   it("shows a wrong master password without closing", async () => {
@@ -227,6 +258,28 @@ describe("Delete account", () => {
     expect(wrapper.find('[role="alert"]').text()).toBe("the master password is not correct");
     expect(wrapper.emitted("close")).toBeUndefined();
     expect(store.status.state).toBe("unlocked");
+  });
+
+  it("refreshes the consequences and requires new confirmation after a changed plan", async () => {
+    api.previewAccountDeletion.mockResolvedValueOnce(createPreview()).mockResolvedValueOnce(createPreview({
+      planVersion: "plan-2",
+      ownedVaults: [{ id: "new", name: "New shared vault", type: "shared", role: "owner", otherMemberCount: 4 }],
+    }));
+    api.deleteAccount.mockRejectedValue(new Error("the deletion plan changed"));
+    const wrapper = mount(DeleteAccountDialog);
+    await flushPromises();
+    await wrapper.find('input[name="deleteAccountPassword"]').setValue("password");
+    await wrapper.find('input[name="deleteAccountEmail"]').setValue("alice@example.com");
+    await submitForm(wrapper);
+    expect(wrapper.find('[data-testid="delete-account-consequences"]').text()).toContain("New shared vault");
+    expect(wrapper.find('[data-testid="confirm-delete-account"]').attributes("disabled")).toBeDefined();
+    expect((wrapper.find('input[name="deleteAccountPassword"]').element as HTMLInputElement).value).toBe("");
+    expect((wrapper.find('input[name="deleteAccountEmail"]').element as HTMLInputElement).value).toBe("");
+    api.deleteAccount.mockResolvedValue(createStatus("signed-out"));
+    await wrapper.find('input[name="deleteAccountPassword"]').setValue("fresh password");
+    await wrapper.find('input[name="deleteAccountEmail"]').setValue("alice@example.com");
+    await submitForm(wrapper);
+    expect(api.deleteAccount).toHaveBeenLastCalledWith("fresh password", "alice@example.com", "plan-2");
   });
 });
 

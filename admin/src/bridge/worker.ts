@@ -9,7 +9,7 @@ declare class Go {
 
 declare const hisar: {
   signIn(email: string, secretKey: string, password: string): Promise<BridgeResult["signIn"]>;
-  reauthenticate(token: string, email: string, secretKey: string, password: string): Promise<BridgeResult["reauthenticate"]>;
+  reauthenticate(token: string, email: string, secretKey: string, password: string, action?: string, targetAccountID?: string, planVersion?: string): Promise<BridgeResult["reauthenticate"]>;
   signUp(inviteToken: string, email: string, name: string, password: string): Promise<BridgeResult["signUp"]>;
 };
 
@@ -25,7 +25,7 @@ function callHisar(request: BridgeRequest): Promise<BridgeResult[keyof BridgeRes
     case "signIn":
       return hisar.signIn(request.email, request.secretKey, request.password);
     case "reauthenticate":
-      return hisar.reauthenticate(request.token, request.email, request.secretKey, request.password);
+      return hisar.reauthenticate(request.token, request.email, request.secretKey, request.password, request.action, request.targetAccountID, request.planVersion);
     case "signUp":
       return hisar.signUp(request.inviteToken, request.email, request.name, request.password);
   }

@@ -136,6 +136,7 @@ func TestPruningResentSourceTokenWithAccountDeletion(t *testing.T) {
 		FOR EACH ROW EXECUTE FUNCTION test_pause_resent_delete();`); err != nil {
 		t.Fatal(err)
 	}
+	planVersion := reviewStoreDeletion(t, database, ctx, "ADMIN1")
 	hold, err := database.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -152,7 +153,7 @@ func TestPruningResentSourceTokenWithAccountDeletion(t *testing.T) {
 	waitForStoreLock(t, database, ctx, "%DELETE FROM%")
 	deleted := make(chan error, 1)
 	go func() {
-		_, err := database.DeleteAccount(ctx, "ADMIN1", actorSession.TokenHash, testRecordHash())
+		_, err := database.DeleteAccount(ctx, "ADMIN1", actorSession.TokenHash, testRecordHash(), planVersion)
 		deleted <- err
 	}()
 	waiting := 0
@@ -177,6 +178,11 @@ func TestPruningResentSourceTokenWithAccountDeletion(t *testing.T) {
 			var postgres *pgconn.PgError
 			if errors.As(err, &postgres) && postgres.Code == "40P01" {
 				t.Errorf("%s deadlocked across exact-source resend provenance: %v", name, err)
+			} else if name == "account deletion" && errors.Is(err, ErrDeletionPlanChanged) {
+				// Pruning removed rows the plan was reviewed with; a fresh review deletes the account.
+				if _, err := database.DeleteAccount(ctx, "ADMIN1", actorSession.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, "ADMIN1")); err != nil {
+					t.Errorf("account deletion after a fresh review failed: %v", err)
+				}
 			} else if err != nil {
 				t.Errorf("%s failed: %v", name, err)
 			}

@@ -36,7 +36,7 @@ final class OneTimeCodeUITests: HisarUITestCase {
         saveScreenshot("otp-editor-invalid")
         let oneTimePasswordField = app.textFields["editor-one-time-password"]
         oneTimePasswordField.tap()
-        oneTimePasswordField.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + Self.setupKey)
+        typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 20) + Self.setupKey, into: oneTimePasswordField, showing: Self.setupKey)
         type("accounts.example.com", into: app.textFields["editor-website-0"])
         saveScreenshot("otp-editor")
         app.buttons["editor-save"].tap()

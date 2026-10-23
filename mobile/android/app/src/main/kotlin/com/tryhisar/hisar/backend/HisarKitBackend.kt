@@ -421,8 +421,8 @@ class HisarKitBackend(
     override fun previewAccountDeletion(): AccountDeletionPreview =
         decode(AccountDeletionPreview.serializer(), call { previewAccountDeletion() })
 
-    override fun deleteAccount(password: String, email: String): VaultStatus =
-        decode(VaultStatus.serializer(), call { deleteAccount(password, email) })
+    override fun deleteAccountWithPlan(password: String, email: String, planVersion: String): VaultStatus =
+        decode(VaultStatus.serializer(), call { deleteAccountWithPlan(password, email, planVersion) })
 
     override fun dismissSignedOutReason(): VaultStatus = readStatus(call { dismissSignedOutReason() })
 

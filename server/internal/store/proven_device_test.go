@@ -45,9 +45,9 @@ func TestProvenChangesLockDevicesBeforeSessions(t *testing.T) {
 					_, err = database.UpdateAccountCredentials(ctx, &CredentialUpdate{AccountID: "ALICE1", TokenHash: session.TokenHash, ProvenRecordHash: testRecordHash(),
 						Argon2Params: []byte(`{}`), Salt: []byte{2}, OpaqueRecord: []byte{2}, EncKeyset: []byte{2}})
 				case "admin delete":
-					_, err = database.DeleteAccountAsAdmin(ctx, admin, "ALICE1")
+					_, err = database.DeleteAccountAsAdmin(ctx, admin, "ALICE1", reviewStoreDeletion(t, database, ctx, "ALICE1"))
 				default:
-					_, err = database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash())
+					_, err = database.DeleteAccount(ctx, "ALICE1", session.TokenHash, testRecordHash(), reviewStoreDeletion(t, database, ctx, "ALICE1"))
 				}
 				proved <- err
 			}()
@@ -61,8 +61,8 @@ func TestProvenChangesLockDevicesBeforeSessions(t *testing.T) {
 				t.Errorf("device revocation: %v", deletionErr)
 			}
 			if operation == "delete with another device" || operation == "admin delete" {
-				if proofErr != nil {
-					t.Errorf("deletion from an unaffected session: %v", proofErr)
+				if !errors.Is(proofErr, ErrDeletionPlanChanged) {
+					t.Errorf("deletion reviewed before a device was revoked must ask for a new review, got %v", proofErr)
 				}
 			} else if !errors.Is(proofErr, ErrNotFound) {
 				t.Errorf("proven operation should see ended session, got %v", proofErr)

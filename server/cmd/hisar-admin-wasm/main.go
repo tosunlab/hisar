@@ -54,12 +54,15 @@ func main() {
 }
 
 // exportCall turns call into a JavaScript function that returns a Promise and runs call in a goroutine, because
-// net/http waits on fetch, which needs the JavaScript event loop to keep running.
+// net/http waits on fetch, which needs the JavaScript event loop to keep running. An undefined or null argument
+// arrives as "", the value every call reads as absent; String would make it "<undefined>" or "<null>".
 func exportCall(call func(ctx context.Context, arguments []string) (js.Value, error)) js.Func {
 	return js.FuncOf(func(_ js.Value, values []js.Value) any {
 		arguments := make([]string, len(values))
 		for index, value := range values {
-			arguments[index] = value.String()
+			if !value.IsUndefined() && !value.IsNull() {
+				arguments[index] = value.String()
+			}
 		}
 		executor := js.FuncOf(func(_ js.Value, settle []js.Value) any {
 			resolve, reject := settle[0], settle[1]
@@ -138,7 +141,18 @@ func reauthenticate(ctx context.Context, arguments []string) (js.Value, error) {
 	defer clear(password)
 	client := newClient()
 	client.Token = arguments[0]
-	proof, err := session.Reauthenticate(ctx, client, arguments[1], password, secretKey)
+	action := ""
+	if len(arguments) > 4 {
+		action = arguments[4]
+	}
+	scope := apitypes.ReauthenticationScope{Action: action}
+	if len(arguments) > 5 {
+		scope.Target = arguments[5]
+	}
+	if len(arguments) > 6 {
+		scope.PlanVersion = arguments[6]
+	}
+	proof, err := session.ReauthenticateForScope(ctx, client, arguments[1], password, secretKey, scope)
 	if err != nil {
 		return js.Undefined(), err
 	}
