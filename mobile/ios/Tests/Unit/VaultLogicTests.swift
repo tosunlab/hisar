@@ -290,20 +290,20 @@ final class ModelDecodingTests: XCTestCase {
     }
 
     func testCardNumberIsGroupedAsTyped() {
-        XCTAssertEqual(ItemCard.formatNumberInput("4444555555555555"), "4444 5555 5555 5555")
-        XCTAssertEqual(ItemCard.formatNumberInput("44445"), "4444 5")
-        XCTAssertEqual(ItemCard.formatNumberInput("4444 "), "4444")
-        XCTAssertEqual(ItemCard.formatNumberInput("4111-1111-1111-1111"), "4111 1111 1111 1111")
-        XCTAssertEqual(ItemCard.formatNumberInput("378282246310005"), "3782 822463 10005")
-        XCTAssertEqual(ItemCard.formatNumberInput("36227206271667"), "3622 720627 1667")
-        XCTAssertEqual(ItemCard.formatNumberInput("3056930009020004"), "3056 9300 0902 0004")
-        XCTAssertEqual(ItemCard.formatNumberInput("Store card #12"), "Store card #12")
+        XCTAssertEqual(CardInput.formatNumber("4444555555555555"), "4444 5555 5555 5555")
+        XCTAssertEqual(CardInput.formatNumber("44445"), "4444 5")
+        XCTAssertEqual(CardInput.formatNumber("4444 "), "4444")
+        XCTAssertEqual(CardInput.formatNumber("4111-1111-1111-1111"), "4111 1111 1111 1111")
+        XCTAssertEqual(CardInput.formatNumber("378282246310005"), "3782 822463 10005")
+        XCTAssertEqual(CardInput.formatNumber("36227206271667"), "3622 720627 1667")
+        XCTAssertEqual(CardInput.formatNumber("3056930009020004"), "3056 9300 0902 0004")
+        XCTAssertEqual(CardInput.formatNumber("Store card #12"), "Store card #12")
     }
 
     func testExpiryIsWrittenAsMonthAndYearAsTyped() {
         let allCase = ["0": "0", "01": "01", "013": "01/3", "0130": "01/30", "01305": "01/30", "3": "03", "13": "01/3", "1/": "01/", "01/": "01/", "1/30": "01/30", "12/2030": "12/30", "2030-12": "12/30", "122030": "12/30", "": "", "soon": "soon"]
         for (typed, want) in allCase {
-            XCTAssertEqual(ItemCard.formatExpiryInput(typed), want, typed)
+            XCTAssertEqual(CardInput.formatExpiry(typed), want, typed)
         }
     }
 }

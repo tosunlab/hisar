@@ -278,8 +278,8 @@ struct ItemEditorView: View {
             set: { value in
                 var card = draft.card ?? ItemCard()
                 switch keyPath {
-                case \ItemCard.number: card.number = ItemCard.formatNumberInput(value)
-                case \ItemCard.expiry: card.expiry = ItemCard.formatExpiryInput(value)
+                case \ItemCard.number: card.number = CardInput.formatNumber(value)
+                case \ItemCard.expiry: card.expiry = CardInput.formatExpiry(value)
                 default: card[keyPath: keyPath] = value
                 }
                 draft.card = card
