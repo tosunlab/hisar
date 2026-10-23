@@ -15,6 +15,8 @@ import (
 	"errors"
 	"fmt"
 	"unsafe"
+
+	"github.com/tryhisar/hisar/core/app"
 )
 
 const (
@@ -71,6 +73,18 @@ func (biometric *Biometric) CancelPrompt() {
 	C.hisarBiometricCancel()
 }
 
+func (biometric *Biometric) PrepareStoreKey(accountID string) error {
+	C.hisarBiometricPrepareLoad(nil)
+	return nil
+}
+
+func (biometric *Biometric) PrepareLoadKey(accountID string) error {
+	account := C.CString(accountID)
+	defer C.free(unsafe.Pointer(account))
+	C.hisarBiometricPrepareLoad(account)
+	return nil
+}
+
 func (biometric *Biometric) StoreKey(accountID string, key []byte) error {
 	service, account := C.CString(biometric.service), C.CString(accountID)
 	defer C.free(unsafe.Pointer(service))
@@ -79,6 +93,9 @@ func (biometric *Biometric) StoreKey(accountID string, key []byte) error {
 		return errors.New("empty key")
 	}
 	if status := C.hisarKeychainStore(service, account, unsafe.Pointer(&key[0]), C.int(len(key))); status != 0 {
+		if status == -34018 {
+			return errors.New("Touch ID setup needs a signed Mac app with a macOS provisioning profile authorizing its keychain access group; use your master password until that build is installed")
+		}
 		return fmt.Errorf("keychain error %d", int(status))
 	}
 	return nil
@@ -90,7 +107,76 @@ func (biometric *Biometric) LoadKey(accountID string) ([]byte, error) {
 	defer C.free(unsafe.Pointer(account))
 	var data unsafe.Pointer
 	var length C.int
-	status := C.hisarKeychainLoad(service, account, &data, &length)
+	status := C.hisarKeychainLoad(service, account, 0, &data, &length)
+	if status == keychainNotFound {
+		return nil, ErrKeyNotFound
+	}
+	if status == -128 {
+		return nil, app.ErrBiometricCancelled
+	}
+	if status != 0 {
+		return nil, fmt.Errorf("keychain error %d", int(status))
+	}
+	defer C.free(data)
+	key := C.GoBytes(data, length)
+	C.memset(data, 0, C.size_t(length))
+	return key, nil
+}
+
+func (biometric *Biometric) DeleteKey(accountID string) error {
+	return deleteWrappingKey(nativeMigrationKeychain{biometric: biometric, accountID: accountID})
+}
+
+func (biometric *Biometric) IsKeyProtected(accountID string) bool {
+	service, account := C.CString(biometric.service), C.CString(accountID)
+	defer C.free(unsafe.Pointer(service))
+	defer C.free(unsafe.Pointer(account))
+	return C.hisarKeychainHasProtected(service, account) == 1 && C.hisarKeychainHasLegacy(service, account) == 0
+}
+
+func (biometric *Biometric) MigrateKey(accountID string, sealedUnlockKey []byte) error {
+	store := nativeMigrationKeychain{biometric: biometric, accountID: accountID}
+	if err := migrateWrappingKey(store, accountID, sealedUnlockKey); err != nil {
+		return err
+	}
+	if !biometric.IsKeyProtected(accountID) {
+		return errors.New("Touch ID protection needs to be set up again in Settings with your master password; a signed Mac app with a data-protection keychain provisioning profile is required")
+	}
+	return nil
+}
+
+type nativeMigrationKeychain struct {
+	biometric *Biometric
+	accountID string
+}
+
+func (store nativeMigrationKeychain) hasLegacy() bool {
+	service, account := C.CString(store.biometric.service), C.CString(store.accountID)
+	defer C.free(unsafe.Pointer(service))
+	defer C.free(unsafe.Pointer(account))
+	return C.hisarKeychainHasLegacy(service, account) == 1
+}
+
+func (store nativeMigrationKeychain) loadLegacy() ([]byte, error) {
+	return store.load(true)
+}
+
+func (store nativeMigrationKeychain) loadProtected() ([]byte, error) {
+	return store.load(false)
+}
+
+func (store nativeMigrationKeychain) load(legacy bool) ([]byte, error) {
+	service, account := C.CString(store.biometric.service), C.CString(store.accountID)
+	defer C.free(unsafe.Pointer(service))
+	defer C.free(unsafe.Pointer(account))
+	var data unsafe.Pointer
+	var length C.int
+	var status C.int
+	if legacy {
+		status = C.hisarKeychainLoadLegacy(service, account, &data, &length)
+	} else {
+		status = C.hisarKeychainLoad(service, account, 1, &data, &length)
+	}
 	if status == keychainNotFound {
 		return nil, ErrKeyNotFound
 	}
@@ -103,8 +189,22 @@ func (biometric *Biometric) LoadKey(accountID string) ([]byte, error) {
 	return key, nil
 }
 
-func (biometric *Biometric) DeleteKey(accountID string) error {
-	service, account := C.CString(biometric.service), C.CString(accountID)
+func (store nativeMigrationKeychain) storeProtected(key []byte) error {
+	return store.biometric.StoreKey(store.accountID, key)
+}
+
+func (store nativeMigrationKeychain) deleteLegacy() error {
+	service, account := C.CString(store.biometric.service), C.CString(store.accountID)
+	defer C.free(unsafe.Pointer(service))
+	defer C.free(unsafe.Pointer(account))
+	if status := C.hisarKeychainDeleteLegacy(service, account); status != 0 {
+		return fmt.Errorf("keychain error %d", int(status))
+	}
+	return nil
+}
+
+func (store nativeMigrationKeychain) deleteProtected() error {
+	service, account := C.CString(store.biometric.service), C.CString(store.accountID)
 	defer C.free(unsafe.Pointer(service))
 	defer C.free(unsafe.Pointer(account))
 	if status := C.hisarKeychainDelete(service, account); status != 0 {

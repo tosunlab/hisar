@@ -23,8 +23,12 @@ const MinimumPasswordLength = 10
 type CredentialChange struct {
 	SecretKey crypt.SecretKey
 	// AccountUnlockKey is the new key; the caller wipes it.
-	AccountUnlockKey     []byte
+	AccountUnlockKey []byte
+	// SignedOutDeviceCount is -1 when a lost answer was recovered without its device count.
 	SignedOutDeviceCount int
+	// IsCachedAccountStale: the cache still holds the keyset sealed with the old credentials, which would keep unlocking
+	// this device offline; the caller starts the cache over.
+	IsCachedAccountStale bool
 }
 
 type DeletionVault struct {
@@ -36,6 +40,7 @@ type DeletionVault struct {
 }
 
 type AccountDeletionPreview struct {
+	PlanVersion             string
 	OwnedVaults             []DeletionVault
 	MemberVaults            []DeletionVault
 	ShareLinkCount          int
@@ -54,16 +59,20 @@ func (s *Session) ChangeMasterPassword(ctx context.Context, currentPassword, new
 	if bytes.Equal(currentPassword, newPassword) {
 		return nil, ErrSamePassword
 	}
-	return s.changeCredentials(ctx, apitypes.CredentialChangeMasterPassword, currentPassword, secretKey, newPassword, secretKey)
+	return s.changeCredentials(ctx, apitypes.CredentialChangeMasterPassword, currentPassword, secretKey, newPassword, secretKey, nil)
 }
 
 // ReplaceSecretKey keeps the master password and the account ID; the old Secret Key and Emergency Kit stop working.
 func (s *Session) ReplaceSecretKey(ctx context.Context, password []byte, currentSecretKey crypt.SecretKey) (*CredentialChange, error) {
+	return s.ReplaceSecretKeyWithRecovery(ctx, password, currentSecretKey, nil)
+}
+
+func (s *Session) ReplaceSecretKeyWithRecovery(ctx context.Context, password []byte, currentSecretKey crypt.SecretKey, stage StagePendingFactor) (*CredentialChange, error) {
 	newSecretKey, err := crypt.GenerateSecretKey(s.AccountID)
 	if err != nil {
 		return nil, err
 	}
-	return s.changeCredentials(ctx, apitypes.CredentialChangeSecretKey, password, currentSecretKey, password, newSecretKey)
+	return s.changeCredentials(ctx, apitypes.CredentialChangeSecretKey, password, currentSecretKey, password, newSecretKey, stage)
 }
 
 type verifiedAccount struct {
@@ -119,8 +128,16 @@ func Reauthenticate(ctx context.Context, client *apiclient.Client, email string,
 	return reauthenticate(ctx, client, email, password, secretKey, nil)
 }
 
+func ReauthenticateForScope(ctx context.Context, client *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey, scope apitypes.ReauthenticationScope) (apitypes.ReauthenticationProof, error) {
+	return reauthenticateForScope(ctx, client, email, password, secretKey, nil, scope)
+}
+
 // reauthenticate is Reauthenticate for a caller that holds the account's keyset, which the server's keyset must match.
 func reauthenticate(ctx context.Context, client *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey, sessionKeyset *crypt.Keyset) (apitypes.ReauthenticationProof, error) {
+	return reauthenticateForScope(ctx, client, email, password, secretKey, sessionKeyset, apitypes.ReauthenticationScope{})
+}
+
+func reauthenticateForScope(ctx context.Context, client *apiclient.Client, email string, password []byte, secretKey crypt.SecretKey, sessionKeyset *crypt.Keyset, scope apitypes.ReauthenticationScope) (apitypes.ReauthenticationProof, error) {
 	verified, err := verifyCredentials(ctx, client, password, secretKey, sessionKeyset)
 	if err != nil {
 		return apitypes.ReauthenticationProof{}, err
@@ -129,7 +146,7 @@ func reauthenticate(ctx context.Context, client *apiclient.Client, email string,
 	if !strings.EqualFold(verified.account.Email, strings.TrimSpace(email)) {
 		return apitypes.ReauthenticationProof{}, ErrEmailMismatch
 	}
-	proof, _, err := proveCredentials(ctx, client, verified.currentKeys.AuthKey, verified.account.AccountID, nil)
+	proof, _, err := proveCredentialsForScope(ctx, client, verified.currentKeys.AuthKey, verified.account.AccountID, nil, scope)
 	return proof, err
 }
 
@@ -145,7 +162,7 @@ func strongerArgon2Params(current crypt.Argon2Params) crypt.Argon2Params {
 	return params
 }
 
-func (s *Session) changeCredentials(ctx context.Context, change string, currentPassword []byte, currentSecretKey crypt.SecretKey, newPassword []byte, newSecretKey crypt.SecretKey) (*CredentialChange, error) {
+func (s *Session) changeCredentials(ctx context.Context, change string, currentPassword []byte, currentSecretKey crypt.SecretKey, newPassword []byte, newSecretKey crypt.SecretKey, stage StagePendingFactor) (*CredentialChange, error) {
 	verified, err := s.verifyCurrentCredentials(ctx, currentPassword, currentSecretKey)
 	if err != nil {
 		return nil, err
@@ -169,7 +186,7 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 	if err != nil {
 		return nil, err
 	}
-	response, err := s.Client.ChangeCredentials(ctx, &apitypes.ChangeCredentialsRequest{
+	request := &apitypes.ChangeCredentialsRequest{
 		ReauthenticationID: proof.ReauthenticationID,
 		KE3:                proof.KE3,
 		Change:             change,
@@ -177,20 +194,38 @@ func (s *Session) changeCredentials(ctx context.Context, change string, currentP
 		Salt:               credential.salt,
 		Argon2:             credential.argon2Params,
 		EncKeyset:          credential.encryptedKeyset,
-	})
+	}
+	if stage != nil {
+		if err := stage(PendingFactor{Kind: "replace-secret-key", SecretKey: newSecretKey.Encode(), PriorSecretKey: currentSecretKey.Encode(), EncryptedKeyset: credential.encryptedKeyset, PriorEncryptedKeyset: verified.account.EncKeyset, Credentials: request}); err != nil {
+			return nil, err
+		}
+	}
+	response, err := s.Client.ChangeCredentials(ctx, request)
 	if err != nil {
-		return nil, convertReauthenticationError(err)
+		if !apiclient.IsUnreachable(err) || !s.holdsKeyset(ctx, credential.encryptedKeyset) {
+			return nil, convertReauthenticationError(err)
+		}
+		response = &apitypes.ChangeCredentialsResponse{SignedOutDeviceCount: -1}
 	}
-	if s.Cache != nil {
-		updatedAccount := *verified.account
-		updatedAccount.Salt, updatedAccount.Argon2, updatedAccount.EncKeyset = credential.salt, credential.argon2Params, credential.encryptedKeyset
-		s.Cache.SaveAccount(&updatedAccount)
-	}
-	return &CredentialChange{
+	credentialChange := &CredentialChange{
 		SecretKey:            newSecretKey,
 		AccountUnlockKey:     append([]byte(nil), newKeys.AccountUnlockKey...),
 		SignedOutDeviceCount: response.SignedOutDeviceCount,
-	}, nil
+	}
+	updatedAccount := *verified.account
+	updatedAccount.Salt, updatedAccount.Argon2, updatedAccount.EncKeyset = credential.salt, credential.argon2Params, credential.encryptedKeyset
+	s.verifiedAccount = &updatedAccount
+	if s.Cache != nil {
+		credentialChange.IsCachedAccountStale = s.Cache.SaveAccount(&updatedAccount) != nil
+	}
+	return credentialChange, nil
+}
+
+// holdsKeyset reports whether the server now has encryptedKeyset, a sealing no other request could have sent: a change
+// whose answer was lost was made, and its new credentials are the only ones that work.
+func (s *Session) holdsKeyset(ctx context.Context, encryptedKeyset []byte) bool {
+	account, err := s.Client.GetAccount(ctx)
+	return err == nil && bytes.Equal(account.EncKeyset, encryptedKeyset)
 }
 
 // A failed proof is 403, never 401: clients treat 401 as a signed-out device.
@@ -206,6 +241,9 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 	if err != nil {
 		return nil, err
 	}
+	if response.PlanVersion == "" {
+		return nil, errors.New("update the Hisar server to review an account deletion plan")
+	}
 	vaultNames := map[string]string{}
 	if vaults, err := s.ListVaults(ctx); err == nil {
 		for index := range vaults {
@@ -214,6 +252,7 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 		}
 	}
 	preview := &AccountDeletionPreview{
+		PlanVersion:             response.PlanVersion,
 		OwnedVaults:             []DeletionVault{},
 		MemberVaults:            []DeletionVault{},
 		ShareLinkCount:          response.ShareLinkCount,
@@ -236,17 +275,20 @@ func (s *Session) PreviewAccountDeletion(ctx context.Context) (*AccountDeletionP
 }
 
 // DeleteAccount proves the master password to the server with OPAQUE; the password itself never leaves the device.
-func (s *Session) DeleteAccount(ctx context.Context, password []byte, secretKey crypt.SecretKey, email string) error {
+func (s *Session) DeleteAccount(ctx context.Context, password []byte, secretKey crypt.SecretKey, email, planVersion string) error {
 	if !strings.EqualFold(strings.TrimSpace(email), s.Email) {
 		return ErrEmailMismatch
 	}
 	if secretKey.AccountID != s.AccountID {
 		return ErrBadCredentials
 	}
-	proof, err := reauthenticate(ctx, s.Client, email, password, secretKey, s.Keyset)
+	if planVersion == "" {
+		return errors.New("review the account deletion plan before confirming")
+	}
+	proof, err := reauthenticateForScope(ctx, s.Client, email, password, secretKey, s.Keyset, apitypes.ReauthenticationScope{Action: "account-delete", Target: s.AccountID, PlanVersion: planVersion})
 	if err != nil {
 		return err
 	}
-	err = s.Client.DeleteAccount(ctx, &apitypes.DeleteAccountRequest{ReauthenticationID: proof.ReauthenticationID, KE3: proof.KE3, Email: strings.TrimSpace(email)})
+	err = s.Client.DeleteAccount(ctx, &apitypes.DeleteAccountRequest{ReauthenticationID: proof.ReauthenticationID, KE3: proof.KE3, Email: strings.TrimSpace(email), PlanVersion: planVersion})
 	return convertReauthenticationError(err)
 }

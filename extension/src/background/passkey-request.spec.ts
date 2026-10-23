@@ -34,6 +34,7 @@ describe("validatePasskeyRequest", () => {
       isValid: true,
       request: {
         kind: "create",
+        userVerification: "preferred",
         relyingPartyID: "example.com",
         relyingPartyName: "Example",
         userHandle: "AQID",
@@ -76,7 +77,7 @@ describe("validatePasskeyRequest", () => {
   it("reads assertions, conditional ones included, and ignores unknown descriptor types", () => {
     expect(validatePasskeyRequest(createAssertion({ allowCredentials: [{ type: "public-key", id: "AQ" }, { type: "other", id: "Ag" }] }, "conditional"))).toEqual({
       isValid: true,
-      request: { kind: "get", relyingPartyID: "example.com", challenge, allAllowedCredentialID: ["AQ"], isConditional: true },
+      request: { kind: "get", userVerification: "preferred", relyingPartyID: "example.com", challenge, allAllowedCredentialID: ["AQ"], isConditional: true },
     });
   });
 });

@@ -44,8 +44,13 @@ func readCOSEPublicKey(t *testing.T, authenticatorData []byte) *ecdsa.PublicKey 
 	return &ecdsa.PublicKey{Curve: elliptic.P256(), X: new(big.Int).SetBytes(coseKey[10:42]), Y: new(big.Int).SetBytes(coseKey[45:77])}
 }
 
+type passkeyVerifier struct{}
+
+func (passkeyVerifier) AuthenticatePasskey(string) error { return nil }
+
 func checkPasskeyFlow(t *testing.T, hisar *Hisar, personalID, itemID string) {
 	t.Helper()
+	hisar.SetPasskeyVerifier(passkeyVerifier{})
 	clientDataHash := sha256.Sum256([]byte(`{"type":"webauthn.create","challenge":"AQID","origin":"https://github.com"}`))
 	prepared := decodeJSON[struct {
 		IsExcluded bool `json:"isExcluded"`
@@ -57,7 +62,8 @@ func checkPasskeyFlow(t *testing.T, hisar *Hisar, personalID, itemID string) {
 		t.Fatalf("prepare = %+v", prepared)
 	}
 	registration, _ := json.Marshal(map[string]any{
-		"relyingPartyId": "github.com", "userName": "octocat", "userHandle": base64.RawURLEncoding.EncodeToString([]byte("octocat-id")),
+		"userVerification": "required",
+		"relyingPartyId":   "github.com", "userName": "octocat", "userHandle": base64.RawURLEncoding.EncodeToString([]byte("octocat-id")),
 		"clientDataHash": base64.RawURLEncoding.EncodeToString(clientDataHash[:]), "vaultID": personalID, "itemID": itemID,
 	})
 	created := decodeJSON[struct {
@@ -82,19 +88,20 @@ func checkPasskeyFlow(t *testing.T, hisar *Hisar, personalID, itemID string) {
 	}
 
 	assertionHash := sha256.Sum256([]byte(`{"type":"webauthn.get","challenge":"BAUG","origin":"https://github.com"}`))
+	assertionJSON, _ := json.Marshal(map[string]string{"relyingPartyId": "github.com", "credentialId": created.CredentialID, "clientDataHash": base64.RawURLEncoding.EncodeToString(assertionHash[:]), "userVerification": "required"})
 	assertion := decodeJSON[struct {
 		CredentialID      string `json:"credentialId"`
 		AuthenticatorData string `json:"authenticatorData"`
 		Signature         string `json:"signature"`
 		UserHandle        string `json:"userHandle"`
-	}](t)(hisar.AssertPasskey("github.com", created.CredentialID, base64.RawURLEncoding.EncodeToString(assertionHash[:])))
+	}](t)(hisar.AssertPasskeyWithPolicy(string(assertionJSON)))
 	assertionData := decodeBase64URL(t, assertion.AuthenticatorData)
 	signedData := sha256.Sum256(append(assertionData, assertionHash[:]...))
 	if !ecdsa.VerifyASN1(publicKey, signedData[:], decodeBase64URL(t, assertion.Signature)) || assertionData[32] != 0x1d || string(decodeBase64URL(t, assertion.UserHandle)) != "octocat-id" {
 		t.Fatalf("assertion = %+v", assertion)
 	}
-	if _, err := hisar.AssertPasskey("github.com.evil.net", created.CredentialID, base64.RawURLEncoding.EncodeToString(assertionHash[:])); err == nil {
-		t.Error("signed for another relying party")
+	if _, err := hisar.AssertPasskey("github.com", created.CredentialID, base64.RawURLEncoding.EncodeToString(assertionHash[:])); err == nil {
+		t.Error("legacy policy-unaware API remained usable")
 	}
 
 	itemWithoutPasskey := decodeJSON[map[string]any](t)(hisar.GetItem(personalID, itemID))

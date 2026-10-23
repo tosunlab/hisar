@@ -59,6 +59,7 @@ async function close(): Promise<void> {
         <span v-for="(part, index) in allKeyPart" :key="index" class="key-part monospace">{{ part }}</span>
       </div>
       <p v-if="result.keychainError" class="error" role="alert" data-testid="keychain-error">{{ result.keychainError }}</p>
+      <p v-if="result.localError" class="error" role="alert" data-testid="credential-local-error">{{ result.localError }}</p>
       <ul class="consequences" data-testid="replace-secret-key-done">
         <li>Your old Secret Key and Emergency Kit no longer work.</li>
         <li>{{ describeSignedOutDevices(result.signedOutDeviceCount) }} Sign in on them with your master password and the new Secret Key.</li>

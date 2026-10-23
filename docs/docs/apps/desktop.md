@@ -36,6 +36,19 @@ open desktop/bin/Hisar.app
 
 For development with hot reload: `cd desktop && wails3 dev`.
 
+Touch ID wrapping keys use the macOS data-protection keychain. Ad-hoc builds can use password unlock but cannot set up
+OS-protected Touch ID. For a team-signed local build, set `HISAR_SIGNING_IDENTITY` and
+`HISAR_MACOS_PROVISIONING_PROFILE` to a matching macOS Developer ID profile. The profile must authorize team
+`589NVZWDWZ`, the app's bundle identifier, and keychain group `589NVZWDWZ.<bundle identifier>`. An iOS profile does not work.
+The signing script checks the profile, embeds it, and emits the authorized entitlements. Password unlock migrates an old
+wrapper only after a protected readback succeeds. A missing profile leaves password unlock available and shows the setup
+error instead of claiming that Touch ID protection is active. Enrollment changes require password fallback and fresh setup.
+
+For the printable kit QR smoke on macOS, run `HISAR_TEST_KIT_PDF=/tmp/hisar-kit.pdf go test ./core/emergencykit -run
+TestGenerateProducesSinglePagePDF -count=1` from the repository root, then
+`swift scripts/test-emergency-kit-qr.swift /tmp/hisar-kit.pdf`. This renders the actual PDF and decodes its QR with Vision.
+It does not verify external camera applications or signed Touch ID behavior.
+
 ### DMG and releases
 
 `make package-desktop-dmg VERSION=0.1.0` builds a universal (Apple silicon and Intel) `Hisar.app` with Sparkle embedded,
@@ -55,7 +68,8 @@ builds on a GitHub-hosted macOS runner and Linux runners. The GitHub prerelease 
 Nobody gets it as an automatic update until the run's Publish job is approved, which renames the file to `update.json` and
 marks the release as the latest. A custom build such as `desktop-1.0.0-alpha-test` has no zip or update and can't be
 published. The build needs the repository secrets `SPARKLE_PRIVATE_KEY`; `MACOS_SIGNING_CERTIFICATE` (the team's
-Developer ID Application `.p12`, base64) and `MACOS_SIGNING_CERTIFICATE_PASSWORD`; and the App Store Connect API key that
+Developer ID Application `.p12`, base64), `MACOS_SIGNING_CERTIFICATE_PASSWORD`, and `MACOS_PROVISIONING_PROFILE` (a matching
+macOS Developer ID provisioning profile, base64); and the App Store Connect API key that
 notarizes the app and the DMG: `APPLE_NOTARY_KEY` (the `.p8`, base64), `APPLE_NOTARY_KEY_ID` and `APPLE_NOTARY_ISSUER_ID`.
 
 ### Automatic updates
@@ -196,9 +210,11 @@ Design: [Design](../design.md) §4.5 (categories) and §9.4.1 (secret references
 
 Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: [Design](../design.md) §9.7).
 
-1. Choose the vault (only vaults you can edit) and the format, or let Hisar detect it, then pick the file in the open dialog: a 1Password `.1pux` or CSV export, an unencrypted Bitwarden `.json` or CSV export, or a CSV export from Chrome, Edge, Firefox, Safari or another manager (header row with columns such as title, username, password, url, notes).
+1. Choose the format, or let Hisar detect it, then pick the file. Hisar reads 1Password `.1pux` and CSV, unencrypted Bitwarden JSON and CSV, LastPass CSV, and browser CSV exports. The initial destination is Personal, even when you opened Import from a shared vault.
 2. The preview counts logins, secure notes, SSH keys, credit cards, identities, API credentials and addresses, lists what is not imported and why (documents, archived items, passphrase-protected SSH keys), and lists items already in the vault, which are skipped unless you untick the box. A login matches on its title, username and website, a card on its title and last four digits, an identity on its title, name, email and first document number, an API credential on its title and key ID (or host, or secret when it has neither), and an address on its title, street, postal code and country. Nothing is saved before **Import**.
+   Each 1Password vault or Bitwarden organization and collection set has its own destination selector. Leave private source groups in Personal unless you intend to share them. To use a shared destination, select it explicitly and review its current members and roles. The import never creates sharing grants or source vaults automatically.
 3. Items are saved in batches of 10 with a progress bar; if the connection drops, **Try again** continues where it stopped. Locking Hisar discards the parsed file.
+   If destination membership changes, saving stops before the next item is committed. Choose **Stop and keep the source file**, then preview the source again to review the new access scope. Already saved items remain in their chosen vaults. Later sharing changes can still expose those saved items.
 4. The export holds every password in plain text, so Hisar offers to delete it (**Delete file** removes it directly, not through the Trash).
 
 ## Browser extension bridge

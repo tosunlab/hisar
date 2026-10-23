@@ -62,6 +62,7 @@ test("decrypts a link created by the Go client, and counts a view only on Reveal
   await page.getByRole("button", { name: "Reveal" }).click();
   await expect(page.getByRole("heading", { name: "GitHub" })).toBeVisible();
   expect(allPublicRequest).toHaveLength(1);
+  expect(page.url()).toBe(fixture.links.item.split("#")[0]);
   await expect(page.locator("#link-status")).toContainText("2 more views allowed");
 
   const passwordField = page.locator(".field", { has: page.getByText("Password", { exact: true }) });
@@ -87,6 +88,7 @@ test("asks for the passphrase, and a wrong one costs no view", async ({ page }) 
   await page.goto(fixture.links.passphrase);
   await page.getByRole("button", { name: "Reveal" }).click();
   await expect(page.getByRole("heading", { name: "Enter the passphrase" })).toBeVisible();
+  expect(page.url()).toBe(fixture.links.passphrase.split("#")[0]);
 
   await page.getByLabel("Passphrase").fill("wrong horse battery staple");
   await page.getByRole("button", { name: "Unlock" }).click();

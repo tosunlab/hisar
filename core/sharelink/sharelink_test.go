@@ -201,6 +201,32 @@ func TestServerSSHKeyLinkIsNotShareable(t *testing.T) {
 	if keys := ListAvailableFieldKeys(&login); !slices.Equal(keys, []string{GetCustomFieldKey(0)}) {
 		t.Errorf("a login's SSH key field is not shareable: %q", keys)
 	}
+	if _, err := BuildItemPayload(&server, []string{GetCustomFieldKey(1)}); err == nil {
+		t.Error("a server's SSH key field was shared when asked for by key")
+	}
+}
+
+// TestConvertedOneTimePasswordIsNotShareable: a login that becomes another category keeps its one-time password in a
+// custom field, and that secret stays as unshareable as it was in the login.
+func TestConvertedOneTimePasswordIsNotShareable(t *testing.T) {
+	converted := item.Item{
+		Overview: item.Overview{Title: "GitHub", Username: "alper"},
+		Details:  item.Details{OneTimePassword: oneTimePasswordText, Fields: []item.Field{{Name: "Backup", Value: "  OTPAUTH://totp/x?secret=GEZDGNBV"}}},
+	}
+	converted.MoveLoginDataToFields()
+	converted.Overview.Category = item.CategorySecureNote
+	oneTimePasswordKey, err := FindFieldKey(&converted, "One-time password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if keys := ListAvailableFieldKeys(&converted); !slices.Equal(keys, []string{GetCustomFieldKey(1)}) {
+		t.Errorf("available keys = %q in %+v", keys, converted.Details.Fields)
+	}
+	for _, key := range []string{oneTimePasswordKey, GetCustomFieldKey(0)} {
+		if payload, err := BuildItemPayload(&converted, []string{key}); err == nil {
+			t.Errorf("field %s shared: %+v", key, payload.Fields)
+		}
+	}
 }
 
 func TestAndroidAppsAreNotSharedAsWebsites(t *testing.T) {

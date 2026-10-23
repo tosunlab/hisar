@@ -622,8 +622,8 @@ func TestClearDuringApprovalDiscardsResult(t *testing.T) {
 	fixture.approver.onApprove = fixture.server.ClearApprovals
 	address := startSSHServer(t, getPublicKey(t, key))
 	for range 2 {
-		if err := fixture.connectSSH(t, address); err != nil {
-			t.Fatal(err)
+		if err := fixture.connectSSH(t, address); err == nil {
+			t.Fatal("signed with a key read before Hisar locked during the approval")
 		}
 	}
 	if count := fixture.approver.countRequest(); count != 2 {
@@ -819,6 +819,94 @@ func TestUnlockApprovalStillAsksForAlwaysAskKey(t *testing.T) {
 	}
 	if count := fixture.approver.countRequest(); count != 2 {
 		t.Errorf("approval count = %d, want 2", count)
+	}
+}
+
+func TestUnlockCoversTheConnectionUntilHisarLocks(t *testing.T) {
+	materials := getTestMaterials()
+	firstKey, secondKey := createTestKey(t, "first", "Work", materials["ed25519"]), createTestKey(t, "second", "Deploy", materials["rsa"])
+	fixture := startAgent(t, []Key{firstKey, secondKey})
+	fixture.approver.setRemembered(false)
+	fixture.source.setLockedWith(true)
+	fixture.approver.onApprove = func() { fixture.source.setLockedWith(false) }
+	agentClient := fixture.dialAgent(t)
+	if _, err := agentClient.List(); err != nil {
+		t.Fatal(err)
+	}
+	fixture.approver.onApprove = nil
+	for count, signature := range []struct {
+		key  Key
+		data []byte
+	}{{firstKey, []byte("login")}, {secondKey, []byte("other login")}, {firstKey, buildSignatureData("file")}} {
+		if _, err := agentClient.Sign(getPublicKey(t, signature.key), signature.data); err != nil {
+			t.Fatal(err)
+		}
+		if got := fixture.approver.countRequest(); got != 1 {
+			t.Errorf("signature %d on the unlocked connection asked again: approval count = %d", count+1, got)
+		}
+	}
+	fixture.server.ClearApprovals()
+	if _, err := agentClient.Sign(getPublicKey(t, firstKey), []byte("after lock")); err != nil {
+		t.Fatal(err)
+	}
+	if got := fixture.approver.countRequest(); got != 2 {
+		t.Errorf("the unlock covered a signature after Hisar locked: approval count = %d", got)
+	}
+}
+
+func TestUnlockApprovalEndsWhenHisarLocks(t *testing.T) {
+	key := createTestKey(t, "id", "Work", getTestMaterials()["ed25519"])
+	fixture := startAgent(t, []Key{key})
+	fixture.approver.setRemembered(false)
+	fixture.source.setLockedWith(true)
+	fixture.approver.onApprove = func() { fixture.source.setLockedWith(false) }
+	agentClient := fixture.dialAgent(t)
+	if _, err := agentClient.List(); err != nil {
+		t.Fatal(err)
+	}
+	fixture.approver.onApprove = nil
+	fixture.server.ClearApprovals()
+	if _, err := agentClient.Sign(getPublicKey(t, key), []byte("data")); err != nil {
+		t.Fatal(err)
+	}
+	if count := fixture.approver.countRequest(); count != 2 {
+		t.Errorf("an unlock from before the lock covered a signature: approval count = %d", count)
+	}
+}
+
+func TestUnlockFromBeforeALockGrantsNothing(t *testing.T) {
+	materials := getTestMaterials()
+	accountA, accountB := createTestKey(t, "a", "Account A", materials["ed25519"]), createTestKey(t, "b", "Account B", materials["rsa"])
+	for _, test := range []struct {
+		name       string
+		keysAfter  []Key
+		signingKey Key
+	}{
+		{"account switch", []Key{accountB}, accountB},
+		{"sign-out and sign-in", []Key{accountA}, accountA},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			fixture := startAgent(t, []Key{accountA})
+			fixture.approver.setRemembered(false)
+			fixture.source.setLockedWith(true)
+			fixture.approver.onApprove = func() {
+				fixture.server.ClearApprovals()
+				fixture.source.mutex.Lock()
+				fixture.source.keys, fixture.source.isLocked = test.keysAfter, false
+				fixture.source.mutex.Unlock()
+			}
+			agentClient := fixture.dialAgent(t)
+			if keys, err := agentClient.List(); err == nil {
+				t.Errorf("an unlock asked for before the lock listed %d keys", len(keys))
+			}
+			fixture.approver.onApprove = nil
+			if _, err := agentClient.Sign(getPublicKey(t, test.signingKey), []byte("login")); err != nil {
+				t.Fatal(err)
+			}
+			if count := fixture.approver.countRequest(); count != 2 {
+				t.Errorf("an unlock from before the lock covered a signature: approval count = %d", count)
+			}
+		})
 	}
 }
 

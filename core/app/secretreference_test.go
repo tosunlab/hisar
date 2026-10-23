@@ -144,3 +144,134 @@ func TestCopySecretReference(t *testing.T) {
 		t.Error("a missing item was referenced")
 	}
 }
+
+// TestCopySecretReferenceNeverNamesAnotherObjectsID: the resolver tries IDs before names, so a title or vault name
+// that is another item's or vault's ID must not be used as a name.
+func TestCopySecretReferenceNeverNamesAnotherObjectsID(t *testing.T) {
+	testService := createUnlockedTestService(t)
+	service, personalID := testService.service, testService.personalID
+	target, err := service.SaveItem(personalID, ItemDetail{Title: "Target", Password: "target-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	impostor, err := service.SaveItem(personalID, ItemDetail{Title: target.ID, Password: "impostor-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	shadowVaultID := createSharedTestVault(t, service, testService.familyID)
+	inside, err := service.SaveItem(shadowVaultID, ItemDetail{Title: "Inside", Password: "inside-password"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, testCase := range []struct{ vaultID, itemID, want string }{
+		{personalID, impostor.ID, "impostor-password"},
+		{shadowVaultID, inside.ID, "inside-password"},
+	} {
+		reference, err := service.CopySecretReference(testCase.vaultID, testCase.itemID, "password")
+		if err != nil {
+			t.Fatal(err)
+		}
+		resolvedReferences, err := secretreference.ResolveAll(serviceSecretSource{service: service, ctx: t.Context()}, []string{reference}, service.config.Now())
+		if err != nil || resolvedReferences[0].Value != testCase.want {
+			t.Errorf("%s resolves to %+v, %v; want %q", reference, resolvedReferences, err, testCase.want)
+		}
+	}
+}
+
+// A vault whose name did not open may have any name, so while one does not open a reference by vault name is refused:
+// that vault may be the one it means. A reference by vault ID still resolves, also into the vault whose name is unreadable.
+func TestSecretReferenceRefusesVaultNamesWhileAVaultNameDoesNotOpen(t *testing.T) {
+	test := createCommandLineTest(t)
+	f := test.testService
+	saveTestItem(t, f.service, f.familyID, ItemDetail{Title: "Deploy", Password: "unreadable-name-password"})
+	readable, err := f.service.CreateVault("Family")
+	if err != nil {
+		t.Fatal(err)
+	}
+	saveTestItem(t, f.service, readable.ID, ItemDetail{Title: "Deploy", Password: "readable-name-password"})
+	judgeCorruptFamilyName(t, f)
+
+	failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{"hisar://Family/Deploy/password"}}, nil)
+	if !strings.HasPrefix(failure, "not-found: hisar://Family/Deploy/password: ") || !strings.Contains(failure, "use the vault's ID") || strings.Contains(failure, "name-password") {
+		t.Errorf("a vault name beside a vault whose name did not open: %q", failure)
+	}
+	var result cliprotocol.ResolveSecretResult
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{
+		"hisar://" + readable.ID + "/Deploy/password", "hisar://" + f.familyID + "/Deploy/password",
+	}}, &result)
+	if !slices.Equal(result.Values, []string{"readable-name-password", "unreadable-name-password"}) {
+		t.Errorf("vault IDs beside a vault whose name did not open: %q", result.Values)
+	}
+}
+
+// Agents resolve among the vaults available to them, so only a vault among those whose name did not open refuses their
+// vault names.
+func TestAgentSecretReferenceRefusesVaultNamesWhileAnAgentVaultNameDoesNotOpen(t *testing.T) {
+	test := createAgentSessionTest(t, false)
+	f := test.testService
+	saveTestItem(t, f.service, f.familyID, ItemDetail{Title: "Deploy token", Password: "family-token-value"})
+	judgeCorruptFamilyName(t, f)
+	connection := test.connect(t)
+	test.runDeploy(t, connection)
+
+	if _, err := f.service.SetVaultAvailableToAgents(f.familyID, true); err != nil {
+		t.Fatal(err)
+	}
+	failure := connection.send(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{deployTokenReference}, CommandLine: []string{"make", "deploy"}}, nil)
+	if !strings.HasPrefix(failure, "not-found: ") || !strings.Contains(failure, "use the vault's ID") || strings.Contains(failure, "token-value") {
+		t.Errorf("an agent's vault name beside an agent vault whose name did not open: %q", failure)
+	}
+	var result cliprotocol.ResolveSecretResult
+	connection.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeResolveSecret, References: []string{
+		"hisar://" + f.personalID + "/Deploy%20token/password", "hisar://" + f.familyID + "/Deploy%20token/password",
+	}, CommandLine: []string{"make", "deploy"}}, &result)
+	if !slices.Equal(result.Values, []string{"deploy-token-value", "family-token-value"}) {
+		t.Errorf("agent vault IDs beside an agent vault whose name did not open: %q", result.Values)
+	}
+}
+
+// A reference Hisar hands out while a vault name does not open keeps finding its item once that name opens again and
+// turns out to be the same as the item's vault's.
+func TestHandedOutReferencesKeepTheirItemWhenAnUnreadableVaultNameReturns(t *testing.T) {
+	f := createUnlockedTestService(t)
+	readable, err := f.service.CreateVault("Family")
+	if err != nil {
+		t.Fatal(err)
+	}
+	deploy := saveTestItem(t, f.service, readable.ID, ItemDetail{Title: "Deploy", Password: "readable-name-password"})
+	name := judgeCorruptFamilyName(t, f)
+	if _, err := f.service.ListVaults(); err != nil {
+		t.Fatal(err)
+	}
+	copied, err := f.service.CopySecretReference(readable.ID, deploy.ID, "password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	launcherItems, err := f.service.listLauncherItems()
+	if err != nil {
+		t.Fatal(err)
+	}
+	references := []string{copied}
+	for _, launcherItem := range launcherItems.Items {
+		for _, reference := range launcherItem.References {
+			if launcherItem.ID == deploy.ID && reference.Field == "password" {
+				references = append(references, reference.Reference)
+			}
+		}
+	}
+	if len(references) != 2 {
+		t.Fatalf("references %q", references)
+	}
+
+	f.apiServer.mutex.Lock()
+	for index := range f.apiServer.vaults {
+		if f.apiServer.vaults[index].ID == f.familyID {
+			f.apiServer.vaults[index].EncName = name
+		}
+	}
+	f.apiServer.mutex.Unlock()
+	result, err := f.service.resolveSecrets(references)
+	if err != nil || !slices.Equal(result.Values, []string{"readable-name-password", "readable-name-password"}) {
+		t.Errorf("%q once both vaults are named Family: %q %v", references, result.Values, err)
+	}
+}

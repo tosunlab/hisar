@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/google/uuid"
+
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/pake"
 )
 
 // accountCredential is what signup generates: a new Secret Key, salt, keyset and OPAQUE record.
@@ -57,7 +60,18 @@ func SignUp(ctx context.Context, apiClient *apiclient.Client, invite, email, nam
 
 // SignUpKeepingAccountUnlockKey also returns a copy of the account unlock key; the caller wipes it.
 func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Client, invite, email, name string, password []byte, device apitypes.DeviceInfo) (*Session, crypt.SecretKey, []byte, error) {
+	return SignUpKeepingAccountUnlockKeyWithRecovery(ctx, apiClient, invite, email, name, password, device, nil)
+}
+
+func SignUpWithRecovery(ctx context.Context, apiClient *apiclient.Client, invite, email, name string, password []byte, device apitypes.DeviceInfo, stage StagePendingFactor) (*Session, crypt.SecretKey, error) {
+	newSession, secretKey, accountUnlockKey, err := SignUpKeepingAccountUnlockKeyWithRecovery(ctx, apiClient, invite, email, name, password, device, stage)
+	clear(accountUnlockKey)
+	return newSession, secretKey, err
+}
+
+func SignUpKeepingAccountUnlockKeyWithRecovery(ctx context.Context, apiClient *apiclient.Client, invite, email, name string, password []byte, device apitypes.DeviceInfo, stage StagePendingFactor) (*Session, crypt.SecretKey, []byte, error) {
 	accountID := crypt.GenerateAccountID()
+	personalVaultID := uuid.NewString()
 	credential, err := createAccountCredential(accountID, password, func(registrationRequest []byte) ([]byte, error) {
 		startResponse, err := apiClient.StartRegistration(ctx, &apitypes.RegisterStartRequest{Invite: invite, Email: email, AccountID: accountID, Request: registrationRequest})
 		if err != nil {
@@ -70,7 +84,7 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Cli
 	}
 	secretKey := credential.secretKey
 
-	sessionResponse, err := apiClient.FinishRegistration(ctx, &apitypes.RegisterFinishRequest{
+	request := &apitypes.RegisterFinishRequest{
 		Invite:     invite,
 		Email:      email,
 		Name:       name,
@@ -81,7 +95,22 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Cli
 		EncKeyset:  credential.encryptedKeyset,
 		PublicKeys: credential.keyset.GetPublicKeys(accountID),
 		Device:     device,
-	})
+	}
+	if stage != nil {
+		if err := stage(PendingFactor{Kind: "signup", SecretKey: secretKey.Encode(), EncryptedKeyset: credential.encryptedKeyset, Registration: request, PersonalVaultID: personalVaultID}); err != nil {
+			credential.keyset.Wipe()
+			clear(credential.accountUnlockKey)
+			return nil, secretKey, nil, err
+		}
+	}
+	sessionResponse, err := apiClient.FinishRegistration(ctx, request)
+	if apiclient.IsUnreachable(err) {
+		// The account may exist with an answer that never arrived: signing in with what was just registered finds out.
+		if signedIn, loginErr := LogIn(ctx, apiClient, email, password, secretKey, device); loginErr == nil {
+			sessionResponse, err = &apitypes.SessionResponse{Token: apiClient.Token, AccountID: accountID, DeviceID: signedIn.DeviceID}, nil
+			signedIn.Lock()
+		}
+	}
 	if err != nil {
 		credential.keyset.Wipe()
 		clear(credential.accountUnlockKey)
@@ -90,7 +119,11 @@ func SignUpKeepingAccountUnlockKey(ctx context.Context, apiClient *apiclient.Cli
 	apiClient.Token = sessionResponse.Token
 
 	newSession := &Session{Client: apiClient, AccountID: accountID, DeviceID: sessionResponse.DeviceID, Email: email, Name: name, Keyset: credential.keyset}
-	if _, err := newSession.CreateVault(ctx, "Personal", apitypes.VaultPersonal); err != nil {
+	newSession.verifiedAccount = &apitypes.Account{
+		AccountID: accountID, Salt: credential.salt, Argon2: credential.argon2Params,
+		EncKeyset: credential.encryptedKeyset, PublicKeys: credential.keyset.GetPublicKeys(accountID),
+	}
+	if _, err := newSession.createVault(ctx, "Personal", &apitypes.CreateVaultRequest{ID: personalVaultID, Type: apitypes.VaultPersonal}); err != nil {
 		clear(credential.accountUnlockKey)
 		return newSession, secretKey, nil, fmt.Errorf("create personal vault: %w", err)
 	}
@@ -108,7 +141,7 @@ func LogIn(ctx context.Context, apiClient *apiclient.Client, email string, passw
 	}
 	defer derivedKeys.Wipe()
 
-	login, keyExchange1, err := startOpaqueLogin(derivedKeys.AuthKey)
+	login, keyExchange1, err := startOpaqueLogin(derivedKeys.AuthKey, apiClient.BaseURL, pake.Login)
 	if err != nil {
 		return nil, err
 	}
@@ -204,7 +237,12 @@ func decryptAccountKeyset(account *apitypes.Account, apiClient *apiclient.Client
 		keyset.Wipe()
 		return nil, ErrKeyMismatch
 	}
+	// A cache without this account's row would be refused at every later launch, so it stays online-only instead.
+	if accountCache != nil && !isOffline && accountCache.SaveAccount(account) != nil {
+		accountCache = nil
+	}
 	unlockedSession := &Session{Client: apiClient, AccountID: account.AccountID, Email: account.Email, Name: account.Name, Role: account.Role, Keyset: keyset, Cache: accountCache}
+	unlockedSession.verifiedAccount = account
 	unlockedSession.isOffline.Store(isOffline)
 	return unlockedSession, nil
 }

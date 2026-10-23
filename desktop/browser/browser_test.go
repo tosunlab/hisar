@@ -91,6 +91,30 @@ func TestInstallHostManifestForDiaAlone(t *testing.T) {
 	}
 }
 
+func TestInstallHostManifestNeverWritesThroughALinkBesideIt(t *testing.T) {
+	homeDirectory := t.TempDir()
+	manifestPath := filepath.Join(homeDirectory, "manifests", "com.tryhisar.hisar.json")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	victimPath := filepath.Join(homeDirectory, "victim")
+	if err := os.WriteFile(victimPath, []byte("victim"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victimPath, manifestPath+".partial"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeFileIfChanged(manifestPath, []byte("{}")); err != nil {
+		t.Fatal(err)
+	}
+	if content, _ := os.ReadFile(victimPath); string(content) != "victim" {
+		t.Errorf("victim = %q", content)
+	}
+	if fileInfo, err := os.Lstat(manifestPath); err != nil || !fileInfo.Mode().IsRegular() || fileInfo.Mode().Perm() != 0o644 {
+		t.Errorf("manifest: %v %v", fileInfo, err)
+	}
+}
+
 // readHostManifest checks the manifest at path names the host at hostPath for the extension alone, and returns its bytes.
 func readHostManifest(t *testing.T, path, hostPath string) []byte {
 	t.Helper()
@@ -127,6 +151,8 @@ func (handler *recordingHandler) HandleRequest(ctx context.Context, request *bro
 		return nil, nil
 	case "logins.fill":
 		return nil, browserprotocol.NewError(browserprotocol.ErrorNoMatch, "this login is not for this site")
+	case "items.reveal":
+		return browserprotocol.RevealResult{Value: strings.Repeat("a", browserprotocol.MaxMessageSize)}, nil
 	}
 	return nil, errors.New("boom")
 }
@@ -163,7 +189,8 @@ func startTestServer(t *testing.T, handler browserprotocol.Handler, peerResolver
 		<-stopped
 	})
 	for range 100 {
-		if _, err := os.Stat(socketPath); err == nil {
+		if connection, err := net.Dial("unix", socketPath); err == nil {
+			connection.Close()
 			return socketPath
 		}
 		time.Sleep(10 * time.Millisecond)
@@ -238,6 +265,26 @@ func TestHostRelaysThroughServer(t *testing.T) {
 	}
 	if len(handler.requests) != 4 || handler.requests[0].Token != "secret" {
 		t.Errorf("handled requests: %+v", handler.requests)
+	}
+}
+
+func TestServerAnswersAnOversizedResultWithAnErrorAndKeepsTheConnection(t *testing.T) {
+	handler := &recordingHandler{}
+	socketPath := startTestServer(t, handler, nil, "")
+	input := encodeFrames(t, `{"id":"1","type":"items.reveal"}`, `{"id":"2","type":"status"}`)
+	var output bytes.Buffer
+	if err := RunHost(bytes.NewReader(input), &output, HostConfig{SocketPath: socketPath, ExtensionOrigin: browserprotocol.AllowedOrigin}); err != nil {
+		t.Fatal(err)
+	}
+	responses := decodeResponses(t, output.Bytes())
+	if len(responses) != 2 {
+		t.Fatalf("responses: %+v", responses)
+	}
+	if responses[0].ID != "1" || responses[0].OK || responses[0].Error == nil || responses[0].Error.Code != browserprotocol.ErrorInternal {
+		t.Errorf("oversized result: %+v", responses[0])
+	}
+	if responses[1].ID != "2" || !responses[1].OK {
+		t.Errorf("next request: %+v", responses[1])
 	}
 }
 

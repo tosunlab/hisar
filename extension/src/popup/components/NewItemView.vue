@@ -1,12 +1,17 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { ItemSummary, NewItem, VaultSummary } from "../../shared/protocol";
-import { describeError, sendToBackground } from "../api";
+import { describeError, sendToBackground, watchTabUrl } from "../api";
 import AppIcon from "./AppIcon.vue";
 
-// pageUrl is the tab's address: a new login starts with its site as the title and website, and a generated password.
-const props = defineProps<{ pageUrl: string }>();
+// A new login starts with the site of the page in tabId as its title and website, and a generated password. Both follow
+// the tab while it navigates, until the user edits them, so the form never offers a site the tab has left.
+const props = defineProps<{ tabId: number | undefined }>();
 const emit = defineEmits<{ cancel: []; created: [item: ItemSummary] }>();
+
+const pageUrl = ref("");
+const stopWatchingTab = props.tabId === undefined ? () => undefined : watchTabUrl(props.tabId, (tabUrl) => (pageUrl.value = tabUrl));
+onBeforeUnmount(stopWatchingTab);
 
 type Category = NewItem["category"];
 
@@ -19,7 +24,7 @@ const allCategory: { id: Category; label: string }[] = [
 
 const pageOrigin = computed(() => {
   try {
-    const url = new URL(props.pageUrl);
+    const url = new URL(pageUrl.value);
     return url.protocol === "https:" || url.protocol === "http:" ? url.origin : "";
   } catch {
     return "";
@@ -29,11 +34,13 @@ const pageOrigin = computed(() => {
 const category = ref<Category>("login");
 const allVault = ref<VaultSummary[]>([]);
 const vaultID = ref("");
-const title = ref(pageOrigin.value ? new URL(pageOrigin.value).hostname.replace(/^www\./, "") : "");
+const title = ref("");
+const isTitleEdited = ref(false);
 const username = ref("");
 const password = ref("");
 const isPasswordShown = ref(false);
-const url = ref(pageOrigin.value);
+const url = ref("");
+const isUrlEdited = ref(false);
 const notes = ref("");
 const cardholder = ref("");
 const cardNumber = ref("");
@@ -46,6 +53,15 @@ const phone = ref("");
 const errorMessage = ref("");
 const isSaving = ref(false);
 const titleInput = ref<HTMLInputElement>();
+
+watch(
+  pageOrigin,
+  (origin) => {
+    if (!isTitleEdited.value) title.value = origin ? new URL(origin).hostname.replace(/^www\./, "") : "";
+    if (!isUrlEdited.value) url.value = origin;
+  },
+  { immediate: true },
+);
 
 async function generatePassword(): Promise<void> {
   try {
@@ -120,7 +136,7 @@ onMounted(async () => {
     </div>
     <label class="field">
       <span>Title</span>
-      <input ref="titleInput" v-model="title" type="text" required data-testid="new-title" />
+      <input ref="titleInput" v-model="title" type="text" required data-testid="new-title" @input="isTitleEdited = true" />
     </label>
     <template v-if="category === 'login'">
       <label class="field">
@@ -141,7 +157,7 @@ onMounted(async () => {
       </label>
       <label class="field">
         <span>Website</span>
-        <input v-model="url" type="text" placeholder="https://" data-testid="new-url" />
+        <input v-model="url" type="text" placeholder="https://" data-testid="new-url" @input="isUrlEdited = true" />
       </label>
     </template>
     <template v-else-if="category === 'credit-card'">

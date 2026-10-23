@@ -28,7 +28,7 @@ export interface PasskeyPort {
   onDisconnect: { addListener(listener: () => void): void };
 }
 
-type PasskeyRequestType = "passkeys.list" | "passkeys.prepare" | "passkeys.create" | "passkeys.get" | PasskeySignalType;
+type PasskeyRequestType = "passkeys.list" | "passkeys.prepare" | "passkeys.create" | "passkeys.get" | "passkeys.cancel" | PasskeySignalType;
 
 export interface PasskeyDependencies {
   getDesktopView(): Promise<PopupView>;
@@ -153,8 +153,9 @@ export class PasskeyService {
       const desktopView = await this.dependencies.getDesktopView();
       if (desktopView !== "unlocked" && (desktopView !== "locked" || isConditional)) throw new HisarError("desktop-unavailable", desktopView);
       if (desktopView === "unlocked") await this.loadSession(session);
-    } catch {
-      this.post(port, { type: "fallback" });
+    } catch (error) {
+      const failure = toHisarError(error);
+      this.post(port, failure.code === "update-required" ? { type: "error", name: "NotSupportedError", message: failure.message } : { type: "fallback" });
       return undefined;
     }
     if (session.view === "no-passkeys") {
@@ -187,6 +188,8 @@ export class PasskeyService {
       topOrigin: session.frame.isCrossOrigin ? session.frame.topOrigin : undefined,
       isCrossOrigin: session.frame.isCrossOrigin,
       relyingPartyId: session.request.relyingPartyID,
+      userVerification: session.request.userVerification,
+      ceremonyId: session.sessionID,
     };
   }
 
@@ -194,7 +197,7 @@ export class PasskeyService {
     const parameters = this.buildDesktopParameters(session);
     if (session.request.kind === "get") {
       const result = await this.dependencies.requestDesktop("passkeys.list", { ...parameters, allowCredentials: session.request.allAllowedCredentialID });
-      session.allPasskey = (result.passkeys ?? []).map(({ credentialId, title, userName, userDisplayName }) => ({ credentialId, title, userName, userDisplayName }));
+      session.allPasskey = (result.passkeys ?? []).map(({ credentialId, vaultID, itemID, title, userName, userDisplayName }) => ({ credentialId, vaultID, itemID, title, userName, userDisplayName }));
       session.view = session.allPasskey.length > 0 ? "choose" : "no-passkeys";
       return;
     }
@@ -206,6 +209,9 @@ export class PasskeyService {
   private finishSession(session: PasskeySession, message?: BackgroundToContentPasskeyMessage): void {
     if (session.isFinished) return;
     session.isFinished = true;
+    if (!message || message.type !== "credential") {
+      void this.dependencies.requestDesktop("passkeys.cancel", this.buildDesktopParameters(session)).catch(() => undefined);
+    }
     this.allSession.delete(session.sessionID);
     for (const resolve of session.allVisibilityCheck.values()) resolve(false);
     session.allVisibilityCheck.clear();
@@ -271,7 +277,7 @@ export class PasskeyService {
         await this.dependencies.unlock();
         return { session };
       case "choosePasskey":
-        return { session, result: await this.choosePasskey(session, call.credentialId) };
+        return { session, result: await this.choosePasskey(session, { credentialId: call.credentialId, vaultID: call.vaultID, itemID: call.itemID }) };
       case "savePasskey":
         return { session, result: await this.savePasskey(session, call.vaultID, call.itemID) };
       case "confirmExcluded":
@@ -316,9 +322,10 @@ export class PasskeyService {
     }
   }
 
-  private async choosePasskey(session: PasskeySession, credentialId: string): Promise<null> {
+  private async choosePasskey(session: PasskeySession, chosen: Pick<PasskeyChoice, "credentialId" | "vaultID" | "itemID">): Promise<null> {
     const request = session.request;
-    if (request.kind !== "get" || session.view !== "choose" || !session.allPasskey.some((choice) => choice.credentialId === credentialId)) {
+    const isShown = session.allPasskey.some((choice) => choice.credentialId === chosen.credentialId && choice.vaultID === chosen.vaultID && choice.itemID === chosen.itemID);
+    if (request.kind !== "get" || session.view !== "choose" || !isShown) {
       throw new HisarError("invalid-request", "Choose one of the passkeys shown");
     }
     await this.requireVisiblePrompt(session);
@@ -327,7 +334,7 @@ export class PasskeyService {
         ...this.buildDesktopParameters(session),
         challenge: request.challenge,
         allowCredentials: request.allAllowedCredentialID,
-        credentialId,
+        ...chosen,
         ...(request.prf ? { prf: request.prf } : {}),
       }),
     );

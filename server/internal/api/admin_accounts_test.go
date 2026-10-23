@@ -141,7 +141,7 @@ func TestAdminAccountsSuspendAndReactivate(t *testing.T) {
 		body != `{"error":"This account is suspended. Contact the admin of the Hisar server."}` {
 		t.Errorf("the suspended member's request: %d %s", status, body)
 	}
-	if err := member.session.Client.StreamEvents(ctx, func(apiclient.Event) {}); !errors.Is(err, apiclient.ErrAccountSuspended) {
+	if err := member.session.Client.StreamEvents(ctx, nil, func(apiclient.Event) {}); !errors.Is(err, apiclient.ErrAccountSuspended) {
 		t.Errorf("the suspended member's event stream: %v", err)
 	}
 	if queryValue[int](t, databaseURL, `SELECT count(*)::int FROM devices WHERE account_id = $1 AND revoked_at IS NULL`, memberID) != 1 {
@@ -198,7 +198,7 @@ func TestAdminAccountsRefuseTheAdminsOwnAccountAndAMissingProof(t *testing.T) {
 	}{
 		"suspend": {"POST", adminPath + "/suspend", nil},
 		"role":    {"PUT", adminPath + "/role", apitypes.AdminRoleChangeRequest{Role: apitypes.RoleMember, Proof: proveAdmin(t, admin)}},
-		"delete":  {"POST", adminPath + "/delete", apitypes.AdminAccountDeleteRequest{Email: "admin@example.com", Proof: proveAdmin(t, admin)}},
+		"delete":  {"POST", adminPath + "/delete", apitypes.AdminAccountDeleteRequest{Email: "admin@example.com", Proof: proveAdmin(t, admin), PlanVersion: "reviewed-plan"}},
 	} {
 		status, body := sendRawRequest(t, baseURL, token, request.method, request.path, request.body)
 		if status != http.StatusConflict || body != `{"error":"Use Settings → Account in the Hisar app for your own account."}` {
@@ -208,8 +208,8 @@ func TestAdminAccountsRefuseTheAdminsOwnAccountAndAMissingProof(t *testing.T) {
 
 	memberPath := adminAccountsPath + "/" + member.session.AccountID
 	for name, body := range map[string]any{
-		"no proof":         apitypes.AdminAccountDeleteRequest{Email: "member@example.com"},
-		"an unknown proof": apitypes.AdminAccountDeleteRequest{Email: "member@example.com", Proof: apitypes.ReauthenticationProof{ReauthenticationID: "unknown", KE3: []byte{1}}},
+		"no proof":         apitypes.AdminAccountDeleteRequest{Email: "member@example.com", PlanVersion: "reviewed-plan"},
+		"an unknown proof": apitypes.AdminAccountDeleteRequest{Email: "member@example.com", Proof: apitypes.ReauthenticationProof{ReauthenticationID: "unknown", KE3: []byte{1}}, PlanVersion: "reviewed-plan"},
 	} {
 		if status, answer := sendRawRequest(t, baseURL, token, "POST", memberPath+"/delete", body); status != http.StatusForbidden {
 			t.Errorf("delete with %s: %d %s", name, status, answer)
@@ -220,13 +220,13 @@ func TestAdminAccountsRefuseTheAdminsOwnAccountAndAMissingProof(t *testing.T) {
 	}
 	reauthentication, notAProof := startReauthentication(t, admin.session.Client, []byte("wrong password"), admin.secretKey)
 	wrongProof := apitypes.ReauthenticationProof{ReauthenticationID: reauthentication.ReauthenticationID, KE3: notAProof}
-	if status, answer := sendRawRequest(t, baseURL, token, "POST", memberPath+"/delete", apitypes.AdminAccountDeleteRequest{Email: "member@example.com", Proof: wrongProof}); status != http.StatusForbidden {
+	if status, answer := sendRawRequest(t, baseURL, token, "POST", memberPath+"/delete", apitypes.AdminAccountDeleteRequest{Email: "member@example.com", Proof: wrongProof, PlanVersion: "reviewed-plan"}); status != http.StatusForbidden {
 		t.Errorf("delete with a wrong proof: %d %s", status, answer)
 	}
-	if status, answer := sendRawRequest(t, baseURL, token, "POST", memberPath+"/delete", apitypes.AdminAccountDeleteRequest{Email: "other@example.com", Proof: proveAdmin(t, admin)}); status != http.StatusBadRequest {
+	if status, answer := sendRawRequest(t, baseURL, token, "POST", memberPath+"/delete", apitypes.AdminAccountDeleteRequest{Email: "other@example.com", Proof: proveAdmin(t, admin), PlanVersion: "reviewed-plan"}); status != http.StatusBadRequest {
 		t.Errorf("delete with another email: %d %s", status, answer)
 	}
-	if status, answer := sendRawRequest(t, baseURL, member.session.Client.Token, "POST", memberPath+"/delete", apitypes.AdminAccountDeleteRequest{Email: "member@example.com", Proof: proveAdmin(t, admin)}); status != http.StatusForbidden {
+	if status, answer := sendRawRequest(t, baseURL, member.session.Client.Token, "POST", memberPath+"/delete", apitypes.AdminAccountDeleteRequest{Email: "member@example.com", Proof: proveAdmin(t, admin), PlanVersion: "reviewed-plan"}); status != http.StatusForbidden {
 		t.Errorf("a member's delete: %d %s", status, answer)
 	}
 	if queryValue[int](t, databaseURL, `SELECT count(*)::int FROM accounts`) != 2 || queryValue[string](t, databaseURL, `SELECT role FROM accounts WHERE id = $1`, admin.session.AccountID) != apitypes.RoleAdmin {
@@ -304,7 +304,7 @@ func TestAdminAccountsDelete(t *testing.T) {
 	adminEvents := openEventStream(t, admin.session.Client)
 	waitForSubscriber(t, server, memberID, 1)
 	waitForSubscriber(t, server, admin.session.AccountID, 1)
-	request := apitypes.AdminAccountDeleteRequest{Email: " Member@Example.com ", Proof: proveAdmin(t, admin)}
+	request := reviewedAdminDeletion(t, admin, memberID, " Member@Example.com ")
 	if status, body := sendRawRequest(t, baseURL, admin.session.Client.Token, "POST", adminAccountsPath+"/"+memberID+"/delete", request); status != http.StatusNoContent {
 		t.Fatalf("delete: %d %s", status, body)
 	}
@@ -433,7 +433,8 @@ func TestAdminAccountsRefuseAnAdminDemotedMeanwhile(t *testing.T) {
 	member := signUpAccountWithRole(t, server, baseURL, "member@example.com", apitypes.RoleMember)
 
 	// The first admin starts each change, as the route would after requireAdmin, and the second demotes them meanwhile.
-	roleProof, deleteProof := proveAdmin(t, first), proveAdmin(t, first)
+	roleProof := proveAdmin(t, first)
+	deleteRequest := reviewedAdminDeletion(t, first, member.session.AccountID, "member@example.com")
 	if status, body := sendRawRequest(t, baseURL, second.session.Client.Token, "PUT", adminAccountsPath+"/"+first.session.AccountID+"/role",
 		apitypes.AdminRoleChangeRequest{Role: apitypes.RoleMember, Proof: proveAdmin(t, second)}); status != http.StatusNoContent {
 		t.Fatalf("demote the first admin: %d %s", status, body)
@@ -452,7 +453,7 @@ func TestAdminAccountsRefuseAnAdminDemotedMeanwhile(t *testing.T) {
 			return server.service.RevokeAccountDevice(ctx, actor, second.session.AccountID, second.session.DeviceID)
 		},
 		"delete": func() error {
-			return server.service.DeleteAccountAsAdmin(ctx, actor, memberID, &apitypes.AdminAccountDeleteRequest{Email: "member@example.com", Proof: deleteProof})
+			return server.service.DeleteAccountAsAdmin(ctx, actor, memberID, &deleteRequest)
 		},
 	} {
 		if err := change(); !errors.Is(err, service.ErrAdminOnly) {
@@ -474,7 +475,8 @@ func TestAdminAccountsRefuseAProofWhoseSessionEnded(t *testing.T) {
 	member := signUpAccountWithRole(t, server, baseURL, "member@example.com", apitypes.RoleMember)
 
 	// The admin proves their master password, then their session ends before the change is saved.
-	roleProof, deleteProof := proveAdmin(t, admin), proveAdmin(t, admin)
+	roleProof := proveAdmin(t, admin)
+	deleteRequest := reviewedAdminDeletion(t, admin, member.session.AccountID, "member@example.com")
 	tokenHash := sha256.Sum256([]byte(admin.session.Client.Token))
 	actor := service.Actor{AccountID: admin.session.AccountID, DeviceID: admin.session.DeviceID, TokenHash: tokenHash[:]}
 	if err := admin.session.Client.Logout(ctx); err != nil {
@@ -484,7 +486,7 @@ func TestAdminAccountsRefuseAProofWhoseSessionEnded(t *testing.T) {
 	if err := server.service.ChangeAccountRole(ctx, actor, memberID, &apitypes.AdminRoleChangeRequest{Role: apitypes.RoleAdmin, Proof: roleProof}); !errors.Is(err, service.ErrUnauthorized) {
 		t.Errorf("role change after the session ended: %v", err)
 	}
-	if err := server.service.DeleteAccountAsAdmin(ctx, actor, memberID, &apitypes.AdminAccountDeleteRequest{Email: "member@example.com", Proof: deleteProof}); !errors.Is(err, service.ErrUnauthorized) {
+	if err := server.service.DeleteAccountAsAdmin(ctx, actor, memberID, &deleteRequest); !errors.Is(err, service.ErrUnauthorized) {
 		t.Errorf("deletion after the session ended: %v", err)
 	}
 	if queryValue[int](t, databaseURL, `SELECT count(*)::int FROM accounts WHERE id = $1 AND role = 'member'`, memberID) != 1 {

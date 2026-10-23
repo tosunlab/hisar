@@ -9,10 +9,13 @@ type Vault struct {
 	WrappedKey []byte `json:"wrappedKey"`
 	// OrganizationID is set for organization vaults only.
 	OrganizationID string `json:"organizationId,omitempty"`
-	// NeedsRotation is set when someone lost access through a team and an owner's app has not rotated the key since.
+	// NeedsRotation remains set after owner removal until an owner's app commits the replacement key generation.
 	NeedsRotation bool `json:"needsRotation,omitempty"`
 	// KeyGeneration counts the vault's keys: 1 at creation, one more after every rotation. Missing from older servers.
-	KeyGeneration int64 `json:"keyGeneration,omitempty"`
+	KeyGeneration  int64 `json:"keyGeneration,omitempty"`
+	AccessRevision int64 `json:"accessRevision,omitempty"`
+	// IsPersonalExtra identifies a preserved legacy duplicate, never the designated primary.
+	IsPersonalExtra bool `json:"isPersonalExtra,omitempty"`
 }
 
 // CreateVaultRequest: an organization vault names its organization and the team that is given it as owner;
@@ -32,8 +35,7 @@ type VaultMember struct {
 	GrantedBy string `json:"grantedBy"`
 }
 
-// SetAccessRequest: KeyGeneration is the generation of the key WrappedKey holds. It is required for organization
-// vaults and checked for any vault when set, so a key wrapped before a rotation is refused (409).
+// SetAccessRequest identifies the key being wrapped. Omission is accepted only for unrotated nonorganization vaults.
 type SetAccessRequest struct {
 	WrappedKey    []byte `json:"wrappedKey"`
 	Role          string `json:"role"`
@@ -55,18 +57,17 @@ type RotatedItem struct {
 	Details      []byte `json:"details"`
 }
 
-// RotateVaultRequest replaces the vault key: every member's wrapped key and every item, re-encrypted. KeyGeneration is
-// the generation of the key being replaced; it is required for organization vaults and checked for any vault when set,
-// so a second rotation from the same key is refused (409).
+// RotateVaultRequest is the bounded legacy aggregate route. AccessRevision and MetadataRevision bind its snapshot.
 type RotateVaultRequest struct {
-	EncName       []byte          `json:"encName"`
-	Accesses      []RotatedAccess `json:"access"`
-	Items         []RotatedItem   `json:"items"`
-	KeyGeneration int64           `json:"keyGeneration,omitempty"`
+	EncName          []byte          `json:"encName"`
+	Accesses         []RotatedAccess `json:"access"`
+	Items            []RotatedItem   `json:"items"`
+	KeyGeneration    int64           `json:"keyGeneration,omitempty"`
+	AccessRevision   int64           `json:"accessRevision,omitempty"`
+	MetadataRevision int64           `json:"metadataRevision,omitempty"`
 }
 
-// RenameVaultRequest: KeyGeneration is the generation of the key EncName is sealed with. It is required for organization
-// vaults and checked for any vault when set, so a name sealed with a key a rotation replaced is refused (409).
+// RenameVaultRequest identifies the key used for the name. Omission is accepted only for unrotated nonorganization vaults.
 type RenameVaultRequest struct {
 	EncName       []byte `json:"encName"`
 	KeyGeneration int64  `json:"keyGeneration,omitempty"`
@@ -81,12 +82,32 @@ type MovedItem struct {
 	Details      []byte `json:"details"`
 }
 
-// DeleteVaultRequest: a vault with live items needs either MoveToVaultID with every live item in MovedItems,
-// or IsDeletingItems. MoveToKeyGeneration is the generation of the target vault's key the moved items are sealed with:
-// required when the target is an organization vault and checked for any target when set (KeyChangedResponse).
+// DeleteVaultRequest deletes items or supplies a bounded legacy move. KeyGeneration identifies the source;
+// MoveToKeyGeneration identifies the destination. Rotated vaults require explicit generations.
 type DeleteVaultRequest struct {
 	MoveToVaultID       string      `json:"moveToVaultId,omitempty"`
 	MovedItems          []MovedItem `json:"movedItems,omitempty"`
 	IsDeletingItems     bool        `json:"deleteItems,omitempty"`
 	MoveToKeyGeneration int64       `json:"moveToKeyGeneration,omitempty"`
+	KeyGeneration       int64       `json:"keyGeneration,omitempty"`
+}
+
+// VaultReview is the vault record a recovery action was reviewed against: its sealed name, the caller's wrapped key and
+// the key generation, as the server listed them. The server refuses the action (409) once any of them changed, so a
+// record another device repaired needs a new review.
+type VaultReview struct {
+	EncName       []byte `json:"encName"`
+	WrappedKey    []byte `json:"wrappedKey"`
+	KeyGeneration int64  `json:"keyGeneration"`
+}
+
+// RepairVaultNameRequest replaces an unreadable sealed name with EncName, sealed with the reviewed key generation.
+type RepairVaultNameRequest struct {
+	Review  VaultReview `json:"review"`
+	EncName []byte      `json:"encName"`
+}
+
+// DeleteUnreadableVaultRequest deletes a vault and every item in it, only while it is still as reviewed.
+type DeleteUnreadableVaultRequest struct {
+	Review VaultReview `json:"review"`
 }

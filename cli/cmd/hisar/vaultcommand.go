@@ -8,7 +8,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 
 	"golang.org/x/term"
 
@@ -68,7 +67,7 @@ func runVault(ctx context.Context, access backend, flags *flag.FlagSet, args []s
 		}
 		vault, err := access.createVault(ctx, positionals[0])
 		if err == nil {
-			fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
+			fmt.Fprintf(standardError(), "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
 		}
 		return err
 	case "give", "take":
@@ -114,7 +113,7 @@ func renameVaultInteractively(ctx context.Context, access backend, positionals [
 	if err := access.renameVault(ctx, vault.ID, newName); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Renamed %q to %q. Secret references that name %q need the new name.\n", vault.Name, newName, vault.Name)
+	fmt.Fprintf(standardError(), "Renamed %q to %q. Secret references that name %q need the new name.\n", vault.Name, newName, vault.Name)
 	return nil
 }
 
@@ -132,9 +131,9 @@ func printMemberLosingAccess(actions cliprotocol.VaultActionsResult) {
 	if len(actions.MembersLosingAccess) == 0 {
 		return
 	}
-	fmt.Fprintln(os.Stderr, "These people lose access:")
+	fmt.Fprintln(standardError(), "These people lose access:")
 	for _, member := range actions.MembersLosingAccess {
-		fmt.Fprintf(os.Stderr, "  %s\n", describeVaultMember(member))
+		fmt.Fprintf(standardError(), "  %s\n", describeVaultMember(member))
 	}
 }
 
@@ -166,7 +165,7 @@ func deleteVaultInteractively(ctx context.Context, access backend, nameOrID stri
 		deletion.IsDeletingItems, deletion.ConfirmedName = true, option.confirmedName
 	}
 
-	fmt.Fprintf(os.Stderr, "%s has %s.\n", vault.Name, formatItemCount(itemCount))
+	fmt.Fprintf(standardError(), "%s has %s.\n", vault.Name, formatItemCount(itemCount))
 	printMemberLosingAccess(actions)
 	isInteractive := isInteractiveTerminal()
 	if itemCount > 0 && deletion.MoveToVaultID == "" && !deletion.IsDeletingItems {
@@ -197,7 +196,7 @@ func deleteVaultInteractively(ctx context.Context, access backend, nameOrID stri
 		}
 		question := fmt.Sprintf("Delete %s?", vault.Name)
 		if deletion.MoveToVaultID != "" {
-			question = fmt.Sprintf("Move %s to %s and delete %s?", formatItemCount(itemCount), findTargetName(actions, deletion.MoveToVaultID), vault.Name)
+			question = fmt.Sprintf("Move %s to %s and delete %s?", formatItemCount(itemCount), describeTargetVault(actions, deletion.MoveToVaultID), vault.Name)
 		}
 		isDeleting, err := confirm(question)
 		if err != nil || !isDeleting {
@@ -209,29 +208,29 @@ func deleteVaultInteractively(ctx context.Context, access backend, nameOrID stri
 		return err
 	}
 	if deletion.MoveToVaultID != "" {
-		fmt.Fprintf(os.Stderr, "Moved %s to %s and deleted %s.\n", formatItemCount(movedCount), findTargetName(actions, deletion.MoveToVaultID), vault.Name)
+		fmt.Fprintf(standardError(), "Moved %s to %s and deleted %s.\n", formatItemCount(movedCount), describeTargetVault(actions, deletion.MoveToVaultID), vault.Name)
 		return nil
 	}
-	fmt.Fprintf(os.Stderr, "Deleted %s.\n", vault.Name)
+	fmt.Fprintf(standardError(), "Deleted %s.\n", vault.Name)
 	return nil
 }
 
-func findTargetName(actions cliprotocol.VaultActionsResult, vaultID string) string {
+func describeTargetVault(actions cliprotocol.VaultActionsResult, vaultID string) string {
 	for _, target := range actions.TargetVaults {
 		if target.ID == vaultID {
-			return target.Name
+			return formatVaultChoice(target)
 		}
 	}
-	return "the other vault"
+	return "the other vault [" + vaultID + "]"
 }
 
 func chooseItemDeletion(actions cliprotocol.VaultActionsResult) (cliprotocol.VaultDeletion, error) {
-	fmt.Fprintln(os.Stderr, "What happens to its items?")
+	fmt.Fprintln(standardError(), "What happens to its items?")
 	for index, target := range actions.TargetVaults {
-		fmt.Fprintf(os.Stderr, "  %d) Move them to %s\n", index+1, target.Name)
+		fmt.Fprintf(standardError(), "  %d) Move them to %s\n", index+1, formatVaultChoice(target))
 	}
 	deleteChoice := len(actions.TargetVaults) + 1
-	fmt.Fprintf(os.Stderr, "  %d) Delete them with the vault\n", deleteChoice)
+	fmt.Fprintf(standardError(), "  %d) Delete them with the vault\n", deleteChoice)
 	for {
 		answer, err := prompt("Choose", "1")
 		if err != nil {
@@ -240,7 +239,7 @@ func chooseItemDeletion(actions cliprotocol.VaultActionsResult) (cliprotocol.Vau
 		choice, err := strconv.Atoi(answer)
 		switch {
 		case err != nil || choice < 1 || choice > deleteChoice:
-			fmt.Fprintf(os.Stderr, "Enter a number from 1 to %d.\n", deleteChoice)
+			fmt.Fprintf(standardError(), "Enter a number from 1 to %d.\n", deleteChoice)
 		case choice == deleteChoice:
 			return cliprotocol.VaultDeletion{IsDeletingItems: true}, nil
 		default:
@@ -273,11 +272,12 @@ func leaveVaultInteractively(ctx context.Context, access backend, nameOrID strin
 	if err := access.leaveVault(ctx, vault.ID); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "You left %s.\n", vault.Name)
+	fmt.Fprintf(standardError(), "You left %s.\n", vault.Name)
 	return nil
 }
 
 func runListVaults(ctx context.Context, access backend, flags *flag.FlagSet, args []string) error {
+	access = readingBackend{access}
 	if _, err := parse(flags, args); err != nil {
 		return err
 	}
@@ -285,7 +285,7 @@ func runListVaults(ctx context.Context, access backend, flags *flag.FlagSet, arg
 	if err != nil {
 		return err
 	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	fmt.Fprintln(writer, "NAME\tTYPE\tROLE\tID")
 	for _, vault := range vaults {
 		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", vault.Name, vault.Type, vault.Role, vault.ID)
@@ -305,7 +305,7 @@ func runCreateVault(ctx context.Context, access backend, flags *flag.FlagSet, ar
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
+	fmt.Fprintf(standardError(), "Created vault %q. Share it with `hisar share %q <email>`.\n", vault.Name, vault.Name)
 	return nil
 }
 
@@ -336,7 +336,7 @@ func createOrganizationVault(ctx context.Context, access backend, name string, o
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Created vault %q in %s for team %q. The team's other members get its key from an owner's Hisar, as `hisar orgs` does.\n",
+	fmt.Fprintf(standardError(), "Created vault %q in %s for team %q. The team's other members get its key from an owner's Hisar, as `hisar orgs` does.\n",
 		vault.Name, organization.Name, team.Name)
 	return nil
 }
@@ -396,13 +396,13 @@ func changeTeamVault(ctx context.Context, access backend, nameOrID string, isGiv
 		if err := access.changeOrganization(ctx, cliprotocol.Request{Type: cliprotocol.TypeTakeVaultFromTeam, OrganizationID: organization.ID, TeamID: team.ID, VaultID: vaultID}); err != nil {
 			return err
 		}
-		fmt.Fprintf(os.Stderr, "Took %s from team %q.\n", vaultLabel, team.Name)
+		fmt.Fprintf(standardError(), "Took %s from team %q.\n", vaultLabel, team.Name)
 		return nil
 	}
 	change := cliprotocol.Request{Type: cliprotocol.TypeGiveVaultToTeam, OrganizationID: organization.ID, TeamID: team.ID, VaultID: vaultID, Role: option.role}
 	if err := access.changeOrganization(ctx, change); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Gave %s to team %q as %s.\n", vaultLabel, team.Name, option.role)
+	fmt.Fprintf(standardError(), "Gave %s to team %q as %s.\n", vaultLabel, team.Name, option.role)
 	return nil
 }

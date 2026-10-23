@@ -93,6 +93,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                     )
                 },
             ) {
+                if (exported.warning.isNotEmpty()) Text(exported.warning, color = HisarTheme.colors.warning, modifier = Modifier.testTag("export-provenance"))
                 FormButtonRow("Save Export", { save(file) }, testTag = "save-export", icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
                 RowDivider()
                 FormButtonRow("Share Export", { share(file) }, testTag = "share-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
@@ -101,7 +102,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
         } else {
             FormSection(
                 header = "Format",
-                footer = { Text("Every vault you can open, with logins, notes, one-time code secrets, SSH keys and other fields. hisar import reads both formats.") },
+                footer = { Text("Offline exports are cached copies. Changes since completed syncs may be absent. The result and file report known omissions. hisar import reads both formats.") },
                 modifier = Modifier.testTag("export-format"),
             ) {
                 CheckRow("Encrypted export (recommended)", format == ExportFormat.ENCRYPTED, { format = ExportFormat.ENCRYPTED }, testTag = "export-format-encrypted")

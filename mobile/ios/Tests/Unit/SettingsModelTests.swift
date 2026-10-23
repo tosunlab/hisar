@@ -14,8 +14,7 @@ final class SettingsModelTests: XCTestCase {
     private func createUnlockedModel() async -> AppModel {
         backend.seedSignedIn()
         let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore(), getCurrentDate: { [unowned self] in currentDate })
-        model.start { self.backend }
-        await model.refreshAll()
+        await model.start { self.backend }?.value
         return model
     }
 

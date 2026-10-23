@@ -93,7 +93,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <span class="panel-icon"><AppIcon name="link" :size="18" /></span>
         <div class="panel-heading">
           <h2 id="share-link-title">{{ heading }}</h2>
-          <p class="muted">Anyone with the link can open it, even without a Hisar account. It's end-to-end encrypted: the server never sees what you share.</p>
+          <p class="muted">Anyone with the link can open it, even without a Hisar account. The payload is encrypted before upload. Opening the web link also means trusting the page served by that server.</p>
         </div>
         <button class="ghost icon-button" aria-label="Close" @click="closeShareLinkDialog"><AppIcon name="close" /></button>
       </header>

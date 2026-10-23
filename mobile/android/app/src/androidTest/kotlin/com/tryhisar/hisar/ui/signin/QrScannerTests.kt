@@ -98,6 +98,25 @@ class QrScannerTests {
     }
 
     @Test
+    fun testPlainTextAndLegacyKitFramesDecodeForSignIn() {
+        val payloads = listOf(
+            "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL2hpc2FyLmV4YW1wbGUvYT94PW9uZSt0d29cdTAwMjZ5PSUyMCIsImVtYWlsIjoiYWxwZXIra2l0QHRyeWhpc2FyLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ",
+            "hisar://sign-in?server=https%3A%2F%2Fhisar.example%2Fa%3Fx%3Done%2Btwo%26y%3D%2520&email=alper%2Bkit%40tryhisar.com&secretKey=H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M",
+        )
+        for (payload in payloads) {
+            var scanned: String? = null
+            QrCodeAnalyzer { scanned = it }.analyze(BitmapImageProxy(renderQrCode(payload)))
+            assertEquals(payload, scanned)
+            openScanner()
+            composeRule.runOnUiThread { model.signIn.openScannedEmergencyKit(checkNotNull(scanned)) }
+            composeRule.waitUntil(10_000) { !exists("scanner") }
+            composeRule.assertFieldText("sign-in-email", "alper+kit@tryhisar.com")
+            composeRule.assertFieldText("sign-in-secret-key", "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M")
+        }
+        saveScreenshot("plain-text-and-legacy-kit")
+    }
+
+    @Test
     fun testEmergencyKitQrCodeFillsInTheSignIn() {
         val email = requireArgument("HISAR_UI_TEST_QR_SCANNER_EMAIL")
         val backend = createTestBackend()

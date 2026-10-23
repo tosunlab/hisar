@@ -261,8 +261,7 @@ func (s *Service) RemoveVaultMember(vaultID, accountID string) error {
 	if accountID == s.unlockedSession.AccountID {
 		return errors.New("you cannot remove yourself from a vault you own")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+	ctx := context.Background()
 	vault, err := s.findSharableVault(ctx, vaultID)
 	if err != nil {
 		return err
@@ -270,6 +269,11 @@ func (s *Service) RemoveVaultMember(vaultID, accountID string) error {
 	removeErr := s.unlockedSession.RemoveVaultMember(ctx, vault, accountID)
 	if err := s.state.Save(); removeErr == nil && err != nil {
 		return err
+	}
+	var pending *session.VaultRevocationPendingError
+	if errors.As(removeErr, &pending) {
+		_ = s.loadVaults(ctx)
+		return errors.New(pending.Error())
 	}
 	if errors.Is(removeErr, session.ErrNotFound) {
 		return errors.New("this person no longer has access to the vault")
@@ -287,12 +291,8 @@ func (s *Service) RemoveVaultMember(vaultID, accountID string) error {
 	if !found {
 		return nil
 	}
-	items, err := s.unlockedSession.ListItems(ctx, refreshed)
-	if err != nil {
-		return convertError(err)
-	}
-	s.itemsByVaultID[vaultID] = items
-	return nil
+	_, err = s.readVaultItems(ctx, refreshed)
+	return err
 }
 
 // InvitePerson asks the server to email a sign-up invite; the answer is the same whether or not the person has an account.

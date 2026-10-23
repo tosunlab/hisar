@@ -7,11 +7,13 @@ package main
 import (
 	"errors"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"slices"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -57,7 +59,7 @@ func main() {
 		CachePath:      filepath.Join(*stateDirectory, "desktop-cache.db"),
 		DeviceName:     "UI Test Mac.local",
 		Platform:       "darwin/desktop",
-		SecretKeyStore: &memorySecretKeyStore{byAccountID: map[string]crypt.SecretKey{}},
+		SecretKeyStore: &memorySecretKeyStore{byAccountID: map[string]crypt.SecretKey{}, recoveryKeyByOperationID: map[string][]byte{}},
 	})
 	if err != nil {
 		log.Fatal(err)
@@ -65,6 +67,9 @@ func main() {
 	phoneApprover := app.NewPhoneApprover(mac)
 	signUp, err := mac.SignUp(*invite, *email, "UI Test Mac", *password)
 	if err != nil {
+		log.Fatal(err)
+	}
+	if err := finishSignUp(mac, signUp, *password, *stateDirectory); err != nil {
 		log.Fatal(err)
 	}
 	// Written whole, then renamed, so the script never reads half a key.
@@ -97,6 +102,18 @@ func main() {
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
 	<-stop
+}
+
+// finishSignUp saves the new account's Emergency Kit and confirms it, as its user does in Hisar on a Mac; until then the
+// account's setup stays pending on this Mac.
+func finishSignUp(mac *app.Service, signUp app.SignUpResult, password, directory string) error {
+	if signUp.SetupState != "delivery-pending" {
+		return fmt.Errorf("sign-up stopped at %s: %s", signUp.SetupState, strings.Join(signUp.Problems, " "))
+	}
+	if _, err := app.ExportPendingRecoveryEmergencyKitToDirectory(mac, signUp.PendingOperationID, password, directory); err != nil {
+		return err
+	}
+	return mac.AcknowledgePendingRecovery(signUp.PendingOperationID, password)
 }
 
 // waitForPhone waits for the phone's sign-in, then locks and unlocks: the Mac learned at sign-up that the account had no
@@ -162,8 +179,9 @@ func saveToPersonalVault(mac *app.Service, title string) error {
 }
 
 type memorySecretKeyStore struct {
-	mutex       sync.Mutex
-	byAccountID map[string]crypt.SecretKey
+	mutex                    sync.Mutex
+	byAccountID              map[string]crypt.SecretKey
+	recoveryKeyByOperationID map[string][]byte
 }
 
 func (store *memorySecretKeyStore) LoadSecretKey(accountID string) (crypt.SecretKey, error) {
@@ -187,5 +205,30 @@ func (store *memorySecretKeyStore) DeleteSecretKey(accountID string) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	delete(store.byAccountID, accountID)
+	return nil
+}
+
+// The recovery keys make the store a keychain to sign-up, which otherwise stops before registering the account.
+func (store *memorySecretKeyStore) StoreRecoveryKey(operationID string, key []byte) error {
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	store.recoveryKeyByOperationID[operationID] = slices.Clone(key)
+	return nil
+}
+
+func (store *memorySecretKeyStore) LoadRecoveryKey(operationID string) ([]byte, error) {
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	key, isFound := store.recoveryKeyByOperationID[operationID]
+	if !isFound {
+		return nil, errors.New("not in the keychain")
+	}
+	return slices.Clone(key), nil
+}
+
+func (store *memorySecretKeyStore) DeleteRecoveryKey(operationID string) error {
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	delete(store.recoveryKeyByOperationID, operationID)
 	return nil
 }

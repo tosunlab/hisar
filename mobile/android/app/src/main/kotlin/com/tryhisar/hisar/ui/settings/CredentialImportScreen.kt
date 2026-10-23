@@ -117,16 +117,40 @@ private fun PreviewSections(
 ) {
     val scope = rememberCoroutineScope()
     val allVault = model.credentialImport.allVault
+    val isGrouped = preview.groups.size > 1
     FormSection(
         header = "Vault",
         footer = { Text("${VaultLogic.describeItemCount(preview.itemCount)} from ${preview.fileName}.") },
         modifier = Modifier.testTag("credential-import-vault"),
     ) {
-        allVault.forEachIndexed { index, vault ->
-            if (index > 0) RowDivider()
-            CheckRow(vault.name, vault.id == preview.vaultID, {
-                if (!isWorking && vault.id != preview.vaultID) scope.launch { model.credentialImport.previewCredentialImport(vault.id) }
-            }, testTag = "credential-import-vault-${vault.id}")
+        if (isGrouped) {
+            Text("The other app kept these items in ${preview.groups.size} groups. Each goes to your Personal vault unless you choose another vault for it.")
+        } else {
+            allVault.forEachIndexed { index, vault ->
+                if (index > 0) RowDivider()
+                CheckRow(vault.name, vault.id == preview.vaultID, {
+                    if (!isWorking && vault.id != preview.vaultID) scope.launch { model.credentialImport.previewCredentialImport(vault.id) }
+                }, testTag = "credential-import-vault-${vault.id}")
+            }
+        }
+    }
+    preview.groups.forEachIndexed { groupIndex, group ->
+        FormSection(header = "Source and destination access", modifier = Modifier.testTag("credential-import-access")) {
+            Text("${group.name} to ${group.vaultName}")
+            if (isGrouped) {
+                Text(VaultLogic.describeItemCount(group.itemCount))
+                allVault.forEach { vault ->
+                    RowDivider()
+                    CheckRow(vault.name, vault.id == group.vaultID, {
+                        if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
+                    }, testTag = "credential-import-group-$groupIndex-vault-${vault.id}")
+                }
+            }
+            Text(if (group.isPrivate) "Private or unspecified source" else "Shared source")
+            group.members.forEach { member ->
+                Text("${member.name.ifEmpty { member.accountID }} <${member.email}> · ${member.role}${if (member.isCurrentUser) " (you)" else ""}")
+            }
+            Text("Imported items are readable by the destination's current members. Access can change later.")
         }
     }
     val allCountRow = preview.allCountRow

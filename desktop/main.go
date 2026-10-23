@@ -72,6 +72,7 @@ func main() {
 		LockNotifier:          notifier,
 		GetSystemIdleDuration: systemidle.GetIdleDuration,
 		Biometric:             touchID,
+		BiometricKeyPreparer:  touchID,
 		BiometricName:         "Touch ID",
 		FileSaver:             fileSaver,
 		FileOpener:            fileOpener,
@@ -162,6 +163,7 @@ func main() {
 			return agent.GetSSHRememberDuration(approvalPreference.GetSSHRememberSeconds())
 		},
 	})
+	app.SetPasskeyVerifier(vaultService, approver)
 	agentSessions := agentharness.NewSessions(nil)
 	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil, agentSessions)
 	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
@@ -292,6 +294,7 @@ func main() {
 			application.NewService(harnessService),
 		},
 		OnShutdown: func() {
+			app.ClearCopiedText(vaultService)
 			commandLineRunner.Stop()
 			stopAgent()
 			// A pending Touch ID approval can keep a connection open; do not hold up quitting for it.

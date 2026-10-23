@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/session"
 )
 
@@ -22,6 +23,8 @@ func convertError(err error) error {
 	switch {
 	case errors.Is(err, session.ErrBadCredentials):
 		return errBadCredentials
+	case errors.Is(err, crypt.ErrArgon2ParamsOutOfRange):
+		return errors.New("the server asked for key-stretching settings Hisar does not accept; contact the server's admin")
 	case errors.Is(err, session.ErrConflict):
 		return errors.New("this item was changed on another device; reload it and try again")
 	case errors.Is(err, session.ErrRollback):

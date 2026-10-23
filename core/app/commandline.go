@@ -10,7 +10,9 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 // CommandLineBridge answers the hisar CLI on the app's socket (clisocket.Handler); it is not bound to the UI.
@@ -78,13 +80,40 @@ func convertCommandLineError(err error) error {
 	return cliprotocol.NewError(cliprotocol.ErrorInternal, err.Error())
 }
 
+type sessionEpochKey struct{}
+
+var errCommandLineSessionEnded = cliprotocol.NewError(cliprotocol.ErrorDenied, errSessionEnded.Error())
+
+// BindSession ties a request to the session it arrived in (clisocket.SessionBinder).
+func (bridge *CommandLineBridge) BindSession(ctx context.Context) context.Context {
+	s := bridge.service
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return context.WithValue(ctx, sessionEpochKey{}, s.sessionEpoch)
+}
+
+// HandleRequest answers only from the session the request arrived in, and drops an answer read from a later one; a
+// launcher's lock is the one request that ends that session itself.
 func (bridge *CommandLineBridge) HandleRequest(ctx context.Context, request *cliprotocol.Request) (any, error) {
-	result, err := bridge.answer(ctx, request)
+	epoch, isBound := ctx.Value(sessionEpochKey{}).(uint64)
+	if !isBound || !bridge.service.isSessionEpoch(epoch) {
+		return nil, errCommandLineSessionEnded
+	}
+	result, err := bridge.answer(ctx, epoch, request)
+	if request.Type != cliprotocol.TypeLauncherLock && !bridge.service.isSessionEpoch(epoch) {
+		return nil, errCommandLineSessionEnded
+	}
 	return result, convertCommandLineError(err)
 }
 
-// answer gives an ordinary hisar command inside an agent harness agent rules, whichever request it sends.
-func (bridge *CommandLineBridge) answer(ctx context.Context, request *cliprotocol.Request) (any, error) {
+// answer gives an ordinary hisar command inside an agent harness agent rules, whichever request it sends; epoch is the
+// session the request arrived in.
+func (bridge *CommandLineBridge) answer(ctx context.Context, epoch uint64, request *cliprotocol.Request) (any, error) {
+	bound := CommandLineBridge{service: &Service{serviceState: bridge.service.serviceState, requestEpoch: &epoch}}
+	return bound.dispatch(ctx, epoch, request)
+}
+
+func (bridge *CommandLineBridge) dispatch(ctx context.Context, epoch uint64, request *cliprotocol.Request) (any, error) {
 	switch {
 	case cliprotocol.IsAgentRequest(request.Type):
 		return bridge.answerAgentRequest(request)
@@ -92,12 +121,12 @@ func (bridge *CommandLineBridge) answer(ctx context.Context, request *cliprotoco
 		return bridge.answerLauncherRequest(request)
 	}
 	if _, isInside := clisocket.GetAgentSession(ctx); isInside {
-		return bridge.answerAgentSessionRequest(request)
+		return bridge.answerAgentSessionRequest(epoch, request)
 	}
-	return bridge.answerCommandLineRequest(request)
+	return bridge.answerCommandLineRequest(epoch, request)
 }
 
-func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.Request) (any, error) {
+func (bridge *CommandLineBridge) answerCommandLineRequest(epoch uint64, request *cliprotocol.Request) (any, error) {
 	if result, isHandled, err := bridge.answerOrganizationRequest(request); isHandled {
 		return result, err
 	}
@@ -105,13 +134,17 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.R
 	switch request.Type {
 	case cliprotocol.TypeAccount:
 		return s.getCommandLineAccount()
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		summaries, err := s.ListVaults()
 		if err != nil {
 			return nil, err
 		}
 		result := cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{}}
 		for _, summary := range summaries {
+			if request.Type == cliprotocol.TypeListVault && len(summary.ReadIssues) != 0 {
+				return nil, session.ErrIncompleteRead
+			}
+			result.Issues = append(result.Issues, summary.ReadIssues...)
 			result.Vaults = append(result.Vaults, convertToCommandLineVault(summary))
 		}
 		return result, nil
@@ -137,15 +170,41 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.R
 		if request.Export == nil {
 			return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the export is missing")
 		}
-		result, err := s.writeExportFile(request.Export.Format, request.Export.Passphrase, request.Export.Path)
-		return cliprotocol.ExportResult{Path: result.Path, VaultCount: result.VaultCount, ItemCount: result.ItemCount}, err
-	case cliprotocol.TypeListItem:
+		if !request.Export.AcceptProvenance {
+			return nil, cliprotocol.NewError(cliprotocol.ErrorUpdateRequired, "update hisar to export cached-copy provenance and omissions")
+		}
+		result, err := s.writeExportFile(request.Export.Format, request.Export.Passphrase, request.Export.Path, epoch)
+		return cliprotocol.ExportResult{Path: result.Path, VaultCount: result.VaultCount, ItemCount: result.ItemCount, Provenance: result.Provenance}, err
+	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 		details, err := s.ListItems(request.VaultID)
 		if err != nil {
 			return nil, err
 		}
+		if request.Type == cliprotocol.TypeListItem {
+			if err := s.requireCompleteRead(request.VaultID); err != nil {
+				return nil, err
+			}
+		}
 		result := cliprotocol.ItemListResult{Items: []cliprotocol.Item{}}
+		if provenance, isLoaded := s.getItemProvenance(request.VaultID); isLoaded && request.Type == cliprotocol.TypeReadItem {
+			result.Provenance = &provenance
+		}
+		issues, err := s.GetReadIssues()
+		if err != nil {
+			return nil, err
+		}
+		for _, issue := range issues {
+			if issue.VaultID == request.VaultID {
+				result.Issues = append(result.Issues, issue)
+			}
+		}
 		for _, detail := range details {
+			if detail.ReadIssue != nil {
+				if request.Type == cliprotocol.TypeListItem {
+					return nil, session.ErrIncompleteRead
+				}
+				continue
+			}
 			result.Items = append(result.Items, convertToCommandLineSummary(detail))
 		}
 		return result, nil
@@ -162,17 +221,20 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.R
 		code, err := s.GetOneTimeCode(request.VaultID, request.ItemID)
 		return cliprotocol.CodeResult{Code: code.Code, ExpiresAt: code.ExpiresAt, Period: code.Period}, err
 	case cliprotocol.TypeSaveItem:
-		return bridge.saveItem(request.VaultID, request.Item)
+		return bridge.saveItem(request.VaultID, request.Item, request.ImportScope)
 	case cliprotocol.TypeDeleteItem:
 		if _, err := bridge.getItem(request.VaultID, request.ItemID); err != nil {
 			return nil, err
 		}
 		return nil, s.DeleteItem(request.VaultID, request.ItemID)
 	case cliprotocol.TypeImportItem:
-		return s.saveCommandLineImports(request.VaultID, request.ImportedItems)
+		return s.saveCommandLineImports(request.VaultID, request.ImportedItems, request.ImportScope)
 	case cliprotocol.TypeListFavorite:
 		favorites, err := s.ListFavoriteItems()
 		if err != nil {
+			return nil, err
+		}
+		if err := s.requireCompleteRead(""); err != nil {
 			return nil, err
 		}
 		result := cliprotocol.FavoriteListResult{Favorites: []cliprotocol.Favorite{}}
@@ -218,6 +280,7 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.R
 		for _, sent := range invitations.Sent {
 			result.Sent = append(result.Sent, cliprotocol.SentInvitation{
 				ID: sent.ID, VaultID: sent.VaultID, VaultName: sent.VaultName, Email: sent.Email, Role: sent.Role, State: sent.State, ExpiresAt: sent.ExpiresAt,
+				RequiresConfirmation: sent.RequiresConfirmation, RecipientID: sent.RecipientID, SecurityCode: sent.SecurityCode, ReviewToken: sent.ReviewToken,
 			})
 		}
 		return result, nil
@@ -227,6 +290,8 @@ func (bridge *CommandLineBridge) answerCommandLineRequest(request *cliprotocol.R
 		return nil, s.DeclineShareInvitation(request.InvitationID)
 	case cliprotocol.TypeCancelInvitation:
 		return nil, s.CancelShareInvitation(request.InvitationID)
+	case cliprotocol.TypeConfirmShareRecipient:
+		return nil, s.ConfirmShareRecipient(request.InvitationID, request.ReviewToken)
 	case cliprotocol.TypeListDevice:
 		devices, err := s.ListDevices()
 		if err != nil {
@@ -274,7 +339,7 @@ func (bridge *CommandLineBridge) getItem(vaultID, itemID string) (ItemDetail, er
 	return bridge.service.GetItem(vaultID, itemID)
 }
 
-func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.ItemChange) (any, error) {
+func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.ItemChange, importScope string) (any, error) {
 	if change == nil {
 		return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "the item is missing")
 	}
@@ -302,7 +367,7 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 			detail.Fields = append(detail.Fields, ItemField{Name: field.Name, Value: field.Value, Concealed: field.Concealed})
 		}
 	}
-	saved, err := bridge.service.SaveItem(vaultID, detail)
+	saved, err := bridge.service.saveItem(vaultID, detail, importScope)
 	if err != nil {
 		return nil, err
 	}
@@ -310,7 +375,7 @@ func (bridge *CommandLineBridge) saveItem(vaultID string, change *cliprotocol.It
 }
 
 // saveCommandLineImports only creates items: IDs and revisions from the CLI are dropped.
-func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.Item) (cliprotocol.ImportResult, error) {
+func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.Item, scope string) (cliprotocol.ImportResult, error) {
 	result := cliprotocol.ImportResult{Failures: []cliprotocol.ImportFailure{}}
 	if len(importedItems) > cliprotocol.MaxImportBatch {
 		return result, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("send at most %d items at a time", cliprotocol.MaxImportBatch))
@@ -319,6 +384,9 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
 		return result, err
+	}
+	if scope == "" {
+		return result, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, "update hisar and review the import destination")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
@@ -329,17 +397,18 @@ func (s *Service) saveCommandLineImports(vaultID string, importedItems []item.It
 	if vault.Role == apitypes.VaultReader {
 		return result, errReadOnlyVault
 	}
-	if s.itemsByVaultID[vault.ID] == nil {
-		existingItems, err := s.unlockedSession.ListItems(ctx, vault)
-		if err != nil {
-			return result, convertError(err)
+	if !s.hasReadVaultItems(vault.ID) {
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return result, err
 		}
-		s.itemsByVaultID[vault.ID] = existingItems
+	}
+	if !s.isItemListComplete(vault.ID) {
+		return result, session.ErrIncompleteRead
 	}
 	favoriteItemIDs := []string{}
 	for _, vaultItem := range importedItems {
 		vaultItem.ID, vaultItem.Revision = "", ""
-		err := s.saveSessionItem(ctx, vault, &vaultItem)
+		err := s.saveSessionItem(ctx, vault, &vaultItem, scope)
 		if isImportStoppingError(err) {
 			return result, convertError(err)
 		}
@@ -368,9 +437,18 @@ func (s *Service) getCommandLineVaultActions(vaultID string) (cliprotocol.VaultA
 		CanLeave: actions.CanLeave, LeaveBlockedReason: actions.LeaveBlockedReason,
 		MembersLosingAccess: []cliprotocol.VaultMember{}, TargetVaults: []cliprotocol.Vault{},
 	}
-	for _, member := range actions.MembersLosingAccess {
-		result.MembersLosingAccess = append(result.MembersLosingAccess, cliprotocol.VaultMember{Name: member.Name, Email: member.Email, Role: member.Role})
+	members, err := s.ListVaultMembers(vaultID)
+	if err != nil {
+		return cliprotocol.VaultActionsResult{}, err
 	}
+	scopeMembers := []crypt.ImportMember{}
+	for _, member := range members {
+		scopeMembers = append(scopeMembers, crypt.ImportMember{AccountID: member.AccountID, Role: member.Role})
+		if !member.IsCurrentUser {
+			result.MembersLosingAccess = append(result.MembersLosingAccess, cliprotocol.VaultMember{AccountID: member.AccountID, Name: member.Name, Email: member.Email, Role: member.Role})
+		}
+	}
+	result.ImportScope = crypt.ImportScope(vaultID, scopeMembers)
 	for _, target := range actions.TargetVaults {
 		result.TargetVaults = append(result.TargetVaults, convertToCommandLineVault(target))
 	}

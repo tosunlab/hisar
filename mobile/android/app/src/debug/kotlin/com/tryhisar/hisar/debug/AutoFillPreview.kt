@@ -50,6 +50,7 @@ object AutoFillPreview {
             scope = activity.lifecycleScope,
             ioDispatcher = Dispatchers.IO,
             createBackend = { provider.backend },
+            events = provider.events,
             verifier = HttpAssetLinksVerifier,
             completeRequest = { credential ->
                 val copied = copiedOneTimeCode?.let { " and copied the one-time code $it" }.orEmpty()
@@ -62,7 +63,6 @@ object AutoFillPreview {
             },
             cancelRequest = { resultMessage.value = "Cancelled" },
             passkeyCompletion = AutoFillModel.PasskeyCompletion({}, {}, {}, {}),
-            verifyDeviceOwner = { false },
         )
         activity.lifecycleScope.launch { model.prepareCredentialList(FillTarget.Websites(listOf(serviceIdentifier)), kind) }
         return {

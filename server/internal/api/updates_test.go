@@ -107,7 +107,7 @@ func TestDesktopAppcastAndDownload(t *testing.T) {
 	}
 	for _, expected := range []string{
 		`<sparkle:version>2000</sparkle:version>`,
-		`url="https://hisar.test/api/v1/desktop/updates/0.2.0/Hisar-0.2.0.zip"`,
+		`url="` + updateServer.baseURL + `/api/v1/desktop/updates/0.2.0/Hisar-0.2.0.zip"`,
 		`New &amp; &lt;improved&gt;`,
 	} {
 		if !bytes.Contains(body, []byte(expected)) {

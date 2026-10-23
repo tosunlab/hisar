@@ -8,6 +8,8 @@
 set -euo pipefail
 
 scriptDirectory="$(cd "$(dirname "$0")" && pwd)"
+GOTOOLCHAIN=$(bash "$scriptDirectory/go-toolchain.sh")
+export GOTOOLCHAIN
 cd "$scriptDirectory/../desktop"
 version=${1:?usage: package-desktop-linux.sh <version>}
 architecture=$(go env GOARCH)

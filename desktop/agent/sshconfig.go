@@ -76,25 +76,27 @@ func backUpSSHConfig(homeDirectory, content string, now time.Time) (string, erro
 	return "", errors.New("could not back up the SSH config: too many backups")
 }
 
-// writeSSHConfig replaces the file atomically and keeps it private to the user.
+// writeSSHConfig replaces the file atomically through a new file of its own and keeps it private to the user.
 func writeSSHConfig(homeDirectory, content string) error {
 	configPath := getSSHConfigPath(homeDirectory)
 	if resolvedPath, err := filepath.EvalSymlinks(configPath); err == nil {
 		configPath = resolvedPath
 	}
-	partialPath := configPath + ".hisar-partial"
-	if err := os.WriteFile(partialPath, []byte(content), 0o600); err != nil {
+	partialFile, err := os.CreateTemp(filepath.Dir(configPath), "."+filepath.Base(configPath)+".hisar-*")
+	if err != nil {
 		return err
 	}
-	if err := os.Chmod(partialPath, 0o600); err != nil {
-		os.Remove(partialPath)
-		return err
+	_, err = partialFile.WriteString(content)
+	if closeErr := partialFile.Close(); err == nil {
+		err = closeErr
 	}
-	if err := os.Rename(partialPath, configPath); err != nil {
-		os.Remove(partialPath)
-		return err
+	if err == nil {
+		err = os.Rename(partialFile.Name(), configPath)
 	}
-	return nil
+	if err != nil {
+		os.Remove(partialFile.Name())
+	}
+	return err
 }
 
 // ConfigureSSHConfig adds the Hisar section at the top of ~/.ssh/config after backing the file up.

@@ -24,8 +24,7 @@ const (
 	inviteExpired = "expired"
 )
 
-// inviteState is pending until the invite is used or its expiry passes, the same rule the sign-up and the invite page
-// apply in SQL.
+// inviteState checks use and expiry after the store has filtered unused invites by their issuer's current authority.
 func inviteState(invite *store.AdminInvite, now time.Time) string {
 	switch {
 	case invite.UsedAt != nil:
@@ -75,13 +74,22 @@ func (s *Service) CreateAdminInvite(ctx context.Context, actor Actor, request *a
 	if err := s.refuseExistingAccount(ctx, email); err != nil {
 		return nil, err
 	}
+	admin := store.AdminActor{AccountID: actor.AccountID}
+	if request.Role == apitypes.RoleAdmin {
+		pending, err := s.finishReauthentication(ctx, actor, request.Proof.ReauthenticationID, request.Proof.KE3)
+		if err != nil {
+			return nil, err
+		}
+		defer pending.erase()
+		admin = provenAdmin(actor, pending)
+	}
 	inviter, err := s.store.GetAccountByID(ctx, actor.AccountID)
 	if err != nil {
 		return nil, err
 	}
-	token, _, err := s.newInviteToken(ctx, email, request.Role, &inviter.ID)
-	if err != nil {
-		return nil, err
+	token := generateToken()
+	if err := s.store.CreateAdminInvite(ctx, hashToken(token), email, request.Role, admin, time.Now().Add(s.InviteTTL)); err != nil {
+		return nil, convertAdminAccountError(err)
 	}
 	created, err := s.store.GetAdminInvite(ctx, hashToken(token))
 	if err != nil {
@@ -108,7 +116,7 @@ func (s *Service) RevokeAdminInvite(ctx context.Context, actor Actor, inviteID s
 
 // ResendAdminInvite replaces a pending invite with a fresh one for the same email and role, sent by the admin, so the
 // old link stops working and the new one gets the full lifetime.
-func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID string) (*apitypes.AdminInviteCreated, error) {
+func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID string, request *apitypes.AdminInviteResendRequest) (*apitypes.AdminInviteCreated, error) {
 	invite, err := s.getPendingAdminInvite(ctx, inviteID)
 	if err != nil {
 		return nil, err
@@ -116,17 +124,26 @@ func (s *Service) ResendAdminInvite(ctx context.Context, actor Actor, inviteID s
 	if err := s.refuseExistingAccount(ctx, invite.Email); err != nil {
 		return nil, err
 	}
+	admin := store.AdminActor{AccountID: actor.AccountID}
+	if invite.Role == apitypes.RoleAdmin {
+		pending, err := s.finishReauthentication(ctx, actor, request.Proof.ReauthenticationID, request.Proof.KE3)
+		if err != nil {
+			return nil, err
+		}
+		defer pending.erase()
+		admin = provenAdmin(actor, pending)
+	}
 	inviter, err := s.store.GetAccountByID(ctx, actor.AccountID)
 	if err != nil {
 		return nil, err
 	}
 	token := generateToken()
-	replaced, err := s.store.ReplaceInvite(ctx, invite.TokenHash, hashToken(token), inviter.ID, time.Now().Add(s.InviteTTL))
+	replaced, err := s.store.ReplaceInvite(ctx, invite.TokenHash, hashToken(token), admin, time.Now().Add(s.InviteTTL))
 	if errors.Is(err, store.ErrNotFound) {
 		return nil, errInviteGone
 	}
 	if err != nil {
-		return nil, err
+		return nil, convertAdminAccountError(err)
 	}
 	s.recordAudit(ctx, actor, auditAdminInviteResent, map[string]string{"email": replaced.Email, "role": replaced.Role})
 	return s.emailAdminInvite(ctx, inviter, replaced, token), nil

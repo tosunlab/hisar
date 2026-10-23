@@ -188,12 +188,11 @@ func (source *SSHKeySource) ListKeys(ctx context.Context) ([]sshagent.Key, error
 		}
 		items, isCached := s.itemsByVaultID[vault.ID]
 		if !isCached {
-			loadedItem, err := s.unlockedSession.ListItems(ctx, vault)
+			read, err := s.readVaultItems(ctx, vault)
 			if err != nil {
-				return nil, convertError(err)
+				return nil, err
 			}
-			s.itemsByVaultID[vault.ID] = loadedItem
-			items = loadedItem
+			items = read.Items
 		}
 		for _, vaultItem := range items {
 			if !vaultItem.IsCategory(item.CategorySSHKey) || vaultItem.Details.PrivateKey == "" {

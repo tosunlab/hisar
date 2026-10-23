@@ -1,4 +1,5 @@
 import { algorithmES256, decodeBase64URL, type PasskeyPageRequest, type SerializedPRFInput, type SerializedPRFValues } from "../shared/passkey";
+import type { UserVerificationPolicy } from "../shared/passkey";
 
 export const maximumChallengeBytes = 1024;
 export const maximumUserHandleBytes = 64;
@@ -9,6 +10,7 @@ export const maximumRelyingPartyIDLength = 253;
 export const maximumPRFInputBytes = 1024;
 
 export interface ValidatedCreation {
+  userVerification: UserVerificationPolicy;
   kind: "create";
   relyingPartyID?: string;
   relyingPartyName: string;
@@ -22,6 +24,7 @@ export interface ValidatedCreation {
 }
 
 export interface ValidatedAssertion {
+  userVerification: UserVerificationPolicy;
   kind: "get";
   relyingPartyID?: string;
   challenge: string;
@@ -119,6 +122,8 @@ function rejectRequest(reason: string): PasskeyValidation {
 export function validatePasskeyRequest(request: PasskeyPageRequest | unknown): PasskeyValidation {
   if (!isObject(request) || !isObject(request.options)) return rejectRequest("no options");
   const options = request.options;
+  const userVerification = options.userVerification ?? "preferred";
+  if (userVerification !== "required" && userVerification !== "preferred" && userVerification !== "discouraged") return rejectRequest("invalid user verification policy");
   if (request.mediation === "silent") return rejectRequest("silent mediation needs no Hisar prompt");
   const challenge = readBinary(options.challenge, 1, maximumChallengeBytes);
   if (!challenge) return rejectRequest("invalid challenge");
@@ -130,7 +135,7 @@ export function validatePasskeyRequest(request: PasskeyPageRequest | unknown): P
     if (prf === false) return rejectRequest("invalid prf extension");
     return {
       isValid: true,
-      request: { kind: "get", relyingPartyID, challenge, allAllowedCredentialID, isConditional: request.mediation === "conditional", ...(prf ? { prf } : {}) },
+      request: { kind: "get", userVerification, relyingPartyID, challenge, allAllowedCredentialID, isConditional: request.mediation === "conditional", ...(prf ? { prf } : {}) },
     };
   }
   if (request.kind !== "create") return rejectRequest("unknown kind");
@@ -157,6 +162,7 @@ export function validatePasskeyRequest(request: PasskeyPageRequest | unknown): P
     isValid: true,
     request: {
       kind: "create",
+      userVerification,
       relyingPartyID,
       relyingPartyName,
       userHandle,

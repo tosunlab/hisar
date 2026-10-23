@@ -9,6 +9,7 @@ import (
 func (s *Server) registerAdminAccountRoutes(adminGroup fiber.Router) {
 	adminGroup.Get("/accounts", s.requireSession, requireAdmin, s.handleListAdminAccounts)
 	adminGroup.Get("/accounts/:account", s.requireSession, requireAdmin, s.handleGetAdminAccount)
+	adminGroup.Get("/accounts/:account/deletion-preview", s.requireSession, requireAdmin, s.handleGetAdminAccountDeletionPreview)
 	adminGroup.Post("/accounts/:account/suspend", s.requireSession, requireAdmin, s.handleSuspendAccount)
 	adminGroup.Post("/accounts/:account/reactivate", s.requireSession, requireAdmin, s.handleReactivateAccount)
 	adminGroup.Put("/accounts/:account/role", s.requireSession, requireAdmin, s.handleChangeAccountRole)
@@ -26,11 +27,15 @@ func (s *Server) handleListAdminAccounts(c fiber.Ctx) error {
 }
 
 func (s *Server) handleGetAdminAccount(c fiber.Ctx) error {
-	detail, err := s.service.GetAdminAccount(c.Context(), c.Params("account"))
+	return s.sendCollection(c)
+}
+
+func (s *Server) handleGetAdminAccountDeletionPreview(c fiber.Ctx) error {
+	preview, err := s.service.PreviewAccountDeletionAsAdmin(c.Context(), s.getActor(c), c.Params("account"))
 	if err != nil {
 		return err
 	}
-	return c.JSON(detail)
+	return s.sendDeletionPreview(c, preview)
 }
 
 func (s *Server) handleSuspendAccount(c fiber.Ctx) error {

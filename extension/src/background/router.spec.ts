@@ -6,7 +6,7 @@ import { routeMessage, type RouterServices } from "./router";
 
 const context = { extensionID: "mmipiffoogblblocokimpemdopmdjghf", extensionOrigin: "chrome-extension://mmipiffoogblblocokimpemdopmdjghf/" };
 const popupSender = { id: context.extensionID, url: `${context.extensionOrigin}popup.html` };
-const contentSender = { id: context.extensionID, url: "https://example.com/login", tab: { id: 9 }, frameId: 0 };
+const contentSender = { id: context.extensionID, url: "https://example.com/login", tab: { id: 9 }, frameId: 0, documentId: "document-1" };
 
 function createController(): BackgroundController {
   return {
@@ -72,7 +72,7 @@ describe("routeMessage", () => {
       contentSender,
       context,
     );
-    expect(controller.handleLoginSubmitted).toHaveBeenCalledWith(9, "https://example.com/login", "alex", "pw");
+    expect(controller.handleLoginSubmitted).toHaveBeenCalledWith(9, "https://example.com/login", "alex", "pw", 0, "https://example.com/login", "document-1");
   });
 
   it("refuses content messages without a tab", async () => {
@@ -83,11 +83,29 @@ describe("routeMessage", () => {
   it("returns errors with their codes", async () => {
     const response = await routeMessage(
       createServices(createController()),
-      { type: "content.actOnSaveOffer", offerID: "x", action: "save" } as never,
-      contentSender,
+      { type: "popup.actOnSaveOffer", tabId: 9, offerID: "x", action: "save" } as never,
+      popupSender,
       context,
     );
     expect(response).toEqual({ ok: false, error: { code: "not-found", message: "This save offer has expired" } });
+  });
+
+  it("acknowledges submissions before checking and never returns a decision to the page", async () => {
+    const controller = createController();
+    vi.mocked(controller.handleLoginSubmitted).mockReturnValue(Promise.withResolvers<undefined>().promise);
+    expect(await routeMessage(createServices(controller), { type: "content.loginSubmitted", username: "alex", password: "guess" } as never, contentSender, context)).toEqual({ ok: true, result: null });
+  });
+
+  it("refuses save inspection and authorization from every embedded extension page", async () => {
+    const controller = createController();
+    for (const page of ["inline-menu.html", "passkey-prompt.html"]) {
+      const sender = { ...contentSender, url: `${context.extensionOrigin}${page}`, frameId: 3 };
+      for (const message of [{ type: "popup.getPendingSaveOffer", tabId: 9 }, { type: "popup.actOnSaveOffer", tabId: 9, offerID: "x", action: "save" }]) {
+        expect(await routeMessage(createServices(controller), message, sender, context)).toMatchObject({ ok: false, error: { code: "invalid-request" } });
+      }
+    }
+    expect(controller.getPendingSaveOffer).not.toHaveBeenCalled();
+    expect(controller.actOnSaveOffer).not.toHaveBeenCalled();
   });
 
   it("leaves broadcast messages and unknown shapes alone", async () => {

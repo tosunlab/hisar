@@ -49,9 +49,12 @@ type Request struct {
 	ItemID           string `json:"itemID,omitempty"`
 	Username         string `json:"username,omitempty"`
 	Password         string `json:"password,omitempty"`
-	Length           int    `json:"length,omitempty"`
-	Digits           *bool  `json:"digits,omitempty"`
-	Symbols          *bool  `json:"symbols,omitempty"`
+	SaveContext      string `json:"saveContext,omitempty"`
+	// TabID names the browser tab of a logins.prepare; the tab's next one retires its save context.
+	TabID   string `json:"tabID,omitempty"`
+	Length  int    `json:"length,omitempty"`
+	Digits  *bool  `json:"digits,omitempty"`
+	Symbols *bool  `json:"symbols,omitempty"`
 	// Query, Category and IsFavoriteOnly narrow items.list; FieldID names the field items.reveal returns.
 	Query          string `json:"query,omitempty"`
 	Category       string `json:"category,omitempty"`
@@ -122,9 +125,12 @@ const FeatureCreateItems = "create-items"
 // FeatureUnlockPassword: unlock.password unlocks Hisar with the master password typed in the popup.
 const FeatureUnlockPassword = "unlock-password"
 
+// FeatureSaveConfirmation requires a one-use session-bound context for logins.save.
+const FeatureSaveConfirmation = "save-confirmation"
+
 // ListFeatures returns the features this app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems}
+	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems, FeatureSaveConfirmation, FeaturePasskeyVerification}
 }
 
 const (
@@ -152,6 +158,7 @@ type StatusResult struct {
 
 type Login struct {
 	VaultID            string `json:"vaultID"`
+	IsPersonal         bool   `json:"isPersonal"`
 	ItemID             string `json:"itemID"`
 	Title              string `json:"title"`
 	Username           string `json:"username"`
@@ -170,10 +177,13 @@ type FillResult struct {
 }
 
 type CheckResult struct {
-	Status  string `json:"status"`
-	VaultID string `json:"vaultID,omitempty"`
-	ItemID  string `json:"itemID,omitempty"`
-	Title   string `json:"title,omitempty"`
+	Status      string `json:"status"`
+	VaultID     string `json:"vaultID,omitempty"`
+	ItemID      string `json:"itemID,omitempty"`
+	Title       string `json:"title,omitempty"`
+	VaultName   string `json:"vaultName,omitempty"`
+	IsPersonal  bool   `json:"isPersonal,omitempty"`
+	SaveContext string `json:"saveContext,omitempty"`
 }
 
 // AddressSource tells where an address offered for filling comes from.

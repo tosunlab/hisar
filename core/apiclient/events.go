@@ -23,8 +23,10 @@ const EventIdleTimeout = 90 * time.Second
 
 var ErrEventStreamIdle = errors.New("client: the event stream went quiet")
 
-// StreamEvents calls handleEvent for each event until ctx ends, the server closes the stream or it goes quiet.
-func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) error {
+// StreamEvents calls handleOpen, when not nil, once the server has accepted the stream, then handleEvent for each event
+// until ctx ends, the server closes the stream or it goes quiet. The server keeps no backlog: a change made before
+// handleOpen is on no stream.
+func (c *Client) StreamEvents(ctx context.Context, handleOpen func(), handleEvent func(Event)) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, c.BaseURL+"/api/v1/events", nil)
@@ -37,7 +39,7 @@ func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) erro
 	}
 	c.setClientHeader(request.Header)
 	// The regular client's overall timeout would cut a long-lived stream; idleness is checked instead.
-	streamClient := &http.Client{Transport: c.HTTP.Transport}
+	streamClient := &http.Client{Transport: c.HTTP.Transport, CheckRedirect: CheckRedirect}
 	response, err := streamClient.Do(request)
 	if err != nil {
 		return err
@@ -52,6 +54,9 @@ func (c *Client) StreamEvents(ctx context.Context, handleEvent func(Event)) erro
 			return readError(response.StatusCode, data)
 		}
 		return &APIError{Status: response.StatusCode, Message: strings.TrimSpace(string(data))}
+	}
+	if handleOpen != nil {
+		handleOpen()
 	}
 
 	idleTimer := time.AfterFunc(EventIdleTimeout, cancel)

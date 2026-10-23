@@ -23,19 +23,28 @@ func (s *Service) ListItems(vaultID string) ([]ItemDetail, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
+	for _, issue := range s.vaultReadIssues {
+		if issue.VaultID == vaultID && issue.Kind == "vault-key" {
+			return []ItemDetail{}, nil
+		}
+	}
 	vault, err := s.findVault(ctx, vaultID)
 	if err != nil {
 		return nil, err
 	}
-	items, err := s.unlockedSession.ListItems(ctx, vault)
+	result, err := s.readVaultItems(ctx, vault)
 	if err != nil {
-		return nil, convertError(err)
+		return nil, err
 	}
-	s.itemsByVaultID[vaultID] = items
+	items := result.Items
 	s.loadFavoritesOnce(ctx)
 	summaries := make([]ItemDetail, 0, len(items))
 	for index := range items {
 		summaries = append(summaries, s.summarizeItem(&items[index]))
+	}
+	for index := range result.Issues {
+		issue := result.Issues[index]
+		summaries = append(summaries, ItemDetail{ID: issue.ItemID, Revision: issue.Revision, Title: "Unreadable item " + issue.ItemID, ReadIssue: &issue})
 	}
 	return summaries, nil
 }
@@ -104,6 +113,11 @@ func (s *Service) findItem(vaultID, itemID string) (*item.Item, error) {
 	for index, vaultItem := range s.itemsByVaultID[vaultID] {
 		if vaultItem.ID == itemID {
 			return &s.itemsByVaultID[vaultID][index], nil
+		}
+	}
+	for _, issue := range s.itemReadIssuesByVaultID[vaultID] {
+		if issue.ItemID == itemID {
+			return nil, session.ErrIncompleteRead
 		}
 	}
 	return nil, fmt.Errorf("item %w", ErrNotFound)
@@ -355,6 +369,10 @@ func convertFromItemIcon(icon *ItemIcon) *item.Icon {
 
 // SaveItem creates the item when detail.ID is empty, otherwise updates it based on detail.Revision.
 func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error) {
+	return s.saveItem(vaultID, detail, "")
+}
+
+func (s *Service) saveItem(vaultID string, detail ItemDetail, importScope string) (ItemDetail, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -381,6 +399,12 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	if err != nil {
 		return ItemDetail{}, err
 	}
+	if _, isLoaded := s.itemsByVaultID[vaultID]; detail.ID != "" && !isLoaded {
+		// Whether the stored record opens decides how the edit is applied, so the vault is read first.
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return ItemDetail{}, err
+		}
+	}
 	vaultItem, err := s.buildSavedItem(vaultID, detail)
 	if err != nil {
 		return ItemDetail{}, err
@@ -388,7 +412,13 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	if err := s.checkServerSSHKey(ctx, vault, &vaultItem); err != nil {
 		return ItemDetail{}, err
 	}
-	if err := s.saveSessionItem(ctx, vault, &vaultItem); err != nil {
+	var saveErr error
+	if importScope == "" {
+		saveErr = s.saveSessionItem(ctx, vault, &vaultItem)
+	} else {
+		saveErr = s.saveSessionItem(ctx, vault, &vaultItem, importScope)
+	}
+	if err := saveErr; err != nil {
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
@@ -397,13 +427,17 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 
 // saveSessionItem writes vaultItem. An update passes the cached plaintext it started from, so a key rotation can
 // be told from a change someone else made.
-func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vaultItem *item.Item) error {
+func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vaultItem *item.Item, importScope ...string) error {
 	var base *item.Item
 	if vaultItem.ID != "" && vaultItem.Revision != "" {
 		if cached, err := s.findItem(vault.ID, vaultItem.ID); err == nil && cached != vaultItem {
 			copied := *cached
 			base = &copied
 		}
+	}
+	if len(importScope) == 1 {
+		_, err := s.unlockedSession.SaveImportItem(ctx, vault, vaultItem, importScope[0], base)
+		return err
 	}
 	_, err := s.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
 	return err
@@ -415,7 +449,12 @@ func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vau
 func (s *Service) buildSavedItem(vaultID string, detail ItemDetail) (item.Item, error) {
 	var cachedItem *item.Item
 	if detail.ID != "" {
-		cachedItem, _ = s.findItem(vaultID, detail.ID)
+		var err error
+		// A stored record that did not open has no known plaintext, so no edit may replace it; only the reviewed
+		// recovery deletion removes it.
+		if cachedItem, err = s.findItem(vaultID, detail.ID); errors.Is(err, session.ErrIncompleteRead) {
+			return item.Item{}, err
+		}
 	}
 	if cachedItem == nil {
 		switch detail.Category {
@@ -511,11 +550,9 @@ func (s *Service) checkServerSSHKey(ctx context.Context, vault *session.Vault, v
 		}
 	}
 	if _, isLoaded := s.itemsByVaultID[vault.ID]; !isLoaded {
-		items, err := s.unlockedSession.ListItems(ctx, vault)
-		if err != nil {
-			return convertError(err)
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return err
 		}
-		s.itemsByVaultID[vault.ID] = items
 	}
 	if key, err := s.findItem(vault.ID, server.SSHKeyID); err != nil || !key.IsCategory(item.CategorySSHKey) {
 		return errors.New("choose an SSH key from this vault")
@@ -553,8 +590,13 @@ func (s *Service) ConvertToSecureNote(vaultID, itemID string) (ItemDetail, error
 	return s.describeItem(&vaultItem), nil
 }
 
+// replaceCachedItem puts a saved item into its vault's loaded items. In a vault not read yet the list holds only this
+// item, so it has no read provenance and the next reader that needs the vault reads all of it (hasReadVaultItems).
 func (s *Service) replaceCachedItem(vaultID string, vaultItem item.Item) {
-	items := s.itemsByVaultID[vaultID]
+	items, isLoaded := s.itemsByVaultID[vaultID]
+	if !isLoaded {
+		delete(s.itemProvenanceByVaultID, vaultID)
+	}
 	for index := range items {
 		if items[index].ID == vaultItem.ID {
 			items[index] = vaultItem

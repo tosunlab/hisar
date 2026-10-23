@@ -3,7 +3,6 @@ package export
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,7 +12,6 @@ import (
 
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/item"
-	"github.com/tryhisar/hisar/core/session"
 )
 
 const (
@@ -41,11 +39,12 @@ var (
 
 // Document is the plain export, and the plaintext of an encrypted one.
 type Document struct {
-	Format     string    `json:"format"`
-	Version    int       `json:"version"`
-	ExportedAt time.Time `json:"exportedAt"`
-	Account    Account   `json:"account"`
-	Vaults     []Vault   `json:"vaults"`
+	Format     string      `json:"format"`
+	Version    int         `json:"version"`
+	ExportedAt time.Time   `json:"exportedAt"`
+	Account    Account     `json:"account"`
+	Vaults     []Vault     `json:"vaults"`
+	Provenance *Provenance `json:"provenance,omitempty"`
 }
 
 type Account struct {
@@ -53,11 +52,14 @@ type Account struct {
 	Server string `json:"server"`
 }
 
+// Vault is one exported vault. NameUnreadable marks a recovery container: the vault's name did not open, so Name is a
+// label made from its ID, not the name its owner gave it.
 type Vault struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Type  string `json:"type"`
-	Items []Item `json:"items"`
+	ID             string `json:"id"`
+	Name           string `json:"name"`
+	NameUnreadable bool   `json:"nameUnreadable,omitempty"`
+	Type           string `json:"type"`
+	Items          []Item `json:"items"`
 }
 
 type Item struct {
@@ -88,24 +90,6 @@ var byteOrderMark = []byte{0xef, 0xbb, 0xbf}
 type header struct {
 	Format  string `json:"format"`
 	Version int    `json:"version"`
-}
-
-// Collect decrypts every vault the session can read, items sorted by title.
-func Collect(ctx context.Context, unlockedSession *session.Session) ([]Vault, error) {
-	sessionVaults, err := unlockedSession.ListVaults(ctx)
-	if err != nil {
-		return nil, err
-	}
-	vaults := make([]Vault, 0, len(sessionVaults))
-	for index := range sessionVaults {
-		sessionVault := &sessionVaults[index]
-		items, err := unlockedSession.ListItems(ctx, sessionVault)
-		if err != nil {
-			return nil, err
-		}
-		vaults = append(vaults, ConvertVault(sessionVault.ID, sessionVault.Name, sessionVault.Type, items))
-	}
-	return vaults, nil
 }
 
 func ConvertVault(vaultID, name, vaultType string, items []item.Item) Vault {

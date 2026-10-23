@@ -20,13 +20,13 @@ object AssetLinks {
     /**
      * The websites worth asking about an app: those whose registrable domain's name is a part of the app's package, such as
      * github.com for com.github.android. Asking a site tells it that the vault holds a login for it, so Hisar does not ask
-     * every site of the vault; a site's answer, not this guess, decides.
+     * every site of the vault; a site's answer, not this guess, decides. Registrable domains come before other hosts: they
+     * are few and are asked first when a fill's time runs short.
      */
     fun listAllCandidate(app: AndroidApp, allWebsite: List<LoginWebsite>): List<Candidate> {
         val allPackagePart = app.packageName.lowercase().split('.').toSet()
-        return allWebsite
-            .filter { website -> website.registrableDomain.substringBefore('.').let { it.isNotEmpty() && it in allPackagePart } }
-            .flatMap { website -> listOf(website.host, website.registrableDomain) }
+        val allMatching = allWebsite.filter { website -> website.registrableDomain.substringBefore('.').let { it.isNotEmpty() && it in allPackagePart } }
+        return (allMatching.map { it.registrableDomain } + allMatching.map { it.host })
             .filter { it.isNotEmpty() }
             .distinct()
             .map { Candidate("https://$it", "https://$it/.well-known/assetlinks.json") }

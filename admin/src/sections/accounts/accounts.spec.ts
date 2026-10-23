@@ -5,7 +5,7 @@ import { bridge, type ReauthenticationProof } from "../../bridge/bridge";
 import { currentPath } from "../../navigation";
 import AccountsView from "./AccountsView.vue";
 import AccountView from "./AccountView.vue";
-import { formatActivity, formatDeviceCount, readAccountId, type AdminAccount, type AdminAccountDetail, type AdminDevice } from "./accounts";
+import { formatActivity, formatDeviceCount, previewAccountDeletion, readAccountId, type AdminAccount, type AdminAccountDetail, type AdminDevice } from "./accounts";
 
 vi.mock("../../bridge/bridge", () => ({ bridge: { reauthenticate: vi.fn() } }));
 
@@ -78,6 +78,11 @@ describe("readAccountId", () => {
     expect(readAccountId("/admin/accounts/ABC123/")).toBe("ABC123");
     expect(readAccountId("/admin/accounts/ABC123/devices")).toBe("");
   });
+
+  it("takes a malformed percent escape as typed instead of throwing", () => {
+    expect(readAccountId("/admin/accounts/%ZZ")).toBe("%ZZ");
+    expect(readAccountId("/admin/accounts/AB%43")).toBe("ABC");
+  });
 });
 
 describe("formatActivity", () => {
@@ -124,13 +129,28 @@ describe("AccountView", () => {
   const ada = createAccount("ada@example.com", { id: "ADA123" });
   let roleAnswer: Response;
   let deleteAnswer: Response;
+  let planVersion: string;
+
+  beforeEach(() => {
+    planVersion = "plan-1";
+  });
 
   function mountAccount(account: AdminAccount): void {
+    currentPath.value = `/admin/accounts/${account.id}`;
     const detail: AdminAccountDetail = { account, devices: [] };
     fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       const path = String(url);
       if (path === "/api/v1/account") {
         return answer(200, { email: "admin@example.com" });
+      }
+      if (path.endsWith("/deletion-preview")) {
+        return answer(200, {
+          planVersion,
+          ownedVaults: [{ vaultId: planVersion === "plan-1" ? "family" : "new-shared-vault", type: "shared", otherMemberCount: 2 }],
+          memberVaults: [{ vaultId: "team", type: "shared", role: "owner" }],
+          organizations: [{ organizationId: "org", name: "Family organization", deleted: false, newAdminName: "Bob" }],
+          deviceCount: 3, shareLinkCount: 1, sentInvitationCount: 2, receivedInvitationCount: 1,
+        });
       }
       if (path.endsWith("/role")) {
         return roleAnswer;
@@ -188,6 +208,55 @@ describe("AccountView", () => {
     expect(fetchMock.mock.calls.some(([url]) => String(url).endsWith("/delete"))).toBe(false);
   });
 
+  it("requires review and fresh credentials when the deletion plan changes", async () => {
+    deleteAnswer = answer(409, { error: "The deletion plan changed. Review the deletion again before confirming.", deletionPlanChanged: true });
+    mountAccount(ada);
+    await vi.waitFor(() => findButton("Delete account…"));
+    findButton("Delete account…").click();
+    await vi.waitFor(() => expect(root.querySelector('[data-testid="deletion-consequences"]')?.textContent).toContain("family"));
+    expect(root.textContent).toContain("Bob becomes an admin of Family organization");
+    type("secretKey", "H1-ADMIN1-SECRET");
+    type("password", "admin password");
+    type("confirmEmail", "ada@example.com");
+    reauthenticate.mockResolvedValue({ reauthenticationId: "first-proof", ke3: "first" });
+    planVersion = "plan-2";
+    root.querySelector<HTMLFormElement>("form[aria-label='Delete account']")!.dispatchEvent(new Event("submit"));
+    await vi.waitFor(() => expect(root.textContent).toContain("Review the latest consequences"));
+    expect(root.querySelector('[data-testid="deletion-consequences"]')?.textContent).toContain("new-shared-vault");
+    expect(findButton("Delete account").disabled).toBe(true);
+    expect(root.querySelector<HTMLInputElement>('input[name="password"]')!.value).toBe("");
+    expect(root.querySelector<HTMLInputElement>('input[name="confirmEmail"]')!.value).toBe("");
+    const firstRequest = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/delete"))!;
+    expect(JSON.parse(String(firstRequest[1]?.body))).toMatchObject({ planVersion: "plan-1", proof: { reauthenticationId: "first-proof" } });
+    expect(reauthenticate).toHaveBeenCalledWith("admin-token", "admin@example.com", "H1-ADMIN1-SECRET", "admin password", "admin-account-delete", "ADA123", "plan-1");
+    deleteAnswer = answer(204);
+    reauthenticate.mockResolvedValue({ reauthenticationId: "second-proof", ke3: "second" });
+    type("secretKey", "H1-ADMIN1-SECRET");
+    type("password", "admin password");
+    type("confirmEmail", "ada@example.com");
+    root.querySelector<HTMLFormElement>("form[aria-label='Delete account']")!.dispatchEvent(new Event("submit"));
+    await vi.waitFor(() => expect(currentPath.value).toBe("/admin/accounts"));
+    const lastRequest = fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/delete")).at(-1)!;
+    expect(JSON.parse(String(lastRequest[1]?.body))).toMatchObject({ planVersion: "plan-2", proof: { reauthenticationId: "second-proof" } });
+  });
+
+  it("keeps the server's reason for a deletion conflict that is not a plan change", async () => {
+    deleteAnswer = answer(409, { error: "The account's memberships are changing. Suspend the account, then delete it." });
+    mountAccount(ada);
+    await vi.waitFor(() => findButton("Delete account…"));
+    findButton("Delete account…").click();
+    await vi.waitFor(() => expect(root.querySelector('[data-testid="deletion-consequences"]')?.textContent).toContain("family"));
+    type("secretKey", "H1-ADMIN1-SECRET");
+    type("password", "admin password");
+    type("confirmEmail", "ada@example.com");
+    reauthenticate.mockResolvedValue({ reauthenticationId: "proof", ke3: "a2Uz" });
+    planVersion = "plan-2";
+    root.querySelector<HTMLFormElement>("form[aria-label='Delete account']")!.dispatchEvent(new Event("submit"));
+    await vi.waitFor(() => expect(root.querySelector("[role=dialog] [role=alert]")?.textContent).toBe("The account's memberships are changing. Suspend the account, then delete it."));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/deletion-preview"))).toHaveLength(1);
+    expect(root.querySelector('[data-testid="deletion-consequences"]')?.textContent).toContain("family");
+  });
+
   it("offers no suspension, role change or deletion of the admin's own account", async () => {
     mountAccount(createAccount("admin@example.com", { id: "ADMIN1", role: "admin" }));
     await vi.waitFor(() => findButton("Sign out everywhere…"));
@@ -224,5 +293,24 @@ describe("AccountView", () => {
     await vi.waitFor(() => expect(root.querySelector("[data-testid=device-laptop]")?.textContent).toContain("Suspended · last activity"));
     expect(root.querySelector("[data-testid=device-laptop]")?.textContent).not.toContain("Active");
     expect(findButton("Sign out").disabled).toBe(false);
+  });
+});
+
+describe("previewAccountDeletion", () => {
+  it("reads every page of the deletion preview into one plan", async () => {
+    const header = { planVersion: "plan-1", ownedVaults: [], memberVaults: [], organizations: [], shareLinkCount: 1, sentInvitationCount: 2, receivedInvitationCount: 0, deviceCount: 3 };
+    const page = (records: unknown[], nextCursor = "") => new Response(JSON.stringify({ version: "1", snapshot: "s", planVersion: "plan-1", records, nextCursor }), { headers: { "Hisar-Collection-Pages": "1" } });
+    const fetchPage = vi.fn<typeof fetch>(async (url) => String(url).includes("cursor=")
+      ? page([{ key: "2/team", field: "memberVaults", value: { vaultId: "team", type: "shared", role: "owner" } }, { key: "3/org", field: "organizations", value: { organizationId: "org", name: "Org", deleted: true } }])
+      : page([{ key: "0", field: "$", value: header }, { key: "1/family", field: "ownedVaults", value: { vaultId: "family", type: "shared", otherMemberCount: 2 } }], "next"));
+    vi.stubGlobal("fetch", fetchPage);
+    await expect(previewAccountDeletion("ADA123")).resolves.toEqual({
+      ...header,
+      ownedVaults: [{ vaultId: "family", type: "shared", otherMemberCount: 2 }],
+      memberVaults: [{ vaultId: "team", type: "shared", role: "owner" }],
+      organizations: [{ organizationId: "org", name: "Org", deleted: true }],
+    });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(String(fetchPage.mock.calls[0][0])).toContain("/admin/accounts/ADA123/deletion-preview");
   });
 });

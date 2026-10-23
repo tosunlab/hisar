@@ -13,6 +13,8 @@ fi
 allTarget=(linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64)
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
+GOTOOLCHAIN=$(bash "$root/scripts/go-toolchain.sh")
+export GOTOOLCHAIN
 mkdir -p "$outputDirectory"
 outputDirectory="$(cd "$outputDirectory" && pwd)"
 rm -f "$outputDirectory"/hisar-"$version"-* "$outputDirectory/SHA256SUMS"

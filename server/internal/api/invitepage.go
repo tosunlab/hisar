@@ -8,12 +8,9 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
-	"time"
 
 	"github.com/gofiber/fiber/v3"
-	"golang.org/x/time/rate"
 
-	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/service"
 )
 
@@ -81,10 +78,6 @@ func (page invitePageTemplate) render(data invitePageData) ([]byte, error) {
 		return nil, errors.New("invite page: no script placeholder")
 	}
 	return []byte(body[:scriptIndex] + page.script + body[scriptIndex+len("@@script@@"):]), nil
-}
-
-func newInvitePageLimiter() *ratelimit.Limiter {
-	return ratelimit.New(rate.Every(2*time.Second), 30)
 }
 
 func (s *Server) limitInvitePageRate(c fiber.Ctx) error {

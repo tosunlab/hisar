@@ -1,6 +1,8 @@
 version: '3'
 
 vars:
+  HISAR_GO_TOOLCHAIN:
+    sh: bash ../scripts/go-toolchain.sh
   APP_NAME: "Hisar"
   BIN_DIR: "bin"
   PACKAGE_MANAGER: '{{.PACKAGE_MANAGER | default "npm"}}'

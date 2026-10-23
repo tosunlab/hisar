@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 // backend is the account a command works on: through the Hisar app (appBackend) or signed in on its own
@@ -19,9 +20,13 @@ type backend interface {
 	listVaults(ctx context.Context) ([]cliprotocol.Vault, error)
 	createVault(ctx context.Context, name string) (cliprotocol.Vault, error)
 	listItems(ctx context.Context, vaultID string) ([]item.Item, error)
+	readVaults(ctx context.Context) (cliprotocol.VaultListResult, error)
+	readItems(ctx context.Context, vaultID string) (session.ItemReadResult, error)
+	// listsItemSummaries reports whether listItems omits content needed for import duplicate comparisons.
+	listsItemSummaries() bool
 	getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error)
 	// saveItem creates an item without an ID, or updates its title, username, websites, password, notes and fields.
-	saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
+	saveItem(ctx context.Context, vaultID string, vaultItem *item.Item, importScope ...string) error
 	// savePromptedItem saves what add and edit ask for: title, username, websites, password and notes; fields stay.
 	savePromptedItem(ctx context.Context, vaultID string, vaultItem *item.Item) error
 	// checkNewItemCategory refuses a category the backend would not save as asked; add calls it before prompting.
@@ -31,7 +36,7 @@ type backend interface {
 	deleteItem(ctx context.Context, vaultID, itemID string) error
 	// getOneTimeCode returns errNoOneTimeCode for an item without a one-time password.
 	getOneTimeCode(ctx context.Context, vaultID, itemID string) (string, error)
-	importItems(ctx context.Context, vaultID string, items []item.Item) (int, error)
+	importItems(ctx context.Context, vaultID string, items []item.Item, scope ...string) (int, error)
 	// listFavorites returns the user's starred items in the vaults they can open.
 	listFavorites(ctx context.Context) ([]cliprotocol.Favorite, error)
 	setItemFavorite(ctx context.Context, vaultID, itemID string, isFavorite bool) error
@@ -49,6 +54,7 @@ type backend interface {
 	listInvitations(ctx context.Context) (cliprotocol.InvitationListResult, error)
 	// answerInvitation accepts, declines or cancels a share invitation.
 	answerInvitation(ctx context.Context, action, invitationID string) error
+	confirmInvitation(ctx context.Context, invitationID, reviewToken string) error
 	listShareLinks(ctx context.Context) ([]cliprotocol.ShareLink, error)
 	listDevices(ctx context.Context) ([]cliprotocol.Device, error)
 	revokeDevice(ctx context.Context, deviceID string) error
@@ -68,18 +74,9 @@ type backend interface {
 
 var errNoOneTimeCode = errors.New("the item has no one-time password")
 
-// findVaultByNameOrID matches the vault's ID, or else the first vault with that name, ignoring case.
+// findVaultByNameOrID resolves an ID or an unambiguous case-insensitive name.
 func findVaultByNameOrID(ctx context.Context, access backend, nameOrID string) (cliprotocol.Vault, error) {
-	vaults, err := access.listVaults(ctx)
-	if err != nil {
-		return cliprotocol.Vault{}, err
-	}
-	for _, vault := range vaults {
-		if vault.ID == nameOrID || strings.EqualFold(vault.Name, nameOrID) {
-			return vault, nil
-		}
-	}
-	return cliprotocol.Vault{}, fmt.Errorf("vault %q: not found", nameOrID)
+	return findBackendVault(ctx, access, nameOrID)
 }
 
 // findBackendItem finds the item a query names in the vault, and returns it with its secrets.
@@ -94,17 +91,23 @@ func findBackendItem(ctx context.Context, access backend, vaultName, query strin
 	}
 	summary, err := findItem(items, query)
 	if err != nil {
-		return vault, nil, err
+		return vault, nil, fmt.Errorf("vault %q [%s], type %s, role %s: %w", vault.Name, vault.ID, vault.Type, vault.Role, err)
 	}
 	vaultItem, err := access.getItem(ctx, vault.ID, summary.ID)
 	return vault, vaultItem, err
 }
 
+// findBackendVault matches the vault's ID, else its name ignoring case; a name more than one vault has is refused.
 func findBackendVault(ctx context.Context, access backend, nameOrID string) (cliprotocol.Vault, error) {
 	vaults, err := access.listVaults(ctx)
 	if err != nil {
 		return cliprotocol.Vault{}, err
 	}
+	return selectVault(vaults, nameOrID)
+}
+
+// selectVault picks the vault with this ID, else the one vault with this name ignoring case.
+func selectVault(vaults []cliprotocol.Vault, nameOrID string) (cliprotocol.Vault, error) {
 	for _, vault := range vaults {
 		if vault.ID == nameOrID {
 			return vault, nil
@@ -124,9 +127,29 @@ func findBackendVault(ctx context.Context, access backend, nameOrID string) (cli
 	}
 	iDs := []string{}
 	for _, vault := range matches {
-		iDs = append(iDs, vault.ID)
+		iDs = append(iDs, describeVault(vault))
 	}
 	return cliprotocol.Vault{}, fmt.Errorf("%d vaults are named %q; use an ID instead: %s", len(matches), nameOrID, strings.Join(iDs, ", "))
+}
+
+// refuseExistingOutput fails when the -o path is taken, so a command checks it before it changes anything it cannot undo.
+func refuseExistingOutput(path string) error {
+	if _, err := os.Stat(path); err == nil {
+		return fmt.Errorf("%s already exists; choose another file with -o", path)
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
+// describeVault tells apart vaults that share a name.
+func describeVault(vault cliprotocol.Vault) string {
+	return fmt.Sprintf("%s (name %q, type %s, role %s, organization %q)", vault.ID, vault.Name, vault.Type, vault.Role, vault.OrganizationID)
+}
+
+// formatVaultChoice names a vault in a list to choose from, with what tells it apart from a vault of the same name.
+func formatVaultChoice(vault cliprotocol.Vault) string {
+	return fmt.Sprintf("%s [%s] (type %s, role %s)", vault.Name, vault.ID, vault.Type, vault.Role)
 }
 
 // writeNewFile never replaces an existing file and creates it readable only by the user.
@@ -138,10 +161,26 @@ func writeNewFile(path string, content []byte) error {
 	if err != nil {
 		return fmt.Errorf("could not create %s: %w", path, err)
 	}
-	if _, err := file.Write(content); err != nil {
-		file.Close()
+	return finishNewFile(path, content, file)
+}
+
+type durableFileWriter interface {
+	Write([]byte) (int, error)
+	Sync() error
+	Close() error
+}
+
+func finishNewFile(path string, content []byte, file durableFileWriter) error {
+	_, err := file.Write(content)
+	if err == nil {
+		err = file.Sync()
+	}
+	if closeErr := file.Close(); err == nil {
+		err = closeErr
+	}
+	if err != nil {
 		os.Remove(path)
 		return fmt.Errorf("could not write %s: %w", path, err)
 	}
-	return file.Close()
+	return nil
 }

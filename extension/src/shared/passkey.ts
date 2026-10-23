@@ -7,6 +7,8 @@ export const passkeyContentPortName = "hisar-passkey";
 export const passkeyPromptPortName = "hisar-passkey-prompt";
 export const passkeyPromptPath = "/passkey-prompt.html";
 export const algorithmES256 = -7;
+export const featurePasskeyVerification = "passkey-verification-v2";
+export type UserVerificationPolicy = "required" | "preferred" | "discouraged";
 
 export interface SerializedCredentialDescriptor {
   type: string;
@@ -34,6 +36,7 @@ export type SerializedSignal =
   | { method: "signalCurrentUserDetails"; rpId: string; userId: string; name: string; displayName: string };
 
 export interface SerializedCreationOptions {
+  userVerification?: UserVerificationPolicy;
   rp: { id?: string; name: string };
   user: { id: string; name: string; displayName: string };
   challenge: string;
@@ -46,6 +49,7 @@ export interface SerializedCreationOptions {
 }
 
 export interface SerializedRequestOptions {
+  userVerification?: UserVerificationPolicy;
   challenge: string;
   timeout?: number;
   rpId?: string;
@@ -110,8 +114,11 @@ export type BackgroundToContentPasskeyMessage =
 
 export type PasskeyPromptView = "locked" | "choose" | "no-passkeys" | "save" | "excluded";
 
+// PasskeyChoice names the login it is in: two logins, as one in a shared vault, may hold the same credential ID.
 export interface PasskeyChoice {
   credentialId: string;
+  vaultID: string;
+  itemID: string;
   title: string;
   userName: string;
   userDisplayName: string;
@@ -129,7 +136,7 @@ export interface PasskeyPromptState {
 export type PasskeyPromptCall =
   | { method: "getState" }
   | { method: "unlock" }
-  | { method: "choosePasskey"; credentialId: string }
+  | { method: "choosePasskey"; credentialId: string; vaultID: string; itemID: string }
   | { method: "savePasskey"; vaultID?: string; itemID?: string }
   | { method: "confirmExcluded" }
   | { method: "useOtherDevice" }

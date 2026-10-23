@@ -4,6 +4,9 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 )
 
+// RegistrationNotCommittedMessage certifies a refused finish whose account does not exist.
+const RegistrationNotCommittedMessage = "This registration was refused. No account was created for this operation. Use a new valid invitation."
+
 type PreloginResponse struct {
 	Salt   []byte             `json:"salt"`
 	Argon2 crypt.Argon2Params `json:"argon2"`
@@ -60,10 +63,17 @@ const (
 	CredentialChangeSecretKey      = "secret-key"
 )
 
+type ReauthenticationScope struct {
+	Action      string `json:"action"`
+	Target      string `json:"target"`
+	PlanVersion string `json:"planVersion"`
+}
+
 // ReauthenticateRequest carries RegistrationRequest only when the credentials are about to change.
 type ReauthenticateRequest struct {
-	KE1                 []byte `json:"ke1"`
-	RegistrationRequest []byte `json:"registrationRequest,omitempty"`
+	Scope               ReauthenticationScope `json:"scope,omitzero"`
+	KE1                 []byte                `json:"ke1"`
+	RegistrationRequest []byte                `json:"registrationRequest,omitempty"`
 }
 
 type ReauthenticateResponse struct {

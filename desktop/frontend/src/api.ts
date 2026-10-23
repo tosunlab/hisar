@@ -52,6 +52,7 @@ import type {
   OrganizationMember,
   Organizations as BoundOrganizations,
   OrganizationSummary,
+  PendingRecoverySummary,
   PasswordConfig,
   ReceivedShareInvitation,
   SentOrganizationInvitation,
@@ -122,6 +123,7 @@ export type {
   OrganizationSummary,
   PasswordConfig,
   ReceivedShareInvitation,
+  PendingRecoverySummary,
   SentOrganizationInvitation,
   SentShareInvitation,
   ShareAwaitingUnlock,
@@ -252,7 +254,7 @@ export interface ImportPreview extends Omit<BoundImportPreview, "allSkipped" | "
 }
 
 function normalizeImportPreview(boundPreview: BoundImportPreview): ImportPreview {
-  return { ...boundPreview, allSkipped: boundPreview.allSkipped ?? [], allDuplicate: boundPreview.allDuplicate ?? [] };
+  return { ...boundPreview, groups: boundPreview.groups ?? [], allSkipped: boundPreview.allSkipped ?? [], allDuplicate: boundPreview.allDuplicate ?? [] };
 }
 
 export interface ImportProgress extends Omit<BoundImportProgress, "allFailed"> {
@@ -348,6 +350,9 @@ const wailsApi = {
   saveItem: async (vaultID: string, detail: ItemDetail): Promise<ItemDetail> =>
     normalizeItem(await Service.SaveItem(vaultID, detail)),
   deleteItem: (vaultID: string, itemID: string): Promise<void> => Service.DeleteItem(vaultID, itemID),
+  deleteUnreadableItem: (vaultID: string, itemID: string, revision: string): Promise<void> => Service.DeleteUnreadableItem(vaultID, itemID, revision),
+  deleteUnreadableVault: (vaultID: string, revision: string): Promise<void> => Service.DeleteUnreadableVault(vaultID, revision),
+  repairVaultName: (vaultID: string, revision: string, name: string): Promise<VaultSummary> => Service.RepairVaultName(vaultID, revision, name),
   moveItem: async (vaultID: string, itemID: string, targetVaultID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.MoveItem(vaultID, itemID, targetVaultID)),
   duplicateItem: async (vaultID: string, itemID: string): Promise<ItemDetail> => normalizeItem(await Service.DuplicateItem(vaultID, itemID)),
@@ -380,6 +385,7 @@ const wailsApi = {
   acceptShareInvitation: (invitationID: string): Promise<void> => Service.AcceptShareInvitation(invitationID),
   declineShareInvitation: (invitationID: string): Promise<void> => Service.DeclineShareInvitation(invitationID),
   cancelShareInvitation: (invitationID: string): Promise<void> => Service.CancelShareInvitation(invitationID),
+  confirmShareRecipient: (invitationID: string, reviewToken: string): Promise<void> => Service.ConfirmShareRecipient(invitationID, reviewToken),
   listAllOrganization: async (): Promise<Organizations> => normalizeOrganizations(await Service.ListOrganizations()),
   getOrganization: async (organizationID: string): Promise<Organization> => normalizeOrganization(await Service.GetOrganization(organizationID)),
   createOrganization: (name: string): Promise<OrganizationSummary> => Service.CreateOrganization(name),
@@ -454,11 +460,16 @@ const wailsApi = {
   saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
   saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
   forgetNewAccountSecretKey: (): Promise<void> => Service.ForgetNewAccountSecretKey(),
+  listPendingRecovery: async (): Promise<PendingRecoverySummary[]> => (await Service.ListPendingRecovery()) ?? [],
+  resumePendingRecovery: (operationID: string, password: string, secretKey = "", priorSecretKey = ""): Promise<SignUpResult> => Service.ResumePendingRecoveryWithSecretKey(operationID, password, secretKey, priorSecretKey),
+  savePendingRecoveryEmergencyKit: (operationID: string, password: string): Promise<string> => Service.SavePendingRecoveryEmergencyKit(operationID, password),
+  acknowledgePendingRecovery: (operationID: string, password: string): Promise<void> => Service.AcknowledgePendingRecovery(operationID, password),
+  discardPreparedRecovery: (operationID: string, password: string): Promise<void> => Service.DiscardPreparedRecovery(operationID, password),
   changeMasterPassword: (currentPassword: string, newPassword: string): Promise<CredentialChangeResult> =>
     Service.ChangeMasterPassword(currentPassword, newPassword),
   replaceSecretKey: (password: string): Promise<CredentialChangeResult> => Service.ReplaceSecretKey(password),
   previewAccountDeletion: async (): Promise<AccountDeletionPreview> => normalizeAccountDeletionPreview(await Service.PreviewAccountDeletion()),
-  deleteAccount: (password: string, email: string): Promise<Status> => Service.DeleteAccount(password, email),
+  deleteAccount: (password: string, email: string, planVersion: string): Promise<Status> => Service.DeleteAccountWithPlan(password, email, planVersion),
   dismissSignedOutReason: (): Promise<Status> => Service.DismissSignedOutReason(),
   getBrowserStatus: async (): Promise<BrowserStatus> => normalizeBrowserStatus(await BrowserBridge.GetBrowserStatus()),
   removePairedBrowser: async (instanceID: string): Promise<BrowserStatus> =>
@@ -496,6 +507,7 @@ const wailsApi = {
   chooseImportFile: async (vaultID: string, format: string): Promise<ImportPreview> =>
     normalizeImportPreview(await Service.ChooseImportFile(vaultID, format)),
   previewImport: async (vaultID: string): Promise<ImportPreview> => normalizeImportPreview(await Service.PreviewImport(vaultID)),
+  mapImportGroup: async (groupID: string, vaultID: string): Promise<ImportPreview> => normalizeImportPreview(await Service.MapImportGroup(groupID, vaultID)),
   startImport: async (vaultID: string, isSkippingDuplicate: boolean): Promise<ImportProgress> =>
     normalizeImportProgress(await Service.StartImport(vaultID, isSkippingDuplicate)),
   continueImport: async (): Promise<ImportProgress> => normalizeImportProgress(await Service.ContinueImport()),

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
@@ -20,11 +21,12 @@ var ErrNoNewAccountSecretKey = errors.New("the new account's Secret Key is no lo
 func (s *Service) SaveNewAccountEmergencyKit() (string, error) {
 	s.mutex.Lock()
 	kit, err := s.buildNewAccountEmergencyKit()
+	epoch := s.sessionEpoch
 	s.mutex.Unlock()
 	if err != nil {
 		return "", err
 	}
-	return s.writeEmergencyKit(kit)
+	return s.writeEmergencyKit(kit, epoch)
 }
 
 func (s *Service) buildNewAccountEmergencyKit() (emergencykit.Kit, error) {
@@ -45,6 +47,9 @@ func (s *Service) ForgetNewAccountSecretKey() {
 }
 
 func (s *Service) forgetNewAccountSecrets() {
+	if s.newAccountSecretKey != nil {
+		*s.newAccountSecretKey = crypt.SecretKey{}
+	}
 	s.newAccountSecretKey = nil
 	clear(s.newAccountUnlockKey)
 	s.newAccountUnlockKey = nil
@@ -52,79 +57,110 @@ func (s *Service) forgetNewAccountSecrets() {
 
 // SaveEmergencyKit checks the master password before exporting the Secret Key.
 func (s *Service) SaveEmergencyKit(password string) (string, error) {
-	secretKey, err := s.loadVerifiedSecretKey(password)
+	secretKey, epoch, err := s.loadVerifiedSecretKey(password)
 	if err != nil {
 		return "", err
 	}
-	s.mutex.Lock()
-	kit := s.buildEmergencyKit(secretKey)
-	s.mutex.Unlock()
-	return s.writeEmergencyKit(kit)
+	kit, err := s.buildVerifiedEmergencyKit(secretKey, epoch)
+	if err != nil {
+		return "", err
+	}
+	return s.writeEmergencyKit(kit, epoch)
 }
 
-// EmergencyKitExport is for platforms that share the PDF themselves instead of choosing a save path.
-type EmergencyKitExport struct {
+// EmergencyKitFile is the kit saved for platforms that share the PDF themselves instead of choosing a save path; the
+// app deletes the file once it is shared.
+type EmergencyKitFile struct {
 	SecretKey string
-	Document  []byte
+	Path      string
 }
 
-// ExportEmergencyKit checks the master password, then returns the Secret Key and the Emergency Kit PDF.
+// ExportEmergencyKitToDirectory checks the master password, then saves the Emergency Kit PDF into directory.
 // A function rather than a method so the desktop UI, which saves the kit through SaveEmergencyKit, can't call it.
-func ExportEmergencyKit(s *Service, password string) (EmergencyKitExport, error) {
-	secretKey, err := s.loadVerifiedSecretKey(password)
+func ExportEmergencyKitToDirectory(s *Service, password, directory string) (EmergencyKitFile, error) {
+	secretKey, epoch, err := s.loadVerifiedSecretKey(password)
 	if err != nil {
-		return EmergencyKitExport{}, err
+		return EmergencyKitFile{}, err
 	}
-	s.mutex.Lock()
-	kit := s.buildEmergencyKit(secretKey)
-	s.mutex.Unlock()
-	document, err := emergencykit.Generate(kit)
+	kit, err := s.buildVerifiedEmergencyKit(secretKey, epoch)
 	if err != nil {
-		return EmergencyKitExport{}, err
+		return EmergencyKitFile{}, err
 	}
-	return EmergencyKitExport{SecretKey: kit.SecretKey, Document: document}, nil
+	return s.saveEmergencyKitToDirectory(kit, directory, epoch)
 }
 
-// ExportNewSecretKeyEmergencyKit returns the kit of a Secret Key made moments ago, while it is still in memory.
+// ExportNewSecretKeyEmergencyKitToDirectory saves the kit only for the account and key in the committed replacement.
 // A function rather than a method so the desktop UI can't call it.
-func ExportNewSecretKeyEmergencyKit(s *Service) (EmergencyKitExport, error) {
+func ExportNewSecretKeyEmergencyKitToDirectory(s *Service, replacement CredentialChangeResult, directory string) (EmergencyKitFile, error) {
 	s.mutex.Lock()
+	if err := s.requireSessionEpoch(replacement.identity.epoch); err != nil {
+		s.mutex.Unlock()
+		return EmergencyKitFile{}, err
+	}
+	if replacement.identity.accountID != s.state.AccountID || replacement.SecretKey == "" ||
+		s.newAccountSecretKey == nil || s.newAccountSecretKey.Encode() != replacement.SecretKey {
+		s.mutex.Unlock()
+		return EmergencyKitFile{}, errSessionEnded
+	}
 	kit, err := s.buildNewAccountEmergencyKit()
+	epoch := s.sessionEpoch
 	s.mutex.Unlock()
 	if err != nil {
-		return EmergencyKitExport{}, err
+		return EmergencyKitFile{}, err
 	}
-	document, err := emergencykit.Generate(kit)
-	if err != nil {
-		return EmergencyKitExport{}, err
-	}
-	return EmergencyKitExport{SecretKey: kit.SecretKey, Document: document}, nil
+	return s.saveEmergencyKitToDirectory(kit, directory, epoch)
 }
 
-func (s *Service) loadVerifiedSecretKey(password string) (crypt.SecretKey, error) {
+func (s *Service) saveEmergencyKitToDirectory(kit emergencykit.Kit, directory string, epoch uint64) (EmergencyKitFile, error) {
+	document, err := emergencykit.Generate(kit)
+	if err != nil {
+		return EmergencyKitFile{}, err
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return EmergencyKitFile{}, fmt.Errorf("could not save the Emergency Kit: %w", err)
+	}
+	path := filepath.Join(directory, emergencyKitFileName)
+	if err := s.saveFile(path, document, epoch); err != nil {
+		return EmergencyKitFile{}, err
+	}
+	return EmergencyKitFile{SecretKey: kit.SecretKey, Path: path}, nil
+}
+
+// loadVerifiedSecretKey also returns the epoch of the session whose account the Secret Key and password belong to.
+func (s *Service) loadVerifiedSecretKey(password string) (crypt.SecretKey, uint64, error) {
 	s.mutex.Lock()
 	if err := s.requireUnlocked(); err != nil {
 		s.mutex.Unlock()
-		return crypt.SecretKey{}, err
+		return crypt.SecretKey{}, 0, err
 	}
 	apiClient, accountCache := s.unlockedSession.Client, s.unlockedSession.Cache
-	accountID := s.state.AccountID
+	accountID, epoch, origin, recoveryOperationID := s.state.AccountID, s.sessionEpoch, s.state.Server, s.state.RecoveryOperationID
 	s.mutex.Unlock()
 
-	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(accountID)
-	if err != nil {
-		return crypt.SecretKey{}, fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
-	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
+	secretKey, err := s.loadAccountSecretKey(origin, accountID, recoveryOperationID, passwordBytes)
+	if err != nil {
+		return crypt.SecretKey{}, 0, fmt.Errorf("the Secret Key is missing from the keychain or protected recovery storage: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	accountUnlockKey, err := session.DeriveAccountUnlockKey(ctx, apiClient, accountCache, passwordBytes, secretKey)
 	if err != nil {
-		return crypt.SecretKey{}, convertError(err)
+		return crypt.SecretKey{}, 0, convertError(err)
 	}
 	clear(accountUnlockKey)
-	return secretKey, nil
+	return secretKey, epoch, nil
+}
+
+// buildVerifiedEmergencyKit names the account the Secret Key was verified for, never one signed in since.
+func (s *Service) buildVerifiedEmergencyKit(secretKey crypt.SecretKey, epoch uint64) (emergencykit.Kit, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireSessionEpoch(epoch); err != nil {
+		return emergencykit.Kit{}, err
+	}
+	return s.buildEmergencyKit(secretKey), nil
 }
 
 func (s *Service) buildEmergencyKit(secretKey crypt.SecretKey) emergencykit.Kit {
@@ -137,7 +173,8 @@ func (s *Service) buildEmergencyKit(secretKey crypt.SecretKey) emergencykit.Kit 
 	}
 }
 
-func (s *Service) writeEmergencyKit(kit emergencykit.Kit) (string, error) {
+// writeEmergencyKit writes nothing once the session of epoch ended while the save dialog was open.
+func (s *Service) writeEmergencyKit(kit emergencykit.Kit, epoch uint64) (string, error) {
 	if s.config.FileSaver == nil {
 		return "", errors.New("saving files is not available")
 	}
@@ -149,8 +186,8 @@ func (s *Service) writeEmergencyKit(kit emergencykit.Kit) (string, error) {
 	if err != nil || path == "" {
 		return "", err
 	}
-	if err := os.WriteFile(path, document, 0o600); err != nil {
-		return "", fmt.Errorf("could not save the Emergency Kit: %w", err)
+	if err := s.saveFile(path, document, epoch); err != nil {
+		return "", err
 	}
 	return path, nil
 }

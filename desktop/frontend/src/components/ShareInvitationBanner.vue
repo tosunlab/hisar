@@ -4,6 +4,7 @@ import type { SentShareInvitation } from "../api";
 import { acceptShareInvitation, declineShareInvitation, store } from "../store";
 import { describePerson, formatRole, formatTimeAgo } from "../util";
 import AppIcon from "./AppIcon.vue";
+import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
 
 const allWaiting = computed(() => store.shareInvitations.waiting ?? []);
 const allAcceptedSent = computed(() => store.shareInvitations.sent.filter((invitation) => invitation.state === "accepted"));
@@ -40,9 +41,11 @@ function findCompletionError(invitation: SentShareInvitation): string {
           <strong>{{ describePerson(invitation.recipientName, invitation.email) }}</strong> accepted your invitation to
           <strong>{{ invitation.vaultName || "a vault" }}</strong>.
           <template v-if="findCompletionError(invitation)">Hisar couldn't finish sharing: {{ findCompletionError(invitation) }}</template>
+          <template v-else-if="invitation.requiresConfirmation">Review this person's identity before giving access.</template>
           <template v-else>Finishing sharing…</template>
         </span>
       </div>
+      <ShareRecipientConfirmation :invitation="invitation" />
     </div>
     <div v-for="invitation in allWaiting" :key="invitation.id" class="banner" role="status" :data-testid="`banner-waiting-${invitation.id}`">
       <div class="banner-text">

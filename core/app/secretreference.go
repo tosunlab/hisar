@@ -22,35 +22,57 @@ type serviceSecretSource struct {
 	isCacheOnly bool
 }
 
-func (source serviceSecretSource) ListVaults() ([]secretreference.Vault, error) {
-	s := source.service
-	if !source.isCacheOnly || len(s.vaultsByID) == 0 {
-		if err := s.loadVaults(source.ctx); err != nil {
-			return nil, err
-		}
+func (source serviceSecretSource) ListVaults() (secretreference.Inventory, error) {
+	if err := source.loadVaults(); err != nil {
+		return secretreference.Inventory{}, err
 	}
-	vaults := make([]secretreference.Vault, 0, len(s.vaultsByID))
-	for _, vault := range s.vaultsByID {
-		vaults = append(vaults, secretreference.Vault{ID: vault.ID, Name: vault.Name})
-	}
-	return vaults, nil
+	return source.service.listSecretVaults(isAnyVault), nil
 }
 
-func (source serviceSecretSource) ListItems(vaultID string) ([]item.Item, error) {
+func (source serviceSecretSource) loadVaults() error {
+	if !source.isCacheOnly || len(source.service.vaultsByID) == 0 {
+		return source.service.loadVaults(source.ctx)
+	}
+	return nil
+}
+
+// listSecretVaults lists the loaded vaults isListed keeps. It is complete when none of those failed to open; a vault
+// isListed drops cannot be the one a name means, since the caller never reaches it. It needs s.mutex.
+func (s *Service) listSecretVaults(isListed func(vaultID string) bool) secretreference.Inventory {
+	inventory := secretreference.Inventory{Vaults: []secretreference.Vault{}, IsComplete: true}
+	for _, vault := range s.vaultsByID {
+		if isListed(vault.ID) {
+			inventory.Vaults = append(inventory.Vaults, secretreference.Vault{ID: vault.ID, Name: vault.Name})
+		}
+	}
+	for _, issue := range s.vaultReadIssues {
+		if isListed(issue.VaultID) {
+			inventory.IsComplete = false
+		}
+	}
+	return inventory
+}
+
+func isAnyVault(string) bool { return true }
+
+func (source serviceSecretSource) ListItems(vaultID string) (secretreference.ItemList, error) {
 	s := source.service
-	if items, isCached := s.itemsByVaultID[vaultID]; isCached && source.isCacheOnly {
-		return items, nil
+	if _, isCached := s.itemsByVaultID[vaultID]; !isCached || !source.isCacheOnly {
+		vault, isFound := s.vaultsByID[vaultID]
+		if !isFound {
+			return secretreference.ItemList{}, fmt.Errorf("vault %w", ErrNotFound)
+		}
+		if _, err := s.readVaultItems(source.ctx, vault); err != nil {
+			return secretreference.ItemList{}, err
+		}
 	}
-	vault, isFound := s.vaultsByID[vaultID]
-	if !isFound {
-		return nil, fmt.Errorf("vault %w", ErrNotFound)
-	}
-	items, err := s.unlockedSession.ListItems(source.ctx, vault)
-	if err != nil {
-		return nil, convertError(err)
-	}
-	s.itemsByVaultID[vaultID] = items
-	return items, nil
+	return s.listSecretItems(vaultID), nil
+}
+
+// listSecretItems is a vault's loaded items as references see them: complete only when every record opened and the
+// vault synced to the end. It needs s.mutex.
+func (s *Service) listSecretItems(vaultID string) secretreference.ItemList {
+	return secretreference.ItemList{Items: s.itemsByVaultID[vaultID], IsComplete: s.isItemListComplete(vaultID)}
 }
 
 func (s *Service) resolveSecrets(references []string) (cliprotocol.ResolveSecretResult, error) {
@@ -105,21 +127,33 @@ func (bridge *CommandLineBridge) DescribeSecrets(references []string) []string {
 }
 
 // nameCounts counts vault names or item titles as the resolver matches them (strings.EqualFold), so a reference can
-// tell a name that finds one vault or item from a name that finds several.
+// tell a name that finds one vault or item from a name that finds several. IDs count too: the resolver tries them
+// first, so a name that is another vault's or item's ID finds that one. Count exactly the vaults the reference's resolver
+// searches: a vault it never sees must not change the reference.
 type nameCounts map[string]int
 
-func countVaultNames(vaultsByID map[string]*session.Vault) nameCounts {
+// countVaultNames counts nothing in an incomplete inventory, whose names the resolver refuses, so references use IDs.
+func countVaultNames(inventory secretreference.Inventory) nameCounts {
 	counts := nameCounts{}
-	for _, vault := range vaultsByID {
+	if !inventory.IsComplete {
+		return counts
+	}
+	for _, vault := range inventory.Vaults {
 		counts[foldName(vault.Name)]++
+		counts[foldName(vault.ID)]++
 	}
 	return counts
 }
 
-func countItemTitles(items []item.Item) nameCounts {
+// countItemTitles counts nothing in an incomplete item list, whose titles the resolver refuses, so references use IDs.
+func countItemTitles(items secretreference.ItemList) nameCounts {
 	counts := nameCounts{}
-	for index := range items {
-		counts[foldName(items[index].Overview.Title)]++
+	if !items.IsComplete {
+		return counts
+	}
+	for index := range items.Items {
+		counts[foldName(items.Items[index].Overview.Title)]++
+		counts[foldName(items.Items[index].ID)]++
 	}
 	return counts
 }
@@ -198,6 +232,14 @@ func (s *Service) CopySecretReference(vaultID, itemID, fieldName string) (string
 	if !isFound {
 		return "", fmt.Errorf("vault %w", ErrNotFound)
 	}
+	if !s.hasReadVaultItems(vaultID) {
+		// Whether the title finds only this item depends on every item of the vault.
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		if _, err := s.readVaultItems(ctx, vault); err != nil {
+			return "", err
+		}
+	}
 	vaultItem, err := s.findItem(vaultID, itemID)
 	if err != nil {
 		return "", err
@@ -213,7 +255,7 @@ func (s *Service) CopySecretReference(vaultID, itemID, fieldName string) (string
 	if _, _, err := secretreference.ReadField(vaultItem, label, time.Now()); err != nil {
 		return "", err
 	}
-	reference := buildItemReference(vault, vaultItem, countVaultNames(s.vaultsByID), countItemTitles(s.itemsByVaultID[vaultID]))
+	reference := buildItemReference(vault, vaultItem, countVaultNames(s.listSecretVaults(isAnyVault)), countItemTitles(s.listSecretItems(vaultID)))
 	reference.Field = label
 	text := reference.String()
 	if s.config.Clipboard == nil || !s.config.Clipboard.SetText(text) {

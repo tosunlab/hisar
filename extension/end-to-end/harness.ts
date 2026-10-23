@@ -98,7 +98,7 @@ export async function launchHarness(options: HarnessOptions = {}): Promise<Harne
   const evaluateInExtension: Harness["evaluateInExtension"] = (callback, argument) =>
     extensionPage.evaluate(callback as (argument: unknown) => unknown, argument) as never;
 
-  // The save bar and the inline icon live in closed shadow roots, which only the DevTools protocol can see into.
+  // DevTools can inspect the inline icon's closed shadow root.
   const readShadowHost: Harness["readShadowHost"] = async (page, tagName) => {
     const session = await context.newCDPSession(page);
     try {

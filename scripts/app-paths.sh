@@ -7,19 +7,27 @@
 # apps share mobile/hisarkit and mobile/go.mod; each also counts its own folder, so an Android-only change does not run
 # the iPhone job.
 
-sharedGoPaths=(core/ go.work go.work.sum)
-serverPaths=(server/ admin/ deploy/Dockerfile "${sharedGoPaths[@]}")
-cliPaths=(cli/ scripts/package-cli-release.sh "${sharedGoPaths[@]}")
+releasePaths=(.github/workflows/release.yml .github/workflows/publish.yml scripts/release-evidence.py
+  scripts/check-release-files.sh scripts/check-build-images.py)
+sharedGoPaths=(core/ go.work go.work.sum scripts/go-toolchain.sh)
+serverPaths=(server/ admin/ deploy/Dockerfile .dockerignore .github/workflows/release-server.yml "${releasePaths[@]}" "${sharedGoPaths[@]}")
+cliPaths=(cli/ scripts/package-cli-release.sh .github/workflows/release-cli.yml "${releasePaths[@]}" "${sharedGoPaths[@]}")
 desktopPaths=(desktop/ cli/ omp/ scripts/download-sparkle.sh scripts/get-build-number.sh scripts/package-desktop-dmg.sh
   scripts/package-desktop-flatpak.sh scripts/package-desktop-linux.sh scripts/package-desktop-update.sh
-  scripts/sign-desktop-app.sh scripts/test-desktop-linux-package.sh "${sharedGoPaths[@]}")
-phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh "${sharedGoPaths[@]}")
+  scripts/desktop-keychain-entitlements.py scripts/test-desktop-keychain-entitlements.py scripts/test-emergency-kit-qr.swift
+  scripts/sign-desktop-app.sh scripts/test-desktop-linux-package.sh scripts/test-download-sparkle.sh
+  .github/workflows/release-desktop.yml "${releasePaths[@]}" "${sharedGoPaths[@]}")
+phonePaths=(mobile/hisarkit/ mobile/go.mod mobile/go.sum scripts/ui-test-partner.sh scripts/ui-test-parts.sh "${sharedGoPaths[@]}")
 mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${phonePaths[@]}")
 # The Android CI job runs its build and tests through Makefile recipes, so a Makefile change runs it too.
 androidPaths=(mobile/android/ mobile/build-android-aar.sh mobile/cmd/ scripts/install-android-sdk.sh scripts/test-android-ui.sh
   assets/themes/ scripts/themes/ Makefile "${phonePaths[@]}")
-extensionPaths=(extension/)
-docsPaths=(docs/)
+extensionPaths=(extension/ .github/workflows/release-extension.yml "${releasePaths[@]}")
+docsPaths=(docs/ .github/workflows/release-docs.yml "${releasePaths[@]}")
+# CI also runs an app's tests when something those tests run against changes, without making that a reason to release
+# the app: the iPhone and Android UI tests and the admin dashboard's browser tests run against a real hisar-server and the
+# hisar CLI that scripts/ui-test-partner.sh and the end-to-end fixtures build, and every job builds through Makefile recipes.
+testBackendPaths=(server/ cli/ Makefile)
 
 # A commit that only changes tests or documentation is not a reason to release; the docs site is made of Markdown, so
 # only the tests are excluded from it.

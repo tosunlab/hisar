@@ -138,8 +138,10 @@ private struct AutoFillListView: View {
             }
         }
         .applyThemedListStyle()
-        .searchable(text: $model.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all logins")
+        // The rows wait while a login fills or the logins load; the search field never does. Searching starts the load of every
+        // login, and a disabled field drops what is typed meanwhile.
         .disabled(model.isBusy)
+        .searchable(text: $model.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all logins")
     }
 
     private var sectionTitle: String {
@@ -280,7 +282,7 @@ private struct AutoFillPasskeyRegistrationView: View {
     private func buildLoginSection(options: PasskeyRegistrationOptions) -> some View {
         Section {
             ForEach(options.allLogin) { login in
-                buildChoiceRow(title: login.title, subtitle: login.username.isEmpty ? login.vaultName : "\(login.username) · \(login.vaultName)", loginID: login.id)
+                buildChoiceRow(title: login.title, subtitle: (login.username.isEmpty ? login.vaultName : "\(login.username) · \(login.vaultName)") + (login.isPersonal ? "" : " · Shared. Other members can sign in with this passkey."), loginID: login.id)
                     .accessibilityIdentifier("autofill-passkey-login-\(login.title)")
             }
             buildChoiceRow(title: "New login", subtitle: "In your Personal vault", loginID: nil)

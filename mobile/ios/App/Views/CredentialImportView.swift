@@ -54,18 +54,47 @@ struct CredentialImportView: View {
 
     @ViewBuilder
     private func previewSections(_ preview: ImportPreview) -> some View {
+        let isGrouped = preview.groups.count > 1
         Section {
-            Picker("Vault", selection: Binding(get: { preview.vaultID }, set: { vaultID in
-                Task { await model.previewCredentialImport(vaultID: vaultID) }
-            })) {
-                ForEach(model.allCredentialImportVault) { vault in
-                    Text(vault.name).tag(vault.id)
+            if isGrouped {
+                Text("The other app kept these items in \(preview.groups.count) groups. Each goes to your Personal vault unless you choose another vault for it.")
+            } else {
+                Picker("Vault", selection: Binding(get: { preview.vaultID }, set: { vaultID in
+                    Task { await model.previewCredentialImport(vaultID: vaultID) }
+                })) {
+                    ForEach(model.allCredentialImportVault) { vault in
+                        Text(vault.name).tag(vault.id)
+                    }
                 }
+                .disabled(model.isBusy)
+                .accessibilityIdentifier("credential-import-vault")
             }
-            .disabled(model.isBusy)
-            .accessibilityIdentifier("credential-import-vault")
         } footer: {
             Text("\(AppModel.describeItemCount(preview.itemCount)) from \(preview.fileName).")
+        }
+        ForEach(Array(preview.groups.enumerated()), id: \.element.id) { index, group in
+            Section("Source and destination access") {
+                Text("\(group.name) to \(group.vaultName)")
+                if isGrouped {
+                    Picker("Vault for \(AppModel.describeItemCount(group.itemCount))", selection: Binding(get: { group.vaultID }, set: { vaultID in
+                        Task { await model.mapCredentialImportGroup(groupID: group.id, vaultID: vaultID) }
+                    })) {
+                        ForEach(model.allCredentialImportVault) { vault in
+                            Text(vault.name).tag(vault.id)
+                        }
+                    }
+                    .disabled(model.isBusy)
+                    .accessibilityIdentifier("credential-import-group-vault-\(index)")
+                }
+                Text(group.isPrivate ? "Private or unspecified source" : "Shared source")
+                    .font(.footnote)
+                ForEach(group.members) { member in
+                    Text("\(member.name.isEmpty ? member.accountID : member.name) <\(member.email)> · \(member.role)\(member.isCurrentUser ? " (you)" : "")")
+                }
+                Text("Imported items are readable by the destination's current members. Access can change later.")
+                    .font(.footnote)
+            }
+            .accessibilityIdentifier("credential-import-access")
         }
         let allCountRow = preview.allCountRow
         if !allCountRow.isEmpty {

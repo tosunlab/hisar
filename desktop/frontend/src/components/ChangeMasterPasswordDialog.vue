@@ -56,6 +56,7 @@ function close(): void {
         <li>Your master password was changed.</li>
         <li>{{ describeSignedOutDevices(signedOutDeviceCount) }} Sign in on them with the new master password.</li>
       </ul>
+      <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
       <div class="row actions">
         <button class="primary" data-testid="change-master-password-close" @click="close">Done</button>
       </div>

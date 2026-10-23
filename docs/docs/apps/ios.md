@@ -23,6 +23,20 @@ Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerVi
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
 
+Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
+A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
+An absent plan version never enables the delete button.
+
+`RootView` presents pending account recovery independently of the signed-in, locked, and signed-out screens.
+`ListPendingRecovery` supplies account metadata, not the new Secret Key. The user chooses a record and enters its
+master password to resume setup or prepare an Emergency Kit. The kit and Secret Key remain visible until the user
+closes recovery, changes accounts, or locks the app. Closing removes the temporary PDF but keeps the protected journal.
+Only **I saved the new Emergency Kit** calls `AcknowledgePendingRecovery`. Without the OS keychain, setup stops before
+the remote change until the user saves and confirms the new kit. After a restart, the user supplies the saved kit's
+Secret Key through `ResumePendingRecoveryWithSecretKey`. Metadata-only manual-unlock records remain visible for
+future sign-ins. `DiscardPreparedRecovery` removes only a setup for which no remote change was sent.
+The Android root screen and `PendingRecoveryModel` use the same protocol and test names.
+
 ## Build and test
 
 Requirements: Xcode with an iOS simulator runtime, Go, and for regenerating the project XcodeGen 2.46.0
@@ -67,8 +81,10 @@ extension's screens and model through a debug-only preview in the app: launch wi
 `-HisarAutoFillPreview https://example.com/login` (passwords), `-HisarAutoFillOneTimeCodePreview <site>`,
 `-HisarAutoFillPasskeyPreview example.com` (passkey sign-in) or `-HisarAutoFillPasskeyRegistrationPreview example.com`
 (save passkey, with `-HisarAutoFillPasskeyUserName`, `-HisarAutoFillPasskeyUserHandle` and
-`-HisarAutoFillPasskeyClientDataHash`, base64url). The preview shows the produced credential ID, attestation object,
-authenticator data, signature and user handle so the UI test can verify them. The full flow (enable Hisar in Settings or with the "Turn on Hisar
+`-HisarAutoFillPasskeyClientDataHash`, base64url). `-HisarAutoFillPasskeyUserVerification` accepts `required`,
+`preferred` or `discouraged`, with `preferred` as the default. The simulator smoke uses `discouraged` and verifies UV=0.
+The preview shows the credential ID, attestation object, authenticator data, signature and user handle for verification.
+The full flow (enable Hisar in Settings or with the "Turn on Hisar
 AutoFill" button in the app's Settings, open a login page in Safari, tap the password field) should work once a team
 is set in `Configuration/Local.xcconfig`. That has not been verified yet, and neither has the system passkey flow
 (Safari offering Hisar for a passkey sign-in or "Save passkey"): both need the paid team.

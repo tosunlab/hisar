@@ -99,8 +99,11 @@
                 android:name="android.credentials.provider"
                 android:resource="@xml/hisar_credential_provider" />
         </service>
+        <!-- Destroying this activity ends its passkey ceremony, the device owner prompt included. Compose follows these
+             changes in place, so rotating, folding or resizing the screen or switching dark mode keeps the request. -->
         <activity
             android:name=".passkey.CredentialActivity"
+            android:configChanges="orientation|screenSize|smallestScreenSize|screenLayout|density|uiMode|fontScale|locale|layoutDirection|keyboard|keyboardHidden|navigation"
             android:enabled="@bool/isCredentialProviderSupported"
             android:excludeFromRecents="true"
             android:exported="false"

@@ -17,7 +17,7 @@ func teamPath(organizationID, teamID string) string {
 
 func (c *Client) ListOrganizations(ctx context.Context) (*apitypes.OrganizationList, error) {
 	var response apitypes.OrganizationList
-	return &response, c.sendRequest(ctx, "GET", "/api/v1/organizations", nil, nil, &response, nil)
+	return &response, c.collectionRequest(ctx, "/api/v1/organizations", &response)
 }
 
 func (c *Client) CreateOrganization(ctx context.Context, request *apitypes.CreateOrganizationRequest) (*apitypes.OrganizationSummary, error) {
@@ -27,7 +27,7 @@ func (c *Client) CreateOrganization(ctx context.Context, request *apitypes.Creat
 
 func (c *Client) GetOrganization(ctx context.Context, organizationID string) (*apitypes.Organization, error) {
 	var response apitypes.Organization
-	return &response, c.sendRequest(ctx, "GET", organizationPath(organizationID), nil, nil, &response, nil)
+	return &response, c.collectionRequest(ctx, organizationPath(organizationID), &response)
 }
 
 func (c *Client) RenameOrganization(ctx context.Context, organizationID string, request *apitypes.RenameOrganizationRequest) error {
@@ -96,5 +96,5 @@ func (c *Client) TakeVaultFromTeam(ctx context.Context, organizationID, teamID, 
 
 func (c *Client) ListVaultKeyRequests(ctx context.Context) (*apitypes.VaultKeyRequestList, error) {
 	var response apitypes.VaultKeyRequestList
-	return &response, c.sendRequest(ctx, "GET", "/api/v1/vault-key-requests", nil, nil, &response, nil)
+	return &response, c.collectionRequest(ctx, "/api/v1/vault-key-requests", &response)
 }

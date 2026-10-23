@@ -1,0 +1,15 @@
+# deploy/Dockerfile builds from the repository root. Only what it copies enters the build context, so the deployment
+# credentials an operator keeps next to compose.yaml (deploy/.env, hisar.env, db_password.txt) never reach a builder.
+*
+!core
+!server
+!admin/package.json
+!admin/package-lock.json
+!admin/index.html
+!admin/tsconfig.json
+!admin/vite.config.ts
+!admin/playwright.config.ts
+!admin/src
+!admin/end-to-end
+**/node_modules
+**/hisar-secrets.json

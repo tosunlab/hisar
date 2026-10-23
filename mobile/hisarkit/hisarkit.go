@@ -411,9 +411,9 @@ func (hisar *Hisar) CreatePasskey(registrationJSON string) (string, error) {
 	return encodePasskeyJSON(app.CreatePasskeyForRelyingParty(hisar.service, registration))
 }
 
-// AssertPasskey signs authenticatorData || clientDataHash and returns a app.PasskeyAssertion as JSON; IDs and the hash are base64url.
+// AssertPasskey retains the released gomobile signature and refuses policy-unaware ceremonies.
 func (hisar *Hisar) AssertPasskey(relyingPartyID, credentialID, clientDataHash string) (string, error) {
-	return encodePasskeyJSON(app.SignPasskeyForRelyingParty(hisar.service, relyingPartyID, credentialID, clientDataHash))
+	return "", browserprotocol.NewError(browserprotocol.ErrorUpdateRequired, "update Hisar to use policy-aware passkeys")
 }
 
 // BuildAndroidAppOrigin returns the passkey origin of a native Android app from the SHA-256 of its signing certificate.
@@ -425,6 +425,12 @@ func BuildAndroidAppOrigin(signingCertificateSHA256 []byte) (string, error) {
 // ID when it is the origin's host or a registrable suffix of it, or the host when none is requested.
 func ResolvePasskeyRelyingPartyID(origin, relyingPartyID string) (string, error) {
 	return passkey.ResolveRelyingPartyID(origin, relyingPartyID)
+}
+
+// ValidatePasskeyRelyingPartyID returns the relying party ID a native Android app names, lower-cased, when it is a
+// domain name that is not a public suffix. It is checked before the app's Digital Asset Links are fetched from it.
+func ValidatePasskeyRelyingPartyID(relyingPartyID string) (string, error) {
+	return passkey.ValidateRelyingPartyID(relyingPartyID)
 }
 
 type passkeyClientData struct {
@@ -468,10 +474,13 @@ func decodeStringArray(text string) ([]string, error) {
 	return values, nil
 }
 
-// encodePasskeyJSON drops the browser protocol's error code, so the app shows only the message.
+// encodePasskeyJSON preserves the verification refusal code so native providers can terminate the ceremony.
 func encodePasskeyJSON(value any, err error) (string, error) {
 	var responseError *browserprotocol.ResponseError
 	if errors.As(err, &responseError) {
+		if responseError.Code == browserprotocol.ErrorPasskeyVerification {
+			return "", errors.New(responseError.Error())
+		}
 		err = errors.New(strings.TrimPrefix(responseError.Message, "passkey: "))
 	}
 	return encodeJSON(value, err)

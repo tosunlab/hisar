@@ -7,6 +7,8 @@ import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.Base64URL
 import com.tryhisar.hisar.model.CardDescription
 import com.tryhisar.hisar.model.CredentialChangeResult
+import com.tryhisar.hisar.model.PendingRecovery
+import com.tryhisar.hisar.model.PendingRecoveryExport
 import com.tryhisar.hisar.model.Device
 import com.tryhisar.hisar.model.EmergencyKitExport
 import com.tryhisar.hisar.model.ExportFormat
@@ -91,6 +93,7 @@ class HisarKitBackend(
             setAppVersion(appVersion)
             setTrustedCertificates(trustedCertificates)
             setBiometricKeyPreparer(biometric)
+            setPasskeyVerifier(biometric)
         }
     } catch (error: Exception) {
         throw convertError(error)
@@ -174,6 +177,8 @@ class HisarKitBackend(
     override fun declineShareInvitation(invitationID: String) = call { declineShareInvitation(invitationID) }
 
     override fun cancelShareInvitation(invitationID: String) = call { cancelShareInvitation(invitationID) }
+
+    override fun confirmShareRecipient(invitationID: String, reviewToken: String) = call { confirmShareRecipient(invitationID, reviewToken) }
 
     override fun listAllShareAwaitingUnlock(): List<ShareAwaitingUnlock> =
         decodeList(ShareAwaitingUnlock.serializer(), call { listAllShareAwaitingUnlock() })
@@ -274,6 +279,9 @@ class HisarKitBackend(
 
     override fun previewImport(vaultID: String): ImportPreview = decode(ImportPreview.serializer(), call { previewImport(vaultID) })
 
+    override fun mapImportGroup(groupID: String, vaultID: String): ImportPreview =
+        decode(ImportPreview.serializer(), call { mapImportGroup(groupID, vaultID) })
+
     override fun startImport(vaultID: String, isSkippingDuplicate: Boolean): ImportProgress =
         decode(ImportProgress.serializer(), call { startImport(vaultID, isSkippingDuplicate) })
 
@@ -291,6 +299,13 @@ class HisarKitBackend(
     }
 
     override fun deleteItem(vaultID: String, itemID: String) = call { deleteItem(vaultID, itemID) }
+
+    override fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String) = call { deleteUnreadableItem(vaultID, itemID, revision) }
+
+    override fun deleteUnreadableVault(vaultID: String, revision: String) = call { deleteUnreadableVault(vaultID, revision) }
+
+    override fun repairVaultName(vaultID: String, revision: String, name: String): VaultSummary =
+        decode(VaultSummary.serializer(), call { repairVaultName(vaultID, revision, name) })
 
     override fun listAllFavoriteItem(): List<FavoriteItem> = decodeList(FavoriteItem.serializer(), call { listAllFavoriteItem() })
 
@@ -345,6 +360,7 @@ class HisarKitBackend(
 
     override fun createPasskey(request: PasskeyRegistrationRequest, vaultID: String, itemID: String): PasskeyRegistrationResult {
         val registrationJSON = buildJsonObject {
+            put("userVerification", request.userVerification)
             put("relyingPartyId", request.relyingPartyID)
             put("userName", request.userName)
             put("userHandle", Base64URL.encode(request.userHandle))
@@ -356,14 +372,25 @@ class HisarKitBackend(
         return decode(PasskeyRegistrationResult.serializer(), call { createPasskey(registrationJSON) })
     }
 
-    override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString): PasskeyAssertionResult =
-        decode(
-            PasskeyAssertionResult.serializer(),
-            call { assertPasskey(relyingPartyID, Base64URL.encode(credentialID), Base64URL.encode(clientDataHash)) },
-        )
+    override fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString, userVerification: String): PasskeyAssertionResult {
+        val requestJSON = buildJsonObject {
+            put("relyingPartyId", relyingPartyID)
+            put("credentialId", Base64URL.encode(credentialID))
+            put("clientDataHash", Base64URL.encode(clientDataHash))
+            put("userVerification", userVerification)
+        }.toString()
+        return decode(PasskeyAssertionResult.serializer(), call { assertPasskeyWithPolicy(requestJSON) })
+    }
+
+    override fun cancelPasskeyCeremonies() {
+        hisar.cancelPasskeyCeremonies()
+    }
 
     override fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String =
         callPackage { Hisarkit.resolvePasskeyRelyingPartyID(origin, relyingPartyID) }
+
+    override fun validatePasskeyRelyingPartyID(relyingPartyID: String): String =
+        callPackage { Hisarkit.validatePasskeyRelyingPartyID(relyingPartyID) }
 
     override fun buildAndroidAppOrigin(certificateSHA256: ByteString): String =
         callPackage { Hisarkit.buildAndroidAppOrigin(certificateSHA256.toByteArray()) }
@@ -416,8 +443,24 @@ class HisarKitBackend(
     override fun previewAccountDeletion(): AccountDeletionPreview =
         decode(AccountDeletionPreview.serializer(), call { previewAccountDeletion() })
 
-    override fun deleteAccount(password: String, email: String): VaultStatus =
-        decode(VaultStatus.serializer(), call { deleteAccount(password, email) })
+    override fun deleteAccountWithPlan(password: String, email: String, planVersion: String): VaultStatus =
+        decode(VaultStatus.serializer(), call { deleteAccountWithPlan(password, email, planVersion) })
+
+    override fun listPendingRecovery(): List<PendingRecovery> =
+        decodeList(PendingRecovery.serializer(), call { listPendingRecovery() })
+
+    override fun resumePendingRecovery(operationID: String, password: String): SignUpResult =
+        decode(SignUpResult.serializer(), call { resumePendingRecovery(operationID, password) })
+
+    override fun resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String): SignUpResult =
+        decode(SignUpResult.serializer(), call { resumePendingRecoveryWithSecretKey(operationID, password, secretKey, priorSecretKey) })
+
+    override fun discardPreparedRecovery(operationID: String, password: String) = call { discardPreparedRecovery(operationID, password) }
+
+    override fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport =
+        decode(PendingRecoveryExport.serializer(), call { exportPendingRecoveryEmergencyKit(operationID, password, directory.path) })
+
+    override fun acknowledgePendingRecovery(operationID: String, password: String) = call { acknowledgePendingRecovery(operationID, password) }
 
     override fun dismissSignedOutReason(): VaultStatus = readStatus(call { dismissSignedOutReason() })
 
@@ -466,8 +509,11 @@ class HisarKitBackend(
 
         /** Go's sentences start in lower case and already say "biometric" on Android. */
         fun convertError(error: Throwable): BackendError {
-            val message = error.message.orEmpty().ifEmpty { "Something went wrong." }
-            return BackendError(message.replaceFirstChar { it.uppercaseChar() })
+            val raw = error.message.orEmpty().ifEmpty { "Something went wrong." }
+            val prefix = BackendError.PASSKEY_VERIFICATION_FAILED + ": "
+            val code = BackendError.PASSKEY_VERIFICATION_FAILED.takeIf { raw.startsWith(prefix) }
+            val message = if (code != null) raw.removePrefix(prefix) else raw
+            return BackendError(message.replaceFirstChar { it.uppercaseChar() }, code)
         }
 
         private fun encodeAllCredentialID(allCredentialID: List<ByteString>): String =

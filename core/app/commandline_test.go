@@ -81,7 +81,11 @@ func (test *commandLineTest) send(t *testing.T, request cliprotocol.Request, res
 	t.Helper()
 	test.nextID++
 	request.ID = "request-" + string(rune('a'+test.nextID))
-	test.connection.SetDeadline(time.Now().Add(10 * time.Second))
+	if deadline, ok := t.Deadline(); ok {
+		if err := test.connection.SetDeadline(deadline); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := cliprotocol.WriteJSON(test.connection, request); err != nil {
 		t.Fatal(err)
 	}
@@ -286,7 +290,7 @@ func TestCommandLineImportOnlyCreatesItems(t *testing.T) {
 		t.Fatal(err)
 	}
 	var result cliprotocol.ImportResult
-	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: []item.Item{
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportScope: reviewedImportScope(t, service, vaultID), ImportedItems: []item.Item{
 		{ID: existing.ID, Revision: existing.Revision, Overview: item.Overview{Title: "Imported"}, Details: item.Details{Password: "imported"}},
 		{Overview: item.Overview{Title: "Second"}, Details: item.Details{Notes: "note"}},
 	}}, &result)

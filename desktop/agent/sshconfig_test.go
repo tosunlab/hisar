@@ -174,6 +174,33 @@ func TestConfigureSSHConfigFollowsSymlink(t *testing.T) {
 	}
 }
 
+func TestConfigureSSHConfigNeverWritesThroughALinkBesideIt(t *testing.T) {
+	homeDirectory := t.TempDir()
+	if err := os.Mkdir(filepath.Join(homeDirectory, ".ssh"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	configPath := filepath.Join(homeDirectory, ".ssh", "config")
+	if err := os.WriteFile(configPath, []byte("Host a\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	victimPath := filepath.Join(homeDirectory, "victim")
+	if err := os.WriteFile(victimPath, []byte("victim"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victimPath, configPath+".hisar-partial"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ConfigureSSHConfig(homeDirectory, GetDefaultSocketPath(homeDirectory), testTime); err != nil {
+		t.Fatal(err)
+	}
+	if content := readTestFile(t, victimPath); content != "victim" {
+		t.Errorf("victim = %q", content)
+	}
+	if fileInfo, err := os.Lstat(configPath); err != nil || !fileInfo.Mode().IsRegular() || readTestFile(t, configPath) != wantSection+"\nHost a\n" {
+		t.Errorf("config: %v %v", fileInfo, err)
+	}
+}
+
 func TestBuildSSHConfigSectionOutsideHome(t *testing.T) {
 	section := BuildSSHConfigSection("/Users/alice", "/tmp/hisar/agent.sock")
 	if !strings.Contains(section, `IdentityAgent "/tmp/hisar/agent.sock"`) {

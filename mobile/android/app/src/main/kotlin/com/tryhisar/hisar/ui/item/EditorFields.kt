@@ -99,6 +99,8 @@ private val RowMinHeight = 52.dp
  */
 enum class FieldKind(val keyboardOptions: KeyboardOptions, val isSecret: Boolean = false) {
     TEXT(KeyboardOptions(capitalization = KeyboardCapitalization.Sentences)),
+    /** Notes often hold recovery codes and other secrets, so they are kept from learning and autofill but stay visible. */
+    NOTES(KeyboardOptions(capitalization = KeyboardCapitalization.Sentences), isSecret = true),
     NAME(KeyboardOptions(capitalization = KeyboardCapitalization.Words)),
     PLAIN(KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false)),
     URL(KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false, keyboardType = KeyboardType.Uri)),

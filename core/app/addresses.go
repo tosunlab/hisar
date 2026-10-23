@@ -20,7 +20,7 @@ func (s *Service) listAddressSources(ctx context.Context) ([]browserprotocol.Add
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, nil, err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, nil, err
 	}
 	summaries := []browserprotocol.AddressSummary{}
@@ -87,7 +87,7 @@ func (s *Service) listIdentitySources(ctx context.Context) ([]browserprotocol.Id
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, nil, err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, nil, err
 	}
 	summaries := []browserprotocol.IdentitySummary{}

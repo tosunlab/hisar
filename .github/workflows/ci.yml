@@ -1,8 +1,7 @@
 name: CI
 
-# A merge to main was already tested as its pull request, so pushes to main do not run CI. The Release workflow calls it
-# for the commit it releases, with baseRef the previous release's tag: the jobs that run only for some changes compare the
-# commit with it, and without a baseRef everything runs.
+# Pull requests and manual runs test their event commit. Release calls this workflow with an empty baseRef to run every
+# job on the exact release SHA, even when no files changed since the previous release.
 on:
   pull_request:
   workflow_dispatch:
@@ -28,6 +27,8 @@ env:
 jobs:
   changes:
     name: Check what the pull request changes
+    # A pull request labeled disable-all-ci runs no job: every job below either checks the label itself or needs this one.
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     outputs:
@@ -38,6 +39,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+      - name: Check packaging toolchain pins
+        run: bash scripts/check-go-toolchain.sh
+      - name: Test release and CI input selection
+        run: bash scripts/test-app-paths.sh
+      - name: Check immutable build image inputs
+        run: python3 scripts/check-build-images.py
+      - name: Test release evidence and publication gates
+        run: python3 scripts/test-release-evidence.py
       - name: Compare the pull request with its base
         id: changes
         env:
@@ -49,11 +58,12 @@ jobs:
 
   go:
     name: Go gofmt, vet, tests and end-to-end test
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
@@ -75,7 +85,7 @@ jobs:
           cache-dependency-path: admin/package-lock.json
       - name: Check gofmt
         run: |
-          allUnformatted=$(gofmt -l $(git ls-files "*.go"))
+          allUnformatted=$(git ls-files -z "*.go" | xargs -0 gofmt -l)
           if [ -n "$allUnformatted" ]; then echo "$allUnformatted"; exit 1; fi
       - name: go vet
         run: make vet
@@ -98,18 +108,19 @@ jobs:
 
   server-image-check:
     name: Server Docker image build and boot
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
         ports: ["5432:5432"]
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
       registry:
-        image: registry:2
+        image: registry:2@sha256:a3d8aaa63ed8681a604f1dea0aa03f100d5895b6a58ace528858a7b332415373
         ports: ["5000:5000"]
     env:
       CHECK_IMAGE: localhost:5000/hisar-server:check
@@ -123,7 +134,9 @@ jobs:
         run: go install "github.com/google/go-containerregistry/cmd/crane@$CRANE_VERSION"
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
         with:
-          driver-opts: network=host
+          driver-opts: |
+            image=moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+            network=host
       - name: Build the linux/amd64 and linux/arm64 image into a throwaway registry
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
@@ -177,11 +190,11 @@ jobs:
     if: needs.changes.outputs.isDesktopChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: node:24-trixie
+    container: node:24-trixie@sha256:ff054b356ab93ed540518ca23cfcd9840e5256dd04db5a8d8afc43f4ecc7c9f8
     steps:
-      - name: Install git, GTK 4 and WebKitGTK
-        run: apt-get update -qq && apt-get install -y -qq git libgtk-4-dev libwebkitgtk-6.0-dev >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install GTK 4 and WebKitGTK
+        run: bash scripts/ci-apt-install.sh libgtk-4-dev libwebkitgtk-6.0-dev
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -217,7 +230,7 @@ jobs:
     timeout-minutes: 45
     # Flathub's builder image has flatpak-builder, Node and the GNOME 51 runtime and SDK; building sandboxes needs privileges.
     container:
-      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-51@sha256:78d969b18225ae107ca29497bf09c4a3f791e5f1838a9a912a529d0024fb6210
       options: --privileged
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -229,13 +242,14 @@ jobs:
 
   extension:
     name: Extension tests, Chromium end-to-end tests and zip
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     steps:
-      - name: Install git, make and zip
-        run: apt-get update -qq && apt-get install -y -qq git make zip >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make and zip
+        run: bash scripts/ci-apt-install.sh make zip
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           cache: npm
@@ -251,6 +265,7 @@ jobs:
 
   docs:
     name: Docs site typecheck, build and image
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -271,6 +286,7 @@ jobs:
 
   raycast:
     name: Raycast extension typecheck, tests, lint and build
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -284,6 +300,7 @@ jobs:
 
   omp:
     name: omp plugin typecheck, tests and lint
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -295,20 +312,21 @@ jobs:
 
   share-link-page:
     name: Share link page in Chromium against the server
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
-      - name: Install git, make and curl
-        run: apt-get update -qq && apt-get install -y -qq git make curl >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make
+        run: bash scripts/ci-apt-install.sh make
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -325,18 +343,18 @@ jobs:
     if: needs.changes.outputs.isAdminChanged == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    container: mcr.microsoft.com/playwright:v1.63.0-noble
+    container: mcr.microsoft.com/playwright:v1.63.0-noble@sha256:eff16c30e6f3f4af0a03fa4b706120d5e9b0891c344a27d64559aff5900a4a27
     services:
       postgres:
-        image: postgres:18
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
         env:
           POSTGRES_PASSWORD: hisar
           POSTGRES_DB: hisar
         options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
     steps:
-      - name: Install git and make
-        run: apt-get update -qq && apt-get install -y -qq git make >/dev/null
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install make
+        run: bash scripts/ci-apt-install.sh make
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.work
@@ -351,33 +369,15 @@ jobs:
         run: node scripts/themes/generate.ts && git config --global --add safe.directory "$GITHUB_WORKSPACE" && git diff --exit-code -- admin/src/themes.css
       - run: HISAR_DATABASE_URL="postgres://postgres:hisar@postgres:5432/hisar?sslmode=disable" make test-admin-end-to-end
 
-  android:
-    name: Android app build, JVM tests and instrumented tests (part ${{ matrix.part }} of 2)
+  android-build:
+    name: Android app build, lint and JVM tests
     needs: changes
-    # The skip-android label skips both parts, for a pull request whose Android build and tests already passed locally (make
-    # build-android-aar build-android test-android test-android-ui); a run reads the labels the pull request has when it starts.
+    # The skip-android label skips every Android job, for a pull request whose Android build and tests already passed locally
+    # (make build-android-aar build-android test-android test-android-ui); a run reads the labels the pull request has when it
+    # starts.
     if: needs.changes.outputs.isAndroidChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-android')
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    # Each part runs half of the instrumented tests on its own emulator; the first also runs the JVM tests and the second builds
-    # the release APK and runs lint, so both take about as long.
-    strategy:
-      fail-fast: false
-      matrix:
-        # shard is the test runner's 0-based ANDROID_UI_TEST_SHARD.
-        include:
-          - part: 1
-            shard: 0/2
-          - part: 2
-            shard: 1/2
-    services:
-      postgres:
-        image: postgres:18
-        env:
-          POSTGRES_PASSWORD: hisar
-          POSTGRES_DB: hisar
-        ports: ["5432:5432"]
-        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
@@ -406,12 +406,59 @@ jobs:
       - if: steps.hisarkit.outputs.cache-hit != 'true'
         run: make build-android-aar
       - name: Check that ThemePalettes.kt matches assets/themes/themes.json
-        if: matrix.part == 1
         run: node scripts/themes/generate.ts && git diff --exit-code
-      - if: matrix.part == 2
-        run: make build-android
-      - if: matrix.part == 1
-        run: make test-android
+      - run: make build-android
+      - run: make test-android
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: failure() || cancelled()
+        with:
+          name: android-build-reports
+          path: mobile/android/*/build/reports
+          retention-days: 7
+
+  android:
+    name: Android instrumented tests (part ${{ matrix.part }} of 2)
+    needs: changes
+    if: needs.changes.outputs.isAndroidChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-android')
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    # Each part runs about half of the instrumented tests on its own emulator (ANDROID_UI_TEST_PART in
+    # scripts/test-android-ui.sh) and builds only HisarKit.aar and the debug and test APKs they need.
+    strategy:
+      fail-fast: false
+      matrix:
+        part: [1, 2]
+    services:
+      postgres:
+        image: postgres:18@sha256:74935e72241653ca55e0414067e6d8763aceb8a810eb51b452253ec3dcfc4336
+        env:
+          POSTGRES_PASSWORD: hisar
+          POSTGRES_DB: hisar
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 2s --health-timeout 5s --health-retries 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.work
+          cache-dependency-path: "**/go.sum"
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+      - name: Install the pinned Android SDK packages
+        run: |
+          scripts/install-android-sdk.sh --build-only
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/30.0.16248370" >> "$GITHUB_ENV"
+      # The same HisarKit.aar cache as android-build.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        id: hisarkit
+        with:
+          path: mobile/build/HisarKit.aar
+          key: hisarkit-android-${{ hashFiles('go.work', 'core/**', 'mobile/go.mod', 'mobile/go.sum', 'mobile/hisarkit/**', 'mobile/build-android-aar.sh', 'scripts/install-android-sdk.sh') }}
+      - if: steps.hisarkit.outputs.cache-hit != 'true'
+        run: make build-android-aar
       - name: Let the emulator use KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -420,7 +467,7 @@ jobs:
       - name: Instrumented tests on an API 36 emulator
         env:
           HISAR_DATABASE_URL: postgres://postgres:hisar@127.0.0.1:5432/hisar?sslmode=disable
-          ANDROID_UI_TEST_SHARD: ${{ matrix.shard }}
+          ANDROID_UI_TEST_PART: ${{ matrix.part }}
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           # The x86_64 API 37 image crash-loops on these runners: surfaceflinger aborts on "Assertion failed:
@@ -435,8 +482,12 @@ jobs:
           heap-size: 576M
           disk-size: 8192M
           emulator-boot-timeout: 900
-          # The step before built mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
-          script: ./scripts/test-android-ui.sh
+          # An app's "isn't responding" dialog takes the window focus from the app under test, and this image's Pixel Launcher
+          # sometimes stops responding about 27 seconds after boot; with error dialogs hidden, Android closes such an app
+          # instead. The step before built mobile/build/HisarKit.aar, which `make test-android-ui` would build again.
+          script: |
+            adb shell settings put global hide_error_dialogs 1
+            ./scripts/test-android-ui.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         # A job stopped at its timeout is cancelled rather than failed; its reports explain why.
         if: failure() || cancelled()

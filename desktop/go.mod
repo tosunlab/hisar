@@ -11,6 +11,7 @@ require (
 require (
 	filippo.io/edwards25519 v1.2.0 // indirect
 	filippo.io/nistec v0.0.4 // indirect
+	git.sr.ht/~jackmordaunt/go-toast/v2 v2.0.3 // indirect
 	github.com/bytemare/ecc v0.9.0 // indirect
 	github.com/bytemare/hash v0.6.2 // indirect
 	github.com/bytemare/hash2curve v0.5.4 // indirect

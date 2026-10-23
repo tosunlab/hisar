@@ -59,6 +59,21 @@ func TestFindItem(t *testing.T) {
 	}
 }
 
+func TestFindItemPrefersAnIDOverATitle(t *testing.T) {
+	items := []item.Item{
+		{ID: "1", Overview: item.Overview{Title: "Deploy"}},
+		{ID: "2", Overview: item.Overview{Title: "deploy"}},
+		{ID: "3", Overview: item.Overview{Title: "4"}},
+		{ID: "4", Overview: item.Overview{Title: "Bank"}},
+	}
+	if vaultItem, err := findItem(items, "4"); err != nil || vaultItem.ID != "4" {
+		t.Errorf("a title shadowed an ID: %v %v", vaultItem, err)
+	}
+	if vaultItem, err := findItem(items, "deploy"); err == nil || vaultItem != nil || !strings.Contains(err.Error(), "1") || !strings.Contains(err.Error(), "2") {
+		t.Errorf("duplicate titles must name the candidates: %v %v", vaultItem, err)
+	}
+}
+
 func TestGetFieldValue(t *testing.T) {
 	vaultItem := &item.Item{
 		Overview: item.Overview{Title: "T", Username: "u", URLs: []string{"https://a", "https://b"}},

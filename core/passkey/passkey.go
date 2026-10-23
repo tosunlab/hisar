@@ -36,7 +36,7 @@ const (
 	FlagBackupEligible        byte = 0x08
 	FlagBackedUp              byte = 0x10
 	FlagAttestedCredential    byte = 0x40
-	flagAssertion                  = FlagUserPresent | FlagUserVerified | FlagBackupEligible | FlagBackedUp
+	flagAssertion                  = FlagUserPresent | FlagBackupEligible | FlagBackedUp
 	flagCreation                   = flagAssertion | FlagAttestedCredential
 	maxRelyingPartyIDLength        = 253
 	maxChallengeLength             = 1024
@@ -260,6 +260,7 @@ type CreationRequest struct {
 	IsCrossOrigin  bool
 	RelyingPartyID string
 	Challenge      []byte
+	UserVerified   bool
 }
 
 type Creation struct {
@@ -280,7 +281,7 @@ func CreateCredential(request CreationRequest) (Creation, error) {
 	if err != nil {
 		return Creation{}, err
 	}
-	creation, err := createCredentialForRelyingParty(relyingPartyID)
+	creation, err := createCredentialForRelyingParty(relyingPartyID, request.UserVerified)
 	if err != nil {
 		return Creation{}, err
 	}
@@ -289,7 +290,7 @@ func CreateCredential(request CreationRequest) (Creation, error) {
 }
 
 // CreateCredentialWithClientDataHash serves platforms that hash clientDataJSON themselves (iOS); "none" attestation does not sign the hash.
-func CreateCredentialWithClientDataHash(requestedRelyingPartyID string, clientDataHash []byte) (Creation, error) {
+func CreateCredentialWithClientDataHash(requestedRelyingPartyID string, clientDataHash []byte, userVerified bool) (Creation, error) {
 	relyingPartyID, err := ValidateRelyingPartyID(requestedRelyingPartyID)
 	if err != nil {
 		return Creation{}, err
@@ -297,10 +298,10 @@ func CreateCredentialWithClientDataHash(requestedRelyingPartyID string, clientDa
 	if len(clientDataHash) != ClientDataHashLength {
 		return Creation{}, ErrInvalidRequest
 	}
-	return createCredentialForRelyingParty(relyingPartyID)
+	return createCredentialForRelyingParty(relyingPartyID, userVerified)
 }
 
-func createCredentialForRelyingParty(relyingPartyID string) (Creation, error) {
+func createCredentialForRelyingParty(relyingPartyID string, userVerified bool) (Creation, error) {
 	privateKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		return Creation{}, err
@@ -321,7 +322,7 @@ func createCredentialForRelyingParty(relyingPartyID string) (Creation, error) {
 	if err != nil {
 		return Creation{}, err
 	}
-	authenticatorData := BuildAuthenticatorData(relyingPartyID, flagCreation, attestedCredentialData)
+	authenticatorData := BuildAuthenticatorData(relyingPartyID, ceremonyFlags(flagCreation, userVerified), attestedCredentialData)
 	return Creation{
 		CredentialID:      credentialID,
 		PrivateKey:        privateKeyDER,
@@ -337,6 +338,7 @@ type AssertionRequest struct {
 	IsCrossOrigin  bool
 	RelyingPartyID string
 	Challenge      []byte
+	UserVerified   bool
 }
 
 type Assertion struct {
@@ -358,7 +360,7 @@ func SignAssertion(request AssertionRequest, credentialRelyingPartyID string, pr
 		return Assertion{}, err
 	}
 	clientDataHash := sha256.Sum256(clientData)
-	assertion, err := signAuthenticatorData(relyingPartyID, clientDataHash[:], privateKeyDER)
+	assertion, err := signAuthenticatorData(relyingPartyID, clientDataHash[:], privateKeyDER, request.UserVerified)
 	if err != nil {
 		return Assertion{}, err
 	}
@@ -367,7 +369,7 @@ func SignAssertion(request AssertionRequest, credentialRelyingPartyID string, pr
 }
 
 // SignAssertionWithClientDataHash serves platforms that hash clientDataJSON themselves (iOS); the result has no ClientDataJSON.
-func SignAssertionWithClientDataHash(requestedRelyingPartyID, credentialRelyingPartyID string, clientDataHash, privateKeyDER []byte) (Assertion, error) {
+func SignAssertionWithClientDataHash(requestedRelyingPartyID, credentialRelyingPartyID string, clientDataHash, privateKeyDER []byte, userVerified bool) (Assertion, error) {
 	relyingPartyID, err := ValidateRelyingPartyID(requestedRelyingPartyID)
 	if err != nil {
 		return Assertion{}, err
@@ -378,21 +380,28 @@ func SignAssertionWithClientDataHash(requestedRelyingPartyID, credentialRelyingP
 	if len(clientDataHash) != ClientDataHashLength {
 		return Assertion{}, ErrInvalidRequest
 	}
-	return signAuthenticatorData(relyingPartyID, clientDataHash, privateKeyDER)
+	return signAuthenticatorData(relyingPartyID, clientDataHash, privateKeyDER, userVerified)
 }
 
-func signAuthenticatorData(relyingPartyID string, clientDataHash, privateKeyDER []byte) (Assertion, error) {
+func signAuthenticatorData(relyingPartyID string, clientDataHash, privateKeyDER []byte, userVerified bool) (Assertion, error) {
 	privateKey, err := parseES256Key(privateKeyDER)
 	if err != nil {
 		return Assertion{}, err
 	}
-	authenticatorData := BuildAuthenticatorData(relyingPartyID, flagAssertion, nil)
+	authenticatorData := BuildAuthenticatorData(relyingPartyID, ceremonyFlags(flagAssertion, userVerified), nil)
 	signedData := sha256.Sum256(append(bytes.Clone(authenticatorData), clientDataHash...))
 	signature, err := ecdsa.SignASN1(rand.Reader, privateKey, signedData[:])
 	if err != nil {
 		return Assertion{}, err
 	}
 	return Assertion{AuthenticatorData: authenticatorData, Signature: signature}, nil
+}
+
+func ceremonyFlags(flags byte, userVerified bool) byte {
+	if userVerified {
+		flags |= FlagUserVerified
+	}
+	return flags
 }
 
 func isPublicSuffix(domain string) bool {

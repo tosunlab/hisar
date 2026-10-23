@@ -1,11 +1,33 @@
 package api
 
 import (
+	"context"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"time"
+
 	"github.com/gofiber/fiber/v3"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/service"
 )
+
+// RunApprovalSweeps runs bounded maintenance until shutdown, including authentication state.
+func (s *Server) RunApprovalSweeps(ctx context.Context) {
+	go s.service.Approvals.Run(ctx, service.ApprovalRetention)
+	go s.service.RunAuthenticationMaintenance(ctx)
+	ticker := time.NewTicker(time.Second)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			for _, limiter := range []*ratelimit.Limiter{s.limiter, s.updateLimiter, s.shareLinkReadLimiter, s.invitePageLimiter, s.versionCheckLimiter} {
+				limiter.Maintain()
+			}
+		}
+	}
+}
 
 func (s *Server) limitApprovalRate(c fiber.Ctx) error {
 	if !s.service.Approvals.Allow(getSession(c).AccountID) {

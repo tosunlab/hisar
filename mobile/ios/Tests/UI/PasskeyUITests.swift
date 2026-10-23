@@ -42,6 +42,7 @@ final class PasskeyUITests: HisarUITestCase {
         XCTAssertEqual(try readResultValue("user-handle"), userHandle)
         let authenticatorData = try readResultValue("authenticator-data")
         XCTAssertEqual(authenticatorData.prefix(32), Data(SHA256.hash(data: Data(Self.relyingPartyID.utf8))))
+        XCTAssertEqual(authenticatorData[32] & 0x04, 0, "an app unlock does not establish UV for this ceremony")
         let signature = try P256.Signing.ECDSASignature(derRepresentation: readResultValue("signature"))
         XCTAssertTrue(publicKey.isValidSignature(signature, for: authenticatorData + assertionClientDataHash))
         XCTAssertFalse(publicKey.isValidSignature(signature, for: authenticatorData + registrationClientDataHash), "the signature covers the request's client data hash")
@@ -64,7 +65,7 @@ final class PasskeyUITests: HisarUITestCase {
 
     private func launchPreviewAndUnlock(_ allArgument: [String]) {
         app.terminate()
-        app.launchArguments = ["-HisarUITest"] + allArgument
+        app.launchArguments = ["-HisarUITest", "-HisarAutoFillPasskeyUserVerification", "discouraged"] + allArgument
         app.launch()
         type(Self.masterPassword, into: app.secureTextFields["unlock-password"])
         app.buttons["unlock-submit"].tap()
@@ -89,6 +90,7 @@ final class PasskeyUITests: HisarUITestCase {
             return (key, entry.value)
         })
         guard case .bytes(let authenticatorData) = allValueByKey["authData"] else { throw CBORReader.InvalidError() }
+        XCTAssertEqual(authenticatorData[32] & 0x04, 0, "the simulator ceremony establishes presence without user verification")
         let credentialIDLength = Int(authenticatorData[53]) << 8 | Int(authenticatorData[54])
         XCTAssertEqual(authenticatorData[55..<(55 + credentialIDLength)], credentialID)
         var keyReader = CBORReader(data: authenticatorData.suffix(from: 55 + credentialIDLength))

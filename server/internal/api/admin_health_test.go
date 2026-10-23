@@ -79,7 +79,7 @@ func TestAdminHealth(t *testing.T) {
 	}
 	for checkID, expectedStatus := range map[string]string{
 		"https": apitypes.CheckStatusOK, "proxy": apitypes.CheckStatusOK, "migrations": apitypes.CheckStatusOK,
-		"secrets-backup": apitypes.CheckStatusWarning, "email": apitypes.CheckStatusWarning, "public-url": apitypes.CheckStatusWarning,
+		"secrets-backup": apitypes.CheckStatusWarning, "email": apitypes.CheckStatusWarning, "public-url": apitypes.CheckStatusOK,
 	} {
 		if statusByCheck[checkID] != expectedStatus {
 			t.Errorf("check %s: %q, expected %q", checkID, statusByCheck[checkID], expectedStatus)

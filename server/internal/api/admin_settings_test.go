@@ -69,18 +69,20 @@ func startServerOnDatabase(t *testing.T, databaseURL string, environment map[str
 		t.Fatal(err)
 	}
 	t.Cleanup(database.Close)
-	server, err := NewServer(database, generateSecrets(), Config{
-		Config:      service.Config{PublicURL: "https://hisar.test"},
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	trustedOrigin := "http://" + listener.Addr().String()
+	server, err := NewServer(database, testServerSecrets, Config{
+		Config:      service.Config{PublicURL: trustedOrigin},
 		Environment: func(name string) string { return environment[name] },
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	app := server.CreateApp()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
 	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true})
 	t.Cleanup(func() { app.Shutdown() })
 	return "http://" + listener.Addr().String(), server
@@ -233,7 +235,7 @@ func TestAdminSettingsInvitePolicy(t *testing.T) {
 	if anyoneStatus != http.StatusAccepted || countInvites("first@example.com") != 1 {
 		t.Fatalf("member invite under anyone: %d %s", anyoneStatus, anyoneBody)
 	}
-	_, shareUnderAnyone := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, apitypes.ShareInvitationRequest{Email: "ghost-one@example.com", Role: apitypes.VaultReader})
+	_, shareUnderAnyone := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, signedShareRequest(t, member, vault, "ghost-one@example.com", apitypes.VaultReader, nil))
 	if countInvites("ghost-one@example.com") != 1 {
 		t.Error("a share under anyone made no sign-up invite")
 	}
@@ -253,8 +255,8 @@ func TestAdminSettingsInvitePolicy(t *testing.T) {
 	}
 
 	emailCountBefore := len(recorder.ListMessages())
-	knownStatus, knownBody := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, apitypes.ShareInvitationRequest{Email: "known@example.com", Role: apitypes.VaultReader})
-	unknownStatus, unknownBody := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, apitypes.ShareInvitationRequest{Email: "ghost-two@example.com", Role: apitypes.VaultReader})
+	knownStatus, knownBody := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, signedShareRequest(t, member, vault, "known@example.com", apitypes.VaultReader, nil))
+	unknownStatus, unknownBody := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, signedShareRequest(t, member, vault, "ghost-two@example.com", apitypes.VaultReader, nil))
 	if knownStatus != http.StatusAccepted || unknownStatus != knownStatus || unknownBody != knownBody || unknownBody != shareUnderAnyone {
 		t.Errorf("share answers differ: %d %s / %d %s / under anyone %s", knownStatus, knownBody, unknownStatus, unknownBody, shareUnderAnyone)
 	}
@@ -344,7 +346,7 @@ func TestAdminSettingsTestEmail(t *testing.T) {
 	}
 	received := sink.ListMessages()
 	if len(received) != 1 || received[0].Recipients[0] != "admin@example.com" || !strings.Contains(received[0].Data, "Test email from Hisar") ||
-		!strings.Contains(received[0].Data, "https://hisar.test") {
+		!strings.Contains(received[0].Data, baseURL) {
 		t.Errorf("received %+v", received)
 	}
 	if status, body := sendRawRequest(t, baseURL, admin.Client.Token, "POST", testEmailPath, apitypes.AdminTestEmailRequest{To: "not an address"}); status != http.StatusBadRequest {

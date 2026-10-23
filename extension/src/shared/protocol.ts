@@ -13,6 +13,7 @@ export const allErrorCode = [
   "desktop-unavailable",
   "update-required",
   "wrong-password",
+  "passkey-verification-failed",
   "internal",
 ] as const;
 
@@ -21,6 +22,7 @@ export type ErrorCode = (typeof allErrorCode)[number];
 export type DesktopState = "signed-out" | "locked" | "unlocked";
 
 export interface LoginSummary {
+  isPersonal?: boolean;
   vaultID: string;
   itemID: string;
   title: string;
@@ -101,6 +103,7 @@ export interface IdentityValues {
 
 // featureSaveOptions: the app answers vaults.list, and logins.save takes a title and a vault for a new login.
 export const featureSaveOptions = "save-options";
+export const featureSaveConfirmation = "save-confirmation";
 
 // featureCreateItems: the app answers items.create.
 export const featureCreateItems = "create-items";
@@ -206,6 +209,9 @@ export interface CheckResult {
   vaultID?: string;
   itemID?: string;
   title?: string;
+  saveContext?: string;
+  vaultName?: string;
+  isPersonal?: boolean;
 }
 
 export interface GenerateOptions {
@@ -224,9 +230,11 @@ export interface RequestMap {
   "logins.match": { parameters: { url: string }; result: { logins: LoginSummary[] } };
   "logins.fill": { parameters: { vaultID: string; itemID: string; url: string }; result: Credentials };
   "logins.code": { parameters: { vaultID: string; itemID: string; url: string }; result: OneTimeCode };
-  "logins.check": { parameters: { url: string; username: string; password: string }; result: CheckResult };
+  // tabID is the tab whose offer this is: Hisar keeps one save context per tab, and the tab's next prepare retires it.
+  "logins.prepare": { parameters: { tabID: string; url: string; username: string; password: string }; result: CheckResult };
+  "logins.review": { parameters: { saveContext: string }; result: Record<string, never> };
   "logins.save": {
-    parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string; title?: string };
+    parameters: { url: string; username: string; password: string; vaultID?: string; itemID?: string; title?: string; saveContext: string };
     result: { vaultID: string; itemID: string };
   };
   "identities.list": { parameters: Record<string, never>; result: { identities: IdentitySummary[] } };

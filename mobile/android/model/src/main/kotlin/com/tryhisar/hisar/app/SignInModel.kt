@@ -39,6 +39,13 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
     /** Why a scanned QR code filled nothing in. */
     val scannerMessage = MutableStateFlow<String?>(null)
 
+    // Locking and signing out make the backend forget the new Secret Key, so the cover must not keep showing it.
+    init {
+        context.addStatusListener { _, current ->
+            if (!current.isUnlocked) mutableNewAccountStep.value = null
+        }
+    }
+
     suspend fun signIn(server: String, email: String, secretKey: String, password: String): Boolean = context.runInModel {
         val formattedSecretKey = VaultLogic.formatSecretKey(secretKey)
         val trimmedServer = server.trimmingWhitespacesAndNewlines()
@@ -62,6 +69,14 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
             return@runInModel false
         }
         val result = context.perform { it.signUp(trimmedInviteLink, trimmedEmail, trimmedName, password) } ?: return@runInModel false
+        if (result.pendingOperationId.isNotEmpty()) {
+            context.refreshStatus()
+            // The backend's first sync can report its change before this status arrives, when it is ignored.
+            if (context.status.value.isUnlocked) context.refreshAll()
+            context.refreshPendingRecovery()
+            context.errorMessage.value = result.problems.takeIf { it.isNotEmpty() }?.joinToString("\n")
+            return@runInModel true
+        }
         mutableNewAccountStep.value = NewAccountStep.SaveSecretKey(result.secretKey)
         context.applyStatus(result.status)
         context.refreshAll()

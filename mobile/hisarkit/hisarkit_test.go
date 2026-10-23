@@ -239,11 +239,23 @@ func TestIntegrationMobileFlow(t *testing.T) {
 		t.Fatal(err)
 	}
 	signUp := decodeJSON[struct {
-		Status    status `json:"status"`
-		SecretKey string `json:"secretKey"`
+		Status             status `json:"status"`
+		SecretKey          string `json:"secretKey"`
+		PendingOperationID string `json:"pendingOperationId"`
 	}](t)(hisar.SignUp(inviteLink, "mobile@example.com", "Mobile User", password))
 	if signUp.Status.State != "unlocked" || !strings.HasPrefix(signUp.SecretKey, "H1-") {
 		t.Fatalf("sign up: %+v", signUp)
+	}
+	// The iPhone saves the new account's Emergency Kit and acknowledges it, which ends the pending recovery operation.
+	kitDirectory := t.TempDir()
+	kit := decodeJSON[struct {
+		Path string `json:"path"`
+	}](t)(hisar.ExportPendingRecoveryEmergencyKit(signUp.PendingOperationID, password, kitDirectory))
+	if !strings.HasPrefix(kit.Path, kitDirectory) {
+		t.Fatalf("sign-up Emergency Kit at %q", kit.Path)
+	}
+	if err := hisar.AcknowledgePendingRecovery(signUp.PendingOperationID, password); err != nil {
+		t.Fatal(err)
 	}
 	if current := decodeJSON[status](t)(hisar.EnableNewAccountBiometricUnlock()); !current.BiometricEnabled {
 		t.Fatalf("Face ID offer after sign-up: %+v", current)
@@ -330,6 +342,7 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	checkCreditCardFlow(t, hisar, personalID)
 	checkPasskeyFlow(t, hisar, personalID, saved.ID)
 	checkAndroidAppFlow(t, hisar, personalID, saved.ID)
+	checkCredentialExchangeGroupsFlow(t, hisar, personalID)
 	checkSharingFlow(t, hisar)
 	checkSettingsFlow(t, hisar, password, signUp.SecretKey, personalID, saved.ID)
 

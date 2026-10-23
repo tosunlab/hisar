@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"os"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/browserprotocol"
@@ -91,9 +92,8 @@ func TestCredentialExchangeImportAddsPasskeysThatSignIn(t *testing.T) {
 	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 2 || progress.FileName != "1Password" || len(progress.Failed) != 0 {
 		t.Fatalf("progress = %+v", progress)
 	}
-	if err := service.DeleteImportFile(); err != nil {
-		t.Errorf("finishing an import without a file: %v", err)
-	}
+	// Credential Exchange has no local export file; the source app still holds omitted non-UV material.
+	service.CancelImport()
 
 	// Skipping the duplicate added its passkey to the login the vault had, which keeps its password.
 	itemsByTitle := listItemsByTitle(t, service, personalID)
@@ -109,7 +109,7 @@ func TestCredentialExchangeImportAddsPasskeysThatSignIn(t *testing.T) {
 
 	// The imported key signs: the iPhone path, verified with the key 1Password had.
 	clientDataHash := sha256.Sum256([]byte("client data"))
-	assertion, err := SignPasskeyForRelyingParty(service, "github.com", encodeBase64URL(github.credentialID), encodeBase64URL(clientDataHash[:]))
+	assertion, err := SignPasskeyWithPolicy(service, PasskeyAssertionRequest{RelyingPartyID: "github.com", CredentialID: encodeBase64URL(github.credentialID), ClientDataHash: encodeBase64URL(clientDataHash[:]), UserVerification: "preferred"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -140,6 +140,76 @@ func TestCredentialExchangeImportAddsPasskeysThatSignIn(t *testing.T) {
 	}
 }
 
+func TestCredentialExchangeCollectionsGoWhereEachIsMapped(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	service, personalID, familyID := fixture.service, fixture.personalID, fixture.familyID
+	login := func(id, title, password string) map[string]any {
+		return map[string]any{"id": id, "title": title, "credentials": []any{map[string]any{"type": "basic-auth", "password": map[string]any{"fieldType": "concealed-string", "value": password}}}}
+	}
+	content, err := json.Marshal(map[string]any{
+		"version": map[string]any{"major": 1, "minor": 0}, "exporterRpId": "1password.com", "exporterDisplayName": "1Password", "timestamp": 1767225600,
+		"accounts": []any{map[string]any{"id": "AQ", "username": "alice", "collections": []any{
+			map[string]any{"id": "Yw", "title": "Work", "items": []any{map[string]any{"item": "dw"}}},
+			map[string]any{"id": "Zg", "title": "Family", "items": []any{map[string]any{"item": "ZG"}}},
+		}, "items": []any{login("dw", "Work login", "work-password"), login("ZG", "Family login", "family-password"), login("cA", "Own login", "own-password")}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := PrepareCredentialExchangeImport(service, familyID, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Groups) != 3 {
+		t.Fatalf("the collections were flattened: %+v", preview.Groups)
+	}
+	groupIDsByName := map[string]string{}
+	for _, group := range preview.Groups {
+		if group.VaultID != personalID {
+			t.Errorf("%s starts in %s, not Personal", group.Name, group.VaultName)
+		}
+		groupIDsByName[group.Name] = group.ID
+	}
+	if _, err := service.PreviewImport(familyID); err == nil {
+		t.Error("one destination was applied to every collection")
+	}
+	mapped, err := service.MapImportGroup(groupIDsByName["alice / Family"], familyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mapped.VaultID != "" {
+		t.Errorf("mixed destinations preview as one vault %q", mapped.VaultID)
+	}
+	for _, group := range mapped.Groups {
+		if group.ID == groupIDsByName["alice / Family"] && (group.VaultID != familyID || len(group.Members) == 0) {
+			t.Errorf("the mapped collection shows %+v", group)
+		}
+	}
+	if _, err := service.StartImport(mapped.VaultID, true); err != nil {
+		t.Fatal(err)
+	}
+	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 3 || len(progress.Failed) != 0 {
+		t.Fatalf("progress = %+v", progress)
+	}
+	passwordsByVault := map[string][]string{}
+	for _, vaultID := range []string{personalID, familyID} {
+		for title, summary := range listItemsByTitle(t, service, vaultID) {
+			detail, err := service.GetItem(vaultID, summary.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			passwordsByVault[vaultID] = append(passwordsByVault[vaultID], title+"="+detail.Password)
+		}
+		slices.Sort(passwordsByVault[vaultID])
+	}
+	if want := []string{"Own login=own-password", "Work login=work-password"}; !slices.Equal(passwordsByVault[personalID], want) {
+		t.Errorf("Personal holds %v, want %v", passwordsByVault[personalID], want)
+	}
+	if want := []string{"Family login=family-password"}; !slices.Equal(passwordsByVault[familyID], want) {
+		t.Errorf("Family holds %v, want %v", passwordsByVault[familyID], want)
+	}
+}
+
 // The CXF Android's credential transfer hands over (core/importer's spec fixture) links its login to the scope's app, and
 // the imported passkey signs.
 func TestCredentialExchangeImportLinksAndroidApps(t *testing.T) {
@@ -153,13 +223,16 @@ func TestCredentialExchangeImportLinksAndroidApps(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if preview.FileName != "Example Exporter" || preview.ItemCount != 6 || preview.PasskeyCount != 2 || len(preview.Skipped) != 3 {
+	if preview.FileName != "Example Exporter" || preview.ItemCount != 6 || preview.PasskeyCount != 2 || len(preview.Skipped) != 6 {
 		t.Fatalf("preview = %+v", preview)
+	}
+	if !strings.Contains(preview.Skipped[5].Reason, "SSH key comment") {
+		t.Errorf("missing SSH comment warning: %+v", preview.Skipped)
 	}
 	if _, err := service.StartImport(personalID, true); err != nil {
 		t.Fatal(err)
 	}
-	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 6 || len(progress.Failed) != 0 {
+	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 6 || len(progress.Failed) != 0 || progress.LeftBehindCount != 6 {
 		t.Fatalf("progress = %+v", progress)
 	}
 
@@ -175,7 +248,7 @@ func TestCredentialExchangeImportLinksAndroidApps(t *testing.T) {
 	}
 
 	clientDataHash := sha256.Sum256([]byte("client data"))
-	if _, err := SignPasskeyForRelyingParty(service, "login.example.com", "7eRKGgxZmQPuErE3IN4Lqg", encodeBase64URL(clientDataHash[:])); err != nil {
+	if _, err := SignPasskeyWithPolicy(service, PasskeyAssertionRequest{RelyingPartyID: "login.example.com", CredentialID: "7eRKGgxZmQPuErE3IN4Lqg", ClientDataHash: encodeBase64URL(clientDataHash[:]), UserVerification: "preferred"}); err != nil {
 		t.Errorf("the imported passkey does not sign: %v", err)
 	}
 }

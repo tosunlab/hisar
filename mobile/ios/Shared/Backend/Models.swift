@@ -108,6 +108,16 @@ struct VaultStatus: Codable, Equatable {
     }
 }
 
+struct ReadIssue: Codable, Hashable, Identifiable {
+    var vaultId: String
+    var itemId: String?
+    var revision: String?
+    var kind: String
+    var canRename: Bool
+    var canDelete: Bool
+    var id: String { "\(vaultId)/\(itemId ?? "")/\(kind)" }
+}
+
 struct VaultSummary: Codable, Identifiable, Hashable {
     static let typePersonal = "personal"
     static let typeShared = "shared"
@@ -120,11 +130,14 @@ struct VaultSummary: Codable, Identifiable, Hashable {
     var itemCount: Int
     /// Set for organization vaults only.
     var organizationID: String
+    var readIssues: [ReadIssue] = []
+    var isPersonalExtra = false
 
     var isOrganization: Bool { type == Self.typeOrganization }
 
     enum CodingKeys: String, CodingKey {
         case id, name, type, role, itemCount
+        case readIssues, isPersonalExtra
         case organizationID = "organizationId"
     }
 
@@ -145,6 +158,8 @@ struct VaultSummary: Codable, Identifiable, Hashable {
         role = try container.decodeIfPresent(String.self, forKey: .role) ?? ""
         itemCount = try container.decodeIfPresent(Int.self, forKey: .itemCount) ?? 0
         organizationID = try container.decodeIfPresent(String.self, forKey: .organizationID) ?? ""
+        readIssues = try container.decodeIfPresent([ReadIssue].self, forKey: .readIssues) ?? []
+        isPersonalExtra = try container.decodeIfPresent(Bool.self, forKey: .isPersonalExtra) ?? false
     }
 }
 
@@ -168,6 +183,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
 
     var id: String
     var revision: String
+    var readIssue: ReadIssue? = nil
     var category: String
     var title: String
     var username: String
@@ -214,6 +230,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id, revision, category, title, username, password, notes, publicKey, fingerprint, keyType, oneTimePassword, hasOneTimePassword, canConvertToSecureNote, card, identity, isFavorite, apiCredential, address, softwareLicense, server, database, icon
+        case readIssue
         case allURL = "urls"
         case allTag = "tags"
         case allField = "fields"
@@ -255,6 +272,7 @@ struct ItemDetail: Codable, Identifiable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         id = try container.decodeIfPresent(String.self, forKey: .id) ?? ""
         revision = try container.decodeIfPresent(String.self, forKey: .revision) ?? ""
+        readIssue = try container.decodeIfPresent(ReadIssue.self, forKey: .readIssue)
         category = try container.decodeIfPresent(String.self, forKey: .category) ?? ""
         title = try container.decodeIfPresent(String.self, forKey: .title) ?? ""
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
@@ -867,52 +885,6 @@ struct ItemCard: Codable, Hashable {
         let parts = [type.isEmpty ? brand : type, last4.isEmpty ? "" : "•••• \(last4)"].filter { !$0.isEmpty }
         return parts.isEmpty ? "Credit card" : parts.joined(separator: " ")
     }
-
-    /// Groups a card number as it is typed, the way core/item saves it: 4-6-5 for American Express, 4-6-4 for a 14-digit
-    /// Diners Club number and fours otherwise. Text with other characters is left as typed.
-    static func formatNumberInput(_ value: String) -> String {
-        guard value.allSatisfy({ $0.isASCII && ($0.isNumber || $0 == " " || $0 == "-") }) else { return value }
-        let digits = Array(value.filter(\.isNumber))
-        var allGroupSize = [4]
-        if digits.starts(with: ["3", "4"]) || digits.starts(with: ["3", "7"]), digits.count <= 15 {
-            allGroupSize = [4, 6, 5]
-        } else if String(digits).range(of: "^3(0[0-5]|[689])", options: .regularExpression) != nil, digits.count <= 14 {
-            allGroupSize = [4, 6, 4]
-        }
-        var allGroup: [String] = []
-        var start = 0
-        while start < digits.count {
-            let size = allGroupSize[min(allGroup.count, allGroupSize.count - 1)]
-            allGroup.append(String(digits[start..<min(start + size, digits.count)]))
-            start += size
-        }
-        return allGroup.joined(separator: " ")
-    }
-
-    /// Writes an expiry as MM/YY while it is typed: "1230" becomes "12/30", "3" becomes "03" and "1/" becomes "01/". A pasted
-    /// 12/2030 or 2030-12 becomes 12/30, and text with other characters is left as typed.
-    static func formatExpiryInput(_ value: String) -> String {
-        guard value.allSatisfy({ $0.isASCII && ($0.isNumber || " /.-".contains($0)) }) else { return value }
-        let trimmed = value.trimmingCharacters(in: .whitespaces)
-        if let match = trimmed.wholeMatch(of: /(\d{4})\s*[\/.\-]\s*(\d{1,2})/) {
-            return "\(pad(match.2))/\(match.1.suffix(2))"
-        }
-        if let match = trimmed.wholeMatch(of: /(\d{1,2})\s*[\/.\-]\s*(\d*)/) {
-            let year = match.2.count == 4 ? match.2.suffix(2) : match.2.prefix(2)
-            return "\(pad(match.1))/\(year)"
-        }
-        var digits = value.filter(\.isNumber)
-        if digits.range(of: "^([2-9]|1[3-9])", options: .regularExpression) != nil {
-            digits = "0" + digits
-        }
-        guard digits.count > 2 else { return digits }
-        let year = digits.count == 6 ? digits.suffix(2) : digits.dropFirst(2).prefix(2)
-        return "\(digits.prefix(2))/\(year)"
-    }
-
-    private static func pad(_ month: Substring) -> String {
-        month.count == 1 ? "0" + month : String(month)
-    }
 }
 
 struct CardDescription: Codable, Equatable {
@@ -925,6 +897,46 @@ struct CardDescription: Codable, Equatable {
 struct SignUpResult: Codable, Equatable {
     var status: VaultStatus
     var secretKey: String
+    var pendingOperationId: String = ""
+    var setupState: String = ""
+    var problems: [String] = []
+
+    init(status: VaultStatus, secretKey: String, pendingOperationId: String = "", setupState: String = "", problems: [String] = []) {
+        self.status = status
+        self.secretKey = secretKey
+        self.pendingOperationId = pendingOperationId
+        self.setupState = setupState
+        self.problems = problems
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        status = try values.decode(VaultStatus.self, forKey: .status)
+        secretKey = try values.decodeIfPresent(String.self, forKey: .secretKey) ?? ""
+        pendingOperationId = try values.decodeIfPresent(String.self, forKey: .pendingOperationId) ?? ""
+        setupState = try values.decodeIfPresent(String.self, forKey: .setupState) ?? ""
+        problems = try values.decodeIfPresent([String].self, forKey: .problems) ?? []
+    }
+}
+
+struct PendingRecovery: Codable, Equatable, Identifiable {
+    var operationId: String
+    var kind: String
+    var origin: String
+    var accountId: String
+    var email: String
+    var name: String
+    var phase: String
+    var kitSaved: Bool
+    var problems: [String]
+    var manualUnlock: Bool = false
+    var keychainProtected: Bool = false
+    var id: String { operationId }
+}
+
+struct PendingRecoveryExport: Codable, Equatable {
+    var secretKey: String
+    var path: String
 }
 
 struct LoginMatch: Codable, Hashable, Identifiable {
@@ -934,14 +946,16 @@ struct LoginMatch: Codable, Hashable, Identifiable {
     var username: String
     var vaultName: String
     var hasOneTimePassword: Bool
+    var isPersonal = false
 
-    init(vaultID: String, itemID: String, title: String, username: String, vaultName: String, hasOneTimePassword: Bool = false) {
+    init(vaultID: String, itemID: String, title: String, username: String, vaultName: String, hasOneTimePassword: Bool = false, isPersonal: Bool = false) {
         self.vaultID = vaultID
         self.itemID = itemID
         self.title = title
         self.username = username
         self.vaultName = vaultName
         self.hasOneTimePassword = hasOneTimePassword
+        self.isPersonal = isPersonal
     }
 
     init(from decoder: Decoder) throws {
@@ -952,6 +966,7 @@ struct LoginMatch: Codable, Hashable, Identifiable {
         username = try container.decodeIfPresent(String.self, forKey: .username) ?? ""
         vaultName = try container.decodeIfPresent(String.self, forKey: .vaultName) ?? ""
         hasOneTimePassword = try container.decodeIfPresent(Bool.self, forKey: .hasOneTimePassword) ?? false
+        isPersonal = try container.decodeIfPresent(Bool.self, forKey: .isPersonal) ?? false
     }
 
     var id: String { LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: itemID) }
@@ -1129,8 +1144,8 @@ struct PasskeyAssertionRequest: Equatable {
     var relyingPartyID: String
     var clientDataHash: Data
     var allAllowedCredentialID: [Data] = []
-    // The site's userVerification is "discouraged": Hisar signs without asking the device owner again.
-    var isUserVerificationDiscouraged = false
+    var userVerification = "preferred"
+    var isUserVerificationDiscouraged: Bool { userVerification == "discouraged" }
 }
 
 struct PasskeyRegistrationRequest: Equatable {
@@ -1142,7 +1157,8 @@ struct PasskeyRegistrationRequest: Equatable {
     var clientDataHash: Data
     var allSupportedAlgorithm: [Int] = []
     var allExcludedCredentialID: [Data] = []
-    var isUserVerificationDiscouraged = false
+    var userVerification = "preferred"
+    var isUserVerificationDiscouraged: Bool { userVerification == "discouraged" }
 
     var isAlgorithmSupported: Bool {
         allSupportedAlgorithm.isEmpty || allSupportedAlgorithm.contains(Self.algorithmES256)
@@ -1282,10 +1298,16 @@ struct SentShareInvitation: Codable, Identifiable, Hashable {
     var role: String
     var state: String
     var expiresAt: String
+    var requiresConfirmation: Bool? = nil
+    var recipientID: String? = nil
+    var securityCode: String? = nil
+    var reviewToken: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, vaultName, email, role, state, expiresAt
         case vaultID = "vaultId"
+        case requiresConfirmation, securityCode, reviewToken
+        case recipientID = "recipientId"
     }
 }
 
@@ -1555,6 +1577,7 @@ struct ExportResult: Codable, Equatable {
     var path: String
     var vaultCount: Int
     var itemCount: Int
+    var warning: String? = nil
 }
 
 enum ExportFormat: String, CaseIterable, Identifiable {
@@ -1600,6 +1623,21 @@ struct ImportDuplicate: Codable, Hashable {
 
 /// ImportPreview is what an import would bring into vaultID. For a Credential Exchange import fileName names the app the
 /// items came from and filePath is empty.
+struct ImportSourceGroup: Codable, Equatable, Identifiable {
+    var id: String
+    var name: String
+    var isPrivate: Bool
+    var itemCount: Int
+    var vaultID: String
+    var vaultName: String
+    var members: [Member]
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, isPrivate, itemCount, vaultName, members
+        case vaultID = "vaultId"
+    }
+}
+
 struct ImportPreview: Codable, Equatable {
     static let formatCredentialExchange = "credential-exchange"
 
@@ -1623,11 +1661,13 @@ struct ImportPreview: Codable, Equatable {
     var passkeyCount: Int = 0
     var allSkipped: [ImportSkippedEntry] = []
     var allDuplicate: [ImportDuplicate] = []
+    var groups: [ImportSourceGroup] = []
 
     enum CodingKeys: String, CodingKey {
         case fileName, filePath, format, formatName, vaultName, itemCount, loginCount, secureNoteCount, sshKeyCount
         case creditCardCount, identityCount, apiCredentialCount, addressCount, softwareLicenseCount, serverCount
         case databaseCount, passkeyCount, allSkipped, allDuplicate
+        case groups
         case vaultID = "vaultId"
     }
 
@@ -1668,6 +1708,7 @@ struct ImportPreview: Codable, Equatable {
         passkeyCount = try container.decodeIfPresent(Int.self, forKey: .passkeyCount) ?? 0
         allSkipped = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allSkipped) ?? []
         allDuplicate = try container.decodeIfPresent([ImportDuplicate].self, forKey: .allDuplicate) ?? []
+        groups = try container.decodeIfPresent([ImportSourceGroup].self, forKey: .groups) ?? []
     }
 
     /// The preview's non-zero counts, as the import sheet lists them.
@@ -1737,14 +1778,22 @@ struct CredentialChangeResult: Codable, Equatable {
     var secretKey: String
     var signedOutDeviceCount: Int
     var keychainError: String
+    var localError: String
     var emergencyKitPath: String
+    var pendingOperationId: String = ""
+    var setupState: String = ""
+    var problems: [String] = []
 
-    init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", emergencyKitPath: String = "") {
+    init(status: VaultStatus, secretKey: String = "", signedOutDeviceCount: Int = 0, keychainError: String = "", localError: String = "", emergencyKitPath: String = "", pendingOperationId: String = "", setupState: String = "", problems: [String] = []) {
         self.status = status
         self.secretKey = secretKey
         self.signedOutDeviceCount = signedOutDeviceCount
         self.keychainError = keychainError
+        self.localError = localError
         self.emergencyKitPath = emergencyKitPath
+        self.pendingOperationId = pendingOperationId
+        self.setupState = setupState
+        self.problems = problems
     }
 
     init(from decoder: Decoder) throws {
@@ -1753,7 +1802,11 @@ struct CredentialChangeResult: Codable, Equatable {
         secretKey = try container.decodeIfPresent(String.self, forKey: .secretKey) ?? ""
         signedOutDeviceCount = try container.decodeIfPresent(Int.self, forKey: .signedOutDeviceCount) ?? 0
         keychainError = try container.decodeIfPresent(String.self, forKey: .keychainError) ?? ""
+        localError = try container.decodeIfPresent(String.self, forKey: .localError) ?? ""
         emergencyKitPath = try container.decodeIfPresent(String.self, forKey: .emergencyKitPath) ?? ""
+        pendingOperationId = try container.decodeIfPresent(String.self, forKey: .pendingOperationId) ?? ""
+        setupState = try container.decodeIfPresent(String.self, forKey: .setupState) ?? ""
+        problems = try container.decodeIfPresent([String].self, forKey: .problems) ?? []
     }
 }
 
@@ -1767,6 +1820,7 @@ struct DeletionVault: Codable, Equatable, Identifiable {
 
 struct AccountDeletionPreview: Codable, Equatable {
     var email: String
+    var planVersion: String
     var allOwnedVault: [DeletionVault]
     var allMemberVault: [DeletionVault]
     var shareLinkCount: Int
@@ -1776,15 +1830,16 @@ struct AccountDeletionPreview: Codable, Equatable {
     var allOrganization: [DeletionOrganization]
 
     enum CodingKeys: String, CodingKey {
-        case email
+        case email, planVersion
         case allOwnedVault = "ownedVaults"
         case allMemberVault = "memberVaults"
         case shareLinkCount, sentInvitationCount, receivedInvitationCount, deviceCount
         case allOrganization = "organizations"
     }
 
-    init(email: String, allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1, allOrganization: [DeletionOrganization] = []) {
+    init(email: String, planVersion: String = "", allOwnedVault: [DeletionVault] = [], allMemberVault: [DeletionVault] = [], shareLinkCount: Int = 0, sentInvitationCount: Int = 0, receivedInvitationCount: Int = 0, deviceCount: Int = 1, allOrganization: [DeletionOrganization] = []) {
         self.email = email
+        self.planVersion = planVersion
         self.allOwnedVault = allOwnedVault
         self.allMemberVault = allMemberVault
         self.shareLinkCount = shareLinkCount
@@ -1797,6 +1852,7 @@ struct AccountDeletionPreview: Codable, Equatable {
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         email = try container.decodeIfPresent(String.self, forKey: .email) ?? ""
+        planVersion = try container.decodeIfPresent(String.self, forKey: .planVersion) ?? ""
         allOwnedVault = try container.decodeIfPresent([DeletionVault].self, forKey: .allOwnedVault) ?? []
         allMemberVault = try container.decodeIfPresent([DeletionVault].self, forKey: .allMemberVault) ?? []
         shareLinkCount = try container.decodeIfPresent(Int.self, forKey: .shareLinkCount) ?? 0

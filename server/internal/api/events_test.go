@@ -28,7 +28,7 @@ func openEventStream(t *testing.T, apiClient *apiclient.Client) *eventStream {
 	ctx, cancel := context.WithCancel(context.Background())
 	stream := &eventStream{events: make(chan apiclient.Event, 16), finished: make(chan error, 1), cancel: cancel}
 	go func() {
-		stream.finished <- apiClient.StreamEvents(ctx, func(event apiclient.Event) { stream.events <- event })
+		stream.finished <- apiClient.StreamEvents(ctx, nil, func(event apiclient.Event) { stream.events <- event })
 	}()
 	t.Cleanup(cancel)
 	return stream
@@ -108,8 +108,8 @@ func TestEventStream(t *testing.T) {
 		t.Fatal(err)
 	}
 	aliceStream.waitForEvent(t, apitypes.EventShareInvitationsChanged)
-	if completedShares, err := alice.CompleteAcceptedShares(ctx); err != nil || len(completedShares) != 1 {
-		t.Fatalf("completed: %+v %v", completedShares, err)
+	if completedShares := completeReviewedShares(t, alice); len(completedShares) != 1 {
+		t.Fatalf("completed: %+v", completedShares)
 	}
 	bobStream.waitForEvent(t, apitypes.EventVaultsChanged)
 
@@ -128,7 +128,7 @@ func TestEventStream(t *testing.T) {
 		streams = append(streams, openEventStream(t, carol.Client))
 	}
 	waitForSubscriber(t, server, carol.AccountID, realtime.MaxStreamsPerAccount)
-	if err := carol.Client.StreamEvents(ctx, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusTooManyRequests) {
+	if err := carol.Client.StreamEvents(ctx, nil, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusTooManyRequests) {
 		t.Errorf("one stream too many: %v", err)
 	}
 	for _, stream := range streams {
@@ -147,7 +147,7 @@ func TestEventStream(t *testing.T) {
 		t.Fatal("the event stream outlived its session")
 	}
 	waitForSubscriber(t, server, bob.AccountID, 0)
-	if err := bob.Client.StreamEvents(ctx, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusUnauthorized) {
+	if err := bob.Client.StreamEvents(ctx, nil, func(apiclient.Event) {}); !apiclient.IsStatus(err, http.StatusUnauthorized) {
 		t.Errorf("stream without a session: %v", err)
 	}
 }

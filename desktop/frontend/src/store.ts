@@ -4,6 +4,7 @@ import {
   type AgentHost,
   type AgentSession,
   type CredentialChangeResult,
+  type PendingRecoverySummary,
   api,
   getErrorMessage,
   type BrowserPairingRequest,
@@ -106,6 +107,10 @@ export const store = reactive({
   selectedTag: "",
   pendingSecretKey: "",
   isTouchIDOfferShown: false,
+  pendingRecovery: [] as PendingRecoverySummary[],
+  isRecoveryOpen: false,
+  recoveryEpoch: 0,
+  recoveryFactor: null as { operationId: string; secretKey: string } | null,
   pendingInvite: "",
   errorMessage: "",
   noticeMessage: "",
@@ -173,7 +178,7 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
   } catch (error) {
     store.errorMessage = getErrorMessage(error);
     if (store.errorMessage === "Hisar is locked") {
-      clearAllVaultData();
+      clearLockedVaultData();
       store.status = { ...store.status, state: "locked" };
     }
     return undefined;
@@ -184,6 +189,9 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 
 function clearAllVaultData(): void {
   navigationVersion++;
+  browserPairingGeneration++;
+  store.browserPairing = null;
+  if (store.browserStatus) store.browserStatus.pendingPairing = null;
   resetImport();
   forgetWebsiteIcons();
   store.isTouchIDOfferShown = false;
@@ -216,17 +224,98 @@ function clearAllVaultData(): void {
   store.selectedTag = "";
 }
 
+let sessionGeneration = 0;
+let browserPairingGeneration = 0;
+
+// clearLockedVaultData also hides a new Secret Key not yet confirmed: the session that made it ended.
+function clearLockedVaultData(): void {
+  sessionGeneration++;
+  store.recoveryEpoch++;
+  store.recoveryFactor = null;
+  store.pendingSecretKey = "";
+  store.isTouchIDOfferShown = false;
+  clearAllVaultData();
+}
+
 async function applyStatus(status: Status): Promise<void> {
   store.status = status;
   if (status.state === "unlocked" && !status.updateRequired) {
     await loadAllVault();
+  } else if (status.state !== "unlocked") {
+    clearLockedVaultData();
   } else {
     clearAllVaultData();
   }
 }
 
 export async function loadStatus(): Promise<void> {
-  await runAction(async () => applyStatus(await api.getStatus()));
+  const generation = sessionGeneration;
+  await runAction(async () => {
+    const status = await api.getStatus();
+    if (generation === sessionGeneration) await applyStatus(status);
+  });
+  await loadPendingRecovery();
+}
+
+// loadPendingRecovery opens the recovery screen when operations appear where there were none, as at launch, and keeps
+// Finish later for the operations already listed, as the iPhone and Android apps do.
+export async function loadPendingRecovery(): Promise<void> {
+  try {
+    const hadNone = store.pendingRecovery.length === 0;
+    store.pendingRecovery = await api.listPendingRecovery();
+    if (store.pendingRecovery.length === 0) store.isRecoveryOpen = false;
+    else if (hadNone) store.isRecoveryOpen = true;
+  } catch (error) {
+    store.errorMessage = getErrorMessage(error);
+  }
+}
+
+export async function resumePendingRecovery(operationID: string, password: string, secretKey = "", priorSecretKey = ""): Promise<boolean> {
+  const generation = sessionGeneration;
+  const result = await runAction(() => api.resumePendingRecovery(operationID, password, secretKey, priorSecretKey));
+  if (generation !== sessionGeneration) return false;
+  if (result) {
+    if (result.setupState === "delivery-pending" || (result.setupState === "needs-finishing" && result.status.state === "unlocked")) {
+      await applyStatus(result.status);
+    }
+    if (generation !== sessionGeneration) return false;
+    const warnings = [store.errorMessage, ...(result.problems ?? [])].filter(Boolean);
+    await loadPendingRecovery();
+    if (generation !== sessionGeneration) return false;
+    store.errorMessage = [...warnings, store.errorMessage].filter(Boolean).join(" ");
+  }
+  return !!result && result.setupState === "delivery-pending";
+}
+
+export async function savePendingRecoveryKit(operationID: string, password: string): Promise<boolean> {
+  const generation = sessionGeneration;
+  const path = await runAction(() => api.savePendingRecoveryEmergencyKit(operationID, password));
+  if (generation !== sessionGeneration) return false;
+  return showSavedNotice(path);
+}
+
+export async function acknowledgePendingRecovery(operationID: string, password: string): Promise<boolean> {
+  const generation = sessionGeneration;
+  const operation = store.pendingRecovery.find((entry) => entry.operationId === operationID);
+  const result = await runAction(async () => {
+    await api.acknowledgePendingRecovery(operationID, password);
+    return true;
+  });
+  if (result) {
+    await loadPendingRecovery();
+    if (operation?.phase === "delivery-pending") store.isRecoveryOpen = false;
+    if (generation === sessionGeneration && operation?.kind === "signup" && operation.phase === "delivery-pending" && store.status.state === "unlocked"
+      && store.status.email === operation.email && store.status.server === operation.origin
+      && store.status.biometricAvailable && !store.status.biometricEnabled) {
+      store.isTouchIDOfferShown = true;
+    }
+  }
+  return result === true;
+}
+
+export async function discardPreparedRecovery(operationID: string, password: string): Promise<void> {
+  await runAction(() => api.discardPreparedRecovery(operationID, password));
+  await loadPendingRecovery();
 }
 
 export function showUpdateRequired(requirement: UpdateRequirement): void {
@@ -275,7 +364,11 @@ export async function takePendingInviteQuietly(): Promise<void> {
 }
 
 export async function signIn(server: string, email: string, secretKey: string, password: string): Promise<boolean> {
+  const generation = ++sessionGeneration;
   const status = await runAction(() => api.signIn(server, email, secretKey, password));
+  if (generation !== sessionGeneration) {
+    return false;
+  }
   if (status) {
     await applyStatus(status);
   }
@@ -283,8 +376,22 @@ export async function signIn(server: string, email: string, secretKey: string, p
 }
 
 export async function signUp(invite: string, email: string, name: string, password: string): Promise<boolean> {
+  const generation = ++sessionGeneration;
   const result = await runAction(() => api.signUp(invite, email, name, password));
+  if (generation !== sessionGeneration) {
+    return false;
+  }
   if (result) {
+    if (result.pendingOperationId) {
+      await loadPendingRecovery();
+      if (generation !== sessionGeneration) return false;
+      store.recoveryFactor = result.secretKey ? { operationId: result.pendingOperationId, secretKey: result.secretKey } : null;
+      store.isRecoveryOpen = true;
+      if (result.setupState === "delivery-pending" || (result.setupState === "needs-finishing" && result.status.state === "unlocked")) await applyStatus(result.status);
+      if (generation !== sessionGeneration) return false;
+      store.errorMessage = [store.errorMessage, ...(result.problems ?? [])].filter(Boolean).join(" ");
+      return true;
+    }
     store.pendingSecretKey = result.secretKey;
     await applyStatus(result.status);
   }
@@ -308,13 +415,17 @@ function finishTouchIDOffer(): void {
 
 // acceptTouchIDOffer does not use runAction: cancelling the Touch ID prompt keeps the offer open without an error.
 export async function acceptTouchIDOffer(): Promise<boolean> {
+  const generation = sessionGeneration;
   store.isBusy = true;
   try {
-    store.status = await api.enableNewAccountBiometricUnlock();
+    const status = await api.enableNewAccountBiometricUnlock();
+    if (generation !== sessionGeneration) return false;
+    store.status = status;
     finishTouchIDOffer();
-    showNotice("Touch ID unlock is on");
+    if (!store.status.biometricSetupError) showNotice("Touch ID unlock is on");
     return true;
   } catch (error) {
+    if (generation !== sessionGeneration) return false;
     const message = getErrorMessage(error);
     store.errorMessage = isCancelledTouchID(message) ? "" : message;
     return false;
@@ -344,7 +455,9 @@ export async function saveEmergencyKit(password: string): Promise<boolean> {
 }
 
 export async function unlock(password: string): Promise<boolean> {
+  const generation = ++sessionGeneration;
   const status = await runAction(() => api.unlock(password));
+  if (generation !== sessionGeneration) return false;
   if (status) {
     await applyStatus(status);
   }
@@ -357,17 +470,21 @@ export function isCancelledTouchID(message: string): boolean {
 
 // unlockWithBiometric does not use runAction: the prompt can wait long, and cancelling is not an error.
 export async function unlockWithBiometric(): Promise<boolean> {
+  const generation = ++sessionGeneration;
   try {
     const status = await api.unlockWithBiometric();
+    if (generation !== sessionGeneration) return false;
     store.errorMessage = "";
     await applyStatus(status);
     return true;
   } catch (error) {
+    if (generation !== sessionGeneration) return false;
     const message = getErrorMessage(error);
     if (!isCancelledTouchID(message)) {
       store.errorMessage = message;
     }
     const status = await api.getStatus().catch(() => undefined);
+    if (generation !== sessionGeneration) return false;
     if (status) {
       store.status = status;
     }
@@ -376,16 +493,20 @@ export async function unlockWithBiometric(): Promise<boolean> {
 }
 
 export async function enableBiometricUnlock(password: string): Promise<boolean> {
+  const generation = sessionGeneration;
   const status = await runAction(() => api.enableBiometricUnlock(password));
+  if (generation !== sessionGeneration) return false;
   if (status) {
     store.status = status;
-    showNotice("Touch ID unlock is on");
+    if (!status.biometricSetupError) showNotice("Touch ID unlock is on");
   }
   return status !== undefined;
 }
 
 export async function disableBiometricUnlock(): Promise<void> {
+  const generation = sessionGeneration;
   const status = await runAction(() => api.disableBiometricUnlock());
+  if (generation !== sessionGeneration) return;
   if (status) {
     store.status = status;
     showNotice("Touch ID unlock is off");
@@ -393,6 +514,7 @@ export async function disableBiometricUnlock(): Promise<void> {
 }
 
 export async function lock(): Promise<void> {
+  clearLockedVaultData();
   const status = await runAction(() => api.lock());
   if (status) {
     await applyStatus(status);
@@ -401,7 +523,8 @@ export async function lock(): Promise<void> {
 
 // The backend also sends "locked" when the server signed this device out, so the screen follows the status it reports.
 export async function handleLocked(): Promise<void> {
-  clearAllVaultData();
+  clearLockedVaultData();
+  const generation = sessionGeneration;
   store.status = { ...store.status, state: "locked" };
   store.errorMessage = "";
   let status: Status | undefined;
@@ -410,31 +533,49 @@ export async function handleLocked(): Promise<void> {
   } catch {
     return;
   }
-  if (status) {
+  if (status && generation === sessionGeneration) {
     await applyStatus(status);
   }
 }
 
 export async function signOut(): Promise<void> {
+  clearLockedVaultData();
   const status = await runAction(() => api.signOut());
-  if (status) {
-    store.pendingSecretKey = "";
-    await applyStatus(status);
-  }
+  // A sign-out that reports an error still ended the session on this device.
+  await applyStatus(status ?? (await api.getStatus().catch(() => store.status)));
 }
 
 export async function changeMasterPassword(currentPassword: string, newPassword: string): Promise<CredentialChangeResult | undefined> {
+  const generation = sessionGeneration;
   const result = await runAction(() => api.changeMasterPassword(currentPassword, newPassword));
+  if (generation !== sessionGeneration) {
+    return undefined;
+  }
   if (result) {
     store.status = result.status;
+    store.errorMessage = result.localError;
   }
   return result;
 }
 
 export async function replaceSecretKey(password: string): Promise<CredentialChangeResult | undefined> {
+  const generation = sessionGeneration;
   const result = await runAction(() => api.replaceSecretKey(password));
+  if (generation !== sessionGeneration) {
+    return undefined;
+  }
   if (result) {
+    if (result.pendingOperationId) {
+      await loadPendingRecovery();
+      if (generation !== sessionGeneration) return undefined;
+      store.recoveryFactor = result.secretKey ? { operationId: result.pendingOperationId, secretKey: result.secretKey } : null;
+      store.isRecoveryOpen = true;
+      store.errorMessage = [result.localError, ...(result.problems ?? [])].filter(Boolean).join(" ");
+      if (result.setupState === "delivery-pending" || (result.setupState === "needs-finishing" && result.status.state === "unlocked")) store.status = result.status;
+      return result;
+    }
     store.status = result.status;
+    store.errorMessage = result.localError;
   }
   return result;
 }
@@ -447,14 +588,19 @@ export async function loadAccountDeletionPreview(): Promise<AccountDeletionPrevi
   return runAction(() => api.previewAccountDeletion());
 }
 
-export async function deleteAccount(password: string, email: string): Promise<boolean> {
-  const status = await runAction(() => api.deleteAccount(password, email));
-  if (status) {
-    store.pendingSecretKey = "";
-    await applyStatus(status);
-    showNotice("Your account was deleted");
+// deleteAccount reports a deletion the server made even when the sign-out it caused already reached this app; only the
+// status it returns is left out then, since a newer one is shown.
+export async function deleteAccount(password: string, email: string, planVersion: string): Promise<boolean> {
+  const generation = sessionGeneration;
+  const status = await runAction(() => api.deleteAccount(password, email, planVersion));
+  if (!status) {
+    return false;
   }
-  return status !== undefined;
+  if (generation === sessionGeneration) {
+    await applyStatus(status);
+  }
+  showNotice("Your account was deleted");
+  return true;
 }
 
 export async function dismissSignedOutReason(): Promise<void> {
@@ -640,6 +786,7 @@ export async function syncInBackground(): Promise<void> {
       return;
     }
     store.allItem = allItem;
+    updateSelectedVaultSummary();
     const selectedItemID = store.selectedItem?.id;
     if (selectedItemID) {
       store.selectedItem = allItem.some((vaultItem) => vaultItem.id === selectedItemID) ? await api.getItem(store.selectedVaultID, selectedItemID) : null;
@@ -665,7 +812,7 @@ async function loadVaultItems(vaultID: string, version: number): Promise<void> {
     return;
   }
   store.allItem = allItem ? sortAllItem(allItem) : [];
-  updateSelectedVaultItemCount();
+  updateSelectedVaultSummary();
 }
 
 export async function createVault(name: string): Promise<boolean> {
@@ -820,10 +967,13 @@ export function selectTag(tag: string): void {
   }
 }
 
-function updateSelectedVaultItemCount(): void {
+// updateSelectedVaultSummary makes the selected vault's summary describe store.allItem, its latest acquisition: the
+// healthy items it counts and every record that did not open, so a record the list hides is still disclosed.
+function updateSelectedVaultSummary(): void {
   const vault = store.allVault.find((candidate) => candidate.id === store.selectedVaultID);
   if (vault) {
-    vault.itemCount = store.allItem.length;
+    vault.itemCount = store.allItem.filter((vaultItem) => !vaultItem.readIssue).length;
+    vault.readIssues = [...(vault.readIssues ?? []).filter((issue) => !issue.itemId), ...store.allItem.flatMap((vaultItem) => (vaultItem.readIssue ? [vaultItem.readIssue] : []))];
   }
 }
 
@@ -933,7 +1083,7 @@ async function showCreatedItem(created: ItemDetail): Promise<void> {
   const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
-    updateSelectedVaultItemCount();
+    updateSelectedVaultSummary();
   }
   store.selectedItem = created;
   store.editorMode = "view";
@@ -977,7 +1127,7 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
-    updateSelectedVaultItemCount();
+    updateSelectedVaultSummary();
     dropMissingTagFilter();
   }
   store.selectedItem = saved;
@@ -1028,7 +1178,7 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
   // Opening a favorite makes its vault the selected one but leaves allItem as the vault last listed, so allItem counts the
   // selected vault only outside Favorites.
   if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
-    updateSelectedVaultItemCount();
+    updateSelectedVaultSummary();
     dropMissingTagFilter();
   } else {
     const vault = store.allVault.find((candidate) => candidate.id === vaultID);
@@ -1050,6 +1200,15 @@ async function reloadSelectedVaultItems(): Promise<void> {
   const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
+    updateSelectedVaultSummary();
+  }
+}
+
+// retryReads reads every vault and the one on screen again, after a recovery action or when the user retries.
+export async function retryReads(): Promise<void> {
+  await loadAllVault();
+  if (!store.isFavoritesSelected && store.allVault.some((vault) => vault.id === store.selectedVaultID)) {
+    await reloadSelectedVaultItems();
   }
 }
 
@@ -1247,6 +1406,17 @@ export async function cancelShareInvitation(invitation: SentShareInvitation): Pr
     showNotice(`Invitation to ${invitation.email} cancelled`);
   }
   return cancelled === true;
+}
+
+export async function confirmShareRecipient(invitation: SentShareInvitation): Promise<boolean> {
+  const confirmed = await runAction(async () => {
+    await api.confirmShareRecipient(invitation.id, invitation.reviewToken);
+    return true;
+  });
+  await loadSharing();
+  await loadShareInvitationsQuietly();
+  if (confirmed) showNotice(`Shared ${invitation.vaultName} with ${invitation.email}`);
+  return confirmed === true;
 }
 
 export async function changeVaultMemberRole(member: VaultMember, role: VaultRole): Promise<boolean> {
@@ -1643,27 +1813,35 @@ export async function setSSHRemember(seconds: number): Promise<void> {
 }
 
 export function showBrowserPairing(request: BrowserPairingRequest | null): void {
-  store.browserPairing = request;
-  loadBrowserStatus();
+  if (!request) {
+    browserPairingGeneration++;
+    store.browserPairing = null;
+    if (store.browserStatus) store.browserStatus.pendingPairing = null;
+  } else void restoreBrowserPairing();
 }
 
 export async function cancelBrowserPairing(): Promise<void> {
-  store.browserPairing = null;
+  showBrowserPairing(null);
   await api.cancelBrowserPairing().catch(() => undefined);
 }
 
 export async function loadBrowserStatus(): Promise<void> {
+  const generation = sessionGeneration;
+  const pairingGeneration = browserPairingGeneration;
   try {
-    store.browserStatus = await api.getBrowserStatus();
+    const status = await api.getBrowserStatus();
+    if (generation === sessionGeneration && pairingGeneration === browserPairingGeneration) store.browserStatus = status;
   } catch {
-    store.browserStatus = null;
+    if (generation === sessionGeneration && pairingGeneration === browserPairingGeneration) store.browserStatus = null;
   }
 }
 
 // restoreBrowserPairing shows a pairing that started before the window loaded; later ones arrive as events.
 export async function restoreBrowserPairing(): Promise<void> {
+  const generation = sessionGeneration;
+  const pairingGeneration = ++browserPairingGeneration;
   await loadBrowserStatus();
-  store.browserPairing = store.browserStatus?.pendingPairing ?? null;
+  if (generation === sessionGeneration && pairingGeneration === browserPairingGeneration && store.status.state === "unlocked") store.browserPairing = store.browserStatus?.pendingPairing ?? null;
 }
 
 export async function removePairedBrowser(instanceID: string): Promise<boolean> {
@@ -1877,9 +2055,8 @@ export async function openImport(): Promise<void> {
   }
 }
 
-// closeImport drops the parsed export in the backend; it is not offered while items are being saved.
 export function closeImport(): void {
-  if (store.importStep === "saving") {
+  if (store.importStep === "saving" && (store.isBusy || !store.errorMessage)) {
     return;
   }
   if (store.importPreview || store.importProgress) {
@@ -1908,6 +2085,11 @@ export async function changeImportVault(vaultID: string): Promise<void> {
   if (preview) {
     store.importPreview = preview;
   }
+}
+
+export async function mapImportGroup(groupID: string, vaultID: string): Promise<void> {
+  const preview = await runAction(() => api.mapImportGroup(groupID, vaultID));
+  if (preview) store.importPreview = preview;
 }
 
 export async function startImport(isSkippingDuplicate: boolean): Promise<void> {
@@ -1945,8 +2127,10 @@ async function finishImport(progress: ImportProgress): Promise<void> {
   if (allVault) {
     store.allVault = allVault;
   }
-  if (progress.vaultId === store.selectedVaultID) {
-    const allItem = await runAction(() => api.listAllItem(progress.vaultId));
+  // A mixed import reports no single vault; the reviewed groups name every destination.
+  const allDestinationID = [progress.vaultId, ...(store.importPreview?.groups ?? []).map((group) => group.vaultId)];
+  if (store.selectedVaultID && allDestinationID.includes(store.selectedVaultID)) {
+    const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
     if (allItem) {
       store.allItem = sortAllItem(allItem);
     }

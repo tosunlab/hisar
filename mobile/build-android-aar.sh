@@ -3,9 +3,12 @@
 # No armeabi-v7a: github.com/bytemare/ksf does not compile for 32-bit targets.
 set -euo pipefail
 cd "$(dirname "$0")"
+GOTOOLCHAIN=$(bash ../scripts/go-toolchain.sh)
+export GOTOOLCHAIN
 : "${ANDROID_HOME:?set ANDROID_HOME to the Android SDK}"
 : "${ANDROID_NDK_HOME:?set ANDROID_NDK_HOME to the Android NDK, such as \$ANDROID_HOME/ndk/30.0.16248370}"
-export PATH="$(go env GOPATH)/bin:$PATH"
+PATH="$(go env GOPATH)/bin:$PATH"
+export PATH
 export GOWORK=off
 
 GOOS=android GOARCH=arm64 go vet ./hisarkit

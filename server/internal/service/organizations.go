@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -239,39 +240,51 @@ func (s *Service) CreateOrganizationInvitation(ctx context.Context, actor Actor,
 	if !s.allowInvitation(actor, s.Limiters.ShareInvitationAccount, s.Limiters.ShareInvitationIP) {
 		return errTooManyInvitation
 	}
-	invitationID, change, err := s.store.UpsertOrganizationInvitation(ctx,
-		&store.OrganizationInvitation{OrganizationID: organizationID, Email: email, Role: request.Role, InvitedBy: inviter.ID}, s.InviteTTL)
+	invitation := &store.OrganizationInvitation{OrganizationID: organizationID, Email: email, Role: request.Role, InvitedBy: inviter.ID}
+	invitationID, change, err := s.store.UpsertOrganizationInvitation(ctx, invitation, s.InviteTTL)
 	if errors.Is(err, store.ErrExists) {
 		return errAlreadyOrganizationMember
 	}
 	if err != nil {
 		return convertOrganizationError(err)
 	}
+	invitation.ID = invitationID
 	s.recordAudit(ctx, actor, auditOrganizationInvitationSent, map[string]string{
 		"organization": organizationID, "invitation": invitationID, "email": email, "role": request.Role,
 	})
 	s.publishOrganizationChange(change)
 	s.runInBackground(func(ctx context.Context) {
-		s.notifyOrganizationInvitation(ctx, inviter, summary.Name, email, request.Role)
+		s.notifyOrganizationInvitation(ctx, inviter, summary.Name, invitation)
 	})
 	return nil
 }
 
-func (s *Service) notifyOrganizationInvitation(ctx context.Context, inviter *store.Account, organizationName, email, role string) {
+func (s *Service) notifyOrganizationInvitation(ctx context.Context, inviter *store.Account, organizationName string, invitation *store.OrganizationInvitation) {
+	email, role := invitation.Email, invitation.Role
 	recipient, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
 	case err == nil:
+		emailConfigured := s.isEmailConfigured()
+		if err := s.store.CheckPendingOrganizationInvitation(ctx, invitation); err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				log.Printf("organization invitation: %v", err)
+			}
+			return
+		}
 		s.publishOrganizationsChanged(recipient.ID)
-		if s.isEmailConfigured() {
+		if emailConfigured {
 			s.sendEmail(ctx, composeOrganizationInvitationEmail(inviter, email, organizationName, role))
 		}
 	case errors.Is(err, store.ErrNotFound):
 		if !s.mayCreateSignUpInvite(inviter) {
 			return
 		}
-		token, expiresAt, err := s.newInviteToken(ctx, email, apitypes.RoleMember, &inviter.ID)
-		if err != nil {
-			log.Printf("organization invitation: %v", err)
+		token := generateToken()
+		expiresAt := time.Now().Add(s.InviteTTL)
+		if err := s.store.CreateOrganizationSignUpInvite(ctx, invitation, hashToken(token), expiresAt); err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				log.Printf("organization invitation: %v", err)
+			}
 			return
 		}
 		s.sendEmail(ctx, composeOrganizationSignUpEmail(inviter, email, organizationName, role, s.buildInviteLink(token), token, expiresAt))

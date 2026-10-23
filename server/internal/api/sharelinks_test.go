@@ -386,7 +386,7 @@ func TestShareLinkEvents(t *testing.T) {
 }
 
 func TestShareLinkPage(t *testing.T) {
-	server, err := NewServer(nil, generateSecrets(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}})
 	if err != nil {
 		t.Fatal(err)
 	}

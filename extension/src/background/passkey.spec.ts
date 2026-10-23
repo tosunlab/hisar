@@ -167,7 +167,7 @@ describe("passkey requests from content scripts", () => {
     expect(port.allReceived[0]).toEqual({ type: "prompt", promptUrl: "chrome-extension://dynamic-id/passkey-prompt.html#id-1", isConditional: false });
     expect(harness.allDesktopRequest[0]).toEqual({
       type: "passkeys.prepare",
-      passkey: { origin: "https://login.example.com", topOrigin: undefined, isCrossOrigin: false, relyingPartyId: "example.com", excludeCredentials: [] },
+      passkey: { origin: "https://login.example.com", topOrigin: undefined, isCrossOrigin: false, relyingPartyId: "example.com", excludeCredentials: [], userVerification: "preferred", ceremonyId: "id-1" },
     });
     const prompt = connectPrompt();
     const state = await prompt.call<PasskeyPromptState>({ method: "getState" }, readSessionID(port));
@@ -177,6 +177,8 @@ describe("passkey requests from content scripts", () => {
     expect(harness.allDesktopRequest[1]).toEqual({
       type: "passkeys.create",
       passkey: {
+        userVerification: "preferred",
+        ceremonyId: "id-1",
         origin: "https://login.example.com",
         topOrigin: undefined,
         isCrossOrigin: false,
@@ -211,15 +213,31 @@ describe("passkey requests from content scripts", () => {
     const port = await startRequest(assertionRequest);
     const sessionID = readSessionID(port);
     const prompt = connectPrompt();
-    expect(await prompt.call<PasskeyPromptState>({ method: "getState" }, sessionID)).toMatchObject({ view: "choose", allPasskey: [{ credentialId: "Y3JlZA" }] });
-    await expect(prompt.call({ method: "choosePasskey", credentialId: "b3RoZXI" }, sessionID)).rejects.toThrow("Choose one of the passkeys shown");
+    expect(await prompt.call<PasskeyPromptState>({ method: "getState" }, sessionID)).toMatchObject({ view: "choose", allPasskey: [{ credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1" }] });
+    await expect(prompt.call({ method: "choosePasskey", credentialId: "b3RoZXI", vaultID: "v1", itemID: "i1" }, sessionID)).rejects.toThrow("Choose one of the passkeys shown");
     harness.isVisible = false;
-    await expect(prompt.call({ method: "choosePasskey", credentialId: "Y3JlZA" }, sessionID)).rejects.toThrow("not fully visible");
+    await expect(prompt.call({ method: "choosePasskey", credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1" }, sessionID)).rejects.toThrow("not fully visible");
     expect(harness.allDesktopRequest.map((request) => request.type)).toEqual(["passkeys.list"]);
     harness.isVisible = true;
-    await prompt.call({ method: "choosePasskey", credentialId: "Y3JlZA" }, sessionID);
-    expect(harness.allDesktopRequest[1]).toMatchObject({ type: "passkeys.get", passkey: { origin: "https://login.example.com", credentialId: "Y3JlZA", challenge, allowCredentials: [] } });
+    await prompt.call({ method: "choosePasskey", credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1" }, sessionID);
+    expect(harness.allDesktopRequest[1]).toMatchObject({
+      type: "passkeys.get",
+      passkey: { origin: "https://login.example.com", credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1", challenge, allowCredentials: [] },
+    });
     expect(port.allReceived.at(-1)).toMatchObject({ type: "credential", credential: { kind: "get", credentialId: "Y3JlZA", userHandle: "dXNlcg" } });
+  });
+
+  it("signs with the login chosen when two logins hold the same credential ID", async () => {
+    harness.allPasskey = [
+      { credentialId: "Y3JlZA", vaultID: "v-shared", itemID: "i-copy", title: "AAA Example", userName: "alex@example.com", userDisplayName: "" },
+      { credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1", title: "Example", userName: "alex@example.com", userDisplayName: "Alex" },
+    ];
+    const port = await startRequest(assertionRequest);
+    const sessionID = readSessionID(port);
+    const prompt = connectPrompt();
+    await expect(prompt.call({ method: "choosePasskey", credentialId: "Y3JlZA", vaultID: "v1", itemID: "i-copy" }, sessionID)).rejects.toThrow("Choose one of the passkeys shown");
+    await prompt.call({ method: "choosePasskey", credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1" }, sessionID);
+    expect(harness.allDesktopRequest.at(-1)).toMatchObject({ type: "passkeys.get", passkey: { credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1" } });
   });
 
   it("falls back to the browser when Hisar cannot help", async () => {
@@ -352,7 +370,7 @@ describe("passkey PRF and signals", () => {
       options: { ...assertionRequest.options, allowCredentials: [{ type: "public-key", id: "Y3JlZA" }], prf: { eval: { first: "" }, evalByCredential: { Y3JlZA: { first: "AQ", second: "" } } } },
     } as PasskeyPageRequest;
     const getPort = await startRequest(assertionWithPRF);
-    await connectPrompt({ ...promptSender, frameId: 50 }).call({ method: "choosePasskey", credentialId: "Y3JlZA" }, readSessionID(getPort));
+    await connectPrompt({ ...promptSender, frameId: 50 }).call({ method: "choosePasskey", credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1" }, readSessionID(getPort));
     expect(harness.allDesktopRequest.at(-1)).toMatchObject({
       type: "passkeys.get",
       passkey: { credentialId: "Y3JlZA", prf: { eval: { first: "" }, evalByCredential: { Y3JlZA: { first: "AQ", second: "" } } } },
@@ -367,11 +385,11 @@ describe("passkey PRF and signals", () => {
     expect((createPort.allReceived.at(-1) as { credential: { prf: unknown } }).credential.prf).toEqual({ enabled: false });
 
     const getPort = await startRequest({ ...assertionRequest, options: { ...assertionRequest.options, prf: {} } } as PasskeyPageRequest);
-    await connectPrompt({ ...promptSender, frameId: 51 }).call({ method: "choosePasskey", credentialId: "Y3JlZA" }, readSessionID(getPort));
+    await connectPrompt({ ...promptSender, frameId: 51 }).call({ method: "choosePasskey", credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1" }, readSessionID(getPort));
     expect((getPort.allReceived.at(-1) as { credential: { prf: unknown } }).credential.prf).toEqual({});
 
     const plainPort = await startRequest(assertionRequest);
-    await connectPrompt({ ...promptSender, frameId: 52 }).call({ method: "choosePasskey", credentialId: "Y3JlZA" }, readSessionID(plainPort));
+    await connectPrompt({ ...promptSender, frameId: 52 }).call({ method: "choosePasskey", credentialId: "Y3JlZA", vaultID: "v1", itemID: "i1" }, readSessionID(plainPort));
     expect(harness.allDesktopRequest.at(-1)?.passkey).not.toHaveProperty("prf");
     expect((plainPort.allReceived.at(-1) as { credential: object }).credential).not.toHaveProperty("prf");
   });

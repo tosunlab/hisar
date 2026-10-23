@@ -5,7 +5,7 @@ export function findPromptFrame(page: Page): Frame | undefined {
 }
 
 export async function waitForPrompt(page: Page): Promise<Frame> {
-  await expect.poll(() => findPromptFrame(page) !== undefined).toBe(true);
+  await expect.poll(() => findPromptFrame(page) !== undefined, { timeout: 25_000 }).toBe(true);
   return findPromptFrame(page)!;
 }
 

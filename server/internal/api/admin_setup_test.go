@@ -21,7 +21,7 @@ import (
 
 func startSetup(t *testing.T, server *Server) string {
 	t.Helper()
-	return startSetupAt(t, server, "https://hisar.test")
+	return startSetupAt(t, server, server.config.PublicURL)
 }
 
 func startSetupAt(t *testing.T, server *Server, origin string) string {
@@ -41,7 +41,7 @@ func startServerAtItsOwnURL(t *testing.T, databaseURL string) (string, *Server) 
 	t.Cleanup(database.Close)
 	listener := requireValue[net.Listener](t)(net.Listen("tcp", "127.0.0.1:0"))
 	baseURL := "http://" + listener.Addr().String()
-	server := requireValue[*Server](t)(NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: baseURL}}))
+	server := requireValue[*Server](t)(NewServer(database, testServerSecrets, Config{Config: service.Config{PublicURL: baseURL}}))
 	app := server.CreateApp()
 	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true})
 	t.Cleanup(func() { app.Shutdown() })
@@ -124,7 +124,7 @@ func TestAdminSetupKeepsTheSecretKeyWhenThePersonalVaultFails(t *testing.T) {
 	setupToken := startSetup(t, server)
 	proxy := httputil.NewSingleHostReverseProxy(requireValue[*url.URL](t)(url.Parse(baseURL)))
 	failingVaults := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		if request.Method == http.MethodPost && request.URL.Path == "/api/v1/vaults" {
+		if request.Method == http.MethodPost && request.URL.Path == "/api/v1/vaults/personal" {
 			http.Error(writer, `{"error":"internal error"}`, http.StatusInternalServerError)
 			return
 		}

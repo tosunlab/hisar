@@ -119,13 +119,22 @@ func writeFileIfChanged(path string, content []byte) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	partialPath := path + ".partial"
-	if err := os.WriteFile(partialPath, content, 0o644); err != nil {
+	partialFile, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".*")
+	if err != nil {
 		return err
 	}
-	if err := os.Rename(partialPath, path); err != nil {
-		os.Remove(partialPath)
-		return err
+	_, err = partialFile.Write(content)
+	if err == nil {
+		err = partialFile.Chmod(0o644)
 	}
-	return nil
+	if closeErr := partialFile.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(partialFile.Name(), path)
+	}
+	if err != nil {
+		os.Remove(partialFile.Name())
+	}
+	return err
 }

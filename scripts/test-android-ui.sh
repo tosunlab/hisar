@@ -7,13 +7,33 @@
 # (testAccountItemLockAndSignInFlow) or both (HisarUITests#testAccountItemLockAndSignInFlow), or "smoke" for the set the
 # older Android versions run (a smoke test this checkout lacks is named and left out). A name that matches
 # no test, or a run in which no test ran, fails. HISAR_UI_TEST_SCREENSHOT_DIRECTORY receives the screenshots the tests save.
-# ANDROID_UI_TEST_SHARD=<index>/<count>, such as 0/2, runs one of count parts of those tests, as split by the test runner.
+# ANDROID_UI_TEST_PART=1 or 2 runs one of two parts of similar length, for two CI jobs, as scripts/ui-test-parts.sh splits the
+# classes; part 2 also runs every class new to its table.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 : "${ANDROID_HOME:?set ANDROID_HOME to the Android SDK}"
 ADB=$ANDROID_HOME/platform-tools/adb
 SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,HarnessServerTests
+# The runner matches tests_regex against package.Class#test: part 1 names its classes, and part 2 leaves out those of part 1.
+source "$ROOT/scripts/ui-test-parts.sh"
+TESTS_REGEX=
+case "${ANDROID_UI_TEST_PART:-}" in
+  "") ;;
+  1)
+    ui_test_part 1 2 "${ANDROID_UI_TEST_SECONDS[@]}"
+    TESTS_REGEX="^com\\.tryhisar\\.hisar\\.($(IFS='|'; echo "${UI_TEST_PART_CLASSES[*]//./\\.}"))#"
+    ;;
+  2)
+    ui_test_part 2 2 "${ANDROID_UI_TEST_SECONDS[@]}"
+    TESTS_REGEX="^(?!com\\.tryhisar\\.hisar\\.($(IFS='|'; echo "${UI_TEST_PART_CLASSES[*]//./\\.}"))#)"
+    ;;
+  *) echo "ANDROID_UI_TEST_PART is 1 or 2" >&2; exit 1 ;;
+esac
+if [ -n "${ANDROID_UI_TEST_PART:-}" ] && [ -n "${ANDROID_UI_TESTS:-}" ]; then
+  echo "set ANDROID_UI_TESTS or ANDROID_UI_TEST_PART, not both" >&2
+  exit 1
+fi
 
 if [ -z "${ANDROID_SERIAL:-}" ]; then
   SERIALS=$("$ADB" devices | awk 'NR > 1 && $2 == "device" {print $1}')
@@ -90,7 +110,7 @@ CROSS_DEVICE_EMAIL="android-cross-device-$(date +%s)-$RANDOM@example.com"
 CROSS_DEVICE_PASSWORD=cross-device-master-password
 CROSS_DEVICE_NEW_PASSWORD=cross-device-new-master-password
 printf '%s\nCommand Line\n%s\n%s\n' "$CROSS_DEVICE_EMAIL" "$CROSS_DEVICE_PASSWORD" "$CROSS_DEVICE_PASSWORD" |
-  HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup "$(ui_test_create_invite "$CROSS_DEVICE_EMAIL")" 2>"$T/other-device-signup.txt"
+  HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup -y -o "$T/other-device-emergency-kit.pdf" "$(ui_test_create_invite "$CROSS_DEVICE_EMAIL")" 2>"$T/other-device-signup.txt"
 CROSS_DEVICE_SECRET_KEY=$(grep -oE 'H1-[0-9A-Z-]+' "$T/other-device-signup.txt")
 other_device() { HISAR_STATE=$T/other-device.json HISAR_SECRET_KEY=$CROSS_DEVICE_SECRET_KEY "$ROOT/bin/hisar" "$@"; }
 answer_as_other_device() {
@@ -167,11 +187,6 @@ done
 
 # The Android Gradle plugin cuts each value at its first comma and hands the rest to the device's shell unquoted, inside
 # `am instrument -e NAME value`.
-if [ -n "${ANDROID_UI_TEST_SHARD:-}" ]; then
-  [[ "$ANDROID_UI_TEST_SHARD" =~ ^([0-9]+)/([1-9][0-9]*)$ ]] && [ "${BASH_REMATCH[1]}" -lt "${BASH_REMATCH[2]}" ] ||
-    { echo "ANDROID_UI_TEST_SHARD is <index>/<count> with index below count, such as 0/2" >&2; exit 1; }
-  UI_TEST_VALUES+=("numShards=${BASH_REMATCH[2]}" "shardIndex=${BASH_REMATCH[1]}")
-fi
 for VALUE in "${UI_TEST_VALUES[@]}"; do
   [[ "$VALUE" =~ ^[A-Za-z0-9_]+=[A-Za-z0-9@._:/+=-]*$ ]] || { echo "cannot pass $VALUE as an instrumentation argument" >&2; exit 1; }
 done
@@ -208,9 +223,12 @@ if [ -n "$TESTS" ]; then
     SELECTED=$SELECTED${SELECTED:+|}$RESOLVED
   done
   [ -n "$SELECTED" ] || { echo "none of $TESTS is in this checkout" >&2; exit 1; }
-  # The runner matches tests_regex against package.Class#test; `class` would lose every name after the first comma. The
-  # quotes keep the regex whole in the device's shell.
-  GRADLE_ARGUMENTS+=("-Pandroid.testInstrumentationRunnerArguments.tests_regex='^(${SELECTED//./\\.})(#|\$)'")
+  # `class` would lose every name after the first comma.
+  TESTS_REGEX="^(${SELECTED//./\\.})(#|\$)"
+fi
+# The quotes keep the regex whole in the device's shell.
+if [ -n "$TESTS_REGEX" ]; then
+  GRADLE_ARGUMENTS+=("-Pandroid.testInstrumentationRunnerArguments.tests_regex='$TESTS_REGEX'")
 fi
 
 OUTPUT=$ROOT/mobile/android/app/build/outputs/connected_android_test_additional_output

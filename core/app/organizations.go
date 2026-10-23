@@ -425,8 +425,7 @@ func (s *Service) ListWaitingVaultKeys() (WaitingVaultKeys, error) {
 	if err := s.requireUnlocked(); err != nil {
 		return WaitingVaultKeys{}, err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
-	defer cancel()
+	ctx := context.Background()
 	waiting, _, err := s.completeAndListVaultKeys(ctx)
 	return waiting, err
 }

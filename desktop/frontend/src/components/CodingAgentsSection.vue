@@ -48,7 +48,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       <div class="setting">
         <div class="setting-text">
           <strong>Vaults for coding agents</strong>
-          <p class="muted">Agents run commands with your secrets without seeing them; you approve each use here.</p>
+          <p class="muted">Agents pass references to commands after you approve access here. Commands receive real secrets; masking only reduces accidental disclosure.</p>
         </div>
       </div>
       <label v-for="vault in store.allVault" :key="vault.id" class="setting" :data-testid="`agent-vault-${vault.id}`">

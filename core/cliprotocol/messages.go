@@ -17,11 +17,13 @@ type Request struct {
 	AccountID    string `json:"accountID,omitempty"`
 	DeviceID     string `json:"deviceID,omitempty"`
 	InvitationID string `json:"invitationID,omitempty"`
+	ReviewToken  string `json:"reviewToken,omitempty"`
 	// OrganizationID and TeamID name an organization and one of its teams by ID; hisar resolves names first.
 	OrganizationID string           `json:"organizationID,omitempty"`
 	TeamID         string           `json:"teamID,omitempty"`
 	Item           *ItemChange      `json:"item,omitempty"`
 	ImportedItems  []item.Item      `json:"importedItems,omitempty"`
+	ImportScope    string           `json:"importScope,omitempty"`
 	References     []string         `json:"references,omitempty"`
 	CommandLine    []string         `json:"commandLine,omitempty"`
 	ShareLink      *ShareLinkChange `json:"shareLink,omitempty"`

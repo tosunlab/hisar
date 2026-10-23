@@ -8,11 +8,14 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/netip"
+	"regexp"
 	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/valyala/fasthttp"
 	"golang.org/x/time/rate"
 
 	"github.com/tryhisar/hisar/core/apitypes"
@@ -26,13 +29,17 @@ import (
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
-// The transport accepts rotation-sized bodies; decodeBody enforces maxBody everywhere else.
+// The transport refuses bodies above maxMoveBody, except for limitRequestBody's rotation-sized requests; decodeBody
+// enforces maxBody below that.
 const (
 	maxBody         = 2 << 20
 	maxRotationBody = 32 << 20
 	// maxMoveBody holds a moved item of the largest size, base64-encoded, and its small tombstone.
 	maxMoveBody = 4 << 20
 )
+
+// rotationPath permits authenticated bounded transition uploads as well as legacy aggregate requests.
+var rotationPath = regexp.MustCompile(`^/api/v1/vaults/[^/]+/(rotate|delete|transitions(/[^/]+/(items|access))?)$`)
 
 type Config struct {
 	// Config holds what the service reads: the public URL.
@@ -46,6 +53,8 @@ type Config struct {
 	EventHeartbeatInterval time.Duration
 	// WriteTimeout limits writing one response; event streams extend it with every write.
 	WriteTimeout time.Duration
+	// RequestTimeout ends the context, and so the database work, of one request's handler.
+	RequestTimeout time.Duration
 	// DesktopUpdates is nil when the server has no update source.
 	DesktopUpdates *desktopupdate.Source
 	// Version is hisar-server's release version, for Overview.
@@ -71,6 +80,14 @@ type Server struct {
 
 // NewServer reads the stored instance settings, when it has a database, and refuses settings that fail Validate.
 func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server, error) {
+	if config.PendingLoginCapacity < 0 || config.LimiterKeyCapacity < 0 || config.LimiterTotalCapacity < 0 {
+		return nil, fmt.Errorf("resource capacities must be positive")
+	}
+	opaqueConfiguration := pake.NewConfig()
+	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
+	if err != nil {
+		return nil, err
+	}
 	defaultSettings := settings.Defaults()
 	if config.DefaultSettings != nil {
 		defaultSettings = *config.DefaultSettings
@@ -78,6 +95,9 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	var storedSettings []byte
 	if database != nil {
 		var err error
+		if err := database.InitializeOperationalSecrets(context.Background(), secrets.fingerprint(), secrets.HMACKey); err != nil {
+			return nil, fmt.Errorf("initialize operational secrets: %w", err)
+		}
 		if storedSettings, err = database.GetInstanceSettings(context.Background()); err != nil {
 			return nil, fmt.Errorf("read instance settings: %w", err)
 		}
@@ -95,10 +115,9 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	if config.WriteTimeout == 0 {
 		config.WriteTimeout = 30 * time.Second
 	}
-	opaqueConfiguration := pake.NewConfig()
-	serverKeyMaterial, err := opaqueConfiguration.DecodeServerKeyMaterial(secrets.OpaqueKeyMaterial)
-	if err != nil {
-		return nil, err
+	// Apps give up on a request after 30 s, so work past this answers nobody.
+	if config.RequestTimeout == 0 {
+		config.RequestTimeout = time.Minute
 	}
 	opaqueServer, err := opaqueConfiguration.Server()
 	if err != nil {
@@ -107,22 +126,46 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	if err := opaqueServer.SetKeyMaterial(serverKeyMaterial); err != nil {
 		return nil, err
 	}
+	loginConfiguration, err := pake.NewAuthConfig(config.PublicURL, pake.Login)
+	if err != nil {
+		return nil, fmt.Errorf("public URL for authentication: %w", err)
+	}
+	loginServer, err := loginConfiguration.Server()
+	if err != nil {
+		return nil, err
+	}
+	if err := loginServer.SetKeyMaterial(serverKeyMaterial); err != nil {
+		return nil, err
+	}
+	reauthenticationConfiguration, err := pake.NewAuthConfig(config.PublicURL, pake.Reauthenticate)
+	if err != nil {
+		return nil, err
+	}
+	reauthenticationServer, err := reauthenticationConfiguration.Server()
+	if err != nil {
+		return nil, err
+	}
+	if err := reauthenticationServer.SetKeyMaterial(serverKeyMaterial); err != nil {
+		return nil, err
+	}
+	factory := ratelimit.NewFactory(config.LimiterKeyCapacity, config.LimiterTotalCapacity)
 	server := &Server{
 		config:               config,
 		events:               realtime.NewBroker(),
-		limiter:              ratelimit.New(rate.Every(6*time.Second), effectiveSettings.AuthBurst),
-		updateLimiter:        ratelimit.New(rate.Every(10*time.Second), 20),
-		shareLinkReadLimiter: newShareLinkReadLimiter(),
-		invitePageLimiter:    newInvitePageLimiter(),
-		versionCheckLimiter:  newVersionCheckLimiter(),
+		limiter:              factory.New(rate.Every(6*time.Second), effectiveSettings.AuthBurst),
+		updateLimiter:        factory.New(rate.Every(10*time.Second), 20),
+		shareLinkReadLimiter: factory.New(rate.Every(shareLinkReadInterval), shareLinkReadBurst),
+		invitePageLimiter:    factory.New(rate.Every(2*time.Second), 30),
+		versionCheckLimiter:  factory.New(rate.Every(2*time.Second), 30),
 	}
 	server.instanceSettings.Store(&effectiveSettings)
-	keys := service.Keys{OpaqueConfiguration: opaqueConfiguration, OpaqueServer: opaqueServer, HMACKey: secrets.HMACKey}
+	keys := service.Keys{OpaqueConfiguration: opaqueConfiguration, OpaqueServer: opaqueServer, HMACKey: secrets.HMACKey,
+		LoginServer: loginServer, ReauthenticationServer: reauthenticationServer}
 	server.service = service.New(database, server.events, keys, config.Config, service.InstanceSettings{
 		Current: &server.instanceSettings, Defaults: defaultSettings, Environment: config.Environment,
 		// A new auth burst applies to the limiter at once, in the order of the saves.
 		OnSave: func(saved settings.Settings) { server.limiter.SetBurst(saved.AuthBurst) },
-	})
+	}, factory)
 	return server, nil
 }
 
@@ -140,15 +183,17 @@ func (s *Server) WaitForBackgroundWork() { s.service.WaitForBackgroundWork() }
 func (s *Server) CreateApp() *fiber.App {
 	app := fiber.New(fiber.Config{
 		AppName:      "hisar-server",
-		BodyLimit:    maxRotationBody,
+		BodyLimit:    maxMoveBody,
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: s.config.WriteTimeout,
 		IdleTimeout:  120 * time.Second,
 		// fasthttp reuses request buffers after a handler returns.
-		Immutable:    true,
-		ErrorHandler: handleError,
+		Immutable:                    true,
+		DisablePreParseMultipartForm: true,
+		ErrorHandler:                 handleError,
 	})
-	app.Use(setSecurityHeaders)
+	app.Server().HeaderReceived = s.limitRequestBody
+	app.Use(setSecurityHeaders, s.limitRequestTime)
 	app.Get("/healthz", func(c fiber.Ctx) error { return c.SendString("ok\n") })
 	app.Get("/privacy", sendPrivacyPolicy)
 	app.Get("/terms", sendTermsOfService)
@@ -162,13 +207,16 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/auth/prelogin", s.limitRate, s.handlePrelogin)
 	apiGroup.Post("/auth/register/start", s.limitRate, s.handleRegisterStart)
 	apiGroup.Post("/auth/register/finish", s.limitRate, s.handleRegisterFinish)
-	apiGroup.Post("/auth/login/start", s.limitRate, s.handleLoginStart)
-	apiGroup.Post("/auth/login/finish", s.limitRate, s.handleLoginFinish)
+	apiGroup.Post("/auth/login/start", s.limitRate, refuseLegacyAuthentication)
+	apiGroup.Post("/auth/login/finish", s.limitRate, refuseLegacyAuthentication)
+	apiGroup.Post("/auth/login/v2/start", s.limitRate, s.handleLoginStart)
+	apiGroup.Post("/auth/login/v2/finish", s.limitRate, s.handleLoginFinish)
 
 	apiGroup.Post("/auth/logout", s.requireSession, s.handleLogout)
 	apiGroup.Get("/events", s.requireSession, s.handleStreamEvents)
 	apiGroup.Get("/account", s.requireSession, s.handleGetAccount)
-	apiGroup.Post("/account/reauthenticate", s.requireSession, s.limitRate, s.handleReauthenticate)
+	apiGroup.Post("/account/reauthenticate", s.requireSession, s.limitRate, refuseLegacyAuthentication)
+	apiGroup.Post("/account/reauthenticate/v2", s.requireSession, s.limitRate, s.handleReauthenticate)
 	apiGroup.Put("/account/credentials", s.requireSession, s.handleChangeCredentials)
 	apiGroup.Get("/account/deletion-preview", s.requireSession, s.handleGetAccountDeletionPreview)
 	apiGroup.Post("/account/delete", s.requireSession, s.handleDeleteAccount)
@@ -181,8 +229,11 @@ func (s *Server) CreateApp() *fiber.App {
 
 	apiGroup.Get("/vaults", s.requireSession, s.handleListVaults)
 	apiGroup.Post("/vaults", s.requireSession, s.handleCreateVault)
+	apiGroup.Post("/vaults/personal", s.requireSession, s.handleCreateVault)
 	apiGroup.Get("/vaults/:vault/members", s.requireSession, s.handleListVaultMembers)
 	apiGroup.Post("/vaults/:vault/share-invitations", s.requireSession, s.handleCreateShareInvitation)
+	apiGroup.Post("/vaults/:vault/signed-share-invitations", s.requireSession, s.handleCreateShareInvitation)
+	apiGroup.Post("/share-invitations/:invitation/complete", s.requireSession, s.handleCompleteSignedShare)
 	apiGroup.Get("/share-invitations", s.requireSession, s.handleListShareInvitations)
 	apiGroup.Post("/share-invitations/:invitation/accept", s.requireSession, s.handleAcceptShareInvitation)
 	apiGroup.Post("/share-invitations/:invitation/decline", s.requireSession, s.handleDeclineShareInvitation)
@@ -190,10 +241,21 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Put("/vaults/:vault/access/:account", s.requireSession, s.handleSetAccess)
 	apiGroup.Delete("/vaults/:vault/access/:account", s.requireSession, s.handleRemoveAccess)
 	apiGroup.Post("/vaults/:vault/rotate", s.requireSession, s.handleRotateVault)
+	apiGroup.Post("/vaults/:vault/transitions", s.requireSession, s.handleBeginVaultTransition)
+	apiGroup.Get("/vaults/:vault/transitions", s.requireSession, s.handleVaultTransitionProtocol)
+	apiGroup.Get("/vaults/:vault/transitions/:transition", s.requireSession, s.handleGetVaultTransition)
+	apiGroup.Get("/vaults/:vault/transitions/:transition/items", s.requireSession, s.handleListVaultTransitionItems)
+	apiGroup.Post("/vaults/:vault/transitions/:transition/items", s.requireSession, s.handleStageVaultItems)
+	apiGroup.Post("/vaults/:vault/transitions/:transition/access", s.requireSession, s.handleStageVaultAccess)
+	apiGroup.Post("/vaults/:vault/transitions/:transition/commit", s.requireSession, s.handleCommitVaultTransition)
+	apiGroup.Post("/vaults/:vault/transitions/:transition/abort", s.requireSession, s.handleAbortVaultTransition)
 	apiGroup.Put("/vaults/:vault/name", s.requireSession, s.handleRenameVault)
 	apiGroup.Post("/vaults/:vault/delete", s.requireSession, s.handleDeleteVault)
+	apiGroup.Post("/vaults/:vault/recovery/name", s.requireSession, s.handleRepairVaultName)
+	apiGroup.Post("/vaults/:vault/recovery/delete", s.requireSession, s.handleDeleteUnreadableVault)
 	apiGroup.Get("/vaults/:vault/changes", s.requireSession, s.handleListChanges)
 	apiGroup.Put("/vaults/:vault/items/:item", s.requireSession, s.handlePutItem)
+	apiGroup.Put("/vaults/:vault/items/:item/import", s.requireSession, s.handlePutImportItem)
 	apiGroup.Get("/vaults/:vault/items/:item/history", s.requireSession, s.handleGetItemHistory)
 	apiGroup.Post("/vaults/:vault/items/:item/move", s.requireSession, s.handleMoveItem)
 
@@ -243,6 +305,15 @@ func (s *Server) CreateApp() *fiber.App {
 	return app
 }
 
+// limitRequestTime gives the handlers a context that ends after RequestTimeout; fasthttp's own never ends, not even
+// when the client goes away. Streamed bodies are written after the handler returns, so they bring their own.
+func (s *Server) limitRequestTime(c fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), s.config.RequestTimeout)
+	defer cancel()
+	c.SetContext(ctx)
+	return c.Next()
+}
+
 // privacyPolicy is linked from the Chrome Web Store and App Store listings.
 //
 //go:embed privacy.html
@@ -273,21 +344,44 @@ func setSecurityHeaders(c fiber.Ctx) error {
 
 // statusByKind is the HTTP status of each kind of refusal from the service.
 var statusByKind = map[service.Kind]int{
-	service.KindInvalid:         fiber.StatusBadRequest,
-	service.KindUnauthorized:    fiber.StatusUnauthorized,
-	service.KindForbidden:       fiber.StatusForbidden,
-	service.KindNotFound:        fiber.StatusNotFound,
-	service.KindConflict:        fiber.StatusConflict,
-	service.KindTooManyRequests: fiber.StatusTooManyRequests,
-	service.KindUnavailable:     fiber.StatusServiceUnavailable,
-	service.KindNotImplemented:  fiber.StatusNotImplemented,
-	service.KindGone:            fiber.StatusGone,
+	service.KindInvalid:            fiber.StatusBadRequest,
+	service.KindUnauthorized:       fiber.StatusUnauthorized,
+	service.KindForbidden:          fiber.StatusForbidden,
+	service.KindNotFound:           fiber.StatusNotFound,
+	service.KindConflict:           fiber.StatusConflict,
+	service.KindTooManyRequests:    fiber.StatusTooManyRequests,
+	service.KindUnavailable:        fiber.StatusServiceUnavailable,
+	service.KindNotImplemented:     fiber.StatusNotImplemented,
+	service.KindGone:               fiber.StatusGone,
+	service.KindPreconditionFailed: fiber.StatusPreconditionFailed,
+}
+
+// resourceBudgetMessages tells the user what to remove when a growth budget (store.ExceededResource) refuses a change.
+var resourceBudgetMessages = map[string]string{
+	"vaults":               "You have created as many vaults as one account can. Delete vaults you no longer need, then try again.",
+	"devices":              "This account is already signed in on as many devices as it can be. Sign out devices you no longer use in Settings > Devices on a device that is still signed in, then try again.",
+	"organizations":        "You have created as many organizations as one account can. Delete an organization you no longer need, then try again.",
+	"teams":                "This organization has as many teams as it can have. Delete teams it no longer needs, then try again.",
+	"organization members": "This organization has as many members as it can have. Remove people who no longer need it, then try again.",
+	"team memberships":     "This organization's teams have as many members as they can have. Remove people from teams they no longer need, then try again.",
+	"team grants":          "This organization's teams have access to as many vaults as they can. Remove vaults from teams that no longer need them, then try again.",
+	"vault grants":         "This vault is shared with as many people as it can be. Remove people who no longer need it, then try again.",
+	"history":              "This vault's item history is full. Its items stay readable and exportable. Delete items you no longer need, or wait for the server to remove old item versions, then try again.",
 }
 
 // handleError renders refusals (*service.Error, *fiber.Error) as JSON and hides all other errors behind a 500. An item
 // conflict answers 409 with the current item, which the client needs to merge; items sealed with a key a rotation
-// replaced answer 409 with apitypes.KeyChangedResponse.
+// replaced answer 409 with apitypes.KeyChangedResponse, and a deletion whose plan changed with
+// apitypes.DeletionPlanChangedResponse. A growth budget answers 507, which no client reads as a conflict to merge or
+// retry, and which clients of every version show with its sentence.
 func handleError(c fiber.Ctx, err error) error {
+	if resource := store.ExceededResource(err); resource != "" {
+		message, ok := resourceBudgetMessages[resource]
+		if !ok {
+			message = "This has reached its growth limit on the server. Delete what you no longer need, then try again."
+		}
+		return c.Status(fiber.StatusInsufficientStorage).JSON(apitypes.Error{Error: message})
+	}
 	var conflict *service.ItemConflictError
 	if errors.As(err, &conflict) {
 		return c.Status(fiber.StatusConflict).JSON(apitypes.ConflictResponse{Current: conflict.Current})
@@ -295,13 +389,17 @@ func handleError(c fiber.Ctx, err error) error {
 	if errors.Is(err, service.ErrKeyChanged) {
 		return c.Status(fiber.StatusConflict).JSON(apitypes.KeyChangedResponse{Error: service.ErrKeyChanged.Message, IsKeyChanged: true})
 	}
+	if errors.Is(err, service.ErrDeletionPlanChanged) {
+		return c.Status(fiber.StatusConflict).JSON(apitypes.DeletionPlanChangedResponse{Error: service.ErrDeletionPlanChanged.Message, IsDeletionPlanChanged: true})
+	}
 	var serviceError *service.Error
 	if errors.As(err, &serviceError) {
 		err = fiber.NewError(statusByKind[serviceError.Kind], serviceError.Message)
 	}
 	var fiberError *fiber.Error
 	if !errors.As(err, &fiberError) {
-		log.Printf("internal error: %s %s: %v", c.Method(), c.Path(), err)
+		// The route, not the path: invite tokens and share link IDs are capabilities.
+		log.Printf("internal error: %s %s: %v", c.Method(), c.Route().Path, err)
 		fiberError = fiber.NewError(fiber.StatusInternalServerError, "internal error")
 	}
 	message := fiberError.Message
@@ -366,12 +464,33 @@ func (s *Server) limitRate(c fiber.Ctx) error {
 	return c.Next()
 }
 
-// With TrustProxy, the last X-Forwarded-For entry is the one appended by our reverse proxy.
+// limitRequestBody runs once a request's headers are in, before its body is read: only a signed-in caller's rotation
+// or vault deletion may send up to maxRotationBody, so nobody else makes the server buffer that much.
+func (s *Server) limitRequestBody(header *fasthttp.RequestHeader) fasthttp.RequestConfig {
+	path, _, _ := bytes.Cut(header.RequestURI(), []byte("?"))
+	if !header.IsPost() || !rotationPath.Match(path) {
+		return fasthttp.RequestConfig{}
+	}
+	token, ok := bytes.CutPrefix(header.Peek(fiber.HeaderAuthorization), []byte("Bearer "))
+	if !ok || len(token) == 0 {
+		return fasthttp.RequestConfig{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if _, err := s.service.Authenticate(ctx, string(token)); err != nil {
+		return fasthttp.RequestConfig{}
+	}
+	return fasthttp.RequestConfig{MaxRequestBodySize: maxRotationBody}
+}
+
+// With TrustProxy, the last X-Forwarded-For entry is the one appended by our reverse proxy. An entry that is not an IP
+// address is not the proxy's, so the peer's address counts instead.
 func (s *Server) getClientIP(c fiber.Ctx) string {
 	if s.config.TrustProxy {
-		if forwardedFor := c.Get("X-Forwarded-For"); forwardedFor != "" {
-			forwardedIPs := strings.Split(forwardedFor, ",")
-			return strings.TrimSpace(forwardedIPs[len(forwardedIPs)-1])
+		forwardedFor := c.Get("X-Forwarded-For")
+		lastEntry := strings.TrimSpace(forwardedFor[strings.LastIndexByte(forwardedFor, ',')+1:])
+		if address, err := netip.ParseAddr(lastEntry); err == nil {
+			return address.Unmap().WithZone("").String()
 		}
 	}
 	return c.RequestCtx().RemoteIP().String()

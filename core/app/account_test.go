@@ -1,13 +1,198 @@
 package app
 
 import (
+	"bytes"
+	"context"
+	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/core/session"
 )
+
+func TestCredentialChangeStartsOverACacheThatKeptTheOldKeyset(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, "approval password")
+	service := fixture.service
+	service.mutex.Lock()
+	staleCache := service.getCache()
+	service.unlockedSession.Cache = staleCache
+	staleAccount := *fixture.apiServer.account
+	staleAccount.EncKeyset = []byte("keyset sealed with the old credentials")
+	if err := staleCache.SaveAccount(&staleAccount); err != nil {
+		t.Fatal(err)
+	}
+	service.mutex.Unlock()
+	secretKey, err := service.config.SecretKeyStore.LoadSecretKey(fixture.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	verified, err := session.Unlock(context.Background(), service.unlockedSession.Client, nil, []byte("approval password"), secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.unlockedSession.Lock()
+	service.unlockedSession = verified
+
+	_, err = service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
+		return &session.CredentialChange{SecretKey: secretKey, IsCachedAccountStale: true}, nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	service.mutex.Lock()
+	defer service.mutex.Unlock()
+	currentCache := service.getCache()
+	cached, err := currentCache.LoadAccount(fixture.accountID)
+	if err != nil || cached == nil || !bytes.Equal(cached.EncKeyset, fixture.apiServer.account.EncKeyset) {
+		t.Errorf("cached account after the change: %+v %v", cached, err)
+	}
+	if service.unlockedSession.Cache != currentCache {
+		t.Error("the session still writes to the old cache")
+	}
+}
+
+func TestCredentialChangeReportsCacheDeletionFailureAndKeepsTheNewSecretKey(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, "approval password")
+	service := fixture.service
+	directory := t.TempDir()
+	service.config.CachePath = filepath.Join(directory, "cache.db")
+	oldAccount := *fixture.apiServer.account
+	service.mutex.Lock()
+	if err := service.getCache().SaveAccount(&oldAccount); err != nil {
+		t.Fatal(err)
+	}
+	service.mutex.Unlock()
+	newSecretKey, err := crypt.GenerateSecretKey(fixture.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(service.config.CachePath, 0400); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(directory, 0500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		os.Chmod(directory, 0700)
+		os.Chmod(service.config.CachePath, 0600)
+	})
+	result, err := service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
+		return &session.CredentialChange{SecretKey: newSecretKey, IsCachedAccountStale: true}, nil
+	})
+	if err != nil {
+		t.Fatalf("the app bridge would discard the committed result: %v", err)
+	}
+	encoded, err := json.Marshal(result)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var visible CredentialChangeResult
+	if err := json.Unmarshal(encoded, &visible); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(visible.LocalError, "credentials were changed") || !strings.Contains(visible.LocalError, "offline copy of the vaults could not be deleted") {
+		t.Fatalf("the delivered result hid the cache deletion failure: %s", encoded)
+	}
+	if visible.SecretKey != newSecretKey.Encode() || visible.Status.State != StateUnlocked {
+		t.Fatal("the app did not receive the replacement key and successful status")
+	}
+	kit, err := ExportNewSecretKeyEmergencyKitToDirectory(service, result, t.TempDir())
+	if err != nil || kit.SecretKey != visible.SecretKey || kit.Path == "" {
+		t.Fatalf("the committed replacement's Emergency Kit is unavailable: %v", err)
+	}
+	if result.SecretKey != newSecretKey.Encode() || service.newAccountSecretKey == nil || service.newAccountSecretKey.Encode() != result.SecretKey {
+		t.Fatal("the committed replacement Secret Key was lost")
+	}
+	stored, err := service.config.SecretKeyStore.LoadSecretKey(fixture.accountID)
+	if err != nil || stored.Encode() != result.SecretKey {
+		t.Fatalf("new key was not stored despite the cache failure: %v", err)
+	}
+	os.Chmod(directory, 0700)
+	os.Chmod(service.config.CachePath, 0600)
+	reopened, err := cache.Open(service.config.CachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer reopened.Close()
+	cached, err := reopened.LoadAccount(fixture.accountID)
+	if err != nil || cached == nil || !bytes.Equal(cached.EncKeyset, oldAccount.EncKeyset) {
+		t.Fatalf("fault did not retain the stale account: %v", err)
+	}
+}
+
+func TestCommittedCredentialChangeKeepsItsResultWhenStateSaveFails(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, "approval password")
+	service := fixture.service
+	newSecretKey, err := crypt.GenerateSecretKey(fixture.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Remove(service.config.StatePath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(service.config.StatePath, 0700); err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.changeCredentials("approval password", func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
+		return &session.CredentialChange{SecretKey: newSecretKey}, nil
+	})
+	if err != nil || result.LocalError == "" || result.SecretKey != newSecretKey.Encode() {
+		t.Fatalf("state save failure discarded a committed replacement: %+v %v", result, err)
+	}
+}
+
+func TestAccountDeletionAsksForReviewOnlyWhenThePlanChanged(t *testing.T) {
+	const planChanged = "The deletion plan changed. Review the deletion again before confirming."
+	for _, answer := range []struct {
+		name   string
+		body   any
+		reason string
+	}{
+		{"plan changed", apitypes.DeletionPlanChangedResponse{Error: planChanged, IsDeletionPlanChanged: true}, "review the deletion again"},
+		{"memberships busy", apitypes.Error{Error: "The account's memberships are changing. Try deleting the account again."}, "memberships are changing"},
+		{"credentials changed", apitypes.Error{Error: "the master password or Secret Key was changed on another device; try again"}, "changed on another device"},
+	} {
+		t.Run(answer.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+				writer.Header().Set("Content-Type", "application/json")
+				writer.WriteHeader(http.StatusConflict)
+				_ = json.NewEncoder(writer).Encode(answer.body)
+			}))
+			defer server.Close()
+			err := convertAccountDeletionError(apiclient.New(server.URL).DeleteAccount(context.Background(), &apitypes.DeleteAccountRequest{PlanVersion: "1:reviewed"}))
+			if err == nil || !strings.Contains(err.Error(), answer.reason) {
+				t.Fatalf("deletion conflict lost its reason: %v", err)
+			}
+			if isReviewAsked := strings.Contains(err.Error(), "deletion plan changed"); isReviewAsked != (answer.name == "plan changed") {
+				t.Errorf("asks for a new review %v: %v", isReviewAsked, err)
+			}
+		})
+	}
+}
+
+func TestAccountConflictAsksToSignInAgain(t *testing.T) {
+	conflict := &apiclient.APIError{Status: http.StatusConflict}
+	if err := convertAccountError(conflict); err.Error() != "your master password or Secret Key was just changed on another device; sign in again" {
+		t.Errorf("credential change conflict: %v", err)
+	}
+	other := errors.New("other")
+	if convertAccountDeletionError(other) != other {
+		t.Error("an unrelated error was changed")
+	}
+}
 
 func TestAccountChangesNeedAnUnlockedSession(t *testing.T) {
 	service, _, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
@@ -31,7 +216,7 @@ func TestAccountChangesNeedAnUnlockedSession(t *testing.T) {
 			t.Errorf("%s while locked: %v", name, err)
 		}
 	}
-	if _, err := ExportNewSecretKeyEmergencyKit(service); !errors.Is(err, ErrLocked) {
+	if _, err := ExportNewSecretKeyEmergencyKitToDirectory(service, CredentialChangeResult{}, t.TempDir()); !errors.Is(err, ErrLocked) {
 		t.Errorf("new kit while locked: %v", err)
 	}
 }
@@ -92,10 +277,8 @@ func TestSignOutKeepsOnlyTheServerOfASessionFromBeforeLastServer(t *testing.T) {
 	secretKeyStore.StoreSecretKey(secretKey)
 	service, _, _ := createTestService(t, statePath, secretKeyStore)
 
-	status, err := service.SignOut()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// Nothing answers on port 1, so the sign-out also reports that the server's session may still be open.
+	status, _ := service.SignOut()
 	if status.State != StateSignedOut || status.Server != "http://127.0.0.1:1" || status.Email != "" {
 		t.Errorf("signed-out status: %+v", status)
 	}

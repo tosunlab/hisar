@@ -11,6 +11,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
+	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/settings"
 )
 
@@ -18,7 +19,7 @@ func createMinimumVersionApp(t *testing.T, minimumVersions settings.MinimumVersi
 	t.Helper()
 	defaultSettings := settings.Defaults()
 	defaultSettings.MinimumVersions = minimumVersions
-	server, err := NewServer(nil, generateSecrets(), Config{DefaultSettings: &defaultSettings})
+	server, err := NewServer(nil, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}, DefaultSettings: &defaultSettings})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +131,7 @@ func TestMinimumVersionLetsOtherRequestsThrough(t *testing.T) {
 }
 
 func TestVersionCheckRateLimit(t *testing.T) {
-	server, err := NewServer(nil, generateSecrets(), Config{})
+	server, err := NewServer(nil, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}})
 	if err != nil {
 		t.Fatal(err)
 	}

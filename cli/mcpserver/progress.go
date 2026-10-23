@@ -44,7 +44,6 @@ func (reporter *progressReporter) report(ctx context.Context, message string) {
 }
 
 // progressStream gathers a command's masked stdout and stderr and reports what arrived every progressInterval.
-// It only sees what the maskers let through, so a secret split across writes never reaches it.
 type progressStream struct {
 	reporter      *progressReporter
 	mutex         sync.Mutex

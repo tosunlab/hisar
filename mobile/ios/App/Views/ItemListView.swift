@@ -14,6 +14,8 @@ struct ItemListView: View {
     @State private var newName = ""
     @State private var isLeaveConfirmationShown = false
     @State private var blockedReason: String?
+    @State private var issueToDelete: ReadIssue?
+    @State private var issueToRepair: ReadIssue?
     @Environment(\.dismiss) private var dismiss
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
@@ -22,15 +24,33 @@ struct ItemListView: View {
 
     private var isWritable: Bool {
         guard let vault else { return false }
+        if vault.readIssues.contains(where: { $0.kind == "vault-key" }) { return false }
         return vault.type == "personal" || vault.role != "reader"
     }
 
     var body: some View {
-        let allMatch = VaultLogic.filterAllItem(model.listAllItemReference(vaultID: vaultID), searchText: searchText)
+        let allMatch = VaultLogic.filterAllItem(model.listAllItemReference(vaultID: vaultID), searchText: searchText).filter { $0.item.readIssue == nil }
         List {
             if model.status.isOffline {
                 Section {
                     OfflineNote()
+                }
+            }
+            if let vault, !vault.readIssues.isEmpty {
+                Section {
+                    Text("\(vault.readIssues.count) records could not be opened. Healthy items remain available.")
+                    Button("Retry reads") { Task { await model.refreshAll() } }
+                    ForEach(vault.readIssues) { issue in
+                        VStack(alignment: .leading) {
+                            Text("\(issue.kind). \(issue.itemId ?? issue.vaultId)")
+                            if issue.canRename {
+                                Button("Repair vault name") { newName = ""; issueToRepair = issue; isRenameShown = true }
+                            }
+                            if issue.canDelete {
+                                Button("Delete unreadable data…", role: .destructive) { issueToDelete = issue }
+                            }
+                        }
+                    }
                 }
             }
             Section {
@@ -46,7 +66,7 @@ struct ItemListView: View {
         }
         .applyThemedListStyle()
         .overlay {
-            if allMatch.isEmpty {
+            if allMatch.isEmpty && vault?.readIssues.isEmpty != false {
                 if searchText.isEmpty {
                     ContentUnavailableView {
                         Label("No items yet", systemImage: "tray")
@@ -154,6 +174,7 @@ struct ItemListView: View {
                         actions: vaultActions,
                         rename: {
                             newName = vault?.name ?? ""
+                            issueToRepair = nil
                             isRenameShown = true
                         },
                         delete: { deletionActions = $0 },
@@ -164,7 +185,9 @@ struct ItemListView: View {
             }
         }
         .task(id: vault) {
-            vaultActions = await model.loadVaultActions(vaultID: vaultID)
+            if vault?.readIssues.contains(where: { $0.kind == "vault-key" }) != true {
+                vaultActions = await model.loadVaultActions(vaultID: vaultID)
+            }
         }
         .onChange(of: vault == nil) { _, isGone in
             if isGone { dismiss() }
@@ -176,10 +199,15 @@ struct ItemListView: View {
         .alert("Rename vault", isPresented: $isRenameShown) {
             TextField("Vault name", text: $newName)
                 .accessibilityIdentifier("rename-vault-name")
-            Button("Cancel", role: .cancel) {}
+            Button("Cancel", role: .cancel) { issueToRepair = nil }
             Button("Rename") {
                 let enteredName = newName
-                Task { await model.renameVault(vaultID: vaultID, name: enteredName) }
+                if let issue = issueToRepair {
+                    Task { await model.repairVaultName(issue, name: enteredName) }
+                } else {
+                    Task { await model.renameVault(vaultID: vaultID, name: enteredName) }
+                }
+                issueToRepair = nil
             }
             .accessibilityIdentifier("rename-vault-confirm")
         } message: {
@@ -189,6 +217,15 @@ struct ItemListView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(blockedReason ?? "")
+        }
+        .alert("Permanently delete unreadable data?", isPresented: Binding(get: { issueToDelete != nil }, set: { if !$0 { issueToDelete = nil } })) {
+            Button("Cancel", role: .cancel) { issueToDelete = nil }
+            Button("Permanently delete", role: .destructive) {
+                if let issue = issueToDelete { Task { await model.deleteUnreadableRecord(issue) } }
+                issueToDelete = nil
+            }
+        } message: {
+            Text(issueToDelete?.itemId == nil ? "This deletes the vault and all its items on every device. This cannot be undone." : "This deletes this unreadable item on every device. This cannot be undone.")
         }
         .confirmationDialog("Leave “\(vault?.name ?? "this vault")”?", isPresented: $isLeaveConfirmationShown, titleVisibility: .visible) {
             Button("Leave vault", role: .destructive) {

@@ -71,8 +71,11 @@ func (s *Server) handleExportAuditEvents(c fiber.Ctx) error {
 			if csvWriter.Error() != nil || writer.Flush() != nil || len(batch) == 0 {
 				return
 			}
-			// The body is written after the handler returns, so the export must outlive the request's context.
-			if batch, err = export.Next(context.Background()); err != nil {
+			// The body is written after the handler returns, so each batch gets its own context.
+			batchContext, cancel := context.WithTimeout(context.Background(), s.config.RequestTimeout)
+			batch, err = export.Next(batchContext)
+			cancel()
+			if err != nil {
 				log.Printf("audit export after %d rows: %v", rowCount, err)
 				// Closing the connection before the last chunk tells the browser the file is incomplete.
 				connection.Close()

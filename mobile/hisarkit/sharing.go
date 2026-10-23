@@ -6,3 +6,7 @@ import "github.com/tryhisar/hisar/core/app"
 func (hisar *Hisar) GetVaultSharing(vaultID string) (string, error) {
 	return encodeJSON(app.GetVaultSharing(hisar.service, vaultID))
 }
+
+func (hisar *Hisar) ConfirmShareRecipient(invitationID, reviewToken string) error {
+	return hisar.service.ConfirmShareRecipient(invitationID, reviewToken)
+}

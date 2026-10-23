@@ -29,6 +29,7 @@ import type {
   ShareLinkField,
   ShareLinkRequest,
   SignUpResult,
+  PendingRecoverySummary,
   SSHAgentStatus,
   SSHKeyType,
   Status,
@@ -51,6 +52,23 @@ const previewParameter = new URLSearchParams(window.location.search);
 
 // &organizations=none starts outside any organization: no organization vaults, invitations or waiting keys.
 const hasPreviewOrganizations = previewParameter.get("organizations") !== "none";
+
+let previewRecovery: PendingRecoverySummary[] = previewParameter.has("recovery")
+  ? [{
+      operationId: "preview-recovery",
+      kind: "signup",
+      origin: "https://preview.hisar.test",
+      accountId: "preview-account",
+      email: "preview@example.com",
+      name: "Preview account",
+      phase: previewParameter.get("recovery") === "complete" ? "delivery-pending" : "needs-finishing",
+      kitSaved: false,
+      manualUnlock: false,
+      problems: ["Preview only. This screen does not contact a server or recover real keys."],
+      keychainProtected: true,
+      revision: 1,
+    }]
+  : [];
 
 const allPreviewVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
@@ -362,6 +380,7 @@ const previewShareInvitations: ShareInvitations =
             state: "pending",
             expiresAt: new Date(Date.now() + 5 * 24 * hourInMilliseconds).toISOString(),
             acceptedAt: "",
+            requiresConfirmation: false, recipientId: "", securityCode: "", reviewToken: "",
           },
           {
             id: "to-ops",
@@ -373,6 +392,7 @@ const previewShareInvitations: ShareInvitations =
             state: "accepted",
             expiresAt: new Date(Date.now() + 2 * 24 * hourInMilliseconds).toISOString(),
             acceptedAt: new Date(Date.now() - 2 * hourInMilliseconds).toISOString(),
+            requiresConfirmation: true, recipientId: "ADAOPS", securityCode: "3F2A 91C0 7B44 E1D8", reviewToken: "preview-recipient",
           },
         ],
         waiting: [
@@ -1315,6 +1335,7 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     databaseCount: allPreviewImportItem.filter((detail) => detail.category === "database").length,
     passkeyCount: 0,
     allSkipped: allPreviewImportSkipped,
+    groups: [{ id: "private", name: "1Password Private", isPrivate: true, itemCount: allPreviewImportItem.length, vaultId: vaultID, vaultName: vault.name, members: listAllPreviewVaultMember(vaultID) }],
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({
       title: detail.title,
       username: detail.username,
@@ -1336,6 +1357,7 @@ function buildPreviewImportProgress(): ImportProgress {
     vaultName: vault.name,
     savedCount: previewImportRun.savedCount,
     totalCount: previewImportRun.savedCount + previewImportRun.allQueued.length,
+    leftBehindCount: allPreviewImportSkipped.length,
     isDone: previewImportRun.allQueued.length === 0,
     allFailed: [],
   };
@@ -1369,6 +1391,7 @@ export const previewApi = {
     ]),
   chooseImportFile: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   previewImport: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
+  mapImportGroup: (_groupID: string, vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   startImport: (vaultID: string, isSkippingDuplicate: boolean) => {
     const allDuplicate = isSkippingDuplicate ? findAllPreviewImportDuplicate(vaultID) : [];
     previewImportRun = { vaultID, allQueued: allPreviewImportItem.filter((detail) => !allDuplicate.includes(detail)), savedCount: 0 };
@@ -1397,7 +1420,7 @@ export const previewApi = {
   },
   signUp: (): Promise<SignUpResult> => {
     previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M" });
+    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
   },
   unlock: () => {
     previewState = "unlocked";
@@ -1511,6 +1534,26 @@ export const previewApi = {
     allPreviewItemByVaultID[vaultID] = allPreviewItemByVaultID[vaultID].filter((vaultItem) => vaultItem.id !== itemID);
     return resolveAfterDelay(undefined);
   },
+  deleteUnreadableItem: (vaultID: string, itemID: string, revision: string) => {
+    const record = allPreviewItemByVaultID[vaultID]?.find((item) => item.id === itemID && item.revision === revision && item.readIssue?.canDelete);
+    if (!record) return Promise.reject(new Error("The unreadable record changed"));
+    allPreviewItemByVaultID[vaultID] = allPreviewItemByVaultID[vaultID].filter((item) => item.id !== itemID);
+    return resolveAfterDelay(undefined);
+  },
+  deleteUnreadableVault: (vaultID: string, revision: string) => {
+    const index = allPreviewVault.findIndex((vault) => vault.id === vaultID && vault.readIssues?.some((issue) => issue.canDelete && !issue.itemId && issue.revision === revision));
+    if (index < 0) return Promise.reject(new Error("The unreadable vault changed"));
+    allPreviewVault.splice(index, 1);
+    delete allPreviewItemByVaultID[vaultID];
+    return resolveAfterDelay(undefined);
+  },
+  repairVaultName: (vaultID: string, revision: string, name: string) => {
+    const vault = allPreviewVault.find((candidate) => candidate.id === vaultID && candidate.readIssues?.some((issue) => issue.canRename && issue.revision === revision));
+    if (!vault) return Promise.reject(new Error("The unreadable vault changed"));
+    vault.name = name.trim();
+    vault.readIssues = vault.readIssues?.filter((issue) => issue.itemId);
+    return resolveAfterDelay(buildPreviewVaultSummary(vault));
+  },
   generatePassword: (config: PasswordConfig) => {
     const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ" + (config.digits ? "23456789" : "") + (config.symbols ? "!@#$%^&*-_=+?" : "");
     const allRandom = crypto.getRandomValues(new Uint32Array(config.length || 24));
@@ -1559,6 +1602,7 @@ export const previewApi = {
         state: "pending",
         expiresAt: new Date(Date.now() + 7 * 24 * hourInMilliseconds).toISOString(),
         acceptedAt: "",
+        requiresConfirmation: false, recipientId: "", securityCode: "", reviewToken: "",
       },
     ];
     return resolveAfterDelay(undefined);
@@ -1585,6 +1629,12 @@ export const previewApi = {
   },
   cancelShareInvitation: (invitationID: string) => {
     previewShareInvitations.sent = previewShareInvitations.sent.filter((invitation) => invitation.id !== invitationID);
+    return resolveAfterDelay(undefined);
+  },
+  confirmShareRecipient: (invitationID: string, reviewToken: string) => {
+    const invitation = previewShareInvitations.sent.find((candidate) => candidate.id === invitationID && candidate.reviewToken === reviewToken);
+    if (!invitation) return Promise.reject(new Error("Review this invitation again before confirming the recipient."));
+    previewShareInvitations.sent = previewShareInvitations.sent.filter((candidate) => candidate.id !== invitationID);
     return resolveAfterDelay(undefined);
   },
   listAllOrganization: () => resolveAfterDelay({ organizations: listAllPreviewOrganizationSummary(), invitations: structuredClone(allPreviewOrganizationInvitation) }),
@@ -1908,17 +1958,32 @@ export const previewApi = {
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   forgetNewAccountSecretKey: () => Promise.resolve(),
+  listPendingRecovery: () => resolveAfterDelay(previewRecovery.map((entry) => ({ ...entry }))),
+  resumePendingRecovery: (_operationID: string, password: string): Promise<SignUpResult> => {
+    if (password.length < 4) return Promise.reject(new Error("The password could not open this preview recovery operation."));
+    previewRecovery = previewRecovery.map((entry) => ({ ...entry, phase: "delivery-pending", problems: [] }));
+    previewState = "unlocked";
+    return resolveAfterDelay({ status: previewStatus(), secretKey: "", pendingOperationId: "preview-recovery", setupState: "delivery-pending", problems: [] });
+  },
+  savePendingRecoveryEmergencyKit: (_operationID: string, password: string) => password.length < 4
+    ? Promise.reject(new Error("The password could not open this preview recovery operation."))
+    : resolveAfterDelay("/Preview/Hisar Emergency Kit.pdf"),
+  acknowledgePendingRecovery: () => {
+    previewRecovery = [];
+    return Promise.resolve();
+  },
   changeMasterPassword: (currentPassword: string) =>
     currentPassword.length < 4
       ? Promise.reject(new Error("the master password is not correct"))
-      : resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "" }),
+      : resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "", localError: "" }),
   replaceSecretKey: (password: string) =>
     password.length < 4
       ? Promise.reject(new Error("the master password is not correct"))
-      : resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-8RW2N-QHT4M-0ZKXD-71BJE-P3SV6A", signedOutDeviceCount: 2, keychainError: "" }),
+      : resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-8RW2N-QHT4M-0ZKXD-71BJE-P3SV6A", signedOutDeviceCount: 2, keychainError: "", localError: "" }),
   previewAccountDeletion: () =>
     resolveAfterDelay({
       email: "alper@tryhisar.com",
+      planVersion: "preview-plan-1",
       ownedVaults: [
         { id: "personal", name: "Personal", type: "personal", role: "owner", otherMemberCount: 0 },
         { id: "family", name: "Family", type: "shared", role: "owner", otherMemberCount: 2 },

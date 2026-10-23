@@ -27,6 +27,7 @@ enum AccountLifecycleLogic {
 
     static func describeSignedOutDevices(_ count: Int) -> String {
         switch count {
+        case ..<0: return "Any other devices were signed out; their count could not be recovered."
         case 0: return "No other devices were signed in."
         case 1: return "1 other device was signed out."
         default: return "\(count) other devices were signed out."
@@ -48,7 +49,7 @@ enum AccountLifecycleLogic {
     }
 
     static func describeOrganization(_ organization: DeletionOrganization) -> String {
-        if organization.isDeleted { return "\(organization.name) is deleted with your account" }
+        if organization.isDeleted { return "\(organization.name), its vaults, and their items are deleted with your account" }
         if !organization.newAdminName.isEmpty { return "\(organization.newAdminName) becomes an admin of \(organization.name)" }
         return "You leave \(organization.name)"
     }

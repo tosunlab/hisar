@@ -5,6 +5,7 @@ import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, i
 import { useSettingsRowVisibility } from "../settingsSections";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
+import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 
 const isInviting = defineModel<boolean>("isInviting", { default: false });
@@ -27,6 +28,7 @@ async function confirmCancel(invitation: SentShareInvitation): Promise<void> {
 }
 
 function describeSentState(invitation: SentShareInvitation): string {
+  if (invitation.requiresConfirmation) return "Accepted · Review recipient identity";
   return invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : "Waiting for them to accept";
 }
 
@@ -113,6 +115,7 @@ function describeInviter(name: string, email: string): string {
             </strong>
             <p class="muted">{{ invitation.vaultName || "A vault you own" }} · {{ describeSentState(invitation) }}</p>
           </div>
+          <ShareRecipientConfirmation :invitation="invitation" />
           <button
             v-if="cancellingInvitationID !== invitation.id"
             class="ghost"

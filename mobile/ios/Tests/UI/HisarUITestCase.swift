@@ -42,8 +42,8 @@ class HisarUITestCase: XCTestCase {
     }
 
     // Waits until the element takes a tap: a row behind a closing sheet, or a button of a dialog still animating in, exists
-    // before it is hittable. iOS's Save Password sheet can come up seconds after a save, later than dismissSavePasswordPrompt
-    // looks for it, and cover the app; it is dismissed here too.
+    // before it is hittable. iOS's Save Password sheet can come up seconds after signing in or changing the master password,
+    // later than dismissSavePasswordPrompt looks for it, and cover the app; it is dismissed here too.
     func waitForHittable(_ element: XCUIElement, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
@@ -143,9 +143,27 @@ class HisarUITestCase: XCTestCase {
     }
 
     // On a slow simulator the keyboard focus comes a moment after the tap, and typing before it fails, so it waits for the focus
-    // and taps again if it does not come.
-    func type(_ text: String, into element: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
-        if !element.waitForExistence(timeout: 5) || !element.isHittable {
+    // and taps again if it does not come. Only a field the form has not created yet is dragged to: tap() scrolls one that exists
+    // just into view, while a drag can carry it under the navigation bar, where it still counts as hittable and taps land on
+    // the bar.
+    func type(_ text: String, into element: XCUIElement, normalizedBy normalize: ((String) -> String)? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        if focus(element, file: file, line: line) {
+            typeText(text, into: element, normalizedBy: normalize, file: file, line: line)
+        }
+    }
+
+    // A field whose placeholder is the very text to type, as the account deletion's email confirmation, cannot show that the
+    // text is in, but the control the text unlocks can: typing waits until `control` turns enabled, and it must not be before.
+    func type(_ text: String, into element: XCUIElement, untilEnabled control: XCUIElement, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertFalse(control.isEnabled, "\(control) is enabled before \"\(text)\" is typed", file: file, line: line)
+        guard focus(element, file: file, line: line) else { return }
+        element.typeText(text)
+        let isEnabled = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isEnabled == true"), object: control)
+        XCTAssertEqual(XCTWaiter().wait(for: [isEnabled], timeout: 30), .completed, "\(control) did not turn enabled after typing \"\(text)\"", file: file, line: line)
+    }
+
+    private func focus(_ element: XCUIElement, file: StaticString, line: UInt) -> Bool {
+        if !element.waitForExistence(timeout: 5) {
             scrollTo(element)
         }
         let hasFocus = NSPredicate(format: "hasKeyboardFocus == true")
@@ -153,11 +171,41 @@ class HisarUITestCase: XCTestCase {
             element.tap()
             if hasFocus.evaluate(with: element)
                 || XCTWaiter().wait(for: [XCTNSPredicateExpectation(predicate: hasFocus, object: element)], timeout: 5) == .completed {
-                element.typeText(text)
-                return
+                return true
             }
         }
         XCTFail("\(element) did not take the keyboard focus", file: file, line: line)
+        return false
+    }
+
+    // The simulator's keyboard can insert typed characters long after typeText returns: it holds them until its suggestions
+    // come back, 19 seconds later in job 120358912010, and a tap meanwhile acts on part of the text. So typing waits until the
+    // field shows exactly its end state (TypedText): `showing` when the typing also deletes, and both sides through the
+    // field's own formatter when it has one (CardInput).
+    func typeText(_ text: String, into element: XCUIElement, showing: String? = nil, normalizedBy normalize: ((String) -> String)? = nil, file: StaticString = #filePath, line: UInt = #line) {
+        let typedText: TypedText
+        do {
+            typedText = try TypedText(typed: text, showing: showing, before: element.value as? String, placeholder: element.placeholderValue, isSecure: element.elementType == .secureTextField, normalize: normalize)
+        } catch TypedText.UnshownError.secureFormattedNotEmpty {
+            XCTFail("\(element) is secure and not empty, so what it holds cannot be formatted with \"\(text)\"; clear it first or pass `showing`", file: file, line: line)
+            return
+        } catch {
+            XCTFail("\(element) would show its placeholder \"\(element.placeholderValue ?? "")\" whether or not \"\(text)\" is in; type something else", file: file, line: line)
+            return
+        }
+        element.typeText(text)
+        let isShown = waitUntil(timeout: 30) { typedText.isShown(byValue: element.value as? String, placeholder: element.placeholderValue) }
+        XCTAssertTrue(isShown, "\(element) shows \"\(element.value as? String ?? "")\", not \"\(typedText.expected)\"", file: file, line: line)
+    }
+
+    // Waits until isTrue holds, checking it about once a second. An XCTNSPredicateExpectation with an element as its object
+    // captures the app's whole accessibility hierarchy on the main thread whenever a check is false, to describe the element.
+    // In job 120468910610 the typing wait's first check came before the keys landed, and that capture took 36.94 s, so the
+    // 30 s wait ran out without checking again although the field had shown its typed text for 34 s. Here the predicate reads
+    // the element itself, and XCTest has no element to describe.
+    private func waitUntil(timeout: TimeInterval, _ isTrue: @escaping () -> Bool) -> Bool {
+        let expectation = XCTNSPredicateExpectation(predicate: NSPredicate { _, _ in isTrue() }, object: nil)
+        return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
     // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.
@@ -177,11 +225,7 @@ class HisarUITestCase: XCTestCase {
         saveScreenshot("create-account")
         scrollTo(app.buttons["sign-in-submit"])
         app.buttons["sign-in-submit"].tap()
-        let secretKeyText = app.staticTexts["new-secret-key"]
-        waitFor(secretKeyText, timeout: 60)
-        let secretKey = secretKeyText.label
-        saveScreenshot("new-secret-key")
-        app.buttons["new-secret-key-done"].tap()
+        let secretKey = finishPendingRecovery(email: email, password: Self.masterPassword)
         let notNowButton = app.buttons["biometric-offer-not-now"]
         if isBiometricOfferExpected {
             waitFor(notNowButton, timeout: 10)
@@ -190,7 +234,57 @@ class HisarUITestCase: XCTestCase {
         if notNowButton.waitForExistence(timeout: 2) {
             notNowButton.tap()
         }
-        waitFor(app.buttons["vault-Personal"])
+        // The vaults exist under the Secret Key screen and the Face ID offer; they take a tap only once both have closed.
+        waitForHittable(app.buttons["vault-Personal"])
+        return secretKey
+    }
+
+    @discardableResult
+    func finishPendingRecovery(email: String, password: String, restartAfterPreparingKit: Bool = false) -> String {
+        let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pending-recovery-' AND label CONTAINS %@ AND NOT label CONTAINS 'manual-unlock'", email)).firstMatch
+        waitFor(account, timeout: 60)
+        account.tap()
+        let phase = app.staticTexts["pending-recovery-phase"]
+        let isPrecommit = phase.label == "awaiting-kit"
+        let passwordField = app.secureTextFields["pending-recovery-password"]
+        type(password, into: passwordField)
+        scrollTo(app.buttons["pending-recovery-export"])
+        app.buttons["pending-recovery-export"].tap()
+        let key = app.staticTexts["pending-recovery-secret-key"]
+        waitFor(key, timeout: 60)
+        let secretKey = key.label
+        saveScreenshot("pending-recovery-kit")
+        if restartAfterPreparingKit {
+            app.launchArguments.removeAll { $0 == "-HisarResetState" }
+            app.terminate()
+            app.launch()
+            waitFor(account, timeout: 60)
+            account.tap()
+        }
+        type(password, into: passwordField)
+        scrollTo(app.buttons["pending-recovery-acknowledge"])
+        app.buttons["pending-recovery-acknowledge"].tap()
+        if isPrecommit {
+            let prepared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'prepared'"), object: phase)
+            wait(for: [prepared], timeout: 60)
+            type(secretKey, into: app.secureTextFields["pending-recovery-input-secret-key"])
+            type(password, into: passwordField)
+            scrollTo(app.buttons["pending-recovery-resume"])
+            app.buttons["pending-recovery-resume"].tap()
+            let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'delivery-pending'"), object: phase)
+            wait(for: [committed], timeout: 60)
+            type(password, into: passwordField)
+            scrollTo(app.buttons["pending-recovery-acknowledge"])
+            app.buttons["pending-recovery-acknowledge"].tap()
+        }
+        // Acknowledging runs while the recovery screen covers the app; the screen closes once the record is gone, or shows
+        // manual-unlock. Until then the screen beneath is there but covered (job 120454298607 tapped its unlock field).
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO OR label == 'manual-unlock'"), object: phase)
+        wait(for: [finished], timeout: 60)
+        if phase.exists {
+            scrollTo(app.buttons["pending-recovery-later"])
+            app.buttons["pending-recovery-later"].tap()
+        }
         return secretKey
     }
 

@@ -66,6 +66,7 @@ function serializeDescriptors(allDescriptor: unknown): SerializedCredentialDescr
 
 export function serializeCreationOptions(publicKey: PublicKeyCredentialCreationOptions): SerializedCreationOptions {
   return {
+    userVerification: publicKey.authenticatorSelection?.userVerification ?? "preferred",
     rp: { ...(publicKey.rp.id === undefined ? {} : { id: String(publicKey.rp.id) }), name: String(publicKey.rp.name) },
     user: { id: encodeBufferSource(publicKey.user.id), name: String(publicKey.user.name), displayName: String(publicKey.user.displayName ?? "") },
     challenge: encodeBufferSource(publicKey.challenge),
@@ -85,6 +86,7 @@ function withPRF(extensions: unknown): { prf?: ReturnType<typeof serializePRFInp
 
 export function serializeRequestOptions(publicKey: PublicKeyCredentialRequestOptions): SerializedRequestOptions {
   return {
+    userVerification: publicKey.userVerification ?? "preferred",
     challenge: encodeBufferSource(publicKey.challenge),
     ...(publicKey.timeout === undefined ? {} : { timeout: Number(publicKey.timeout) }),
     ...(publicKey.rpId === undefined ? {} : { rpId: String(publicKey.rpId) }),

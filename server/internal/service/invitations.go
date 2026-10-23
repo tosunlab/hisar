@@ -3,10 +3,13 @@ package service
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
@@ -159,6 +162,23 @@ func (s *Service) CreateShareInvitation(ctx context.Context, actor Actor, vaultI
 	if err != nil {
 		return err
 	}
+	if request.Intent == nil {
+		return newError(KindInvalid, "Update Hisar to send an owner-authorized sharing invitation.")
+	}
+	intent := request.Intent.Context
+	if _, err := s.checkShareOrigin(intent.Origin); err != nil {
+		return err
+	}
+	now := time.Now().Unix()
+	if intent.Version != 1 || !IsValidUUID(intent.ID) || intent.VaultID != vaultID ||
+		intent.InvitedBy != actor.AccountID || intent.Email != email || intent.Role != request.Role ||
+		intent.KeyGeneration <= 0 || intent.AccessRevision <= 0 || intent.IssuedAt > now+60 ||
+		intent.ExpiresAt <= now || intent.ExpiresAt <= intent.IssuedAt || intent.ExpiresAt-intent.IssuedAt > int64(s.InviteTTL/time.Second) ||
+		len(intent.ParentHash) != 0 || (intent.RecipientID == "") != (len(intent.RecipientKeyHash) == 0) ||
+		intent.RecipientID != "" && (!crypt.IsValidAccountID(intent.RecipientID) || len(intent.RecipientKeyHash) != 32) ||
+		crypt.VerifyShareIntent(inviter.SignPub, intent, request.Intent.Signature) != nil {
+		return newError(KindInvalid, "This sharing invitation is not authorized by the owner. Send a new invitation from an updated Hisar app.")
+	}
 	if email == inviter.Email {
 		return errShareWithYourself
 	}
@@ -172,30 +192,46 @@ func (s *Service) CreateShareInvitation(ctx context.Context, actor Actor, vaultI
 	if !s.allowInvitation(actor, s.Limiters.ShareInvitationAccount, s.Limiters.ShareInvitationIP) {
 		return errTooManyInvitation
 	}
-	invitationID, err := s.store.UpsertShareInvitation(ctx, &store.ShareInvitation{VaultID: vaultID, Email: email, Role: request.Role, InvitedBy: inviter.ID}, s.InviteTTL)
+	invitation := &store.ShareInvitation{VaultID: vaultID, Email: email, Role: request.Role, InvitedBy: inviter.ID, Intent: request.Intent}
+	invitationID, err := s.store.UpsertShareInvitation(ctx, invitation)
+	if errors.Is(err, store.ErrConflict) || errors.Is(err, store.ErrExists) {
+		return newError(KindConflict, "This sharing authorization is stale or was already used. Send a new invitation.")
+	}
 	if err != nil {
 		return err
 	}
+	invitation.ID = invitationID
 	s.recordAudit(ctx, actor, auditShareInvitationSent, map[string]string{"vault": vaultID, "invitation": invitationID, "email": email, "role": request.Role})
-	s.runInBackground(func(ctx context.Context) { s.notifyShareInvitation(ctx, inviter, email, request.Role) })
+	s.runInBackground(func(ctx context.Context) { s.notifyShareInvitation(ctx, inviter, invitation) })
 	return nil
 }
 
-func (s *Service) notifyShareInvitation(ctx context.Context, inviter *store.Account, email, role string) {
+func (s *Service) notifyShareInvitation(ctx context.Context, inviter *store.Account, invitation *store.ShareInvitation) {
+	email, role := invitation.Email, invitation.Role
 	recipient, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
 	case err == nil:
+		emailConfigured := s.isEmailConfigured()
+		if err := s.store.CheckPendingShareInvitation(ctx, invitation); err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				log.Printf("share invitation: %v", err)
+			}
+			return
+		}
 		s.publishShareInvitationsChanged(recipient.ID)
-		if s.isEmailConfigured() {
+		if emailConfigured {
 			s.sendEmail(ctx, composeShareInvitationEmail(inviter, email, role))
 		}
 	case errors.Is(err, store.ErrNotFound):
 		if !s.mayCreateSignUpInvite(inviter) {
 			return
 		}
-		token, expiresAt, err := s.newInviteToken(ctx, email, apitypes.RoleMember, &inviter.ID)
-		if err != nil {
-			log.Printf("share invitation: %v", err)
+		token := generateToken()
+		expiresAt := time.Now().Add(s.InviteTTL)
+		if err := s.store.CreateShareSignUpInvite(ctx, invitation, hashToken(token), expiresAt); err != nil {
+			if !errors.Is(err, store.ErrNotFound) {
+				log.Printf("share invitation: %v", err)
+			}
 			return
 		}
 		s.sendEmail(ctx, composeShareSignUpEmail(inviter, email, role, s.buildInviteLink(token), token, expiresAt))
@@ -241,7 +277,7 @@ func (s *Service) ListShareInvitations(ctx context.Context, actor Actor) (apityp
 	for _, sent := range storedSent {
 		protoSent := apitypes.SentShareInvitation{
 			ID: sent.ID, VaultID: sent.VaultID, Email: sent.Email, Role: sent.Role, State: sent.State, InvitedBy: sent.InvitedBy,
-			CreatedAt: sent.CreatedAt, ExpiresAt: sent.ExpiresAt, AcceptedAt: sent.AcceptedAt,
+			CreatedAt: sent.CreatedAt, ExpiresAt: sent.ExpiresAt, AcceptedAt: sent.AcceptedAt, Intent: sent.Intent,
 		}
 		if sent.Recipient != nil {
 			recipient := convertToProtoMember(sent.Recipient)
@@ -328,4 +364,40 @@ func (s *Service) CancelShareInvitation(ctx context.Context, actor Actor, invita
 	}
 	s.publishShareInvitationsChangedToOwner(ctx, vaultID, accountIDs...)
 	return nil
+}
+
+func (s *Service) CompleteSignedShare(ctx context.Context, actor Actor, request *apitypes.CompleteShareRequest) error {
+	intent := request.Intent.Context
+	if !IsValidUUID(intent.ID) || !IsValidUUID(intent.VaultID) || !crypt.IsValidAccountID(intent.RecipientID) || len(request.WrappedKey) == 0 || len(request.WrappedKey) > 8192 {
+		return newError(KindInvalid, "This sharing authorization is invalid. Review the recipient and send a new invitation.")
+	}
+	origin, err := s.checkShareOrigin(intent.Origin)
+	if err != nil {
+		return err
+	}
+	err = s.store.CompleteSignedShare(ctx, actor.AccountID, origin, request)
+	if errors.Is(err, store.ErrNotFound) || errors.Is(err, store.ErrConflict) || errors.Is(err, store.ErrNotOwner) {
+		return newError(KindConflict, "This sharing invitation changed or expired. Review the recipient and send a new invitation.")
+	}
+	if err != nil {
+		return err
+	}
+	s.recordAudit(ctx, actor, auditVaultAccessSet, map[string]string{"vault": intent.VaultID, "invitation": intent.ID, "account": intent.RecipientID, "role": intent.Role})
+	s.publishVaultsChanged(intent.RecipientID)
+	s.publishShareInvitationsChangedToOwner(ctx, intent.VaultID, intent.RecipientID)
+	return nil
+}
+
+// checkShareOrigin names both addresses when an app signed for another origin than HISAR_PUBLIC_URL. That is a
+// deployment mistake, and a generic refusal would send the user looking for a forged invitation instead.
+func (s *Service) checkShareOrigin(signedOrigin string) (string, error) {
+	origin, err := pake.CanonicalOrigin(s.config.PublicURL)
+	if err != nil {
+		return "", err
+	}
+	if signedOrigin != origin {
+		return "", newError(KindInvalid, fmt.Sprintf("This Hisar server's address is %s, but your app is connected to it as %s. "+
+			"Sign in to %s, or ask the server's operator to set HISAR_PUBLIC_URL to the address your apps use.", origin, signedOrigin, origin))
+	}
+	return origin, nil
 }

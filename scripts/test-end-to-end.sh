@@ -65,7 +65,7 @@ get_invite_code() { grep -oE '/invite/[A-Za-z0-9_-]+' | head -1 | cut -d/ -f3; }
 ALICE_INV=$("$BIN/hisar-server" invite --email alice@example.com </dev/null | tail -1)
 expect "admin invite" "$ALICE_INV" "$HISAR_PUBLIC_URL/invite/"
 
-printf 'alice@example.com\nAlice\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/alice.json HISAR_SECRET_KEY=- hisar signup "$ALICE_INV" 2>"$T/alice-signup.txt"
+printf 'alice@example.com\nAlice\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/alice.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/alice-emergency-kit.pdf" "$ALICE_INV" 2>"$T/alice-signup.txt"
 ALICE_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/alice-signup.txt")
 expect "alice signup" "$ALICE_SK" "H1-"
 A() { HISAR_STATE=$T/alice.json HISAR_SECRET_KEY=$ALICE_SK hisar "$@"; }
@@ -127,7 +127,7 @@ BOB_INVITE_PAGE=$(curl -s "$HISAR_PUBLIC_URL/invite/$BOB_CODE")
 expect "the emailed invite link opens a page naming the inviter" "$BOB_INVITE_PAGE" "Alice (alice@example.com)</span> invited you to Hisar"
 expect "the invite page shows the code to paste" "$BOB_INVITE_PAGE" "data-testid=\"invite-code\">$BOB_CODE</code>"
 expect "the invite page opens the app with the invite" "$BOB_INVITE_PAGE" "href=\"hisar://invite/$BOB_CODE?server=http%3A%2F%2F127.0.0.1%3A$PORT\""
-printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup "$HISAR_PUBLIC_URL/invite/$BOB_CODE" 2>"$T/bob-signup.txt"
+printf 'bob@example.com\nBob\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/bob.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/bob-emergency-kit.pdf" "$HISAR_PUBLIC_URL/invite/$BOB_CODE" 2>"$T/bob-signup.txt"
 BOB_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/bob-signup.txt")
 expect "bob signs up from the emailed code" "$BOB_SK" "H1-"
 expect "a used invite's page says it isn't valid" "$(curl -s -w ' %{http_code}' "$HISAR_PUBLIC_URL/invite/$BOB_CODE")" "This invite isn't valid</h1>"
@@ -150,7 +150,15 @@ expect "bob's invitations" "$(B invitations 2>&1)" "Alice <alice@example.com>  e
 expect "bob accepts" "$(printf '\n' | B invitations accept 2>&1)" "Accepted."
 [[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before alice completed the share"
 echo "ok   accepting alone gives no access"
-expect "alice's app completes the share" "$(printf '%s\n' "$PW" | A invitations 2>&1)" 'Shared "Family" with bob@example.com as editor. Their security code:'
+ALICE_INVITATIONS=$(printf '%s\n' "$PW" | A invitations 2>&1)
+expect "alice's hisar asks her to review bob, whom she has never shared with" "$ALICE_INVITATIONS" "needs-review"
+[[ "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" != *Family* ]] || fail "bob sees Family before alice reviewed him"
+echo "ok   a first-contact recipient gets no key without the owner's review"
+BOB_INVITATION=$(printf '%s\n' "$ALICE_INVITATIONS" | awk '/bob@example.com/ && /needs-review/{print $1}')
+[[ -n "$BOB_INVITATION" ]] || fail "alice's hisar does not ask her to review bob: $ALICE_INVITATIONS"
+BOB_CONFIRMATION=$(printf '%s\n' "$PW" | A invitations confirm "$BOB_INVITATION" --yes 2>&1)
+expect "alice's review shows bob's security code" "$BOB_CONFIRMATION" "Security code"
+expect "alice confirms bob" "$BOB_CONFIRMATION" "Shared with the reviewed recipient."
 expect "bob sees Family" "$(printf '%s\n' "$PW" | B vaults 2>/dev/null)" "Family    shared    editor"
 expect "bob reads item" "$(printf '%s\n' "$PW" | B get netflix -v Family -f password 2>/dev/null)" "hunter2hunter2"
 expect "bob edits item" "$(printf '%s\nNetflix\n\n\n\nedited by bob\n' "$PW" | B edit netflix -v Family 2>&1)" "Saved"
@@ -158,23 +166,35 @@ expect "alice sees edit" "$(printf '%s\n' "$PW" | A get netflix -v Family -f not
 expect "bob invites by email too" "$(B invite eve@example.com 2>&1)" "Invitation sent to eve@example.com."
 
 CAROL_INV=$("$BIN/hisar-server" invite --email carol@example.com </dev/null | tail -1)
-printf 'carol@example.com\nCarol\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=- hisar signup "$CAROL_INV" 2>"$T/carol-signup.txt"
+printf 'carol@example.com\nCarol\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/carol-emergency-kit.pdf" "$CAROL_INV" 2>"$T/carol-signup.txt"
 CAROL_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/carol-signup.txt")
 C() { HISAR_STATE=$T/carol.json HISAR_SECRET_KEY=$CAROL_SK hisar "$@"; }
 printf '%s\n' "$PW" | A vault-create Work 2>/dev/null
 ALICE_TOKEN=$(sed -n 's/.*"token": *"\([^"]*\)".*/\1/p' "$T/alice.json")
 WORK_ID=$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/^Work/{print $4}')
+# The unsigned request of older apps is what a stolen bearer token could send; both share routes refuse it alike.
 share_raw() {
   curl -s -w ' %{http_code}' -H "Authorization: Bearer $ALICE_TOKEN" -H 'Content-Type: application/json' \
-    -d "{\"email\":\"$1\",\"role\":\"reader\"}" "http://127.0.0.1:$PORT/api/v1/vaults/$WORK_ID/share-invitations"
+    -d "{\"email\":\"$1\",\"role\":\"reader\"}" "http://127.0.0.1:$PORT/api/v1/vaults/$WORK_ID/$2"
 }
-EXISTING_RESPONSE=$(share_raw carol@example.com)
-UNKNOWN_RESPONSE=$(share_raw ghost@example.com)
-expect "share API response" "$EXISTING_RESPONSE" '{"message":"Invitation sent"} 202'
-[[ "$EXISTING_RESPONSE" == "$UNKNOWN_RESPONSE" ]] || fail "the share API answers differently for an unknown email: $UNKNOWN_RESPONSE"
-echo "ok   the share API answers the same for an existing and an unknown email"
+for SHARE_ROUTE in share-invitations signed-share-invitations; do
+  EXISTING_RESPONSE=$(share_raw carol@example.com "$SHARE_ROUTE")
+  UNKNOWN_RESPONSE=$(share_raw ghost@example.com "$SHARE_ROUTE")
+  expect "an unsigned bearer share to $SHARE_ROUTE is refused" "$EXISTING_RESPONSE" " 400"
+  [[ "$EXISTING_RESPONSE" == "$UNKNOWN_RESPONSE" ]] || fail "$SHARE_ROUTE refuses an unknown email differently: $UNKNOWN_RESPONSE"
+  echo "ok   $SHARE_ROUTE refuses an unsigned share the same for an existing and an unknown email"
+done
+[[ -z "$(C invitations 2>/dev/null | awk '/alice@example.com/{print $1}')" ]] || fail "an unsigned bearer share reached carol"
+echo "ok   carol received nothing from the refused requests"
+WORK_SHARE_OUTPUT=$(printf '%s\n' "$PW" | A share Work carol@example.com -r reader 2>&1)
+expect "alice shares Work with carol" "$WORK_SHARE_OUTPUT" 'Invitation sent to carol@example.com for "Work" as reader.'
+GHOST_SHARE_OUTPUT=$(printf '%s\n' "$PW" | A share Work ghost@example.com -r reader 2>&1)
+[[ "${GHOST_SHARE_OUTPUT//ghost@example.com/someone}" == "${WORK_SHARE_OUTPUT//carol@example.com/someone}" ]] || fail "share to an unknown email answered differently: $GHOST_SHARE_OUTPUT"
+echo "ok   the share answers the same for an existing and an unknown email"
 expect "carol accepts" "$(C invitations accept "$(C invitations 2>/dev/null | awk '/alice@example.com/{print $1}')" 2>&1)" "Accepted."
-expect "alice completes carol's share" "$(printf '%s\n' "$PW" | A invitations 2>&1)" 'Shared "Work" with carol@example.com as reader.'
+CAROL_INVITATION=$(printf '%s\n' "$PW" | A invitations 2>/dev/null | awk '/carol@example.com/ && /needs-review/{print $1}')
+[[ -n "$CAROL_INVITATION" ]] || fail "alice's hisar does not ask her to review carol"
+expect "alice confirms carol" "$(printf '%s\n' "$PW" | A invitations confirm "$CAROL_INVITATION" --yes 2>&1)" "Shared with the reviewed recipient."
 expect "alice sees carol" "$(A people)" "carol@example.com"
 BOB_PEOPLE=$(B people)
 expect "bob sees alice" "$BOB_PEOPLE" "alice@example.com"
@@ -272,6 +292,29 @@ ALICE_ORGS=$(printf '%s\n' "$PW" | A orgs 2>/dev/null)
 echo "ok   the deleted organization is gone"
 
 expect "second device login" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$PW" | HISAR_STATE=$T/alice2.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
+
+# Sign-up refuses names with terminal controls (S-09); an account created before that rule can still have one, so the
+# CLI must keep escaping it (D-07). The name is set in the database the way such an older account has it.
+CONTROL_NAME=$'Eve\033]52;c;ZWNobyBoaQ==\007\302\233'
+CONTROL_INV=$("$BIN/hisar-server" invite --email terminal-controls@example.com </dev/null | tail -1)
+REFUSED_SIGNUP=$(printf 'terminal-controls@example.com\n%s\n%s\n%s\n' "$CONTROL_NAME" "$PW" "$PW" |
+  HISAR_STATE=$T/terminal-refused.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/terminal-refused-kit.pdf" "$CONTROL_INV" 2>&1 || true)
+[[ "$REFUSED_SIGNUP" != *H1-* ]] || fail "signup accepted a name with terminal controls: $REFUSED_SIGNUP"
+echo "ok   signup refuses a name with terminal controls"
+printf 'terminal-controls@example.com\nEve\n%s\n%s\n' "$PW" "$PW" |
+  HISAR_STATE=$T/terminal-signup.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/terminal-emergency-kit.pdf" "$CONTROL_INV" >"$T/terminal-signup.stdout" 2>"$T/terminal-signup.stderr"
+CONTROL_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/terminal-signup.stderr")
+expect "older-account signup" "$CONTROL_SK" "H1-"
+printf "UPDATE accounts SET name = :'name' WHERE email = 'terminal-controls@example.com'\n" |
+  psql -q -v ON_ERROR_STOP=1 -v name="$CONTROL_NAME" "$HISAR_DATABASE_URL" >/dev/null || fail "could not give the account an older name"
+printf 'http://127.0.0.1:%s\nterminal-controls@example.com\n%s\n%s\n' "$PORT" "$CONTROL_SK" "$PW" |
+  HISAR_STATE=$T/terminal-login.json HISAR_SECRET_KEY=- hisar login >"$T/terminal-login.stdout" 2>"$T/terminal-login.stderr"
+CONTROL_LOGIN=$(cat "$T/terminal-login.stderr")
+expect "login escapes the account name on stderr" "$CONTROL_LOGIN" 'Signed in as Eve\x1b]52;c;ZWNobyBoaQ==\x07\x9b'
+[[ "$CONTROL_LOGIN" != *$'\033'* && "$CONTROL_LOGIN" != *$'\007'* && "$CONTROL_LOGIN" != *$'\302\233'* ]] ||
+  fail "login stderr contains raw terminal controls"
+echo "ok   successful login stderr has no raw terminal controls"
+
 expect "wrong password" "$(printf 'nope\n' | A ls 2>&1 || true)" "incorrect email, password or Secret Key"
 expect "devices" "$(A devices)" "(this device)"
 expect "emergency kit" "$(printf '%s\n' "$PW" | A emergency-kit -o "$T/kit.pdf" 2>&1)" "Saved your Emergency Kit"
@@ -333,10 +376,11 @@ expect "the personal vault can't be deleted" "$(printf '%s\n' "$PW" | A vault de
 expect "an owner renames a vault" "$(printf '%s\n' "$PW" | A vault rename Imports "Old imports" 2>&1)" 'Renamed "Imports" to "Old imports"'
 expect "a vault with items needs a choice in a script" "$(printf '%s\n' "$PW" | A vault delete "Old imports" -y 2>&1 || true)" "pass --move-to <vault>"
 printf '%s\n' "$PW" | A vault create Archive 2>/dev/null
-expect "deleting a vault moves its items" "$(printf '%s\n' "$PW" | A vault delete "Old imports" --move-to Archive -y 2>&1)" "Moved 3 items to Archive and deleted Old imports."
-MOVED_COUNT=$(printf '%s\n' "$PW" | A ls -v Archive 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
-[[ "$MOVED_COUNT" == 3 ]] || fail "Archive has $MOVED_COUNT items after the move"
-expect "moved items decrypt in the target vault" "$(printf '%s\n' "$PW" | A get "Imported Mail" -v Archive -f notes 2>/dev/null)" $'First line\nSecond line'
+ARCHIVE_ID=$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/^Archive/{print $4}')
+expect "deleting a vault moves its items" "$(printf '%s\n' "$PW" | A vault delete "Old imports" --move-to Archive -y 2>&1)" "Moved 3 items to Archive [$ARCHIVE_ID] (type shared, role owner) and deleted Old imports."
+MOVED_COUNT=$(printf '%s\n' "$PW" | A ls -v "$ARCHIVE_ID" 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')
+[[ "$MOVED_COUNT" == 3 ]] || fail "vault $ARCHIVE_ID has $MOVED_COUNT items after the move"
+expect "moved items decrypt in the target vault" "$(printf '%s\n' "$PW" | A get "Imported Mail" -v "$ARCHIVE_ID" -f notes 2>/dev/null)" $'First line\nSecond line'
 printf '%s\n' "$PW" | A vault create Scratch 2>/dev/null
 expect "an empty vault is deleted" "$(printf '%s\n' "$PW" | A vault delete Scratch -y 2>&1)" "Deleted Scratch."
 
@@ -347,10 +391,16 @@ expect "plain export" "$(printf '%s\n' "$PW" | A export --format plain -o "$T/al
 grep -q '"format": "hisar-export"' "$T/alice-export.json" && grep -qF mail-pass-1 "$T/alice-export.json" || fail "the plain export lacks its header or the Imported Mail password"
 echo "ok   plain export holds the items"
 expect "a wrong export passphrase fails cleanly" "$(printf 'not the passphrase\n' | C import "$T/alice-export.hisar" -y 2>&1 || true)" "that passphrase doesn't open this export"
-expect "importing alice's encrypted export into carol's account" "$(printf 'export passphrase one\n%s\n' "$PW" | C import "$T/alice-export.hisar" -y 2>&1)" "Family → Family (new vault)"
-expect "the imported password round trips" "$(printf '%s\n' "$PW" | C get "Imported Bank" -f password 2>/dev/null)" 'bank,pass"word'
-expect "the imported shared vault round trips" "$(printf '%s\n' "$PW" | C vaults 2>/dev/null)" "Family"
-expect "importing the plain export again skips what is already there" "$(printf '%s\n' "$PW" | C import "$T/alice-export.json" -y 2>&1)" "Nothing to import."
+ALICE_ARCHIVE_ID=$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/^Archive/{print $4}')
+printf '%s\n' "$PW" | C vault create Restored 2>/dev/null
+RESTORED_ID=$(printf '%s\n' "$PW" | C vaults 2>/dev/null | awk '/^Restored/{print $4}')
+IMPORT_OUTPUT=$(printf 'export passphrase one\n%s\n' "$PW" | C import "$T/alice-export.hisar" --map "$ALICE_ARCHIVE_ID=$RESTORED_ID" -y 2>&1)
+expect "importing alice's encrypted export into carol's account puts a mapped group into its vault" "$IMPORT_OUTPUT" "Archive → Restored: 3 items"
+expect "an unmapped shared group goes to Personal with -y" "$IMPORT_OUTPUT" "Family → Personal"
+expect "the mapped group's items are in the mapped vault" "$(printf '%s\n' "$PW" | C get GitHub -v Restored -f password 2>/dev/null)" "should-not-replace"
+expect "the exported Personal vault's items are in Personal" "$(printf '%s\n' "$PW" | C get GitHub -v Personal -f password 2>/dev/null)" "$GEN"
+expect "the imported password round trips" "$(printf '%s\n' "$PW" | C get "Imported Bank" -v Restored -f password 2>/dev/null)" 'bank,pass"word'
+expect "importing the plain export again skips what is already there" "$(printf '%s\n' "$PW" | C import "$T/alice-export.json" --map "$ALICE_ARCHIVE_ID=$RESTORED_ID" -y 2>&1)" "Nothing to import."
 
 mkdir -p "$T/shop"
 printf '# shop\nexport STRIPE_KEY="sk_live_123" # live key\nPORT=8080\nDATABASE_URL=postgres://shop:dbpass@db/shop\n' >"$T/shop/.env"
@@ -382,7 +432,7 @@ expect "the new master password unlocks" "$(printf '%s\n' "$NEW_PW" | A get gith
 expect "password change email" "$(wait_for_mail alice@example.com "$ALICE_MAIL_COUNT")" "Your other device was signed out."
 expect "the other device signs in with the new master password" "$(printf 'http://127.0.0.1:%s\nalice@example.com\n%s\n%s\n' "$PORT" "$ALICE_SK" "$NEW_PW" | HISAR_STATE=$T/alice3.json HISAR_SECRET_KEY=- hisar login 2>&1)" "Signed in as Alice"
 
-expect "replace Secret Key" "$(printf '%s\ny\n' "$NEW_PW" | A account replace-secret-key -o "$T/new-kit.pdf" 2>"$T/replace.txt"; cat "$T/replace.txt")" "Saved your new Emergency Kit to $T/new-kit.pdf"
+expect "replace Secret Key" "$(printf '%s\n' "$NEW_PW" | A account replace-secret-key -y -o "$T/new-kit.pdf" 2>"$T/replace.txt"; cat "$T/replace.txt")" "Saved your new Emergency Kit to $T/new-kit.pdf"
 NEW_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/replace.txt" | head -1)
 [[ -n "$NEW_SK" && "$NEW_SK" != "$ALICE_SK" ]] || fail "no new Secret Key: $(cat "$T/replace.txt")"
 expect "the new Emergency Kit is a private PDF" "$(head -c 5 "$T/new-kit.pdf") $(stat -c %a "$T/new-kit.pdf" 2>/dev/null || stat -f %Lp "$T/new-kit.pdf")" "%PDF- 600"
@@ -399,7 +449,7 @@ expect "the new Emergency Kit signs in on a new device" "$(printf 'http://127.0.
 PW=$NEW_PW
 
 DORA_INV=$("$BIN/hisar-server" invite --email dora@example.com </dev/null | tail -1)
-printf 'dora@example.com\nDora\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=- hisar signup "$DORA_INV" 2>"$T/dora-signup.txt"
+printf 'dora@example.com\nDora\n%s\n%s\n' "$PW" "$PW" | HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=- hisar signup -y -o "$T/dora-emergency-kit.pdf" "$DORA_INV" 2>"$T/dora-signup.txt"
 DORA_SK=$(grep -oE 'H1-[0-9A-Z-]+' "$T/dora-signup.txt")
 D() { HISAR_STATE=$T/dora.json HISAR_SECRET_KEY=$DORA_SK hisar "$@"; }
 printf '%s\n' "$PW" | D vault-create Garden 2>/dev/null
@@ -452,7 +502,7 @@ MOBILE_SHARING_OWNER_INVITE=$("$BIN/hisar-server" invite --email mobile-sharing-
 MOBILE_SHARING_RECIPIENT_INVITE=$("$BIN/hisar-server" invite --email mobile-sharing-recipient@example.com </dev/null | tail -1)
 MOBILE_SHARING_RESULT=$(HISAR_TEST_MOBILE_SHARING_OWNER_INVITE_LINK="$MOBILE_SHARING_OWNER_INVITE" HISAR_TEST_MOBILE_SHARING_RECIPIENT_INVITE_LINK="$MOBILE_SHARING_RECIPIENT_INVITE" \
   go -C "$ROOT/mobile" test -count=1 -v -run TestIntegrationMobileSharing ./hisarkit/ 2>&1 || true)
-expect "the iPhone shares a vault, completes the accepted share on its own, and the recipient reads the item" "$MOBILE_SHARING_RESULT" "--- PASS: TestIntegrationMobileSharing"
+expect "the iPhone shares a vault, the owner reviews the new recipient before the key leaves, and the recipient reads the item" "$MOBILE_SHARING_RESULT" "--- PASS: TestIntegrationMobileSharing"
 
 MOBILE_ORGANIZATIONS_ADMIN_INVITE=$("$BIN/hisar-server" invite --email mobile-organizations-admin@example.com </dev/null | tail -1)
 MOBILE_ORGANIZATIONS_MEMBER_INVITE=$("$BIN/hisar-server" invite --email mobile-organizations-member@example.com </dev/null | tail -1)

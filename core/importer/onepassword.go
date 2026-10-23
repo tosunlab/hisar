@@ -45,7 +45,16 @@ var onePasswordCredentialCategories = map[string]bool{"109": true, "111": true}
 
 type onePasswordExport struct {
 	Accounts []struct {
+		Attrs struct {
+			UUID string `json:"uuid"`
+			Name string `json:"name"`
+		} `json:"attrs"`
 		Vaults []struct {
+			Attrs struct {
+				UUID string `json:"uuid"`
+				Name string `json:"name"`
+				Type string `json:"type"`
+			} `json:"attrs"`
 			Items []onePasswordItem `json:"items"`
 		} `json:"vaults"`
 	} `json:"accounts"`
@@ -69,6 +78,10 @@ type onePasswordItem struct {
 			Title  string             `json:"title"`
 			Fields []onePasswordField `json:"fields"`
 		} `json:"sections"`
+		PasswordHistory []struct {
+			Value string `json:"value"`
+			Time  int64  `json:"time"`
+		} `json:"passwordHistory"`
 	} `json:"details"`
 	Overview struct {
 		Title string `json:"title"`
@@ -86,30 +99,61 @@ type onePasswordField struct {
 	Value map[string]json.RawMessage `json:"value"`
 }
 
+// onePasswordExportVersion is the newest version of 1Password's export.attributes that Hisar reads.
+const onePasswordExportVersion = 3
+
+var errDamagedOnePasswordExport = errors.New("this .1pux file is damaged; export it from 1Password again")
+
+// readOnePasswordData returns export.data once export.attributes says it is a version of the format Hisar reads, so a
+// newer export, which may keep items where Hisar does not look, is refused rather than imported with them missing.
 func readOnePasswordData(content []byte) ([]byte, error) {
 	archive, err := zip.NewReader(bytes.NewReader(content), int64(len(content)))
 	if err != nil {
-		return nil, errors.New("this .1pux file is damaged; export it from 1Password again")
+		return nil, errDamagedOnePasswordExport
 	}
+	filesByName := map[string]*zip.File{}
 	for _, file := range archive.File {
-		if file.Name != "export.data" {
-			continue
+		if _, isSeen := filesByName[file.Name]; !isSeen {
+			filesByName[file.Name] = file
 		}
-		if file.UncompressedSize64 > maxOnePasswordDataSize {
-			return nil, errors.New("this 1Password export is too large to import")
-		}
-		reader, err := file.Open()
-		if err != nil {
-			return nil, errors.New("this .1pux file is damaged; export it from 1Password again")
-		}
-		defer reader.Close()
-		data, err := io.ReadAll(io.LimitReader(reader, maxOnePasswordDataSize+1))
-		if err != nil || len(data) > maxOnePasswordDataSize {
-			return nil, errors.New("this .1pux file is damaged; export it from 1Password again")
-		}
-		return data, nil
 	}
-	return nil, errors.New("this ZIP file is not a 1Password export; it has no export.data")
+	dataFile, attributesFile := filesByName["export.data"], filesByName["export.attributes"]
+	if dataFile == nil {
+		return nil, errors.New("this ZIP file is not a 1Password export; it has no export.data")
+	}
+	if attributesFile == nil {
+		return nil, errors.New("this ZIP file is not a 1Password export; it has no export.attributes")
+	}
+	attributesData, err := readOnePasswordFile(attributesFile, 1<<20)
+	if err != nil {
+		return nil, err
+	}
+	var attributes struct {
+		Version *int `json:"version"`
+	}
+	if err := json.Unmarshal(attributesData, &attributes); err != nil || attributes.Version == nil || *attributes.Version < 1 {
+		return nil, errDamagedOnePasswordExport
+	}
+	if *attributes.Version > onePasswordExportVersion {
+		return nil, errors.New("this is a newer 1Password export format than Hisar reads; update Hisar and try again")
+	}
+	return readOnePasswordFile(dataFile, maxOnePasswordDataSize)
+}
+
+func readOnePasswordFile(file *zip.File, maxSize uint64) ([]byte, error) {
+	if file.UncompressedSize64 > maxSize {
+		return nil, errors.New("this 1Password export is too large to import")
+	}
+	reader, err := file.Open()
+	if err != nil {
+		return nil, errDamagedOnePasswordExport
+	}
+	defer reader.Close()
+	data, err := io.ReadAll(io.LimitReader(reader, int64(maxSize)+1))
+	if err != nil || uint64(len(data)) > maxSize {
+		return nil, errDamagedOnePasswordExport
+	}
+	return data, nil
 }
 
 func parseOnePasswordExport(content []byte) (*Result, error) {
@@ -123,22 +167,59 @@ func parseOnePasswordExport(content []byte) (*Result, error) {
 		return nil, errors.New("the 1Password export could not be read; export it from 1Password again")
 	}
 	result := &Result{Items: []item.Item{}, Skipped: []SkippedEntry{}}
-	for _, account := range export.Accounts {
-		for _, vault := range account.Vaults {
+	for accountIndex, account := range export.Accounts {
+		for vaultIndex, vault := range account.Vaults {
+			sourceID := fmt.Sprintf("1password/%d/%d", accountIndex, vaultIndex)
+			if account.Attrs.UUID != "" && vault.Attrs.UUID != "" {
+				sourceID = "1password/" + account.Attrs.UUID + "/" + vault.Attrs.UUID
+			}
+			group := SourceGroup{ID: sourceID, Name: vault.Attrs.Name, IsPrivate: vault.Attrs.Type == "P" || vault.Attrs.Type == ""}
+			if group.Name == "" {
+				group.Name = "Unspecified 1Password vault"
+				group.IsPrivate = true
+			}
 			for _, onePasswordEntry := range vault.Items {
-				vaultItem, reason := convertOnePasswordItem(onePasswordEntry)
+				vaultItem, reason := convertOnePasswordItem(onePasswordEntry, &result.Skipped)
 				if reason != "" {
 					result.Skipped = append(result.Skipped, SkippedEntry{Title: describeEntry(onePasswordEntry.Overview.Title), Reason: reason})
 					continue
 				}
 				vaultItem.IsFavorite = onePasswordEntry.FavIndex > 0
+				for _, previous := range onePasswordEntry.Details.PasswordHistory {
+					addPreviousPassword(&vaultItem, previous.Value, readCredentialExchangeTime(float64(previous.Time)))
+				}
 				if finishItem(&vaultItem) {
 					result.Items = append(result.Items, vaultItem)
+					group.Items = append(group.Items, vaultItem)
+					for _, fileName := range listOnePasswordAttachments(onePasswordEntry) {
+						result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: describeAttachment(fileName)})
+					}
 				}
 			}
+			result.Groups = append(result.Groups, group)
 		}
 	}
 	return result, nil
+}
+
+// listOnePasswordAttachments names the files attached to an item; the export keeps them beside export.data, and Hisar
+// stores no files.
+func listOnePasswordAttachments(entry onePasswordItem) []string {
+	fileNames := []string{}
+	for _, section := range entry.Details.Sections {
+		for _, sectionField := range section.Fields {
+			rawFile, isFile := sectionField.Value["file"]
+			if !isFile {
+				continue
+			}
+			var file struct {
+				FileName string `json:"fileName"`
+			}
+			json.Unmarshal(rawFile, &file)
+			fileNames = append(fileNames, getFirstNonEmpty(file.FileName, sectionField.Title))
+		}
+	}
+	return fileNames
 }
 
 // onePasswordCardFields maps the ids of a 1Password Credit Card's fields to the card's values; its other fields (bank,
@@ -256,14 +337,14 @@ var onePasswordDatabaseFields = map[string]func(*item.Database) *string{
 	"options":       func(database *item.Database) *string { return &database.Options },
 }
 
-func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
+func convertOnePasswordItem(entry onePasswordItem, skipped *[]SkippedEntry) (item.Item, string) {
 	if entry.State == "archived" {
 		return item.Item{}, "archived in 1Password"
 	}
 	category := entry.CategoryUUID
 	switch {
 	case category == onePasswordSSHKey:
-		return convertOnePasswordSSHKey(entry)
+		return convertOnePasswordSSHKey(entry, skipped)
 	case category == onePasswordLogin, category == onePasswordPassword, category == onePasswordSecureNote, category == onePasswordCreditCard,
 		category == onePasswordAPICredential, category == onePasswordSoftwareLicense, category == onePasswordServer, category == onePasswordDatabase, isOnePasswordIdentityCategory(category), onePasswordCredentialCategories[category]:
 	default:
@@ -446,9 +527,9 @@ func convertOnePasswordItem(entry onePasswordItem) (item.Item, string) {
 }
 
 // promoteOnePasswordAdminConsole moves a server's admin console URL out of its custom fields and returns it as the server's
-// website, along with console credentials that repeat the server's own. A console with a username or password of its own
-// stays custom fields: as the website, the extension would fill the server's password on the console and a browser save
-// there would overwrite it.
+// website, along with console credentials that repeat the server's own. A console whose username or password is not the
+// server's, blank included, stays custom fields: as the website, the extension would fill the server's password on the
+// console and a browser save there would overwrite it.
 func promoteOnePasswordAdminConsole(vaultItem *item.Item, consoleFieldIndexes map[string]int) []string {
 	fields := vaultItem.Details.Fields
 	urlIndex, hasURL := consoleFieldIndexes["admin_console_url"]
@@ -458,14 +539,17 @@ func promoteOnePasswordAdminConsole(vaultItem *item.Item, consoleFieldIndexes ma
 	ownValuesByID := map[string]string{"admin_console_username": vaultItem.Overview.Username, "admin_console_password": vaultItem.Details.Password}
 	droppedIndexes := map[int]bool{urlIndex: true}
 	for fieldID, ownValue := range ownValuesByID {
+		consoleValue := ""
 		index, found := consoleFieldIndexes[fieldID]
-		if !found {
-			continue
+		if found {
+			consoleValue = fields[index].Value
 		}
-		if value := fields[index].Value; value != "" && value != ownValue {
+		if consoleValue != ownValue {
 			return nil
 		}
-		droppedIndexes[index] = true
+		if found {
+			droppedIndexes[index] = true
+		}
 	}
 	consoleURL := fields[urlIndex].Value
 	keptFields := []item.Field{}
@@ -523,26 +607,54 @@ func promoteOnePasswordField(vaultItem *item.Item, fieldID, value string) bool {
 	return true
 }
 
-func convertOnePasswordSSHKey(entry onePasswordItem) (item.Item, string) {
+// convertOnePasswordSSHKey stores the first private key as an ssh-key item with the item's other fields, websites and
+// tags, so values kept beside the key, such as recovery codes, come along.
+func convertOnePasswordSSHKey(entry onePasswordItem, skipped *[]SkippedEntry) (item.Item, string) {
+	privateKey, hasKey := "", false
+	otherItem := item.Item{Overview: item.Overview{Tags: entry.Overview.Tags}}
+	if entry.Overview.URL != "" {
+		otherItem.Overview.URLs = append(otherItem.Overview.URLs, entry.Overview.URL)
+	}
+	for _, link := range entry.Overview.URLs {
+		otherItem.Overview.URLs = append(otherItem.Overview.URLs, link.URL)
+	}
 	for _, section := range entry.Details.Sections {
 		for _, sectionField := range section.Fields {
-			rawKey, found := sectionField.Value["sshKey"]
-			if !found {
+			if rawKey, isKey := sectionField.Value["sshKey"]; isKey && !hasKey {
+				var sshKey struct {
+					PrivateKey string `json:"privateKey"`
+					Metadata   struct {
+						PrivateKey string `json:"privateKey"`
+					} `json:"metadata"`
+				}
+				if err := json.Unmarshal(rawKey, &sshKey); err != nil {
+					return item.Item{}, "the SSH private key could not be read"
+				}
+				privateKey, hasKey = getFirstNonEmpty(sshKey.PrivateKey, sshKey.Metadata.PrivateKey), true
 				continue
 			}
-			var sshKey struct {
-				PrivateKey string `json:"privateKey"`
-				Metadata   struct {
-					PrivateKey string `json:"privateKey"`
-				} `json:"metadata"`
+			if _, isFile := sectionField.Value["file"]; isFile {
+				continue
 			}
-			if err := json.Unmarshal(rawKey, &sshKey); err != nil {
-				return item.Item{}, "the SSH private key could not be read"
+			value, isConcealed := convertOnePasswordFieldValue(sectionField.Value)
+			name := getFirstNonEmpty(sectionField.Title, section.Title, sectionField.ID)
+			if isOnePasswordOneTimePassword(sectionField, value) {
+				addOneTimePassword(&otherItem, name, value)
+				continue
 			}
-			return buildSSHKeyItem(entry.Overview.Title, getFirstNonEmpty(sshKey.PrivateKey, sshKey.Metadata.PrivateKey), entry.Details.NotesPlain)
+			otherItem.Details.Fields = append(otherItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: isConcealed})
 		}
 	}
-	return item.Item{}, "the SSH key has no private key"
+	if !hasKey {
+		return item.Item{}, "the SSH key has no private key"
+	}
+	keyItem, reason := buildSSHKeyItem(entry.Overview.Title, privateKey, entry.Details.NotesPlain, skipped)
+	if reason != "" {
+		return item.Item{}, reason
+	}
+	keyItem.Overview.Tags, keyItem.Overview.URLs = otherItem.Overview.Tags, otherItem.Overview.URLs
+	keyItem.Details.Fields, keyItem.Details.OneTimePassword = otherItem.Details.Fields, otherItem.Details.OneTimePassword
+	return keyItem, ""
 }
 
 // convertOnePasswordFieldValue reads the single typed value 1Password stores per field.

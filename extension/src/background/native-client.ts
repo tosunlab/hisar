@@ -33,6 +33,16 @@ interface PendingRequest {
   timer: ReturnType<typeof setTimeout>;
 }
 
+// RequestOptions: pairingToken sends the request only under that pairing, so what it carries from one pairing never goes
+// out under the next, as after another account signs in to Hisar; isOverOpenConnection sends it only over the connection
+// open now, as connecting starts the host, which relaunches Hisar after the user quit it.
+export interface RequestOptions {
+  timeoutMilliseconds?: number;
+  pairingToken?: string;
+  isOverOpenConnection?: boolean;
+  isStillValid?: () => boolean;
+}
+
 interface Connection {
   port: NativePort;
   ready: Promise<HelloResult>;
@@ -41,6 +51,8 @@ interface Connection {
 }
 
 const defaultReconnectDelayMilliseconds = [1000, 2000, 5000, 10000, 30000];
+// maximumMessageBytes is browserprotocol.MaxMessageSize: the native host exits on a larger frame.
+const maximumMessageBytes = 1 << 20;
 
 export class NativeClient {
   private connection: Connection | undefined;
@@ -93,16 +105,24 @@ export class NativeClient {
     return this.connect();
   }
 
+  // waitForOpenConnection returns the hello of the connection open now, and never opens one.
+  async waitForOpenConnection(): Promise<HelloResult> {
+    const connection = this.connection;
+    if (!connection || connection.isClosed) throw new HisarError("desktop-unavailable", "Hisar is not connected");
+    return connection.ready;
+  }
+
   async request<Type extends RequestType>(
     type: Type,
     parameters: RequestMap[Type]["parameters"],
-    timeoutMilliseconds?: number,
+    options: RequestOptions = {},
   ): Promise<RequestMap[Type]["result"]> {
     if (type === "hello") return (await this.reconnect()) as RequestMap[Type]["result"];
-    await this.connect();
+    if (options.isOverOpenConnection) await this.waitForOpenConnection();
+    else await this.connect();
     const connection = this.connection;
     if (!connection || connection.isClosed) throw new HisarError("desktop-unavailable", "Hisar disconnected");
-    return this.send(connection, type, parameters, timeoutMilliseconds ?? this.options.requestTimeoutMilliseconds ?? 15000);
+    return this.send(connection, type, parameters, options.timeoutMilliseconds ?? this.options.requestTimeoutMilliseconds ?? 15000, options.pairingToken, options.isStillValid);
   }
 
   disconnect(): void {
@@ -125,15 +145,21 @@ export class NativeClient {
     type: Type,
     parameters: RequestMap[Type]["parameters"],
     timeoutMilliseconds: number,
+    pairingToken?: string,
+    isStillValid?: () => boolean,
   ): Promise<RequestMap[Type]["result"]> {
     const id = this.options.createID();
     const frame: Record<string, unknown> = { ...parameters, id, type };
     if (!allUnauthenticatedType.includes(type)) {
       const token = await this.options.getToken();
       if (!token) throw new HisarError("not-paired", "This browser is not paired with Hisar");
+      // Nothing awaits between this check and postMessage, so the frame goes out under the pairing it was checked against.
+      if (pairingToken !== undefined && token !== pairingToken) throw new HisarError("not-paired", "This browser has been paired with Hisar again");
       frame.token = token;
     }
     if (connection.isClosed) throw new HisarError("desktop-unavailable", "Hisar disconnected");
+    if (isStillValid && !isStillValid()) throw new HisarError("not-found", "This save offer has expired");
+    if (new TextEncoder().encode(JSON.stringify(frame)).length > maximumMessageBytes) throw new HisarError("invalid-request", "This request is too large for Hisar");
     return new Promise<RequestMap[Type]["result"]>((resolve, reject) => {
       const timer = setTimeout(() => {
         this.allPending.delete(id);

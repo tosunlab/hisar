@@ -55,10 +55,11 @@ func (approver *countingApprover) ApproveCommandLine(context.Context, clisocket.
 	return nil
 }
 
-// savingSecretKeyStore keeps Secret Keys in memory, for tests that sign up.
+// savingSecretKeyStore keeps Secret Keys and pending recovery keys in memory, as a keychain would, for tests that sign up.
 type savingSecretKeyStore struct {
-	mutex      sync.Mutex
-	secretKeys map[string]crypt.SecretKey
+	mutex        sync.Mutex
+	secretKeys   map[string]crypt.SecretKey
+	recoveryKeys map[string][]byte
 }
 
 func (store *savingSecretKeyStore) LoadSecretKey(accountID string) (crypt.SecretKey, error) {
@@ -82,6 +83,33 @@ func (store *savingSecretKeyStore) DeleteSecretKey(accountID string) error {
 	store.mutex.Lock()
 	defer store.mutex.Unlock()
 	delete(store.secretKeys, accountID)
+	return nil
+}
+
+func (store *savingSecretKeyStore) StoreRecoveryKey(operationID string, key []byte) error {
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	if store.recoveryKeys == nil {
+		store.recoveryKeys = map[string][]byte{}
+	}
+	store.recoveryKeys[operationID] = append([]byte(nil), key...)
+	return nil
+}
+
+func (store *savingSecretKeyStore) LoadRecoveryKey(operationID string) ([]byte, error) {
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	key, found := store.recoveryKeys[operationID]
+	if !found {
+		return nil, os.ErrNotExist
+	}
+	return append([]byte(nil), key...), nil
+}
+
+func (store *savingSecretKeyStore) DeleteRecoveryKey(operationID string) error {
+	store.mutex.Lock()
+	defer store.mutex.Unlock()
+	delete(store.recoveryKeys, operationID)
 	return nil
 }
 

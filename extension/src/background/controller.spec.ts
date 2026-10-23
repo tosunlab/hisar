@@ -1,5 +1,21 @@
 import { describe, expect, it } from "vitest";
+import type { ExtensionStorage } from "./storage";
 import { createHarness, emptyProbe, expectHisarError } from "./testing";
+
+// holdNextTokenRead makes the next read of the pairing token wait for the token the test hands back, so a test can pair the
+// browser again while a request is between reading the token and sending.
+function holdNextTokenRead(storage: ExtensionStorage): (token: string | undefined) => void {
+  const getToken = storage.getToken.bind(storage);
+  let release!: (token: string | undefined) => void;
+  const held = new Promise<string | undefined>((resolve) => (release = resolve));
+  let isHeld = false;
+  storage.getToken = () => {
+    if (isHeld) return getToken();
+    isHeld = true;
+    return held;
+  };
+  return release;
+}
 
 describe("popup state", () => {
   it("is desktop-unavailable when the native host cannot be started", async () => {
@@ -23,7 +39,7 @@ describe("popup state", () => {
   it("follows the desktop state after pairing", async () => {
     const harness = createHarness({ state: { isOffline: true } });
     await harness.pair();
-    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isCardFillAvailable: true, isIdentityFillAvailable: true, isVaultAvailable: true, isCreateAvailable: true, isPasswordUnlockAvailable: true });
+    expect(await harness.controller.getPopupState()).toEqual({ view: "unlocked", email: "alex@example.com", isOffline: true, isAddressFillAvailable: true, isCardFillAvailable: true, isIdentityFillAvailable: true, isVaultAvailable: true, isCreateAvailable: true, isPasswordUnlockAvailable: true, isSaveConfirmationAvailable: true });
     harness.state.state = "locked";
     expect((await harness.controller.getPopupState()).view).toBe("locked");
   });
@@ -42,6 +58,31 @@ describe("popup state", () => {
     harness.state.allPairing = [];
     expect((await harness.controller.getPopupState(true)).view).toBe("not-paired");
     expect(await harness.storage.getToken()).toBeUndefined();
+  });
+
+  it("asks over an open connection only when told to, so a check never starts the host", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    expect((await harness.controller.getPopupState(false, true)).view).toBe("unlocked");
+    const controller = harness.restartServiceWorker();
+    const requestCount = harness.allRequest.length;
+    expect((await controller.getPopupState(false, true)).view).toBe("desktop-unavailable");
+    expect(harness.allRequest).toHaveLength(requestCount);
+  });
+
+  it("does not connect when the open connection closes while it asks", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    expect((await harness.controller.getPopupState(false, true)).view).toBe("unlocked");
+    const token = await harness.storage.getToken();
+    const release = holdNextTokenRead(harness.storage);
+    const asking = harness.controller.getPopupState(false, true);
+    await Promise.resolve();
+    harness.restartServiceWorker();
+    const requestCount = harness.allRequest.length;
+    release(token);
+    expect((await asking).view).toBe("desktop-unavailable");
+    expect(harness.allRequest).toHaveLength(requestCount);
   });
 });
 
@@ -406,7 +447,7 @@ describe("vault", () => {
 });
 
 describe("save offers", () => {
-  it("offers to save a new login and pushes the bar to the top frame", async () => {
+  it("keeps the offer entirely in the popup without sending a page message", async () => {
     const harness = createHarness();
     await harness.pair();
     const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new-user", "pw");
@@ -418,16 +459,16 @@ describe("save offers", () => {
       title: undefined,
       defaultTitle: "example.com",
       allVault: [
-        { vaultID: "vault-personal", name: "Personal" },
-        { vaultID: "vault-family", name: "Family" },
+        { vaultID: "vault-personal", name: "Personal", isPersonal: true },
+        { vaultID: "vault-family", name: "Family", isPersonal: false },
       ],
     });
-    expect(harness.allFrameMessage.at(-1)).toEqual({ frameId: 0, message: { type: "content.showSaveOffer", offer } });
-    expect(harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+    expect(harness.allFrameMessage).toEqual([]);
+    expect(await harness.controller.getPendingSaveOffer(1)).toEqual(offer);
   });
 
-  it("saves a new login with the title, username and vault chosen in the bar", async () => {
-    const harness = createHarness();
+  it("saves a new login with the title, username and vault chosen in the popup", async () => {
+    const harness = createHarness({ tabUrl: "https://www.shop.example/login" });
     await harness.pair();
     const offer = await harness.controller.handleLoginSubmitted(1, "https://www.shop.example/login", "new-user", "pw");
     expect(offer?.defaultTitle).toBe("shop.example");
@@ -436,7 +477,7 @@ describe("save offers", () => {
   });
 
   it("ignores a vault the offer did not list, and asks no vault of an app without save options", async () => {
-    const harness = createHarness();
+    const harness = createHarness({ tabUrl: "https://shop.example/login" });
     await harness.pair();
     const offer = await harness.controller.handleLoginSubmitted(1, "https://shop.example/login", "new-user", "pw");
     await harness.controller.actOnSaveOffer(1, offer!.offerID, "save", { title: "Shop", username: "new-user", vaultID: "vault-elsewhere" });
@@ -460,7 +501,7 @@ describe("save offers", () => {
     const harness = createHarness();
     await harness.pair();
     expect(await harness.controller.handleLoginSubmitted(1, "https://example.com/", "alex@example.com", "correct horse battery staple")).toBeUndefined();
-    expect(harness.controller.getPendingSaveOffer(1)).toBeNull();
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
   });
 
   it("offers nothing and does not ask the desktop on a never-listed site", async () => {
@@ -468,14 +509,15 @@ describe("save offers", () => {
     await harness.pair();
     await harness.storage.addNeverOrigin("https://example.com");
     expect(await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "a", "b")).toBeUndefined();
-    expect(harness.getRequestTypes()).not.toContain("logins.check");
+    expect(harness.getRequestTypes()).not.toContain("logins.prepare");
   });
 
   it("offers nothing while not paired, locked, or on non-web pages", async () => {
     const notPaired = createHarness();
     expect(await notPaired.controller.handleLoginSubmitted(1, "https://example.com/", "a", "b")).toBeUndefined();
-    const locked = createHarness({ state: { state: "locked" } });
+    const locked = createHarness();
     await locked.pair();
+    locked.state.state = "locked";
     expect(await locked.controller.handleLoginSubmitted(1, "https://example.com/", "a", "b")).toBeUndefined();
     const unlocked = createHarness();
     await unlocked.pair();
@@ -485,35 +527,35 @@ describe("save offers", () => {
   it("uses the username from the first step of a two-step sign-in", async () => {
     const harness = createHarness();
     await harness.pair();
-    harness.controller.handleUsernameSubmitted(1, "https://example.com/identifier", "alex@example.com");
+    await harness.controller.handleUsernameSubmitted(1, "https://example.com/identifier", "alex@example.com");
     const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/password", "", "rotated");
     expect(offer).toMatchObject({ kind: "update", username: "alex@example.com" });
-    expect(harness.allRequest.find((request) => request.type === "logins.check")).toMatchObject({ username: "alex@example.com" });
+    expect(harness.allRequest.find((request) => request.type === "logins.prepare")).toMatchObject({ username: "alex@example.com" });
   });
 
   it("does not use a username remembered on another site or after it expired", async () => {
     const harness = createHarness();
     await harness.pair();
-    harness.controller.handleUsernameSubmitted(1, "https://other.example.net/", "someone");
+    await harness.controller.handleUsernameSubmitted(1, "https://other.example.net/", "someone");
     expect(await harness.controller.handleLoginSubmitted(1, "https://example.com/", "", "pw")).toMatchObject({ username: "" });
-    harness.controller.handleUsernameSubmitted(2, "https://example.com/", "alex@example.com");
+    await harness.controller.handleUsernameSubmitted(2, "https://example.com/", "alex@example.com");
     harness.advanceTime(11 * 60 * 1000);
     expect(await harness.controller.handleLoginSubmitted(2, "https://example.com/", "", "pw")).toMatchObject({ username: "" });
   });
 
   it("saves a new login in the desktop", async () => {
-    const harness = createHarness();
+    const harness = createHarness({ tabUrl: "https://shop.example.com/login" });
     await harness.pair();
     const offer = (await harness.controller.handleLoginSubmitted(1, "https://shop.example.com/login", "buyer", "pw"))!;
     await harness.controller.actOnSaveOffer(1, offer.offerID, "save");
     const saved = harness.state.allLogin.find((login) => login.username === "buyer");
     expect(saved).toMatchObject({ title: "shop.example.com", password: "pw" });
     expect(harness.allRequest.find((request) => request.type === "logins.save")).not.toHaveProperty("itemID");
-    expect(harness.controller.getPendingSaveOffer(1)).toBeNull();
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
   });
 
   it("updates the matching item for a changed password", async () => {
-    const harness = createHarness();
+    const harness = createHarness({ tabUrl: "https://example.com/" });
     await harness.pair();
     const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "alex@example.com", "rotated"))!;
     await harness.controller.actOnSaveOffer(1, offer.offerID, "save");
@@ -522,13 +564,13 @@ describe("save offers", () => {
     expect(harness.state.allLogin).toHaveLength(1);
   });
 
-  it("keeps the offer when saving fails so the user can retry", async () => {
-    const harness = createHarness();
+  it("expires a claimed offer on save failure so retry requires a fresh submission", async () => {
+    const harness = createHarness({ tabUrl: "https://example.com/" });
     await harness.pair();
     const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "new", "pw"))!;
     harness.state.isOffline = true;
     await expectHisarError(harness.controller.actOnSaveOffer(1, offer.offerID, "save"), "offline");
-    expect(harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
   });
 
   it("remembers Never for this site per origin", async () => {
@@ -546,7 +588,7 @@ describe("save offers", () => {
     await harness.pair();
     const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "new", "pw"))!;
     await harness.controller.actOnSaveOffer(1, offer.offerID, "not-now");
-    expect(harness.controller.getPendingSaveOffer(1)).toBeNull();
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
     expect(harness.getRequestTypes()).not.toContain("logins.save");
   });
 
@@ -558,7 +600,7 @@ describe("save offers", () => {
     await expectHisarError(harness.controller.actOnSaveOffer(1, offer.offerID, "save"), "not-found");
     await harness.controller.handleLoginSubmitted(2, "https://example.com/", "new", "pw");
     harness.controller.handleTabRemoved(2);
-    expect(harness.controller.getPendingSaveOffer(2)).toBeNull();
+    expect(await harness.controller.getPendingSaveOffer(2)).toBeNull();
   });
 
   it("refuses an offer ID from another tab", async () => {
@@ -566,6 +608,205 @@ describe("save offers", () => {
     await harness.pair();
     const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "new", "pw"))!;
     await expectHisarError(harness.controller.actOnSaveOffer(2, offer.offerID, "save"), "not-found");
+  });
+
+  it("drops an offer when the browser is paired again, as after another account signs in", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "first-account", "first password"))!;
+    harness.state.allPairing = [];
+    await harness.pair();
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+    await expectHisarError(harness.controller.actOnSaveOffer(1, offer.offerID, "save"), "not-found");
+    expect(harness.getRequestTypes()).not.toContain("logins.save");
+  });
+
+  it("forgets a remembered username when the browser is paired again", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleUsernameSubmitted(1, "https://example.com/identifier", "alex@example.com");
+    harness.state.allPairing = [];
+    await harness.pair();
+    expect(await harness.controller.handleLoginSubmitted(1, "https://example.com/password", "", "rotated")).toMatchObject({ kind: "save", username: "" });
+    expect(harness.allRequest.filter((request) => request.type === "logins.prepare").at(-1)).toMatchObject({ username: "" });
+  });
+
+  it("never sends an offer's password under a pairing made while it is being saved", async () => {
+    const harness = createHarness({ tabUrl: "https://example.com/" });
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/", "first-account", "first password"))!;
+    const firstToken = await harness.storage.getToken();
+    const release = holdNextTokenRead(harness.storage);
+    const saving = harness.controller.actOnSaveOffer(1, offer.offerID, "save");
+    harness.state.allPairing = [];
+    await harness.pair();
+    const secondToken = await harness.storage.getToken();
+    release(firstToken);
+    await expectHisarError(saving, "not-paired");
+    expect(harness.getRequestTypes()).not.toContain("logins.save");
+    expect(await harness.storage.getToken()).toBe(secondToken);
+  });
+
+  it("never checks a remembered username under a pairing made while the password is checked", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleUsernameSubmitted(1, "https://example.com/identifier", "alex@example.com");
+    const firstToken = await harness.storage.getToken();
+    const release = holdNextTokenRead(harness.storage);
+    const checking = harness.controller.handleLoginSubmitted(1, "https://example.com/password", "", "second password");
+    await Promise.resolve();
+    harness.state.allPairing = [];
+    await harness.pair();
+    const secondToken = await harness.storage.getToken();
+    release(firstToken);
+    expect(await checking).toBeUndefined();
+    expect(harness.allRequest.filter((request) => request.type === "logins.prepare")).toEqual([]);
+    expect(await harness.storage.getToken()).toBe(secondToken);
+  });
+
+  it("invalidates a changed offer when a later submission is unchanged", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const first = (await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "alex@example.com", "changed"))!;
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "alex@example.com", "correct horse battery staple");
+    await expectHisarError(harness.controller.actOnSaveOffer(1, first.offerID, "save"), "not-found");
+    expect(harness.getRequestTypes()).not.toContain("logins.save");
+  });
+
+  it("leaves Hisar room for other tabs' offers however often one page submits", async () => {
+    const harness = createHarness({ tabUrl: "https://example.com/login" });
+    await harness.pair();
+    let latest;
+    for (let submission = 0; submission < 200; submission++) {
+      latest = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", `page password ${submission}`);
+    }
+    expect(await harness.controller.handleLoginSubmitted(2, "https://example.com/login", "other", "other tab's password")).toMatchObject({ kind: "save" });
+    await harness.controller.actOnSaveOffer(1, latest!.offerID, "save");
+    expect(harness.state.allLogin.find((login) => login.username === "new")).toMatchObject({ password: "page password 199" });
+  });
+
+  it("allows only the immediate same-origin submit navigation and rejects subsequent navigation", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw");
+    harness.controller.handleTabNavigation(1, "https://example.com/welcome");
+    expect(await harness.controller.getPendingSaveOffer(1)).not.toBeNull();
+    harness.controller.handleTabNavigation(1, "https://example.com/another");
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
+  it("forgets pending credentials after observing a lock, even if the app unlocks again", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw");
+    harness.state.state = "locked";
+    expect((await harness.controller.getPopupState()).view).toBe("locked");
+    harness.state.state = "unlocked";
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
+  it("keeps the pending badge through a frame navigation and the immediate submit navigation", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw");
+    expect(harness.allSaveBadge.get(1)).toBe(true);
+    harness.controller.handleTabNavigation(1, "https://ads.example.net/frame", 7);
+    expect(harness.allSaveBadge.get(1)).toBe(true);
+    harness.controller.handleTabNavigation(1, "https://example.com/welcome");
+    expect(harness.allSaveBadge.get(1)).toBe(true);
+    harness.controller.handleTabNavigation(1, "https://example.com/another");
+    expect(harness.allSaveBadge.get(1)).toBe(false);
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
+  it("keeps the offer while the app cannot be reached and saves it once the app answers again", async () => {
+    const harness = createHarness({ tabUrl: "https://example.com/login" });
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw"))!;
+    harness.state.isDesktopUnavailable = true;
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+    expect(harness.allSaveBadge.get(1)).toBe(true);
+    harness.state.isDesktopUnavailable = false;
+    expect(await harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+    await harness.controller.actOnSaveOffer(1, offer.offerID, "save");
+    expect(harness.state.allLogin.find((login) => login.username === "new")).toMatchObject({ password: "pw" });
+  });
+
+  it("keeps an unreachable app's offer only until its capture deadline", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw");
+    harness.state.isDesktopUnavailable = true;
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+    harness.advanceTime(120_000);
+    expect(harness.allSaveBadge.get(1)).toBe(false);
+    harness.state.isDesktopUnavailable = false;
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
+  it("drops the offer when the app refuses its review, as after another account signs in", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw");
+    const email = harness.state.email;
+    harness.state.email = "other@example.com";
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+    expect(harness.allSaveBadge.get(1)).toBe(false);
+    harness.state.email = email;
+    expect(await harness.controller.getPendingSaveOffer(1)).toBeNull();
+  });
+
+  it("rejects a late submission from a document that has already navigated away", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw", 0, "https://example.com/login", "old-document");
+    expect(offer).toBeUndefined();
+    expect(harness.getRequestTypes()).not.toContain("logins.prepare");
+  });
+
+  it("binds the immediate submit navigation while a document lookup is pending", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    harness.bridge.getFrameDocumentID = async () => {
+      harness.controller.handleTabNavigation(1, "https://example.com/welcome", 0, "new-document");
+      return "new-document";
+    };
+    const offer = await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw", 0, "https://example.com/login", "old-document");
+    expect(offer).toMatchObject({ kind: "save" });
+    expect(await harness.controller.getPendingSaveOffer(1)).toEqual(offer);
+  });
+
+  it("does not dispatch a save after navigation while the final token read is pending", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw"))!;
+    const token = await harness.storage.getToken();
+    const original = harness.storage.getToken.bind(harness.storage);
+    const arrived = Promise.withResolvers<void>();
+    const pending = Promise.withResolvers<string | undefined>();
+    let reads = 0;
+    harness.storage.getToken = async () => {
+      if (++reads === 2) {
+        arrived.resolve();
+        return pending.promise;
+      }
+      return original();
+    };
+    const saving = harness.controller.actOnSaveOffer(1, offer.offerID, "save");
+    await arrived.promise;
+    harness.controller.handleTabNavigation(1, "https://other.example/login");
+    pending.resolve(token);
+    await expectHisarError(saving, "not-found");
+    expect(harness.getRequestTypes()).not.toContain("logins.save");
+  });
+
+  it("claims only one write when the popup submits twice", async () => {
+    const harness = createHarness();
+    await harness.pair();
+    const offer = (await harness.controller.handleLoginSubmitted(1, "https://example.com/login", "new", "pw"))!;
+    const results = await Promise.allSettled([harness.controller.actOnSaveOffer(1, offer.offerID, "save"), harness.controller.actOnSaveOffer(1, offer.offerID, "save")]);
+    expect(results.filter(result => result.status === "fulfilled")).toHaveLength(1);
+    expect(harness.getRequestTypes().filter(type => type === "logins.save")).toHaveLength(1);
   });
 });
 

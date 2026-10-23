@@ -3,15 +3,12 @@ package com.tryhisar.hisar
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
-import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tryhisar.hisar.app.Screen
@@ -35,11 +32,7 @@ class MainActivity : FragmentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
-        val screenshotSetting = ScreenshotSetting(this)
-        applyScreenshotSetting(screenshotSetting.isAllowed)
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.CREATED) { screenshotSetting.allowedChanges.collect(::applyScreenshotSetting) }
-        }
+        followScreenshotSetting()
         if (savedInstanceState == null) {
             openLink(intent)
             openAutoFillSettings(intent)
@@ -56,10 +49,6 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         SavedLoginInbox.open(viewModel.model, lifecycleScope)
-    }
-
-    private fun applyScreenshotSetting(isAllowed: Boolean) {
-        if (isAllowed) window.clearFlags(WindowManager.LayoutParams.FLAG_SECURE) else window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
     }
 
     // A link answers differently signed in and signed out, so it waits until the backend has told which.

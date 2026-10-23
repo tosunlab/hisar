@@ -6,7 +6,10 @@ sidebar_label: Self-hosting
 # Deploying hisar-server
 
 Docker Compose runs Postgres and `hisar-server` from the container registry (linux/amd64 and linux/arm64). The server
-listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it.
+listens on `127.0.0.1:8080` only; your nginx terminates TLS and proxies to it. Keep it that way: the server speaks plain
+HTTP and, with `HISAR_TRUST_PROXY=true`, believes the `X-Forwarded-For` it is sent, so nothing but the proxy may reach
+it. Run one `hisar-server` per database: rate limits, phone approvals, pending sign-ins and the event streams live in
+that one process, so a second replica would neither see nor notify the first one's clients.
 
 ## Images
 
@@ -31,16 +34,22 @@ docker login ghcr.io -u <GitHub user>     # paste the token as the password
 Copy `compose.yaml`, `.env.example` and `hisar.env.example` to the server (for example `/opt/hisar`), then:
 
 ```sh
-cp .env.example .env                # set HISAR_DOMAIN, pin HISAR_VERSION
-openssl rand -hex 32 | tr -d '\n' > db_password.txt
-sed "s/CHANGE_ME/$(cat db_password.txt)/" hisar.env.example > hisar.env
-chmod 600 db_password.txt hisar.env
+(
+  umask 077                         # only you may read the three files: they hold secrets
+  cp .env.example .env              # set HISAR_DOMAIN, pin HISAR_VERSION
+  openssl rand -hex 32 | tr -d '\n' > db_password.txt
+  sed "s/CHANGE_ME/$(cat db_password.txt)/" hisar.env.example > hisar.env
+)
+chmod 600 .env db_password.txt hisar.env
 docker compose up -d
 curl http://127.0.0.1:8080/healthz  # ok
 ```
 
-On first start `hisar-server` creates `/data/hisar-secrets.json` in the `hisar-data` volume (OPAQUE server key and HMAC
-key). **Back it up**: if it is lost, nobody can log in and every account must be re-created.
+On an empty, uninitialized database, `hisar-server` creates `/data/hisar-secrets.json` in the `hisar-data` volume.
+It contains the OPAQUE server keys and HMAC key. Back up this file with the database. Startup refuses a missing file
+when accounts or an enrolled secrets fingerprint exist. Restore the matching file instead of generating new keys.
+After fingerprint enrollment, a different valid file also fails startup. The first upgrade of an older database cannot
+detect a wrong file supplied before enrollment, so confirm the original secrets volume before upgrading.
 
 ## nginx
 
@@ -52,11 +61,18 @@ the proxy:
 - `/api/v1/events` (instant sync) unbuffered with a long `proxy_read_timeout`; the server sends a heartbeat every 25 s.
 - `X-Forwarded-For` from `$proxy_add_x_forwarded_for`: with `HISAR_TRUST_PROXY=true` the server rate-limits by its last
   entry, the address nginx saw.
+- The `hisar` log format, which logs paths without query strings and only the route of `/invite/…`, `/s/…` and
+  `/api/v1/public/share-links/…`, regardless of letter case, so invite codes, share link IDs and sign-in email addresses
+  stay out of the access log. nginx's error log still names the whole request when it cannot reach the server, so keep
+  it as private as the database.
 
 ```sh
 sudo nginx -t && sudo systemctl reload nginx
 curl https://<domain>/healthz       # ok
 ```
+
+Run `bash scripts/test-nginx.sh` from the repository root to check this configuration in a Docker container. It checks
+`nginx -t` and the HTTPS and redirect access logs with lowercase, uppercase, and mixed-case capability paths.
 
 ## Open the setup URL from the log
 
@@ -89,8 +105,9 @@ with someone who already has an account still works, and they see the invitation
    DKIM for that domain so the emails are delivered.
 2. Sign in to the admin dashboard at `https://<domain>/admin`, open **Settings → Email**, fill in the host, port,
    username, password and sender, click **Save**, then **Send test email…** to check them. The change applies at once.
-   The SMTP password is then stored in the database in plain text, not encrypted: anyone who can read the database or
-   its backups can read it. Changing the host, port or username later clears it, so enter it again in the same save.
+   The server encrypts the SMTP password with a domain-separated key derived from `hisar-secrets.json`.
+   A database-only dump does not contain that key. A live server, or someone with both the dump and secrets file, can
+   decrypt it. Changing the host, port or username later clears it, so enter it again in the same save.
 
 Or set them in `.env` on the server, which keeps the SMTP password out of the database. Any `HISAR_SMTP_*` variable
 there sets all of Email: the values saved in the dashboard are ignored, a variable left empty gives its default (port
@@ -126,6 +143,10 @@ variables in `.env` override a field and lock it in the dashboard (any of the Em
 | Auth burst | `HISAR_AUTH_BURST` |
 
 Run one server process per database: each process reads the settings at start and after its own saves.
+
+An HTTP 507 answer from the server means a user's change hit a growth budget, such as the vaults one account can
+create or a vault's item history ([Design](./design.md) §8.2.2). It is not a server fault: the user sees what to remove, and
+nothing needs fixing on the server.
 
 ## Desktop app updates
 
@@ -173,12 +194,68 @@ docker compose run --rm hisar migrate down    # roll back the latest migration
 
 Take a backup before applying a migration that changes existing tables.
 
+Migration `00013_invitation_sources` invalidates every sign-up invite that has not been used yet, including links from
+`hisar-server invite`, the admin dashboard, and share or organization invitations sent to people without an account.
+Older invites cannot be linked to the invitation they came from, so canceling that invitation could not stop them.
+Accounts and invites that were already used are not changed. After the upgrade, resend any invite that is still
+needed. Stop every server process running an older version before the migration runs.
+
+Migration `00016_operational_secrets` enrolls a fingerprint of both authentication keys, and migration
+`00018_smtp_password_encryption` encrypts any existing dashboard SMTP password, on the next server startup. The
+transaction finishes before settings are read or requests are served, including when SMTP environment overrides are
+set. Existing plaintext in older backups remains sensitive. Once secrets are enrolled, `migrate down` refuses both
+migrations. To run a pre-upgrade binary, restore its matching pre-upgrade database and secrets backup into an isolated
+instance. Do not remove the fingerprint or decrypt the row by hand.
+
 ## Backups
 
-Back up nightly and copy off the server:
+Back up nightly, after configuration changes, and before upgrades. Keep the database dump and matching secrets archive
+as one recovery set. Stop the server while taking the pair. The Postgres container stays running.
 
-- `docker compose exec postgres pg_dump -U hisar hisar` (ciphertext only, but still keep it encrypted, e.g. with `age`)
-- the `hisar-data` volume (`hisar-secrets.json`)
+```sh
+umask 077
+mkdir backup
+docker compose stop hisar
+docker compose exec -T postgres pg_dump -U hisar -Fc hisar > backup/database.dump
+docker cp "$(docker compose ps -aq hisar):/data/hisar-secrets.json" - > backup/secrets.tar
+docker compose start hisar
+```
+
+The tar archive preserves the secrets file's owner and private permissions. Encrypt the recovery set before copying it
+off-server, for example with `age`, and keep its decryption key elsewhere. Preserve the deployment's protected `.env`,
+`hisar.env`, and `db_password.txt` configuration too. A backup containing both the database and server secrets
+exposes the SMTP password if its own encryption fails.
+Retain several dated sets, including a known-good pre-upgrade pair, under your organization's retention policy.
+
+The dump contains encrypted vault payloads, plaintext account and sharing metadata, audit events and instance settings.
+It is sensitive, not ciphertext-only. The [database schema](https://github.com/tosunlab/hisar/blob/main/server/internal/store/migrations/00001_init.sql) records emails, devices, access grants and audit IPs outside the encrypted item payloads. [Organization names and rosters](https://github.com/tosunlab/hisar/blob/main/server/internal/store/migrations/00008_organizations.sql) are also plaintext. Operational credentials have different protection from vault keys, as described under **Email** above. Treat both backup components as sensitive. Possession of server secrets does not itself supply vault decryption keys.
+
+A native client's offline cache is not a substitute for a server backup. It contains only records that device has downloaded and may omit whole unsynced vaults or newer writes. See [the cache and export limits](./design.md#91-desktop--wails-v3-go--vuetypescript).
+
+### Test a paired restore
+
+Use a fresh directory and an isolated Compose project, never the running project's volumes. Copy the deployment files
+and protected configuration there. Pin the original server version first. Decrypt a recovery set into `backup/`.
+Set `HISAR_PORT=18080` in the copied `.env`, or choose another unused port and adjust the check below. Keep `HISAR_PUBLIC_URL` unchanged and route its original hostname to
+the isolated host through a private TLS proxy for the sign-in check. Do not expose the restore instance publicly.
+
+```sh
+docker compose -p hisar-restore up -d postgres
+docker compose -p hisar-restore exec -T postgres pg_restore --clean --if-exists -U hisar -d hisar < backup/database.dump
+docker compose -p hisar-restore create hisar
+docker cp -a - "$(docker compose -p hisar-restore ps -aq hisar):/data" < backup/secrets.tar
+docker compose -p hisar-restore start hisar
+curl http://127.0.0.1:18080/healthz
+```
+
+Expect `ok`. Sign in with an existing test account using its master password and Secret Key. Open a known encrypted
+item and compare its value. Send a test email through a disposable SMTP sink, not a production recipient. Repeat after
+upgrading the isolated instance. Test this recovery procedure quarterly and record the results.
+
+If startup reports missing or mismatched secrets, stop and restore the matching archive. Do not delete account data,
+remove the fingerprint, or replace keys to silence the error. Without the original authentication secrets, new keys
+cannot recover existing accounts. The missing-file check also applies to `hisar-server invite`. A healthy `/healthz`
+alone does not prove that accounts or encrypted SMTP settings were recovered.
 
 ## Building from source
 

@@ -168,6 +168,9 @@ describe("ChecksStep", () => {
 });
 
 describe("SetupView", () => {
+  beforeEach(() => {
+    vi.spyOn(bridge, "listPendingRecovery").mockResolvedValue([]);
+  });
   function answerSetupState(state: string): void {
     vi.stubGlobal(
       "fetch",
@@ -205,5 +208,51 @@ describe("SetupView", () => {
     await flush();
     expect(root.querySelector("form")).not.toBeNull();
     expect(root.textContent).not.toContain("This setup link is no longer valid.");
+  });
+
+  it("zeroes the Emergency Kit's bytes once the admin goes on from the kit", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(async () => new Response(JSON.stringify({ state: "needsAdmin", checks: [] }), { status: 200 })),
+    );
+    vi.spyOn(bridge, "start").mockReturnValue({} as BridgeWorker);
+    const emergencyKitPdf = new TextEncoder().encode("%PDF-1.4 H1-ABCDEF");
+    const secretKey = "H1-ABCDEF-GHIJK-LMNOP-QRSTU-VWXYZ-ABCDEF";
+    vi.spyOn(bridge, "signUp").mockResolvedValue({ token: "token", accountId: "account", deviceId: "device", secretKey, emergencyKitPdf });
+    Object.assign(URL, { createObjectURL: vi.fn(() => "blob:kit"), revokeObjectURL: vi.fn() });
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => undefined);
+    window.history.replaceState(null, "", "/admin/setup#setup-token");
+    mount(SetupView, {});
+    await flush();
+    for (const [name, value] of Object.entries({ name: "Ada", email: "ada@example.com", password: "a long password", repeatedPassword: "a long password" })) {
+      const input = root.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+      input.value = value;
+      input.dispatchEvent(new Event("input"));
+    }
+    root.querySelector("form")!.dispatchEvent(new Event("submit"));
+    await flush();
+    findButton("Download Emergency Kit").click();
+    tick("isSaved");
+    await flush();
+
+    findButton("Continue").click();
+    await flush();
+    expect(root.textContent).not.toContain(secretKey);
+    expect(emergencyKitPdf.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it("keeps an interrupted setup visible after restart even when server setup is done", async () => {
+    answerSetupState("done");
+    vi.mocked(bridge.listPendingRecovery).mockResolvedValue([{
+      operationId: "pending-1", kind: "signup", origin: "https://hisar.test", accountId: "admin",
+      email: "ada@example.com", name: "Ada", phase: "needs-finishing", revision: 1,
+    }]);
+    const onLeave = vi.fn();
+    mount(SetupView, { onLeave });
+    await flush();
+    expect(root.querySelector('[data-testid="setup-recovery"]')).not.toBeNull();
+    expect(root.textContent).toContain("setup still needs to finish");
+    expect(onLeave).not.toHaveBeenCalled();
+    expect(root.querySelector('input[name="password"]')).toBeNull();
   });
 });

@@ -39,6 +39,29 @@ class SignInModelTests {
     }
 
     @Test
+    fun testLockHidesTheNewSecretKey() = runTest {
+        val model = AppModelHarness(this).startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.lock()
+        assertEquals(Screen.Locked, model.screen.value)
+        assertNull(model.signIn.newAccountStep.value, "the new Secret Key stayed over the lock screen")
+    }
+
+    @Test
+    fun testAutoLockHidesTheBiometricOffer() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.signIn.finishNewSecretKey()
+        assertEquals(NewAccountStep.BiometricOffer, model.signIn.newAccountStep.value)
+        harness.backend.lock()
+        harness.events.emit(BackendEvent.Locked)
+        runCurrent()
+        assertEquals(Screen.Locked, model.screen.value)
+        assertNull(model.signIn.newAccountStep.value, "the offer stayed over the lock screen")
+    }
+
+    @Test
     fun testSecretKeyScreenOffersBiometricsAndTurnsThemOnInOneTap() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startModel()
@@ -111,6 +134,41 @@ class SignInModelTests {
         assertNull(SignInLink.parse("https://hisar.example.com/invite/abc"))
         assertNull(SignInLink.parse("hisar://sign-in"))
         assertNull(SignInLink.parse("hisar://other?server=x"))
+    }
+
+    @Test
+    fun testPlainTextEmergencyKitPreservesBytesAndRejectsInvalidPayloads() = runTest {
+        val payload = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL2hpc2FyLmV4YW1wbGUvYT94PW9uZSt0d29cdTAwMjZ5PSUyMCIsImVtYWlsIjoiYWxwZXIra2l0QHRyeWhpc2FyLmNvbSIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        assertEquals(SignInLink("https://hisar.example/a?x=one+two&y=%20", "alper+kit@tryhisar.com", "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"), SignInLink.parse(payload))
+        assertNull(InviteLink.parse(payload))
+        for (invalid in listOf(payload + "=", payload + "\n", payload.replace("HISARKIT1 ", "HISARKIT2 "), "HISARKIT1 e30", "HISARKIT1:", "HISARKIT1 _w")) {
+            assertNull(SignInLink.parse(invalid), invalid)
+        }
+        for (json in listOf("""{"server":"https://h","email":"a@b","secretKey":1}""", """{"server":"https://h","email":"a@b","secretKey":"H1-INVALID"}""", """{"server":"javascript:bad","email":"a@b","secretKey":"H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"}""")) {
+            val encoded = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(json.toByteArray())
+            assertNull(SignInLink.parse("HISARKIT1 $encoded"))
+        }
+        val unicodeJson = """{"server":"https://hisar.example/İstanbul/東京","email":"élève+🔐@example.test","secretKey":"H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"}"""
+        fun encode(bytes: ByteArray) = "HISARKIT1 " + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
+        assertEquals(SignInLink("https://hisar.example/İstanbul/東京", "élève+🔐@example.test", "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"), SignInLink.parse(encode(unicodeJson.toByteArray(Charsets.UTF_8))))
+        for (encoding in listOf("UTF-16", "UTF-16LE", "UTF-16BE", "UTF-32", "UTF-32LE", "UTF-32BE")) {
+            assertNull(SignInLink.parse(encode(unicodeJson.toByteArray(charset(encoding)))), encoding)
+        }
+        assertNull(SignInLink.parse(encode(unicodeJson.toByteArray(Charsets.UTF_8) + byteArrayOf(0xC3.toByte(), 0x28))))
+        assertEquals(" key+bytes ", SignInLink.parse("hisar://sign-in?secretKey=%20key%2Bbytes%20")?.secretKey)
+        val model = AppModelHarness(this).startModel()
+        model.signIn.isScannerShown.value = true
+        model.signIn.openScannedEmergencyKit(payload)
+        assertFalse(model.signIn.isScannerShown.value)
+        assertEquals(SignInLink.parse(payload), model.signIn.pendingSignInLink.value)
+    }
+
+    @Test
+    fun testPlainTextEmergencyKitWithInternationalServerName() {
+        val payload = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL-S-i-OBiC50ZXN0Ojg0NDMiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        assertEquals(SignInLink("https://例え.test:8443", "李雷@例え.test", "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"), SignInLink.parse(payload))
+        val withUser = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL3VzZXJA5L6L44GILnRlc3QiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
+        assertNull(SignInLink.parse(withUser))
     }
 
     @Test

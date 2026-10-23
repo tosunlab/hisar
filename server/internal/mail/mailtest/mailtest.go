@@ -73,9 +73,11 @@ type ReceivedMessage struct {
 
 type SinkConfig struct {
 	// TLSConfig enables STARTTLS, or implicit TLS with IsImplicitTLS.
-	TLSConfig     *tls.Config
-	IsImplicitTLS bool
-	OnMessage     func(ReceivedMessage)
+	TLSConfig        *tls.Config
+	IsImplicitTLS    bool
+	OnMessage        func(ReceivedMessage)
+	ExpectedUsername string
+	ExpectedPassword string
 }
 
 // Sink accepts every message on a local port; it implements only what the server's SMTP client uses.
@@ -187,6 +189,10 @@ func (sink *Sink) serve(connection net.Conn, isTLS, isGreeting bool) {
 			decoded, err := base64.StdEncoding.DecodeString(initialResponse)
 			parts := strings.Split(string(decoded), "\x00")
 			if err != nil || len(parts) != 3 {
+				reply("535 invalid credentials")
+				continue
+			}
+			if sink.config.ExpectedUsername != "" && (parts[1] != sink.config.ExpectedUsername || parts[2] != sink.config.ExpectedPassword) {
 				reply("535 invalid credentials")
 				continue
 			}

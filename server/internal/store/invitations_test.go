@@ -16,14 +16,15 @@ func TestShareInvitationLifecycle(t *testing.T) {
 	createTestAccount(t, database, "CCCCCC", "c@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
 
-	invitationID, err := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "editor", InvitedBy: "AAAAAA"}, time.Hour)
+	invitationID, err := createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "editor", InvitedBy: "AAAAAA"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
-	renewedID, err := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
-	if err != nil || renewedID != invitationID {
-		t.Fatalf("renewed invitation %s, %v", renewedID, err)
+	renewedID, err := createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
+	if err != nil || renewedID == invitationID {
+		t.Fatalf("replacement must have a new identity %s, %v", renewedID, err)
 	}
+	invitationID = renewedID
 
 	receivedInvitations, err := database.ListReceivedShareInvitations(ctx, "b@example.com")
 	if err != nil || len(receivedInvitations) != 1 || receivedInvitations[0].Role != "reader" || receivedInvitations[0].InvitedByEmail != "a@example.com" || receivedInvitations[0].InvitedByName != "AAAAAA" {
@@ -83,9 +84,12 @@ func TestShareInvitationLifecycle(t *testing.T) {
 	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "CCCCCC", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}, 0); !errors.Is(err, ErrNoInvitation) {
 		t.Errorf("grant to an account without an invitation: %v", err)
 	}
-	isNewMember, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}, 0)
-	if err != nil || !isNewMember {
-		t.Fatalf("grant after acceptance: %v %v", isNewMember, err)
+	if _, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "BBBBBB", Role: "reader", WrappedKey: []byte{1}, GrantedBy: "AAAAAA"}, 0); !errors.Is(err, ErrNoInvitation) {
+		t.Fatalf("generic grant must refuse even accepted invitations: %v", err)
+	}
+	completion := authorizeTestShareCompletion(t, database, invitationID)
+	if err := database.CompleteSignedShare(ctx, "AAAAAA", "https://hisar.test", completion); err != nil {
+		t.Fatal(err)
 	}
 	if sent, _ := database.ListSentShareInvitations(ctx, "AAAAAA"); len(sent) != 0 {
 		t.Errorf("completed invitation still listed: %+v", sent)
@@ -117,7 +121,7 @@ func TestShareInvitationDeclineCancelAndExpiry(t *testing.T) {
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
 
-	invitationID, err := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "editor", InvitedBy: "AAAAAA"}, time.Hour)
+	invitationID, err := createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "editor", InvitedBy: "AAAAAA"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -131,7 +135,7 @@ func TestShareInvitationDeclineCancelAndExpiry(t *testing.T) {
 		t.Errorf("declined invitation still listed: %+v", sent)
 	}
 
-	invitationID, _ = database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "nobody@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
+	invitationID, _ = createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "nobody@example.com", Role: "reader", InvitedBy: "AAAAAA"}, time.Hour)
 	if _, _, err := database.CancelShareInvitation(ctx, invitationID, "BBBBBB"); !errors.Is(err, ErrNotFound) {
 		t.Errorf("cancel by a non-owner: %v", err)
 	}
@@ -140,7 +144,7 @@ func TestShareInvitationDeclineCancelAndExpiry(t *testing.T) {
 		t.Fatalf("cancel: %s %s %v", cancelledVaultID, email, err)
 	}
 
-	expiredID, _ := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "reader", InvitedBy: "AAAAAA"}, -time.Minute)
+	expiredID, _ := createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "b@example.com", Role: "reader", InvitedBy: "AAAAAA"}, -time.Minute)
 	if receivedInvitations, _ := database.ListReceivedShareInvitations(ctx, "b@example.com"); len(receivedInvitations) != 0 {
 		t.Errorf("expired invitation received: %+v", receivedInvitations)
 	}
@@ -198,10 +202,12 @@ func TestRotateVaultCannotAddMember(t *testing.T) {
 	createTestAccount(t, database, "BBBBBB", "b@example.com")
 	vaultID := createTestVault(t, database, "AAAAAA")
 	rotation := VaultRotation{
-		VaultID:   vaultID,
-		EncName:   []byte("new-name"),
-		Accesses:  []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}, {AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{9}}},
-		RotatedBy: "AAAAAA",
+		VaultID:          vaultID,
+		EncName:          []byte("new-name"),
+		Accesses:         []Member{{AccountID: "AAAAAA", Role: "owner", WrappedKey: []byte{9}}, {AccountID: "BBBBBB", Role: "editor", WrappedKey: []byte{9}}},
+		RotatedBy:        "AAAAAA",
+		AccessRevision:   2,
+		MetadataRevision: 1,
 	}
 	if err := database.RotateVault(ctx, rotation); !errors.Is(err, ErrNotMember) {
 		t.Fatalf("rotation adding Bob: %v", err)

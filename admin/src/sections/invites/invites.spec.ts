@@ -1,7 +1,13 @@
 import { afterEach, describe, expect, it, vi, type Mock } from "vitest";
 import { createApp, nextTick, type App } from "vue";
+import { auth } from "../../api";
+import { bridge } from "../../bridge/bridge";
 import InvitesView from "./InvitesView.vue";
 import { describeDelivery, describeSender, formatDate, type AdminInvite, type CreatedInvite } from "./invites";
+
+vi.mock("../../bridge/bridge", () => ({ bridge: { reauthenticate: vi.fn() } }));
+const reauthenticate = bridge.reauthenticate as Mock<typeof bridge.reauthenticate>;
+const proof = { reauthenticationId: "fresh", ke3: "a2Uz" };
 
 const fromMember: AdminInvite = {
   id: "aa11",
@@ -52,9 +58,11 @@ describe("InvitesView", () => {
   let writeText: Mock<(text: string) => Promise<void>>;
 
   async function mount(listed: AdminInvite[], answers: Record<string, () => Response> = {}): Promise<void> {
+    auth.session = { token: "admin-token", accountId: "ADMIN1", deviceId: "device", name: "Admin" };
+    reauthenticate.mockResolvedValue(proof);
     fetchMock = vi.fn<typeof fetch>(async (url, init) => {
       const answer = answers[`${init?.method ?? "GET"} ${String(url)}`];
-      return answer ? answer() : new Response(JSON.stringify({ invites: listed }), { status: 200 });
+      return answer ? answer() : new Response(JSON.stringify(String(url) === "/api/v1/account" ? { email: "admin@example.com" } : { invites: listed }), { status: 200 });
     });
     vi.stubGlobal("fetch", fetchMock);
     writeText = vi.fn(async () => undefined);
@@ -70,6 +78,8 @@ describe("InvitesView", () => {
     app?.unmount();
     root.remove();
     vi.unstubAllGlobals();
+    auth.session = null;
+    reauthenticate.mockReset();
   });
 
   const findButton = (text: string, scope: ParentNode = root) => [...scope.querySelectorAll("button")].find((button) => button.textContent?.trim() === text)!;
@@ -100,12 +110,11 @@ describe("InvitesView", () => {
     const email = root.querySelector<HTMLInputElement>("input[name=email]")!;
     email.value = "erin@example.com";
     email.dispatchEvent(new Event("input"));
-    root.querySelector<HTMLInputElement>("input[name=role][value=admin]")!.click();
     root.querySelector("form")!.dispatchEvent(new Event("submit"));
     await flush();
 
     const [, createRequest] = fetchMock.mock.calls.at(-1)! as [string, RequestInit];
-    expect(JSON.parse(String(createRequest.body))).toEqual({ email: "erin@example.com", role: "admin" });
+    expect(JSON.parse(String(createRequest.body))).toEqual({ email: "erin@example.com", role: "member" });
     expect(root.querySelector("form")).toBeNull();
     expect(findRows().map((row) => row.dataset.invite)).toEqual(["erin@example.com", "carol@example.com"]);
     const created = root.querySelector<HTMLElement>("[data-testid=created-invite]")!;
@@ -151,9 +160,37 @@ describe("InvitesView", () => {
     expect(findRows().map((row) => row.dataset.invite)).toEqual(["dave@example.com"]);
 
     await click(findButton("Resend", findRows()[0]));
+    expect(root.querySelector("[data-testid=created-invite]")).toBeNull();
+    root.querySelector("form")!.dispatchEvent(new Event("submit"));
+    await vi.waitFor(() => expect(root.querySelector("[data-testid=created-invite]")).not.toBeNull());
+    expect(reauthenticate).toHaveBeenCalledOnce();
+    const [, resendRequest] = fetchMock.mock.calls.find(([url]) => String(url).endsWith("/resend"))! as [string, RequestInit];
+    expect(JSON.parse(String(resendRequest.body))).toEqual({ proof });
     expect(findRows()).toHaveLength(1);
     const created = root.querySelector<HTMLElement>("[data-testid=created-invite]")!;
     expect(created.querySelector<HTMLInputElement>("input[name=link]")!.value).toBe("https://hisar.example.com/invite/token-dd44");
     expect(created.textContent).toContain("Hisar emailed the invite to dave@example.com.");
+  });
+
+  it("proves admin creation and refuses to issue when the factors fail", async () => {
+    const fresh = { ...fromOperator, id: "ee55" };
+    await mount([], { "POST /api/v1/admin/invites": () => new Response(JSON.stringify(createCreated(fresh)), { status: 201 }) });
+    await click(findButton("Invite to Hisar…"));
+    root.querySelector<HTMLInputElement>("input[name=role][value=admin]")!.click();
+    await flush();
+    for (const [name, value] of [["secretKey", "H1-ADMIN1-SECRET"], ["password", "admin password"]]) {
+      const input = root.querySelector<HTMLInputElement>(`input[name=${name}]`)!;
+      input.value = value!;
+      input.dispatchEvent(new Event("input"));
+    }
+    reauthenticate.mockRejectedValueOnce(new Error("incorrect master password"));
+    root.querySelector("form")!.dispatchEvent(new Event("submit"));
+    await vi.waitFor(() => expect(root.querySelector("[role=alert]")?.textContent).toBe("incorrect master password"));
+    expect(fetchMock.mock.calls.some(([, init]) => init?.method === "POST")).toBe(false);
+    root.querySelector("form")!.dispatchEvent(new Event("submit"));
+    await vi.waitFor(() => expect(root.querySelector("form")).toBeNull());
+    const [, createRequest] = fetchMock.mock.calls.find(([, init]) => init?.method === "POST")! as [string, RequestInit];
+    expect(JSON.parse(String(createRequest.body))).toEqual({ email: "", role: "admin", proof });
+    expect(reauthenticate).toHaveBeenLastCalledWith("admin-token", "admin@example.com", "H1-ADMIN1-SECRET", "admin password");
   });
 });

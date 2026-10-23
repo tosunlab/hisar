@@ -4,8 +4,15 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as browserprotocol$0 from "../browserprotocol/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as export$0 from "../export/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as session$0 from "../session/models.js";
 
 export interface AccountDeletionPreview {
+    "planVersion": string;
     "email": string;
     "ownedVaults": DeletionVault[] | null;
     "memberVaults": DeletionVault[] | null;
@@ -85,6 +92,14 @@ export interface CredentialChangeResult {
      * KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
      */
     "keychainError": string;
+
+    /**
+     * LocalError reports local finalization failures after the credentials have already changed.
+     */
+    "localError": string;
+    "pendingOperationId": string;
+    "setupState": string;
+    "problems": string[] | null;
 }
 
 export interface DeletionOrganization {
@@ -92,6 +107,7 @@ export interface DeletionOrganization {
     "name": string;
     "isDeleted": boolean;
     "newAdminName": string;
+    "newAdminId": string;
 }
 
 export interface DeletionVault {
@@ -135,6 +151,8 @@ export interface ExportResult {
     "path": string;
     "vaultCount": number;
     "itemCount": number;
+    "provenance"?: export$0.Provenance | null;
+    "warning"?: string;
 }
 
 /**
@@ -214,6 +232,7 @@ export interface ImportPreview {
     "passkeyCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
+    "groups": ImportSourceGroup[] | null;
 }
 
 export interface ImportProgress {
@@ -223,6 +242,7 @@ export interface ImportProgress {
     "vaultName": string;
     "savedCount": number;
     "totalCount": number;
+    "leftBehindCount": number;
     "isDone": boolean;
     "allFailed": ImportSkippedEntry[] | null;
 }
@@ -230,6 +250,16 @@ export interface ImportProgress {
 export interface ImportSkippedEntry {
     "title": string;
     "reason": string;
+}
+
+export interface ImportSourceGroup {
+    "id": string;
+    "name": string;
+    "isPrivate": boolean;
+    "itemCount": number;
+    "vaultId": string;
+    "vaultName": string;
+    "members": VaultMember[] | null;
 }
 
 /**
@@ -312,6 +342,7 @@ export interface ItemDatabase {
 export interface ItemDetail {
     "id": string;
     "revision": string;
+    "readIssue"?: session$0.ReadIssue | null;
     "category": string;
     "title": string;
     "username": string;
@@ -556,6 +587,24 @@ export interface PasswordConfig {
 }
 
 /**
+ * PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out.
+ */
+export interface PendingRecoverySummary {
+    "operationId": string;
+    "kind": string;
+    "origin": string;
+    "accountId": string;
+    "email": string;
+    "name": string;
+    "phase": string;
+    "kitSaved": boolean;
+    "problems": string[] | null;
+    "manualUnlock": boolean;
+    "keychainProtected": boolean;
+    "revision": number;
+}
+
+/**
  * Person is the user or someone they share a vault with. SecurityCode is derived from their signing key; IsKeyChanged
  * means it differs from the key pinned when this device first shared with them.
  */
@@ -622,6 +671,10 @@ export interface SentShareInvitation {
     "state": string;
     "expiresAt": string;
     "acceptedAt": string;
+    "requiresConfirmation": boolean;
+    "recipientId": string;
+    "securityCode": string;
+    "reviewToken": string;
 }
 
 /**
@@ -686,6 +739,9 @@ export interface ShareLinkRequest {
 export interface SignUpResult {
     "status": Status;
     "secretKey": string;
+    "pendingOperationId": string;
+    "setupState": string;
+    "problems": string[] | null;
 }
 
 export interface Status {
@@ -700,6 +756,7 @@ export interface Status {
     "biometricAvailable": boolean;
     "biometricEnabled": boolean;
     "biometricReady": boolean;
+    "biometricSetupError"?: string;
 
     /**
      * IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
@@ -831,6 +888,8 @@ export interface VaultSummary {
      * OrganizationID is set for organization vaults only.
      */
     "organizationId"?: string;
+    "readIssues"?: session$0.ReadIssue[] | null;
+    "isPersonalExtra"?: boolean;
 }
 
 /**

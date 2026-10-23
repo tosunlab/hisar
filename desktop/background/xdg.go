@@ -73,11 +73,24 @@ func (autostart *XDGAutostart) Register() error {
 		"X-GNOME-Autostart-enabled=true",
 		"",
 	}, "\n")
-	temporaryPath := autostart.GetPath() + ".tmp"
-	if err := os.WriteFile(temporaryPath, []byte(content), 0o644); err != nil {
+	temporaryFile, err := os.CreateTemp(filepath.Dir(autostart.GetPath()), "."+filepath.Base(autostart.GetPath())+".*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, autostart.GetPath())
+	_, err = temporaryFile.WriteString(content)
+	if err == nil {
+		err = temporaryFile.Chmod(0o644)
+	}
+	if closeErr := temporaryFile.Close(); err == nil {
+		err = closeErr
+	}
+	if err == nil {
+		err = os.Rename(temporaryFile.Name(), autostart.GetPath())
+	}
+	if err != nil {
+		os.Remove(temporaryFile.Name())
+	}
+	return err
 }
 
 func (autostart *XDGAutostart) Unregister() error {

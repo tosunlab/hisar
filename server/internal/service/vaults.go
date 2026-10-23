@@ -15,7 +15,7 @@ import (
 // Size limits of what vault and item requests carry.
 const (
 	maxEncName            = 1024
-	maxWrappedKey         = 4096
+	maxWrappedKey         = apitypes.MaxVaultWrappedKeyBytes
 	maxOverview           = 64 << 10
 	maxDetails            = 1 << 20
 	DefaultChangeLimit    = 500
@@ -24,13 +24,15 @@ const (
 	maxRotatedItemCount   = 50000
 )
 
+// maxChangeBytes is a soft ciphertext budget. One item can cross it; with the per-item limits, base64 and JSON metadata
+// still keep the response below the 64 MiB the apps read.
+const maxChangeBytes = 16 << 20
+
 var (
 	errReadOnly                = newError(KindForbidden, "read only")
 	errOrganizationVaultAccess = newError(KindInvalid, "access to an organization vault comes from its teams")
-	// errUpdateForOrganizationVaults refuses items for an organization vault that name no key generation: only apps
-	// older than key generations send them, and they read the key-changed 409 as an item conflict without a current
-	// item, so they would ask for a reload that never helps. They show this sentence as it is.
-	errUpdateForOrganizationVaults = newError(KindInvalid, "update Hisar to change items in organization vaults")
+	// Older apps display this sentence without trying an item-conflict reload that cannot fix omission.
+	errUpdateForOrganizationVaults = newError(KindInvalid, "update Hisar to change data in this vault")
 )
 
 func IsValidUUID(value string) bool {
@@ -70,7 +72,8 @@ func (s *Service) ListVaults(ctx context.Context, actor Actor) ([]apitypes.Vault
 	for _, vault := range storedVaults {
 		vaults = append(vaults, apitypes.Vault{
 			ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Seq: vault.Seq, Role: vault.Role, WrappedKey: vault.WrappedKey,
-			OrganizationID: vault.OrganizationID, NeedsRotation: vault.NeedsRotation, KeyGeneration: vault.KeyGeneration,
+			OrganizationID: vault.OrganizationID, NeedsRotation: vault.NeedsRotation, KeyGeneration: vault.KeyGeneration, AccessRevision: vault.AccessRevision,
+			IsPersonalExtra: vault.IsPersonalExtra,
 		})
 	}
 	return vaults, nil
@@ -114,7 +117,7 @@ func (s *Service) CreateVault(ctx context.Context, actor Actor, request *apitype
 	}
 	return apitypes.Vault{
 		ID: vault.ID, Type: vault.Type, EncName: vault.EncName, Role: apitypes.VaultOwner, WrappedKey: request.WrappedKey,
-		OrganizationID: request.OrganizationID, KeyGeneration: 1,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1, AccessRevision: 2,
 	}, nil
 }
 
@@ -157,6 +160,8 @@ func (s *Service) SetAccess(ctx context.Context, actor Actor, vaultID, targetAcc
 	isNewMember, err := s.store.GrantAccess(ctx, vaultID,
 		store.Member{AccountID: targetAccountID, Role: request.Role, WrappedKey: request.WrappedKey, GrantedBy: actor.AccountID}, request.KeyGeneration)
 	switch {
+	case errors.Is(err, store.ErrKeyGenerationMissing), errors.Is(err, store.ErrRotationPending):
+		return convertTransitionError(err)
 	case errors.Is(err, store.ErrNoInvitation):
 		return newError(KindConflict, "this person has not accepted an invitation to this vault")
 	case errors.Is(err, store.ErrNotEntitled):
@@ -194,15 +199,18 @@ func (s *Service) RemoveAccess(ctx context.Context, actor Actor, vaultID, target
 	if role != apitypes.VaultOwner {
 		return ErrOwnerOnly
 	}
-	switch err := s.store.RemoveAccess(ctx, vaultID, targetAccountID); {
+	switch err := s.store.RemoveAccess(ctx, vaultID, actor.AccountID, targetAccountID); {
 	case errors.Is(err, store.ErrOrganizationVault):
 		return errOrganizationVaultAccess
+	case errors.Is(err, store.ErrNotOwner):
+		return ErrOwnerOnly
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case err != nil:
 		return err
 	}
 	s.recordAudit(ctx, actor, auditVaultAccessRemoved, map[string]string{"vault": vaultID, "account": targetAccountID})
+	s.publishVaultsChangedToMembers(ctx, vaultID)
 	s.publishVaultsChanged(targetAccountID)
 	return nil
 }
@@ -229,8 +237,9 @@ func convertToProtoItem(storeItem *store.Item) apitypes.Item {
 	return apitypes.Item{ID: storeItem.ID, Revision: storeItem.Revision, Seq: storeItem.Seq, Deleted: storeItem.Deleted, Overview: storeItem.Overview, Details: storeItem.Details, UpdatedAt: storeItem.UpdatedAt, UpdatedBy: storeItem.UpdatedBy}
 }
 
-// ListChanges returns up to limit changes after since. NextSeq below the client's since signals a server rollback;
-// it is not clamped. A vault the caller cannot see is not found before since and limit are checked.
+// ListChanges returns up to limit changes after since, fewer when they hold more than maxChangeBytes. NextSeq below the
+// client's since signals a server rollback; it is not clamped. A vault the caller cannot see is not found before since
+// and limit are checked.
 func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, since int64, limit int) (apitypes.ChangesResponse, error) {
 	if _, err := s.GetVaultRole(ctx, actor, vaultID); err != nil {
 		return apitypes.ChangesResponse{}, err
@@ -241,15 +250,15 @@ func (s *Service) ListChanges(ctx context.Context, actor Actor, vaultID string, 
 	if limit < 1 || limit > MaxChangeLimit {
 		return apitypes.ChangesResponse{}, newError(KindInvalid, "invalid limit")
 	}
-	items, vaultSeq, err := s.store.ListChanges(ctx, vaultID, since, limit)
+	items, vaultSeq, generation, isMore, err := s.store.ListChangesSnapshot(ctx, actor.AccountID, vaultID, since, limit, maxChangeBytes)
 	if err != nil {
 		return apitypes.ChangesResponse{}, err
 	}
-	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(items)), NextSeq: vaultSeq}
+	response := apitypes.ChangesResponse{Items: make([]apitypes.Item, 0, len(items)), NextSeq: vaultSeq, KeyGeneration: generation}
 	for index := range items {
 		response.Items = append(response.Items, convertToProtoItem(&items[index]))
 	}
-	if len(items) == limit {
+	if isMore {
 		response.More = true
 		response.NextSeq = items[len(items)-1].Seq
 	} else if len(items) > 0 {
@@ -284,18 +293,30 @@ func (s *Service) PutItem(ctx context.Context, actor Actor, vaultID, itemID, bas
 	if err := s.CheckItemWrite(ctx, actor, vaultID); err != nil {
 		return 0, err
 	}
-	if !IsValidUUID(itemID) || !IsValidUUID(request.Revision) || (baseRevision != "" && !IsValidUUID(baseRevision)) ||
+	if !IsValidUUID(itemID) || !IsValidUUID(request.Revision) || (baseRevision != "" && !IsValidUUID(baseRevision)) || (request.Deleted && baseRevision == "") ||
 		len(request.Overview) == 0 || len(request.Overview) > maxOverview ||
 		len(request.Details) == 0 || len(request.Details) > maxDetails || request.KeyGeneration < 0 {
 		return 0, newError(KindInvalid, "invalid item")
 	}
 	storeItem := &store.Item{ID: itemID, Revision: request.Revision, Deleted: request.Deleted, Overview: request.Overview, Details: request.Details, UpdatedBy: actor.AccountID}
-	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, request.KeyGeneration, storeItem)
+	var scopes []string
+	if request.ImportScope != "" {
+		scopes = []string{request.ImportScope}
+	}
+	currentStoreItem, err := s.store.PutItem(ctx, vaultID, baseRevision, request.KeyGeneration, storeItem, scopes...)
 	switch {
+	case errors.Is(err, store.ErrImportScopeChanged):
+		return 0, newError(KindPreconditionFailed, "destination membership changed; review the import destination again")
+	case errors.Is(err, store.ErrNotFound):
+		return 0, ErrNotFound
+	case errors.Is(err, store.ErrReadOnly):
+		return 0, errReadOnly
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return 0, ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
 		return 0, errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrRotationPending):
+		return 0, convertTransitionError(err)
 	case errors.Is(err, store.ErrConflict):
 		conflict := &ItemConflictError{}
 		if currentStoreItem != nil {
@@ -338,10 +359,14 @@ func (s *Service) MoveItem(ctx context.Context, actor Actor, vaultID, itemID str
 	}
 	currentStoreItem, err := s.store.MoveItem(ctx, move)
 	switch {
+	case errors.Is(err, store.ErrReadOnly):
+		return apitypes.MoveItemResponse{}, errReadOnly
 	case errors.Is(err, store.ErrStaleKeyGeneration):
 		return apitypes.MoveItemResponse{}, ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
 		return apitypes.MoveItemResponse{}, errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrRotationPending):
+		return apitypes.MoveItemResponse{}, convertTransitionError(err)
 	case errors.Is(err, store.ErrConflict):
 		conflict := &ItemConflictError{}
 		if currentStoreItem != nil {
@@ -383,15 +408,38 @@ func (s *Service) GetItemHistory(ctx context.Context, actor Actor, vaultID, item
 }
 
 func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.RenameVaultRequest) error {
+	return s.renameVault(ctx, actor, vaultID, request.EncName, request.KeyGeneration, nil)
+}
+
+// RepairVaultName replaces a sealed name the owner's app could not open, only while the vault is still as reviewed.
+func (s *Service) RepairVaultName(ctx context.Context, actor Actor, vaultID string, request *apitypes.RepairVaultNameRequest) error {
+	return s.renameVault(ctx, actor, vaultID, request.EncName, request.Review.KeyGeneration, convertToStoreReview(request.Review))
+}
+
+func convertToStoreReview(review apitypes.VaultReview) *store.VaultReview {
+	return &store.VaultReview{EncName: review.EncName, WrappedKey: review.WrappedKey, KeyGeneration: review.KeyGeneration}
+}
+
+var errReviewChanged = newError(KindConflict, "the vault changed since it was reviewed; review it again")
+
+func (s *Service) renameVault(ctx context.Context, actor Actor, vaultID string, encName []byte, keyGeneration int64, review *store.VaultReview) error {
 	if err := s.requireVaultOwner(ctx, actor, vaultID); err != nil {
 		return err
 	}
-	if len(request.EncName) == 0 || len(request.EncName) > maxEncName || request.KeyGeneration < 0 {
+	if len(encName) == 0 || len(encName) > maxEncName || keyGeneration < 0 {
 		return newError(KindInvalid, "invalid vault name")
 	}
-	switch err := s.store.RenameVault(ctx, vaultID, request.EncName, request.KeyGeneration); {
+	switch err := s.store.RenameVault(ctx, vaultID, actor.AccountID, encName, keyGeneration, review); {
+	case errors.Is(err, store.ErrKeyGenerationMissing), errors.Is(err, store.ErrRotationPending):
+		return convertTransitionError(err)
+	case errors.Is(err, store.ErrStaleKeyGeneration):
+		return newError(KindConflict, "the vault key changed since the name was encrypted; sync and try again")
+	case errors.Is(err, store.ErrNotOwner):
+		return ErrOwnerOnly
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
+	case errors.Is(err, store.ErrReviewChanged):
+		return errReviewChanged
 	case errors.Is(err, store.ErrConflict):
 		return newError(KindConflict, "the vault key changed since the name was encrypted; sync and try again")
 	case err != nil:
@@ -404,6 +452,16 @@ func (s *Service) RenameVault(ctx context.Context, actor Actor, vaultID string, 
 
 // DeleteVault deletes a vault the caller owns, with its items or after moving them, already re-encrypted, to another vault.
 func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.DeleteVaultRequest) error {
+	return s.deleteVault(ctx, actor, vaultID, request, nil)
+}
+
+// DeleteUnreadableVault deletes a vault the owner's app could not open, with every item, only while it is still as
+// reviewed.
+func (s *Service) DeleteUnreadableVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.DeleteUnreadableVaultRequest) error {
+	return s.deleteVault(ctx, actor, vaultID, &apitypes.DeleteVaultRequest{IsDeletingItems: true}, convertToStoreReview(request.Review))
+}
+
+func (s *Service) deleteVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.DeleteVaultRequest, review *store.VaultReview) error {
 	if err := s.requireVaultOwner(ctx, actor, vaultID); err != nil {
 		return err
 	}
@@ -434,11 +492,14 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 	}
 	formerMemberIDs, err := s.store.DeleteVault(ctx, store.VaultDeletion{
 		VaultID: vaultID, AccountID: actor.AccountID, MoveToVaultID: request.MoveToVaultID,
-		MovedItems: movedItems, IsDeletingItems: request.IsDeletingItems, MoveToKeyGeneration: request.MoveToKeyGeneration,
+		MovedItems: movedItems, IsDeletingItems: request.IsDeletingItems, MoveToKeyGeneration: request.MoveToKeyGeneration, KeyGeneration: request.KeyGeneration,
+		Review: review,
 	})
 	switch {
 	case errors.Is(err, store.ErrNotOwner):
 		return ErrOwnerOnly
+	case errors.Is(err, store.ErrReviewChanged):
+		return errReviewChanged
 	case errors.Is(err, store.ErrPersonalVault):
 		return newError(KindInvalid, "personal vaults can't be deleted")
 	case errors.Is(err, store.ErrOnlyVault):
@@ -449,6 +510,8 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 		return ErrKeyChanged
 	case errors.Is(err, store.ErrKeyGenerationMissing):
 		return errUpdateForOrganizationVaults
+	case errors.Is(err, store.ErrRotationPending):
+		return convertTransitionError(err)
 	case errors.Is(err, store.ErrConflict):
 		return newError(KindConflict, "the vault changed while its items were moved; try again")
 	case errors.Is(err, store.ErrExists):
@@ -481,6 +544,9 @@ func (s *Service) DeleteVault(ctx context.Context, actor Actor, vaultID string, 
 func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, request *apitypes.RotateVaultRequest) error {
 	if err := s.requireVaultOwner(ctx, actor, vaultID); err != nil {
 		return err
+	}
+	if request.AccessRevision <= 0 || request.MetadataRevision <= 0 {
+		return newError(KindInvalid, "update Hisar to rotate vault keys with a checked snapshot")
 	}
 	errInvalidRotation := newError(KindInvalid, "invalid rotation")
 	if len(request.EncName) == 0 || len(request.EncName) > maxEncName ||
@@ -534,9 +600,13 @@ func (s *Service) RotateVault(ctx context.Context, actor Actor, vaultID string, 
 	}
 	err = s.store.RotateVault(ctx, store.VaultRotation{
 		VaultID: vaultID, EncName: request.EncName, Accesses: members, Items: rotatedItems, RotatedBy: actor.AccountID,
-		KeyGeneration: request.KeyGeneration,
+		KeyGeneration: request.KeyGeneration, AccessRevision: request.AccessRevision, MetadataRevision: request.MetadataRevision,
 	})
 	switch {
+	case errors.Is(err, store.ErrKeyGenerationMissing), errors.Is(err, store.ErrRotationPending):
+		return convertTransitionError(err)
+	case errors.Is(err, store.ErrStaleKeyGeneration):
+		return ErrKeyChanged
 	case errors.Is(err, store.ErrConflict):
 		return newError(KindConflict, "the vault changed during the key rotation; try again")
 	case errors.Is(err, store.ErrNotMember):

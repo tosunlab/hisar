@@ -117,6 +117,9 @@ object VaultStatusSerializer : JsonTransformingSerializer<VaultStatus>(VaultStat
 }
 
 @Serializable
+data class ReadIssue(val vaultId: String, val itemId: String = "", val revision: String = "", val kind: String, val canRename: Boolean = false, val canDelete: Boolean = false)
+
+@Serializable
 data class VaultSummary(
     val id: String,
     val name: String = "",
@@ -125,6 +128,8 @@ data class VaultSummary(
     val itemCount: Int = 0,
     /** Set for organization vaults only. */
     @SerialName("organizationId") val organizationID: String = "",
+    val readIssues: List<ReadIssue> = emptyList(),
+    val isPersonalExtra: Boolean = false,
 ) {
     val isOrganization: Boolean get() = type == TYPE_ORGANIZATION
 
@@ -142,6 +147,7 @@ data class ItemField(val name: String, val value: String, val concealed: Boolean
 data class ItemDetail(
     val id: String = "",
     val revision: String = "",
+    val readIssue: ReadIssue? = null,
     val category: String = CATEGORY_LOGIN,
     val title: String = "",
     val username: String = "",
@@ -661,7 +667,31 @@ data class CardDescription(
 )
 
 @Serializable
-data class SignUpResult(val status: VaultStatus, val secretKey: String)
+data class SignUpResult(
+    val status: VaultStatus,
+    val secretKey: String = "",
+    val pendingOperationId: String = "",
+    val setupState: String = "",
+    val problems: List<String> = emptyList(),
+)
+
+@Serializable
+data class PendingRecovery(
+    val operationId: String,
+    val kind: String,
+    val origin: String,
+    val accountId: String,
+    val email: String,
+    val name: String,
+    val phase: String,
+    val kitSaved: Boolean = false,
+    val problems: List<String> = emptyList(),
+    val manualUnlock: Boolean = false,
+    val keychainProtected: Boolean = false,
+)
+
+@Serializable
+data class PendingRecoveryExport(val secretKey: String, val path: String)
 
 @Serializable
 data class LoginMatch(
@@ -671,6 +701,7 @@ data class LoginMatch(
     val username: String = "",
     val vaultName: String = "",
     val hasOneTimePassword: Boolean = false,
+    val isPersonal: Boolean = false,
 ) {
     val id: String get() = buildRecordIdentifier(vaultID, itemID)
 
@@ -769,8 +800,10 @@ data class PasskeyAssertionRequest(
     val relyingPartyID: String,
     val clientDataHash: ByteString,
     val allAllowedCredentialID: List<ByteString> = emptyList(),
-    val isUserVerificationDiscouraged: Boolean = false,
-)
+    val userVerification: String = "preferred",
+) {
+    val isUserVerificationDiscouraged: Boolean get() = userVerification == "discouraged"
+}
 
 data class PasskeyRegistrationRequest(
     val relyingPartyID: String,
@@ -779,8 +812,9 @@ data class PasskeyRegistrationRequest(
     val clientDataHash: ByteString,
     val allSupportedAlgorithm: List<Int> = emptyList(),
     val allExcludedCredentialID: List<ByteString> = emptyList(),
-    val isUserVerificationDiscouraged: Boolean = false,
+    val userVerification: String = "preferred",
 ) {
+    val isUserVerificationDiscouraged: Boolean get() = userVerification == "discouraged"
     val isAlgorithmSupported: Boolean get() = isAlgorithmSupported(allSupportedAlgorithm)
 
     companion object {
@@ -902,6 +936,10 @@ data class SentShareInvitation(
     val role: String,
     val state: String,
     val expiresAt: String,
+    val requiresConfirmation: Boolean = false,
+    @SerialName("recipientId") val recipientID: String = "",
+    val securityCode: String = "",
+    val reviewToken: String = "",
 ) {
     companion object {
         const val STATE_ACCEPTED = "accepted"
@@ -1051,7 +1089,7 @@ data class RemovedVaultNotice(val id: String, val name: String, val message: Str
 data class ExportOptions(val isBiometricAvailable: Boolean, val minPassphraseLength: Int)
 
 @Serializable
-data class ExportResult(val path: String, val vaultCount: Int, val itemCount: Int)
+data class ExportResult(val path: String, val vaultCount: Int, val itemCount: Int, val warning: String = "")
 
 enum class ExportFormat(val id: String, val label: String) {
     ENCRYPTED("encrypted", "Encrypted export"),
@@ -1064,7 +1102,11 @@ data class CredentialChangeResult(
     val secretKey: String = "",
     val signedOutDeviceCount: Int = 0,
     val keychainError: String = "",
+    val localError: String = "",
     val emergencyKitPath: String = "",
+    val pendingOperationId: String = "",
+    val setupState: String = "",
+    val problems: List<String> = emptyList(),
 )
 
 @Serializable
@@ -1073,6 +1115,7 @@ data class DeletionVault(val id: String, val name: String, val type: String, val
 @Serializable
 data class AccountDeletionPreview(
     val email: String = "",
+    val planVersion: String = "",
     @SerialName("ownedVaults") val allOwnedVault: List<DeletionVault> = emptyList(),
     @SerialName("memberVaults") val allMemberVault: List<DeletionVault> = emptyList(),
     val shareLinkCount: Int = 0,
@@ -1246,6 +1289,17 @@ data class ImportDuplicate(
  * and filePath is empty.
  */
 @Serializable
+data class ImportSourceGroup(
+    val id: String = "",
+    val name: String = "",
+    val isPrivate: Boolean = true,
+    val itemCount: Int = 0,
+    @SerialName("vaultId") val vaultID: String = "",
+    val vaultName: String = "",
+    val members: List<Member> = emptyList(),
+)
+
+@Serializable
 data class ImportPreview(
     val fileName: String = "",
     val filePath: String = "",
@@ -1267,6 +1321,7 @@ data class ImportPreview(
     val passkeyCount: Int = 0,
     val allSkipped: List<ImportSkippedEntry> = emptyList(),
     val allDuplicate: List<ImportDuplicate> = emptyList(),
+    val groups: List<ImportSourceGroup> = emptyList(),
 ) {
     /** The preview's non-zero counts, as the import sheet lists them. */
     val allCountRow: List<ImportCountRow>

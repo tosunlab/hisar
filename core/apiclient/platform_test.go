@@ -28,7 +28,7 @@ func TestClientSendsPlatformAndVersion(t *testing.T) {
 	if err := fakeClient.CheckVersion(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	fakeClient.StreamEvents(context.Background(), func(Event) {})
+	fakeClient.StreamEvents(context.Background(), nil, func(Event) {})
 	if platforms[0] != "" || versions[0] != "" {
 		t.Errorf("headers without a version: %q %q", platforms[0], versions[0])
 	}
@@ -56,7 +56,7 @@ func TestUpgradeRequired(t *testing.T) {
 	if IsUnreachable(err) {
 		t.Error("426 counted as unreachable, which would hide it behind the offline cache")
 	}
-	streamErr := fakeClient.StreamEvents(context.Background(), func(Event) {})
+	streamErr := fakeClient.StreamEvents(context.Background(), nil, func(Event) {})
 	if _, ok := AsUpgradeRequired(streamErr); !ok {
 		t.Errorf("event stream: %v", streamErr)
 	}

@@ -4,11 +4,10 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
-	"sort"
-	"strings"
 
 	"github.com/google/uuid"
 
@@ -17,46 +16,18 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 )
 
-// ListItems fetches and decrypts all live items of a vault; with a Cache it downloads only the changes.
+// ListItems requires a complete readable result: every record opened, and an acquisition that reached the end of the
+// vault's changes. A vault never synced to the end, or a cache without that evidence, is not proof that items are
+// absent (ErrIncompleteRead). Recovery views use ReadItems.
 func (s *Session) ListItems(ctx context.Context, vault *Vault) ([]item.Item, error) {
-	if s.Cache == nil {
-		protoItems, err := s.downloadItems(ctx, vault)
-		if err != nil {
-			return nil, err
-		}
-		return decryptItems(vault, protoItems)
-	}
-	protoItems, err := s.syncVault(ctx, vault)
+	result, err := s.ReadItems(ctx, vault)
 	if err != nil {
 		return nil, err
 	}
-	items, err := decryptItems(vault, protoItems)
-	if err == nil || s.IsOffline() {
-		return items, err
+	if len(result.Issues) != 0 || !result.Provenance.HasCompletedSync {
+		return nil, ErrIncompleteRead
 	}
-	// A cached item that no longer decrypts, e.g. after a key rotation raced a sync, is downloaded again.
-	if err := s.Cache.ResetVault(vault.ID); err != nil {
-		return nil, err
-	}
-	if protoItems, err = s.syncVault(ctx, vault); err != nil {
-		return nil, err
-	}
-	return decryptItems(vault, protoItems)
-}
-
-func decryptItems(vault *Vault, protoItems []apitypes.Item) ([]item.Item, error) {
-	items := make([]item.Item, 0, len(protoItems))
-	for _, protoItem := range protoItems {
-		vaultItem, err := decryptItem(vault, &protoItem)
-		if err != nil {
-			return nil, err
-		}
-		items = append(items, *vaultItem)
-	}
-	sort.Slice(items, func(i, j int) bool {
-		return strings.ToLower(items[i].Overview.Title) < strings.ToLower(items[j].Overview.Title)
-	})
-	return items, nil
+	return result.Items, nil
 }
 
 func decryptItem(vault *Vault, protoItem *apitypes.Item) (*item.Item, error) {
@@ -86,6 +57,18 @@ func (s *Session) SaveItem(ctx context.Context, vault *Vault, vaultItem *item.It
 		baseItem = base[0]
 	}
 	return s.putItem(ctx, vault, vaultItem, baseItem, false)
+}
+
+// SaveImportItem requires the server to keep the reviewed destination membership unchanged through the write.
+func (s *Session) SaveImportItem(ctx context.Context, vault *Vault, vaultItem *item.Item, scope string, base ...*item.Item) (*item.Item, error) {
+	if scope == "" {
+		return nil, errors.New("review the import destination again")
+	}
+	var baseItem *item.Item
+	if len(base) > 0 {
+		baseItem = base[0]
+	}
+	return s.putItem(ctx, vault, vaultItem, baseItem, false, scope)
 }
 
 func (s *Session) DeleteItem(ctx context.Context, vault *Vault, vaultItem *item.Item) (current *item.Item, err error) {
@@ -159,7 +142,7 @@ func (s *Session) sealItem(vault *Vault, vaultItem *item.Item, deleted bool) (*a
 	}, nil
 }
 
-func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *item.Item, deleted bool) (*item.Item, error) {
+func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *item.Item, deleted bool, importScope ...string) (*item.Item, error) {
 	if vaultItem.ID == "" {
 		vaultItem.ID = uuid.NewString()
 	}
@@ -169,6 +152,9 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *it
 		var err error
 		if request, err = s.sealItem(vault, vaultItem, deleted); err != nil {
 			return err
+		}
+		if len(importScope) > 0 {
+			request.ImportScope = importScope[0]
 		}
 		_, serverItem, err = s.Client.PutItem(ctx, vault.ID, vaultItem.ID, vaultItem.Revision, request)
 		return err
@@ -181,6 +167,9 @@ func (s *Session) putItem(ctx context.Context, vault *Vault, vaultItem, base *it
 	}, vault)
 	if conflict, ok := err.(*rotationConflict); ok {
 		return conflict.current, ErrConflict
+	}
+	if len(importScope) > 0 && apiclient.IsStatus(err, http.StatusPreconditionFailed) {
+		return nil, ErrImportScopeChanged
 	}
 	if apiclient.IsStatus(err, http.StatusConflict) {
 		if serverItem == nil || serverItem.Deleted {
@@ -283,18 +272,27 @@ func hasSameContent(first, second *item.Item) (bool, error) {
 }
 
 // reloadVaults replaces each vault with the server's current copy, with the key and key generation of its latest rotation.
+// A vault the server lists but whose record did not open is ErrIncompleteRead, never evidence that it is gone.
 func (s *Session) reloadVaults(ctx context.Context, vaults ...*Vault) error {
-	currentVaults, err := s.ListVaults(ctx)
+	result, err := s.ReadVaults(ctx)
 	if err != nil {
 		return err
 	}
+	defer clearVaultKeys(result.Vaults)
 	for _, vault := range vaults {
-		index := slices.IndexFunc(currentVaults, func(current Vault) bool { return current.ID == vault.ID })
-		if index < 0 {
-			return fmt.Errorf("vault %q: %w", vault.Name, ErrNotFound)
+		if slices.ContainsFunc(result.Vaults, func(current Vault) bool { return current.ID == vault.ID }) {
+			continue
 		}
+		if slices.ContainsFunc(result.Issues, func(issue ReadIssue) bool { return issue.VaultID == vault.ID }) {
+			return fmt.Errorf("vault %q: %w", vault.Name, ErrIncompleteRead)
+		}
+		return fmt.Errorf("vault %q: %w", vault.Name, ErrNotFound)
+	}
+	for _, vault := range vaults {
+		index := slices.IndexFunc(result.Vaults, func(current Vault) bool { return current.ID == vault.ID })
 		clear(vault.Key)
-		*vault = currentVaults[index]
+		*vault = result.Vaults[index]
+		result.Vaults[index].Key = nil
 	}
 	return nil
 }

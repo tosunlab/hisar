@@ -26,28 +26,28 @@
 
 ---
 
-Hisar keeps your passwords, passkeys, SSH keys, one-time codes and API secrets in vaults that only your devices can read. The server, hosted at `api.tryhisar.com` or [run by you](docs/docs/self-hosting.md), stores ciphertext and nothing else: every key is derived on your devices from your master password and a **Secret Key** that never leaves them, so a copy of the database, a compromised server or a network attacker learns nothing. The cryptography, the sync protocol and every product decision are written down in [Design](docs/docs/design.md).
+Hisar keeps your passwords, passkeys, SSH keys, one-time codes and API secrets in vaults that only your devices can read. The server, hosted at `api.tryhisar.com` or [run by you](docs/docs/self-hosting.md), stores encrypted vault payloads alongside plaintext account, sharing and operational metadata: every key is derived on your devices from your master password and a **Secret Key**, so neither a copy of the database nor a network attacker can read your items. A compromised live server has different limits, especially through the admin and share-link pages it serves ([threat model and metadata](docs/docs/design.md#2-threat-model)). The cryptography, the sync protocol and every product decision are written down in [Design](docs/docs/design.md).
 
-Hisar is one Go implementation of the crypto shared by a Mac and Linux app, a browser extension, an iPhone app, an Android app and a command-line tool. It is built for people who live in a terminal: the app is an SSH agent, `hisar run` hands secrets to commands without ever showing them, and `hisar mcp` lets coding agents use your secrets without seeing them.
+Hisar is one Go implementation of the crypto shared by a Mac and Linux app, a browser extension, an iPhone app, an Android app and a command-line tool. It is built for people who live in a terminal: the app is an SSH agent, `hisar run` hands secrets to commands and masks them in their output, and `hisar mcp` lets coding agents pass secrets to commands you approve.
 
 ## Features
 
-- **Zero-knowledge server.** The master password never reaches the server (OPAQUE), and the 128-bit Secret Key makes offline guessing against a stolen database impossible. Titles, URLs and vault names are encrypted too ([threat model](docs/docs/design.md#2-threat-model)).
-- **Offline first.** Every client keeps a full encrypted copy and works without a network. Sync detects a server that withholds or rolls back data.
+- **Encrypted vault payloads.** Hisar's clients never send the master password to the server (OPAQUE), and the 128-bit Secret Key, which a stolen database does not contain, adds 128 bits of resistance to offline guessing against it. Titles, URLs and vault names are encrypted too; account, sharing and audit metadata is not ([threat model](docs/docs/design.md#2-threat-model)).
+- **Offline first.** The native apps keep an encrypted copy of the records they have synced and work without a network; offline reads and exports use that copy, which can be stale or incomplete. Sync rejects a lower sequence number from the server, but does not detect a server that withholds writes or replays old records.
 - **Every kind of secret.** Logins with one-time codes and passkeys, SSH keys, secure notes, credit cards, identities, addresses, API credentials, software licenses, servers and databases.
 - **SSH agent with Touch ID.** Private keys never sit in `~/.ssh`: `ssh`, `git` and commit signing ask Hisar, which approves each use with Touch ID, the master password or your phone. For SSH commit signing, the app shows the `git config` commands ready to copy; it never changes your Git config itself.
 - **Browser extension.** Fills and saves logins, passkeys, cards, identities and addresses in Chromium browsers. A login fills only on pages whose host shares its registrable domain (`accounts.google.com` for a login saved for `google.com`), or only on the exact host if you turn that on. The extension holds no keys: it talks to the desktop app over native messaging.
 - **Phones.** The iPhone app with an AutoFill extension and the Android app with autofill into apps, built on the same Go backend. The phone can also approve requests that arrive at your Mac.
 - **Sharing.** Share a vault with anyone by email, send a login to someone without an account through an end-to-end encrypted share link, and group people into organizations and teams with organization vaults.
-- **Secrets for commands.** Keep `hisar://vault/item/field` references in your `.env` instead of values. `hisar run --env-file .env -- <command>` resolves them in one approval and masks every secret the command prints.
+- **Secrets for commands.** Keep `hisar://vault/item/field` references in your `.env` instead of values. `hisar run --env-file .env -- <command>` resolves them in one approval and masks the secret values it recognizes in what the command prints.
 - **Coding agents.** `hisar mcp` is an MCP server that shows an agent only the vaults you allow and asks you before every command it runs with secrets. Claude Code, Codex and omp connect with one click in Settings.
 - **In and out.** Import from 1Password, Bitwarden, LastPass and CSV, and passkeys through Credential Exchange on the phone. Export everything as encrypted or plain JSON and import it back.
 - **Recovery you control.** A forgotten master password cannot be recovered by anyone, Hisar included. The Emergency Kit PDF holds your email, server and Secret Key, so that with your master password you can sign in on any new device.
-- **Self-hosted in one binary.** `hisar-server` and Postgres, with an admin dashboard at `/admin` whose crypto runs in the browser as WebAssembly, so it can never read a vault.
+- **Self-hosted in one binary.** `hisar-server` and Postgres, with an admin dashboard at `/admin` whose crypto runs in the browser as WebAssembly, so its API offers no way to read a vault. The server serves that code, so an admin who signs in there trusts the server with their factors.
 
 ## Install
 
-Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/releases), one release per app. The CLI archives, the Linux packages and the Flatpak come with `SHA256SUMS` files to check them against; the Mac DMG is signed and notarized instead.
+Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/releases), one release per app. The CLI archives, the Linux packages and the Flatpak come with `SHA256SUMS` files to check them against; the Mac DMG is signed and notarized instead. A checksum file detects corruption but does not prove who built a file: releases with `release-evidence.json` also carry GitHub artifact attestations, and [CI and releases](docs/docs/development/releasing.md#verify-release-artifacts) shows how to verify them.
 
 | Platform | How to get it |
 |---|---|
@@ -89,10 +89,10 @@ GITHUB_TOKEN=hisar://Personal/GitHub/API%20token
 hisar run --env-file .env -- npm test             # one approval; printed secrets become <concealed by hisar>
 ```
 
-Give a coding agent your secrets without showing them: in Settings → Developer tools → Coding agents, turn on **Available to agents** for a vault and click **Connect** next to Claude Code, Codex or omp. Any other MCP client gets a stdio server:
+Let a coding agent run commands with your secrets: in Settings → Developer tools → Coding agents, turn on **Available to agents** for a vault and click **Connect** next to Claude Code, Codex or omp. Any other MCP client gets a stdio server:
 
 ```sh
-hisar mcp --no-reveal                             # --no-reveal: no tool can hand a secret's value to the agent
+hisar mcp --no-reveal                             # --no-reveal: no tool returns a secret's value directly
 ```
 
 Everything `hisar` can do, the reference format, masking and the MCP tools: [Command-line tool](docs/docs/apps/cli.md).
@@ -102,8 +102,8 @@ Everything `hisar` can do, the reference format, masking and the MCP tools: [Com
 - **Keys.** Argon2id derives the account unlock key from the master password and the Secret Key; HKDF and AEAD seal a keyset, per-vault keys and each item, with authenticated labels so a record cannot be moved or swapped. [§3](docs/docs/design.md#3-cryptographic-primitives), [§4](docs/docs/design.md#4-key-hierarchy).
 - **Sign-in.** OPAQUE proves the master password without sending it. A new device needs the Secret Key and the master password; a known device unlocks locally, with Touch ID on the Mac and Face ID on the iPhone. [§5](docs/docs/design.md#5-accounts-and-devices).
 - **Sharing.** A vault key is wrapped to each member's public key, verified by fingerprint. Removing someone rotates the vault. [§5.8](docs/docs/design.md#58-sharing-a-vault-by-email), [§5.11](docs/docs/design.md#511-organizations-teams-and-organization-vaults).
-- **Sync.** Clients pull and push encrypted records; conflicts resolve on the client, and rollback or withholding by the server is detected. [§7](docs/docs/design.md#7-sync-protocol).
-- **What the server sees.** Emails, who can reach which vault, counts, sizes, timestamps and IPs. Never item contents, titles, URLs or vault names. [§2.3](docs/docs/design.md#23-accepted-metadata-leakage).
+- **Sync.** Clients pull and push encrypted records; conflicts resolve on the client, and a lower sequence number from the server is rejected as a rollback; withholding and replay are not detected. [§7](docs/docs/design.md#7-sync-protocol).
+- **What the server sees.** Emails and account names, who can reach which vault, organization and team names and rosters, devices, counts, sizes, timestamps and IPs. Never item contents, titles, URLs or vault names, unless a compromised server changes the pages it serves. [§2.3](docs/docs/design.md#23-accepted-metadata-leakage).
 
 ## Repository layout
 

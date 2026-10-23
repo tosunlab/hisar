@@ -28,7 +28,11 @@ func TestPrintImportPreview(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buffer bytes.Buffer
-	printImportPreview(&buffer, "export.csv", result, "Personal", []int{0})
+	existingItems := []item.Item{
+		{Overview: item.Overview{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}}, Details: item.Details{Password: "imported-pass"}},
+		{Overview: item.Overview{Title: "Bank", Username: "alice", URLs: []string{"https://bank.example.com"}}, Details: item.Details{Password: "older-pass"}},
+	}
+	printImportPreview(&buffer, "export.csv", result, "Personal", existingItems, true)
 	output := buffer.String()
 	for _, want := range []string{
 		"File:            export.csv",
@@ -37,7 +41,7 @@ func TestPrintImportPreview(t *testing.T) {
 		"Logins:          2",
 		"Secure notes:    1",
 		"SSH keys:        0",
-		"Already in Personal: 1\n  - GitHub · alice · github.com\n",
+		"Already in Personal: 2\n  - GitHub · alice · github.com\n  - Bank · alice · bank.example.com · different password\n",
 		"Not imported: 1\n  - GitHub: the same entry appears earlier in this file\n",
 	} {
 		if !strings.Contains(output, want) {
@@ -46,6 +50,14 @@ func TestPrintImportPreview(t *testing.T) {
 	}
 	if strings.Contains(output, "imported-pass") || strings.Contains(output, "bank-pass") {
 		t.Errorf("preview shows a password:\n%s", output)
+	}
+}
+
+func TestOnePasswordPreviewWarnsAboutMissingPasskeys(t *testing.T) {
+	var buffer bytes.Buffer
+	printImportPreview(&buffer, "export.1pux", &importer.Result{Format: importer.FormatOnePasswordExport}, "Personal", nil, true)
+	if !strings.Contains(buffer.String(), "1Password desktop .1pux exports do not include passkeys") || !strings.Contains(buffer.String(), "Keep 1Password until you have moved your passkeys separately") {
+		t.Fatalf("missing migration warning: %s", buffer.String())
 	}
 }
 

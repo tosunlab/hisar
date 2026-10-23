@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"testing"
@@ -83,8 +84,8 @@ func TestInvitePage(t *testing.T) {
 		"You're invited to Hisar</h1>",
 		`data-testid="invitee-email">ada@example.com</strong>`,
 		`data-testid="invite-code">` + operatorInvite.Token + `</code>`,
-		`data-testid="signup-command">hisar signup https://hisar.test/invite/` + operatorInvite.Token + `</code>`,
-		`href="hisar://invite/` + operatorInvite.Token + `?server=https%3A%2F%2Fhisar.test"`,
+		`data-testid="signup-command">hisar signup ` + baseURL + `/invite/` + operatorInvite.Token + `</code>`,
+		`href="hisar://invite/` + operatorInvite.Token + `?server=` + url.QueryEscape(baseURL) + `"`,
 		`href="https://tryhisar.com/download" rel="noopener noreferrer" data-testid="download">Download for Mac</a>`,
 		`href="https://tryhisar.com/download#linux" rel="noopener noreferrer" data-testid="download-linux">Download for Linux</a>`,
 		"On Linux, the Hisar package installs it.",

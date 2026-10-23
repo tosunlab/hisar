@@ -22,6 +22,7 @@ protocol VaultBackend: AnyObject {
     func acceptShareInvitation(invitationID: String) throws
     func declineShareInvitation(invitationID: String) throws
     func cancelShareInvitation(invitationID: String) throws
+    func confirmShareRecipient(invitationID: String, reviewToken: String) throws
     func listAllShareAwaitingUnlock() throws -> [ShareAwaitingUnlock]
     func listAllVaultMember(vaultID: String) throws -> [Member]
     func getVaultSharing(vaultID: String) throws -> VaultSharing
@@ -61,6 +62,9 @@ protocol VaultBackend: AnyObject {
     func prepareCredentialExchangeImport(vaultID: String, credentialData: Data) throws -> ImportPreview
     /// previewImport shows the prepared import again for another vault, with that vault's duplicates.
     func previewImport(vaultID: String) throws -> ImportPreview
+    /// mapImportGroup sends one source group of the prepared import, such as a Credential Exchange collection, to vaultID;
+    /// the preview's vaultID is then "" when the groups go to different vaults, and startImport takes it as it is.
+    func mapImportGroup(groupID: String, vaultID: String) throws -> ImportPreview
     func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress
     /// continueImport saves the next items; an error pauses the import, and calling it again continues.
     func continueImport() throws -> ImportProgress
@@ -72,6 +76,9 @@ protocol VaultBackend: AnyObject {
     func listAllFavoriteItem() throws -> [FavoriteItem]
     func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) throws
     func convertToSecureNote(vaultID: String, itemID: String) throws -> ItemDetail
+    func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws
+    func deleteUnreadableVault(vaultID: String, revision: String) throws
+    func repairVaultName(vaultID: String, revision: String, name: String) throws -> VaultSummary
     func describeCard(number: String, expiry: String) throws -> CardDescription
     func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode
     func getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> OneTimeCode
@@ -83,7 +90,8 @@ protocol VaultBackend: AnyObject {
     func listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: [Data]) throws -> [StoredPasskey]
     func preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: [Data]) throws -> PasskeyRegistrationOptions
     func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult
-    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data, userVerification: String) throws -> PasskeyAssertionResult
+    func cancelPasskeyCeremonies()
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail
     func listAllPendingApproval() throws -> [PhoneApproval]
     func approveApproval(requestID: String, isRemembered: Bool) throws
@@ -97,7 +105,13 @@ protocol VaultBackend: AnyObject {
     func changeMasterPassword(currentPassword: String, newPassword: String) throws -> CredentialChangeResult
     func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult
     func previewAccountDeletion() throws -> AccountDeletionPreview
-    func deleteAccount(password: String, email: String) throws -> VaultStatus
+    func deleteAccountWithPlan(password: String, email: String, planVersion: String) throws -> VaultStatus
+    func listPendingRecovery() throws -> [PendingRecovery]
+    func resumePendingRecovery(operationID: String, password: String) throws -> SignUpResult
+    func resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String) throws -> SignUpResult
+    func discardPreparedRecovery(operationID: String, password: String) throws
+    func exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: URL) throws -> PendingRecoveryExport
+    func acknowledgePendingRecovery(operationID: String, password: String) throws
     func dismissSignedOutReason() -> VaultStatus
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String
     func isMacApprovalAllowed() -> Bool
@@ -114,6 +128,8 @@ protocol VaultBackend: AnyObject {
 
 struct BackendError: LocalizedError, Equatable {
     var message: String
+    var code: String? = nil
+    static let passkeyVerificationFailed = "passkey-verification-failed"
     var errorDescription: String? { message }
 }
 

@@ -13,16 +13,24 @@ import (
 )
 
 func (s *Service) loadVaults(ctx context.Context) error {
-	vaults, err := s.unlockedSession.ListVaults(ctx)
+	result, err := s.unlockedSession.ReadVaults(ctx)
 	if err != nil {
 		return convertError(err)
 	}
+	vaults := result.Vaults
+	s.vaultReadIssues = result.Issues
 	for _, vault := range s.vaultsByID {
 		clear(vault.Key)
 	}
 	s.vaultsByID = map[string]*session.Vault{}
 	for index := range vaults {
 		s.vaultsByID[vaults[index].ID] = &vaults[index]
+	}
+	for vaultID := range s.itemsByVaultID {
+		if _, isListed := s.vaultsByID[vaultID]; !isListed {
+			delete(s.itemsByVaultID, vaultID)
+			delete(s.itemReadIssuesByVaultID, vaultID)
+		}
 	}
 	return nil
 }
@@ -40,25 +48,42 @@ func (s *Service) ListVaults() ([]VaultSummary, error) {
 	}
 	summaries := make([]VaultSummary, 0, len(s.vaultsByID))
 	for _, vault := range s.vaultsByID {
-		items, err := s.unlockedSession.ListItems(ctx, vault)
+		result, err := s.readVaultItems(ctx, vault)
 		if err != nil {
-			return nil, convertError(err)
+			return nil, err
 		}
-		s.itemsByVaultID[vault.ID] = items
-		summaries = append(summaries, convertToVaultSummary(vault, len(items)))
+		summary := convertToVaultSummary(vault, len(result.Items))
+		summary.ReadIssues = append(summary.ReadIssues, result.Issues...)
+		for _, issue := range s.vaultReadIssues {
+			if issue.VaultID == vault.ID {
+				summary.ReadIssues = append(summary.ReadIssues, issue)
+			}
+		}
+		summaries = append(summaries, summary)
+	}
+	for _, issue := range s.vaultReadIssues {
+		if issue.Kind == "vault-key" {
+			summaries = append(summaries, VaultSummary{ID: issue.VaultID, Name: "Unreadable vault " + issue.VaultID, ReadIssues: []session.ReadIssue{issue}})
+		}
 	}
 	sortVaultSummaries(summaries)
 	return summaries, nil
 }
 
 func convertToVaultSummary(vault *session.Vault, itemCount int) VaultSummary {
+	name := vault.Name
+	if vault.NameUnreadable {
+		name = "Unreadable vault " + vault.ID
+	}
 	return VaultSummary{
-		ID:             vault.ID,
-		Name:           vault.Name,
-		Type:           vault.Type,
-		Role:           vault.Role,
-		ItemCount:      itemCount,
-		OrganizationID: vault.OrganizationID,
+		ID:              vault.ID,
+		Name:            name,
+		Type:            vault.Type,
+		Role:            vault.Role,
+		ItemCount:       itemCount,
+		OrganizationID:  vault.OrganizationID,
+		ReadIssues:      []session.ReadIssue{},
+		IsPersonalExtra: vault.IsPersonalExtra,
 	}
 }
 
@@ -110,22 +135,32 @@ func (s *Service) findVault(ctx context.Context, vaultID string) (*session.Vault
 	if vault, found := s.vaultsByID[vaultID]; found {
 		return vault, nil
 	}
+	for _, issue := range s.vaultReadIssues {
+		if issue.VaultID == vaultID {
+			return nil, session.ErrIncompleteRead
+		}
+	}
 	return nil, fmt.Errorf("vault %w", ErrNotFound)
 }
 
+// findPersonalVaultID finds the Personal vault where new logins and passkeys go. A vault that did not open may be it, so
+// it is missing only from an inventory in which every vault opened.
 func (s *Service) findPersonalVaultID(ctx context.Context) (string, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return "", err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return "", err
 	}
 	for vaultID, vault := range s.vaultsByID {
-		if vault.Type == apitypes.VaultPersonal && vault.Role != apitypes.VaultReader {
+		if vault.Type == apitypes.VaultPersonal && !vault.IsPersonalExtra && vault.Role != apitypes.VaultReader {
 			return vaultID, nil
 		}
+	}
+	if len(s.vaultReadIssues) != 0 {
+		return "", session.ErrIncompleteRead
 	}
 	return "", fmt.Errorf("personal vault %w", ErrNotFound)
 }

@@ -82,6 +82,8 @@
     "scripting",
     "activeTab",
     "tabs",
+    "webNavigation",
+    "alarms",
     "contextMenus",
     "offscreen",
     "clipboardWrite"

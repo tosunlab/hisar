@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/appversion"
 	"github.com/tryhisar/hisar/core/project"
@@ -43,7 +44,7 @@ type Notifier struct {
 }
 
 func NewNotifier(currentVersion string) *Notifier {
-	return &Notifier{currentVersion: currentVersion, client: &http.Client{Timeout: feedRequestTimeout}}
+	return &Notifier{currentVersion: currentVersion, client: &http.Client{Timeout: feedRequestTimeout, CheckRedirect: apiclient.CheckRedirect}}
 }
 
 // IsAvailable is false in a development build, which has no release version to compare.

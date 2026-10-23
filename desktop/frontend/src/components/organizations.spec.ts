@@ -506,6 +506,7 @@ describe("Account deletion", () => {
   it("says what happens to each organization", async () => {
     api.previewAccountDeletion.mockResolvedValue({
       email: "alice@example.com",
+      planVersion: "plan",
       ownedVaults: [],
       memberVaults: [],
       shareLinkCount: 0,
@@ -521,7 +522,7 @@ describe("Account deletion", () => {
     const dialog = mount(DeleteAccountDialog, { attachTo: document.body });
     await flushPromises();
     expect(dialog.findAll('[data-testid="delete-account-organization"]').map((line) => line.text())).toEqual([
-      "Solo is deleted with your account.",
+      "Solo is deleted with its teams, vaults, and items.",
       "Ada becomes an admin of Acme.",
       "You leave Globex.",
     ]);

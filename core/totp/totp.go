@@ -51,7 +51,10 @@ func Parse(text string) (Config, error) {
 	if err != nil || !strings.EqualFold(parsedURL.Host, "totp") {
 		return Config{}, ErrInvalid
 	}
-	query := parsedURL.Query()
+	query, err := readQuery(parsedURL.RawQuery)
+	if err != nil {
+		return Config{}, err
+	}
 	secret, err := decodeSecret(query.Get("secret"))
 	if err != nil {
 		return Config{}, err
@@ -83,6 +86,49 @@ func Parse(text string) (Config, error) {
 		config.Account = label
 	}
 	return config, nil
+}
+
+// parameterNames are the query parameters Parse reads.
+var parameterNames = map[string]bool{"secret": true, "algorithm": true, "digits": true, "period": true, "issuer": true}
+
+// readQuery reads an otpauth:// query like url.ParseQuery, except that one of parameterNames that is repeated or does
+// not decode makes the link invalid: url.ParseQuery drops such a pair, and the default, such as SHA1, would stand in.
+func readQuery(rawQuery string) (url.Values, error) {
+	query := url.Values{}
+	for _, pair := range strings.Split(rawQuery, "&") {
+		rawKey, rawValue, _ := strings.Cut(pair, "=")
+		key, keyErr := url.QueryUnescape(rawKey)
+		value, valueErr := url.QueryUnescape(rawValue)
+		if keyErr != nil || valueErr != nil || strings.Contains(pair, ";") {
+			for _, part := range strings.Split(pair, ";") {
+				partKey, _, _ := strings.Cut(part, "=")
+				decodedKey, err := url.QueryUnescape(partKey)
+				if err != nil {
+					for index := 0; index < len(partKey); index++ {
+						if partKey[index] != '%' {
+							continue
+						}
+						if index+2 >= len(partKey) ||
+							!strings.ContainsRune("0123456789abcdefABCDEF", rune(partKey[index+1])) ||
+							!strings.ContainsRune("0123456789abcdefABCDEF", rune(partKey[index+2])) {
+							decodedKey, _ = url.QueryUnescape(partKey[:index])
+							break
+						}
+						index += 2
+					}
+				}
+				if parameterNames[decodedKey] {
+					return nil, ErrInvalid
+				}
+			}
+			continue
+		}
+		if parameterNames[key] && query.Has(key) {
+			return nil, ErrInvalid
+		}
+		query.Add(key, value)
+	}
+	return query, nil
 }
 
 func decodeSecret(text string) ([]byte, error) {

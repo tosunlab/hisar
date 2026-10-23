@@ -4,15 +4,11 @@ import android.app.Application
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
 import androidx.annotation.RequiresApi
-import androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG
-import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
-import androidx.biometric.BiometricPrompt
 import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.GetCredentialResponse
@@ -37,27 +33,26 @@ import androidx.credentials.provider.CallingAppInfo
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.AndroidViewModel
-import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tryhisar.hisar.HisarApplication
-import com.tryhisar.hisar.ScreenshotSetting
 import com.tryhisar.hisar.autofill.AutoFillModel
 import com.tryhisar.hisar.autofill.AutoFillModel.CancelReason
 import com.tryhisar.hisar.autofill.AutoFillRoot
 import com.tryhisar.hisar.autofill.FillTarget
 import com.tryhisar.hisar.autofill.HttpAssetLinksVerifier
 import com.tryhisar.hisar.autofill.LoginMatcher
+import com.tryhisar.hisar.followScreenshotSetting
 import com.tryhisar.hisar.model.LoginCredential
 import com.tryhisar.hisar.model.PasskeyAssertionCredential
 import com.tryhisar.hisar.model.PasskeyAssertionRequest
 import com.tryhisar.hisar.model.PasskeyRegistrationCredential
 import com.tryhisar.hisar.model.PasskeyRegistrationRequest
 import kotlin.coroutines.cancellation.CancellationException
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.filterNotNull
@@ -81,10 +76,6 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
     val result = MutableStateFlow<Intent?>(null)
     val isContentShown = MutableStateFlow(false)
 
-    /** The device owner check the activity shows while resumed; it takes the check and completes its answer. */
-    val deviceOwnerCheck = MutableStateFlow<DeviceOwnerCheck?>(null)
-
-    class DeviceOwnerCheck(val reason: String, val answer: CompletableDeferred<Boolean>)
 
     // The client data JSON Hisar wrote for a native app; browsers write their own, so their answers carry none.
     private var clientDataJSON: ByteString? = null
@@ -93,18 +84,22 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         scope = viewModelScope,
         ioDispatcher = Dispatchers.IO,
         createBackend = { hisar.backend },
+        events = hisar.events,
         verifier = HttpAssetLinksVerifier,
         completeRequest = ::completePassword,
         completeOneTimeCodeRequest = { cancel(CancelReason.USER_CANCELED) },
         copyOneTimeCode = ::copyOneTimeCode,
         cancelRequest = ::cancel,
         passkeyCompletion = AutoFillModel.PasskeyCompletion(::completeAssertion, ::completeRegistration, ::rejectExcludedRegistration, ::completeUnlock),
-        verifyDeviceOwner = { reason -> CompletableDeferred<Boolean>().also { deviceOwnerCheck.value = DeviceOwnerCheck(reason, it) }.await() },
     )
 
     private val access by lazy { CredentialAccess(hisar.backend, hisar.relyingPartyVerifier, HttpAssetLinksVerifier) }
 
-    init {
+    private var isStarted = false
+
+    fun startWhenResumed() {
+        if (isStarted) return
+        isStarted = true
         viewModelScope.launch {
             try {
                 start()
@@ -135,7 +130,7 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         // The request only names the site on the lock screen; nothing is signed before the sheet asks again.
         val passkeyRequest = option?.let { (begin, webAuthn) ->
             val hash = (begin as? BeginGetPublicKeyCredentialOption)?.clientDataHash?.let { ByteString(it) } ?: ByteString()
-            withContext(Dispatchers.IO) { access.resolveRelyingParty(caller, webAuthn.relyingPartyID) }?.let { PasskeyAssertionRequest(it, hash, webAuthn.allAllowedCredentialID) }
+            withContext(Dispatchers.IO) { access.resolveRelyingParty(caller, webAuthn.relyingPartyID) }?.let { PasskeyAssertionRequest(it, hash, webAuthn.allAllowedCredentialID, webAuthn.userVerification) }
         }
         isContentShown.value = true
         model.prepareUnlock(if (passkeyRequest != null) FillTarget.Websites(emptyList()) else access.buildFillTarget(caller), passkeyRequest)
@@ -150,11 +145,11 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
             val relyingPartyID = access.resolveRelyingParty(caller, webAuthn.relyingPartyID) ?: return@withContext null
             val clientData = access.buildClientData(caller, CLIENT_DATA_GET, webAuthn.challenge, option.clientDataHash?.let { ByteString(it) }) ?: return@withContext null
             clientDataJSON = clientData.json
-            PasskeyAssertionRequest(relyingPartyID, clientData.hash, webAuthn.allAllowedCredentialID, webAuthn.isUserVerificationDiscouraged)
+            PasskeyAssertionRequest(relyingPartyID, clientData.hash, webAuthn.allAllowedCredentialID, webAuthn.userVerification)
         } ?: return refuseCaller("This app or site may not use these passkeys.")
         model.prepare()
-        model.providePasskeyWithoutUserInteraction(assertionRequest, pick.credentialID, pick.isUserVerified)?.let { return completeAssertion(it) }
-        model.prepareInterfaceToProvidePasskey(assertionRequest, pick.credentialID, pick.isUserVerified)
+        model.providePasskeyWithoutUserInteraction(assertionRequest, pick.credentialID)?.let { return completeAssertion(it) }
+        model.prepareInterfaceToProvidePasskey(assertionRequest, pick.credentialID)
         // An unlocked Hisar has signed, or failed the request, by now; a locked one waits on its lock screen.
         if (result.value == null) isContentShown.value = true
     }
@@ -186,7 +181,7 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
             clientDataJSON = clientData.json
             PasskeyRegistrationRequest(
                 relyingPartyID, webAuthn.userName, webAuthn.userHandle, clientData.hash, webAuthn.allAlgorithm, webAuthn.allExcludedCredentialID,
-                webAuthn.isUserVerificationDiscouraged,
+                webAuthn.userVerification,
             )
         } ?: return refuseCaller("This app or site may not save a passkey here.")
         isContentShown.value = true
@@ -214,15 +209,18 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         }
     }
 
-    private fun completeUnlock(isUserVerified: Boolean) {
+    private fun completeUnlock() {
+        val lockCount = model.lockCount.value
         viewModelScope.launch {
             val request = PendingIntentHandler.retrieveBeginGetCredentialRequest(intent) ?: return@launch refuse("Hisar did not make this request.")
-            val response = withContext(Dispatchers.IO) {
-                val caller = request.callingAppInfo?.let { CredentialCallers.read(getApplication(), it) }
-                val allOption = CredentialEntries.readOptions(request.beginGetCredentialOptions)
-                val offer = if (caller == null) CredentialOffer.Nothing else access.offer(caller, allOption.map { it.second })
-                CredentialEntries.buildResponse(getApplication(), offer, allOption, isUserVerified)
-            }
+            val response = model.withinUnlock(lockCount) {
+                withContext(Dispatchers.IO) {
+                    val caller = request.callingAppInfo?.let { CredentialCallers.read(getApplication(), it) }
+                    val allOption = CredentialEntries.readOptions(request.beginGetCredentialOptions)
+                    val offer = if (caller == null) CredentialOffer.Nothing else access.offer(caller, allOption.map { it.second })
+                    CredentialEntries.buildResponse(getApplication(), offer, allOption)
+                }
+            } ?: return@launch
             finish { PendingIntentHandler.setBeginGetCredentialResponse(it, response) }
         }
     }
@@ -300,18 +298,13 @@ class CredentialActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (!ScreenshotSetting(this).isAllowed) window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        followScreenshotSetting()
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) { viewModel.startWhenResumed() }
+        }
         lifecycleScope.launch {
             viewModel.isContentShown.first { it }
             setContent { AutoFillRoot(viewModel.model) }
-        }
-        lifecycleScope.launch {
-            repeatOnLifecycle(Lifecycle.State.RESUMED) {
-                viewModel.deviceOwnerCheck.filterNotNull().collect { check ->
-                    viewModel.deviceOwnerCheck.value = null
-                    showDeviceOwnerPrompt(check)
-                }
-            }
         }
         lifecycleScope.launch {
             val result = viewModel.result.filterNotNull().first()
@@ -320,23 +313,9 @@ class CredentialActivity : FragmentActivity() {
         }
     }
 
-    // Biometrics or the screen lock, as Android's own passkey sign-in asks; an error, such as declining or a device
-    // without a screen lock, answers false.
-    private fun showDeviceOwnerPrompt(check: CredentialViewModel.DeviceOwnerCheck) {
-        val callback = object : BiometricPrompt.AuthenticationCallback() {
-            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                check.answer.complete(true)
-            }
-
-            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                check.answer.complete(false)
-            }
-        }
-        val promptInfo = BiometricPrompt.PromptInfo.Builder()
-            .setTitle(check.reason)
-            .setAllowedAuthenticators(BIOMETRIC_STRONG or DEVICE_CREDENTIAL)
-            .setConfirmationRequired(false)
-            .build()
-        BiometricPrompt(this, mainExecutor, callback).authenticate(promptInfo)
+    override fun onDestroy() {
+        viewModel.model.endPasskeyCeremony()
+        super.onDestroy()
     }
+
 }

@@ -520,6 +520,8 @@ struct VaultRow: View {
     var itemCount: Int
 
     private var subtitle: String {
+        if !vault.readIssues.isEmpty { return "\(vault.readIssues.count) unreadable records. Retry or repair." }
+        if vault.isPersonalExtra { return "Legacy Personal vault. Recover items before deleting." }
         switch vault.type {
         case VaultSummary.typePersonal: return "Only you"
         case VaultSummary.typeOrganization: return "Organization · \(describeVaultRole(vault.role))"

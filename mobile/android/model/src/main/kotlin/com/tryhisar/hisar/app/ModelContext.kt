@@ -38,14 +38,29 @@ data class UnlockedData(
     /** The items of one vault, or of every vault, sorted by title then username. */
     fun listAllItemReference(vaultID: String? = null): List<VaultItemReference> = VaultLogic.sortAllItem(
         allVault.filter { vaultID == null || it.id == vaultID }.flatMap { vault ->
-            allItemByVaultID[vault.id].orEmpty().map { VaultItemReference(vault.id, vault.name, it) }
+            allItemByVaultID[vault.id].orEmpty().filter { it.readIssue == null }.map { VaultItemReference(vault.id, vault.name, it) }
         },
     )
 
     /** The starred items of every vault, sorted by title; favorites of deleted items are already gone from the lists. */
     fun listAllFavoriteReference(): List<VaultItemReference> = listAllItemReference().filter { it.item.isFavorite }
 
-    fun countItem(vaultID: String): Int = allItemByVaultID[vaultID]?.size ?: findVault(vaultID)?.itemCount ?: 0
+    fun countItem(vaultID: String): Int = allItemByVaultID[vaultID]?.count { it.readIssue == null } ?: findVault(vaultID)?.itemCount ?: 0
+
+    /**
+     * One new listing of a vault: its items, and on its summary the healthy count and the records that did not open, so
+     * a record that stopped opening is disclosed even though the item list hides it.
+     */
+    fun replacingItems(vaultID: String, allItem: List<ItemDetail>): UnlockedData = copy(
+        allVault = allVault.map { vault ->
+            if (vault.id != vaultID) return@map vault
+            vault.copy(
+                itemCount = allItem.count { it.readIssue == null },
+                readIssues = vault.readIssues.filter { it.itemId.isEmpty() } + allItem.mapNotNull { it.readIssue },
+            )
+        },
+        allItemByVaultID = allItemByVaultID + (vaultID to allItem),
+    )
 }
 
 /**
@@ -82,6 +97,8 @@ interface ModelContext {
     suspend fun refreshStatus()
 
     suspend fun refreshAll()
+
+    suspend fun refreshPendingRecovery()
 
     /** Shows a floating confirmation for 2.5 seconds. */
     fun showNotice(message: String)

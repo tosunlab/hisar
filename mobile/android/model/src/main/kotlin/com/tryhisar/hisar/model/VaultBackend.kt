@@ -31,6 +31,7 @@ interface VaultBackend {
     fun acceptShareInvitation(invitationID: String)
     fun declineShareInvitation(invitationID: String)
     fun cancelShareInvitation(invitationID: String)
+    fun confirmShareRecipient(invitationID: String, reviewToken: String)
     fun listAllShareAwaitingUnlock(): List<ShareAwaitingUnlock>
     fun listAllVaultMember(vaultID: String): List<Member>
     fun getVaultSharing(vaultID: String): VaultSharing
@@ -74,6 +75,12 @@ interface VaultBackend {
 
     /** Shows the prepared import again for another vault, with that vault's duplicates. */
     fun previewImport(vaultID: String): ImportPreview
+
+    /**
+     * Sends one source group of the prepared import, such as a Credential Exchange collection, to vaultID; the preview's
+     * vaultID is then "" when the groups go to different vaults, and startImport takes it as it is.
+     */
+    fun mapImportGroup(groupID: String, vaultID: String): ImportPreview
     fun startImport(vaultID: String, isSkippingDuplicate: Boolean): ImportProgress
 
     /** Saves the next items; an error pauses the import, and calling it again continues. */
@@ -83,6 +90,9 @@ interface VaultBackend {
     fun getItem(vaultID: String, itemID: String): ItemDetail
     fun saveItem(vaultID: String, item: ItemDetail): ItemDetail
     fun deleteItem(vaultID: String, itemID: String)
+    fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String)
+    fun deleteUnreadableVault(vaultID: String, revision: String)
+    fun repairVaultName(vaultID: String, revision: String, name: String): VaultSummary
     fun listAllFavoriteItem(): List<FavoriteItem>
     fun setItemFavorite(vaultID: String, itemID: String, isFavorite: Boolean)
     fun convertToSecureNote(vaultID: String, itemID: String): ItemDetail
@@ -106,10 +116,14 @@ interface VaultBackend {
     fun listAllPasskeyForRelyingParty(relyingPartyID: String, allAllowedCredentialID: List<ByteString>): List<StoredPasskey>
     fun preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: List<ByteString>): PasskeyRegistrationOptions
     fun createPasskey(request: PasskeyRegistrationRequest, vaultID: String, itemID: String): PasskeyRegistrationResult
-    fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString): PasskeyAssertionResult
+    fun assertPasskey(relyingPartyID: String, credentialID: ByteString, clientDataHash: ByteString, userVerification: String): PasskeyAssertionResult
+    fun cancelPasskeyCeremonies()
 
     /** The relying party ID that a privileged browser's page at [origin] may use; throws when the origin may not use it. */
     fun resolvePasskeyRelyingPartyID(origin: String, relyingPartyID: String): String
+
+    /** The relying party ID a native app names, lower-cased; throws when it is not a domain name or is a public suffix. */
+    fun validatePasskeyRelyingPartyID(relyingPartyID: String): String
 
     /** The origin of a native app's client data: `android:apk-key-hash:` and the SHA-256 of its signing certificate. */
     fun buildAndroidAppOrigin(certificateSHA256: ByteString): String
@@ -130,7 +144,13 @@ interface VaultBackend {
     fun changeMasterPassword(currentPassword: String, newPassword: String): CredentialChangeResult
     fun replaceSecretKey(password: String, directory: File): CredentialChangeResult
     fun previewAccountDeletion(): AccountDeletionPreview
-    fun deleteAccount(password: String, email: String): VaultStatus
+    fun deleteAccountWithPlan(password: String, email: String, planVersion: String): VaultStatus
+    fun listPendingRecovery(): List<PendingRecovery>
+    fun resumePendingRecovery(operationID: String, password: String): SignUpResult
+    fun resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String): SignUpResult
+    fun discardPreparedRecovery(operationID: String, password: String)
+    fun exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: File): PendingRecoveryExport
+    fun acknowledgePendingRecovery(operationID: String, password: String)
     fun dismissSignedOutReason(): VaultStatus
     fun copySecretReference(vaultID: String, itemID: String, fieldName: String): String
     fun isMacApprovalAllowed(): Boolean
@@ -154,10 +174,13 @@ interface VaultBackend {
 }
 
 /** A failure of a backend call, with a sentence a user can read. */
-class BackendError(override val message: String) : Exception(message) {
-    override fun equals(other: Any?): Boolean = other is BackendError && other.message == message
+class BackendError(override val message: String, val code: String? = null) : Exception(message) {
+    override fun equals(other: Any?): Boolean = other is BackendError && other.message == message && other.code == code
 
-    override fun hashCode(): Int = message.hashCode()
+    override fun hashCode(): Int = 31 * message.hashCode() + (code?.hashCode() ?: 0)
+    companion object {
+        const val PASSKEY_VERIFICATION_FAILED = "passkey-verification-failed"
+    }
 }
 
 /** The sentence to show for a failure. */

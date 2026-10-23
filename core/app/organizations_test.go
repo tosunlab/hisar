@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -198,11 +197,7 @@ func TestVaultKeyRequestReportsPinsThatCouldNotBeSaved(t *testing.T) {
 	bob, _ := test.apiServer.addMember(t, "Bob", "b@example.com")
 	vaultID := createOrganizationTestVault(t, test.service)
 	test.apiServer.requestVaultKey(vaultID, apitypes.VaultEditor, 1, bob)
-	// State.Save writes a temporary file next to state.json first; a directory in its place makes the save fail.
-	temporaryStatePath := test.service.config.StatePath + ".tmp"
-	if err := os.Mkdir(temporaryStatePath, 0o700); err != nil {
-		t.Fatal(err)
-	}
+	unblockStateSaves := blockStateSaves(t, test.service.config.StatePath)
 
 	keys, err := test.service.ListWaitingVaultKeys()
 	if err != nil || !strings.Contains(keys.DeliveryError, "could not save the pinned signing keys") || keys.RotationError != "" {
@@ -216,9 +211,7 @@ func TestVaultKeyRequestReportsPinsThatCouldNotBeSaved(t *testing.T) {
 		t.Fatalf("a pass that pinned nothing forgot the unsaved pin: %+v %v", keys, err)
 	}
 
-	if err := os.Remove(temporaryStatePath); err != nil {
-		t.Fatal(err)
-	}
+	unblockStateSaves()
 	if keys, err := test.service.ListWaitingVaultKeys(); err != nil || keys.DeliveryError != "" || keys.RotationError != "" {
 		t.Fatalf("after a save that works: %+v %v", keys, err)
 	}
@@ -445,8 +438,16 @@ func TestItemWritesAfterAnotherOwnerRotated(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		test.apiServer.mutex.Lock()
+		var generation int64
+		for _, current := range test.apiServer.vaults {
+			if current.ID == vaultID {
+				generation = current.KeyGeneration
+			}
+		}
+		test.apiServer.mutex.Unlock()
 		bobSession := &session.Session{Client: unlockedSession.Client, AccountID: bob.AccountID, Keyset: bobKeyset}
-		items, err := bobSession.ListItems(ctx, &session.Vault{ID: vaultID, Type: apitypes.VaultOrganization, Role: apitypes.VaultEditor, Key: bobKey})
+		items, err := bobSession.ListItems(ctx, &session.Vault{ID: vaultID, Type: apitypes.VaultOrganization, Role: apitypes.VaultEditor, Key: bobKey, KeyGeneration: generation})
 		if err != nil {
 			t.Fatalf("Bob opens the vault: %v", err)
 		}

@@ -33,6 +33,8 @@ var (
 	errTouchIDFailed    = errors.New("Touch ID did not confirm it's you. Try again, or deny.")
 	errPasswordRequired = errors.New("Enter your master password to unlock Hisar.")
 	errPasswordCheck    = errors.New("Hisar cannot check the master password here.")
+	// Locking closes the session a passkey ceremony belongs to, so its approval cannot unlock Hisar instead.
+	errPasskeyCeremonyEnded = errors.New("Hisar locked, so this passkey request has ended. Try again in your browser.")
 )
 
 type Biometric interface {
@@ -41,10 +43,13 @@ type Biometric interface {
 }
 
 // Unlocker lets the approval window unlock a locked Hisar, or check the master password when it is unlocked.
+// ConfirmWithTouchID runs the Touch ID check of an unlocked Hisar after any Touch ID unlock or setup of Hisar's own, so
+// the check cannot take the key read that unlock prepared for its prompt.
 type Unlocker interface {
 	IsLocked() bool
 	IsTouchIDUnlockReady() bool
 	UnlockWithTouchID(authenticate func(reason string) error) error
+	ConfirmWithTouchID(authenticate func() error) error
 	UnlockWithPassword(password string) error
 	VerifyPassword(password string) error
 }
