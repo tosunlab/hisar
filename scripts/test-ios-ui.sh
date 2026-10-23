@@ -51,7 +51,8 @@ wait_for_post_boot_work() {
   local predicate='process == "dasd" AND eventMessage BEGINSWITH "COMPLETED <_DASActivity: \"com.apple.springboard.posterboardupdate.prewarm:"'
   local deadline=$((SECONDS + 600)) launchd_pid boot_time
   launchd_pid=$(pgrep -f "launchd_sim .*/Devices/$SIMULATOR_ID/data/")
-  boot_time=$(LC_ALL=C date -j -f "%a %b %d %T %Y" "$(LC_ALL=C ps -o lstart= -p "$launchd_pid" | xargs)" "+%Y-%m-%d %H:%M:%S")
+  # In UTC with an explicit offset: log show reads a time without one in its own zone, which need not be the caller's TZ.
+  boot_time=$(LC_ALL=C date -j -u -f "%a %b %d %T %Y" "$(TZ=UTC LC_ALL=C ps -o lstart= -p "$launchd_pid" | xargs)" "+%Y-%m-%d %H:%M:%S+0000")
   echo "Waiting for the simulator's post-boot background work (SpringBoard's poster prewarm), booted at $boot_time"
   until xcrun simctl spawn "$SIMULATOR_ID" log show --start "$boot_time" --style compact --predicate "$predicate" 2>/dev/null | grep -q COMPLETED; do
     if [ "$SECONDS" -ge "$deadline" ]; then
