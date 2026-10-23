@@ -176,17 +176,17 @@ jobs:
           retention-days: 1
 
   ios:
-    name: iPhone UI tests against the server (part ${{ matrix.part }} of 2)
+    name: iPhone UI tests against the server (part ${{ matrix.part }} of 3)
     needs: [changes, ios-build]
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
     runs-on: macos-26
     timeout-minutes: 60
-    # Each part runs half of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator, with the app and
-    # tests ios-build built. The script boots the simulator once the server is up, right before the tests.
+    # Each part runs about a third of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator, with the
+    # app and tests ios-build built. The script boots the simulator once the server is up, right before the tests.
     strategy:
       fail-fast: false
       matrix:
-        part: [1, 2]
+        part: [1, 2, 3]
     env:
       DATABASE_NAME: hisar_ios_${{ github.run_id }}_${{ github.run_attempt }}
       IOS_DERIVED_DATA: ${{ github.workspace }}/DerivedData

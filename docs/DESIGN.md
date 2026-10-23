@@ -250,6 +250,26 @@ The public invite page, dashboard list, resend check, and pending count apply th
 Losing authority hides the invitation rather than cancelling it. It revives if authority returns before expiry.
 An account that already redeemed the invite remains an admin after its issuer loses authority.
 
+A member sign-up token generated for a share or organization invitation records that exact source invitation.
+Migration `00013_invitation_sources` adds nullable foreign keys without guessing links for older tokens.
+
+The migration first invalidates every existing unused sign-up invitation, including direct member, admin, and setup invitations.
+Old unused links must be replaced with fresh invitations. Existing accounts, their sessions, and used invitation records are unchanged.
+Membership source invitations remain, so their owners can issue fresh invitations without recreating the vault or organization.
+The upgrade requires every old server process to stop before migration and only updated binaries to run afterwards.
+A schema rollback does not restore the invalidated old links.
+
+Deleting a source invitation invalidates all of its unused linked tokens in the same transaction.
+This includes cancellation, decline, pruning, and cascades from vault, organization, or issuer deletion.
+Minting, final signup redemption, and dashboard resend lock the source before the token, so cancellation cannot leave a newly minted token live.
+Pruning locks all eligible organization invitation rows, then all eligible share invitation rows, each in ID order, before any deletion can lock sign-up tokens.
+It deletes only those captured source IDs, matching account deletion's lock order.
+Dashboard resend preserves the exact source link.
+A delayed email can still arrive after cancellation, but its token no longer opens a valid invite page or permits signup.
+Used tokens do not cause account deletion. Unrelated direct sign-up tokens created after the migration retain their existing expiry.
+The ongoing token lifetime does not change. This covers the sign-up tokens of S-23.
+An accepted share no longer waits for completion without a deadline (S-16): its owner-signed intent expires within the 7-day invitation lifetime, and the server and the owner's app refuse to complete it after that.
+
 **Invite page.** `GET /invite/{code}` (the link in the email) is a page rendered by `hisar-server` from an embedded template, in the share link page's style (§5.9), light and dark with the system, and usable at phone width.
 
 - **Valid invite:** who invited the person (the inviter's name and email, which the email already told them; operator invites name nobody), the address the invite is for, and when it expires. Then **Download for Mac** (`https://tryhisar.com/download`) and **Download for Linux** (`https://tryhisar.com/download#linux`), **Open in Hisar** (`hisar://invite/<code>?server=<public origin>`), the invite code with **Copy**, and for the terminal how to get `hisar` (on a Mac it comes with the app: Settings → Developer tools; on Linux the Hisar package installs it; on a server, the download page) and `hisar signup <invite link>` with **Copy**. The copy buttons appear only with JavaScript; without it the code is still selectable text.

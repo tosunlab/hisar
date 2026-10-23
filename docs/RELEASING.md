@@ -14,14 +14,16 @@ binaries, the server Docker image for amd64 and arm64 (built into a throwaway re
 the share link page in Chromium against the server, the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
-release APKs, lint, the JVM tests and the instrumented tests on x86_64 API 36 emulators against a local server, split over two
-jobs; only when the pull request changes `mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes,
+release APKs, lint and the JVM tests in one job, and the instrumented tests on x86_64 API 36 emulators against a local server in
+two more, split by the test classes' measured run times in `scripts/ui-test-parts.sh`; only when the pull request changes
+`mobile/android/`, `mobile/hisarkit/`, `mobile/go.mod`, the Android scripts, the themes,
 `core/`, `go.work` or the workflow, and not while the pull request has the label `skip-android`, for changes whose Android build
 and tests already passed locally with `make build-android-aar build-android test-android test-android-ui`; add the label before
 pushing).
 
 `.github/workflows/macos.yml` builds the Mac app (Touch ID and Sparkle tests, bundle and signature checks) and the iPhone app
-(HisarKit, Xcode project check, unit tests, then UI tests against a local server in two jobs that run the one build) on
+(HisarKit, Xcode project check, unit tests, then UI tests against a local server in three jobs that run the one build, split by
+the test classes' measured run times in `scripts/ui-test-parts.sh`) on
 GitHub's `macos-26` runners with Xcode 26.6. macOS
 minutes count ten times against the plan's included minutes, so each job runs only when the pull request, compared with its base
 branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
@@ -36,8 +38,8 @@ branch on every push, changes what it builds (`scripts/detect-app-changes.sh`):
   reads the labels the pull request has when it starts. The jobs then report as skipped;
 - or by hand: Actions → macOS and iOS → Run workflow, on a branch (tick "Build and test the iPhone app" to add the iPhone job).
 
-A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then 20 minutes of UI tests in
-two jobs, so about 150–250 included minutes for the Mac app alone and up to 850 with the iPhone app. A desktop release build costs
+A run takes roughly 15–25 minutes for the Mac app, and for the iPhone app about 10 minutes of build then 18 minutes of UI tests in
+three jobs, so about 150–250 included minutes for the Mac app alone and up to 900 with the iPhone app. A desktop release build costs
 about the same as the Mac app job.
 
 ## Releases
