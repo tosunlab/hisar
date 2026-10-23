@@ -70,6 +70,7 @@ final class AppModel: ObservableObject {
     private var shownRefresh: UInt64 = 0
     private var startedApprovalListCount: UInt64 = 0
     private var shownApprovalList: UInt64 = 0
+    private var newestOpeningApprovalList: UInt64 = 0
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
@@ -1305,10 +1306,16 @@ final class AppModel: ObservableObject {
         guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
         startedApprovalListCount += 1
         let approvalList = startedApprovalListCount
+        if isOpeningNewRequest {
+            newestOpeningApprovalList = approvalList
+        }
         guard let allApproval = try? await runInBackground({ try backend.listAllPendingApproval() }) else { return }
         // Listings run at once and can finish out of order: a poll that started before a request's own listing must not
         // take that request back off the list and close its sheet.
         guard status.isUnlocked, approvalList > shownApprovalList else { return }
+        // A listing that started after a new request's own listing and finishes first makes that listing stale, so it opens
+        // the new request's sheet in its place.
+        let isOpening = newestOpeningApprovalList > shownApprovalList && approvalList >= newestOpeningApprovalList
         shownApprovalList = approvalList
         let now = getCurrentDate()
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
@@ -1319,7 +1326,7 @@ final class AppModel: ObservableObject {
         if allOpenApproval != allPendingApproval {
             allPendingApproval = allOpenApproval
         }
-        if isOpeningNewRequest, presentedApproval == nil, let firstNewApproval {
+        if isOpening, presentedApproval == nil, let firstNewApproval {
             presentApproval(firstNewApproval)
         }
         closeSheetOfFinishedApproval()

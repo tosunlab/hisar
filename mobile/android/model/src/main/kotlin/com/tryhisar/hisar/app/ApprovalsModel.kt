@@ -33,6 +33,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     private val allSeenApprovalID = mutableSetOf<String>()
     private var startedApprovalListCount = 0L
     private var shownApprovalList = 0L
+    private var newestOpeningList = 0L
     private var pollJob: Job? = null
     private var expiryJob: Job? = null
 
@@ -78,17 +79,21 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     suspend fun refreshPendingApproval(isOpeningNewRequest: Boolean = false) {
         if (!context.status.value.isUnlocked || !context.isInForeground.value || !context.isMacApprovalAllowed.value) return
         val approvalList = ++startedApprovalListCount
+        if (isOpeningNewRequest) newestOpeningList = approvalList
         val allApproval = context.attempt { it.listAllPendingApproval() } ?: return
         // Listings run at once and can finish out of order: a poll that started before a request's own listing must not
         // take that request back off the list and close its sheet.
         if (!context.status.value.isUnlocked || approvalList <= shownApprovalList) return
+        // A listing that started after a new request's own listing and finishes first makes that listing stale, so it opens
+        // the new request's sheet in its place.
+        val isOpening = newestOpeningList > shownApprovalList && approvalList >= newestOpeningList
         shownApprovalList = approvalList
         val date = now()
         val allOpenApproval = allApproval.filter { it.requestID !in allFinishedApprovalID && !it.isExpired(date) }
         val firstNewApproval = allOpenApproval.firstOrNull { it.requestID !in allSeenApprovalID }
         allSeenApprovalID += allOpenApproval.map { it.requestID }
         mutableAllPendingApproval.value = allOpenApproval
-        if (isOpeningNewRequest && mutablePresentedApproval.value == null && firstNewApproval != null) present(firstNewApproval)
+        if (isOpening && mutablePresentedApproval.value == null && firstNewApproval != null) present(firstNewApproval)
         closeSheetOfFinishedApproval()
         startExpiryCheck()
     }
