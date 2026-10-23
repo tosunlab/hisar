@@ -75,7 +75,7 @@ func startServerOnDatabase(t *testing.T, databaseURL string, environment map[str
 	}
 	t.Cleanup(func() { listener.Close() })
 	trustedOrigin := "http://" + listener.Addr().String()
-	server, err := NewServer(database, generateSecrets(), Config{
+	server, err := NewServer(database, testServerSecrets, Config{
 		Config:      service.Config{PublicURL: trustedOrigin},
 		Environment: func(name string) string { return environment[name] },
 	})

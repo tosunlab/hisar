@@ -35,7 +35,12 @@ func setup(ctx context.Context) (*store.Store, *api.Server, error) {
 			log.Printf("applied migration %s", result.Source.Path)
 		}
 	}
-	secrets, err := api.LoadOrCreateSecrets(getEnv("HISAR_SECRETS_FILE", "hisar-secrets.json"))
+	allowCreate, err := database.CanCreateSecrets(ctx)
+	if err != nil {
+		database.Close()
+		return nil, nil, fmt.Errorf("check database before loading secrets (apply pending migrations first): %w", err)
+	}
+	secrets, err := api.LoadOrCreateSecrets(getEnv("HISAR_SECRETS_FILE", "hisar-secrets.json"), allowCreate)
 	if err != nil {
 		database.Close()
 		return nil, nil, fmt.Errorf("secrets: %w", err)

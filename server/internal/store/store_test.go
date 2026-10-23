@@ -165,6 +165,13 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s missing", indexName)
 		}
 	}
+	if countTable(t, database, "operational_secrets") != 1 {
+		t.Fatal("operational secrets migration is missing")
+	}
+	rollbackTestMigrationsTo(t, database, 15)
+	if countTable(t, database, "operational_secrets") != 0 {
+		t.Fatal("rolling back unused operational secrets left its table")
+	}
 	if countTable(t, database, "vault_transition_items") != 1 {
 		t.Fatal("staging migration is missing")
 	}
