@@ -72,8 +72,10 @@ final class SharingUITests: HisarUITestCase {
         let unknownInvitation = findElement("vault-invitation-\(unknownEmail)")
         saveLightAndDarkScreenshot("sharing-members")
 
-        unknownInvitation.swipeLeft()
-        app.buttons["Cancel"].firstMatch.tap()
+        revealSwipeActions(of: unknownInvitation, .left)
+        let cancelAction = app.buttons["Cancel"].firstMatch
+        waitForHittable(cancelAction)
+        cancelAction.tap()
         app.buttons["confirm-cancel-invitation"].firstMatch.tap()
         XCTAssertTrue(unknownInvitation.waitForNonExistence(timeout: 30), "the cancelled invitation disappears")
 

@@ -36,8 +36,10 @@ final class FavoritesUITests: HisarUITestCase {
         saveScreenshot("favorites-item-starred")
         goBack()
 
-        app.buttons["item-AWS Console"].swipeRight()
-        app.buttons["favorite-swipe-AWS Console"].tap()
+        revealSwipeActions(of: app.buttons["item-AWS Console"], .right)
+        let favoriteAction = app.buttons["favorite-swipe-AWS Console"]
+        waitForHittable(favoriteAction)
+        favoriteAction.tap()
         goBack()
 
         let gitHubFavorite = app.buttons["favorite-GitHub"]
@@ -46,8 +48,10 @@ final class FavoritesUITests: HisarUITestCase {
         XCTAssertFalse(emptyNote.exists)
         saveScreenshot("favorites-vaults")
 
-        gitHubFavorite.swipeLeft()
-        app.buttons["unfavorite-GitHub"].tap()
+        revealSwipeActions(of: gitHubFavorite, .left)
+        let unfavoriteAction = app.buttons["unfavorite-GitHub"]
+        waitForHittable(unfavoriteAction)
+        unfavoriteAction.tap()
         XCTAssertTrue(gitHubFavorite.waitForNonExistence(timeout: 10))
         XCTAssertTrue(app.buttons["favorite-AWS Console"].exists)
     }
