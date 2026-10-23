@@ -25,7 +25,7 @@ From the repository root, `make test-docs` typechecks and builds, and `make buil
 | `sidebars.ts` | One sidebar, generated from `docs/` |
 | `src/css/custom.css` | Hisar's neutral palette on top of Infima |
 | `static/img/` | The logo and favicon from `assets/logo`, and the social card |
-| `Dockerfile`, `nginx.conf` | The image: Node builds the site, unprivileged nginx serves it on port 8080 with `/healthz` |
+| `Dockerfile` | The image: Node builds the site, and unprivileged nginx with its stock configuration serves it on port 8080 |
 
 ## Run the image
 

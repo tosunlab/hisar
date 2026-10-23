@@ -15,6 +15,8 @@ const config: Config = {
 
   url: 'https://docs.tryhisar.com',
   baseUrl: '/',
+  // Every page is <path>/index.html and is linked with the slash, so nginx serves it without rewrites or redirects.
+  trailingSlash: true,
 
   organizationName: 'tosunlab',
   projectName: 'hisar',

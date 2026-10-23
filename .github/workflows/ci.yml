@@ -265,8 +265,8 @@ jobs:
         run: |
           docker build --quiet --tag hisar-docs docs
           docker run --detach --rm --name hisar-docs --publish 127.0.0.1:8082:8080 hisar-docs
-          for _ in $(seq 20); do curl --silent --fail http://127.0.0.1:8082/healthz && break; sleep 1; done
-          curl --silent --fail --output /dev/null http://127.0.0.1:8082/
+          for _ in $(seq 20); do curl --silent --fail --output /dev/null http://127.0.0.1:8082/ && break; sleep 1; done
+          curl --silent --fail --output /dev/null http://127.0.0.1:8082/apps/cli/
           docker stop hisar-docs
 
   raycast:

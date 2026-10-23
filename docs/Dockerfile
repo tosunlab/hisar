@@ -6,7 +6,7 @@ RUN npm ci
 COPY . .
 RUN npm run build
 
+# The stock configuration serves /usr/share/nginx/html on 8080; every page is a <path>/index.html (trailingSlash).
 FROM nginxinc/nginx-unprivileged:1.29-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
 COPY --from=build /site/build /usr/share/nginx/html
 EXPOSE 8080
