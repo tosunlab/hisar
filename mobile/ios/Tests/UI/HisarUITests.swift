@@ -155,7 +155,7 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.otherElements["error-message"].exists ? app.otherElements["error-message"] : app.staticTexts.matching(NSPredicate(format: "label CONTAINS[c] 'incorrect'")).firstMatch)
         saveScreenshot("lock")
         app.secureTextFields["unlock-password"].tap()
-        app.secureTextFields["unlock-password"].typeText(Self.masterPassword)
+        typeText(Self.masterPassword, into: app.secureTextFields["unlock-password"])
         app.buttons["unlock-submit"].tap()
         waitFor(app.buttons["vault-Personal"])
 

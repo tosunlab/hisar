@@ -99,7 +99,7 @@ final class FaceIDUITests: HisarUITestCase {
         (knob.exists ? knob : toggle).tap()
         let passwordField = app.alerts.secureTextFields.firstMatch
         waitFor(passwordField)
-        passwordField.typeText(Self.masterPassword)
+        typeText(Self.masterPassword, into: passwordField)
         app.alerts.buttons["Turn on"].tap()
         allowFaceIDIfAsked()
         matchFace(until: { toggle.value as? String == "1" }, failingWhenEnabled: toggle)
