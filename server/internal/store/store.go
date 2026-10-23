@@ -27,6 +27,7 @@ type Store struct {
 	pool *pgxpool.Pool
 	// liveItemCount is GetInstanceCounts' last count of live items.
 	liveItemCount *itemCountCache
+	settingsKey   []byte
 }
 
 func Open(ctx context.Context, databaseURL string) (*Store, error) {

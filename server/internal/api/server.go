@@ -95,7 +95,7 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	var storedSettings []byte
 	if database != nil {
 		var err error
-		if err := database.InitializeOperationalSecrets(context.Background(), secrets.fingerprint()); err != nil {
+		if err := database.InitializeOperationalSecrets(context.Background(), secrets.fingerprint(), secrets.HMACKey); err != nil {
 			return nil, fmt.Errorf("initialize operational secrets: %w", err)
 		}
 		if storedSettings, err = database.GetInstanceSettings(context.Background()); err != nil {

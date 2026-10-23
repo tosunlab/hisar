@@ -31,8 +31,8 @@ environment:
 instance settings, usually edited in the admin dashboard at /admin; a value here overrides it and locks the field:
   HISAR_AUTH_BURST     auth requests per IP before limiting to one per 6 seconds (default 10)
 
-email for invites and share invitations (optional; any of these sets all of Email and locks it in the dashboard, which
-keeps the SMTP password in the database in plain text otherwise; with a host, a sender is needed):
+email for invites and share invitations (optional; any of these sets all of Email and locks it in the dashboard;
+dashboard passwords are encrypted using the separately stored server secrets; with a host, a sender is needed):
   HISAR_SMTP_HOST      SMTP server, e.g. smtp.example.com
   HISAR_SMTP_PORT      465 for implicit TLS; any other port must offer STARTTLS (default 587)
   HISAR_SMTP_USERNAME  SMTP user name

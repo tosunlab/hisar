@@ -17,8 +17,8 @@ import (
 	"github.com/tryhisar/hisar/core/appversion"
 )
 
-// Settings are the effective instance settings. Its JSON form is also the stored document, in which every field is
-// optional: a field the document lacks keeps its default.
+// Settings are the effective instance settings. Optional fields keep their defaults.
+// Store encrypts the SMTP password when persisting this document.
 type Settings struct {
 	SMTP            SMTP            `json:"smtp"`
 	MinimumVersions MinimumVersions `json:"minimumVersions"`

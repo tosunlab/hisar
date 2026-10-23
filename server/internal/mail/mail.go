@@ -108,6 +108,9 @@ func (m *SMTPMailer) Send(ctx context.Context, message Message) error {
 		return err
 	}
 	if err := m.send(ctx, recipient, message); err != nil {
+		if m.config.Password != "" {
+			err = &redactedError{message: strings.ReplaceAll(err.Error(), m.config.Password, "<password>"), err: err}
+		}
 		return redactRecipient(err, recipient)
 	}
 	return nil
