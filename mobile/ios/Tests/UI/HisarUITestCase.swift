@@ -267,12 +267,14 @@ class HisarUITestCase: XCTestCase {
             type(password, into: passwordField)
             scrollTo(app.buttons["pending-recovery-acknowledge"])
             app.buttons["pending-recovery-acknowledge"].tap()
-            let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO OR label == 'manual-unlock'"), object: phase)
-            wait(for: [finished], timeout: 60)
-            if phase.exists {
-                scrollTo(app.buttons["pending-recovery-later"])
-                app.buttons["pending-recovery-later"].tap()
-            }
+        }
+        // Acknowledging runs while the recovery screen covers the app; the screen closes once the record is gone, or shows
+        // manual-unlock. Until then the screen beneath is there but covered (job 120454298607 tapped its unlock field).
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO OR label == 'manual-unlock'"), object: phase)
+        wait(for: [finished], timeout: 60)
+        if phase.exists {
+            scrollTo(app.buttons["pending-recovery-later"])
+            app.buttons["pending-recovery-later"].tap()
         }
         return secretKey
     }
