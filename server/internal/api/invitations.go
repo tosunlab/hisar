@@ -36,11 +36,7 @@ func (s *Server) handleCreateShareInvitation(c fiber.Ctx) error {
 }
 
 func (s *Server) handleListShareInvitations(c fiber.Ctx) error {
-	invitations, err := s.service.ListShareInvitations(c.Context(), s.getActor(c))
-	if err != nil {
-		return err
-	}
-	return c.JSON(invitations)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleAcceptShareInvitation(c fiber.Ctx) error {

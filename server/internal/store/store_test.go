@@ -165,6 +165,13 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s missing", indexName)
 		}
 	}
+	if countTable(t, database, "resource_usage") != 1 || countTable(t, database, "collection_versions") != 1 {
+		t.Fatal("resource budget migration is missing")
+	}
+	rollbackTestMigrationsTo(t, database, 16)
+	if countTable(t, database, "resource_usage") != 0 || countTable(t, database, "collection_versions") != 0 {
+		t.Fatal("resource budget migration did not roll back")
+	}
 	if countTable(t, database, "operational_secrets") != 1 {
 		t.Fatal("operational secrets migration is missing")
 	}
@@ -810,4 +817,25 @@ func TestVaultAccess(t *testing.T) {
 	if err := database.CreateVault(ctx, &Vault{ID: vaultID, Type: "shared", EncName: []byte{1}, CreatedBy: "AAAAAA"}, []byte{1}); !errors.Is(err, ErrExists) {
 		t.Errorf("duplicate vault: %v", err)
 	}
+}
+
+func rollbackTestStoreToVersion(t *testing.T, database *Store, version int64) int {
+	t.Helper()
+	statuses, err := database.GetMigrationStatuses(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := 0
+	for _, status := range slices.Backward(statuses) {
+		if status.Source.Version <= version {
+			break
+		}
+		if !status.AppliedAt.IsZero() {
+			if _, err := database.RollbackMigration(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			count++
+		}
+	}
+	return count
 }

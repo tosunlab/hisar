@@ -11,11 +11,7 @@ import (
 )
 
 func (s *Server) handleListVaults(c fiber.Ctx) error {
-	vaults, err := s.service.ListVaults(c.Context(), s.getActor(c))
-	if err != nil {
-		return err
-	}
-	return c.JSON(vaults)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleCreateVault(c fiber.Ctx) error {
@@ -31,11 +27,7 @@ func (s *Server) handleCreateVault(c fiber.Ctx) error {
 }
 
 func (s *Server) handleListVaultMembers(c fiber.Ctx) error {
-	members, err := s.service.ListVaultMembers(c.Context(), s.getActor(c), c.Params("vault"))
-	if err != nil {
-		return err
-	}
-	return c.JSON(members)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleSetAccess(c fiber.Ctx) error {
@@ -114,11 +106,7 @@ func (s *Server) handleMoveItem(c fiber.Ctx) error {
 }
 
 func (s *Server) handleGetItemHistory(c fiber.Ctx) error {
-	items, err := s.service.GetItemHistory(c.Context(), s.getActor(c), c.Params("vault"), c.Params("item"))
-	if err != nil {
-		return err
-	}
-	return c.JSON(items)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleRenameVault(c fiber.Ctx) error {

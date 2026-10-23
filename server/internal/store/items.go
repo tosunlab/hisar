@@ -124,11 +124,17 @@ func (s *Store) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]I
 	return pgx.CollectRows(rows, scanItem)
 }
 
-// PruneHistory deletes history older than maxAge, always keeping each item's current revision.
+// PruneHistory deletes old noncurrent revisions. Busy vaults wait for the next prune so a writer's budget baseline stays stable.
 func (s *Store) PruneHistory(ctx context.Context, maxAge time.Duration) (int64, error) {
 	commandTag, err := s.pool.Exec(ctx, `
-		DELETE FROM item_history h WHERE h.updated_at < now() - $1::interval
-		AND NOT EXISTS (SELECT 1 FROM items i WHERE i.vault_id = h.vault_id AND i.id = h.id AND i.revision = h.revision)`,
+		WITH locked_vaults AS MATERIALIZED (
+			SELECT v.id FROM vaults v WHERE EXISTS(
+				SELECT 1 FROM item_history h WHERE h.vault_id=v.id AND h.updated_at<now()-$1::interval
+				AND NOT EXISTS(SELECT 1 FROM items i WHERE i.vault_id=h.vault_id AND i.id=h.id AND i.revision=h.revision)
+			) ORDER BY v.id FOR UPDATE SKIP LOCKED
+		)
+		DELETE FROM item_history h USING locked_vaults v WHERE h.vault_id=v.id AND h.updated_at<now()-$1::interval
+		AND NOT EXISTS(SELECT 1 FROM items i WHERE i.vault_id=h.vault_id AND i.id=h.id AND i.revision=h.revision)`,
 		maxAge)
 	return commandTag.RowsAffected(), err
 }
@@ -226,10 +232,21 @@ func (s *Store) MoveItem(ctx context.Context, move *ItemMove) (*Item, error) {
 // writeItemRevision stores item as the vault's next change, replacing any earlier row with its ID, and records it in the
 // item's history.
 func writeItemRevision(ctx context.Context, transaction pgx.Tx, vaultID string, item *Item) error {
+	before, err := HistoryUsage(ctx, transaction, vaultID)
+	if err != nil {
+		return err
+	}
+	allowDeletion := false
+	if item.Deleted {
+		err := transaction.QueryRow(ctx, `SELECT NOT deleted FROM items WHERE vault_id=$1 AND id=$2`, vaultID, item.ID).Scan(&allowDeletion)
+		if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+	}
 	if err := transaction.QueryRow(ctx, `UPDATE vaults SET seq = seq + 1 WHERE id = $1 RETURNING seq`, vaultID).Scan(&item.Seq); err != nil {
 		return err
 	}
-	err := transaction.QueryRow(ctx, `
+	err = transaction.QueryRow(ctx, `
 		INSERT INTO items (vault_id, id, revision, seq, deleted, overview, details, updated_by)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 		ON CONFLICT (vault_id, id) DO UPDATE SET
@@ -246,5 +263,8 @@ func writeItemRevision(ctx context.Context, transaction pgx.Tx, vaultID string, 
 	if isUniqueViolation(err) {
 		return ErrConflict
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	return CheckHistoryGrowth(ctx, transaction, vaultID, before, allowDeletion)
 }

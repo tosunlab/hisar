@@ -65,8 +65,11 @@ export class APIError extends Error {
 }
 
 // send answers the server's response when it succeeds and throws APIError with the server's message otherwise.
-export async function send(method: string, path: string, { body, token = auth.session?.token }: { body?: unknown; token?: string } = {}): Promise<Response> {
+export async function send(method: string, path: string, { body, token = auth.session?.token, collectionPages = false }: { body?: unknown; token?: string; collectionPages?: boolean } = {}): Promise<Response> {
   const headers: Record<string, string> = token ? { Authorization: `Bearer ${token}` } : {};
+  if (collectionPages) {
+    headers["Hisar-Collection-Pages"] = "1";
+  }
   if (body !== undefined) {
     headers["Content-Type"] = "application/json";
   }

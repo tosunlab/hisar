@@ -66,6 +66,15 @@ var ErrAccountSuspended = errors.New(apitypes.AccountSuspendedMessage)
 // ErrInsecureRedirect is a redirect from https to plain http, which would expose the bearer and the traffic.
 var ErrInsecureRedirect = errors.New("the server redirected from https to an unencrypted http address")
 
+// ResourceBudgetError is the server's 507: the change would grow a vault, an account or an organization past its growth
+// budget. Message is the server's sentence saying what to remove. It is not an APIError, so no check for a 409 mistakes
+// it for a conflict to merge or retry.
+type ResourceBudgetError struct {
+	Message string
+}
+
+func (e *ResourceBudgetError) Error() string { return e.Message }
+
 // readError returns the error of an answer that is not a success, from its status and JSON body.
 func readError(status int, data []byte) error {
 	var errorBody apitypes.Error
@@ -74,6 +83,9 @@ func readError(status int, data []byte) error {
 	}
 	if status == http.StatusForbidden && errorBody.Error == apitypes.AccountSuspendedMessage {
 		return ErrAccountSuspended
+	}
+	if status == http.StatusInsufficientStorage {
+		return &ResourceBudgetError{Message: errorBody.Error}
 	}
 	return &APIError{Status: status, Message: errorBody.Error}
 }
@@ -171,9 +183,12 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, 64<<20))
+	data, err := io.ReadAll(io.LimitReader(response.Body, (64<<20)+1))
 	if err != nil {
 		return err
+	}
+	if len(data) > 64<<20 {
+		return errors.New("server: response exceeds the supported byte budget; update the server for paginated reads")
 	}
 
 	if response.StatusCode == http.StatusUpgradeRequired {
@@ -199,6 +214,11 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return readError(response.StatusCode, data)
 	}
 	if output != nil && len(data) > 0 {
+		if decoder, ok := output.(interface {
+			decodeResponse(http.Header, []byte) error
+		}); ok {
+			return decoder.decodeResponse(response.Header, data)
+		}
 		return json.Unmarshal(data, output)
 	}
 	return nil
@@ -265,7 +285,7 @@ func (c *Client) PutAccountPreferences(ctx context.Context, request *apitypes.Pu
 
 func (c *Client) ListMembers(ctx context.Context) ([]apitypes.Member, error) {
 	var members []apitypes.Member
-	return members, c.sendRequest(ctx, "GET", "/api/v1/members", nil, nil, &members, nil)
+	return members, c.collectionRequest(ctx, "/api/v1/members", &members)
 }
 
 func (c *Client) Invite(ctx context.Context, request *apitypes.InviteRequest) (*apitypes.InvitationSentResponse, error) {
@@ -288,7 +308,7 @@ func (c *Client) CompleteSignedShare(ctx context.Context, request *apitypes.Comp
 
 func (c *Client) ListShareInvitations(ctx context.Context) (*apitypes.ShareInvitationList, error) {
 	var response apitypes.ShareInvitationList
-	return &response, c.sendRequest(ctx, "GET", "/api/v1/share-invitations", nil, nil, &response, nil)
+	return &response, c.collectionRequest(ctx, "/api/v1/share-invitations", &response)
 }
 
 func (c *Client) AcceptShareInvitation(ctx context.Context, invitationID string) error {
@@ -305,7 +325,7 @@ func (c *Client) CancelShareInvitation(ctx context.Context, invitationID string)
 
 func (c *Client) ListDevices(ctx context.Context) ([]apitypes.Device, error) {
 	var devices []apitypes.Device
-	return devices, c.sendRequest(ctx, "GET", "/api/v1/devices", nil, nil, &devices, nil)
+	return devices, c.collectionRequest(ctx, "/api/v1/devices", &devices)
 }
 
 func (c *Client) RevokeDevice(ctx context.Context, deviceID string) error {
@@ -314,7 +334,7 @@ func (c *Client) RevokeDevice(ctx context.Context, deviceID string) error {
 
 func (c *Client) ListVaults(ctx context.Context) ([]apitypes.Vault, error) {
 	var vaults []apitypes.Vault
-	return vaults, c.sendRequest(ctx, "GET", "/api/v1/vaults", nil, nil, &vaults, nil)
+	return vaults, c.collectionRequest(ctx, "/api/v1/vaults", &vaults)
 }
 
 func (c *Client) CreateVault(ctx context.Context, request *apitypes.CreateVaultRequest) error {
@@ -323,7 +343,7 @@ func (c *Client) CreateVault(ctx context.Context, request *apitypes.CreateVaultR
 
 func (c *Client) ListVaultMembers(ctx context.Context, vaultID string) ([]apitypes.VaultMember, error) {
 	var vaultMembers []apitypes.VaultMember
-	return vaultMembers, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", nil, nil, &vaultMembers, nil)
+	return vaultMembers, c.collectionRequest(ctx, "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", &vaultMembers)
 }
 
 func (c *Client) SetAccess(ctx context.Context, vaultID, accountID string, request *apitypes.SetAccessRequest) error {
@@ -389,7 +409,7 @@ func (c *Client) CreateShareLink(ctx context.Context, request *apitypes.CreateSh
 
 func (c *Client) ListShareLinks(ctx context.Context) ([]apitypes.ShareLink, error) {
 	var shareLinks []apitypes.ShareLink
-	return shareLinks, c.sendRequest(ctx, "GET", "/api/v1/share-links", nil, nil, &shareLinks, nil)
+	return shareLinks, c.collectionRequest(ctx, "/api/v1/share-links", &shareLinks)
 }
 
 func (c *Client) RevokeShareLink(ctx context.Context, shareLinkID string) error {
@@ -414,7 +434,7 @@ func (c *Client) ChangeCredentials(ctx context.Context, request *apitypes.Change
 
 func (c *Client) GetAccountDeletionPreview(ctx context.Context) (*apitypes.AccountDeletionPreview, error) {
 	var response apitypes.AccountDeletionPreview
-	return &response, c.sendRequest(ctx, "GET", "/api/v1/account/deletion-preview", nil, nil, &response, nil)
+	return &response, c.collectionRequest(ctx, "/api/v1/account/deletion-preview", &response)
 }
 
 func (c *Client) DeleteAccount(ctx context.Context, request *apitypes.DeleteAccountRequest) error {
@@ -423,5 +443,5 @@ func (c *Client) DeleteAccount(ctx context.Context, request *apitypes.DeleteAcco
 
 func (c *Client) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]apitypes.Item, error) {
 	var items []apitypes.Item
-	return items, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &items, nil)
+	return items, c.collectionRequest(ctx, "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", &items)
 }

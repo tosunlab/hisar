@@ -5,7 +5,7 @@ import { bridge, type ReauthenticationProof } from "../../bridge/bridge";
 import { currentPath } from "../../navigation";
 import AccountsView from "./AccountsView.vue";
 import AccountView from "./AccountView.vue";
-import { formatActivity, formatDeviceCount, readAccountId, type AdminAccount, type AdminAccountDetail, type AdminDevice } from "./accounts";
+import { formatActivity, formatDeviceCount, previewAccountDeletion, readAccountId, type AdminAccount, type AdminAccountDetail, type AdminDevice } from "./accounts";
 
 vi.mock("../../bridge/bridge", () => ({ bridge: { reauthenticate: vi.fn() } }));
 
@@ -293,5 +293,24 @@ describe("AccountView", () => {
     await vi.waitFor(() => expect(root.querySelector("[data-testid=device-laptop]")?.textContent).toContain("Suspended · last activity"));
     expect(root.querySelector("[data-testid=device-laptop]")?.textContent).not.toContain("Active");
     expect(findButton("Sign out").disabled).toBe(false);
+  });
+});
+
+describe("previewAccountDeletion", () => {
+  it("reads every page of the deletion preview into one plan", async () => {
+    const header = { planVersion: "plan-1", ownedVaults: [], memberVaults: [], organizations: [], shareLinkCount: 1, sentInvitationCount: 2, receivedInvitationCount: 0, deviceCount: 3 };
+    const page = (records: unknown[], nextCursor = "") => new Response(JSON.stringify({ version: "1", snapshot: "s", planVersion: "plan-1", records, nextCursor }), { headers: { "Hisar-Collection-Pages": "1" } });
+    const fetchPage = vi.fn<typeof fetch>(async (url) => String(url).includes("cursor=")
+      ? page([{ key: "2/team", field: "memberVaults", value: { vaultId: "team", type: "shared", role: "owner" } }, { key: "3/org", field: "organizations", value: { organizationId: "org", name: "Org", deleted: true } }])
+      : page([{ key: "0", field: "$", value: header }, { key: "1/family", field: "ownedVaults", value: { vaultId: "family", type: "shared", otherMemberCount: 2 } }], "next"));
+    vi.stubGlobal("fetch", fetchPage);
+    await expect(previewAccountDeletion("ADA123")).resolves.toEqual({
+      ...header,
+      ownedVaults: [{ vaultId: "family", type: "shared", otherMemberCount: 2 }],
+      memberVaults: [{ vaultId: "team", type: "shared", role: "owner" }],
+      organizations: [{ organizationId: "org", name: "Org", deleted: true }],
+    });
+    expect(fetchPage).toHaveBeenCalledTimes(2);
+    expect(String(fetchPage.mock.calls[0][0])).toContain("/admin/accounts/ADA123/deletion-preview");
   });
 });

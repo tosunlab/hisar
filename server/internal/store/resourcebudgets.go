@@ -9,12 +9,23 @@ import (
 
 const HistoryByteCapacity int64 = 1 << 30
 
+// ErrResourceBudget is a vault's history growing past HistoryByteCapacity.
 var ErrResourceBudget = errors.New("store: resource growth budget exceeded")
 
-func IsResourceBudget(err error) bool {
+// ExceededResource names the growth budget that refused err: "history" for ErrResourceBudget, otherwise the resource a
+// counted budget trigger reports ("vaults", "devices", "vault grants" and so on). It is "" when err is not a refusal.
+func ExceededResource(err error) string {
 	var postgresError *pgconn.PgError
-	return errors.Is(err, ErrResourceBudget) || (errors.As(err, &postgresError) && postgresError.Code == "P0001" && postgresError.Message == "resource growth budget exceeded")
+	switch {
+	case errors.Is(err, ErrResourceBudget):
+		return "history"
+	case errors.As(err, &postgresError) && postgresError.Code == "P0001" && postgresError.Message == "resource growth budget exceeded":
+		return postgresError.Detail
+	}
+	return ""
 }
+
+func IsResourceBudget(err error) bool { return ExceededResource(err) != "" }
 
 // HistoryUsage is sampled before a vault-locked mutation. The fixed charge covers row and index overhead;
 // it is an accounting envelope, not a claim about exact Postgres resident memory or compressed disk bytes.

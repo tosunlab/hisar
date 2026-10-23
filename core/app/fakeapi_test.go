@@ -49,6 +49,8 @@ type fakeAPIServer struct {
 	keyGenerationsSent []int64
 	// isSuspended answers the account and the event stream as the server does for a suspended account's session.
 	isSuspended bool
+	// historyFullMessage, when set, refuses item writes with it as the server's 507 for a vault whose history is full.
+	historyFullMessage string
 }
 
 // refusesSuspended answers 403 with the suspension sentence while the account is suspended.
@@ -167,6 +169,10 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		baseRevision := strings.Trim(request.Header.Get("If-Match"), `"`)
 		server.keyGenerationsSent = append(server.keyGenerationsSent, putRequest.KeyGeneration)
 		if server.refusesKeyGeneration(writer, request.PathValue("vaultID"), putRequest.KeyGeneration) {
+			return
+		}
+		if server.historyFullMessage != "" {
+			writeJSON(writer, http.StatusInsufficientStorage, apitypes.Error{Error: server.historyFullMessage})
 			return
 		}
 		if (exists && current.Revision != baseRevision) || (!exists && baseRevision != "") {

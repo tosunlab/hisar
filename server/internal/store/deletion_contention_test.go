@@ -195,6 +195,10 @@ func testAdminDeletionDuringCreations(t *testing.T, create func(context.Context,
 	var stopping atomic.Bool
 	var workers sync.WaitGroup
 	var created atomic.Int64
+	released := make(chan struct{})
+	var release sync.Once
+	releaseLoops := func() { release.Do(func() { close(released) }) }
+	defer releaseLoops()
 	ready := make(chan error, 8)
 	finished := make(chan error, 8)
 	for range 8 {
@@ -203,6 +207,13 @@ func testAdminDeletionDuringCreations(t *testing.T, create func(context.Context,
 			defer workers.Done()
 			err := create(ctx, database)
 			ready <- err
+			if err == nil {
+				// Hold the loops until the review, so the budget never runs out before the plan changes after it.
+				select {
+				case <-released:
+				case <-ctx.Done():
+				}
+			}
 			for err == nil && !stopping.Load() {
 				created.Add(1)
 				err = create(ctx, database)
@@ -221,6 +232,7 @@ func testAdminDeletionDuringCreations(t *testing.T, create func(context.Context,
 		}
 	}
 	planVersion := reviewStoreDeletion(t, database, ctx, "ALICE1")
+	releaseLoops()
 	for reviewed := created.Load(); created.Load() <= reviewed+8; {
 		if ctx.Err() != nil {
 			t.Fatal(ctx.Err())
@@ -235,7 +247,7 @@ func testAdminDeletionDuringCreations(t *testing.T, create func(context.Context,
 	}
 	stop()
 	for range 8 {
-		if err := <-finished; err != nil {
+		if err := <-finished; err != nil && !IsResourceBudget(err) {
 			t.Errorf("creation during deletion: %v", err)
 		}
 	}
