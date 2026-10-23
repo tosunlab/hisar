@@ -175,6 +175,8 @@ class HisarKitBackend(
 
     override fun cancelShareInvitation(invitationID: String) = call { cancelShareInvitation(invitationID) }
 
+    override fun confirmShareRecipient(invitationID: String, reviewToken: String) = call { confirmShareRecipient(invitationID, reviewToken) }
+
     override fun listAllShareAwaitingUnlock(): List<ShareAwaitingUnlock> =
         decodeList(ShareAwaitingUnlock.serializer(), call { listAllShareAwaitingUnlock() })
 

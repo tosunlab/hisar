@@ -235,7 +235,7 @@ func TestAdminSettingsInvitePolicy(t *testing.T) {
 	if anyoneStatus != http.StatusAccepted || countInvites("first@example.com") != 1 {
 		t.Fatalf("member invite under anyone: %d %s", anyoneStatus, anyoneBody)
 	}
-	_, shareUnderAnyone := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, apitypes.ShareInvitationRequest{Email: "ghost-one@example.com", Role: apitypes.VaultReader})
+	_, shareUnderAnyone := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, signedShareRequest(t, member, vault, "ghost-one@example.com", apitypes.VaultReader, nil))
 	if countInvites("ghost-one@example.com") != 1 {
 		t.Error("a share under anyone made no sign-up invite")
 	}
@@ -255,8 +255,8 @@ func TestAdminSettingsInvitePolicy(t *testing.T) {
 	}
 
 	emailCountBefore := len(recorder.ListMessages())
-	knownStatus, knownBody := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, apitypes.ShareInvitationRequest{Email: "known@example.com", Role: apitypes.VaultReader})
-	unknownStatus, unknownBody := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, apitypes.ShareInvitationRequest{Email: "ghost-two@example.com", Role: apitypes.VaultReader})
+	knownStatus, knownBody := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, signedShareRequest(t, member, vault, "known@example.com", apitypes.VaultReader, nil))
+	unknownStatus, unknownBody := sendRawRequest(t, baseURL, member.Client.Token, "POST", invitationPath, signedShareRequest(t, member, vault, "ghost-two@example.com", apitypes.VaultReader, nil))
 	if knownStatus != http.StatusAccepted || unknownStatus != knownStatus || unknownBody != knownBody || unknownBody != shareUnderAnyone {
 		t.Errorf("share answers differ: %d %s / %d %s / under anyone %s", knownStatus, knownBody, unknownStatus, unknownBody, shareUnderAnyone)
 	}

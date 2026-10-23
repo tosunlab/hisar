@@ -224,6 +224,8 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Post("/vaults", s.requireSession, s.handleCreateVault)
 	apiGroup.Get("/vaults/:vault/members", s.requireSession, s.handleListVaultMembers)
 	apiGroup.Post("/vaults/:vault/share-invitations", s.requireSession, s.handleCreateShareInvitation)
+	apiGroup.Post("/vaults/:vault/signed-share-invitations", s.requireSession, s.handleCreateShareInvitation)
+	apiGroup.Post("/share-invitations/:invitation/complete", s.requireSession, s.handleCompleteSignedShare)
 	apiGroup.Get("/share-invitations", s.requireSession, s.handleListShareInvitations)
 	apiGroup.Post("/share-invitations/:invitation/accept", s.requireSession, s.handleAcceptShareInvitation)
 	apiGroup.Post("/share-invitations/:invitation/decline", s.requireSession, s.handleDeclineShareInvitation)

@@ -263,6 +263,14 @@ func (c *Client) CreateShareInvitation(ctx context.Context, vaultID string, requ
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/share-invitations", nil, request, &response, nil)
 }
 
+func (c *Client) CreateSignedShareInvitation(ctx context.Context, vaultID string, request *apitypes.ShareInvitationRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/signed-share-invitations", nil, request, nil, nil)
+}
+
+func (c *Client) CompleteSignedShare(ctx context.Context, request *apitypes.CompleteShareRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/share-invitations/"+url.PathEscape(request.Intent.Context.ID)+"/complete", nil, request, nil, nil)
+}
+
 func (c *Client) ListShareInvitations(ctx context.Context) (*apitypes.ShareInvitationList, error) {
 	var response apitypes.ShareInvitationList
 	return &response, c.sendRequest(ctx, "GET", "/api/v1/share-invitations", nil, nil, &response, nil)

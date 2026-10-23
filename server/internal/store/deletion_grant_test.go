@@ -14,13 +14,14 @@ func TestDeletionLocksVaultGrantedDuringInitialVaultWait(t *testing.T) {
 	createTestAccount(t, database, "BOB111", "bob@example.com")
 	firstVault := createTestVault(t, database, "ALICE1")
 	laterVault := createTestVault(t, database, "BOB111")
-	invitationID, err := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: laterVault, Email: "alice@example.com", Role: "owner", InvitedBy: "BOB111"}, time.Hour)
+	invitationID, err := createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: laterVault, Email: "alice@example.com", Role: "owner", InvitedBy: "BOB111"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if _, _, err := database.AcceptShareInvitation(ctx, invitationID, "ALICE1", "alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
+	completion := authorizeTestShareCompletion(t, database, invitationID)
 	firstHold, err := database.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -35,7 +36,7 @@ func TestDeletionLocksVaultGrantedDuringInitialVaultWait(t *testing.T) {
 		deleted <- err
 	}()
 	waitForStoreLock(t, database, ctx, "%FROM vaults WHERE id IN (SELECT vault_id%")
-	if _, err := database.GrantAccess(ctx, laterVault, Member{AccountID: "ALICE1", Role: "owner", WrappedKey: []byte{1}, GrantedBy: "BOB111"}, 0); err != nil {
+	if err := database.CompleteSignedShare(ctx, "BOB111", "https://hisar.test", completion); err != nil {
 		t.Fatal(err)
 	}
 	laterHold, err := database.pool.Begin(ctx)

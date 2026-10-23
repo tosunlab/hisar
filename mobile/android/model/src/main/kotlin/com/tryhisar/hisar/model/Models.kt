@@ -902,6 +902,10 @@ data class SentShareInvitation(
     val role: String,
     val state: String,
     val expiresAt: String,
+    val requiresConfirmation: Boolean = false,
+    @SerialName("recipientId") val recipientID: String = "",
+    val securityCode: String = "",
+    val reviewToken: String = "",
 ) {
     companion object {
         const val STATE_ACCEPTED = "accepted"

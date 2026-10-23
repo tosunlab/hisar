@@ -431,7 +431,11 @@ func TestOrganizationVaultAccessRules(t *testing.T) {
 
 	expectStatus(t, "an owner removes someone from an organization vault", alice.Client.RemoveAccess(ctx, production.ID, carol.AccountID), http.StatusBadRequest)
 	expectStatus(t, "a member leaves an organization vault", carol.Client.RemoveAccess(ctx, production.ID, carol.AccountID), http.StatusBadRequest)
-	expectStatus(t, "a share invitation to an organization vault", alice.InviteToVault(ctx, production, "erin@example.com", apitypes.VaultReader), http.StatusBadRequest)
+	organizationShare := signedShareRequest(t, alice, production, "erin@example.com", apitypes.VaultReader, nil)
+	expectStatus(t, "a share invitation to an organization vault", alice.Client.CreateSignedShareInvitation(ctx, production.ID, &organizationShare), http.StatusBadRequest)
+	if err := alice.InviteToVault(ctx, production, "erin@example.com", apitypes.VaultReader); err == nil {
+		t.Error("the app offered to share an organization vault by invitation")
+	}
 	if _, isListed := findListedVault(t, carol, production.ID); !isListed {
 		t.Error("a refused removal took Carol's access")
 	}

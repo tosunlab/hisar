@@ -84,7 +84,13 @@ final class AppModel: ObservableObject {
     private var enteredBackgroundAt: Date?
     private var noticeTask: Task<Void, Never>?
     private var allFinishedApprovalID: Set<String> = []
-    private var allSeenApprovalID: Set<String> = []
+    /// A request the Mac announced while Hisar was in front, waiting for a listing that shows it to open its sheet.
+    /// listedAfter is the last listing started before the announcement: a later listing without the request means it is gone.
+    private struct AnnouncedApproval {
+        var requestID: String
+        var listedAfter: UInt64
+    }
+    private var allAnnouncedApproval: [AnnouncedApproval] = []
     private var isInForeground = true
     private var approvalExpiryTask: Task<Void, Never>?
     private var approvalPollTask: Task<Void, Never>?
@@ -576,6 +582,11 @@ final class AppModel: ObservableObject {
     @discardableResult
     func cancelShareInvitation(invitationID: String) async -> Bool {
         await perform({ try $0.cancelShareInvitation(invitationID: invitationID) }) != nil
+    }
+
+    @discardableResult
+    func confirmShareRecipient(_ invitation: SentShareInvitation) async -> Bool {
+        await perform({ try $0.confirmShareRecipient(invitationID: invitation.id, reviewToken: invitation.reviewToken ?? "") }) != nil
     }
 
     func loadAllVaultMember(vaultID: String) async -> [Member]? {
@@ -1265,6 +1276,7 @@ final class AppModel: ObservableObject {
                 allFinishedApprovalID.insert(approval.requestID)
             }
             allPendingApproval = []
+            allAnnouncedApproval = []
             shownApprovalList = startedApprovalListCount
             presentedApproval = nil
         }
@@ -1287,7 +1299,9 @@ final class AppModel: ObservableObject {
         switch name {
         case PhoneApproval.eventRequested:
             guard isInForeground else { return }
-            Task { await refreshPendingApproval(isOpeningNewRequest: true) }
+            // Recorded now, not in the listing's task: a sheet the user closes before that task runs must still cancel it.
+            recordAnnouncedApproval(requestID: requestID)
+            Task { await refreshPendingApproval() }
         case PhoneApproval.eventAnswered, PhoneApproval.eventResolved:
             removeApproval(requestID: requestID)
         default:
@@ -1295,8 +1309,12 @@ final class AppModel: ObservableObject {
         }
     }
 
-    // refreshPendingApproval lists the open requests; with isOpeningNewRequest, a request seen for the first time opens the sheet.
-    func refreshPendingApproval(isOpeningNewRequest: Bool = false) async {
+    // refreshPendingApproval lists the open requests. announcedRequestID is a request the Mac announced: the first listing
+    // that shows it, this one or a newer one that overtakes it, opens its sheet when none is open.
+    func refreshPendingApproval(announcedRequestID: String? = nil) async {
+        if let announcedRequestID {
+            recordAnnouncedApproval(requestID: announcedRequestID)
+        }
         guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
         startedApprovalListCount += 1
         let approvalList = startedApprovalListCount
@@ -1307,18 +1325,31 @@ final class AppModel: ObservableObject {
         shownApprovalList = approvalList
         let now = getCurrentDate()
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
-        let firstNewApproval = allOpenApproval.first { !allSeenApprovalID.contains($0.requestID) }
-        allSeenApprovalID.formUnion(allOpenApproval.map(\.requestID))
         // Assigning publishes even an equal list, and the poll would then redraw every screen every 15 seconds. A switch
         // whose tap ends during that redraw ignores the tap.
         if allOpenApproval != allPendingApproval {
             allPendingApproval = allOpenApproval
         }
-        if isOpeningNewRequest, presentedApproval == nil, let firstNewApproval {
-            presentApproval(firstNewApproval)
-        }
+        openAnnouncedApproval(listedIn: approvalList)
         closeSheetOfFinishedApproval()
         startApprovalExpiryCheck()
+    }
+
+    private func recordAnnouncedApproval(requestID: String) {
+        guard status.isUnlocked, isInForeground, isMacApprovalAllowed else { return }
+        allAnnouncedApproval.append(AnnouncedApproval(requestID: requestID, listedAfter: startedApprovalListCount))
+    }
+
+    // Opens the first announced request this listing shows, when no sheet is open. A request this listing reflects leaves
+    // the queue: it opened, it is listed while another sheet is open (as one that arrived during that sheet always was),
+    // or the listing started after its announcement and lacks it, so it was answered, withdrawn or expired.
+    private func openAnnouncedApproval(listedIn approvalList: UInt64) {
+        for announced in allAnnouncedApproval where approvalList > announced.listedAfter || allPendingApproval.contains(where: { $0.requestID == announced.requestID }) {
+            allAnnouncedApproval.removeAll { $0.requestID == announced.requestID }
+            if presentedApproval == nil, let approval = allPendingApproval.first(where: { $0.requestID == announced.requestID }) {
+                presentApproval(approval)
+            }
+        }
     }
 
     func reviewApproval(_ approval: PhoneApproval) {
@@ -1326,9 +1357,11 @@ final class AppModel: ObservableObject {
         presentApproval(approval)
     }
 
+    // The user closed the sheet: requests announced before that do not open one now; a request announced later still does.
     func closeApprovalSheet() {
         guard !isAnsweringApproval else { return }
         presentedApproval = nil
+        allAnnouncedApproval = []
     }
 
     private func presentApproval(_ approval: PhoneApproval) {
@@ -1350,6 +1383,7 @@ final class AppModel: ObservableObject {
     private func removeApproval(requestID: String) {
         allFinishedApprovalID.insert(requestID)
         allPendingApproval.removeAll { $0.requestID == requestID }
+        allAnnouncedApproval.removeAll { $0.requestID == requestID }
         closeSheetOfFinishedApproval()
     }
 
@@ -1396,6 +1430,7 @@ final class AppModel: ObservableObject {
         approvalExpiryTask?.cancel()
         approvalExpiryTask = nil
         allPendingApproval = []
+        allAnnouncedApproval = []
         // A listing still running started before the clear and must not bring the requests back.
         shownApprovalList = startedApprovalListCount
         presentedApproval = nil

@@ -12,7 +12,8 @@ type Vault struct {
 	// NeedsRotation is set when someone lost access through a team and an owner's app has not rotated the key since.
 	NeedsRotation bool `json:"needsRotation,omitempty"`
 	// KeyGeneration counts the vault's keys: 1 at creation, one more after every rotation. Missing from older servers.
-	KeyGeneration int64 `json:"keyGeneration,omitempty"`
+	KeyGeneration  int64 `json:"keyGeneration,omitempty"`
+	AccessRevision int64 `json:"accessRevision,omitempty"`
 }
 
 // CreateVaultRequest: an organization vault names its organization and the team that is given it as owner;

@@ -31,6 +31,7 @@ func TestStaleCommandMutationsAreDeniedByTheOperation(t *testing.T) {
 		{Type: cliprotocol.TypeAcceptInvitation, InvitationID: "invitation"},
 		{Type: cliprotocol.TypeDeclineInvitation, InvitationID: "invitation"},
 		{Type: cliprotocol.TypeCancelInvitation, InvitationID: "invitation"},
+		{Type: cliprotocol.TypeConfirmShareRecipient, InvitationID: "invitation", ReviewToken: "stale"},
 		{Type: cliprotocol.TypeRevokeDevice, DeviceID: "device"},
 		{Type: cliprotocol.TypeCreateShareLink, ShareLink: &cliprotocol.ShareLinkChange{Text: "stale", Title: "stale", ExpiresInSeconds: 3600, MaxViews: 1}},
 		{Type: cliprotocol.TypeRevokeShareLink, ShareLinkID: "link"},

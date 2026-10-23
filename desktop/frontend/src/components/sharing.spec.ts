@@ -241,6 +241,26 @@ describe("Vault sharing panel", () => {
 });
 
 describe("Share invitation banner", () => {
+  it("reviews the concrete recipient and sends only that displayed authorization", async () => {
+    const invitation = createSentShareInvitation({ id: "new-recipient", state: "accepted", requiresConfirmation: true, recipientId: "NEW123", securityCode: "1111 2222 3333 4444", reviewToken: "exact-reviewed-context", email: "new@example.com", role: "reader" });
+    store.shareInvitations = { received: [], sent: [invitation], completionError: "" };
+    api.confirmShareRecipient.mockResolvedValue(undefined);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    expect(api.confirmShareRecipient).not.toHaveBeenCalled();
+    await wrapper.find('[data-testid="review-share-new-recipient"]').trigger("click");
+    const dialog = wrapper.find('[data-testid="share-recipient-confirmation"]');
+    expect(dialog.text()).toContain("new@example.com");
+    expect(dialog.text()).toContain("Family");
+    expect(dialog.text()).toContain("Reader");
+    expect(dialog.text()).toContain("NEW123");
+    expect(dialog.text()).toContain("1111 2222 3333 4444");
+    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
+    await wrapper.find('[data-testid="confirm-share-recipient"]').trigger("click");
+    await flushPromises();
+    expect(api.confirmShareRecipient).toHaveBeenCalledWith("new-recipient", "exact-reviewed-context");
+    wrapper.unmount();
+  });
+
   it("shows received invitations above the vaults and accepts or declines them", async () => {
     store.shareInvitations = { received: [createReceivedShareInvitation(), createReceivedShareInvitation({ id: "from-dave", invitedByName: "", invitedByEmail: "dave@example.com", role: "reader" })], sent: [], completionError: "" };
     api.acceptShareInvitation.mockResolvedValue(undefined);

@@ -91,6 +91,13 @@ export function ChooseImportFile(vaultID: string, format: string): $CancellableP
     return $Call.ByID(3206787215, vaultID, format);
 }
 
+/**
+ * ConfirmShareRecipient delivers only the exact recipient and scope reviewed in a native UI.
+ */
+export function ConfirmShareRecipient(invitationID: string, reviewToken: string): $CancellablePromise<void> {
+    return $Call.ByID(971971297, invitationID, reviewToken);
+}
+
 export function ContinueImport(): $CancellablePromise<$models.ImportProgress> {
     return $Call.ByID(1605828877);
 }

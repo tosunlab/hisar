@@ -95,6 +95,9 @@ class SharingUITests : HisarUITestCase() {
         tap("share-vault-submit")
         waitForText("Invitation sent to $unknownEmail")
 
+        scrollTo("review-share-$partnerEmail")
+        tap("review-share-$partnerEmail")
+        tap("confirm-share-recipient")
         val partnerRow = "vault-member-$partnerEmail"
         waitFor(partnerRow, 90_000)
         assertTrue(readRow(partnerRow), readRow(partnerRow).contains("Reader"))

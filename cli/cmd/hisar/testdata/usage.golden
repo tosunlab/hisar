@@ -25,7 +25,7 @@ commands:
   people                                                 list the people you share vaults with, with their security codes
   share              <vault> <email> [-r role]           invite someone to a vault by email (role: owner, editor, reader)
   unshare            <vault> <email>                     remove someone from a vault and rotate its key
-  invitations        [accept|decline|cancel <id>]        list share invitations, answer them, and finish accepted shares
+  invitations        [accept|decline|cancel|confirm <id>] list share invitations, answer them, and review accepted recipients
   invite             <email>                             email someone an invite to create a Hisar account
   orgs                                                   list your organizations and invitations to them; gives team members the vault keys they wait for and rotates the vaults someone lost
   org                <action> <org> [arguments]          manage an organization (create <name> | show <org> | rename <org> <name> | delete <org> [-y] | invite <org> <email> [-r admin|member] | cancel <org> <email> | accept [id] | decline [id] | role <org> <email> admin|member | remove <org> <email> [-y] | leave <org> [-y])

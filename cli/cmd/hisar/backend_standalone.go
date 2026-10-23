@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
@@ -521,6 +522,21 @@ func (access *standaloneBackend) answerInvitation(ctx context.Context, action, i
 		return authedClient.DeclineShareInvitation(ctx, invitationID)
 	}
 	return authedClient.CancelShareInvitation(ctx, invitationID)
+
+}
+
+func (access *standaloneBackend) confirmInvitation(ctx context.Context, invitationID, reviewToken string) error {
+	if err := access.requireSession(ctx); err != nil {
+		return err
+	}
+	reviewHash, err := hex.DecodeString(reviewToken)
+	if err != nil || len(reviewHash) != 32 {
+		return errors.New("Review this invitation again before confirming the recipient.")
+	}
+	if err := access.unlockedSession.ConfirmShareRecipient(ctx, invitationID, reviewHash); err != nil {
+		return err
+	}
+	return access.currentState.Save()
 }
 
 func (access *standaloneBackend) listShareLinks(ctx context.Context) ([]cliprotocol.ShareLink, error) {

@@ -26,7 +26,7 @@ func TestGrantDuringDeletionLocksInvitationsBeforeAccountUpgrade(t *testing.T) {
 		Email: "alice@example.com", Role: "member", InvitedBy: "BOB111"}, time.Hour); err != nil {
 		t.Fatal(err)
 	}
-	invitationID, err := database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "alice@example.com",
+	invitationID, err := createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "alice@example.com",
 		Role: "editor", InvitedBy: "BOB111"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)
@@ -34,6 +34,7 @@ func TestGrantDuringDeletionLocksInvitationsBeforeAccountUpgrade(t *testing.T) {
 	if _, _, err := database.AcceptShareInvitation(ctx, invitationID, "ALICE1", "alice@example.com"); err != nil {
 		t.Fatal(err)
 	}
+	completion := authorizeTestShareCompletion(t, database, invitationID)
 	barrier, err := database.pool.Begin(ctx)
 	if err != nil {
 		t.Fatal(err)
@@ -50,7 +51,7 @@ func TestGrantDuringDeletionLocksInvitationsBeforeAccountUpgrade(t *testing.T) {
 	waitForStoreLock(t, database, ctx, "%organization_invitations WHERE invited_by%")
 	granted := make(chan error, 1)
 	go func() {
-		_, err := database.GrantAccess(ctx, vaultID, Member{AccountID: "ALICE1", Role: "editor", WrappedKey: []byte{1}, GrantedBy: "BOB111"}, 0)
+		err := database.CompleteSignedShare(ctx, "BOB111", "https://hisar.test", completion)
 		granted <- err
 	}()
 	// Either the grant finishes under the weak account lock, or it reaches the foreign-key wait of the old order.
@@ -81,7 +82,7 @@ func TestGrantDuringDeletionLocksInvitationsBeforeAccountUpgrade(t *testing.T) {
 	if !grantFinished {
 		grantErr = <-granted
 	}
-	if grantErr != nil && !errors.Is(grantErr, ErrNoInvitation) {
+	if grantErr != nil && !errors.Is(grantErr, ErrNoInvitation) && !errors.Is(grantErr, ErrNotFound) {
 		t.Errorf("key grant: %v", grantErr)
 	}
 }
@@ -327,7 +328,7 @@ func TestDeletionRefusesInvitationInsertedAfterAccountUpgrade(t *testing.T) {
 		deleted <- err
 	}()
 	waitForStoreLock(t, database, ctx, "%UPDATE organization_members SET role = 'admin'%")
-	invitationID, err = database.UpsertShareInvitation(ctx, &ShareInvitation{VaultID: vaultID, Email: "alice@example.com",
+	invitationID, err = createTestShareInvitation(t, database, ctx, &ShareInvitation{VaultID: vaultID, Email: "alice@example.com",
 		Role: "editor", InvitedBy: "BOB111"}, time.Hour)
 	if err != nil {
 		t.Fatal(err)

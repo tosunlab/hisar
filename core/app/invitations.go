@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"net/http"
 	"strings"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 // completeAcceptedShares wraps vault keys for people who accepted this user's share invitations, pinning their
@@ -85,6 +88,10 @@ func convertToSentShareInvitation(sent apitypes.SentShareInvitation, vaultName s
 	}
 	if sent.Recipient != nil {
 		invitation.RecipientName = sent.Recipient.Name
+		invitation.RecipientID = sent.Recipient.AccountID
+		invitation.SecurityCode = crypt.FormatKeyFingerprint(sent.Recipient.PublicKeys.Sign)
+		invitation.RequiresConfirmation = sent.State == apitypes.ShareInvitationAccepted && (sent.Intent == nil || sent.Intent.Context.RecipientID == "")
+		invitation.ReviewToken = hex.EncodeToString(session.ShareInvitationReviewHash(sent))
 	}
 	if sent.AcceptedAt != nil {
 		invitation.AcceptedAt = formatTime(*sent.AcceptedAt)
@@ -159,4 +166,28 @@ func (s *Service) CancelShareInvitation(invitationID string) error {
 	return s.answerShareInvitation(invitationID, func(ctx context.Context, invitationID string) error {
 		return s.unlockedSession.Client.CancelShareInvitation(ctx, invitationID)
 	})
+}
+
+// ConfirmShareRecipient delivers only the exact recipient and scope reviewed in a native UI.
+func (s *Service) ConfirmShareRecipient(invitationID, reviewToken string) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
+		return err
+	}
+	reviewHash, err := hex.DecodeString(reviewToken)
+	if err != nil || len(reviewHash) != 32 {
+		return errors.New("Review this invitation again before confirming the recipient.")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+	defer cancel()
+	if err := s.unlockedSession.ConfirmShareRecipient(ctx, invitationID, reviewHash); err != nil {
+		return convertError(err)
+	}
+	if _, err := s.savePins(shareCompletionPass); err != nil {
+		return err
+	}
+	s.shareCompletionError = ""
+	s.loadVaults(ctx)
+	return nil
 }

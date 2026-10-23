@@ -1282,10 +1282,16 @@ struct SentShareInvitation: Codable, Identifiable, Hashable {
     var role: String
     var state: String
     var expiresAt: String
+    var requiresConfirmation: Bool? = nil
+    var recipientID: String? = nil
+    var securityCode: String? = nil
+    var reviewToken: String? = nil
 
     enum CodingKeys: String, CodingKey {
         case id, vaultName, email, role, state, expiresAt
         case vaultID = "vaultId"
+        case requiresConfirmation, securityCode, reviewToken
+        case recipientID = "recipientId"
     }
 }
 

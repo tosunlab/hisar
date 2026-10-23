@@ -120,11 +120,11 @@ func shareThroughInvitation(t *testing.T, owner, recipient *session.Session, vau
 	if err := recipient.Client.AcceptShareInvitation(ctx, invitationList.Received[invitationIndex].ID); err != nil {
 		t.Fatal(err)
 	}
-	completedShares, err := owner.CompleteAcceptedShares(ctx)
-	if err != nil || !slices.ContainsFunc(completedShares, func(completed session.CompletedShare) bool {
+	completedShares := completeReviewedShares(t, owner)
+	if !slices.ContainsFunc(completedShares, func(completed session.CompletedShare) bool {
 		return completed.VaultID == vault.ID && completed.Recipient.AccountID == recipient.AccountID && completed.Role == role
 	}) {
-		t.Fatalf("completed shares: %+v %v", completedShares, err)
+		t.Fatalf("completed shares: %+v", completedShares)
 	}
 }
 

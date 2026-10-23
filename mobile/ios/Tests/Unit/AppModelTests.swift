@@ -774,6 +774,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(remaining?.allSent.count, 0)
     }
 
+    func testSharingConfirmationBindsReviewedRecipient() async {
+        let model = await createUnlockedModel()
+        guard let vault = await model.createVault(name: "Team") else { return XCTFail("vault missing") }
+        let invitation = SentShareInvitation(id: "accepted", vaultID: vault.id, vaultName: "Team", email: "new@example.com", role: "reader", state: "accepted", expiresAt: "2027-01-22T08:00:00Z", requiresConfirmation: true, recipientID: "new-account", securityCode: "3333 4444", reviewToken: "reviewed-identity")
+        backend.shareInvitations = ShareInvitations(allSent: [invitation])
+        var changed = invitation
+        changed.reviewToken = "other-identity"
+        let changedResult = await model.confirmShareRecipient(changed)
+        XCTAssertFalse(changedResult)
+        XCTAssertEqual(backend.shareInvitations.allSent.count, 1)
+        let confirmed = await model.confirmShareRecipient(invitation)
+        XCTAssertTrue(confirmed)
+        XCTAssertTrue(backend.shareInvitations.allSent.isEmpty)
+    }
+
     func testReceivedShareInvitationsAreAcceptedOrDeclined() async {
         backend.seedSignedIn()
         backend.shareInvitations = ShareInvitations(allReceived: [

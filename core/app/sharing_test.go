@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 	"path/filepath"
 	"slices"
@@ -41,10 +40,14 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 		}
 		writeJSON(writer, http.StatusOK, people)
 	})
-	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/share-invitations", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/signed-share-invitations", func(writer http.ResponseWriter, request *http.Request) {
 		var shareRequest apitypes.ShareInvitationRequest
 		if err := json.NewDecoder(request.Body).Decode(&shareRequest); err != nil {
 			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
+			return
+		}
+		if shareRequest.Intent == nil {
+			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: "owner signature required"})
 			return
 		}
 		server.mutex.Lock()
@@ -64,8 +67,8 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 			return invitation.VaultID == vaultID && invitation.Email == shareRequest.Email
 		})
 		server.shareInvitations = append(server.shareInvitations, apitypes.SentShareInvitation{
-			ID: fmt.Sprintf("invitation-%d", len(server.shareInvitations)+1), VaultID: vaultID, Email: shareRequest.Email, Role: shareRequest.Role,
-			State: apitypes.ShareInvitationPending, InvitedBy: server.accountID, ExpiresAt: time.Now().Add(7 * 24 * time.Hour),
+			ID: shareRequest.Intent.Context.ID, VaultID: vaultID, Email: shareRequest.Email, Role: shareRequest.Role,
+			State: apitypes.ShareInvitationPending, InvitedBy: server.accountID, ExpiresAt: time.Unix(shareRequest.Intent.Context.ExpiresAt, 0), Intent: shareRequest.Intent,
 		})
 		writeJSON(writer, http.StatusAccepted, apitypes.InvitationSentResponse{Message: apitypes.InvitationSentMessage})
 	})
@@ -80,6 +83,44 @@ func (server *fakeAPIServer) addSharingRoutes(mux *http.ServeMux) {
 			}
 		}
 		writeJSON(writer, http.StatusOK, response)
+	})
+	mux.HandleFunc("POST /api/v1/share-invitations/{invitationID}/complete", func(writer http.ResponseWriter, request *http.Request) {
+		var completion apitypes.CompleteShareRequest
+		if err := json.NewDecoder(request.Body).Decode(&completion); err != nil {
+			writer.WriteHeader(http.StatusBadRequest)
+			return
+		}
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		if server.isSetAccessFailing {
+			writeJSON(writer, http.StatusInternalServerError, apitypes.Error{Error: "internal error"})
+			return
+		}
+		intent := completion.Intent.Context
+		index := slices.IndexFunc(server.shareInvitations, func(invitation apitypes.SentShareInvitation) bool {
+			return invitation.ID == request.PathValue("invitationID") && invitation.State == apitypes.ShareInvitationAccepted
+		})
+		if index < 0 {
+			writer.WriteHeader(http.StatusConflict)
+			return
+		}
+		invitation := server.shareInvitations[index]
+		signer := server.findMember(intent.InvitedBy)
+		if signer == nil || invitation.Recipient == nil || intent.RecipientID != invitation.Recipient.AccountID || intent.Role != invitation.Role ||
+			!bytes.Equal(intent.RecipientKeyHash, crypt.ShareRecipientKeyHash(invitation.Recipient.PublicKeys.Sign, invitation.Recipient.PublicKeys.KEM)) ||
+			crypt.VerifyShareIntent(signer.PublicKeys.Sign, intent, completion.Intent.Signature) != nil {
+			writer.WriteHeader(http.StatusConflict)
+			return
+		}
+		server.setAccessRequests = append(server.setAccessRequests, apitypes.SetAccessRequest{WrappedKey: completion.WrappedKey, Role: intent.Role, KeyGeneration: intent.KeyGeneration})
+		server.accessesByVaultID[intent.VaultID] = append(server.accessesByVaultID[intent.VaultID], apitypes.RotatedAccess{AccountID: intent.RecipientID, Role: intent.Role, WrappedKey: completion.WrappedKey})
+		server.shareInvitations = slices.Delete(server.shareInvitations, index, index+1)
+		for i := range server.vaults {
+			if server.vaults[i].ID == intent.VaultID {
+				server.vaults[i].AccessRevision++
+			}
+		}
+		writer.WriteHeader(http.StatusNoContent)
 	})
 	mux.HandleFunc("POST /api/v1/share-invitations/{invitationID}/{answer}", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
@@ -310,8 +351,30 @@ func shareThroughInvitation(t *testing.T, test unlockedTestService, vaultID stri
 	if err != nil || invitations.CompletionError != "" {
 		t.Fatalf("complete the share: %+v %v", invitations, err)
 	}
+	for _, invitation := range invitations.Sent {
+		if invitation.VaultID == vaultID && invitation.RequiresConfirmation {
+			if err := test.service.ConfirmShareRecipient(invitation.ID, invitation.ReviewToken); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
 	if _, found := test.apiServer.getAccess(vaultID, member.AccountID); !found {
 		t.Fatalf("%s has no access after completing", member.Email)
+	}
+}
+
+func authorizeInvitedRecipient(t *testing.T, test unlockedTestService, member apitypes.Member) {
+	t.Helper()
+	test.apiServer.mutex.Lock()
+	defer test.apiServer.mutex.Unlock()
+	for i := range test.apiServer.shareInvitations {
+		invitation := &test.apiServer.shareInvitations[i]
+		if invitation.Email != member.Email {
+			continue
+		}
+		invitation.Intent.Context.RecipientID = member.AccountID
+		invitation.Intent.Context.RecipientKeyHash = crypt.ShareRecipientKeyHash(member.PublicKeys.Sign, member.PublicKeys.KEM)
+		invitation.Intent.Signature = test.service.unlockedSession.Keyset.SignShareIntent(invitation.Intent.Context)
 	}
 }
 
@@ -406,6 +469,20 @@ func TestShareVaultSendsInvitationAndCompletesOnAccept(t *testing.T) {
 	if !service.syncVaults(context.Background()) {
 		t.Fatal("sync failed")
 	}
+	if _, found := test.apiServer.getAccess(test.familyID, bob.AccountID); found {
+		t.Fatal("unknown identity got an automatic key")
+	}
+	reviews, reviewErr := service.ListShareInvitations()
+	if reviewErr != nil || len(reviews.Sent) != 1 {
+		t.Fatalf("recipient reviews: %+v %v", reviews, reviewErr)
+	}
+	review := reviews.Sent[0]
+	if !review.RequiresConfirmation || review.RecipientID != bob.AccountID || review.SecurityCode == "" {
+		t.Fatalf("missing recipient review: %+v", review)
+	}
+	if err := service.ConfirmShareRecipient(review.ID, review.ReviewToken); err != nil {
+		t.Fatal(err)
+	}
 	access, found := test.apiServer.getAccess(test.familyID, bob.AccountID)
 	if !found || access.Role != apitypes.VaultEditor {
 		t.Fatalf("access after the sync completed the share: %+v %v", access, found)
@@ -462,16 +539,8 @@ func TestCompletingAShareRefusesAChangedKey(t *testing.T) {
 	shareThroughInvitation(t, test, test.familyID, bob, apitypes.VaultReader)
 
 	test.apiServer.replaceMemberKey(t, bob.AccountID)
-	substituted := *test.apiServer.findMember(bob.AccountID)
-	if err := service.ShareVault(travelID, "b@example.com", apitypes.VaultReader); err != nil {
-		t.Fatal(err)
-	}
-	test.apiServer.acceptShareInvitation(t, substituted)
-	invitations, err := service.ListShareInvitations()
-	if err != nil || !strings.Contains(invitations.CompletionError, "signing key of b@example.com changed") ||
-		len(invitations.Sent) != 1 || invitations.Sent[0].State != apitypes.ShareInvitationAccepted ||
-		invitations.Sent[0].RecipientName != "Bob" || invitations.Sent[0].AcceptedAt != "2026-10-11T08:30:00Z" || invitations.Sent[0].VaultName != "Travel" {
-		t.Fatalf("completing with a substituted key: %+v %v", invitations, err)
+	if err := service.ShareVault(travelID, "b@example.com", apitypes.VaultReader); err == nil || !strings.Contains(err.Error(), "signing key of b@example.com changed") {
+		t.Fatalf("inviting a substituted known key: %v", err)
 	}
 	if _, found := test.apiServer.getAccess(travelID, bob.AccountID); found {
 		t.Error("the vault key was wrapped to a substituted key")
@@ -484,6 +553,7 @@ func TestCompletingAShareSavesThePinWhenTheAccessFails(t *testing.T) {
 	if err := test.service.ShareVault(test.familyID, "b@example.com", apitypes.VaultEditor); err != nil {
 		t.Fatal(err)
 	}
+	authorizeInvitedRecipient(t, test, bob)
 	test.apiServer.acceptShareInvitation(t, bob)
 	test.apiServer.mutex.Lock()
 	test.apiServer.isSetAccessFailing = true
@@ -508,6 +578,7 @@ func TestCompletingAShareReportsPinsThatCouldNotBeSaved(t *testing.T) {
 	if err := test.service.ShareVault(test.familyID, "b@example.com", apitypes.VaultEditor); err != nil {
 		t.Fatal(err)
 	}
+	authorizeInvitedRecipient(t, test, bob)
 	test.apiServer.acceptShareInvitation(t, bob)
 	unblockStateSaves := blockStateSaves(t, test.service.config.StatePath)
 
@@ -733,6 +804,7 @@ func TestShareInvitationEventCompletesShare(t *testing.T) {
 	if err := service.ShareVault(test.familyID, "b@example.com", apitypes.VaultReader); err != nil {
 		t.Fatal(err)
 	}
+	authorizeInvitedRecipient(t, test, bob)
 	remoteChange := make(chan struct{}, 4)
 	service.mutex.Lock()
 	service.config.OnRemoteChange = func() { remoteChange <- struct{}{} }
@@ -959,8 +1031,24 @@ func checkSharingFlow(t *testing.T, service *Service, familyID, memberEmail, mem
 		t.Fatalf("member has the vault before the owner completed: %+v %v", memberVaults, err)
 	}
 	sent, err := service.ListShareInvitations()
-	if err != nil || sent.CompletionError != "" || slices.ContainsFunc(sent.Sent, func(invitation SentShareInvitation) bool { return invitation.Email == memberEmail }) {
-		t.Fatalf("owner's invitations after completing: %+v %v", sent, err)
+	if err != nil || sent.CompletionError != "" {
+		t.Fatalf("owner's invitations before review: %+v %v", sent, err)
+	}
+	reviewIndex := slices.IndexFunc(sent.Sent, func(invitation SentShareInvitation) bool {
+		return invitation.Email == memberEmail && invitation.RequiresConfirmation
+	})
+	if reviewIndex < 0 {
+		t.Fatalf("no recipient review: %+v", sent)
+	}
+	if memberVaults, err := member.ListVaults(); err != nil || slices.ContainsFunc(memberVaults, func(vault VaultSummary) bool { return vault.ID == familyID }) {
+		t.Fatalf("member got the vault before the review: %+v %v", memberVaults, err)
+	}
+	if err := service.ConfirmShareRecipient(sent.Sent[reviewIndex].ID, sent.Sent[reviewIndex].ReviewToken); err != nil {
+		t.Fatalf("confirm: %v", err)
+	}
+	sent, err = service.ListShareInvitations()
+	if err != nil || slices.ContainsFunc(sent.Sent, func(invitation SentShareInvitation) bool { return invitation.Email == memberEmail }) {
+		t.Fatalf("owner's invitations after confirming: %+v %v", sent, err)
 	}
 	people, err := service.ListPeople()
 	if err != nil {

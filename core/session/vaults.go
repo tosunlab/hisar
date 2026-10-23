@@ -73,7 +73,7 @@ func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
 		}
 		vaults = append(vaults, Vault{
 			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
-			OrganizationID: protoVault.OrganizationID, KeyGeneration: protoVault.KeyGeneration, NeedsRotation: protoVault.NeedsRotation,
+			OrganizationID: protoVault.OrganizationID, KeyGeneration: protoVault.KeyGeneration, NeedsRotation: protoVault.NeedsRotation, AccessRevision: protoVault.AccessRevision,
 		})
 	}
 	if isFetched && s.Cache != nil {

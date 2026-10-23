@@ -62,7 +62,8 @@ type Vault struct {
 	// OrganizationID is set for organization vaults only.
 	OrganizationID string
 	// KeyGeneration is the generation of Key; 0 when the server does not count them.
-	KeyGeneration int64
+	KeyGeneration  int64
+	AccessRevision int64
 	// NeedsRotation: someone lost access through a team and no owner's app has rotated the key since.
 	NeedsRotation bool
 }

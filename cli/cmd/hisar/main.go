@@ -59,7 +59,7 @@ var commands = []command{
 	{name: "people", summary: "list the people you share vaults with, with their security codes", withBackend: runListPeople},
 	{name: "share", argumentUsage: "<vault> <email> [-r role]", summary: "invite someone to a vault by email (role: owner, editor, reader)", withBackend: runShare},
 	{name: "unshare", argumentUsage: "<vault> <email>", summary: "remove someone from a vault and rotate its key", withBackend: runUnshare},
-	{name: "invitations", argumentUsage: "[accept|decline|cancel <id>]", summary: "list share invitations, answer them, and finish accepted shares", withBackend: runInvitations},
+	{name: "invitations", argumentUsage: "[accept|decline|cancel|confirm <id>]", summary: "list share invitations, answer them, and review accepted recipients", withBackend: runInvitations},
 	{name: "invite", argumentUsage: "<email>", summary: "email someone an invite to create a Hisar account", withBackend: runInvite},
 	{name: "orgs", summary: "list your organizations and invitations to them; gives team members the vault keys they wait for and rotates the vaults someone lost", withBackend: runListOrganizations},
 	{name: "org", argumentUsage: "<action> <org> [arguments]", summary: "manage an organization (" + organizationUsage + ")", withBackend: runOrganization},

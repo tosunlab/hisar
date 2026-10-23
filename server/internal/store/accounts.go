@@ -320,7 +320,8 @@ func (s *Store) PruneAudit(ctx context.Context, maxAge time.Duration) (int64, er
 }
 
 // PruneExpiredInvitation deletes sign-up invites, pending share invitations and organization invitations that expired
-// more than maxAge ago. Accepted share invitations never expire: they wait for the owner's app.
+// more than maxAge ago, and the retired share invitation IDs whose signed expiry passed. Accepted share invitations are
+// kept until an owner completes or cancels them. The count is of invitations only.
 func (s *Store) PruneExpiredInvitation(ctx context.Context, maxAge time.Duration) (int64, error) {
 	var prunedCount int64
 	err := pgx.BeginFunc(ctx, s.pool, func(transaction pgx.Tx) error {
@@ -335,7 +336,8 @@ func (s *Store) PruneExpiredInvitation(ctx context.Context, maxAge time.Duration
 			}
 			prunedCount += commandTag.RowsAffected()
 		}
-		return nil
+		_, err := transaction.Exec(ctx, `DELETE FROM retired_share_invitations WHERE expires_at <= now()`)
+		return err
 	})
 	return prunedCount, err
 }

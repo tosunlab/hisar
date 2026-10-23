@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"github.com/tryhisar/hisar/core/cliprotocol"
 	"strings"
 	"testing"
 )
@@ -58,5 +59,32 @@ func TestGetShareArgumentPromptsForMissingFields(t *testing.T) {
 	}
 	if _, _, err := getShareArgument([]string{"Family", "bob@example.com", "extra"}, "reader"); err != errUsage {
 		t.Errorf("extra argument: %v", err)
+	}
+}
+
+func TestInvitationConfirmationShowsAndBindsConcreteRecipient(t *testing.T) {
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		if request.Type == cliprotocol.TypeListInvitation {
+			return cliprotocol.InvitationListResult{Sent: []cliprotocol.SentInvitation{{ID: "abcdef12-0000-4000-8000-000000000001", VaultID: "family-id", VaultName: "Family", Email: "new@example.com", Role: "reader", State: "accepted", RequiresConfirmation: true, RecipientID: "NEW123", SecurityCode: "1111 2222 3333 4444", ReviewToken: "reviewed-context"}}}, nil
+		}
+		if request.Type == cliprotocol.TypeConfirmShareRecipient {
+			return struct{}{}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	_, stderr, err := runCapturingOutput(t, false, "share\n", "invitations", "confirm", "abcdef12")
+	if err != nil || !strings.Contains(stderr, "new@example.com") || !strings.Contains(stderr, "Family") || !strings.Contains(stderr, "reader") || !strings.Contains(stderr, "NEW123") || !strings.Contains(stderr, "1111 2222 3333 4444") {
+		t.Fatalf("recipient review: %q %v", stderr, err)
+	}
+	requests := app.findRequest(cliprotocol.TypeConfirmShareRecipient)
+	if len(requests) != 1 || requests[0].ReviewToken != "reviewed-context" || requests[0].InvitationID != "abcdef12-0000-4000-8000-000000000001" {
+		t.Fatalf("unbound confirmation: %+v", requests)
+	}
+	_, _, err = runCapturingOutput(t, false, "no\n", "invitations", "confirm", "abcdef12")
+	if err == nil || len(app.findRequest(cliprotocol.TypeConfirmShareRecipient)) != 1 {
+		t.Fatal("declining recipient review still delivered access")
 	}
 }

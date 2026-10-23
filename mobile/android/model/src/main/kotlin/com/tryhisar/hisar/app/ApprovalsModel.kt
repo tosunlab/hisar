@@ -30,9 +30,15 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     private val mutableIsApprovalPasswordRequired = MutableStateFlow(false)
     private val mutableApprovalErrorMessage = MutableStateFlow<String?>(null)
     private val allFinishedApprovalID = mutableSetOf<String>()
-    private val allSeenApprovalID = mutableSetOf<String>()
     private var startedApprovalListCount = 0L
     private var shownApprovalList = 0L
+
+    /**
+     * A request the Mac announced while Hisar was in front, waiting for a listing that shows it to open its sheet.
+     * [listedAfter] is the last listing started before the announcement: a later listing without the request means it is gone.
+     */
+    private data class AnnouncedApproval(val requestID: String, val listedAfter: Long)
+    private val allAnnouncedApproval = mutableListOf<AnnouncedApproval>()
     private var pollJob: Job? = null
     private var expiryJob: Job? = null
 
@@ -69,13 +75,21 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
 
     fun handleApprovalEvent(eventName: String, requestID: String) {
         when (eventName) {
-            PhoneApproval.EVENT_REQUESTED -> if (context.isInForeground.value) context.scope.launch { refreshPendingApproval(isOpeningNewRequest = true) }
+            // Recorded now, not in the listing's coroutine: a sheet the user closes before it runs must still cancel it.
+            PhoneApproval.EVENT_REQUESTED -> if (context.isInForeground.value) {
+                recordAnnouncedApproval(requestID)
+                context.scope.launch { refreshPendingApproval() }
+            }
             PhoneApproval.EVENT_ANSWERED, PhoneApproval.EVENT_RESOLVED -> removeApproval(requestID)
         }
     }
 
-    /** Lists the open requests; with [isOpeningNewRequest], a request seen for the first time opens its sheet. */
-    suspend fun refreshPendingApproval(isOpeningNewRequest: Boolean = false) {
+    /**
+     * Lists the open requests. [announcedRequestID] is a request the Mac announced: the first listing that shows it, this one
+     * or a newer one that overtakes it, opens its sheet when none is open.
+     */
+    suspend fun refreshPendingApproval(announcedRequestID: String? = null) {
+        if (announcedRequestID != null) recordAnnouncedApproval(announcedRequestID)
         if (!context.status.value.isUnlocked || !context.isInForeground.value || !context.isMacApprovalAllowed.value) return
         val approvalList = ++startedApprovalListCount
         val allApproval = context.attempt { it.listAllPendingApproval() } ?: return
@@ -84,13 +98,28 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         if (!context.status.value.isUnlocked || approvalList <= shownApprovalList) return
         shownApprovalList = approvalList
         val date = now()
-        val allOpenApproval = allApproval.filter { it.requestID !in allFinishedApprovalID && !it.isExpired(date) }
-        val firstNewApproval = allOpenApproval.firstOrNull { it.requestID !in allSeenApprovalID }
-        allSeenApprovalID += allOpenApproval.map { it.requestID }
-        mutableAllPendingApproval.value = allOpenApproval
-        if (isOpeningNewRequest && mutablePresentedApproval.value == null && firstNewApproval != null) present(firstNewApproval)
+        mutableAllPendingApproval.value = allApproval.filter { it.requestID !in allFinishedApprovalID && !it.isExpired(date) }
+        openAnnouncedApproval(approvalList)
         closeSheetOfFinishedApproval()
         startExpiryCheck()
+    }
+
+    private fun recordAnnouncedApproval(requestID: String) {
+        if (!context.status.value.isUnlocked || !context.isInForeground.value || !context.isMacApprovalAllowed.value) return
+        allAnnouncedApproval += AnnouncedApproval(requestID, startedApprovalListCount)
+    }
+
+    // Opens the first announced request this listing shows, when no sheet is open. A request this listing reflects leaves
+    // the queue: it opened, it is listed while another sheet is open (as one that arrived during that sheet always was),
+    // or the listing started after its announcement and lacks it, so it was answered, withdrawn or expired.
+    private fun openAnnouncedApproval(approvalList: Long) {
+        val allListed = mutableAllPendingApproval.value
+        for (announced in allAnnouncedApproval.toList()) {
+            val approval = allListed.firstOrNull { it.requestID == announced.requestID }
+            if (approvalList <= announced.listedAfter && approval == null) continue
+            allAnnouncedApproval.removeAll { it.requestID == announced.requestID }
+            if (mutablePresentedApproval.value == null && approval != null) present(approval)
+        }
     }
 
     fun reviewApproval(approval: PhoneApproval) {
@@ -98,9 +127,11 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         present(approval)
     }
 
+    /** The user closed the sheet: requests announced before that do not open one now; a request announced later still does. */
     fun closeApprovalSheet() {
         if (mutableIsAnsweringApproval.value) return
         mutablePresentedApproval.value = null
+        allAnnouncedApproval.clear()
     }
 
     fun removeAllExpiredApproval() {
@@ -197,6 +228,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     private fun removeApproval(requestID: String) {
         allFinishedApprovalID += requestID
         mutableAllPendingApproval.update { all -> all.filter { it.requestID != requestID } }
+        allAnnouncedApproval.removeAll { it.requestID == requestID }
         closeSheetOfFinishedApproval()
     }
 
@@ -204,6 +236,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     private fun finishAll() {
         allFinishedApprovalID += mutableAllPendingApproval.value.map { it.requestID }
         mutableAllPendingApproval.value = emptyList()
+        allAnnouncedApproval.clear()
         shownApprovalList = startedApprovalListCount
         mutablePresentedApproval.value = null
     }
@@ -241,6 +274,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
         expiryJob?.cancel()
         expiryJob = null
         mutableAllPendingApproval.value = emptyList()
+        allAnnouncedApproval.clear()
         // A listing still running started before the clear and must not bring the requests back.
         shownApprovalList = startedApprovalListCount
         mutablePresentedApproval.value = null

@@ -162,6 +162,9 @@ func (access appBackend) listPeople(ctx context.Context) ([]cliprotocol.Person, 
 }
 
 func (access appBackend) shareVault(ctx context.Context, vaultID, email, role string) (string, error) {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureSignedSharing) {
+		return "", errors.New("Update the Hisar app before sharing this vault.")
+	}
 	if err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: vaultID, Email: email, Role: role}, nil); err != nil {
 		return "", err
 	}
@@ -191,6 +194,9 @@ func (access appBackend) invite(ctx context.Context, email string) error {
 
 // listInvitations: the app finishes accepted shares on its own.
 func (access appBackend) listInvitations(ctx context.Context) (cliprotocol.InvitationListResult, error) {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureSignedSharing) {
+		return cliprotocol.InvitationListResult{}, errors.New("Update the Hisar app before reviewing sharing invitations.")
+	}
 	var invitationList cliprotocol.InvitationListResult
 	err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListInvitation}, &invitationList)
 	return invitationList, err
@@ -199,6 +205,13 @@ func (access appBackend) listInvitations(ctx context.Context) (cliprotocol.Invit
 func (access appBackend) answerInvitation(ctx context.Context, action, invitationID string) error {
 	requestType := map[string]string{"accept": cliprotocol.TypeAcceptInvitation, "decline": cliprotocol.TypeDeclineInvitation, "cancel": cliprotocol.TypeCancelInvitation}[action]
 	return access.client.call(ctx, cliprotocol.Request{Type: requestType, InvitationID: invitationID}, nil)
+}
+
+func (access appBackend) confirmInvitation(ctx context.Context, invitationID, reviewToken string) error {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureSignedSharing) {
+		return errors.New("Update the Hisar app before confirming this recipient.")
+	}
+	return access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeConfirmShareRecipient, InvitationID: invitationID, ReviewToken: reviewToken}, nil)
 }
 
 func (access appBackend) listShareLinks(ctx context.Context) ([]cliprotocol.ShareLink, error) {

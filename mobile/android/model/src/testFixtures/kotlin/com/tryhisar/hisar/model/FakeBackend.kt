@@ -206,6 +206,18 @@ open class FakeBackend : VaultBackend {
         shareInvitations = shareInvitations.copy(allSent = shareInvitations.allSent.filter { it.id != invitationID })
     }
 
+    override fun confirmShareRecipient(invitationID: String, reviewToken: String) {
+        record("confirmShareRecipient")
+        requireUnlocked()
+        val invitation = shareInvitations.allSent.firstOrNull { it.id == invitationID }
+            ?: throw BackendError("This invitation no longer exists")
+        if (!invitation.requiresConfirmation || invitation.reviewToken != reviewToken || reviewToken.isEmpty()) {
+            throw BackendError("Review this invitation again before confirming the recipient.")
+        }
+        findSharableVault(invitation.vaultID)
+        shareInvitations = shareInvitations.copy(allSent = shareInvitations.allSent.filter { it.id != invitationID })
+    }
+
     override fun listAllVaultMember(vaultID: String): List<Member> {
         record("listAllVaultMember")
         requireUnlocked()

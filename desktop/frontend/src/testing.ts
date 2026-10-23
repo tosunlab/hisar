@@ -567,6 +567,10 @@ export function createSentShareInvitation(overrides: Partial<SentShareInvitation
     state: "pending",
     expiresAt: "2026-10-18T09:00:00Z",
     acceptedAt: "",
+    requiresConfirmation: false,
+    recipientId: "",
+    securityCode: "",
+    reviewToken: "",
     ...overrides,
   };
 }
@@ -711,6 +715,7 @@ export function createApiMock() {
     acceptShareInvitation: vi.fn(),
     declineShareInvitation: vi.fn(),
     cancelShareInvitation: vi.fn(),
+    confirmShareRecipient: vi.fn(),
     listAllOrganization: vi.fn().mockResolvedValue({ organizations: [], invitations: [] }),
     getOrganization: vi.fn(),
     createOrganization: vi.fn(),

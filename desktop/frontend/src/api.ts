@@ -380,6 +380,7 @@ const wailsApi = {
   acceptShareInvitation: (invitationID: string): Promise<void> => Service.AcceptShareInvitation(invitationID),
   declineShareInvitation: (invitationID: string): Promise<void> => Service.DeclineShareInvitation(invitationID),
   cancelShareInvitation: (invitationID: string): Promise<void> => Service.CancelShareInvitation(invitationID),
+  confirmShareRecipient: (invitationID: string, reviewToken: string): Promise<void> => Service.ConfirmShareRecipient(invitationID, reviewToken),
   listAllOrganization: async (): Promise<Organizations> => normalizeOrganizations(await Service.ListOrganizations()),
   getOrganization: async (organizationID: string): Promise<Organization> => normalizeOrganization(await Service.GetOrganization(organizationID)),
   createOrganization: (name: string): Promise<OrganizationSummary> => Service.CreateOrganization(name),
