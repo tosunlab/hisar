@@ -2055,9 +2055,8 @@ export async function openImport(): Promise<void> {
   }
 }
 
-// closeImport drops the parsed export in the backend; it is not offered while items are being saved.
 export function closeImport(): void {
-  if (store.importStep === "saving") {
+  if (store.importStep === "saving" && (store.isBusy || !store.errorMessage)) {
     return;
   }
   if (store.importPreview || store.importProgress) {
@@ -2086,6 +2085,11 @@ export async function changeImportVault(vaultID: string): Promise<void> {
   if (preview) {
     store.importPreview = preview;
   }
+}
+
+export async function mapImportGroup(groupID: string, vaultID: string): Promise<void> {
+  const preview = await runAction(() => api.mapImportGroup(groupID, vaultID));
+  if (preview) store.importPreview = preview;
 }
 
 export async function startImport(isSkippingDuplicate: boolean): Promise<void> {
@@ -2123,8 +2127,10 @@ async function finishImport(progress: ImportProgress): Promise<void> {
   if (allVault) {
     store.allVault = allVault;
   }
-  if (progress.vaultId === store.selectedVaultID) {
-    const allItem = await runAction(() => api.listAllItem(progress.vaultId));
+  // A mixed import reports no single vault; the reviewed groups name every destination.
+  const allDestinationID = [progress.vaultId, ...(store.importPreview?.groups ?? []).map((group) => group.vaultId)];
+  if (store.selectedVaultID && allDestinationID.includes(store.selectedVaultID)) {
+    const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
     if (allItem) {
       store.allItem = sortAllItem(allItem);
     }

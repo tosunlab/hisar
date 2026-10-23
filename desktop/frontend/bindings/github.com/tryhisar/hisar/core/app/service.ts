@@ -541,6 +541,13 @@ export function Lock(): $CancellablePromise<$models.Status> {
 }
 
 /**
+ * MapImportGroup changes exactly one source access group's destination and returns its current member scope.
+ */
+export function MapImportGroup(groupID: string, vaultID: string): $CancellablePromise<$models.ImportPreview> {
+    return $Call.ByID(1973979487, groupID, vaultID);
+}
+
+/**
  * MoveItem moves an item to another vault the user may add items to, in one request that keeps its ID, so favorites and
  * references by ID still find it. A server keeps its SSH key link, which the apps then show as missing until a key from
  * the new vault is chosen.

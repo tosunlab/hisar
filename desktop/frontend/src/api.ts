@@ -254,7 +254,7 @@ export interface ImportPreview extends Omit<BoundImportPreview, "allSkipped" | "
 }
 
 function normalizeImportPreview(boundPreview: BoundImportPreview): ImportPreview {
-  return { ...boundPreview, allSkipped: boundPreview.allSkipped ?? [], allDuplicate: boundPreview.allDuplicate ?? [] };
+  return { ...boundPreview, groups: boundPreview.groups ?? [], allSkipped: boundPreview.allSkipped ?? [], allDuplicate: boundPreview.allDuplicate ?? [] };
 }
 
 export interface ImportProgress extends Omit<BoundImportProgress, "allFailed"> {
@@ -507,6 +507,7 @@ const wailsApi = {
   chooseImportFile: async (vaultID: string, format: string): Promise<ImportPreview> =>
     normalizeImportPreview(await Service.ChooseImportFile(vaultID, format)),
   previewImport: async (vaultID: string): Promise<ImportPreview> => normalizeImportPreview(await Service.PreviewImport(vaultID)),
+  mapImportGroup: async (groupID: string, vaultID: string): Promise<ImportPreview> => normalizeImportPreview(await Service.MapImportGroup(groupID, vaultID)),
   startImport: async (vaultID: string, isSkippingDuplicate: boolean): Promise<ImportProgress> =>
     normalizeImportProgress(await Service.StartImport(vaultID, isSkippingDuplicate)),
   continueImport: async (): Promise<ImportProgress> => normalizeImportProgress(await Service.ContinueImport()),

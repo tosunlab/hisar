@@ -38,7 +38,14 @@ func (access appBackend) getItem(ctx context.Context, vaultID, itemID string) (*
 	return getAppItem(ctx, access.client, vaultID, itemID)
 }
 
-func (access appBackend) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
+func (access appBackend) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item, importScope ...string) error {
+	scope := ""
+	if len(importScope) > 0 {
+		if !access.client.hello.HasFeature(cliprotocol.FeatureImportScope) || importScope[0] == "" {
+			return errors.New("update the Hisar app and review the import destination")
+		}
+		scope = importScope[0]
+	}
 	change := convertToItemChange(vaultItem)
 	fields := []cliprotocol.Field{}
 	for _, field := range vaultItem.Details.Fields {
@@ -46,15 +53,15 @@ func (access appBackend) saveItem(ctx context.Context, vaultID string, vaultItem
 	}
 	change.Fields = &fields
 	var itemResult cliprotocol.ItemResult
-	if err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: change}, &itemResult); err != nil {
+	if err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: change, ImportScope: scope}, &itemResult); err != nil {
 		return err
 	}
 	vaultItem.ID, vaultItem.Revision = itemResult.Item.ID, itemResult.Item.Revision
 	return nil
 }
 
-func (access appBackend) importItems(ctx context.Context, vaultID string, items []item.Item) (int, error) {
-	return importThroughApp(ctx, access.client, vaultID, items)
+func (access appBackend) importItems(ctx context.Context, vaultID string, items []item.Item, scope ...string) (int, error) {
+	return importThroughApp(ctx, access.client, vaultID, items, scope...)
 }
 
 var errFavoritesNeedNewerApp = errors.New("this version of the Hisar app cannot keep favorites; update the Hisar app, or run hisar with --standalone")
@@ -285,12 +292,15 @@ func (access appBackend) completeOrganizationKeys(ctx context.Context) (cliproto
 }
 
 // importThroughApp sends the items in batches and reports the progress.
-func importThroughApp(ctx context.Context, client *appClient, vaultID string, queuedItems []item.Item) (int, error) {
+func importThroughApp(ctx context.Context, client *appClient, vaultID string, queuedItems []item.Item, scope ...string) (int, error) {
+	if !client.hello.HasFeature(cliprotocol.FeatureImportScope) || len(scope) != 1 || scope[0] == "" {
+		return 0, errors.New("update the Hisar app and review the import destination before importing")
+	}
 	savedCount := 0
 	for start := 0; start < len(queuedItems); start += cliprotocol.MaxImportBatch {
 		batchItems := queuedItems[start:min(start+cliprotocol.MaxImportBatch, len(queuedItems))]
 		var importResult cliprotocol.ImportResult
-		err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: batchItems}, &importResult)
+		err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: batchItems, ImportScope: scope[0]}, &importResult)
 		savedCount += importResult.SavedCount
 		if err != nil {
 			fmt.Fprintln(os.Stderr)

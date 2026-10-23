@@ -6,8 +6,10 @@ final class CredentialImportTests: XCTestCase {
     private var backend: FakeBackend!
     private var identityStore: FakeCredentialIdentityStore!
     private var allReceivedToken: [UUID] = []
-    /// What the other app exported; FakeBackend reads it as the titles of the logins to import.
+    /// What the other app exported; FakeBackend reads it as the titles of the logins to import, or as one list of titles
+    /// per collection when allExportedCollectionTitle is set.
     private var allExportedTitle = ["GitHub", "Docker", "Slack", "Figma"]
+    private var allExportedCollectionTitle: [[String]]?
 
     override func setUp() async throws {
         backend = FakeBackend()
@@ -18,7 +20,7 @@ final class CredentialImportTests: XCTestCase {
     private func createModel() async -> AppModel {
         let model = AppModel(credentialIdentityStore: identityStore, receiveExportedCredentials: { [unowned self] token in
             self.allReceivedToken.append(token)
-            return try JSONEncoder().encode(self.allExportedTitle)
+            return try self.allExportedCollectionTitle.map { try JSONEncoder().encode($0) } ?? JSONEncoder().encode(self.allExportedTitle)
         })
         await model.start { self.backend }?.value
         return model
@@ -124,6 +126,29 @@ final class CredentialImportTests: XCTestCase {
         await model.previewCredentialImport(vaultID: "family")
         XCTAssertEqual(model.credentialImportPreview?.vaultID, "family")
         XCTAssertEqual(model.credentialImportPreview?.allDuplicate, [])
+        XCTAssertEqual(model.credentialImportPreview?.groups.first?.vaultID, "family")
+        XCTAssertEqual(model.credentialImportPreview?.groups.first?.members.map(\.email), ["bob@example.com", "alice@example.com"])
+    }
+
+    func testEachCollectionGoesToTheVaultChosenForIt() async {
+        allExportedCollectionTitle = [["Docker", "Slack"], ["Figma"]]
+        let model = await createUnlockedModel()
+        await receivePreview(model)
+        XCTAssertEqual(model.credentialImportPreview?.groups.map(\.vaultID), ["personal", "personal"], "every collection starts in the personal vault")
+
+        await model.previewCredentialImport(vaultID: "family")
+        XCTAssertEqual(model.credentialImportPreview?.groups.map(\.vaultID), ["personal", "personal"], "one vault is never chosen for every collection at once")
+
+        await model.mapCredentialImportGroup(groupID: "group-1", vaultID: "family")
+        XCTAssertEqual(model.credentialImportPreview?.groups.map(\.vaultID), ["personal", "family"])
+        XCTAssertEqual(model.credentialImportPreview?.groups.last?.members.map(\.email), ["bob@example.com", "alice@example.com"], "the shared vault's members are shown")
+        XCTAssertEqual(model.credentialImportPreview?.vaultID, "")
+
+        await model.startCredentialImport(isSkippingDuplicate: true)
+        XCTAssertEqual(model.credentialImportProgress?.isDone, true)
+        XCTAssertEqual(model.credentialImportProgress?.savedCount, 3)
+        XCTAssertEqual(backend.allItemByVaultID["family"]?.map(\.title).filter { ["Docker", "Slack", "Figma"].contains($0) }, ["Figma"])
+        XCTAssertEqual(Set(backend.allItemByVaultID["personal"]?.map(\.title) ?? []).intersection(["Docker", "Slack", "Figma"]), ["Docker", "Slack"])
     }
 
     func testCancelDropsTheImport() async {
@@ -134,7 +159,7 @@ final class CredentialImportTests: XCTestCase {
         XCTAssertFalse(model.isCredentialImportShown)
         XCTAssertNil(model.credentialImportPreview)
         await waitUntil("the import is cancelled") { self.countCall("cancelImport") == 1 }
-        XCTAssertNil(backend.allPendingImportTitle)
+        XCTAssertNil(backend.allPendingImportGroup)
         XCTAssertEqual(countCall("startImport"), 0)
     }
 

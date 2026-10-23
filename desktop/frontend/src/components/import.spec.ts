@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createApiMock, createImportPreview, createImportProgress, createItem, createStatus } from "../testing";
+import { allTestVault, createApiMock, createImportPreview, createImportProgress, createItem, createStatus, createVaultMember } from "../testing";
 import type { VaultSummary } from "../api";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -129,6 +129,23 @@ describe("Import store", () => {
     expect(store.store.noticeMessage).toBe("Imported 1 item into Work");
   });
 
+  it("reloads the open vault after an import that sent items to several vaults", async () => {
+    const groups = [
+      { id: "private-source", name: "1Password Private", isPrivate: true, itemCount: 1, vaultId: "personal", vaultName: "Personal", members: [] },
+      { id: "shared-source", name: "1Password Team", isPrivate: false, itemCount: 1, vaultId: "work", vaultName: "Work", members: [] },
+    ];
+    api.chooseImportFile.mockResolvedValue(createImportPreview({ vaultId: "", vaultName: "", groups }));
+    await store.openImport();
+    await store.chooseImportFile("personal", "1pux");
+    api.startImport.mockResolvedValue(createImportProgress({ vaultId: "", vaultName: "the mapped vaults" }));
+    api.continueImport.mockResolvedValue(createImportProgress({ vaultId: "", vaultName: "the mapped vaults", savedCount: 2, totalCount: 2, isDone: true }));
+    api.listAllItem.mockResolvedValue([createItem({ id: "a", title: "Imported into Personal" })]);
+    await store.startImport(false);
+    expect(api.startImport).toHaveBeenCalledWith("", false);
+    expect(api.listAllItem).toHaveBeenCalledWith("personal");
+    expect(store.store.allItem.map((vaultItem) => vaultItem.title)).toEqual(["Imported into Personal"]);
+  });
+
   it("pauses on an error and continues where it stopped", async () => {
     await store.openImport();
     await store.chooseImportFile("personal", "");
@@ -183,14 +200,14 @@ describe("Import store", () => {
 });
 
 describe("Import panel", () => {
-  it("offers the editable vaults, starting with the selected one, and the formats", async () => {
+  it("offers editable vaults and starts with Personal even when a shared vault is selected", async () => {
     store.store.selectedVaultID = "work";
     await store.openImport();
     const wrapper = mount(ImportPanel);
     await flushPromises();
     const vaultSelect = wrapper.find('[data-testid="import-vault"]');
     expect(vaultSelect.findAll("option").map((option) => option.text())).toEqual(["Personal", "Work"]);
-    expect((vaultSelect.element as HTMLSelectElement).value).toBe("work");
+    expect((vaultSelect.element as HTMLSelectElement).value).toBe("personal");
     expect(wrapper.find('[data-testid="import-format"]').findAll("option").map((option) => option.text())).toEqual([
       "Detect from the file",
       "1Password export (.1pux)",
@@ -203,7 +220,7 @@ describe("Import panel", () => {
     await wrapper.find('[data-testid="import-format"]').setValue("csv");
     api.chooseImportFile.mockResolvedValue(createImportPreview({ fileName: "" }));
     await wrapper.find('[data-testid="import-choose"]').trigger("submit");
-    expect(api.chooseImportFile).toHaveBeenCalledWith("work", "csv");
+    expect(api.chooseImportFile).toHaveBeenCalledWith("personal", "csv");
   });
 
   it("starts with the first editable vault when a read-only vault is selected", async () => {
@@ -252,6 +269,23 @@ describe("Import panel", () => {
     await flushPromises();
     expect(api.previewImport).toHaveBeenCalledWith("work");
     expect(wrapper.find('[data-testid="import-duplicates"]').exists()).toBe(false);
+  });
+
+  it("maps each source group independently and shows the destination members", async () => {
+    const groups = [
+      { id: "private-source", name: "1Password Private", isPrivate: true, itemCount: 1, vaultId: "personal", vaultName: "Personal", members: [] },
+      { id: "shared-source", name: "1Password Team", isPrivate: false, itemCount: 1, vaultId: "work", vaultName: "Work", members: [createVaultMember({ name: "Ada", email: "ada@example.com", isCurrentUser: false })] },
+    ];
+    const wrapper = await openPreview({ groups });
+    const rows = wrapper.findAll('[data-testid="import-source-group"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].text()).toContain("Only you can access Personal");
+    expect(rows[1].text()).toContain("ada@example.com");
+    expect(rows[1].text()).toContain("Shared destination");
+    api.mapImportGroup.mockResolvedValue(createImportPreview({ groups }));
+    await rows[1].find("select").setValue("personal");
+    await flushPromises();
+    expect(api.mapImportGroup).toHaveBeenCalledWith("shared-source", "personal");
   });
 
   it("shows the 1PUX passkey warning in the preview without opening instructions", async () => {

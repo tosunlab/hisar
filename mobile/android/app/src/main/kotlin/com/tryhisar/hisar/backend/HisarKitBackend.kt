@@ -279,6 +279,9 @@ class HisarKitBackend(
 
     override fun previewImport(vaultID: String): ImportPreview = decode(ImportPreview.serializer(), call { previewImport(vaultID) })
 
+    override fun mapImportGroup(groupID: String, vaultID: String): ImportPreview =
+        decode(ImportPreview.serializer(), call { mapImportGroup(groupID, vaultID) })
+
     override fun startImport(vaultID: String, isSkippingDuplicate: Boolean): ImportProgress =
         decode(ImportProgress.serializer(), call { startImport(vaultID, isSkippingDuplicate) })
 

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/cliprotocol"
@@ -21,16 +20,19 @@ type hisarImportOption struct {
 	isVaultChosen        bool
 	isConfirmed          bool
 	isIncludingDuplicate bool
+	mappings             []string
+	isDryRun             bool
 }
 
 // exportedVaultPlan is where one vault of a Hisar export goes: an existing vault, or a new one with targetName.
 type exportedVaultPlan struct {
 	exported         export.Vault
 	target           cliprotocol.Vault
-	isNewVault       bool
 	items            []item.Item
 	existingItems    []item.Item
 	duplicateIndexes []int
+	scope            string
+	members          cliprotocol.VaultActionsResult
 }
 
 func decodeHisarExport(format string, content []byte) (*export.Document, error) {
@@ -56,75 +58,61 @@ func decodeHisarExport(format string, content []byte) (*export.Document, error) 
 	}
 }
 
-// planHisarImport maps each exported vault to the user's vault of the same name, the Personal vault to Personal,
-// and a vault that is missing or read-only to a new vault; with -v everything goes into that vault.
+// planHisarImport suggests an exact stable vault ID before any explicit mapping. Names never restore authority.
+// Noninteractive restores default to Personal unless a destination was explicitly mapped.
 func planHisarImport(ctx context.Context, access backend, document *export.Document, option hisarImportOption) ([]exportedVaultPlan, error) {
+	// Each plan pairs with the exported vault at its index; with no vaults, SourceGroups would add a fallback group.
+	if len(document.Vaults) == 0 {
+		return nil, nil
+	}
 	vaults, err := access.listVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
-	var chosenVault cliprotocol.Vault
-	if option.isVaultChosen {
-		if chosenVault, err = findBackendVault(ctx, access, option.vaultName); err != nil {
+	result := &importer.Result{}
+	for _, exported := range document.Vaults {
+		source := importer.SourceGroup{ID: exported.ID, Name: exported.Name, IsPrivate: exported.Type == apitypes.VaultPersonal}
+		for _, entry := range exported.Items {
+			source.Items = append(source.Items, entry.ConvertToItem())
+		}
+		result.Groups = append(result.Groups, source)
+	}
+	mappings := append([]string{}, option.mappings...)
+	if !option.isConfirmed && !option.isVaultChosen {
+		explicit, err := importMappings(mappings)
+		if err != nil {
 			return nil, err
 		}
-		if chosenVault.Role == apitypes.VaultReader {
-			return nil, fmt.Errorf("you can only read %q; choose a vault you can edit with -v", chosenVault.Name)
+		for _, exported := range document.Vaults {
+			if _, mapped := explicit[exported.ID]; mapped {
+				continue
+			}
+			target, missing := findImportTarget(vaults, exported)
+			if !missing {
+				mappings = append(mappings, exported.ID+"="+target.ID)
+			}
 		}
 	}
+	sourcePlans, err := planSourceImports(ctx, access, result, &importOption{vaultName: option.vaultName, isVaultChosen: option.isVaultChosen, mappings: mappings})
+	if err != nil {
+		return nil, err
+	}
 	plans := []exportedVaultPlan{}
-	for _, exported := range document.Vaults {
-		plan := exportedVaultPlan{exported: exported}
-		for _, exportedItem := range exported.Items {
-			plan.items = append(plan.items, exportedItem.ConvertToItem())
-		}
-		switch {
-		case option.isVaultChosen:
-			plan.target = chosenVault
-		default:
-			plan.target, plan.isNewVault = findImportTarget(vaults, exported)
-		}
-		if !plan.isNewVault {
-			existingItems, err := access.listItems(ctx, plan.target.ID)
-			if err != nil {
-				return nil, err
-			}
-			plan.duplicateIndexes = importer.FindDuplicateIndexes(plan.items, existingItems)
-			plan.existingItems = existingItems
-		}
-		plans = append(plans, plan)
+	for index, source := range sourcePlans {
+		plans = append(plans, exportedVaultPlan{exported: document.Vaults[index], target: source.target, items: source.source.Items, existingItems: source.existing, duplicateIndexes: source.duplicates, scope: source.actions.ImportScope, members: source.actions})
 	}
 	return plans, nil
 }
 
-// findImportTarget never matches a recovery container (export.Vault.NameUnreadable) by name: its label is not a name
-// anyone gave a vault, so its items go into a new vault under that label.
+// findImportTarget matches only the exported vault's own ID, never a name, so neither a recovery container
+// (export.Vault.NameUnreadable) nor a vault that shares its name receives its items by name.
 func findImportTarget(vaults []cliprotocol.Vault, exported export.Vault) (cliprotocol.Vault, bool) {
-	isWritable := func(vault cliprotocol.Vault) bool {
-		return apitypes.CanWriteItems(vault.Role)
-	}
 	for _, vault := range vaults {
-		if exported.Type == apitypes.VaultPersonal && vault.Type == apitypes.VaultPersonal {
+		if exported.ID != "" && vault.ID == exported.ID && vault.Type == exported.Type && apitypes.CanWriteItems(vault.Role) {
 			return vault, false
 		}
 	}
-	if exported.NameUnreadable {
-		return cliprotocol.Vault{Name: exported.Name}, true
-	}
-	for _, candidateName := range []string{exported.Name, exported.Name + " (imported)"} {
-		for _, vault := range vaults {
-			if exported.Type != apitypes.VaultPersonal && strings.EqualFold(vault.Name, candidateName) && isWritable(vault) {
-				return vault, false
-			}
-		}
-	}
-	newName := exported.Name
-	for _, vault := range vaults {
-		if strings.EqualFold(vault.Name, exported.Name) {
-			newName = exported.Name + " (imported)"
-		}
-	}
-	return cliprotocol.Vault{Name: newName}, true
+	return cliprotocol.Vault{}, true
 }
 
 func printHisarImportPreview(fileName string, document *export.Document, format string, plans []exportedVaultPlan) {
@@ -140,9 +128,6 @@ func printHisarImportPreview(fileName string, document *export.Document, format 
 	fmt.Fprintln(os.Stderr)
 	for _, plan := range plans {
 		target := plan.target.Name
-		if plan.isNewVault {
-			target += " (new vault)"
-		}
 		summary := formatItemCount(len(plan.items))
 		if len(plan.duplicateIndexes) > 0 {
 			summary += fmt.Sprintf(", %d already there", len(plan.duplicateIndexes))
@@ -152,6 +137,8 @@ func printHisarImportPreview(fileName string, document *export.Document, format 
 			source += " (name unreadable)"
 		}
 		fmt.Fprintf(standardError(), "  %s → %s: %s\n", source, target, summary)
+		fmt.Fprintf(standardError(), "  Source ID: %s\n", plan.exported.ID)
+		printImportScope(plan.target, plan.members)
 	}
 }
 
@@ -170,6 +157,9 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 		return err
 	}
 	printHisarImportPreview(path, document, format, plans)
+	if option.isDryRun {
+		return nil
+	}
 	duplicateCount := 0
 	for _, plan := range plans {
 		duplicateCount += len(plan.duplicateIndexes)
@@ -193,49 +183,33 @@ func importHisarExport(ctx context.Context, access backend, path, format string,
 	var skipped []importer.SkippedEntry
 	if canCompareContent && isSkippingDuplicate {
 		for _, plan := range plans {
-			if plan.isNewVault || len(plan.duplicateIndexes) == 0 {
+			if len(plan.duplicateIndexes) == 0 {
 				continue
 			}
 			skipped = append(skipped, importer.FindUnsavedDuplicates(plan.items, plan.existingItems, importer.FindDuplicateMatches(plan.items, plan.existingItems))...)
 		}
 	}
-	queuedCount, newVaultCount := 0, 0
+	queuedCount := 0
 	for index := range plans {
 		plans[index].items = selectQueuedItems(plans[index].items, plans[index].duplicateIndexes, isSkippingDuplicate)
 		queuedCount += len(plans[index].items)
-		if plans[index].isNewVault {
-			newVaultCount++
-		}
 	}
-	if queuedCount == 0 && newVaultCount == 0 {
+	if queuedCount == 0 {
 		fmt.Fprintln(standardError(), "Nothing to import.")
 		return nil
 	}
 	if !option.isConfirmed {
-		question := fmt.Sprintf("Import %s?", formatItemCount(queuedCount))
-		if newVaultCount > 0 {
-			question = fmt.Sprintf("Create %s and import %s?", formatVaultCount(newVaultCount), formatItemCount(queuedCount))
-		}
-		isImporting, err := confirm(question)
+		isImporting, err := confirm(fmt.Sprintf("Import %s into the destinations and current member scopes shown?", formatItemCount(queuedCount)))
 		if err != nil || !isImporting {
 			return err
 		}
 	}
 	savedCount := 0
 	for _, plan := range plans {
-		if len(plan.items) == 0 && !plan.isNewVault {
-			continue
-		}
-		target := plan.target
-		if plan.isNewVault {
-			if target, err = access.createVault(ctx, plan.target.Name); err != nil {
-				return err
-			}
-		}
 		if len(plan.items) == 0 {
 			continue
 		}
-		count, err := access.importItems(ctx, target.ID, plan.items)
+		count, err := access.importItems(ctx, plan.target.ID, plan.items, plan.scope)
 		savedCount += count
 		if err != nil {
 			return err

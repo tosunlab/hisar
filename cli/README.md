@@ -71,6 +71,13 @@ and an agent that can run `hisar read` in an approved terminal can read them. An
 terminal only when it may use them. Details: [docs/DESIGN.md](../docs/DESIGN.md) §9.4.1. For agents that speak MCP, `hisar mcp`
 (below) is narrower: it sees only the vaults you choose and asks per command.
 
+## Discover objects before selecting them
+
+For file imports, run `hisar import <file> --dry-run` to review source groups and destination access.
+Unmapped groups default to Personal. Map a shared group explicitly with
+`--map '<source-group-ID>=<destination-vault-ID>'`, repeated for each group you want to redirect.
+Review the printed members before continuing. `-y` applies the same defaults and explicit mappings without questions.
+
 ## Use Hisar with coding agents
 
 `hisar mcp` is an [MCP](https://modelcontextprotocol.io) server on stdio that lets coding agents find secret references and pass

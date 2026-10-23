@@ -32,8 +32,12 @@ func (access *retentionBackend) listItems(context.Context, string) ([]item.Item,
 	return []item.Item{{Overview: item.Overview{Category: item.CategoryLogin, Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}}, Details: item.Details{Password: "old-password"}}}, nil
 }
 func (*retentionBackend) listsItemSummaries() bool { return false }
-func (*retentionBackend) importItems(_ context.Context, _ string, items []item.Item) (int, error) {
+func (*retentionBackend) importItems(_ context.Context, _ string, items []item.Item, _ ...string) (int, error) {
 	return len(items), nil
+}
+
+func (*retentionBackend) getVaultActions(context.Context, string) (cliprotocol.VaultActionsResult, error) {
+	return cliprotocol.VaultActionsResult{ImportScope: "reviewed-personal-scope"}, nil
 }
 
 func TestImportRetainsDifferentPasswordDuplicateInCLI(t *testing.T) {
@@ -59,6 +63,40 @@ func TestImportRetainsDifferentPasswordDuplicateInCLI(t *testing.T) {
 	}
 	if !strings.Contains(string(content), "1 of its entries are not in Hisar") || strings.Contains(string(content), "Delete it and any other copies") {
 		t.Fatalf("unsafe deletion advice: %s", content)
+	}
+}
+
+// Nothing is queued, but an entry of the file is not in Hisar: a duplicate whose content differs, or an entry Hisar
+// cannot import beside an identical duplicate. The CLI still says to keep the file.
+func TestImportWithNothingToImportStillSaysToKeepTheFile(t *testing.T) {
+	for name, source := range map[string]string{
+		"different.csv":    "name,url,username,password\nGitHub,https://github.com,alice,new-password\n",
+		"unsupported.json": `{"encrypted":false,"items":[{"type":1,"name":"GitHub","login":{"username":"alice","password":"old-password","uris":[{"uri":"https://github.com"}]}},{"type":99,"name":"Unknown"}]}`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), name)
+			if err := os.WriteFile(path, []byte(source), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			output, err := os.CreateTemp(t.TempDir(), "stderr")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer output.Close()
+			original := os.Stderr
+			os.Stderr = output
+			defer func() { os.Stderr = original }()
+			if err := runImport(context.Background(), &retentionBackend{}, flag.NewFlagSet("import", flag.ContinueOnError), []string{"-y", path}); err != nil {
+				t.Fatal(err)
+			}
+			content, err := os.ReadFile(output.Name())
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !strings.Contains(string(content), "Nothing to import.") || !strings.Contains(string(content), "Keep "+path+": 1 of its entries are not in Hisar.") {
+				t.Fatalf("no keep-the-file warning:\n%s", content)
+			}
+		})
 	}
 }
 
@@ -126,9 +164,13 @@ func (access *summaryRetentionBackend) listItems(context.Context, string) ([]ite
 	return items, nil
 }
 
-func (access *summaryRetentionBackend) importItems(_ context.Context, _ string, items []item.Item) (int, error) {
+func (access *summaryRetentionBackend) importItems(_ context.Context, _ string, items []item.Item, _ ...string) (int, error) {
 	access.saved += len(items)
 	return len(items), nil
+}
+
+func (*summaryRetentionBackend) getVaultActions(context.Context, string) (cliprotocol.VaultActionsResult, error) {
+	return cliprotocol.VaultActionsResult{ImportScope: "reviewed-personal-scope"}, nil
 }
 
 func TestImportAppSummariesKeepUncomparedDuplicates(t *testing.T) {
@@ -229,7 +271,7 @@ type shortImportBackend struct {
 	retentionBackend
 }
 
-func (*shortImportBackend) importItems(context.Context, string, []item.Item) (int, error) {
+func (*shortImportBackend) importItems(context.Context, string, []item.Item, ...string) (int, error) {
 	return 1, nil
 }
 

@@ -207,6 +207,32 @@ class CredentialImportTests {
         model.credentialImport.previewCredentialImport("family")
         assertEquals("family", model.credentialImport.preview?.vaultID)
         assertEquals(emptyList(), model.credentialImport.preview?.allDuplicate)
+        assertEquals("family", model.credentialImport.preview?.groups?.first()?.vaultID)
+        assertEquals(listOf("bob@example.com", "alice@example.com"), model.credentialImport.preview?.groups?.first()?.members?.map { it.email })
+    }
+
+    @Test
+    fun testEachCollectionGoesToTheVaultChosenForIt() = runTest {
+        val harness = AppModelHarness(this)
+        val backend = harness.backend
+        val model = harness.startUnlockedModel()
+        receivePreview(model, FakeReceiver(CredentialExchangeResult.Received("""[["Docker","Slack"],["Figma"]]""".encodeToByteArray())))
+        assertEquals(listOf("personal", "personal"), model.credentialImport.preview?.groups?.map { it.vaultID }, "every collection starts in the personal vault")
+
+        model.credentialImport.previewCredentialImport("family")
+        assertEquals(listOf("personal", "personal"), model.credentialImport.preview?.groups?.map { it.vaultID }, "one vault is never chosen for every collection at once")
+
+        model.credentialImport.mapCredentialImportGroup("group-1", "family")
+        assertEquals(listOf("personal", "family"), model.credentialImport.preview?.groups?.map { it.vaultID })
+        assertEquals(listOf("bob@example.com", "alice@example.com"), model.credentialImport.preview?.groups?.last()?.members?.map { it.email }, "the shared vault's members are shown")
+        assertEquals("", model.credentialImport.preview?.vaultID)
+
+        model.credentialImport.startCredentialImport(isSkippingDuplicate = true)
+        assertEquals(true, model.credentialImport.progress?.isDone)
+        assertEquals(3, model.credentialImport.progress?.savedCount)
+        val imported = setOf("Docker", "Slack", "Figma")
+        assertEquals(listOf("Figma"), backend.allItemByVaultID["family"].orEmpty().map { it.title }.filter { it in imported })
+        assertEquals(setOf("Docker", "Slack"), backend.allItemByVaultID["personal"].orEmpty().map { it.title }.filter { it in imported }.toSet())
     }
 
     @Test

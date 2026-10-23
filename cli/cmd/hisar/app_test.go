@@ -185,6 +185,8 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "saved-id", Title: request.Item.Title}}, nil
 	case cliprotocol.TypeDeleteItem, cliprotocol.TypeShareVault, cliprotocol.TypeUnshareVault, cliprotocol.TypeRevokeDevice:
 		return struct{}{}, nil
+	case cliprotocol.TypeGetVaultActions:
+		return cliprotocol.VaultActionsResult{ImportScope: "reviewed-test-scope"}, nil
 	case cliprotocol.TypeImportItem:
 		return cliprotocol.ImportResult{SavedCount: len(request.ImportedItems), Failures: []cliprotocol.ImportFailure{}}, nil
 	case cliprotocol.TypeListPeople:

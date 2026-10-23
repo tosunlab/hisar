@@ -32,6 +32,7 @@ export type {
     ImportPreview,
     ImportProgress,
     ImportSkippedEntry,
+    ImportSourceGroup,
     ItemAPICredential,
     ItemAddress,
     ItemAndroidApp,

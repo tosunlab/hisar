@@ -108,7 +108,7 @@ func (access *dotenvGuardBackend) listItems(context.Context, string) ([]item.Ite
 	return nil, os.Rename(replacement, access.path)
 }
 
-func (access *dotenvGuardBackend) saveItem(context.Context, string, *item.Item) error {
+func (access *dotenvGuardBackend) saveItem(context.Context, string, *item.Item, ...string) error {
 	access.isSaved = true
 	return nil
 }

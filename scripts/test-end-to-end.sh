@@ -390,10 +390,16 @@ expect "plain export" "$(printf '%s\n' "$PW" | A export --format plain -o "$T/al
 grep -q '"format": "hisar-export"' "$T/alice-export.json" && grep -qF mail-pass-1 "$T/alice-export.json" || fail "the plain export lacks its header or the Imported Mail password"
 echo "ok   plain export holds the items"
 expect "a wrong export passphrase fails cleanly" "$(printf 'not the passphrase\n' | C import "$T/alice-export.hisar" -y 2>&1 || true)" "that passphrase doesn't open this export"
-expect "importing alice's encrypted export into carol's account" "$(printf 'export passphrase one\n%s\n' "$PW" | C import "$T/alice-export.hisar" -y 2>&1)" "Family → Family (new vault)"
-expect "the imported password round trips" "$(printf '%s\n' "$PW" | C get "Imported Bank" -f password 2>/dev/null)" 'bank,pass"word'
-expect "the imported shared vault round trips" "$(printf '%s\n' "$PW" | C vaults 2>/dev/null)" "Family"
-expect "importing the plain export again skips what is already there" "$(printf '%s\n' "$PW" | C import "$T/alice-export.json" -y 2>&1)" "Nothing to import."
+ALICE_ARCHIVE_ID=$(printf '%s\n' "$PW" | A vaults 2>/dev/null | awk '/^Archive/{print $4}')
+printf '%s\n' "$PW" | C vault create Restored 2>/dev/null
+RESTORED_ID=$(printf '%s\n' "$PW" | C vaults 2>/dev/null | awk '/^Restored/{print $4}')
+IMPORT_OUTPUT=$(printf 'export passphrase one\n%s\n' "$PW" | C import "$T/alice-export.hisar" --map "$ALICE_ARCHIVE_ID=$RESTORED_ID" -y 2>&1)
+expect "importing alice's encrypted export into carol's account puts a mapped group into its vault" "$IMPORT_OUTPUT" "Archive → Restored: 3 items"
+expect "an unmapped shared group goes to Personal with -y" "$IMPORT_OUTPUT" "Family → Personal"
+expect "the mapped group's items are in the mapped vault" "$(printf '%s\n' "$PW" | C get GitHub -v Restored -f password 2>/dev/null)" "should-not-replace"
+expect "the exported Personal vault's items are in Personal" "$(printf '%s\n' "$PW" | C get GitHub -v Personal -f password 2>/dev/null)" "$GEN"
+expect "the imported password round trips" "$(printf '%s\n' "$PW" | C get "Imported Bank" -v Restored -f password 2>/dev/null)" 'bank,pass"word'
+expect "importing the plain export again skips what is already there" "$(printf '%s\n' "$PW" | C import "$T/alice-export.json" --map "$ALICE_ARCHIVE_ID=$RESTORED_ID" -y 2>&1)" "Nothing to import."
 
 mkdir -p "$T/shop"
 printf '# shop\nexport STRIPE_KEY="sk_live_123" # live key\nPORT=8080\nDATABASE_URL=postgres://shop:dbpass@db/shop\n' >"$T/shop/.env"

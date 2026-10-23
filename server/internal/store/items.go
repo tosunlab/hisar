@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/tryhisar/hisar/core/crypt"
 )
 
 type Item struct {
@@ -72,14 +73,36 @@ func listChanges(ctx context.Context, database queryer, vaultID string, since in
 // ErrKeyGenerationMissing unless the vault accepts keyGeneration, so an item sealed with a key a rotation replaced is
 // never stored. The role is read under the vault's lock, which every access change takes, so a member removed meanwhile
 // cannot write.
-func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, keyGeneration int64, item *Item) (*Item, error) {
+func (s *Store) PutItem(ctx context.Context, vaultID, baseRevision string, keyGeneration int64, item *Item, importScope ...string) (*Item, error) {
 	var current *Item
 	err := s.runInTransaction(ctx, func(transaction pgx.Tx) (err error) {
+		if len(importScope) > 0 {
+			if _, err := lockVaultRow(ctx, transaction, vaultID); err != nil {
+				return err
+			}
+			rows, err := transaction.Query(ctx, `SELECT account_id, role FROM vault_access WHERE vault_id = $1 ORDER BY account_id`, vaultID)
+			if err != nil {
+				return err
+			}
+			members, err := pgx.CollectRows(rows, func(row pgx.CollectableRow) (crypt.ImportMember, error) {
+				var member crypt.ImportMember
+				err := row.Scan(&member.AccountID, &member.Role)
+				return member, err
+			})
+			if err != nil {
+				return err
+			}
+			if importScope[0] == "" || importScope[0] != crypt.ImportScope(vaultID, members) {
+				return ErrImportScopeChanged
+			}
+		}
 		current, err = putItem(ctx, transaction, vaultID, baseRevision, keyGeneration, item)
 		return err
 	})
 	return current, err
 }
+
+var ErrImportScopeChanged = errors.New("destination membership changed; review the import destination again")
 
 // putItem is PutItem in transaction.
 func putItem(ctx context.Context, transaction pgx.Tx, vaultID, baseRevision string, keyGeneration int64, item *Item) (*Item, error) {

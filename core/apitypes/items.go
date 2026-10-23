@@ -31,6 +31,7 @@ type PutItemRequest struct {
 	Overview      []byte `json:"overview"`
 	Details       []byte `json:"details"`
 	KeyGeneration int64  `json:"keyGeneration,omitempty"`
+	ImportScope   string `json:"importScope,omitempty"`
 }
 
 type PutItemResponse struct {

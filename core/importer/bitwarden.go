@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -45,8 +46,13 @@ const (
 )
 
 type bitwardenExport struct {
-	Encrypted bool `json:"encrypted"`
-	Folders   []struct {
+	Encrypted   bool `json:"encrypted"`
+	Collections []struct {
+		ID             string `json:"id"`
+		OrganizationID string `json:"organizationId"`
+		Name           string `json:"name"`
+	} `json:"collections"`
+	Folders []struct {
 		ID   string `json:"id"`
 		Name string `json:"name"`
 	} `json:"folders"`
@@ -54,13 +60,15 @@ type bitwardenExport struct {
 }
 
 type bitwardenItem struct {
-	Type     int    `json:"type"`
-	Name     string `json:"name"`
-	Notes    string `json:"notes"`
-	FolderID string `json:"folderId"`
-	Favorite bool   `json:"favorite"`
-	Reprompt int    `json:"reprompt"`
-	Fields   []struct {
+	OrganizationID string   `json:"organizationId"`
+	CollectionIDs  []string `json:"collectionIds"`
+	Type           int      `json:"type"`
+	Name           string   `json:"name"`
+	Notes          string   `json:"notes"`
+	FolderID       string   `json:"folderId"`
+	Favorite       bool     `json:"favorite"`
+	Reprompt       int      `json:"reprompt"`
+	Fields         []struct {
 		Name  string `json:"name"`
 		Value string `json:"value"`
 		Type  int    `json:"type"`
@@ -134,6 +142,13 @@ func parseBitwardenJSON(content []byte) (*Result, error) {
 		folderNames[folder.ID] = folder.Name
 	}
 	result := &Result{Items: []item.Item{}, Skipped: []SkippedEntry{}}
+	groupIndexes := map[string]int{}
+	collectionNames := map[string]string{}
+	collectionOrganizations := map[string]string{}
+	for _, collection := range export.Collections {
+		collectionNames[collection.ID] = collection.Name
+		collectionOrganizations[collection.ID] = collection.OrganizationID
+	}
 	for _, entry := range export.Items {
 		vaultItem, reason := convertBitwardenItem(entry, &result.Skipped)
 		if reason != "" {
@@ -149,6 +164,41 @@ func parseBitwardenJSON(content []byte) (*Result, error) {
 			addPreviousPassword(&vaultItem, previous.Password, replacedAt)
 		}
 		if finishItem(&vaultItem) {
+			collectionIDs := entry.CollectionIDs
+			if collectionIDs == nil {
+				collectionIDs = []string{}
+			}
+			slices.Sort(collectionIDs)
+			collectionIDs = slices.Compact(collectionIDs)
+			organizationID := entry.OrganizationID
+			names := []string{}
+			for _, id := range collectionIDs {
+				name := collectionNames[id]
+				if name == "" {
+					name = id
+				}
+				names = append(names, name)
+				if organizationID == "" {
+					organizationID = collectionOrganizations[id]
+				}
+			}
+			keyBytes, _ := json.Marshal([]any{organizationID, collectionIDs})
+			key := string(keyBytes)
+			groupIndex, found := groupIndexes[key]
+			if !found {
+				name := "Bitwarden Personal"
+				isPrivate := organizationID == "" && len(collectionIDs) == 0
+				if !isPrivate {
+					name = "Bitwarden organization " + organizationID
+					if len(names) > 0 {
+						name += " / " + strings.Join(names, ", ")
+					}
+				}
+				groupIndex = len(result.Groups)
+				groupIndexes[key] = groupIndex
+				result.Groups = append(result.Groups, SourceGroup{ID: "bitwarden/" + key, Name: name, IsPrivate: isPrivate})
+			}
+			result.Groups[groupIndex].Items = append(result.Groups[groupIndex].Items, vaultItem)
 			result.Items = append(result.Items, vaultItem)
 			for _, reason := range listBitwardenOmissions(entry) {
 				result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reason})

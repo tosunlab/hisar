@@ -48,12 +48,13 @@ const (
 	FeatureAgentRunInputs   = "agent-run-inputs"
 	FeatureExportProvenance = "export-provenance"
 	FeatureReadIssues       = "read-issues"
+	FeatureImportScope      = "import-scope"
 )
 
 // ListFeatures returns the features this build of the app announces in hello, then every launcher request type, so a
 // launcher checks the exact request it is about to send.
 func ListFeatures() []string {
-	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations, FeatureAgentRunInputs, FeatureSignedSharing}
+	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations, FeatureAgentRunInputs, FeatureSignedSharing, FeatureImportScope}
 	features = append(features, FeatureExportProvenance)
 	features = append(features, FeatureReadIssues)
 	return append(features, ListLauncherRequestTypes()...)

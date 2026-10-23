@@ -1289,6 +1289,17 @@ data class ImportDuplicate(
  * and filePath is empty.
  */
 @Serializable
+data class ImportSourceGroup(
+    val id: String = "",
+    val name: String = "",
+    val isPrivate: Boolean = true,
+    val itemCount: Int = 0,
+    @SerialName("vaultId") val vaultID: String = "",
+    val vaultName: String = "",
+    val members: List<Member> = emptyList(),
+)
+
+@Serializable
 data class ImportPreview(
     val fileName: String = "",
     val filePath: String = "",
@@ -1310,6 +1321,7 @@ data class ImportPreview(
     val passkeyCount: Int = 0,
     val allSkipped: List<ImportSkippedEntry> = emptyList(),
     val allDuplicate: List<ImportDuplicate> = emptyList(),
+    val groups: List<ImportSourceGroup> = emptyList(),
 ) {
     /** The preview's non-zero counts, as the import sheet lists them. */
     val allCountRow: List<ImportCountRow>

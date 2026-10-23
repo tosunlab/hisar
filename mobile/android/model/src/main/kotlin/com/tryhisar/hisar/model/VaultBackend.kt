@@ -75,6 +75,12 @@ interface VaultBackend {
 
     /** Shows the prepared import again for another vault, with that vault's duplicates. */
     fun previewImport(vaultID: String): ImportPreview
+
+    /**
+     * Sends one source group of the prepared import, such as a Credential Exchange collection, to vaultID; the preview's
+     * vaultID is then "" when the groups go to different vaults, and startImport takes it as it is.
+     */
+    fun mapImportGroup(groupID: String, vaultID: String): ImportPreview
     fun startImport(vaultID: String, isSkippingDuplicate: Boolean): ImportProgress
 
     /** Saves the next items; an error pauses the import, and calling it again continues. */

@@ -191,6 +191,7 @@ describe("Importing identities", () => {
       serverCount: 0,
       databaseCount: 0,
       passkeyCount: 0,
+      groups: [],
       allSkipped: [],
       allDuplicate: [],
     };

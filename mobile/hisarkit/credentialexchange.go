@@ -16,6 +16,13 @@ func (hisar *Hisar) PreviewImport(vaultID string) (string, error) {
 	return encodeJSON(hisar.service.PreviewImport(vaultID))
 }
 
+// MapImportGroup sends one source group of the prepared import, such as one Credential Exchange collection, to vaultID
+// and returns app.ImportPreview as JSON with that vault's current members; StartImport then takes the preview's vaultId,
+// which is empty when the groups go to different vaults.
+func (hisar *Hisar) MapImportGroup(groupID, vaultID string) (string, error) {
+	return encodeJSON(hisar.service.MapImportGroup(groupID, vaultID))
+}
+
 // StartImport returns app.ImportProgress as JSON; ContinueImport saves the next batch until IsDone.
 func (hisar *Hisar) StartImport(vaultID string, isSkippingDuplicate bool) (string, error) {
 	return encodeJSON(hisar.service.StartImport(vaultID, isSkippingDuplicate))

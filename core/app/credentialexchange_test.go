@@ -140,6 +140,76 @@ func TestCredentialExchangeImportAddsPasskeysThatSignIn(t *testing.T) {
 	}
 }
 
+func TestCredentialExchangeCollectionsGoWhereEachIsMapped(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	service, personalID, familyID := fixture.service, fixture.personalID, fixture.familyID
+	login := func(id, title, password string) map[string]any {
+		return map[string]any{"id": id, "title": title, "credentials": []any{map[string]any{"type": "basic-auth", "password": map[string]any{"fieldType": "concealed-string", "value": password}}}}
+	}
+	content, err := json.Marshal(map[string]any{
+		"version": map[string]any{"major": 1, "minor": 0}, "exporterRpId": "1password.com", "exporterDisplayName": "1Password", "timestamp": 1767225600,
+		"accounts": []any{map[string]any{"id": "AQ", "username": "alice", "collections": []any{
+			map[string]any{"id": "Yw", "title": "Work", "items": []any{map[string]any{"item": "dw"}}},
+			map[string]any{"id": "Zg", "title": "Family", "items": []any{map[string]any{"item": "ZG"}}},
+		}, "items": []any{login("dw", "Work login", "work-password"), login("ZG", "Family login", "family-password"), login("cA", "Own login", "own-password")}}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	preview, err := PrepareCredentialExchangeImport(service, familyID, content)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(preview.Groups) != 3 {
+		t.Fatalf("the collections were flattened: %+v", preview.Groups)
+	}
+	groupIDsByName := map[string]string{}
+	for _, group := range preview.Groups {
+		if group.VaultID != personalID {
+			t.Errorf("%s starts in %s, not Personal", group.Name, group.VaultName)
+		}
+		groupIDsByName[group.Name] = group.ID
+	}
+	if _, err := service.PreviewImport(familyID); err == nil {
+		t.Error("one destination was applied to every collection")
+	}
+	mapped, err := service.MapImportGroup(groupIDsByName["alice / Family"], familyID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mapped.VaultID != "" {
+		t.Errorf("mixed destinations preview as one vault %q", mapped.VaultID)
+	}
+	for _, group := range mapped.Groups {
+		if group.ID == groupIDsByName["alice / Family"] && (group.VaultID != familyID || len(group.Members) == 0) {
+			t.Errorf("the mapped collection shows %+v", group)
+		}
+	}
+	if _, err := service.StartImport(mapped.VaultID, true); err != nil {
+		t.Fatal(err)
+	}
+	if progress, _ := runImportToEnd(t, service); progress.SavedCount != 3 || len(progress.Failed) != 0 {
+		t.Fatalf("progress = %+v", progress)
+	}
+	passwordsByVault := map[string][]string{}
+	for _, vaultID := range []string{personalID, familyID} {
+		for title, summary := range listItemsByTitle(t, service, vaultID) {
+			detail, err := service.GetItem(vaultID, summary.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			passwordsByVault[vaultID] = append(passwordsByVault[vaultID], title+"="+detail.Password)
+		}
+		slices.Sort(passwordsByVault[vaultID])
+	}
+	if want := []string{"Own login=own-password", "Work login=work-password"}; !slices.Equal(passwordsByVault[personalID], want) {
+		t.Errorf("Personal holds %v, want %v", passwordsByVault[personalID], want)
+	}
+	if want := []string{"Family login=family-password"}; !slices.Equal(passwordsByVault[familyID], want) {
+		t.Errorf("Family holds %v, want %v", passwordsByVault[familyID], want)
+	}
+}
+
 // The CXF Android's credential transfer hands over (core/importer's spec fixture) links its login to the scope's app, and
 // the imported passkey signs.
 func TestCredentialExchangeImportLinksAndroidApps(t *testing.T) {

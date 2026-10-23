@@ -20,6 +20,9 @@ var (
 	// ErrKeyChanged: the server refused items sealed with a vault key another device's rotation replaced, again after the
 	// vault was reloaded and the items sealed with its current key.
 	ErrKeyChanged = errors.New("the vault's key changed on another device; try again")
+	// ErrImportScopeChanged: the import destination's members changed since the import was reviewed, so the server refused
+	// the scoped write. Every further write with that scope fails too.
+	ErrImportScopeChanged = errors.New("destination membership changed; review the import destinations again")
 	// ErrAccountSuspended: an admin of the server suspended the account. Sign-in says so only after a correct proof; a
 	// device that was signed in keeps its session and gets it on every request until reactivation.
 	ErrAccountSuspended = apiclient.ErrAccountSuspended

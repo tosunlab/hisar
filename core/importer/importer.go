@@ -90,6 +90,23 @@ type Result struct {
 	Source  string
 	Items   []item.Item
 	Skipped []SkippedEntry
+	Groups  []SourceGroup
+}
+
+// SourceGroup is one source access boundary. Items in several Bitwarden collections stay in one group with that exact
+// collection set, rather than being copied into destinations with different access.
+type SourceGroup struct {
+	ID        string
+	Name      string
+	IsPrivate bool
+	Items     []item.Item
+}
+
+func (result *Result) SourceGroups() []SourceGroup {
+	if len(result.Groups) != 0 {
+		return result.Groups
+	}
+	return []SourceGroup{{ID: "private", Name: "Private or unspecified source", IsPrivate: true, Items: result.Items}}
 }
 
 type Summary struct {
@@ -567,21 +584,27 @@ func getFallbackTitle(vaultItem *item.Item) string {
 }
 
 func removeRepeatedItems(result *Result) {
-	indexesByKey := map[string]int{}
-	unique := make([]item.Item, 0, len(result.Items))
-	for _, vaultItem := range result.Items {
-		encoded, _ := json.Marshal([]any{vaultItem.Overview, vaultItem.Details})
-		key := string(encoded)
-		clear(encoded)
-		if index, isSeen := indexesByKey[key]; isSeen {
-			unique[index].IsFavorite = unique[index].IsFavorite || vaultItem.IsFavorite
-			result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reasonRepeated})
-			continue
+	groups := result.SourceGroups()
+	result.Items = nil
+	for groupIndex := range groups {
+		indexesByKey := map[string]int{}
+		unique := make([]item.Item, 0, len(groups[groupIndex].Items))
+		for _, vaultItem := range groups[groupIndex].Items {
+			encoded, _ := json.Marshal([]any{vaultItem.Overview, vaultItem.Details})
+			key := string(encoded)
+			clear(encoded)
+			if index, isSeen := indexesByKey[key]; isSeen {
+				unique[index].IsFavorite = unique[index].IsFavorite || vaultItem.IsFavorite
+				result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reasonRepeated})
+				continue
+			}
+			indexesByKey[key] = len(unique)
+			unique = append(unique, vaultItem)
 		}
-		indexesByKey[key] = len(unique)
-		unique = append(unique, vaultItem)
+		groups[groupIndex].Items = unique
+		result.Items = append(result.Items, unique...)
 	}
-	result.Items = unique
+	result.Groups = groups
 }
 
 func describeEntry(title string) string {

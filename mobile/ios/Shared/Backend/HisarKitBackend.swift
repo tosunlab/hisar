@@ -299,6 +299,10 @@ final class HisarKitBackend: VaultBackend {
         try decode(ImportPreview.self, from: callReturningText { hisar.previewImport(vaultID, error: $0) })
     }
 
+    func mapImportGroup(groupID: String, vaultID: String) throws -> ImportPreview {
+        try decode(ImportPreview.self, from: callReturningText { hisar.mapImportGroup(groupID, vaultID: vaultID, error: $0) })
+    }
+
     func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress {
         try decode(ImportProgress.self, from: callReturningText { hisar.startImport(vaultID, isSkippingDuplicate: isSkippingDuplicate, error: $0) })
     }

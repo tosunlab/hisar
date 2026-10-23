@@ -1,6 +1,7 @@
 package importer
 
 import (
+	"cmp"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -39,11 +40,33 @@ type credentialExchangeHeader struct {
 	Accounts            []credentialExchangeAccount `json:"accounts"`
 }
 
+// credentialExchangeAccount is CXF's Account: the exporter's user, with the collections that organize its items.
 type credentialExchangeAccount struct {
-	Items []credentialExchangeItem `json:"items"`
+	ID          string                         `json:"id"`
+	Username    string                         `json:"username"`
+	Email       string                         `json:"email"`
+	FullName    string                         `json:"fullName"`
+	Collections []credentialExchangeCollection `json:"collections"`
+	Items       []credentialExchangeItem       `json:"items"`
+}
+
+// credentialExchangeCollection is CXF's Collection. It groups items as the other app showed them; it says nothing about
+// who may read them.
+type credentialExchangeCollection struct {
+	ID             string                         `json:"id"`
+	Title          string                         `json:"title"`
+	Items          []credentialExchangeLinkedItem `json:"items"`
+	SubCollections []credentialExchangeCollection `json:"subCollections"`
+}
+
+// credentialExchangeLinkedItem is CXF's LinkedItem; Account names the item's account when it is not the collection's.
+type credentialExchangeLinkedItem struct {
+	Item    string `json:"item"`
+	Account string `json:"account"`
 }
 
 type credentialExchangeItem struct {
+	ID         string  `json:"id"`
 	Title      string  `json:"title"`
 	CreationAt float64 `json:"creationAt"`
 	Favorite   bool    `json:"favorite"`
@@ -254,6 +277,8 @@ func readCredentialExchangeTime(seconds float64) time.Time {
 }
 
 // ParseCredentialExchange reads the CXF JSON another password manager exported. Result.Source names that app.
+// Result.Groups keeps each account's items apart, and within an account the items of each exact set of collections, as
+// Bitwarden collection sets are kept; an item in no collection is in its account's own group.
 func ParseCredentialExchange(content []byte) (*Result, error) {
 	var header credentialExchangeHeader
 	if err := json.Unmarshal(content, &header); err != nil {
@@ -264,15 +289,86 @@ func ParseCredentialExchange(content []byte) (*Result, error) {
 	}
 	result := &Result{Format: FormatCredentialExchange, Source: strings.TrimSpace(header.ExporterDisplayName)}
 	exportedAt := readCredentialExchangeTime(header.Timestamp)
-	for _, account := range header.Accounts {
+	accountKeys := make([]string, len(header.Accounts))
+	for index, account := range header.Accounts {
+		accountKeys[index] = cmp.Or(account.ID, fmt.Sprintf("#%d", index))
+	}
+	collections := credentialExchangeCollections{keysByItem: map[[2]string][]string{}, titlesByKey: map[string]string{}}
+	for index, account := range header.Accounts {
+		collections.add(accountKeys[index], "", "", account.Collections)
+	}
+	groupIndexes := map[string]int{}
+	for accountIndex, account := range header.Accounts {
 		for _, entry := range account.Items {
 			items, skipped := convertCredentialExchangeItem(entry, exportedAt, result.Source)
-			result.Items = append(result.Items, items...)
 			result.Skipped = append(result.Skipped, skipped...)
+			if len(items) == 0 {
+				continue
+			}
+			collectionKeys := []string{}
+			if entry.ID != "" {
+				collectionKeys = append(collectionKeys, collections.keysByItem[[2]string{accountKeys[accountIndex], entry.ID}]...)
+			}
+			slices.Sort(collectionKeys)
+			collectionKeys = slices.Compact(collectionKeys)
+			encodedKey, _ := json.Marshal([]any{accountKeys[accountIndex], collectionKeys})
+			groupIndex, isFound := groupIndexes[string(encodedKey)]
+			if !isFound {
+				groupIndex = len(result.Groups)
+				groupIndexes[string(encodedKey)] = groupIndex
+				// A collection organizes items and grants no access, so no group claims the other app shared it.
+				result.Groups = append(result.Groups, SourceGroup{
+					ID: "credential-exchange/" + string(encodedKey), Name: collections.describe(account, accountIndex, collectionKeys), IsPrivate: true,
+				})
+			}
+			result.Groups[groupIndex].Items = append(result.Groups[groupIndex].Items, items...)
+			result.Items = append(result.Items, items...)
 		}
 	}
 	removeRepeatedItems(result)
 	return result, nil
+}
+
+// credentialExchangeCollections maps each item, by its account's key and its ID, to the keys of the collections that
+// link it, nested ones included; a key is the collection's account key and ID, or its position when it has none.
+type credentialExchangeCollections struct {
+	keysByItem  map[[2]string][]string
+	titlesByKey map[string]string
+}
+
+func (collections *credentialExchangeCollections) add(accountKey, parentKey, parentTitle string, allCollection []credentialExchangeCollection) {
+	for index, collection := range allCollection {
+		key := accountKey + "/" + collection.ID
+		if collection.ID == "" {
+			key = fmt.Sprintf("%s/#%d", cmp.Or(parentKey, accountKey), index)
+		}
+		title := describeEntry(collection.Title)
+		if parentTitle != "" {
+			title = parentTitle + " / " + title
+		}
+		collections.titlesByKey[key] = title
+		for _, linked := range collection.Items {
+			if linked.Item == "" {
+				continue
+			}
+			itemKey := [2]string{cmp.Or(linked.Account, accountKey), linked.Item}
+			collections.keysByItem[itemKey] = append(collections.keysByItem[itemKey], key)
+		}
+		collections.add(accountKey, key, title, collection.SubCollections)
+	}
+}
+
+// describe names a group by its account, as the other app showed it, and its collections.
+func (collections *credentialExchangeCollections) describe(account credentialExchangeAccount, accountIndex int, collectionKeys []string) string {
+	name := cmp.Or(strings.TrimSpace(account.Username), strings.TrimSpace(account.Email), strings.TrimSpace(account.FullName), fmt.Sprintf("Account %d", accountIndex+1))
+	titles := make([]string, 0, len(collectionKeys))
+	for _, key := range collectionKeys {
+		titles = append(titles, collections.titlesByKey[key])
+	}
+	if len(titles) == 0 {
+		return name
+	}
+	return name + " / " + strings.Join(titles, ", ")
 }
 
 // credentialExchangeItemBuilder gathers one CXF item, which may hold several credentials, into Hisar items.

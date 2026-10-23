@@ -419,3 +419,12 @@ func startRegistrationServerWithVaults(t *testing.T) string {
 	t.Cleanup(server.Close)
 	return server.URL
 }
+
+func reviewedImportScope(t *testing.T, service *Service, vaultID string) string {
+	t.Helper()
+	actions, err := service.getCommandLineVaultActions(vaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return actions.ImportScope
+}

@@ -178,7 +178,7 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if result.Format != FormatOnePasswordExport {
 		t.Errorf("format = %q", result.Format)
 	}
-	wantTitles := []string{"GitHub", "Router admin", "Wi-Fi at the cabin", "Visa", "Alice Example", "Deploy key", "Build server", "Newsletter", "Car rental"}
+	wantTitles := []string{"GitHub", "Router admin", "Wi-Fi at the cabin", "Visa", "Alice Example", "Deploy key", "Build server", "Newsletter", "Newsletter", "Car rental"}
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, wantTitles) {
 		t.Errorf("titles = %q, want %q", titles, wantTitles)
 	}
@@ -187,7 +187,6 @@ func TestParseOnePasswordExport(t *testing.T) {
 		"Public only":   "no private key",
 		"Old forum":     "archived",
 		"Passport scan": "Document items are not supported",
-		"Newsletter":    reasonRepeated,
 	})
 
 	github := findTestItem(t, result, "GitHub")
@@ -271,7 +270,7 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
 		t.Errorf("favorites = %q", favorites)
 	}
-	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 4, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1, ServerCount: 1}) {
+	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1, ServerCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
 }

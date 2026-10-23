@@ -369,6 +369,10 @@ func convertFromItemIcon(icon *ItemIcon) *item.Icon {
 
 // SaveItem creates the item when detail.ID is empty, otherwise updates it based on detail.Revision.
 func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error) {
+	return s.saveItem(vaultID, detail, "")
+}
+
+func (s *Service) saveItem(vaultID string, detail ItemDetail, importScope string) (ItemDetail, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
@@ -408,7 +412,13 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 	if err := s.checkServerSSHKey(ctx, vault, &vaultItem); err != nil {
 		return ItemDetail{}, err
 	}
-	if err := s.saveSessionItem(ctx, vault, &vaultItem); err != nil {
+	var saveErr error
+	if importScope == "" {
+		saveErr = s.saveSessionItem(ctx, vault, &vaultItem)
+	} else {
+		saveErr = s.saveSessionItem(ctx, vault, &vaultItem, importScope)
+	}
+	if err := saveErr; err != nil {
 		return ItemDetail{}, convertError(err)
 	}
 	s.replaceCachedItem(vaultID, vaultItem)
@@ -417,13 +427,17 @@ func (s *Service) SaveItem(vaultID string, detail ItemDetail) (ItemDetail, error
 
 // saveSessionItem writes vaultItem. An update passes the cached plaintext it started from, so a key rotation can
 // be told from a change someone else made.
-func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vaultItem *item.Item) error {
+func (s *Service) saveSessionItem(ctx context.Context, vault *session.Vault, vaultItem *item.Item, importScope ...string) error {
 	var base *item.Item
 	if vaultItem.ID != "" && vaultItem.Revision != "" {
 		if cached, err := s.findItem(vault.ID, vaultItem.ID); err == nil && cached != vaultItem {
 			copied := *cached
 			base = &copied
 		}
+	}
+	if len(importScope) == 1 {
+		_, err := s.unlockedSession.SaveImportItem(ctx, vault, vaultItem, importScope[0], base)
+		return err
 	}
 	_, err := s.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
 	return err
