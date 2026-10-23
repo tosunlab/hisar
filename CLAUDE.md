@@ -2,7 +2,7 @@
 
 Hisar is an end-to-end encrypted password, SSH-key and secrets manager: the server stores only ciphertext, and keys are
 derived on devices from the master password and a Secret Key. Cryptography, protocols and product decisions are in
-[docs/DESIGN.md](docs/DESIGN.md); this file says where code lives and where new code goes.
+[Design](docs/docs/design.md); this file says where code lives and where new code goes.
 
 ## Modules
 
@@ -19,7 +19,7 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 | `raycast/` | The Raycast extension (TypeScript), installed in Raycast's development mode; it talks to the desktop app on `cli.sock` as a launcher | none |
 | `omp/` | The Hisar plugin for omp (TypeScript, Bun), which `omp plugin link` loads: an extension, the `hisar` skill and the `hisar mcp --no-reveal` MCP server; it runs `hisar` and never imports Hisar code | none |
 | `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
-| `docs/` | The documentation site at docs.tryhisar.com (Docusaurus, TypeScript): `docs/docs/*.md` are its pages, built into the `hisar-docs` image by `docs/Dockerfile`; `docs/DESIGN.md` and `docs/COPY.md` beside it are the design docs | none |
+| `docs/` | The documentation site at docs.tryhisar.com (Docusaurus, TypeScript), built into the `hisar-docs` image by `docs/Dockerfile`. Every document is a page under `docs/docs/`: `design.md` (the security model and design), `self-hosting.md`, one page per app under `apps/`, and `development/` (releasing, the copy glossary, the logo) | none |
 | `mobile/ios/` | The iOS app (Swift), on top of HisarKit | none |
 | `mobile/android/` | The Android app (Kotlin, Jetpack Compose, Gradle) on top of `HisarKit.aar`: `:model`, a JVM module with the app model and its tests, and `:app`, the Android app | none |
 

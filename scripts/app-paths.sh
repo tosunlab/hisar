@@ -5,7 +5,7 @@
 # The Go apps compile against core/ and go.work. The desktop app also counts cli/ and omp/: its module requires cli/, and
 # the app bundles the hisar CLI and the omp plugin. The server image embeds the admin dashboard. The iPhone and Android
 # apps share mobile/hisarkit and mobile/go.mod; each also counts its own folder, so an Android-only change does not run
-# the iPhone job. The docs site is docs/ without the repository's design docs, which are not pages of it.
+# the iPhone job.
 
 sharedGoPaths=(core/ go.work go.work.sum)
 serverPaths=(server/ admin/ deploy/Dockerfile "${sharedGoPaths[@]}")
@@ -19,7 +19,7 @@ mobilePaths=(mobile/ios/ mobile/build-framework.sh scripts/test-ios-ui.sh "${pho
 androidPaths=(mobile/android/ mobile/build-android-aar.sh mobile/cmd/ scripts/install-android-sdk.sh scripts/test-android-ui.sh
   assets/themes/ scripts/themes/ Makefile "${phonePaths[@]}")
 extensionPaths=(extension/)
-docsPaths=(docs/ ':(exclude)docs/DESIGN.md' ':(exclude)docs/COPY.md' ':(exclude)docs/RELEASING.md')
+docsPaths=(docs/)
 
 # A commit that only changes tests or documentation is not a reason to release; the docs site is made of Markdown, so
 # only the tests are excluded from it.

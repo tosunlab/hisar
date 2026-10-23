@@ -12,8 +12,10 @@ Hisar runs on the Mac, iPhone, Android, Linux, in the browser extension, and fro
 
 ## Where to start
 
-- [Download Hisar](https://tryhisar.com/download) for your platform.
-- Read the [security model](https://tryhisar.com/security) before you trust it with your secrets.
+- [Download Hisar](https://tryhisar.com/download) for your platform, then see the [apps](./apps/): the [desktop app](./apps/desktop.md), the [command-line tool](./apps/cli.md), the [browser extension](./apps/extension.md) and the [phone apps](./apps/mobile.md).
+- [Run your own server](./self-hosting.md) with Docker Compose.
+- Read the [security model and design](./design.md) before you trust Hisar with your secrets.
+- Contributing: [CI and releases](./development/releasing.md), the [copy glossary](./development/copy.md), and [CONTRIBUTING.md](https://github.com/tosunlab/hisar/blob/main/CONTRIBUTING.md) on GitHub.
 - The source, releases and issue tracker are on [GitHub](https://github.com/tosunlab/hisar).
 
 ## Improve these docs

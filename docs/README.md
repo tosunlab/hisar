@@ -1,6 +1,6 @@
 # Hisar docs
 
-The documentation site at [docs.tryhisar.com](https://docs.tryhisar.com), built with [Docusaurus](https://docusaurus.io/docs). Pages are Markdown files in `docs/`; the sidebar follows the folder structure and each page's `sidebar_position`. `DESIGN.md` and `COPY.md` next to this file are the repository's design docs, not pages of the site.
+The documentation site at [docs.tryhisar.com](https://docs.tryhisar.com), built with [Docusaurus](https://docusaurus.io/docs). Pages are Markdown files in `docs/`; the sidebar follows the folder structure and each page's `sidebar_position`. Every document of the repository lives here: the design (`design.md`), self-hosting, one page per app under `apps/`, and releasing, the copy glossary and the logo under `development/`. The root `README.md`, `CLAUDE.md` and `CONTRIBUTING.md` stay at the root, where GitHub and agents expect them.
 
 ## Develop
 
@@ -20,7 +20,7 @@ From the repository root, `make test-docs` typechecks and builds, and `make buil
 
 | Path | What |
 |---|---|
-| `docs/` | The pages. `intro.md` is the front page (`slug: /`). A folder becomes a sidebar category; `_category_.json` names and orders it |
+| `docs/` | The pages. `intro.md` is the front page (`slug: /`). A folder becomes a sidebar category; `_category_.json` names and orders it. Pages are CommonMark (`.md`); a page that needs JSX is `.mdx` |
 | `docusaurus.config.ts` | Site title, URL, navbar, footer and the `classic` preset: docs at `/`, no blog |
 | `sidebars.ts` | One sidebar, generated from `docs/` |
 | `src/css/custom.css` | Hisar's neutral palette on top of Infima |
@@ -36,4 +36,4 @@ docker run --rm -p 8082:8080 hisar-docs
 
 ## Release
 
-`docs` is an app of the Release workflow like `server`: `gh workflow run release.yml -f app=docs -f type=patch` tags `docs-<version>`, pushes `ghcr.io/tosunlab/hisar-docs:<version>` (linux/amd64 and linux/arm64) and, once the publish is approved, points `:latest` and `:<major>.<minor>` at it. See [RELEASING.md](RELEASING.md). The compose service and nginx server block for docs.tryhisar.com live in the deployment, next to the website's.
+`docs` is an app of the Release workflow like `server`: `gh workflow run release.yml -f app=docs -f type=patch` tags `docs-<version>`, pushes `ghcr.io/tosunlab/hisar-docs:<version>` (linux/amd64 and linux/arm64) and, once the publish is approved, points `:latest` and `:<major>.<minor>` at it. See [CI and releases](docs/development/releasing.md). The compose service and nginx server block for docs.tryhisar.com live in the deployment, next to the website's.

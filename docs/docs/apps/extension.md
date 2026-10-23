@@ -1,6 +1,11 @@
+---
+sidebar_position: 3
+sidebar_label: Browser extension
+---
+
 # Hisar Browser Extension
 
-MV3 extension for Chromium browsers that fills and saves logins, fills cards, identities and addresses, and browses every vault from its popup, through the Hisar desktop app over native messaging. The protocol, matching and frame rules are in [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3). The extension holds no keys and does no crypto.
+MV3 extension for Chromium browsers that fills and saves logins, fills cards, identities and addresses, and browses every vault from its popup, through the Hisar desktop app over native messaging. The protocol, matching and frame rules are in [Design §9.2](../design.md#92-browser-extension--typescript-mv3). The extension holds no keys and does no crypto.
 
 The manifest's `key` gives the fixed ID `mmipiffoogblblocokimpemdopmdjghf`, both unpacked and from the store. The native host `com.tryhisar.hisar` allows only that ID.
 
@@ -92,7 +97,7 @@ With Hisar.app installed and launched once, the extension talks to the real app:
 
 ## Releases
 
-A release is a run of Actions → Release with the app `extension` (the root [docs/RELEASING.md](../docs/RELEASING.md) has the steps). The workflow "Release extension" writes the version of the tag `extension-<version>` into `public/manifest.json` and `package.json` for the build, so the committed version is not bumped by hand; it builds `hisar-extension-<version>.zip` and checks that its manifest still gives the fixed ID and has that version, and the release puts it on the GitHub prerelease `extension-<version>`; approving the run's Publish job marks it as the latest release. To update an unpacked install, unzip it, remove the old Hisar extension in `chrome://extensions` and load the new folder: the `key` in the manifest keeps the ID, so pairing with the Mac app is kept. A custom build (`extension-0.2.0-test`) has the manifest version `0.2.0`, because Chrome only accepts numeric versions.
+A release is a run of Actions → Release with the app `extension` ([CI and releases](../development/releasing.md) has the steps). The workflow "Release extension" writes the version of the tag `extension-<version>` into `public/manifest.json` and `package.json` for the build, so the committed version is not bumped by hand; it builds `hisar-extension-<version>.zip` and checks that its manifest still gives the fixed ID and has that version, and the release puts it on the GitHub prerelease `extension-<version>`; approving the run's Publish job marks it as the latest release. To update an unpacked install, unzip it, remove the old Hisar extension in `chrome://extensions` and load the new folder: the `key` in the manifest keeps the ID, so pairing with the Mac app is kept. A custom build (`extension-0.2.0-test`) has the manifest version `0.2.0`, because Chrome only accepts numeric versions.
 
 ## Fake native host
 
@@ -125,7 +130,7 @@ When a username or password field of a login form gets the focus, a Hisar icon a
 - **One-time codes:** in a two-factor field (`autocomplete="one-time-code"`, or a field named or labelled like otp, 2fa or verification code), and in a code split into one-character boxes, the menu offers the codes of the matching logins and fills the chosen one.
 - **Settings:** the popup's settings (the sliders button in the header) turn the icon off, or open the menu only on a click on the icon or the down arrow.
 - **Isolation:** the menu is an extension page in an iframe, so the page never sees login titles or usernames.
-- **Clickjacking checks:** the menu fills only after it has been visible and uncovered for 300 ms. [docs/DESIGN.md §9.2](../docs/DESIGN.md#92-browser-extension--typescript-mv3) describes these checks.
+- **Clickjacking checks:** the menu fills only after it has been visible and uncovered for 300 ms. [Design §9.2](../design.md#92-browser-extension--typescript-mv3) describes these checks.
 
 ## Copying
 
@@ -137,4 +142,4 @@ The extension does not clear the clipboard afterwards: a copied value stays unti
 
 ## Chrome Web Store
 
-`npm run package:store` builds the store upload without the manifest `key`. The first upload, listing text, permission justifications and screenshots are in [store/README.md](store/README.md).
+`npm run package:store` builds the store upload without the manifest `key`. The first upload, listing text, permission justifications and screenshots are in [Chrome Web Store submission](./extension-store.md).

@@ -1,3 +1,8 @@
+---
+sidebar_position: 4
+sidebar_label: Chrome Web Store
+---
+
 # Chrome Web Store submission
 
 Hisar is published as an **unlisted** item: only people with the link can install it. Distribution decision: DESIGN §9.2.

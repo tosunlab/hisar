@@ -1,3 +1,8 @@
+---
+sidebar_position: 1
+sidebar_label: Desktop app
+---
+
 # Hisar Desktop
 
 Wails v3 (pinned beta, see `WAILS_VERSION` in the root `Makefile`) with a Vue 3 + TypeScript frontend.
@@ -43,7 +48,7 @@ sets its version, and writes `desktop/bin/Hisar-0.1.0.dmg` with the usual drag-t
 Sparkle update: `Hisar-0.1.0.zip`, signed with the EdDSA private key, and `update.json` (signature, length, minimum macOS,
 release notes). The script refuses a key that does not belong to `SUPublicEDKey` in `build/darwin/Info.plist`.
 
-A release is a run of Actions → Release with the app `desktop` (the root [docs/RELEASING.md](../docs/RELEASING.md) has the
+A release is a run of Actions → Release with the app `desktop` ([CI and releases](../development/releasing.md) has the
 steps). It tags `desktop-<version>` with the changes as the message, which becomes the release notes Sparkle shows, and
 builds on a GitHub-hosted macOS runner and Linux runners. The GitHub prerelease `desktop-<version>` then has
 `Hisar-<version>.dmg`, `Hisar-<version>.zip`, `update-unpublished.json` and the Linux packages, a download for the team.
@@ -55,10 +60,10 @@ notarizes the app and the DMG: `APPLE_NOTARY_KEY` (the `.p8`, base64), `APPLE_NO
 
 ### Automatic updates
 
-Design: `docs/DESIGN.md` §9.1.1. Sparkle (version and SHA-256 pinned in `scripts/download-sparkle.sh`, downloaded into
+Design: [Design](../design.md) §9.1.1. Sparkle (version and SHA-256 pinned in `scripts/download-sparkle.sh`, downloaded into
 `build/sparkle/` by packaged builds) checks `<server>/api/v1/desktop/updates/appcast.xml` on the server you are signed in
 to, with your session, once a day, and downloads the update from the same server, which relays the published releases from
-GitHub (`deploy/README.md`); if the server has updates off, checks report that updates are not configured. Settings → General → Updates shows the
+GitHub ([Self-hosting](../self-hosting.md)); if the server has updates off, checks report that updates are not configured. Settings → General → Updates shows the
 version, **Check for updates**, and **Automatically check for updates**. `wails3 dev` builds have no Sparkle and say so.
 
 The EdDSA private key lives outside the repository (kept by the maintainer and in the `SPARKLE_PRIVATE_KEY` repository secret);
@@ -84,21 +89,21 @@ The app keeps its session in `~/Library/Application Support/hisar/desktop.json` 
 
 ## Right-click menus
 
-Design: `docs/DESIGN.md` §9.1 (desktop: item menu).
+Design: [Design](../design.md) §9.1 (desktop: item menu).
 
 - **An item in the list** (a vault's or Favorites): **Open**; **Copy** for its username, password, one-time code and main value (card number, license key, API secret, connection string, public key), each once the item's details have loaded; **Open website** (**Open admin console** for a server); **Add to Favorites** or **Remove from Favorites**; **Share link…**; and, in a vault the user can edit, **Edit**, **Duplicate** ("GitHub copy", without passkeys), **Move to…** (another vault the user can edit; the item keeps its ID) and **Delete…**, which asks first. Arrow keys move through the menu and Escape closes it.
 - **A field row in the detail panel** offers the row's own buttons by name, such as **Reveal password**, **Copy password** and **Copy secret reference for password**, or **Open website**. With text selected in the row, the system's menu appears instead, with its Copy.
 
 ## Item icons
 
-Design: `docs/DESIGN.md` §4.5 (icons and website icons).
+Design: [Design](../design.md) §4.5 (icons and website icons).
 
 - **Choose one** in the editor: click the tile next to the title for **Automatic**, one of 30 presets in a color, or **Upload image…** (PNG, JPEG, GIF or WebP; Hisar crops and shrinks it to at most 128 pixels). The icon is saved in the encrypted item, so every device shows it.
 - **Website icons**: a login without an icon of its own shows its website's, which this Mac asks the website for directly and keeps sealed in the offline cache. **Settings → Appearance → Show website icons** turns that off. Servers, databases and other types keep their own icon.
 
 ## Sharing, people and devices
 
-Design: `docs/DESIGN.md` §4.4 (vault keys and rotation), §5.1 (invites) and §5.6 (public key pinning).
+Design: [Design](../design.md) §4.4 (vault keys and rotation), §5.1 (invites) and §5.6 (public key pinning).
 
 - **Share a vault**: select a shared vault and press **Share** in the item list header. Everyone with access is listed with their role; owners can invite someone by email (owner, editor or reader), change roles and remove people. Editors and readers see the list read-only. Personal vaults show **Private** instead and cannot be shared.
 - **Removing someone** re-encrypts the vault: the owner's device generates a new vault key, re-encrypts every item and wraps the new key only for the remaining members (`session.RemoveVaultMember`). Copies the removed person already downloaded stay readable to them.
@@ -108,14 +113,14 @@ Design: `docs/DESIGN.md` §4.4 (vault keys and rotation), §5.1 (invites) and §
 
 ## Signing in again: the Emergency Kit
 
-Design: `docs/DESIGN.md` §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
+Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
 
 - **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 
 ## Secure notes
 
-Design: `docs/DESIGN.md` §4.5 (categories).
+Design: [Design](../design.md) §4.5 (categories).
 
 - **+** → **Secure note** opens an editor with the title, a large notes field and custom fields; there is no username, password or website. The item list shows the note icon and "Secure note".
 - A note's view shows its notes first, with **Copy** and a secret reference (`hisar://<vault>/<note>/notes`), then its custom fields. The browser extension never offers notes for filling.
@@ -124,7 +129,7 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 ## Credit cards
 
-Design: `docs/DESIGN.md` §4.5 (categories).
+Design: [Design](../design.md) §4.5 (categories).
 
 - **+** → **Credit card** opens a card editor: cardholder, number, type, expiry, security code, PIN and the billing address's street, city, region, postal code and country, then notes and custom fields. The number and expiry are formatted as you type (`4444 5555 5555 5555`, `01/30`). The type (Visa, Mastercard, American Express…) follows the number until you pick another, with a hint when they disagree. The editor warns about a number that fails its checksum, an expiry it cannot read or an expired card, but saves anyway.
 - A card's view shows "Visa •••• 4242" and keeps the number, security code and PIN masked until revealed; each value has **Copy** and a secret reference. The item list shows the type and last four digits only.
@@ -133,7 +138,7 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 ## Identities
 
-Design: `docs/DESIGN.md` §4.5 (categories).
+Design: [Design](../design.md) §4.5 (categories).
 
 - **+** → **Identity** opens an editor for the first, middle and last name, birth date (a date picker; an imported date that is not year first stays text), email, phone, the address's street, city, region, postal code and country, and the passport, driver's license and national ID numbers, which are masked until shown; then notes and custom fields.
 - An identity's view shows the full name and lists each value with **Copy** and a secret reference; the document numbers are masked until revealed. The item list shows the name, or the email.
@@ -142,7 +147,7 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 ## API credentials
 
-Design: `docs/DESIGN.md` §4.5 (categories) and §9.4.1 (secret references).
+Design: [Design](../design.md) §4.5 (categories) and §9.4.1 (secret references).
 
 - **+** → **API credential** opens an editor for the service, key ID, secret (masked until shown), host and expiry (a date picker; an imported expiry that is not a date stays text); then notes and custom fields.
 - The view lists each value with **Copy** and a secret reference, so `STRIPE_KEY=hisar://Work/Stripe/secret` in a `.env` works with `hisar run`. The secret is masked until revealed, and the expiry warns once it has passed. The item list shows the service and host, and search matches them.
@@ -151,7 +156,7 @@ Design: `docs/DESIGN.md` §4.5 (categories) and §9.4.1 (secret references).
 
 ## Addresses
 
-Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (address autofill in the extension).
+Design: [Design](../design.md) §4.5 (categories) and §9.2 (address autofill in the extension).
 
 - **+** → **Address** opens an editor for the street (more than one line, such as an apartment on the second), city, region, postal code and country; then notes and custom fields. Identities and cards edit their address with the same fields.
 - An identity or card saved before it had these fields keeps its one-line address as "Address (old format)" or "Billing address (old format)" while it is set; **Use as street** moves it into the street.
@@ -161,7 +166,7 @@ Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (address autofill in the e
 
 ## Software licenses
 
-Design: `docs/DESIGN.md` §4.5 (categories).
+Design: [Design](../design.md) §4.5 (categories).
 
 - **+** → **Software license** opens an editor for the product, version, license key (masked until shown), licensed-to name and email, purchase date (a date picker; an imported date in another form stays text) and download URL; then notes and custom fields.
 - The view lists each value with **Copy** and a secret reference (`hisar://Personal/Sketch/license%20key`). The key is masked until revealed, and the download URL opens in the browser. The item list shows the version and licensed-to name, and search matches the product, version, name and email.
@@ -170,7 +175,7 @@ Design: `docs/DESIGN.md` §4.5 (categories).
 
 ## Servers
 
-Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (browser extension).
+Design: [Design](../design.md) §4.5 (categories) and §9.2 (browser extension).
 
 - **+** → **Server** opens an editor for the host and port (warning about a port that is not 1–65535), the username, password and one-time password, the admin console URL and an SSH key from the same vault; then notes and custom fields. A host typed as `ssh://host:2222` or `host:2222` is split into host and port.
 - The view lists the host and port with **Copy** and a secret reference, the login fields as for a login, the admin console with **Open in browser**, and the linked SSH key, which opens; a key that was deleted shows as missing. The item list shows the host, port and username, and search matches the host and port, alone or as `host:port`.
@@ -180,7 +185,7 @@ Design: `docs/DESIGN.md` §4.5 (categories) and §9.2 (browser extension).
 
 ## Databases
 
-Design: `docs/DESIGN.md` §4.5 (categories) and §9.4.1 (secret references).
+Design: [Design](../design.md) §4.5 (categories) and §9.4.1 (secret references).
 
 - **+** → **Database** opens an editor for the engine (PostgreSQL, MySQL, MariaDB, SQL Server, Oracle, MongoDB, Redis, or Other with any name), the host and port (warning about a port that is not 1–65535), the database name, the username and password, and connection options such as `sslmode=require`; then notes and custom fields.
 - The view lists each value with **Copy** and a secret reference, then the **Connection string**, masked until revealed, with **Copy** and a secret reference (`hisar://Personal/Prod%20db/connection%20string`). It is built from the fields, so it follows a new password. An Other engine has none; a custom field named "Connection string", such as a JDBC URL, then serves for Copy and `hisar://…/connection string`. The item list shows the engine, address and database name, and search matches any of them.
@@ -189,7 +194,7 @@ Design: `docs/DESIGN.md` §4.5 (categories) and §9.4.1 (secret references).
 
 ## Import from other password managers
 
-Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: `docs/DESIGN.md` §9.7).
+Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: [Design](../design.md) §9.7).
 
 1. Choose the vault (only vaults you can edit) and the format, or let Hisar detect it, then pick the file in the open dialog: a 1Password `.1pux` or CSV export, an unencrypted Bitwarden `.json` or CSV export, or a CSV export from Chrome, Edge, Firefox, Safari or another manager (header row with columns such as title, username, password, url, notes).
 2. The preview counts logins, secure notes, SSH keys, credit cards, identities, API credentials and addresses, lists what is not imported and why (documents, archived items, passphrase-protected SSH keys), and lists items already in the vault, which are skipped unless you untick the box. A login matches on its title, username and website, a card on its title and last four digits, an identity on its title, name, email and first document number, an API credential on its title and key ID (or host, or secret when it has neither), and an address on its title, street, postal code and country. Nothing is saved before **Import**.
@@ -198,7 +203,7 @@ Settings → General → **Import…**, or **+** → **Import…** in a vault. T
 
 ## Browser extension bridge
 
-The Hisar extension (`extension/`) fills and saves logins through the desktop app (design: `docs/DESIGN.md` §9.2).
+The Hisar extension (`extension/`) fills and saves logins through the desktop app (design: [Design](../design.md) §9.2).
 
 - `Hisar.app/Contents/MacOS/hisar-browser-host` is the native messaging host. At launch the app writes `com.tryhisar.hisar.json` into `NativeMessagingHosts` of every Chromium browser it knows (Chrome, Brave, Edge and their beta, dev, canary and nightly channels, Chromium, Arc, Dia, Vivaldi and Vivaldi Snapshot, Opera and Opera GX), whether or not it is installed, so a browser installed later finds the host at its first launch. Dia reads Chrome's folder rather than its own, so its entry points there. It allows only the extension `mmipiffoogblblocokimpemdopmdjghf`. Settings → Browser lists the browsers that have run. A development build (`wails3 dev`) has no host next to its binary and registers nothing.
 - The host relays to the app on `~/.hisar/browser.sock` (`HISAR_BROWSER_SOCKET` overrides it for both). In the packaged app only that host binary may connect. If the app is not running, the host opens it in the background.
@@ -207,7 +212,7 @@ The Hisar extension (`extension/`) fills and saves logins through the desktop ap
 
 ## SSH agent
 
-Hisar is an SSH agent for the SSH keys in your vaults (design: `docs/DESIGN.md` §9.6).
+Hisar is an SSH agent for the SSH keys in your vaults (design: [Design](../design.md) §9.6).
 
 1. Add a key: **+** → **SSH key**, then **Generate** (Ed25519, or RSA 4096 for old servers) or **Import** (paste an OpenSSH or PEM private key; a passphrase is only needed to import, the key is stored without it).
 2. Copy the public key from the key's page (**Copy public key**) into GitHub or the server's `~/.ssh/authorized_keys`.
@@ -227,7 +232,7 @@ The agent listens on `~/.hisar/agent.sock` while the app runs (`HISAR_SSH_AGENT_
 ## Keeping Hisar running
 
 `ssh`, `git` and commit signing cannot start Hisar: while the app is not running, `~/.hisar/agent.sock` refuses connections and they
-fail at once. So the app keeps itself available (design: `docs/DESIGN.md` §9.1.2):
+fail at once. So the app keeps itself available (design: [Design](../design.md) §9.1.2):
 
 - Settings → General → **Open Hisar at login** (on by default; registered once on the first launch, never again after you turn it off).
   macOS uses `SMAppService` and Settings shows what System Settings → General → Login Items says, with **Open Login Items** when macOS
@@ -238,7 +243,7 @@ fail at once. So the app keeps itself available (design: `docs/DESIGN.md` §9.1.
 
 ## Command-line tool
 
-Design: `docs/DESIGN.md` §9.4. The packaged app bundles the CLI as `Hisar.app/Contents/Helpers/hisar` (universal, signed with the
+Design: [Design](../design.md) §9.4. The packaged app bundles the CLI as `Hisar.app/Contents/Helpers/hisar` (universal, signed with the
 app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default case-insensitive file system that is the app's own `Hisar`.
 
 - Settings → Developer tools → **Install command-line tool** links `hisar` into `/opt/homebrew/bin` or `/usr/local/bin` (whichever
@@ -261,7 +266,7 @@ app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default cas
 
 ## Raycast extension
 
-Design: `docs/DESIGN.md` §9.4.3. `raycast/` brings the 1Password Raycast extension's features to Hisar: Search Hisar, My Vaults,
+Design: [Design](../design.md) §9.4.3. `raycast/` brings the 1Password Raycast extension's features to Hisar: Search Hisar, My Vaults,
 One-Time Codes, Generate Password (quick and with options) and Lock Hisar, with copy and paste of usernames, passwords and one-time
 codes, Open or Edit in Hisar and Share Item…, through the running app on `~/.hisar/cli.sock`. It is not in the Raycast Store;
 install it in development mode:

@@ -1,6 +1,11 @@
+---
+sidebar_position: 1
+sidebar_label: CI and releases
+---
+
 # CI and releases
 
-How GitHub Actions tests pull requests, and how `server`, `cli`, `desktop`, `extension` and `docs` releases are cut, built and published. Deploying a released server image: [deploy/README.md](../deploy/README.md).
+How GitHub Actions tests pull requests, and how `server`, `cli`, `desktop`, `extension` and `docs` releases are cut, built and published. Deploying a released server image: [Self-hosting](../self-hosting.md).
 
 GitHub Actions runs CI on pull requests, on manual runs (Actions → CI → Run workflow) and on a release that asks for it, never
 on pushes to `main`: a merge was already tested as its pull request. A new push to a pull request cancels its running CI.

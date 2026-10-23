@@ -12,8 +12,8 @@
 <p align="center">
   <a href="https://tryhisar.com">Website</a> ·
   <a href="https://github.com/tosunlab/hisar/releases">Releases</a> ·
-  <a href="docs/DESIGN.md">Design</a> ·
-  <a href="deploy/README.md">Self-hosting</a> ·
+  <a href="docs/docs/design.md">Design</a> ·
+  <a href="docs/docs/self-hosting.md">Self-hosting</a> ·
   <a href="https://tryhisar.com/security">Security</a>
 </p>
 
@@ -26,13 +26,13 @@
 
 ---
 
-Hisar keeps your passwords, passkeys, SSH keys, one-time codes and API secrets in vaults that only your devices can read. The server, hosted at `api.tryhisar.com` or [run by you](deploy/README.md), stores ciphertext and nothing else: every key is derived on your devices from your master password and a **Secret Key** that never leaves them, so a copy of the database, a compromised server or a network attacker learns nothing. The cryptography, the sync protocol and every product decision are written down in [docs/DESIGN.md](docs/DESIGN.md).
+Hisar keeps your passwords, passkeys, SSH keys, one-time codes and API secrets in vaults that only your devices can read. The server, hosted at `api.tryhisar.com` or [run by you](docs/docs/self-hosting.md), stores ciphertext and nothing else: every key is derived on your devices from your master password and a **Secret Key** that never leaves them, so a copy of the database, a compromised server or a network attacker learns nothing. The cryptography, the sync protocol and every product decision are written down in [Design](docs/docs/design.md).
 
 Hisar is one Go implementation of the crypto shared by a Mac and Linux app, a browser extension, an iPhone app, an Android app and a command-line tool. It is built for people who live in a terminal: the app is an SSH agent, `hisar run` hands secrets to commands without ever showing them, and `hisar mcp` lets coding agents use your secrets without seeing them.
 
 ## Features
 
-- **Zero-knowledge server.** The master password never reaches the server (OPAQUE), and the 128-bit Secret Key makes offline guessing against a stolen database impossible. Titles, URLs and vault names are encrypted too ([threat model](docs/DESIGN.md#2-threat-model)).
+- **Zero-knowledge server.** The master password never reaches the server (OPAQUE), and the 128-bit Secret Key makes offline guessing against a stolen database impossible. Titles, URLs and vault names are encrypted too ([threat model](docs/docs/design.md#2-threat-model)).
 - **Offline first.** Every client keeps a full encrypted copy and works without a network. Sync detects a server that withholds or rolls back data.
 - **Every kind of secret.** Logins with one-time codes and passkeys, SSH keys, secure notes, credit cards, identities, addresses, API credentials, software licenses, servers and databases.
 - **SSH agent with Touch ID.** Private keys never sit in `~/.ssh`: `ssh`, `git` and commit signing ask Hisar, which approves each use with Touch ID, the master password or your phone. For SSH commit signing, the app shows the `git config` commands ready to copy; it never changes your Git config itself.
@@ -54,9 +54,9 @@ Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/release
 | **macOS** | Open `Hisar-<version>.dmg` from the latest `desktop-<version>` release and drag Hisar into Applications. The app updates itself (Sparkle) and bundles `hisar`: Settings → Developer tools → **Install command-line tool**. |
 | **Linux** (amd64, arm64) | `sudo apt install ./Hisar-<version>-linux-<arch>.deb` on Ubuntu 24.04+ or Debian 13+, `sudo dnf install ./Hisar-<version>-linux-<arch>.rpm` on Fedora 40+. Elsewhere, the `.AppImage` needs the system's GTK 4 and WebKitGTK 6.0, or the `.flatpak` brings them along. The packages include `hisar`. Details [below](#desktop-app-on-linux). |
 | **Browser extension** | Unzip `hisar-extension-<version>.zip` from the latest `extension-<version>` release, open `chrome://extensions`, turn on Developer mode and choose **Load unpacked**. It needs the desktop app. |
-| **iPhone and Android** | No store builds yet: build the apps from [`mobile/`](mobile/README.md) and install them on your own phone. |
-| **Command-line tool** (Windows, servers, without the app) | The standalone `hisar-<version>-<os>-<arch>` archive from a `cli-<version>` release; see [cli/README.md](cli/README.md). |
-| **Server** | `ghcr.io/tosunlab/hisar-server:<version>` for linux/amd64 and linux/arm64, run with Docker Compose behind your own TLS: [deploy/README.md](deploy/README.md). |
+| **iPhone and Android** | No store builds yet: build the apps from [`mobile/`](docs/docs/apps/mobile.md) and install them on your own phone. |
+| **Command-line tool** (Windows, servers, without the app) | The standalone `hisar-<version>-<os>-<arch>` archive from a `cli-<version>` release; see [Command-line tool](docs/docs/apps/cli.md). |
+| **Server** | `ghcr.io/tosunlab/hisar-server:<version>` for linux/amd64 and linux/arm64, run with Docker Compose behind your own TLS: [Self-hosting](docs/docs/self-hosting.md). |
 
 Sign-up is invite-only: an existing user invites you by email, or you run your own server and invite yourself from its admin dashboard.
 
@@ -64,7 +64,7 @@ Sign-up is invite-only: an existing user invites you by email, or you run your o
 
 The `.deb` and `.rpm` are built for GTK 4 and WebKitGTK 6.0 (Ubuntu 24.04+, Debian 13+, Fedora 40+) and install the app at `/usr/bin/Hisar`, `hisar` at `/usr/bin/hisar` and the browser extension's host. On other distributions, run `Hisar-<version>-linux-<arch>.AppImage` with the system's GTK 4 and WebKitGTK 6.0 (for example `sudo pacman -S gtk4 webkitgtk-6.0` on Arch; without them it says which packages to install), or install the Flatpak, which brings them with the GNOME runtime: `flatpak install --user Hisar-<version>-linux-<arch>.flatpak`. Both copy `hisar` to `~/.local/share/hisar/bin`; Settings → Command-line tool links it onto your `PATH`.
 
-The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or KWallet); without one, set `HISAR_SECRET_KEY`. What works as on the Mac and what differs (no Touch ID, update notices instead of installing updates, no app names in approvals): [docs/DESIGN.md §9.1.3](docs/DESIGN.md).
+The Secret Key goes into the desktop's keyring, so a Secret Service has to run (GNOME Keyring or KWallet); without one, set `HISAR_SECRET_KEY`. What works as on the Mac and what differs (no Touch ID, update notices instead of installing updates, no app names in approvals): [Design §9.1.3](docs/docs/design.md).
 
 ## Quick start
 
@@ -95,15 +95,15 @@ Give a coding agent your secrets without showing them: in Settings → Developer
 hisar mcp --no-reveal                             # --no-reveal: no tool can hand a secret's value to the agent
 ```
 
-Everything `hisar` can do, the reference format, masking and the MCP tools: [cli/README.md](cli/README.md).
+Everything `hisar` can do, the reference format, masking and the MCP tools: [Command-line tool](docs/docs/apps/cli.md).
 
 ## How it works
 
-- **Keys.** Argon2id derives the account unlock key from the master password and the Secret Key; HKDF and AEAD seal a keyset, per-vault keys and each item, with authenticated labels so a record cannot be moved or swapped. [§3](docs/DESIGN.md#3-cryptographic-primitives), [§4](docs/DESIGN.md#4-key-hierarchy).
-- **Sign-in.** OPAQUE proves the master password without sending it. A new device needs the Secret Key and the master password; a known device unlocks locally, with Touch ID on the Mac and Face ID on the iPhone. [§5](docs/DESIGN.md#5-accounts-and-devices).
-- **Sharing.** A vault key is wrapped to each member's public key, verified by fingerprint. Removing someone rotates the vault. [§5.8](docs/DESIGN.md#58-sharing-a-vault-by-email), [§5.11](docs/DESIGN.md#511-organizations-teams-and-organization-vaults).
-- **Sync.** Clients pull and push encrypted records; conflicts resolve on the client, and rollback or withholding by the server is detected. [§7](docs/DESIGN.md#7-sync-protocol).
-- **What the server sees.** Emails, who can reach which vault, counts, sizes, timestamps and IPs. Never item contents, titles, URLs or vault names. [§2.3](docs/DESIGN.md#23-accepted-metadata-leakage).
+- **Keys.** Argon2id derives the account unlock key from the master password and the Secret Key; HKDF and AEAD seal a keyset, per-vault keys and each item, with authenticated labels so a record cannot be moved or swapped. [§3](docs/docs/design.md#3-cryptographic-primitives), [§4](docs/docs/design.md#4-key-hierarchy).
+- **Sign-in.** OPAQUE proves the master password without sending it. A new device needs the Secret Key and the master password; a known device unlocks locally, with Touch ID on the Mac and Face ID on the iPhone. [§5](docs/docs/design.md#5-accounts-and-devices).
+- **Sharing.** A vault key is wrapped to each member's public key, verified by fingerprint. Removing someone rotates the vault. [§5.8](docs/docs/design.md#58-sharing-a-vault-by-email), [§5.11](docs/docs/design.md#511-organizations-teams-and-organization-vaults).
+- **Sync.** Clients pull and push encrypted records; conflicts resolve on the client, and rollback or withholding by the server is detected. [§7](docs/docs/design.md#7-sync-protocol).
+- **What the server sees.** Emails, who can reach which vault, counts, sizes, timestamps and IPs. Never item contents, titles, URLs or vault names. [§2.3](docs/docs/design.md#23-accepted-metadata-leakage).
 
 ## Repository layout
 
@@ -112,14 +112,14 @@ Everything `hisar` can do, the reference format, masking and the MCP tools: [cli
 | [`core/`](core) | Shared Go library: crypto, item model, API client, sessions and sync, and `core/app`, the backend of the Mac, iPhone and Android apps |
 | [`server/`](server) | `hisar-server`, the sync server (Go + Postgres) |
 | [`admin/`](admin) | The admin dashboard (Vue) that `hisar-server` embeds at `/admin` |
-| [`cli/`](cli) | `hisar`, the command-line tool and MCP server, see [cli/README.md](cli/README.md) |
-| [`desktop/`](desktop) | The Mac and Linux app (Wails v3 + Vue), the SSH agent and the extension's native host, see [desktop/README.md](desktop/README.md) |
-| [`extension/`](extension) | The browser extension (TypeScript, MV3), see [extension/README.md](extension/README.md) |
-| [`mobile/`](mobile) | The iPhone (Swift) and Android (Kotlin) apps on the gomobile-bound core, see [mobile/README.md](mobile/README.md) |
+| [`cli/`](cli) | `hisar`, the command-line tool and MCP server, see [Command-line tool](docs/docs/apps/cli.md) |
+| [`desktop/`](desktop) | The Mac and Linux app (Wails v3 + Vue), the SSH agent and the extension's native host, see [Desktop app](docs/docs/apps/desktop.md) |
+| [`extension/`](extension) | The browser extension (TypeScript, MV3), see [Browser extension](docs/docs/apps/extension.md) |
+| [`mobile/`](mobile) | The iPhone (Swift) and Android (Kotlin) apps on the gomobile-bound core, see [iPhone and Android](docs/docs/apps/mobile.md) |
 | [`raycast/`](raycast) | The Raycast extension |
 | [`omp/`](omp) | The Hisar plugin for omp, the coding agent that also runs in Tern |
-| [`deploy/`](deploy) | Dockerfile and Docker Compose for the server, see [deploy/README.md](deploy/README.md) |
-| [`docs/`](docs) | The docs site at [docs.tryhisar.com](https://docs.tryhisar.com) (Docusaurus, see [docs/README.md](docs/README.md)), [DESIGN.md](docs/DESIGN.md), the source of truth for the security model, and [RELEASING.md](docs/RELEASING.md) |
+| [`deploy/`](deploy) | Dockerfile and Docker Compose for the server, see [Self-hosting](docs/docs/self-hosting.md) |
+| [`docs/`](docs) | Every document, as the docs site at [docs.tryhisar.com](https://docs.tryhisar.com) (Docusaurus, see [docs/README.md](docs/README.md)): the [design](docs/docs/design.md), the source of truth for the security model, [self-hosting](docs/docs/self-hosting.md), one page per [app](docs/docs/apps), and [CI and releases](docs/docs/development/releasing.md) |
 
 Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
 
@@ -143,11 +143,11 @@ docker exec hisar-pg createdb -U postgres hisar_end_to_end
 HISAR_DATABASE_URL="postgres://postgres:hisar@127.0.0.1:55432/hisar_end_to_end?sslmode=disable" make test-end-to-end
 ```
 
-The desktop app builds with `make build-desktop` ([desktop/README.md](desktop/README.md)), the extension with `make build-extension`, the iPhone app with Xcode on a Mac and the Android app with the Android SDK and JDK 21 (`make build-android-aar build-android test-android`, see [mobile/README.md](mobile/README.md)). The other targets are in the [Makefile](Makefile).
+The desktop app builds with `make build-desktop` ([Desktop app](docs/docs/apps/desktop.md)), the extension with `make build-extension`, the iPhone app with Xcode on a Mac and the Android app with the Android SDK and JDK 21 (`make build-android-aar build-android test-android`, see [iPhone and Android](docs/docs/apps/mobile.md)). The other targets are in the [Makefile](Makefile).
 
 ## Contributing
 
-Bug reports and feature requests are welcome as issues, and changes as pull requests on `main`. [CONTRIBUTING.md](CONTRIBUTING.md) has what a pull request needs to pass, the commit message format and the code conventions. A change to the security model starts in [docs/DESIGN.md](docs/DESIGN.md): change the document before the code. How CI and releases work: [docs/RELEASING.md](docs/RELEASING.md).
+Bug reports and feature requests are welcome as issues, and changes as pull requests on `main`. [CONTRIBUTING.md](CONTRIBUTING.md) has what a pull request needs to pass, the commit message format and the code conventions. A change to the security model starts in [Design](docs/docs/design.md): change the document before the code. How CI and releases work: [CI and releases](docs/docs/development/releasing.md).
 
 ## Maintainers
 
@@ -162,4 +162,4 @@ Bug reports and feature requests are welcome as issues, and changes as pull requ
 
 ## Security
 
-Found a vulnerability? Use [GitHub's private vulnerability reporting](https://github.com/tosunlab/hisar/security/advisories/new) or email [support@tryhisar.com](mailto:support@tryhisar.com?subject=Security%20report), not a public issue. We reply within two working days and credit reporters who want it. The threat model and what the server can and cannot learn are in [docs/DESIGN.md §2](docs/DESIGN.md#2-threat-model); the primitives and their frozen test vectors are in `core/crypt`.
+Found a vulnerability? Use [GitHub's private vulnerability reporting](https://github.com/tosunlab/hisar/security/advisories/new) or email [support@tryhisar.com](mailto:support@tryhisar.com?subject=Security%20report), not a public issue. We reply within two working days and credit reporters who want it. The threat model and what the server can and cannot learn are in [Design §2](docs/docs/design.md#2-threat-model); the primitives and their frozen test vectors are in `core/crypt`.
