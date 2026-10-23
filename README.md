@@ -119,7 +119,7 @@ Everything `hisar` can do, the reference format, masking and the MCP tools: [cli
 | [`raycast/`](raycast) | The Raycast extension |
 | [`omp/`](omp) | The Hisar plugin for omp, the coding agent that also runs in Tern |
 | [`deploy/`](deploy) | Dockerfile and Docker Compose for the server, see [deploy/README.md](deploy/README.md) |
-| [`docs/`](docs) | [DESIGN.md](docs/DESIGN.md), the source of truth for the security model, and [RELEASING.md](docs/RELEASING.md) |
+| [`docs/`](docs) | The docs site at [docs.tryhisar.com](https://docs.tryhisar.com) (Docusaurus, see [docs/README.md](docs/README.md)), [DESIGN.md](docs/DESIGN.md), the source of truth for the security model, and [RELEASING.md](docs/RELEASING.md) |
 
 Where each package is and where new code goes: [CLAUDE.md](CLAUDE.md).
 

@@ -18,7 +18,7 @@ on:
       app:
         description: What to publish
         type: choice
-        options: [server, cli, desktop, extension]
+        options: [server, cli, desktop, extension, docs]
       tag:
         description: Release tag, e.g. desktop-1.2.3
         required: true
@@ -33,6 +33,7 @@ env:
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
   SERVER_IMAGE: ghcr.io/tosunlab/hisar-server
+  DOCS_IMAGE: ghcr.io/tosunlab/hisar-docs
 
 jobs:
   publish:
@@ -66,20 +67,22 @@ jobs:
           echo "VERSION=$version" >> "$GITHUB_ENV"
           echo "PUBLISHED_TAG=$publishedTag" >> "$GITHUB_ENV"
 
+      # The server and the docs site are images: publishing points their latest and MAJOR.MINOR tags at the version.
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        if: inputs.app == 'server'
+        if: inputs.app == 'server' || inputs.app == 'docs'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        if: inputs.app == 'server'
-      - name: Point the latest and MAJOR.MINOR server image tags at the version
-        if: inputs.app == 'server'
+        if: inputs.app == 'server' || inputs.app == 'docs'
+      - name: Point the latest and MAJOR.MINOR image tags at the version
+        if: inputs.app == 'server' || inputs.app == 'docs'
         run: |
-          docker buildx imagetools inspect "$SERVER_IMAGE:$VERSION" >/dev/null || { echo "::error::$SERVER_IMAGE:$VERSION does not exist; run Release for server"; exit 1; }
-          docker buildx imagetools create -t "$SERVER_IMAGE:${VERSION%.*}" -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE:$VERSION"
-          echo "Published $SERVER_IMAGE:$VERSION as latest and ${VERSION%.*}"
+          case "$APP" in server) image=$SERVER_IMAGE ;; docs) image=$DOCS_IMAGE ;; esac
+          docker buildx imagetools inspect "$image:$VERSION" >/dev/null || { echo "::error::$image:$VERSION does not exist; run Release for $APP"; exit 1; }
+          docker buildx imagetools create -t "$image:${VERSION%.*}" -t "$image:latest" "$image:$VERSION"
+          echo "Published $image:$VERSION as latest and ${VERSION%.*}"
 
       # Apps are offered a desktop version only once its release has an asset named update.json.
       - name: Offer the desktop version as an automatic update

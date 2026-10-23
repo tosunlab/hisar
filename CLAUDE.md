@@ -6,7 +6,7 @@ derived on devices from the master password and a Secret Key. Cryptography, prot
 
 ## Modules
 
-Five Go modules joined by `go.work`, plus six non-Go apps.
+Five Go modules joined by `go.work`, plus seven non-Go apps.
 
 | Module | Builds | May import |
 |---|---|---|
@@ -19,6 +19,7 @@ Five Go modules joined by `go.work`, plus six non-Go apps.
 | `raycast/` | The Raycast extension (TypeScript), installed in Raycast's development mode; it talks to the desktop app on `cli.sock` as a launcher | none |
 | `omp/` | The Hisar plugin for omp (TypeScript, Bun), which `omp plugin link` loads: an extension, the `hisar` skill and the `hisar mcp --no-reveal` MCP server; it runs `hisar` and never imports Hisar code | none |
 | `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
+| `docs/` | The documentation site at docs.tryhisar.com (Docusaurus, TypeScript): `docs/docs/*.md` are its pages, built into the `hisar-docs` image by `docs/Dockerfile`; `docs/DESIGN.md` and `docs/COPY.md` beside it are the design docs | none |
 | `mobile/ios/` | The iOS app (Swift), on top of HisarKit | none |
 | `mobile/android/` | The Android app (Kotlin, Jetpack Compose, Gradle) on top of `HisarKit.aar`: `:model`, a JVM module with the app model and its tests, and `:app`, the Android app | none |
 
@@ -246,6 +247,7 @@ make build build-cli-all # hisar-server with the admin dashboard (needs Node 24)
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
+make test-docs           # the docs site's typecheck and build; make build-docs builds it alone
 make test-omp            # the omp plugin's typecheck, tests and format check (needs Bun)
 make test-admin          # the admin dashboard's typecheck and unit tests; make build-admin builds it alone
 make test-admin-end-to-end # the dashboard in Chromium; needs HISAR_DATABASE_URL and Playwright's Chromium
@@ -263,7 +265,7 @@ The Android targets need `ANDROID_HOME` (the SDK, with the command-line tools in
 the desktop and admin `themes.css`, from `assets/themes/themes.json`.
 ## Releases
 
-One run of Actions → Release per release (`gh workflow run release.yml -f app=<server|cli|desktop|extension> -f type=<patch|minor|major|custom> [-f version=X.Y.Z]`):
+One run of Actions → Release per release (`gh workflow run release.yml -f app=<server|cli|desktop|extension|docs> -f type=<patch|minor|major|custom> [-f version=X.Y.Z]`):
 it plans the version (`scripts/plan-release.sh`), pushes the `<app>-X.Y.Z` tag (CI only with `-f runTests=true`), builds through
 `release-<app>.yml` (only callable from Release), creates the GitHub prerelease and waits for approval in the environment
 `publish-<app>` before `publish.yml` publishes it. What an app is built from lives in `scripts/app-paths.sh`, shared with

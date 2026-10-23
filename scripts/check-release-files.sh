@@ -22,7 +22,8 @@ case "$app" in
     done
     ;;
   extension) allExpected=("hisar-extension-$version.zip") ;;
-  *) echo "unknown app $app (server, cli, desktop or extension)" >&2; exit 1 ;;
+  docs) allExpected=() ;;
+  *) echo "unknown app $app (server, cli, desktop, extension or docs)" >&2; exit 1 ;;
 esac
 
 cd "$directory"
