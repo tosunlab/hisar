@@ -26,7 +26,9 @@ QUIET_CORES = 0.25
 QUIET_SECONDS = 30
 WAIT_LIMIT_SECONDS = 900
 REPORT_BIN_SECONDS = 30
-COMMAND_TIMEOUT_SECONDS = 10
+# On a loaded runner one ps over the process table took over 10 s (job 120643275783); a slow or failed sample is skipped.
+COMMAND_TIMEOUT_SECONDS = 60
+STALE_SECONDS = 120
 
 is_stopping = False
 
@@ -111,9 +113,13 @@ def record(udid, path):
     root = None
     with open(path, "a") as file:
         while not is_stopping:
-            table = processes()
-            if root is None or table.get(root[0], (None, None))[1] != root[1]:
-                root = simulator_root(udid, table)
+            try:
+                table = processes()
+                if root is None or table.get(root[0], (None, None))[1] != root[1]:
+                    root = simulator_root(udid, table)
+            except (subprocess.SubprocessError, OSError) as error:
+                print(f"simulator-load: skipped a sample: {error}", file=sys.stderr, flush=True)
+                continue
             if root is not None:
                 file.write(json.dumps({"t": time.time(), "cpu": simulator_cpu(root[0], table)}) + "\n")
                 file.flush()
@@ -132,8 +138,8 @@ def wait(path):
         if time.time() - started > WAIT_LIMIT_SECONDS:
             sys.exit(f"the simulator was not quiet after {WAIT_LIMIT_SECONDS} s: {status}")
         samples = read_samples(path)
-        if samples and time.time() - samples[-1]["t"] > 5 * SAMPLE_SECONDS:
-            sys.exit("the simulator's load recording stopped")
+        if samples and time.time() - samples[-1]["t"] > STALE_SECONDS:
+            sys.exit(f"the simulator's load recording stopped: no sample for {STALE_SECONDS} s")
         if samples and samples[-1]["t"] - samples[0]["t"] >= QUIET_SECONDS:
             end = samples[-1]["t"]
             begin = max(index for index, sample in enumerate(samples) if end - sample["t"] >= QUIET_SECONDS)
