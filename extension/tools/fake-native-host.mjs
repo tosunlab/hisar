@@ -299,6 +299,7 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
       const instanceID = requireString(request, "instanceID");
       const browser = requireString(request, "browser");
       if (state.state === "signed-out") throw new ProtocolError("signed-out", "Sign in to Hisar first");
+      requireUnlocked(state);
       const code = state.pairingCode ?? String(randomInt(1000000)).padStart(6, "0");
       state.pendingPairing = { instanceID, browser, code, expiresAt: now + pairingLifetimeMilliseconds, attemptCount: 0 };
       log(`Pair ${browser}? Code ${code}`);
@@ -307,6 +308,7 @@ export function handleRequest(state, request, now = Date.now(), log = () => unde
     case "pair.finish": {
       const instanceID = requireString(request, "instanceID");
       const code = requireString(request, "code");
+      requireUnlocked(state);
       const pending = state.pendingPairing;
       if (!pending || pending.instanceID !== instanceID || pending.expiresAt < now) {
         state.pendingPairing = null;

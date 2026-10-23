@@ -150,3 +150,13 @@ test("navigation after review invalidates the popup offer instead of saving to a
   await popup.getByTestId("save-confirm").click();
   expect(harness.readState().allLogin[0].password).toBe("old password");
 });
+
+test("locked pairing explains unlock-first and does not start durable authorization", async () => {
+  harness.updateState(state => { state.state = "locked"; });
+  const popup = await harness.context.newPage();
+  await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=0`);
+  await popup.getByTestId("start-pairing").click();
+  await expect(popup.locator(".error")).toContainText(/unlock/i);
+  expect(harness.readState().pendingPairing).toBeNull();
+  expect(harness.readState().allPairing).toHaveLength(0);
+});

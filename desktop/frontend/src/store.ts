@@ -189,6 +189,9 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
 
 function clearAllVaultData(): void {
   navigationVersion++;
+  browserPairingGeneration++;
+  store.browserPairing = null;
+  if (store.browserStatus) store.browserStatus.pendingPairing = null;
   resetImport();
   forgetWebsiteIcons();
   store.isTouchIDOfferShown = false;
@@ -222,6 +225,7 @@ function clearAllVaultData(): void {
 }
 
 let sessionGeneration = 0;
+let browserPairingGeneration = 0;
 
 // clearLockedVaultData also hides a new Secret Key not yet confirmed: the session that made it ended.
 function clearLockedVaultData(): void {
@@ -1796,27 +1800,35 @@ export async function setSSHRemember(seconds: number): Promise<void> {
 }
 
 export function showBrowserPairing(request: BrowserPairingRequest | null): void {
-  store.browserPairing = request;
-  loadBrowserStatus();
+  if (!request) {
+    browserPairingGeneration++;
+    store.browserPairing = null;
+    if (store.browserStatus) store.browserStatus.pendingPairing = null;
+  } else void restoreBrowserPairing();
 }
 
 export async function cancelBrowserPairing(): Promise<void> {
-  store.browserPairing = null;
+  showBrowserPairing(null);
   await api.cancelBrowserPairing().catch(() => undefined);
 }
 
 export async function loadBrowserStatus(): Promise<void> {
+  const generation = sessionGeneration;
+  const pairingGeneration = browserPairingGeneration;
   try {
-    store.browserStatus = await api.getBrowserStatus();
+    const status = await api.getBrowserStatus();
+    if (generation === sessionGeneration && pairingGeneration === browserPairingGeneration) store.browserStatus = status;
   } catch {
-    store.browserStatus = null;
+    if (generation === sessionGeneration && pairingGeneration === browserPairingGeneration) store.browserStatus = null;
   }
 }
 
 // restoreBrowserPairing shows a pairing that started before the window loaded; later ones arrive as events.
 export async function restoreBrowserPairing(): Promise<void> {
+  const generation = sessionGeneration;
+  const pairingGeneration = ++browserPairingGeneration;
   await loadBrowserStatus();
-  store.browserPairing = store.browserStatus?.pendingPairing ?? null;
+  if (generation === sessionGeneration && pairingGeneration === browserPairingGeneration && store.status.state === "unlocked") store.browserPairing = store.browserStatus?.pendingPairing ?? null;
 }
 
 export async function removePairedBrowser(instanceID: string): Promise<boolean> {

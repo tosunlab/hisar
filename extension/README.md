@@ -116,6 +116,11 @@ The app advertises `save-confirmation` for `logins.prepare`, `logins.review`, an
 Legacy `logins.check` and saves without a context are refused. Update both the app and extension for submitted-login saves.
 Manual popup item creation and filling remain available independently of this feature.
 
+## Pair with Hisar
+
+Unlock Hisar before pairing. Both pairing start and completion require the same unlocked account session.
+If Hisar locks or the account changes, start pairing again after unlocking.
+
 ## Fake native host
 
 `tools/fake-native-host.mjs` implements the protocol with data from a JSON state file. Edit the file while the host runs to change its state:

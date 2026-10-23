@@ -42,7 +42,7 @@ function reportActivity(): void {
 }
 
 onMounted(() => {
-  loadStatus().then(takePendingInviteQuietly);
+  loadStatus().then(async () => { await takePendingInviteQuietly(); await restoreBrowserPairing(); });
   allRemoveListener = [
     Events.On("update-required", (event) => event.data && showUpdateRequired(event.data)),
     Events.On("invite-link", (event) => openInviteLink(event.data ?? "")),
@@ -55,7 +55,6 @@ onMounted(() => {
     Events.On("show-item", (event) => showItem(event.data)),
     Events.On("show-settings", (event) => openSettings(event.data ?? "")),
   ];
-  restoreBrowserPairing();
   window.addEventListener("keydown", reportActivity);
   window.addEventListener("pointerdown", reportActivity);
 });
@@ -75,7 +74,7 @@ onBeforeUnmount(() => {
   <SignInView v-else-if="store.status.state === 'signed-out'" />
   <UnlockView v-else-if="store.status.state === 'locked'" />
   <MainView v-else />
-  <BrowserPairingModal />
+  <BrowserPairingModal v-if="store.status.state === 'unlocked'" />
   <button v-if="!store.isRecoveryOpen && store.pendingRecovery.length > 0" class="recovery-reminder" data-testid="open-pending-recovery" @click="store.isRecoveryOpen = true">
     Account recovery and kit sign-in ({{ store.pendingRecovery.length }})
   </button>
