@@ -21,7 +21,7 @@ import (
 
 func startSetup(t *testing.T, server *Server) string {
 	t.Helper()
-	return startSetupAt(t, server, "https://hisar.test")
+	return startSetupAt(t, server, server.config.PublicURL)
 }
 
 func startSetupAt(t *testing.T, server *Server, origin string) string {

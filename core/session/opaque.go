@@ -17,8 +17,12 @@ type opaqueLogin struct {
 }
 
 // startOpaqueLogin returns the login and its serialized KE1; the caller clears the login.
-func startOpaqueLogin(authKey []byte) (*opaqueLogin, []byte, error) {
-	client, err := pake.NewConfig().Client()
+func startOpaqueLogin(authKey []byte, baseURL string, purpose pake.AuthPurpose) (*opaqueLogin, []byte, error) {
+	configuration, err := pake.NewAuthConfig(baseURL, purpose)
+	if err != nil {
+		return nil, nil, err
+	}
+	client, err := configuration.Client()
 	if err != nil {
 		return nil, nil, err
 	}
@@ -48,7 +52,7 @@ func (login *opaqueLogin) clear() {
 }
 
 func proveCredentials(ctx context.Context, client *apiclient.Client, authKey []byte, accountID string, registrationRequest []byte) (proof apitypes.ReauthenticationProof, registrationResponse []byte, err error) {
-	login, keyExchange1, err := startOpaqueLogin(authKey)
+	login, keyExchange1, err := startOpaqueLogin(authKey, client.BaseURL, pake.Reauthenticate)
 	if err != nil {
 		return apitypes.ReauthenticationProof{}, nil, err
 	}

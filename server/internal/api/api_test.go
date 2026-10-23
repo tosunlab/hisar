@@ -62,17 +62,19 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 	if _, err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	server, err = NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	trustedOrigin := "http://" + listener.Addr().String()
+	server, err = NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: trustedOrigin}})
 	if err != nil {
 		t.Fatal(err)
 	}
 	server.limiter = ratelimit.New(rate.Inf, 1)
 
 	app := server.CreateApp()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
 	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true})
 	t.Cleanup(func() { app.Shutdown() })
 	return "http://" + listener.Addr().String(), server, databaseURL
@@ -410,7 +412,7 @@ func TestAdminAPINeedsAnAdminSession(t *testing.T) {
 		return response.StatusCode, strings.TrimSpace(string(body))
 	}
 
-	if status, body := get("/api/v1/admin/server", admin.Client.Token); status != http.StatusOK || body != `{"publicUrl":"https://hisar.test"}` {
+	if status, body := get("/api/v1/admin/server", admin.Client.Token); status != http.StatusOK || body != `{"publicUrl":"`+baseURL+`"}` {
 		t.Errorf("admin: %d %s", status, body)
 	}
 	if status, body := get("/api/v1/admin/server", member.Client.Token); status != http.StatusForbidden || body != `{"error":"admin only"}` {

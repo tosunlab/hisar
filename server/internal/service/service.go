@@ -32,7 +32,7 @@ type Actor struct {
 
 // Config is what the service reads on every request and never changes while it serves.
 type Config struct {
-	// PublicURL is the origin of the links in emails.
+	// PublicURL is the operator-approved authentication origin and the base URL of email links.
 	PublicURL string
 }
 
@@ -90,9 +90,11 @@ func NewReauthenticationLimiter() *ratelimit.Limiter {
 
 // Keys are the server's long-term secrets: the OPAQUE server key material and the key of the MACs behind fake salts.
 type Keys struct {
-	OpaqueConfiguration *opaque.Configuration
-	OpaqueServer        *opaque.Server
-	HMACKey             []byte
+	OpaqueConfiguration    *opaque.Configuration
+	OpaqueServer           *opaque.Server
+	HMACKey                []byte
+	LoginServer            *opaque.Server
+	ReauthenticationServer *opaque.Server
 }
 
 type Service struct {

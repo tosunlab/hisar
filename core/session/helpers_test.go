@@ -19,10 +19,12 @@ import (
 // credentialTestServer is an account's server for credential changes: it re-authenticates with OPAQUE and replaces the
 // record, salt, params and keyset as the real server does.
 type credentialTestServer struct {
-	mutex   sync.Mutex
-	opaque  *opaque.Server
-	account apitypes.Account
-	record  *message.RegistrationRecord
+	mutex                  sync.Mutex
+	opaque                 *opaque.Server
+	loginServer            *opaque.Server
+	reauthenticationServer *opaque.Server
+	account                apitypes.Account
+	record                 *message.RegistrationRecord
 	// clientMAC is the pending re-authentication's expected MAC.
 	clientMAC []byte
 	// isResponseLost commits a credential change and then answers 502, as when the response never reaches the client;
@@ -61,7 +63,22 @@ func startCredentialTestServer(t *testing.T) (*credentialTestServer, *apiclient.
 		t.Fatal(err)
 	}
 	server := &credentialTestServer{opaque: opaqueServer}
-	httpServer := httptest.NewServer(server.createHandler())
+	httpServer := httptest.NewUnstartedServer(server.createHandler())
+	trustedOrigin := "http://" + httpServer.Listener.Addr().String()
+	for purpose, target := range map[pake.AuthPurpose]**opaque.Server{pake.Login: &server.loginServer, pake.Reauthenticate: &server.reauthenticationServer} {
+		authConfiguration, err := pake.NewAuthConfig(trustedOrigin, purpose)
+		if err != nil {
+			t.Fatal(err)
+		}
+		*target, err = authConfiguration.Server()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := (*target).SetKeyMaterial(keyMaterial); err != nil {
+			t.Fatal(err)
+		}
+	}
+	httpServer.Start()
 	t.Cleanup(httpServer.Close)
 	return server, apiclient.New(httpServer.URL)
 }
@@ -103,13 +120,13 @@ func (server *credentialTestServer) respondToRegistration(encodedRequest []byte,
 }
 
 // startLogin answers KE1 for the account's current record and remembers the MAC that proves the password.
-func (server *credentialTestServer) startLogin(encodedKeyExchange1 []byte) ([]byte, bool) {
-	keyExchange1, err := server.opaque.Deserialize.KE1(encodedKeyExchange1)
+func (server *credentialTestServer) startLogin(encodedKeyExchange1 []byte, authServer *opaque.Server) ([]byte, bool) {
+	keyExchange1, err := authServer.Deserialize.KE1(encodedKeyExchange1)
 	if err != nil || server.record == nil {
 		return nil, false
 	}
 	accountID := []byte(server.account.AccountID)
-	keyExchange2, serverOutput, err := server.opaque.GenerateKE2(keyExchange1, &opaque.ClientRecord{RegistrationRecord: server.record, CredentialIdentifier: accountID, ClientIdentity: accountID})
+	keyExchange2, serverOutput, err := authServer.GenerateKE2(keyExchange1, &opaque.ClientRecord{RegistrationRecord: server.record, CredentialIdentifier: accountID, ClientIdentity: accountID})
 	if err != nil {
 		return nil, false
 	}
@@ -159,17 +176,17 @@ func (server *credentialTestServer) createHandler() http.Handler {
 	mux.HandleFunc("GET /api/v1/auth/prelogin", func(writer http.ResponseWriter, request *http.Request) {
 		writeTestJSON(writer, http.StatusOK, apitypes.PreloginResponse{Salt: server.account.Salt, Argon2: server.account.Argon2})
 	})
-	mux.HandleFunc("POST /api/v1/auth/login/start", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/auth/login/v2/start", func(writer http.ResponseWriter, request *http.Request) {
 		var startRequest apitypes.LoginStartRequest
 		json.NewDecoder(request.Body).Decode(&startRequest)
-		keyExchange2, isStarted := server.startLogin(startRequest.KE1)
+		keyExchange2, isStarted := server.startLogin(startRequest.KE1, server.loginServer)
 		if !isStarted {
 			writeTestJSON(writer, http.StatusBadRequest, apitypes.Error{Error: "invalid request"})
 			return
 		}
 		writeTestJSON(writer, http.StatusOK, apitypes.LoginStartResponse{LoginID: "login", KE2: keyExchange2})
 	})
-	mux.HandleFunc("POST /api/v1/auth/login/finish", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/auth/login/v2/finish", func(writer http.ResponseWriter, request *http.Request) {
 		var finishRequest apitypes.LoginFinishRequest
 		json.NewDecoder(request.Body).Decode(&finishRequest)
 		keyExchange3, err := server.opaque.Deserialize.KE3(finishRequest.KE3)
@@ -186,10 +203,10 @@ func (server *credentialTestServer) createHandler() http.Handler {
 		server.vaultTypes = append(server.vaultTypes, createRequest.Type)
 		writer.WriteHeader(http.StatusCreated)
 	})
-	mux.HandleFunc("POST /api/v1/account/reauthenticate", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/account/reauthenticate/v2", func(writer http.ResponseWriter, request *http.Request) {
 		var reauthenticateRequest apitypes.ReauthenticateRequest
 		json.NewDecoder(request.Body).Decode(&reauthenticateRequest)
-		keyExchange2, isStarted := server.startLogin(reauthenticateRequest.KE1)
+		keyExchange2, isStarted := server.startLogin(reauthenticateRequest.KE1, server.reauthenticationServer)
 		if !isStarted {
 			writeTestJSON(writer, http.StatusBadRequest, apitypes.Error{Error: "invalid request"})
 			return

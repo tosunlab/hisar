@@ -76,7 +76,7 @@ func startRefusingServer(t *testing.T, accountID string, password []byte, secret
 	mux.HandleFunc("GET /api/v1/auth/prelogin", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, apitypes.PreloginResponse{Salt: salt, Argon2: crypt.MinArgon2Params()})
 	})
-	mux.HandleFunc("POST /api/v1/auth/login/start", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/auth/login/v2/start", func(writer http.ResponseWriter, request *http.Request) {
 		var startRequest apitypes.LoginStartRequest
 		json.NewDecoder(request.Body).Decode(&startRequest)
 		keyExchange1, err := opaqueServer.Deserialize.KE1(startRequest.KE1)
@@ -93,7 +93,7 @@ func startRefusingServer(t *testing.T, accountID string, password []byte, secret
 		clientMAC = serverOutput.ClientMAC
 		writeJSON(writer, http.StatusOK, apitypes.LoginStartResponse{LoginID: "login", KE2: keyExchange2.Serialize()})
 	})
-	mux.HandleFunc("POST /api/v1/auth/login/finish", func(writer http.ResponseWriter, request *http.Request) {
+	mux.HandleFunc("POST /api/v1/auth/login/v2/finish", func(writer http.ResponseWriter, request *http.Request) {
 		var finishRequest apitypes.LoginFinishRequest
 		json.NewDecoder(request.Body).Decode(&finishRequest)
 		keyExchange3, err := opaqueServer.Deserialize.KE3(finishRequest.KE3)
@@ -113,7 +113,20 @@ func startRefusingServer(t *testing.T, accountID string, password []byte, secret
 	mux.HandleFunc("GET /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
 		writeJSON(writer, http.StatusOK, []apitypes.Vault{})
 	})
-	server := httptest.NewServer(mux)
+	server := httptest.NewUnstartedServer(mux)
+	trustedOrigin := "http://" + server.Listener.Addr().String()
+	authConfiguration, err := pake.NewAuthConfig(trustedOrigin, pake.Login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opaqueServer, err = authConfiguration.Server()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := opaqueServer.SetKeyMaterial(keyMaterial); err != nil {
+		t.Fatal(err)
+	}
+	server.Start()
 	t.Cleanup(server.Close)
 	return server.URL
 }

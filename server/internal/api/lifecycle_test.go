@@ -187,7 +187,11 @@ func startReauthentication(t *testing.T, apiClient *apiclient.Client, password [
 	account := requireValue[*apitypes.Account](t)(apiClient.GetAccount(ctx))
 	derivedKeys := requireValue[*crypt.DerivedKeys](t)(crypt.DeriveKeys(password, account.Salt, account.Argon2, secretKey))
 	defer derivedKeys.Wipe()
-	opaqueClient, err := pake.NewConfig().Client()
+	configuration, err := pake.NewAuthConfig(apiClient.BaseURL, pake.Reauthenticate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opaqueClient, err := configuration.Client()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -381,7 +385,11 @@ func TestLoginStartedBeforeAPasswordChangeCannotFinishAfterIt(t *testing.T) {
 	prelogin := requireValue[*apitypes.PreloginResponse](t)(apiClient.FetchPrelogin(ctx, "alice@example.com"))
 	derivedKeys := requireValue[*crypt.DerivedKeys](t)(crypt.DeriveKeys(alice.password, prelogin.Salt, prelogin.Argon2, alice.secretKey))
 	defer derivedKeys.Wipe()
-	opaqueClient, err := pake.NewConfig().Client()
+	configuration, err := pake.NewAuthConfig(apiClient.BaseURL, pake.Login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opaqueClient, err := configuration.Client()
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -120,6 +120,28 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 	if err := opaqueServer.SetKeyMaterial(serverKeyMaterial); err != nil {
 		return nil, err
 	}
+	loginConfiguration, err := pake.NewAuthConfig(config.PublicURL, pake.Login)
+	if err != nil {
+		return nil, fmt.Errorf("public URL for authentication: %w", err)
+	}
+	loginServer, err := loginConfiguration.Server()
+	if err != nil {
+		return nil, err
+	}
+	if err := loginServer.SetKeyMaterial(serverKeyMaterial); err != nil {
+		return nil, err
+	}
+	reauthenticationConfiguration, err := pake.NewAuthConfig(config.PublicURL, pake.Reauthenticate)
+	if err != nil {
+		return nil, err
+	}
+	reauthenticationServer, err := reauthenticationConfiguration.Server()
+	if err != nil {
+		return nil, err
+	}
+	if err := reauthenticationServer.SetKeyMaterial(serverKeyMaterial); err != nil {
+		return nil, err
+	}
 	server := &Server{
 		config:               config,
 		events:               realtime.NewBroker(),
@@ -130,7 +152,8 @@ func NewServer(database *store.Store, secrets *Secrets, config Config) (*Server,
 		versionCheckLimiter:  newVersionCheckLimiter(),
 	}
 	server.instanceSettings.Store(&effectiveSettings)
-	keys := service.Keys{OpaqueConfiguration: opaqueConfiguration, OpaqueServer: opaqueServer, HMACKey: secrets.HMACKey}
+	keys := service.Keys{OpaqueConfiguration: opaqueConfiguration, OpaqueServer: opaqueServer, HMACKey: secrets.HMACKey,
+		LoginServer: loginServer, ReauthenticationServer: reauthenticationServer}
 	server.service = service.New(database, server.events, keys, config.Config, service.InstanceSettings{
 		Current: &server.instanceSettings, Defaults: defaultSettings, Environment: config.Environment,
 		// A new auth burst applies to the limiter at once, in the order of the saves.
@@ -177,13 +200,16 @@ func (s *Server) CreateApp() *fiber.App {
 	apiGroup.Get("/auth/prelogin", s.limitRate, s.handlePrelogin)
 	apiGroup.Post("/auth/register/start", s.limitRate, s.handleRegisterStart)
 	apiGroup.Post("/auth/register/finish", s.limitRate, s.handleRegisterFinish)
-	apiGroup.Post("/auth/login/start", s.limitRate, s.handleLoginStart)
-	apiGroup.Post("/auth/login/finish", s.limitRate, s.handleLoginFinish)
+	apiGroup.Post("/auth/login/start", s.limitRate, refuseLegacyAuthentication)
+	apiGroup.Post("/auth/login/finish", s.limitRate, refuseLegacyAuthentication)
+	apiGroup.Post("/auth/login/v2/start", s.limitRate, s.handleLoginStart)
+	apiGroup.Post("/auth/login/v2/finish", s.limitRate, s.handleLoginFinish)
 
 	apiGroup.Post("/auth/logout", s.requireSession, s.handleLogout)
 	apiGroup.Get("/events", s.requireSession, s.handleStreamEvents)
 	apiGroup.Get("/account", s.requireSession, s.handleGetAccount)
-	apiGroup.Post("/account/reauthenticate", s.requireSession, s.limitRate, s.handleReauthenticate)
+	apiGroup.Post("/account/reauthenticate", s.requireSession, s.limitRate, refuseLegacyAuthentication)
+	apiGroup.Post("/account/reauthenticate/v2", s.requireSession, s.limitRate, s.handleReauthenticate)
 	apiGroup.Put("/account/credentials", s.requireSession, s.handleChangeCredentials)
 	apiGroup.Get("/account/deletion-preview", s.requireSession, s.handleGetAccountDeletionPreview)
 	apiGroup.Post("/account/delete", s.requireSession, s.handleDeleteAccount)
