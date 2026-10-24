@@ -46,6 +46,8 @@ type program struct {
 	userPath  []string
 	directory string
 	timeout   time.Duration
+
+	environment []string
 }
 
 // run starts the program in its agent's directory with the folder it is in first on the PATH, so a program installed
@@ -56,7 +58,7 @@ func (program program) run(arguments ...string) ([]byte, error) {
 	process := exec.CommandContext(ctx, program.path, arguments...)
 	process.Dir = program.directory
 	searchPath := append([]string{filepath.Dir(program.path)}, program.userPath...)
-	process.Env = append(os.Environ(), "PATH="+strings.Join(searchPath, string(os.PathListSeparator)), "NO_COLOR=1")
+	process.Env = append(append(os.Environ(), program.environment...), "PATH="+strings.Join(searchPath, string(os.PathListSeparator)), "NO_COLOR=1")
 	process.WaitDelay = programWaitDelay
 	var stderr bytes.Buffer
 	process.Stderr = &stderr

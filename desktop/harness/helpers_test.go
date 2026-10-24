@@ -8,6 +8,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/tryhisar/hisar/core/cliprotocol"
+	"go.yaml.in/yaml/v3"
 )
 
 // fakeOmpScript plays omp's plugin manager: it logs each call and keeps the linked plugin in a file shared by every fake
@@ -65,11 +68,68 @@ printf '%%s %%s\n' "$0" "$*" >> '%[1]s'
 HISAR_FAKE_CODEX=1 HISAR_FAKE_HOME='%[2]s' HISAR_FAKE_STATE='%[3]s' exec '%[4]s' "$@"
 `
 
+const fakeHermesScript = `#!/bin/sh
+printf '%%s %%s (HERMES_HOME=%%s)\n' "$0" "$*" "$HERMES_HOME" >> '%[1]s'
+HISAR_FAKE_HERMES=1 HISAR_FAKE_HOME='%[2]s' HISAR_FAKE_STATE='%[3]s' exec '%[4]s' "$@"
+`
+
 func TestMain(m *testing.M) {
-	if os.Getenv("HISAR_FAKE_CODEX") == "1" {
+	switch {
+	case os.Getenv("HISAR_FAKE_CODEX") == "1":
 		os.Exit(runFakeCodex(os.Args[1:]))
+	case os.Getenv("HISAR_FAKE_HERMES") == "1":
+		os.Exit(runFakeHermes(os.Args[1:]))
 	}
 	os.Exit(m.Run())
+}
+
+func runFakeHermes(arguments []string) int {
+	directory := os.Getenv("HERMES_HOME")
+	if directory == "" {
+		directory = filepath.Join(os.Getenv("HISAR_FAKE_HOME"), ".hermes")
+	}
+	path := filepath.Join(directory, "config.yaml")
+	switch strings.Join(arguments, " ") {
+	case "config path":
+		fmt.Println(path)
+	case "config get mcp_servers.hisar --json --raw":
+		content, err := os.ReadFile(path)
+		if err != nil && !os.IsNotExist(err) {
+			fmt.Fprintln(os.Stderr, "Error: cannot read config")
+			return 1
+		}
+		var config struct {
+			Servers map[string]map[string]any `yaml:"mcp_servers"`
+		}
+		if err := yaml.Unmarshal(content, &config); err != nil {
+			fmt.Fprintln(os.Stderr, "Error: invalid config")
+			return 1
+		}
+		server, isFound := config.Servers["hisar"]
+		if !isFound {
+			fmt.Fprintln(os.Stderr, "Config key not set: mcp_servers.hisar")
+			return 1
+		}
+		if _, err := os.Stat(filepath.Join(os.Getenv("HISAR_FAKE_STATE"), "edits-config")); err == nil {
+			file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0)
+			if err != nil {
+				return 1
+			}
+			_, err = file.WriteString("telemetry: false\n")
+			if closeErr := file.Close(); err != nil || closeErr != nil {
+				return 1
+			}
+		}
+		if _, err := os.Stat(filepath.Join(os.Getenv("HISAR_FAKE_STATE"), "broken-hisar")); err == nil {
+			server["command"] = "/usr/bin/false"
+		}
+		output, _ := json.Marshal(server)
+		fmt.Println(string(output))
+	default:
+		fmt.Fprintln(os.Stderr, "unexpected hermes call")
+		return 2
+	}
+	return 0
 }
 
 // runFakeCodex answers `codex mcp get hisar --json` in the shape Codex 0.162.1 does and `codex mcp remove hisar`, from
@@ -166,12 +226,15 @@ type fakeWorld struct {
 	stateDirectory string
 	logPath        string
 	hisarPath      string
+	userVariables  map[string]string
 }
 
 func newFakeWorld(t *testing.T) *fakeWorld {
 	t.Helper()
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
+	t.Setenv("HERMES_HOME", "")
+	t.Setenv(cliprotocol.SocketEnvironment, "")
 	// Resolved, so the folder a fake agent prints as its own is the same path.
 	root, err := filepath.EvalSymlinks(t.TempDir())
 	if err != nil {
@@ -226,6 +289,15 @@ func (world *fakeWorld) installCodex(path string) {
 	world.writeFile(path, fmt.Sprintf(fakeCodexScript, world.logPath, world.homeDirectory, world.stateDirectory, testBinary), 0o755)
 }
 
+func (world *fakeWorld) installHermes(path string) {
+	world.t.Helper()
+	testBinary, err := os.Executable()
+	if err != nil {
+		world.t.Fatal(err)
+	}
+	world.writeFile(path, fmt.Sprintf(fakeHermesScript, world.logPath, world.homeDirectory, world.stateDirectory, testBinary), 0o755)
+}
+
 func (world *fakeWorld) writeFile(path, content string, mode os.FileMode) {
 	world.t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -252,10 +324,11 @@ func (world *fakeWorld) setState(name, content string) {
 
 func (world *fakeWorld) newService(pluginPath string) *Service {
 	return newService(Config{
-		HomeDirectory: world.homeDirectory,
-		GetUserPath:   func() []string { return world.userPath },
-		OmpPluginPath: pluginPath,
-		HisarPath:     world.hisarPath,
+		HomeDirectory:   world.homeDirectory,
+		GetUserPath:     func() []string { return world.userPath },
+		GetUserVariable: func(name string) string { return world.userVariables[name] },
+		OmpPluginPath:   pluginPath,
+		HisarPath:       world.hisarPath,
 	}, world.rootDirectory)
 }
 

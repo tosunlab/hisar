@@ -1,5 +1,5 @@
 // Package harness connects coding agents to Hisar from Settings → Coding agents: omp through the Hisar plugin that ships
-// inside the app, Claude Code and Codex through Hisar's MCP server, the hisar inside the app run as
+// inside the app, Claude Code, Codex and Hermes through Hisar's MCP server, the hisar inside the app run as
 // `hisar mcp --no-reveal`.
 package harness
 
@@ -11,6 +11,8 @@ import (
 	"slices"
 	"sync"
 	"time"
+
+	"github.com/tryhisar/hisar/core/cliprotocol"
 )
 
 // State is where a coding agent stands with Hisar.
@@ -69,11 +71,14 @@ type Config struct {
 	HomeDirectory string
 	// GetUserPath returns the login shell's PATH, which an app started from Finder does not get.
 	GetUserPath func() []string
+	// GetUserVariable returns one of ListUserVariables as the login shell has it, empty when unset.
+	GetUserVariable func(name string) string
 	// OmpPluginPath is the plugin folder Connect links for omp; empty when this copy of Hisar has none.
 	OmpPluginPath string
-	// HisarPath is the hisar that Claude Code and Codex start as their MCP server: Hisar.app's Contents/Helpers/hisar,
-	// or on Linux the package's. A development build outside Hisar.app (desktop/bin/Hisar) looks for desktop/Helpers/hisar
-	// and refuses to connect them without it; `make package-desktop` builds desktop/bin/Hisar.app with its hisar.
+	// HisarPath is the hisar that Claude Code, Codex and Hermes start as their MCP server: Hisar.app's
+	// Contents/Helpers/hisar, or on Linux the package's. A development build outside Hisar.app (desktop/bin/Hisar) looks
+	// for desktop/Helpers/hisar and refuses to connect them without it; `make package-desktop` builds desktop/bin/Hisar.app
+	// with its hisar.
 	HisarPath string
 }
 
@@ -93,6 +98,9 @@ func NewService(config Config) *Service {
 func newService(config Config, rootDirectory string) *Service {
 	home := config.HomeDirectory
 	inRoot := func(path string) string { return filepath.Join(rootDirectory, path) }
+	if config.GetUserVariable == nil {
+		config.GetUserVariable = os.Getenv
+	}
 	return &Service{config: config, timeout: programTimeout, allAgent: []*agentKind{
 		{
 			id: "omp", name: "omp", programName: "omp",
@@ -122,7 +130,29 @@ func newService(config Config, rootDirectory string) *Service {
 			directory: home,
 			connector: codexConnector{hisarPath: config.HisarPath, homeDirectory: home},
 		},
+		{
+			id: "hermes", name: "Hermes", programName: "hermes",
+			locations: []string{
+				filepath.Join(home, ".local", "bin", "hermes"),
+				filepath.Join(home, ".hermes", "hermes-agent", ".hermes", "bin", "hermes"),
+				inRoot("opt/homebrew/bin/hermes"),
+				inRoot("usr/local/bin/hermes"),
+			},
+			directory: home,
+			connector: hermesConnector{
+				server:        hermesServer{hisarPath: config.HisarPath, socketPath: getCustomSocketPath(home)},
+				getHermesHome: func() string { return config.GetUserVariable(hermesHomeVariable) },
+			},
+		},
 	}}
+}
+
+func getCustomSocketPath(home string) string {
+	path := os.Getenv(cliprotocol.SocketEnvironment)
+	if path == cliprotocol.GetDefaultSocketPath(home) {
+		return ""
+	}
+	return path
 }
 
 // ListAgents reads every agent at once: each runs its own command-line tool.
