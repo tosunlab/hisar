@@ -107,7 +107,7 @@ They run on the extended support release by default; `HISAR_TEST_FIREFOX=esr_140
 2. Open `chrome://extensions`, turn on Developer mode, click **Load unpacked** and choose `extension/dist`.
 3. Check that the ID is `mmipiffoogblblocokimpemdopmdjghf`.
 
-With Hisar.app installed and launched once, the extension talks to the real app: Hisar registers its native host in every installed Chromium browser and Firefox at launch.
+With Hisar.app installed and launched once, the extension talks to the real app: Hisar registers its native host in every installed Chromium browser and Firefox at launch. Firefox needs a desktop app newer than 0.1.15: older ones write no Firefox host manifest, and their host refuses Firefox, so the extension never reaches the app.
 
 In Firefox, open `about:debugging#/runtime/this-firefox`, click **Load Temporary Add-on…** and choose `extension/dist-firefox/manifest.json`. A temporary add-on keeps the ID `extension@tryhisar.com`, so the native host accepts it, and Firefox removes it when it quits.
 
