@@ -1,0 +1,16 @@
+{{template "head" .}}<title>Sign in</title>
+<h1>Sign in</h1>
+<p id="message" role="alert"></p>
+<form id="form">
+<label>Username <input type="text" id="username" autocomplete="username"></label>
+<label>Password <input type="password" id="password" autocomplete="current-password"></label>
+<button type="submit">Sign in</button>
+</form>
+<script>
+document.getElementById("form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const body = { username: document.getElementById("username").value, password: document.getElementById("password").value };
+  const response = await fetch("/submit/wrong", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+  document.getElementById("message").textContent = response.ok ? "Signed in" : "Incorrect password";
+});
+</script>

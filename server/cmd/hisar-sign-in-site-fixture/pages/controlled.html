@@ -1,0 +1,22 @@
+{{template "head" .}}<title>Controlled sign-in</title>
+<main id="main">
+<h1>Sign in</h1>
+<form id="form">
+<label>Username <input type="text" id="username" autocomplete="username"></label>
+<label>Password <input type="password" id="password" autocomplete="current-password"></label>
+<button type="submit">Sign in</button>
+</form>
+</main>
+<script>
+const state = { username: "", password: "" };
+document.getElementById("username").addEventListener("input", event => { state.username = event.target.value; });
+document.getElementById("password").addEventListener("input", event => { state.password = event.target.value; });
+document.getElementById("form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const dom = { username: document.getElementById("username").value, password: document.getElementById("password").value };
+  const response = await fetch("/submit/controlled", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ state, dom }) });
+  if (response.ok) {
+    document.getElementById("main").innerHTML = "<h1>Signed in</h1>";
+  }
+});
+</script>

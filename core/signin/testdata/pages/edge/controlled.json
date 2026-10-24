@@ -1,0 +1,55 @@
+{
+  "Process": {
+    "PID": 0,
+    "ParentPID": 0,
+    "StartTime": 0,
+    "Path": "",
+    "Arguments": null,
+    "WorkingDirectory": "",
+    "Signature": {
+      "Identifier": "com.microsoft.edgemac",
+      "TeamID": "UBF8T346G9"
+    }
+  },
+  "Frames": [
+    {
+      "Parent": -1,
+      "Document": 1,
+      "URL": "http://127.0.0.1:47811/controlled"
+    }
+  ],
+  "Fields": [
+    {
+      "ID": 2,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Username",
+      "Identifier": "username",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 3,
+      "Frame": 0,
+      "IsSecure": true,
+      "InputType": "secure text field",
+      "Label": "Password",
+      "Identifier": "password",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    }
+  ],
+  "Buttons": [
+    {
+      "ID": 4,
+      "Frame": 0,
+      "Title": "Sign in",
+      "IsVisible": true
+    }
+  ]
+}

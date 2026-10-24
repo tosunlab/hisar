@@ -1,0 +1,43 @@
+{
+  "Process": {
+    "PID": 0,
+    "ParentPID": 0,
+    "StartTime": 0,
+    "Path": "",
+    "Arguments": null,
+    "WorkingDirectory": "",
+    "Signature": {
+      "Identifier": "com.microsoft.edgemac",
+      "TeamID": "UBF8T346G9"
+    }
+  },
+  "Frames": [
+    {
+      "Parent": -1,
+      "Document": 1,
+      "URL": "http://127.0.0.1:47811/totp-code"
+    }
+  ],
+  "Fields": [
+    {
+      "ID": 2,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Authentication code",
+      "Identifier": "otp",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    }
+  ],
+  "Buttons": [
+    {
+      "ID": 3,
+      "Frame": 0,
+      "Title": "Verify",
+      "IsVisible": true
+    }
+  ]
+}

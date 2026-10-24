@@ -1,0 +1,7 @@
+{{template "head" .}}<title>Two-factor authentication</title>
+<h1>Two-factor authentication</h1>
+{{if .Error}}<p role="alert">That code didn't work.</p>{{end}}
+<form method="post" action="/submit/totp-code">
+<label>Authentication code <input type="text" name="code" id="otp" inputmode="numeric" autocomplete="one-time-code"></label>
+<button type="submit">Verify</button>
+</form>
