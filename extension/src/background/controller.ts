@@ -186,11 +186,17 @@ export class BackgroundController {
   }
 
   // matchLoginsForUrl returns the logins for url with those filled most recently first; the rest keep Hisar's order. The
-  // popup, the inline menu and the fill shortcut all read this order, so the first login is the same in each.
-  async matchLoginsForUrl(url: string): Promise<LoginSummary[]> {
+  // popup, the inline menu and the fill shortcut all read this order, so the first login is the same in each. With the
+  // tab, the login whose username the site's previous step took comes first, so its password step offers that account.
+  async matchLoginsForUrl(url: string, tabId?: number): Promise<LoginSummary[]> {
     if (!isWebUrl(url)) return [];
     const result = await this.request(() => this.client.request("logins.match", { url }));
-    return this.sortByLastUse(result.logins ?? []);
+    const allLogin = await this.sortByLastUse(result.logins ?? []);
+    const pairingToken = tabId === undefined ? undefined : await this.storage.getToken();
+    const submittedUsername = tabId === undefined || !pairingToken ? undefined : this.allRememberedUsername.recall(tabId, getOrigin(url), pairingToken);
+    if (!submittedUsername) return allLogin;
+    const isSubmitted = (login: LoginSummary): boolean => login.username.trim().toLowerCase() === submittedUsername.trim().toLowerCase();
+    return [...allLogin.filter(isSubmitted), ...allLogin.filter((login) => !isSubmitted(login))];
   }
 
   private async sortByLastUse(allLogin: LoginSummary[]): Promise<LoginSummary[]> {
@@ -206,7 +212,7 @@ export class BackgroundController {
   async matchLogins(tabId: number): Promise<MatchResult> {
     const url = await this.browser.getTabUrl(tabId);
     if (!isWebUrl(url)) return { url: url ?? "", allLogin: [] };
-    return { url, allLogin: await this.matchLoginsForUrl(url) };
+    return { url, allLogin: await this.matchLoginsForUrl(url, tabId) };
   }
 
   async getOneTimeCode(vaultID: string, itemID: string, url: string): Promise<OneTimeCode> {

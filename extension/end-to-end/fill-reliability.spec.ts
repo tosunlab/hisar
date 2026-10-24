@@ -106,7 +106,7 @@ test("fills the first step of a login without a form, not the newsletter form", 
   await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=${tabId}`);
   await popup.getByTestId("fill").click();
   await expect(page.locator("#username")).toHaveValue("alex@example.com");
-  await expect(page.locator("#newsletter-email")).toHaveValue("");
+  await expect(page.locator("#footer-email")).toHaveValue("");
 });
 
 // The keyboard shortcut and the right-click menu have no menu to report in, so the page shows why a fill did nothing.

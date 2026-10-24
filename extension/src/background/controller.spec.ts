@@ -243,6 +243,18 @@ describe("fill and the frame rule", () => {
     expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.frameId).toBe(3);
   });
 
+  it("puts the account the site's previous step took first on its password step, in this tab only", async () => {
+    const harness = createHarness();
+    harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-work", title: "Work", username: "work@example.com" });
+    await harness.pair();
+    expect((await harness.controller.matchLogins(1)).allLogin[0].itemID).toBe("item-example");
+    await harness.controller.handleUsernameSubmitted(1, "https://example.com/identifier", "Work@Example.com");
+    expect((await harness.controller.matchLogins(1)).allLogin.map((login) => login.itemID)).toEqual(["item-work", "item-example"]);
+    expect((await harness.controller.matchLoginsForUrl("https://example.com/", 2))[0].itemID).toBe("item-example");
+    await harness.controller.fillFirstLogin(1);
+    expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.message).toMatchObject({ username: "work@example.com" });
+  });
+
   it("fills the first match for the keyboard shortcut", async () => {
     const harness = createHarness();
     harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-aardvark", title: "Aardvark", username: "first" });

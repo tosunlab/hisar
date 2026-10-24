@@ -96,6 +96,14 @@ describe("fillLogin", () => {
     expect(await fillLogin(document, "other", "secret")).toEqual({ filledUsername: false, filledPassword: true });
     expect(getInput("#user").value).toBe("fixed");
   });
+  it("fills the first step of a sign-in without a form rather than a newsletter's email field", async () => {
+    document.body.innerHTML = `<footer><form><input id="footer-email" type="email" name="email"><button>Send me offers</button></form></footer>
+      <div><input id="user" type="email" autocomplete="username"><div role="button">Next</div></div>`;
+    expect(await fillLogin(document, "alex@example.com", "secret")).toEqual({ filledUsername: true, filledPassword: false });
+    expect(getInput("#user").value).toBe("alex@example.com");
+    expect(getInput("#footer-email").value).toBe("");
+  });
+
   it("fills the password field the page put in place of the one it had while the username was filled", async () => {
     document.body.innerHTML = `<form id="login"></form>`;
     const form = document.querySelector("form")!;

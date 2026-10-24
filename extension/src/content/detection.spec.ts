@@ -191,3 +191,20 @@ describe("captureLogin", () => {
     expect(pickSubmittedPassword(scope)).toBe("new");
   });
 });
+
+describe("field hints and username-only steps", () => {
+  it("knows a username field by its label or by the element that labels it", () => {
+    loadPage(`<form><label for="f1">Email or phone</label><input id="f1" name="f1"><button>Next</button></form>`);
+    expect(findAllLoginScope(document)).toMatchObject([{ kind: "username-only", usernameField: getInput("#f1") }]);
+    loadPage(`<form><span id="caption">Kullanıcı adı</span><input id="f2" aria-labelledby="caption"><button>Next</button></form>`);
+    expect(findAllLoginScope(document)).toMatchObject([{ kind: "username-only", usernameField: getInput("#f2") }]);
+  });
+
+  it("keeps the first step of a sign-in without a form beside a form that asks for an email address", () => {
+    loadPage(`<div><input id="user" type="email" autocomplete="username"><div role="button">Next</div></div>
+      <footer><form><input id="footer-email" type="email" name="email"><button>Send me offers</button></form></footer>`);
+    const allUsernameField = findAllLoginScope(document).map((scope) => scope.usernameField?.id);
+    expect(allUsernameField).toContain("user");
+    expect(allUsernameField).toContain("footer-email");
+  });
+});

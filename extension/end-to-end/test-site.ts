@@ -215,7 +215,7 @@ const formlessWithNewsletterPage = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Sign in</title>${pageStyle}</head><body>
 <h1>Sign in</h1>
 <div class="form"><input id="username" type="email" autocomplete="username" placeholder="Email"><div role="button" id="next">Next</div></div>
-<footer><form id="newsletter" action="/welcome" method="post"><input id="newsletter-email" type="email" name="email" placeholder="Your email"><button>Subscribe</button></form></footer>
+<footer><form action="/welcome" method="post"><input id="footer-email" type="email" name="email" placeholder="Email address"><button>Send me offers</button></form></footer>
 </body></html>`;
 
 export interface TestSite {

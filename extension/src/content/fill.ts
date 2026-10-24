@@ -4,7 +4,7 @@ import { hasAddressForm, isFocusedAddressField } from "./address-fill";
 import { hasCardForm, isFocusedCardField } from "./card-fill";
 import { hasIdentityForm, isFocusedIdentityField } from "./identity-fill";
 import { describeFieldForDiagnostics, logFillDiagnostics } from "./diagnostics";
-import { findAllLoginScope, getAutocompleteTokens, isTextField, type LoginScope } from "./detection";
+import { findAllLoginScope, getAutocompleteTokens, isTextField, scoreUsernameField, type LoginScope } from "./detection";
 import { collectAllDeepElement, containsAcrossShadow, getDeepActiveElement, isInputElement } from "./dom";
 import { findFirstOneTimeCodeTarget, fillOneTimeCodeIntoTarget, findOneTimeCodeTarget } from "./one-time-code";
 
@@ -116,7 +116,11 @@ export function chooseFillScope(document: Document): LoginScope | undefined {
   logFillDiagnostics("login forms found", { allScope: allScope.map((scope) => ({ kind: scope.kind, username: describeFieldForDiagnostics(scope.usernameField) })) });
   const focused = findFocusedScope(document, allScope);
   if (focused) return focused;
-  return allScope.find((scope) => scope.kind === "login") ?? allScope[0];
+  const login = allScope.find((scope) => scope.kind === "login");
+  if (login) return login;
+  // Without a login form, the field most clearly asking for a username: the first step of a sign-in, not a newsletter.
+  const score = (scope: LoginScope) => (scope.usernameField ? scoreUsernameField(scope.usernameField) : 0);
+  return allScope.reduce<LoginScope | undefined>((best, scope) => (!best || score(scope) > score(best) ? scope : best), undefined);
 }
 
 export function fillLogin(document: Document, username: string, password: string): Promise<FillOutcome> {

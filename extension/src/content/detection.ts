@@ -32,8 +32,21 @@ export function isTextField(element: Element): element is HTMLInputElement {
   return isVisible(element);
 }
 
+// A label longer than this is more likely a paragraph around the field than its name.
+const maximumLabelLength = 80;
+
+function getLabelHints(input: HTMLInputElement): string[] {
+  const allLabelText = Array.from(input.labels ?? [], (label) => label.textContent ?? "");
+  const labelledBy = input.getAttribute("aria-labelledby");
+  if (labelledBy) {
+    const root = input.getRootNode() as Document | ShadowRoot;
+    for (const id of labelledBy.split(/\s+/)) allLabelText.push(root.getElementById?.(id)?.textContent ?? "");
+  }
+  return allLabelText.map((text) => text.trim()).filter((text) => text.length <= maximumLabelLength);
+}
+
 function getFieldHints(input: HTMLInputElement): string {
-  return [input.name, input.id, input.getAttribute("placeholder"), input.getAttribute("aria-label")]
+  return [input.name, input.id, input.getAttribute("placeholder"), input.getAttribute("aria-label"), input.getAttribute("title"), ...getLabelHints(input)]
     .filter((hint): hint is string => Boolean(hint))
     .join(" ");
 }
@@ -46,7 +59,7 @@ function isCurrentPasswordField(input: HTMLInputElement): boolean {
   return getAutocompleteTokens(input).includes("current-password");
 }
 
-function scoreUsernameField(input: HTMLInputElement): number {
+export function scoreUsernameField(input: HTMLInputElement): number {
   const allToken = getAutocompleteTokens(input);
   if (allToken.includes("one-time-code")) return -100;
   let score = 0;
@@ -143,14 +156,14 @@ export function findAllLoginScope(document: Document): LoginScope[] {
     const usernameField = allTextField.find(isStrongUsernameField);
     if (usernameField) allScope.push({ root: form, kind: "username-only", allPasswordField: [], usernameField });
   }
-  if (!allScope.some((scope) => scope.kind === "username-only")) {
-    const allLooseField = collectAllDeepElement(document, isTextField).filter(
-      (field) => !field.form && getAutocompleteTokens(field).some((token) => token === "username" || token === "email"),
-    );
-    for (const field of allLooseField) {
-      if (allScope.some((scope) => containsAcrossShadow(scope.root, field))) continue;
-      allScope.push({ root: findFormlessScope(field), kind: "username-only", allPasswordField: [], usernameField: field });
-    }
+  // A username field outside any form, as on the first step of many sign-ins, counts even beside a form that also asks for
+  // an email address, such as a newsletter's.
+  const allLooseField = collectAllDeepElement(document, isTextField).filter(
+    (field) => !field.form && getAutocompleteTokens(field).some((token) => token === "username" || token === "email"),
+  );
+  for (const field of allLooseField) {
+    if (allScope.some((scope) => containsAcrossShadow(scope.root, field))) continue;
+    allScope.push({ root: findFormlessScope(field), kind: "username-only", allPasswordField: [], usernameField: field });
   }
   return allScope;
 }
