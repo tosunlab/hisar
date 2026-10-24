@@ -219,6 +219,7 @@ func (s *Service) notifyShareInvitation(ctx context.Context, inviter *store.Acco
 			return
 		}
 		s.publishShareInvitationsChanged(recipient.ID)
+		s.notifyPhones(recipient.ID, apitypes.PushKindSharing, "")
 		if emailConfigured {
 			s.sendEmail(ctx, composeShareInvitationEmail(inviter, email, role))
 		}

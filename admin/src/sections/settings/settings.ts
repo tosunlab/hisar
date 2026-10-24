@@ -70,6 +70,13 @@ export const settingGroups: readonly SettingGroup[] = [
       { name: "retention.expiredInvitesDays", label: "Keep expired invitations", kind: "number", hint: "Days" },
     ],
   },
+  {
+    id: "push",
+    title: "Push notifications",
+    description:
+      "Where the server sends the iPhone and Android apps' notifications. Hisar's relay delivers to the official apps for any server and never learns whose phone it is; leave it empty to turn notifications off.",
+    fields: [{ name: "push.relayURL", label: "Push relay", kind: "text", placeholder: "Off" }],
+  },
 ];
 
 // isSecretSet reports whether a secret setting, which the server answers as {set}, holds a value.

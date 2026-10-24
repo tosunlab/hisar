@@ -73,9 +73,8 @@ func TestOperationalSecretsMigrateAndProtectSMTP(t *testing.T) {
 	if allowed, err := s.CanCreateSecrets(ctx); err != nil || !allowed {
 		t.Fatalf("empty database %v %v", allowed, err)
 	}
-	if _, err := s.RollbackMigration(ctx); err != nil {
-		t.Fatal(err)
-	}
+	// Before the migration that encrypts SMTP passwords.
+	rollbackTestMigrationsTo(t, s, 17)
 	legacy := `{"smtp":{"host":"localhost","password":" legacy secret ","futureSMTP":true},"futureRoot":{"x":1}}`
 	if _, err := s.pool.Exec(ctx, `INSERT INTO instance_settings (id,settings) VALUES (1,$1)`, legacy); err != nil {
 		t.Fatal(err)
@@ -104,6 +103,7 @@ func TestOperationalSecretsMigrateAndProtectSMTP(t *testing.T) {
 	if err := s.InitializeOperationalSecrets(ctx, fingerprint, key); err != nil {
 		t.Fatal(err)
 	}
+	rollbackTestMigrationsTo(t, s, 18)
 	if _, err := s.RollbackMigration(ctx); err == nil {
 		t.Fatal("enrolled secrets migration rolled back")
 	}

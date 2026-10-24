@@ -10,12 +10,15 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
+	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 	"golang.org/x/time/rate"
 )
 
 func TestExpiredApprovalLeavesMemoryWithoutANewApproval(t *testing.T) {
-	service := &Service{Approvals: newApprovalRelay(ratelimit.New(rate.Every(approvalRateEvery), ApprovalRateBurst)), events: realtime.NewBroker()}
+	current := &atomic.Pointer[settings.Settings]{}
+	current.Store(&settings.Settings{})
+	service := &Service{Approvals: newApprovalRelay(ratelimit.New(rate.Every(approvalRateEvery), ApprovalRateBurst)), events: realtime.NewBroker(), instanceSettings: InstanceSettings{Current: current}}
 	start := time.Now()
 	var now atomic.Int64
 	now.Store(start.UnixNano())

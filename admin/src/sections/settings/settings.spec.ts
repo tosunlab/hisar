@@ -21,6 +21,7 @@ function createSettings(): AdminSettings {
     "retention.historyDays": { value: 90, source: "default" },
     "retention.auditDays": { value: 365, source: "default" },
     "retention.expiredInvitesDays": { value: 30, source: "default" },
+    "push.relayURL": { value: "https://push.tryhisar.com", source: "default", environmentVariable: "HISAR_PUSH_RELAY_URL" },
   };
 }
 

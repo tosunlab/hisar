@@ -95,13 +95,14 @@ func TestAdminSettingsSaveThenRead(t *testing.T) {
 	member := signUpTestAccount(t, ctx, server, baseURL, "member@example.com", apitypes.RoleMember)
 
 	initial := readSettings(t, baseURL, admin.Client.Token)
-	if len(initial.Settings) != 16 {
+	if len(initial.Settings) != 17 {
 		t.Errorf("%d settings", len(initial.Settings))
 	}
 	for name, expected := range map[string]apitypes.AdminSetting{
 		"smtp.host":               {Value: json.RawMessage(`""`), Source: "default", EnvironmentVariable: "HISAR_SMTP_HOST"},
 		"smtp.password":           {Value: json.RawMessage(`{"set":false}`), Source: "default", EnvironmentVariable: "HISAR_SMTP_PASSWORD"},
 		"invitePolicy":            {Value: json.RawMessage(`"anyone"`), Source: "default"},
+		"push.relayURL":           {Value: json.RawMessage(`"https://push.tryhisar.com"`), Source: "default", EnvironmentVariable: "HISAR_PUSH_RELAY_URL"},
 		"sessionLifetimeDays":     {Value: json.RawMessage(`30`), Source: "default"},
 		"authBurst":               {Value: json.RawMessage(`10`), Source: "default", EnvironmentVariable: "HISAR_AUTH_BURST"},
 		"minimumVersions.android": {Value: json.RawMessage(`""`), Source: "default", EnvironmentVariable: "HISAR_MINIMUM_VERSION_ANDROID"},

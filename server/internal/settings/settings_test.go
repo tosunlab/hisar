@@ -309,3 +309,28 @@ func TestInvitePolicyAllowsInvite(t *testing.T) {
 		t.Error("invite policy")
 	}
 }
+
+func TestPushRelayDefaultsToHisarsAndTurnsOff(t *testing.T) {
+	effective, _, err := Resolve(Defaults(), nil, readEnvironment(nil))
+	if err != nil || effective.Push.GetRelayURL() != DefaultPushRelayURL {
+		t.Fatalf("default relay = %q %v", effective.Push.GetRelayURL(), err)
+	}
+	effective, sources, err := Resolve(Defaults(), nil, readEnvironment(map[string]string{"HISAR_PUSH_RELAY_URL": "off"}))
+	if err != nil || effective.Push.GetRelayURL() != "" || sources["push.relayURL"] != SourceEnvironment || effective.Validate() != nil {
+		t.Fatalf("off = %q %v %v", effective.Push.GetRelayURL(), sources["push.relayURL"], err)
+	}
+	effective, _, _ = Resolve(Defaults(), []byte(`{"push":{"relayURL":""}}`), readEnvironment(nil))
+	if effective.Push.GetRelayURL() != "" || effective.Validate() != nil {
+		t.Fatalf("an empty relay from the dashboard = %q", effective.Push.GetRelayURL())
+	}
+	for relayURL, isValid := range map[string]bool{
+		"https://push.example.com/": true, "http://127.0.0.1:8090": true, "http://push.example.com": false,
+		"https://user@push.example.com": false, "push.example.com": false,
+	} {
+		settings := Defaults()
+		settings.Push.RelayURL = relayURL
+		if err := settings.Validate(); (err == nil) != isValid {
+			t.Errorf("%s: %v", relayURL, err)
+		}
+	}
+}
