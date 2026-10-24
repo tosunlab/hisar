@@ -224,6 +224,7 @@ The Hisar extension (`extension/`) fills and saves logins through the desktop ap
 - `Hisar.app/Contents/MacOS/hisar-browser-host` is the native messaging host. At launch the app writes `com.tryhisar.hisar.json` into `NativeMessagingHosts` of every Chromium browser it knows (Chrome, Brave, Edge and their beta, dev, canary and nightly channels, Chromium, Arc, Dia, Vivaldi and Vivaldi Snapshot, Opera and Opera GX), whether or not it is installed, so a browser installed later finds the host at its first launch. Dia reads Chrome's folder rather than its own, so its entry points there. It allows only the extension `mmipiffoogblblocokimpemdopmdjghf`. Settings → Browser lists the browsers that have run. A development build (`wails3 dev`) has no host next to its binary and registers nothing.
 - The host relays to the app on `~/.hisar/browser.sock` (`HISAR_BROWSER_SOCKET` overrides it for both). In the packaged app only that host binary may connect. If the app is not running, the host opens it in the background.
 - Pairing: clicking the extension's icon the first time makes Hisar show a 6-digit code (2 minutes, 5 attempts) to type into the extension. Settings → Browser lists paired browsers with Remove and has "Only fill on the exact host".
+- Unlocking with the master password in the paired extension also updates the desktop window, so it shows the vault instead of a stale lock screen.
 - Preview: `&settings=1&settingsSection=browser` (registered and paired browsers), `&browsers=none` (nothing found), `&browserPairing=1` (pairing code).
 
 ## SSH agent
@@ -279,6 +280,58 @@ app, updated with it by Sparkle). Not `Contents/MacOS/hisar`: on the default cas
 - Preview: `&settings=1&settingsSection=developer` plus `&commandLine=not-installed | conflict | path-hint | development | off`;
   the approval window with `?window=ssh-approval&approval=cli` (add `&cliLocked=1` for Touch ID unlock, `&cliPassword=1` for the
   master password, which is `correct horse battery` in the preview).
+
+## Coding agent approvals and website sign-in
+
+See [Design](../design.md) §9.4.2 and §9.4.5. Every coding-agent approval, including an SSH key request, requires Touch ID,
+the master password or a verified phone answer. Without Touch ID, the Mac dialog requires the master password.
+An Approve button alone would let an agent that controls the screen approve itself.
+
+- A dialog that names secrets has a menu: **Only this time** (the default), **For 1 hour**, **For 1 day** or **Always**. The Touch ID
+  prompt names the choice (`allow "Hermes in Terminal" to sign in to https://tosunlab.com as user@example.com for 1 day`); changing the menu or the
+  login while it waits starts a new prompt. For omp, Claude Code, Codex and Hermes a longer choice covers that agent in every
+  session that runs the same program: the code signature Hisar recognized it by, or else the path of its executable. When Bun or
+  Node runs the agent as a script, the program is the interpreter together with the script's real path (its bin link resolved),
+  or the SHA-256 of code given with `-e` or `-p`; another script, even one named `omp`, is another program. Hermes' launcher runs its
+  Python with `-I -c`, so its program is that Python together with the SHA-256 of the `-c` code. When Hisar cannot tell the
+  script (a relative path, an option before it, `-m`, a preload, loader or env-file option anywhere, a second `-e`, Python
+  without `-I`), or the process only takes the agent's name, the dialog offers only the first two choices. Code the user's own
+  files or environment add (a `bunfig.toml` preload, `NODE_OPTIONS`, a replaced script) is outside what this tells apart.
+  A grant is kept in `desktop.json` (`sealedAgentGrants`), sealed with the account's key and a random head that every change
+  replaces. Hisar also keeps the head in a login keychain item, "Hisar agent grants". The item's default access list trusts
+  the Hisar that created it. Reading it from another program prompts for Keychain access. Another program can overwrite or
+  delete the head without asking, which only drops grants.
+  A restart keeps grants whose sealed head matches the Keychain head. Grants written into the file by another program,
+  an older copy restored over it, or a missing or unreadable head drop all saved grants. When the head store is unavailable,
+  including on Linux, only the first two choices appear, and **For 1 hour** ends with the session or connection.
+  The phone cannot choose a duration, so its approval is for this time only.
+- Settings → Developer tools → Coding agents → **Allowed without asking** lists every grant with who holds it (a harness, "this
+  session" or "while connected"), its expiry and **Revoke**. Signing out ends them all. Session-scoped and connection-scoped
+  grants also end with their session or connection. Locking keeps grants, but Hisar must unlock before using them.
+  If a saved grant cannot be removed while locked or its removal cannot be saved, Hisar drops all saved grants and reports any
+  storage error.
+- **Website sign-in** (off by default, Hisar for Mac only): "Let agents sign in to websites in your browser". Turning it on asks
+  macOS for the Accessibility permission; while it is missing the row says so, with **Open System Settings**, and it checks again
+  when Hisar's window comes back to the front. An agent then calls `sign_in` with a browser window's `pid` and `window_id`
+  (setup for Hermes, Claude Code and Codex: [Command-line tool](./cli.md#sign-in-to-websites-computer-use-agents)). Hisar
+  signs in only in Brave, Google Chrome and Microsoft Edge, and refuses one started with remote debugging. It reads the page's
+  address from the browser itself, finds the logins in the vaults available to agents saved for it, and asks: "Hermes in Terminal
+  wants to sign in to https://tosunlab.com", with the browser, the login (a choice when several match, on this Mac only) and the menu.
+  **Only this time** covers exactly that call: the agent's next `sign_in`, even at the same website, asks again. A longer choice
+  covers that login at exactly that website. `cleanup-failed` ends that grant, or drops all saved grants if Hisar is locked or
+  cannot save its removal.
+  The sign-in tool returns login metadata, including the username, but no password or one-time code.
+  Hisar fills and submits the login, then attempts to clear remaining entries and reports the cleanup evidence.
+  `fields-removed` means fields left the accessibility tree while their document stayed, not that the page erased their values.
+  `cleanup-failed` means Hisar could not confirm cleanup.
+  Either can leave values after return with no Hisar-enforced retention limit. The 15-second post-submit deadline and separate
+  five-second cleanup timeout are not exposure bounds. Accessibility calls can overrun them.
+  A screenshot or recording can capture a one-time code while the page retains it. Browsers normally mask secure password
+  fields with dots, but a page script or show-password control can reveal the value. Captures and page-script copies have no
+  Hisar-enforced deletion limit.
+- Preview: `?window=ssh-approval&approval=sign-in` (add `&logins=2` for a choice, `&agentLocked=1` for a locked Hisar, `&noTouchID=1`
+  for the master password, `&phone=1`), `&approval=agent-run` and `&approval=omp` for the menu, and
+  `&settings=1&settingsSection=developer&agentSessions=1&agentSignIn=on` (or `=noAccess`) for Settings.
 
 ## Raycast extension
 

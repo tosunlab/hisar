@@ -1,11 +1,11 @@
 ---
 name: hisar
-description: Pass Hisar secret references to approved commands without copying values into chat. Commands receive real secrets; output masking is not containment. Read before using a Hisar tool or running any hisar command, or when a task needs a credential.
+description: Pass Hisar secret references to approved commands, or ask Hisar to sign in to a website. Commands receive real secrets; output masking is not containment. Read before using a Hisar tool or running any hisar command, or when a task needs a credential.
 ---
 
 # Hisar
 
-Hisar keeps the user's secrets. This plugin connects omp to Hisar's MCP server, whose tools omp names `mcp__hisar_list_vaults`, `mcp__hisar_search_items` and `mcp__hisar_run_with_secrets`. omp may offer them as tool devices instead: write the JSON arguments to `xd://mcp__hisar_run_with_secrets` and so on. List and search return metadata and references, not secret values. A command receives the real values in its environment or on its standard input. Hisar masks recognized exact values in output, but values shorter than 4 bytes, transformed output and other disclosure channels are not protected. Each use opens an approval window in the Hisar app, and the user decides there.
+Hisar keeps the user's secrets. This plugin connects omp to Hisar's MCP server, whose tools omp names `mcp__hisar_list_vaults`, `mcp__hisar_search_items`, `mcp__hisar_run_with_secrets` and `mcp__hisar_sign_in`. omp may offer them as tool devices instead. Write the JSON arguments to `xd://mcp__hisar_run_with_secrets` and so on. List and search return metadata and references, not secret values. A command receives the real values in its environment or on its standard input. Hisar masks recognized exact values in output, but values shorter than 4 bytes, transformed output and other disclosure channels are not protected. Each use asks the user in Hisar unless a grant covers it.
 
 Never print a secret. The plugin blocks `hisar read`, `hisar get`, `hisar export` and `hisar run --no-masking`.
 
@@ -42,6 +42,23 @@ hisar run --env-file .env -- npm run dev
 ```
 
 `--env-file` repeats, and a later file wins.
+
+## Sign in to a website
+
+Use cua-driver's native window controls, or Hermes' native `computer_use` route, not a CDP browser tool. Hisar refuses debuggable browsers.
+
+At a sign-in page, call `sign_in` instead of typing. Give the window's `pid` and `window_id` from `list_windows`. Give `login`, an item ID from `search_items`, only when the user has several accounts on the site. Hisar reads the website from the browser and asks unless a grant covers the login. It fills and submits the login, then attempts to clear remaining entries and reports the cleanup evidence. It needs Hisar for Mac and a Brave, Chrome or Edge window on the current Space. Never type a password or one-time code yourself, and do not type into the form before the call.
+
+The result's `outcome` says what to do next:
+
+- `submitted`: take a screenshot to see where the site went.
+- `not-accepted`: the site kept its form. Tell the user, and do not retry.
+- `stopped`: the page needs something Hisar does not fill, or moved to another website. Handle it, and call `sign_in` again when a username, password or one-time code field shows.
+- `cleanup-failed`: stop, and tell the user to check the browser window.
+
+`cleanup` reports the evidence, not a deletion guarantee. `fields-removed` means the fields left the accessibility tree while their document stayed. The page may retain the values. `cleanup-failed` means Hisar could not confirm cleanup. Values in either case, page-script copies and captures have no Hisar-enforced deletion limit. Browsers normally mask secure password fields, but page scripts and reveal controls can expose them.
+
+A refusal is a message that says what to do.
 
 ## Wait for the approval
 

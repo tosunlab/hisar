@@ -45,7 +45,8 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 | `app/apptest` | An unlocked `app.Service` on an in-memory API, for tests outside `core/app` |
 | `cliprotocol` | The CLI ↔ app protocol on `~/.hisar/cli.sock`: messages, results, framing, `Client` |
 | `clisocket` | The app side of that socket: server, approval scopes (terminal session, signed app, connection), coding-agent grants, launcher approvals, peer credentials |
-| `agentharness` | The table of coding agent harnesses (omp, Claude Code, Codex) and how each is recognized, the process chain snapshot and `Find`, and `Sessions`, the live agent sessions both sockets share. A new harness is a row in `harnesses` (`harness.go`) with a test from its measured chain |
+| `agentharness` | The table of coding agent harnesses (omp, Claude Code, Codex, Hermes) and how each is recognized, the process chain snapshot and `Find`, and `Sessions`, the live agent sessions both sockets share. A new harness is a row in `harnesses` (`harness.go`) with a test from its measured chain |
+| `signin` | Agent sign-in's policy and transaction (`Signer.Inspect`, `Signer.Run`): the `Driver` and `Snapshot` a platform implements, `Origin`, `Secret`, the browser signatures and Team IDs (`browsers.go`; adding a browser requires a real-browser sign-in test), the form classifier (`form.go`), and cleanup evidence and refusals (`Cleanup`, `Refusal`, `Reason`). Page fixtures in `testdata/pages/<browser>` |
 | `browserprotocol` | The extension ↔ app native-messaging protocol, `Handler`, `Answer`, URL matching |
 | `localsocket` | Unix sockets only the user can reach, and the process on the other end |
 | `sshagent` | The read-only SSH agent with approvals and session binding |
@@ -61,7 +62,8 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 **`core/app`** is one package because every feature shares the unlocked session and its caches under one mutex. Files:
 `service.go`, `auth.go`, `lock.go`, `vaults.go`, `items.go`, `clipboard.go`, `errors.go`, `account.go`, `sharing.go`,
 `invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching, for pages and Android apps), `androidapps.go` (linking logins to Android apps), `passkey*.go`,
-`platformpasskey.go` (iOS), `commandline*.go`, `codingagent.go` and `launcher.go` (the CLI socket handler), `approvals.go`,
+`platformpasskey.go` (iOS), `commandline*.go`, `codingagent.go` and `launcher.go` (the CLI socket handler), `agentgrants.go` (what
+agent harnesses may do without asking, sealed into `state.json` with a head that `desktop/granthead` keeps), `agentsignin.go` (Website sign-in for agents), `approvals.go`,
 `phoneapproval.go` (Mac side), `phoneapproval_answer.go` (phone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
 `browseritems.go` (the extension popup's vault: items, vaults, new items), `browserunlock.go` (the popup's master password unlock),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).
@@ -82,7 +84,7 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 | `internal/ratelimit` | Per-key token buckets |
 | `internal/settings` | The instance settings admins edit: defaults, the stored document, `HISAR_*` overrides, `Validate` |
 | `internal/mail`, `internal/desktopupdate`, `internal/serverupdate` | SMTP; the Sparkle appcast from GitHub Releases; the newest server release for Overview |
-| `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests; `internal/fixturedatabase` keeps the two page fixtures' secrets, one file per database, so a restart on the same database works |
+| `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `cmd/hisar-sign-in-site-fixture` (the sign-in pages `desktop/axfill`'s real-browser test fills), `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests; `internal/fixturedatabase` keeps the two page fixtures' secrets, one file per database, so a restart on the same database works |
 
 ### cli
 
@@ -100,13 +102,16 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 | root (`main`) | Wails wiring: `main.go`, `adapters.go`, `windows.go`, `events.go`, `tray.go`, `touchid.go`, `helpers*.go` (where the browser host and `hisar` are: in Hisar.app, or at the Linux package's fixed paths) |
 | `agent` | SSH agent in the app and the approval queue (`approver*.go`, `presenter.go`, `purpose.go`, `sshconfig.go`) |
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
+| `axfill` | The macOS `signin.Driver` (cgo, Objective-C): reads a browser window's pages through Accessibility and enters, submits and clears fields, checking the window, process and frame origin before each action; `New` returns nil elsewhere. `TestIntegrationSignIn` signs in to `hisar-sign-in-site-fixture` in the browsers `HISAR_TEST_SIGN_IN_BROWSERS` names, and `TestIntegrationRecordPages -update` writes `core/signin`'s page fixtures |
 | `browser` | Native host, socket server and manifests for the extension |
 | `commandline` | Installing `hisar`, Settings → Command-line tool and its approved launchers, and the signed app behind a caller without a terminal (`identity.go`) |
-| `harness` | The agents Settings → Coding agents connects: one row per agent in `service.go` (where its tool is installed, its connector), bound as `ListAgents`, `Connect(id)`, `Disconnect(id)`. omp (`omp.go`) links or unlinks the omp plugin in `Hisar.app/Contents/Resources/omp-plugin` (the repository's `omp/` in a development build); Claude Code (`claudecode.go`) and Codex (`codex.go`) get `Contents/Helpers/hisar mcp --no-reveal`, through `claude mcp add --scope user` and through Hisar's own table in Codex's `config.toml` (`codextoml.go`, a table-level editor that keeps every other byte). A `hisar` server Hisar did not add is a conflict and never changed |
+| `harness` | The agents Settings → Coding agents connects: one row per agent in `service.go` (where its tool is installed, its connector), bound as `ListAgents`, `Connect(id)`, `Disconnect(id)`. omp (`omp.go`) links or unlinks the omp plugin in `Hisar.app/Contents/Resources/omp-plugin` (the repository's `omp/` in a development build); Claude Code (`claudecode.go`), Codex (`codex.go`) and Hermes (`hermes.go`) get `Contents/Helpers/hisar mcp --no-reveal`, through `claude mcp add --scope user`, through Hisar's own table in Codex's `config.toml` (`codextoml.go`, a table-level editor that keeps every other byte) and through Hisar's own entry in the `config.yaml` that `hermes config path` names (`hermesyaml.go`, which places its lines with a YAML parser and refuses an edit that changes anything else). `configfile.go` resolves, reads and replaces those files. A `hisar` server Hisar did not add is a conflict and never changed |
 | `portable` | Running from an AppImage or a Flatpak: copies the browser host and `hisar` out, with the `hisar-app` launcher |
 | `loginitem`, `background` | Open at login; login item, Dock icon, appearance |
 | `biometric`, `systemidle`, `windowplacement`, `updater`, `pasteboard` | Touch ID and keychain, idle time (D-Bus on Linux), window placement, Sparkle (`Notifier` announces versions on Linux), the clipboard (copies concealed from clipboard managers) |
+| `granthead` | The saved agent grants' head (`app.AgentGrantHeadStore`) in a login keychain item whose default access list trusts the creating Hisar. Another program's read prompts for Keychain access; overwrite or deletion only drops grants. Written through Security.framework from the app itself; no store on Linux |
 | `cmd/hisar-browser-host`, `cmd/hisar-update-key` | Helper binaries |
+| `cmd/hisar-agent-sign-in-test` | The local Mac website sign-in end-to-end driver for `scripts/test-agent-sign-in.sh`: isolated desktop and browsers, real approval UI, MCP calls, and canary scanning with Vision OCR |
 
 ### mobile
 
@@ -166,7 +171,7 @@ starts it for: it signs up, sends the phone real approval requests, and saves ea
 | `src/bash.ts` | `classifyBashCommand`, the pure guard that blocks `hisar read`, `get`, `export` and `run --no-masking` in a `bash` call; it catches accidents, and the app's approvals are the enforcement |
 | `src/status.ts` | The probe, `HISAR_NO_LAUNCH=1 hisar status --json`, and the status line texts |
 | `src/locate.ts` | Finding `hisar` for the shell (`PATH`, then `Hisar.app` in `/Applications` and `~/Applications`) and the path note |
-| `skills/hisar/SKILL.md` | The skill omp lists for the agent: `search_items`, `run_with_secrets` (`command` or `shell`, `env`, `envFiles`, `stdin`), `hisar run` in `bash` for live output, input or the shell's environment, approval timeouts |
+| `skills/hisar/SKILL.md` | The skill omp lists for the agent: `search_items`, `run_with_secrets` (`command` or `shell`, `env`, `envFiles`, `stdin`), `hisar run` in `bash` for live output, input or the shell's environment, `sign_in` and its outcomes, approval timeouts |
 
 ## Where new code goes
 
@@ -248,6 +253,7 @@ make vet test            # every module; -p 1 because database tests share one s
 make build build-cli-all # hisar-server with the admin dashboard (needs Node 24), and hisar; the CLI for every OS
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
+make test-agent-sign-in  # local Mac only, not CI; terminal Accessibility and Screen Recording, hisar-pg, official test browsers, yabai and two Spaces
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
 make test-docs           # the docs site's typecheck and build; make build-docs builds it alone
 make test-omp            # the omp plugin's typecheck, tests and format check (needs Bun)
