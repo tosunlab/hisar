@@ -10,7 +10,7 @@
     "lint:firefox": "addons-linter --self-hosted dist-firefox",
     "package": "node tools/package-extension.mjs",
     "package:store": "node tools/package-store-extension.mjs",
-    "test:end-to-end": "npm run build && playwright test extension.spec inline-menu.spec one-time-code.spec passkey.spec passkey-policy.spec passkey-extensions.spec address.spec vault.spec unlock.spec card.spec identity.spec save.spec save-expiry.spec",
+    "test:end-to-end": "npm run build && playwright test extension.spec inline-menu.spec one-time-code.spec passkey.spec passkey-policy.spec passkey-extensions.spec address.spec vault.spec unlock.spec card.spec identity.spec save.spec save-expiry.spec fill-reliability.spec",
     "test:end-to-end-firefox": "npm run build && playwright test --config playwright.firefox.config.ts",
     "test:share-link-page": "playwright test share-link-page.spec",
     "screenshots:share-link-page": "playwright test share-link-page-screenshots.spec",
