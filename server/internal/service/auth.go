@@ -279,7 +279,11 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 	return apitypes.SessionResponse{Token: token, AccountID: pending.accountID, DeviceID: device.ID}, nil
 }
 
+// Logout ends the session and the phone's push notifications with it: a signed-out phone gets none.
 func (s *Service) Logout(ctx context.Context, actor Actor) error {
+	if err := s.store.DeleteDevicePush(ctx, actor.DeviceID); err != nil {
+		return err
+	}
 	return s.store.DeleteSession(ctx, actor.TokenHash)
 }
 

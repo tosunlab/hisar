@@ -1,0 +1,193 @@
+package app
+
+import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"slices"
+	"time"
+
+	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/localstate"
+)
+
+const pushRequestTimeout = 20 * time.Second
+
+// PushSettings is what a phone's Settings → Notifications shows.
+type PushSettings struct {
+	// IsAvailable is true once the server sends push notifications and this phone has a push token.
+	IsAvailable bool `json:"isAvailable"`
+	// IsServerSending is false when the server has no push relay, or is older than push notifications.
+	IsServerSending bool     `json:"isServerSending"`
+	AllEnabledKind  []string `json:"enabledKinds"`
+	ErrorMessage    string   `json:"errorMessage,omitempty"`
+}
+
+// SetPushToken takes the push service token the phone's OS gave Hisar, and registers it with the push relay and the
+// server for the signed-in account. platform is apitypes.PushPlatform: "apns", "apns-sandbox" or "fcm". The phones call
+// it at every launch and whenever the OS replaces the token, never on the main thread.
+func (s *Service) SetPushToken(platform, token string) error {
+	if platform != string(apitypes.PushPlatformAPNs) && platform != string(apitypes.PushPlatformAPNsSandbox) && platform != string(apitypes.PushPlatformFCM) {
+		return fmt.Errorf("unknown push platform %q", platform)
+	}
+	s.mutex.Lock()
+	s.pushPlatform, s.pushToken = apitypes.PushPlatform(platform), token
+	s.mutex.Unlock()
+	return s.registerPush()
+}
+
+// SetPushKindEnabled turns one kind of push notification on or off for this phone.
+func (s *Service) SetPushKindEnabled(kind string, isEnabled bool) error {
+	if !apitypes.IsValidPushKind(apitypes.PushKind(kind)) {
+		return fmt.Errorf("unknown push notification kind %q", kind)
+	}
+	s.mutex.Lock()
+	allDisabled := slices.DeleteFunc(slices.Clone(s.state.DisabledPushKinds), func(disabled string) bool { return disabled == kind })
+	if !isEnabled {
+		allDisabled = append(allDisabled, kind)
+	}
+	s.state.DisabledPushKinds = allDisabled
+	err := s.state.Save()
+	s.mutex.Unlock()
+	if err != nil {
+		return err
+	}
+	return s.registerPush()
+}
+
+func (s *Service) GetPushSettings() PushSettings {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return PushSettings{
+		IsAvailable:     s.isPushServerSending && s.pushToken != "",
+		IsServerSending: s.isPushServerSending,
+		AllEnabledKind:  s.listEnabledPushKinds(),
+		ErrorMessage:    s.pushErrorMessage,
+	}
+}
+
+// listEnabledPushKinds needs the mutex.
+func (s *Service) listEnabledPushKinds() []string {
+	allEnabled := []string{}
+	for _, kind := range apitypes.ListAllPushKind() {
+		if !slices.Contains(s.state.DisabledPushKinds, string(kind)) {
+			allEnabled = append(allEnabled, string(kind))
+		}
+	}
+	return allEnabled
+}
+
+// registerPush makes the server's record of this phone's push handle and kinds match this phone's, for the signed-in
+// account. It asks the relay for a handle only when the token or the relay changed; without a token or a session it
+// does nothing.
+func (s *Service) registerPush() error {
+	s.mutex.Lock()
+	if !s.state.IsLoggedIn() || s.pushToken == "" {
+		s.mutex.Unlock()
+		return nil
+	}
+	server, sessionToken, accountID := s.state.Server, s.state.Token, s.state.AccountID
+	platform, token := s.pushPlatform, s.pushToken
+	allEnabledKind := s.listEnabledPushKinds()
+	registration := s.state.Push
+	s.mutex.Unlock()
+
+	ctx, cancel := context.WithTimeout(context.Background(), pushRequestTimeout)
+	defer cancel()
+	client := s.createClient(server)
+	client.Token = sessionToken
+	config, err := client.GetPushConfig(ctx)
+	if apiclient.IsStatus(err, http.StatusNotFound) {
+		config, err = apitypes.PushConfig{}, nil
+	}
+	if err != nil {
+		return s.recordPushError(fmt.Errorf("Hisar could not reach the server to set up notifications: %w", err))
+	}
+	s.mutex.Lock()
+	s.isPushServerSending = config.RelayURL != ""
+	s.mutex.Unlock()
+	if config.RelayURL == "" {
+		return s.recordPushError(nil)
+	}
+	if len(allEnabledKind) == 0 {
+		if err := client.DeleteDevicePush(ctx); err != nil {
+			return s.recordPushError(fmt.Errorf("Hisar could not turn notifications off on the server: %w", err))
+		}
+		return s.recordPushError(nil)
+	}
+
+	tokenHash := hashPushToken(platform, token)
+	if registration.RelayURL != config.RelayURL || registration.TokenHash != tokenHash || registration.Handle == "" {
+		handle, err := s.registerWithRelay(ctx, config.RelayURL, platform, token)
+		if err != nil {
+			return s.recordPushError(fmt.Errorf("Hisar could not reach the notification service: %w", err))
+		}
+		registration = localstate.PushRegistration{RelayURL: config.RelayURL, TokenHash: tokenHash, Handle: handle}
+	}
+	allKind := make([]apitypes.PushKind, 0, len(allEnabledKind))
+	for _, kind := range allEnabledKind {
+		allKind = append(allKind, apitypes.PushKind(kind))
+	}
+	if err := client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: registration.Handle, AllKind: allKind}); err != nil {
+		return s.recordPushError(fmt.Errorf("Hisar could not set up notifications on the server: %w", err))
+	}
+
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.pushErrorMessage = ""
+	// The account may have changed while the phone waited for the network; its registration is then not this one.
+	if s.state.AccountID != accountID || s.state.Server != server {
+		return nil
+	}
+	s.state.Push = registration
+	return s.state.Save()
+}
+
+func (s *Service) recordPushError(err error) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.pushErrorMessage = ""
+	if err != nil {
+		s.pushErrorMessage = err.Error()
+	}
+	return err
+}
+
+// hashPushToken names the token in state.json, which then never holds the token itself.
+func hashPushToken(platform apitypes.PushPlatform, token string) string {
+	digest := sha256.Sum256([]byte(string(platform) + "\x00" + token))
+	return hex.EncodeToString(digest[:])
+}
+
+// registerWithRelay trades the push token for the relay's handle, over the same trusted roots as the server.
+func (s *Service) registerWithRelay(ctx context.Context, relayURL string, platform apitypes.PushPlatform, token string) (string, error) {
+	body, err := json.Marshal(apitypes.RelayRegisterRequest{Platform: platform, Token: token})
+	if err != nil {
+		return "", err
+	}
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, relayURL+"/v1/register", bytes.NewReader(body))
+	if err != nil {
+		return "", err
+	}
+	request.Header.Set("Content-Type", "application/json")
+	response, err := (&http.Client{Transport: s.serverTransport, Timeout: pushRequestTimeout}).Do(request)
+	if err != nil {
+		return "", err
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("the relay answered %d", response.StatusCode)
+	}
+	var answer apitypes.RelayRegisterResponse
+	if err := json.NewDecoder(io.LimitReader(response.Body, 64<<10)).Decode(&answer); err != nil || answer.Handle == "" {
+		return "", errors.New("the relay gave no handle")
+	}
+	return answer.Handle, nil
+}

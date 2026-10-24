@@ -52,6 +52,11 @@ type fakeAPIServer struct {
 	isSuspended bool
 	// historyFullMessage, when set, refuses item writes with it as the server's 507 for a vault whose history is full.
 	historyFullMessage string
+	// pushRelayURL is the relay the fake server names in /push/config; isPushUnsupported answers it 404, as an older
+	// server does. pushRegistration is the last PUT /devices/current/push, nil after a DELETE.
+	pushRelayURL      string
+	isPushUnsupported bool
+	pushRegistration  *apitypes.PushRegistration
 }
 
 // refusesSuspended answers 403 with the suspension sentence while the account is suspended.
@@ -274,6 +279,29 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 	})
 	mux.HandleFunc("POST /api/v1/auth/logout", func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("GET /api/v1/push/config", func(writer http.ResponseWriter, request *http.Request) {
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		if server.isPushUnsupported {
+			writer.WriteHeader(http.StatusNotFound)
+			return
+		}
+		writeJSON(writer, http.StatusOK, apitypes.PushConfig{RelayURL: server.pushRelayURL})
+	})
+	mux.HandleFunc("PUT /api/v1/devices/current/push", func(writer http.ResponseWriter, request *http.Request) {
+		var registration apitypes.PushRegistration
+		json.NewDecoder(request.Body).Decode(&registration)
+		server.mutex.Lock()
+		server.pushRegistration = &registration
+		server.mutex.Unlock()
+		writer.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("DELETE /api/v1/devices/current/push", func(writer http.ResponseWriter, request *http.Request) {
+		server.mutex.Lock()
+		server.pushRegistration = nil
+		server.mutex.Unlock()
 		writer.WriteHeader(http.StatusNoContent)
 	})
 	server.addSharingRoutes(mux)

@@ -122,4 +122,15 @@ func TestPhonesGetAPushOfOnlyTheKindForApprovalsAndSignIns(t *testing.T) {
 	if allPush := relay.takeAll(server); len(allPush) != 0 {
 		t.Fatalf("pushes after the phone turned push off = %+v", allPush)
 	}
+
+	if err := phone.Client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: "new-handle", AllKind: []apitypes.PushKind{apitypes.PushKindSecurity}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := phone.Client.Logout(ctx); err != nil {
+		t.Fatal(err)
+	}
+	session.LogIn(ctx, apiclient.New(baseURL), "dev@example.com", password, secretKey, apitypes.DeviceInfo{Name: "Fifth laptop", Platform: "darwin/desktop"})
+	if allPush := relay.takeAll(server); len(allPush) != 0 {
+		t.Fatalf("pushes to a phone that signed out = %+v", allPush)
+	}
 }

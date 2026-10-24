@@ -494,3 +494,12 @@ func reviewedImportScope(t *testing.T, service *Service, vaultID string) string 
 	}
 	return actions.ImportScope
 }
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return content
+}
