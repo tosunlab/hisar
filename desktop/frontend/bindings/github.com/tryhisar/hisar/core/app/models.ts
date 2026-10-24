@@ -644,6 +644,23 @@ export interface Person {
     "isKeyChanged": boolean;
 }
 
+/**
+ * PushSettings is what a phone's Settings → Notifications shows.
+ */
+export interface PushSettings {
+    /**
+     * IsAvailable is true once the server sends push notifications and this phone has a push token.
+     */
+    "isAvailable": boolean;
+
+    /**
+     * IsServerSending is false when the server has no push relay, or is older than push notifications.
+     */
+    "isServerSending": boolean;
+    "enabledKinds": string[] | null;
+    "errorMessage"?: string;
+}
+
 export interface ReceivedShareInvitation {
     "id": string;
     "vaultId": string;

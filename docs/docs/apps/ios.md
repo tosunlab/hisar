@@ -148,6 +148,10 @@ this.
    Passwords → turn on Hisar, or the button in Hisar's Settings.
 5. Data from the personal team build does not carry over (different bundle identifier and keychain). Sign in again
    and delete the old app.
+6. The app has the Push Notifications capability (`aps-environment` in `Hisar.entitlements`): the App ID needs Push
+   Notifications enabled, and both Hisar profiles must be generated again after that, or device builds and archives
+   fail to sign. Debug builds register with APNs's development environment, release builds with production
+   ([Design](../design.md) §9.12). The personal team build has no push.
 6. A Release build signs with the App Store profiles, so it reaches a device through TestFlight or the App Store, not
    by running it from Xcode.
 

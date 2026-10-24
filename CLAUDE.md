@@ -66,7 +66,7 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 agent harnesses may do without asking, sealed into `state.json` with a head that `desktop/granthead` keeps), `agentsignin.go` (Website sign-in for agents), `approvals.go`,
 `phoneapproval.go` (Mac side), `phoneapproval_answer.go` (phone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
 `browseritems.go` (the extension popup's vault: items, vaults, new items), `browserunlock.go` (the popup's master password unlock),
-`organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync).
+`organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync), `push.go` (the phone's push token, registered with the push relay and the server).
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`. `Config` (`types.go`) has
 `BiometricName`, the name Go's sentences give the biometric check: "Touch ID" on the Mac and in iOS hisarkit (Swift
 replaces it with the device's Face ID or Touch ID), "biometric" on Android.
@@ -75,13 +75,14 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 
 | Package | What it holds |
 |---|---|
-| `cmd/hisar-server` | `serve`, `migrate`, `invite`; `setup.go` reads `HISAR_*` and wires everything |
+| `cmd/hisar-server` | `serve`, `migrate`, `invite`, `push-relay` (Hisar's push relay, no database); `setup.go` reads `HISAR_*` and wires everything |
 | `cmd/hisar-admin-wasm` | The admin dashboard's crypto (`js && wasm`, imports only `core`): `signIn`, `reauthenticate` and the first admin's `signUp` on `globalThis.hisar` |
 | `internal/api` | HTTP only: routes, sessions, per-IP limits, event stream, invite and share-link pages, the admin dashboard (`adminpage.go` serves the embedded `adminpage/dist`) and the `/api/v1/admin` routes, each behind `requireSession` and `requireAdmin`; handlers parse and call the service |
 | `internal/service` | The rules: rights, validation, store calls, audit, events, email. One `Service` type, a file per domain (`vaults`, `auth`, `accounts`, `lifecycle`, `invitations`, `sharelinks`, `approvals`, `preferences`, `organizations`, `setup`, and `admin_server`, `admin_settings`, `admin_health`, `admin_accounts`, `admin_invites`, `admin_audit` for the dashboard; `audit.go` is the table of audit event types and their labels) |
 | `internal/store` | Postgres with raw SQL (pgx) and embedded goose migrations |
 | `internal/realtime` | The per-account event broker behind `GET /api/v1/events` |
 | `internal/ratelimit` | Per-key token buckets |
+| `internal/pushrelay` | The push relay: phones trade their APNs or FCM token for a sealed handle, servers send a push kind to a handle |
 | `internal/settings` | The instance settings admins edit: defaults, the stored document, `HISAR_*` overrides, `Validate` |
 | `internal/mail`, `internal/desktopupdate`, `internal/serverupdate` | SMTP; the Sparkle appcast from GitHub Releases; the newest server release for Overview |
 | `cmd/hisar-fake-github`, `cmd/hisar-smtp-sink`, `cmd/hisar-share-link-page-fixture`, `cmd/hisar-admin-page-fixture`, `cmd/hisar-sign-in-site-fixture` (the sign-in pages `desktop/axfill`'s real-browser test fills), `internal/desktopupdate/fakegithub`, `internal/mail/mailtest` | Fakes and fixtures for the end-to-end and browser tests; `internal/fixturedatabase` keeps the two page fixtures' secrets, one file per database, so a restart on the same database works |

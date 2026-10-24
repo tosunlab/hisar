@@ -6,6 +6,7 @@ enum SettingsDestination: Hashable {
     case security
     case appearance
     case macApprovals
+    case notifications
     case people
     case organizations
     case devices
@@ -79,6 +80,10 @@ struct SettingsView: View {
                         }
                     }
                     .accessibilityIdentifier("open-mac-approvals")
+                    NavigationLink(value: SettingsDestination.notifications) {
+                        Label("Notifications", systemImage: "bell.badge")
+                    }
+                    .accessibilityIdentifier("open-notifications")
                     NavigationLink(value: SettingsDestination.secretKey) {
                         Label("Secret Key and Emergency Kit", systemImage: "doc.text")
                     }
@@ -153,6 +158,7 @@ struct SettingsView: View {
                 case .security: SecurityView()
                 case .appearance: AppearanceView()
                 case .macApprovals: MacApprovalsView()
+                case .notifications: NotificationSettingsView(notifications: model.notifications)
                 case .people: PeopleView()
                 case .organizations: OrganizationsView()
                 case .devices: DevicesView()
@@ -619,6 +625,79 @@ struct MacApprovalsView: View {
         }
         .applyThemedListStyle()
         .navigationTitle("Mac approvals")
+    }
+}
+
+struct NotificationSettingsView: View {
+    @ObservedObject var notifications: PushNotificationsModel
+    @Environment(\.openURL) private var openURL
+
+    static func describe(_ kind: PushKind) -> (title: String, detail: String, systemImage: String) {
+        switch kind {
+        case .approval: ("Approval requests", "Your Mac asks this iPhone to approve an SSH key, the command-line tool or an app.", "laptopcomputer.and.iphone")
+        case .security: ("Security alerts", "A new device signed in, or your master password or Secret Key changed.", "lock.shield")
+        case .sharing: ("Sharing", "Someone invited you to a vault or an organization.", "person.2")
+        }
+    }
+
+    var body: some View {
+        List {
+            Section {
+                switch notifications.authorization {
+                case .notDetermined:
+                    Button {
+                        Task { await notifications.turnOn() }
+                    } label: {
+                        Label("Turn on notifications", systemImage: "bell")
+                    }
+                    .accessibilityIdentifier("notifications-turn-on")
+                case .denied:
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) { openURL(url) }
+                    } label: {
+                        Label("Allow notifications in iOS Settings", systemImage: "gear")
+                    }
+                    .accessibilityIdentifier("notifications-open-settings")
+                case .allowed:
+                    ForEach(PushKind.allCases, id: \.self) { kind in
+                        let description = Self.describe(kind)
+                        Toggle(isOn: Binding(get: { notifications.settings.isEnabled(kind) }, set: { isEnabled in
+                            Task { await notifications.setEnabled(kind, isEnabled: isEnabled) }
+                        })) {
+                            Label {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(description.title)
+                                    Text(description.detail)
+                                        .font(.footnote)
+                                        .foregroundStyle(.themeSecondary)
+                                }
+                            } icon: {
+                                Image(systemName: description.systemImage)
+                            }
+                        }
+                        .disabled(!notifications.settings.isServerSending)
+                        .accessibilityIdentifier("notifications-\(kind.rawValue)-toggle")
+                    }
+                }
+            } footer: {
+                Text(footer)
+            }
+            if let errorMessage = notifications.errorMessage ?? notifications.settings.errorMessage {
+                Section {
+                    ErrorBanner(message: errorMessage)
+                }
+            }
+        }
+        .applyThemedListStyle()
+        .navigationTitle("Notifications")
+        .task { await notifications.refresh() }
+    }
+
+    private var footer: String {
+        if notifications.authorization == .allowed && !notifications.settings.isServerSending {
+            return "Your Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
+        }
+        return "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Hisar's push relay, Apple and your Hisar server see when a notification is sent, but not what it is about."
     }
 }
 

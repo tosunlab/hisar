@@ -57,6 +57,8 @@ open class FakeBackend : VaultBackend {
     var listAllDeviceErrorMessage: String? = null
     var isMacApprovalAllowedValue = true
     var isWebsiteIconsEnabledValue = true
+    val allPushToken = mutableListOf<String>()
+    var pushSettingsValue = PushSettings(isServerSending = true)
     var websiteIconByURL: MutableMap<String, ByteString> = mutableMapOf()
     var preparedIcon: ByteString? = null
     @get:JvmName("themeValue") @set:JvmName("themeValue")
@@ -1148,6 +1150,20 @@ open class FakeBackend : VaultBackend {
     }
 
     override fun isWebsiteIconsEnabled(): Boolean = isWebsiteIconsEnabledValue
+
+    override fun setPushToken(platform: String, token: String) {
+        record("setPushToken")
+        allPushToken += "$platform:$token"
+        pushSettingsValue = pushSettingsValue.copy(isAvailable = pushSettingsValue.isServerSending)
+    }
+
+    override fun setPushKindEnabled(kind: PushKind, isEnabled: Boolean) {
+        record("setPushKindEnabled")
+        val others = pushSettingsValue.enabledKinds - kind.value
+        pushSettingsValue = pushSettingsValue.copy(enabledKinds = if (isEnabled) others + kind.value else others)
+    }
+
+    override fun getPushSettings(): PushSettings = pushSettingsValue
 
     override fun setWebsiteIconsEnabled(isEnabled: Boolean) {
         record("setWebsiteIconsEnabled")

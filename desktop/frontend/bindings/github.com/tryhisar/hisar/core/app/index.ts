@@ -58,6 +58,7 @@ export type {
     PasswordConfig,
     PendingRecoverySummary,
     Person,
+    PushSettings,
     ReceivedShareInvitation,
     RememberedAgentSecret,
     RemovedVaultNotice,

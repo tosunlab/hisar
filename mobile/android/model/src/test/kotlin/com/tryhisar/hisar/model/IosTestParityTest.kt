@@ -35,6 +35,8 @@ class IosTestParityTest {
         "testPasskeyRegistrationUpdatesTheCredentialIdentities" to "testCreatedPasskeyIsOfferedOnTheNextRequest",
         "testTokenWaitsForUnlockAndPreparesOnce" to "testTransferWaitsForUnlockAndPreparesOnce",
         "testTokenWhileSignedOutExplainsInstead" to "testImportWhileSignedOutExplainsInstead",
+        // Firebase gives its token as text and asks no permission of its own; Android 13's prompt is the app's.
+        "testTurningNotificationsOnAsksOnceThenRegistersTheTokenAsHex" to "testTurningNotificationsOnRegistersTheFirebaseToken",
     )
 
     private val notApplicable = run {
@@ -50,6 +52,8 @@ class IosTestParityTest {
             "testSignedOutStartClearsLeftoverIdentities" to identityStore,
             "testForegroundWhileSignedOutClearsLeftoverIdentities" to identityStore,
             "testLockedStartKeepsAutoFillIdentities" to identityStore,
+            "testALaunchAfterNotificationsWereAllowedAsksForThisLaunchsToken" to
+                "Firebase hands the app its token at every launch by itself; there is no APNs registration to ask for",
             "testExportDatesReachTheBackendAsSecondsSince1970" to
                 "Android receives the Credential Exchange JSON as the exporter wrote it; only iOS decodes it into Dates first",
             "testReplacingTheSecretKeyUpdatesTheStoredItemInPlace" to

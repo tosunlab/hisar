@@ -354,6 +354,10 @@ export function GetOrganization(organizationID: string): $CancellablePromise<$mo
     return $Call.ByID(3339834708, organizationID);
 }
 
+export function GetPushSettings(): $CancellablePromise<$models.PushSettings> {
+    return $Call.ByID(1435801258);
+}
+
 /**
  * GetReadIssues returns the issues from the currently loaded view, not a new acquisition.
  */
@@ -739,6 +743,22 @@ export function SetItemFavorite(vaultID: string, itemID: string, isFavorite: boo
  */
 export function SetOrganizationMemberRole(organizationID: string, accountID: string, role: string): $CancellablePromise<void> {
     return $Call.ByID(524823226, organizationID, accountID, role);
+}
+
+/**
+ * SetPushKindEnabled turns one kind of push notification on or off for this phone.
+ */
+export function SetPushKindEnabled(kind: string, isEnabled: boolean): $CancellablePromise<void> {
+    return $Call.ByID(1817942082, kind, isEnabled);
+}
+
+/**
+ * SetPushToken takes the push service token the phone's OS gave Hisar, and registers it with the push relay and the
+ * server for the signed-in account. platform is apitypes.PushPlatform: "apns", "apns-sandbox" or "fcm". The phones call
+ * it at every launch and whenever the OS replaces the token, never on the main thread.
+ */
+export function SetPushToken(platform: string, token: string): $CancellablePromise<void> {
+    return $Call.ByID(4204259712, platform, token);
 }
 
 /**

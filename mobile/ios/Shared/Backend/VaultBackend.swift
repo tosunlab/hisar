@@ -124,6 +124,11 @@ protocol VaultBackend: AnyObject {
     func getWebsiteIcon(url: String) throws -> Data?
     func isWebsiteIconsEnabled() -> Bool
     func setWebsiteIconsEnabled(_ isEnabled: Bool) throws
+    /// setPushToken registers the token APNs gave this launch ("apns" or "apns-sandbox") for the signed-in account; it
+    /// reaches the server and the push relay, so it runs in the background.
+    func setPushToken(platform: String, token: String) throws
+    func setPushKindEnabled(_ kind: PushKind, isEnabled: Bool) throws
+    func getPushSettings() throws -> PushSettings
 }
 
 struct BackendError: LocalizedError, Equatable {

@@ -274,10 +274,16 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 		return apitypes.SessionResponse{}, err
 	}
 	s.recordAudit(ctx, Actor{AccountID: pending.accountID, DeviceID: device.ID, IP: actor.IP}, auditLogin, map[string]string{"device": device.Name, "platform": device.Platform})
+	// Every sign-in is a new device, which the account's phones hear about.
+	s.notifyPhones(pending.accountID, apitypes.PushKindSecurity, device.ID)
 	return apitypes.SessionResponse{Token: token, AccountID: pending.accountID, DeviceID: device.ID}, nil
 }
 
+// Logout ends the session and the phone's push notifications with it: a signed-out phone gets none.
 func (s *Service) Logout(ctx context.Context, actor Actor) error {
+	if err := s.store.DeleteDevicePush(ctx, actor.DeviceID); err != nil {
+		return err
+	}
 	return s.store.DeleteSession(ctx, actor.TokenHash)
 }
 

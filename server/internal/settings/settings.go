@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	netmail "net/mail"
+	"net/url"
 	"reflect"
 	"strconv"
 	"strings"
@@ -27,6 +28,7 @@ type Settings struct {
 	// AuthBurst is how many sign-in requests one IP address may make before it is limited to one every 6 seconds.
 	AuthBurst int       `json:"authBurst"`
 	Retention Retention `json:"retention"`
+	Push      Push      `json:"push"`
 	// SecretsBackupConfirmedAt is when an admin confirmed on Overview that hisar-secrets.json is backed up; zero until
 	// then. It is not in ListFields: the server records it, and Settings neither shows nor edits it.
 	SecretsBackupConfirmedAt time.Time `json:"secretsBackupConfirmedAt,omitzero"`
@@ -45,6 +47,23 @@ type SMTP struct {
 }
 
 func (smtp SMTP) IsSet() bool { return smtp.Host != "" }
+
+// DefaultPushRelayURL is Hisar's own push relay, which delivers to the official iPhone and Android apps for any server.
+const DefaultPushRelayURL = "https://push.tryhisar.com"
+
+// Push is where the server sends the phone apps' push notifications. An empty relay URL, or "off" from the
+// environment, turns them off.
+type Push struct {
+	RelayURL string `json:"relayURL"`
+}
+
+// GetRelayURL is the relay to send through, or empty when push notifications are off.
+func (push Push) GetRelayURL() string {
+	if push.RelayURL == "off" {
+		return ""
+	}
+	return strings.TrimRight(push.RelayURL, "/")
+}
 
 // MinimumVersions holds the lowest app version the server accepts per client; empty means no minimum.
 type MinimumVersions struct {
@@ -120,6 +139,7 @@ func Defaults() Settings {
 		SessionLifetime: 30,
 		AuthBurst:       10,
 		Retention:       Retention{History: 90, Audit: 365, ExpiredInvites: 30},
+		Push:            Push{RelayURL: DefaultPushRelayURL},
 		SetupState:      SetupDone,
 	}
 }
@@ -170,12 +190,28 @@ func (settings Settings) Validate() error {
 			return fmt.Errorf("%s must be kept between %d and %d days.", retention.name, retention.minimum, maximumRetention)
 		}
 	}
+	if relayURL := settings.Push.GetRelayURL(); relayURL != "" && !isPushRelayURL(relayURL) {
+		return errors.New("The push relay must be an https:// address, or empty to turn push notifications off.")
+	}
 	switch settings.SetupState {
 	case SetupNeedsAdmin, SetupNeedsChecks, SetupNeedsInvitePolicy, SetupDone:
 	default:
 		return fmt.Errorf("settings: unknown setup state %q", settings.SetupState)
 	}
 	return nil
+}
+
+// isPushRelayURL accepts https addresses, and http only on this computer, for a relay run in tests.
+func isPushRelayURL(text string) bool {
+	parsed, err := url.Parse(text)
+	if err != nil || parsed.Host == "" || parsed.User != nil || parsed.RawQuery != "" || parsed.Fragment != "" {
+		return false
+	}
+	if parsed.Scheme == "https" {
+		return true
+	}
+	host := parsed.Hostname()
+	return parsed.Scheme == "http" && (host == "127.0.0.1" || host == "localhost" || host == "::1")
 }
 
 // Field is one setting the dashboard edits, named by its path in the JSON document.
@@ -210,6 +246,7 @@ func ListFields() []Field {
 		{Name: "retention.historyDays"},
 		{Name: "retention.auditDays"},
 		{Name: "retention.expiredInvitesDays"},
+		{Name: "push.relayURL", Environment: "HISAR_PUSH_RELAY_URL"},
 	}
 }
 

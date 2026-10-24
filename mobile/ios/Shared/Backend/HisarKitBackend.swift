@@ -558,6 +558,18 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.setWebsiteIconsEnabled(isEnabled) }
     }
 
+    func setPushToken(platform: String, token: String) throws {
+        try callReturningNothing { try hisar.setPushToken(platform, token: token) }
+    }
+
+    func setPushKindEnabled(_ kind: PushKind, isEnabled: Bool) throws {
+        try callReturningNothing { try hisar.setPushKindEnabled(kind.rawValue, isEnabled: isEnabled) }
+    }
+
+    func getPushSettings() throws -> PushSettings {
+        try decode(PushSettings.self, from: callReturningText { hisar.getPushSettings($0) })
+    }
+
     func getTheme() -> VaultTheme {
         (try? decode(VaultTheme.self, from: hisar.getTheme())) ?? .standard
     }

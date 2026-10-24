@@ -85,6 +85,11 @@ type serviceState struct {
 	signer                      *signin.Signer
 	agentSignInCancels          map[uint64]context.CancelFunc
 	lastAgentSignInID           uint64
+	// pushPlatform and pushToken are what the phone's OS gave for push notifications at this launch; never saved.
+	pushPlatform        apitypes.PushPlatform
+	pushToken           string
+	isPushServerSending bool
+	pushErrorMessage    string
 }
 
 // getCache opens the offline cache on first use and recreates it only after confirmed corruption.
@@ -187,9 +192,14 @@ func SetTrustedCertificates(s *Service, roots *x509.CertPool) {
 	s.websiteIcons.mutex.Unlock()
 }
 
+// notifySessionChange runs with the mutex held, after a sign-in, a sign-up or a sign-out.
 func (s *Service) notifySessionChange() {
 	if s.onSessionChange != nil {
 		s.onSessionChange(s.state.Server, s.state.Token, s.state.IsLoggedIn())
+	}
+	// A phone that already has a push token registers it for the account it just signed in to.
+	if s.state.IsLoggedIn() && s.pushToken != "" {
+		go s.registerPush()
 	}
 }
 

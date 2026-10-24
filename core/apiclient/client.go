@@ -332,6 +332,21 @@ func (c *Client) RevokeDevice(ctx context.Context, deviceID string) error {
 	return c.sendRequest(ctx, "DELETE", "/api/v1/devices/"+url.PathEscape(deviceID), nil, nil, nil, nil)
 }
 
+// GetPushConfig returns the push relay the server sends through. A server older than push notifications answers 404.
+func (c *Client) GetPushConfig(ctx context.Context) (apitypes.PushConfig, error) {
+	var config apitypes.PushConfig
+	return config, c.sendRequest(ctx, "GET", "/api/v1/push/config", nil, nil, &config, nil)
+}
+
+// SetDevicePush saves this phone's push relay handle and the kinds of push it wants.
+func (c *Client) SetDevicePush(ctx context.Context, registration apitypes.PushRegistration) error {
+	return c.sendRequest(ctx, "PUT", "/api/v1/devices/current/push", nil, registration, nil, nil)
+}
+
+func (c *Client) DeleteDevicePush(ctx context.Context) error {
+	return c.sendRequest(ctx, "DELETE", "/api/v1/devices/current/push", nil, nil, nil, nil)
+}
+
 func (c *Client) ListVaults(ctx context.Context) ([]apitypes.Vault, error) {
 	var vaults []apitypes.Vault
 	return vaults, c.collectionRequest(ctx, "/api/v1/vaults", &vaults)

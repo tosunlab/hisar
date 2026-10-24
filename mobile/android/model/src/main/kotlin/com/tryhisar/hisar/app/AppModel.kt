@@ -3,6 +3,7 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FavoriteItem
 import com.tryhisar.hisar.model.ItemDetail
+import com.tryhisar.hisar.model.PushKind
 import com.tryhisar.hisar.model.Organizations
 import com.tryhisar.hisar.model.RemovedVaultNotice
 import com.tryhisar.hisar.model.ShareInvitations
@@ -44,6 +45,7 @@ class AppModel(
     private val now: () -> Instant = Instant::now,
     /** Whether sign-in and sign-up take an http:// server: only debug builds do, for a server on the developer's machine. */
     isPlainHttpAllowed: Boolean = false,
+    notificationPlatform: NotificationPlatform = NotificationPlatform.None,
 ) : ModelContext {
     private var backend: VaultBackend? = null
     private val mutableStatus = MutableStateFlow(VaultStatus.signedOut)
@@ -109,6 +111,7 @@ class AppModel(
     val sharing = SharingModel(this, vaults)
     val organizations = OrganizationsModel(this, invitations)
     val approvals = ApprovalsModel(this, now)
+    val notifications = NotificationsModel(this, notificationPlatform)
 
     val autoLockInterval: Duration get() = Duration.ofSeconds(status.value.autoLockSeconds.toLong())
 
@@ -132,6 +135,7 @@ class AppModel(
         applyStatus(started.status)
         if (status.value.isUnlocked) scope.launch { refreshAll() }
         scope.launch { checkMinimumVersion() }
+        scope.launch { notifications.refresh() }
         refreshPendingRecovery()
     }
 
@@ -247,9 +251,21 @@ class AppModel(
     fun handleDidEnterBackground() {
         enteredBackgroundAt = now()
         mutableIsInForeground.value = false
+        notifications.remindOfWaitingApproval(approvals.allPendingApproval.value.isNotEmpty())
+    }
+
+    /**
+     * Opens what a tapped notification is about, once Hisar is unlocked: the Approvals tab for an approval, Settings for
+     * a security alert or a sharing invitation.
+     */
+    fun showNotification(kind: PushKind) {
+        if (!status.value.isUnlocked) return
+        notifications.openedKind.value = null
+        selectedTab.value = if (kind == PushKind.APPROVAL) Tab.APPROVALS else Tab.SETTINGS
     }
 
     suspend fun handleWillEnterForeground() {
+        notifications.clearApprovalReminder()
         scope.launch { checkMinimumVersion() }
         mutableIsInForeground.value = true
         val backgroundStart = enteredBackgroundAt

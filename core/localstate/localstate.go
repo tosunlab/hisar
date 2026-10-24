@@ -38,6 +38,14 @@ func classifyKeyringError(err error, checkSecretService func() error) error {
 	return err
 }
 
+// PushRegistration is the push relay's handle for this phone's push token, with what it was made from, so the phone asks
+// the relay again only when the token or the relay changes.
+type PushRegistration struct {
+	RelayURL  string `json:"relayURL"`
+	TokenHash string `json:"tokenHash"`
+	Handle    string `json:"handle"`
+}
+
 type State struct {
 	Server              string            `json:"server"`
 	Email               string            `json:"email"`
@@ -47,6 +55,8 @@ type State struct {
 	Pins                map[string][]byte `json:"pins,omitempty"`
 	Seqs                map[string]int64  `json:"seqs,omitempty"`
 	RecoveryOperationID string            `json:"recoveryOperationId,omitempty"`
+	// Push is this phone's registration with the push relay for the signed-in account; empty until it has one.
+	Push PushRegistration `json:"push,omitzero"`
 
 	// BiometricUnlock is the account unlock key sealed with a key kept in the OS keychain.
 	BiometricUnlock      []byte    `json:"biometricUnlock,omitempty"`
@@ -92,6 +102,8 @@ type Settings struct {
 	// empty means the defaults.
 	Appearance string `json:"appearance,omitempty"`
 	Color      string `json:"color,omitempty"`
+	// DisabledPushKinds are the push notification kinds the user turned off on this phone; the others are on.
+	DisabledPushKinds []string `json:"disabledPushKinds,omitempty"`
 	// IsWebsiteIconsDisabled stops this device from fetching website icons for logins.
 	IsWebsiteIconsDisabled bool `json:"websiteIconsDisabled,omitempty"`
 	// LastServer is the server this device last signed in to; signing out keeps it, so the sign-in form opens on it

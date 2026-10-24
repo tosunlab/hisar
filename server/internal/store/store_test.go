@@ -165,6 +165,13 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s missing", indexName)
 		}
 	}
+	if countTable(t, database, "device_push") != 1 {
+		t.Fatal("device push migration is missing")
+	}
+	rollbackTestMigrationsTo(t, database, 18)
+	if countTable(t, database, "device_push") != 0 {
+		t.Fatal("rolling back device push left its table")
+	}
 	rollbackTestMigrationsTo(t, database, 17)
 	if countColumn(t, database, "operational_secrets", "settings_version") != 0 ||
 		countQueryRow(t, database, `SELECT count(*) FROM pg_constraint WHERE conname = 'smtp_password_encrypted'`) != 0 {

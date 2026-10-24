@@ -191,6 +191,7 @@ func (s *Service) CreateApproval(actor Actor, request *apitypes.CreateApprovalRe
 	}
 	relay.mutex.Unlock()
 	s.publishApprovalEvent(actor.AccountID, apitypes.EventApprovalRequested, request.RequestID)
+	s.notifyPhones(actor.AccountID, apitypes.PushKindApproval, actor.DeviceID)
 	return nil
 }
 

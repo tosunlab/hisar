@@ -14,6 +14,7 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tryhisar.hisar.app.Screen
 import com.tryhisar.hisar.app.Tab
 import com.tryhisar.hisar.autofill.SavedLoginInbox
+import com.tryhisar.hisar.notifications.HisarNotifications
 import com.tryhisar.hisar.ui.root.RootScreen
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -24,7 +25,7 @@ import kotlinx.coroutines.launch
  */
 class MainActivity : FragmentActivity() {
     private val viewModel: AppViewModel by viewModels {
-        viewModelFactory { initializer { AppViewModel(application as BackendProvider) } }
+        viewModelFactory { initializer { AppViewModel(application as BackendProvider, HisarNotifications.Platform(application)) } }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,7 +37,10 @@ class MainActivity : FragmentActivity() {
         if (savedInstanceState == null) {
             openLink(intent)
             openAutoFillSettings(intent)
+            openNotification(intent)
         }
+        // Once the user allowed notifications, each launch hands HisarKit Firebase's current token.
+        if (viewModel.model.notifications.isPermissionGranted.value) fetchPushToken()
         setContent { RootScreen(viewModel.model, viewModel::copySecret) }
     }
 
@@ -44,6 +48,16 @@ class MainActivity : FragmentActivity() {
         super.onNewIntent(intent)
         openLink(intent)
         openAutoFillSettings(intent)
+        openNotification(intent)
+    }
+
+    // A tapped notification names its kind; the tabs open its screen once Hisar is unlocked.
+    private fun openNotification(intent: Intent) {
+        viewModel.model.notifications.open(intent.getStringExtra(HisarNotifications.EXTRA_KIND))
+    }
+
+    fun fetchPushToken() {
+        HisarNotifications.fetchToken(this) { token -> lifecycleScope.launch { viewModel.model.notifications.receiveToken(token) } }
     }
 
     override fun onResume() {

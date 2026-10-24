@@ -26,6 +26,8 @@ deploy/hisar.env
 /mobile/android/.idea/
 /mobile/android/captures/
 /mobile/android/**/build/
+# The output of editors that compile the Gradle modules themselves, such as VS Code's Java extension.
+/mobile/android/**/bin/
 /mobile/android/**/*.jks
 /mobile/android/**/*.keystore
 *.iml

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -118,7 +119,9 @@ type Service struct {
 	// NewMailer sends with the given SMTP settings; it returns nil when they turn email off.
 	NewMailer func(settings.SMTP) mail.Mailer
 	// Approvals relays phone approvals between the devices of an account.
-	Approvals      *ApprovalRelay
+	Approvals *ApprovalRelay
+	// PushClient sends to the push relay.
+	PushClient     *http.Client
 	backgroundWork sync.WaitGroup
 }
 
@@ -135,6 +138,7 @@ func New(database *store.Store, events *realtime.Broker, keys Keys, config Confi
 		ShareAcceptedEmailDelay: defaultShareAcceptedEmailDelay,
 		NewMailer:               newSMTPMailer,
 		Approvals:               newApprovalRelay(factory.New(rate.Every(approvalRateEvery), ApprovalRateBurst)),
+		PushClient:              &http.Client{Timeout: 10 * time.Second},
 	}
 }
 
