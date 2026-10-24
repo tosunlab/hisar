@@ -162,8 +162,9 @@ test-share-link-page:
 	go build -o bin/hisar-share-link-page-fixture ./server/cmd/hisar-share-link-page-fixture
 	cd extension && npm ci --no-audit --no-fund && npm run test:share-link-page
 
+# The Chrome zip and the Firefox one; addons-linter checks the Firefox build as AMO's signing does.
 build-extension:
-	cd extension && npm ci --no-audit --no-fund && npm run build && npm run package
+	cd extension && npm ci --no-audit --no-fund && npm run build && npm run lint:firefox && npm run package
 
 # The docs site (docs/, Docusaurus); test-docs typechecks and builds it, the image is docs/Dockerfile.
 build-docs:
