@@ -635,12 +635,13 @@ export class BackgroundController {
   private async probeFillableFrames(tabId: number): Promise<ProbedFrame[]> {
     const allFillable = selectAllFillableFrame(await this.browser.getAllFrameInfo(tabId));
     if (allFillable.length === 0) throw new HisarError("not-found", "Hisar cannot fill this page");
-    let allProbed = await this.probeFrames(tabId, allFillable);
-    if (allProbed.length === 0) {
-      await this.browser.injectContentScript(tabId);
-      allProbed = await this.probeFrames(tabId, allFillable);
-    }
-    return allProbed;
+    const allProbed = await this.probeFrames(tabId, allFillable);
+    // A frame without the content script, as one loaded before the extension was installed or updated, gets it now; the
+    // script loads only once in a frame, so the frames that answered are left as they are.
+    const allSilent = allFillable.filter((frame) => !allProbed.some((probed) => probed.frameId === frame.frameId));
+    if (allSilent.length === 0) return allProbed;
+    await this.browser.injectContentScript(tabId);
+    return [...allProbed, ...(await this.probeFrames(tabId, allSilent))];
   }
 
   private async probeFrames(tabId: number, allFrame: FrameInfo[]): Promise<ProbedFrame[]> {

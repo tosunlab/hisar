@@ -229,6 +229,20 @@ describe("fill and the frame rule", () => {
     expect(harness.getInjectionCount()).toBe(1);
   });
 
+  it("injects the content script into a frame without it while other frames answer, and fills the login there", async () => {
+    const harness = createHarness({
+      allFrame: [
+        { frameId: 0, url: "https://example.com/", origin: "https://example.com", allAncestorOrigin: [] },
+        { frameId: 3, url: "https://example.com/sign-in", origin: "https://example.com", allAncestorOrigin: ["https://example.com"] },
+      ],
+      allProbe: { 0: emptyProbe, 3: "no-content-script" },
+    });
+    await harness.pair();
+    await harness.controller.fillLogin(1, "vault-personal", "item-example");
+    expect(harness.getInjectionCount()).toBe(1);
+    expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.frameId).toBe(3);
+  });
+
   it("fills the first match for the keyboard shortcut", async () => {
     const harness = createHarness();
     harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-aardvark", title: "Aardvark", username: "first" });

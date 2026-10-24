@@ -51,6 +51,19 @@ interface Connection {
 }
 
 const defaultReconnectDelayMilliseconds = [1000, 2000, 5000, 10000, 30000];
+
+// The requests that only read, which may be sent again when the connection closes before Hisar answers.
+const allRepeatableType: ReadonlySet<RequestType> = new Set<RequestType>([
+  "logins.match", "logins.fill", "logins.code", "identities.list", "identities.fill", "cards.list", "cards.fill", "vaults.list",
+  "items.list", "items.get", "items.reveal", "items.code", "items.icon", "password.generate", "addresses.list", "addresses.fill",
+]);
+
+// DisconnectedError fails a request whose connection closed before Hisar answered.
+class DisconnectedError extends HisarError {
+  constructor(message: string) {
+    super("desktop-unavailable", message);
+  }
+}
 // maximumMessageBytes is browserprotocol.MaxMessageSize: the native host exits on a larger frame.
 const maximumMessageBytes = 1 << 20;
 
@@ -118,6 +131,21 @@ export class NativeClient {
     options: RequestOptions = {},
   ): Promise<RequestMap[Type]["result"]> {
     if (type === "hello") return (await this.reconnect()) as RequestMap[Type]["result"];
+    try {
+      return await this.sendOnce(type, parameters, options);
+    } catch (error) {
+      // A request that only reads is sent once more over a new connection when the old one closed under it; one that
+      // changes something, or that timed out, is never sent twice.
+      if (!allRepeatableType.has(type) || options.isOverOpenConnection || !(error instanceof DisconnectedError)) throw error;
+      return this.sendOnce(type, parameters, options);
+    }
+  }
+
+  private async sendOnce<Type extends RequestType>(
+    type: Type,
+    parameters: RequestMap[Type]["parameters"],
+    options: RequestOptions,
+  ): Promise<RequestMap[Type]["result"]> {
     if (options.isOverOpenConnection) await this.waitForOpenConnection();
     else await this.connect();
     const connection = this.connection;
@@ -205,7 +233,7 @@ export class NativeClient {
     if (this.connection === connection) this.connection = undefined;
     for (const [id, pending] of this.allPending) {
       clearTimeout(pending.timer);
-      pending.reject(new HisarError("desktop-unavailable", message));
+      pending.reject(new DisconnectedError(message));
       this.allPending.delete(id);
     }
   }

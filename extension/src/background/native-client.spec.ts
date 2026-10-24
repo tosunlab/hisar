@@ -148,6 +148,30 @@ describe("NativeClient", () => {
     expect((await expectHisarError(pending, "desktop-unavailable")).message).toBe("Native host has exited.");
   });
 
+  it("sends a request that only reads once more over a new connection when the connection closes under it", async () => {
+    const firstPort = new FakePort(answerHello);
+    const secondPort = new FakePort((request) => ({ id: request.id, ok: true, result: request.type === "hello" ? helloResult : { password: "x" } }));
+    const client = createClient([firstPort, secondPort], { allReconnectDelayMilliseconds: [] });
+    await client.connect();
+    const pending = client.request("password.generate", {});
+    await vi.waitFor(() => expect(firstPort.allSent).toHaveLength(2));
+    firstPort.simulateDisconnect();
+    expect(await pending).toEqual({ password: "x" });
+    expect(secondPort.allSent.map((request) => request.type)).toEqual(["hello", "password.generate"]);
+  });
+
+  it("never sends a request that changes something twice", async () => {
+    const firstPort = new FakePort(answerHello);
+    const secondPort = new FakePort(answerHello);
+    const client = createClient([firstPort, secondPort], { allReconnectDelayMilliseconds: [] });
+    await client.connect();
+    const pending = client.request("logins.save", { vaultID: "vault-1", url: "https://example.com", username: "alex", password: "secret" } as never);
+    await vi.waitFor(() => expect(firstPort.allSent).toHaveLength(2));
+    firstPort.simulateDisconnect();
+    await expectHisarError(pending, "desktop-unavailable");
+    expect(secondPort.allSent).toEqual([]);
+  });
+
   it("reports desktop-unavailable when the host is not installed", async () => {
     const port = new FakePort();
     const client = createClient([port], { getLastErrorMessage: () => "Specified native messaging host not found." });
