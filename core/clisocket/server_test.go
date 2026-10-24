@@ -59,7 +59,6 @@ func (resolver *fakePeerResolver) setAgentSession(session agentharness.Session) 
 	resolver.agentSession, resolver.isInsideAgent = session, session.PID != 0
 }
 
-// startHarness starts a process that stands in for omp, so the server watches a real process instance; stop ends it.
 func startHarness(t *testing.T) (session agentharness.Session, stop func()) {
 	t.Helper()
 	process := exec.Command("sleep", "60")
@@ -78,7 +77,10 @@ func startHarness(t *testing.T) (session agentharness.Session, stop func()) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: process.Process.Pid, StartTime: instance.StartTime, Directory: "/Users/alice/src/app"}, stop
+	return agentharness.Session{
+		Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: process.Process.Pid, StartTime: instance.StartTime, Directory: "/Users/developer/src/app",
+		Program: agentharness.Program{Signature: agentharness.Signature{Identifier: "omp-darwin-arm64", TeamID: "VTLHGQC72S"}},
+	}, stop
 }
 
 func (resolver *fakePeerResolver) setSession(session TerminalSession) {

@@ -19,41 +19,91 @@ func (approver *Approver) authorize(pending *pendingApproval, response approvalR
 		return errPasskeyCeremonyEnded
 	}
 	if response.password != "" {
+		choice := approver.getChoice(pending)
+		err := errPasswordCheck
 		switch {
 		case isLocked:
-			return unlocker.UnlockWithPassword(response.password)
+			err = unlocker.UnlockWithPassword(response.password)
 		case unlocker != nil:
-			return unlocker.VerifyPassword(response.password)
+			err = unlocker.VerifyPassword(response.password)
 		}
-		return errPasswordCheck
+		if err == nil {
+			approver.approveChoice(pending, choice)
+		}
+		return err
 	}
-	if pending.event.Kind == ApprovalKindPasskey && !approver.IsTouchIDApproval() {
-		return errPasswordRequired
-	}
-	if isLocked {
-		if !approver.IsTouchIDApproval() || !unlocker.IsTouchIDUnlockReady() {
+	if !approver.IsTouchIDApproval() {
+		if isLocked || pending.event.Kind == ApprovalKindPasskey {
 			return errPasswordRequired
 		}
-		return unlocker.UnlockWithTouchID(func(string) error {
-			if approver.authenticatePending(pending, pending.unlockReason) {
+		if pending.event.RequiresPresence {
+			return errPresenceRequired
+		}
+		return nil
+	}
+	for {
+		isLocked = approver.isLocked()
+		if pending.event.Kind == ApprovalKindPasskey && isLocked {
+			return errPasskeyCeremonyEnded
+		}
+		if isLocked && !unlocker.IsTouchIDUnlockReady() {
+			return errPasswordRequired
+		}
+		choice := approver.getChoice(pending)
+		authenticate := func() error {
+			if approver.authenticateChoice(pending, choice, isLocked) {
 				return nil
 			}
 			return errTouchIDFailed
-		})
-	}
-	if !approver.IsTouchIDApproval() {
-		return nil
-	}
-	confirm := func() error {
-		if approver.authenticatePending(pending, pending.approveReason) {
-			return nil
 		}
-		return errTouchIDFailed
+		var err error
+		switch {
+		case isLocked:
+			err = unlocker.UnlockWithTouchID(func(string) error { return authenticate() })
+		case unlocker != nil:
+			err = unlocker.ConfirmWithTouchID(authenticate)
+		default:
+			err = authenticate()
+		}
+		approver.mutex.Lock()
+		isChanged, isFinished := pending.choice != choice, pending.isFinished
+		approver.mutex.Unlock()
+		if !isChanged || isFinished {
+			return err
+		}
+		// A changed choice must restart key preparation too: macOS consumes it on the first native check.
 	}
-	if unlocker == nil {
-		return confirm()
+}
+
+func (approver *Approver) getChoice(pending *pendingApproval) agentChoice {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	return pending.choice
+}
+
+func (approver *Approver) approveChoice(pending *pendingApproval, choice agentChoice) {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	pending.approvedChoice = choice
+}
+
+func (approver *Approver) authenticateChoice(pending *pendingApproval, choice agentChoice, isUnlock bool) bool {
+	approveReason, unlockReason := pending.approveReason, pending.unlockReason
+	if pending.describeChoice != nil {
+		approveReason, unlockReason = pending.describeChoice(choice)
 	}
-	return unlocker.ConfirmWithTouchID(confirm)
+	reason := approveReason
+	if isUnlock {
+		reason = unlockReason
+	}
+	isAuthenticated := approver.authenticatePending(pending, reason)
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	if !isAuthenticated || pending.choice != choice || pending.isFinished {
+		return false
+	}
+	pending.approvedChoice = choice
+	return true
 }
 
 // waitForApproval shows the request until authorize succeeds, Deny, the phone, the deadline or ctx ends it; a failed authorize keeps it open.
@@ -62,7 +112,7 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 	phoneApprover := approver.config.PhoneApprover
 	pending.phoneChannel = make(chan approval.AcceptedAnswer, 1)
 	timeout := approver.config.Timeout
-	if phoneApprover != nil && pending.event.Kind != ApprovalKindPasskey && !pending.event.IsUnlockRequired && phoneApprover.IsPhoneApprovalAvailable() {
+	if phoneApprover != nil && pending.event.Kind != ApprovalKindPasskey && !pending.event.IsUnlockRequired && !pending.isMacOnly && phoneApprover.IsPhoneApprovalAvailable() {
 		phoneTimeout := max(timeout, approver.config.PhoneApprovalTimeout)
 		finishPhoneApproval, err := phoneApprover.StartPhoneApproval(pending.phoneRequest, pending.receivedAt.Add(phoneTimeout), func(answer approval.AcceptedAnswer) { approver.respondFromPhone(pending, answer) })
 		switch {
@@ -112,7 +162,7 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 		case authorizeError := <-authorizeResultChannel:
 			isAuthorizing = false
 			if authorizeError == nil {
-				return true
+				return !approver.isPendingDenied(pending)
 			}
 			if errors.Is(authorizeError, errPasskeyCeremonyEnded) {
 				return false
@@ -187,12 +237,54 @@ func (approver *Approver) isPendingRemembered(pending *pendingApproval) bool {
 	return pending.isRemembered
 }
 
+func (approver *Approver) isPendingDenied(pending *pendingApproval) bool {
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	return pending.isDenied
+}
+
 // SetRemembered follows the "Don't ask again" checkbox while Touch ID waits; the value at the time of approval counts.
 func (approver *Approver) SetRemembered(requestID string, isRemembered bool) {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	if pending := approver.findPending(requestID); pending != nil {
 		pending.isRemembered = isRemembered
+	}
+}
+
+// SetAgentGrantDuration follows an agent dialog's duration menu (a clisocket.AgentGrantDuration the dialog offers).
+func (approver *Approver) SetAgentGrantDuration(requestID, duration string) {
+	approver.changeChoice(requestID, func(pending *pendingApproval) {
+		if slices.Contains(pending.event.GrantDurations, duration) {
+			pending.choice.duration = clisocket.AgentGrantDuration(duration)
+			pending.event.GrantDuration = duration
+		}
+	})
+}
+
+// SetSignInLogin follows a sign-in dialog's choice among its logins.
+func (approver *Approver) SetSignInLogin(requestID string, loginIndex int) {
+	approver.changeChoice(requestID, func(pending *pendingApproval) {
+		if loginIndex >= 0 && loginIndex < len(pending.event.Logins) {
+			pending.choice.loginIndex = loginIndex
+			pending.event.LoginIndex = loginIndex
+		}
+	})
+}
+
+func (approver *Approver) changeChoice(requestID string, change func(pending *pendingApproval)) {
+	approver.mutex.Lock()
+	pending := approver.findPending(requestID)
+	if pending == nil {
+		approver.mutex.Unlock()
+		return
+	}
+	previous := pending.choice
+	change(pending)
+	isRestarting := pending.choice != previous && pending.isAuthenticating && approver.config.CancelBiometric != nil
+	approver.mutex.Unlock()
+	if isRestarting {
+		approver.config.CancelBiometric()
 	}
 }
 

@@ -39,6 +39,7 @@ func (approver *Approver) buildApprovalEvent(requestID string, request sshagent.
 	}
 	if request.AgentSession != nil {
 		nameAgentSession(&event, request.AgentSession.Session.Harness.Name)
+		event.RequiresPresence = true
 	}
 	description := DescribeRequest(processes, request, approver.config.HomeDirectory, approver.config.ReadFile)
 	event.Purpose, event.Action, event.Target = description.Purpose, description.Action, description.Target

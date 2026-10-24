@@ -65,6 +65,20 @@ export function SetPhoneApproval(isEnabled: boolean): $CancellablePromise<$model
     return $Call.ByID(4010617927, isEnabled);
 }
 
+/**
+ * SetSSHApprovalGrantDuration follows an agent dialog's duration menu; a change restarts a Touch ID check in progress.
+ */
+export function SetSSHApprovalGrantDuration(requestID: string, duration: string): $CancellablePromise<void> {
+    return $Call.ByID(657134729, requestID, duration);
+}
+
+/**
+ * SetSSHApprovalLogin follows a sign-in dialog's choice of login; a change restarts a Touch ID check in progress.
+ */
+export function SetSSHApprovalLogin(requestID: string, loginIndex: number): $CancellablePromise<void> {
+    return $Call.ByID(1342946390, requestID, loginIndex);
+}
+
 export function SetSSHApprovalRemembered(requestID: string, isRemembered: boolean): $CancellablePromise<void> {
     return $Call.ByID(2176224535, requestID, isRemembered);
 }

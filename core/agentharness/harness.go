@@ -4,6 +4,8 @@
 package agentharness
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"path/filepath"
 	"slices"
@@ -28,6 +30,9 @@ type Harness struct {
 	Scripts []Script
 	// PackagePaths match an argument inside one of these packages.
 	PackagePaths []string
+	// PythonModules match a Python running one of these modules: python -m module, or python -c with source that runs
+	// the module's main, as Hermes' launcher does with `from hermes_cli.main import main`.
+	PythonModules []string
 	// WorkerArgumentPrefix marks the harness's own worker processes: an argument after the program that starts with it.
 	// A worker belongs to the session of the harness process that started it.
 	WorkerArgumentPrefix string
@@ -52,7 +57,8 @@ type Script struct {
 // with its bin link, which starts the signed native codex; the native process is nearer every command and hisar mcp, so
 // it is the session. Codex's release archives, which Homebrew's cask installed before 0.146.1, name the native codex
 // after its target. hisar reads no signature, so a native install started by its own path is found by its folder or
-// file name.
+// file name. Hermes is unsigned Python: its launcher, which hermes and Hermes Desktop both run, starts the managed Python
+// with -I -c and source that imports hermes_cli.main, and a development backend runs python -m hermes_cli.main.
 var harnesses = []Harness{
 	{
 		ID:                   "omp",
@@ -84,6 +90,11 @@ var harnesses = []Harness{
 		Scripts:      []Script{{Runtime: "node", Name: "codex"}},
 		PackagePaths: []string{"@openai/codex"},
 	},
+	{
+		ID:            "hermes",
+		Name:          "Hermes",
+		PythonModules: []string{"hermes_cli.main"},
+	},
 }
 
 // Process is one process instance of a chain. StartTime is the kernel's start time, so two processes that held the same
@@ -105,14 +116,31 @@ type Chain struct {
 	IsKnown   bool
 }
 
-// Session is one harness process instance and the folder it works in. IsSigned: the process matched its harness by
-// code signature, which no other program can copy, rather than by a name or a path any program can take.
+// Session is one harness process instance, the program it runs and the folder it works in.
 type Session struct {
 	Harness   Harness
 	PID       int
 	StartTime int64
 	Directory string
-	IsSigned  bool
+	Program   Program
+}
+
+// Program binds grants to a verified code signature or kernel-reported executable path.
+// Interpreted harnesses also require an Entrypoint to distinguish scripts sharing a runtime.
+// The zero Program is unknown and matches no grants.
+type Program struct {
+	Signature  Signature
+	Path       string
+	Entrypoint string
+}
+
+func (program Program) IsKnown() bool {
+	return program != Program{}
+}
+
+// IsSigned reports whether the process matched its harness by code signature, which no other program can copy.
+func (session Session) IsSigned() bool {
+	return session.Program.Signature != Signature{}
 }
 
 // Find returns the session of the nearest harness in a chain, and ErrUnknownChain when the chain is unknown. A worker of
@@ -134,7 +162,7 @@ func Find(chain Chain) (Session, bool, error) {
 			}
 			return Session{
 				Harness: harness, PID: process.PID, StartTime: process.StartTime, Directory: process.WorkingDirectory,
-				IsSigned: harness.isSignedBy(process),
+				Program: harness.getProgram(process),
 			}, true, nil
 		}
 	}
@@ -149,6 +177,80 @@ func (harness Harness) isWorker(process Process) bool {
 
 func (harness Harness) isSignedBy(process Process) bool {
 	return process.Signature != (Signature{}) && slices.Contains(harness.Signatures, process.Signature)
+}
+
+func (harness Harness) getProgram(process Process) Program {
+	switch {
+	case harness.isSignedBy(process):
+		return Program{Signature: process.Signature}
+	case process.Path == "":
+		return Program{}
+	case harness.isNamedByExecutable(process.Path):
+		return Program{Path: process.Path}
+	}
+	entrypoint, isRead := readEntrypoint(process.Path, process.Arguments)
+	if !isRead {
+		return Program{}
+	}
+	return Program{Path: process.Path, Entrypoint: entrypoint}
+}
+
+func (harness Harness) isNamedByExecutable(path string) bool {
+	return slices.Contains(harness.ExecutableNames, strings.TrimSuffix(filepath.Base(path), ".exe")) || harness.isInVersionFolder(path)
+}
+
+// Relative scripts and Python modules have no externally verifiable entry path.
+// Loader options, repeated eval options and Python without -I can run other code.
+// Replaced scripts and code injected through the environment remain outside this identity check.
+func readEntrypoint(path string, arguments []string) (string, bool) {
+	arguments = arguments[min(1, len(arguments)):]
+	switch runtime := strings.TrimSuffix(filepath.Base(path), ".exe"); {
+	case runtime == "node" || runtime == "bun":
+		return readJavaScriptEntrypoint(arguments)
+	case isPythonName(runtime) && len(arguments) > 2 && arguments[0] == "-I" && arguments[1] == "-c":
+		return hashSource(arguments[2]), true
+	}
+	return "", false
+}
+
+// jsLoaderOptions are the Node and Bun options that load code besides the entry: preloads, loaders, and env files,
+// whose NODE_OPTIONS can add them.
+var jsLoaderOptions = []string{"-r", "--require", "--import", "--loader", "--experimental-loader", "--preload", "--env-file", "--env-file-if-exists"}
+
+var jsEvalOptions = []string{"-e", "--eval", "-p", "--print"}
+
+func readJavaScriptEntrypoint(arguments []string) (string, bool) {
+	if len(arguments) == 0 || slices.ContainsFunc(arguments, func(argument string) bool {
+		name, _, _ := strings.Cut(argument, "=")
+		return slices.Contains(jsLoaderOptions, name)
+	}) {
+		return "", false
+	}
+	first := arguments[0]
+	switch {
+	case slices.Contains(jsEvalOptions, first) && len(arguments) > 1:
+		if slices.ContainsFunc(arguments[2:], isJavaScriptEvalOption) {
+			return "", false
+		}
+		return hashSource(arguments[1]), true
+	case strings.HasPrefix(first, "-") || !filepath.IsAbs(first):
+		return "", false
+	}
+	path, err := filepath.EvalSymlinks(first)
+	if err != nil {
+		return "", false
+	}
+	return "script:" + path, true
+}
+
+func isJavaScriptEvalOption(argument string) bool {
+	name, _, _ := strings.Cut(argument, "=")
+	return slices.Contains(jsEvalOptions, name) || strings.HasPrefix(name, "-") && !strings.HasPrefix(name, "--") && strings.ContainsAny(name, "ep")
+}
+
+func hashSource(source string) string {
+	sum := sha256.Sum256([]byte(source))
+	return "source:" + hex.EncodeToString(sum[:])
 }
 
 func (harness Harness) matches(process Process) bool {
@@ -174,11 +276,53 @@ func (harness Harness) matches(process Process) bool {
 			}
 		}
 	}
-	return slices.ContainsFunc(process.Arguments, func(argument string) bool {
+	if slices.ContainsFunc(process.Arguments, func(argument string) bool {
 		return slices.ContainsFunc(harness.PackagePaths, func(packagePath string) bool {
 			return strings.Contains(filepath.ToSlash(argument), "/"+packagePath+"/")
 		})
+	}) {
+		return true
+	}
+	return harness.runsPythonModule(programNames, process.Arguments)
+}
+
+func (harness Harness) runsPythonModule(programNames, arguments []string) bool {
+	if len(harness.PythonModules) == 0 || !slices.ContainsFunc(programNames, isPythonName) {
+		return false
+	}
+	module, source := getPythonCode(arguments)
+	return slices.ContainsFunc(harness.PythonModules, func(name string) bool {
+		if module == name {
+			return true
+		}
+		for line := range strings.Lines(source) {
+			if strings.TrimSpace(line) == "from "+name+" import main" {
+				return true
+			}
+		}
+		return false
 	})
+}
+
+func isPythonName(name string) bool {
+	version, isPython := strings.CutPrefix(strings.ToLower(name), "python")
+	return isPython && strings.Trim(version, "0123456789.") == ""
+}
+
+func getPythonCode(arguments []string) (module, source string) {
+	for i := 1; i < len(arguments); i++ {
+		switch argument := arguments[i]; {
+		case argument == "-m" && i+1 < len(arguments):
+			return arguments[i+1], ""
+		case argument == "-c" && i+1 < len(arguments):
+			return "", arguments[i+1]
+		case argument == "-W" || argument == "-X":
+			i++
+		case !strings.HasPrefix(argument, "-") || argument == "-" || argument == "--":
+			return "", ""
+		}
+	}
+	return "", ""
 }
 
 func (harness Harness) isInVersionFolder(path string) bool {

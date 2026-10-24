@@ -253,15 +253,17 @@ func TestReplaceConfigKeepsAChangeMadeMeanwhile(t *testing.T) {
 	if err := os.WriteFile(path, []byte("model = \"o3\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	read, err := readConfig(path)
+	read, err := codexConfigFile.read(path)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte("model = \"o4\"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := replaceConfig(path, read, []byte("hisar\n")); !errors.Is(err, errCodexChanged) {
-		t.Fatalf("replaceConfig() error = %v; want errCodexChanged", err)
+	var changed configChangedError
+	if _, err := codexConfigFile.replace(read, []byte("hisar\n")); !errors.As(err, &changed) ||
+		err.Error() != "Codex's config.toml changed while Hisar was connecting. Try again" {
+		t.Fatalf("replaceConfig() error = %v; want the change kept", err)
 	}
 	if content, _ := os.ReadFile(path); string(content) != "model = \"o4\"\n" {
 		t.Fatalf("config.toml = %s; want the other change", content)
@@ -271,7 +273,7 @@ func TestReplaceConfigKeepsAChangeMadeMeanwhile(t *testing.T) {
 	}
 
 	created := filepath.Join(t.TempDir(), "codex", "config.toml")
-	missing, err := readConfig(created)
+	missing, err := codexConfigFile.read(created)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -281,8 +283,8 @@ func TestReplaceConfigKeepsAChangeMadeMeanwhile(t *testing.T) {
 	if err := os.WriteFile(created, nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := replaceConfig(created, missing, []byte("hisar\n")); !errors.Is(err, errCodexChanged) {
-		t.Fatalf("replaceConfig() over a file created meanwhile error = %v; want errCodexChanged", err)
+	if _, err := codexConfigFile.replace(missing, []byte("hisar\n")); !errors.As(err, &changed) {
+		t.Fatalf("replaceConfig() over a file created meanwhile error = %v; want the change kept", err)
 	}
 }
 
@@ -313,6 +315,7 @@ func TestListAgentsNamesEveryAgent(t *testing.T) {
 		{ID: "omp", Name: "omp", State: StateNotInstalled},
 		{ID: "claude-code", Name: "Claude Code", State: StateNotInstalled},
 		{ID: "codex", Name: "Codex", State: StateNotInstalled},
+		{ID: "hermes", Name: "Hermes", State: StateNotInstalled},
 	}
 	if !slices.Equal(got, want) {
 		t.Fatalf("ListAgents() = %+v; want %+v", got, want)

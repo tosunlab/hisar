@@ -1,0 +1,43 @@
+{
+  "Process": {
+    "PID": 0,
+    "ParentPID": 0,
+    "StartTime": 0,
+    "Path": "",
+    "Arguments": null,
+    "WorkingDirectory": "",
+    "Signature": {
+      "Identifier": "com.brave.Browser",
+      "TeamID": "KL8N8XSYF4"
+    }
+  },
+  "Frames": [
+    {
+      "Parent": -1,
+      "Document": 1,
+      "URL": "http://127.0.0.1:47811/newsletter"
+    }
+  ],
+  "Fields": [
+    {
+      "ID": 2,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "email",
+      "Label": "Your email",
+      "Identifier": "email",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    }
+  ],
+  "Buttons": [
+    {
+      "ID": 3,
+      "Frame": 0,
+      "Title": "Subscribe",
+      "IsVisible": true
+    }
+  ]
+}

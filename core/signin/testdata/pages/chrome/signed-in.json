@@ -1,0 +1,23 @@
+{
+  "Process": {
+    "PID": 0,
+    "ParentPID": 0,
+    "StartTime": 0,
+    "Path": "",
+    "Arguments": null,
+    "WorkingDirectory": "",
+    "Signature": {
+      "Identifier": "com.google.Chrome",
+      "TeamID": "EQHXZ8M8AV"
+    }
+  },
+  "Frames": [
+    {
+      "Parent": -1,
+      "Document": 1,
+      "URL": "http://127.0.0.1:47811/signed-in"
+    }
+  ],
+  "Fields": null,
+  "Buttons": null
+}

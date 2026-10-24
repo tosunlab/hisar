@@ -207,7 +207,7 @@ func TestSecretReferenceRefusesVaultNamesWhileAVaultNameDoesNotOpen(t *testing.T
 // Agents resolve among the vaults available to them, so only a vault among those whose name did not open refuses their
 // vault names.
 func TestAgentSecretReferenceRefusesVaultNamesWhileAnAgentVaultNameDoesNotOpen(t *testing.T) {
-	test := createAgentSessionTest(t, false)
+	test := createAgentSessionTest(t, clisocket.AgentGrantOnce)
 	f := test.testService
 	saveTestItem(t, f.service, f.familyID, ItemDetail{Title: "Deploy token", Password: "family-token-value"})
 	judgeCorruptFamilyName(t, f)

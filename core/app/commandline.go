@@ -20,14 +20,18 @@ type CommandLineBridge struct {
 	service *Service
 }
 
-// NewCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out, and lets the Service list and
-// revoke the agent sessions they keep.
+// NewCommandLineBridge also ends the CLI approvals whenever Hisar locks or signs out, tells them the account Hisar has,
+// keeps the grants of agent harnesses in the device state, and lets the Service list and revoke the agent sessions and
+// grants they keep.
 func NewCommandLineBridge(service *Service, approvals *clisocket.SessionApprovals) *CommandLineBridge {
 	service.mutex.Lock()
 	service.lockListeners = append(service.lockListeners, approvals.ClearAll)
 	service.commandLineApprovals = approvals
+	approvals.SetAccount(service.state.AccountID)
 	service.mutex.Unlock()
-	return &CommandLineBridge{service: service}
+	bridge := &CommandLineBridge{service: service}
+	approvals.SetAgentGrantStore(bridge)
+	return bridge
 }
 
 func (bridge *CommandLineBridge) GetHello() cliprotocol.HelloResult {
@@ -111,6 +115,14 @@ func (bridge *CommandLineBridge) HandleRequest(ctx context.Context, request *cli
 func (bridge *CommandLineBridge) answer(ctx context.Context, epoch uint64, request *cliprotocol.Request) (any, error) {
 	bound := CommandLineBridge{service: &Service{serviceState: bridge.service.serviceState, requestEpoch: &epoch}}
 	return bound.dispatch(ctx, epoch, request)
+}
+
+func (bridge *CommandLineBridge) requestService(ctx context.Context) (*Service, error) {
+	epoch, isBound := ctx.Value(sessionEpochKey{}).(uint64)
+	if !isBound || !bridge.service.isSessionEpoch(epoch) {
+		return nil, errCommandLineSessionEnded
+	}
+	return &Service{serviceState: bridge.service.serviceState, requestEpoch: &epoch}, nil
 }
 
 func (bridge *CommandLineBridge) dispatch(ctx context.Context, epoch uint64, request *cliprotocol.Request) (any, error) {

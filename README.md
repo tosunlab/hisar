@@ -40,7 +40,8 @@ Hisar is one Go implementation of the crypto shared by a Mac and Linux app, a br
 - **Phones.** The iPhone app with an AutoFill extension and the Android app with autofill into apps, built on the same Go backend. The phone can also approve requests that arrive at your Mac.
 - **Sharing.** Share a vault with anyone by email, send a login to someone without an account through an end-to-end encrypted share link, and group people into organizations and teams with organization vaults.
 - **Secrets for commands.** Keep `hisar://vault/item/field` references in your `.env` instead of values. `hisar run --env-file .env -- <command>` resolves them in one approval and masks the secret values it recognizes in what the command prints.
-- **Coding agents.** `hisar mcp` is an MCP server that shows an agent only the vaults you allow and asks you before every command it runs with secrets. Claude Code, Codex and omp connect with one click in Settings.
+- **Coding agents.** `hisar mcp` shows an agent only the vaults you allow and asks before a command uses secrets, unless a grant covers them. Claude Code, Codex, Hermes and omp connect with one click in Settings.
+- **Website sign-in for agents.** A computer-use agent such as Hermes asks Hisar for Mac to sign in through a Brave, Chrome or Edge window. Hisar fills and submits the login, then attempts to clear remaining entries and reports the cleanup evidence. The tool returns no password or one-time code. Page scripts and captures can still expose entered values ([how it works](docs/docs/apps/cli.md#sign-in-to-websites-computer-use-agents)).
 - **In and out.** Import from 1Password, Bitwarden, LastPass and CSV, and passkeys through Credential Exchange on the phone. Export everything as encrypted or plain JSON and import it back.
 - **Recovery you control.** A forgotten master password cannot be recovered by anyone, Hisar included. The Emergency Kit PDF holds your email, server and Secret Key, so that with your master password you can sign in on any new device.
 - **Self-hosted in one binary.** `hisar-server` and Postgres, with an admin dashboard at `/admin` whose crypto runs in the browser as WebAssembly, so its API offers no way to read a vault. The server serves that code, so an admin who signs in there trusts the server with their factors.
@@ -89,7 +90,7 @@ GITHUB_TOKEN=hisar://Personal/GitHub/API%20token
 hisar run --env-file .env -- npm test             # one approval; printed secrets become <concealed by hisar>
 ```
 
-Let a coding agent run commands with your secrets: in Settings → Developer tools → Coding agents, turn on **Available to agents** for a vault and click **Connect** next to Claude Code, Codex or omp. Any other MCP client gets a stdio server:
+To let a coding agent run commands with your secrets, open Settings → Developer tools → Coding agents. Turn on **Available to agents** for a vault and click **Connect** next to Claude Code, Codex, Hermes or omp. Any other MCP client gets a stdio server:
 
 ```sh
 hisar mcp --no-reveal                             # --no-reveal: no tool returns a secret's value directly

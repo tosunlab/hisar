@@ -1,0 +1,60 @@
+{
+  "Process": {
+    "PID": 0,
+    "ParentPID": 0,
+    "StartTime": 0,
+    "Path": "",
+    "Arguments": null,
+    "WorkingDirectory": "",
+    "Signature": {
+      "Identifier": "com.google.Chrome",
+      "TeamID": "EQHXZ8M8AV"
+    }
+  },
+  "Frames": [
+    {
+      "Parent": -1,
+      "Document": 1,
+      "URL": "http://127.0.0.1:47811/iframe"
+    },
+    {
+      "Parent": 0,
+      "Document": 2,
+      "URL": "http://localhost:47812/plain"
+    }
+  ],
+  "Fields": [
+    {
+      "ID": 3,
+      "Frame": 1,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Username",
+      "Identifier": "username",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 4,
+      "Frame": 1,
+      "IsSecure": true,
+      "InputType": "secure text field",
+      "Label": "Password",
+      "Identifier": "password",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    }
+  ],
+  "Buttons": [
+    {
+      "ID": 5,
+      "Frame": 1,
+      "Title": "Sign in",
+      "IsVisible": true
+    }
+  ]
+}

@@ -324,6 +324,13 @@ export function GenerateSSHKey(vaultID: string, title: string, keyType: string):
     return $Call.ByID(1138867563, vaultID, title, keyType);
 }
 
+/**
+ * GetAgentSignIn reads Settings → Coding agents → Website sign-in, and whether the system gives Hisar Accessibility now.
+ */
+export function GetAgentSignIn(): $CancellablePromise<$models.AgentSignIn> {
+    return $Call.ByID(2932810882);
+}
+
 export function GetExportOptions(): $CancellablePromise<$models.ExportOptions> {
     return $Call.ByID(2477468897);
 }
@@ -419,6 +426,13 @@ export function LeaveOrganization(organizationID: string): $CancellablePromise<v
 
 export function LeaveVault(vaultID: string): $CancellablePromise<void> {
     return $Call.ByID(3043050832, vaultID);
+}
+
+/**
+ * ListAgentGrants lists the grants of coding agents by agent, then by item.
+ */
+export function ListAgentGrants(): $CancellablePromise<$models.AgentGrant[] | null> {
+    return $Call.ByID(1146602733);
 }
 
 /**
@@ -647,8 +661,16 @@ export function ResumePendingRecoveryWithSecretKey(operationID: string, password
 }
 
 /**
+ * RevokeAgentGrant ends one grant (ID from ListAgentGrants): its agent asks again next time. It returns the grants left.
+ */
+export function RevokeAgentGrant(id: string): $CancellablePromise<$models.AgentGrant[] | null> {
+    return $Call.ByID(1298389898, id);
+}
+
+/**
  * RevokeAgentSession ends the session of the harness process (PID and StartTime from ListAgentSessions): its open
- * approval windows close, it forgets its secrets, and its next request asks again. It returns the sessions left.
+ * approval windows close, it forgets what the session remembers, and its next request asks again; the harness's grants
+ * (ListAgentGrants) stay. It returns the sessions left.
  */
 export function RevokeAgentSession(pid: number, startTime: number): $CancellablePromise<$models.AgentSession[] | null> {
     return $Call.ByID(311041440, pid, startTime);
@@ -688,6 +710,14 @@ export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
 
 export function SavePendingRecoveryEmergencyKit(operationID: string, password: string): $CancellablePromise<string> {
     return $Call.ByID(3209141355, operationID, password);
+}
+
+/**
+ * SetAgentSignInEnabled turns website sign-in for agents on or off; turning it on without the Accessibility permission
+ * has the system ask for it.
+ */
+export function SetAgentSignInEnabled(isEnabled: boolean): $CancellablePromise<$models.AgentSignIn> {
+    return $Call.ByID(757356227, isEnabled);
 }
 
 /**

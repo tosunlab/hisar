@@ -50,6 +50,7 @@ type BrowserBridgeConfig struct {
 	// ShowPairing shows the pairing code in the app window; nil clears it.
 	ShowPairing func(request *BrowserPairingRequest)
 	ShowWindow  func()
+	OnUnlock    func()
 	// InstallHostManifests registers the native host with the installed browsers.
 	InstallHostManifests func() []browserprotocol.BrowserInstallation
 }

@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -191,6 +192,70 @@ func (biometric *fakeBiometric) DeleteKey(accountID string) error {
 	return nil
 }
 
+// memoryAgentGrantHeads is an AgentGrantHeadStore in memory. err, while set, fails every call, as a keychain the user
+// denied would. onWrite, while set, runs once inside the next save, as something else would while the keychain writes.
+type memoryAgentGrantHeads struct {
+	mutex   sync.Mutex
+	head    []byte
+	err     error
+	onWrite func()
+}
+
+func (heads *memoryAgentGrantHeads) LoadAgentGrantHead() ([]byte, error) {
+	heads.mutex.Lock()
+	defer heads.mutex.Unlock()
+	if heads.err != nil {
+		return nil, heads.err
+	}
+	if heads.head == nil {
+		return nil, ErrNoAgentGrantHead
+	}
+	return slices.Clone(heads.head), nil
+}
+
+func (heads *memoryAgentGrantHeads) SaveAgentGrantHead(head []byte) error {
+	heads.mutex.Lock()
+	onWrite := heads.onWrite
+	heads.onWrite = nil
+	heads.mutex.Unlock()
+	if onWrite != nil {
+		onWrite()
+	}
+	heads.mutex.Lock()
+	defer heads.mutex.Unlock()
+	if heads.err == nil {
+		heads.head = slices.Clone(head)
+	}
+	return heads.err
+}
+
+func (heads *memoryAgentGrantHeads) setOnWrite(onWrite func()) {
+	heads.mutex.Lock()
+	defer heads.mutex.Unlock()
+	heads.onWrite = onWrite
+}
+
+func (heads *memoryAgentGrantHeads) DeleteAgentGrantHead() error {
+	heads.mutex.Lock()
+	defer heads.mutex.Unlock()
+	if heads.err == nil {
+		heads.head = nil
+	}
+	return heads.err
+}
+
+func (heads *memoryAgentGrantHeads) setError(err error) {
+	heads.mutex.Lock()
+	defer heads.mutex.Unlock()
+	heads.err = err
+}
+
+func (heads *memoryAgentGrantHeads) getHead() []byte {
+	heads.mutex.Lock()
+	defer heads.mutex.Unlock()
+	return slices.Clone(heads.head)
+}
+
 func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyStore) (*Service, *fakeClipboard, *fakeLockNotifier) {
 	t.Helper()
 	clipboard := &fakeClipboard{}
@@ -209,6 +274,7 @@ func createTestService(t *testing.T, statePath string, secretKeyStore SecretKeyS
 		BiometricName:       "Touch ID",
 		FileSaver:           &fakeFileSaver{},
 		FileOpener:          &fakeFileOpener{},
+		AgentGrantHeads:     &memoryAgentGrantHeads{},
 	})
 	if err != nil {
 		t.Fatal(err)

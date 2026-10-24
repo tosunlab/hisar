@@ -1,0 +1,127 @@
+{
+  "Process": {
+    "PID": 0,
+    "ParentPID": 0,
+    "StartTime": 0,
+    "Path": "",
+    "Arguments": null,
+    "WorkingDirectory": "",
+    "Signature": {
+      "Identifier": "com.google.Chrome",
+      "TeamID": "EQHXZ8M8AV"
+    }
+  },
+  "Frames": [
+    {
+      "Parent": -1,
+      "Document": 1,
+      "URL": "http://127.0.0.1:47811/split-totp"
+    }
+  ],
+  "Fields": [
+    {
+      "ID": 2,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Digit 1",
+      "Identifier": "digit-1",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 3,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Digit 2",
+      "Identifier": "digit-2",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 4,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Digit 3",
+      "Identifier": "digit-3",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 5,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Digit 4",
+      "Identifier": "digit-4",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 6,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Digit 5",
+      "Identifier": "digit-5",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 7,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Digit 6",
+      "Identifier": "digit-6",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 8,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Digit 7",
+      "Identifier": "digit-7",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 9,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "text field",
+      "Label": "Digit 8",
+      "Identifier": "digit-8",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    }
+  ],
+  "Buttons": [
+    {
+      "ID": 10,
+      "Frame": 0,
+      "Title": "Verify",
+      "IsVisible": true
+    }
+  ]
+}

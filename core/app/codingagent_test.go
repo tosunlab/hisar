@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,8 +19,10 @@ import (
 	"github.com/tryhisar/hisar/core/agentharness"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/clisocket"
+	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localsocket"
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/core/secretreference"
 	"github.com/tryhisar/hisar/core/sshagent"
 )
 
@@ -63,18 +66,24 @@ func (resolver insideOmpResolver) GetAgentSession(int) (agentharness.Session, bo
 	return resolver.session, true, nil
 }
 
-// approvingAgentApprover approves every agent request, remembering its secrets when isRemembered.
 type approvingAgentApprover struct {
-	mutex        sync.Mutex
-	requests     []clisocket.AgentApprovalRequest
-	isRemembered bool
+	mutex      sync.Mutex
+	requests   []clisocket.AgentApprovalRequest
+	duration   clisocket.AgentGrantDuration
+	loginIndex int
+	onApprove  func()
 }
 
 func (approver *approvingAgentApprover) ApproveAgent(_ context.Context, request clisocket.AgentApprovalRequest) (clisocket.AgentApprovalResult, error) {
 	approver.mutex.Lock()
-	defer approver.mutex.Unlock()
 	approver.requests = append(approver.requests, request)
-	return clisocket.AgentApprovalResult{IsRemembered: approver.isRemembered}, nil
+	onApprove := approver.onApprove
+	result := clisocket.AgentApprovalResult{Duration: approver.duration, LoginIndex: approver.loginIndex}
+	approver.mutex.Unlock()
+	if onApprove != nil {
+		onApprove()
+	}
+	return result, nil
 }
 
 func (approver *approvingAgentApprover) getCount() int {
@@ -213,6 +222,8 @@ func (resolver *ternResolver) setInsideOmp(isInsideOmp bool) {
 type agentSessionTest struct {
 	testService         unlockedTestService
 	server              *clisocket.Server
+	approvals           *clisocket.SessionApprovals
+	bridge              *CommandLineBridge
 	resolver            *ternResolver
 	agentApprover       *approvingAgentApprover
 	commandLineApprover *countingApprover
@@ -221,7 +232,7 @@ type agentSessionTest struct {
 
 const deployTokenReference = "hisar://Personal/Deploy%20token/password"
 
-func createAgentSessionTest(t *testing.T, isRemembered bool) *agentSessionTest {
+func createAgentSessionTest(t *testing.T, duration clisocket.AgentGrantDuration) *agentSessionTest {
 	t.Helper()
 	testService := createUnlockedTestService(t)
 	if _, err := testService.service.SaveItem(testService.personalID, ItemDetail{Title: "Deploy token", Password: "deploy-token-value"}); err != nil {
@@ -235,18 +246,18 @@ func createAgentSessionTest(t *testing.T, isRemembered bool) *agentSessionTest {
 		t.Fatal(err)
 	}
 	omp := agentharness.Session{
-		Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: os.Getpid(), StartTime: instance.StartTime,
-		Directory: "/Users/alice/src/hisarapp-core", IsSigned: true,
+		Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: os.Getpid(), StartTime: instance.StartTime, Directory: "/Users/alice/src/hisarapp-core",
+		Program: agentharness.Program{Signature: agentharness.Signature{Identifier: "omp-darwin-arm64", TeamID: "VTLHGQC72S"}},
 	}
 	test := &agentSessionTest{
 		testService: testService, resolver: &ternResolver{omp: omp, isInsideOmp: true},
-		agentApprover: &approvingAgentApprover{isRemembered: isRemembered}, commandLineApprover: &countingApprover{},
+		agentApprover: &approvingAgentApprover{duration: duration}, commandLineApprover: &countingApprover{},
 		sessions: agentharness.NewSessions(nil),
 	}
-	approvals := clisocket.NewSessionApprovals(0, nil, test.sessions)
-	bridge := NewCommandLineBridge(testService.service, approvals)
+	test.approvals = clisocket.NewSessionApprovals(0, nil, test.sessions)
+	test.bridge = NewCommandLineBridge(testService.service, test.approvals)
 	test.server = clisocket.NewServer(clisocket.ServerConfig{
-		Handler: bridge, Approver: test.commandLineApprover, AgentApprover: test.agentApprover, Approvals: approvals, AgentHosts: bridge,
+		Handler: test.bridge, Approver: test.commandLineApprover, AgentApprover: test.agentApprover, Approvals: test.approvals, AgentHosts: test.bridge,
 		PeerResolver: test.resolver, IdentifyApp: func(int) (clisocket.AppIdentity, bool) { return ternApp, true },
 	})
 	return test
@@ -269,9 +280,10 @@ func (test *agentSessionTest) runDeploy(t *testing.T, connection *commandLineTes
 	}
 }
 
-func TestListAgentSessionsShowsRememberedSecrets(t *testing.T) {
-	test := createAgentSessionTest(t, true)
+func TestHarnessGrantsAreListedAndOutliveLockNotSignOut(t *testing.T) {
+	test := createAgentSessionTest(t, clisocket.AgentGrantHour)
 	service := test.testService.service
+	prepareTestApprovalUnlock(t, test.testService, "master password")
 	if sessions := service.ListAgentSessions(); len(sessions) != 0 {
 		t.Fatalf("sessions before any request: %+v", sessions)
 	}
@@ -291,21 +303,307 @@ func TestListAgentSessionsShowsRememberedSecrets(t *testing.T) {
 	if firstRequestAt, err := time.Parse(time.RFC3339, listed.FirstRequestAt); err != nil || firstRequestAt.Before(approvedAt.Truncate(time.Second)) {
 		t.Errorf("first request at %q, %v", listed.FirstRequestAt, err)
 	}
-	if len(listed.RememberedSecrets) != 1 || listed.RememberedSecrets[0].Name != "Personal › Deploy token › password" || listed.RememberedSecrets[0].IsReveal {
-		t.Fatalf("remembered %+v", listed.RememberedSecrets)
+	if len(listed.RememberedSecrets) != 0 {
+		t.Errorf("the session lists what its harness remembers: %+v", listed.RememberedSecrets)
 	}
-	if expiresAt, err := time.Parse(time.RFC3339, listed.RememberedSecrets[0].ExpiresAt); err != nil || expiresAt.Sub(approvedAt) < 59*time.Minute {
-		t.Errorf("expires at %q, %v", listed.RememberedSecrets[0].ExpiresAt, err)
+	grants := service.ListAgentGrants()
+	if len(grants) != 1 || grants[0].Scope != "harness" || grants[0].HarnessName != "omp" || grants[0].Name != "Personal › Deploy token › password" ||
+		grants[0].Kind != clisocket.AgentRequestRun || grants[0].Website != "" {
+		t.Fatalf("grants %+v", grants)
+	}
+	if expiresAt, err := time.Parse(time.RFC3339, grants[0].ExpiresAt); err != nil || expiresAt.Sub(approvedAt) < 59*time.Minute {
+		t.Errorf("expires at %q, %v", grants[0].ExpiresAt, err)
+	}
+	stateFile, err := os.ReadFile(service.config.StatePath)
+	if err != nil || !strings.Contains(string(stateFile), `"sealedAgentGrants"`) || strings.Contains(string(stateFile), `"harnessId"`) ||
+		strings.Contains(string(stateFile), `"fieldLabel"`) {
+		t.Fatalf("the grant is not sealed in the state: %s, %v", stateFile, err)
 	}
 
 	service.Lock()
-	if sessions := service.ListAgentSessions(); len(sessions) != 1 || len(sessions[0].RememberedSecrets) != 0 {
-		t.Errorf("after lock: %+v", sessions)
+	if grants := service.ListAgentGrants(); len(grants) != 0 {
+		t.Errorf("a grant is open while Hisar is locked: %+v", grants)
+	}
+	if _, err := service.Unlock("master password"); err != nil {
+		t.Fatal(err)
+	}
+	if grants := service.ListAgentGrants(); len(grants) != 1 {
+		t.Errorf("locking ended the harness's grants: %+v", grants)
+	}
+	test.runDeploy(t, test.connect(t))
+	if count := test.agentApprover.getCount(); count != 1 {
+		t.Errorf("the grant reopened after the unlock asked again: %d approvals", count)
+	}
+	if head := getTestAgentGrantHeads(service).getHead(); len(head) == 0 {
+		t.Fatal("the saved grant has no head")
+	}
+	if _, err := service.SignOut(); err != nil {
+		t.Fatal(err)
+	}
+	if grants := service.ListAgentGrants(); len(grants) != 0 {
+		t.Errorf("after signing out: %+v", grants)
+	}
+	if head := getTestAgentGrantHeads(service).getHead(); head != nil {
+		t.Errorf("signing out kept the grants' head: %x", head)
 	}
 }
 
-func TestRevokeAgentSessionAsksAgain(t *testing.T) {
-	test := createAgentSessionTest(t, true)
+func TestAgentGrantWrittenIntoTheStateFileIsDropped(t *testing.T) {
+	test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+	service := test.testService.service
+	prepareTestApprovalUnlock(t, test.testService, "master password")
+	test.runDeploy(t, test.connect(t))
+	service.mutex.Lock()
+	plaintext, err := crypt.OpenAgentGrants(service.unlockedSession.Keyset.UserKey, test.testService.accountID, service.state.SealedAgentGrants)
+	service.mutex.Unlock()
+	if err != nil || !strings.Contains(string(plaintext), `"programIdentifier":"omp-darwin-arm64"`) {
+		t.Fatalf("saved grants %s, %v", plaintext, err)
+	}
+	if _, err := service.RevokeAgentGrant(service.ListAgentGrants()[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	service.Lock()
+	forged, err := crypt.SealAgentGrants(crypt.GenerateKey(), test.testService.accountID, plaintext)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state, err := localstate.Load(service.config.StatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.SealedAgentGrants = forged
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	service.mutex.Lock()
+	service.state = state
+	service.mutex.Unlock()
+	if _, err := service.Unlock("master password"); err != nil {
+		t.Fatal(err)
+	}
+	if listed := service.ListAgentGrants(); len(listed) != 0 {
+		t.Errorf("a forged grant opened: %+v", listed)
+	}
+	test.runDeploy(t, test.connect(t))
+	if count := test.agentApprover.getCount(); count != 2 {
+		t.Errorf("the forged Always grant skipped the dialog: %d approvals", count)
+	}
+}
+
+func TestSessionGrantOutlivesLockAndEndsWithSignOut(t *testing.T) {
+	test := createAgentSessionTest(t, clisocket.AgentGrantHour)
+	service := test.testService.service
+	prepareTestApprovalUnlock(t, test.testService, "master password")
+	test.resolver.omp.Program = agentharness.Program{}
+	connection := test.connect(t)
+	test.runDeploy(t, connection)
+	grants := service.ListAgentGrants()
+	if len(grants) != 1 || grants[0].Scope != "session" || grants[0].HarnessName != "omp" || grants[0].Name != "Personal › Deploy token › password" || grants[0].ExpiresAt == "" {
+		t.Fatalf("grants %+v", grants)
+	}
+	service.Lock()
+	if listed := service.ListAgentGrants(); len(listed) != 1 || listed[0].Name != "Personal › Deploy token › password" {
+		t.Errorf("while locked: %+v", listed)
+	}
+	if _, err := service.Unlock("master password"); err != nil {
+		t.Fatal(err)
+	}
+	test.runDeploy(t, connection)
+	if count := test.agentApprover.getCount(); count != 1 {
+		t.Errorf("the lock ended the session's grant: %d approvals", count)
+	}
+	if left, err := service.RevokeAgentGrant(grants[0].ID); err != nil || len(left) != 0 {
+		t.Fatalf("revoking left %+v, %v", left, err)
+	}
+	test.runDeploy(t, connection)
+	if count := test.agentApprover.getCount(); count != 2 {
+		t.Errorf("a revoked grant was used: %d approvals", count)
+	}
+	if _, err := service.SignOut(); err != nil {
+		t.Fatal(err)
+	}
+	if left := service.ListAgentGrants(); len(left) != 0 {
+		t.Errorf("after signing out: %+v", left)
+	}
+}
+
+func TestScriptHarnessGrantKeepsItsScriptAcrossAnUnlock(t *testing.T) {
+	test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+	service := test.testService.service
+	prepareTestApprovalUnlock(t, test.testService, "master password")
+	approved := agentharness.Program{Path: "/opt/homebrew/bin/bun", Entrypoint: "script:/Users/developer/.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"}
+	test.resolver.omp.Program = approved
+	test.runDeploy(t, test.connect(t))
+	service.Lock()
+	if _, err := service.Unlock("master password"); err != nil {
+		t.Fatal(err)
+	}
+	test.runDeploy(t, test.connect(t))
+	if count := test.agentApprover.getCount(); count != 1 {
+		t.Errorf("the reopened grant lost its script: %d approvals", count)
+	}
+	service.RevokeAgentSession(test.resolver.omp.PID, test.resolver.omp.StartTime)
+	test.resolver.mutex.Lock()
+	test.resolver.omp.Program = agentharness.Program{Path: approved.Path, Entrypoint: "script:/Users/developer/other/omp"}
+	test.resolver.mutex.Unlock()
+	test.runDeploy(t, test.connect(t))
+	if count := test.agentApprover.getCount(); count != 2 {
+		t.Errorf("another script Bun runs used the grant: %d approvals", count)
+	}
+}
+
+type listHookedAgentGrants struct {
+	clisocket.AgentGrantStore
+	onList func()
+}
+
+func (store *listHookedAgentGrants) ListAgentGrants() []clisocket.AgentGrant {
+	grants := store.AgentGrantStore.ListAgentGrants()
+	if hook := store.onList; hook != nil {
+		store.onList = nil
+		hook()
+	}
+	return grants
+}
+
+type addHookedAgentGrants struct {
+	clisocket.AgentGrantStore
+	onAdd func()
+}
+
+func (store *addHookedAgentGrants) AddAgentGrants(ctx context.Context, authorization clisocket.AgentAuthorization, grants []clisocket.AgentGrant) error {
+	if hook := store.onAdd; hook != nil {
+		store.onAdd = nil
+		hook()
+	}
+	return store.AgentGrantStore.AddAgentGrants(ctx, authorization, grants)
+}
+
+func TestAgentGrantIsNotSavedOnceItsAuthorizationEnded(t *testing.T) {
+	for name, end := range map[string]func(test *agentSessionTest){
+		"session revoked": func(test *agentSessionTest) {
+			test.testService.service.RevokeAgentSession(test.resolver.omp.PID, test.resolver.omp.StartTime)
+		},
+		"signed out": func(test *agentSessionTest) { test.approvals.SetAccount("") },
+	} {
+		test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+		test.approvals.SetAgentGrantStore(&addHookedAgentGrants{AgentGrantStore: test.bridge, onAdd: func() { end(test) }})
+		connection := test.connect(t).connection
+		connection.SetDeadline(time.Now().Add(10 * time.Second))
+		request := cliprotocol.Request{ID: "1", Type: cliprotocol.TypeResolveSecret, References: []string{deployTokenReference}, CommandLine: []string{"make", "deploy"}}
+		if err := cliprotocol.WriteJSON(connection, request); err != nil {
+			t.Fatal(err)
+		}
+		var response cliprotocol.Response
+		if err := cliprotocol.ReadJSON(connection, &response); err == nil && response.Error == nil {
+			t.Errorf("%s: handed out %s", name, response.Result)
+		}
+		if grants := test.bridge.ListAgentGrants(); len(grants) != 0 {
+			t.Errorf("%s: saved %+v", name, grants)
+		}
+	}
+}
+
+func TestAgentRequestUsesOnlyTheApprovedItem(t *testing.T) {
+	for name, request := range map[string]cliprotocol.Request{
+		"run":    {Type: cliprotocol.TypeAgentResolveSecret, References: []string{deployTokenReference}, CommandLine: []string{"make", "deploy"}},
+		"reveal": {Type: cliprotocol.TypeAgentRevealSecret, References: []string{deployTokenReference}},
+		"code":   {Type: cliprotocol.TypeAgentGetCode, References: []string{deployTokenReference}},
+	} {
+		test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+		service, personalID := test.testService.service, test.testService.personalID
+		rename := func(from, to string) {
+			detail, err := service.GetItem(personalID, findItemID(t, service, personalID, from))
+			if err != nil {
+				t.Fatal(err)
+			}
+			detail.Title, detail.OneTimePassword = to, "otpauth://totp/"+to+"?secret=JBSWY3DPEHPK3PXP"
+			if _, err := service.SaveItem(personalID, detail); err != nil {
+				t.Fatal(err)
+			}
+		}
+		swap := func() {
+			rename("Deploy token", "Approved token")
+			rename("Unapproved token", "Deploy token")
+		}
+		if _, err := service.SaveItem(personalID, ItemDetail{Title: "Unapproved token", Password: "unapproved-value"}); err != nil {
+			t.Fatal(err)
+		}
+		rename("Deploy token", "Deploy token")
+		connection := test.connect(t)
+		connection.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentHello, AgentName: "omp"}, nil)
+
+		test.agentApprover.onApprove = swap
+		if failure := connection.send(t, request, nil); !strings.HasPrefix(failure, "denied: The request no longer names what the user approved (“Personal › Deploy token") {
+			t.Errorf("%s: an item renamed during the dialog: %q", name, failure)
+		}
+		test.agentApprover.onApprove = nil
+		rename("Deploy token", "Unapproved token")
+		rename("Approved token", "Deploy token")
+		connection.mustSend(t, request, nil)
+
+		test.approvals.SetAgentGrantStore(&listHookedAgentGrants{AgentGrantStore: test.bridge, onList: swap})
+		if failure := connection.send(t, request, nil); !strings.HasPrefix(failure, "denied: The request no longer names what the user approved") {
+			t.Errorf("%s: an item renamed after a grant covered it: %q", name, failure)
+		}
+		if count := test.agentApprover.getCount(); count != 1 {
+			t.Errorf("%s: %d approvals; the approved item's grant should cover it once it is named again", name, count)
+		}
+	}
+}
+
+func TestAgentApprovalKeepsIDPriorityAndRefusesNewAmbiguity(t *testing.T) {
+	for _, useID := range []bool{true, false} {
+		t.Run(fmt.Sprintf("by ID %v", useID), func(t *testing.T) {
+			test := createAgentSessionTest(t, clisocket.AgentGrantAlways)
+			service, vaultID := test.testService.service, test.testService.personalID
+			itemID := findItemID(t, service, vaultID, "Deploy token")
+			reference := deployTokenReference
+			shadowTitle := "Deploy token"
+			if useID {
+				reference = secretreference.Reference{Vault: vaultID, Item: itemID, Field: "password"}.String()
+				shadowTitle = itemID
+			}
+			connection := test.connect(t)
+			connection.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeAgentHello, AgentName: "omp"}, nil)
+			test.agentApprover.onApprove = func() {
+				if _, err := service.SaveItem(vaultID, ItemDetail{Title: shadowTitle, Password: "unapproved-value"}); err != nil {
+					t.Error(err)
+				}
+			}
+			var result cliprotocol.ResolveSecretResult
+			failure := connection.send(t, cliprotocol.Request{
+				Type: cliprotocol.TypeAgentResolveSecret, References: []string{reference}, CommandLine: []string{"make", "deploy"},
+			}, &result)
+			if useID {
+				if failure != "" || !slices.Equal(result.Values, []string{"deploy-token-value"}) {
+					t.Errorf("an ID-shaped title displaced the approved ID: %q %+v", failure, result)
+				}
+			} else if !strings.HasPrefix(failure, "not-found: ") || !strings.Contains(failure, "use the item's ID") || len(result.Values) != 0 {
+				t.Errorf("a newly ambiguous title returned a secret: %q %+v", failure, result)
+			}
+		})
+	}
+}
+
+func findItemID(t *testing.T, service *Service, vaultID, title string) string {
+	t.Helper()
+	summaries, err := service.ListItems(vaultID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, summary := range summaries {
+		if summary.Title == title {
+			return summary.ID
+		}
+	}
+	t.Fatalf("no item is titled %q", title)
+	return ""
+}
+
+func TestRevokeAgentSessionKeepsTheHarnessGrants(t *testing.T) {
+	test := createAgentSessionTest(t, clisocket.AgentGrantHour)
 	service := test.testService.service
 	revoked := test.connect(t)
 	test.runDeploy(t, revoked)
@@ -323,11 +621,20 @@ func TestRevokeAgentSessionAsksAgain(t *testing.T) {
 		t.Error("the revoked session's connection stayed open")
 	}
 	test.runDeploy(t, test.connect(t))
-	if count := test.agentApprover.getCount(); count != 2 {
-		t.Errorf("after revoking, %d approvals; want a second one", count)
+	if count := test.agentApprover.getCount(); count != 1 {
+		t.Errorf("the next session asked for what omp remembers: %d approvals", count)
 	}
 	if sessions := service.ListAgentSessions(); len(sessions) != 1 || sessions[0].PID != omp.PID {
 		t.Errorf("the next request did not start a session: %+v", sessions)
+	}
+
+	grant := service.ListAgentGrants()[0]
+	if left, err := service.RevokeAgentGrant(grant.ID); err != nil || len(left) != 0 {
+		t.Fatalf("revoking the grant left %+v, %v", left, err)
+	}
+	test.runDeploy(t, test.connect(t))
+	if count := test.agentApprover.getCount(); count != 2 {
+		t.Errorf("after revoking the grant, %d approvals; want a second one", count)
 	}
 }
 
@@ -389,7 +696,7 @@ func (test *agentSessionTest) generateDeployKey(t *testing.T) ssh.PublicKey {
 // TestRevokeAgentSessionEndsItsSSHApprovals: an omp that only used SSH is listed in Settings, and revoking it there
 // ends the SSH approval it remembered, as for the command line.
 func TestRevokeAgentSessionEndsItsSSHApprovals(t *testing.T) {
-	test := createAgentSessionTest(t, true)
+	test := createAgentSessionTest(t, clisocket.AgentGrantHour)
 	service := test.testService.service
 	approver := &recordingApprover{isAllowed: true, isRemembered: true}
 	sign := test.startSSHAgent(t, approver, ompSSHResolver{test}, test.generateDeployKey(t))
@@ -431,7 +738,7 @@ func (resolver ternSSHResolver) ResolvePeer(net.Conn) (sshagent.Peer, error) {
 // TestOpenSSHConnectionLosesAppApprovalWhenHostRecorded: an SSH connection from Tern stays open while omp's first
 // hisar request makes Tern an agent host. Its next signature asks again rather than reusing Tern's app approval.
 func TestOpenSSHConnectionLosesAppApprovalWhenHostRecorded(t *testing.T) {
-	test := createAgentSessionTest(t, true)
+	test := createAgentSessionTest(t, clisocket.AgentGrantHour)
 	key := test.generateDeployKey(t)
 	approver := &recordingApprover{isAllowed: true, isRemembered: true}
 	resolver := ternSSHResolver{test.server}
@@ -458,7 +765,7 @@ func TestOpenSSHConnectionLosesAppApprovalWhenHostRecorded(t *testing.T) {
 }
 
 func TestForgetAgentHostRestoresAppScope(t *testing.T) {
-	test := createAgentSessionTest(t, false)
+	test := createAgentSessionTest(t, clisocket.AgentGrantOnce)
 	service := test.testService.service
 	test.connect(t).mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeListVault}, nil)
 	if hosts := service.ListAgentHosts(); !slices.Equal(hosts, []AgentHost{{Path: ternApp.Path, TeamID: ternApp.TeamID, Name: "Tern"}}) {

@@ -159,6 +159,8 @@ func (s *Service) lockSession() {
 	s.favorites = nil
 	s.pendingImport = nil
 	s.forgetWebsiteIconKeys()
+	s.agentGrants = nil
+	s.cancelAgentSignIns()
 	if wasUnlocked {
 		// The clipboard may wait on the platform's main thread, so the clear runs without the mutex.
 		if clearCopiedText := s.takePendingClear(); clearCopiedText != nil {

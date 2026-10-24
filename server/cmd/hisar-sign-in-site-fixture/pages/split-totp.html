@@ -1,0 +1,22 @@
+{{template "head" .}}<title>Enter your code</title>
+<h1>Enter the 8-digit code from your authenticator app</h1>
+{{if .Error}}<p role="alert">That code didn't work.</p>{{end}}
+<form method="post" action="/submit/split-totp" id="form">
+<div class="digits">
+<input aria-label="Digit 1" id="digit-1" inputmode="numeric" maxlength="1" autocomplete="one-time-code">
+<input aria-label="Digit 2" id="digit-2" inputmode="numeric" maxlength="1">
+<input aria-label="Digit 3" id="digit-3" inputmode="numeric" maxlength="1">
+<input aria-label="Digit 4" id="digit-4" inputmode="numeric" maxlength="1">
+<input aria-label="Digit 5" id="digit-5" inputmode="numeric" maxlength="1">
+<input aria-label="Digit 6" id="digit-6" inputmode="numeric" maxlength="1">
+<input aria-label="Digit 7" id="digit-7" inputmode="numeric" maxlength="1">
+<input aria-label="Digit 8" id="digit-8" inputmode="numeric" maxlength="1">
+</div>
+<input type="hidden" name="code" id="code">
+<button type="submit">Verify</button>
+</form>
+<script>
+document.getElementById("form").addEventListener("submit", () => {
+  document.getElementById("code").value = [...document.querySelectorAll(".digits input")].map(input => input.value).join("");
+});
+</script>

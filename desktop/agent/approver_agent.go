@@ -71,8 +71,53 @@ func describeAgentAction(request clisocket.AgentApprovalRequest) string {
 		return fmt.Sprintf("get the one-time code of “%s”", request.RevealedName)
 	case clisocket.AgentRequestReveal:
 		return fmt.Sprintf("read “%s”", request.RevealedName)
+	case clisocket.AgentRequestSignIn:
+		return "sign in to " + request.SignIn.Website
 	}
 	return "use Hisar"
+}
+
+func describeGrantScope(request clisocket.AgentApprovalRequest) string {
+	switch request.Kind {
+	case clisocket.AgentRequestCode:
+		return fmt.Sprintf("A longer choice covers only the one-time code of “%s”.", request.RevealedName)
+	case clisocket.AgentRequestReveal:
+		return fmt.Sprintf("A longer choice covers only reading “%s” again, nothing else.", request.RevealedName)
+	case clisocket.AgentRequestSignIn:
+		return "A longer choice covers only the chosen login at " + request.SignIn.Website + "."
+	}
+	if len(request.SecretNames) == 1 {
+		return "A longer choice covers only this secret."
+	}
+	return "A longer choice covers only these secrets."
+}
+
+type agentChoice struct {
+	duration   clisocket.AgentGrantDuration
+	loginIndex int
+}
+
+func describeGrantDuration(duration clisocket.AgentGrantDuration) string {
+	switch duration {
+	case clisocket.AgentGrantHour:
+		return " for 1 hour"
+	case clisocket.AgentGrantDay:
+		return " for 1 day"
+	case clisocket.AgentGrantAlways:
+		return " until you revoke it"
+	}
+	return " only this time"
+}
+
+func describeAgentChoice(event ApprovalEvent, choice agentChoice) string {
+	action := event.Action
+	if len(event.Logins) > 0 {
+		action += " as " + event.Logins[choice.loginIndex].Username
+	}
+	if len(event.GrantDurations) > 0 {
+		action += describeGrantDuration(choice.duration)
+	}
+	return action
 }
 
 func describeSecretUse(secretCount int) string {
@@ -82,26 +127,10 @@ func describeSecretUse(secretCount int) string {
 	return fmt.Sprintf("use %d secrets", secretCount)
 }
 
-func describeAgentRememberLabel(request clisocket.AgentApprovalRequest) string {
-	switch request.Kind {
-	case clisocket.AgentRequestRun:
-		if len(request.SecretNames) == 1 {
-			return "Allow this secret for this agent for 1 hour"
-		}
-		return "Allow these secrets for this agent for 1 hour"
-	case clisocket.AgentRequestCode:
-		return "Allow this one-time code for this agent for 1 hour"
-	case clisocket.AgentRequestReveal:
-		// A remembered reveal covers the whole item, so the checkbox says so rather than naming the one field.
-		return fmt.Sprintf("Allow every field of “%s” for this agent for 1 hour", request.RevealedItem)
-	}
-	return ""
-}
-
 // getAgentNameSource says how Hisar knows the agent's name; "" for an MCP client that gave none.
 func getAgentNameSource(request clisocket.AgentApprovalRequest) string {
 	switch {
-	case request.Session != nil && request.Session.IsSigned:
+	case request.Session != nil && request.Session.IsSigned():
 		return AgentNameSignature
 	case request.Session != nil:
 		return AgentNameProcess
@@ -131,9 +160,10 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 		TerminalName:         request.TerminalName,
 		Purpose:              request.Kind,
 		Action:               describeAgentAction(request),
-		IsRememberable:       request.Kind != clisocket.AgentRequestConnect,
-		RememberLabel:        describeAgentRememberLabel(request),
 		IsConnectionApproval: request.IsConnectionApproval,
+		RequiresPresence:     true,
+		GrantDurations:       []string{},
+		Logins:               []ApprovalLogin{},
 		IsTouchIDApproval:    approver.IsTouchIDApproval(),
 		TimeoutAt:            approver.config.Now().Add(approver.config.Timeout).UTC().Format(time.RFC3339),
 		SecretNames:          []string{},
@@ -152,6 +182,19 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 	}
 	if len(request.SecretNames) > 0 {
 		event.SecretNames, event.MoreSecretCount = limitSecretName(request.SecretNames)
+	}
+	for _, duration := range request.GrantDurations {
+		event.GrantDurations = append(event.GrantDurations, string(duration))
+	}
+	if len(event.GrantDurations) > 0 {
+		event.GrantDuration = string(clisocket.AgentGrantOnce)
+		event.GrantScope = describeGrantScope(request)
+	}
+	if signIn := request.SignIn; signIn != nil {
+		event.Website, event.BrowserName = signIn.Website, signIn.BrowserName
+		for _, login := range signIn.Logins {
+			event.Logins = append(event.Logins, ApprovalLogin{VaultName: login.VaultName, Title: login.ItemTitle, Username: login.Username})
+		}
 	}
 	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
 		applyRequester(&event, requester)
@@ -232,21 +275,22 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent, reques
 	if event.WorkingDirectory != "" {
 		description.RepositoryPath = event.WorkingDirectory
 	}
+	if len(event.Logins) == 1 {
+		login := event.Logins[0]
+		description.Purpose = fmt.Sprintf("%s as %s (%s › %s)", event.Action, login.Username, login.VaultName, login.Title)
+	}
 	if len(event.SecretNames) > 0 {
 		description.Secrets = append([]string{}, event.SecretNames...)
 		if event.MoreSecretCount > 0 {
 			description.Secrets = append(description.Secrets, fmt.Sprintf("and %d more", event.MoreSecretCount))
 		}
 	}
-	if event.IsRememberable && event.RememberLabel != "" {
-		description.RememberLabel = "Also allows " + strings.TrimPrefix(event.RememberLabel, "Allow ")
-		description.IsRememberedByDefault = event.IsRememberedByDefault
-	}
 	return description
 }
 
 // ApproveAgent asks about one request of hisar mcp or of hisar inside an agent harness; when Hisar is locked, approving
-// also unlocks it.
+// also unlocks it. Only Touch ID, the master password or the phone approves it. The phone cannot choose a duration or a
+// login, so its approval is for this time only, and a request with several logins to choose from stays on the Mac.
 func (approver *Approver) ApproveAgent(ctx context.Context, request clisocket.AgentApprovalRequest) (clisocket.AgentApprovalResult, error) {
 	if approver.config.Emit == nil {
 		return clisocket.AgentApprovalResult{}, clisocket.ErrDenied
@@ -254,16 +298,24 @@ func (approver *Approver) ApproveAgent(ctx context.Context, request clisocket.Ag
 	receivedAt := approver.config.Now()
 	event := approver.buildAgentEvent(generateRequestID(), request)
 	requester := fmt.Sprintf("%q", event.AgentName)
+	initialChoice := agentChoice{duration: clisocket.AgentGrantOnce}
 	pending := &pendingApproval{
 		receivedAt:      receivedAt,
 		event:           event,
 		responseChannel: make(chan approvalResponse, 1),
-		approveReason:   fmt.Sprintf("allow %s to %s", requester, event.Action),
-		unlockReason:    fmt.Sprintf("unlock Hisar for %s", requester),
-		phoneRequest:    approver.buildAgentPhoneDescription(event, request),
+		describeChoice: func(choice agentChoice) (string, string) {
+			action := describeAgentChoice(event, choice)
+			return fmt.Sprintf("allow %s to %s", requester, action), fmt.Sprintf("unlock Hisar and allow %s to %s", requester, action)
+		},
+		isMacOnly:      len(event.Logins) > 1,
+		phoneRequest:   approver.buildAgentPhoneDescription(event, request),
+		choice:         initialChoice,
+		approvedChoice: initialChoice,
 	}
 	if err := approver.waitForSocketApproval(ctx, pending); err != nil {
 		return clisocket.AgentApprovalResult{}, err
 	}
-	return clisocket.AgentApprovalResult{IsRemembered: event.IsRememberable && approver.isPendingRemembered(pending)}, nil
+	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	return clisocket.AgentApprovalResult{Duration: pending.approvedChoice.duration, LoginIndex: pending.approvedChoice.loginIndex}, nil
 }

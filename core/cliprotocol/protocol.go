@@ -49,12 +49,15 @@ const (
 	FeatureExportProvenance = "export-provenance"
 	FeatureReadIssues       = "read-issues"
 	FeatureImportScope      = "import-scope"
+	// FeatureAgentSignIn: agent.signin signs the agent in to the website in Request.Window, with the login Request.ItemID
+	// names or the one saved for the page; hisar mcp refuses sign_in on an app without it.
+	FeatureAgentSignIn = "agent-sign-in"
 )
 
 // ListFeatures returns the features this build of the app announces in hello, then every launcher request type, so a
 // launcher checks the exact request it is about to send.
 func ListFeatures() []string {
-	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations, FeatureAgentRunInputs, FeatureSignedSharing, FeatureImportScope}
+	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations, FeatureAgentRunInputs, FeatureSignedSharing, FeatureImportScope, FeatureAgentSignIn}
 	features = append(features, FeatureExportProvenance)
 	features = append(features, FeatureReadIssues)
 	return append(features, ListLauncherRequestTypes()...)
@@ -110,6 +113,7 @@ const (
 	TypeAgentResolveSecret = "agent.secrets.resolve"
 	TypeAgentGetCode       = "agent.items.code"
 	TypeAgentRevealSecret  = "agent.secrets.reveal"
+	TypeAgentSignIn        = "agent.signin"
 
 	TypeGetVaultActions = "vaults.actions"
 	TypeRenameVault     = "vaults.rename"
@@ -161,6 +165,9 @@ const (
 	ErrorNotFound            = "not-found"
 	ErrorInternal            = "internal"
 	ErrorUpdateRequired      = "update-required"
+	// ErrorSignInRefused: Hisar would not sign in there, or stopped before it finished; Message is a sentence the agent
+	// can act on.
+	ErrorSignInRefused = "sign-in-refused"
 )
 
 // IsAgentRequest tells the requests of hisar mcp apart; agent.hello starts an agent connection.

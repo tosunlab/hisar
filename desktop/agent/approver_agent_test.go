@@ -42,10 +42,14 @@ func waitForAgentResult(t *testing.T, resultChannel chan agentApproveResult) age
 }
 
 func createAgentRequest(kind string) clisocket.AgentApprovalRequest {
-	return clisocket.AgentApprovalRequest{
+	request := clisocket.AgentApprovalRequest{
 		ClientPID: 77, ParentPID: 42, ClientPath: "/opt/homebrew/bin/hisar", TerminalName: "ttys003",
 		Agent: clisocket.AgentIdentity{Name: "claude-code", Version: "2.1.0"}, Kind: kind, IsConnectionApproval: true,
 	}
+	if kind != clisocket.AgentRequestConnect {
+		request.GrantDurations = []clisocket.AgentGrantDuration{clisocket.AgentGrantOnce, clisocket.AgentGrantHour}
+	}
+	return request
 }
 
 func TestDescribeAgentName(t *testing.T) {
@@ -76,11 +80,11 @@ func TestAgentConnectionDialogNamesTheAgentAndItsApp(t *testing.T) {
 	event := waitForApprovalEvent(t, emitter)
 	if event.Kind != ApprovalKindAgent || event.AgentName != "Claude Code" || event.AppName != "Terminal" || event.ClientName != "hisar mcp" ||
 		event.Purpose != "connect" || event.Action != "use Hisar" || event.IsRememberable || !event.IsConnectionApproval || event.TerminalName != "ttys003" ||
-		event.ClientPath != "/opt/homebrew/bin/hisar" || event.Warning != "" || event.IsCompact {
+		event.ClientPath != "/opt/homebrew/bin/hisar" || event.Warning != "" || event.IsCompact || !event.RequiresPresence || len(event.GrantDurations) != 0 {
 		t.Errorf("event = %+v", event)
 	}
 	approver.Respond(event.RequestID, true, true)
-	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.IsRemembered {
+	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.Duration != clisocket.AgentGrantOnce {
 		t.Errorf("result = %+v", result)
 	}
 	if reasons := biometric.listReasons(); !slices.Equal(reasons, []string{`allow "Claude Code" to use Hisar`}) {
@@ -99,13 +103,15 @@ func TestAgentRunDialogShowsTheCommandAndSecrets(t *testing.T) {
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if event.Action != "run a command with 5 secrets" || event.CommandLine != `/usr/local/bin/npm run deploy -- --message 'it'\''s live'` || event.WorkingDirectory != "~/src/app" ||
-		!slices.Equal(event.SecretNames, request.SecretNames[:4]) || event.MoreSecretCount != 1 || !event.IsRememberable || event.IsRememberedByDefault ||
-		event.RememberLabel != "Allow these secrets for this agent for 1 hour" {
+		!slices.Equal(event.SecretNames, request.SecretNames[:4]) || event.MoreSecretCount != 1 || event.IsRememberable || event.RememberLabel != "" ||
+		!slices.Equal(event.GrantDurations, []string{"once", "hour"}) || event.GrantDuration != "once" || event.GrantScope != "A longer choice covers only these secrets." {
 		t.Errorf("event = %+v", event)
 	}
-	approver.Respond(event.RequestID, true, true)
-	if result := waitForAgentResult(t, resultChannel); result.err != nil || !result.result.IsRemembered {
-		t.Errorf("remembered approval = %+v", result)
+	approver.SetAgentGrantDuration(event.RequestID, "always")
+	approver.SetAgentGrantDuration(event.RequestID, "hour")
+	approver.Respond(event.RequestID, true, false)
+	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.Duration != clisocket.AgentGrantHour {
+		t.Errorf("approval for an hour = %+v", result)
 	}
 }
 
@@ -199,19 +205,19 @@ func TestRunApprovalShowsWhatTheCommandReads(t *testing.T) {
 	}
 }
 
-func TestAgentRevealDialogWarnsAndIsNotRememberedByDefault(t *testing.T) {
+func TestAgentRevealDialogWarnsAndIsOnlyThisTimeByDefault(t *testing.T) {
 	emitter := createFakeEmitter()
-	approver := createCommandLineApprover(&fakeBiometric{isAvailable: false}, emitter, &fakeUnlocker{}, 0)
+	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)
 	request := createAgentRequest(clisocket.AgentRequestReveal)
-	request.SecretNames, request.RevealedName, request.RevealedItem = []string{"Work › Stripe › api key"}, "Stripe › api key", "Stripe"
+	request.SecretNames, request.RevealedName = []string{"Work › Stripe › api key"}, "Stripe › api key"
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
 	if event.Action != "read “Stripe › api key”" || event.Warning != "The value will be visible to Claude Code and can end up in its transcript and logs." ||
-		event.RememberLabel != "Allow every field of “Stripe” for this agent for 1 hour" || event.IsRememberedByDefault {
+		event.GrantDuration != "once" || event.GrantScope != "A longer choice covers only reading “Stripe › api key” again, nothing else." {
 		t.Errorf("event = %+v", event)
 	}
 	approver.Respond(event.RequestID, true, false)
-	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.IsRemembered {
+	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.Duration != clisocket.AgentGrantOnce {
 		t.Errorf("approval = %+v", result)
 	}
 
@@ -263,13 +269,13 @@ func TestAgentDialogGoesToThePhoneWithTheAgentName(t *testing.T) {
 	want := approval.Description{
 		Kind: approval.KindCommandLine, AppName: "Claude Code (via hisar mcp) in Terminal", Purpose: "run a command with 1 secret",
 		CommandLine: "npm test", RepositoryPath: "~/src/app", TerminalName: "ttys003", Secrets: []string{"Work › Stripe › api key"},
-		RememberLabel: "Also allows this secret for this agent for 1 hour",
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)
 	}
-	phone.answer(true)
-	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.IsRemembered {
+	approver.SetAgentGrantDuration(event.RequestID, "hour")
+	phone.answerRemembering(true, true)
+	if result := waitForAgentResult(t, resultChannel); result.err != nil || result.result.Duration != clisocket.AgentGrantOnce {
 		t.Errorf("phone approval = %+v", result)
 	}
 }
@@ -375,7 +381,7 @@ func TestCheckedNameOnlyForSignedHarness(t *testing.T) {
 	approver := createCommandLineApprover(&fakeBiometric{isAvailable: true}, emitter, &fakeUnlocker{}, 0)
 	omp := agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1226, StartTime: 100, Directory: "/Users/alice/src/hisarapp-core"}
 	signedOmp, unsignedOmp := omp, omp
-	signedOmp.IsSigned = true
+	signedOmp.Program = agentharness.Program{Signature: agentharness.Signature{Identifier: "omp-darwin-arm64", TeamID: "VTLHGQC72S"}}
 	cases := []struct {
 		name           string
 		session        *agentharness.Session

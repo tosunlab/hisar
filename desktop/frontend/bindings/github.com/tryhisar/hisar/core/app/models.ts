@@ -29,6 +29,22 @@ export interface AccountDeletionPreview {
 }
 
 /**
+ * AgentGrant is what a coding agent may do without asking, as Settings → Coding agents lists it: use (Kind run or code),
+ * read (reveal) or sign in with (sign-in, at Website only) the item Name names. Scope says who holds it: a recognized
+ * harness in every session ("harness"), one agent session ("session"), or one connection ("connection"), whose grants
+ * end with it. ID names it for RevokeAgentGrant. ExpiresAt is RFC 3339, "" for a grant that lasts until revoked.
+ */
+export interface AgentGrant {
+    "id": string;
+    "scope": string;
+    "harnessName": string;
+    "name": string;
+    "kind": string;
+    "website": string;
+    "expiresAt": string;
+}
+
+/**
  * AgentHost is an app a coding agent harness ran in, as Settings → Coding agents lists it.
  */
 export interface AgentHost {
@@ -54,6 +70,16 @@ export interface AgentSession {
     "projectPath": string;
     "firstRequestAt": string;
     "allRememberedSecret": RememberedAgentSecret[] | null;
+}
+
+/**
+ * AgentSignIn is Settings → Coding agents → Website sign-in. IsAvailable: this app can fill browser windows (Hisar for
+ * Mac). HasAccessibility: the system lets it.
+ */
+export interface AgentSignIn {
+    "isAvailable": boolean;
+    "isEnabled": boolean;
+    "hasAccessibility": boolean;
 }
 
 export interface BrowserPairingRequest {
@@ -628,12 +654,13 @@ export interface ReceivedShareInvitation {
 }
 
 /**
- * RememberedAgentSecret is a secret an agent session uses, or reads when IsReveal, without asking until ExpiresAt (RFC
- * 3339).
+ * RememberedAgentSecret is a secret an agent session uses, reads when IsReveal, or signs in with at Website, without
+ * asking until ExpiresAt (RFC 3339).
  */
 export interface RememberedAgentSecret {
     "name": string;
     "isReveal": boolean;
+    "website"?: string;
     "expiresAt": string;
 }
 

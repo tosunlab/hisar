@@ -1,8 +1,10 @@
 import { nextTick, reactive } from "vue";
 import {
   type AccountDeletionPreview,
+  type AgentGrant,
   type AgentHost,
   type AgentSession,
+  type AgentSignIn,
   type CredentialChangeResult,
   type PendingRecoverySummary,
   api,
@@ -133,6 +135,8 @@ export const store = reactive({
   allAgentVaultID: [] as string[],
   allAgentSession: [] as AgentSession[],
   allAgentHost: [] as AgentHost[],
+  allAgentGrant: [] as AgentGrant[],
+  agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false } as AgentSignIn,
   agentErrorMessage: "",
   isImportOpen: false,
   importStep: "choose" as ImportStep,
@@ -1958,9 +1962,45 @@ export async function setVaultAvailableToAgents(vault: VaultSummary, isAvailable
 
 export async function loadAgentSessions(): Promise<void> {
   try {
-    [store.allAgentSession, store.allAgentHost] = await Promise.all([api.listAllAgentSession(), api.listAllAgentHost()]);
+    [store.allAgentSession, store.allAgentHost, store.allAgentGrant] = await Promise.all([api.listAllAgentSession(), api.listAllAgentHost(), api.listAllAgentGrant()]);
   } catch (error) {
     store.agentErrorMessage = getErrorMessage(error);
+  }
+}
+
+export async function revokeAgentGrant(grant: AgentGrant): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.allAgentGrant = await api.revokeAgentGrant(grant.id);
+    store.agentErrorMessage = "";
+    showNotice(`${grant.harnessName} asks again the next time it needs ${grant.name}`);
+  } catch (error) {
+    store.agentErrorMessage = getErrorMessage(error);
+  } finally {
+    store.isBusy = false;
+  }
+}
+
+export async function loadAgentSignIn(): Promise<void> {
+  try {
+    store.agentSignIn = await api.getAgentSignIn();
+  } catch (error) {
+    store.agentErrorMessage = getErrorMessage(error);
+  }
+}
+
+export async function setAgentSignInEnabled(isEnabled: boolean): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.agentSignIn = await api.setAgentSignInEnabled(isEnabled);
+    store.agentErrorMessage = "";
+    showNotice(isEnabled ? "Coding agents can ask Hisar to sign in to websites" : "Coding agents can no longer ask Hisar to sign in");
+  } catch (error) {
+    const message = getErrorMessage(error);
+    await loadAgentSignIn();
+    store.agentErrorMessage = message;
+  } finally {
+    store.isBusy = false;
   }
 }
 

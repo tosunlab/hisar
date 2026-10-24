@@ -21,6 +21,7 @@ const (
 	loginShellTimeout     = 3 * time.Second
 	userPathCacheLifetime = 30 * time.Second
 	userPathMarker        = "__HISAR_PATH__"
+	userVariableMarker    = "__HISAR_VARIABLE__"
 )
 
 const (
@@ -271,41 +272,71 @@ func (installer *Installer) Uninstall() (InstallStatus, error) {
 	return installer.GetStatus(), errors.Join(errs...)
 }
 
-// UserPathReader reads the PATH of the user's login shell, which apps started from Finder do not get.
+// UserPathReader reads the PATH of the user's login shell, which apps started from Finder do not get, and in the same run
+// the login shell's Variables, such as HERMES_HOME.
 type UserPathReader struct {
-	Shell       string
-	mutex       sync.Mutex
-	cachedPath  []string
-	cachedUntil time.Time
+	Shell string
+	// Variables are the names ReadVariable answers for; each must be a shell variable name.
+	Variables       []string
+	mutex           sync.Mutex
+	cachedPath      []string
+	cachedVariables map[string]string
+	cachedUntil     time.Time
 }
 
 func (reader *UserPathReader) Read() []string {
 	reader.mutex.Lock()
 	defer reader.mutex.Unlock()
-	if time.Now().Before(reader.cachedUntil) {
-		return reader.cachedPath
-	}
-	directories, err := readLoginShellPath(reader.Shell)
-	if err != nil || len(directories) == 0 {
-		directories = readSystemPath()
-	}
-	reader.cachedPath, reader.cachedUntil = directories, time.Now().Add(userPathCacheLifetime)
-	return directories
+	reader.load()
+	return reader.cachedPath
 }
 
-func readLoginShellPath(shell string) ([]string, error) {
+// ReadVariable returns the login shell's value of one of Variables, or this app's own when the shell cannot be read; an
+// empty value is an unset variable.
+func (reader *UserPathReader) ReadVariable(name string) string {
+	reader.mutex.Lock()
+	defer reader.mutex.Unlock()
+	reader.load()
+	return reader.cachedVariables[name]
+}
+
+func (reader *UserPathReader) load() {
+	if time.Now().Before(reader.cachedUntil) {
+		return
+	}
+	output, err := runLoginShell(reader.Shell, reader.Variables)
+	var directories []string
+	if err == nil {
+		directories, err = parseUserPathOutput(output)
+	}
+	variables := parseUserVariables(output)
+	if err != nil || len(directories) == 0 {
+		directories = readSystemPath()
+		variables = map[string]string{}
+		for _, name := range reader.Variables {
+			variables[name] = os.Getenv(name)
+		}
+	}
+	reader.cachedPath, reader.cachedVariables, reader.cachedUntil = directories, variables, time.Now().Add(userPathCacheLifetime)
+}
+
+func runLoginShell(shell string, variables []string) (string, error) {
 	if shell == "" {
-		return nil, errors.New("no login shell")
+		return "", errors.New("no login shell")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), loginShellTimeout)
 	defer cancel()
-	command := exec.CommandContext(ctx, shell, "-l", "-i", "-c", `printf '\n`+userPathMarker+`%s\n' "$PATH"`)
+	script := `printf '\n` + userPathMarker + `%s\n' "$PATH"`
+	for _, name := range variables {
+		script += `; printf '\n` + userVariableMarker + name + `=%s\n' "$` + name + `"`
+	}
+	command := exec.CommandContext(ctx, shell, "-l", "-i", "-c", script)
 	command.Stdin = nil
 	output, err := command.Output()
 	if err != nil && len(output) == 0 {
-		return nil, err
+		return "", err
 	}
-	return parseUserPathOutput(string(output))
+	return string(output), nil
 }
 
 func parseUserPathOutput(output string) ([]string, error) {
@@ -315,6 +346,17 @@ func parseUserPathOutput(output string) ([]string, error) {
 		}
 	}
 	return nil, errors.New("the login shell did not print its PATH")
+}
+
+func parseUserVariables(output string) map[string]string {
+	variables := map[string]string{}
+	for line := range strings.SplitSeq(output, "\n") {
+		if variable, isFound := strings.CutPrefix(line, userVariableMarker); isFound {
+			name, value, _ := strings.Cut(variable, "=")
+			variables[name] = strings.TrimSuffix(value, "\r")
+		}
+	}
+	return variables
 }
 
 func readSystemPath() []string {

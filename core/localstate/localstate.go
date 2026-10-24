@@ -57,6 +57,10 @@ type State struct {
 	IsExactHostMatch bool `json:"exactHostMatch,omitempty"`
 	// AgentVaultIDs lists the vaults coding agents may see through hisar mcp; every other vault is invisible to them.
 	AgentVaultIDs []string `json:"agentVaults,omitempty"`
+	// SealedAgentGrants are what recognized coding agent harnesses may do without asking, in any of their sessions,
+	// sealed with the account's key (crypt.SealAgentGrants): another program of the user can write this file, but not a
+	// grant Hisar opens. Signing out ends them with the account.
+	SealedAgentGrants []byte `json:"sealedAgentGrants,omitempty"`
 
 	// Settings are this device's preferences; Reset keeps them. Embedded, so state.json keeps its flat keys.
 	Settings
@@ -96,6 +100,8 @@ type Settings struct {
 	// AgentHosts are the apps a coding agent harness ran in. The desktop app answers their callers without a terminal
 	// and without a harness one connection at a time, and never as launchers.
 	AgentHosts []AgentHost `json:"agentHosts,omitempty"`
+	// IsAgentSignInEnabled lets coding agents ask Hisar for Mac to sign in to websites in their browser windows.
+	IsAgentSignInEnabled bool `json:"agentSignIn,omitempty"`
 }
 
 // AgentHost is an app as the desktop app verified its code signature: bundle path and Team ID.

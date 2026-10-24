@@ -1,7 +1,11 @@
 package agentharness
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -27,28 +31,114 @@ func createOmpInTernChain() Chain {
 func TestFindOmpInTern(t *testing.T) {
 	session, isFound, _ := Find(createOmpInTernChain())
 	if !isFound || session.Harness.ID != "omp" || session.Harness.Name != "omp" || session.PID != 1226 || session.StartTime != 100 ||
-		session.Directory != "/Users/developer/src/hisarapp-core" || !session.IsSigned {
+		session.Directory != "/Users/developer/src/hisarapp-core" || session.Program != (Program{Signature: ompSignature}) {
 		t.Fatalf("session = %+v, %v", session, isFound)
 	}
 
 	bySignature := createOmpInTernChain()
 	bySignature.Processes[2].Arguments = nil
-	if session, isFound, _ := Find(bySignature); !isFound || session.PID != 1226 || !session.IsSigned {
+	if session, isFound, _ := Find(bySignature); !isFound || session.PID != 1226 || !session.IsSigned() {
 		t.Errorf("signature alone: %+v, %v", session, isFound)
 	}
 	byName := createOmpInTernChain()
 	byName.Processes[2].Signature = Signature{}
-	if session, isFound, _ := Find(byName); !isFound || session.PID != 1226 || session.IsSigned {
+	if session, isFound, _ := Find(byName); !isFound || session.PID != 1226 || session.IsSigned() || session.Program != (Program{Path: ompPath}) {
 		t.Errorf("first argument alone: %+v, %v", session, isFound)
 	}
 	otherTeam := createOmpInTernChain()
 	otherTeam.Processes[2].Arguments, otherTeam.Processes[2].Signature = []string{"18.12.3"}, Signature{Identifier: "omp-darwin-arm64", TeamID: "ABCDE12345"}
-	if session, isFound, _ := Find(otherTeam); !isFound || session.PID != 1226 || session.IsSigned {
+	if session, isFound, _ := Find(otherTeam); !isFound || session.PID != 1226 || session.IsSigned() {
 		t.Errorf("another team's signature counts as none, so only Tern's folder names omp: %+v, %v", session, isFound)
 	}
 	otherTeam.Processes[2].Path = "/Users/developer/Downloads/18.12.3"
 	if session, isFound, _ := Find(otherTeam); isFound {
 		t.Errorf("another team's signature matched: %+v", session)
+	}
+}
+
+// TestFindNamesTheProgramByItsExecutable: a program that takes omp's name in its first argument matches omp, but has
+// no known Program, since neither its executable nor a script it runs is omp's, so nothing saved for omp reaches it.
+func TestFindNamesTheProgramByItsExecutable(t *testing.T) {
+	chain := Chain{IsKnown: true, Processes: []Process{
+		{PID: 700, ParentPID: 600, StartTime: 300, Path: "/opt/homebrew/bin/hisar", Arguments: []string{"hisar", "mcp"}},
+		{PID: 600, ParentPID: 1, StartTime: 200, Path: "/bin/sleep", Arguments: []string{"omp", "60"}, WorkingDirectory: "/Users/developer"},
+	}}
+	if session, isFound, _ := Find(chain); !isFound || session.Harness.ID != "omp" || session.Program.IsKnown() {
+		t.Errorf("session %+v, %v", session, isFound)
+	}
+	chain.Processes[1].Path, chain.Processes[1].Arguments = "/usr/local/bin/omp", []string{"omp"}
+	if session, isFound, _ := Find(chain); !isFound || session.Program != (Program{Path: "/usr/local/bin/omp"}) {
+		t.Errorf("an executable named omp: %+v, %v", session, isFound)
+	}
+	chain.Processes[1].Path = ""
+	if session, isFound, _ := Find(chain); !isFound || session.Program.IsKnown() {
+		t.Errorf("an unreadable executable gave a known program: %+v, %v", session, isFound)
+	}
+}
+
+// TestScriptHarnessProgramIsItsEntrypoint: every script Bun or Node runs shares the runtime's executable, so the
+// Program of omp run by Bun also names the script, as the file its link leads to; another script named omp is another
+// program. So is the same entry with loader code added anywhere in the runtime's options, or another -e after it.
+func TestScriptHarnessProgramIsItsEntrypoint(t *testing.T) {
+	directory, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	cli := filepath.Join(directory, "cli.js")
+	impostor := filepath.Join(directory, "other", "omp")
+	for _, path := range []string{cli, impostor} {
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("setTimeout(() => {}, 60000)\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(directory, "bin", "omp")
+	if err := os.MkdirAll(filepath.Dir(link), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(cli, link); err != nil {
+		t.Fatal(err)
+	}
+	source := "await import('/opt/homebrew/lib/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js')"
+	sum := sha256.Sum256([]byte(source))
+	evalProgram := Program{Path: bunPath, Entrypoint: "source:" + hex.EncodeToString(sum[:])}
+	cases := []struct {
+		path      string
+		arguments []string
+		program   Program
+	}{
+		{bunPath, []string{"bun", link}, Program{Path: bunPath, Entrypoint: "script:" + cli}},
+		{bunPath, []string{"bun", impostor}, Program{Path: bunPath, Entrypoint: "script:" + impostor}},
+		{bunPath, []string{"bun", "-e", source}, evalProgram},
+		{nodePath, []string{"node", "-e", source}, Program{Path: nodePath, Entrypoint: evalProgram.Entrypoint}},
+		{bunPath, []string{"bun", "./bin/omp"}, Program{}},
+		{bunPath, []string{"bun", "--preload", impostor, link}, Program{}},
+		{bunPath, []string{"bun", link, "--preload", impostor}, Program{}},
+		{bunPath, []string{"bun", "-e", source, "--preload", impostor}, Program{}},
+		{bunPath, []string{"bun", "-e", source, "--preload=" + impostor}, Program{}},
+		{nodePath, []string{"node", "-e", source, "--require", impostor}, Program{}},
+		{nodePath, []string{"node", "-e", source, "-r", impostor}, Program{}},
+		{nodePath, []string{"node", "-e", source, "--import=" + impostor}, Program{}},
+		{nodePath, []string{"node", "-e", source, "--loader", impostor}, Program{}},
+		{nodePath, []string{"node", "-e", source, "--experimental-loader", impostor}, Program{}},
+		{nodePath, []string{"node", "-e", source, "--env-file=" + impostor}, Program{}},
+		{nodePath, []string{"node", "-e", source, "-e", "process.exit()"}, Program{}},
+		{nodePath, []string{"node", "-e", source, "-pe", "process.exit()"}, Program{}},
+		{nodePath, []string{"node", "-c", source}, Program{}},
+		{bunPath, []string{"bun", "-m", "omp"}, Program{}},
+		{bunPath, []string{"bun", filepath.Join(directory, "missing", "omp")}, Program{}},
+		{"/usr/local/bin/deno", []string{"deno", "-e", source}, Program{}},
+	}
+	for _, test := range cases {
+		chain := Chain{IsKnown: true, Processes: []Process{
+			{PID: 46809, ParentPID: 1, StartTime: 200, Path: test.path, Arguments: test.arguments, WorkingDirectory: directory},
+		}}
+		session, isFound, _ := Find(chain)
+		if !isFound || session.Program != test.program {
+			t.Errorf("%q: program %+v, want %+v", test.arguments, session.Program, test.program)
+		}
 	}
 }
 
@@ -63,7 +153,7 @@ func TestFindOmpRunByBun(t *testing.T) {
 		{PID: 46806, ParentPID: 1, StartTime: 100, Path: "/bin/bash", Arguments: []string{"/bin/bash", "-c", "sleep 8"}},
 	}}
 	session, isFound, _ := Find(chain)
-	if !isFound || session.PID != 46809 || session.Directory != "/private/tmp/ompbun" || session.IsSigned {
+	if !isFound || session.PID != 46809 || session.Directory != "/private/tmp/ompbun" || session.IsSigned() {
 		t.Fatalf("bin link: %+v, %v", session, isFound)
 	}
 	chain.Processes[2].Arguments = []string{"bun", "--smol", "/Users/developer/.bun/install/global/node_modules/@oh-my-pi/pi-coding-agent/dist/cli.js"}
@@ -166,12 +256,12 @@ func createClaudeInOmpChain() Chain {
 func TestFindClaudeCode(t *testing.T) {
 	session, isFound, _ := Find(createClaudeInOmpChain())
 	if !isFound || session.Harness.ID != "claude-code" || session.Harness.Name != "Claude Code" || session.PID != 97198 ||
-		session.StartTime != 400 || session.Directory != claudeDirectory || !session.IsSigned {
+		session.StartTime != 400 || session.Directory != claudeDirectory || !session.IsSigned() {
 		t.Fatalf("claude inside omp: %+v, %v", session, isFound)
 	}
 	byName := createClaudeInOmpChain()
 	byName.Processes[2].Signature = Signature{}
-	if session, isFound, _ := Find(byName); !isFound || session.PID != 97198 || session.IsSigned {
+	if session, isFound, _ := Find(byName); !isFound || session.PID != 97198 || session.IsSigned() {
 		t.Errorf("first argument alone: %+v, %v", session, isFound)
 	}
 	for _, arguments := range [][]string{
@@ -180,7 +270,7 @@ func TestFindClaudeCode(t *testing.T) {
 	} {
 		chain := createClaudeInOmpChain()
 		chain.Processes[2].Path, chain.Processes[2].Arguments, chain.Processes[2].Signature = nodePath, arguments, Signature{}
-		if session, isFound, _ := Find(chain); !isFound || session.Harness.ID != "claude-code" || session.PID != 97198 || session.IsSigned {
+		if session, isFound, _ := Find(chain); !isFound || session.Harness.ID != "claude-code" || session.PID != 97198 || session.IsSigned() {
 			t.Errorf("npm install %q: %+v, %v", arguments, session, isFound)
 		}
 	}
@@ -203,7 +293,7 @@ func createCodexChain() Chain {
 func TestCodexRunIsOneSession(t *testing.T) {
 	shell, isFound, _ := Find(createCodexChain())
 	if !isFound || shell.Harness.ID != "codex" || shell.Harness.Name != "Codex" || shell.PID != 97610 || shell.StartTime != 500 ||
-		shell.Directory != "/Users/developer/src/web" || !shell.IsSigned {
+		shell.Directory != "/Users/developer/src/web" || !shell.IsSigned() {
 		t.Fatalf("shell command: %+v, %v", shell, isFound)
 	}
 	mcpChain := createCodexChain()
@@ -215,7 +305,7 @@ func TestCodexRunIsOneSession(t *testing.T) {
 	}
 	unsigned := createCodexChain()
 	unsigned.Processes[2].Signature = Signature{}
-	if session, isFound, _ := Find(unsigned); !isFound || session.PID != 97610 || session.IsSigned {
+	if session, isFound, _ := Find(unsigned); !isFound || session.PID != 97610 || session.IsSigned() {
 		t.Errorf("native codex by name: %+v, %v", session, isFound)
 	}
 	launcherOnly := createCodexChain()
@@ -264,7 +354,7 @@ func TestFindNativeInstallsStartedByPath(t *testing.T) {
 			{PID: 400, ParentPID: 300, StartTime: 200, Path: "/bin/zsh", Arguments: []string{"-zsh"}},
 			{PID: 300, ParentPID: 1, StartTime: 100, Path: "/System/Applications/Utilities/Terminal.app/Contents/MacOS/Terminal", Arguments: []string{"Terminal"}},
 		}}
-		if session, isFound, _ := Find(chain); !isFound || session.Harness.ID != test.harnessID || session.PID != 600 || session.IsSigned {
+		if session, isFound, _ := Find(chain); !isFound || session.Harness.ID != test.harnessID || session.PID != 600 || session.IsSigned() {
 			t.Errorf("%s started as %q: %+v, %v", test.harnessID, chain.Processes[1].Arguments, session, isFound)
 		}
 	}
@@ -287,6 +377,138 @@ func TestFindNoClaudeCodeOrCodexByLookalikes(t *testing.T) {
 		chain.Processes = append(chain.Processes[:2:2], append([]Process{lookalike}, chain.Processes[4:]...)...)
 		if session, isFound, _ := Find(chain); isFound {
 			t.Errorf("%+v matched: %+v", lookalike, session)
+		}
+	}
+}
+
+const hermesPythonPath = "/Users/developer/.hermes/tools/python-3.14.7+20260901-darwin-arm64/bin/python3"
+
+// hermesLauncherSource is the -c source of the launcher Hermes 0.22.2 writes to ~/.hermes/hermes-agent/.hermes/bin/hermes,
+// which ~/.local/bin/hermes and Hermes Desktop exec; its 6,834 bytes are cut here to the lines around the entry point.
+const hermesLauncherSource = `import os, re, sys
+import contextlib, hashlib, io, pathlib, shutil, subprocess
+os.environ.pop('PYTHONHOME', None)
+os.environ.pop('PYTHONPATH', None)
+sys.path.insert(0, '/Users/developer/.hermes/hermes-agent')
+sys._hermes_pin_default_home = True
+try:
+    import hermes_bootstrap
+except Exception:
+    _hermes_closure_repair()
+    raise
+if sys.argv[1:2] == ['--run-module']:
+    import runpy
+    module = sys.argv.pop(2)
+    del sys.argv[1]
+    runpy.run_module(module, run_name='__main__', alter_sys=True)
+    sys.exit(0)
+from hermes_cli.main import main
+sys.argv[0] = re.sub(r'(-script\.pyw|\.exe)?$', '', sys.argv[0])
+sys.exit(main())
+`
+
+func hermesLauncher(pid, parentPID int, startTime int64, arguments ...string) Process {
+	return Process{
+		PID: pid, ParentPID: parentPID, StartTime: startTime, Path: hermesPythonPath,
+		Arguments: append([]string{hermesPythonPath, "-I", "-c", hermesLauncherSource}, arguments...), WorkingDirectory: "/Users/developer/src/web",
+	}
+}
+
+func hisarMCP(pid, parentPID int, startTime int64) Process {
+	return Process{PID: pid, ParentPID: parentPID, StartTime: startTime, Path: "/Applications/Hisar.app/Contents/Helpers/hisar", Arguments: []string{"/Applications/Hisar.app/Contents/Helpers/hisar", "mcp", "--no-reveal"}}
+}
+
+// TestFindHermes uses the chains measured from the MCP servers of Hermes 0.22.2, installed by its installer: hermes and
+// Hermes Desktop exec the launcher, so the MCP server's parent is the managed Python running it. hermes chat --tui runs
+// Hermes' TUI in node, whose Python gateway starts the MCP servers; the session is the launcher's Python above them.
+// Every launcher is the same program, the managed Python running the launcher's source, so a saved grant covers them
+// all; a development backend's -m has no program, so it gets none.
+func TestFindHermes(t *testing.T) {
+	omp := []Process{
+		{PID: 17201, ParentPID: 11723, StartTime: 30, Path: ompPath, Arguments: []string{ompPath, "__omp_worker_daemon_broker"}},
+		{PID: 11723, ParentPID: 15859, StartTime: 20, Path: "/Users/developer/Library/Application Support/Tern/omp/bin/omp", Arguments: []string{"omp"}, Signature: ompSignature},
+		{PID: 15859, ParentPID: 1, StartTime: 10, Path: ternPath, Arguments: []string{"tern", "daemon"}},
+	}
+	desktopPath := "/Users/developer/.hermes/hermes-agent/apps/desktop/release/mac-arm64/Hermes.app/Contents/MacOS/Hermes"
+	sum := sha256.Sum256([]byte(hermesLauncherSource))
+	launcher := Program{Path: hermesPythonPath, Entrypoint: "source:" + hex.EncodeToString(sum[:])}
+	for _, test := range []struct {
+		name      string
+		processes []Process
+		program   Program
+	}{
+		{"hermes chat", append([]Process{hisarMCP(35954, 35706, 200), hermesLauncher(35706, 17201, 100, "chat")}, omp...), launcher},
+		{"hermes -t computer_use,hisar chat", append([]Process{hisarMCP(35954, 35706, 200), hermesLauncher(35706, 17201, 100, "-t", "computer_use,hisar", "chat")}, omp...), launcher},
+		{"hermes chat --tui", append([]Process{
+			hisarMCP(50125, 49621, 400),
+			{PID: 49621, ParentPID: 49607, StartTime: 300, Path: hermesPythonPath, Arguments: []string{hermesPythonPath, "-m", "tui_gateway.entry"}},
+			{PID: 49607, ParentPID: 35706, StartTime: 200, Path: "/Users/developer/.hermes/tools/node-26.7.0-darwin-arm64/bin/node", Arguments: []string{"/Users/developer/.hermes/tools/node-26.7.0-darwin-arm64/bin/node", "--expose-gc", "/Users/developer/.hermes/hermes-agent/ui-tui/dist/entry.js"}},
+			hermesLauncher(35706, 17201, 100, "chat", "--tui"),
+		}, omp...), launcher},
+		{"Hermes Desktop", []Process{
+			hisarMCP(65512, 35706, 300),
+			hermesLauncher(35706, 64836, 200, "serve", "--host", "127.0.0.1", "--port", "0"),
+			{PID: 64836, ParentPID: 1, StartTime: 100, Path: desktopPath, Arguments: []string{desktopPath}},
+		}, launcher},
+		{"a development backend", []Process{
+			hisarMCP(700, 35706, 300),
+			{PID: 35706, ParentPID: 1, StartTime: 200, Path: "/Users/developer/src/hermes-agent/venv/bin/python", Arguments: []string{"/Users/developer/src/hermes-agent/venv/bin/python", "-m", "hermes_cli.main", "--profile", "work", "serve"}},
+		}, Program{}},
+	} {
+		session, isFound, err := Find(Chain{IsKnown: true, Processes: test.processes})
+		if err != nil || !isFound || session.Harness.ID != "hermes" || session.Harness.Name != "Hermes" || session.PID != 35706 || session.IsSigned() || session.Program != test.program {
+			t.Errorf("%s: %+v, %v, %v", test.name, session, isFound, err)
+		}
+	}
+}
+
+func hermesLauncherProgram(source string) Program {
+	sum := sha256.Sum256([]byte(source))
+	return Program{Path: hermesPythonPath, Entrypoint: "source:" + hex.EncodeToString(sum[:])}
+}
+
+// TestHermesProgramIsItsLauncherSource: every program the managed Python runs shares its executable, so Hermes'
+// Program is that executable and the code its launcher gives with -I -c. Other code under the same Python is another
+// program, and so is the launcher's code run without -I, whose environment can load other code first, or after
+// another option; python -m names no Program, since the module's folder cannot be read.
+func TestHermesProgramIsItsLauncherSource(t *testing.T) {
+	otherSource := hermesLauncherSource + "import os; os.system('true')\n"
+	for _, test := range []struct {
+		arguments []string
+		program   Program
+	}{
+		{[]string{hermesPythonPath, "-I", "-c", hermesLauncherSource, "chat"}, hermesLauncherProgram(hermesLauncherSource)},
+		{[]string{hermesPythonPath, "-I", "-c", otherSource, "chat"}, hermesLauncherProgram(otherSource)},
+		{[]string{hermesPythonPath, "-c", hermesLauncherSource, "chat"}, Program{}},
+		{[]string{hermesPythonPath, "-I", "-X", "importtime", "-c", hermesLauncherSource, "chat"}, Program{}},
+		{[]string{hermesPythonPath, "-X", "importtime", "-I", "-c", hermesLauncherSource, "chat"}, Program{}},
+		{[]string{hermesPythonPath, "-I", "-m", "hermes_cli.main", "chat"}, Program{}},
+	} {
+		session, isFound, _ := Find(Chain{IsKnown: true, Processes: []Process{{PID: 35706, ParentPID: 1, StartTime: 100, Path: hermesPythonPath, Arguments: test.arguments}}})
+		if !isFound || session.Harness.ID != "hermes" || session.Program != test.program {
+			t.Errorf("%q: %+v, %v, want %+v", test.arguments[1:3], session, isFound, test.program)
+		}
+	}
+}
+
+func TestFindNoHermesByLookalikes(t *testing.T) {
+	for _, lookalike := range []Process{
+		{Path: "/usr/bin/python3", Arguments: []string{"python3", "-c", "print(1)"}},
+		{Path: "/usr/bin/python3", Arguments: []string{"python3", "-c", "import hermes_cli.main"}},
+		{Path: "/usr/bin/python3", Arguments: []string{"python3", "-m", "hermes_cli"}},
+		{Path: "/usr/bin/python3", Arguments: []string{"python3", "-m", "pytest", "-m", "hermes_cli.main"}},
+		{Path: "/usr/bin/python3", Arguments: []string{"python3", "/Users/developer/src/other/hermes_cli/main.py"}},
+		{Path: "/usr/bin/python3", Arguments: []string{"python3", "runner.py", "-m", "hermes_cli.main"}},
+		{Path: "/usr/bin/python3", Arguments: []string{"python3", "-c", "x = 'from hermes_cli.main import main and more'"}},
+		{Path: nodePath, Arguments: []string{"node", "-c", hermesLauncherSource}},
+		{Path: "/usr/local/bin/pythonista", Arguments: []string{"pythonista", "-m", "hermes_cli.main"}},
+		{Path: "/usr/local/bin/hermes", Arguments: []string{"/usr/local/bin/hermes", "chat"}},
+	} {
+		chain := createCodexChain()
+		lookalike.PID, lookalike.ParentPID, lookalike.StartTime = 97610, 400, 500
+		chain.Processes = append(chain.Processes[:2:2], append([]Process{lookalike}, chain.Processes[4:]...)...)
+		if session, isFound, _ := Find(chain); isFound {
+			t.Errorf("%+v matched: %+v", lookalike.Arguments, session)
 		}
 	}
 }

@@ -203,6 +203,20 @@ func (s *Service) SetSSHApprovalRemembered(requestID string, isRemembered bool) 
 	}
 }
 
+// SetSSHApprovalGrantDuration follows an agent dialog's duration menu; a change restarts a Touch ID check in progress.
+func (s *Service) SetSSHApprovalGrantDuration(requestID, duration string) {
+	if s.config.Approver != nil {
+		s.config.Approver.SetAgentGrantDuration(requestID, duration)
+	}
+}
+
+// SetSSHApprovalLogin follows a sign-in dialog's choice of login; a change restarts a Touch ID check in progress.
+func (s *Service) SetSSHApprovalLogin(requestID string, loginIndex int) {
+	if s.config.Approver != nil {
+		s.config.Approver.SetSignInLogin(requestID, loginIndex)
+	}
+}
+
 func (s *Service) ListPendingSSHApprovals() []ApprovalEvent {
 	if s.config.Approver == nil {
 		return []ApprovalEvent{}
