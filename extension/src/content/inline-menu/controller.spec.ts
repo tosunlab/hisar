@@ -34,6 +34,7 @@ function createController(overrides: Partial<InlineMenuDependencies> = {}, windo
     getRect: (element) => (element.tagName === "IFRAME" ? { left: 10, top: 60, width: 300, height: 120 } : fieldRect),
     getElementAtPoint: () => elementAtPoint(),
     isTrustedEvent: () => true,
+    extensionBaseUrl: "chrome-extension://static-id/",
     ...overrides,
   };
   return new InlineMenuController(document, window, dependencies);
@@ -132,6 +133,16 @@ describe("InlineMenuController", () => {
     expect([menu.style.left, menu.style.top, menu.style.width, menu.style.height]).toEqual(["10px", "60px", "300px", "120px"]);
     controller.resizeMenu("session-1", 200);
     expect(menu.style.height).toBe("200px");
+  });
+
+  it("opens no menu from a URL outside this browser's extension pages", async () => {
+    controller.stop();
+    controller = createController({ extensionBaseUrl: "moz-extension://uuid/" });
+    controller.start();
+    getInput("#password").focus();
+    await vi.waitFor(() => expect(allSent).toContainEqual({ type: "content.openInlineMenu", purpose: "login" }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(controller.getMenuElement()).toBeUndefined();
   });
 
   it("asks for a suggested password on a sign-up password field", async () => {

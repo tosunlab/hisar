@@ -140,6 +140,12 @@ describe("isFrameFillable (frame rule)", () => {
     ).toBe(false);
   });
 
+  it("refuses a frame inside another site in Firefox, which has no ancestorOrigins", () => {
+    const parent = { location: { get origin(): string { throw new DOMException("Permission denied", "SecurityError"); } } } as unknown as Window;
+    const frame = { location: { origin: "https://example.com" }, parent, top: parent } as unknown as Window;
+    expect(isFrameFillable(frame, "https://example.com")).toBe(false);
+  });
+
   it("refuses opaque origins", () => {
     expect(isFrameFillable(createFakeWindow("null", []), "null")).toBe(false);
   });

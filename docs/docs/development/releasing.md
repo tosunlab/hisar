@@ -15,7 +15,7 @@ on pushes to `main`: a merge was already tested as its pull request. A new push 
 `.github/workflows/ci.yml` (Linux runners): gofmt, vet, all Go tests against Postgres (failing on any skipped test except the
 `TestIntegration…` tests and `TestRecordOpenSSHFixture`), the CLI for every release platform, the end-to-end test of the built
 binaries, the server Docker image for amd64 and arm64 (built into a throwaway registry and booted, never pushed), the desktop frontend
-(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip),
+(typecheck, tests, bundle check) and the desktop app's Linux build (both only when the pull request changes the desktop app or what it builds from, as below), the extension (tests, Chromium end-to-end tests, zip, and Firefox end-to-end tests on Firefox 140 and 153),
 the share link page in Chromium against the server, the docs site (typecheck, build, and its image built and served once), the admin dashboard (typecheck, tests, the `admin/src/themes.css`
 freshness check and Chromium end-to-end tests against the server; only when the pull request changes `admin/`, `server/`,
 `core/`, `go.work` or the workflow), and the Android app (`HisarKit.aar`, the `ThemePalettes.kt` freshness check, the debug and
@@ -71,7 +71,10 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
    update shows as release notes. The deploy key in `RELEASE_DEPLOY_KEY` pushes it, past the tag ruleset.
 4. **Build**: `release-<app>.yml`, which only the Release workflow calls. The desktop app builds the Mac DMG and Sparkle update
    and the Linux packages and Flatpak (amd64 and arm64); the server pushes `ghcr.io/tosunlab/hisar-server:X.Y.Z` and the
-   docs site `ghcr.io/tosunlab/hisar-docs:X.Y.Z` (both amd64 and arm64).
+   docs site `ghcr.io/tosunlab/hisar-docs:X.Y.Z` (both amd64 and arm64). The extension builds the Chrome zip and the Firefox
+   add-on, which addons.mozilla.org signs as unlisted (`web-ext sign`, with the extension's source attached for review) into
+   `hisar-extension-firefox-X.Y.Z.xpi`. AMO signs each version once, even if its prerelease is never published, so the next
+   release needs a new version; a custom build's Firefox package is the unsigned `hisar-extension-firefox-X.Y.Z-label-unsigned.zip`.
    Every builder checks out the immutable event SHA, not the release tag.
 5. **Prerelease** contains every release file and `release-evidence.json`. The evidence binds the commit, test results, workflow
    run, file digests, and the server or docs image digest. Keyless GitHub artifact attestations cover every final file and the
@@ -84,6 +87,8 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
      immutable image digest, so a version tag moved after the build is reset;
    - desktop: renames the release's `update-unpublished.json` to `update.json`, which offers the version to every Mac app as an
      automatic update;
+   - extension: writes `updates.json`, naming this version's `.xpi` and its SHA-256, to the prerelease
+     `extension-firefox-updates`; installed Firefox add-ons poll it (the manifest's `update_url`);
    - all: rewrites the notes to cover every change since the published release, turns the prerelease into a release and marks
      it latest.
 
@@ -146,6 +151,12 @@ Application identity and the App Store Connect API key that notarizes the app: `
 base64 `.p12`: `base64 -i <identity.p12> | gh secret set MACOS_SIGNING_CERTIFICATE --repo tosunlab/hisar`),
 `MACOS_SIGNING_CERTIFICATE_PASSWORD` (its export password), `MACOS_PROVISIONING_PROFILE` (the base64 macOS Developer ID
 provisioning profile authorizing the app's keychain access group), `APPLE_NOTARY_KEY` (the base64 `.p8`), `APPLE_NOTARY_KEY_ID` and
-`APPLE_NOTARY_ISSUER_ID`. Images go to the GitHub Container Registry with the
+`APPLE_NOTARY_ISSUER_ID`; for extension releases, an addons.mozilla.org API key that signs the Firefox add-on: `AMO_JWT_ISSUER`
+and `AMO_JWT_SECRET` (the JWT issuer and secret from https://addons.mozilla.org/developers/addon/api/key/). Images go to the GitHub Container Registry with the
 workflow's own `GITHUB_TOKEN`. The environments `publish-server`, `publish-cli`, `publish-desktop` and `publish-extension` have
 the required reviewers and accept only `main`.
+
+Once, before the first extension release, a maintainer creates the prerelease that holds the Firefox add-on's `updates.json`
+(the tag ruleset lets only maintainers create its tag): `gh release create extension-firefox-updates --repo tosunlab/hisar
+--prerelease --target main --title "Firefox add-on updates" --notes "The Hisar Firefox add-on updates from updates.json here;
+publishing an extension release replaces it."`. Publishing an extension release fails until it exists.

@@ -71,3 +71,15 @@ The store rejects a manifest with a `key` field, so `package:store` removes it. 
 - It goes only to the Hisar app on the user's own computer.
 
 Tick the three certification boxes.
+
+## Firefox (addons.mozilla.org)
+
+Firefox installs only add-ons Mozilla signed. Hisar's Firefox add-on is **unlisted**: addons.mozilla.org (AMO) signs it automatically, without a listing or a review queue, and the release puts the signed `.xpi` on GitHub. The add-on's ID is `extension@tryhisar.com`, which the desktop app's native host allows.
+
+1. Create an AMO developer account at https://addons.mozilla.org/developers/ and an API key at https://addons.mozilla.org/developers/addon/api/key/.
+2. Save it as the repository secrets `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`. The Release workflow signs each extension release with `web-ext sign --channel unlisted` and attaches the extension's source, which AMO asks for because the code is bundled; reviewers rebuild it with `npm ci && npm run build`.
+3. Create the prerelease `extension-firefox-updates` once ([CI and releases](../development/releasing.md)): installed add-ons update from its `updates.json`.
+
+AMO signs each version once. A version whose release is abandoned after signing is used up, so the next release needs a new version.
+
+**Data collection:** the manifest declares `data_collection_permissions: { required: ["none"] }`. The add-on sends what it handles (logins, cards, identities, the master password typed to unlock) only to the Hisar app on the same computer, over native messaging, and to no server of its own or any third party.

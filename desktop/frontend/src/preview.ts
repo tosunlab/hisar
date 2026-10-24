@@ -1261,6 +1261,7 @@ const previewBrowserStatus: BrowserStatus = {
         { name: "Brave", manifestPath: "", isInstalled: true, errorMessage: "" },
         { name: "Microsoft Edge", manifestPath: "", isInstalled: true, errorMessage: "" },
         { name: "Arc", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Firefox", manifestPath: "", isInstalled: true, errorMessage: "" },
         { name: "Vivaldi", manifestPath: "", isInstalled: false, errorMessage: "permission denied" },
       ],
   allPairedBrowser: hasNoPreviewBrowser

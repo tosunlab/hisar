@@ -32,6 +32,9 @@ finish-args:
   - --filesystem=xdg-config/vivaldi:create
   - --filesystem=xdg-config/vivaldi-snapshot:create
   - --filesystem=xdg-config/opera:create
+  # Firefox's host manifests, and its profiles.ini, which says it has run.
+  - --filesystem=~/.mozilla/native-messaging-hosts:create
+  - --filesystem=~/.mozilla/firefox/profiles.ini:ro
   # The Secret Key in the keyring, idle time for auto-lock, the tray icon and notifications. The tray registers with
   # the watcher under its unique bus name, so it needs no well-known name of its own (Wails asks for one and goes on).
   - --talk-name=org.freedesktop.secrets

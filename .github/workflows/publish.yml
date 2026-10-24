@@ -116,3 +116,18 @@ jobs:
           bash scripts/release-notes.sh "$APP" "$PUBLISHED_TAG" "$TAG" "$VERSION" > "$RUNNER_TEMP/notes.md"
           gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --prerelease=false --latest
           echo "Published [$TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+
+      # Installed copies of the Firefox add-on update from the manifest's update_url, updates.json on the fixed prerelease
+      # extension-firefox-updates, which a maintainer creates once (docs/docs/development/releasing.md). It names this
+      # version, with the hash of the .xpi just verified, only now that the release is public.
+      - name: Offer the Firefox add-on as an update
+        if: inputs.app == 'extension'
+        run: |
+          xpi="hisar-extension-firefox-$VERSION.xpi"
+          hash=$(sha256sum "$RUNNER_TEMP/release-files/$xpi" | cut -d " " -f 1)
+          jq -n --arg id extension@tryhisar.com --arg version "$VERSION" --arg hash "sha256:$hash" \
+            --arg link "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$xpi" \
+            '{addons: {($id): {updates: [{version: $version, update_link: $link, update_hash: $hash}]}}}' > "$RUNNER_TEMP/updates.json"
+          gh release view extension-firefox-updates > /dev/null 2>&1 ||
+            { echo "::error::create the prerelease extension-firefox-updates once; see docs/docs/development/releasing.md"; exit 1; }
+          gh release upload extension-firefox-updates "$RUNNER_TEMP/updates.json" --clobber

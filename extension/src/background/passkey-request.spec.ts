@@ -106,6 +106,17 @@ describe("readFrameOrigin", () => {
     expect(readFrameOrigin({ url: "https://shop.example.com/frame", frameId: 3, tab }, ["https://shop.example.com"])).toMatchObject({ isCrossOrigin: false });
   });
 
+  it("in Firefox, which gives no sender origin, accepts a frame whose parents read as its own origin and refuses one inside another", () => {
+    expect(readFrameOrigin({ url: "https://shop.example.com/frame", frameId: 3, tab }, ["https://shop.example.com"])).toEqual({
+      origin: "https://shop.example.com",
+      topOrigin: "https://shop.example.com",
+      isCrossOrigin: false,
+    });
+    // readAncestorOrigins gives null for a parent it cannot read, so Firefox handles that passkey request itself.
+    expect(readFrameOrigin({ url: "https://pay.example.org/frame", frameId: 3, tab }, ["null"])).toBeUndefined();
+    expect(readFrameOrigin({ url: "https://shop.example.com/frame", frameId: 5, tab }, ["https://shop.example.com", "null"])).toBeUndefined();
+  });
+
   it("refuses insecure, mismatched and unknown senders", () => {
     expect(readFrameOrigin({ url: "http://shop.example.com/", frameId: 0, tab: { url: "http://shop.example.com/" } }, [])).toBeUndefined();
     expect(readFrameOrigin({ url: "https://shop.example.com/", origin: "https://evil.example", frameId: 0, tab }, [])).toBeUndefined();

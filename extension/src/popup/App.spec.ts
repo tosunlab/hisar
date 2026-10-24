@@ -36,9 +36,19 @@ const allLogin: LoginSummary[] = [
   { vaultID: "v2", itemID: "i2", title: "Example (work)", username: "alex@work.example", vaultName: "Family" },
 ];
 
+let extensionBaseUrl: string;
+let isSiteAccessGranted: boolean;
+
 function installChrome(): void {
+  extensionBaseUrl = "chrome-extension://mmipiffoogblblocokimpemdopmdjghf/";
+  isSiteAccessGranted = true;
   vi.stubGlobal("chrome", {
+    permissions: {
+      contains: vi.fn(async () => isSiteAccessGranted),
+      request: vi.fn(async () => (isSiteAccessGranted = true)),
+    },
     runtime: {
+      getURL: vi.fn((path: string) => extensionBaseUrl + path),
       sendMessage: vi.fn(async (message: PopupMessage) => {
         allMessage.push(message);
         try {
@@ -422,6 +432,31 @@ describe("update required", () => {
     await wrapper.get('[data-testid="update-extension"]').trigger("click");
     await flushPromises();
     expect(chrome.tabs.create).toHaveBeenCalledWith({ url: storeURL });
+  });
+
+  it("opens Hisar's releases for an update in Firefox, which installs no extension from the Chrome Web Store", async () => {
+    extensionBaseUrl = "moz-extension://5f0c6a1e-uuid/";
+    respondWithState({
+      view: "update-required",
+      updateRequired: { target: "extension", currentVersion: "0.2.0", minimumVersion: "0.3.0", updateURL: "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf" },
+    });
+    const wrapper = await mountApp();
+    await wrapper.get('[data-testid="update-extension"]').trigger("click");
+    await flushPromises();
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: "https://github.com/tosunlab/hisar/releases?q=extension" });
+  });
+
+  it("asks for access to websites when the browser took it away, and hides the request once it is granted", async () => {
+    respondWithState({ view: "unlocked", email: "alex@example.com" });
+    expect((await mountApp()).find('[data-testid="site-access"]').exists()).toBe(false);
+    document.body.innerHTML = "";
+    isSiteAccessGranted = false;
+    const wrapper = await mountApp();
+    expect(wrapper.get('[data-testid="site-access"]').text()).toContain("Hisar can't fill or save logins on websites until you allow it.");
+    await wrapper.get('[data-testid="allow-site-access"]').trigger("click");
+    await flushPromises();
+    expect(chrome.permissions.request).toHaveBeenCalledWith({ origins: ["<all_urls>"] });
+    expect(wrapper.find('[data-testid="site-access"]').exists()).toBe(false);
   });
 
   it("opens only known update pages", async () => {

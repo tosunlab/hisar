@@ -40,6 +40,7 @@ export function getBrowserName(userAgentData: { brands?: { brand: string }[] } |
   if (/Edg\//.test(userAgent)) return "Edge";
   if (/Vivaldi\//.test(userAgent)) return "Vivaldi";
   if (/OPR\//.test(userAgent)) return "Opera";
+  if (/\bFirefox\//.test(userAgent)) return "Firefox";
   if (allBrand.includes("Chromium")) return "Chromium";
   return "Chrome";
 }

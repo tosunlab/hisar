@@ -46,7 +46,11 @@ case "$app" in
         "SHA256SUMS-linux-$architecture" "SHA256SUMS-flatpak-$architecture")
     done
     ;;
-  extension) allExpected=(release-evidence.json "hisar-extension-$version.zip") ;;
+  # A custom build's Firefox package is not signed: an AMO version is used up by its first signing.
+  extension)
+    allExpected=(release-evidence.json "hisar-extension-$version.zip")
+    if $isCustomBuild; then allExpected+=("hisar-extension-firefox-$version-unsigned.zip"); else allExpected+=("hisar-extension-firefox-$version.xpi"); fi
+    ;;
   docs) allExpected=(release-evidence.json) ;;
   *) echo "unknown app $app (server, cli, desktop, extension or docs)" >&2; exit 1 ;;
 esac

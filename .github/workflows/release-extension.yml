@@ -1,9 +1,11 @@
 name: Release extension
 
-# Called by the Release workflow with an extension-<version> tag: builds hisar-extension-<version>.zip into the artifact
-# release-files-extension-zip, which the Release workflow puts on the GitHub prerelease. The version comes from the tag,
-# not from the repository: the build writes it into manifest.json and package.json. Chrome only takes numeric versions,
-# so a custom build (extension-1.2.3-label) is 1.2.3 inside.
+# Called by the Release workflow with an extension-<version> tag: builds hisar-extension-<version>.zip for Chromium
+# browsers and hisar-extension-firefox-<version>.xpi, which addons.mozilla.org signs as an unlisted add-on, into the
+# artifact release-files-extension-zip, which the Release workflow puts on the GitHub prerelease. The version comes from
+# the tag, not from the repository: the build writes it into manifest.json and package.json. Chrome only takes numeric
+# versions, so a custom build (extension-1.2.3-label) is 1.2.3 inside; AMO signs each version once, so a custom build's
+# Firefox package is the unsigned hisar-extension-firefox-<version>-unsigned.zip.
 on:
   workflow_call:
     inputs:
@@ -11,18 +13,26 @@ on:
         description: The extension-<version> tag to build
         type: string
         required: true
+    secrets:
+      # The AMO API key (JWT issuer and secret) that signs the Firefox add-on; a custom build gets neither.
+      AMO_JWT_ISSUER:
+        required: false
+      AMO_JWT_SECRET:
+        required: false
 
 permissions:
   contents: read
 
 jobs:
   extension-release-build:
-    name: Build the extension zip
+    name: Build the extension zip and the Firefox add-on
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # AMO signs an unlisted add-on automatically, usually within minutes.
+    timeout-minutes: 45
     env:
       TAG: ${{ inputs.tag }}
       EXTENSION_ID: mmipiffoogblblocokimpemdopmdjghf
+      FIREFOX_EXTENSION_ID: extension@tryhisar.com
     steps:
       # The commit the Release run tagged, not the tag, which could be moved during the run.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -49,6 +59,29 @@ jobs:
           make build-extension
           mkdir extension-release
           cp "extension/hisar-extension-$manifestVersion.zip" "extension-release/hisar-extension-$version.zip"
+          if [ "$version" != "$manifestVersion" ]; then
+            cp "extension/hisar-extension-firefox-$manifestVersion.zip" "extension-release/hisar-extension-firefox-$version-unsigned.zip"
+          fi
+      # AMO asks for the source of bundled code: the extension's tracked files as built here, with the versions written in,
+      # and the logo the build copies. Reviewers rebuild it with npm ci && npm run build.
+      - name: Sign the Firefox add-on as unlisted on addons.mozilla.org
+        env:
+          AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+          AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
+        run: |
+          version=${TAG#extension-}
+          [ "$version" = "${version%%-*}" ] || { echo "a custom build is not signed"; exit 0; }
+          test -n "$AMO_JWT_ISSUER" && test -n "$AMO_JWT_SECRET" ||
+            { echo "::error::set the repository secrets AMO_JWT_ISSUER and AMO_JWT_SECRET (an addons.mozilla.org API key)"; exit 1; }
+          git ls-files -z extension assets/logo | xargs -0 zip -q -X "$RUNNER_TEMP/hisar-extension-source.zip"
+          cd extension
+          npx web-ext sign --source-dir dist-firefox --channel unlisted \
+            --api-key "$AMO_JWT_ISSUER" --api-secret "$AMO_JWT_SECRET" \
+            --upload-source-code "$RUNNER_TEMP/hisar-extension-source.zip" \
+            --artifacts-dir "$RUNNER_TEMP/signed" --approval-timeout 1800000
+          signed=("$RUNNER_TEMP"/signed/*.xpi)
+          [ ${#signed[@]} -eq 1 ] || { echo "::error::web-ext sign gave ${#signed[@]} files"; exit 1; }
+          cp "${signed[0]}" "../extension-release/hisar-extension-firefox-$version.xpi"
       # The manifest key fixes the extension ID that the Mac app's native host allows.
       - name: Check the zip keeps the manifest key and has the version
         run: |
@@ -66,6 +99,24 @@ jobs:
             if (manifest.version !== process.argv[2]) { console.error(`manifest.json in the zip has version ${manifest.version}, not ${process.argv[2]}`); process.exit(1); }
             console.log(`extension ID ${id}, version ${manifest.version}`);
           ' "$RUNNER_TEMP/manifest.json" "${version%%-*}"
+      # The native host allows only this add-on ID, and Firefox installs only an add-on Mozilla signed.
+      - name: Check the Firefox package has the add-on ID and the version, and that the .xpi is signed
+        run: |
+          version=${TAG#extension-}
+          package=(extension-release/hisar-extension-firefox-*)
+          [ ${#package[@]} -eq 1 ] || { echo "::error::expected one Firefox package, found ${package[*]}"; exit 1; }
+          unzip -p "${package[0]}" manifest.json > "$RUNNER_TEMP/firefox-manifest.json"
+          if [[ "${package[0]}" == *.xpi ]]; then
+            unzip -l "${package[0]}" | grep -q "META-INF/cose.sig" || { echo "::error::${package[0]} has no Mozilla signature"; exit 1; }
+          fi
+          # shellcheck disable=SC2016
+          node -e '
+            const manifest = JSON.parse(require("node:fs").readFileSync(process.argv[1], "utf8"));
+            const id = manifest.browser_specific_settings?.gecko?.id;
+            if (id !== process.env.FIREFOX_EXTENSION_ID) { console.error(`add-on ID ${id} is not ${process.env.FIREFOX_EXTENSION_ID}`); process.exit(1); }
+            if (manifest.version !== process.argv[2]) { console.error(`the Firefox manifest has version ${manifest.version}, not ${process.argv[2]}`); process.exit(1); }
+            console.log(`add-on ID ${id}, version ${manifest.version}`);
+          ' "$RUNNER_TEMP/firefox-manifest.json" "${version%%-*}"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: release-files-extension-zip

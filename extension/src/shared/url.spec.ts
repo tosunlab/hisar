@@ -25,6 +25,7 @@ describe("getBrowserName", () => {
     [[{ brand: "Chromium" }], "Mozilla/5.0 Chrome/140 Safari/537.36", false, "Chromium"],
     [[{ brand: "Chromium" }], "", true, "Brave"],
     [[], "Mozilla/5.0 Chrome/140 Vivaldi/7.0", false, "Vivaldi"],
+    [[], "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:133.0) Gecko/20100101 Firefox/133.0", false, "Firefox"],
   ])("brands %j user agent %s brave %s gives %s", (brands, userAgent, isBrave, expected) => {
     expect(getBrowserName({ brands }, userAgent, isBrave)).toBe(expected);
   });

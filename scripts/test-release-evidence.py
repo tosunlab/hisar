@@ -108,7 +108,8 @@ class ReleaseEvidenceTests(unittest.TestCase):
         self.git("tag", "-a", self.tag, "-m", "Release")
         names = []
         if app == "extension":
-            names = [f"hisar-extension-{version}.zip"]
+            firefox = f"hisar-extension-firefox-{version}-unsigned.zip" if "-" in version else f"hisar-extension-firefox-{version}.xpi"
+            names = [f"hisar-extension-{version}.zip", firefox]
         elif app == "cli":
             names = [f"hisar-{version}-{system}-{arch}.{'zip' if system == 'windows' else 'tar.gz'}"
                      for system in ("linux", "darwin", "windows") for arch in ("amd64", "arm64")]

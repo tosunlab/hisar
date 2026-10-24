@@ -1,3 +1,4 @@
+import { readAncestorOrigins } from "../../shared/frame-ancestry";
 import type { InlineMenuPurpose } from "../../shared/messages";
 import { findAddressScopeOf } from "../address-detection";
 import { findCardScopeOf } from "../card-detection";
@@ -13,7 +14,7 @@ export const allOwnHostTagName = ["HISAR-SAVE-BAR", "HISAR-INLINE-MENU"];
 export function isFrameEligibleForInlineMenu(window: Window): boolean {
   const { protocol, origin } = window.location;
   if ((protocol !== "https:" && protocol !== "http:") || origin === "null") return false;
-  return Array.from(window.location.ancestorOrigins ?? []).every((ancestorOrigin) => ancestorOrigin === origin);
+  return readAncestorOrigins(window).every((ancestorOrigin) => ancestorOrigin === origin);
 }
 
 function isInsideOwnHost(field: Element): boolean {

@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import type { PopupState, SaveOfferView } from "../shared/messages";
 import type { ItemSummary } from "../shared/protocol";
-import { describeError, getTargetTabId, openUpdatePage, sendToBackground } from "./api";
+import { describeError, getTargetTabId, hasSiteAccess, openUpdatePage, requestSiteAccess, sendToBackground } from "./api";
 import AddressList from "./components/AddressList.vue";
 import CardList from "./components/CardList.vue";
 import IdentityList from "./components/IdentityList.vue";
@@ -130,6 +130,13 @@ async function retry(): Promise<void> {
   isWaiting.value = false;
 }
 
+// isSiteAccessMissing: without access to websites no content script runs, so nothing fills or offers to save.
+const isSiteAccessMissing = ref(false);
+
+async function allowSiteAccess(): Promise<void> {
+  isSiteAccessMissing.value = !(await requestSiteAccess().catch(() => false));
+}
+
 function showNotice(message: string): void {
   noticeMessage.value = message;
   if (noticeTimer !== undefined) clearTimeout(noticeTimer);
@@ -138,6 +145,7 @@ function showNotice(message: string): void {
 
 onMounted(async () => {
   tabId.value = await getTargetTabId().catch(() => undefined);
+  isSiteAccessMissing.value = !(await hasSiteAccess().catch(() => true));
   await refreshState();
 });
 
@@ -169,6 +177,10 @@ onBeforeUnmount(() => {
         <AppIcon name="settings" />
       </button>
     </header>
+    <div v-if="isSiteAccessMissing && !isSettingsOpen" class="site-access" data-testid="site-access">
+      <p>Hisar can't fill or save logins on websites until you allow it.</p>
+      <button type="button" class="primary small" data-testid="allow-site-access" @click="allowSiteAccess">Allow on websites</button>
+    </div>
     <p v-if="errorMessage && !isSettingsOpen" class="error page-error">{{ errorMessage }}</p>
     <SettingsView v-if="isSettingsOpen" @close="isSettingsOpen = false" />
     <p v-else-if="!popupState" class="muted connecting" data-testid="connecting">Connecting to Hisar…</p>
@@ -299,6 +311,22 @@ onBeforeUnmount(() => {
 
 .page-error {
   margin: 12px 16px 0;
+}
+
+.site-access {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 16px 0;
+  padding: 8px 10px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.site-access p {
+  flex: 1;
+  margin: 0;
+  font-size: 12px;
 }
 
 .connecting {
