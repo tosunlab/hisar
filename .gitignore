@@ -17,6 +17,7 @@ deploy/hisar.env
 /extension/test-results/
 /extension/playwright-report/
 /extension/.fake-host/
+/extension/.test-browsers/
 /mobile/build/
 /mobile/ios/Configuration/Local.xcconfig
 /mobile/android/local.properties

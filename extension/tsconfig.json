@@ -16,5 +16,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["src/**/*.ts", "src/**/*.vue", "tools/**/*.ts", "end-to-end/**/*.ts", "vite.config.ts", "vite.content.config.ts", "vite.passkey.config.ts", "playwright.config.ts"]
+  "include": ["src/**/*.ts", "src/**/*.vue", "tools/**/*.ts", "end-to-end/**/*.ts", "end-to-end-firefox/**/*.ts", "vite.config.ts", "vite.content.config.ts", "vite.passkey.config.ts", "playwright.config.ts", "playwright.firefox.config.ts"]
 }

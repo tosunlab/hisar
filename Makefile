@@ -6,7 +6,7 @@ override GOTOOLCHAIN := $(shell bash scripts/go-toolchain.sh)
 $(if $(strip $(GOTOOLCHAIN)),,$(error go.work must name the release toolchain))
 export GOTOOLCHAIN
 
-.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end test-agent-sign-in docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end build-extension test-raycast build-docs test-docs test-omp test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui install-android-sdk build-android-aar build-android test-android test-android-ui generate-themes
+.PHONY: build build-admin test-admin test-admin-end-to-end build-cli-all package-cli-release test vet test-end-to-end test-agent-sign-in docker install-wails test-desktop-frontend build-desktop package-desktop package-desktop-dmg package-desktop-update package-desktop-linux package-desktop-flatpak test-extension test-extension-end-to-end test-extension-firefox-end-to-end build-extension test-raycast build-docs test-docs test-omp test-share-link-page build-ios-framework generate-ios-project build-ios test-ios test-ios-ui install-android-sdk build-android-aar build-android test-android test-android-ui generate-themes
 
 build: build-admin
 	go build -o bin/hisar-server ./server/cmd/hisar-server
@@ -156,6 +156,11 @@ test-extension:
 # Needs Playwright's Chromium: cd extension && npx playwright install chromium
 test-extension-end-to-end:
 	cd extension && npm ci --no-audit --no-fund && npm run test:end-to-end
+
+# The Firefox end-to-end tests, through geckodriver; the first run downloads the pinned Firefox and geckodriver into
+# extension/.test-browsers. HISAR_TEST_FIREFOX=esr_140.17.0esr runs the oldest Firefox the add-on supports.
+test-extension-firefox-end-to-end:
+	cd extension && npm ci --no-audit --no-fund && npm run test:end-to-end-firefox
 
 # The share link recipient page in Chromium against the real server; needs HISAR_DATABASE_URL and Playwright's Chromium.
 test-share-link-page:

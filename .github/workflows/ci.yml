@@ -263,6 +263,28 @@ jobs:
           path: extension/hisar-extension-*.zip
           retention-days: 14
 
+  # Firefox 140 is the oldest the add-on supports and lacks location.ancestorOrigins, so it runs the frame rule's fallback;
+  # 153 is the extended support release. The runner's own Firefox brings the libraries the pinned builds need.
+  extension-firefox:
+    name: Extension Firefox ${{ matrix.firefox }} end-to-end tests
+    if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        firefox: [esr_140.17.0esr, esr_153.5.1esr]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - run: make test-extension-firefox-end-to-end
+        env:
+          HISAR_TEST_FIREFOX: ${{ matrix.firefox }}
+
   docs:
     name: Docs site typecheck, build and image
     if: ${{ !contains(github.event.pull_request.labels.*.name, 'disable-all-ci') }}
