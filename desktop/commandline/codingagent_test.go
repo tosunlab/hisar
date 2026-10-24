@@ -22,23 +22,23 @@ import (
 )
 
 type recordingAgentApprover struct {
-	mutex        sync.Mutex
-	requests     []clisocket.AgentApprovalRequest
-	result       error
-	isRemembered bool
+	mutex    sync.Mutex
+	requests []clisocket.AgentApprovalRequest
+	result   error
+	duration clisocket.AgentGrantDuration
 }
 
 func (approver *recordingAgentApprover) ApproveAgent(_ context.Context, request clisocket.AgentApprovalRequest) (clisocket.AgentApprovalResult, error) {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	approver.requests = append(approver.requests, request)
-	return clisocket.AgentApprovalResult{IsRemembered: approver.isRemembered}, approver.result
+	return clisocket.AgentApprovalResult{Duration: approver.duration}, approver.result
 }
 
-func (approver *recordingAgentApprover) answer(result error, isRemembered bool) {
+func (approver *recordingAgentApprover) answer(result error, duration clisocket.AgentGrantDuration) {
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
-	approver.result, approver.isRemembered = result, isRemembered
+	approver.result, approver.duration = result, duration
 }
 
 func (approver *recordingAgentApprover) getRequestCount() int {
@@ -248,12 +248,59 @@ func TestAgentSearchReturnsMetadataAndReferencesButNeverValues(t *testing.T) {
 	}
 }
 
-func TestAgentGetSecretNeedsApprovalForTheItem(t *testing.T) {
+func TestAgentSearchKeepsToTheNamedVaultAndIgnoresHiddenNames(t *testing.T) {
+	test := createCodingAgentTest(t)
+	test.makePersonalAvailable(t)
+	service := test.testService.Service
+	personalID := test.testService.PersonalVaultID
+	findPasswordReference := func() string {
+		t.Helper()
+		var searchOutput mcpserver.SearchItemsOutput
+		test.mustCall(t, "search_items", map[string]any{"query": "github"}, &searchOutput)
+		for _, field := range searchOutput.Items[0].Fields {
+			if field.Label == "password" {
+				return field.Reference
+			}
+		}
+		t.Fatalf("no password reference in %+v", searchOutput.Items)
+		return ""
+	}
+	before := findPasswordReference()
+	if _, err := service.CreateVault("PERSONAL"); err != nil {
+		t.Fatal(err)
+	}
+	if after := findPasswordReference(); after != before {
+		t.Errorf("a vault agents cannot see changed a reference from %s to %s", before, after)
+	}
+
+	shadowVault, err := service.CreateVault(personalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveItem(shadowVault.ID, app.ItemDetail{Title: "Shadow", Password: "shadow-password"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetVaultAvailableToAgents(shadowVault.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	var searchOutput mcpserver.SearchItemsOutput
+	test.mustCall(t, "search_items", map[string]any{"query": "", "vault": personalID}, &searchOutput)
+	if searchOutput.TotalCount != 2 {
+		t.Errorf("search in vault %s found %d items, want its 2", personalID, searchOutput.TotalCount)
+	}
+	for _, found := range searchOutput.Items {
+		if found.VaultID != personalID {
+			t.Errorf("search by vault ID also returned %q from vault %s, which is named that ID", found.Title, found.VaultID)
+		}
+	}
+}
+
+func TestAgentGetSecretNeedsApprovalForTheField(t *testing.T) {
 	test := createCodingAgentTest(t)
 	test.makePersonalAvailable(t)
 	reference := map[string]any{"reference": "hisar://Personal/GitHub/password"}
 
-	test.approver.answer(clisocket.ErrDenied, false)
+	test.approver.answer(clisocket.ErrDenied, clisocket.AgentGrantOnce)
 	if text, isError := test.call(t, "get_secret", reference); !isError || text != "The user denied access in Hisar." {
 		t.Errorf("denied: %s", text)
 	}
@@ -262,12 +309,12 @@ func TestAgentGetSecretNeedsApprovalForTheItem(t *testing.T) {
 		request.Agent.Name != "claude-code" || !request.IsConnectionApproval {
 		t.Errorf("reveal approval = %+v", request)
 	}
-	test.approver.answer(clisocket.TimeoutError{Timeout: 2 * time.Minute}, false)
+	test.approver.answer(clisocket.TimeoutError{Timeout: 2 * time.Minute}, clisocket.AgentGrantOnce)
 	if text, _ := test.call(t, "get_secret", reference); text != "The user did not answer Hisar's approval dialog in time." {
 		t.Errorf("timeout: %s", text)
 	}
 
-	test.approver.answer(nil, false)
+	test.approver.answer(nil, clisocket.AgentGrantOnce)
 	var secretOutput mcpserver.GetSecretOutput
 	test.mustCall(t, "get_secret", reference, &secretOutput)
 	test.mustCall(t, "get_secret", reference, &secretOutput)
@@ -275,19 +322,22 @@ func TestAgentGetSecretNeedsApprovalForTheItem(t *testing.T) {
 		t.Fatalf("allowed: %+v after %d approvals", secretOutput, test.approver.getRequestCount())
 	}
 
-	test.approver.answer(nil, true)
+	test.approver.answer(nil, clisocket.AgentGrantHour)
 	test.mustCall(t, "get_secret", reference, &secretOutput)
-	test.approver.answer(clisocket.ErrDenied, false)
-	test.mustCall(t, "get_secret", map[string]any{"reference": "hisar://Personal/GitHub/API%20token"}, &secretOutput)
-	if secretOutput.Value != githubToken || test.approver.getRequestCount() != 5 {
-		t.Errorf("the item allowed for an hour asked again: %d approvals", test.approver.getRequestCount())
+	test.approver.answer(clisocket.ErrDenied, clisocket.AgentGrantOnce)
+	test.mustCall(t, "get_secret", reference, &secretOutput)
+	if secretOutput.Value != githubPassword || test.approver.getRequestCount() != 5 {
+		t.Errorf("the field allowed for an hour asked again: %d approvals", test.approver.getRequestCount())
+	}
+	if text, isError := test.call(t, "get_secret", map[string]any{"reference": "hisar://Personal/GitHub/API%20token"}); !isError || text != "The user denied access in Hisar." {
+		t.Errorf("the field allowed for an hour covered another field of the item: %s", text)
 	}
 	for range 7 {
 		test.advance(9 * time.Minute)
 		test.mustCall(t, "list_vaults", map[string]any{}, nil)
 	}
 	if text, isError := test.call(t, "get_secret", reference); !isError || text != "The user denied access in Hisar." {
-		t.Errorf("the allowed item outlived an hour: %s", text)
+		t.Errorf("the allowed field outlived an hour: %s", text)
 	}
 
 	approvalCount := test.approver.getRequestCount()

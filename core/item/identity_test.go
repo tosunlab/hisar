@@ -29,7 +29,7 @@ func TestReadAndWriteIdentity(t *testing.T) {
 		{Name: FieldFirstName, Value: "Alice"},
 		{Name: FieldLastName, Value: "Example"},
 		{Name: FieldBirthDate, Value: "1990-04-12"},
-		{Name: FieldPassportNumber, Value: "U1234567", Concealed: true},
+		{Name: FieldPassportNumber, Value: " U1234567 ", Concealed: true},
 		{Name: "Employer", Value: "Hisar"},
 		{Name: "Last name", Value: "a second last name stays a field"},
 	}

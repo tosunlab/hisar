@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { VisibilityGuard } from "../shared/click-guard";
-import type { PasskeyPromptCall, PasskeyPromptState } from "../shared/passkey";
+import type { PasskeyChoice, PasskeyPromptCall, PasskeyPromptState } from "../shared/passkey";
 import type { PromptChannel } from "./api";
 
 const props = withDefaults(
@@ -89,9 +89,9 @@ async function run(promptCall: PasskeyPromptCall): Promise<void> {
   }
 }
 
-function choosePasskey(credentialId: string, event: Event): void {
+function choosePasskey(choice: PasskeyChoice, event: Event): void {
   if (!isClickAllowed(event, true) || isBusy.value) return;
-  void run({ method: "choosePasskey", credentialId });
+  void run({ method: "choosePasskey", credentialId: choice.credentialId, vaultID: choice.vaultID, itemID: choice.itemID });
 }
 
 function savePasskey(event: Event): void {
@@ -150,7 +150,8 @@ watch(
   (view) => {
     const state = promptState.value;
     if (view !== "save" || !state) return;
-    const sameUser = state.allLogin.find((login) => login.username.toLowerCase() === state.userName.toLowerCase() && state.userName !== "");
+    selectedLoginKey.value = newLoginKey;
+    const sameUser = state.allLogin.find((login) => login.isPersonal === true && login.username.toLowerCase() === state.userName.toLowerCase() && state.userName !== "");
     if (sameUser) selectedLoginKey.value = `${sameUser.vaultID}/${sameUser.itemID}`;
   },
 );
@@ -197,12 +198,12 @@ onBeforeUnmount(() => {
     <template v-else-if="promptState?.view === 'choose'">
       <button
         v-for="choice in promptState.allPasskey"
-        :key="choice.credentialId"
+        :key="`${choice.vaultID}/${choice.itemID}/${choice.credentialId}`"
         type="button"
         class="item"
         :disabled="isBusy"
         data-testid="passkey-choice"
-        @click="choosePasskey(choice.credentialId, $event)"
+        @click="choosePasskey(choice, $event)"
       >
         <span class="avatar" aria-hidden="true">{{ (choice.title || "?").slice(0, 1).toUpperCase() }}</span>
         <span class="text">
@@ -237,6 +238,7 @@ onBeforeUnmount(() => {
           <span class="text">
             <span class="item-title">{{ login.title }}</span>
             <span class="item-subtitle">{{ login.username || "No username" }} · {{ login.vaultName }}</span>
+            <span v-if="login.isPersonal !== true" class="item-subtitle sharing-scope">Shared. Other vault members can sign in with this passkey.</span>
           </span>
         </label>
       </fieldset>
@@ -410,9 +412,15 @@ header {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  min-inline-size: 0;
   margin: 0;
   padding: 0;
   border: none;
+}
+
+.sharing-scope {
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .logins legend {

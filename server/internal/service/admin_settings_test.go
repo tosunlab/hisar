@@ -8,17 +8,23 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
 	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
-// createSettingsService returns a Service on an empty database with the given HISAR_* variables. Requires
-// HISAR_TEST_DATABASE_URL pointing at a disposable database: the public schema is dropped.
+// settingsAdminID is the admin createSettingsService signs up, who saves the settings.
+const settingsAdminID = "SETADM"
+
+// createSettingsService returns a Service on an empty database with the given HISAR_* variables and the admin
+// settingsAdminID. Requires HISAR_TEST_DATABASE_URL pointing at a disposable database: the public schema is dropped.
 func createSettingsService(t *testing.T, environment map[string]string) *Service {
 	t.Helper()
 	databaseURL := os.Getenv("HISAR_TEST_DATABASE_URL")
@@ -42,6 +48,20 @@ func createSettingsService(t *testing.T, environment map[string]string) *Service
 	if _, err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := database.InitializeOperationalSecrets(ctx, make([]byte, 32), make([]byte, 32)); err != nil {
+		t.Fatal(err)
+	}
+	inviteToken := generateToken()
+	if err := database.CreateInvite(ctx, hashToken(inviteToken), "admin@example.com", apitypes.RoleAdmin, nil, time.Hour); err != nil {
+		t.Fatal(err)
+	}
+	key := []byte{1}
+	admin := &store.Account{ID: settingsAdminID, Email: "admin@example.com", Name: "Admin", Argon2Params: []byte(`{}`),
+		Salt: key, OpaqueRecord: key, EncKeyset: key, KEMPub: key, SignPub: key, KEMSig: key}
+	device := &store.Device{ID: uuid.NewString(), AccountID: admin.ID, Name: "test", Platform: "go"}
+	if err := database.RedeemInvite(ctx, hashToken(inviteToken), admin, device, &store.Session{TokenHash: hashToken(generateToken()), AccountID: admin.ID, DeviceID: device.ID}); err != nil {
+		t.Fatal(err)
+	}
 	readEnvironment := func(name string) string { return environment[name] }
 	effective, _, err := settings.Resolve(settings.Defaults(), nil, readEnvironment)
 	if err != nil {
@@ -51,7 +71,7 @@ func createSettingsService(t *testing.T, environment map[string]string) *Service
 	current.Store(&effective)
 	return New(database, realtime.NewBroker(), Keys{}, Config{PublicURL: "https://hisar.test"}, InstanceSettings{
 		Current: current, Defaults: settings.Defaults(), Environment: readEnvironment,
-	})
+	}, ratelimit.NewFactory(0, 0))
 }
 
 func updateSettings(service *Service, changes map[string]any) error {
@@ -63,7 +83,7 @@ func updateSettings(service *Service, changes map[string]any) error {
 		}
 		request.Settings[name] = encoded
 	}
-	_, err := service.UpdateSettings(context.Background(), Actor{}, request)
+	_, err := service.UpdateSettings(context.Background(), Actor{AccountID: settingsAdminID}, request)
 	return err
 }
 

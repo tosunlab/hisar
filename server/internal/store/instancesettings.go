@@ -14,13 +14,22 @@ func (s *Store) GetInstanceSettings(ctx context.Context) ([]byte, error) {
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
-	return document, err
+	if err != nil {
+		return nil, err
+	}
+	return transformSMTPPassword(document, s.settingsKey, false, false)
 }
 
 // UpdateInstanceSettings replaces the settings document with what update makes of the current one, holding the row
-// locked so concurrent saves apply one after the other. An error from update leaves the row unchanged.
-func (s *Store) UpdateInstanceSettings(ctx context.Context, updatedBy string, update func(document []byte) ([]byte, error)) error {
+// locked so concurrent saves apply one after the other. An admin's change (isByAdmin) needs updatedBy to still be an
+// active admin (ErrActorNotAdmin); setup's own changes do not. An error from update leaves the row unchanged.
+func (s *Store) UpdateInstanceSettings(ctx context.Context, updatedBy string, isByAdmin bool, update func(document []byte) ([]byte, error)) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		if isByAdmin {
+			if err := requireActiveAdmin(ctx, transaction, updatedBy); err != nil {
+				return err
+			}
+		}
 		if _, err := transaction.Exec(ctx, `INSERT INTO instance_settings (id, settings) VALUES (1, '{}') ON CONFLICT (id) DO NOTHING`); err != nil {
 			return err
 		}
@@ -28,7 +37,15 @@ func (s *Store) UpdateInstanceSettings(ctx context.Context, updatedBy string, up
 		if err := transaction.QueryRow(ctx, `SELECT settings FROM instance_settings WHERE id = 1 FOR UPDATE`).Scan(&document); err != nil {
 			return err
 		}
+		document, err := transformSMTPPassword(document, s.settingsKey, false, false)
+		if err != nil {
+			return err
+		}
 		updated, err := update(document)
+		if err != nil {
+			return err
+		}
+		updated, err = transformSMTPPassword(updated, s.settingsKey, true, false)
 		if err != nil {
 			return err
 		}

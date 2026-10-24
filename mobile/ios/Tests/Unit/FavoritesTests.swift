@@ -12,8 +12,7 @@ final class FavoritesTests: XCTestCase {
     private func createUnlockedModel() async -> AppModel {
         backend.seedSignedIn()
         let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore())
-        model.start { self.backend }
-        await model.refreshAll()
+        await model.start { self.backend }?.value
         return model
     }
 

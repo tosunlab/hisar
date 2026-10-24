@@ -65,7 +65,7 @@ describe("respond", () => {
     expect(respond(state, { id: "1", type: "hello", instanceID: "i", browser: "Chrome", extensionVersion: "0.1.0" })).toEqual({
       id: "1",
       ok: true,
-      result: { protocolVersion: 1, isPaired: false, state: "unlocked", features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items"] },
+      result: { protocolVersion: 1, isPaired: false, state: "unlocked", features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items", "save-confirmation", "passkey-verification-v2"] },
     });
     expect(respond(state, { id: "2", type: "status", token: "wrong" })).toMatchObject({ ok: false, error: { code: "not-paired" } });
   });
@@ -125,6 +125,6 @@ describe("registered launcher", () => {
       child.stdin.write(encodeFrame({ id: "1", type: "hello", instanceID: "i", browser: "Chrome", extensionVersion: "0.1.0" }));
     });
     child.stdin.end();
-    expect(response).toEqual({ id: "1", ok: true, result: { protocolVersion: 1, isPaired: false, state: "unlocked", features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items"] } });
+    expect(response).toEqual({ id: "1", ok: true, result: { protocolVersion: 1, isPaired: false, state: "unlocked", features: ["addresses", "vault", "unlock-password", "cards", "identities", "save-options", "create-items", "save-confirmation", "passkey-verification-v2"] } });
   });
 });

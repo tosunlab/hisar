@@ -1,10 +1,15 @@
 package app
 
 import (
+	"bytes"
+	"database/sql"
 	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/cache"
 )
 
 func TestOfflineShowsCachedVaultsAndRefusesChanges(t *testing.T) {
@@ -74,5 +79,69 @@ func TestBrokenCacheFileIsStartedOver(t *testing.T) {
 	service.config.CachePath = cachePath
 	if service.getCache() == nil {
 		t.Fatal("a broken cache file was not replaced")
+	}
+}
+
+func TestCacheOpenPermissionErrorKeepsTheOfflineCopy(t *testing.T) {
+	service, _, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
+	path := service.config.CachePath
+	original := []byte("an offline snapshot that must not be discarded on an access error")
+	if err := os.WriteFile(path, original, 0o400); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(path, 0o600) })
+	service.mutex.Lock()
+	opened := service.getCache()
+	service.mutex.Unlock()
+	if opened != nil {
+		t.Error("opened a cache whose access was refused")
+	}
+	kept, err := os.ReadFile(path)
+	if err != nil || !bytes.Equal(kept, original) {
+		t.Errorf("permission error replaced the offline copy: %v", err)
+	}
+}
+
+func TestCacheOpenBusyErrorKeepsTheOfflineCopy(t *testing.T) {
+	service, _, _ := createTestService(t, filepath.Join(t.TempDir(), "desktop.json"), createMemorySecretKeyStore())
+	service.state.AccountID = "ABC123"
+	path := service.config.CachePath
+	snapshot, err := cache.Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshot.SaveAccount(&apitypes.Account{AccountID: "ABC123", Email: "kept@example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := snapshot.Close(); err != nil {
+		t.Fatal(err)
+	}
+	database, err := sql.Open("sqlite", "file:"+path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if _, err := database.Exec("BEGIN EXCLUSIVE"); err != nil {
+		t.Fatal(err)
+	}
+	defer database.Exec("ROLLBACK")
+	service.mutex.Lock()
+	opened := service.getCache()
+	service.mutex.Unlock()
+	if opened != nil {
+		t.Error("a temporary SQLite lock replaced the cache")
+	}
+	if _, err := database.Exec("ROLLBACK"); err != nil {
+		t.Fatal(err)
+	}
+	service.mutex.Lock()
+	reopened := service.getCache()
+	service.mutex.Unlock()
+	if reopened == nil {
+		t.Fatal("the cache was not usable after its lock ended")
+	}
+	account, err := reopened.LoadAccount("ABC123")
+	if err != nil || account == nil || account.Email != "kept@example.com" {
+		t.Errorf("the temporary lock discarded the cached account: %+v %v", account, err)
 	}
 }

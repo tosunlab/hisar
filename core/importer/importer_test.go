@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -71,6 +72,28 @@ func readFixture(t *testing.T, name string, keySet testKeySet) []byte {
 		t.Fatal(err)
 	}
 	return []byte(strings.NewReplacer(keySet.replacements...).Replace(string(content)))
+}
+
+// An SSH key item keeps what was stored beside the key, such as the recovery codes of the account it signs in to.
+func TestParseSSHKeyKeepsItsOtherFields(t *testing.T) {
+	keySet := createTestKeySet(t)
+	replacer := strings.NewReplacer(keySet.replacements...)
+	onePassword := replacer.Replace(`{"accounts":[{"vaults":[{"items":[{"categoryUuid":"114","overview":{"title":"Deploy","tags":["ci"],"url":"https://git.example.com"},
+		"details":{"sections":[{"title":"","fields":[{"title":"private key","id":"private_key","value":{"sshKey":{"privateKey":"{{PKCS8_PRIVATE_KEY}}"}}}]},
+			{"title":"Recovery","fields":[{"title":"recovery codes","id":"codes","value":{"concealed":"1111-2222"}},{"title":"","id":"host","value":{"string":"git.example.com"}}]}]}}]}]}]}`)
+	bitwarden := replacer.Replace(`{"encrypted":false,"items":[{"type":5,"name":"Deploy","sshKey":{"privateKey":"{{OPENSSH_PRIVATE_KEY}}"},
+		"fields":[{"name":"recovery codes","value":"1111-2222","type":1},{"name":"Recovery","value":"git.example.com","type":0}]}]}`)
+	for fileName, content := range map[string][]byte{"export.1pux": buildOnePasswordExport(t, []byte(onePassword)), "export.json": []byte(bitwarden)} {
+		result := parseFixture(t, fileName, content, FormatAutomatic)
+		deploy := findTestItem(t, result, "Deploy")
+		fields := describeFields(deploy.Details.Fields)
+		if !deploy.IsCategory(item.CategorySSHKey) || !strings.Contains(fields, "recovery codes=1111-2222") || !strings.Contains(fields, "Recovery=git.example.com") {
+			t.Errorf("%s: Deploy = %+v %+v", fileName, deploy.Overview, deploy.Details.Fields)
+		}
+		if fileName == "export.1pux" && (!reflect.DeepEqual(deploy.Overview.Tags, []string{"ci"}) || !reflect.DeepEqual(deploy.Overview.URLs, []string{"https://git.example.com"})) {
+			t.Errorf("%s: Deploy = %+v", fileName, deploy.Overview)
+		}
+	}
 }
 
 func buildOnePasswordExport(t *testing.T, exportData []byte) []byte {
@@ -155,15 +178,15 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if result.Format != FormatOnePasswordExport {
 		t.Errorf("format = %q", result.Format)
 	}
-	wantTitles := []string{"GitHub", "Router admin", "Wi-Fi at the cabin", "Visa", "Alice Example", "Deploy key", "Build server", "Newsletter", "Car rental"}
+	wantTitles := []string{"GitHub", "Router admin", "Wi-Fi at the cabin", "Visa", "Alice Example", "Deploy key", "Build server", "Newsletter", "Newsletter", "Car rental"}
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, wantTitles) {
 		t.Errorf("titles = %q, want %q", titles, wantTitles)
 	}
 	checkSkipped(t, result, map[string]string{
+		"GitHub":        "its attachment “codes.txt” was not imported",
 		"Public only":   "no private key",
 		"Old forum":     "archived",
 		"Passport scan": "Document items are not supported",
-		"Newsletter":    reasonRepeated,
 	})
 
 	github := findTestItem(t, result, "GitHub")
@@ -199,10 +222,12 @@ func TestParseOnePasswordExport(t *testing.T) {
 	}
 	server := findTestItem(t, result, "Build server")
 	if server.Overview.Category != item.CategoryServer || server.Overview.Username != "deploy" || server.Details.Password != "build-pass-9" ||
-		!reflect.DeepEqual(server.Overview.URLs, []string{"https://ci.example.com/admin"}) {
+		len(server.Overview.URLs) != 0 {
 		t.Errorf("server = %+v", server)
 	}
-	if !reflect.DeepEqual(server.Details.Fields, []item.Field{{Name: item.FieldHost, Value: "ci.example.com"}}) {
+	// The admin console names no credentials, so it is not linked to the server's and stays a field.
+	wantServerFields := []item.Field{{Name: item.FieldHost, Value: "ci.example.com"}, {Name: "console URL", Value: "https://ci.example.com/admin"}}
+	if !reflect.DeepEqual(server.Details.Fields, wantServerFields) {
 		t.Errorf("server fields = %+v", server.Details.Fields)
 	}
 	if newsletter := findTestItem(t, result, "Newsletter"); newsletter.Details.Password != "" || newsletter.Overview.Username != "alice@example.com" {
@@ -245,7 +270,7 @@ func TestParseOnePasswordExport(t *testing.T) {
 	if favorites := getFavoriteTitles(result.Items); !reflect.DeepEqual(favorites, []string{"GitHub"}) {
 		t.Errorf("favorites = %q", favorites)
 	}
-	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 4, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1, ServerCount: 1}) {
+	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 5, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1, ServerCount: 1}) {
 		t.Errorf("summary = %+v", summary)
 	}
 }
@@ -261,6 +286,7 @@ func TestParseBitwardenJSON(t *testing.T) {
 		t.Errorf("titles = %q, want %q", titles, wantTitles)
 	}
 	checkSkipped(t, result, map[string]string{
+		"GitHub":         "its website https://gist.github.com was filled only on that exact address in Bitwarden",
 		"Protected key":  "protected by a passphrase",
 		"Empty password": reasonRepeated,
 	})
@@ -321,6 +347,65 @@ func TestParseBitwardenJSON(t *testing.T) {
 	}
 	if summary := Summarize(result.Items); summary != (Summary{LoginCount: 3, SecureNoteCount: 1, SSHKeyCount: 1, CreditCardCount: 1, IdentityCount: 1}) {
 		t.Errorf("summary = %+v", summary)
+	}
+}
+
+func TestParseBitwardenJSONReportsWhatHisarDoesNotKeep(t *testing.T) {
+	content := `{"encrypted":false,"items":[
+		{"type":1,"name":"Passkey site","login":{"username":"alice","password":"pw","uris":[{"uri":"https://passkey.example.com"}],
+			"fido2Credentials":[{"credentialId":"b64.AAAA","rpId":"passkey.example.com","keyValue":"` + testSecretValue + `"}]}},
+		{"type":1,"name":"Rules","reprompt":1,"login":{"username":"bob","password":"pw2","uris":[
+			{"uri":"https://a.example.com","match":null},{"uri":"https://b.example.com","match":0},
+			{"uri":"https://c.example.com/login","match":3},{"uri":"^https://d\\.example\\.com/.*$","match":4},
+			{"uri":"https://e.example.com","match":5}]}}]}`
+	result := parseFixture(t, "export.json", []byte(content), FormatAutomatic)
+	wantSkipped := []SkippedEntry{
+		{Title: "Passkey site", Reason: "its passkey for passkey.example.com was not imported; keep using it in Bitwarden"},
+		{Title: "Rules", Reason: bitwardenRepromptReason},
+		{Title: "Rules", Reason: "its website https://c.example.com/login was filled only on that exact address in Bitwarden; Hisar offers the login on every page of its site"},
+		{Title: "Rules", Reason: `its website pattern ^https://d\.example\.com/.*$ is a regular expression, which Hisar does not match; it was kept as a field`},
+		{Title: "Rules", Reason: "its website https://e.example.com was never filled in Bitwarden; it was kept as a field, so Hisar does not offer the login there"},
+	}
+	if !reflect.DeepEqual(result.Skipped, wantSkipped) {
+		t.Errorf("skipped = %+v", result.Skipped)
+	}
+	rules := findTestItem(t, result, "Rules")
+	wantFields := []item.Field{{Name: "Website pattern", Value: `^https://d\.example\.com/.*$`}, {Name: "Website (never filled)", Value: "https://e.example.com"}}
+	if !reflect.DeepEqual(rules.Overview.URLs, []string{"https://a.example.com", "https://b.example.com", "https://c.example.com/login"}) ||
+		!reflect.DeepEqual(rules.Details.Fields, wantFields) {
+		t.Errorf("Rules = %+v %+v", rules.Overview.URLs, rules.Details.Fields)
+	}
+	csvResult := parseFixture(t, "export.csv", []byte("folder,favorite,type,name,notes,fields,reprompt,login_uri,login_username,login_password,login_totp\n"+
+		",,login,Guarded,,,1,https://g.example.com,alice,pw,\n,,login,Open,,,0,https://o.example.com,alice,pw,\n"), FormatAutomatic)
+	if !reflect.DeepEqual(csvResult.Skipped, []SkippedEntry{{Title: "Guarded", Reason: bitwardenRepromptReason}}) {
+		t.Errorf("CSV skipped = %+v", csvResult.Skipped)
+	}
+	if len(result.Items) != 2 {
+		t.Errorf("items = %+v", result.Items)
+	}
+	for _, skipped := range result.Skipped {
+		if strings.Contains(skipped.Reason, testSecretValue) {
+			t.Errorf("a reason contains a value from the file: %q", skipped.Reason)
+		}
+	}
+}
+
+func TestParseKeepsPreviousPasswords(t *testing.T) {
+	bitwarden := `{"encrypted":false,"items":[{"type":1,"name":"Bank","login":{"username":"alice","password":"current"},
+		"passwordHistory":[{"lastUsedDate":"2025-03-04T10:00:00.000Z","password":"older"},{"lastUsedDate":null,"password":"oldest"},
+			{"lastUsedDate":"2025-01-01T00:00:00Z","password":"current"}]}]}`
+	onePassword := `{"accounts":[{"vaults":[{"items":[{"categoryUuid":"001","overview":{"title":"Bank"},"details":{
+		"loginFields":[{"designation":"username","value":"alice"},{"designation":"password","value":"current"}],
+		"passwordHistory":[{"value":"older","time":1741082400},{"value":"oldest","time":0}]}}]}]}]}`
+	wantFields := []item.Field{
+		{Name: "Previous password (2025-03-04)", Value: "older", Concealed: true},
+		{Name: "Previous password", Value: "oldest", Concealed: true},
+	}
+	for fileName, content := range map[string][]byte{"export.json": []byte(bitwarden), "export.1pux": buildOnePasswordExport(t, []byte(onePassword))} {
+		result := parseFixture(t, fileName, content, FormatAutomatic)
+		if bank := findTestItem(t, result, "Bank"); bank.Details.Password != "current" || !reflect.DeepEqual(bank.Details.Fields, wantFields) {
+			t.Errorf("%s: Bank = %+v", fileName, bank.Details)
+		}
 	}
 }
 
@@ -548,6 +633,20 @@ func TestParseRejectsInvalidFile(t *testing.T) {
 	fileWriter, _ := zipWriter.Create("notes.txt")
 	fileWriter.Write([]byte(testSecretValue))
 	zipWriter.Close()
+	buildZip := func(files ...[2]string) string {
+		var buffer bytes.Buffer
+		writer := zip.NewWriter(&buffer)
+		for _, file := range files {
+			fileWriter, _ := writer.Create(file[0])
+			fileWriter.Write([]byte(file[1]))
+		}
+		writer.Close()
+		return buffer.String()
+	}
+	exportData := [2]string{"export.data", `{"accounts":[{"vaults":[{"items":[{"categoryUuid":"001","overview":{"title":"` + testSecretValue + `"}}]}]}]}`}
+	withoutAttributes := buildZip(exportData)
+	newerVersion := buildZip([2]string{"export.attributes", `{"version":4,"description":"1Password Unencrypted Export"}`}, exportData)
+	brokenAttributes := buildZip([2]string{"export.attributes", `{"version":`}, exportData)
 	cases := []struct {
 		name     string
 		fileName string
@@ -570,6 +669,9 @@ func TestParseRejectsInvalidFile(t *testing.T) {
 		{"1pux that is not a zip", "export.1pux", testSecretValue, FormatAutomatic, "damaged"},
 		{"invalid export.data", "export.1pux", string(brokenZip), FormatAutomatic, "could not be read"},
 		{"zip without export.data", "export.zip", withoutExportData.String(), FormatAutomatic, "no export.data"},
+		{"1pux without export.attributes", "export.1pux", withoutAttributes, FormatAutomatic, "no export.attributes"},
+		{"1pux of a newer version", "export.1pux", newerVersion, FormatAutomatic, "newer 1Password export format"},
+		{"1pux with damaged attributes", "export.1pux", brokenAttributes, FormatAutomatic, "damaged"},
 		{"1Password 7", "data.1pif", `{"title":"` + testSecretValue + `"}`, FormatAutomatic, "1pif files are not supported"},
 	}
 	for _, testCase := range cases {
@@ -598,8 +700,30 @@ func TestParseShortAndLongRows(t *testing.T) {
 	if titles := getTitles(result.Items); !reflect.DeepEqual(titles, []string{"Short", "Long"}) {
 		t.Errorf("titles = %q", titles)
 	}
-	if long := findTestItem(t, result, "Long"); long.Details.Notes != "note" || long.Details.Fields != nil {
+	wantFields := []item.Field{{Name: "Column 6", Value: "extra", Concealed: true}, {Name: "Column 7", Value: "more", Concealed: true}}
+	if long := findTestItem(t, result, "Long"); long.Details.Notes != "note" || !reflect.DeepEqual(long.Details.Fields, wantFields) {
 		t.Errorf("long row = %+v", long)
+	}
+}
+
+// A second password column, or a column named like a secret, is a concealed field rather than a visible one.
+func TestParseCSVConcealsSecretColumns(t *testing.T) {
+	content := "title,username,password,url,password,API Key,Department\nGitHub,alice,first,https://github.com,second,ak_1,R&D\n"
+	github := findTestItem(t, parseFixture(t, "data.csv", []byte(content), FormatAutomatic), "GitHub")
+	wantFields := []item.Field{{Name: "password", Value: "second", Concealed: true}, {Name: "API Key", Value: "ak_1", Concealed: true}, {Name: "Department", Value: "R&D"}}
+	if github.Details.Password != "first" || !reflect.DeepEqual(github.Details.Fields, wantFields) {
+		t.Errorf("GitHub = %+v", github.Details)
+	}
+}
+
+func TestParseCSVRefusesTooManyColumns(t *testing.T) {
+	content := "title,username,password\nGitHub,alice," + strings.Repeat(",", maxCSVColumns) + "\n"
+	if _, err := Parse("data.csv", []byte(content), FormatAutomatic); err == nil || !strings.Contains(err.Error(), "near line 2") {
+		t.Errorf("err = %v", err)
+	}
+	quoted := "title,username,password,notes\nGitHub,alice,pw,\"" + strings.Repeat(",", maxCSVColumns) + "\"\n"
+	if _, err := Parse("data.csv", []byte(quoted), FormatAutomatic); err != nil {
+		t.Errorf("commas inside a quoted value: %v", err)
 	}
 }
 
@@ -926,6 +1050,14 @@ func TestParseOnePasswordServer(t *testing.T) {
 			{"title":"Admin Console","name":"admin_console","fields":[
 				{"title":"console URL","id":"admin_console_url","value":{"string":"https://panel.example.com:8443"}},
 				{"title":"console username","id":"admin_console_username","value":{"string":"admin"}},
+				{"title":"console password","id":"admin_console_password","value":{"concealed":"panel-password"}}]}]}},
+		{"categoryUuid":"110","overview":{"title":"Host only"},"details":{"sections":[
+			{"title":"","fields":[
+				{"title":"URL","id":"url","value":{"string":"ssh://build.example.test"}},
+				{"title":"password","id":"password","value":{"concealed":"host-only-secret"}}]},
+			{"title":"Admin Console","name":"admin_console","fields":[
+				{"title":"console URL","id":"admin_console_url","value":{"string":"https://console.other.example.test/login"}},
+				{"title":"console username","id":"admin_console_username","value":{"string":""}},
 				{"title":"console password","id":"admin_console_password","value":{"concealed":""}}]}]}},
 		{"categoryUuid":"109","overview":{"title":"Router"},"details":{"sections":[{"title":"","fields":[
 			{"title":"username","id":"username","value":{"string":"admin"}}]}]}}]}]}]}`
@@ -950,17 +1082,24 @@ func TestParseOnePasswordServer(t *testing.T) {
 	if server.Overview.Username != "deploy" || server.Details.Password != "server-password" || len(server.Overview.URLs) != 0 {
 		t.Errorf("server login data = %+v %+v", server.Overview, server.Details)
 	}
-	// A console signed in with the server's own credentials is the server's website, and its repeated username is dropped.
+	// A console signed in with the server's own credentials is the server's website, and its repeated credentials are dropped.
 	panel := findTestItem(t, result, "Panel server")
 	wantPanelFields := []item.Field{{Name: item.FieldHost, Value: "panel.example.com"}}
 	if !reflect.DeepEqual(panel.Details.Fields, wantPanelFields) || !reflect.DeepEqual(panel.Overview.URLs, []string{"https://panel.example.com:8443"}) ||
 		panel.Overview.Username != "admin" || panel.Details.Password != "panel-password" {
 		t.Errorf("panel server = %+v\nfields\n%+v\nwant\n%+v", panel.Overview, panel.Details.Fields, wantPanelFields)
 	}
+	// A console with no password of its own does not use the server's: as the website, AutoFill would offer the host
+	// password there.
+	hostOnly := findTestItem(t, result, "Host only")
+	if len(hostOnly.Overview.URLs) != 0 || hostOnly.Details.Password != "host-only-secret" ||
+		!slices.ContainsFunc(hostOnly.Details.Fields, func(field item.Field) bool { return field.Value == "https://console.other.example.test/login" }) {
+		t.Errorf("host only server = %+v\nfields\n%+v", hostOnly.Overview, hostOnly.Details.Fields)
+	}
 	if router := findTestItem(t, result, "Router"); router.Overview.Category != item.CategoryLogin {
 		t.Errorf("a 1Password Wireless Router is no longer a login: %+v", router)
 	}
-	if summary := Summarize(result.Items); summary.ServerCount != 2 || summary.LoginCount != 1 {
+	if summary := Summarize(result.Items); summary.ServerCount != 3 || summary.LoginCount != 1 {
 		t.Errorf("summary = %+v", summary)
 	}
 

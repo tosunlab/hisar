@@ -3,7 +3,7 @@
   "name": "Hisar",
   "short_name": "Hisar",
   "description": "Fill and save logins with the Hisar password manager on this computer.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "minimum_chrome_version": "116",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA44tKlb4JSqS7t/OBiYad1Cun+nCSgodz0B371tKcJXB2prjbSxOifa+F1c1l5L40vnuUCu69A5k+rJpFOYDbWG7HbalywsbWGVQij2qSPHiVzGmhwDUU052QDPrprH6ifb2bjNjOWt0ar+n2MeRGKhqr4hSXo/AUdifxfF3U2MGP7ctR2kwXNN9LmPoeCn6Vij9YLhc5xOjffJPoT+m5Sjn9CfYeNLDAhQajbXN/YEmbzoE+/Jyzw+5xx/yhjGONH4hVtdHYtET7XkimFpj4pX4EgcIBmliEanoMcYkXcJKb6NrLPezXqk7xa0ZdUnLI4zez9xISdpxk8lAhs8NMNwIDAQAB",
   "icons": {
@@ -82,6 +82,8 @@
     "scripting",
     "activeTab",
     "tabs",
+    "webNavigation",
+    "alarms",
     "contextMenus",
     "offscreen",
     "clipboardWrite"

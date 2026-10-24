@@ -13,7 +13,10 @@ if [ -z "$privateKeyFile" ] || [ ! -s "$privateKeyFile" ]; then
 fi
 
 scriptDirectory="$(cd "$(dirname "$0")" && pwd)"
+GOTOOLCHAIN=$(bash "$scriptDirectory/go-toolchain.sh")
+export GOTOOLCHAIN
 cd "$scriptDirectory/../desktop"
+"$scriptDirectory/download-sparkle.sh"
 application=bin/Hisar.app
 signUpdate=build/sparkle/bin/sign_update
 buildNumber=$("$scriptDirectory/get-build-number.sh" "$version")

@@ -17,11 +17,13 @@ type Request struct {
 	AccountID    string `json:"accountID,omitempty"`
 	DeviceID     string `json:"deviceID,omitempty"`
 	InvitationID string `json:"invitationID,omitempty"`
+	ReviewToken  string `json:"reviewToken,omitempty"`
 	// OrganizationID and TeamID name an organization and one of its teams by ID; hisar resolves names first.
 	OrganizationID string           `json:"organizationID,omitempty"`
 	TeamID         string           `json:"teamID,omitempty"`
 	Item           *ItemChange      `json:"item,omitempty"`
 	ImportedItems  []item.Item      `json:"importedItems,omitempty"`
+	ImportScope    string           `json:"importScope,omitempty"`
 	References     []string         `json:"references,omitempty"`
 	CommandLine    []string         `json:"commandLine,omitempty"`
 	ShareLink      *ShareLinkChange `json:"shareLink,omitempty"`
@@ -40,6 +42,7 @@ type Request struct {
 	// Environment is each NAME=value an env file sets for agent.secrets.resolve's command whose value is not a reference,
 	// in the command's environment order.
 	Environment []string `json:"environment,omitempty"`
+	Window      *Window  `json:"window,omitempty"`
 
 	ClientPlatform string `json:"clientPlatform,omitempty"`
 	ClientVersion  string `json:"clientVersion,omitempty"`

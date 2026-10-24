@@ -13,10 +13,12 @@ final class HisarKitBackend: VaultBackend {
         guard let hisar = HisarkitNew(stateDirectory.path, deviceName, secretKeyStore, biometric, clipboard, eventListener, &error) else {
             throw HisarKitBackend.convertError(error ?? NSError(domain: "hisar", code: 1), biometryName: "Face ID")
         }
+        let passkeyVerifier = DeviceOwnerPasskeyVerifier()
+        hisar.setPasskeyVerifier(passkeyVerifier)
         hisar.setAppVersion(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "")
         self.hisar = hisar
         self.biometryName = biometric?.getBiometryName() ?? "Face ID"
-        allRetainedAdapter = [secretKeyStore, biometric as AnyObject?, clipboard as AnyObject?, eventListener as AnyObject?].compactMap { $0 }
+        allRetainedAdapter = [secretKeyStore, passkeyVerifier, biometric as AnyObject?, clipboard as AnyObject?, eventListener as AnyObject?].compactMap { $0 }
     }
 
     private static func getDeviceName() -> String {
@@ -26,11 +28,14 @@ final class HisarKitBackend: VaultBackend {
 
     static func convertError(_ error: Error, biometryName: String) -> BackendError {
         var message = (error as NSError).localizedDescription
+        let prefix = BackendError.passkeyVerificationFailed + ": "
+        let code = message.hasPrefix(prefix) ? BackendError.passkeyVerificationFailed : nil
+        if code != nil { message = String(message.dropFirst(prefix.count)) }
         message = message.replacingOccurrences(of: "Touch ID", with: biometryName)
         if let first = message.first {
             message = first.uppercased() + message.dropFirst()
         }
-        return BackendError(message: message)
+        return BackendError(message: message, code: code)
     }
 
     private func callReturningText(_ operation: (NSErrorPointer) -> String) throws -> String {
@@ -140,6 +145,10 @@ final class HisarKitBackend: VaultBackend {
 
     func cancelShareInvitation(invitationID: String) throws {
         try callReturningNothing { try hisar.cancelShareInvitation(invitationID) }
+    }
+
+    func confirmShareRecipient(invitationID: String, reviewToken: String) throws {
+        try callReturningNothing { try hisar.confirmShareRecipient(invitationID, reviewToken: reviewToken) }
     }
 
     func listAllShareAwaitingUnlock() throws -> [ShareAwaitingUnlock] {
@@ -290,6 +299,10 @@ final class HisarKitBackend: VaultBackend {
         try decode(ImportPreview.self, from: callReturningText { hisar.previewImport(vaultID, error: $0) })
     }
 
+    func mapImportGroup(groupID: String, vaultID: String) throws -> ImportPreview {
+        try decode(ImportPreview.self, from: callReturningText { hisar.mapImportGroup(groupID, vaultID: vaultID, error: $0) })
+    }
+
     func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress {
         try decode(ImportProgress.self, from: callReturningText { hisar.startImport(vaultID, isSkippingDuplicate: isSkippingDuplicate, error: $0) })
     }
@@ -317,6 +330,18 @@ final class HisarKitBackend: VaultBackend {
 
     func deleteItem(vaultID: String, itemID: String) throws {
         try callReturningNothing { try hisar.deleteItem(vaultID, itemID: itemID) }
+    }
+
+    func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws {
+        try callReturningNothing { try hisar.deleteUnreadableItem(vaultID, itemID: itemID, revision: revision) }
+    }
+
+    func deleteUnreadableVault(vaultID: String, revision: String) throws {
+        try callReturningNothing { try hisar.deleteUnreadableVault(vaultID, revision: revision) }
+    }
+
+    func repairVaultName(vaultID: String, revision: String, name: String) throws -> VaultSummary {
+        try decode(VaultSummary.self, from: callReturningText { hisar.repairVaultName(vaultID, revision: revision, name: name, error: $0) })
     }
 
     func listAllFavoriteItem() throws -> [FavoriteItem] {
@@ -360,6 +385,7 @@ final class HisarKitBackend: VaultBackend {
     }
 
     private struct PasskeyRegistrationPayload: Encodable {
+        var userVerification: String
         var relyingPartyId: String
         var userName: String
         var userHandle: String
@@ -390,6 +416,7 @@ final class HisarKitBackend: VaultBackend {
 
     func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult {
         let payload = PasskeyRegistrationPayload(
+            userVerification: request.userVerification,
             relyingPartyId: request.relyingPartyID, userName: request.userName, userHandle: Base64URL.encode(request.userHandle),
             clientDataHash: Base64URL.encode(request.clientDataHash), excludeCredentials: request.allExcludedCredentialID.map(Base64URL.encode),
             vaultID: vaultID, itemID: itemID
@@ -398,10 +425,16 @@ final class HisarKitBackend: VaultBackend {
         return try decode(PasskeyRegistrationResult.self, from: callReturningText { hisar.createPasskey(registrationJSON, error: $0) })
     }
 
-    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult {
-        try decode(PasskeyAssertionResult.self, from: callReturningText {
-            hisar.assertPasskey(relyingPartyID, credentialID: Base64URL.encode(credentialID), clientDataHash: Base64URL.encode(clientDataHash), error: $0)
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data, userVerification: String) throws -> PasskeyAssertionResult {
+        let request = ["relyingPartyId": relyingPartyID, "credentialId": Base64URL.encode(credentialID), "clientDataHash": Base64URL.encode(clientDataHash), "userVerification": userVerification]
+        let requestJSON = String(decoding: try JSONEncoder().encode(request), as: UTF8.self)
+        return try decode(PasskeyAssertionResult.self, from: callReturningText {
+            hisar.assertPasskey(withPolicy: requestJSON, error: $0)
         })
+    }
+
+    func cancelPasskeyCeremonies() {
+        hisar.cancelPasskeyCeremonies()
     }
 
     func deletePasskey(vaultID: String, itemID: String, credentialID: String) throws -> ItemDetail {
@@ -456,8 +489,36 @@ final class HisarKitBackend: VaultBackend {
         try decode(AccountDeletionPreview.self, from: callReturningText { hisar.previewAccountDeletion($0) })
     }
 
-    func deleteAccount(password: String, email: String) throws -> VaultStatus {
-        try decode(VaultStatus.self, from: callReturningText { hisar.deleteAccount(password, email: email, error: $0) })
+    func deleteAccountWithPlan(password: String, email: String, planVersion: String) throws -> VaultStatus {
+        try decode(VaultStatus.self, from: callReturningText { hisar.deleteAccount(withPlan: password, email: email, planVersion: planVersion, error: $0) })
+    }
+
+    func listPendingRecovery() throws -> [PendingRecovery] {
+        try decode([PendingRecovery]?.self, from: callReturningText { hisar.listPendingRecovery($0) }) ?? []
+    }
+
+    func resumePendingRecovery(operationID: String, password: String) throws -> SignUpResult {
+        try decode(SignUpResult.self, from: callReturningText { hisar.resumePendingRecovery(operationID, password: password, error: $0) })
+    }
+
+    func resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String) throws -> SignUpResult {
+        try decode(SignUpResult.self, from: callReturningText {
+            hisar.resumePendingRecovery(withSecretKey: operationID, password: password, secretKey: secretKey, priorSecretKey: priorSecretKey, error: $0)
+        })
+    }
+
+    func discardPreparedRecovery(operationID: String, password: String) throws {
+        try callReturningNothing { try hisar.discardPreparedRecovery(operationID, password: password) }
+    }
+
+    func exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: URL) throws -> PendingRecoveryExport {
+        try decode(PendingRecoveryExport.self, from: callReturningText {
+            hisar.exportPendingRecoveryEmergencyKit(operationID, password: password, directory: directory.path, error: $0)
+        })
+    }
+
+    func acknowledgePendingRecovery(operationID: String, password: String) throws {
+        try callReturningNothing { try hisar.acknowledgePendingRecovery(operationID, password: password) }
     }
 
     func dismissSignedOutReason() -> VaultStatus {

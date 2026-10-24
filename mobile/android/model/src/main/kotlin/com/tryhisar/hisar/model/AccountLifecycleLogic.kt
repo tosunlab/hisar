@@ -26,6 +26,7 @@ object AccountLifecycleLogic {
     }
 
     fun describeSignedOutDevices(count: Int): String = when (count) {
+        in Int.MIN_VALUE..-1 -> "Any other devices were signed out; their count could not be recovered."
         0 -> "No other devices were signed in."
         1 -> "1 other device was signed out."
         else -> "$count other devices were signed out."
@@ -43,7 +44,7 @@ object AccountLifecycleLogic {
         if (vault.role == Member.VAULT_ROLE_OWNER) "Stays with its other owners. Your access is removed." else "Stays with its owners. Your access is removed."
 
     fun describeOrganization(organization: DeletionOrganization): String = when {
-        organization.isDeleted -> "${organization.name} is deleted with your account"
+        organization.isDeleted -> "${organization.name}, its vaults, and their items are deleted with your account"
         organization.newAdminName.isNotEmpty() -> "${organization.newAdminName} becomes an admin of ${organization.name}"
         else -> "You leave ${organization.name}"
     }

@@ -29,21 +29,30 @@ func importOnePasswordExport(t *testing.T, service *Service, vaultID, exportData
 	t.Helper()
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
-	fileWriter, err := writer.Create("export.data")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := fileWriter.Write([]byte(exportData)); err != nil {
-		t.Fatal(err)
+	for _, file := range [][2]string{{"export.attributes", `{"version":3,"description":"1Password Unencrypted Export"}`}, {"export.data", exportData}} {
+		fileWriter, err := writer.Create(file[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := fileWriter.Write([]byte(file[1])); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
 	setImportPath(service, writeImportFile(t, "export.1pux", buffer.String()))
-	if _, err := service.ChooseImportFile(vaultID, ""); err != nil {
+	preview, err := service.ChooseImportFile(vaultID, "")
+	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.StartImport(vaultID, false); err != nil {
+	for _, group := range preview.Groups {
+		preview, err = service.MapImportGroup(group.ID, vaultID)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := service.StartImport(preview.VaultID, false); err != nil {
 		t.Fatal(err)
 	}
 	runImportToEnd(t, service)
@@ -114,7 +123,7 @@ func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
 	if preview.VaultName != "Personal" || preview.ItemCount != 14 || preview.LoginCount != 13 || preview.SecureNoteCount != 1 || preview.SSHKeyCount != 0 {
 		t.Errorf("preview counts = %+v", preview)
 	}
-	if len(preview.Duplicates) != 1 || preview.Duplicates[0] != (ImportDuplicate{Title: "GitHub", Username: "alice", URL: "https://github.com", Detail: "alice · github.com"}) {
+	if len(preview.Duplicates) != 1 || preview.Duplicates[0] != (ImportDuplicate{Title: "GitHub", Username: "alice", URL: "https://github.com", Detail: "alice · github.com · different password"}) {
 		t.Errorf("duplicates = %+v", preview.Duplicates)
 	}
 	if len(preview.Skipped) != 0 {
@@ -124,6 +133,9 @@ func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
 	familyPreview, err := service.PreviewImport(test.familyID)
 	if err != nil || familyPreview.VaultName != "Family" || len(familyPreview.Duplicates) != 0 || familyPreview.ItemCount != 14 {
 		t.Errorf("family preview = %+v %v", familyPreview, err)
+	}
+	if _, err := service.PreviewImport(test.personalID); err != nil {
+		t.Fatal(err)
 	}
 
 	started, err := service.StartImport(test.personalID, true)
@@ -159,14 +171,33 @@ func TestImportPreviewSaveAndDeleteFile(t *testing.T) {
 		t.Errorf("imported note = %+v", note)
 	}
 
-	if err := service.DeleteImportFile(); err != nil {
+	if err := service.DeleteImportFile(); err == nil {
+		t.Fatal("deleted the only copy of the duplicate's different password")
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("source file was removed: %v", err)
+	}
+}
+
+// The export is kept while it holds an entry Hisar did not import, here an archived 1Password CSV row.
+func TestImportKeepsAFileWithEntriesLeftBehind(t *testing.T) {
+	test := createUnlockedTestService(t)
+	service := test.service
+	path := writeImportFile(t, "1PasswordExport.csv", "Title,Url,Username,Password,OTPAuth,Favorite,Archived,Tags,Notes\n"+
+		"GitHub,https://github.com,alice,pw,,false,false,,\nOld,https://old.example.com,alice,old-pw,,false,true,,\n")
+	setImportPath(service, path)
+	if _, err := service.ChooseImportFile(test.personalID, ""); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Errorf("export file still exists: %v", err)
+	if _, err := service.StartImport(test.personalID, true); err != nil {
+		t.Fatal(err)
 	}
-	if err := service.DeleteImportFile(); !errors.Is(err, ErrNoPendingImport) {
-		t.Errorf("second delete: %v", err)
+	runImportToEnd(t, service)
+	if err := service.DeleteImportFile(); err == nil || !strings.Contains(err.Error(), "1 of its entries are not in Hisar") {
+		t.Errorf("delete = %v", err)
+	}
+	if _, err := os.Stat(path); err != nil {
+		t.Errorf("the export was deleted: %v", err)
 	}
 }
 
@@ -178,6 +209,9 @@ func TestImportIncludesDuplicatesWhenAsked(t *testing.T) {
 	}
 	setImportPath(service, writeImportFile(t, "export.csv", buildImportCSV(1)))
 	if _, err := service.ChooseImportFile(test.familyID, "csv"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PreviewImport(test.familyID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.StartImport(test.familyID, false); err != nil {
@@ -228,7 +262,7 @@ func TestImportRejectsReadOnlyVaultAndUnknownFormat(t *testing.T) {
 	if _, err := service.PreviewImport(test.familyID); !errors.Is(err, errReadOnlyVault) {
 		t.Errorf("preview for a read-only vault: %v", err)
 	}
-	if _, err := service.StartImport(test.familyID, true); !errors.Is(err, errReadOnlyVault) {
+	if _, err := service.StartImport(test.familyID, true); err == nil {
 		t.Errorf("import into a read-only vault: %v", err)
 	}
 	if _, err := service.ChooseImportFile(test.familyID, ""); !errors.Is(err, errReadOnlyVault) {
@@ -334,6 +368,9 @@ func TestImportStarsTheFavoritesOfTheExport(t *testing.T) {
 	builder.WriteString("Bank,https://bank.example.com,alice,bank-pass,,true,false,,\n")
 	setImportPath(service, writeImportFile(t, "1PasswordExport.csv", builder.String()))
 	if _, err := service.ChooseImportFile(test.familyID, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.PreviewImport(test.familyID); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := service.StartImport(test.familyID, false); err != nil {

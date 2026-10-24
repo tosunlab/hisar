@@ -14,6 +14,8 @@ import (
 
 const schemaVersion = 1
 
+var ErrAccountMismatch = errors.New("cache: offline copy belongs to another account or has no account binding")
+
 var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS accounts (account_id TEXT PRIMARY KEY, data BLOB NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS vaults (vault_id TEXT PRIMARY KEY, data BLOB, seq INTEGER NOT NULL DEFAULT 0)`,
@@ -28,13 +30,18 @@ type Cache struct {
 	database *sql.DB
 }
 
-// Open creates the file with mode 0600 if needed; a file from another schema version is emptied.
+// Open creates the file with mode 0600 if needed, and makes an existing one 0600; a file from another schema version
+// is emptied.
 func Open(path string) (*Cache, error) {
 	file, err := os.OpenFile(path, os.O_RDWR|os.O_CREATE, 0o600)
 	if err != nil {
 		return nil, err
 	}
+	err = file.Chmod(0o600)
 	file.Close()
+	if err != nil {
+		return nil, err
+	}
 	database, err := sql.Open(sqliteDriver, buildSQLiteDataSource(path))
 	if err != nil {
 		return nil, err
@@ -55,14 +62,21 @@ func prepareSchema(database *sql.DB) error {
 	statements := schemaStatements
 	if currentVersion != schemaVersion {
 		statements = append(append([]string{}, dropStatements...), schemaStatements...)
+		statements = append(statements, `DROP TABLE IF EXISTS sync_checkpoints`, `DROP TABLE IF EXISTS observed_vaults`)
 		statements = append(statements, fmt.Sprintf(`PRAGMA user_version = %d`, schemaVersion))
 	}
+	statements = append(append([]string{}, statements...), snapshotSchema...)
+	transaction, err := database.Begin()
+	if err != nil {
+		return err
+	}
+	defer transaction.Rollback()
 	for _, statement := range statements {
-		if _, err := database.Exec(statement); err != nil {
+		if _, err := transaction.Exec(statement); err != nil {
 			return err
 		}
 	}
-	return nil
+	return transaction.Commit()
 }
 
 func (c *Cache) Close() error {
@@ -78,6 +92,31 @@ func Remove(path string) error {
 		}
 	}
 	return errors.Join(errs...)
+}
+
+// CheckAccount accepts this account's snapshot or a completely empty cache.
+func (c *Cache) CheckAccount(accountID string) error {
+	var isAllowed bool
+	err := c.database.QueryRow(`
+		SELECT NOT EXISTS (SELECT 1 FROM accounts WHERE account_id <> ?)
+			AND NOT EXISTS (SELECT 1 FROM account_preferences WHERE account_id <> ?)
+			AND (
+				EXISTS (SELECT 1 FROM accounts WHERE account_id = ?)
+				OR NOT (
+					EXISTS (SELECT 1 FROM vaults)
+					OR EXISTS (SELECT 1 FROM observed_vaults)
+					OR EXISTS (SELECT 1 FROM items)
+					OR EXISTS (SELECT 1 FROM account_preferences)
+					OR EXISTS (SELECT 1 FROM website_icons)
+				)
+			)`, accountID, accountID, accountID).Scan(&isAllowed)
+	if err != nil {
+		return err
+	}
+	if !isAllowed {
+		return ErrAccountMismatch
+	}
+	return nil
 }
 
 func (c *Cache) SaveAccount(account *apitypes.Account) error {
@@ -155,8 +194,13 @@ func (c *Cache) LoadAccountPreferences(accountID string) (*apitypes.AccountPrefe
 	return preferences, nil
 }
 
-// ReplaceVaults stores the server's vault list and forgets vaults, with their items, that are no longer in it.
-func (c *Cache) ReplaceVaults(vaults []apitypes.Vault) error {
+// ReplaceVaults stores the server's vault list. A verified record replaces the cached one unless it carries another key
+// generation while the vault has cached items: those stay sealed with the cached record's key until Sync.Commit
+// publishes their replacement with its record, so the offline copy never pairs a key with ciphertext it does not open.
+// An unverified record, one whose key or name did not open, never replaces a verified one; it is kept apart as a known
+// omission until a verified record or the vault's removal replaces it. Only a list that verified completely makes the
+// cache forget the vaults, with their items, that are not in it: a list with records that do not open may be forged.
+func (c *Cache) ReplaceVaults(verified, unverified []apitypes.Vault) error {
 	transaction, err := c.database.Begin()
 	if err != nil {
 		return err
@@ -168,37 +212,64 @@ func (c *Cache) ReplaceVaults(vaults []apitypes.Vault) error {
 	if _, err := transaction.Exec(`DELETE FROM listed_vaults`); err != nil {
 		return err
 	}
-	for index := range vaults {
-		data, err := json.Marshal(&vaults[index])
+	for index := range verified {
+		data, err := json.Marshal(&verified[index])
 		if err != nil {
 			return err
 		}
-		if _, err := transaction.Exec(`INSERT INTO vaults (vault_id, data) VALUES (?, ?) ON CONFLICT (vault_id) DO UPDATE SET data = excluded.data`, vaults[index].ID, data); err != nil {
+		if _, err := transaction.Exec(`INSERT INTO vaults (vault_id, data) VALUES (?, ?) ON CONFLICT (vault_id) DO UPDATE SET data = excluded.data
+			WHERE vaults.data IS NULL OR json_extract(vaults.data, '$.keyGeneration') IS json_extract(excluded.data, '$.keyGeneration')
+				OR NOT EXISTS (SELECT 1 FROM items WHERE items.vault_id = vaults.vault_id)`, verified[index].ID, data); err != nil {
 			return err
 		}
-		if _, err := transaction.Exec(`INSERT OR IGNORE INTO listed_vaults (vault_id) VALUES (?)`, vaults[index].ID); err != nil {
+		if _, err := transaction.Exec(`DELETE FROM observed_vaults WHERE vault_id = ?`, verified[index].ID); err != nil {
+			return err
+		}
+		if _, err := transaction.Exec(`INSERT OR IGNORE INTO listed_vaults (vault_id) VALUES (?)`, verified[index].ID); err != nil {
 			return err
 		}
 	}
-	if _, err := transaction.Exec(`DELETE FROM items WHERE vault_id NOT IN (SELECT vault_id FROM listed_vaults)`); err != nil {
-		return err
+	for index := range unverified {
+		data, err := json.Marshal(&unverified[index])
+		if err != nil {
+			return err
+		}
+		if _, err := transaction.Exec(`INSERT INTO observed_vaults (vault_id, data) VALUES (?, ?) ON CONFLICT (vault_id) DO UPDATE SET data = excluded.data`, unverified[index].ID, data); err != nil {
+			return err
+		}
+		if _, err := transaction.Exec(`INSERT OR IGNORE INTO listed_vaults (vault_id) VALUES (?)`, unverified[index].ID); err != nil {
+			return err
+		}
 	}
-	if _, err := transaction.Exec(`DELETE FROM vaults WHERE vault_id NOT IN (SELECT vault_id FROM listed_vaults)`); err != nil {
-		return err
+	if len(unverified) == 0 {
+		for _, statement := range []string{
+			`DELETE FROM items WHERE vault_id NOT IN (SELECT vault_id FROM listed_vaults)`,
+			`DELETE FROM vaults WHERE vault_id NOT IN (SELECT vault_id FROM listed_vaults)`,
+			`DELETE FROM observed_vaults WHERE vault_id NOT IN (SELECT vault_id FROM listed_vaults)`,
+		} {
+			if _, err := transaction.Exec(statement); err != nil {
+				return err
+			}
+		}
 	}
 	return transaction.Commit()
 }
 
+// ListVaults returns the verified record of every cached vault, and the unverified record of a listed vault that has
+// none, so a vault seen but never opened stays a known omission offline.
 func (c *Cache) ListVaults() ([]apitypes.Vault, error) {
-	rows, err := c.database.Query(`SELECT data FROM vaults WHERE data IS NOT NULL ORDER BY vault_id`)
+	rows, err := c.database.Query(`SELECT vault_id, data FROM vaults WHERE data IS NOT NULL
+		UNION ALL SELECT vault_id, data FROM observed_vaults WHERE vault_id NOT IN (SELECT vault_id FROM vaults WHERE data IS NOT NULL)
+		ORDER BY vault_id`)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	vaults := []apitypes.Vault{}
 	for rows.Next() {
+		var vaultID string
 		var data []byte
-		if err := rows.Scan(&data); err != nil {
+		if err := rows.Scan(&vaultID, &data); err != nil {
 			return nil, err
 		}
 		var vault apitypes.Vault

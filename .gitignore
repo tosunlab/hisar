@@ -12,10 +12,12 @@ deploy/hisar.env
 /server/cmd/hisar-server/hisar-server
 /cli/cmd/hisar/hisar
 /extension/dist/
+/extension/dist-firefox/
 /extension/hisar-extension-*.zip
 /extension/test-results/
 /extension/playwright-report/
 /extension/.fake-host/
+/extension/.test-browsers/
 /mobile/build/
 /mobile/ios/Configuration/Local.xcconfig
 /mobile/android/local.properties
@@ -33,6 +35,7 @@ xcuserdata/
 deploy/.env
 /.dmgbuild/
 /desktop/build/sparkle/
+/desktop/build/sparkle.tar.xz
 /admin/wasm/
 /admin/test-results/
 /admin/playwright-report/

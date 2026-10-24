@@ -11,7 +11,7 @@ import OneTimeCodeRow from "./OneTimeCodeRow.vue";
 // In the vault view, query comes from its search box, which takes the place of this list's own; the list then also
 // reports what it found and opens a login's details.
 const props = defineProps<{ tabId: number | undefined; query?: string }>();
-const emit = defineEmits<{ notice: [message: string]; loaded: [allLogin: LoginSummary[], url: string]; open: [login: LoginSummary, url: string] }>();
+const emit = defineEmits<{ notice: [message: string]; loaded: [allLogin: LoginSummary[]]; open: [login: LoginSummary, url: string] }>();
 
 const allLogin = ref<LoginSummary[]>([]);
 const pageHost = ref("");
@@ -50,7 +50,7 @@ async function loadLogins(): Promise<void> {
     allLogin.value = result.allLogin;
     pageUrl.value = result.url;
     pageHost.value = getHostFromUrl(result.url);
-    emit("loaded", result.allLogin, result.url);
+    emit("loaded", result.allLogin);
   } catch (error) {
     errorMessage.value = describeError(error);
   } finally {

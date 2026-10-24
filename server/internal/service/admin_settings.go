@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/server/internal/mail"
 	"github.com/tryhisar/hisar/server/internal/settings"
+	"github.com/tryhisar/hisar/server/internal/store"
 )
 
 var (
@@ -38,7 +40,7 @@ func (s *Service) UpdateSettings(ctx context.Context, actor Actor, request *apit
 		return apitypes.AdminSettings{}, newError(KindInvalid, "Change at least one setting.")
 	}
 	var changedFields []string
-	effective, sources, err := s.updateStoredSettings(ctx, actor.AccountID, func(stored []byte) (updated []byte, err error) {
+	effective, sources, err := s.updateStoredSettings(ctx, actor.AccountID, true, func(stored []byte) (updated []byte, err error) {
 		updated, changedFields, err = s.applySettingChanges(stored, request.Settings)
 		return updated, err
 	})
@@ -79,13 +81,14 @@ func (s *Service) recordSettingsChange(ctx context.Context, actor Actor, changed
 }
 
 // updateStoredSettings stores what update makes of the stored document, holding the row locked, then swaps the
-// snapshot. A result that fails Validate leaves the stored settings unchanged.
-func (s *Service) updateStoredSettings(ctx context.Context, updatedBy string, update func(stored []byte) ([]byte, error)) (settings.Settings, settings.Sources, error) {
+// snapshot. A result that fails Validate leaves the stored settings unchanged. An admin's change (isByAdmin) is
+// refused with ErrAdminOnly once updatedBy is no longer an active admin.
+func (s *Service) updateStoredSettings(ctx context.Context, updatedBy string, isByAdmin bool, update func(stored []byte) ([]byte, error)) (settings.Settings, settings.Sources, error) {
 	s.settingsMutex.Lock()
 	defer s.settingsMutex.Unlock()
 	var effective settings.Settings
 	var sources settings.Sources
-	err := s.store.UpdateInstanceSettings(ctx, updatedBy, func(stored []byte) ([]byte, error) {
+	err := s.store.UpdateInstanceSettings(ctx, updatedBy, isByAdmin, func(stored []byte) ([]byte, error) {
 		updated, err := update(stored)
 		if err != nil {
 			return nil, err
@@ -99,6 +102,9 @@ func (s *Service) updateStoredSettings(ctx context.Context, updatedBy string, up
 		}
 		return updated, nil
 	})
+	if errors.Is(err, store.ErrActorNotAdmin) {
+		return settings.Settings{}, nil, ErrAdminOnly
+	}
 	if err != nil {
 		return settings.Settings{}, nil, err
 	}

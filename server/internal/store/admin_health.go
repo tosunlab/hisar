@@ -62,7 +62,7 @@ func (s *Store) GetInstanceCounts(ctx context.Context) (InstanceCounts, error) {
 		       (SELECT count(*) FROM accounts WHERE suspended_at IS NOT NULL),
 		       (SELECT count(*) FROM vaults),
 		       (SELECT count(*) FROM share_links WHERE expires_at > now()),
-		       (SELECT count(*) FROM invites WHERE used_at IS NULL AND expires_at > now() AND email <> ''),
+		       (SELECT count(*) FROM invites i WHERE i.used_at IS NULL AND i.expires_at > now() AND i.email <> '' AND `+isWithinCreatorAuthority+`),
 		       pg_database_size(current_database())`).
 		Scan(&counts.Accounts, &counts.SuspendedAccounts, &counts.Vaults, &counts.ShareLinks, &counts.PendingInvites, &counts.StorageBytes)
 	if err != nil {

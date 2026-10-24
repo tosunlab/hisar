@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -77,34 +78,59 @@ type ImportPreview struct {
 	PasskeyCount int                  `json:"passkeyCount"`
 	Skipped      []ImportSkippedEntry `json:"allSkipped"`
 	Duplicates   []ImportDuplicate    `json:"allDuplicate"`
+	Groups       []ImportSourceGroup  `json:"groups"`
 }
 
 type ImportProgress struct {
-	FileName   string               `json:"fileName"`
-	FilePath   string               `json:"filePath"`
-	VaultID    string               `json:"vaultId"`
-	VaultName  string               `json:"vaultName"`
-	SavedCount int                  `json:"savedCount"`
-	TotalCount int                  `json:"totalCount"`
-	IsDone     bool                 `json:"isDone"`
-	Failed     []ImportSkippedEntry `json:"allFailed"`
+	FileName        string               `json:"fileName"`
+	FilePath        string               `json:"filePath"`
+	VaultID         string               `json:"vaultId"`
+	VaultName       string               `json:"vaultName"`
+	SavedCount      int                  `json:"savedCount"`
+	TotalCount      int                  `json:"totalCount"`
+	LeftBehindCount int                  `json:"leftBehindCount"`
+	IsDone          bool                 `json:"isDone"`
+	Failed          []ImportSkippedEntry `json:"allFailed"`
 }
 
 // pendingImport holds the parsed export between the preview and saving; locking drops it. A Credential Exchange import
 // has no filePath; sourceName names the app it came from.
 type pendingImport struct {
-	filePath    string
-	sourceName  string
-	format      string
-	items       []item.Item
-	skipped     []importer.SkippedEntry
-	isStarted   bool
-	vaultID     string
-	queuedItems []item.Item
-	savedCount  int
-	failed      []ImportSkippedEntry
+	filePath       string
+	sourceName     string
+	format         string
+	items          []item.Item
+	skipped        []importer.SkippedEntry
+	groups         []importDestination
+	queuedVaultIDs []string
+	scopes         map[string]string
+	isStarted      bool
+	vaultID        string
+	queuedItems    []item.Item
+	savedCount     int
+	failed         []ImportSkippedEntry
 	// favoriteItemIDs are saved items the other password manager starred; they become favorites when the import ends.
 	favoriteItemIDs []string
+}
+
+type ImportSourceGroup struct {
+	ID        string        `json:"id"`
+	Name      string        `json:"name"`
+	IsPrivate bool          `json:"isPrivate"`
+	ItemCount int           `json:"itemCount"`
+	VaultID   string        `json:"vaultId"`
+	VaultName string        `json:"vaultName"`
+	Members   []VaultMember `json:"members"`
+}
+
+type importDestination struct {
+	source  importer.SourceGroup
+	vaultID string
+	scope   string
+}
+
+func (pending *pendingImport) countLeftBehind() int {
+	return importer.CountLeftBehind(len(pending.failed), pending.skipped)
 }
 
 func (pending *pendingImport) getName() string {
@@ -153,7 +179,7 @@ func (s *Service) ChooseImportFile(vaultID, format string) (ImportPreview, error
 		return ImportPreview{}, err
 	}
 	s.pendingImport = &pendingImport{filePath: path, format: result.Format, items: result.Items, skipped: result.Skipped}
-	return s.buildImportPreview(vaultID)
+	return s.prepareImportGroups(result.SourceGroups())
 }
 
 // PrepareCredentialExchangeImport reads the Credential Exchange (CXF) JSON another password manager handed over, such
@@ -181,20 +207,25 @@ func PrepareCredentialExchangeImport(s *Service, vaultID string, content []byte)
 		sourceName = importer.GetFormatName(result.Format)
 	}
 	s.pendingImport = &pendingImport{sourceName: sourceName, format: result.Format, items: result.Items, skipped: result.Skipped}
-	return s.buildImportPreview(vaultID)
+	return s.prepareImportGroups(result.SourceGroups())
 }
 
+// readImportFile reads at most maxImportFileSize bytes: a pipe or a file that grows says nothing true about its size
+// beforehand.
 func readImportFile(path string) ([]byte, error) {
-	fileInfo, err := os.Stat(path)
+	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("could not open %s", filepath.Base(path))
 	}
-	if fileInfo.Size() > maxImportFileSize {
-		return nil, errors.New("the file is larger than 100 MB; export without attachments and try again")
-	}
-	content, err := os.ReadFile(path)
+	defer file.Close()
+	content, err := io.ReadAll(io.LimitReader(file, maxImportFileSize+1))
 	if err != nil {
+		clear(content)
 		return nil, fmt.Errorf("could not read %s", filepath.Base(path))
+	}
+	if len(content) > maxImportFileSize {
+		clear(content)
+		return nil, errors.New("the file is larger than 100 MB; export without attachments and try again")
 	}
 	return content, nil
 }
@@ -227,7 +258,19 @@ func (s *Service) PreviewImport(vaultID string) (ImportPreview, error) {
 	if s.pendingImport == nil || s.pendingImport.isStarted {
 		return ImportPreview{}, ErrNoPendingImport
 	}
-	return s.buildImportPreview(vaultID)
+	if len(s.pendingImport.groups) > 1 {
+		return ImportPreview{}, errors.New("choose a destination for each source group")
+	}
+	previous := ""
+	if len(s.pendingImport.groups) == 1 {
+		previous = s.pendingImport.groups[0].vaultID
+		s.pendingImport.groups[0].vaultID = vaultID
+	}
+	preview, err := s.buildImportPreview(vaultID)
+	if err != nil && len(s.pendingImport.groups) == 1 {
+		s.pendingImport.groups[0].vaultID = previous
+	}
+	return preview, err
 }
 
 func (s *Service) loadEditableVaultItem(ctx context.Context, vaultID string) (*session.Vault, []item.Item, error) {
@@ -238,15 +281,17 @@ func (s *Service) loadEditableVaultItem(ctx context.Context, vaultID string) (*s
 	if vault.Role == apitypes.VaultReader {
 		return nil, nil, errReadOnlyVault
 	}
-	existingItems, err := s.unlockedSession.ListItems(ctx, vault)
+	read, err := s.readVaultItems(ctx, vault)
 	if err != nil {
-		return nil, nil, convertError(err)
+		return nil, nil, err
 	}
-	s.itemsByVaultID[vault.ID] = existingItems
-	return vault, existingItems, nil
+	if !s.isItemListComplete(vault.ID) {
+		return nil, nil, session.ErrIncompleteRead
+	}
+	return vault, read.Items, nil
 }
 
-func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
+func (s *Service) buildSingleImportPreview(vaultID string) (ImportPreview, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	vault, existingItems, err := s.loadEditableVaultItem(ctx, vaultID)
@@ -291,11 +336,12 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 			firstURL = duplicate.Overview.URLs[0]
 		}
 		passkeyCount := 0
-		if existing := existingItems[duplicateMatches[index]]; existing.IsCategory(item.CategoryLogin) {
+		existing := existingItems[duplicateMatches[index]]
+		if existing.IsCategory(item.CategoryLogin) {
 			passkeyCount = len(filterNewPasskeys(duplicate.Details.Passkeys, existingPasskeyIDs))
 		}
 		preview.Duplicates = append(preview.Duplicates, ImportDuplicate{
-			Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL, Detail: importer.DescribeDuplicate(duplicate),
+			Title: duplicate.Overview.Title, Username: duplicate.Overview.Username, URL: firstURL, Detail: importer.DescribeDuplicateOf(duplicate, existing),
 			PasskeyCount: passkeyCount,
 		})
 	}
@@ -333,10 +379,13 @@ func (s *Service) StartImport(vaultID string, isSkippingDuplicate bool) (ImportP
 	if err := s.requireUnlocked(); err != nil {
 		return ImportProgress{}, err
 	}
-	pending := s.pendingImport
-	if pending == nil || pending.isStarted {
+	if s.pendingImport == nil || s.pendingImport.isStarted {
 		return ImportProgress{}, ErrNoPendingImport
 	}
+	return s.startImportGroups(vaultID, isSkippingDuplicate)
+}
+
+func (s *Service) startSingleImport(pending *pendingImport, vaultID string, isSkippingDuplicate bool) (ImportProgress, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	vault, existingItems, err := s.loadEditableVaultItem(ctx, vaultID)
@@ -379,6 +428,13 @@ func (s *Service) StartImport(vaultID string, isSkippingDuplicate bool) (ImportP
 			item.UpdatePasskeyOverview(merged)
 		}
 	}
+	if len(mergedPositions) > 0 {
+		existingItems = slices.Clone(existingItems)
+		for existingIndex, position := range mergedPositions {
+			existingItems[existingIndex] = queuedItems[position]
+		}
+	}
+	pending.skipped = append(pending.skipped, importer.FindUnsavedDuplicates(pending.items, existingItems, duplicateMatches)...)
 	pending.isStarted, pending.vaultID, pending.queuedItems, pending.items = true, vault.ID, queuedItems, nil
 	pending.failed = []ImportSkippedEntry{}
 	return s.buildImportProgress(), nil
@@ -396,17 +452,22 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	vault, err := s.findVault(ctx, pending.vaultID)
-	if err != nil {
-		return ImportProgress{}, err
+	if len(pending.queuedVaultIDs) == 0 && len(pending.queuedItems) > 0 {
+		return ImportProgress{}, errors.New("review the import destinations again")
 	}
 	for batchCount := 0; batchCount < importBatchSize && len(pending.queuedItems) > 0; batchCount++ {
+		vaultID := pending.queuedVaultIDs[0]
+		vault, err := s.findVault(ctx, vaultID)
+		if err != nil {
+			return ImportProgress{}, err
+		}
 		vaultItem := pending.queuedItems[0]
-		err := s.saveSessionItem(ctx, vault, &vaultItem)
+		err = s.saveSessionItem(ctx, vault, &vaultItem, pending.scopes[vaultID])
 		if isImportStoppingError(err) {
 			return ImportProgress{}, convertError(err)
 		}
 		pending.queuedItems = pending.queuedItems[1:]
+		pending.queuedVaultIDs = pending.queuedVaultIDs[1:]
 		if err != nil {
 			pending.failed = append(pending.failed, ImportSkippedEntry{Title: vaultItem.Overview.Title, Reason: convertError(err).Error()})
 			continue
@@ -427,22 +488,25 @@ func (s *Service) ContinueImport() (ImportProgress, error) {
 // isImportStoppingError: these failures would repeat for every item, so the import pauses and can be continued.
 func isImportStoppingError(err error) bool {
 	return err != nil && (apiclient.IsUnreachable(err) || apiclient.IsStatus(err, http.StatusUnauthorized) ||
-		errors.Is(err, apiclient.ErrAccountSuspended) || apiclient.IsStatus(err, http.StatusForbidden) || apiclient.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.DeadlineExceeded))
+		errors.Is(err, session.ErrConflict) || errors.Is(err, session.ErrImportScopeChanged) || errors.Is(err, apiclient.ErrAccountSuspended) || apiclient.IsStatus(err, http.StatusForbidden) || apiclient.IsStatus(err, http.StatusTooManyRequests) || errors.Is(err, context.DeadlineExceeded))
 }
 
 func (s *Service) buildImportProgress() ImportProgress {
 	pending := s.pendingImport
 	progress := ImportProgress{
-		FileName:   pending.getName(),
-		FilePath:   pending.filePath,
-		VaultID:    pending.vaultID,
-		SavedCount: pending.savedCount,
-		TotalCount: pending.savedCount + len(pending.failed) + len(pending.queuedItems),
-		IsDone:     len(pending.queuedItems) == 0,
-		Failed:     slices.Clone(pending.failed),
+		FileName:        pending.getName(),
+		FilePath:        pending.filePath,
+		VaultID:         pending.vaultID,
+		SavedCount:      pending.savedCount,
+		TotalCount:      pending.savedCount + len(pending.failed) + len(pending.queuedItems),
+		LeftBehindCount: pending.countLeftBehind(),
+		IsDone:          len(pending.queuedItems) == 0,
+		Failed:          slices.Clone(pending.failed),
 	}
 	if vault, found := s.vaultsByID[pending.vaultID]; found {
 		progress.VaultName = vault.Name
+	} else {
+		progress.VaultName = "the mapped vaults"
 	}
 	return progress
 }
@@ -453,7 +517,8 @@ func (s *Service) CancelImport() {
 	s.pendingImport = nil
 }
 
-// DeleteImportFile removes the export file after a finished import, since it holds every password in plain text.
+// DeleteImportFile removes the export file after a finished import, since it holds every password in plain text. It
+// refuses while the file holds something Hisar did not save, an item that failed or an entry it skipped.
 func (s *Service) DeleteImportFile() error {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
@@ -463,6 +528,9 @@ func (s *Service) DeleteImportFile() error {
 	pending := s.pendingImport
 	if pending == nil || !pending.isStarted || len(pending.queuedItems) > 0 {
 		return ErrNoPendingImport
+	}
+	if leftCount := pending.countLeftBehind(); leftCount > 0 {
+		return fmt.Errorf("keep %s: %d of its entries are not in Hisar", pending.getName(), leftCount)
 	}
 	if pending.filePath != "" {
 		if err := os.Remove(pending.filePath); err != nil && !errors.Is(err, os.ErrNotExist) {

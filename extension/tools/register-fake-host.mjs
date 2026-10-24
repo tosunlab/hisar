@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { createInitialState, writeState } from "./fake-native-host.mjs";
 
 export const extensionID = "mmipiffoogblblocokimpemdopmdjghf";
+export const firefoxExtensionID = "extension@tryhisar.com";
 export const hostName = "com.tryhisar.hisar";
 const toolsDirectory = dirname(fileURLToPath(import.meta.url));
 
@@ -21,7 +22,7 @@ function quoteForShell(value) {
   return `'${value.replaceAll("'", "'\\''")}'`;
 }
 
-export function registerFakeHost({ userDataDirectory, stateFile, hostDirectory, shouldResetState = false }) {
+function writeLauncher(hostDirectory, stateFile) {
   mkdirSync(hostDirectory, { recursive: true });
   const launcherPath = join(hostDirectory, "hisar-fake-host.sh");
   const scriptPath = join(toolsDirectory, "fake-native-host.mjs");
@@ -36,17 +37,37 @@ export function registerFakeHost({ userDataDirectory, stateFile, hostDirectory, 
     ].join("\n"),
   );
   chmodSync(launcherPath, 0o755);
-  const manifestDirectory = join(userDataDirectory, "NativeMessagingHosts");
+  return launcherPath;
+}
+
+function writeManifest(manifestDirectory, manifest) {
   mkdirSync(manifestDirectory, { recursive: true });
   const manifestPath = join(manifestDirectory, `${hostName}.json`);
-  const manifest = {
-    name: hostName,
-    description: "Hisar fake native host for development",
-    path: launcherPath,
-    type: "stdio",
-    allowed_origins: [`chrome-extension://${extensionID}/`],
-  };
-  writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+  writeFileSync(manifestPath, `${JSON.stringify({ name: hostName, description: "Hisar fake native host for development", type: "stdio", ...manifest }, null, 2)}\n`);
+  return manifestPath;
+}
+
+export function registerFakeHost({ userDataDirectory, stateFile, hostDirectory, shouldResetState = false }) {
+  const launcherPath = writeLauncher(hostDirectory, stateFile);
+  const manifestPath = writeManifest(join(userDataDirectory, "NativeMessagingHosts"), { path: launcherPath, allowed_origins: [`chrome-extension://${extensionID}/`] });
+  if (shouldResetState || !existsSync(stateFile)) writeState(stateFile, createInitialState());
+  return { manifestPath, launcherPath, stateFile };
+}
+
+// getFirefoxManifestsDirectory is where Firefox looks for the user's native host manifests (its XREUserNativeManifests),
+// which holds NativeMessagingHosts on macOS and native-messaging-hosts on Linux.
+export function getFirefoxManifestsDirectory() {
+  if (platform() === "darwin") return join(homedir(), "Library/Application Support/Mozilla");
+  if (platform() === "linux") return join(homedir(), ".mozilla");
+  throw new Error("Registering the fake host is supported on macOS and Linux only");
+}
+
+// registerFakeFirefoxHost writes the manifest Firefox reads, which names the add-on ID instead of an origin. Firefox has no
+// per-profile manifests, so tests pass their own manifestsDirectory and point Firefox at it.
+export function registerFakeFirefoxHost({ manifestsDirectory, stateFile, hostDirectory, shouldResetState = false }) {
+  const launcherPath = writeLauncher(hostDirectory, stateFile);
+  const directoryName = platform() === "linux" ? "native-messaging-hosts" : "NativeMessagingHosts";
+  const manifestPath = writeManifest(join(manifestsDirectory, directoryName), { path: launcherPath, allowed_extensions: [firefoxExtensionID] });
   if (shouldResetState || !existsSync(stateFile)) writeState(stateFile, createInitialState());
   return { manifestPath, launcherPath, stateFile };
 }
@@ -64,19 +85,23 @@ function parseArguments(allArgument) {
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   const options = parseArguments(process.argv.slice(2));
-  if (!options["user-data-dir"] && !options.shouldReplaceHisarRegistration) {
+  // Firefox reads one manifest directory for every profile, so it always replaces the Hisar app's registration there.
+  if ((!options["user-data-dir"] || options.browser === "firefox") && !options.shouldReplaceHisarRegistration) {
     console.error("Pass --user-data-dir <directory> to register the fake host for a separate Chrome profile.");
     console.error("Registering it for your normal browser profile replaces the Hisar app's com.tryhisar.hisar.json;");
     console.error("add --replace-hisar-registration if you mean that (Hisar writes its own manifest back at its next launch).");
     process.exit(1);
   }
   const extensionDirectory = resolve(toolsDirectory, "..");
-  const result = registerFakeHost({
-    userDataDirectory: options["user-data-dir"] ? resolve(options["user-data-dir"]) : getDefaultUserDataDirectory(options.browser),
+  const common = {
     stateFile: resolve(options.state ?? join(extensionDirectory, ".fake-host/state.json")),
     hostDirectory: resolve(options["host-dir"] ?? join(extensionDirectory, ".fake-host")),
     shouldResetState: options.shouldResetState === true,
-  });
+  };
+  const result =
+    options.browser === "firefox"
+      ? registerFakeFirefoxHost({ ...common, manifestsDirectory: getFirefoxManifestsDirectory() })
+      : registerFakeHost({ ...common, userDataDirectory: options["user-data-dir"] ? resolve(options["user-data-dir"]) : getDefaultUserDataDirectory(options.browser) });
   console.log(`Host manifest: ${result.manifestPath}`);
   console.log(`Launcher:      ${result.launcherPath}`);
   console.log(`State file:    ${result.stateFile}`);

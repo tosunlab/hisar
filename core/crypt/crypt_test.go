@@ -306,6 +306,19 @@ func TestAccountPreferences(t *testing.T) {
 	}
 }
 
+func TestAgentGrants(t *testing.T) {
+	key := decodeHex(t, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+	if plaintext, err := OpenAgentGrants(key, "ABC123", decodeHex(t, vectorAgentGrants)); err != nil || string(plaintext) != `[{"harnessId":"omp"}]` {
+		t.Fatalf("vector: %q, %v", plaintext, err)
+	}
+	if _, err := OpenAgentGrants(key, "XYZ789", decodeHex(t, vectorAgentGrants)); err == nil {
+		t.Error("opened under another account ID")
+	}
+	if _, err := OpenAccountPreferences(key, "ABC123", decodeHex(t, vectorAgentGrants)); err == nil {
+		t.Error("opened as account preferences")
+	}
+}
+
 func TestWebsiteIconKeys(t *testing.T) {
 	key := decodeHex(t, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
 	keys, err := DeriveWebsiteIconKeys(key, "ABC123")
@@ -335,5 +348,18 @@ func BenchmarkDeriveAllKeyDefault(b *testing.B) {
 		if _, err := DeriveKeys([]byte("correct horse battery staple"), salt, DefaultArgon2Params(), secretKey); err != nil {
 			b.Fatal(err)
 		}
+	}
+}
+
+func TestArgon2BoundsPreservePreviouslyValidParameters(t *testing.T) {
+	for _, params := range []Argon2Params{MinArgon2Params(), DefaultArgon2Params(), MaxArgon2Params(), {Time: 2, MemoryKiB: 128 * 1024, Threads: 1}} {
+		if err := params.Validate(); err != nil {
+			t.Errorf("previously valid parameters %+v: %v", params, err)
+		}
+	}
+	params := MaxArgon2Params()
+	params.MemoryKiB++
+	if err := params.Validate(); !errors.Is(err, ErrArgon2ParamsOutOfRange) {
+		t.Fatalf("parameters outside the old bounds: %v", err)
 	}
 }

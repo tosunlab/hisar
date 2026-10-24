@@ -6,12 +6,16 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/url"
 	"path/filepath"
+	"reflect"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/sshkey"
 	"github.com/tryhisar/hisar/core/totp"
 )
 
@@ -69,12 +73,40 @@ type SkippedEntry struct {
 	Reason string `json:"reason"`
 }
 
+// CountLeftBehind counts failed saves and skipped entries other than repeats of an imported entry.
+func CountLeftBehind(failedCount int, skipped []SkippedEntry) int {
+	count := failedCount
+	for _, entry := range skipped {
+		if entry.Reason != reasonRepeated {
+			count++
+		}
+	}
+	return count
+}
+
 // Result: Source names the app the items came from when the format says so, as Credential Exchange does.
 type Result struct {
 	Format  string
 	Source  string
 	Items   []item.Item
 	Skipped []SkippedEntry
+	Groups  []SourceGroup
+}
+
+// SourceGroup is one source access boundary. Items in several Bitwarden collections stay in one group with that exact
+// collection set, rather than being copied into destinations with different access.
+type SourceGroup struct {
+	ID        string
+	Name      string
+	IsPrivate bool
+	Items     []item.Item
+}
+
+func (result *Result) SourceGroups() []SourceGroup {
+	if len(result.Groups) != 0 {
+		return result.Groups
+	}
+	return []SourceGroup{{ID: "private", Name: "Private or unspecified source", IsPrivate: true, Items: result.Items}}
 }
 
 type Summary struct {
@@ -339,6 +371,16 @@ func DescribeDuplicate(vaultItem item.Item) string {
 	return joinNonEmpties(parts, " · ")
 }
 
+// DescribeDuplicateOf is DescribeDuplicate for an imported item that matches existing, followed by "different password"
+// when their passwords differ, since skipping the duplicate keeps the vault's password and leaves the imported one out.
+func DescribeDuplicateOf(imported, existing item.Item) string {
+	parts := []string{DescribeDuplicate(imported)}
+	if imported.Details.Password != "" && imported.Details.Password != existing.Details.Password {
+		parts = append(parts, "different password")
+	}
+	return joinNonEmpties(parts, " · ")
+}
+
 // FindDuplicateIndexes returns the positions in importedItems of items that existingItems already has.
 func FindDuplicateIndexes(importedItems, existingItems []item.Item) []int {
 	matches := FindDuplicateMatches(importedItems, existingItems)
@@ -365,6 +407,55 @@ func FindDuplicateMatches(importedItems, existingItems []item.Item) map[int]int 
 		}
 	}
 	return matches
+}
+
+// FindUnsavedDuplicates reports matched entries whose imported content is not in the vault's copy.
+// Compare against the post-merge items when the caller merges passkeys. Favorites belong to account preferences.
+func FindUnsavedDuplicates(imported, existing []item.Item, matches map[int]int) []SkippedEntry {
+	var skipped []SkippedEntry
+	for index, vaultItem := range imported {
+		existingIndex, isDuplicate := matches[index]
+		if !isDuplicate {
+			continue
+		}
+		if !containsImportedContent(vaultItem, existing[existingIndex]) {
+			skipped = append(skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: "the skipped duplicate has different content from the item in Hisar"})
+		}
+	}
+	return skipped
+}
+
+func containsImportedContent(imported, stored item.Item) bool {
+	imported.Overview.Category, stored.Overview.Category = imported.Category(), stored.Category()
+	if imported.IsCategory(item.CategorySSHKey) && stored.IsCategory(item.CategorySSHKey) &&
+		imported.Details.PrivateKey != "" && stored.Details.PrivateKey != "" {
+		if imported.Details.PrivateKey != stored.Details.PrivateKey {
+			importedKey, err := sshkey.ParseKeyMaterial([]byte(imported.Details.PrivateKey))
+			if err != nil {
+				return false
+			}
+			storedKey, err := sshkey.ParseKeyMaterial([]byte(stored.Details.PrivateKey))
+			if err != nil || !bytes.Equal(importedKey.PublicKey().Marshal(), storedKey.PublicKey().Marshal()) {
+				return false
+			}
+		}
+		// OpenSSH encodings have random check bytes; public-key comments and derived metadata do not change the key.
+		imported.Details.PrivateKey, stored.Details.PrivateKey = "", ""
+		imported.Overview.PublicKey, stored.Overview.PublicKey = "", ""
+		imported.Overview.Fingerprint, stored.Overview.Fingerprint = "", ""
+		imported.Overview.KeyType, stored.Overview.KeyType = "", ""
+	}
+	for _, passkey := range imported.Details.Passkeys {
+		if !slices.ContainsFunc(stored.Details.Passkeys, func(other item.Passkey) bool {
+			return reflect.DeepEqual(passkey, other)
+		}) {
+			return false
+		}
+	}
+	// A stored login may have other passkeys already. The overview marker is derived from that superset.
+	imported.Details.Passkeys, stored.Details.Passkeys = nil, nil
+	imported.Overview.PasskeyRelyingPartyIDs, stored.Overview.PasskeyRelyingPartyIDs = nil, nil
+	return reflect.DeepEqual(imported.Overview, stored.Overview) && reflect.DeepEqual(imported.Details, stored.Details)
 }
 
 func normalizeURL(link string) string {
@@ -467,6 +558,19 @@ func addOneTimePassword(vaultItem *item.Item, name, value string) {
 	vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: value, Concealed: true})
 }
 
+// addPreviousPassword keeps a password the item had before as a concealed field named by when it was replaced, if known:
+// Hisar items have no password history, and an old password can still be the one a site or a backup expects.
+func addPreviousPassword(vaultItem *item.Item, password string, replacedAt time.Time) {
+	if password == "" || password == vaultItem.Details.Password {
+		return
+	}
+	name := "Previous password"
+	if !replacedAt.IsZero() {
+		name += " (" + replacedAt.UTC().Format("2006-01-02") + ")"
+	}
+	vaultItem.Details.Fields = append(vaultItem.Details.Fields, item.Field{Name: name, Value: password, Concealed: true})
+}
+
 func getFallbackTitle(vaultItem *item.Item) string {
 	for _, link := range vaultItem.Overview.URLs {
 		if hostName := getHostName(link); hostName != "" {
@@ -480,21 +584,27 @@ func getFallbackTitle(vaultItem *item.Item) string {
 }
 
 func removeRepeatedItems(result *Result) {
-	indexesByKey := map[string]int{}
-	unique := make([]item.Item, 0, len(result.Items))
-	for _, vaultItem := range result.Items {
-		encoded, _ := json.Marshal([]any{vaultItem.Overview, vaultItem.Details})
-		key := string(encoded)
-		clear(encoded)
-		if index, isSeen := indexesByKey[key]; isSeen {
-			unique[index].IsFavorite = unique[index].IsFavorite || vaultItem.IsFavorite
-			result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reasonRepeated})
-			continue
+	groups := result.SourceGroups()
+	result.Items = nil
+	for groupIndex := range groups {
+		indexesByKey := map[string]int{}
+		unique := make([]item.Item, 0, len(groups[groupIndex].Items))
+		for _, vaultItem := range groups[groupIndex].Items {
+			encoded, _ := json.Marshal([]any{vaultItem.Overview, vaultItem.Details})
+			key := string(encoded)
+			clear(encoded)
+			if index, isSeen := indexesByKey[key]; isSeen {
+				unique[index].IsFavorite = unique[index].IsFavorite || vaultItem.IsFavorite
+				result.Skipped = append(result.Skipped, SkippedEntry{Title: vaultItem.Overview.Title, Reason: reasonRepeated})
+				continue
+			}
+			indexesByKey[key] = len(unique)
+			unique = append(unique, vaultItem)
 		}
-		indexesByKey[key] = len(unique)
-		unique = append(unique, vaultItem)
+		groups[groupIndex].Items = unique
+		result.Items = append(result.Items, unique...)
 	}
-	result.Items = unique
+	result.Groups = groups
 }
 
 func describeEntry(title string) string {
@@ -502,4 +612,9 @@ func describeEntry(title string) string {
 		return title
 	}
 	return "Untitled"
+}
+
+// describeAttachment is the reason for an attached file of an imported item, which stays behind in the export.
+func describeAttachment(fileName string) string {
+	return fmt.Sprintf("its attachment “%s” was not imported; Hisar does not store files", describeEntry(fileName))
 }

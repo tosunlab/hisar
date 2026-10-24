@@ -34,6 +34,7 @@ describe("validatePasskeyRequest", () => {
       isValid: true,
       request: {
         kind: "create",
+        userVerification: "preferred",
         relyingPartyID: "example.com",
         relyingPartyName: "Example",
         userHandle: "AQID",
@@ -76,7 +77,7 @@ describe("validatePasskeyRequest", () => {
   it("reads assertions, conditional ones included, and ignores unknown descriptor types", () => {
     expect(validatePasskeyRequest(createAssertion({ allowCredentials: [{ type: "public-key", id: "AQ" }, { type: "other", id: "Ag" }] }, "conditional"))).toEqual({
       isValid: true,
-      request: { kind: "get", relyingPartyID: "example.com", challenge, allAllowedCredentialID: ["AQ"], isConditional: true },
+      request: { kind: "get", userVerification: "preferred", relyingPartyID: "example.com", challenge, allAllowedCredentialID: ["AQ"], isConditional: true },
     });
   });
 });
@@ -103,6 +104,17 @@ describe("readFrameOrigin", () => {
       isCrossOrigin: true,
     });
     expect(readFrameOrigin({ url: "https://shop.example.com/frame", frameId: 3, tab }, ["https://shop.example.com"])).toMatchObject({ isCrossOrigin: false });
+  });
+
+  it("in Firefox, which gives no sender origin, accepts a frame whose parents read as its own origin and refuses one inside another", () => {
+    expect(readFrameOrigin({ url: "https://shop.example.com/frame", frameId: 3, tab }, ["https://shop.example.com"])).toEqual({
+      origin: "https://shop.example.com",
+      topOrigin: "https://shop.example.com",
+      isCrossOrigin: false,
+    });
+    // readAncestorOrigins gives null for a parent it cannot read, so Firefox handles that passkey request itself.
+    expect(readFrameOrigin({ url: "https://pay.example.org/frame", frameId: 3, tab }, ["null"])).toBeUndefined();
+    expect(readFrameOrigin({ url: "https://shop.example.com/frame", frameId: 5, tab }, ["https://shop.example.com", "null"])).toBeUndefined();
   });
 
   it("refuses insecure, mismatched and unknown senders", () => {

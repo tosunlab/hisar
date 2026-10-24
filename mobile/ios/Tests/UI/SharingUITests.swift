@@ -61,6 +61,10 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["share-vault-submit"].tap()
         waitFor(findText(containing: "Invitation sent to \(unknownEmail)"), timeout: 30)
 
+        let reviewRecipient = app.buttons["review-share-\(partnerEmail)"]
+        waitFor(reviewRecipient, timeout: 90)
+        reviewRecipient.tap()
+        app.buttons["confirm-share-recipient"].firstMatch.tap()
         app.swipeUp()
         let partnerRow = findElement("vault-member-\(partnerEmail)")
         waitFor(partnerRow, timeout: 90)
@@ -68,8 +72,10 @@ final class SharingUITests: HisarUITestCase {
         let unknownInvitation = findElement("vault-invitation-\(unknownEmail)")
         saveLightAndDarkScreenshot("sharing-members")
 
-        unknownInvitation.swipeLeft()
-        app.buttons["Cancel"].firstMatch.tap()
+        revealSwipeActions(of: unknownInvitation, .left)
+        let cancelAction = app.buttons["Cancel"].firstMatch
+        waitForHittable(cancelAction)
+        cancelAction.tap()
         app.buttons["confirm-cancel-invitation"].firstMatch.tap()
         XCTAssertTrue(unknownInvitation.waitForNonExistence(timeout: 30), "the cancelled invitation disappears")
 

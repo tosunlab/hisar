@@ -17,6 +17,7 @@ import (
 	"github.com/tryhisar/hisar/core/appversion"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/cliprotocol"
+	"github.com/tryhisar/hisar/core/clisocket"
 	"github.com/tryhisar/hisar/core/localstate"
 )
 
@@ -169,7 +170,7 @@ func TestUpdateRequiredRefusesLocalRequests(t *testing.T) {
 		t.Errorf("the SSH request did not bring up the update screen: %+v", heard)
 	}
 
-	err = NewCommandLineBridge(service, nil).CheckUpdateRequired(&cliprotocol.Request{Type: cliprotocol.TypeListVault})
+	err = NewCommandLineBridge(service, clisocket.NewSessionApprovals(0, nil, nil)).CheckUpdateRequired(&cliprotocol.Request{Type: cliprotocol.TypeListVault})
 	var responseError *cliprotocol.ResponseError
 	if !errors.As(err, &responseError) || responseError.Code != cliprotocol.ErrorUpdateRequired ||
 		responseError.Message != "Hisar needs an update: the server requires version 0.1.6 or later and this Mac has 0.1.5. Open Hisar and choose Update now." {
@@ -210,7 +211,7 @@ func TestOtherAppsAreCheckedThroughHisar(t *testing.T) {
 		t.Errorf("extension without a version: %+v", hello.UpdateRequired)
 	}
 
-	commandLineBridge := NewCommandLineBridge(service, nil)
+	commandLineBridge := NewCommandLineBridge(service, clisocket.NewSessionApprovals(0, nil, nil))
 	err := commandLineBridge.CheckUpdateRequired(&cliprotocol.Request{Type: cliprotocol.TypeListVault, ClientPlatform: "darwin/cli", ClientVersion: "0.9.0"})
 	var responseError *cliprotocol.ResponseError
 	if !errors.As(err, &responseError) || responseError.Code != cliprotocol.ErrorUpdateRequired ||

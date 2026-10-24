@@ -151,6 +151,7 @@ function findLogin(state, vaultID, itemID) {
 
 export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) {
   const passkey = request.passkey;
+  if (request.type === "passkeys.cancel") return null;
   if (allSignalType.includes(request.type)) {
     if (typeof passkey !== "object" || passkey === null) throw new PasskeyError("invalid-request", "passkey parameters are required");
     return handleSignal(state, request.type, passkey);
@@ -161,6 +162,10 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
   const allMatch = findAllPasskey(state, relyingPartyID);
   const allAllowed = passkey.allowCredentials ?? [];
   const allExcluded = passkey.excludeCredentials ?? [];
+  const needsVerification = passkey.userVerification !== "discouraged" || !!passkey.prf?.eval || Object.keys(passkey.prf?.evalByCredential ?? {}).length > 0;
+  if ((request.type === "passkeys.create" || request.type === "passkeys.get") && needsVerification && state.isPasskeyVerificationDenied) {
+    throw new PasskeyError("invalid-request", "Passkey verification was cancelled.");
+  }
   switch (request.type) {
     case "passkeys.list":
       return {
@@ -178,7 +183,7 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
     case "passkeys.prepare":
       return {
         isExcluded: allMatch.some((match) => allExcluded.includes(match.credentialId)),
-        logins: findAllMatchingLogin(state, passkey.origin).map(({ vaultID, itemID, title, username, vaultName }) => ({ vaultID, itemID, title, username, vaultName })),
+        logins: findAllMatchingLogin(state, passkey.origin).map(({ vaultID, itemID, title, username, vaultName }) => ({ vaultID, itemID, title, username, vaultName, isPersonal: state.allVault?.some((vault) => vault.vaultID === vaultID && vault.isPersonal) === true })),
       };
     case "passkeys.create": {
       if (allMatch.some((match) => allExcluded.includes(match.credentialId))) throw new PasskeyError("invalid-request", "Hisar already has a passkey for this account");
@@ -223,7 +228,7 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
       const credentialLength = Buffer.alloc(2);
       credentialLength.writeUInt16BE(credentialID.length);
       const attestedCredentialData = Buffer.concat([Buffer.from(hisarAAGUID.replaceAll("-", ""), "hex"), credentialLength, credentialID, coseKey]);
-      const authenticatorData = buildAuthenticatorData(relyingPartyID, 0x5d, attestedCredentialData);
+      const authenticatorData = buildAuthenticatorData(relyingPartyID, 0x59 | (needsVerification ? 0x04 : 0), attestedCredentialData);
       const attestationObject = Buffer.concat([
         encodeHeader(5, 3),
         encodeText("fmt"),
@@ -267,7 +272,7 @@ export function handlePasskeyRequest(state, request, now, findAllMatchingLogin) 
       const selectedPRF = passkey.prf ? selectPRFValues(passkey.prf, allAllowed, stored.credentialId) : undefined;
       const prf = passkey.prf ? (selectedPRF ? { results: evaluatePRFValues(selectedPRF, stored.privateKey) } : {}) : undefined;
       const clientDataJSON = buildClientDataJSON("webauthn.get", passkey);
-      const authenticatorData = buildAuthenticatorData(relyingPartyID, 0x1d);
+      const authenticatorData = buildAuthenticatorData(relyingPartyID, 0x19 | (needsVerification ? 0x04 : 0));
       const signedData = Buffer.concat([authenticatorData, createHash("sha256").update(clientDataJSON).digest()]);
       const key = createPrivateKey({ key: Buffer.from(stored.privateKey, "base64"), format: "der", type: "pkcs8" });
       return {

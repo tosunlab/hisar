@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { createApiMock, createStatus } from "../testing";
+import MainView from "./MainView.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -98,6 +99,26 @@ describe("UnlockView with Touch ID", () => {
     expect(api.unlockWithBiometric).not.toHaveBeenCalled();
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="use-touch-id"]').exists()).toBe(false);
+  });
+
+  it("explains pending keychain setup without removing the password fallback", async () => {
+    store.status = { ...createLockedStatus(false), biometricEnabled: true, biometricSetupError: "A signed Mac app with a provisioning profile is required. Your master password still unlocks Hisar." };
+    const wrapper = mount(UnlockView);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="biometric-setup-error"]').text()).toContain("provisioning profile");
+    expect(wrapper.find('input[name="password"]').exists()).toBe(true);
+    expect(api.unlockWithBiometric).not.toHaveBeenCalled();
+  });
+
+  it("keeps pending protection visible after password unlock and never announces activation", async () => {
+    const pending = { ...createStatus("unlocked"), biometricAvailable: true, biometricEnabled: true, biometricSetupError: "A macOS provisioning profile is required." };
+    api.enableBiometricUnlock.mockResolvedValue(pending);
+    store.noticeMessage = "";
+    await storeModule.enableBiometricUnlock("master password");
+    expect(store.noticeMessage).toBe("");
+    const wrapper = mount(MainView);
+    expect(wrapper.get('[data-testid="biometric-setup-error"]').text()).toContain("provisioning profile");
+    wrapper.unmount();
   });
 });
 

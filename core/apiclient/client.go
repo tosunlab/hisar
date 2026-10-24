@@ -28,7 +28,23 @@ type Client struct {
 }
 
 func New(baseURL string) *Client {
-	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), HTTP: &http.Client{Timeout: 30 * time.Second}}
+	return &Client{BaseURL: strings.TrimRight(baseURL, "/"), HTTP: &http.Client{Timeout: 30 * time.Second, CheckRedirect: CheckRedirect}}
+}
+
+// CheckRedirect follows a redirect only within TLS once a request used it, and keeps the Authorization header for the
+// origin (scheme, host and port) it was set for; Go's own check keeps it for another port or scheme of the same host.
+func CheckRedirect(request *http.Request, via []*http.Request) error {
+	if len(via) >= 10 {
+		return errors.New("stopped after 10 redirects")
+	}
+	initial := via[0].URL
+	if initial.Scheme == "https" && request.URL.Scheme != "https" {
+		return ErrInsecureRedirect
+	}
+	if request.URL.Scheme != initial.Scheme || request.URL.Host != initial.Host {
+		request.Header.Del("Authorization")
+	}
+	return nil
 }
 
 type APIError struct {
@@ -36,6 +52,9 @@ type APIError struct {
 	Message string
 	// IsKeyChanged marks the 409 that refused items sealed with a key a rotation replaced (apitypes.KeyChangedResponse).
 	IsKeyChanged bool
+	// IsDeletionPlanChanged marks the 409 that refused an account deletion whose reviewed plan no longer matches the
+	// account (apitypes.DeletionPlanChangedResponse).
+	IsDeletionPlanChanged bool
 }
 
 func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Message, e.Status) }
@@ -43,6 +62,18 @@ func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Mess
 // ErrAccountSuspended is the server's 403 with apitypes.AccountSuspendedMessage: an admin suspended the account. It is
 // not an APIError, so no check for a plain 403 mistakes it for another refusal, and the device keeps its session.
 var ErrAccountSuspended = errors.New(apitypes.AccountSuspendedMessage)
+
+// ErrInsecureRedirect is a redirect from https to plain http, which would expose the bearer and the traffic.
+var ErrInsecureRedirect = errors.New("the server redirected from https to an unencrypted http address")
+
+// ResourceBudgetError is the server's 507: the change would grow a vault, an account or an organization past its growth
+// budget. Message is the server's sentence saying what to remove. It is not an APIError, so no check for a 409 mistakes
+// it for a conflict to merge or retry.
+type ResourceBudgetError struct {
+	Message string
+}
+
+func (e *ResourceBudgetError) Error() string { return e.Message }
 
 // readError returns the error of an answer that is not a success, from its status and JSON body.
 func readError(status int, data []byte) error {
@@ -52,6 +83,9 @@ func readError(status int, data []byte) error {
 	}
 	if status == http.StatusForbidden && errorBody.Error == apitypes.AccountSuspendedMessage {
 		return ErrAccountSuspended
+	}
+	if status == http.StatusInsufficientStorage {
+		return &ResourceBudgetError{Message: errorBody.Error}
 	}
 	return &APIError{Status: status, Message: errorBody.Error}
 }
@@ -102,11 +136,19 @@ func IsKeyChanged(err error) bool {
 	return errors.As(err, &apiError) && apiError.IsKeyChanged
 }
 
+// IsDeletionPlanChanged reports whether err is, or wraps, the server refusing an account deletion because its reviewed
+// plan no longer matches the account: the deletion must be reviewed and confirmed again. Every other deletion conflict
+// keeps its own reason.
+func IsDeletionPlanChanged(err error) bool {
+	var apiError *APIError
+	return errors.As(err, &apiError) && apiError.IsDeletionPlanChanged
+}
+
 // IsUnreachable reports a failed connection or a reverse proxy that cannot reach the server.
 func IsUnreachable(err error) bool {
 	var urlError *url.Error
 	if errors.As(err, &urlError) {
-		return true
+		return !errors.Is(err, ErrInsecureRedirect)
 	}
 	return IsStatus(err, http.StatusBadGateway) || IsStatus(err, http.StatusServiceUnavailable) || IsStatus(err, http.StatusGatewayTimeout)
 }
@@ -141,9 +183,12 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return err
 	}
 	defer response.Body.Close()
-	data, err := io.ReadAll(io.LimitReader(response.Body, 64<<20))
+	data, err := io.ReadAll(io.LimitReader(response.Body, (64<<20)+1))
 	if err != nil {
 		return err
+	}
+	if len(data) > 64<<20 {
+		return errors.New("server: response exceeds the supported byte budget; update the server for paginated reads")
 	}
 
 	if response.StatusCode == http.StatusUpgradeRequired {
@@ -153,6 +198,10 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		var keyChanged apitypes.KeyChangedResponse
 		if json.Unmarshal(data, &keyChanged) == nil && keyChanged.IsKeyChanged {
 			return &APIError{Status: response.StatusCode, Message: keyChanged.Error, IsKeyChanged: true}
+		}
+		var planChanged apitypes.DeletionPlanChangedResponse
+		if json.Unmarshal(data, &planChanged) == nil && planChanged.IsDeletionPlanChanged {
+			return &APIError{Status: response.StatusCode, Message: planChanged.Error, IsDeletionPlanChanged: true}
 		}
 	}
 	if response.StatusCode == http.StatusConflict && conflict != nil {
@@ -165,6 +214,11 @@ func (c *Client) sendRequest(ctx context.Context, method, path string, header ht
 		return readError(response.StatusCode, data)
 	}
 	if output != nil && len(data) > 0 {
+		if decoder, ok := output.(interface {
+			decodeResponse(http.Header, []byte) error
+		}); ok {
+			return decoder.decodeResponse(response.Header, data)
+		}
 		return json.Unmarshal(data, output)
 	}
 	return nil
@@ -190,14 +244,22 @@ func (c *Client) FinishRegistration(ctx context.Context, request *apitypes.Regis
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/register/finish", nil, request, &response, nil)
 }
 
+func (c *Client) sendAuthenticationRequest(ctx context.Context, path string, request, response any) error {
+	err := c.sendRequest(ctx, "POST", path, nil, request, response, nil)
+	if IsStatus(err, http.StatusNotFound) || IsStatus(err, http.StatusMethodNotAllowed) {
+		return fmt.Errorf("update your Hisar server to support origin-bound authentication: %w", err)
+	}
+	return err
+}
+
 func (c *Client) StartLogin(ctx context.Context, request *apitypes.LoginStartRequest) (*apitypes.LoginStartResponse, error) {
 	var response apitypes.LoginStartResponse
-	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/login/start", nil, request, &response, nil)
+	return &response, c.sendAuthenticationRequest(ctx, "/api/v1/auth/login/v2/start", request, &response)
 }
 
 func (c *Client) FinishLogin(ctx context.Context, request *apitypes.LoginFinishRequest) (*apitypes.SessionResponse, error) {
 	var response apitypes.SessionResponse
-	return &response, c.sendRequest(ctx, "POST", "/api/v1/auth/login/finish", nil, request, &response, nil)
+	return &response, c.sendAuthenticationRequest(ctx, "/api/v1/auth/login/v2/finish", request, &response)
 }
 
 func (c *Client) Logout(ctx context.Context) error {
@@ -223,7 +285,7 @@ func (c *Client) PutAccountPreferences(ctx context.Context, request *apitypes.Pu
 
 func (c *Client) ListMembers(ctx context.Context) ([]apitypes.Member, error) {
 	var members []apitypes.Member
-	return members, c.sendRequest(ctx, "GET", "/api/v1/members", nil, nil, &members, nil)
+	return members, c.collectionRequest(ctx, "/api/v1/members", &members)
 }
 
 func (c *Client) Invite(ctx context.Context, request *apitypes.InviteRequest) (*apitypes.InvitationSentResponse, error) {
@@ -236,9 +298,17 @@ func (c *Client) CreateShareInvitation(ctx context.Context, vaultID string, requ
 	return &response, c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/share-invitations", nil, request, &response, nil)
 }
 
+func (c *Client) CreateSignedShareInvitation(ctx context.Context, vaultID string, request *apitypes.ShareInvitationRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/signed-share-invitations", nil, request, nil, nil)
+}
+
+func (c *Client) CompleteSignedShare(ctx context.Context, request *apitypes.CompleteShareRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/share-invitations/"+url.PathEscape(request.Intent.Context.ID)+"/complete", nil, request, nil, nil)
+}
+
 func (c *Client) ListShareInvitations(ctx context.Context) (*apitypes.ShareInvitationList, error) {
 	var response apitypes.ShareInvitationList
-	return &response, c.sendRequest(ctx, "GET", "/api/v1/share-invitations", nil, nil, &response, nil)
+	return &response, c.collectionRequest(ctx, "/api/v1/share-invitations", &response)
 }
 
 func (c *Client) AcceptShareInvitation(ctx context.Context, invitationID string) error {
@@ -255,7 +325,7 @@ func (c *Client) CancelShareInvitation(ctx context.Context, invitationID string)
 
 func (c *Client) ListDevices(ctx context.Context) ([]apitypes.Device, error) {
 	var devices []apitypes.Device
-	return devices, c.sendRequest(ctx, "GET", "/api/v1/devices", nil, nil, &devices, nil)
+	return devices, c.collectionRequest(ctx, "/api/v1/devices", &devices)
 }
 
 func (c *Client) RevokeDevice(ctx context.Context, deviceID string) error {
@@ -264,16 +334,20 @@ func (c *Client) RevokeDevice(ctx context.Context, deviceID string) error {
 
 func (c *Client) ListVaults(ctx context.Context) ([]apitypes.Vault, error) {
 	var vaults []apitypes.Vault
-	return vaults, c.sendRequest(ctx, "GET", "/api/v1/vaults", nil, nil, &vaults, nil)
+	return vaults, c.collectionRequest(ctx, "/api/v1/vaults", &vaults)
 }
 
 func (c *Client) CreateVault(ctx context.Context, request *apitypes.CreateVaultRequest) error {
-	return c.sendRequest(ctx, "POST", "/api/v1/vaults", nil, request, nil, nil)
+	path := "/api/v1/vaults"
+	if request.Type == apitypes.VaultPersonal {
+		path += "/personal"
+	}
+	return c.sendRequest(ctx, "POST", path, nil, request, nil, nil)
 }
 
 func (c *Client) ListVaultMembers(ctx context.Context, vaultID string) ([]apitypes.VaultMember, error) {
 	var vaultMembers []apitypes.VaultMember
-	return vaultMembers, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", nil, nil, &vaultMembers, nil)
+	return vaultMembers, c.collectionRequest(ctx, "/api/v1/vaults/"+url.PathEscape(vaultID)+"/members", &vaultMembers)
 }
 
 func (c *Client) SetAccess(ctx context.Context, vaultID, accountID string, request *apitypes.SetAccessRequest) error {
@@ -296,6 +370,16 @@ func (c *Client) DeleteVault(ctx context.Context, vaultID string, request *apity
 	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/delete", nil, request, nil, nil)
 }
 
+// RepairVaultName and DeleteUnreadableVault use their own routes, so a server without the review check refuses them
+// (404) rather than renaming or deleting unconditionally.
+func (c *Client) RepairVaultName(ctx context.Context, vaultID string, request *apitypes.RepairVaultNameRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/recovery/name", nil, request, nil, nil)
+}
+
+func (c *Client) DeleteUnreadableVault(ctx context.Context, vaultID string, request *apitypes.DeleteUnreadableVaultRequest) error {
+	return c.sendRequest(ctx, "POST", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/recovery/delete", nil, request, nil, nil)
+}
+
 func (c *Client) ListChanges(ctx context.Context, vaultID string, since int64, limit int) (*apitypes.ChangesResponse, error) {
 	var response apitypes.ChangesResponse
 	query := url.Values{"since": {strconv.FormatInt(since, 10)}}
@@ -313,7 +397,11 @@ func (c *Client) PutItem(ctx context.Context, vaultID, itemID, baseRevision stri
 	}
 	var response apitypes.PutItemResponse
 	var conflict apitypes.ConflictResponse
-	err := c.sendRequest(ctx, "PUT", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID), header, request, &response, &conflict)
+	path := "/api/v1/vaults/" + url.PathEscape(vaultID) + "/items/" + url.PathEscape(itemID)
+	if request.ImportScope != "" {
+		path += "/import"
+	}
+	err := c.sendRequest(ctx, "PUT", path, header, request, &response, &conflict)
 	if IsStatus(err, http.StatusConflict) {
 		return 0, conflict.Current, err
 	}
@@ -339,7 +427,7 @@ func (c *Client) CreateShareLink(ctx context.Context, request *apitypes.CreateSh
 
 func (c *Client) ListShareLinks(ctx context.Context) ([]apitypes.ShareLink, error) {
 	var shareLinks []apitypes.ShareLink
-	return shareLinks, c.sendRequest(ctx, "GET", "/api/v1/share-links", nil, nil, &shareLinks, nil)
+	return shareLinks, c.collectionRequest(ctx, "/api/v1/share-links", &shareLinks)
 }
 
 func (c *Client) RevokeShareLink(ctx context.Context, shareLinkID string) error {
@@ -354,7 +442,7 @@ func (c *Client) OpenPublicShareLink(ctx context.Context, shareLinkID string) (*
 
 func (c *Client) Reauthenticate(ctx context.Context, request *apitypes.ReauthenticateRequest) (*apitypes.ReauthenticateResponse, error) {
 	var response apitypes.ReauthenticateResponse
-	return &response, c.sendRequest(ctx, "POST", "/api/v1/account/reauthenticate", nil, request, &response, nil)
+	return &response, c.sendAuthenticationRequest(ctx, "/api/v1/account/reauthenticate/v2", request, &response)
 }
 
 func (c *Client) ChangeCredentials(ctx context.Context, request *apitypes.ChangeCredentialsRequest) (*apitypes.ChangeCredentialsResponse, error) {
@@ -364,7 +452,7 @@ func (c *Client) ChangeCredentials(ctx context.Context, request *apitypes.Change
 
 func (c *Client) GetAccountDeletionPreview(ctx context.Context) (*apitypes.AccountDeletionPreview, error) {
 	var response apitypes.AccountDeletionPreview
-	return &response, c.sendRequest(ctx, "GET", "/api/v1/account/deletion-preview", nil, nil, &response, nil)
+	return &response, c.collectionRequest(ctx, "/api/v1/account/deletion-preview", &response)
 }
 
 func (c *Client) DeleteAccount(ctx context.Context, request *apitypes.DeleteAccountRequest) error {
@@ -373,5 +461,5 @@ func (c *Client) DeleteAccount(ctx context.Context, request *apitypes.DeleteAcco
 
 func (c *Client) GetItemHistory(ctx context.Context, vaultID, itemID string) ([]apitypes.Item, error) {
 	var items []apitypes.Item
-	return items, c.sendRequest(ctx, "GET", "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", nil, nil, &items, nil)
+	return items, c.collectionRequest(ctx, "/api/v1/vaults/"+url.PathEscape(vaultID)+"/items/"+url.PathEscape(itemID)+"/history", &items)
 }

@@ -7,7 +7,7 @@ export default defineConfig({
   build: {
     outDir: "dist",
     emptyOutDir: false,
-    target: "chrome116",
+    target: ["chrome116", "firefox140"],
     lib: {
       entry: resolve(import.meta.dirname, "src/content/main.ts"),
       formats: ["iife"],

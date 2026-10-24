@@ -67,6 +67,13 @@ func TestParse(t *testing.T) {
 		t.Errorf("issuer from label: %+v %v", config, err)
 	}
 
+	if config, err := Parse("otpauth://totp/x?secret=" + secret + "&image=%zz&algorithm=SHA256"); err != nil || config.Algorithm != "SHA256" {
+		t.Errorf("a malformed parameter Hisar does not read: %+v %v", config, err)
+	}
+	if config, err := Parse("otpauth://totp/x?secret=" + secret + "&image%=unused&algorithm=SHA256"); err != nil || config.Algorithm != "SHA256" {
+		t.Errorf("a malformed unknown parameter name: %+v %v", config, err)
+	}
+
 	for _, invalid := range []string{
 		"", "not base32!", "AAAA",
 		"otpauth://hotp/x?secret=" + secret,
@@ -74,6 +81,25 @@ func TestParse(t *testing.T) {
 		"otpauth://totp/x?secret=" + secret + "&digits=4",
 		"otpauth://totp/x?secret=" + secret + "&period=0",
 		"otpauth://totp/x",
+		"otpauth://totp/x?secret=" + secret + "&algorithm=SHA%256",
+		"otpauth://totp/x?secret=" + secret + "&algorithm=SHA256;",
+		"otpauth://totp/x?secret=" + secret + "&digits=8%",
+		"otpauth://totp/x?secret=" + secret + "&%61lgorithm=SHA256;",
+		"otpauth://totp/x?secret=" + secret + "&%64igits=8%",
+		"otpauth://totp/x?secret=" + secret + "&%70eriod=60%",
+		"otpauth://totp/x?secret=" + secret + "&algorithm%=SHA256",
+		"otpauth://totp/x?secret=" + secret + "&digits%zz=8",
+		"otpauth://totp/x?secret=" + secret + "&%70eriod%0=60",
+		"otpauth://totp/x?secret=" + secret + "&ignored=x;issuer%=Example",
+		"otpauth://totp/x?secret=" + secret + "&secret%=OTHER",
+		"otpauth://totp/x?secret=" + secret + "&%61lgorithm%=SHA256",
+		"otpauth://totp/x?secret=" + secret + "&%64igits%=8",
+		"otpauth://totp/x?secret=" + secret + "&%70eriod%=60",
+		"otpauth://totp/x?secret=" + secret + "&%61lgorithm%6=SHA256",
+		"otpauth://totp/x?secret=" + secret + "&%64igits%6=8",
+		"otpauth://totp/x?secret=" + secret + "&%70eriod%7=60",
+		"otpauth://totp/x?secret=" + secret + "&algorithm=SHA256&algorithm=SHA1",
+		"otpauth://totp/x?secret=" + secret + "&period=60&period=30",
 	} {
 		if _, err := Parse(invalid); err != ErrInvalid {
 			t.Errorf("%q: %v", invalid, err)

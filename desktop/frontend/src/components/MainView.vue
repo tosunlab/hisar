@@ -78,6 +78,7 @@ import ImportPanel from "./ImportPanel.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import OrganizationAlert from "./OrganizationAlert.vue";
+import ReadIssuesPanel from "./ReadIssuesPanel.vue";
 import OrganizationBanner from "./OrganizationBanner.vue";
 import RemovedVaultBanner from "./RemovedVaultBanner.vue";
 import ShareInvitationBanner from "./ShareInvitationBanner.vue";
@@ -117,14 +118,16 @@ const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 
-const allVisibleItem = computed(() => filterAllItem(store.allItem, store.searchQuery, store.selectedTag));
+const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag));
+const unreadableItemCount = computed(() => store.allItem.filter((item) => item.readIssue).length);
+const healthyItemCount = computed(() => store.allItem.length - unreadableItemCount.value);
 const allVisibleFavorite = computed(() => filterAllFavorite(store.allFavorite, store.searchQuery));
 const allTag = computed(() => listAllTag(store.allItem));
 const emptyListMessage = computed(() => {
   if (store.searchQuery) {
     return "No items match your search.";
   }
-  return store.selectedTag ? `No items are tagged ${store.selectedTag}.` : "This vault is empty.";
+  return store.allVault.some((vault) => vault.readIssues?.length) ? "No readable matches. Some records could not be opened." : store.selectedTag ? `No items are tagged ${store.selectedTag}.` : "This vault is empty.";
 });
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
 // canShareVault: shared and organization vaults have a sharing panel, personal vaults the Private badge.
@@ -428,7 +431,7 @@ onBeforeUnmount(() => {
           >
             <AppIcon :name="vault.type === 'personal' ? 'user' : 'users'" />
             <span class="vault-name">{{ vault.name }}</span>
-            <span class="vault-count">{{ vault.itemCount }}</span>
+            <span class="vault-count">{{ vault.readIssues?.length ? `${vault.itemCount} + ${vault.readIssues.length} unreadable` : vault.itemCount }}</span>
           </button>
         </div>
         <form v-if="isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
@@ -496,6 +499,7 @@ onBeforeUnmount(() => {
     </aside>
 
     <section class="list">
+      <ReadIssuesPanel />
       <div v-if="store.isFavoritesSelected" class="title-bar list-title">
         <div>
           <h2>Favorites</h2>
@@ -505,7 +509,7 @@ onBeforeUnmount(() => {
       <div v-else class="title-bar list-title">
         <div>
           <h2>{{ selectedVault?.name ?? "" }}</h2>
-          <span class="muted">{{ store.allItem.length }} {{ store.allItem.length === 1 ? "item" : "items" }}</span>
+          <span class="muted">{{ healthyItemCount }} {{ healthyItemCount === 1 ? "item" : "items" }}<template v-if="unreadableItemCount"> · {{ unreadableItemCount }} unreadable</template></span>
         </div>
         <div ref="newItemMenu" class="new-item">
           <button
@@ -658,6 +662,7 @@ onBeforeUnmount(() => {
       <div class="title-bar"></div>
       <div class="detail-content">
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+        <p v-if="store.status.biometricSetupError" class="error" role="status" data-testid="biometric-setup-error">{{ store.status.biometricSetupError }}</p>
         <SSHKeyForm v-if="store.editorMode === 'create-ssh-key'" />
         <ItemEditor v-else-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
         <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :vault-type="selectedVault?.type ?? ''" />

@@ -24,10 +24,12 @@ import (
 	"github.com/tryhisar/hisar/core/sshagent"
 	"github.com/tryhisar/hisar/desktop/agent"
 	"github.com/tryhisar/hisar/desktop/appinfo"
+	"github.com/tryhisar/hisar/desktop/axfill"
 	"github.com/tryhisar/hisar/desktop/background"
 	"github.com/tryhisar/hisar/desktop/biometric"
 	"github.com/tryhisar/hisar/desktop/browser"
 	"github.com/tryhisar/hisar/desktop/commandline"
+	"github.com/tryhisar/hisar/desktop/granthead"
 	"github.com/tryhisar/hisar/desktop/harness"
 	"github.com/tryhisar/hisar/desktop/loginitem"
 	"github.com/tryhisar/hisar/desktop/pasteboard"
@@ -72,6 +74,7 @@ func main() {
 		LockNotifier:          notifier,
 		GetSystemIdleDuration: systemidle.GetIdleDuration,
 		Biometric:             touchID,
+		BiometricKeyPreparer:  touchID,
 		BiometricName:         "Touch ID",
 		FileSaver:             fileSaver,
 		FileOpener:            fileOpener,
@@ -100,6 +103,8 @@ func main() {
 			described := requesterResolver.DescribeApp(bundlePath)
 			return described.Name, described.IconURL
 		},
+		AgentGrantHeads: granthead.New(getAgentGrantHeadService(statePath)),
+		SignInDriver:    axfill.New(requesterResolver),
 	}
 	vaultService, err := app.NewService(vaultConfig)
 	if err != nil {
@@ -162,9 +167,9 @@ func main() {
 			return agent.GetSSHRememberDuration(approvalPreference.GetSSHRememberSeconds())
 		},
 	})
+	app.SetPasskeyVerifier(vaultService, approver)
 	agentSessions := agentharness.NewSessions(nil)
 	commandLineApprovals := clisocket.NewSessionApprovals(clisocket.DefaultApprovalLifetime, nil, agentSessions)
-	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
 	commandLineBridge := app.NewCommandLineBridge(vaultService, commandLineApprovals)
 	var commandLineService *commandline.Service
 	commandLineServer := clisocket.NewServer(clisocket.ServerConfig{
@@ -227,6 +232,7 @@ func main() {
 	browserBridge := app.NewBrowserBridge(vaultService, app.BrowserBridgeConfig{
 		ShowPairing: func(request *app.BrowserPairingRequest) { wailsApp.Event.Emit(eventBrowserPairing, request) },
 		ShowWindow:  showWindow,
+		OnUnlock:    func() { wailsApp.Event.Emit(eventUnlocked, "browser") },
 		InstallHostManifests: func() []browserprotocol.BrowserInstallation {
 			if _, err := os.Stat(browserHostPath); err != nil {
 				return []browserprotocol.BrowserInstallation{}
@@ -248,7 +254,7 @@ func main() {
 		commandLineSocketPath = cliprotocol.GetDefaultSocketPath(homeDirectory)
 	}
 	commandLineRunner := clisocket.NewRunner(commandLineServer, commandLineSocketPath)
-	userPathReader := &commandline.UserPathReader{Shell: getLoginShell()}
+	userPathReader := &commandline.UserPathReader{Shell: getLoginShell(), Variables: harness.ListUserVariables()}
 	commandLineService = commandline.NewService(vaultService, commandline.NewInstaller(commandline.InstallerConfig{
 		BundledPath:          helpers.commandLine,
 		IsInstalledByPackage: helpers.isCommandLineFromPackage,
@@ -259,10 +265,11 @@ func main() {
 
 	loginItemService := loginitem.NewService(vaultService, background.NewLoginItem(homeDirectory))
 	harnessService := harness.NewService(harness.Config{
-		HomeDirectory: homeDirectory,
-		GetUserPath:   userPathReader.Read,
-		OmpPluginPath: harness.FindOmpPlugin(filepath.Dir(executablePath)),
-		HisarPath:     helpers.commandLine,
+		HomeDirectory:   homeDirectory,
+		GetUserPath:     userPathReader.Read,
+		GetUserVariable: userPathReader.ReadVariable,
+		OmpPluginPath:   harness.FindOmpPlugin(filepath.Dir(executablePath)),
+		HisarPath:       helpers.commandLine,
 	})
 	inviteLinkService := app.NewInviteLinkService()
 	isHiddenLaunchRequested := background.IsHiddenLaunchRequested(os.Args[1:])
@@ -292,6 +299,7 @@ func main() {
 			application.NewService(harnessService),
 		},
 		OnShutdown: func() {
+			app.ClearCopiedText(vaultService)
 			commandLineRunner.Stop()
 			stopAgent()
 			// A pending Touch ID approval can keep a connection open; do not hold up quitting for it.
@@ -312,6 +320,8 @@ func main() {
 		},
 	})
 	fallbackClipboard.app, notifier.app = wailsApp, wailsApp
+	// Register after NewCommandLineBridge sets the account, which notifies listeners.
+	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
 
 	window = wailsApp.Window.NewWithOptions(mainWindowOptions())
 	fileSaver.chooseSavePath = func(defaultFileName string) (string, error) {

@@ -59,7 +59,7 @@ async function submitExport(): Promise<void> {
   repeatedPassphrase.value = "";
   const itemText = result.itemCount === 1 ? "1 item" : `${result.itemCount} items`;
   const vaultText = result.vaultCount === 1 ? "1 vault" : `${result.vaultCount} vaults`;
-  resultMessage.value = `Exported ${itemText} from ${vaultText} to ${result.path}.`;
+  resultMessage.value = `${result.warning ? result.warning + " " : ""}Exported ${itemText} from ${vaultText} to ${result.path}.`;
 }
 
 onMounted(async () => {
@@ -75,6 +75,7 @@ onMounted(async () => {
   <section v-show="isRowVisible('export')" class="settings-block" data-testid="export-section">
     <p class="section-label">Export your data</p>
     <p class="muted intro">Export every vault you can open, including shared vaults: logins, notes, one-time code secrets, SSH keys and other fields. Export works any time.</p>
+    <p class="muted intro">Offline exports are cached copies. Changes since completed syncs may be absent. Unreadable records and vaults without a completed sync are reported as omissions in the result and file.</p>
     <form class="settings-group" @submit.prevent="submitExport">
       <label class="setting choice">
         <input v-model="format" type="radio" name="exportFormat" value="encrypted" data-testid="export-format-encrypted" />

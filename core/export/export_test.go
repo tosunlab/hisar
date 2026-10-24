@@ -108,6 +108,19 @@ func TestEncryptedExportRoundTrip(t *testing.T) {
 	}
 }
 
+func TestExisting128MiBEncryptedExportStillOpens(t *testing.T) {
+	document := buildTestDocument()
+	params := crypt.Argon2Params{Time: 2, MemoryKiB: 128 * 1024, Threads: 1}
+	encoded, err := encodeEncryptedWithParams(document, []byte(testPassphrase), params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	decoded, err := Decode(encoded, []byte(testPassphrase))
+	if err != nil || !reflect.DeepEqual(decoded, document) {
+		t.Fatalf("previously supported encrypted export no longer opens: %v", err)
+	}
+}
+
 func TestEncryptedExportRefusesWrongPassphraseAndTampering(t *testing.T) {
 	encoded, err := encodeEncryptedWithParams(buildTestDocument(), []byte(testPassphrase), crypt.MinArgon2Params())
 	if err != nil {

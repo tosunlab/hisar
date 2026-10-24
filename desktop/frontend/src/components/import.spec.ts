@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createApiMock, createImportPreview, createImportProgress, createItem, createStatus } from "../testing";
+import { allTestVault, createApiMock, createImportPreview, createImportProgress, createItem, createStatus, createVaultMember } from "../testing";
 import type { VaultSummary } from "../api";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -129,6 +129,23 @@ describe("Import store", () => {
     expect(store.store.noticeMessage).toBe("Imported 1 item into Work");
   });
 
+  it("reloads the open vault after an import that sent items to several vaults", async () => {
+    const groups = [
+      { id: "private-source", name: "1Password Private", isPrivate: true, itemCount: 1, vaultId: "personal", vaultName: "Personal", members: [] },
+      { id: "shared-source", name: "1Password Team", isPrivate: false, itemCount: 1, vaultId: "work", vaultName: "Work", members: [] },
+    ];
+    api.chooseImportFile.mockResolvedValue(createImportPreview({ vaultId: "", vaultName: "", groups }));
+    await store.openImport();
+    await store.chooseImportFile("personal", "1pux");
+    api.startImport.mockResolvedValue(createImportProgress({ vaultId: "", vaultName: "the mapped vaults" }));
+    api.continueImport.mockResolvedValue(createImportProgress({ vaultId: "", vaultName: "the mapped vaults", savedCount: 2, totalCount: 2, isDone: true }));
+    api.listAllItem.mockResolvedValue([createItem({ id: "a", title: "Imported into Personal" })]);
+    await store.startImport(false);
+    expect(api.startImport).toHaveBeenCalledWith("", false);
+    expect(api.listAllItem).toHaveBeenCalledWith("personal");
+    expect(store.store.allItem.map((vaultItem) => vaultItem.title)).toEqual(["Imported into Personal"]);
+  });
+
   it("pauses on an error and continues where it stopped", async () => {
     await store.openImport();
     await store.chooseImportFile("personal", "");
@@ -183,14 +200,14 @@ describe("Import store", () => {
 });
 
 describe("Import panel", () => {
-  it("offers the editable vaults, starting with the selected one, and the formats", async () => {
+  it("offers editable vaults and starts with Personal even when a shared vault is selected", async () => {
     store.store.selectedVaultID = "work";
     await store.openImport();
     const wrapper = mount(ImportPanel);
     await flushPromises();
     const vaultSelect = wrapper.find('[data-testid="import-vault"]');
     expect(vaultSelect.findAll("option").map((option) => option.text())).toEqual(["Personal", "Work"]);
-    expect((vaultSelect.element as HTMLSelectElement).value).toBe("work");
+    expect((vaultSelect.element as HTMLSelectElement).value).toBe("personal");
     expect(wrapper.find('[data-testid="import-format"]').findAll("option").map((option) => option.text())).toEqual([
       "Detect from the file",
       "1Password export (.1pux)",
@@ -199,10 +216,11 @@ describe("Import panel", () => {
     ]);
     expect(wrapper.text()).toContain("From 1Password, Bitwarden, LastPass, or a CSV file from your browser");
     expect(wrapper.find(".how-to").text()).toContain("LastPassAccount options → Advanced → Export, then save the file as CSV.");
+    expect(wrapper.find(".how-to").text()).toContain("1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.");
     await wrapper.find('[data-testid="import-format"]').setValue("csv");
     api.chooseImportFile.mockResolvedValue(createImportPreview({ fileName: "" }));
     await wrapper.find('[data-testid="import-choose"]').trigger("submit");
-    expect(api.chooseImportFile).toHaveBeenCalledWith("work", "csv");
+    expect(api.chooseImportFile).toHaveBeenCalledWith("personal", "csv");
   });
 
   it("starts with the first editable vault when a read-only vault is selected", async () => {
@@ -253,14 +271,41 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-duplicates"]').exists()).toBe(false);
   });
 
+  it("maps each source group independently and shows the destination members", async () => {
+    const groups = [
+      { id: "private-source", name: "1Password Private", isPrivate: true, itemCount: 1, vaultId: "personal", vaultName: "Personal", members: [] },
+      { id: "shared-source", name: "1Password Team", isPrivate: false, itemCount: 1, vaultId: "work", vaultName: "Work", members: [createVaultMember({ name: "Ada", email: "ada@example.com", isCurrentUser: false })] },
+    ];
+    const wrapper = await openPreview({ groups });
+    const rows = wrapper.findAll('[data-testid="import-source-group"]');
+    expect(rows).toHaveLength(2);
+    expect(rows[0].text()).toContain("Only you can access Personal");
+    expect(rows[1].text()).toContain("ada@example.com");
+    expect(rows[1].text()).toContain("Shared destination");
+    api.mapImportGroup.mockResolvedValue(createImportPreview({ groups }));
+    await rows[1].find("select").setValue("personal");
+    await flushPromises();
+    expect(api.mapImportGroup).toHaveBeenCalledWith("shared-source", "personal");
+  });
+
+  it("shows the 1PUX passkey warning in the preview without opening instructions", async () => {
+    const wrapper = await openPreview({ format: "1pux" });
+    expect(wrapper.find('[data-testid="import-passkey-warning"]').text()).toContain("1Password desktop .1pux exports do not include passkeys");
+    expect(wrapper.find('[data-testid="import-passkey-warning"]').text()).toContain("Keep 1Password");
+  });
+
+  it("does not show a 1PUX passkey warning for other import formats", async () => {
+    const wrapper = await openPreview({ format: "bitwarden-json" });
+    expect(wrapper.find('[data-testid="import-passkey-warning"]').exists()).toBe(false);
+  });
+
   it("offers to delete the export file after the import", async () => {
-    const wrapper = await openPreview();
+    const wrapper = await openPreview({ allSkipped: [] });
     api.startImport.mockResolvedValue(createImportProgress());
-    api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 10, totalCount: 11, isDone: true, allFailed: [{ title: "Huge note", reason: "the item is too large" }] }));
+    api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 11, totalCount: 11, isDone: true }));
     await wrapper.find('[data-testid="start-import"]').trigger("click");
     await flushPromises();
-    expect(wrapper.find('[data-testid="import-result"]').text()).toBe("Imported 10 items into Personal");
-    expect(wrapper.find('[data-testid="import-failed"]').text()).toContain("the item is too large");
+    expect(wrapper.find('[data-testid="import-result"]').text()).toBe("Imported 11 items into Personal");
     const deleteOffer = wrapper.find('[data-testid="delete-import-file-offer"]');
     expect(deleteOffer.text()).toContain("bitwarden_export.json holds all these passwords in plain text");
     expect(deleteOffer.text()).toContain("/Users/alice/Downloads/bitwarden_export.json");
@@ -276,8 +321,34 @@ describe("Import panel", () => {
     expect(store.store.isImportOpen).toBe(false);
   });
 
+
+  it.each(["failed", "omitted", "different-password duplicate"])("keeps the source when entries were %s", async (kind) => {
+    const wrapper = await openPreview({ allSkipped: kind === "omitted" ? [{ title: "Login", reason: "its attachment was not imported" }] : [] });
+    api.startImport.mockResolvedValue(createImportProgress());
+    api.continueImport.mockResolvedValue(createImportProgress({
+      savedCount: 10,
+      totalCount: 11,
+      isDone: true,
+      leftBehindCount: 1,
+      allFailed: kind === "failed" ? [{ title: "Huge note", reason: "the item is too large" }] : [],
+    }));
+    await wrapper.find('[data-testid="start-import"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="delete-import-file"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("Keep the source file");
+  });
+
+  it("offers deletion when only exact in-file repeats were skipped", async () => {
+    const wrapper = await openPreview({ allSkipped: [{ title: "Login", reason: "the same entry appears earlier in this file" }] });
+    api.startImport.mockResolvedValue(createImportProgress());
+    api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 11, totalCount: 11, isDone: true, leftBehindCount: 0 }));
+    await wrapper.find('[data-testid="start-import"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="delete-import-file"]').exists()).toBe(true);
+    expect(wrapper.text()).not.toContain("Review the entries that were not imported");
+  });
   it("keeps the file when asked", async () => {
-    const wrapper = await openPreview();
+    const wrapper = await openPreview({ allSkipped: [] });
     api.startImport.mockResolvedValue(createImportProgress());
     api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 11, isDone: true }));
     await wrapper.find('[data-testid="start-import"]').trigger("click");

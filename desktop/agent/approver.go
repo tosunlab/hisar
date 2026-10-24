@@ -32,7 +32,11 @@ const (
 var (
 	errTouchIDFailed    = errors.New("Touch ID did not confirm it's you. Try again, or deny.")
 	errPasswordRequired = errors.New("Enter your master password to unlock Hisar.")
+	// errPresenceRequired refuses a bare Approve for an agent on a Mac without Touch ID: a computer-use agent can click it.
+	errPresenceRequired = errors.New("Enter your master password to approve.")
 	errPasswordCheck    = errors.New("Hisar cannot check the master password here.")
+	// Locking closes the session a passkey ceremony belongs to, so its approval cannot unlock Hisar instead.
+	errPasskeyCeremonyEnded = errors.New("Hisar locked, so this passkey request has ended. Try again in your browser.")
 )
 
 type Biometric interface {
@@ -41,10 +45,13 @@ type Biometric interface {
 }
 
 // Unlocker lets the approval window unlock a locked Hisar, or check the master password when it is unlocked.
+// ConfirmWithTouchID runs the Touch ID check of an unlocked Hisar after any Touch ID unlock or setup of Hisar's own, so
+// the check cannot take the key read that unlock prepared for its prompt.
 type Unlocker interface {
 	IsLocked() bool
 	IsTouchIDUnlockReady() bool
 	UnlockWithTouchID(authenticate func(reason string) error) error
+	ConfirmWithTouchID(authenticate func() error) error
 	UnlockWithPassword(password string) error
 	VerifyPassword(password string) error
 }
@@ -120,6 +127,28 @@ type ApprovalEvent struct {
 	RememberPeriod       string `json:"rememberPeriod"`
 	IsConnectionApproval bool   `json:"isConnectionApproval"`
 	Warning              string `json:"warning"`
+	// RequiresPresence: Approve alone never approves, since an agent that controls the screen could click it; Touch ID,
+	// the master password or the phone does. Every agent request requires it.
+	RequiresPresence bool `json:"requiresPresence"`
+	// GrantDurations are how long the user may let the agent keep what it asks for (clisocket.AgentGrantDuration),
+	// "once" first, and GrantDuration the one chosen; none for a connection. GrantScope says what a longer choice
+	// covers: exactly what the request names, such as the one field a reveal reads.
+	GrantDurations []string `json:"allGrantDuration"`
+	GrantDuration  string   `json:"grantDuration"`
+	GrantScope     string   `json:"grantScope"`
+	// Website and BrowserName are where an agent sign-in goes, as Hisar observed it; Logins are the logins saved for
+	// Website, and LoginIndex the one chosen.
+	Website     string          `json:"website"`
+	BrowserName string          `json:"browserName"`
+	Logins      []ApprovalLogin `json:"allLogin"`
+	LoginIndex  int             `json:"loginIndex"`
+}
+
+// ApprovalLogin is a login an agent sign-in may use, as the dialog lists it.
+type ApprovalLogin struct {
+	VaultName string `json:"vaultName"`
+	Title     string `json:"title"`
+	Username  string `json:"username"`
 }
 
 type ApprovalFailedEvent struct {
@@ -176,10 +205,20 @@ type pendingApproval struct {
 	timedOutAfter   time.Duration
 	approveReason   string
 	unlockReason    string
-	// isRemembered, isAuthenticating, isTouchIDCancelled and isFinished are guarded by Approver.mutex.
+	// describeChoice, for an agent request, builds the Touch ID reasons from the choice they approve: approveReason and
+	// unlockReason then go unused.
+	describeChoice func(choice agentChoice) (approveReason, unlockReason string)
+	// isMacOnly keeps the request off the phone, which cannot choose among logins.
+	isMacOnly bool
+	// isRemembered, choice, approvedChoice, isAuthenticating, isTouchIDCancelled, isDenied and isFinished are guarded by
+	// Approver.mutex. approvedChoice is the choice the user's presence approved. isDenied: a Deny was accepted, which is
+	// final, so no Touch ID check, password or phone answer that ends after it approves the request.
 	isRemembered       bool
+	choice             agentChoice
+	approvedChoice     agentChoice
 	isAuthenticating   bool
 	isTouchIDCancelled bool
+	isDenied           bool
 	isFinished         bool
 }
 

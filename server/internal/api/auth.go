@@ -6,6 +6,10 @@ import (
 	"github.com/tryhisar/hisar/core/apitypes"
 )
 
+func refuseLegacyAuthentication(c fiber.Ctx) error {
+	return c.Status(fiber.StatusBadRequest).JSON(apitypes.Error{Error: "Update your Hisar app or CLI to use origin-bound authentication. Legacy online login and master password checks are no longer supported."})
+}
+
 func (s *Server) handlePrelogin(c fiber.Ctx) error {
 	response, err := s.service.Prelogin(c.Context(), c.Query("email"))
 	if err != nil {

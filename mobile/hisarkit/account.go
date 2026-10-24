@@ -2,8 +2,6 @@ package hisarkit
 
 import (
 	"errors"
-	"os"
-	"path/filepath"
 
 	"github.com/tryhisar/hisar/core/app"
 )
@@ -27,15 +25,14 @@ func (hisar *Hisar) ReplaceSecretKey(password, directory string) (string, error)
 		return "", err
 	}
 	replacement := secretKeyReplacement{CredentialChangeResult: result}
-	export, err := app.ExportNewSecretKeyEmergencyKit(hisar.service)
-	if err == nil {
-		err = os.MkdirAll(directory, 0o700)
+	if result.PendingOperationID != "" {
+		return encodeJSON(replacement, nil)
 	}
-	if err == nil {
-		path := filepath.Join(directory, emergencyKitFileName)
-		if os.WriteFile(path, export.Document, 0o600) == nil {
-			replacement.EmergencyKitPath = path
-		}
+	kit, kitErr := app.ExportNewSecretKeyEmergencyKitToDirectory(hisar.service, result, directory)
+	if kitErr != nil {
+		replacement.LocalError = "Your Secret Key changed, but its Emergency Kit could not be saved. Resume recovery delivery."
+	} else {
+		replacement.EmergencyKitPath = kit.Path
 	}
 	return encodeJSON(replacement, nil)
 }
@@ -52,6 +49,14 @@ func (hisar *Hisar) DeleteAccount(password, email string) (string, error) {
 		return "", errors.New("enter your master password")
 	}
 	return encodeJSON(hisar.service.DeleteAccount(password, email))
+}
+
+func (hisar *Hisar) DeleteAccountWithPlan(password, email, planVersion string) (string, error) {
+	defer releaseMemory()
+	if password == "" {
+		return "", errors.New("enter your master password")
+	}
+	return encodeJSON(hisar.service.DeleteAccountWithPlan(password, email, planVersion))
 }
 
 func (hisar *Hisar) DismissSignedOutReason() string {

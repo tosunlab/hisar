@@ -27,11 +27,9 @@ class AccountLifecycleUITests : HisarUITestCase() {
         saveScreenshot("account-life-replace-secret-key")
         tap("replace-secret-key-submit")
         tap("replace-secret-key-confirm")
-        waitFor("new-secret-key-value", ACCOUNT_KEY_TIMEOUT)
-        val newSecretKey = readText("new-secret-key-value")
+        val newSecretKey = finishPendingRecovery(email, NEW_MASTER_PASSWORD)
         assertTrue(newSecretKey, newSecretKey.startsWith("H1-"))
         saveScreenshot("account-life-new-secret-key")
-        tap("replace-secret-key-done")
 
         goBack()
         tap("open-account")

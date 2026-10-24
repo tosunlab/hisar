@@ -50,8 +50,8 @@ type RunInput struct {
 
 type RunOutput struct {
 	ExitCode          int      `json:"exitCode" jsonschema:"the command's exit code; 128 + the signal number when a signal ended it"`
-	Stdout            string   `json:"stdout" jsonschema:"standard output with every secret value replaced by <concealed by hisar>"`
-	Stderr            string   `json:"stderr" jsonschema:"standard error with every secret value replaced by <concealed by hisar>"`
+	Stdout            string   `json:"stdout" jsonschema:"standard output after exact-value masking; short or transformed secrets can still appear"`
+	Stderr            string   `json:"stderr" jsonschema:"standard error after exact-value masking; short or transformed secrets can still appear"`
 	IsStdoutTruncated bool     `json:"isStdoutTruncated" jsonschema:"stdout was longer than 64 KiB; its first and last 32 KiB are kept"`
 	IsStderrTruncated bool     `json:"isStderrTruncated" jsonschema:"stderr was longer than 64 KiB; its first and last 32 KiB are kept"`
 	DurationSeconds   float64  `json:"durationSeconds"`
@@ -303,12 +303,13 @@ func (server *toolServer) run(ctx context.Context, prepared preparedCommand, env
 	}
 	command.Stdout, command.Stderr = stdoutMasker, stderrMasker
 	command.WaitDelay = outputDrainDuration
-	startInProcessGroup(command)
 	startedAt := time.Now()
-	if err := command.Start(); err != nil {
+	group, err := startProcessGroup(command)
+	if err != nil {
 		finishProgress()
 		return RunOutput{}, fmt.Errorf("%s: %v", prepared.arguments[0], err)
 	}
+	defer group.close()
 	waitResult := make(chan error, 1)
 	go func() { waitResult <- command.Wait() }()
 	timer := time.NewTimer(prepared.timeout)
@@ -319,9 +320,9 @@ func (server *toolServer) run(ctx context.Context, prepared preparedCommand, env
 	case waitError = <-waitResult:
 	case <-timer.C:
 		output.IsTimedOut = true
-		waitError = stopProcessGroup(command, waitResult, server.config.KillDelay)
+		waitError = group.stop(waitResult, server.config.KillDelay)
 	case <-ctx.Done():
-		waitError = stopProcessGroup(command, waitResult, server.config.KillDelay)
+		waitError = group.stop(waitResult, server.config.KillDelay)
 	}
 	output.DurationSeconds = time.Since(startedAt).Round(time.Millisecond).Seconds()
 	stdoutMasker.Flush()

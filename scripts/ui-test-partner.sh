@@ -70,7 +70,7 @@ PARTNER_EMAIL="$EMAIL_PREFIX-partner-$(date +%s)-$RANDOM@example.com"
 PARTNER_NAME="$UI_TEST_PLATFORM_NAME Partner"
 PARTNER_PASSWORD='partner master password'
 printf '%s\n%s\n%s\n%s\n' "$PARTNER_EMAIL" "$PARTNER_NAME" "$PARTNER_PASSWORD" "$PARTNER_PASSWORD" |
-  HISAR_STATE=$T/partner.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup "$(ui_test_create_invite "$PARTNER_EMAIL")" 2>"$T/partner-signup.txt"
+  HISAR_STATE=$T/partner.json HISAR_SECRET_KEY=- "$ROOT/bin/hisar" signup -y -o "$T/partner-emergency-kit.pdf" "$(ui_test_create_invite "$PARTNER_EMAIL")" 2>"$T/partner-signup.txt"
 PARTNER_SECRET_KEY=$(grep -oE 'H1-[0-9A-Z-]+' "$T/partner-signup.txt")
 partner() { HISAR_STATE=$T/partner.json HISAR_SECRET_KEY=$PARTNER_SECRET_KEY "$ROOT/bin/hisar" "$@"; }
 partner_unlocked() { printf '%s\n' "$PARTNER_PASSWORD" | partner "$@"; }
@@ -111,6 +111,9 @@ answer_as_partner() {
   while true; do
     for INVITATION_ID in $(printf '%s\n' "$PARTNER_PASSWORD" | partner invitations 2>/dev/null | awk '/^RECEIVED/{isReceived=1; next} /^(SENT|$)/{isReceived=0} isReceived{print $1}'); do
       partner invitations accept "$INVITATION_ID" </dev/null >/dev/null 2>&1 || true
+    done
+    for INVITATION_ID in $(partner_unlocked invitations 2>/dev/null | awk '/needs-review/{print $1}'); do
+      partner_unlocked invitations confirm "$INVITATION_ID" --yes >/dev/null 2>&1 || true
     done
     # Listing the organizations also gives team members the keys of the vaults the partner owns, and rotates them.
     ORGANIZATIONS=$(partner_unlocked orgs 2>&1 || true)

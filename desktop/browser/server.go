@@ -85,6 +85,10 @@ func (s *Server) isPeerAllowed(connection net.Conn) bool {
 
 func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 	defer connection.Close()
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	var writeMutex sync.Mutex
+	pending := make(chan struct{}, 16)
 	if !s.isPeerAllowed(connection) {
 		log.Printf("browser: refused a connection from an unknown process")
 		return
@@ -94,9 +98,24 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 		return
 	}
 	var connect browserprotocol.ConnectMessage
-	if json.Unmarshal(firstMessage, &connect) != nil || connect.Type != "connect" || connect.ExtensionOrigin != browserprotocol.AllowedOrigin {
+	if json.Unmarshal(firstMessage, &connect) != nil || connect.Type != "connect" || !browserprotocol.IsAllowedCaller(connect.ExtensionOrigin) {
 		log.Printf("browser: refused extension origin %q", connect.ExtensionOrigin)
 		return
+	}
+	writeResponse := func(response browserprotocol.Response) {
+		encoded, err := json.Marshal(response)
+		if err != nil {
+			encoded, _ = json.Marshal(browserprotocol.Response{ID: response.ID, Error: browserprotocol.NewError(browserprotocol.ErrorInternal, err.Error())})
+		}
+		if len(encoded) > browserprotocol.MaxMessageSize {
+			encoded, _ = json.Marshal(browserprotocol.Response{ID: response.ID, Error: browserprotocol.NewError(browserprotocol.ErrorInternal, "this is too large to show in the browser; open it in Hisar")})
+		}
+		writeMutex.Lock()
+		defer writeMutex.Unlock()
+		if err := browserprotocol.WriteMessage(connection, encoded); err != nil {
+			cancel()
+			connection.Close()
+		}
 	}
 	for {
 		message, err := browserprotocol.ReadMessage(connection)
@@ -106,13 +125,23 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 			}
 			return
 		}
-		response := s.answerMessage(ctx, message)
-		encoded, err := json.Marshal(response)
-		if err != nil {
-			encoded, _ = json.Marshal(browserprotocol.Response{ID: response.ID, Error: browserprotocol.NewError(browserprotocol.ErrorInternal, err.Error())})
+		var request browserprotocol.Request
+		if err := json.Unmarshal(message, &request); err != nil {
+			writeResponse(browserprotocol.Response{ID: request.ID, Error: browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "the request is not valid")})
+			continue
 		}
-		if err := browserprotocol.WriteMessage(connection, encoded); err != nil {
-			return
+		if request.Type != "passkeys.create" && request.Type != "passkeys.get" {
+			writeResponse(browserprotocol.AnswerRequest(ctx, s.handler, &request))
+			continue
+		}
+		select {
+		case pending <- struct{}{}:
+			go func() {
+				defer func() { <-pending }()
+				writeResponse(browserprotocol.AnswerRequest(ctx, s.handler, &request))
+			}()
+		default:
+			writeResponse(browserprotocol.Response{ID: request.ID, Error: browserprotocol.NewError(browserprotocol.ErrorInvalidRequest, "too many passkey requests; try again")})
 		}
 	}
 }

@@ -99,6 +99,10 @@ func checkOtherAccount(actor Actor, accountID string) error {
 
 func convertAdminAccountError(err error) error {
 	switch {
+	case errors.Is(err, store.ErrDeletionPlanChanged):
+		return ErrDeletionPlanChanged
+	case errors.Is(err, store.ErrDeletionBusy):
+		return errAdminDeletionBusy
 	case errors.Is(err, store.ErrNotFound):
 		return ErrNotFound
 	case errors.Is(err, store.ErrLastServerAdmin):
@@ -175,6 +179,7 @@ func (s *Service) ChangeAccountRole(ctx context.Context, actor Actor, accountID 
 	if err != nil {
 		return err
 	}
+	defer pending.erase()
 	if err := s.store.SetAccountRole(ctx, provenAdmin(actor, pending), accountID, request.Role); err != nil {
 		return convertAdminAccountError(err)
 	}
@@ -185,6 +190,9 @@ func (s *Service) ChangeAccountRole(ctx context.Context, actor Actor, accountID 
 // DeleteAccountAsAdmin deletes another account exactly as the account's own deletion does (§5.7.1), after the admin
 // types its email and proves their own master password.
 func (s *Service) DeleteAccountAsAdmin(ctx context.Context, actor Actor, accountID string, request *apitypes.AdminAccountDeleteRequest) error {
+	if request.PlanVersion == "" {
+		return newError(KindInvalid, "Update Hisar to review the account deletion plan before deleting.")
+	}
 	if err := checkOtherAccount(actor, accountID); err != nil {
 		return err
 	}
@@ -195,11 +203,12 @@ func (s *Service) DeleteAccountAsAdmin(ctx context.Context, actor Actor, account
 	if apitypes.NormalizeEmail(request.Email) != account.Email {
 		return newError(KindInvalid, "the email does not match this account")
 	}
-	pending, err := s.finishReauthentication(ctx, actor, request.Proof.ReauthenticationID, request.Proof.KE3)
+	pending, err := s.finishScopedReauthentication(ctx, actor, request.Proof.ReauthenticationID, request.Proof.KE3, apitypes.ReauthenticationScope{Action: "admin-account-delete", Target: accountID, PlanVersion: request.PlanVersion})
 	if err != nil {
 		return err
 	}
-	deleted, err := s.store.DeleteAccountAsAdmin(ctx, provenAdmin(actor, pending), accountID)
+	defer pending.erase()
+	deleted, err := s.store.DeleteAccountAsAdmin(ctx, provenAdmin(actor, pending), accountID, request.PlanVersion)
 	if err != nil {
 		return convertAdminAccountError(err)
 	}

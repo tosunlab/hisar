@@ -32,11 +32,20 @@ func (access appBackend) listItems(ctx context.Context, vaultID string) ([]item.
 	return listAppItems(ctx, access.client, vaultID)
 }
 
+func (appBackend) listsItemSummaries() bool { return true }
+
 func (access appBackend) getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error) {
 	return getAppItem(ctx, access.client, vaultID, itemID)
 }
 
-func (access appBackend) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
+func (access appBackend) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item, importScope ...string) error {
+	scope := ""
+	if len(importScope) > 0 {
+		if !access.client.hello.HasFeature(cliprotocol.FeatureImportScope) || importScope[0] == "" {
+			return errors.New("update the Hisar app and review the import destination")
+		}
+		scope = importScope[0]
+	}
 	change := convertToItemChange(vaultItem)
 	fields := []cliprotocol.Field{}
 	for _, field := range vaultItem.Details.Fields {
@@ -44,15 +53,15 @@ func (access appBackend) saveItem(ctx context.Context, vaultID string, vaultItem
 	}
 	change.Fields = &fields
 	var itemResult cliprotocol.ItemResult
-	if err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: change}, &itemResult); err != nil {
+	if err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeSaveItem, VaultID: vaultID, Item: change, ImportScope: scope}, &itemResult); err != nil {
 		return err
 	}
 	vaultItem.ID, vaultItem.Revision = itemResult.Item.ID, itemResult.Item.Revision
 	return nil
 }
 
-func (access appBackend) importItems(ctx context.Context, vaultID string, items []item.Item) (int, error) {
-	return importThroughApp(ctx, access.client, vaultID, items)
+func (access appBackend) importItems(ctx context.Context, vaultID string, items []item.Item, scope ...string) (int, error) {
+	return importThroughApp(ctx, access.client, vaultID, items, scope...)
 }
 
 var errFavoritesNeedNewerApp = errors.New("this version of the Hisar app cannot keep favorites; update the Hisar app, or run hisar with --standalone")
@@ -98,6 +107,10 @@ func (access appBackend) leaveVault(ctx context.Context, vaultID string) error {
 }
 
 func (access appBackend) writeExport(ctx context.Context, change cliprotocol.ExportChange) (cliprotocol.ExportResult, error) {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureExportProvenance) {
+		return cliprotocol.ExportResult{}, errors.New("update the Hisar app to export cached-copy provenance and omissions")
+	}
+	change.AcceptProvenance = true
 	var result cliprotocol.ExportResult
 	err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &change}, &result)
 	return result, err
@@ -160,6 +173,9 @@ func (access appBackend) listPeople(ctx context.Context) ([]cliprotocol.Person, 
 }
 
 func (access appBackend) shareVault(ctx context.Context, vaultID, email, role string) (string, error) {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureSignedSharing) {
+		return "", errors.New("Update the Hisar app before sharing this vault.")
+	}
 	if err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeShareVault, VaultID: vaultID, Email: email, Role: role}, nil); err != nil {
 		return "", err
 	}
@@ -189,6 +205,9 @@ func (access appBackend) invite(ctx context.Context, email string) error {
 
 // listInvitations: the app finishes accepted shares on its own.
 func (access appBackend) listInvitations(ctx context.Context) (cliprotocol.InvitationListResult, error) {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureSignedSharing) {
+		return cliprotocol.InvitationListResult{}, errors.New("Update the Hisar app before reviewing sharing invitations.")
+	}
 	var invitationList cliprotocol.InvitationListResult
 	err := access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeListInvitation}, &invitationList)
 	return invitationList, err
@@ -197,6 +216,13 @@ func (access appBackend) listInvitations(ctx context.Context) (cliprotocol.Invit
 func (access appBackend) answerInvitation(ctx context.Context, action, invitationID string) error {
 	requestType := map[string]string{"accept": cliprotocol.TypeAcceptInvitation, "decline": cliprotocol.TypeDeclineInvitation, "cancel": cliprotocol.TypeCancelInvitation}[action]
 	return access.client.call(ctx, cliprotocol.Request{Type: requestType, InvitationID: invitationID}, nil)
+}
+
+func (access appBackend) confirmInvitation(ctx context.Context, invitationID, reviewToken string) error {
+	if !access.client.hello.HasFeature(cliprotocol.FeatureSignedSharing) {
+		return errors.New("Update the Hisar app before confirming this recipient.")
+	}
+	return access.client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeConfirmShareRecipient, InvitationID: invitationID, ReviewToken: reviewToken}, nil)
 }
 
 func (access appBackend) listShareLinks(ctx context.Context) ([]cliprotocol.ShareLink, error) {
@@ -266,19 +292,22 @@ func (access appBackend) completeOrganizationKeys(ctx context.Context) (cliproto
 }
 
 // importThroughApp sends the items in batches and reports the progress.
-func importThroughApp(ctx context.Context, client *appClient, vaultID string, queuedItems []item.Item) (int, error) {
+func importThroughApp(ctx context.Context, client *appClient, vaultID string, queuedItems []item.Item, scope ...string) (int, error) {
+	if !client.hello.HasFeature(cliprotocol.FeatureImportScope) || len(scope) != 1 || scope[0] == "" {
+		return 0, errors.New("update the Hisar app and review the import destination before importing")
+	}
 	savedCount := 0
 	for start := 0; start < len(queuedItems); start += cliprotocol.MaxImportBatch {
 		batchItems := queuedItems[start:min(start+cliprotocol.MaxImportBatch, len(queuedItems))]
 		var importResult cliprotocol.ImportResult
-		err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: batchItems}, &importResult)
+		err := client.call(ctx, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: vaultID, ImportedItems: batchItems, ImportScope: scope[0]}, &importResult)
 		savedCount += importResult.SavedCount
 		if err != nil {
 			fmt.Fprintln(os.Stderr)
 			return savedCount, fmt.Errorf("stopped after importing %d of %d items: %w", savedCount, len(queuedItems), err)
 		}
 		for _, failure := range importResult.Failures {
-			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", failure.Title, failure.Message)
+			fmt.Fprintf(os.Stderr, "\rcould not import %q: %s\n", failure.Title, escapeControlCharacters(failure.Message))
 		}
 		fmt.Fprintf(os.Stderr, "\rImported %d of %d", savedCount, len(queuedItems))
 	}

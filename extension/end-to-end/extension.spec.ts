@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext } from "@playwright/test";
 import { readState } from "../tools/fake-native-host.mjs";
 import { extensionID } from "../tools/register-fake-host.mjs";
 import { launchHarness, type Harness } from "./harness";
@@ -9,9 +9,6 @@ let stateFile: string;
 let site: TestSite;
 let context: BrowserContext;
 
-function readSaveBar(page: Page) {
-  return harness.readShadowHost(page, "hisar-save-bar");
-}
 
 function getTabId(url: string): Promise<number> {
   return harness.getTabId(url);
@@ -35,6 +32,11 @@ test("pairs, fills only same-origin frames, and offers to update a changed passw
   const loginPage = await context.newPage();
   await loginPage.goto(`${site.origin}/login`);
   const tabId = await getTabId(`${site.origin}/login`);
+  const openSavePopup = async () => {
+    const confirmation = await context.newPage();
+    await confirmation.goto(`chrome-extension://${extensionID}/popup.html?tabId=${tabId}`);
+    return confirmation;
+  };
 
   const popup = await context.newPage();
   await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=${tabId}`);
@@ -65,10 +67,12 @@ test("pairs, fills only same-origin frames, and offers to update a changed passw
   await loginPage.locator("#password").fill("new password");
   await loginPage.locator("#sign-in").click();
   await expect(loginPage.locator("h1")).toHaveText("Welcome back");
-  await expect.poll(async () => (await readSaveBar(loginPage))?.text ?? "", { timeout: 10_000 }).toContain(
-    "Update the password for Test site in Hisar?",
-  );
-  await (await readSaveBar(loginPage))!.clickButton("Update");
+  expect(await harness.readShadowHost(loginPage, "hisar-save-bar")).toBeUndefined();
+  expect(readState(stateFile).allLogin[0].password).toBe("old password");
+  const confirmation = await openSavePopup();
+  await expect(confirmation.getByTestId("save-confirmation")).toContainText("Test site");
+  await expect(confirmation.getByTestId("save-confirmation")).toContainText("Personal");
+  await confirmation.getByTestId("save-confirm").click();
   await expect.poll(() => readState(stateFile).allLogin[0].password).toBe("new password");
   expect(readState(stateFile).allLogin).toHaveLength(1);
 });
@@ -77,14 +81,14 @@ test("offers to save a new login and stores it in the desktop", async () => {
   await harness.pairWithoutPopup();
   const loginPage = await context.newPage();
   await loginPage.goto(`${site.origin}/login`);
+  const tabId = await getTabId(loginPage.url());
   await loginPage.locator("#username").fill("someone-new@example.com");
   await loginPage.locator("#password").fill("brand new");
   await loginPage.locator("#password").press("Enter");
   await expect(loginPage.locator("h1")).toHaveText("Welcome back");
-  await expect.poll(async () => (await readSaveBar(loginPage))?.text ?? "", { timeout: 10_000 }).toContain(
-    "Save this login for 127.0.0.1",
-  );
-  await (await readSaveBar(loginPage))!.clickButton("Save");
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=${tabId}`);
+  await popup.getByTestId("save-confirm").click();
   await expect
     .poll(() => readState(stateFile).allLogin.find((login) => login.username === "someone-new@example.com")?.password)
     .toBe("brand new");
@@ -107,12 +111,14 @@ test("Never for this site stops offers for the origin", async () => {
   await harness.pairWithoutPopup();
   const loginPage = await context.newPage();
   await loginPage.goto(`${site.origin}/login`);
+  const tabId = await getTabId(loginPage.url());
   await loginPage.locator("#username").fill("third@example.com");
   await loginPage.locator("#password").fill("pw");
   await loginPage.locator("#sign-in").click();
-  await expect.poll(async () => (await readSaveBar(loginPage))?.text ?? "", { timeout: 10_000 }).toContain("Save this login");
-  await (await readSaveBar(loginPage))!.clickButton("Never for this site");
-  await expect.poll(async () => (await readSaveBar(loginPage)) === undefined).toBe(true);
+  const popup = await context.newPage();
+  await popup.goto(`chrome-extension://${extensionID}/popup.html?tabId=${tabId}`);
+  await popup.getByTestId("save-never").click();
+  await expect(popup.getByTestId("save-confirmation")).toHaveCount(0);
   const allNeverOrigin = await harness.evaluateInExtension(async () => (await chrome.storage.local.get(["allNeverOrigin"])).allNeverOrigin, undefined);
   expect(allNeverOrigin).toEqual([site.origin]);
 
@@ -122,6 +128,8 @@ test("Never for this site stops offers for the origin", async () => {
   await loginPage.locator("#sign-in").click();
   await expect(loginPage.locator("h1")).toHaveText("Welcome back");
   await loginPage.waitForTimeout(1500);
-  expect(await readSaveBar(loginPage)).toBeUndefined();
+  await popup.reload();
+  await expect(popup.getByTestId("unlocked-view")).toBeVisible();
+  await expect(popup.getByTestId("save-confirmation")).toHaveCount(0);
   expect(readState(stateFile).allLogin.some((login) => login.username === "fourth@example.com")).toBe(false);
 });

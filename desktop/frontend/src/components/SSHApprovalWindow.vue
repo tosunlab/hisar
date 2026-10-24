@@ -12,7 +12,9 @@ import {
   failApproval,
   loadAllPendingApproval,
   removeApproval,
+  setGrantDuration,
   setRemembered,
+  setSignInLogin,
 } from "../approval";
 import { startThemeSync } from "../theme";
 import AppIcon, { type IconName } from "./AppIcon.vue";
@@ -27,6 +29,13 @@ const allCompactAction: Record<string, string> = {
   "sign-commit": "Sign a commit",
   "sign-tag": "Sign a tag",
   "use-key": "Use SSH key",
+};
+
+const allGrantDurationLabel: Record<string, string> = {
+  once: "Only this time",
+  hour: "For 1 hour",
+  day: "For 1 day",
+  always: "Always",
 };
 
 const allLauncherAllowance: { icon: IconName; text: string }[] = [
@@ -48,7 +57,14 @@ const isLauncherShare = computed(() => isLauncher.value && approval.value?.purpo
 const isForwarded = computed(() => approval.value?.isForwarded === true);
 const isSigning = computed(() => approval.value?.purpose === "sign-commit" || approval.value?.purpose === "sign-tag");
 const isCompactShown = computed(() => approval.value?.isCompact === true && !approvalStore.isExpanded);
-const isPasswordShown = computed(() => approval.value?.isPasswordUnlock === true || approvalStore.isPasswordChosen);
+// An agent request that requires presence shows the master password field on a Mac without Touch ID: a bare Approve
+// would be a click any program controlling the screen can make.
+const isPresenceByPassword = computed(() => approval.value?.requiresPresence === true && approval.value.isTouchIDApproval !== true);
+const isPasswordShown = computed(() => approval.value?.isPasswordUnlock === true || approvalStore.isPasswordChosen || isPresenceByPassword.value);
+const isSignIn = computed(() => isAgent.value && approval.value?.purpose === "sign-in");
+const allLogin = computed(() => approval.value?.allLogin ?? []);
+const allGrantDuration = computed(() => (isAgent.value ? (approval.value?.allGrantDuration ?? []) : []));
+const isHarnessGrantOffered = computed(() => allGrantDuration.value.includes("day") && harnessName.value !== "");
 const isTouchIDUsed = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
 const isWaitingForTouchID = computed(() => approvalStore.isAuthorizing && isTouchIDUsed.value);
 const canChoosePassword = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
@@ -104,7 +120,7 @@ const purposeText = computed(() => {
   if (!current) {
     return "";
   }
-  if (current.kind === "command-line" || current.kind === "agent" || current.kind === "launcher") {
+  if (current.kind === "command-line" || current.kind === "agent" || current.kind === "launcher" || current.kind === "passkey") {
     return current.action || "use Hisar";
   }
   return [current.action || "use your SSH key", current.target].filter(Boolean).join(" ");
@@ -145,6 +161,9 @@ const allDetailLine = computed(() => {
   if (current.kind === "agent") {
     if (current.purpose === "connect") {
       return [current.clientPath || current.clientName, current.terminalName ? `/dev/${current.terminalName}` : ""].filter(Boolean);
+    }
+    if (current.purpose === "sign-in") {
+      return [current.browserName ? `${current.website} in ${current.browserName}` : current.website];
     }
     return [current.commandLine, current.workingDirectory].filter(Boolean);
   }
@@ -202,7 +221,7 @@ const agentNote = computed(() => {
     return "";
   }
   if (current.purpose === "connect") {
-    return `Lets ${current.agentName} list and search the vaults available to agents until 10 minutes after its last request, or until Hisar locks. Using a secret always asks.`;
+    return `Lets ${current.agentName} list and search the vaults available to agents until 10 minutes after its last request, or until Hisar locks. Using a secret asks unless an earlier approval covers it.`;
   }
   return current.isConnectionApproval ? `Approving also lets ${current.agentName} list and search the vaults available to agents.` : "";
 });
@@ -215,6 +234,10 @@ const compactSubtitle = computed(() => {
   const place = isSigning.value ? current.repositoryPath || "a commit" : current.target || current.hostAndPort || "SSH";
   return current.keyTitle ? `${place} with “${current.keyTitle}”` : place;
 });
+
+const signInNote = computed(() =>
+  isSignIn.value ? `Hisar enters the username, password and one-time code and submits them. ${approval.value?.agentName} gets no password or one-time code from Hisar.` : "",
+);
 
 const touchIDLabel = computed(() => (approval.value?.isUnlockRequired ? "Touch ID to unlock and approve" : "Touch ID to approve"));
 const passwordButtonLabel = computed(() => (approval.value?.isUnlockRequired ? "Unlock" : "Approve"));
@@ -303,7 +326,7 @@ watch(
       return;
     }
     await nextTick();
-    if (approval.value?.isPasswordUnlock) {
+    if (isPasswordShown.value) {
       passwordInput.value?.focus();
     } else if (isForwarded.value) {
       denyButton.value?.focus();
@@ -478,6 +501,29 @@ onBeforeUnmount(() => {
             </ul>
           </div>
 
+          <div v-if="isSignIn" class="secret-list" data-testid="approval-logins">
+            <p class="secret-heading">Login</p>
+            <p v-if="allLogin.length === 0" class="muted" data-testid="approval-login-locked">Hisar shows the login saved for this website after you unlock it.</p>
+            <ul v-else-if="allLogin.length === 1">
+              <li :title="`${allLogin[0].vaultName} › ${allLogin[0].title}`" data-testid="approval-login">
+                <AppIcon name="key" :size="12" /> {{ allLogin[0].vaultName }} › {{ allLogin[0].title }}, {{ allLogin[0].username }}
+              </li>
+            </ul>
+            <div v-else class="login-choice" role="radiogroup" aria-label="Login">
+              <label v-for="(login, index) in allLogin" :key="index" class="login-option" :data-testid="`approval-login-${index}`">
+                <input
+                  type="radio"
+                  name="signInLogin"
+                  :value="index"
+                  :checked="approvalStore.loginIndex === index"
+                  @change="setSignInLogin(approval.requestID, index)"
+                />
+                <span class="login-text">{{ login.vaultName }} › {{ login.title }}, {{ login.username }}</span>
+              </label>
+            </div>
+            <p class="muted sign-in-note" data-testid="approval-sign-in-note">{{ signInNote }}</p>
+          </div>
+
           <div v-if="approval.warning" class="reveal-warning" role="note" data-testid="approval-warning">
             <AppIcon name="eye" :size="15" />
             <p>{{ approval.warning }}</p>
@@ -492,6 +538,25 @@ onBeforeUnmount(() => {
             />
             {{ rememberLabel }}
           </label>
+
+          <div v-if="allGrantDuration.length > 0" class="grant-duration" data-testid="approval-grant-duration">
+            <label>
+              Allow
+              <select
+                name="grantDuration"
+                aria-label="How long to allow it"
+                data-testid="approval-grant-duration-menu"
+                :value="approvalStore.grantDuration"
+                @change="setGrantDuration(approval.requestID, ($event.target as HTMLSelectElement).value)"
+              >
+                <option v-for="duration in allGrantDuration" :key="duration" :value="duration">{{ allGrantDurationLabel[duration] ?? duration }}</option>
+              </select>
+            </label>
+            <p v-if="approval.grantScope" class="muted" data-testid="approval-grant-scope">{{ approval.grantScope }}</p>
+            <p v-if="isHarnessGrantOffered" class="muted" data-testid="approval-grant-note">
+              Longer choices cover {{ harnessName }} in every session until they expire, you revoke them in Settings → Coding agents, or you sign out.
+            </p>
+          </div>
 
           <p v-if="approval.isUnlockRequired" class="unlock-note" data-testid="approval-unlock-note">
             <AppIcon name="lock" :size="13" />
@@ -946,6 +1011,68 @@ h1 {
 
 .failure {
   color: var(--color-danger);
+}
+
+.grant-duration {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 20px 0 0 2px;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.grant-duration label {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  font-weight: 400;
+}
+
+
+.grant-duration select {
+  width: auto;
+  margin: 0;
+}
+
+.grant-duration p {
+  margin: 0;
+  font-size: 12px;
+}
+
+.login-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 0 2px;
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--color-text);
+}
+
+.login-option input {
+  width: auto;
+  flex: none;
+  margin: 0;
+}
+
+.login-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sign-in-note {
+  margin: 8px 0 0 2px;
+  font-size: 12px;
 }
 
 .password-row {

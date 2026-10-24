@@ -54,8 +54,8 @@ func WriteAPICredential(vaultItem *Item, credential APICredential, otherFields [
 	writeRecord(vaultItem, credential, apiCredentialFields, otherFields)
 }
 
-// NormalizeAPICredential trims an API credential item's values, writes its expiry as YYYY-MM-DD when it is given year
-// first and puts its fields in order; other items are left alone.
+// NormalizeAPICredential trims an API credential item's display values, keeps its secret exact, writes its expiry as
+// YYYY-MM-DD when it is given year first and puts its fields in order; other items are left alone.
 func NormalizeAPICredential(vaultItem *Item) {
 	if !vaultItem.IsCategory(CategoryAPICredential) {
 		return

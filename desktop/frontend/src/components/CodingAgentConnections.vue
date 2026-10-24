@@ -8,6 +8,7 @@ interface AgentCopy {
   notInstalled: string;
   // What connecting gives, around the command it goes through: [before, command, after].
   purpose: [string, string, string];
+  restartHint?: string;
 }
 
 const allCopyByAgentID: Record<string, AgentCopy> = {
@@ -17,11 +18,16 @@ const allCopyByAgentID: Record<string, AgentCopy> = {
   },
   "claude-code": {
     notInstalled: "Claude Code is not installed.",
-    purpose: ["Connect to let Claude Code run commands with your secrets through ", "hisar mcp", " without seeing them."],
+    purpose: ["Connect to let Claude Code run approved commands with your secrets through ", "hisar mcp", ". Commands receive the real values; output masking is not containment."],
   },
   codex: {
     notInstalled: "Codex is not installed.",
-    purpose: ["Connect to let Codex run commands with your secrets through ", "hisar mcp", " without seeing them."],
+    purpose: ["Connect to let Codex run approved commands with your secrets through ", "hisar mcp", ". Commands receive the real values; output masking is not containment."],
+  },
+  hermes: {
+    notInstalled: "Hermes is not installed.",
+    purpose: ["Connect to let Hermes run approved commands with your secrets through ", "hisar mcp", ". Commands receive the real values; output masking is not containment."],
+    restartHint: "Start a new Hermes session, or run /reload-mcp in one that is running. A session started with -t loads Hisar when its list names hisar, all or *.",
   },
 };
 
@@ -29,7 +35,7 @@ function getCopy(agent: CodingAgent): AgentCopy {
   return (
     allCopyByAgentID[agent.id] ?? {
       notInstalled: `${agent.name} is not installed.`,
-      purpose: [`Connect to let ${agent.name} run commands with your secrets through `, "hisar mcp", " without seeing them."],
+      purpose: [`Connect to let ${agent.name} run approved commands with your secrets through `, "hisar mcp", ". Commands receive the real values; output masking is not containment."],
     }
   );
 }
@@ -93,7 +99,9 @@ onMounted(loadAgents);
         </p>
         <template v-else-if="agent.state === 'connected'">
           <p class="muted" :data-testid="`agent-state-${agent.id}`"><span class="state-dot running"></span>Connected</p>
-          <p class="muted" :data-testid="`agent-restart-hint-${agent.id}`">New {{ agent.name }} sessions load Hisar. Restart the ones already running.</p>
+          <p class="muted" :data-testid="`agent-restart-hint-${agent.id}`">
+            {{ getCopy(agent).restartHint ?? `New ${agent.name} sessions load Hisar. Restart the ones already running.` }}
+          </p>
         </template>
         <p v-else class="warning-text" :data-testid="`agent-state-${agent.id}`"><span class="state-dot warning"></span>{{ agent.detail }}</p>
         <p v-if="failure && failure.agentID === agent.id" class="error" role="alert" :data-testid="`agent-error-${agent.id}`">{{ failure.message }}</p>

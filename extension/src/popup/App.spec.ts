@@ -12,14 +12,43 @@ let storedSettings: Record<string, unknown>;
 let allClipboardText: string[];
 const closeWindow = vi.fn();
 
+type TabListener = (tabId: number, change: { url?: string }, tab: { id: number; url?: string }) => void;
+let tabUrl: string | undefined;
+let allTabListener: TabListener[];
+let tabReadGate: Promise<unknown>;
+
+// navigateTab moves the popup's target tab, as Chrome reports it to tabs.onUpdated; undefined is a page whose address
+// the extension may not read.
+function navigateTab(url: string | undefined): void {
+  tabUrl = url;
+  for (const listener of allTabListener) listener(42, { url }, { id: 42, url });
+}
+
+// holdTabRead makes tabs.get answer only when released.
+function holdTabRead(): { release: () => void } {
+  const gate = Promise.withResolvers<void>();
+  tabReadGate = gate.promise;
+  return { release: () => gate.resolve() };
+}
+
 const allLogin: LoginSummary[] = [
   { vaultID: "v1", itemID: "i1", title: "Example", username: "alex@example.com", vaultName: "Personal" },
   { vaultID: "v2", itemID: "i2", title: "Example (work)", username: "alex@work.example", vaultName: "Family" },
 ];
 
+let extensionBaseUrl: string;
+let isSiteAccessGranted: boolean;
+
 function installChrome(): void {
+  extensionBaseUrl = "chrome-extension://mmipiffoogblblocokimpemdopmdjghf/";
+  isSiteAccessGranted = true;
   vi.stubGlobal("chrome", {
+    permissions: {
+      contains: vi.fn(async () => isSiteAccessGranted),
+      request: vi.fn(async () => (isSiteAccessGranted = true)),
+    },
     runtime: {
+      getURL: vi.fn((path: string) => extensionBaseUrl + path),
       sendMessage: vi.fn(async (message: PopupMessage) => {
         allMessage.push(message);
         try {
@@ -30,7 +59,18 @@ function installChrome(): void {
         }
       }),
     },
-    tabs: { query: vi.fn(async () => [{ id: 42 }]), create: vi.fn(async () => ({})) },
+    tabs: {
+      query: vi.fn(async () => [{ id: 42 }]),
+      get: vi.fn(async (id: number) => {
+        await tabReadGate;
+        return { id, url: tabUrl };
+      }),
+      onUpdated: {
+        addListener: vi.fn((listener: TabListener) => allTabListener.push(listener)),
+        removeListener: vi.fn((listener: TabListener) => (allTabListener = allTabListener.filter((other) => other !== listener))),
+      },
+      create: vi.fn(async () => ({})),
+    },
     storage: {
       local: {
         get: vi.fn(async (allKey: string[]) => Object.fromEntries(allKey.filter((key) => key in storedSettings).map((key) => [key, storedSettings[key]]))),
@@ -61,6 +101,9 @@ async function mountApp(props: Record<string, unknown> = {}) {
 beforeEach(() => {
   allMessage = [];
   storedSettings = {};
+  tabUrl = "https://example.com/login";
+  allTabListener = [];
+  tabReadGate = Promise.resolve();
   allClipboardText = [];
   installChrome();
   vi.stubGlobal("navigator", { clipboard: { writeText: vi.fn(async (text: string) => void allClipboardText.push(text)) } });
@@ -391,6 +434,31 @@ describe("update required", () => {
     expect(chrome.tabs.create).toHaveBeenCalledWith({ url: storeURL });
   });
 
+  it("opens Hisar's releases for an update in Firefox, which installs no extension from the Chrome Web Store", async () => {
+    extensionBaseUrl = "moz-extension://5f0c6a1e-uuid/";
+    respondWithState({
+      view: "update-required",
+      updateRequired: { target: "extension", currentVersion: "0.2.0", minimumVersion: "0.3.0", updateURL: "https://chromewebstore.google.com/detail/mmipiffoogblblocokimpemdopmdjghf" },
+    });
+    const wrapper = await mountApp();
+    await wrapper.get('[data-testid="update-extension"]').trigger("click");
+    await flushPromises();
+    expect(chrome.tabs.create).toHaveBeenCalledWith({ url: "https://github.com/tosunlab/hisar/releases?q=extension" });
+  });
+
+  it("asks for access to websites when the browser took it away, and hides the request once it is granted", async () => {
+    respondWithState({ view: "unlocked", email: "alex@example.com" });
+    expect((await mountApp()).find('[data-testid="site-access"]').exists()).toBe(false);
+    document.body.innerHTML = "";
+    isSiteAccessGranted = false;
+    const wrapper = await mountApp();
+    expect(wrapper.get('[data-testid="site-access"]').text()).toContain("Hisar can't fill or save logins on websites until you allow it.");
+    await wrapper.get('[data-testid="allow-site-access"]').trigger("click");
+    await flushPromises();
+    expect(chrome.permissions.request).toHaveBeenCalledWith({ origins: ["<all_urls>"] });
+    expect(wrapper.find('[data-testid="site-access"]').exists()).toBe(false);
+  });
+
   it("opens only known update pages", async () => {
     respondWithState({
       view: "update-required",
@@ -603,6 +671,29 @@ describe("vault", () => {
     expect(wrapper.find('[data-testid="vault-view"]').isVisible()).toBe(true);
   });
 
+  it("drops what it shows once Hisar locks or another account signs in, asking only over an open connection", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    respondWithVault();
+    const wrapper = await mountApp({ statusIntervalMilliseconds: 1000 });
+    await wrapper.findAll('[data-testid="open-item"]')[1].trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="field-field:1"] [data-testid="reveal-field"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("4111 1111 1111 1111");
+
+    respondWithStateOverride({ email: "sam@example.com" });
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushPromises();
+    expect(allMessage).toContainEqual({ type: "popup.getState", isOverOpenConnection: true });
+    expect(wrapper.text()).not.toContain("4111");
+    expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(false);
+
+    respondWithStateOverride({ view: "locked" });
+    await vi.advanceTimersByTimeAsync(1000);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="unlocked-view"]').exists()).toBe(false);
+  });
+
   it("fills a suggested login from its details", async () => {
     respondWithVault({ "popup.getItem": () => ({ ...allItem[0], fields: [{ id: "username", label: "Username", kind: "text", value: "alex@example.com" }] }) });
     const wrapper = await mountApp();
@@ -643,6 +734,77 @@ describe("vault", () => {
       item: { category: "login", title: "example.com", username: "alex", password: "generated-undefined-undefined-undefined", url: "https://example.com" },
     });
     expect(wrapper.find('[data-testid="item-detail"]').exists()).toBe(true);
+  });
+
+  async function openNewItem(overrides: Partial<Record<PopupMessage["type"], Handler>> = {}) {
+    respondWithVault({ "popup.listVaults": () => [{ vaultID: "v1", name: "Personal", isPersonal: true }], ...overrides });
+    respondWithStateOverride({ isCreateAvailable: true });
+    const wrapper = await mountApp();
+    await wrapper.find('[data-testid="new-item-open"]').trigger("click");
+    await flushPromises();
+    const readField = (field: "title" | "url") => (wrapper.find(`[data-testid="new-${field}"]`).element as HTMLInputElement).value;
+    return { wrapper, readField };
+  }
+
+  it("gives a new login the page's site while the page's logins are still loading", async () => {
+    const { readField } = await openNewItem({ "popup.matchLogins": () => Promise.withResolvers().promise });
+    expect(readField("title")).toBe("example.com");
+    expect(readField("url")).toBe("https://example.com");
+  });
+
+  it("keeps what the user typed, or cleared, before the page's address arrives", async () => {
+    const tabRead = holdTabRead();
+    const pageMatch = Promise.withResolvers<{ url: string; allLogin: LoginSummary[] }>();
+    const { wrapper, readField } = await openNewItem({ "popup.matchLogins": () => pageMatch.promise });
+    await wrapper.find('[data-testid="new-title"]').setValue("My bank");
+    await wrapper.find('[data-testid="new-url"]').setValue("https://bank.example");
+    await wrapper.find('[data-testid="new-url"]').setValue("");
+    pageMatch.resolve({ url: "https://example.com/login", allLogin });
+    tabRead.release();
+    await flushPromises();
+    expect(readField("title")).toBe("My bank");
+    expect(readField("url")).toBe("");
+  });
+
+  it("follows the tab to another site, but not into fields the user cleared", async () => {
+    const { wrapper, readField } = await openNewItem();
+    await wrapper.find('[data-testid="new-url"]').setValue("");
+    navigateTab("https://www.second.example/login");
+    await flushPromises();
+    expect(readField("title")).toBe("second.example");
+    expect(readField("url")).toBe("");
+    await wrapper.find('[data-testid="new-title"]').setValue("");
+    navigateTab("https://third.example/login");
+    await flushPromises();
+    expect(readField("title")).toBe("");
+  });
+
+  it("saves the site the tab is on when it navigated while the page's logins were loading", async () => {
+    let created: unknown;
+    const pageMatch = Promise.withResolvers<{ url: string; allLogin: LoginSummary[] }>();
+    const { wrapper, readField } = await openNewItem({
+      "popup.matchLogins": () => pageMatch.promise,
+      "popup.createItem": (message) => {
+        created = message;
+        return { ...allItem[1], itemID: "new", title: "My bank" };
+      },
+    });
+    await wrapper.find('[data-testid="new-title"]').setValue("My bank");
+    navigateTab("https://bank.example/login");
+    pageMatch.resolve({ url: "https://example.com/login", allLogin });
+    await flushPromises();
+    expect(readField("url")).toBe("https://bank.example");
+    await wrapper.find('[data-testid="new-item"]').trigger("submit");
+    await flushPromises();
+    expect(created).toMatchObject({ type: "popup.createItem", item: { title: "My bank", url: "https://bank.example" } });
+  });
+
+  it("offers no site once the tab leaves the web", async () => {
+    const { readField } = await openNewItem();
+    navigateTab(undefined);
+    await flushPromises();
+    expect(readField("title")).toBe("");
+    expect(readField("url")).toBe("");
   });
 
   it("moves between the search box and the rows with the arrow keys, and copies a login's password with Ctrl+C", async () => {

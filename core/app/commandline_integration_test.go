@@ -149,6 +149,7 @@ func TestIntegrationCommandLineThroughApp(t *testing.T) {
 	checkSecretReferenceThroughApp(t, service, approver, binaryPath, socketPath, statePath)
 	checkAPICredentialThroughApp(t, binaryPath, socketPath, statePath)
 	checkShareLinkThroughApp(t, approver, binaryPath, socketPath, statePath)
+	checkSelectionThroughApp(t, service, binaryPath, socketPath, statePath)
 
 	runner.Stop()
 	if output := run("", "status"); !strings.Contains(output, "mode:    standalone") || !strings.Contains(output, "not signed in") {

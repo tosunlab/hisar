@@ -16,9 +16,13 @@ import (
 
 const adminInvitesPath = "/api/v1/admin/invites"
 
-func createAdminInvite(t *testing.T, baseURL, token, email, role string) apitypes.AdminInviteCreated {
+func createAdminInvite(t *testing.T, baseURL, token, email, role string, proofs ...apitypes.ReauthenticationProof) apitypes.AdminInviteCreated {
 	t.Helper()
-	status, body := sendRawRequest(t, baseURL, token, "POST", adminInvitesPath, apitypes.AdminInviteRequest{Email: email, Role: role})
+	request := apitypes.AdminInviteRequest{Email: email, Role: role}
+	if len(proofs) == 1 {
+		request.Proof = proofs[0]
+	}
+	status, body := sendRawRequest(t, baseURL, token, "POST", adminInvitesPath, request)
 	if status != http.StatusCreated {
 		t.Fatalf("create %s invite for %s: %d %s", role, email, status, body)
 	}
@@ -43,10 +47,10 @@ func decodeJSON[T any](t *testing.T, body string) T {
 	return value
 }
 
-func getInviteToken(t *testing.T, link string) string {
+func getInviteToken(t *testing.T, baseURL, link string) string {
 	t.Helper()
 	match := inviteTokenPattern.FindStringSubmatch(link)
-	if match == nil || !strings.HasPrefix(link, "https://hisar.test/invite/") {
+	if match == nil || !strings.HasPrefix(link, baseURL+"/invite/") {
 		t.Fatalf("invite link %q", link)
 	}
 	return match[1]
@@ -65,20 +69,24 @@ func countAuditEvents(t *testing.T, databaseURL, eventType string) int {
 func TestAdminInvitesCreateWithEachRole(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
 	ctx := context.Background()
-	admin := signUpTestAccount(t, ctx, server, baseURL, "admin@example.com", apitypes.RoleAdmin)
+	admin := signUpAccountWithRole(t, server, baseURL, "admin@example.com", apitypes.RoleAdmin)
 
 	for _, role := range []string{apitypes.RoleMember, apitypes.RoleAdmin} {
 		email := role + "-invitee@example.com"
-		created := createAdminInvite(t, baseURL, admin.Client.Token, " "+strings.ToUpper(email)+" ", role)
+		proof := apitypes.ReauthenticationProof{}
+		if role == apitypes.RoleAdmin {
+			proof = proveAdmin(t, admin)
+		}
+		created := createAdminInvite(t, baseURL, admin.session.Client.Token, " "+strings.ToUpper(email)+" ", role, proof)
 		if created.IsEmailed || created.EmailError != "" || created.Invite.Email != email || created.Invite.Role != role ||
-			created.Invite.CreatedBy == nil || created.Invite.CreatedBy.AccountID != admin.AccountID || created.Invite.CreatedBy.Email != "admin@example.com" {
+			created.Invite.CreatedBy == nil || created.Invite.CreatedBy.AccountID != admin.session.AccountID || created.Invite.CreatedBy.Email != "admin@example.com" {
 			t.Errorf("created without email: %+v", created)
 		}
-		response, body := fetchInvitePage(t, baseURL, getInviteToken(t, created.Link))
+		response, body := fetchInvitePage(t, baseURL, getInviteToken(t, baseURL, created.Link))
 		if response.StatusCode != http.StatusOK || !strings.Contains(body, email) {
 			t.Errorf("invite page of %s: %d", email, response.StatusCode)
 		}
-		signedUp, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, created.Link), email)
+		signedUp, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, baseURL, created.Link), email)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -92,7 +100,7 @@ func TestAdminInvitesCreateWithEachRole(t *testing.T) {
 	}
 
 	for _, request := range []apitypes.AdminInviteRequest{{Email: "x@example.com", Role: "owner"}, {Email: "x@example.com"}, {Email: "not an email", Role: apitypes.RoleMember}} {
-		if status, body := sendRawRequest(t, baseURL, admin.Client.Token, "POST", adminInvitesPath, request); status != http.StatusBadRequest {
+		if status, body := sendRawRequest(t, baseURL, admin.session.Client.Token, "POST", adminInvitesPath, request); status != http.StatusBadRequest {
 			t.Errorf("%+v: %d %s", request, status, body)
 		}
 	}
@@ -129,7 +137,7 @@ func TestAdminInvitesRevokeThenRedeemFails(t *testing.T) {
 	if pendingAfter := getPendingInviteCount(t, baseURL, admin.Client.Token); pendingAfter != pendingBefore-1 {
 		t.Errorf("Overview's pending invites %d, then %d", pendingBefore, pendingAfter)
 	}
-	token := getInviteToken(t, created.Link)
+	token := getInviteToken(t, baseURL, created.Link)
 	_, revokedPage := fetchInvitePage(t, baseURL, token)
 	unknownResponse, unknownPage := fetchInvitePage(t, baseURL, "never-issued-token")
 	if unknownResponse.StatusCode != http.StatusNotFound || revokedPage != unknownPage {
@@ -160,14 +168,16 @@ func getPendingInviteCount(t *testing.T, baseURL, token string) int64 {
 func TestAdminInvitesResendInvalidatesTheOldToken(t *testing.T) {
 	baseURL, server, databaseURL := setupServer(t)
 	ctx := context.Background()
-	admin := signUpTestAccount(t, ctx, server, baseURL, "admin@example.com", apitypes.RoleAdmin)
+	adminAccount := signUpAccountWithRole(t, server, baseURL, "admin@example.com", apitypes.RoleAdmin)
+	admin := adminAccount.session
 	operatorInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "carol@example.com", apitypes.RoleAdmin, nil))
 	listed := listAdminInvites(t, baseURL, admin.Client.Token)
 	if len(listed) != 1 || listed[0].CreatedBy != nil || listed[0].Role != apitypes.RoleAdmin {
 		t.Fatalf("operator invite: %+v", listed)
 	}
 
-	status, body := sendRawRequest(t, baseURL, admin.Client.Token, "POST", adminInvitesPath+"/"+listed[0].ID+"/resend", nil)
+	status, body := sendRawRequest(t, baseURL, admin.Client.Token, "POST", adminInvitesPath+"/"+listed[0].ID+"/resend",
+		apitypes.AdminInviteResendRequest{Proof: proveAdmin(t, adminAccount)})
 	if status != http.StatusCreated {
 		t.Fatalf("resend: %d %s", status, body)
 	}
@@ -188,7 +198,7 @@ func TestAdminInvitesResendInvalidatesTheOldToken(t *testing.T) {
 	if status, _ := sendRawRequest(t, baseURL, admin.Client.Token, "POST", adminInvitesPath+"/"+listed[0].ID+"/resend", nil); status != http.StatusNotFound {
 		t.Errorf("resend the old invite again: %d", status)
 	}
-	carol, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, resent.Link), "carol@example.com")
+	carol, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, baseURL, resent.Link), "carol@example.com")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -270,5 +280,68 @@ func TestAdminInvitesNeedAnAdmin(t *testing.T) {
 	}
 	if after := queryValue[int](t, databaseURL, `SELECT count(*) FROM invites`); after != before {
 		t.Errorf("invites %d, then %d", before, after)
+	}
+}
+
+func TestAdminInviteNeedsItsCreatorToStillBeAnActiveAdmin(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	first := signUpAccountWithRole(t, server, baseURL, "first@example.com", apitypes.RoleAdmin)
+	second := signUpAccountWithRole(t, server, baseURL, "second@example.com", apitypes.RoleAdmin)
+	firstPath := adminAccountsPath + "/" + first.session.AccountID
+	refuseInvite := func(created apitypes.AdminInviteCreated) {
+		t.Helper()
+		for _, listed := range listAdminInvites(t, baseURL, second.session.Client.Token) {
+			if listed.ID == created.Invite.ID {
+				t.Errorf("dashboard lists unusable admin invite %s as pending", listed.ID)
+			}
+		}
+		if status, _ := sendRawRequest(t, baseURL, second.session.Client.Token, "POST", adminInvitesPath+"/"+created.Invite.ID+"/resend", nil); status != http.StatusNotFound {
+			t.Errorf("resend unusable admin invite: %d", status)
+		}
+		token := getInviteToken(t, baseURL, created.Link)
+		if response, _ := fetchInvitePage(t, baseURL, token); response.StatusCode != http.StatusNotFound {
+			t.Errorf("invite page of %s: %d", created.Invite.Email, response.StatusCode)
+		}
+		if _, err := signUpWithInvite(ctx, baseURL, token, created.Invite.Email); !apiclient.IsStatus(err, http.StatusForbidden) {
+			t.Errorf("%s signed up with the admin invite: %v", created.Invite.Email, err)
+		}
+	}
+
+	memberInvite := createAdminInvite(t, baseURL, first.session.Client.Token, "member-invitee@example.com", apitypes.RoleMember)
+	demotedInvite := createAdminInvite(t, baseURL, first.session.Client.Token, "carol@example.com", apitypes.RoleAdmin, proveAdmin(t, first))
+	if status, body := sendRawRequest(t, baseURL, second.session.Client.Token, "PUT", firstPath+"/role",
+		apitypes.AdminRoleChangeRequest{Role: apitypes.RoleMember, Proof: proveAdmin(t, second)}); status != http.StatusNoContent {
+		t.Fatalf("demote: %d %s", status, body)
+	}
+	refuseInvite(demotedInvite)
+	if count := getPendingInviteCount(t, baseURL, second.session.Client.Token); count != 1 {
+		t.Errorf("pending invites after demotion: %d, want only the member invite", count)
+	}
+	if _, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, baseURL, memberInvite.Link), "member-invitee@example.com"); err != nil {
+		t.Errorf("a member invite of a demoted admin: %v", err)
+	}
+
+	if status, body := sendRawRequest(t, baseURL, second.session.Client.Token, "PUT", firstPath+"/role",
+		apitypes.AdminRoleChangeRequest{Role: apitypes.RoleAdmin, Proof: proveAdmin(t, second)}); status != http.StatusNoContent {
+		t.Fatalf("promote: %d %s", status, body)
+	}
+	if count := getPendingInviteCount(t, baseURL, second.session.Client.Token); count != 1 {
+		t.Errorf("pending invites after promotion: %d, want revived admin invite", count)
+	}
+	revived, err := signUpWithInvite(ctx, baseURL, getInviteToken(t, baseURL, demotedInvite.Link), demotedInvite.Invite.Email)
+	if err != nil {
+		t.Fatalf("revived admin invite: %v", err)
+	}
+	suspendedInvite := createAdminInvite(t, baseURL, first.session.Client.Token, "dave@example.com", apitypes.RoleAdmin, proveAdmin(t, first))
+	if status, body := sendRawRequest(t, baseURL, second.session.Client.Token, "POST", firstPath+"/suspend", nil); status != http.StatusNoContent {
+		t.Fatalf("suspend: %d %s", status, body)
+	}
+	refuseInvite(suspendedInvite)
+	if count := getPendingInviteCount(t, baseURL, second.session.Client.Token); count != 0 {
+		t.Errorf("pending invites after suspension: %d", count)
+	}
+	if account, err := revived.Client.GetAccount(ctx); err != nil || account.Role != apitypes.RoleAdmin {
+		t.Errorf("already-redeemed admin after issuer suspension: %+v %v", account, err)
 	}
 }

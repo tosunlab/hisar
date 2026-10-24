@@ -15,6 +15,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/server/internal/ratelimit"
 	"github.com/tryhisar/hisar/server/internal/realtime"
 	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
@@ -58,7 +59,7 @@ func createSetupTestService(t *testing.T) (s *Service, database *store.Store, is
 	current := &atomic.Pointer[settings.Settings]{}
 	defaults := settings.Defaults()
 	current.Store(&defaults)
-	s = New(database, realtime.NewBroker(), Keys{}, Config{PublicURL: publicURL.URL}, InstanceSettings{Current: current, Defaults: defaults})
+	s = New(database, realtime.NewBroker(), Keys{}, Config{PublicURL: publicURL.URL}, InstanceSettings{Current: current, Defaults: defaults}, ratelimit.NewFactory(0, 0))
 	return s, database, isPublicURLUp
 }
 
@@ -204,7 +205,7 @@ func TestSetupStepsRunInOrderAndDoneIsFinal(t *testing.T) {
 		{settings.SetupNeedsAdmin, settings.SetupNeedsChecks},
 		{settings.SetupNeedsChecks, settings.SetupNeedsInvitePolicy},
 	} {
-		if err := s.moveSetup(ctx, admin.ID, step[0], step[1]); !errors.Is(err, errSetupStep) {
+		if err := s.moveSetup(ctx, admin.ID, true, step[0], step[1]); !errors.Is(err, errSetupStep) {
 			t.Errorf("%s step after done: %v", step[0], err)
 		}
 	}

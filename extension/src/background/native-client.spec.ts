@@ -108,6 +108,15 @@ describe("NativeClient", () => {
     expect(port.allSent.map((request) => request.type)).toEqual(["hello"]);
   });
 
+  it("refuses a request larger than the host reads without sending it or closing the connection", async () => {
+    const port = new FakePort((request) => ({ id: request.id, ok: true, result: request.type === "hello" ? helloResult : { status: "new" } }));
+    const client = createClient([port]);
+    await expectHisarError(client.request("logins.prepare", { tabID: "1", url: "https://example.com/", username: "alex", password: "é".repeat(512 * 1024) }), "invalid-request");
+    expect(port.allSent.map((request) => request.type)).toEqual(["hello"]);
+    expect(client.isConnected()).toBe(true);
+    expect(await client.request("logins.prepare", { tabID: "1", url: "https://example.com/", username: "alex", password: "pw" })).toEqual({ status: "new" });
+  });
+
   it("times out a request with desktop-unavailable", async () => {
     vi.useFakeTimers();
     const port = new FakePort(answerHello);

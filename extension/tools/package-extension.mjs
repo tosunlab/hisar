@@ -17,7 +17,17 @@ if (version !== packageVersion) {
   console.error(`manifest.json version ${version} differs from package.json version ${packageVersion}`);
   process.exit(1);
 }
-const zipPath = join(extensionDirectory, `hisar-extension-${version}.zip`);
-rmSync(zipPath, { force: true });
-execFileSync("zip", ["-r", "-X", "-q", zipPath, "."], { cwd: distDirectory, stdio: "inherit" });
-console.log(zipPath);
+// The Chrome package and the Firefox one, which AMO signs into an .xpi.
+for (const [directory, zipName] of [
+  [distDirectory, `hisar-extension-${version}.zip`],
+  [join(extensionDirectory, "dist-firefox"), `hisar-extension-firefox-${version}.zip`],
+]) {
+  if (!existsSync(join(directory, "manifest.json"))) {
+    console.error(`${directory}/manifest.json is missing: run npm run build first`);
+    process.exit(1);
+  }
+  const zipPath = join(extensionDirectory, zipName);
+  rmSync(zipPath, { force: true });
+  execFileSync("zip", ["-r", "-X", "-q", zipPath, "."], { cwd: directory, stdio: "inherit" });
+  console.log(zipPath);
+}

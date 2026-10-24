@@ -4,6 +4,8 @@ import (
 	"errors"
 	"slices"
 	"time"
+
+	"github.com/tryhisar/hisar/core/item"
 )
 
 var autoLockSeconds = []int{30, 60, 300, 600, 3600}
@@ -52,7 +54,7 @@ func (s *Service) scheduleLockTimer(after time.Duration) {
 		s.lockTimer.Stop()
 	}
 	s.lockDeadline = s.config.SleepCountingClock() + after
-	s.lockTimer = time.AfterFunc(after, s.lockFromTimer)
+	s.lockTimer = time.AfterFunc(after, (&Service{serviceState: s.serviceState}).lockFromTimer)
 }
 
 // isUnlocked locks first when auto-lock is due: Go's timers stop while the device sleeps, so after a long sleep the
@@ -121,6 +123,9 @@ func (s *Service) lockWhenIdle() {
 
 func (s *Service) lockSession() {
 	s.forgetNewAccountSecrets()
+	s.recoveryMutex.Lock()
+	clear(s.pendingRecoveryFactors)
+	s.recoveryMutex.Unlock()
 	if s.stopEvents != nil {
 		s.stopEvents()
 		s.stopEvents = nil
@@ -140,24 +145,98 @@ func (s *Service) lockSession() {
 		clear(vault.Key)
 	}
 	s.vaultsByID = nil
+	for _, items := range s.itemsByVaultID {
+		clearItemKeys(items)
+	}
+	if s.pendingImport != nil {
+		clearItemKeys(s.pendingImport.items)
+		clearItemKeys(s.pendingImport.queuedItems)
+	}
 	s.itemsByVaultID = nil
+	s.vaultReadIssues = nil
+	s.itemReadIssuesByVaultID = nil
+	s.itemProvenanceByVaultID = nil
 	s.favorites = nil
 	s.pendingImport = nil
 	s.forgetWebsiteIconKeys()
-	if wasUnlocked && s.config.OnLock != nil {
-		s.config.OnLock()
-	}
+	s.agentGrants = nil
+	s.cancelAgentSignIns()
 	if wasUnlocked {
-		for _, lockListener := range s.lockListeners {
-			lockListener()
+		// The clipboard may wait on the platform's main thread, so the clear runs without the mutex.
+		if clearCopiedText := s.takePendingClear(); clearCopiedText != nil {
+			go clearCopiedText()
 		}
+		s.endSession()
 		s.notifyStatusListener()
 	}
+}
+
+func clearItemKeys(items []item.Item) {
+	for _, vaultItem := range items {
+		for _, passkey := range vaultItem.Details.Passkeys {
+			clear(passkey.PrivateKey)
+			clear(passkey.PRFSecret)
+		}
+	}
+}
+
+// endSession moves sessionEpoch on and ends every approval given in the session (OnLock and the lock listeners), dialogs
+// still open too. Each end of a session runs it once: a lock, and a sign-out or account switch even from locked.
+func (s *Service) endSession() {
+	s.sessionEpoch++
+	if s.config.OnLock != nil {
+		s.config.OnLock()
+	}
+	for _, lockListener := range s.lockListeners {
+		lockListener()
+	}
+}
+
+// isSessionEpoch tells whether the session of epoch has not ended yet; the caller must not hold the mutex.
+func (s *Service) isSessionEpoch(epoch uint64) bool {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.sessionEpoch == epoch
+}
+
+var errSessionEnded = errors.New("Hisar locked, signed out or switched accounts meanwhile; try again")
+
+// checkRequestEpoch runs under the mutex that selects the session for the operation.
+func (s *Service) checkRequestEpoch() error {
+	if s.requestEpoch != nil && *s.requestEpoch != s.sessionEpoch {
+		return errCommandLineSessionEnded
+	}
+	if s.requestBrowserToken != "" && !s.hasPairedBrowserToken(s.requestBrowserToken) {
+		return browserPairingEndedError()
+	}
+	return nil
+}
+
+// requireSessionEpoch needs the mutex: the session of epoch is still the unlocked one, for work that released the
+// mutex in between.
+func (s *Service) requireSessionEpoch(epoch uint64) error {
+	if err := s.requireUnlockedWithoutActivity(); err != nil {
+		return err
+	}
+	if s.sessionEpoch != epoch {
+		return errSessionEnded
+	}
+	return nil
+}
+
+// checkSessionEpoch is requireSessionEpoch for a caller without the mutex.
+func (s *Service) checkSessionEpoch(epoch uint64) error {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	return s.requireSessionEpoch(epoch)
 }
 
 func (s *Service) Lock() Status {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	if s.unlockedSession == nil {
+		s.sessionEpoch++
+	}
 	s.lockSession()
 	return s.buildStatus()
 }

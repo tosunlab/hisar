@@ -12,7 +12,7 @@ const distDirectory = resolve(import.meta.dirname, "../dist");
 
 test.skip(!screenshotDirectory, "Set HISAR_SCREENSHOT_DIRECTORY to capture screenshots");
 
-test("captures the popup states and the save bar", async () => {
+test("captures the popup states and credential confirmations", async () => {
   const directory = resolve(screenshotDirectory!);
   mkdirSync(directory, { recursive: true });
   const temporaryDirectory = mkdtempSync(join(tmpdir(), "hisar-screenshots-"));
@@ -103,7 +103,10 @@ test("captures the popup states and the save bar", async () => {
     await loginPage.locator("#sign-in").click();
     await expect(loginPage.locator("h1")).toHaveText("Welcome back");
     await loginPage.waitForTimeout(1500);
-    await capture(loginPage, "save-bar-update");
+    const confirmation = await context.newPage();
+    await confirmation.goto(popupUrl);
+    await expect(confirmation.getByTestId("save-confirmation")).toBeVisible();
+    await capture(confirmation, "save-popup-update");
 
     await loginPage.goto(`${site.origin}/login`);
     await loginPage.locator("#username").fill("new-person@example.com");
@@ -111,7 +114,9 @@ test("captures the popup states and the save bar", async () => {
     await loginPage.locator("#sign-in").click();
     await expect(loginPage.locator("h1")).toHaveText("Welcome back");
     await loginPage.waitForTimeout(1500);
-    await capture(loginPage, "save-bar-new");
+    await confirmation.reload();
+    await expect(confirmation.getByTestId("save-confirmation")).toBeVisible();
+    await capture(confirmation, "save-popup-new");
   } finally {
     await context.close();
     await site.close();

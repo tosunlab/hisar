@@ -1,0 +1,25 @@
+{{template "head" .}}<title>Hidden sign-in</title>
+<main>
+<h1>Sign in</h1>
+<form id="form">
+<label>Username <input type="text" id="username" autocomplete="username"></label>
+<label>Password <input type="password" id="password" autocomplete="current-password"></label>
+<button type="submit">Sign in</button>
+</form>
+<button type="button" id="report" hidden>Report</button>
+</main>
+<script>
+const username = document.getElementById("username");
+const password = document.getElementById("password");
+document.getElementById("form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const response = await fetch("/submit/hidden", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: username.value, password: password.value }) });
+  if (response.ok) {
+    document.getElementById("form").style.display = "none";
+    document.getElementById("report").hidden = false;
+  }
+});
+document.getElementById("report").addEventListener("click", () => {
+  fetch("/submit/hidden-report", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ usernameLength: username.value.length, passwordLength: password.value.length }) });
+});
+</script>

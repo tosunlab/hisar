@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.app
 
 import com.tryhisar.hisar.model.OrganizationLogic
+import com.tryhisar.hisar.model.ReadIssue
 import com.tryhisar.hisar.model.RemovedVaultNotice
 import com.tryhisar.hisar.model.VaultActions
 import com.tryhisar.hisar.model.VaultDeletionRequest
@@ -14,7 +15,22 @@ class VaultsModel(private val context: ModelContext) {
         val allItem = context.perform(isBusyShown = false) { it.listAllItem(vaultID) }
         context.refreshStatus()
         if (allItem == null || !context.status.value.isUnlocked) return
-        context.updateUnlockedData { it.copy(allItemByVaultID = it.allItemByVaultID + (vaultID to allItem)) }
+        context.updateUnlockedData { it.replacingItems(vaultID, allItem) }
+    }
+
+    /** Deletes the unreadable record the user reviewed, named by its revision; a changed record is refused. */
+    suspend fun deleteUnreadableRecord(issue: ReadIssue) {
+        context.perform { backend ->
+            if (issue.itemId.isNotEmpty()) backend.deleteUnreadableItem(issue.vaultId, issue.itemId, issue.revision)
+            else backend.deleteUnreadableVault(issue.vaultId, issue.revision)
+        } ?: return
+        context.refreshAll()
+    }
+
+    /** Names a vault whose name did not open, only while its record is still the one the user reviewed. */
+    suspend fun repairVaultName(issue: ReadIssue, name: String) {
+        context.perform { it.repairVaultName(issue.vaultId, issue.revision, name) } ?: return
+        context.refreshAll()
     }
 
     // Creating, deleting and leaving close the screen that asked, so they run in the model's scope, not the screen's.

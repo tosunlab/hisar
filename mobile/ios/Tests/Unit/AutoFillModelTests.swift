@@ -15,11 +15,11 @@ private final class FakeIdentityStore: CredentialIdentitySaving {
     }
 }
 
-private final class FakeLocalAuthenticator: LocalAuthenticating {
+private final class FakeLocalAuthenticator {
     var isSucceeding = true
     var allReason: [String] = []
 
-    func authenticate(reason: String) async -> Bool {
+    func authenticate(reason: String) -> Bool {
         allReason.append(reason)
         return isSucceeding
     }
@@ -42,6 +42,7 @@ final class AutoFillModelTests: XCTestCase {
         backend = FakeBackend()
         identityStore = FakeIdentityStore()
         localAuthenticator = FakeLocalAuthenticator()
+        backend.verifyPasskey = localAuthenticator.authenticate
         allCompletedCredential = []
         allCompletedCode = []
         allCopiedCode = []
@@ -63,8 +64,7 @@ final class AutoFillModelTests: XCTestCase {
                 completeRegistration: { [unowned self] in allRegistration.append($0) },
                 rejectExcludedRegistration: { [unowned self] in rejectedRegistrationCount += 1 }
             ),
-            credentialIdentityStore: identityStore,
-            localAuthenticator: localAuthenticator
+            credentialIdentityStore: identityStore
         )
     }
 
@@ -289,7 +289,7 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertTrue(allAssertion.isEmpty)
         await model.unlock(password: FakeBackend.password)
         XCTAssertEqual(allAssertion.map(\.credentialID), [Data([1, 1, 1])])
-        XCTAssertTrue(localAuthenticator.allReason.isEmpty, "the unlock in this request verified the user")
+        XCTAssertEqual(localAuthenticator.allReason, ["Use your passkey for github.com"], "the final concrete ceremony requires fresh verification")
     }
 
     func testChosenPasskeyInAnUnlockedExtensionAsksTheDeviceOwner() async {
@@ -310,14 +310,13 @@ final class AutoFillModelTests: XCTestCase {
         await model.selectPasskey(passkey)
         XCTAssertTrue(allAssertion.isEmpty)
         XCTAssertEqual(allCancelCode, [.userCanceled])
-        XCTAssertFalse(backend.allCallName.contains("assertPasskey"))
     }
 
     func testDiscouragedUserVerificationSkipsTheDeviceOwnerCheck() async {
         backend.seedSignedIn()
         localAuthenticator.isSucceeding = false
         let model = createModel()
-        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash, isUserVerificationDiscouraged: true)
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash, userVerification: "discouraged")
         await model.prepareInterfaceToProvidePasskey(request: request, credentialID: Data([1, 1, 1]))
         XCTAssertTrue(localAuthenticator.allReason.isEmpty)
         XCTAssertEqual(allAssertion.count, 1)
@@ -335,7 +334,7 @@ final class AutoFillModelTests: XCTestCase {
     func testPasskeyWithoutInteractionNeedsAnUnlockedProcess() async {
         backend.seedSignedIn()
         let model = createModel()
-        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash, isUserVerificationDiscouraged: true)
+        let request = PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash, userVerification: "discouraged")
         let beforeStart = await model.providePasskeyWithoutUserInteraction(request: request, credentialID: Data([1, 1, 1]))
         XCTAssertNil(beforeStart, "no backend exists yet in a fresh extension process")
         await model.prepareCredentialList(allServiceIdentifier: ["github.com"])
@@ -395,7 +394,6 @@ final class AutoFillModelTests: XCTestCase {
         await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "shop.example", userName: "buyer", userHandle: Data([5]), clientDataHash: clientDataHash))
         await model.savePasskey()
         XCTAssertEqual(allCancelCode, [.userCanceled])
-        XCTAssertFalse(backend.allCallName.contains("createPasskey"))
         XCTAssertTrue(identityStore.allSaved.isEmpty)
     }
 
@@ -410,7 +408,7 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.passkeyRegistrationOptions?.allLogin, [])
         XCTAssertNil(model.selectedRegistrationLoginID, "New login is the only choice")
         await model.savePasskey()
-        XCTAssertTrue(localAuthenticator.allReason.isEmpty, "the unlock in this request verified the user")
+        XCTAssertEqual(localAuthenticator.allReason, ["Create a passkey for shop.example"], "the final concrete ceremony verifies afresh")
         XCTAssertEqual(allRegistration.count, 1)
         XCTAssertTrue(backend.allItemByVaultID["personal"]?.contains { $0.title == "shop.example" && $0.allPasskey.count == 1 } ?? false)
         XCTAssertTrue(identityStore.allRemoved.isEmpty)
@@ -445,5 +443,22 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "the request is not valid")
         XCTAssertEqual(model.screen, .passkeyRegistration)
         XCTAssertTrue(identityStore.allSaved.isEmpty)
+    }
+
+    func testSharedPasskeyDestinationRequiresExplicitSelection() async {
+        backend.seedSignedIn()
+        backend.allItemByVaultID["family"]?.append(ItemDetail(id: "attacker", category: "login", title: "AAA shared", username: "victim", allURL: ["https://example.com"]))
+        let model = createModel()
+        let request = PasskeyRegistrationRequest(relyingPartyID: "example.com", userName: "victim", userHandle: Data([9]), clientDataHash: clientDataHash)
+        await model.prepareInterfaceForPasskeyRegistration(request)
+        XCTAssertNil(model.selectedRegistrationLoginID)
+        XCTAssertEqual(model.passkeyRegistrationOptions?.allLogin.first?.isPersonal, false)
+        await model.savePasskey()
+        XCTAssertEqual(backend.allPasskey.last?.vaultID, "personal")
+        await model.prepareInterfaceForPasskeyRegistration(request)
+        model.selectedRegistrationLoginID = "family/attacker"
+        await model.savePasskey()
+        XCTAssertEqual(backend.allPasskey.last?.vaultID, "family")
+        XCTAssertEqual(allRegistration.count, 2)
     }
 }

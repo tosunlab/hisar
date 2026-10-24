@@ -1,0 +1,24 @@
+{{template "head" .}}<title>Sign in in one page</title>
+<main id="main">
+<h1>Sign in</h1>
+<form id="email-form">
+<label>Email <input type="email" id="email" autocomplete="username"></label>
+<button type="submit">Next</button>
+</form>
+</main>
+<script>
+let email = "";
+document.getElementById("email-form").addEventListener("submit", event => {
+  event.preventDefault();
+  email = document.getElementById("email").value;
+  document.getElementById("main").innerHTML = '<h1>Password</h1><form id="password-form"><label>Password <input type="password" id="password" autocomplete="current-password"></label><button type="submit">Sign in</button></form>';
+  document.getElementById("password-form").addEventListener("submit", async event => {
+    event.preventDefault();
+    const password = document.getElementById("password").value;
+    const response = await fetch("/submit/spa-steps", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username: email, password }) });
+    if (response.ok) {
+      document.getElementById("main").innerHTML = "<h1>Signed in</h1>";
+    }
+  });
+});
+</script>

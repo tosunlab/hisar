@@ -47,6 +47,11 @@ class IosTestParityTest {
             "testCredentialIdentitiesSkipNonLoginsAndEmptyUsernames" to identityStore,
             "testCredentialIdentitiesOfferAServerOnItsAdminConsole" to identityStore,
             "testOneTimeCodeIdentitiesForLoginsWithACode" to identityStore,
+            "testSignedOutStartClearsLeftoverIdentities" to identityStore,
+            "testForegroundWhileSignedOutClearsLeftoverIdentities" to identityStore,
+            "testLockedStartKeepsAutoFillIdentities" to identityStore,
+            "testReplacingTheSecretKeyUpdatesTheStoredItemInPlace" to
+                "Android seals the Secret Key into an AtomicFile, which replaces the old copy in one rename; there is no keychain item to delete first",
         )
     }
 

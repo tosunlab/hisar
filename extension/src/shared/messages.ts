@@ -22,6 +22,7 @@ export interface PopupState {
   isVaultAvailable?: boolean;
   // isPasswordUnlockAvailable: the app unlocks with the master password typed in the popup.
   isPasswordUnlockAvailable?: boolean;
+  isSaveConfirmationAvailable?: boolean;
 }
 
 export interface ItemQuery {
@@ -38,19 +39,20 @@ export interface MatchResult {
 export type SaveOfferKind = "save" | "update";
 export type SaveOfferAction = "save" | "not-now" | "never";
 
-// SaveOfferView: allVault and defaultTitle are set for a new login when the app takes a title and a vault, so the bar
-// lets the user change them, and the username, before saving.
+// SaveOfferView contains metadata for extension-owned confirmation, never page rendering.
 export interface SaveOfferView {
   offerID: string;
   kind: SaveOfferKind;
   host: string;
   username: string;
   title?: string;
+  vaultName?: string;
+  isPersonal?: boolean;
   defaultTitle?: string;
-  allVault?: Pick<VaultSummary, "vaultID" | "name">[];
+  allVault?: VaultSummary[];
 }
 
-// SaveOfferEdits is what the user changed in the save bar before saving a new login.
+// SaveOfferEdits contains the user's choices for a new login.
 export interface SaveOfferEdits {
   title: string;
   username: string;
@@ -102,7 +104,9 @@ export interface InlineMenuState {
 }
 
 export type PopupMessage =
-  | { type: "popup.getState"; shouldReconnect?: boolean }
+  | { type: "popup.getState"; shouldReconnect?: boolean; isOverOpenConnection?: boolean }
+  | { type: "popup.getPendingSaveOffer"; tabId: number }
+  | { type: "popup.actOnSaveOffer"; tabId: number; offerID: string; action: SaveOfferAction; edits?: SaveOfferEdits }
   | { type: "popup.startPairing" }
   | { type: "popup.finishPairing"; code: string }
   | { type: "popup.unlock" }
@@ -130,10 +134,9 @@ export type PopupMessage =
   | { type: "popup.setFavorite"; vaultID: string; itemID: string; isFavorite: boolean };
 
 export type ContentToBackgroundMessage =
-  | { type: "content.loginSubmitted"; username: string; password: string }
+  // documentToken names the submitting document where the browser gives no documentId (Firefox).
+  | { type: "content.loginSubmitted"; username: string; password: string; documentToken: string }
   | { type: "content.usernameSubmitted"; username: string }
-  | { type: "content.getPendingSaveOffer" }
-  | { type: "content.actOnSaveOffer"; offerID: string; action: SaveOfferAction; edits?: SaveOfferEdits }
   | { type: "content.openInlineMenu"; purpose: InlineMenuPurpose }
   | { type: "content.closeInlineMenu"; sessionID: string }
   | { type: "content.pressInlineMenuKey"; sessionID: string; key: InlineMenuKey };
@@ -161,13 +164,13 @@ export interface InlineMenuBroadcast {
 
 export type BackgroundToContentMessage =
   | { type: "content.probe" }
+  | { type: "content.getDocumentToken" }
   | { type: "content.fillLogin"; expectedOrigin: string; username: string; password: string; sessionID?: string }
   | { type: "content.fillPassword"; expectedOrigin: string; password: string; sessionID?: string }
   | { type: "content.fillOneTimeCode"; expectedOrigin: string; code: string; sessionID?: string }
   | { type: "content.fillAddress"; expectedOrigin: string; address: AddressValues; sessionID?: string }
   | { type: "content.fillCard"; expectedOrigin: string; card: CardValues; sessionID?: string }
   | { type: "content.fillIdentity"; expectedOrigin: string; identity: IdentityValues; sessionID?: string }
-  | { type: "content.showSaveOffer"; offer: SaveOfferView }
   | { type: "content.isInlineMenuVisible"; sessionID: string }
   | { type: "content.resizeInlineMenu"; sessionID: string; height: number }
   | { type: "content.dismissInlineMenu"; sessionID: string }

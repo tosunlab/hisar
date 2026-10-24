@@ -38,19 +38,28 @@ const (
 	// FeatureFavorites: favorites.list, favorites.add and favorites.remove; items.import stars Item.IsFavorite items.
 	FeatureFavorites = "favorites"
 	// FeatureTags: items.list and items.get return each item's tags, and items.save takes ItemChange.Tags.
-	FeatureTags = "tags"
+	FeatureTags          = "tags"
+	FeatureSignedSharing = "signed-sharing"
 	// FeatureOrganizations: the organizations.*, teams.* requests, vaults.give-to-team, vaults.take-from-team and
 	// vaults.create-organization-vault, and Vault.OrganizationID.
 	FeatureOrganizations = "organizations"
 	// FeatureAgentRunInputs: agent.secrets.resolve takes Request.Stdin and Request.Environment and shows them in the
 	// approval; hisar mcp refuses a command with literal stdin or env-file values on an app without it.
-	FeatureAgentRunInputs = "agent-run-inputs"
+	FeatureAgentRunInputs   = "agent-run-inputs"
+	FeatureExportProvenance = "export-provenance"
+	FeatureReadIssues       = "read-issues"
+	FeatureImportScope      = "import-scope"
+	// FeatureAgentSignIn: agent.signin signs the agent in to the website in Request.Window, with the login Request.ItemID
+	// names or the one saved for the page; hisar mcp refuses sign_in on an app without it.
+	FeatureAgentSignIn = "agent-sign-in"
 )
 
 // ListFeatures returns the features this build of the app announces in hello, then every launcher request type, so a
 // launcher checks the exact request it is about to send.
 func ListFeatures() []string {
-	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations, FeatureAgentRunInputs}
+	features := []string{FeatureSecureNotes, FeatureCreditCards, FeatureIdentities, FeatureFavorites, FeatureAPICredentials, FeatureTags, FeatureAddresses, FeatureSoftwareLicenses, FeatureServers, FeatureDatabases, FeatureOrganizations, FeatureAgentRunInputs, FeatureSignedSharing, FeatureImportScope, FeatureAgentSignIn}
+	features = append(features, FeatureExportProvenance)
+	features = append(features, FeatureReadIssues)
 	return append(features, ListLauncherRequestTypes()...)
 }
 
@@ -78,6 +87,8 @@ const (
 	TypeAccount       = "account"
 	TypeListVault     = "vaults.list"
 	TypeCreateVault   = "vaults.create"
+	TypeReadVault     = "vaults.read"
+	TypeReadItem      = "items.read"
 	TypeListItem      = "items.list"
 	TypeGetItem       = "items.get"
 	TypeGetCode       = "items.code"
@@ -102,6 +113,7 @@ const (
 	TypeAgentResolveSecret = "agent.secrets.resolve"
 	TypeAgentGetCode       = "agent.items.code"
 	TypeAgentRevealSecret  = "agent.secrets.reveal"
+	TypeAgentSignIn        = "agent.signin"
 
 	TypeGetVaultActions = "vaults.actions"
 	TypeRenameVault     = "vaults.rename"
@@ -109,10 +121,11 @@ const (
 	TypeLeaveVault      = "vaults.leave"
 	TypeExport          = "export"
 
-	TypeListInvitation    = "invitations.list"
-	TypeAcceptInvitation  = "invitations.accept"
-	TypeDeclineInvitation = "invitations.decline"
-	TypeCancelInvitation  = "invitations.cancel"
+	TypeListInvitation        = "invitations.list"
+	TypeAcceptInvitation      = "invitations.accept"
+	TypeDeclineInvitation     = "invitations.decline"
+	TypeCancelInvitation      = "invitations.cancel"
+	TypeConfirmShareRecipient = "invitations.confirm-recipient"
 
 	TypeListFavorite   = "favorites.list"
 	TypeAddFavorite    = "favorites.add"
@@ -152,6 +165,9 @@ const (
 	ErrorNotFound            = "not-found"
 	ErrorInternal            = "internal"
 	ErrorUpdateRequired      = "update-required"
+	// ErrorSignInRefused: Hisar would not sign in there, or stopped before it finished; Message is a sentence the agent
+	// can act on.
+	ErrorSignInRefused = "sign-in-refused"
 )
 
 // IsAgentRequest tells the requests of hisar mcp apart; agent.hello starts an agent connection.

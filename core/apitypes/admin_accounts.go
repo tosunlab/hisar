@@ -60,6 +60,7 @@ type AdminRoleChangeRequest struct {
 // AdminAccountDeleteRequest is the body of POST /api/v1/admin/accounts/{id}/delete: the email of the account to delete,
 // typed by the admin, and Proof, which re-authenticates the admin.
 type AdminAccountDeleteRequest struct {
-	Email string                `json:"email"`
-	Proof ReauthenticationProof `json:"proof"`
+	Email       string                `json:"email"`
+	Proof       ReauthenticationProof `json:"proof"`
+	PlanVersion string                `json:"planVersion"`
 }

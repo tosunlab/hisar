@@ -43,6 +43,10 @@ func parseLastPassNote(text string) lastPassNote {
 	var current *lastPassValue
 	for index, line := range lines {
 		name, value, isNamed := cutLastPassLine(line)
+		if isNamed && strings.HasPrefix(value, " ") && current != nil && isInsidePEMBlock(current.value) {
+			// LastPass writes no space after the colon, so "Proc-Type: 4,ENCRYPTED" in a private key is part of the key.
+			isNamed = false
+		}
 		switch {
 		case isNamed && name == lastPassNotesName:
 			note.notes = strings.Join(append([]string{value}, lines[index+1:]...), "\n")
@@ -62,27 +66,49 @@ func parseLastPassNote(text string) lastPassNote {
 	return note
 }
 
-// cutLastPassLine splits "Name:value". LastPass writes no space after the colon, so a line such as "Proc-Type: 4,ENCRYPTED"
-// in a private key is part of the value before it.
+// cutLastPassLine splits "Name:value"; the value is kept exactly, so a password that starts with a space keeps it.
 func cutLastPassLine(line string) (name, value string, isNamed bool) {
 	name, value, isFound := strings.Cut(line, ":")
-	if !isFound || name == "" || len(name) > 64 || strings.TrimSpace(name) != name || strings.HasPrefix(value, " ") || strings.Contains(name, "-----") {
+	if !isFound || name == "" || len(name) > 64 || strings.TrimSpace(name) != name || strings.Contains(name, "-----") {
 		return "", "", false
 	}
 	return name, value, true
 }
 
-// isLastPassEmpty reports whether a value is blank; LastPass writes an empty date as "," (month and year) or ",,".
-func isLastPassEmpty(text string) bool {
-	return strings.Trim(text, ", \t\n") == ""
+// isInsidePEMBlock reports whether a value is a PEM block, such as a private key, that has begun and not ended.
+func isInsidePEMBlock(value string) bool {
+	begin := strings.LastIndex(value, "-----BEGIN ")
+	return begin >= 0 && !strings.Contains(value[begin:], "-----END ")
 }
 
-// take returns the first of names with a value and marks it used.
+// isLastPassEmpty reports whether a value is blank; LastPass writes an empty date as "," (month and year) or ",,", so a
+// date value of only commas is blank too, while a password of commas is not.
+func isLastPassEmpty(name, text string) bool {
+	if isSecretFieldName(name) {
+		return text == ""
+	}
+	if isLastPassDateName(name) {
+		return strings.Trim(text, ", \t\n") == ""
+	}
+	return strings.TrimSpace(text) == ""
+}
+
+// isLastPassDateName reports whether a typed note's value is one of LastPass's dates, such as "Expiration Date" or
+// "Member Since".
+func isLastPassDateName(name string) bool {
+	name = strings.ToLower(name)
+	return strings.Contains(name, "date") || strings.Contains(name, "birthday") || strings.Contains(name, "expiration") || strings.Contains(name, "since")
+}
+
+// take returns the first of names with a value and marks it used. A secret is returned exactly; other values trimmed.
 func (note *lastPassNote) take(names ...string) string {
 	for _, name := range names {
 		for _, value := range note.values {
-			if !value.isUsed && strings.EqualFold(value.name, name) && !isLastPassEmpty(value.value) {
+			if !value.isUsed && strings.EqualFold(value.name, name) && !isLastPassEmpty(value.name, value.value) {
 				value.isUsed = true
+				if isSecretFieldName(value.name) {
+					return value.value
+				}
 				return strings.TrimSpace(value.value)
 			}
 		}
@@ -94,7 +120,7 @@ func (note *lastPassNote) take(names ...string) string {
 func (note *lastPassNote) has(names ...string) bool {
 	for _, name := range names {
 		for _, value := range note.values {
-			if !value.isUsed && strings.EqualFold(value.name, name) && !isLastPassEmpty(value.value) {
+			if !value.isUsed && strings.EqualFold(value.name, name) && !isLastPassEmpty(value.name, value.value) {
 				return true
 			}
 		}
@@ -102,24 +128,31 @@ func (note *lastPassNote) has(names ...string) bool {
 	return false
 }
 
-// remainingFields returns the values no mapping used as custom fields, secrets concealed.
+// remainingFields returns the values no mapping used as custom fields, secrets concealed and kept exactly.
 func (note *lastPassNote) remainingFields() []item.Field {
 	fields := []item.Field{}
 	for _, value := range note.values {
-		if value.isUsed || isLastPassEmpty(value.value) {
+		if value.isUsed || isLastPassEmpty(value.name, value.value) {
 			continue
 		}
-		fields = append(fields, item.Field{Name: value.name, Value: formatLastPassValue(value.value), Concealed: isLastPassSecretName(value.name)})
+		if isSecretFieldName(value.name) {
+			fields = append(fields, item.Field{Name: value.name, Value: value.value, Concealed: true})
+			continue
+		}
+		fields = append(fields, item.Field{Name: value.name, Value: formatLastPassValue(value.name, value.value)})
 	}
 	return fields
 }
 
 // formatLastPassValue turns LastPass's phone JSON ({"num":"5551234","ext":"12","cc3l":"USA"}) and dates
 // ("January,2024") into text; other values are trimmed.
-func formatLastPassValue(value string) string {
+func formatLastPassValue(name, value string) string {
 	value = strings.TrimSpace(value)
 	if !strings.HasPrefix(value, "{") {
-		return convertLastPassDate(value)
+		if isLastPassDateName(name) {
+			return convertLastPassDate(value)
+		}
+		return value
 	}
 	var phone struct {
 		Number    string `json:"num"`
@@ -134,13 +167,14 @@ func formatLastPassValue(value string) string {
 	return phone.Number
 }
 
-// isLastPassSecretName reports whether a typed note's value is a secret to conceal.
-func isLastPassSecretName(name string) bool {
+// isSecretFieldName reports whether a value named so, in a LastPass typed note or a CSV column, is a secret to conceal.
+func isSecretFieldName(name string) bool {
 	name = strings.ToLower(name)
 	if strings.Contains(name, "phone") || strings.HasPrefix(name, "number of") {
 		return false
 	}
-	for _, secret := range []string{"password", "passphrase", "pin", "security code", "cvv", "ssn", "social security", "secret", "private key", "license key", "iban"} {
+	for _, secret := range []string{"password", "passphrase", "pin", "security code", "cvv", "ssn", "social security", "secret", "key", "iban",
+		"token", "recovery", "code", "otp", "seed", "mnemonic", "credential"} {
 		if strings.Contains(name, secret) {
 			return true
 		}
@@ -151,7 +185,7 @@ func isLastPassSecretName(name string) bool {
 // convertLastPassDate writes LastPass's "January,15,1990" as 1990-01-15 and "January,2027" as 01/2027; anything else
 // stays as it is, except an empty date ("," or ",,"), which is blank.
 func convertLastPassDate(text string) string {
-	if isLastPassEmpty(text) {
+	if isLastPassEmpty("date", text) {
 		return ""
 	}
 	parts := strings.Split(strings.TrimSpace(text), ",")
@@ -178,7 +212,7 @@ func convertLastPassDate(text string) string {
 
 // convertLastPassNote turns a typed note into the matching item type; a type Hisar has no item for becomes a secure note
 // whose values are custom fields. The values a type does not use are kept as custom fields.
-func convertLastPassNote(title, text string) (item.Item, string) {
+func convertLastPassNote(title, text string, skipped *[]SkippedEntry) (item.Item, string) {
 	note := parseLastPassNote(text)
 	vaultItem := item.Item{Overview: item.Overview{Title: title}, Details: item.Details{Notes: note.notes}}
 	switch strings.ToLower(note.noteType) {
@@ -204,7 +238,7 @@ func convertLastPassNote(title, text string) (item.Item, string) {
 		identity := item.Identity{
 			FirstName: note.take("First Name"), MiddleName: note.take("Middle Name"), LastName: note.take("Last Name"),
 			BirthDate: convertLastPassDate(note.take("Birthday")), Email: note.take("Email Address"),
-			Phone: formatLastPassValue(note.take("Phone")), Address: address,
+			Phone: formatLastPassValue("Phone", note.take("Phone")), Address: address,
 		}
 		item.WriteIdentity(&vaultItem, identity, note.remainingFields())
 	case "server":
@@ -224,7 +258,7 @@ func convertLastPassNote(title, text string) (item.Item, string) {
 		}
 		item.WriteSoftwareLicense(&vaultItem, license, note.remainingFields())
 	case "ssh key":
-		if keyItem, reason := convertLastPassSSHKey(title, &note); reason == "" {
+		if keyItem, reason := convertLastPassSSHKey(title, &note, skipped); reason == "" {
 			return keyItem, ""
 		}
 		fallthrough
@@ -238,17 +272,17 @@ func convertLastPassNote(title, text string) (item.Item, string) {
 
 // convertLastPassSSHKey stores the key as an ssh-key item, with the host and date in its notes; the public key, format
 // and bit strength come from the key itself. It leaves the note's values unused when the key can't be stored.
-func convertLastPassSSHKey(title string, note *lastPassNote) (item.Item, string) {
+func convertLastPassSSHKey(title string, note *lastPassNote, skipped *[]SkippedEntry) (item.Item, string) {
 	privateKey, passphrase := "", ""
 	for _, value := range note.values {
 		switch strings.ToLower(value.name) {
 		case "private key":
 			privateKey = value.value
 		case "passphrase":
-			passphrase = strings.TrimSpace(value.value)
+			passphrase = value.value
 		}
 	}
-	keyItem, reason := buildProtectedSSHKeyItem(title, privateKey, passphrase, "")
+	keyItem, reason := buildProtectedSSHKeyItem(title, privateKey, passphrase, "", skipped)
 	if reason != "" {
 		return item.Item{}, reason
 	}
@@ -258,7 +292,13 @@ func convertLastPassSSHKey(title string, note *lastPassNote) (item.Item, string)
 		case "private key", "passphrase", "public key", "format", "bit strength":
 			continue
 		}
-		if text := formatLastPassValue(value.value); text != "" {
+		if isSecretFieldName(value.name) {
+			if !isLastPassEmpty(value.name, value.value) {
+				keyItem.Details.Fields = append(keyItem.Details.Fields, item.Field{Name: value.name, Value: value.value, Concealed: true})
+			}
+			continue
+		}
+		if text := formatLastPassValue(value.name, value.value); text != "" {
 			lines = append(lines, value.name+": "+text)
 		}
 	}

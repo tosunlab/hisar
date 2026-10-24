@@ -10,6 +10,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
 )
 
 // fakeAPIServer stores encrypted vaults and items in memory, like the Hisar server API.
@@ -49,6 +50,8 @@ type fakeAPIServer struct {
 	keyGenerationsSent []int64
 	// isSuspended answers the account and the event stream as the server does for a suspended account's session.
 	isSuspended bool
+	// historyFullMessage, when set, refuses item writes with it as the server's 507 for a vault whose history is full.
+	historyFullMessage string
 }
 
 // refusesSuspended answers 403 with the suspension sentence while the account is suspended.
@@ -77,7 +80,7 @@ func writeJSON(writer http.ResponseWriter, status int, value any) {
 // required for organization vaults, checked for any vault when set. It needs server.mutex.
 func (server *fakeAPIServer) refusesKeyGeneration(writer http.ResponseWriter, vaultID string, keyGeneration int64) bool {
 	index := slices.IndexFunc(server.vaults, func(vault apitypes.Vault) bool { return vault.ID == vaultID })
-	isAccepted := index < 0 || keyGeneration == server.vaults[index].KeyGeneration || keyGeneration == 0 && server.vaults[index].OrganizationID == ""
+	isAccepted := index < 0 || keyGeneration == server.vaults[index].KeyGeneration || keyGeneration == 0 && server.vaults[index].OrganizationID == "" && server.vaults[index].KeyGeneration <= 1
 	if isAccepted && server.keyChangeRefusalCount == 0 {
 		return false
 	}
@@ -124,7 +127,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		defer server.mutex.Unlock()
 		writeJSON(writer, http.StatusOK, server.vaults)
 	})
-	mux.HandleFunc("POST /api/v1/vaults", func(writer http.ResponseWriter, request *http.Request) {
+	createVault := func(writer http.ResponseWriter, request *http.Request) {
 		var createRequest apitypes.CreateVaultRequest
 		if err := json.NewDecoder(request.Body).Decode(&createRequest); err != nil {
 			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
@@ -134,12 +137,14 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		defer server.mutex.Unlock()
 		server.vaults = append(server.vaults, apitypes.Vault{
 			ID: createRequest.ID, Type: createRequest.Type, EncName: createRequest.EncName, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey,
-			OrganizationID: createRequest.OrganizationID, KeyGeneration: 1,
+			OrganizationID: createRequest.OrganizationID, KeyGeneration: 1, AccessRevision: 2,
 		})
 		server.itemsByVaultID[createRequest.ID] = map[string]apitypes.Item{}
 		server.accessesByVaultID[createRequest.ID] = []apitypes.RotatedAccess{{AccountID: server.accountID, Role: apitypes.VaultOwner, WrappedKey: createRequest.WrappedKey}}
 		writer.WriteHeader(http.StatusCreated)
-	})
+	}
+	mux.HandleFunc("POST /api/v1/vaults", createVault)
+	mux.HandleFunc("POST /api/v1/vaults/personal", createVault)
 	mux.HandleFunc("GET /api/v1/vaults/{vaultID}/changes", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
@@ -147,9 +152,15 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		for _, storedItem := range server.itemsByVaultID[request.PathValue("vaultID")] {
 			items = append(items, storedItem)
 		}
-		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: items, NextSeq: server.seq})
+		generation := int64(1)
+		for _, vault := range server.vaults {
+			if vault.ID == request.PathValue("vaultID") {
+				generation = max(int64(1), vault.KeyGeneration)
+			}
+		}
+		writeJSON(writer, http.StatusOK, apitypes.ChangesResponse{Items: items, NextSeq: server.seq, KeyGeneration: generation})
 	})
-	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", func(writer http.ResponseWriter, request *http.Request) {
+	putItem := func(writer http.ResponseWriter, request *http.Request) {
 		var putRequest apitypes.PutItemRequest
 		if err := json.NewDecoder(request.Body).Decode(&putRequest); err != nil {
 			writeJSON(writer, http.StatusBadRequest, apitypes.Error{Error: err.Error()})
@@ -157,6 +168,16 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		}
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
+		if strings.HasSuffix(request.URL.Path, "/import") {
+			members := []crypt.ImportMember{}
+			for _, member := range server.accessesByVaultID[request.PathValue("vaultID")] {
+				members = append(members, crypt.ImportMember{AccountID: member.AccountID, Role: member.Role})
+			}
+			if putRequest.ImportScope == "" || putRequest.ImportScope != crypt.ImportScope(request.PathValue("vaultID"), members) {
+				writeJSON(writer, http.StatusPreconditionFailed, apitypes.Error{Error: "destination membership changed; review the import destination again"})
+				return
+			}
+		}
 		items, found := server.itemsByVaultID[request.PathValue("vaultID")]
 		if !found {
 			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "vault not found"})
@@ -167,6 +188,10 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		baseRevision := strings.Trim(request.Header.Get("If-Match"), `"`)
 		server.keyGenerationsSent = append(server.keyGenerationsSent, putRequest.KeyGeneration)
 		if server.refusesKeyGeneration(writer, request.PathValue("vaultID"), putRequest.KeyGeneration) {
+			return
+		}
+		if server.historyFullMessage != "" {
+			writeJSON(writer, http.StatusInsufficientStorage, apitypes.Error{Error: server.historyFullMessage})
 			return
 		}
 		if (exists && current.Revision != baseRevision) || (!exists && baseRevision != "") {
@@ -180,7 +205,9 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 		server.seq++
 		items[itemID] = apitypes.Item{ID: itemID, Revision: putRequest.Revision, Seq: server.seq, Deleted: putRequest.Deleted, Overview: putRequest.Overview, Details: putRequest.Details}
 		writeJSON(writer, http.StatusOK, apitypes.PutItemResponse{Seq: server.seq})
-	})
+	}
+	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}", putItem)
+	mux.HandleFunc("PUT /api/v1/vaults/{vaultID}/items/{itemID}/import", putItem)
 	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/items/{itemID}/move", func(writer http.ResponseWriter, request *http.Request) {
 		var moveRequest apitypes.MoveItemRequest
 		if err := json.NewDecoder(request.Body).Decode(&moveRequest); err != nil {
@@ -245,6 +272,9 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 				writer.(http.Flusher).Flush()
 			}
 		}
+	})
+	mux.HandleFunc("POST /api/v1/auth/logout", func(writer http.ResponseWriter, request *http.Request) {
+		writer.WriteHeader(http.StatusNoContent)
 	})
 	server.addSharingRoutes(mux)
 	server.addApprovalRoutes(mux)

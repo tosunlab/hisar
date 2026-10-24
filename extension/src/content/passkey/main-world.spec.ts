@@ -88,6 +88,7 @@ afterEach(() => vi.useRealTimers());
 describe("serializeCreationOptions", () => {
   it("turns BufferSources into base64url and keeps only what Hisar needs", () => {
     expect(serializeCreationOptions(creationOptions)).toEqual({
+      userVerification: "preferred",
       rp: { id: "example.com", name: "Example" },
       user: { id: "AQID", name: "alex@example.com", displayName: "Alex" },
       challenge: "CQkJCQ",

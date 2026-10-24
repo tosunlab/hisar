@@ -5,6 +5,9 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"testing"
 
@@ -152,6 +155,182 @@ func TestPreferencesKeepFieldsOfNewerApps(t *testing.T) {
 	json.Unmarshal(plaintext, &fields)
 	if string(fields["pinnedVaultIds"]) != `["v1"]` || string(fields[favoriteItemIDsKey]) != `["a","b"]` {
 		t.Errorf("saved %s", plaintext)
+	}
+}
+
+func TestFavoritesReplaceARecordThatFailsAuthentication(t *testing.T) {
+	account := createOfflineTestAccount(t)
+	device := unlockTestDevice(t, account)
+	ctx := context.Background()
+	known, err := device.UpdateFavorites(ctx, nil, FavoriteChange{AddItemIDs: []string{"item-a"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealedForAnotherKey, err := crypt.SealAccountPreferences(crypt.GenerateKey(), device.AccountID, []byte(`{"favoriteItemIds":["item-x"]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readFavorites := func() []string {
+		t.Helper()
+		plaintext, err := crypt.OpenAccountPreferences(device.Keyset.UserKey, device.AccountID, account.server.preferences.Ciphertext)
+		if err != nil {
+			t.Fatalf("the stored record does not open: %v", err)
+		}
+		var fields struct {
+			FavoriteItemIDs []string `json:"favoriteItemIds"`
+		}
+		json.Unmarshal(plaintext, &fields)
+		return fields.FavoriteItemIDs
+	}
+
+	for _, forged := range [][]byte{sealedForAnotherKey, {1}, {1, 7, 7, 7, 7}} {
+		account.server.preferences = apitypes.AccountPreferences{Revision: account.server.preferences.Revision + 1, Ciphertext: forged}
+		if _, err := device.LoadPreferences(ctx); err == nil {
+			t.Fatal("a forged record was read")
+		}
+		saved, err := device.UpdateFavorites(ctx, known, FavoriteChange{AddItemIDs: []string{"item-a"}})
+		if err != nil || !reflect.DeepEqual(saved.FavoriteItemIDs, []string{"item-a"}) || saved.Revision != account.server.preferences.Revision {
+			t.Fatalf("saving over a forged record: %+v %v", saved, err)
+		}
+		if favorites := readFavorites(); !reflect.DeepEqual(favorites, []string{"item-a"}) {
+			t.Errorf("stored favorites %v", favorites)
+		}
+		known = saved
+	}
+
+	account.server.preferences = apitypes.AccountPreferences{Revision: account.server.preferences.Revision + 1, Ciphertext: sealedForAnotherKey}
+	if saved, err := device.UpdateFavorites(ctx, nil, FavoriteChange{AddItemIDs: []string{"item-b"}}); err != nil || !reflect.DeepEqual(saved.FavoriteItemIDs, []string{"item-b"}) {
+		t.Fatalf("saving over a forged record with nothing read: %+v %v", saved, err)
+	}
+
+	unsupportedVersion := append([]byte{2}, bytes.Repeat([]byte{7}, 64)...)
+	account.server.preferences = apitypes.AccountPreferences{Revision: account.server.preferences.Revision + 1, Ciphertext: unsupportedVersion}
+	putsBefore := account.server.preferencePuts
+	saved, err := device.UpdateFavorites(ctx, known, FavoriteChange{AddItemIDs: []string{"item-a"}})
+	if err != nil || !reflect.DeepEqual(saved.FavoriteItemIDs, []string{"item-a"}) {
+		t.Fatalf("saving over an unsupported version: %+v %v", saved, err)
+	}
+	if puts := account.server.preferencePuts - putsBefore; puts != 1 {
+		t.Errorf("sent %d PUTs for an unsupported version; want 1", puts)
+	}
+	if account.server.preferences.Ciphertext[0] != 1 {
+		t.Error("the saved record is not v1")
+	}
+	if favorites := readFavorites(); !reflect.DeepEqual(favorites, []string{"item-a"}) {
+		t.Errorf("stored favorites %v", favorites)
+	}
+}
+
+func TestFavoritesReplaceUnsupportedCiphertextVersions(t *testing.T) {
+	keyset, err := crypt.GenerateKeyset()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer keyset.Wipe()
+	for _, version := range []byte{0, 2, 255} {
+		for _, size := range []int{1, 24, 40, 41, 65} {
+			t.Run(fmt.Sprintf("version=%d/bytes=%d", version, size), func(t *testing.T) {
+				ciphertext := make([]byte, size)
+				ciphertext[0] = version
+				puts := 0
+				mux := http.NewServeMux()
+				record := apitypes.AccountPreferences{Revision: 2, Ciphertext: ciphertext}
+				mux.HandleFunc("GET /api/v1/account/preferences", func(w http.ResponseWriter, r *http.Request) {
+					json.NewEncoder(w).Encode(record)
+				})
+				mux.HandleFunc("PUT /api/v1/account/preferences", func(w http.ResponseWriter, r *http.Request) {
+					puts++
+					var request apitypes.PutAccountPreferencesRequest
+					if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+						t.Errorf("decoding preferences PUT: %v", err)
+						w.WriteHeader(http.StatusBadRequest)
+						return
+					}
+					if request.BaseRevision != record.Revision {
+						w.WriteHeader(http.StatusConflict)
+						return
+					}
+					record = apitypes.AccountPreferences{Revision: record.Revision + 1, Ciphertext: request.Ciphertext}
+					json.NewEncoder(w).Encode(apitypes.PutAccountPreferencesResponse{Revision: record.Revision})
+				})
+				server := httptest.NewServer(mux)
+				defer server.Close()
+				device := &Session{Client: apiclient.New(server.URL), AccountID: "ABC123", Keyset: keyset}
+
+				ctx := context.Background()
+				if preferences, err := device.LoadPreferences(ctx); err == nil || preferences != nil {
+					t.Fatalf("an unsupported record was read: %+v %v", preferences, err)
+				}
+				known := &Preferences{Revision: 1, FavoriteItemIDs: []string{"item-a", "item-b"}}
+				preferences, err := device.UpdateFavorites(ctx, known, FavoriteChange{AddItemIDs: []string{"item-b"}})
+				want := []string{"item-a", "item-b"}
+				if err != nil || !reflect.DeepEqual(preferences.FavoriteItemIDs, want) || preferences.Revision != 3 {
+					t.Fatalf("saving over an unsupported version: %+v %v", preferences, err)
+				}
+				if puts != 1 {
+					t.Errorf("sent %d PUTs for an unsupported version; want 1", puts)
+				}
+				if record.Ciphertext[0] != 1 {
+					t.Error("the saved record is not v1")
+				}
+				if loaded := requirePreferences(t, device); !reflect.DeepEqual(loaded.FavoriteItemIDs, want) || loaded.Revision != 3 {
+					t.Errorf("loaded preferences %+v, want revision 3 and favorites %v", loaded, want)
+				}
+			})
+		}
+	}
+}
+
+func TestFavoritesPreserveLocalKeyAndAuthenticatedJSONErrors(t *testing.T) {
+	key := crypt.GenerateKey()
+	defer clear(key)
+	const accountID = "ABC123"
+	for _, testCase := range []struct {
+		name      string
+		plaintext string
+		isBadKey  bool
+	}{
+		{name: "local key", isBadKey: true},
+		{name: "invalid JSON", plaintext: `{"favoriteItemIds":`},
+		{name: "invalid favorites", plaintext: `{"favoriteItemIds":123}`},
+		{name: "invalid object", plaintext: `[]`},
+	} {
+		t.Run(testCase.name, func(t *testing.T) {
+			userKey := key
+			ciphertext := []byte{2}
+			if testCase.isBadKey {
+				userKey = key[:16]
+			} else {
+				var err error
+				ciphertext, err = crypt.SealAccountPreferences(key, accountID, []byte(testCase.plaintext))
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			puts := 0
+			mux := http.NewServeMux()
+			mux.HandleFunc("GET /api/v1/account/preferences", func(w http.ResponseWriter, r *http.Request) {
+				json.NewEncoder(w).Encode(apitypes.AccountPreferences{Revision: 1, Ciphertext: ciphertext})
+			})
+			mux.HandleFunc("PUT /api/v1/account/preferences", func(w http.ResponseWriter, r *http.Request) {
+				puts++
+				json.NewEncoder(w).Encode(apitypes.PutAccountPreferencesResponse{Revision: 2})
+			})
+			server := httptest.NewServer(mux)
+			defer server.Close()
+			device := &Session{Client: apiclient.New(server.URL), AccountID: accountID, Keyset: &crypt.Keyset{UserKey: userKey}}
+
+			preferences, err := device.UpdateFavorites(context.Background(), nil, FavoriteChange{AddItemIDs: []string{"item-a"}})
+			if err == nil || preferences != nil {
+				t.Fatalf("saving with a hard error returned %+v, %v", preferences, err)
+			}
+			if errors.Is(err, crypt.ErrBadKeySize) != testCase.isBadKey {
+				t.Errorf("bad key error = %v, want %v: %v", errors.Is(err, crypt.ErrBadKeySize), testCase.isBadKey, err)
+			}
+			if puts != 0 {
+				t.Errorf("sent %d PUTs after a hard error; want none", puts)
+			}
+		})
 	}
 }
 

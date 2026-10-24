@@ -155,6 +155,17 @@ class LockModelTests {
     }
 
     @Test
+    fun testSignOutErrorStillShowsTheSignedOutScreen() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        harness.backend.isOffline = true
+        model.lock.signOut()
+        assertEquals(Screen.SignedOut, model.screen.value)
+        assertTrue(model.unlockedData.value.allVault.isEmpty())
+        assertEquals(FakeBackend.SIGN_OUT_OFFLINE_MESSAGE, model.errorMessage.value)
+    }
+
+    @Test
     fun testAutoLockSettingChangesTheBackgroundLock() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()

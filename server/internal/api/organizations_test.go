@@ -184,7 +184,7 @@ func TestOrganizationInvitationAndKeyDelivery(t *testing.T) {
 		t.Errorf("email to Bob: %+v", toBob)
 	}
 	toGhost, isToGhost := findEmail(messages, "ghost@example.com")
-	if !isToGhost || !strings.Contains(toGhost.Body, "https://hisar.test/invite/") || !strings.Contains(toGhost.Body, "hisar org accept") {
+	if !isToGhost || !strings.Contains(toGhost.Body, baseURL+"/invite/") || !strings.Contains(toGhost.Body, "hisar org accept") {
 		t.Errorf("email to the unknown address: %+v", toGhost)
 	}
 
@@ -405,7 +405,7 @@ func TestOrganizationVaultAccessRules(t *testing.T) {
 	}
 	expectStatus(t, "a key for a member in no team of the vault", setAccess(dave, apitypes.VaultReader, 1), http.StatusConflict)
 	expectStatus(t, "a key with another role than the teams give", setAccess(carol, apitypes.VaultOwner, 1), http.StatusConflict)
-	expectStatus(t, "a key without its generation", setAccess(carol, apitypes.VaultEditor, 0), http.StatusConflict)
+	expectStatus(t, "a key without its generation", setAccess(carol, apitypes.VaultEditor, 0), http.StatusBadRequest)
 	if err := setAccess(carol, apitypes.VaultEditor, 1); err != nil {
 		t.Fatalf("a key with the entitled role: %v", err)
 	}
@@ -431,7 +431,11 @@ func TestOrganizationVaultAccessRules(t *testing.T) {
 
 	expectStatus(t, "an owner removes someone from an organization vault", alice.Client.RemoveAccess(ctx, production.ID, carol.AccountID), http.StatusBadRequest)
 	expectStatus(t, "a member leaves an organization vault", carol.Client.RemoveAccess(ctx, production.ID, carol.AccountID), http.StatusBadRequest)
-	expectStatus(t, "a share invitation to an organization vault", alice.InviteToVault(ctx, production, "erin@example.com", apitypes.VaultReader), http.StatusBadRequest)
+	organizationShare := signedShareRequest(t, alice, production, "erin@example.com", apitypes.VaultReader, nil)
+	expectStatus(t, "a share invitation to an organization vault", alice.Client.CreateSignedShareInvitation(ctx, production.ID, &organizationShare), http.StatusBadRequest)
+	if err := alice.InviteToVault(ctx, production, "erin@example.com", apitypes.VaultReader); err == nil {
+		t.Error("the app offered to share an organization vault by invitation")
+	}
 	if _, isListed := findListedVault(t, carol, production.ID); !isListed {
 		t.Error("a refused removal took Carol's access")
 	}
@@ -514,10 +518,11 @@ func TestOrganizationVaultRotationFromAStaleKey(t *testing.T) {
 
 	withoutGeneration := *production
 	withoutGeneration.KeyGeneration = 0
-	expectStatus(t, "a rotation without the key generation", alice.RotateVaultKey(ctx, &withoutGeneration, grants), http.StatusConflict)
+	expectStatus(t, "a rotation without the key generation", alice.RotateVaultKey(ctx, &withoutGeneration, grants), http.StatusBadRequest)
 	if err := alice.RotateVaultKey(ctx, production, grants); err != nil {
 		t.Fatalf("the first rotation: %v", err)
 	}
+	// Bob's copy names a key generation the server replaced, so the staged rotation is refused before anything is staged.
 	expectStatus(t, "a second rotation from the same key", bob.RotateVaultKey(ctx, bobProduction, grants), http.StatusConflict)
 
 	if listed, _ := findListedVault(t, alice, production.ID); listed.KeyGeneration != 2 {
@@ -555,7 +560,7 @@ func TestRenameWithARotatedAwayKey(t *testing.T) {
 	expectStatus(t, "a rename sealed with the replaced key", bob.RenameVault(ctx, bobProduction, "Stale"), http.StatusConflict)
 	staleName := requireValue[[]byte](t)(crypt.SealVaultName(bobProduction.Key, production.ID, []byte("Stale")))
 	expectStatus(t, "a rename of an organization vault without its key generation",
-		bob.Client.RenameVault(ctx, production.ID, &apitypes.RenameVaultRequest{EncName: staleName}), http.StatusConflict)
+		bob.Client.RenameVault(ctx, production.ID, &apitypes.RenameVaultRequest{EncName: staleName}), http.StatusBadRequest)
 	if countDatabaseRows(t, databaseURL, `SELECT count(*) FROM vaults WHERE id = $1 AND enc_name = $2`, production.ID, rotated.EncName) != 1 {
 		t.Error("a refused rename replaced the stored name")
 	}
@@ -621,7 +626,7 @@ func TestItemWritesWithARotatedAwayKey(t *testing.T) {
 	// current item and ask for a reload that never helps, so they get a sentence they show as it is.
 	isUpdateRefusal := func(err error) bool {
 		return apiclient.IsStatus(err, http.StatusBadRequest) && !apiclient.IsKeyChanged(err) &&
-			strings.Contains(err.Error(), "update Hisar to change items in organization vaults")
+			strings.Contains(err.Error(), "update Hisar to change data in this vault")
 	}
 
 	newItemID := uuid.NewString()
@@ -882,7 +887,7 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	preview := requireValue[*apitypes.AccountDeletionPreview](t)(alice.session.Client.GetAccountDeletionPreview(ctx))
 	slices.SortFunc(preview.Organizations, func(first, second apitypes.DeletionOrganization) int { return strings.Compare(first.Name, second.Name) })
 	if !slices.Equal(preview.Organizations, []apitypes.DeletionOrganization{
-		{OrganizationID: acme.ID, Name: "Acme", NewAdminName: "carol"},
+		{OrganizationID: acme.ID, Name: "Acme", NewAdminName: "carol", NewAdminID: carol.AccountID},
 		{OrganizationID: solo.ID, Name: "Solo", IsDeleted: true},
 	}) {
 		t.Errorf("organizations in the preview: %+v", preview.Organizations)
@@ -896,7 +901,7 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	waitForSubscriber(t, server, carol.AccountID, 1)
 	daveEvents := openEventStream(t, dave.Client)
 	waitForSubscriber(t, server, dave.AccountID, 1)
-	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, "alice@example.com"); err != nil {
+	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, "alice@example.com", reviewSessionDeletion(t, alice.session, ctx)); err != nil {
 		t.Fatal(err)
 	}
 	carolEvents.waitForEvent(t, apitypes.EventOrganizationsChanged)
@@ -923,11 +928,11 @@ func TestDeleteAccountInOrganizations(t *testing.T) {
 	if _, isListed := findListedVault(t, carol, production.ID); isListed {
 		t.Error("the vault Alice owned alone outlived her")
 	}
-	// Alice held Staging's key, so its remaining owner's app rotates it, as after a team removal; Family is not marked (§5.7.1).
+	// Alice held the keys of Staging and Family, so their remaining owners' apps rotate them (§5.7.1, §5.11).
 	if listedStaging, isListed := findListedVault(t, carol, staging.ID); !isListed || !listedStaging.NeedsRotation {
 		t.Errorf("the organization vault Alice had a key to: listed %v, needs rotation %v", isListed, listedStaging.NeedsRotation)
 	}
-	if listedFamily, isListed := findListedVault(t, carol, family.ID); !isListed || listedFamily.NeedsRotation {
+	if listedFamily, isListed := findListedVault(t, carol, family.ID); !isListed || !listedFamily.NeedsRotation {
 		t.Errorf("the shared vault Alice was in: listed %v, needs rotation %v", isListed, listedFamily.NeedsRotation)
 	}
 	for name, query := range map[string]string{
@@ -993,4 +998,58 @@ func TestConcurrentTeamRemovalsKeepAnOwner(t *testing.T) {
 	if memberCount := countDatabaseRows(t, databaseURL, `SELECT count(*) FROM team_members WHERE team_id = $1`, platform.ID); memberCount != 1 {
 		t.Errorf("team members after the race: %d", memberCount)
 	}
+}
+
+func TestOrganizationInvitationsOfADemotedOrRemovedAdminGrantNothing(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	caller := apiCaller{t: t, baseURL: baseURL}
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
+	dave := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", apitypes.RoleMember)
+	acme := caller.createOrganization(alice, "Acme")
+	caller.joinOrganization(alice, bob, acme.ID, apitypes.OrganizationRoleAdmin)
+	alicePath := organizationPath(acme.ID, "members", alice.AccountID)
+
+	receivedInvitationID := func(recipient *session.Session) string {
+		t.Helper()
+		var organizations apitypes.OrganizationList
+		caller.call(recipient, "GET", "/api/v1/organizations", nil, http.StatusOK, &organizations)
+		if len(organizations.Invitations) != 1 {
+			t.Fatalf("%s's invitations: %+v", recipient.Email, organizations.Invitations)
+		}
+		return organizations.Invitations[0].ID
+	}
+	refuseInvitation := func(recipient *session.Session, invitationID string) {
+		t.Helper()
+		var organizations apitypes.OrganizationList
+		caller.call(recipient, "GET", "/api/v1/organizations", nil, http.StatusOK, &organizations)
+		if len(organizations.Invitations) != 0 {
+			t.Errorf("%s is still offered the invitation: %+v", recipient.Email, organizations.Invitations)
+		}
+		var organization apitypes.Organization
+		caller.call(bob, "GET", organizationPath(acme.ID), nil, http.StatusOK, &organization)
+		if len(organization.Invitations) != 0 {
+			t.Errorf("the organization still lists the invitation: %+v", organization.Invitations)
+		}
+		caller.call(recipient, "POST", "/api/v1/organization-invitations/"+invitationID+"/accept", nil, http.StatusNotFound, nil)
+		caller.call(recipient, "GET", "/api/v1/organizations", nil, http.StatusOK, &organizations)
+		if len(organizations.Organizations) != 0 {
+			t.Errorf("%s joined through the invitation: %+v", recipient.Email, organizations.Organizations)
+		}
+	}
+
+	caller.call(alice, "POST", organizationPath(acme.ID, "invitations"), apitypes.OrganizationInvitationRequest{Email: carol.Email, Role: apitypes.OrganizationRoleAdmin},
+		http.StatusAccepted, nil)
+	carolInvitationID := receivedInvitationID(carol)
+	caller.call(bob, "PUT", alicePath, apitypes.SetOrganizationRoleRequest{Role: apitypes.OrganizationRoleMember}, http.StatusNoContent, nil)
+	refuseInvitation(carol, carolInvitationID)
+
+	caller.call(bob, "PUT", alicePath, apitypes.SetOrganizationRoleRequest{Role: apitypes.OrganizationRoleAdmin}, http.StatusNoContent, nil)
+	caller.call(alice, "POST", organizationPath(acme.ID, "invitations"), apitypes.OrganizationInvitationRequest{Email: dave.Email, Role: apitypes.OrganizationRoleAdmin},
+		http.StatusAccepted, nil)
+	daveInvitationID := receivedInvitationID(dave)
+	caller.call(bob, "DELETE", alicePath, nil, http.StatusNoContent, nil)
+	refuseInvitation(dave, daveInvitationID)
 }

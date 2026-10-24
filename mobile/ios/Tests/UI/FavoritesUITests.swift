@@ -10,7 +10,6 @@ final class FavoritesUITests: HisarUITestCase {
         saveScreenshot("favorites-empty")
 
         addLogin(title: "GitHub", username: "octocat", password: "favorite-github-password", website: "https://github.com")
-        dismissSavePasswordPrompt()
         choose("add-login", from: "add-item")
         type("AWS Console", into: app.textFields["editor-title"])
         type("root", into: app.textFields["editor-username"])
@@ -21,10 +20,10 @@ final class FavoritesUITests: HisarUITestCase {
         app.buttons["icon-preset-cloud"].tap()
         let isCloudSelected = XCTNSPredicateExpectation(predicate: NSPredicate(format: "isSelected == true"), object: app.buttons["icon-preset-cloud"])
         XCTAssertEqual(XCTWaiter().wait(for: [isCloudSelected], timeout: 10), .completed, "the cloud preset is selected")
+        XCTAssertTrue(app.buttons["icon-color-orange"].isSelected, "the orange color stays chosen")
         saveScreenshot("item-icon-picker")
         app.buttons["icon-done"].tap()
         app.buttons["editor-save"].tap()
-        dismissSavePasswordPrompt()
         waitFor(app.buttons["item-AWS Console"])
 
         // The editor sheet is still closing over the list.
@@ -37,8 +36,10 @@ final class FavoritesUITests: HisarUITestCase {
         saveScreenshot("favorites-item-starred")
         goBack()
 
-        app.buttons["item-AWS Console"].swipeRight()
-        app.buttons["favorite-swipe-AWS Console"].tap()
+        revealSwipeActions(of: app.buttons["item-AWS Console"], .right)
+        let favoriteAction = app.buttons["favorite-swipe-AWS Console"]
+        waitForHittable(favoriteAction)
+        favoriteAction.tap()
         goBack()
 
         let gitHubFavorite = app.buttons["favorite-GitHub"]
@@ -47,8 +48,10 @@ final class FavoritesUITests: HisarUITestCase {
         XCTAssertFalse(emptyNote.exists)
         saveScreenshot("favorites-vaults")
 
-        gitHubFavorite.swipeLeft()
-        app.buttons["unfavorite-GitHub"].tap()
+        revealSwipeActions(of: gitHubFavorite, .left)
+        let unfavoriteAction = app.buttons["unfavorite-GitHub"]
+        waitForHittable(unfavoriteAction)
+        unfavoriteAction.tap()
         XCTAssertTrue(gitHubFavorite.waitForNonExistence(timeout: 10))
         XCTAssertTrue(app.buttons["favorite-AWS Console"].exists)
     }

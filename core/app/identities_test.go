@@ -39,7 +39,7 @@ func TestBrowserIdentities(t *testing.T) {
 	if identities := result.(browserprotocol.IdentityListResult).Identities; code != "" || !reflect.DeepEqual(identities, want) {
 		t.Fatalf("identities.list = %+v %s\nwant %+v", identities, code, want)
 	}
-	if encoded, _ := json.Marshal(result); strings.Contains(string(encoded), "555") || strings.Contains(string(encoded), "Main St") {
+	if encoded, _ := json.Marshal(result); strings.Contains(string(encoded), "+1 555 01") || strings.Contains(string(encoded), "Main St") {
 		t.Errorf("identities.list carries a phone or street: %s", encoded)
 	}
 

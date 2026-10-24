@@ -194,8 +194,8 @@ func TestBuildAuthenticatorData(t *testing.T) {
 	if !bytes.Equal(authenticatorData[:32], relyingPartyIDHash[:]) {
 		t.Errorf("rpIdHash = %x", authenticatorData[:32])
 	}
-	if authenticatorData[32] != 0x5d {
-		t.Errorf("flags = %#x, want UP|UV|BE|BS|AT", authenticatorData[32])
+	if authenticatorData[32] != 0x59 {
+		t.Errorf("base flags = %#x, want UP|BE|BS|AT without fabricated UV", authenticatorData[32])
 	}
 	if binary.BigEndian.Uint32(authenticatorData[33:37]) != 0 {
 		t.Errorf("sign count = %x", authenticatorData[33:37])
@@ -209,7 +209,7 @@ func TestBuildAuthenticatorData(t *testing.T) {
 	if authenticatorData[355] != 0xa5 || len(authenticatorData) != 355+77 {
 		t.Errorf("COSE key at %d: %x", len(authenticatorData), authenticatorData[355:])
 	}
-	if assertionData := BuildAuthenticatorData("example.com", flagAssertion, nil); len(assertionData) != 37 || assertionData[32] != 0x1d {
+	if assertionData := BuildAuthenticatorData("example.com", flagAssertion, nil); len(assertionData) != 37 || assertionData[32] != 0x19 {
 		t.Errorf("assertion authenticator data = %x", assertionData)
 	}
 	if _, err := BuildAttestedCredentialData(nil, &createTestKey(t).PublicKey); err == nil {
@@ -315,7 +315,7 @@ func signInWithRelyingParty(t *testing.T, relyingParty *webauthn.WebAuthn, user 
 func TestCreateAndSignVerifiedByWebAuthnLibrary(t *testing.T) {
 	relyingParty := createTestRelyingParty(t, "example.com", "https://login.example.com")
 	user := &testUser{userHandle: []byte("user-handle-0001"), userName: "alex@example.com", userDisplayName: "Alex"}
-	creation, credential, err := registerWithRelyingParty(t, relyingParty, user, CreationRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com"})
+	creation, credential, err := registerWithRelyingParty(t, relyingParty, user, CreationRequest{UserVerified: true, Origin: "https://login.example.com", RelyingPartyID: "example.com"})
 	if err != nil {
 		t.Fatalf("registration rejected: %v", err)
 	}
@@ -338,7 +338,7 @@ func TestCreateAndSignVerifiedByWebAuthnLibrary(t *testing.T) {
 	}
 
 	user.credentials = []webauthn.Credential{*credential}
-	assertionRequest := AssertionRequest{Origin: "https://login.example.com", RelyingPartyID: "example.com"}
+	assertionRequest := AssertionRequest{UserVerified: true, Origin: "https://login.example.com", RelyingPartyID: "example.com"}
 	if err := signInWithRelyingParty(t, relyingParty, user, assertionRequest, "example.com", creation.CredentialID, creation.PrivateKey); err != nil {
 		t.Fatalf("sign in rejected: %v", err)
 	}
@@ -346,10 +346,10 @@ func TestCreateAndSignVerifiedByWebAuthnLibrary(t *testing.T) {
 	if err := signInWithRelyingParty(t, otherSite, user, assertionRequest, "example.com", creation.CredentialID, creation.PrivateKey); err == nil {
 		t.Error("assertion for login.example.com accepted by a relying party expecting example.com")
 	}
-	if err := signInWithRelyingParty(t, relyingParty, user, AssertionRequest{Origin: "https://evil.example.net", RelyingPartyID: "example.com"}, "example.com", creation.CredentialID, creation.PrivateKey); !errors.Is(err, ErrInvalidRelyingPartyID) {
+	if err := signInWithRelyingParty(t, relyingParty, user, AssertionRequest{UserVerified: true, Origin: "https://evil.example.net", RelyingPartyID: "example.com"}, "example.com", creation.CredentialID, creation.PrivateKey); !errors.Is(err, ErrInvalidRelyingPartyID) {
 		t.Errorf("signing for a foreign origin: %v", err)
 	}
-	if err := signInWithRelyingParty(t, relyingParty, user, AssertionRequest{Origin: "https://login.example.com", RelyingPartyID: "login.example.com"}, "example.com", creation.CredentialID, creation.PrivateKey); !errors.Is(err, ErrInvalidRelyingPartyID) {
+	if err := signInWithRelyingParty(t, relyingParty, user, AssertionRequest{UserVerified: true, Origin: "https://login.example.com", RelyingPartyID: "login.example.com"}, "example.com", creation.CredentialID, creation.PrivateKey); !errors.Is(err, ErrInvalidRelyingPartyID) {
 		t.Errorf("signing with a credential of another relying party ID: %v", err)
 	}
 }
@@ -363,28 +363,28 @@ func TestCrossOriginCreationVerifiedByWebAuthnLibrary(t *testing.T) {
 		t.Fatal(err)
 	}
 	user := &testUser{userHandle: []byte{1, 2, 3, 4}, userName: "alex"}
-	request := CreationRequest{Origin: "https://pay.example.org", TopOrigin: "https://shop.example.com", IsCrossOrigin: true}
+	request := CreationRequest{UserVerified: true, Origin: "https://pay.example.org", TopOrigin: "https://shop.example.com", IsCrossOrigin: true}
 	if _, _, err := registerWithRelyingParty(t, relyingParty, user, request); err != nil {
 		t.Fatalf("cross-origin registration rejected: %v", err)
 	}
 }
 
 func TestCreateCredentialRejectsForeignRelyingParty(t *testing.T) {
-	if _, err := CreateCredential(CreationRequest{Origin: "https://evil.example.net", RelyingPartyID: "example.com", Challenge: []byte{1}}); !errors.Is(err, ErrInvalidRelyingPartyID) {
+	if _, err := CreateCredential(CreationRequest{UserVerified: true, Origin: "https://evil.example.net", RelyingPartyID: "example.com", Challenge: []byte{1}}); !errors.Is(err, ErrInvalidRelyingPartyID) {
 		t.Errorf("foreign relying party: %v", err)
 	}
-	if _, err := CreateCredential(CreationRequest{Origin: "http://example.com", Challenge: []byte{1}}); !errors.Is(err, ErrInvalidOrigin) {
+	if _, err := CreateCredential(CreationRequest{UserVerified: true, Origin: "http://example.com", Challenge: []byte{1}}); !errors.Is(err, ErrInvalidOrigin) {
 		t.Errorf("plain http origin: %v", err)
 	}
 	relyingParty := createTestRelyingParty(t, "example.com", "https://example.com")
 	user := &testUser{userHandle: []byte{1}, userName: "alex"}
-	if _, _, err := registerWithRelyingParty(t, relyingParty, user, CreationRequest{Origin: "https://sub.example.com"}); err == nil {
+	if _, _, err := registerWithRelyingParty(t, relyingParty, user, CreationRequest{UserVerified: true, Origin: "https://sub.example.com"}); err == nil {
 		t.Error("registration from sub.example.com with its own RP ID accepted by example.com")
 	}
 }
 
 func TestSignAssertionRejectsBadKey(t *testing.T) {
-	request := AssertionRequest{Origin: "https://example.com", Challenge: []byte{1}}
+	request := AssertionRequest{UserVerified: true, Origin: "https://example.com", Challenge: []byte{1}}
 	if _, err := SignAssertion(request, "example.com", []byte("not a key")); err == nil {
 		t.Error("garbage key accepted")
 	}
@@ -491,7 +491,7 @@ func TestClientDataHashCeremoniesVerifiedByWebAuthnLibrary(t *testing.T) {
 				t.Fatal(err)
 			}
 			clientDataJSON, clientDataHash := testCase.buildClientData(t, protocol.CreateCeremony, options.Response.Challenge)
-			creation, err := CreateCredentialWithClientDataHash("Example.com", clientDataHash)
+			creation, err := CreateCredentialWithClientDataHash("Example.com", clientDataHash, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -520,7 +520,7 @@ func TestClientDataHashCeremoniesVerifiedByWebAuthnLibrary(t *testing.T) {
 				t.Fatal(err)
 			}
 			assertionClientDataJSON, assertionClientDataHash := testCase.buildClientData(t, protocol.AssertCeremony, assertionOptions.Response.Challenge)
-			assertion, err := SignAssertionWithClientDataHash("example.com", "example.com", assertionClientDataHash, creation.PrivateKey)
+			assertion, err := SignAssertionWithClientDataHash("example.com", "example.com", assertionClientDataHash, creation.PrivateKey, true)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -552,23 +552,23 @@ func TestClientDataHashCeremoniesVerifiedByWebAuthnLibrary(t *testing.T) {
 
 func TestClientDataHashRefusals(t *testing.T) {
 	validHash := make([]byte, ClientDataHashLength)
-	if _, err := CreateCredentialWithClientDataHash("co.uk", validHash); !errors.Is(err, ErrInvalidRelyingPartyID) {
+	if _, err := CreateCredentialWithClientDataHash("co.uk", validHash, true); !errors.Is(err, ErrInvalidRelyingPartyID) {
 		t.Errorf("public suffix: %v", err)
 	}
-	if _, err := CreateCredentialWithClientDataHash("example.com", validHash[:31]); !errors.Is(err, ErrInvalidRequest) {
+	if _, err := CreateCredentialWithClientDataHash("example.com", validHash[:31], true); !errors.Is(err, ErrInvalidRequest) {
 		t.Errorf("31-byte hash: %v", err)
 	}
-	creation, err := CreateCredentialWithClientDataHash("example.com", validHash)
+	creation, err := CreateCredentialWithClientDataHash("example.com", validHash, true)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := SignAssertionWithClientDataHash("login.example.com", "example.com", validHash, creation.PrivateKey); !errors.Is(err, ErrInvalidRelyingPartyID) {
+	if _, err := SignAssertionWithClientDataHash("login.example.com", "example.com", validHash, creation.PrivateKey, true); !errors.Is(err, ErrInvalidRelyingPartyID) {
 		t.Errorf("another relying party ID: %v", err)
 	}
-	if _, err := SignAssertionWithClientDataHash("example.com", "example.com", nil, creation.PrivateKey); !errors.Is(err, ErrInvalidRequest) {
+	if _, err := SignAssertionWithClientDataHash("example.com", "example.com", nil, creation.PrivateKey, true); !errors.Is(err, ErrInvalidRequest) {
 		t.Errorf("missing hash: %v", err)
 	}
-	if _, err := SignAssertionWithClientDataHash("example.com", "example.com", validHash, []byte("not a key")); err == nil {
+	if _, err := SignAssertionWithClientDataHash("example.com", "example.com", validHash, []byte("not a key"), true); err == nil {
 		t.Error("garbage key accepted")
 	}
 }

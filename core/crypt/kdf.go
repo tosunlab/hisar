@@ -21,6 +21,8 @@ type Argon2Params struct {
 
 var ErrBadSalt = errors.New("crypt: salt must be 16 bytes")
 
+var ErrArgon2ParamsOutOfRange = errors.New("crypt: argon2 params outside allowed range")
+
 // DefaultArgon2Params are the parameters new accounts get.
 func DefaultArgon2Params() Argon2Params {
 	return Argon2Params{Time: 24, MemoryKiB: 64 * 1024, Threads: 4}
@@ -38,7 +40,7 @@ func (params Argon2Params) Validate() error {
 	if params.Time < minimum.Time || params.Time > maximum.Time ||
 		params.MemoryKiB < minimum.MemoryKiB || params.MemoryKiB > maximum.MemoryKiB ||
 		params.Threads < minimum.Threads || params.Threads > maximum.Threads {
-		return fmt.Errorf("crypt: argon2 params %+v outside allowed range", params)
+		return fmt.Errorf("%w: %+v", ErrArgon2ParamsOutOfRange, params)
 	}
 	return nil
 }

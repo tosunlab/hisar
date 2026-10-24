@@ -278,6 +278,41 @@ func TestUserPathReaderUsesLoginShell(t *testing.T) {
 	}
 }
 
+func TestUserPathReaderReadsVariablesInTheSameShell(t *testing.T) {
+	directory := t.TempDir()
+	shellPath := filepath.Join(directory, "shell")
+	logPath := filepath.Join(directory, "runs")
+	script := "#!/bin/sh\necho run >> '" + logPath + "'\necho noise\nexport HERMES_HOME='/Users/developer/hermes home'\nPATH=/from/shell/bin:/usr/bin\nshift 3\nexec /bin/sh -c \"$1\"\n"
+	if err := os.WriteFile(shellPath, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("CODEX_HOME", "/from/app")
+	reader := &UserPathReader{Shell: shellPath, Variables: []string{"HERMES_HOME", "CODEX_HOME", "UNSET_IN_SHELL"}}
+	if got := reader.ReadVariable("HERMES_HOME"); got != "/Users/developer/hermes home" {
+		t.Errorf("HERMES_HOME = %q", got)
+	}
+	if got := reader.ReadVariable("CODEX_HOME"); got != "/from/app" {
+		t.Errorf("CODEX_HOME inherited from the app = %q", got)
+	}
+	if got := reader.ReadVariable("UNSET_IN_SHELL"); got != "" {
+		t.Errorf("unset variable = %q", got)
+	}
+	if directories := reader.Read(); !reflect.DeepEqual(directories, []string{"/from/shell/bin", "/usr/bin"}) {
+		t.Errorf("shell PATH %v", directories)
+	}
+	if runs, _ := os.ReadFile(logPath); string(runs) != "run\n" {
+		t.Errorf("login shell runs = %q; want one for PATH and every variable", runs)
+	}
+}
+
+func TestUserPathReaderVariablesFallBackToTheApp(t *testing.T) {
+	t.Setenv("HERMES_HOME", "/from/app")
+	reader := &UserPathReader{Shell: filepath.Join(t.TempDir(), "missing-shell"), Variables: []string{"HERMES_HOME"}}
+	if got := reader.ReadVariable("HERMES_HOME"); got != "/from/app" {
+		t.Errorf("HERMES_HOME without a shell = %q", got)
+	}
+}
+
 func TestPackageInstallReportsThePackagedCommand(t *testing.T) {
 	fixture := createInstallFixture(t)
 	packagedPath := filepath.Join(fixture.root, "usr", "bin", "hisar")

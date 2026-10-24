@@ -26,14 +26,15 @@ func (s *Service) listLoginsForURL(ctx context.Context, pageURL string) ([]brows
 }
 
 // listLogins loads every vault's items if needed and returns the items that AutoFill may fill and isMatch accepts, as
-// sorted logins and by "vaultID/itemID". It calls isMatch with s.mutex held.
+// sorted logins and by "vaultID/itemID". A record that did not open is left out, so the result tells what can be
+// filled, never that a login is missing. It calls isMatch with s.mutex held.
 func (s *Service) listLogins(ctx context.Context, isMatch func(*item.Item) bool) ([]browserprotocol.Login, map[string]item.Item, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlockedWithoutActivity(); err != nil {
 		return nil, nil, err
 	}
-	if err := s.loadItemsOfAllVault(ctx); err != nil {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
 		return nil, nil, err
 	}
 	logins := []browserprotocol.Login{}
@@ -65,6 +66,9 @@ func (s *Service) listLogins(ctx context.Context, isMatch func(*item.Item) bool)
 
 // requireUnlockedWithoutActivity checks the lock state like requireUnlocked but, like the SSH agent, does not postpone auto-lock.
 func (s *Service) requireUnlockedWithoutActivity() error {
+	if err := s.checkRequestEpoch(); err != nil {
+		return err
+	}
 	if s.isUnlocked() {
 		return nil
 	}
@@ -75,24 +79,36 @@ func (s *Service) requireUnlockedWithoutActivity() error {
 }
 
 func (s *Service) loadItemsOfAllVault(ctx context.Context) error {
+	if _, err := s.loadReadableItemsOfAllVault(ctx); err != nil {
+		return err
+	}
+	return s.checkCompleteRead("")
+}
+
+// loadReadableItemsOfAllVault reads every vault not loaded yet. isAuthoritative reports whether it read every vault and
+// each read came from the server, reached the end of the vault's changes and opened every record: only then is an item
+// missing from the loaded lists known to be gone.
+func (s *Service) loadReadableItemsOfAllVault(ctx context.Context) (isAuthoritative bool, err error) {
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 	if s.vaultsByID == nil {
 		if err := s.loadVaults(ctx); err != nil {
-			return err
+			return false, err
 		}
 	}
+	isAuthoritative = true
 	for vaultID, vault := range s.vaultsByID {
-		if _, isLoaded := s.itemsByVaultID[vaultID]; isLoaded {
+		if s.hasReadVaultItems(vaultID) {
+			isAuthoritative = false
 			continue
 		}
-		items, err := s.unlockedSession.ListItems(ctx, vault)
+		result, err := s.readVaultItems(ctx, vault)
 		if err != nil {
-			return convertError(err)
+			return false, err
 		}
-		s.itemsByVaultID[vaultID] = items
+		isAuthoritative = isAuthoritative && result.Provenance.Source == "online" && result.Provenance.HasCompletedSync && len(result.Issues) == 0
 	}
-	return nil
+	return isAuthoritative, nil
 }
 
 // ListLoginsForURL and GetLoginForURL serve the mobile AutoFill extensions; as functions, Wails does not bind them.
@@ -223,6 +239,8 @@ func ListLoginWebsites(s *Service) ([]LoginWebsite, error) {
 	return websites, nil
 }
 
+// checkLogin tells the extension whether a submitted login is saved already. "new" and "changed" rest on no other login
+// matching, so they need a view in which every record opened.
 func (s *Service) checkLogin(ctx context.Context, pageURL, username, password string) (browserprotocol.CheckResult, error) {
 	logins, itemsByKey, err := s.listLoginsForURL(ctx, pageURL)
 	if err != nil {
@@ -237,13 +255,19 @@ func (s *Service) checkLogin(ctx context.Context, pageURL, username, password st
 	if len(candidates) == 0 && strings.TrimSpace(username) == "" && len(logins) == 1 {
 		candidates = logins
 	}
-	if len(candidates) == 0 {
-		return browserprotocol.CheckResult{Status: "new"}, nil
-	}
 	for _, candidate := range candidates {
 		if itemsByKey[candidate.VaultID+"/"+candidate.ItemID].Details.Password == password {
 			return browserprotocol.CheckResult{Status: "unchanged", VaultID: candidate.VaultID, ItemID: candidate.ItemID, Title: candidate.Title}, nil
 		}
+	}
+	s.mutex.Lock()
+	err = s.checkCompleteRead("")
+	s.mutex.Unlock()
+	if err != nil {
+		return browserprotocol.CheckResult{}, err
+	}
+	if len(candidates) == 0 {
+		return browserprotocol.CheckResult{Status: "new"}, nil
 	}
 	first := candidates[0]
 	return browserprotocol.CheckResult{Status: "changed", VaultID: first.VaultID, ItemID: first.ItemID, Title: first.Title}, nil
@@ -270,7 +294,6 @@ func (s *Service) saveLogin(ctx context.Context, request *browserprotocol.Reques
 		}
 		return browserprotocol.SaveResult{VaultID: request.VaultID, ItemID: saved.ID}, nil
 	}
-	// A new login goes into the vault the user chose in the save bar, else the personal vault.
 	vaultID := request.VaultID
 	var err error
 	if vaultID != "" {

@@ -73,8 +73,7 @@ final class PasskeyTests: XCTestCase {
         backend.seedSignedIn()
         let identityStore = FakeCredentialIdentityStore()
         let model = AppModel(credentialIdentityStore: identityStore)
-        model.start { backend }
-        await model.refreshAll()
+        await model.start { backend }?.value
         let passkeyIdentity = CredentialIdentityRecord(kind: .passkey, host: "github.com", username: "alice", recordIdentifier: "personal/github", credentialID: Data([1, 1, 1]), userHandle: Data("alice-handle".utf8))
         XCTAssertEqual(identityStore.allIdentity.filter { $0.kind == .passkey }, [passkeyIdentity])
 
@@ -101,8 +100,7 @@ final class PasskeyTests: XCTestCase {
         backend.seedSignedIn()
         let identityStore = FakeCredentialIdentityStore()
         let model = AppModel(credentialIdentityStore: identityStore)
-        model.start { backend }
-        await model.refreshAll()
+        await model.start { backend }?.value
         XCTAssertTrue(identityStore.allIdentity.contains { $0.kind == .passkey })
         await model.deleteItem(vaultID: "personal", itemID: "github")
         XCTAssertFalse(identityStore.allIdentity.contains { $0.kind == .passkey })

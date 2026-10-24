@@ -6,6 +6,8 @@ import (
 
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
+	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/core/signin"
 )
 
 const (
@@ -20,9 +22,10 @@ type Status struct {
 	Email  string `json:"email"`
 	Name   string `json:"name"`
 	// BiometricReady means Touch ID can unlock now: enabled, and the master password was used since launch and recently.
-	BiometricAvailable bool `json:"biometricAvailable"`
-	BiometricEnabled   bool `json:"biometricEnabled"`
-	BiometricReady     bool `json:"biometricReady"`
+	BiometricAvailable  bool   `json:"biometricAvailable"`
+	BiometricEnabled    bool   `json:"biometricEnabled"`
+	BiometricReady      bool   `json:"biometricReady"`
+	BiometricSetupError string `json:"biometricSetupError,omitempty"`
 	// IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
 	IsOffline bool `json:"isOffline"`
 	// AutoLockSeconds is how long Hisar stays unlocked without activity.
@@ -49,6 +52,13 @@ type BiometricKeyPreparer interface {
 	PrepareLoadKey(accountID string) error
 }
 
+// BiometricKeyMigrator upgrades an existing OS wrapper only after password unlock.
+// IsKeyProtected must not prompt and must reject any still-readable legacy wrapper.
+type BiometricKeyMigrator interface {
+	IsKeyProtected(accountID string) bool
+	MigrateKey(accountID string, sealedUnlockKey []byte) error
+}
+
 type VaultSummary struct {
 	ID        string `json:"id"`
 	Name      string `json:"name"`
@@ -56,7 +66,9 @@ type VaultSummary struct {
 	Role      string `json:"role"`
 	ItemCount int    `json:"itemCount"`
 	// OrganizationID is set for organization vaults only.
-	OrganizationID string `json:"organizationId,omitempty"`
+	OrganizationID  string              `json:"organizationId,omitempty"`
+	ReadIssues      []session.ReadIssue `json:"readIssues,omitempty"`
+	IsPersonalExtra bool                `json:"isPersonalExtra,omitempty"`
 }
 
 type OrganizationSummary struct {
@@ -176,15 +188,19 @@ type ReceivedShareInvitation struct {
 // SentShareInvitation: State is "pending" until the person accepts, then "accepted" until this app completes the share;
 // RecipientName and AcceptedAt (RFC 3339) are empty while pending.
 type SentShareInvitation struct {
-	ID            string `json:"id"`
-	VaultID       string `json:"vaultId"`
-	VaultName     string `json:"vaultName"`
-	Email         string `json:"email"`
-	RecipientName string `json:"recipientName"`
-	Role          string `json:"role"`
-	State         string `json:"state"`
-	ExpiresAt     string `json:"expiresAt"`
-	AcceptedAt    string `json:"acceptedAt"`
+	ID                   string `json:"id"`
+	VaultID              string `json:"vaultId"`
+	VaultName            string `json:"vaultName"`
+	Email                string `json:"email"`
+	RecipientName        string `json:"recipientName"`
+	Role                 string `json:"role"`
+	State                string `json:"state"`
+	ExpiresAt            string `json:"expiresAt"`
+	AcceptedAt           string `json:"acceptedAt"`
+	RequiresConfirmation bool   `json:"requiresConfirmation"`
+	RecipientID          string `json:"recipientId"`
+	SecurityCode         string `json:"securityCode"`
+	ReviewToken          string `json:"reviewToken"`
 }
 
 // WaitingShareInvitation is an invitation this user accepted that the owner's app has not completed yet; AcceptedAt is RFC 3339.
@@ -241,19 +257,20 @@ type ItemField struct {
 
 // ItemDetail never carries an SSH private key; the agent reads it from the cached item.
 type ItemDetail struct {
-	ID          string      `json:"id"`
-	Revision    string      `json:"revision"`
-	Category    string      `json:"category"`
-	Title       string      `json:"title"`
-	Username    string      `json:"username"`
-	URLs        []string    `json:"urls"`
-	Tags        []string    `json:"tags"`
-	Password    string      `json:"password"`
-	Notes       string      `json:"notes"`
-	Fields      []ItemField `json:"fields"`
-	PublicKey   string      `json:"publicKey"`
-	Fingerprint string      `json:"fingerprint"`
-	KeyType     string      `json:"keyType"`
+	ID          string             `json:"id"`
+	Revision    string             `json:"revision"`
+	ReadIssue   *session.ReadIssue `json:"readIssue,omitempty"`
+	Category    string             `json:"category"`
+	Title       string             `json:"title"`
+	Username    string             `json:"username"`
+	URLs        []string           `json:"urls"`
+	Tags        []string           `json:"tags"`
+	Password    string             `json:"password"`
+	Notes       string             `json:"notes"`
+	Fields      []ItemField        `json:"fields"`
+	PublicKey   string             `json:"publicKey"`
+	Fingerprint string             `json:"fingerprint"`
+	KeyType     string             `json:"keyType"`
 	// OneTimePassword is the otpauth:// URI; summaries leave it empty and set HasOneTimePassword instead.
 	OneTimePassword    string `json:"oneTimePassword"`
 	HasOneTimePassword bool   `json:"hasOneTimePassword"`
@@ -406,8 +423,11 @@ type OneTimeCode struct {
 }
 
 type SignUpResult struct {
-	Status    Status `json:"status"`
-	SecretKey string `json:"secretKey"`
+	Status             Status   `json:"status"`
+	SecretKey          string   `json:"secretKey"`
+	PendingOperationID string   `json:"pendingOperationId"`
+	SetupState         string   `json:"setupState"`
+	Problems           []string `json:"problems"`
 }
 
 type PasswordConfig struct {
@@ -429,6 +449,16 @@ type SecretKeyStore interface {
 	LoadSecretKey(accountID string) (crypt.SecretKey, error)
 	StoreSecretKey(secretKey crypt.SecretKey) error
 	DeleteSecretKey(accountID string) error
+}
+
+// AgentGrantHeadStore keeps a random head replaced with every sealed grant update.
+// Storage must prevent another program from reading the head without user approval,
+// so restoring an older state file cannot restore grants. LoadAgentGrantHead returns
+// ErrNoAgentGrantHead for a missing head. Unusable storage returns ErrAgentGrantHeadUnavailable.
+type AgentGrantHeadStore interface {
+	LoadAgentGrantHead() ([]byte, error)
+	SaveAgentGrantHead(head []byte) error
+	DeleteAgentGrantHead() error
 }
 
 type KeychainSecretKeyStore struct{}
@@ -461,6 +491,7 @@ type Config struct {
 	GetSystemIdleDuration func() (time.Duration, bool)
 	ClipboardClearAfter   time.Duration
 	Biometric             Biometric
+	PasskeyVerifier       PasskeyVerifier
 	// BiometricName names the biometric check in messages, as in "turn on Touch ID unlock" and "the Touch ID key".
 	BiometricName string
 	// BiometricPasswordInterval is how long biometrics may unlock before the master password is required again.
@@ -474,7 +505,8 @@ type Config struct {
 	// SleepCountingClock reads, from a fixed origin, a clock that keeps counting while the device sleeps, which Go's
 	// timers do not (golang/go#24595); auto-lock measures idle time on it.
 	SleepCountingClock func() time.Duration
-	// OnLock runs under the service mutex whenever an unlocked session ends; it must not call the service.
+	// OnLock runs under the service mutex whenever a session ends: a lock, a sign-out or an account switch, also from a
+	// locked session. It must not call the service.
 	OnLock func()
 	// OnRemoteChange runs after the backend synced a change another device made; the UI refreshes.
 	OnRemoteChange func()
@@ -500,6 +532,12 @@ type Config struct {
 	// DescribeApp names an app bundle and gives its icon as a data URL, for the coding agent sessions and agent hosts that
 	// Settings lists; nil names it by its file name, without an icon.
 	DescribeApp func(bundlePath string) (name string, iconURL string)
+	// SignInDriver fills browser windows for agent sign-in; nil where agents cannot sign in to websites (every platform
+	// but the Mac).
+	SignInDriver signin.Driver
+	// AgentGrantHeads keeps the head of the saved agent grants; nil keeps a harness's grants for one session only, as the
+	// approval dialog then offers.
+	AgentGrantHeads AgentGrantHeadStore
 }
 
 type WebsiteIconFetcher interface {

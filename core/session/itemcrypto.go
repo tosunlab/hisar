@@ -1,12 +1,14 @@
 package session
 
 import (
+	"encoding/json"
 	"fmt"
 
 	"github.com/google/uuid"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/item"
 )
 
 // openItemParts decrypts an item's overview and details; the caller clears details.
@@ -48,13 +50,31 @@ func reencryptItem(sourceKey []byte, sourceVaultID string, targetKey []byte, tar
 		return nil, err
 	}
 	defer clear(details)
+	return sealRevision(targetKey, targetVaultID, protoItem.ID, overview, details)
+}
+
+// sealTombstone seals a deleted item under a new revision with the empty content every deletion sends, without opening
+// the one it replaces: nothing reads a tombstone's content, so one that no key opens still rotates.
+func sealTombstone(vaultKey []byte, vaultID, itemID string) (*reencryptedItem, error) {
+	overview, err := json.Marshal(item.Overview{})
+	if err != nil {
+		return nil, err
+	}
+	details, err := json.Marshal(item.Details{})
+	if err != nil {
+		return nil, err
+	}
+	return sealRevision(vaultKey, vaultID, itemID, overview, details)
+}
+
+func sealRevision(vaultKey []byte, vaultID, itemID string, overview, details []byte) (*reencryptedItem, error) {
 	revision, err := uuid.NewV7()
 	if err != nil {
 		return nil, err
 	}
-	reencrypted := &reencryptedItem{revision: revision.String()}
-	if reencrypted.overview, reencrypted.details, err = sealItemParts(targetKey, targetVaultID, protoItem.ID, reencrypted.revision, overview, details); err != nil {
+	sealed := &reencryptedItem{revision: revision.String()}
+	if sealed.overview, sealed.details, err = sealItemParts(vaultKey, vaultID, itemID, sealed.revision, overview, details); err != nil {
 		return nil, err
 	}
-	return reencrypted, nil
+	return sealed, nil
 }

@@ -85,6 +85,10 @@ const framePage = `<!doctype html>
 <form><input id="frame-username" autocomplete="username"><input id="frame-password" type="password"><button>Sign in</button></form>
 </body></html>`;
 
+// Another site (the cross origin) that frames the test site's login frame.
+const outerFramePage = (innerUrl: string) => `<!doctype html>
+<html><head><meta charset="utf-8"></head><body><iframe id="inner" src="${innerUrl}"></iframe></body></html>`;
+
 const signUpPage = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Create an account</title>
 <style>body{font-family:sans-serif;background:#f4f4f5;margin:40px} form{display:grid;gap:8px;width:280px} input{padding:8px;font-size:14px}</style>
@@ -151,6 +155,7 @@ export async function startTestSite(): Promise<TestSite> {
     if (request.url?.startsWith("/address-frame")) return response.end(addressFramePage);
     if (request.url?.startsWith("/address")) return response.end(addressPage(`http://127.0.0.1:${port}/address-frame`, `http://localhost:${port}/address-frame`));
     if (request.url?.startsWith("/frame")) return response.end(framePage);
+    if (request.url?.startsWith("/outer-frame")) return response.end(outerFramePage(`http://127.0.0.1:${port}/frame`));
     if (request.url?.startsWith("/sign-up")) return response.end(signUpPage);
     if (request.url?.startsWith("/two-factor-split")) return response.end(splitTwoFactorPage);
     if (request.url?.startsWith("/two-factor")) return response.end(twoFactorPage);

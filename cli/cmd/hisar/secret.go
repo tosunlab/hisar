@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/tryhisar/hisar/core/cliprotocol"
-	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/secretreference"
 	"github.com/tryhisar/hisar/core/session"
 	"golang.org/x/term"
@@ -23,26 +22,30 @@ type sessionSecretSource struct {
 	vaultsByID map[string]*session.Vault
 }
 
-func (source *sessionSecretSource) ListVaults() ([]secretreference.Vault, error) {
-	sessionVaults, err := source.session.ListVaults(source.ctx)
+func (source *sessionSecretSource) ListVaults() (secretreference.Inventory, error) {
+	read, err := source.session.ReadVaults(source.ctx)
 	if err != nil {
-		return nil, err
+		return secretreference.Inventory{}, err
 	}
 	source.vaultsByID = map[string]*session.Vault{}
-	vaults := make([]secretreference.Vault, 0, len(sessionVaults))
-	for index := range sessionVaults {
-		source.vaultsByID[sessionVaults[index].ID] = &sessionVaults[index]
-		vaults = append(vaults, secretreference.Vault{ID: sessionVaults[index].ID, Name: sessionVaults[index].Name})
+	inventory := secretreference.Inventory{Vaults: make([]secretreference.Vault, 0, len(read.Vaults)), IsComplete: len(read.Issues) == 0}
+	for index := range read.Vaults {
+		source.vaultsByID[read.Vaults[index].ID] = &read.Vaults[index]
+		inventory.Vaults = append(inventory.Vaults, secretreference.Vault{ID: read.Vaults[index].ID, Name: read.Vaults[index].Name})
 	}
-	return vaults, nil
+	return inventory, nil
 }
 
-func (source *sessionSecretSource) ListItems(vaultID string) ([]item.Item, error) {
+func (source *sessionSecretSource) ListItems(vaultID string) (secretreference.ItemList, error) {
 	vault, isFound := source.vaultsByID[vaultID]
 	if !isFound {
-		return nil, fmt.Errorf("vault %q: not found", vaultID)
+		return secretreference.ItemList{}, fmt.Errorf("vault %q: not found", vaultID)
 	}
-	return source.session.ListItems(source.ctx, vault)
+	read, err := source.session.ReadItems(source.ctx, vault)
+	if err != nil {
+		return secretreference.ItemList{}, err
+	}
+	return secretreference.ItemList{Items: read.Items, IsComplete: len(read.Issues) == 0 && read.Provenance.HasCompletedSync}, nil
 }
 
 // checkReferences parses every reference before anything is asked, so a typo never opens an approval.

@@ -1,11 +1,21 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
-import type { AgentSession, VaultSummary } from "../api";
-import { forgetAgentHost, loadAgentSessions, loadAgentVaults, revokeAgentSession, setVaultAvailableToAgents, store } from "../store";
+import { api, type AgentGrant, type AgentSession, type RememberedAgentSecret, type VaultSummary } from "../api";
+import {
+  forgetAgentHost,
+  loadAgentSessions,
+  loadAgentSignIn,
+  loadAgentVaults,
+  revokeAgentGrant,
+  revokeAgentSession,
+  setAgentSignInEnabled,
+  setVaultAvailableToAgents,
+  store,
+} from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { describeAgentSession, formatCount, formatTimeAgo } from "../util";
-import AppIcon from "./AppIcon.vue";
+import { describeAgentSession, formatCount, formatExpiresIn, formatTimeAgo } from "../util";
+import AppIcon, { type IconName } from "./AppIcon.vue";
 import CodingAgentConnections from "./CodingAgentConnections.vue";
 
 const isRowVisible = useSettingsRowVisibility();
@@ -24,6 +34,55 @@ async function toggleVault(vault: VaultSummary, checkbox: HTMLInputElement): Pro
   checkbox.checked = isAvailableToAgents(vault);
 }
 
+async function toggleAgentSignIn(checkbox: HTMLInputElement): Promise<void> {
+  await setAgentSignInEnabled(checkbox.checked);
+  checkbox.checked = store.agentSignIn.isEnabled;
+}
+
+function openAccessibilitySettings(): Promise<void> {
+  return api.openURL("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+}
+
+function describeGrant(grant: AgentGrant): string {
+  switch (grant.kind) {
+    case "sign-in":
+      return `Sign in to ${grant.website} as ${grant.name}`;
+    case "reveal":
+      return `Read ${grant.name}`;
+    case "code":
+      return `One-time code of ${grant.name}`;
+  }
+  return `Use ${grant.name}`;
+}
+
+function getGrantIcon(grant: AgentGrant): IconName {
+  switch (grant.kind) {
+    case "sign-in":
+      return "globe";
+    case "reveal":
+      return "eye";
+  }
+  return "key";
+}
+
+function describeGrantHolder(grant: AgentGrant): string {
+  switch (grant.scope) {
+    case "session":
+      return `${grant.harnessName}, this session`;
+    case "connection":
+      return `${grant.harnessName}, while connected`;
+  }
+  return grant.harnessName;
+}
+
+function describeGrantExpiry(grant: AgentGrant): string {
+  return grant.expiresAt ? formatExpiresIn(grant.expiresAt) : "Until you revoke it";
+}
+
+function describeRememberedSecret(secret: RememberedAgentSecret): string {
+  return secret.website ? `Sign in to ${secret.website} as ${secret.name}` : secret.name;
+}
+
 function describeSessionUse(session: AgentSession): string {
   const rememberedCount = session.allRememberedSecret.length;
   const remembered = rememberedCount === 0 ? "No remembered secrets" : formatCount(rememberedCount, "remembered secret");
@@ -32,9 +91,15 @@ function describeSessionUse(session: AgentSession): string {
 
 let allRemoveListener: (() => void)[] = [];
 
+// The Accessibility permission changes in System Settings, so the row reads it again when Hisar's window comes back.
+function refreshAgentSignIn(): Promise<void> {
+  return loadAgentSignIn();
+}
+
 onMounted(() => {
-  allRemoveListener = [Events.On("agent-sessions-changed", () => loadAgentSessions())];
-  return Promise.all([loadAgentVaults(), loadAgentSessions()]);
+  window.addEventListener("focus", refreshAgentSignIn);
+  allRemoveListener = [Events.On("agent-sessions-changed", () => loadAgentSessions()), () => window.removeEventListener("focus", refreshAgentSignIn)];
+  return Promise.all([loadAgentVaults(), loadAgentSessions(), loadAgentSignIn()]);
 });
 
 onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListener()));
@@ -48,7 +113,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       <div class="setting">
         <div class="setting-text">
           <strong>Vaults for coding agents</strong>
-          <p class="muted">Agents run commands with your secrets without seeing them; you approve each use here.</p>
+          <p class="muted">Agents pass references to commands after you approve access here. Commands receive real secrets; masking only reduces accidental disclosure.</p>
         </div>
       </div>
       <label v-for="vault in store.allVault" :key="vault.id" class="setting" :data-testid="`agent-vault-${vault.id}`">
@@ -78,6 +143,73 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
     <p v-if="store.agentErrorMessage" class="error settings-note" role="alert" data-testid="coding-agents-error">{{ store.agentErrorMessage }}</p>
   </section>
 
+  <section v-show="isRowVisible('agent-sign-in')" class="settings-block" data-testid="agent-sign-in-section">
+    <p class="section-label">Website sign-in</p>
+    <div class="settings-group">
+      <label class="setting">
+        <span class="settings-row-icon"><AppIcon name="globe" :size="14" /></span>
+        <div class="setting-text">
+          <strong>Let agents sign in to websites in your browser</strong>
+          <p class="muted">
+            An agent names its browser window. Hisar enters the login and submits it there. The sign_in tool returns no password or one-time code.
+          </p>
+        </div>
+        <input
+          class="switch"
+          type="checkbox"
+          name="agentSignIn"
+          aria-label="Let agents sign in to websites in your browser"
+          data-testid="agent-sign-in-switch"
+          :checked="store.agentSignIn.isEnabled"
+          :disabled="store.isBusy || !store.agentSignIn.isAvailable"
+          @change="toggleAgentSignIn($event.target as HTMLInputElement)"
+        />
+      </label>
+      <div v-if="store.agentSignIn.isEnabled && !store.agentSignIn.hasAccessibility" class="setting" data-testid="agent-sign-in-accessibility">
+        <span class="settings-row-icon warning-icon"><AppIcon name="warning" :size="14" /></span>
+        <div class="setting-text">
+          <strong>Accessibility permission needed</strong>
+          <p class="muted">Hisar needs the Accessibility permission to fill browser windows.</p>
+        </div>
+        <button data-testid="open-accessibility-settings" @click="openAccessibilitySettings">Open System Settings</button>
+      </div>
+      <div v-else-if="store.agentSignIn.isEnabled" class="setting" data-testid="agent-sign-in-ready">
+        <span class="settings-row-icon"><AppIcon name="check" :size="14" /></span>
+        <div class="setting-text">
+          <strong>Accessibility allowed</strong>
+          <p class="muted">Hisar can fill browser windows.</p>
+        </div>
+      </div>
+    </div>
+    <p class="muted settings-note" data-testid="agent-sign-in-note">
+      {{
+        store.agentSignIn.isAvailable
+          ? "Sign-ins ask you unless you allowed that login on that website for longer."
+          : "Only Hisar for Mac signs agents in to websites."
+      }}
+    </p>
+  </section>
+
+  <section v-show="isRowVisible('agent-grants')" class="settings-block" data-testid="agent-grants-section">
+    <p class="section-label">Allowed without asking</p>
+    <div class="settings-group">
+      <div v-for="(grant, index) in store.allAgentGrant" :key="grant.id" class="setting" data-testid="agent-grant">
+        <span class="settings-row-icon"><AppIcon :name="getGrantIcon(grant)" :size="14" /></span>
+        <div class="setting-text">
+          <strong class="title-text" :title="describeGrant(grant)" data-testid="agent-grant-name">{{ describeGrant(grant) }}</strong>
+          <p class="muted" data-testid="agent-grant-expiry">{{ describeGrantHolder(grant) }} · {{ describeGrantExpiry(grant) }}</p>
+        </div>
+        <button :data-testid="`revoke-agent-grant-${index}`" :disabled="store.isBusy" @click="revokeAgentGrant(grant)">Revoke</button>
+      </div>
+      <p v-if="store.allAgentGrant.length === 0" class="muted empty-row" data-testid="agent-grants-empty">Every agent asks before it uses a secret.</p>
+    </div>
+    <p class="muted settings-note">
+      Longer choices cover omp, Claude Code, Codex or Hermes across sessions only when Hisar can identify the program and save approvals.
+      Otherwise, For 1 hour ends with the session or connection. Each approval ends when it expires, you revoke it here, or you sign out.
+      Locking Hisar keeps them.
+    </p>
+  </section>
+
   <section v-show="isRowVisible('agent-sessions')" class="settings-block" data-testid="agent-sessions-section">
     <p class="section-label">Running agents</p>
     <div class="settings-group">
@@ -101,8 +233,13 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
           </strong>
           <p class="muted" data-testid="agent-session-use">{{ describeSessionUse(session) }}</p>
           <ul v-if="session.allRememberedSecret.length > 0" class="remembered-list" data-testid="agent-session-secrets">
-            <li v-for="secret in session.allRememberedSecret" :key="`${secret.name}-${secret.isReveal}`" class="muted" :title="secret.name">
-              <AppIcon :name="secret.isReveal ? 'eye' : 'key'" :size="11" /> {{ secret.name }}
+            <li
+              v-for="secret in session.allRememberedSecret"
+              :key="`${secret.name}-${secret.isReveal}-${secret.website}`"
+              class="muted"
+              :title="describeRememberedSecret(secret)"
+            >
+              <AppIcon :name="secret.website ? 'globe' : secret.isReveal ? 'eye' : 'key'" :size="11" /> {{ describeRememberedSecret(secret) }}
             </li>
           </ul>
         </div>
@@ -110,7 +247,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       </div>
       <p v-if="store.allAgentSession.length === 0" class="muted empty-row" data-testid="agent-sessions-empty">No coding agent that used Hisar is running.</p>
     </div>
-    <p class="muted settings-note">Revoking ends the agent’s approval and remembered secrets; its next request asks again.</p>
+    <p class="muted settings-note">Revoking ends the session’s approval and what you allowed only for that session. What you allowed across sessions stays until it expires, you revoke it above, or you sign out.</p>
   </section>
 
   <section v-show="isRowVisible('agent-hosts')" class="settings-block" data-testid="agent-hosts-section">
@@ -140,6 +277,10 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
 
 .available-text {
   color: var(--color-success);
+}
+
+.warning-icon {
+  color: var(--color-warning);
 }
 
 .app-icon {

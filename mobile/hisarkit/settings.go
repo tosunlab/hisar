@@ -1,14 +1,6 @@
 package hisarkit
 
-import (
-	"errors"
-	"os"
-	"path/filepath"
-
-	"github.com/tryhisar/hisar/core/app"
-)
-
-const emergencyKitFileName = "Hisar Emergency Kit.pdf"
+import "github.com/tryhisar/hisar/core/app"
 
 // SetAutoLock takes 30, 60, 300, 600 or 3600 seconds and returns app.Status as JSON.
 func (hisar *Hisar) SetAutoLock(seconds int) (string, error) {
@@ -34,18 +26,11 @@ type emergencyKitResult struct {
 // {"secretKey", "emergencyKitPath"} as JSON; the app deletes the file once it is shared.
 func (hisar *Hisar) ExportEmergencyKit(password, directory string) (string, error) {
 	defer releaseMemory()
-	export, err := app.ExportEmergencyKit(hisar.service, password)
+	kit, err := app.ExportEmergencyKitToDirectory(hisar.service, password, directory)
 	if err != nil {
 		return "", err
 	}
-	if err := os.MkdirAll(directory, 0o700); err != nil {
-		return "", err
-	}
-	path := filepath.Join(directory, emergencyKitFileName)
-	if err := os.WriteFile(path, export.Document, 0o600); err != nil {
-		return "", errors.New("could not write the Emergency Kit")
-	}
-	return encodeJSON(emergencyKitResult{SecretKey: export.SecretKey, EmergencyKitPath: path}, nil)
+	return encodeJSON(emergencyKitResult{SecretKey: kit.SecretKey, EmergencyKitPath: kit.Path}, nil)
 }
 
 // CopySecretReference copies hisar://<vault>/<item>/<field> and returns it; fieldName is a built-in field or a custom field's label.

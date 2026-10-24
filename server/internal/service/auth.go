@@ -7,8 +7,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log"
-	"strings"
 	"sync"
 	"time"
 
@@ -17,17 +17,20 @@ import (
 
 	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/pake"
+	"github.com/tryhisar/hisar/server/internal/boundedstate"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
 const maxKeysetSize = 1024
 
 var (
-	errInvalidInvite    = newError(KindForbidden, "invalid invite")
-	errInvalidLogin     = newError(KindInvalid, "invalid login request")
-	errLoginFailed      = newError(KindUnauthorized, "login failed")
-	errAccountSuspended = newError(KindForbidden, apitypes.AccountSuspendedMessage)
-	ErrUnauthorized     = newError(KindUnauthorized, "unauthorized")
+	errInvalidInvite      = newError(KindForbidden, "invalid invite")
+	errInvalidLogin       = newError(KindInvalid, "invalid login request")
+	errLoginFailed        = newError(KindUnauthorized, "login failed")
+	errAccountSuspended   = newError(KindForbidden, apitypes.AccountSuspendedMessage)
+	ErrUnauthorized       = newError(KindUnauthorized, "unauthorized")
+	errInvalidAccountName = newError(KindInvalid, fmt.Sprintf("The name must be 1 to %d characters, without line breaks or other control characters.", apitypes.MaxOrganizationNameLength))
 )
 
 func generateToken() string {
@@ -130,17 +133,21 @@ func (s *Service) RegisterStart(ctx context.Context, request *apitypes.RegisterS
 func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apitypes.RegisterFinishRequest) (apitypes.SessionResponse, error) {
 	email := apitypes.NormalizeEmail(request.Email)
 	if err := s.checkInvite(ctx, request.Invite, email); err != nil {
-		return apitypes.SessionResponse{}, err
+		return apitypes.SessionResponse{}, s.registrationRefusal(ctx, request.AccountID, err)
 	}
 	switch {
 	case !crypt.IsValidAccountID(request.AccountID),
-		strings.TrimSpace(request.Name) == "",
 		len(request.Salt) != crypt.SaltSize,
 		request.Argon2.Validate() != nil,
 		len(request.EncKeyset) == 0 || len(request.EncKeyset) > maxKeysetSize,
 		request.PublicKeys.Verify(request.AccountID) != nil,
 		!isValidDevice(request.Device):
 		return apitypes.SessionResponse{}, newError(KindInvalid, "invalid registration")
+	}
+	// Account names follow the rule of organization and team names.
+	name, isValidName := apitypes.CleanOrganizationName(request.Name)
+	if !isValidName {
+		return apitypes.SessionResponse{}, errInvalidAccountName
 	}
 	if _, err := s.keys.OpaqueServer.Deserialize.RegistrationRecord(request.Record); err != nil {
 		return apitypes.SessionResponse{}, newError(KindInvalid, "invalid registration record")
@@ -149,7 +156,7 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 	account := &store.Account{
 		ID:           request.AccountID,
 		Email:        email,
-		Name:         strings.TrimSpace(request.Name),
+		Name:         name,
 		Argon2Params: argon2ParamsJSON,
 		Salt:         request.Salt,
 		OpaqueRecord: request.Record,
@@ -161,9 +168,9 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 	token, device, newSession := s.newSession(account.ID, request.Device)
 	switch err := s.store.RedeemInvite(ctx, hashToken(request.Invite), account, device, newSession); {
 	case errors.Is(err, store.ErrNotFound):
-		return apitypes.SessionResponse{}, errInvalidInvite
+		return apitypes.SessionResponse{}, s.registrationRefusal(ctx, request.AccountID, errInvalidInvite)
 	case errors.Is(err, store.ErrExists):
-		return apitypes.SessionResponse{}, newError(KindConflict, "account already exists")
+		return apitypes.SessionResponse{}, s.registrationRefusal(ctx, request.AccountID, newError(KindConflict, "account already exists"))
 	case err != nil:
 		return apitypes.SessionResponse{}, err
 	}
@@ -172,6 +179,20 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 		log.Printf("setup: %v", err)
 	}
 	return apitypes.SessionResponse{Token: token, AccountID: account.ID, DeviceID: device.ID}, nil
+}
+
+func (s *Service) registrationRefusal(ctx context.Context, accountID string, refusal error) error {
+	if !crypt.IsValidAccountID(accountID) {
+		return refusal
+	}
+	if _, err := s.store.GetAccountByID(ctx, accountID); !errors.Is(err, store.ErrNotFound) {
+		return refusal
+	}
+	var domainError *Error
+	if !errors.As(refusal, &domainError) {
+		return refusal
+	}
+	return newError(domainError.Kind, apitypes.RegistrationNotCommittedMessage)
 }
 
 func (s *Service) newSession(accountID string, deviceInfo apitypes.DeviceInfo) (string, *store.Device, *store.Session) {
@@ -188,12 +209,13 @@ func isValidDevice(device apitypes.DeviceInfo) bool {
 // LoginStart answers an unknown email with a fake record, so it cannot tell which accounts exist.
 func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRequest) (apitypes.LoginStartResponse, error) {
 	email := apitypes.NormalizeEmail(request.Email)
-	keyExchange1, err := s.keys.OpaqueServer.Deserialize.KE1(request.KE1)
+	keyExchange1, err := s.keys.LoginServer.Deserialize.KE1(request.KE1)
 	if err != nil || email == "" {
 		return apitypes.LoginStartResponse{}, errInvalidLogin
 	}
 	var clientRecord *opaque.ClientRecord
 	var accountID string
+	var recordHash []byte
 	account, err := s.store.GetAccountByEmail(ctx, email)
 	switch {
 	case errors.Is(err, store.ErrNotFound):
@@ -209,15 +231,18 @@ func (s *Service) LoginStart(ctx context.Context, request *apitypes.LoginStartRe
 		if err != nil {
 			return apitypes.LoginStartResponse{}, err
 		}
-		accountID = account.ID
+		accountID, recordHash = account.ID, store.HashOpaqueRecord(account.OpaqueRecord)
 		clientRecord = &opaque.ClientRecord{RegistrationRecord: registrationRecord, CredentialIdentifier: []byte(account.ID), ClientIdentity: []byte(account.ID)}
 	}
-	keyExchange2, serverOutput, err := s.keys.OpaqueServer.GenerateKE2(keyExchange1, clientRecord)
+	keyExchange2, serverOutput, err := s.keys.LoginServer.GenerateKE2(keyExchange1, clientRecord)
 	if err != nil {
 		return apitypes.LoginStartResponse{}, errInvalidLogin
 	}
-	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC})
+	loginID := s.loginCache.put(&pendingLogin{accountID: accountID, clientMAC: serverOutput.ClientMAC, recordHash: recordHash, purpose: pake.Login})
 	clear(serverOutput.SessionSecret)
+	if loginID == "" {
+		return apitypes.LoginStartResponse{}, newError(KindTooManyRequests, "too many pending sign-ins; try again shortly")
+	}
 	return apitypes.LoginStartResponse{LoginID: loginID, KE2: keyExchange2.Serialize()}, nil
 }
 
@@ -226,20 +251,24 @@ func (s *Service) LoginFinish(ctx context.Context, actor Actor, request *apitype
 		return apitypes.SessionResponse{}, newError(KindInvalid, "invalid device")
 	}
 	pending := s.loginCache.take(request.LoginID)
-	if pending == nil || pending.accountID == "" || pending.sessionTokenHash != nil {
+	if pending != nil {
+		defer pending.erase()
+	}
+	if pending == nil || pending.accountID == "" || pending.sessionTokenHash != nil || pending.purpose != pake.Login {
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
-	keyExchange3, err := s.keys.OpaqueServer.Deserialize.KE3(request.KE3)
-	if err != nil || s.keys.OpaqueServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
+	keyExchange3, err := s.keys.LoginServer.Deserialize.KE3(request.KE3)
+	if err != nil || s.keys.LoginServer.LoginFinish(keyExchange3, pending.clientMAC) != nil {
 		return apitypes.SessionResponse{}, errLoginFailed
 	}
-	// Suspension is checked only now, after the proof, so the answer never tells someone without the password.
+	// Suspension is checked only now, after the proof, so the answer never tells someone without the password. A login
+	// started before a credential change is refused like a wrong password.
 	token, device, newSession := s.newSession(pending.accountID, request.Device)
-	switch err := s.store.CreateDeviceSession(ctx, device, newSession); {
+	switch err := s.store.CreateDeviceSession(ctx, device, newSession, pending.recordHash); {
 	case errors.Is(err, store.ErrAccountSuspended):
 		s.recordAudit(ctx, Actor{AccountID: pending.accountID, IP: actor.IP}, auditLoginRefusedSuspended, nil)
 		return apitypes.SessionResponse{}, errAccountSuspended
-	case errors.Is(err, store.ErrNotFound):
+	case errors.Is(err, store.ErrNotFound), errors.Is(err, store.ErrConflict):
 		return apitypes.SessionResponse{}, errLoginFailed
 	case err != nil:
 		return apitypes.SessionResponse{}, err
@@ -257,45 +286,67 @@ type pendingLogin struct {
 	clientMAC []byte
 	expires   time.Time
 	// sessionTokenHash is set for a re-authentication, which never creates a session.
-	sessionTokenHash []byte
-	recordHash       []byte
+	sessionTokenHash       []byte
+	recordHash             []byte
+	scope                  apitypes.ReauthenticationScope
+	purpose                pake.AuthPurpose
+	reauthenticationServer *opaque.Server
 }
 
-// loginCache holds the server side of logins between their two requests, for a short time.
+// loginCache owns the combined login and reauthentication capacity.
 type loginCache struct {
 	mutex           sync.Mutex
 	ttl             time.Duration
-	pendingRequests map[string]*pendingLogin
+	pendingRequests *boundedstate.Table[*pendingLogin]
 }
 
-func newLoginCache(ttl time.Duration) *loginCache {
-	return &loginCache{ttl: ttl, pendingRequests: map[string]*pendingLogin{}}
+const maximumPendingLogins = 16_384
+
+func newLoginCache(ttl time.Duration, capacity int) *loginCache {
+	if capacity == 0 {
+		capacity = maximumPendingLogins
+	}
+	return &loginCache{ttl: ttl, pendingRequests: boundedstate.New[*pendingLogin](capacity, nil)}
+}
+
+func (pending *pendingLogin) erase() {
+	clear(pending.clientMAC)
+	clear(pending.sessionTokenHash)
+	clear(pending.recordHash)
+}
+
+func (c *loginCache) maintain() {
+	c.mutex.Lock()
+	defer c.mutex.Unlock()
+	c.pendingRequests.Expire(time.Now(), 1024, (*pendingLogin).erase)
 }
 
 func (c *loginCache) put(pending *pendingLogin) string {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
 	now := time.Now()
-	for existingLoginID, existingLogin := range c.pendingRequests {
-		if now.After(existingLogin.expires) {
-			delete(c.pendingRequests, existingLoginID)
-		}
-	}
+	c.pendingRequests.Expire(now, 32, (*pendingLogin).erase)
 	pending.expires = now.Add(c.ttl)
+	// The request's actor may retain its token hash after this exchange expires.
+	pending.sessionTokenHash = append([]byte(nil), pending.sessionTokenHash...)
 	loginID := generateToken()
-	c.pendingRequests[loginID] = pending
+	if !c.pendingRequests.Insert(boundedstate.Key(loginID), pending, pending.expires) {
+		pending.erase()
+		return ""
+	}
 	return loginID
 }
 
 func (c *loginCache) take(loginID string) *pendingLogin {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
-	pending, ok := c.pendingRequests[loginID]
-	if !ok {
+	entry := c.pendingRequests.Get(boundedstate.Key(loginID))
+	if entry == nil {
 		return nil
 	}
-	delete(c.pendingRequests, loginID)
-	if time.Now().After(pending.expires) {
+	pending := c.pendingRequests.Remove(entry)
+	if !time.Now().Before(pending.expires) {
+		pending.erase()
 		return nil
 	}
 	return pending

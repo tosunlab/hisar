@@ -1,0 +1,67 @@
+{
+  "Process": {
+    "PID": 0,
+    "ParentPID": 0,
+    "StartTime": 0,
+    "Path": "",
+    "Arguments": null,
+    "WorkingDirectory": "",
+    "Signature": {
+      "Identifier": "com.brave.Browser",
+      "TeamID": "KL8N8XSYF4"
+    }
+  },
+  "Frames": [
+    {
+      "Parent": -1,
+      "Document": 1,
+      "URL": "http://127.0.0.1:47811/signup"
+    }
+  ],
+  "Fields": [
+    {
+      "ID": 2,
+      "Frame": 0,
+      "IsSecure": false,
+      "InputType": "email",
+      "Label": "Email",
+      "Identifier": "email",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 3,
+      "Frame": 0,
+      "IsSecure": true,
+      "InputType": "secure text field",
+      "Label": "Password",
+      "Identifier": "password",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    },
+    {
+      "ID": 4,
+      "Frame": 0,
+      "IsSecure": true,
+      "InputType": "secure text field",
+      "Label": "Confirm password",
+      "Identifier": "confirm",
+      "Placeholder": "",
+      "IsEditable": true,
+      "IsVisible": true,
+      "Length": 0
+    }
+  ],
+  "Buttons": [
+    {
+      "ID": 5,
+      "Frame": 0,
+      "Title": "Create account",
+      "IsVisible": true
+    }
+  ]
+}

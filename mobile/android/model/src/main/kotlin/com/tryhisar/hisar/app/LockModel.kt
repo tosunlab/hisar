@@ -37,8 +37,14 @@ class LockModel(private val context: ModelContext) {
         true
     }
 
+    // Signing out finishes on this phone even when telling the server fails; the error keeps its message, and the status
+    // read again shows where it ended.
     suspend fun signOut(): Boolean = context.runInModel {
-        val newStatus = context.perform { it.signOut() } ?: return@runInModel false
+        val newStatus = context.perform { it.signOut() }
+        if (newStatus == null) {
+            context.refreshStatus()
+            return@runInModel false
+        }
         context.applyStatus(newStatus)
         true
     }

@@ -1,6 +1,10 @@
 package cliprotocol
 
-import "slices"
+import (
+	"github.com/tryhisar/hisar/core/export"
+	"github.com/tryhisar/hisar/core/session"
+	"slices"
+)
 
 type HelloResult struct {
 	ProtocolVersion int    `json:"protocolVersion"`
@@ -36,7 +40,8 @@ type Vault struct {
 }
 
 type VaultListResult struct {
-	Vaults []Vault `json:"vaults"`
+	Vaults []Vault             `json:"vaults"`
+	Issues []session.ReadIssue `json:"issues,omitempty"`
 }
 
 type VaultResult struct {
@@ -72,8 +77,12 @@ type Item struct {
 	Fingerprint        string    `json:"fingerprint,omitempty"`
 }
 
+// ItemListResult answers items.list and items.read. Provenance, on items.read only, says where the items came from and
+// whether their vault ever synced to the end; without that, missing items are not known to be absent.
 type ItemListResult struct {
-	Items []Item `json:"items"`
+	Items      []Item                  `json:"items"`
+	Issues     []session.ReadIssue     `json:"issues,omitempty"`
+	Provenance *session.ReadProvenance `json:"provenance,omitempty"`
 }
 
 type ItemResult struct {
@@ -109,9 +118,10 @@ type VaultDeletionResult struct {
 }
 
 type VaultMember struct {
-	Name  string `json:"name"`
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	AccountID string `json:"accountID,omitempty"`
+	Name      string `json:"name"`
+	Email     string `json:"email"`
+	Role      string `json:"role"`
 }
 
 type VaultActionsResult struct {
@@ -123,6 +133,7 @@ type VaultActionsResult struct {
 	LeaveBlockedReason  string        `json:"leaveBlockedReason,omitempty"`
 	MembersLosingAccess []VaultMember `json:"membersLosingAccess"`
 	TargetVaults        []Vault       `json:"targetVaults"`
+	ImportScope         string        `json:"importScope,omitempty"`
 }
 
 const (
@@ -132,15 +143,17 @@ const (
 
 // ExportChange: the app writes the file at Path itself, so private keys never cross the socket; it never replaces a file.
 type ExportChange struct {
-	Format     string `json:"format"`
-	Passphrase string `json:"passphrase,omitempty"`
-	Path       string `json:"path"`
+	Format           string `json:"format"`
+	Passphrase       string `json:"passphrase,omitempty"`
+	Path             string `json:"path"`
+	AcceptProvenance bool   `json:"acceptProvenance,omitempty"`
 }
 
 type ExportResult struct {
-	Path       string `json:"path"`
-	VaultCount int    `json:"vaultCount"`
-	ItemCount  int    `json:"itemCount"`
+	Path       string             `json:"path"`
+	VaultCount int                `json:"vaultCount"`
+	ItemCount  int                `json:"itemCount"`
+	Provenance *export.Provenance `json:"provenance,omitempty"`
 }
 
 type CodeResult struct {
@@ -193,13 +206,17 @@ type ReceivedInvitation struct {
 }
 
 type SentInvitation struct {
-	ID        string `json:"id"`
-	VaultID   string `json:"vaultID"`
-	VaultName string `json:"vaultName"`
-	Email     string `json:"email"`
-	Role      string `json:"role"`
-	State     string `json:"state"`
-	ExpiresAt string `json:"expiresAt"`
+	ID                   string `json:"id"`
+	VaultID              string `json:"vaultID"`
+	VaultName            string `json:"vaultName"`
+	Email                string `json:"email"`
+	Role                 string `json:"role"`
+	State                string `json:"state"`
+	ExpiresAt            string `json:"expiresAt"`
+	RequiresConfirmation bool   `json:"requiresConfirmation,omitempty"`
+	RecipientID          string `json:"recipientID,omitempty"`
+	SecurityCode         string `json:"securityCode,omitempty"`
+	ReviewToken          string `json:"reviewToken,omitempty"`
 }
 
 type InvitationListResult struct {

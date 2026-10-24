@@ -16,9 +16,10 @@ type Item struct {
 }
 
 type ChangesResponse struct {
-	Items   []Item `json:"items"`
-	NextSeq int64  `json:"nextSeq"`
-	More    bool   `json:"more"`
+	Items         []Item `json:"items"`
+	NextSeq       int64  `json:"nextSeq"`
+	More          bool   `json:"more"`
+	KeyGeneration int64  `json:"keyGeneration"`
 }
 
 // PutItemRequest is sent with an If-Match header carrying the base revision (absent for new items). KeyGeneration is the
@@ -30,6 +31,7 @@ type PutItemRequest struct {
 	Overview      []byte `json:"overview"`
 	Details       []byte `json:"details"`
 	KeyGeneration int64  `json:"keyGeneration,omitempty"`
+	ImportScope   string `json:"importScope,omitempty"`
 }
 
 type PutItemResponse struct {

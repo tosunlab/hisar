@@ -1,4 +1,4 @@
-import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse, SaveOfferView } from "../shared/messages";
+import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
 import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
 import { featureAddresses, featureCards, featureIdentities } from "../shared/protocol";
@@ -16,18 +16,15 @@ import {
   probeFrame,
 } from "./fill";
 import { InlineMenuController } from "./inline-menu/controller";
-import { showSaveBar } from "./save-bar";
+
+// documentToken names this document for save offers in Firefox, which gives the background no documentId. Pages cannot
+// read it or send runtime messages, so only this content script can claim the document.
+const documentToken = crypto.randomUUID();
 
 function sendToBackground<Result>(message: ContentToBackgroundMessage): Promise<MessageResponse<Result>> {
   return chrome.runtime.sendMessage(message);
 }
 
-function presentSaveOffer(offer: SaveOfferView): void {
-  showSaveBar(document, offer, async (action, edits) => {
-    const response = await sendToBackground<Record<string, never>>({ type: "content.actOnSaveOffer", offerID: offer.offerID, action, edits });
-    return response.ok ? { ok: true } : { ok: false, message: response.error.message };
-  });
-}
 
 export function handleBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
   // A fill focuses the fields it writes; the menu must not open again on them.
@@ -37,6 +34,8 @@ export function handleBackgroundMessage(message: BackgroundToContentMessage, inl
 
 function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
   switch (message.type) {
+    case "content.getDocumentToken":
+      return documentToken;
     case "content.probe":
       return probeFrame(document);
     case "content.fillLogin": {
@@ -88,10 +87,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       inlineMenu.dismissMenu(message.sessionID);
       return fillIdentityIntoScopeOf(document, field, message.identity);
     }
-    case "content.showSaveOffer":
-      if (window.top !== window) return false;
-      presentSaveOffer(message.offer);
-      return true;
     case "content.isInlineMenuVisible":
       return inlineMenu.isMenuInteractionAllowed(message.sessionID);
     case "content.resizeInlineMenu":
@@ -113,6 +108,7 @@ function startInlineMenu(): InlineMenuController {
     cancelFrame: (handle) => window.cancelAnimationFrame(handle),
     getRect: (element) => element.getBoundingClientRect(),
     getElementAtPoint: (x, y) => document.elementFromPoint(x, y),
+    extensionBaseUrl: chrome.runtime.getURL(""),
   });
   readInlineMenuSettings(chrome.storage.local)
     .then((settings) => inlineMenu.updateSettings(settings))
@@ -152,18 +148,11 @@ function startContentScript(): void {
     onSubmission: (submission) => {
       const message: ContentToBackgroundMessage =
         submission.kind === "login"
-          ? { type: "content.loginSubmitted", username: submission.username, password: submission.password }
+          ? { type: "content.loginSubmitted", username: submission.username, password: submission.password, documentToken }
           : { type: "content.usernameSubmitted", username: submission.username };
       sendToBackground(message).catch(() => undefined);
     },
   });
-  if (window.top === window) {
-    sendToBackground<SaveOfferView | null>({ type: "content.getPendingSaveOffer" })
-      .then((response) => {
-        if (response.ok && response.result) presentSaveOffer(response.result);
-      })
-      .catch(() => undefined);
-  }
 }
 
 const globalScope = globalThis as typeof globalThis & { isHisarContentScriptLoaded?: boolean };

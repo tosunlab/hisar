@@ -6,7 +6,7 @@ import { routeMessage, type RouterServices } from "./router";
 
 const context = { extensionID: "mmipiffoogblblocokimpemdopmdjghf", extensionOrigin: "chrome-extension://mmipiffoogblblocokimpemdopmdjghf/" };
 const popupSender = { id: context.extensionID, url: `${context.extensionOrigin}popup.html` };
-const contentSender = { id: context.extensionID, url: "https://example.com/login", tab: { id: 9 }, frameId: 0 };
+const contentSender = { id: context.extensionID, url: "https://example.com/login", tab: { id: 9 }, frameId: 0, documentId: "document-1" };
 
 function createController(): BackgroundController {
   return {
@@ -72,7 +72,19 @@ describe("routeMessage", () => {
       contentSender,
       context,
     );
-    expect(controller.handleLoginSubmitted).toHaveBeenCalledWith(9, "https://example.com/login", "alex", "pw");
+    expect(controller.handleLoginSubmitted).toHaveBeenCalledWith(9, "https://example.com/login", "alex", "pw", 0, "https://example.com/login", "document-1");
+  });
+
+  it("names the submitting document by the browser's documentId, else by the content script's token in Firefox", async () => {
+    const controller = createController();
+    const submission = { type: "content.loginSubmitted", username: "alex", password: "pw", documentToken: "token-1" } as never;
+    await routeMessage(createServices(controller), submission, contentSender, context);
+    expect(vi.mocked(controller.handleLoginSubmitted).mock.calls[0][6]).toBe("document-1");
+    const firefoxSender = { ...contentSender, documentId: undefined };
+    await routeMessage(createServices(controller), submission, firefoxSender, context);
+    expect(vi.mocked(controller.handleLoginSubmitted).mock.calls[1][6]).toBe("token-1");
+    const withoutDocument = { type: "content.loginSubmitted", username: "alex", password: "pw" } as never;
+    expect(await routeMessage(createServices(controller), withoutDocument, firefoxSender, context)).toMatchObject({ ok: false, error: { code: "invalid-request" } });
   });
 
   it("refuses content messages without a tab", async () => {
@@ -83,11 +95,29 @@ describe("routeMessage", () => {
   it("returns errors with their codes", async () => {
     const response = await routeMessage(
       createServices(createController()),
-      { type: "content.actOnSaveOffer", offerID: "x", action: "save" } as never,
-      contentSender,
+      { type: "popup.actOnSaveOffer", tabId: 9, offerID: "x", action: "save" } as never,
+      popupSender,
       context,
     );
     expect(response).toEqual({ ok: false, error: { code: "not-found", message: "This save offer has expired" } });
+  });
+
+  it("acknowledges submissions before checking and never returns a decision to the page", async () => {
+    const controller = createController();
+    vi.mocked(controller.handleLoginSubmitted).mockReturnValue(Promise.withResolvers<undefined>().promise);
+    expect(await routeMessage(createServices(controller), { type: "content.loginSubmitted", username: "alex", password: "guess" } as never, contentSender, context)).toEqual({ ok: true, result: null });
+  });
+
+  it("refuses save inspection and authorization from every embedded extension page", async () => {
+    const controller = createController();
+    for (const page of ["inline-menu.html", "passkey-prompt.html"]) {
+      const sender = { ...contentSender, url: `${context.extensionOrigin}${page}`, frameId: 3 };
+      for (const message of [{ type: "popup.getPendingSaveOffer", tabId: 9 }, { type: "popup.actOnSaveOffer", tabId: 9, offerID: "x", action: "save" }]) {
+        expect(await routeMessage(createServices(controller), message, sender, context)).toMatchObject({ ok: false, error: { code: "invalid-request" } });
+      }
+    }
+    expect(controller.getPendingSaveOffer).not.toHaveBeenCalled();
+    expect(controller.actOnSaveOffer).not.toHaveBeenCalled();
   });
 
   it("leaves broadcast messages and unknown shapes alone", async () => {
@@ -112,6 +142,17 @@ describe("routeMessage", () => {
       });
     }
     expect(getState).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes the inline menu page's scheme from the browser, so Firefox's moz-extension pages count and Chrome's do not there", async () => {
+    const getState = vi.fn(async () => ({ view: "logins" }));
+    const services = { controller: createController(), inlineMenu: { getState } as unknown as InlineMenuService };
+    const firefoxContext = { extensionID: "extension@tryhisar.com", extensionOrigin: "moz-extension://5f0c6a1e-uuid/" };
+    const menuSender = { id: firefoxContext.extensionID, url: "moz-extension://5f0c6a1e-uuid/inline-menu.html#s", tab: { id: 9 }, frameId: 4 };
+    expect(await routeMessage(services, { type: "inlineMenu.getState", sessionID: "s" } as never, menuSender, firefoxContext)).toMatchObject({ ok: true });
+    const chromeSchemeSender = { ...menuSender, url: "chrome-extension://5f0c6a1e-uuid/inline-menu.html#s" };
+    expect(await routeMessage(services, { type: "inlineMenu.getState", sessionID: "s" } as never, chromeSchemeSender, firefoxContext)).toMatchObject({ ok: false });
+    expect(await routeMessage(services, { type: "inlineMenu.getState", sessionID: "s" } as never, menuSender, context)).toMatchObject({ ok: false });
   });
 
   it("opens inline menu sessions with the frame and tab URLs from the sender", async () => {

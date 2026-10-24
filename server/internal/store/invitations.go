@@ -1,12 +1,14 @@
 package store
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"time"
 
-	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
 )
 
 var (
@@ -19,6 +21,11 @@ const (
 	ShareInvitationAccepted = "accepted"
 )
 
+// isInvitedByOwner holds for a share invitation i whose inviter still owns its vault: an invitation carries its
+// inviter's authority, so one from an owner who was removed or demoted can no longer be accepted or completed.
+const isInvitedByOwner = `EXISTS (SELECT 1 FROM vault_access inviter_access
+	WHERE inviter_access.vault_id = i.vault_id AND inviter_access.account_id = i.invited_by AND inviter_access.role = 'owner')`
+
 type ShareInvitation struct {
 	ID        string
 	VaultID   string
@@ -28,6 +35,7 @@ type ShareInvitation struct {
 	State     string
 	CreatedAt time.Time
 	ExpiresAt time.Time
+	Intent    *apitypes.SignedShareIntent
 	// AcceptedAt is nil while pending.
 	AcceptedAt *time.Time
 }
@@ -53,23 +61,91 @@ type SentShareInvitation struct {
 	Recipient *Account
 }
 
-// UpsertShareInvitation stores an invitation, or renews the one for the same vault and email as pending, and returns its ID.
-func (s *Store) UpsertShareInvitation(ctx context.Context, invitation *ShareInvitation, ttl time.Duration) (string, error) {
-	var invitationID string
-	err := s.pool.QueryRow(ctx, `
-		INSERT INTO share_invitations (id, vault_id, email, role, invited_by, expires_at) VALUES ($1, $2, $3, $4, $5, $6)
-		ON CONFLICT (vault_id, email) DO UPDATE SET role = $4, invited_by = $5, expires_at = $6, created_at = now(),
-			state = 'pending', accepted_by = NULL, accepted_at = NULL
-		RETURNING id`,
-		uuid.NewString(), invitation.VaultID, invitation.Email, invitation.Role, invitation.InvitedBy, time.Now().Add(ttl)).Scan(&invitationID)
-	return invitationID, err
+// isRetiredShareIntent counts an expired operation as retired, so a tombstone only has to outlive its signed expiry.
+const isRetiredShareIntent = `SELECT EXISTS(SELECT 1 FROM retired_share_invitations WHERE id=$1) OR $2 <= now()`
+
+// UpsertShareInvitation replaces a source row, never its identity. The lifetime is signed by the owner.
+func (s *Store) UpsertShareInvitation(ctx context.Context, invitation *ShareInvitation) (string, error) {
+	if invitation.Intent == nil {
+		return "", ErrNoInvitation
+	}
+	intent := invitation.Intent.Context
+	err := s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		vault, err := lockVault(ctx, transaction, invitation.VaultID)
+		if err != nil {
+			return err
+		}
+		if err := requireVaultOwner(ctx, transaction, invitation.VaultID, invitation.InvitedBy); err != nil {
+			return err
+		}
+		if vault.vaultType != apitypes.VaultShared || vault.needsRotation || intent.KeyGeneration != vault.keyGeneration || intent.AccessRevision != vault.accessRevision {
+			return ErrConflict
+		}
+		var retired bool
+		if err := transaction.QueryRow(ctx, isRetiredShareIntent, intent.ID, time.Unix(intent.ExpiresAt, 0)).Scan(&retired); err != nil {
+			return err
+		}
+		if retired {
+			return ErrConflict
+		}
+		var existing *apitypes.SignedShareIntent
+		err = transaction.QueryRow(ctx, `SELECT intent FROM share_invitations WHERE id=$1 FOR UPDATE`, intent.ID).Scan(&existing)
+		if err == nil {
+			if existing != nil && bytes.Equal(crypt.HashShareIntent(existing.Context), crypt.HashShareIntent(intent)) && bytes.Equal(existing.Signature, invitation.Intent.Signature) {
+				return nil
+			}
+			return ErrConflict
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return err
+		}
+		if err := transaction.QueryRow(ctx, isRetiredShareIntent, intent.ID, time.Unix(intent.ExpiresAt, 0)).Scan(&retired); err != nil {
+			return err
+		}
+		if retired {
+			return ErrConflict
+		}
+		if _, err := transaction.Exec(ctx, `DELETE FROM share_invitations WHERE vault_id=$1 AND email=$2`, invitation.VaultID, invitation.Email); err != nil {
+			return err
+		}
+		_, err = transaction.Exec(ctx, `INSERT INTO share_invitations(id,vault_id,email,role,invited_by,expires_at,intent) VALUES($1,$2,$3,$4,$5,$6,$7)`,
+			intent.ID, invitation.VaultID, invitation.Email, invitation.Role, invitation.InvitedBy, time.Unix(intent.ExpiresAt, 0), invitation.Intent)
+		return err
+	})
+	return intent.ID, err
+}
+
+const isPendingShareInvitation = `i.id = $1 AND i.email = $2 AND i.invited_by = $3 AND i.role = $4
+	AND i.state = 'pending' AND i.expires_at > now() AND ` + isInvitedByOwner
+
+func (s *Store) CheckPendingShareInvitation(ctx context.Context, invitation *ShareInvitation) error {
+	var exists int
+	err := s.pool.QueryRow(ctx, `SELECT 1 FROM share_invitations i WHERE `+isPendingShareInvitation,
+		invitation.ID, invitation.Email, invitation.InvitedBy, invitation.Role).Scan(&exists)
+	return convertNoRowsToNotFound(err)
+}
+
+// CreateShareSignUpInvite mints a member sign-up token only while its source invitation is still pending.
+func (s *Store) CreateShareSignUpInvite(ctx context.Context, invitation *ShareInvitation, tokenHash []byte, expiresAt time.Time) error {
+	tag, err := s.pool.Exec(ctx, `
+		WITH source AS MATERIALIZED (SELECT i.* FROM share_invitations i WHERE `+isPendingShareInvitation+` FOR SHARE OF i)
+		INSERT INTO invites (token_hash, email, role, created_by, expires_at, share_invitation_id)
+		SELECT $5, i.email, 'member', i.invited_by, $6, i.id FROM source i`,
+		invitation.ID, invitation.Email, invitation.InvitedBy, invitation.Role, tokenHash, expiresAt)
+	if err != nil {
+		return err
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 func (s *Store) ListReceivedShareInvitations(ctx context.Context, email string) ([]ReceivedShareInvitation, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, a.name, a.email
 		FROM share_invitations i JOIN accounts a ON a.id = i.invited_by
-		WHERE i.email = $1 AND i.state = 'pending' AND i.expires_at > now()
+		WHERE i.email = $1 AND i.state = 'pending' AND i.expires_at > now() AND `+isInvitedByOwner+`
 		ORDER BY i.created_at`, email)
 	if err != nil {
 		return nil, err
@@ -86,11 +162,11 @@ func (s *Store) ListReceivedShareInvitations(ctx context.Context, email string) 
 func (s *Store) ListSentShareInvitations(ctx context.Context, accountID string) ([]SentShareInvitation, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, i.accepted_at,
-			r.id, r.email, r.name, r.role, r.kem_pub, r.sign_pub, r.kem_sig
+			r.id, r.email, r.name, r.role, r.kem_pub, r.sign_pub, r.kem_sig, i.intent
 		FROM share_invitations i
 		JOIN vault_access owner ON owner.vault_id = i.vault_id AND owner.account_id = $1 AND owner.role = 'owner'
 		LEFT JOIN accounts r ON r.id = i.accepted_by
-		WHERE i.state = 'accepted' OR i.expires_at > now()
+		WHERE (i.state = 'accepted' OR i.expires_at > now()) AND `+isInvitedByOwner+`
 		ORDER BY i.created_at`, accountID)
 	if err != nil {
 		return nil, err
@@ -101,7 +177,7 @@ func (s *Store) ListSentShareInvitations(ctx context.Context, accountID string) 
 		var recipientKEMPub, recipientSignPub, recipientKEMSig []byte
 		err := row.Scan(&invitation.ID, &invitation.VaultID, &invitation.Email, &invitation.Role, &invitation.InvitedBy, &invitation.State,
 			&invitation.CreatedAt, &invitation.ExpiresAt, &invitation.AcceptedAt,
-			&recipientID, &recipientEmail, &recipientName, &recipientRole, &recipientKEMPub, &recipientSignPub, &recipientKEMSig)
+			&recipientID, &recipientEmail, &recipientName, &recipientRole, &recipientKEMPub, &recipientSignPub, &recipientKEMSig, &invitation.Intent)
 		if err == nil && recipientID != nil {
 			invitation.Recipient = &Account{ID: *recipientID, Email: *recipientEmail, Name: *recipientName, Role: *recipientRole,
 				KEMPub: recipientKEMPub, SignPub: recipientSignPub, KEMSig: recipientKEMSig}
@@ -111,11 +187,19 @@ func (s *Store) ListSentShareInvitations(ctx context.Context, accountID string) 
 }
 
 // AcceptShareInvitation marks a pending invitation to email as accepted by accountID and returns its vault and acceptance time.
+// The account row is read FOR SHARE first, as for an organization invitation, so an acceptance that meets a deletion of the
+// account waits for it and then finds no account.
 func (s *Store) AcceptShareInvitation(ctx context.Context, invitationID, accountID, email string) (vaultID string, acceptedAt time.Time, err error) {
-	err = s.pool.QueryRow(ctx, `
-		UPDATE share_invitations SET state = 'accepted', accepted_by = $2, accepted_at = now()
-		WHERE id = $1 AND email = $3 AND state = 'pending' AND expires_at > now()
-		RETURNING vault_id, accepted_at`, invitationID, accountID, email).Scan(&vaultID, &acceptedAt)
+	err = s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var acceptorID string
+		if err := transaction.QueryRow(ctx, `SELECT id FROM accounts WHERE id = $1 FOR SHARE`, accountID).Scan(&acceptorID); err != nil {
+			return err
+		}
+		return transaction.QueryRow(ctx, `
+			UPDATE share_invitations i SET state = 'accepted', accepted_by = $2, accepted_at = now()
+			WHERE i.id = $1 AND i.email = $3 AND i.state = 'pending' AND i.expires_at > now() AND `+isInvitedByOwner+`
+			RETURNING i.vault_id, i.accepted_at`, invitationID, accountID, email).Scan(&vaultID, &acceptedAt)
+	})
 	return vaultID, acceptedAt, convertNoRowsToNotFound(err)
 }
 
@@ -124,7 +208,7 @@ func (s *Store) ListWaitingShareInvitations(ctx context.Context, accountID strin
 	rows, err := s.pool.Query(ctx, `
 		SELECT i.id, i.vault_id, i.email, i.role, i.invited_by, i.state, i.created_at, i.expires_at, i.accepted_at, a.name, a.email
 		FROM share_invitations i JOIN accounts a ON a.id = i.invited_by
-		WHERE i.accepted_by = $1 AND i.state = 'accepted'
+		WHERE i.accepted_by = $1 AND i.state = 'accepted' AND `+isInvitedByOwner+`
 		ORDER BY i.accepted_at`, accountID)
 	if err != nil {
 		return nil, err
@@ -157,16 +241,32 @@ func (s *Store) GetShareAcceptance(ctx context.Context, invitationID string, acc
 
 func (s *Store) DeclineShareInvitation(ctx context.Context, invitationID, email string) (string, error) {
 	var vaultID string
-	err := s.pool.QueryRow(ctx, `DELETE FROM share_invitations WHERE id = $1 AND email = $2 RETURNING vault_id`, invitationID, email).Scan(&vaultID)
+	err := s.runInTransaction(ctx, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT vault_id FROM share_invitations WHERE id=$1 AND email=$2`, invitationID, email).Scan(&vaultID); err != nil {
+			return err
+		}
+		if _, err := lockVault(ctx, tx, vaultID); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, `DELETE FROM share_invitations WHERE id=$1 AND email=$2 RETURNING vault_id`, invitationID, email).Scan(&vaultID)
+	})
 	return vaultID, convertNoRowsToNotFound(err)
 }
 
 // CancelShareInvitation deletes an invitation of a vault the account owns and returns its vault and email.
 func (s *Store) CancelShareInvitation(ctx context.Context, invitationID, accountID string) (vaultID, email string, err error) {
-	err = s.pool.QueryRow(ctx, `
-		DELETE FROM share_invitations i USING vault_access owner
-		WHERE i.id = $1 AND owner.vault_id = i.vault_id AND owner.account_id = $2 AND owner.role = 'owner'
-		RETURNING i.vault_id, i.email`, invitationID, accountID).Scan(&vaultID, &email)
+	err = s.runInTransaction(ctx, func(tx pgx.Tx) error {
+		if err := tx.QueryRow(ctx, `SELECT vault_id FROM share_invitations WHERE id=$1`, invitationID).Scan(&vaultID); err != nil {
+			return err
+		}
+		if _, err := lockVault(ctx, tx, vaultID); err != nil {
+			return err
+		}
+		return tx.QueryRow(ctx, `
+			DELETE FROM share_invitations i USING vault_access owner
+			WHERE i.id=$1 AND owner.vault_id=i.vault_id AND owner.account_id=$2 AND owner.role='owner'
+			RETURNING i.vault_id,i.email`, invitationID, accountID).Scan(&vaultID, &email)
+	})
 	return vaultID, email, convertNoRowsToNotFound(err)
 }
 

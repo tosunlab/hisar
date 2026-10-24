@@ -1,5 +1,6 @@
 import { auth, request } from "../../api";
 import { bridge, type ReauthenticationProof } from "../../bridge/bridge";
+import { readCollection } from "../../collections";
 
 export type AccountRole = "admin" | "member";
 
@@ -35,6 +36,17 @@ export interface AdminDevice {
 export interface AdminAccountDetail {
   account: AdminAccount;
   devices: AdminDevice[];
+}
+
+export interface AccountDeletionPreview {
+  planVersion: string;
+  ownedVaults: { vaultId: string; type: string; otherMemberCount: number }[];
+  memberVaults: { vaultId: string; type: string; role: string }[];
+  organizations?: { organizationId: string; name: string; deleted: boolean; newAdminId?: string; newAdminName?: string }[];
+  shareLinkCount: number;
+  sentInvitationCount: number;
+  receivedInvitationCount: number;
+  deviceCount: number;
 }
 
 export const accountsPath = "/admin/accounts";
@@ -76,8 +88,15 @@ export function listAccounts(query: string, cursor = ""): Promise<AdminAccountPa
   return request("GET", `/admin/accounts${search}`);
 }
 
-export function getAccount(accountId: string): Promise<AdminAccountDetail> {
-  return request("GET", accountPath(accountId));
+export async function getAccount(accountId: string): Promise<AdminAccountDetail> {
+  const detail = await readCollection<{ account?: AdminAccount; devices: AdminDevice[] }>(accountPath(accountId), () => ({ devices: [] }), (result, record) => {
+    if (record.field === "account") result.account = record.value as AdminAccount;
+    else if (record.field === "devices") result.devices.push(record.value as AdminDevice);
+    else throw new Error("The server returned an unknown account detail record.");
+  });
+  if (!detail.account) throw new Error("The server returned no account summary.");
+  detail.devices.sort((a, b) => Number(a.revokedAt !== null) - Number(b.revokedAt !== null) || b.lastSeenAt.localeCompare(a.lastSeenAt));
+  return { account: detail.account, devices: detail.devices };
 }
 
 export function suspendAccount(accountId: string): Promise<void> {
@@ -100,24 +119,48 @@ export function changeAccountRole(accountId: string, role: AccountRole, proof: R
   return request("PUT", `${accountPath(accountId)}/role`, { body: { role, proof } });
 }
 
-export function deleteAccount(accountId: string, email: string, proof: ReauthenticationProof): Promise<void> {
-  return request("POST", `${accountPath(accountId)}/delete`, { body: { email, proof } });
+export async function previewAccountDeletion(accountId: string): Promise<AccountDeletionPreview> {
+  const preview = await readCollection<AccountDeletionPreview>(`${accountPath(accountId)}/deletion-preview`, () => ({
+    planVersion: "", ownedVaults: [], memberVaults: [], organizations: [], shareLinkCount: 0, sentInvitationCount: 0, receivedInvitationCount: 0, deviceCount: 0,
+  }), (result, record) => {
+    if (record.field === "$") Object.assign(result, record.value as AccountDeletionPreview, { ownedVaults: result.ownedVaults, memberVaults: result.memberVaults, organizations: result.organizations });
+    else if (record.field === "ownedVaults") result.ownedVaults.push(record.value as AccountDeletionPreview["ownedVaults"][number]);
+    else if (record.field === "memberVaults") result.memberVaults.push(record.value as AccountDeletionPreview["memberVaults"][number]);
+    else if (record.field === "organizations") result.organizations?.push(record.value as NonNullable<AccountDeletionPreview["organizations"]>[number]);
+    else throw new Error("The server returned an unknown deletion preview record.");
+  });
+  if (!preview.planVersion) throw new Error("The server returned no deletion plan.");
+  return preview;
+}
+
+export function deleteAccount(accountId: string, email: string, proof: ReauthenticationProof, planVersion: string): Promise<void> {
+  return request("POST", `${accountPath(accountId)}/delete`, { body: { email, proof, planVersion } });
 }
 
 // proveAdmin proves the signed-in admin's master password to the server, for a change that asks for it again.
-export async function proveAdmin(secretKey: string, password: string): Promise<ReauthenticationProof> {
+export async function proveAdmin(secretKey: string, password: string, action?: string, targetAccountID?: string, planVersion?: string): Promise<ReauthenticationProof> {
   const session = auth.session;
   if (!session) {
     throw new Error("Sign in again.");
   }
   const { email } = await request<{ email: string }>("GET", "/account");
-  return bridge.reauthenticate(session.token, email, secretKey, password);
+  return action
+    ? bridge.reauthenticate(session.token, email, secretKey, password, action, targetAccountID, planVersion)
+    : bridge.reauthenticate(session.token, email, secretKey, password);
 }
 
-// readAccountId returns the account ID in a path under /admin/accounts/, or "" for the list.
+// readAccountId returns the account ID in a path under /admin/accounts/, or "" for the list. A segment that is not valid
+// percent-encoding is taken as typed, so it names no account.
 export function readAccountId(pathname: string): string {
   const rest = pathname.replace(/\/+$/, "").slice(accountsPath.length + 1);
-  return pathname.startsWith(`${accountsPath}/`) && rest && !rest.includes("/") ? decodeURIComponent(rest) : "";
+  if (!pathname.startsWith(`${accountsPath}/`) || !rest || rest.includes("/")) {
+    return "";
+  }
+  try {
+    return decodeURIComponent(rest);
+  } catch {
+    return rest;
+  }
 }
 
 const dateFormat = new Intl.DateTimeFormat("en", { dateStyle: "medium" });

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- The mark's tile, from assets/logo/README.md. -->
+    <!-- The mark's tile, from docs/docs/development/logo.md. -->
     <color name="ic_launcher_background">#F2F3F5</color>
     <!-- The iPhone app's LaunchBackground colour. -->
     <color name="launch_background">#0D0E10</color>

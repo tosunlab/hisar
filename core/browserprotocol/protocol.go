@@ -15,8 +15,17 @@ const (
 	HostName        = "com.tryhisar.hisar"
 	ExtensionID     = "mmipiffoogblblocokimpemdopmdjghf"
 	AllowedOrigin   = "chrome-extension://" + ExtensionID + "/"
-	MaxMessageSize  = 1 << 20
+	// FirefoxExtensionID is the add-on's ID in Firefox (browser_specific_settings.gecko.id), which Firefox passes the host
+	// instead of an origin.
+	FirefoxExtensionID = "extension@tryhisar.com"
+	MaxMessageSize     = 1 << 20
 )
+
+// IsAllowedCaller reports whether the extension the host relays for is Hisar's: the origin Chromium browsers pass, or the
+// add-on ID Firefox passes. Any local process can start the host with either, so pairing remains the check that matters.
+func IsAllowedCaller(caller string) bool {
+	return caller == AllowedOrigin || caller == FirefoxExtensionID
+}
 
 const (
 	ErrorInvalidRequest     = "invalid-request"
@@ -49,9 +58,12 @@ type Request struct {
 	ItemID           string `json:"itemID,omitempty"`
 	Username         string `json:"username,omitempty"`
 	Password         string `json:"password,omitempty"`
-	Length           int    `json:"length,omitempty"`
-	Digits           *bool  `json:"digits,omitempty"`
-	Symbols          *bool  `json:"symbols,omitempty"`
+	SaveContext      string `json:"saveContext,omitempty"`
+	// TabID names the browser tab of a logins.prepare; the tab's next one retires its save context.
+	TabID   string `json:"tabID,omitempty"`
+	Length  int    `json:"length,omitempty"`
+	Digits  *bool  `json:"digits,omitempty"`
+	Symbols *bool  `json:"symbols,omitempty"`
 	// Query, Category and IsFavoriteOnly narrow items.list; FieldID names the field items.reveal returns.
 	Query          string `json:"query,omitempty"`
 	Category       string `json:"category,omitempty"`
@@ -83,6 +95,8 @@ func NewError(code, message string) *ResponseError {
 	return &ResponseError{Code: code, Message: message}
 }
 
+// ConnectMessage: ExtensionOrigin is the caller the browser named when it started the host, an origin from a Chromium
+// browser or an add-on ID from Firefox (IsAllowedCaller).
 type ConnectMessage struct {
 	Type            string `json:"type"`
 	ExtensionOrigin string `json:"extensionOrigin"`
@@ -122,9 +136,12 @@ const FeatureCreateItems = "create-items"
 // FeatureUnlockPassword: unlock.password unlocks Hisar with the master password typed in the popup.
 const FeatureUnlockPassword = "unlock-password"
 
+// FeatureSaveConfirmation requires a one-use session-bound context for logins.save.
+const FeatureSaveConfirmation = "save-confirmation"
+
 // ListFeatures returns the features this app announces in hello.
 func ListFeatures() []string {
-	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems}
+	return []string{FeatureAddresses, FeatureVault, FeatureUnlockPassword, FeatureCards, FeatureIdentities, FeatureSaveOptions, FeatureCreateItems, FeatureSaveConfirmation, FeaturePasskeyVerification}
 }
 
 const (
@@ -152,6 +169,7 @@ type StatusResult struct {
 
 type Login struct {
 	VaultID            string `json:"vaultID"`
+	IsPersonal         bool   `json:"isPersonal"`
 	ItemID             string `json:"itemID"`
 	Title              string `json:"title"`
 	Username           string `json:"username"`
@@ -170,10 +188,13 @@ type FillResult struct {
 }
 
 type CheckResult struct {
-	Status  string `json:"status"`
-	VaultID string `json:"vaultID,omitempty"`
-	ItemID  string `json:"itemID,omitempty"`
-	Title   string `json:"title,omitempty"`
+	Status      string `json:"status"`
+	VaultID     string `json:"vaultID,omitempty"`
+	ItemID      string `json:"itemID,omitempty"`
+	Title       string `json:"title,omitempty"`
+	VaultName   string `json:"vaultName,omitempty"`
+	IsPersonal  bool   `json:"isPersonal,omitempty"`
+	SaveContext string `json:"saveContext,omitempty"`
 }
 
 // AddressSource tells where an address offered for filling comes from.

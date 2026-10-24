@@ -20,11 +20,7 @@ func main() {
 		}
 		socketPath = browser.GetDefaultSocketPath(homeDirectory)
 	}
-	extensionOrigin := ""
-	if len(os.Args) > 1 {
-		extensionOrigin = os.Args[1]
-	}
-	config := browser.HostConfig{SocketPath: socketPath, ExtensionOrigin: extensionOrigin, RetryFor: 10 * time.Second}
+	config := browser.HostConfig{SocketPath: socketPath, ExtensionOrigin: browser.ReadCaller(os.Args), RetryFor: 10 * time.Second}
 	config.LaunchApp = getAppLauncher()
 	if err := browser.RunHost(os.Stdin, os.Stdout, config); err != nil {
 		log.Fatal(err)

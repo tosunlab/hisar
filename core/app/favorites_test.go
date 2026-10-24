@@ -301,7 +301,7 @@ func TestCommandLineFavoritesThroughTheApp(t *testing.T) {
 
 	var importResult cliprotocol.ImportResult
 	imported := []item.Item{{Overview: item.Overview{Title: "Bank"}, Details: item.Details{Password: "bank"}, IsFavorite: true}, {Overview: item.Overview{Title: "Forum"}, Details: item.Details{Password: "forum"}}}
-	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: test.testService.familyID, ImportedItems: imported}, &importResult)
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeImportItem, VaultID: test.testService.familyID, ImportScope: reviewedImportScope(t, service, test.testService.familyID), ImportedItems: imported}, &importResult)
 	if titles := listFavoriteTitles(t, service); !reflect.DeepEqual(titles, []string{"Bank · Family"}) || importResult.SavedCount != 2 {
 		t.Errorf("after importing through the app: %v %+v", titles, importResult)
 	}

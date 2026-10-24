@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -53,7 +54,7 @@ func TestParseCredentialExchangeLogins(t *testing.T) {
 		!githubPasskey.CreatedAt.Equal(time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)) || !bytes.Equal(githubPasskey.PRFSecret, bytes.Repeat([]byte{7}, 32)) {
 		t.Errorf("GitHub passkey = %+v", githubPasskey)
 	}
-	if _, err := passkey.SignAssertionWithClientDataHash("github.com", githubPasskey.RelyingPartyID, make([]byte, 32), githubPasskey.PrivateKey); err != nil {
+	if _, err := passkey.SignAssertionWithClientDataHash("github.com", githubPasskey.RelyingPartyID, make([]byte, 32), githubPasskey.PrivateKey, true); err != nil {
 		t.Errorf("the imported key does not sign: %v", err)
 	}
 
@@ -73,8 +74,10 @@ func TestParseCredentialExchangeLogins(t *testing.T) {
 		t.Errorf("Old site = %+v %+v", oldSite.Overview, oldSite.Details)
 	}
 	wantSkipped := []SkippedEntry{
+		{Title: "GitHub", Reason: "its passkey for github.com lost its non-UV PRF secret, which Hisar does not keep"},
 		{Title: "Old site", Reason: "its passkey for old.example uses a kind of key Hisar cannot sign with; keep using it in 1Password"},
 		{Title: "Old site", Reason: "its passkey for com is not valid"},
+		{Title: "Deploy key", Reason: "the source SSH key comment differs from the item title; Hisar uses the title as its comment"},
 	}
 	if !reflect.DeepEqual(result.Skipped, wantSkipped) {
 		t.Errorf("skipped = %+v", result.Skipped)
@@ -163,7 +166,7 @@ func TestParseCredentialExchangeSpecPayload(t *testing.T) {
 		!examplePasskey.CreatedAt.Equal(time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC)) || !bytes.Equal(examplePasskey.PRFSecret, wantPRFSecret) {
 		t.Errorf("Example passkey = %+v", examplePasskey)
 	}
-	if _, err := passkey.SignAssertionWithClientDataHash("login.example.com", examplePasskey.RelyingPartyID, make([]byte, 32), examplePasskey.PrivateKey); err != nil {
+	if _, err := passkey.SignAssertionWithClientDataHash("login.example.com", examplePasskey.RelyingPartyID, make([]byte, 32), examplePasskey.PrivateKey, true); err != nil {
 		t.Errorf("the imported key does not sign: %v", err)
 	}
 
@@ -194,9 +197,12 @@ func TestParseCredentialExchangeSpecPayload(t *testing.T) {
 	}
 
 	wantSkipped := []SkippedEntry{
+		{Title: "Example", Reason: "its passkey for login.example.com lost its credBlob extension data, which Hisar does not keep"},
+		{Title: "Example", Reason: "its passkey for login.example.com lost its non-UV PRF secret, which Hisar does not keep"},
 		{Title: "Example Lite", Reason: "its Android app com.example.lite was not linked; Hisar needs the SHA-256 of the app's signing certificate"},
 		{Title: "Example Lite", Reason: "its Android app com.example.unsigned was not linked; Hisar needs the SHA-256 of the app's signing certificate"},
 		{Title: "Visa", Reason: "its Android app com.example.app was not linked; only logins fill into apps"},
+		{Title: "Deploy key", Reason: "the source SSH key comment differs from the item title; Hisar uses the title as its comment"},
 	}
 	if !reflect.DeepEqual(result.Skipped, wantSkipped) {
 		t.Errorf("skipped = %+v", result.Skipped)
@@ -219,5 +225,69 @@ func TestParseCredentialExchangeRefusals(t *testing.T) {
 	if !router.IsCategory(item.CategorySecureNote) || router.Details.Notes != "admin" ||
 		!reflect.DeepEqual(result.Skipped, []SkippedEntry{{Title: "Router", Reason: "its file credential was not imported; Hisar has no place for it"}}) {
 		t.Errorf("router = %+v, skipped %+v", router, result.Skipped)
+	}
+}
+
+// An identity holds one number of each kind; a second passport, or an ID document with both an identification and a
+// document number, keeps the other number as a custom field, and so does a document's full name next to the person's name.
+func TestParseCredentialExchangeKeepsEveryIdentityNumber(t *testing.T) {
+	result, err := ParseCredentialExchange([]byte(`{"version":{"major":1,"minor":0},"accounts":[{"items":[{"title":"Alice","credentials":[
+		{"type":"person-name","given":{"fieldType":"string","value":"Alice"},"surname":{"fieldType":"string","value":"Example"}},
+		{"type":"passport","fullName":{"fieldType":"string","value":"Alice Beatrix Example"},"passportNumber":{"fieldType":"string","value":"P-1"}},
+		{"type":"passport","passportNumber":{"fieldType":"string","value":"P-2"}},
+		{"type":"identity-document","identificationNumber":{"fieldType":"string","value":"ID-1"},"documentNumber":{"fieldType":"string","value":"DOC-1"}}
+	]}]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice := findTestItem(t, result, "Alice")
+	identity, _ := item.ReadIdentity(&alice)
+	fields := describeFields(alice.Details.Fields)
+	if identity.PassportNumber != "P-1" || identity.NationalIDNumber != "ID-1" || identity.FirstName != "Alice" || identity.LastName != "Example" {
+		t.Errorf("Alice = %+v", identity)
+	}
+	for _, want := range []string{"Passport number=P-2", "ID number=DOC-1", "Passport full name=Alice Beatrix Example"} {
+		if !strings.Contains(fields, want) {
+			t.Errorf("fields %q miss %q", fields, want)
+		}
+	}
+}
+
+// A login's own password wins over a generated one listed before it; secrets keep their exact bytes and are concealed
+// whatever field type the exporter gave them; a 16-byte PRF secret is kept, and passkey data Hisar drops is reported.
+func TestParseCredentialExchangeKeepsSecretsAsTheyAre(t *testing.T) {
+	result, err := ParseCredentialExchange([]byte(`{"version":{"major":1,"minor":0},"accounts":[{"items":[
+		{"title":"Site","scope":{"urls":["https://site.example.com"]},"credentials":[
+			{"type":"generated-password","password":"generated-1"},
+			{"type":"basic-auth","username":{"fieldType":"string","value":"alice"},"password":{"fieldType":"string","value":" real pass "}},
+			{"type":"totp","secret":"JBSWY3DPEHPK3PXP","digits":10,"username":"alice"},
+			{"type":"passkey","credentialId":"7eRKGgxZmQPuErE3IN4Lqg","rpId":"site.example.com","username":"alice","userHandle":"9FMfxJvhUznxveqYuLRliQ",
+				"key":"MIGHAgEAMBMGByqGSM49AgEGCCqGSM49AwEHBG0wawIBAQQgNHs0LZxnBeh1Xy2JyRV10FV_WGQbg2ubacjr-c2f4UOhRANCAATwRM4hOYOsfxEeNmsxSBqqMaZyia_UUD6qKUA07hLrwiJCVHqTYSi0PnIrB1GYJe_Ip6t9nJYNnDgE-8CIwqcV",
+				"fido2Extensions":{"hmacCredentials":{"algorithm":"hmac-sha256","credWithUV":"AAECAwQFBgcICQoLDA0ODw","credWithoutUV":"CAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAg"},"largeBlob":{"uncompressedSize":3,"data":"AQID"}}}]},
+		{"title":"Cabin","credentials":[{"type":"wifi","ssid":{"fieldType":"string","value":"cabin"},"passphrase":{"fieldType":"string","value":" wifi pass"}}]}
+	]}]}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	site := findTestItem(t, result, "Site")
+	if site.Overview.Username != "alice" || site.Details.Password != " real pass " ||
+		!strings.Contains(describeFields(site.Details.Fields), "Generated password=generated-1") {
+		t.Errorf("Site = %q %q %+v", site.Overview.Username, site.Details.Password, site.Details.Fields)
+	}
+	if len(site.Details.Passkeys) != 1 || len(site.Details.Passkeys[0].PRFSecret) != 16 {
+		t.Errorf("Site passkeys = %+v", site.Details.Passkeys)
+	}
+	cabin := findTestItem(t, result, "Cabin")
+	wantPassphrase := item.Field{Name: "Password", Value: " wifi pass", Concealed: true}
+	if !slices.Contains(cabin.Details.Fields, wantPassphrase) {
+		t.Errorf("Cabin = %+v", cabin.Details.Fields)
+	}
+	wantSkipped := []SkippedEntry{
+		{Title: "Site", Reason: "its one-time password uses settings Hisar cannot make codes with; it was kept as a concealed field"},
+		{Title: "Site", Reason: "its passkey for site.example.com lost its non-UV PRF secret, which Hisar does not keep"},
+		{Title: "Site", Reason: "its passkey for site.example.com lost its largeBlob extension data, which Hisar does not keep"},
+	}
+	if !reflect.DeepEqual(result.Skipped, wantSkipped) {
+		t.Errorf("skipped = %+v", result.Skipped)
 	}
 }

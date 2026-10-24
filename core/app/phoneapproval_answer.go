@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
@@ -23,6 +24,9 @@ type PhoneApprovalRequest struct {
 }
 
 // ListPendingPhoneApprovals opens the other devices' open requests; expired, answered and withdrawn ones are left out.
+// A request names the device the server authenticated when it was posted, by that device's name in the account's device
+// list: the sealed request's own device name is text anyone with the account's public key could have written, and a
+// request whose sealed device ID is not that device, or from a device no longer signed in, is left out.
 func ListPendingPhoneApprovals(s *Service) ([]PhoneApprovalRequest, error) {
 	apiClient, err := s.getUnlockedClient()
 	if err != nil {
@@ -38,6 +42,14 @@ func ListPendingPhoneApprovals(s *Service) ([]PhoneApprovalRequest, error) {
 	if err != nil {
 		return nil, convertError(err)
 	}
+	devices, err := apiClient.ListDevices(ctx)
+	if err != nil {
+		return nil, convertError(err)
+	}
+	deviceNamesByID := map[string]string{}
+	for _, device := range devices {
+		deviceNamesByID[device.ID] = device.Name
+	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if !s.isUnlocked() || s.unlockedSession.Client != apiClient {
@@ -46,12 +58,13 @@ func ListPendingPhoneApprovals(s *Service) ([]PhoneApprovalRequest, error) {
 	requests := []PhoneApprovalRequest{}
 	for _, pending := range pendingRequests {
 		request, err := approval.OpenRequest(s.unlockedSession.Keyset, s.unlockedSession.AccountID, pending.RequestID, pending.SealedRequest, ownDeviceID, s.config.Now())
-		if err != nil {
+		deviceName, isSignedIn := deviceNamesByID[pending.RequesterDeviceID]
+		if err != nil || !isSignedIn || request.RequesterDeviceID != pending.RequesterDeviceID {
 			continue
 		}
 		requests = append(requests, PhoneApprovalRequest{
 			RequestID:           request.RequestID,
-			RequesterDeviceName: request.RequesterDeviceName,
+			RequesterDeviceName: strings.TrimSuffix(deviceName, ".local"),
 			CreatedAt:           request.CreatedAt.UTC().Format(time.RFC3339Nano),
 			ExpiresAt:           request.ExpiresAt.UTC().Format(time.RFC3339Nano),
 			Description:         request.Description,

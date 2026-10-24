@@ -57,9 +57,9 @@ func WriteSoftwareLicense(vaultItem *Item, license SoftwareLicense, otherFields 
 	writeRecord(vaultItem, license, softwareLicenseFields, otherFields)
 }
 
-// NormalizeSoftwareLicense trims a software license item's values, writes its purchase date as YYYY-MM-DD when it is given
-// year first and puts its fields in order; other items are left alone. A download URL keeps its text: the apps add
-// https:// only to open it.
+// NormalizeSoftwareLicense trims a software license item's display values, keeps its license key exact, writes its
+// purchase date as YYYY-MM-DD when it is given year first and puts its fields in order; other items are left alone.
+// A download URL keeps its text: the apps add https:// only to open it.
 func NormalizeSoftwareLicense(vaultItem *Item) {
 	if !vaultItem.IsCategory(CategorySoftwareLicense) {
 		return

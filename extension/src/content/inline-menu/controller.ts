@@ -1,4 +1,5 @@
 import { VisibilityGuard } from "../../shared/click-guard";
+import { isExtensionPageUrl } from "../../shared/extension-url";
 import type { ContentToBackgroundMessage, InlineMenuKey, InlineMenuPurpose, MessageResponse } from "../../shared/messages";
 import { defaultInlineMenuSettings, type InlineMenuSettings } from "../../shared/settings";
 import { getParentAcrossShadow } from "../dom";
@@ -14,6 +15,8 @@ export interface InlineMenuDependencies {
   getRect: (element: Element) => Rect;
   getElementAtPoint: (x: number, y: number) => Element | null;
   isTrustedEvent?: (event: Event) => boolean;
+  // extensionBaseUrl is chrome.runtime.getURL(""): the menu opens only from this browser's extension pages.
+  extensionBaseUrl: string;
 }
 
 const hostTagName = "hisar-inline-menu";
@@ -160,7 +163,7 @@ export class InlineMenuController {
       }
       const iframe = this.document.createElement("iframe");
       iframe.className = "menu";
-      if (!response.result.menuUrl.startsWith("chrome-extension://")) return;
+      if (!isExtensionPageUrl(response.result.menuUrl, this.dependencies.extensionBaseUrl)) return;
       iframe.src = response.result.menuUrl;
       iframe.setAttribute("title", "Hisar");
       iframe.setAttribute("scrolling", "no");

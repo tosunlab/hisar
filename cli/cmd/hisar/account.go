@@ -6,15 +6,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/crypt"
-	"github.com/tryhisar/hisar/core/emergencykit"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
 )
@@ -46,8 +44,10 @@ func runAccount(ctx context.Context, flags *flag.FlagSet, args []string) error {
 		return runReplaceSecretKey(ctx, flags, args)
 	case accountDelete:
 		return runDeleteAccount(ctx, flags, args)
+	case "pending":
+		return runPendingRecovery(ctx, flags, args)
 	}
-	return fmt.Errorf("unknown account action %q; use change-password, replace-secret-key or delete", action)
+	return fmt.Errorf("unknown account action %q; use change-password, replace-secret-key, delete or pending", action)
 }
 
 func convertAccountError(err error) error {
@@ -64,6 +64,19 @@ func convertAccountError(err error) error {
 		return errors.New("too many attempts; wait a minute and try again")
 	}
 	return err
+}
+
+// convertAccountDeletionError asks for a new review only when the server says the plan changed; any other deletion
+// conflict (busy memberships, changed credentials) keeps the server's reason.
+func convertAccountDeletionError(err error) error {
+	var apiError *apiclient.APIError
+	switch {
+	case apiclient.IsDeletionPlanChanged(err):
+		return errors.New("the deletion plan changed; review the deletion again before confirming")
+	case errors.As(err, &apiError) && apiError.Status == http.StatusConflict:
+		return errors.New(apiError.Message)
+	}
+	return convertAccountError(err)
 }
 
 // unlockForAccountChange returns the session and the master password; the caller clears the password.
@@ -99,10 +112,10 @@ func promptChangedPassword(currentPassword []byte) ([]byte, error) {
 		}
 		switch {
 		case len([]rune(string(newPassword))) < session.MinimumPasswordLength:
-			fmt.Fprintln(os.Stderr, "Use at least 10 characters.")
+			fmt.Fprintln(standardError(), "Use at least 10 characters.")
 			continue
 		case string(newPassword) == string(currentPassword):
-			fmt.Fprintln(os.Stderr, "That is your current master password; choose a new one.")
+			fmt.Fprintln(standardError(), "That is your current master password; choose a new one.")
 			continue
 		}
 		repeatedPassword, err := promptSecret("Repeat new master password")
@@ -114,7 +127,7 @@ func promptChangedPassword(currentPassword []byte) ([]byte, error) {
 		if isSame {
 			return newPassword, nil
 		}
-		fmt.Fprintln(os.Stderr, "Passwords do not match.")
+		fmt.Fprintln(standardError(), "Passwords do not match.")
 	}
 }
 
@@ -133,6 +146,9 @@ func confirmUnlessYes(isYes bool, label string) error {
 }
 
 func describeSignedOutDevice(signedOutDeviceCount int) string {
+	if signedOutDeviceCount < 0 {
+		return "Any other devices were signed out; their count could not be recovered."
+	}
 	switch signedOutDeviceCount {
 	case 0:
 		return "No other devices were signed in."
@@ -149,7 +165,7 @@ func runChangePassword(ctx context.Context, flags *flag.FlagSet, args []string) 
 	} else if len(positionals) != 0 {
 		return errUsage
 	}
-	fmt.Fprintln(os.Stderr, `Changing your master password signs out your other devices: they need the new master password
+	fmt.Fprintln(standardError(), `Changing your master password signs out your other devices: they need the new master password
 to sign in again. Your Secret Key and Emergency Kit stay the same, and so do your vaults and items.`)
 	currentState, unlockedSession, secretKey, password, err := unlockForAccountChange(ctx)
 	if err != nil {
@@ -170,7 +186,7 @@ to sign in again. Your Secret Key and Emergency Kit stay the same, and so do you
 			return convertAccountError(err)
 		}
 		clear(credentialChange.AccountUnlockKey)
-		fmt.Fprintf(os.Stderr, "Changed your master password. %s Sign in on them with the new master password.\n", describeSignedOutDevice(credentialChange.SignedOutDeviceCount))
+		fmt.Fprintf(standardError(), "Changed your master password. %s Sign in on them with the new master password.\n", describeSignedOutDevice(credentialChange.SignedOutDeviceCount))
 		return nil
 	}()
 	return finishSession(currentState, unlockedSession, err)
@@ -184,15 +200,13 @@ func runReplaceSecretKey(ctx context.Context, flags *flag.FlagSet, args []string
 	} else if len(positionals) != 0 {
 		return errUsage
 	}
-	if _, err := os.Stat(*outputPath); err == nil {
-		return fmt.Errorf("%s already exists; choose another file with -o", *outputPath)
-	} else if !errors.Is(err, fs.ErrNotExist) {
+	if err := refuseExistingOutput(*outputPath); err != nil {
 		return err
 	}
-	fmt.Fprintln(os.Stderr, `Replacing your Secret Key makes your current Secret Key and Emergency Kit stop working.
+	fmt.Fprintln(standardError(), `Replacing your Secret Key makes your current Secret Key and Emergency Kit stop working.
 Your other devices are signed out: they need the new Secret Key from the new Emergency Kit to sign in again.
 Your master password stays the same, and so do your vaults and items.`)
-	currentState, unlockedSession, secretKey, password, err := unlockForAccountChange(ctx)
+	currentState, unlockedSession, priorKey, password, err := unlockForAccountChange(ctx)
 	if err != nil {
 		return err
 	}
@@ -201,40 +215,59 @@ Your master password stays the same, and so do your vaults and items.`)
 		if err := confirmUnlessYes(*isYes, "Replace your Secret Key and sign out your other devices?"); err != nil {
 			return err
 		}
-		credentialChange, err := unlockedSession.ReplaceSecretKey(ctx, password, secretKey)
+		service, err := newRecoveryService(*outputPath)
 		if err != nil {
-			return convertAccountError(err)
+			return err
 		}
-		clear(credentialChange.AccountUnlockKey)
-		newSecretKey := credentialChange.SecretKey.Encode()
-		if err := localstate.StoreSecretKey(credentialChange.SecretKey); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: could not save the new Secret Key to the keychain: %v\n", err)
+		app.OpenUnlockedSession(service, currentState.Server, currentState.Token, unlockedSession)
+		result, err := service.ReplaceSecretKey(string(password))
+		if err != nil {
+			return err
 		}
-		fmt.Fprintf(os.Stderr, `
-Replaced your Secret Key. %s This is your new Secret Key:
-
-    %s
-
-`, describeSignedOutDevice(credentialChange.SignedOutDeviceCount), newSecretKey)
+		printPendingRecovery(result.PendingOperationID, result.SetupState, result.Problems)
+		if result.SecretKey == "" {
+			return errors.New("the remote outcome is pending; use the recovery operation above instead of replacing the key again")
+		}
+		path, err := service.SavePendingRecoveryEmergencyKit(result.PendingOperationID, string(password))
+		if err != nil {
+			return fmt.Errorf("the recovery record is safe, but saving the new Emergency Kit failed: %w", err)
+		}
+		fmt.Fprintf(standardError(), "Saved your new Emergency Kit to %s. Keep it safe, then acknowledge delivery with `hisar account pending acknowledge %s`.\n", path, result.PendingOperationID)
+		phase := result.SetupState
+		if phase == "awaiting-kit" {
+			if err := confirmUnlessYes(*isYes, "Is the new Emergency Kit safely saved before replacing the old Secret Key?"); err != nil {
+				return err
+			}
+			if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
+				return err
+			}
+			resumed, err := service.ResumePendingRecoveryWithSecretKey(result.PendingOperationID, string(password), result.SecretKey, priorKey.Encode())
+			if err != nil {
+				return err
+			}
+			phase = resumed.SetupState
+			printPendingRecovery(resumed.PendingOperationID, resumed.SetupState, resumed.Problems)
+		} else if err := confirmUnlessYes(*isYes, "Have you saved the new Emergency Kit somewhere safe?"); err != nil {
+			return err
+		}
+		if phase != "delivery-pending" {
+			return errors.New("credential setup still needs finishing; keep both Emergency Kits and resume the recovery operation")
+		}
+		if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
+			return err
+		}
+		fmt.Fprintf(standardError(), "Replaced your Secret Key. This is your new Secret Key:\n\n    %s\n\n", result.SecretKey)
 		if os.Getenv(localstate.SecretKeyEnvironmentVariable) != "" {
-			fmt.Fprintln(os.Stderr, "HISAR_SECRET_KEY still holds the old Secret Key; set it to the new one.")
+			fmt.Fprintln(standardError(), "HISAR_SECRET_KEY still holds the old Secret Key; set it to the new one.")
 		}
-		document, err := emergencykit.Generate(emergencykit.Kit{
-			Name: unlockedSession.Name, Email: currentState.Email, Server: currentState.Server, SecretKey: newSecretKey, CreatedAt: time.Now(),
-		})
-		if err != nil {
-			return fmt.Errorf("could not create the new Emergency Kit (%v); write down the Secret Key above", err)
-		}
-		if err := writeNewPrivateFile(*outputPath, document); err != nil {
-			return fmt.Errorf("could not save the new Emergency Kit (%v); write down the Secret Key above", err)
-		}
-		fmt.Fprintf(os.Stderr, "Saved your new Emergency Kit to %s. Print it, then delete the file and your old kit.\n", *outputPath)
 		return nil
 	}()
-	return finishSession(currentState, unlockedSession, err)
+	unlockedSession.Lock()
+	return err
 }
 
 func printAccountDeletionPreview(output io.Writer, preview *session.AccountDeletionPreview) {
+	output = terminalSafeWriter{output: output}
 	fmt.Fprintln(output, "Deleting your account removes it from the Hisar server for good. Nobody can restore it.")
 	for _, vault := range preview.OwnedVaults {
 		switch {
@@ -254,7 +287,7 @@ func printAccountDeletionPreview(output io.Writer, preview *session.AccountDelet
 		case organization.IsDeleted:
 			fmt.Fprintf(output, "  Organization deleted with its teams, as you are its last member: %q\n", organization.Name)
 		case organization.NewAdminName != "":
-			fmt.Fprintf(output, "  You leave the organization %q; %s becomes its admin\n", organization.Name, organization.NewAdminName)
+			fmt.Fprintf(output, "  You leave the organization %q; %s becomes its admin\n", organization.Name, escapeControlCharacters(organization.NewAdminName))
 		default:
 			fmt.Fprintf(output, "  You leave the organization %q\n", organization.Name)
 		}
@@ -274,7 +307,7 @@ func printAccountDeletionPreview(output io.Writer, preview *session.AccountDelet
 
 func describeDeletionVault(vault session.DeletionVault) string {
 	if vault.Name == "" {
-		return "a vault"
+		return fmt.Sprintf("vault %s (name unavailable)", vault.ID)
 	}
 	return fmt.Sprintf("%q", vault.Name)
 }
@@ -307,8 +340,8 @@ func runDeleteAccount(ctx context.Context, flags *flag.FlagSet, args []string) e
 		if !strings.EqualFold(strings.TrimSpace(email), currentState.Email) {
 			return errors.New("the email does not match this account; nothing was deleted")
 		}
-		if err := unlockedSession.DeleteAccount(ctx, password, secretKey, email); err != nil {
-			return convertAccountError(err)
+		if err := unlockedSession.DeleteAccount(ctx, password, secretKey, email, preview.PlanVersion); err != nil {
+			return convertAccountDeletionError(err)
 		}
 		isDeleted = true
 		return nil
@@ -323,9 +356,9 @@ func runDeleteAccount(ctx context.Context, flags *flag.FlagSet, args []string) e
 	if err := currentState.Save(); err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Deleted your Hisar account. A confirmation email is on its way to %s.\n", email)
+	fmt.Fprintf(standardError(), "Deleted your Hisar account. A confirmation email is on its way to %s.\n", email)
 	if secretKeyErr != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not remove the Secret Key from the keychain: %v\n", secretKeyErr)
+		fmt.Fprintf(standardError(), "warning: could not remove the Secret Key from the keychain: %v\n", secretKeyErr)
 	}
 	return nil
 }

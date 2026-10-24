@@ -1,9 +1,11 @@
 // Command hisar-admin-page-fixture runs the API server with the built admin dashboard and an SMTP sink, and signs up one
 // admin and two members with the Go client, for the dashboard's browser tests. It prints one JSON line with the server's
 // URL, the sink's address and the accounts' credentials and session tokens, then one JSON line per email the sink
-// receives. With --fresh it empties the database (it drops the public schema), signs up nobody and starts setup as
-// hisar-server serve does on an empty database: the first line holds the setup page's URL, and stderr has the setup
-// log line. --seed-accounts N also inserts N accounts nobody can sign in with, for the account list's performance.
+// receives. The server secrets live in one file per database (see fixturedatabase), so a restart on the same database
+// keeps its accounts and settings. With --fresh it empties the database (it drops the public schema) with new secrets,
+// signs up nobody and starts setup as hisar-server serve does on an empty database: the first line holds the setup
+// page's URL, and stderr has the setup log line. --seed-accounts N also inserts N accounts nobody can sign in with, for
+// the account list's performance.
 // HISAR_* variables override the instance settings as they do for hisar-server; it also reads HISAR_PUBLIC_URL
 // (default: its own URL), HISAR_TRUST_PROXY and, for the server release check only, the HISAR_DESKTOP_UPDATE_GITHUB_*
 // variables (repository default off).
@@ -21,7 +23,6 @@ import (
 	"net"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"strings"
 	"sync"
 	"syscall"
@@ -36,11 +37,11 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 	"github.com/tryhisar/hisar/server/internal/api"
 	"github.com/tryhisar/hisar/server/internal/desktopupdate"
+	"github.com/tryhisar/hisar/server/internal/fixturedatabase"
 	"github.com/tryhisar/hisar/server/internal/mail/mailtest"
 	"github.com/tryhisar/hisar/server/internal/serverupdate"
 	"github.com/tryhisar/hisar/server/internal/service"
 	"github.com/tryhisar/hisar/server/internal/settings"
-	"github.com/tryhisar/hisar/server/internal/store"
 )
 
 type account struct {
@@ -82,28 +83,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	if *isFresh {
-		if err := emptyDatabase(ctx, databaseURL); err != nil {
-			log.Fatal(err)
-		}
-	}
-	database, err := store.Open(ctx, databaseURL)
+	database, secrets, err := fixturedatabase.Open(ctx, databaseURL, *isFresh)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer database.Close()
-	if _, err := database.Migrate(ctx); err != nil {
-		log.Fatal(err)
-	}
-	secretDirectory, err := os.MkdirTemp("", "hisar-admin-page-fixture")
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer os.RemoveAll(secretDirectory)
-	secrets, err := api.LoadOrCreateSecrets(filepath.Join(secretDirectory, "secrets.json"))
-	if err != nil {
-		log.Fatal(err)
-	}
 	listener, err := net.Listen("tcp", *address)
 	if err != nil {
 		log.Fatal(err)
@@ -167,16 +151,6 @@ func main() {
 		log.Fatal(err)
 	}
 	<-ctx.Done()
-}
-
-func emptyDatabase(ctx context.Context, databaseURL string) error {
-	connection, err := pgx.Connect(ctx, databaseURL)
-	if err != nil {
-		return err
-	}
-	defer connection.Close(ctx)
-	_, err = connection.Exec(ctx, `DROP SCHEMA public CASCADE; CREATE SCHEMA public`)
-	return err
 }
 
 // insertExtraAccounts inserts accounts straight into the database, with placeholder credentials nobody can sign in with

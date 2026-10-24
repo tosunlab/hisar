@@ -1,7 +1,12 @@
 package browserprotocol
 
+const FeaturePasskeyVerification = "passkey-verification-v2"
+const ErrorPasskeyVerification = "passkey-verification-failed"
+
 // PasskeyRequest is the nested "passkey" parameter of the passkeys.* requests; binary values are base64url.
 type PasskeyRequest struct {
+	UserVerification      string   `json:"userVerification,omitempty"`
+	CeremonyID            string   `json:"ceremonyId,omitempty"`
 	Origin                string   `json:"origin"`
 	TopOrigin             string   `json:"topOrigin,omitempty"`
 	IsCrossOrigin         bool     `json:"isCrossOrigin,omitempty"`

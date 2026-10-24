@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/itemicon"
 )
@@ -34,6 +35,9 @@ type websiteIcons struct {
 	recordsByLookup map[string]websiteIconRecord
 	failedAt        map[string]time.Time
 	fetches         map[string]*websiteIconFetch
+	// fetchContext identifies one authorization period; turning icons off cancels it and starts a new period.
+	fetchContext context.Context
+	stopFetches  context.CancelFunc
 }
 
 type websiteIconFetch struct {
@@ -55,7 +59,11 @@ func (s *Service) SetWebsiteIconsEnabled(isEnabled bool) error {
 	s.state.IsWebsiteIconsDisabled = !isEnabled
 	if !isEnabled {
 		s.websiteIcons.mutex.Lock()
-		s.websiteIcons.recordsByLookup, s.websiteIcons.failedAt = map[string]websiteIconRecord{}, map[string]time.Time{}
+		s.websiteIcons.recordsByLookup, s.websiteIcons.failedAt, s.websiteIcons.fetches = map[string]websiteIconRecord{}, map[string]time.Time{}, map[string]*websiteIconFetch{}
+		if s.websiteIcons.stopFetches != nil {
+			s.websiteIcons.stopFetches()
+			s.websiteIcons.fetchContext, s.websiteIcons.stopFetches = context.WithCancel(context.Background())
+		}
 		s.websiteIcons.mutex.Unlock()
 		s.getCache()
 		if s.localCache != nil {
@@ -90,9 +98,13 @@ func (s *Service) GetWebsiteIcon(rawURL string) ([]byte, error) {
 		return nil, err
 	}
 	lookup := keys.Lookup(domain)
-	now := s.config.Now()
 	record, isCached := s.loadWebsiteIconRecord(keys, lookup)
+	icons := &s.websiteIcons
+	icons.mutex.Lock()
+	fetchContext := icons.fetchContext
+	icons.mutex.Unlock()
 	s.mutex.Unlock()
+	now := s.config.Now()
 	if isCached {
 		age := now.Sub(record.FetchedAt)
 		if (record.Image != nil && age < websiteIconRefreshAfter) || (record.Image == nil && age < websiteIconRetryAfter) {
@@ -100,8 +112,11 @@ func (s *Service) GetWebsiteIcon(rawURL string) ([]byte, error) {
 		}
 	}
 
-	icons := &s.websiteIcons
 	icons.mutex.Lock()
+	if icons.keys != keys || icons.fetchContext != fetchContext || fetchContext.Err() != nil {
+		icons.mutex.Unlock()
+		return nil, nil
+	}
 	if failedAt, hasFailed := icons.failedAt[lookup]; hasFailed && now.Sub(failedAt) < websiteIconFailureRetryAfter {
 		icons.mutex.Unlock()
 		return record.Image, nil
@@ -115,17 +130,22 @@ func (s *Service) GetWebsiteIcon(rawURL string) ([]byte, error) {
 	icons.fetches[lookup] = fetch
 	icons.mutex.Unlock()
 
-	image, fetchErr := s.getWebsiteIconFetcher().Fetch(context.Background(), "https://"+domain+"/")
+	image, fetchErr := s.getWebsiteIconFetcher().Fetch(fetchContext, "https://"+domain+"/")
 	isMissing := errors.Is(fetchErr, itemicon.ErrNoIcon) || errors.Is(fetchErr, itemicon.ErrRefusedURL)
 	if fetchErr != nil && !isMissing {
 		// Offline or slow: keep showing what the cache had and try again later.
 		image = record.Image
 	}
-	fetch.image = image
 	s.mutex.Lock()
 	icons.mutex.Lock()
-	delete(icons.fetches, lookup)
-	isCurrent := icons.keys == keys && s.unlockedSession != nil && !s.state.IsWebsiteIconsDisabled
+	if icons.fetches[lookup] == fetch {
+		delete(icons.fetches, lookup)
+	}
+	isCurrent := icons.keys == keys && icons.fetchContext == fetchContext && s.unlockedSession != nil && !s.state.IsWebsiteIconsDisabled
+	if !isCurrent {
+		image = nil
+	}
+	fetch.image = image
 	if isCurrent && fetchErr != nil && !isMissing {
 		icons.failedAt[lookup] = s.config.Now()
 	}
@@ -150,6 +170,7 @@ func (s *Service) getWebsiteIconKeys() (*crypt.WebsiteIconKeys, error) {
 		}
 		icons.keys = keys
 		icons.recordsByLookup, icons.failedAt, icons.fetches = map[string]websiteIconRecord{}, map[string]time.Time{}, map[string]*websiteIconFetch{}
+		icons.fetchContext, icons.stopFetches = context.WithCancel(context.Background())
 	}
 	return icons.keys, nil
 }
@@ -163,7 +184,20 @@ func (s *Service) forgetWebsiteIconKeys() {
 		clear(icons.keys.SealKey)
 		clear(icons.keys.LookupKey)
 	}
-	icons.keys, icons.recordsByLookup, icons.failedAt = nil, nil, nil
+	if icons.stopFetches != nil {
+		icons.stopFetches()
+	}
+	icons.keys, icons.recordsByLookup, icons.failedAt, icons.fetchContext, icons.stopFetches = nil, nil, nil, nil, nil
+}
+
+// getWebsiteIconCache is the offline cache only while this session has it attached. An icon written to a cache that
+// failed to attach would leave rows without an account, a cache every later launch refuses. It needs s.mutex.
+func (s *Service) getWebsiteIconCache() *cache.Cache {
+	if s.unlockedSession == nil {
+		return nil
+	}
+	attachedCache, _ := s.unlockedSession.Cache.(*cache.Cache)
+	return attachedCache
 }
 
 // loadWebsiteIconRecord reads a record from memory, then from the offline cache. It needs s.mutex.
@@ -175,11 +209,11 @@ func (s *Service) loadWebsiteIconRecord(keys *crypt.WebsiteIconKeys, lookup stri
 	if isFound {
 		return record, true
 	}
-	s.getCache()
-	if s.localCache == nil {
+	attachedCache := s.getWebsiteIconCache()
+	if attachedCache == nil {
 		return websiteIconRecord{}, false
 	}
-	sealed, err := s.localCache.LoadWebsiteIcon(lookup)
+	sealed, err := attachedCache.LoadWebsiteIcon(lookup)
 	if err != nil || sealed == nil {
 		return websiteIconRecord{}, false
 	}
@@ -199,8 +233,8 @@ func (s *Service) saveWebsiteIconRecord(keys *crypt.WebsiteIconKeys, lookup stri
 	icons.mutex.Lock()
 	icons.recordsByLookup[lookup] = record
 	icons.mutex.Unlock()
-	s.getCache()
-	if s.localCache == nil {
+	attachedCache := s.getWebsiteIconCache()
+	if attachedCache == nil {
 		return
 	}
 	plaintext, err := json.Marshal(record)
@@ -208,7 +242,7 @@ func (s *Service) saveWebsiteIconRecord(keys *crypt.WebsiteIconKeys, lookup stri
 		return
 	}
 	if sealed, err := keys.Seal(lookup, plaintext); err == nil {
-		s.localCache.SaveWebsiteIcon(lookup, sealed)
+		attachedCache.SaveWebsiteIcon(lookup, sealed)
 	}
 }
 

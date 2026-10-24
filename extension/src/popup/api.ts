@@ -17,6 +17,23 @@ export async function getTargetTabId(): Promise<number | undefined> {
   return activeTab?.id;
 }
 
+// watchTabUrl reports the tab's address now and after every change until the returned function stops it; "" where the
+// extension may not read it. Once the tab has changed, the first read is stale and dropped.
+export function watchTabUrl(tabId: number, onUrl: (url: string) => void): () => void {
+  let hasChanged = false;
+  const listener = (changedTabId: number, _change: chrome.tabs.OnUpdatedInfo, tab: chrome.tabs.Tab) => {
+    if (changedTabId !== tabId) return;
+    hasChanged = true;
+    onUrl(tab.url ?? "");
+  };
+  chrome.tabs.onUpdated.addListener(listener);
+  chrome.tabs.get(tabId).then(
+    (tab) => hasChanged || onUrl(tab.url ?? ""),
+    () => hasChanged || onUrl(""),
+  );
+  return () => chrome.tabs.onUpdated.removeListener(listener);
+}
+
 const allFriendlyMessage: Partial<Record<string, string>> = {
   "not-paired": "This browser is no longer paired with Hisar.",
   "signed-out": "Sign in to Hisar on this computer first.",
@@ -35,12 +52,32 @@ export function describeError(error: unknown): string {
 }
 
 const allUpdateOrigin = ["https://chromewebstore.google.com", "https://tryhisar.com"];
+const firefoxReleasesURL = "https://github.com/tosunlab/hisar/releases?q=extension";
 
-// The URL comes from the server through the desktop, so only known update pages open.
+// isFirefox: Firefox serves the extension's pages from moz-extension: URLs.
+export function isFirefox(): boolean {
+  return chrome.runtime.getURL("").startsWith("moz-extension:");
+}
+
+// The URL comes from the server through the desktop, so only known update pages open. It names the Chrome Web Store;
+// Firefox installs Hisar's signed add-on from its GitHub releases instead.
 export async function openUpdatePage(url: string): Promise<void> {
   const isKnownPage = URL.canParse(url) && allUpdateOrigin.includes(new URL(url).origin);
-  await chrome.tabs.create({ url: isKnownPage ? url : allUpdateOrigin[0] + "/detail/mmipiffoogblblocokimpemdopmdjghf" });
+  const updateURL = isFirefox() ? firefoxReleasesURL : isKnownPage ? url : allUpdateOrigin[0] + "/detail/mmipiffoogblblocokimpemdopmdjghf";
+  await chrome.tabs.create({ url: updateURL });
   closePopup();
+}
+
+// Content scripts need access to every site. Firefox lets the user take it back in its add-on settings, and Chrome lets
+// them limit it to some sites, so the popup checks it and asks again on a click.
+const siteAccess = { origins: ["<all_urls>"] };
+
+export function hasSiteAccess(): Promise<boolean> {
+  return chrome.permissions.contains(siteAccess);
+}
+
+export function requestSiteAccess(): Promise<boolean> {
+  return chrome.permissions.request(siteAccess);
 }
 
 export function closePopup(): void {

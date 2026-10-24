@@ -18,10 +18,17 @@ const (
 	eventStreamStableAfter = time.Minute
 )
 
-// watchEvents keeps the server's event stream open while the session is unlocked and syncs on every change.
+// watchEvents keeps the server's event stream open while the session is unlocked and syncs on every change, and each
+// time a stream opens, since a change made while none was open had no event.
 func (s *Service) watchEvents(ctx context.Context, apiClient *apiclient.Client, reconnectChannel chan struct{}) {
 	pendingSyncs := make(chan struct{}, 1)
 	go s.runPendingSyncs(ctx, pendingSyncs)
+	requestSync := func() {
+		select {
+		case pendingSyncs <- struct{}{}:
+		default:
+		}
+	}
 	retryDelay := eventRetryMinimum
 	for ctx.Err() == nil {
 		connectedAt := time.Now()
@@ -36,14 +43,11 @@ func (s *Service) watchEvents(ctx context.Context, apiClient *apiclient.Client, 
 			case <-streamFinished:
 			}
 		}()
-		err := apiClient.StreamEvents(streamContext, func(event apiclient.Event) {
+		err := apiClient.StreamEvents(streamContext, requestSync, func(event apiclient.Event) {
 			switch event.Name {
 			case apitypes.EventVaultChanged, apitypes.EventVaultsChanged, apitypes.EventShareInvitationsChanged, apitypes.EventAccountPreferencesChanged,
 				apitypes.EventOrganizationsChanged:
-				select {
-				case pendingSyncs <- struct{}{}:
-				default:
-				}
+				requestSync()
 			case apitypes.EventApprovalRequested, apitypes.EventApprovalAnswered, apitypes.EventApprovalResolved:
 				s.handleApprovalEvent(apiClient, event)
 			case apitypes.EventShareLinksChanged:

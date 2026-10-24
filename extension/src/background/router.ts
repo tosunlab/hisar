@@ -1,3 +1,4 @@
+import { isExtensionPageUrl } from "../shared/extension-url";
 import type { ContentToBackgroundMessage, InlineMenuMessage, MessageResponse, PopupMessage } from "../shared/messages";
 import { HisarError, toHisarError } from "../shared/protocol";
 import type { BackgroundController } from "./controller";
@@ -13,6 +14,7 @@ export interface MessageSender {
   url?: string;
   tab?: { id?: number; url?: string };
   frameId?: number;
+  documentId?: string;
 }
 
 export interface RouterContext {
@@ -27,7 +29,11 @@ function isFromExtensionPage(sender: MessageSender, context: RouterContext): boo
 async function routePopupMessage(controller: BackgroundController, message: PopupMessage): Promise<unknown> {
   switch (message.type) {
     case "popup.getState":
-      return controller.getPopupState(message.shouldReconnect === true);
+      return controller.getPopupState(message.shouldReconnect === true, message.isOverOpenConnection === true);
+    case "popup.getPendingSaveOffer":
+      return controller.getPendingSaveOffer(message.tabId);
+    case "popup.actOnSaveOffer":
+      return controller.actOnSaveOffer(message.tabId, message.offerID, message.action, message.edits);
     case "popup.startPairing":
       return controller.startPairing();
     case "popup.finishPairing":
@@ -87,6 +93,7 @@ async function routeContentMessage(
   sender: InlineMenuSender,
   frameUrl: string,
   tabUrl: string | undefined,
+  documentID: string | undefined,
 ): Promise<unknown> {
   const tabId = sender.tabId;
   switch (message.type) {
@@ -97,16 +104,18 @@ async function routeContentMessage(
       return null;
     case "content.pressInlineMenuKey":
       return inlineMenu.pressKey(sender, message.sessionID, message.key);
-    case "content.loginSubmitted":
-      return (await controller.handleLoginSubmitted(tabId, frameUrl, message.username, message.password)) ?? null;
-    case "content.usernameSubmitted":
-      controller.handleUsernameSubmitted(tabId, frameUrl, message.username);
+    case "content.loginSubmitted": {
+      // Chrome names the document itself; in Firefox the frame's content script does (getFrameDocumentID asks it back).
+      const currentDocumentID = documentID ?? message.documentToken;
+      if (!currentDocumentID) throw new HisarError("invalid-request", "A current document is required");
+      void controller.handleLoginSubmitted(tabId, frameUrl, message.username, message.password, sender.frameId, tabUrl ?? frameUrl, currentDocumentID).catch(() => undefined);
       return null;
-    case "content.getPendingSaveOffer":
-      return controller.getPendingSaveOffer(tabId);
-    case "content.actOnSaveOffer":
-      return controller.actOnSaveOffer(tabId, message.offerID, message.action, message.edits);
+    }
+    case "content.usernameSubmitted":
+      await controller.handleUsernameSubmitted(tabId, frameUrl, message.username);
+      return null;
   }
+  throw new HisarError("invalid-request", "Unknown content request");
 }
 
 async function routeInlineMenuMessage(inlineMenu: InlineMenuService, message: InlineMenuMessage, sender: InlineMenuSender): Promise<unknown> {
@@ -138,13 +147,8 @@ async function routeInlineMenuMessage(inlineMenu: InlineMenuService, message: In
   }
 }
 
-function isFromInlineMenuPage(sender: MessageSender): boolean {
-  try {
-    const url = new URL(sender.url ?? "");
-    return url.protocol === "chrome-extension:" && url.pathname === "/inline-menu.html";
-  } catch {
-    return false;
-  }
+function isFromInlineMenuPage(sender: MessageSender, context: RouterContext): boolean {
+  return isExtensionPageUrl(sender.url, context.extensionOrigin, "/inline-menu.html");
 }
 
 export async function routeMessage(
@@ -158,7 +162,7 @@ export async function routeMessage(
     if (sender.id !== context.extensionID) throw new HisarError("invalid-request", "Unknown sender");
     let result: unknown;
     if (message.type.startsWith("popup.")) {
-      if (!isFromExtensionPage(sender, context)) throw new HisarError("invalid-request", "Only the popup may send this message");
+      if (!isFromExtensionPage(sender, context) || new URL(sender.url!).pathname !== "/popup.html" || sender.frameId !== undefined && sender.frameId !== 0) throw new HisarError("invalid-request", "Only the popup may send this message");
       result = await routePopupMessage(services.controller, message as PopupMessage);
     } else if (message.type.startsWith("content.")) {
       const tabId = sender.tab?.id;
@@ -166,10 +170,10 @@ export async function routeMessage(
         throw new HisarError("invalid-request", "Only content scripts may send this message");
       }
       const frameSender = { tabId, frameId: sender.frameId };
-      result = await routeContentMessage(services, message as ContentToBackgroundMessage, frameSender, sender.url, sender.tab?.url);
+      result = await routeContentMessage(services, message as ContentToBackgroundMessage, frameSender, sender.url, sender.tab?.url, sender.documentId);
     } else if (message.type.startsWith("inlineMenu.")) {
       const tabId = sender.tab?.id;
-      if (tabId === undefined || sender.frameId === undefined || !isFromInlineMenuPage(sender)) {
+      if (tabId === undefined || sender.frameId === undefined || !isFromInlineMenuPage(sender, context)) {
         throw new HisarError("invalid-request", "Only the inline menu may send this message");
       }
       result = await routeInlineMenuMessage(services.inlineMenu, message as InlineMenuMessage, { tabId, frameId: sender.frameId });

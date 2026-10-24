@@ -2,10 +2,10 @@ package main
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/http"
-	"os"
 	"slices"
 	"strings"
 	"time"
@@ -144,6 +144,8 @@ func (access *standaloneBackend) listItems(ctx context.Context, vaultID string) 
 	return items, nil
 }
 
+func (*standaloneBackend) listsItemSummaries() bool { return false }
+
 func (access *standaloneBackend) getItem(ctx context.Context, vaultID, itemID string) (*item.Item, error) {
 	items, err := access.listItems(ctx, vaultID)
 	if err != nil {
@@ -157,7 +159,7 @@ func (access *standaloneBackend) getItem(ctx context.Context, vaultID, itemID st
 	return nil, fmt.Errorf("item %s: not found", itemID)
 }
 
-func (access *standaloneBackend) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item) error {
+func (access *standaloneBackend) saveItem(ctx context.Context, vaultID string, vaultItem *item.Item, importScope ...string) error {
 	vault, err := access.findVault(ctx, vaultID)
 	if err != nil {
 		return err
@@ -170,17 +172,21 @@ func (access *standaloneBackend) saveItem(ctx context.Context, vaultID string, v
 		}
 	}
 	delete(access.itemsByVaultID, vaultID)
-	_, err = access.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
+	if len(importScope) > 0 {
+		_, err = access.unlockedSession.SaveImportItem(ctx, vault, vaultItem, importScope[0], base)
+	} else {
+		_, err = access.unlockedSession.SaveItem(ctx, vault, vaultItem, base)
+	}
 	return err
 }
 
-func (access *standaloneBackend) importItems(ctx context.Context, vaultID string, items []item.Item) (int, error) {
+func (access *standaloneBackend) importItems(ctx context.Context, vaultID string, items []item.Item, scope ...string) (int, error) {
 	vault, err := access.findVault(ctx, vaultID)
 	if err != nil {
 		return 0, err
 	}
 	delete(access.itemsByVaultID, vaultID)
-	return saveImportedItems(ctx, access.unlockedSession, vault, items)
+	return saveImportedItems(ctx, access.unlockedSession, vault, items, scope...)
 }
 
 func (access *standaloneBackend) listFavorites(ctx context.Context) ([]cliprotocol.Favorite, error) {
@@ -233,29 +239,30 @@ func (access *standaloneBackend) getVaultActions(ctx context.Context, vaultID st
 		TargetVaults:        []cliprotocol.Vault{},
 	}
 	ownerCount := 0
-	if vault.Type != apitypes.VaultPersonal {
-		accesses, err := access.unlockedSession.Client.ListVaultMembers(ctx, vault.ID)
-		if err != nil {
-			return cliprotocol.VaultActionsResult{}, err
-		}
-		people, err := access.unlockedSession.Client.ListMembers(ctx)
-		if err != nil {
-			return cliprotocol.VaultActionsResult{}, err
-		}
-		for _, backend := range accesses {
-			if backend.Role == apitypes.VaultOwner {
-				ownerCount++
-			}
-			if backend.AccountID == access.unlockedSession.AccountID {
-				continue
-			}
-			member := cliprotocol.VaultMember{Role: backend.Role}
-			if index := slices.IndexFunc(people, func(person apitypes.Member) bool { return person.AccountID == backend.AccountID }); index >= 0 {
-				member.Name, member.Email = people[index].Name, people[index].Email
-			}
-			actions.MembersLosingAccess = append(actions.MembersLosingAccess, member)
-		}
+	accesses, err := access.unlockedSession.Client.ListVaultMembers(ctx, vault.ID)
+	if err != nil {
+		return cliprotocol.VaultActionsResult{}, err
 	}
+	people, err := access.unlockedSession.Client.ListMembers(ctx)
+	if err != nil {
+		return cliprotocol.VaultActionsResult{}, err
+	}
+	scopeMembers := []crypt.ImportMember{}
+	for _, memberAccess := range accesses {
+		scopeMembers = append(scopeMembers, crypt.ImportMember{AccountID: memberAccess.AccountID, Role: memberAccess.Role})
+		if memberAccess.Role == apitypes.VaultOwner {
+			ownerCount++
+		}
+		if memberAccess.AccountID == access.unlockedSession.AccountID {
+			continue
+		}
+		member := cliprotocol.VaultMember{AccountID: memberAccess.AccountID, Role: memberAccess.Role}
+		if index := slices.IndexFunc(people, func(person apitypes.Member) bool { return person.AccountID == memberAccess.AccountID }); index >= 0 {
+			member.Name, member.Email = people[index].Name, people[index].Email
+		}
+		actions.MembersLosingAccess = append(actions.MembersLosingAccess, member)
+	}
+	actions.ImportScope = crypt.ImportScope(vaultID, scopeMembers)
 	permissions := session.GetVaultPermissions(vault.Type, vault.Role, len(access.vaultsByID), ownerCount)
 	actions.CanRename, actions.CanDelete, actions.DeleteBlockedReason = permissions.CanRename, permissions.CanDelete, permissions.DeleteBlockedReason
 	actions.CanLeave, actions.LeaveBlockedReason = permissions.CanLeave, permissions.LeaveBlockedReason
@@ -320,11 +327,12 @@ func (access *standaloneBackend) writeExport(ctx context.Context, change cliprot
 	if err := access.requireSession(ctx); err != nil {
 		return cliprotocol.ExportResult{}, err
 	}
-	vaults, err := export.Collect(ctx, access.unlockedSession)
+	collection, err := export.Collect(ctx, access.unlockedSession)
 	if err != nil {
 		return cliprotocol.ExportResult{}, err
 	}
-	document := export.Build(export.Account{Email: access.currentState.Email, Server: access.currentState.Server}, vaults, time.Now())
+	document := export.Build(export.Account{Email: access.currentState.Email, Server: access.currentState.Server}, collection.Vaults, time.Now())
+	document.Provenance = &collection.Provenance
 	var content []byte
 	if change.Format == cliprotocol.ExportFormatPlain {
 		content, err = export.EncodePlain(document)
@@ -340,7 +348,7 @@ func (access *standaloneBackend) writeExport(ctx context.Context, change cliprot
 	if err := writeNewFile(change.Path, content); err != nil {
 		return cliprotocol.ExportResult{}, err
 	}
-	return cliprotocol.ExportResult{Path: change.Path, VaultCount: len(document.Vaults), ItemCount: document.CountItem()}, nil
+	return cliprotocol.ExportResult{Path: change.Path, VaultCount: len(document.Vaults), ItemCount: document.CountItem(), Provenance: document.Provenance}, nil
 }
 
 func (access *standaloneBackend) finish(err error) error {
@@ -490,14 +498,14 @@ func (access *standaloneBackend) completeAcceptedShares(ctx context.Context, inv
 	if !isAnyAccepted {
 		return nil, nil
 	}
-	fmt.Fprintln(os.Stderr, "Someone accepted your invitation; unlock to finish sharing.")
+	fmt.Fprintln(standardError(), "Someone accepted your invitation; unlock to finish sharing.")
 	if err := access.requireSession(ctx); err != nil {
 		return nil, err
 	}
 	vaultNamesByID := map[string]string{}
 	completedShares, completeErr := access.unlockedSession.CompleteAcceptedShares(ctx)
 	for _, completed := range completedShares {
-		fmt.Fprintf(os.Stderr, "Shared %q with %s as %s. Their security code: %s\n", completed.VaultName, completed.Recipient.Email, completed.Role,
+		fmt.Fprintf(standardError(), "Shared %q with %s as %s. Their security code: %s\n", completed.VaultName, completed.Recipient.Email, completed.Role,
 			crypt.FormatKeyFingerprint(completed.Recipient.PublicKeys.Sign))
 	}
 	if vaults, err := access.unlockedSession.ListVaults(ctx); err == nil {
@@ -520,6 +528,21 @@ func (access *standaloneBackend) answerInvitation(ctx context.Context, action, i
 		return authedClient.DeclineShareInvitation(ctx, invitationID)
 	}
 	return authedClient.CancelShareInvitation(ctx, invitationID)
+
+}
+
+func (access *standaloneBackend) confirmInvitation(ctx context.Context, invitationID, reviewToken string) error {
+	if err := access.requireSession(ctx); err != nil {
+		return err
+	}
+	reviewHash, err := hex.DecodeString(reviewToken)
+	if err != nil || len(reviewHash) != 32 {
+		return errors.New("Review this invitation again before confirming the recipient.")
+	}
+	if err := access.unlockedSession.ConfirmShareRecipient(ctx, invitationID, reviewHash); err != nil {
+		return err
+	}
+	return access.currentState.Save()
 }
 
 func (access *standaloneBackend) listShareLinks(ctx context.Context) ([]cliprotocol.ShareLink, error) {

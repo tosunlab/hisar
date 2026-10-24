@@ -61,6 +61,9 @@ class AppModel(
     private var enteredBackgroundAt: Instant? = null
     private var noticeJob: Job? = null
     private var isRefreshRequestedAgain = false
+    private var startedRefreshCount = 0L
+    private var shownRefresh = 0L
+    private var statusEpoch = 0L
 
     override val status: StateFlow<VaultStatus> = mutableStatus.asStateFlow()
     override val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
@@ -94,6 +97,7 @@ class AppModel(
     val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
+    val pendingRecovery = PendingRecoveryModel(this) { signIn.finishNewSecretKey() }
     val credentialImport = CredentialImportModel(this)
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)
@@ -128,6 +132,7 @@ class AppModel(
         applyStatus(started.status)
         if (status.value.isUnlocked) scope.launch { refreshAll() }
         scope.launch { checkMinimumVersion() }
+        refreshPendingRecovery()
     }
 
     private class StartedBackend(
@@ -149,9 +154,10 @@ class AppModel(
     // Offline the backend keeps what it knew, so a failed check never blocks the app.
     suspend fun checkMinimumVersion() {
         if (backend == null) return
+        val epoch = statusEpoch
         mutableIsCheckingMinimumVersion.value = true
         try {
-            attempt { it.checkMinimumVersion() }?.let(::applyStatus)
+            attempt { it.checkMinimumVersion() }?.let { if (epoch == statusEpoch) applyStatus(it) }
         } finally {
             mutableIsCheckingMinimumVersion.value = false
         }
@@ -163,6 +169,7 @@ class AppModel(
 
     override fun applyStatus(newStatus: VaultStatus) {
         val previous = mutableStatus.value
+        if (previous.state != newStatus.state || previous.email != newStatus.email || previous.server != newStatus.server) statusEpoch++
         mutableStatus.value = newStatus
         mutableScreen.value = when {
             newStatus.updateRequired != null -> Screen.UpdateRequired(newStatus.updateRequired)
@@ -223,6 +230,11 @@ class AppModel(
         attempt { it.getStatus() }?.let(::applyStatus)
     }
 
+    override suspend fun refreshPendingRecovery() {
+        pendingRecovery.refresh()
+        if (pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
+    }
+
     suspend fun lock() {
         attempt { it.lock() }?.let(::applyStatus)
     }
@@ -253,11 +265,21 @@ class AppModel(
         }
     }
 
+    // A remote change that comes while a refresh lists may be missing from its lists, so that refresh lists again, whoever
+    // started it: the first refresh, an unlock or a pull to refresh as much as a remote change.
+    override suspend fun refreshAll() {
+        do {
+            isRefreshRequestedAgain = false
+            refreshAllOnce()
+        } while (isRefreshRequestedAgain && status.value.isUnlocked)
+    }
+
     // Listing the share invitations also completes the shares people accepted, and listing the waiting vault keys gives
     // team members the keys of the organization vaults this user owns, as the Mac's sync does. Both run before the vaults
     // are listed, so a vault rotated meanwhile is listed with its new key.
-    override suspend fun refreshAll() {
+    private suspend fun refreshAllOnce() {
         if (!status.value.isUnlocked) return
+        val refresh = ++startedRefreshCount
         mutableIsRefreshing.value = true
         try {
             val result = perform(isBusyShown = false) { backend ->
@@ -270,7 +292,7 @@ class AppModel(
                 attemptCall<List<FavoriteItem>> { backend.listAllFavoriteItem() }
                 val allItemByVaultID = allVault.associate { it.id to backend.listAllItem(it.id) }
                 RefreshResult(
-                    allVault, allItemByVaultID, attemptCall { backend.listAllPasskey() }.orEmpty(),
+                    allVault, allItemByVaultID, attemptCall { backend.listAllPasskey() },
                     shareInvitations, allRemovedVault, organizations, waitingVaultKeys,
                 )
             }
@@ -278,19 +300,25 @@ class AppModel(
             // it back.
             refreshStatus()
             if (result == null || !status.value.isUnlocked) return
+            // Refreshes can finish out of order: one that started earlier than the lists shown lists older data. Removed
+            // vaults are listed only once, so even an older refresh keeps them.
+            val isNewer = refresh > shownRefresh
+            if (isNewer) shownRefresh = refresh
             mutableUnlockedData.update { data ->
+                val allRemovedVaultNotice = data.allRemovedVaultNotice +
+                    result.allRemovedVault.filter { notice -> data.allRemovedVaultNotice.none { it.id == notice.id } }
+                if (!isNewer) return@update data.copy(allRemovedVaultNotice = allRemovedVaultNotice)
                 data.copy(
                     allVault = result.allVault.sortedWith(vaultOrder),
                     allItemByVaultID = result.allItemByVaultID,
-                    allPasskey = result.allPasskey,
+                    allPasskey = result.allPasskey ?: data.allPasskey,
                     allReceivedInvitation = result.shareInvitations?.allReceived ?: data.allReceivedInvitation,
                     allWaitingInvitation = result.shareInvitations?.allWaiting ?: data.allWaitingInvitation,
                     // Offline both fail; the last organizations keep naming the vault groups.
                     allOrganization = result.organizations?.allOrganization ?: data.allOrganization,
                     allOrganizationInvitation = result.organizations?.allInvitation ?: data.allOrganizationInvitation,
                     waitingVaultKeys = result.waitingVaultKeys ?: data.waitingVaultKeys,
-                    allRemovedVaultNotice = data.allRemovedVaultNotice +
-                        result.allRemovedVault.filter { notice -> data.allRemovedVaultNotice.none { it.id == notice.id } },
+                    allRemovedVaultNotice = allRemovedVaultNotice,
                 )
             }
         } finally {
@@ -301,7 +329,7 @@ class AppModel(
     private class RefreshResult(
         val allVault: List<VaultSummary>,
         val allItemByVaultID: Map<String, List<ItemDetail>>,
-        val allPasskey: List<StoredPasskey>,
+        val allPasskey: List<StoredPasskey>?,
         val shareInvitations: ShareInvitations?,
         val allRemovedVault: List<RemovedVaultNotice>,
         val organizations: Organizations?,
@@ -316,12 +344,7 @@ class AppModel(
             isRefreshRequestedAgain = true
             return
         }
-        scope.launch {
-            do {
-                isRefreshRequestedAgain = false
-                refreshAll()
-            } while (isRefreshRequestedAgain && status.value.isUnlocked)
-        }
+        scope.launch { refreshAll() }
     }
 
     suspend fun copyField(vaultID: String, itemID: String, fieldName: String, label: String) {

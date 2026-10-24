@@ -135,6 +135,30 @@ func TestIntegrationAgentThroughApp(t *testing.T) {
 		t.Fatalf("hidden vault: %+v %v", result, err)
 	}
 
+	// A vault agents cannot see never changes a reference, and a vault ID searches that vault only, even when another
+	// vault agents see is named that ID.
+	if _, err := service.CreateVault("PERSONAL"); err != nil {
+		t.Fatal(err)
+	}
+	shadowVault, err := service.CreateVault(personalID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SaveItem(shadowVault.ID, app.ItemDetail{Title: "Shadow", Password: "shadow-password"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.SetVaultAvailableToAgents(shadowVault.ID, true); err != nil {
+		t.Fatal(err)
+	}
+	call("search_items", map[string]any{"query": "stripe"}, &searchOutput)
+	if len(searchOutput.Items) != 1 || !slices.ContainsFunc(searchOutput.Items[0].Fields, func(field cliprotocol.AgentField) bool { return field.Reference == apiKeyReference }) {
+		t.Errorf("a vault agents cannot see changed the reference %s: %+v", apiKeyReference, searchOutput.Items)
+	}
+	call("search_items", map[string]any{"query": "", "vault": personalID}, &searchOutput)
+	if searchOutput.TotalCount != 1 || searchOutput.Items[0].VaultID != personalID {
+		t.Errorf("search by the Personal vault's ID = %+v", searchOutput.Items)
+	}
+
 	kinds := []string{}
 	for _, request := range approver.requests {
 		kinds = append(kinds, request.Kind)

@@ -101,7 +101,7 @@ final class OrganizationUITests: HisarUITestCase {
         let newTeamAlert = app.alerts["New team"]
         let teamNameField = newTeamAlert.textFields.firstMatch
         teamNameField.tap()
-        teamNameField.typeText("Ops")
+        typeText("Ops", into: teamNameField)
         newTeamAlert.buttons["Create"].firstMatch.tap()
         let addMemberMenu = app.buttons["team-Ops-add-member"]
         scrollTo(addMemberMenu)

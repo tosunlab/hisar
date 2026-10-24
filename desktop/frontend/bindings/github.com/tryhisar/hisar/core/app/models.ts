@@ -4,8 +4,15 @@
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import * as browserprotocol$0 from "../browserprotocol/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as export$0 from "../export/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import * as session$0 from "../session/models.js";
 
 export interface AccountDeletionPreview {
+    "planVersion": string;
     "email": string;
     "ownedVaults": DeletionVault[] | null;
     "memberVaults": DeletionVault[] | null;
@@ -19,6 +26,22 @@ export interface AccountDeletionPreview {
      * last admin. Omitted when the user is in none.
      */
     "organizations"?: DeletionOrganization[] | null;
+}
+
+/**
+ * AgentGrant is what a coding agent may do without asking, as Settings → Coding agents lists it: use (Kind run or code),
+ * read (reveal) or sign in with (sign-in, at Website only) the item Name names. Scope says who holds it: a recognized
+ * harness in every session ("harness"), one agent session ("session"), or one connection ("connection"), whose grants
+ * end with it. ID names it for RevokeAgentGrant. ExpiresAt is RFC 3339, "" for a grant that lasts until revoked.
+ */
+export interface AgentGrant {
+    "id": string;
+    "scope": string;
+    "harnessName": string;
+    "name": string;
+    "kind": string;
+    "website": string;
+    "expiresAt": string;
 }
 
 /**
@@ -47,6 +70,16 @@ export interface AgentSession {
     "projectPath": string;
     "firstRequestAt": string;
     "allRememberedSecret": RememberedAgentSecret[] | null;
+}
+
+/**
+ * AgentSignIn is Settings → Coding agents → Website sign-in. IsAvailable: this app can fill browser windows (Hisar for
+ * Mac). HasAccessibility: the system lets it.
+ */
+export interface AgentSignIn {
+    "isAvailable": boolean;
+    "isEnabled": boolean;
+    "hasAccessibility": boolean;
 }
 
 export interface BrowserPairingRequest {
@@ -85,6 +118,14 @@ export interface CredentialChangeResult {
      * KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
      */
     "keychainError": string;
+
+    /**
+     * LocalError reports local finalization failures after the credentials have already changed.
+     */
+    "localError": string;
+    "pendingOperationId": string;
+    "setupState": string;
+    "problems": string[] | null;
 }
 
 export interface DeletionOrganization {
@@ -92,6 +133,7 @@ export interface DeletionOrganization {
     "name": string;
     "isDeleted": boolean;
     "newAdminName": string;
+    "newAdminId": string;
 }
 
 export interface DeletionVault {
@@ -135,6 +177,8 @@ export interface ExportResult {
     "path": string;
     "vaultCount": number;
     "itemCount": number;
+    "provenance"?: export$0.Provenance | null;
+    "warning"?: string;
 }
 
 /**
@@ -214,6 +258,7 @@ export interface ImportPreview {
     "passkeyCount": number;
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
+    "groups": ImportSourceGroup[] | null;
 }
 
 export interface ImportProgress {
@@ -223,6 +268,7 @@ export interface ImportProgress {
     "vaultName": string;
     "savedCount": number;
     "totalCount": number;
+    "leftBehindCount": number;
     "isDone": boolean;
     "allFailed": ImportSkippedEntry[] | null;
 }
@@ -230,6 +276,16 @@ export interface ImportProgress {
 export interface ImportSkippedEntry {
     "title": string;
     "reason": string;
+}
+
+export interface ImportSourceGroup {
+    "id": string;
+    "name": string;
+    "isPrivate": boolean;
+    "itemCount": number;
+    "vaultId": string;
+    "vaultName": string;
+    "members": VaultMember[] | null;
 }
 
 /**
@@ -312,6 +368,7 @@ export interface ItemDatabase {
 export interface ItemDetail {
     "id": string;
     "revision": string;
+    "readIssue"?: session$0.ReadIssue | null;
     "category": string;
     "title": string;
     "username": string;
@@ -556,6 +613,24 @@ export interface PasswordConfig {
 }
 
 /**
+ * PendingRecoverySummary contains no recovery factor or bearer. It is safe to show while signed out.
+ */
+export interface PendingRecoverySummary {
+    "operationId": string;
+    "kind": string;
+    "origin": string;
+    "accountId": string;
+    "email": string;
+    "name": string;
+    "phase": string;
+    "kitSaved": boolean;
+    "problems": string[] | null;
+    "manualUnlock": boolean;
+    "keychainProtected": boolean;
+    "revision": number;
+}
+
+/**
  * Person is the user or someone they share a vault with. SecurityCode is derived from their signing key; IsKeyChanged
  * means it differs from the key pinned when this device first shared with them.
  */
@@ -579,12 +654,13 @@ export interface ReceivedShareInvitation {
 }
 
 /**
- * RememberedAgentSecret is a secret an agent session uses, or reads when IsReveal, without asking until ExpiresAt (RFC
- * 3339).
+ * RememberedAgentSecret is a secret an agent session uses, reads when IsReveal, or signs in with at Website, without
+ * asking until ExpiresAt (RFC 3339).
  */
 export interface RememberedAgentSecret {
     "name": string;
     "isReveal": boolean;
+    "website"?: string;
     "expiresAt": string;
 }
 
@@ -622,6 +698,10 @@ export interface SentShareInvitation {
     "state": string;
     "expiresAt": string;
     "acceptedAt": string;
+    "requiresConfirmation": boolean;
+    "recipientId": string;
+    "securityCode": string;
+    "reviewToken": string;
 }
 
 /**
@@ -686,6 +766,9 @@ export interface ShareLinkRequest {
 export interface SignUpResult {
     "status": Status;
     "secretKey": string;
+    "pendingOperationId": string;
+    "setupState": string;
+    "problems": string[] | null;
 }
 
 export interface Status {
@@ -700,6 +783,7 @@ export interface Status {
     "biometricAvailable": boolean;
     "biometricEnabled": boolean;
     "biometricReady": boolean;
+    "biometricSetupError"?: string;
 
     /**
      * IsOffline: the server could not be reached, so vaults and items come from this device's encrypted cache.
@@ -831,6 +915,8 @@ export interface VaultSummary {
      * OrganizationID is set for organization vaults only.
      */
     "organizationId"?: string;
+    "readIssues"?: session$0.ReadIssue[] | null;
+    "isPersonalExtra"?: boolean;
 }
 
 /**

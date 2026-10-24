@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"reflect"
@@ -11,6 +12,7 @@ import (
 	"github.com/go-webauthn/webauthn/webauthn"
 	"github.com/tryhisar/hisar/core/browserprotocol"
 	"github.com/tryhisar/hisar/core/item"
+	"github.com/tryhisar/hisar/core/passkey"
 )
 
 type passkeyTestUser struct {
@@ -39,6 +41,12 @@ func createPasskeyRelyingParty(t *testing.T, relyingPartyID, origin string, user
 
 func (testBridge *browserTestBridge) sendPasskeyRequest(t *testing.T, requestType, token string, passkeyRequest browserprotocol.PasskeyRequest) (any, string) {
 	t.Helper()
+	if passkeyRequest.UserVerification == "" {
+		passkeyRequest.UserVerification = "preferred"
+	}
+	if passkeyRequest.CeremonyID == "" {
+		passkeyRequest.CeremonyID = rand.Text()
+	}
 	encoded, err := json.Marshal(passkeyRequest)
 	if err != nil {
 		t.Fatal(err)
@@ -87,6 +95,14 @@ func (relyingParty *passkeyRelyingParty) signIn(t *testing.T, testBridge *browse
 		return errors.New(code)
 	}
 	assertion := result.(browserprotocol.PasskeyAssertionResult)
+	authenticatorData, err := decodeBase64URL(assertion.AuthenticatorData)
+	if err != nil || len(authenticatorData) < 33 {
+		t.Fatalf("invalid signed authenticator data: %v", err)
+	}
+	wantsVerification := passkeyRequest.UserVerification != "discouraged" || (passkeyRequest.PRF != nil && (passkeyRequest.PRF.Eval != nil || len(passkeyRequest.PRF.EvalByCredential) > 0))
+	if (authenticatorData[32]&passkey.FlagUserVerified != 0) != wantsVerification {
+		t.Fatalf("signed UV does not match ceremony policy %q: %x", passkeyRequest.UserVerification, authenticatorData[32])
+	}
 	body, _ := json.Marshal(map[string]any{
 		"id": assertion.CredentialID, "rawId": assertion.CredentialID, "type": "public-key", "clientExtensionResults": map[string]any{},
 		"response": map[string]any{
@@ -232,6 +248,57 @@ func TestPasskeyCreatesNewLogin(t *testing.T) {
 	}
 	if loginURL := buildPasskeyLoginURL("http://localhost:5173", "localhost"); loginURL != "http://localhost:5173" {
 		t.Errorf("login URL on localhost = %s", loginURL)
+	}
+}
+
+func TestPasskeySignInWithACredentialIDTwoItemsHold(t *testing.T) {
+	testBridge := createBrowserTestBridge(t)
+	service := testBridge.testService.service
+	personalID, familyID := testBridge.testService.personalID, testBridge.testService.familyID
+	token := testBridge.pair(t, "chrome-1")
+	relyingParty := createPasskeyRelyingParty(t, "example.com", "https://example.com", []byte("user-alex"))
+	genuine, err := relyingParty.register(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", UserName: "alex"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An editor of Family copies the passkey's ID into a login of their own, with another private key and a title that
+	// sorts first.
+	shadow, err := service.SaveItem(familyID, ItemDetail{Title: "AAA example", Username: "alex", URLs: []string{"https://example.com"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := passkey.CreateCredential(passkey.CreationRequest{Origin: "https://example.com", RelyingPartyID: "example.com", Challenge: []byte("challenge")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	setShadowPrivateKey := func(privateKey []byte) {
+		t.Helper()
+		shadowItem := getCachedItem(t, service, familyID, shadow.ID)
+		forged := getCachedItem(t, service, personalID, genuine.ItemID).Details.Passkeys[0]
+		forged.PrivateKey = privateKey
+		shadowItem.Details.Passkeys = []item.Passkey{forged}
+		service.mutex.Lock()
+		service.replaceCachedItem(familyID, shadowItem)
+		service.mutex.Unlock()
+	}
+	setShadowPrivateKey(other.PrivateKey)
+
+	request := browserprotocol.PasskeyRequest{Origin: "https://example.com", CredentialID: genuine.CredentialID}
+	if err := relyingParty.signIn(t, testBridge, token, request); err == nil || err.Error() != browserprotocol.ErrorInvalidRequest {
+		t.Errorf("sign in without choosing between the two passkeys: %v", err)
+	}
+	request.VaultID, request.ItemID = personalID, genuine.ItemID
+	if err := relyingParty.signIn(t, testBridge, token, request); err != nil {
+		t.Errorf("sign in with the chosen passkey: %v", err)
+	}
+	request.VaultID, request.ItemID = familyID, "no-such-item"
+	if err := relyingParty.signIn(t, testBridge, token, request); err == nil || err.Error() != browserprotocol.ErrorNotFound {
+		t.Errorf("sign in with an item that has no such passkey: %v", err)
+	}
+
+	setShadowPrivateKey(getCachedItem(t, service, personalID, genuine.ItemID).Details.Passkeys[0].PrivateKey)
+	if err := relyingParty.signIn(t, testBridge, token, browserprotocol.PasskeyRequest{Origin: "https://example.com", CredentialID: genuine.CredentialID}); err != nil {
+		t.Errorf("sign in with the same passkey in two items: %v", err)
 	}
 }
 

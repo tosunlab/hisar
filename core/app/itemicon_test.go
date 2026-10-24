@@ -3,9 +3,12 @@ package app
 import (
 	"bytes"
 	"context"
+	"errors"
+	"fmt"
 	"image"
 	"image/color"
 	"image/png"
+	"net/http"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -15,9 +18,11 @@ import (
 	"testing"
 	"time"
 
+	"github.com/tryhisar/hisar/core/cache"
 	"github.com/tryhisar/hisar/core/cliprotocol"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/itemicon"
+	"github.com/tryhisar/hisar/core/session"
 )
 
 func encodeTestIconPNG(t *testing.T, side int) []byte {
@@ -105,8 +110,11 @@ func (fetcher *fakeWebsiteIconFetcher) Fetch(ctx context.Context, rawURL string)
 }
 
 func TestGetWebsiteIconCachesAndRefreshes(t *testing.T) {
-	test := createUnlockedTestService(t)
-	service := test.service
+	service := createLockedUnlockableService(t).service
+	service.config.IsEventStreamDisabled = true
+	if _, err := service.Unlock(testMasterPassword); err != nil {
+		t.Fatal(err)
+	}
 	icon := encodeTestIconPNG(t, 64)
 	fetcher := &fakeWebsiteIconFetcher{icons: map[string][]byte{"https://github.com/": icon}}
 	now := time.Date(2026, 10, 17, 12, 0, 0, 0, time.UTC)
@@ -162,6 +170,62 @@ func TestGetWebsiteIconCachesAndRefreshes(t *testing.T) {
 	}
 }
 
+// A session whose cache failed to attach must not write icons into that cache: a cache with icons and no account is
+// refused at every later launch, so offline unlock would never work again.
+func TestWebsiteIconsStayOutOfACacheTheSessionDidNotAttach(t *testing.T) {
+	fixture := createLockedUnlockableService(t)
+	s := fixture.service
+	s.config.IsEventStreamDisabled = true
+	icon := encodeTestIconPNG(t, 32)
+	s.config.WebsiteIconFetcher = &fakeWebsiteIconFetcher{icons: map[string][]byte{"https://github.com/": icon}}
+	client := s.createClient(s.state.Server)
+	client.Token = s.state.Token
+	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(fixture.accountID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	unlocked, err := session.Unlock(context.Background(), client, nil, []byte(testMasterPassword), secretKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.HTTP = &http.Client{Transport: failedAccountReadTransport{}}
+	s.mutex.Lock()
+	s.attachCache(context.Background(), unlocked)
+	s.openSession(unlocked)
+	isAttached := s.unlockedSession.Cache != nil
+	s.mutex.Unlock()
+	if isAttached {
+		t.Fatal("fixture: the cache was attached although the account read failed")
+	}
+	if got, err := s.GetWebsiteIcon("https://github.com"); err != nil || !bytes.Equal(got, icon) {
+		t.Errorf("GetWebsiteIcon without an attached cache = %d bytes, %v", len(got), err)
+	}
+	s.Lock()
+	s.mutex.Lock()
+	if s.localCache != nil {
+		s.localCache.Close()
+		s.localCache = nil
+	}
+	s.mutex.Unlock()
+	reopened, err := cache.Open(s.config.CachePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := reopened.CheckAccount(fixture.accountID); err != nil {
+		t.Errorf("the icon left a cache later launches refuse: %v", err)
+	}
+	reopened.Close()
+	if _, err := s.Unlock(testMasterPassword); err != nil {
+		t.Fatal(err)
+	}
+	s.mutex.Lock()
+	isAttached = s.unlockedSession.Cache != nil
+	s.mutex.Unlock()
+	if !isAttached {
+		t.Error("the next unlock could not attach the offline copy")
+	}
+}
+
 func TestGetWebsiteIconSharesAFetchAndFollowsTheSetting(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service
@@ -207,6 +271,146 @@ func TestGetWebsiteIconSharesAFetchAndFollowsTheSetting(t *testing.T) {
 	}
 	if got, _ := service.GetWebsiteIcon("https://github.com"); !bytes.Equal(got, icon) || fetcher.calls.Load() != 2 {
 		t.Errorf("turning icons off kept the cache: %d fetches", fetcher.calls.Load())
+	}
+}
+
+type blockingWebsiteIconFetcher struct {
+	started chan struct{}
+	ended   chan error
+}
+
+func (fetcher *blockingWebsiteIconFetcher) Fetch(ctx context.Context, _ string) ([]byte, error) {
+	close(fetcher.started)
+	select {
+	case <-ctx.Done():
+		fetcher.ended <- ctx.Err()
+	case <-time.After(5 * time.Second):
+		fetcher.ended <- errors.New("the fetch was not canceled")
+	}
+	return nil, context.Canceled
+}
+
+func TestGetWebsiteIconCancelsAFetchOnLockAndWhenTurnedOff(t *testing.T) {
+	for name, stop := range map[string]func(*Service){
+		"lock":     func(service *Service) { service.Lock() },
+		"turn off": func(service *Service) { service.SetWebsiteIconsEnabled(false) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			service := createUnlockedTestService(t).service
+			fetcher := &blockingWebsiteIconFetcher{started: make(chan struct{}), ended: make(chan error, 1)}
+			service.config.WebsiteIconFetcher = fetcher
+			go service.GetWebsiteIcon("https://github.com")
+			<-fetcher.started
+			stop(service)
+			if err := <-fetcher.ended; !errors.Is(err, context.Canceled) {
+				t.Errorf("fetch after %s: %v", name, err)
+			}
+		})
+	}
+}
+
+func TestGetWebsiteIconDoesNotFetchAfterItsAuthorizationIsRevoked(t *testing.T) {
+	for _, reenable := range []bool{false, true} {
+		t.Run(fmt.Sprintf("reenable=%v", reenable), func(t *testing.T) {
+			service := createUnlockedTestService(t).service
+			fetcher := &fakeWebsiteIconFetcher{}
+			service.config.WebsiteIconFetcher = fetcher
+			authorized, resume := make(chan struct{}), make(chan struct{})
+			resumeClock := sync.OnceFunc(func() { close(resume) })
+			defer resumeClock()
+			var once sync.Once
+			service.config.Now = func() time.Time {
+				once.Do(func() {
+					close(authorized)
+					<-resume
+				})
+				return time.Now()
+			}
+			done := make(chan []byte, 1)
+			go func() {
+				image, _ := service.GetWebsiteIcon("https://github.com")
+				done <- image
+			}()
+			select {
+			case <-authorized:
+			case <-time.After(5 * time.Second):
+				t.Fatal("website icon request did not reach the authorization barrier")
+			}
+			settingsChanged := make(chan error, 1)
+			go func() {
+				err := service.SetWebsiteIconsEnabled(false)
+				if err == nil && reenable {
+					err = service.SetWebsiteIconsEnabled(true)
+				}
+				settingsChanged <- err
+			}()
+			select {
+			case err := <-settingsChanged:
+				if err != nil {
+					t.Fatal(err)
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("changing website icon settings blocked while the authorized request was paused")
+			}
+			resumeClock()
+			select {
+			case image := <-done:
+				if image != nil {
+					t.Errorf("revoked request returned %d bytes", len(image))
+				}
+			case <-time.After(5 * time.Second):
+				t.Fatal("revoked website icon request did not finish after resuming")
+			}
+			if calls := fetcher.calls.Load(); calls != 0 {
+				t.Errorf("revoked request made %d fetches", calls)
+			}
+		})
+	}
+}
+
+func TestGetWebsiteIconDoesNotCacheOrJoinARevokedFetch(t *testing.T) {
+	service := createUnlockedTestService(t).service
+	icon := encodeTestIconPNG(t, 32)
+	fetcher := &fakeWebsiteIconFetcher{icons: map[string][]byte{"https://github.com/": icon}, isPaused: make(chan struct{})}
+	service.config.WebsiteIconFetcher = fetcher
+	done := make(chan []byte, 1)
+	go func() {
+		image, _ := service.GetWebsiteIcon("https://github.com")
+		done <- image
+	}()
+	for fetcher.calls.Load() == 0 {
+		time.Sleep(time.Millisecond)
+	}
+	if err := service.SetWebsiteIconsEnabled(false); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.SetWebsiteIconsEnabled(true); err != nil {
+		t.Fatal(err)
+	}
+	current := make(chan []byte, 1)
+	go func() {
+		image, _ := service.GetWebsiteIcon("https://github.com")
+		current <- image
+	}()
+	deadline := time.After(5 * time.Second)
+	for fetcher.calls.Load() < 2 {
+		select {
+		case <-deadline:
+			close(fetcher.isPaused)
+			t.Fatal("new request joined the revoked fetch")
+		default:
+			time.Sleep(time.Millisecond)
+		}
+	}
+	close(fetcher.isPaused)
+	if image := <-done; image != nil {
+		t.Errorf("revoked fetch returned %d bytes", len(image))
+	}
+	if image := <-current; !bytes.Equal(image, icon) {
+		t.Errorf("current fetch returned %d bytes", len(image))
+	}
+	if image, err := service.GetWebsiteIcon("https://github.com"); err != nil || !bytes.Equal(image, icon) || fetcher.calls.Load() != 2 {
+		t.Errorf("current cache returned %d bytes, %v, after %d fetches", len(image), err, fetcher.calls.Load())
 	}
 }
 

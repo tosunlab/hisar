@@ -56,17 +56,16 @@ type agentSecretSource struct {
 	serviceSecretSource
 }
 
-func (source agentSecretSource) ListVaults() ([]secretreference.Vault, error) {
-	vaults, err := source.serviceSecretSource.ListVaults()
-	if err != nil {
-		return nil, err
+func (source agentSecretSource) ListVaults() (secretreference.Inventory, error) {
+	if err := source.loadVaults(); err != nil {
+		return secretreference.Inventory{}, err
 	}
-	return slices.DeleteFunc(vaults, func(vault secretreference.Vault) bool { return !source.service.isAgentVault(vault.ID) }), nil
+	return source.service.listSecretVaults(source.service.isAgentVault), nil
 }
 
-func (source agentSecretSource) ListItems(vaultID string) ([]item.Item, error) {
+func (source agentSecretSource) ListItems(vaultID string) (secretreference.ItemList, error) {
 	if !source.service.isAgentVault(vaultID) {
-		return nil, fmt.Errorf("vault %w", ErrNotFound)
+		return secretreference.ItemList{}, fmt.Errorf("vault %w", ErrNotFound)
 	}
 	return source.serviceSecretSource.ListItems(vaultID)
 }
@@ -107,12 +106,11 @@ func (s *Service) listAgentVaultSummaries() (cliprotocol.AgentVaultListResult, e
 		return result, err
 	}
 	for _, vault := range vaults {
-		items, err := s.unlockedSession.ListItems(ctx, vault)
+		read, err := s.readVaultItems(ctx, vault)
 		if err != nil {
-			return result, convertError(err)
+			return result, err
 		}
-		s.itemsByVaultID[vault.ID] = items
-		result.Vaults = append(result.Vaults, cliprotocol.AgentVault{ID: vault.ID, Name: vault.Name, ItemCount: len(items)})
+		result.Vaults = append(result.Vaults, cliprotocol.AgentVault{ID: vault.ID, Name: vault.Name, ItemCount: len(read.Items)})
 	}
 	return result, nil
 }
@@ -169,23 +167,21 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 	if err != nil {
 		return result, err
 	}
+	vaultNames := countVaultNames(s.listSecretVaults(s.isAgentVault))
 	if vaultQuery != "" {
-		vaults = slices.DeleteFunc(vaults, func(vault *session.Vault) bool {
-			return vault.ID != vaultQuery && !strings.EqualFold(vault.Name, vaultQuery)
-		})
+		vaults = filterAgentVaults(vaults, vaultQuery)
 		if len(vaults) == 0 {
 			return result, cliprotocol.NewError(cliprotocol.ErrorNotFound, fmt.Sprintf("no vault available to agents is named %q", vaultQuery))
 		}
 	}
-	vaultNames := countVaultNames(s.vaultsByID)
 	normalizedQuery := strings.ToLower(strings.TrimSpace(query))
 	for _, vault := range vaults {
-		items, err := s.unlockedSession.ListItems(ctx, vault)
+		read, err := s.readVaultItems(ctx, vault)
 		if err != nil {
-			return result, convertError(err)
+			return result, err
 		}
-		s.itemsByVaultID[vault.ID] = items
-		itemTitles := countItemTitles(items)
+		items := read.Items
+		itemTitles := countItemTitles(s.listSecretItems(vault.ID))
 		for index := range items {
 			vaultItem := &items[index]
 			if !isAgentSearchMatch(vault.Name, vaultItem, normalizedQuery) {
@@ -198,6 +194,14 @@ func (s *Service) searchAgentItems(query, vaultQuery string) (cliprotocol.AgentI
 		}
 	}
 	return result, nil
+}
+
+// filterAgentVaults keeps the vault with this ID, else every vault with this name ignoring case: search lists them all.
+func filterAgentVaults(vaults []*session.Vault, vaultQuery string) []*session.Vault {
+	if index := slices.IndexFunc(vaults, func(vault *session.Vault) bool { return vault.ID == vaultQuery }); index >= 0 {
+		return vaults[index : index+1]
+	}
+	return slices.DeleteFunc(vaults, func(vault *session.Vault) bool { return !strings.EqualFold(vault.Name, vaultQuery) })
 }
 
 func convertToAgentItem(vault *session.Vault, vaultItem *item.Item, reference secretreference.Reference) cliprotocol.AgentItem {
@@ -226,16 +230,16 @@ func (s *Service) buildAgentReferences(source agentSecretSource, request *clipro
 		reference.Field = secretreference.FieldOneTimeCode
 		return []string{reference.String()}, nil
 	}
-	vaults, err := source.ListVaults()
+	inventory, err := source.ListVaults()
 	if err != nil {
 		return nil, err
 	}
-	for _, vault := range vaults {
+	for _, vault := range inventory.Vaults {
 		items, err := source.ListItems(vault.ID)
 		if err != nil {
 			return nil, err
 		}
-		if slices.ContainsFunc(items, func(vaultItem item.Item) bool { return vaultItem.ID == request.ItemID }) {
+		if slices.ContainsFunc(items.Items, func(vaultItem item.Item) bool { return vaultItem.ID == request.ItemID }) {
 			return []string{secretreference.Reference{Vault: vault.ID, Item: request.ItemID, Field: secretreference.FieldOneTimeCode}.String()}, nil
 		}
 	}
@@ -267,8 +271,11 @@ func (s *Service) resolveAgentSecrets(request *cliprotocol.Request) ([]secretref
 
 // LocateAgentSecrets names the secrets of an agent request for the approval window without handing out values; for
 // hisar get inside an agent harness, the item it asks for.
-func (bridge *CommandLineBridge) LocateAgentSecrets(request *cliprotocol.Request) ([]clisocket.AgentSecret, error) {
-	s := bridge.service
+func (bridge *CommandLineBridge) LocateAgentSecrets(ctx context.Context, request *cliprotocol.Request) ([]clisocket.AgentSecret, error) {
+	s, err := bridge.requestService(ctx)
+	if err != nil {
+		return nil, err
+	}
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if request.Type == cliprotocol.TypeGetItem {
@@ -306,19 +313,20 @@ func (s *Service) locateAgentItem(vaultID, itemID string) (clisocket.AgentSecret
 	if err != nil {
 		return clisocket.AgentSecret{}, err
 	}
-	index := slices.IndexFunc(items, func(vaultItem item.Item) bool { return vaultItem.ID == itemID })
+	index := slices.IndexFunc(items.Items, func(vaultItem item.Item) bool { return vaultItem.ID == itemID })
 	if index < 0 {
 		return clisocket.AgentSecret{}, fmt.Errorf("item %w", ErrNotFound)
 	}
-	return clisocket.AgentSecret{VaultID: vaultID, ItemID: itemID, VaultName: vault.Name, ItemTitle: items[index].Overview.Title}, nil
+	return clisocket.AgentSecret{VaultID: vaultID, ItemID: itemID, VaultName: vault.Name, ItemTitle: items.Items[index].Overview.Title}, nil
 }
 
-// answerAgentSessionRequest answers what clisocket lets an ordinary hisar command inside an agent harness send, among
-// the agent-visible vaults only: a hidden vault fails like one that does not exist.
-func (bridge *CommandLineBridge) answerAgentSessionRequest(request *cliprotocol.Request) (any, error) {
+// answerAgentSessionRequest answers the listings clisocket lets an ordinary hisar command inside an agent harness send,
+// among the agent-visible vaults only: a hidden vault fails like one that does not exist. Its secrets come through
+// AnswerAgentRequest.
+func (bridge *CommandLineBridge) answerAgentSessionRequest(epoch uint64, request *cliprotocol.Request) (any, error) {
 	s := bridge.service
 	switch request.Type {
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		summaries, err := s.ListVaults()
 		if err != nil {
 			return nil, err
@@ -327,29 +335,114 @@ func (bridge *CommandLineBridge) answerAgentSessionRequest(request *cliprotocol.
 		result := cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{}}
 		for _, summary := range summaries {
 			if slices.Contains(agentVaultIDs, summary.ID) {
+				if request.Type == cliprotocol.TypeListVault && len(summary.ReadIssues) != 0 {
+					return nil, session.ErrIncompleteRead
+				}
+				result.Issues = append(result.Issues, summary.ReadIssues...)
 				result.Vaults = append(result.Vaults, convertToCommandLineVault(summary))
 			}
 		}
 		return result, nil
-	case cliprotocol.TypeListItem, cliprotocol.TypeGetItem:
+	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 		if !slices.Contains(s.ListAgentVaultIDs(), request.VaultID) {
 			return nil, fmt.Errorf("vault %w", ErrNotFound)
 		}
-		return bridge.answerCommandLineRequest(request)
-	case cliprotocol.TypeResolveSecret:
-		s.mutex.Lock()
-		defer s.mutex.Unlock()
-		resolvedReferences, err := s.resolveAgentSecrets(request)
+		return bridge.answerCommandLineRequest(epoch, request)
+	}
+	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+}
+
+// AnswerAgentRequest answers an agent request clisocket approved (clisocket.AgentSecretHandler) under s.mutex, so a
+// lock or sign-out comes wholly before or after it: it denies a stale authorization, and a request whose secrets no
+// longer resolve to exactly the approved vault, item and field, such as a reference that now names another item, and
+// hands out nothing either way.
+func (bridge *CommandLineBridge) AnswerAgentRequest(ctx context.Context, request *cliprotocol.Request, approval clisocket.AgentApproval) (any, error) {
+	s, err := bridge.requestService(ctx)
+	if err != nil {
+		return nil, err
+	}
+	result, err := s.answerApprovedAgentRequest(request, approval)
+	if !s.isSessionEpoch(*s.requestEpoch) {
+		return nil, errCommandLineSessionEnded
+	}
+	return result, convertCommandLineError(err)
+}
+
+func (s *Service) answerApprovedAgentRequest(request *cliprotocol.Request, approval clisocket.AgentApproval) (any, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireAgentAuthorization(approval.Authorization); err != nil {
+		return nil, err
+	}
+	if request.Type == cliprotocol.TypeGetItem {
+		return s.answerApprovedAgentItem(request, approval.Secrets)
+	}
+	resolvedReferences, err := s.resolveAgentSecrets(request)
+	if err != nil {
+		return nil, err
+	}
+	if !isApprovedIdentity(resolvedReferences, approval.Secrets) {
+		return nil, refuseChangedAgentSecrets(approval.Secrets)
+	}
+	if request.Type == cliprotocol.TypeAgentGetCode {
+		vaultItem, err := s.findItem(resolvedReferences[0].VaultID, resolvedReferences[0].ItemID)
 		if err != nil {
 			return nil, err
 		}
-		result := cliprotocol.ResolveSecretResult{Values: make([]string, 0, len(resolvedReferences))}
-		for _, resolved := range resolvedReferences {
-			result.Values = append(result.Values, resolved.Value)
-		}
-		return result, nil
+		code, err := generateOneTimeCode(vaultItem, s.config.Now())
+		return cliprotocol.CodeResult{Code: code.Code, ExpiresAt: code.ExpiresAt, Period: code.Period}, err
 	}
-	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
+	result := cliprotocol.ResolveSecretResult{Values: make([]string, 0, len(resolvedReferences))}
+	for _, resolved := range resolvedReferences {
+		result.Values = append(result.Values, resolved.Value)
+	}
+	return result, nil
+}
+
+// answerApprovedAgentItem needs s.mutex: hisar get inside an agent harness, for the approved item only.
+func (s *Service) answerApprovedAgentItem(request *cliprotocol.Request, approved []clisocket.AgentSecret) (any, error) {
+	located, err := s.locateAgentItem(request.VaultID, request.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	if len(approved) != 1 || approved[0].VaultID != located.VaultID || approved[0].ItemID != located.ItemID {
+		return nil, refuseChangedAgentSecrets(approved)
+	}
+	vaultItem, err := s.findItem(located.VaultID, located.ItemID)
+	if err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	s.loadFavoritesOnce(ctx)
+	return cliprotocol.ItemResult{Item: convertToCommandLineItem(s.describeItem(vaultItem))}, nil
+}
+
+// requireAgentAuthorization needs s.mutex, where Hisar locks and signs out: the authorization of an agent request still
+// holds, for the account Hisar has.
+func (s *Service) requireAgentAuthorization(authorization clisocket.AgentAuthorization) error {
+	if err := s.checkRequestEpoch(); err != nil {
+		return err
+	}
+	if !authorization.IsCurrent() || authorization.AccountID() != s.state.AccountID {
+		return cliprotocol.NewError(cliprotocol.ErrorDenied, "Hisar denied the request: it locked or signed out, or the agent's session ended, before the request ran")
+	}
+	return nil
+}
+
+func isApprovedIdentity(resolvedReferences []secretreference.Resolved, approved []clisocket.AgentSecret) bool {
+	return slices.EqualFunc(resolvedReferences, approved, func(resolved secretreference.Resolved, secret clisocket.AgentSecret) bool {
+		return resolved.VaultID == secret.VaultID && resolved.ItemID == secret.ItemID && strings.EqualFold(resolved.FieldLabel, secret.FieldLabel)
+	})
+}
+
+func refuseChangedAgentSecrets(approved []clisocket.AgentSecret) error {
+	names := make([]string, 0, len(approved))
+	for _, secret := range approved {
+		names = append(names, "“"+secret.Describe()+"”")
+	}
+	return cliprotocol.NewError(cliprotocol.ErrorDenied, fmt.Sprintf(
+		"The request no longer names what the user approved (%s): an item was renamed, moved or removed. Hisar handed out nothing; send the request again.", strings.Join(names, ", ")))
 }
 
 // IsAgentHost and AddAgentHost keep the CLI socket's agent hosts in desktop.json (clisocket.AgentHosts).
@@ -388,11 +481,12 @@ type AgentSession struct {
 	RememberedSecrets []RememberedAgentSecret `json:"allRememberedSecret"`
 }
 
-// RememberedAgentSecret is a secret an agent session uses, or reads when IsReveal, without asking until ExpiresAt (RFC
-// 3339).
+// RememberedAgentSecret is a secret an agent session uses, reads when IsReveal, or signs in with at Website, without
+// asking until ExpiresAt (RFC 3339).
 type RememberedAgentSecret struct {
 	Name      string `json:"name"`
 	IsReveal  bool   `json:"isReveal"`
+	Website   string `json:"website,omitempty"`
 	ExpiresAt string `json:"expiresAt"`
 }
 
@@ -427,7 +521,7 @@ func (s *Service) ListAgentSessions() []AgentSession {
 	sessions := make([]AgentSession, 0, len(liveSessions))
 	for _, live := range liveSessions {
 		listed := AgentSession{
-			PID: live.Session.PID, StartTime: live.Session.StartTime, HarnessName: live.Session.Harness.Name, IsSigned: live.Session.IsSigned,
+			PID: live.Session.PID, StartTime: live.Session.StartTime, HarnessName: live.Session.Harness.Name, IsSigned: live.Session.IsSigned(),
 			ProjectPath: live.Session.Directory, FirstRequestAt: live.FirstRequestAt.UTC().Format(time.RFC3339),
 			RememberedSecrets: make([]RememberedAgentSecret, 0, len(live.RememberedSecrets)),
 		}
@@ -439,7 +533,8 @@ func (s *Service) ListAgentSessions() []AgentSession {
 		}
 		for _, remembered := range live.RememberedSecrets {
 			listed.RememberedSecrets = append(listed.RememberedSecrets, RememberedAgentSecret{
-				Name: remembered.Secret.Describe(), IsReveal: remembered.Kind == clisocket.AgentRequestReveal, ExpiresAt: remembered.ExpiresAt.UTC().Format(time.RFC3339),
+				Name: remembered.Secret.Describe(), IsReveal: remembered.Kind == clisocket.AgentRequestReveal, Website: remembered.Secret.Origin,
+				ExpiresAt: remembered.ExpiresAt.UTC().Format(time.RFC3339),
 			})
 		}
 		sessions = append(sessions, listed)
@@ -448,7 +543,8 @@ func (s *Service) ListAgentSessions() []AgentSession {
 }
 
 // RevokeAgentSession ends the session of the harness process (PID and StartTime from ListAgentSessions): its open
-// approval windows close, it forgets its secrets, and its next request asks again. It returns the sessions left.
+// approval windows close, it forgets what the session remembers, and its next request asks again; the harness's grants
+// (ListAgentGrants) stay. It returns the sessions left.
 func (s *Service) RevokeAgentSession(pid int, startTime int64) []AgentSession {
 	if approvals := s.getCommandLineApprovals(); approvals != nil {
 		approvals.RevokeAgentSession(pid, startTime)
@@ -496,23 +592,5 @@ func (bridge *CommandLineBridge) answerAgentRequest(request *cliprotocol.Request
 	case cliprotocol.TypeAgentSearchItem:
 		return s.searchAgentItems(request.Query, request.Vault)
 	}
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	resolvedReferences, err := s.resolveAgentSecrets(request)
-	if err != nil {
-		return nil, err
-	}
-	if request.Type == cliprotocol.TypeAgentGetCode {
-		vaultItem, err := s.findItem(resolvedReferences[0].VaultID, resolvedReferences[0].ItemID)
-		if err != nil {
-			return nil, err
-		}
-		code, err := generateOneTimeCode(vaultItem, s.config.Now())
-		return cliprotocol.CodeResult{Code: code.Code, ExpiresAt: code.ExpiresAt, Period: code.Period}, err
-	}
-	result := cliprotocol.ResolveSecretResult{Values: make([]string, 0, len(resolvedReferences))}
-	for _, resolved := range resolvedReferences {
-		result.Values = append(result.Values, resolved.Value)
-	}
-	return result, nil
+	return nil, cliprotocol.NewError(cliprotocol.ErrorInvalidRequest, fmt.Sprintf("unknown request type %q", request.Type))
 }

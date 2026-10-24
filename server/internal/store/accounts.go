@@ -2,7 +2,10 @@ package store
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
+	"errors"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -103,10 +106,15 @@ func (s *Store) DeleteUnusedSetupInvites(ctx context.Context) error {
 	return err
 }
 
+// isWithinCreatorAuthority holds for an invite i that its creator may still give: an admin invite from an account needs
+// that account to still be an active admin. Operator and setup invites have no creator.
+const isWithinCreatorAuthority = `(i.role <> 'admin' OR i.created_by IS NULL OR EXISTS (SELECT 1 FROM accounts creator
+	WHERE creator.id = i.created_by AND creator.role = 'admin' AND creator.suspended_at IS NULL))`
+
 func (s *Store) GetInviteByHash(ctx context.Context, tokenHash []byte) (*Invite, error) {
 	var invite Invite
 	err := s.pool.QueryRow(ctx,
-		`SELECT email, role, expires_at FROM invites WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now()`,
+		`SELECT i.email, i.role, i.expires_at FROM invites i WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.expires_at > now() AND `+isWithinCreatorAuthority,
 		tokenHash).Scan(&invite.Email, &invite.Role, &invite.ExpiresAt)
 	if err != nil {
 		return nil, convertNoRowsToNotFound(err)
@@ -127,7 +135,7 @@ func (s *Store) GetInviteWithInviter(ctx context.Context, tokenHash []byte) (*In
 	err := s.pool.QueryRow(ctx, `
 		SELECT i.email, i.expires_at, coalesce(a.name, ''), coalesce(a.email, '')
 		FROM invites i LEFT JOIN accounts a ON a.id = i.created_by
-		WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.expires_at > now()`,
+		WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.expires_at > now() AND `+isWithinCreatorAuthority,
 		tokenHash).Scan(&invite.Email, &invite.ExpiresAt, &invite.InviterName, &invite.InviterEmail)
 	if err != nil {
 		return nil, convertNoRowsToNotFound(err)
@@ -135,13 +143,32 @@ func (s *Store) GetInviteWithInviter(ctx context.Context, tokenHash []byte) (*In
 	return &invite, nil
 }
 
-// RedeemInvite atomically consumes the invite and creates the account, its first device and a session.
+// RedeemInvite atomically consumes the invite and creates the account, its first device and a session. An admin invite
+// from an account that is no longer an active admin is ErrNotFound.
 func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Account, device *Device, session *Session) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		var creatorID *string
+		var inviteRole string
+		if err := transaction.QueryRow(ctx, `SELECT role, created_by FROM invites WHERE token_hash = $1`, tokenHash).Scan(&inviteRole, &creatorID); err != nil {
+			return convertNoRowsToNotFound(err)
+		}
+		// Account changes lock accounts before invitations. Hold the issuer's authority through redemption too.
+		if inviteRole == "admin" && creatorID != nil {
+			if err := requireActiveAdmin(ctx, transaction, *creatorID); errors.Is(err, ErrActorNotAdmin) {
+				return ErrNotFound
+			} else if err != nil {
+				return err
+			}
+		}
+		if err := lockInviteSource(ctx, transaction, tokenHash); err != nil {
+			return err
+		}
 		var email, role string
 		err := transaction.QueryRow(ctx,
-			`SELECT email, role FROM invites WHERE token_hash = $1 AND used_at IS NULL AND expires_at > now() FOR UPDATE`,
-			tokenHash).Scan(&email, &role)
+			`SELECT i.email, i.role FROM invites i WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.expires_at > now()
+				AND i.role = $2 AND i.created_by IS NOT DISTINCT FROM $3 AND `+isWithinCreatorAuthority+`
+			FOR UPDATE OF i`,
+			tokenHash, inviteRole, creatorID).Scan(&email, &role)
 		if err != nil {
 			return convertNoRowsToNotFound(err)
 		}
@@ -166,13 +193,20 @@ func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Acc
 	})
 }
 
-// CreateDeviceSession signs a device in; it fails with ErrAccountSuspended for a suspended account. The account row is
-// read FOR SHARE, so a suspension that commits meanwhile waits for the new session, which GetSessionByHash then refuses.
-func (s *Store) CreateDeviceSession(ctx context.Context, device *Device, session *Session) error {
+// CreateDeviceSession signs a device in with a login proven against the OPAQUE record whose hash is provenRecordHash. It
+// fails with ErrAccountSuspended for a suspended account, and with ErrConflict when the record changed after the proof,
+// so a login started before a credential change cannot finish after it. The account row is read FOR SHARE, so a
+// suspension or credential change that commits meanwhile waits for the new session, which it then refuses or signs out.
+func (s *Store) CreateDeviceSession(ctx context.Context, device *Device, session *Session, provenRecordHash []byte) error {
 	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
 		var isSuspended bool
-		if err := transaction.QueryRow(ctx, `SELECT suspended_at IS NOT NULL FROM accounts WHERE id = $1 FOR SHARE`, device.AccountID).Scan(&isSuspended); err != nil {
+		var opaqueRecord []byte
+		if err := transaction.QueryRow(ctx, `SELECT suspended_at IS NOT NULL, opaque_record FROM accounts WHERE id = $1 FOR SHARE`,
+			device.AccountID).Scan(&isSuspended, &opaqueRecord); err != nil {
 			return convertNoRowsToNotFound(err)
+		}
+		if subtle.ConstantTimeCompare(HashOpaqueRecord(opaqueRecord), provenRecordHash) != 1 {
+			return ErrConflict
 		}
 		if isSuspended {
 			return ErrAccountSuspended
@@ -181,7 +215,17 @@ func (s *Store) CreateDeviceSession(ctx context.Context, device *Device, session
 	})
 }
 
+// insertDeviceSession first revokes the account's devices without a live session: a session is never created for an
+// existing device and an expired one never comes back, so they can never be used again, and only signed-in devices
+// count against the device budget. Rows are locked in ID order so two sign-ins of one account cannot deadlock.
 func insertDeviceSession(ctx context.Context, transaction pgx.Tx, device *Device, session *Session) error {
+	if _, err := transaction.Exec(ctx, `
+		UPDATE devices SET revoked_at = now() WHERE id IN (
+			SELECT d.id FROM devices d WHERE d.account_id = $1 AND d.revoked_at IS NULL
+			  AND NOT EXISTS (SELECT 1 FROM sessions s WHERE s.device_id = d.id AND s.expires_at > now())
+			ORDER BY d.id FOR UPDATE)`, device.AccountID); err != nil {
+		return err
+	}
 	if _, err := transaction.Exec(ctx,
 		`INSERT INTO devices (id, account_id, name, platform) VALUES ($1, $2, $3, $4)`,
 		device.ID, device.AccountID, device.Name, device.Platform); err != nil {
@@ -193,25 +237,36 @@ func insertDeviceSession(ctx context.Context, transaction pgx.Tx, device *Device
 	return err
 }
 
-// GetSessionByHash returns a live session and slides its expiry forward. The session of a suspended account stays live,
-// so its device works again after reactivation, but is refused with ErrAccountSuspended until then.
+// GetSessionByHash atomically slides a live session's expiry and records device activity, locking the device first.
+// Suspended accounts return ErrAccountSuspended without extending expiry or recording activity.
 func (s *Store) GetSessionByHash(ctx context.Context, tokenHash []byte, ttl time.Duration) (*Session, error) {
 	var session Session
 	var isSuspended bool
 	err := s.pool.QueryRow(ctx, `
-		UPDATE sessions s SET expires_at = now() + $2::interval
-		FROM accounts a, devices d
-		WHERE s.token_hash = $1 AND s.expires_at > now()
-		  AND a.id = s.account_id AND d.id = s.device_id AND d.revoked_at IS NULL
-		RETURNING s.token_hash, s.account_id, s.device_id, a.role, s.expires_at, a.suspended_at IS NOT NULL`,
+		WITH device AS (
+			SELECT d.id FROM sessions s JOIN devices d ON d.id = s.device_id
+			WHERE s.token_hash = $1 AND s.expires_at > now() AND d.revoked_at IS NULL
+			FOR NO KEY UPDATE OF d
+		), live AS (
+			UPDATE sessions s SET expires_at = CASE WHEN a.suspended_at IS NULL THEN now() + $2::interval ELSE s.expires_at END
+			FROM accounts a, device d
+			WHERE s.token_hash = $1 AND s.expires_at > now()
+			  AND a.id = s.account_id AND d.id = s.device_id
+			RETURNING s.token_hash, s.account_id, s.device_id, a.role, s.expires_at, a.suspended_at IS NOT NULL AS is_suspended
+		), seen AS (
+			UPDATE devices SET last_seen_at = now() WHERE id IN (SELECT device_id FROM live WHERE NOT is_suspended)
+		)
+		SELECT token_hash, account_id, device_id, role, expires_at, is_suspended FROM live`,
 		tokenHash, ttl).Scan(&session.TokenHash, &session.AccountID, &session.DeviceID, &session.Role, &session.ExpiresAt, &isSuspended)
 	if err != nil {
+		if !errors.Is(err, pgx.ErrNoRows) {
+			log.Printf("session lookup or device last-seen update failed: %v", err)
+		}
 		return nil, convertNoRowsToNotFound(err)
 	}
 	if isSuspended {
 		return nil, ErrAccountSuspended
 	}
-	s.pool.Exec(ctx, `UPDATE devices SET last_seen_at = now() WHERE id = $1`, session.DeviceID)
 	return &session, nil
 }
 
@@ -264,10 +319,11 @@ func collectTokenHashes(ctx context.Context, transaction pgx.Tx, query string, a
 	return pgx.CollectRows(rows, pgx.RowTo[[]byte])
 }
 
-func (s *Store) RecordAudit(ctx context.Context, accountID, deviceID *string, eventType string, detail any, ip string) {
-	s.pool.Exec(ctx,
+func (s *Store) RecordAudit(ctx context.Context, accountID, deviceID *string, eventType string, detail any, ip string) error {
+	_, err := s.pool.Exec(ctx,
 		`INSERT INTO audit_events (account_id, device_id, type, detail, ip) VALUES ($1, $2, $3, $4, $5)`,
 		accountID, deviceID, eventType, detail, ip)
+	return err
 }
 
 // PruneAudit deletes audit events older than maxAge.
@@ -277,22 +333,49 @@ func (s *Store) PruneAudit(ctx context.Context, maxAge time.Duration) (int64, er
 }
 
 // PruneExpiredInvitation deletes sign-up invites, pending share invitations and organization invitations that expired
-// more than maxAge ago. Accepted share invitations never expire: they wait for the owner's app.
+// more than maxAge ago, and the retired share invitation IDs whose signed expiry passed. Accepted share invitations are
+// kept until an owner completes or cancels them. The count is of invitations only.
 func (s *Store) PruneExpiredInvitation(ctx context.Context, maxAge time.Duration) (int64, error) {
 	var prunedCount int64
 	err := pgx.BeginFunc(ctx, s.pool, func(transaction pgx.Tx) error {
-		for _, query := range []string{
-			`DELETE FROM invites WHERE expires_at < now() - $1::interval`,
-			`DELETE FROM share_invitations WHERE state = 'pending' AND expires_at < now() - $1::interval`,
-			`DELETE FROM organization_invitations WHERE expires_at < now() - $1::interval`,
-		} {
-			commandTag, err := transaction.Exec(ctx, query, maxAge)
+		sources := [...]struct {
+			lockQuery   string
+			deleteQuery string
+			ids         []string
+		}{
+			{
+				lockQuery:   `SELECT id::text FROM organization_invitations WHERE expires_at < now() - $1::interval ORDER BY id FOR UPDATE`,
+				deleteQuery: `DELETE FROM organization_invitations WHERE id = ANY($1::uuid[])`,
+			},
+			{
+				lockQuery:   `SELECT id::text FROM share_invitations WHERE state = 'pending' AND expires_at < now() - $1::interval ORDER BY id FOR UPDATE`,
+				deleteQuery: `DELETE FROM share_invitations WHERE id = ANY($1::uuid[])`,
+			},
+		}
+		for index := range sources {
+			rows, err := transaction.Query(ctx, sources[index].lockQuery, maxAge)
+			if err != nil {
+				return err
+			}
+			sources[index].ids, err = pgx.CollectRows(rows, pgx.RowTo[string])
+			if err != nil {
+				return err
+			}
+		}
+		for _, source := range sources {
+			commandTag, err := transaction.Exec(ctx, source.deleteQuery, source.ids)
 			if err != nil {
 				return err
 			}
 			prunedCount += commandTag.RowsAffected()
 		}
-		return nil
+		commandTag, err := transaction.Exec(ctx, `DELETE FROM invites WHERE expires_at < now() - $1::interval`, maxAge)
+		prunedCount += commandTag.RowsAffected()
+		if err != nil {
+			return err
+		}
+		_, err = transaction.Exec(ctx, `DELETE FROM retired_share_invitations WHERE expires_at <= now()`)
+		return err
 	})
 	return prunedCount, err
 }

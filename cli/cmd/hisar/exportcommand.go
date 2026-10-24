@@ -22,7 +22,7 @@ func buildDefaultExportPath(format string, now time.Time) string {
 }
 
 func chooseExportFormat() (string, error) {
-	fmt.Fprintln(os.Stderr, "Format:\n  1) Encrypted export, protected by an export passphrase (recommended)\n  2) Plain JSON, not encrypted")
+	fmt.Fprintln(standardError(), "Format:\n  1) Encrypted export, protected by an export passphrase (recommended)\n  2) Plain JSON, not encrypted")
 	for {
 		answer, err := prompt("Choose", "1")
 		if err != nil {
@@ -34,7 +34,7 @@ func chooseExportFormat() (string, error) {
 		case "2":
 			return cliprotocol.ExportFormatPlain, nil
 		}
-		fmt.Fprintln(os.Stderr, "Enter 1 or 2.")
+		fmt.Fprintln(standardError(), "Enter 1 or 2.")
 	}
 }
 
@@ -50,7 +50,7 @@ func promptExportPassphrase() ([]byte, error) {
 			if !isInteractive {
 				return nil, err
 			}
-			fmt.Fprintf(os.Stderr, "Use at least %d characters.\n", export.MinPassphraseLength)
+			fmt.Fprintf(standardError(), "Use at least %d characters.\n", export.MinPassphraseLength)
 			continue
 		}
 		if !isInteractive {
@@ -66,7 +66,7 @@ func promptExportPassphrase() ([]byte, error) {
 			return passphrase, nil
 		}
 		clear(passphrase)
-		fmt.Fprintln(os.Stderr, "The passphrases do not match.")
+		fmt.Fprintln(standardError(), "The passphrases do not match.")
 	}
 }
 
@@ -107,7 +107,7 @@ func runExport(ctx context.Context, access backend, flags *flag.FlagSet, args []
 
 	change := cliprotocol.ExportChange{Format: *format, Path: absolutePath}
 	if *format == cliprotocol.ExportFormatPlain {
-		fmt.Fprintln(os.Stderr, plainExportWarning)
+		fmt.Fprintln(standardError(), plainExportWarning)
 		if !*isConfirmed {
 			if !isInteractive {
 				return errNeedsConfirmation
@@ -129,11 +129,12 @@ func runExport(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(os.Stderr, "Exported %s from %s to %s.\n", formatItemCount(result.ItemCount), formatVaultCount(result.VaultCount), *outputPath)
+	printExportProvenance(result.Provenance)
+	fmt.Fprintf(standardError(), "Exported %s from %s to %s.\n", formatItemCount(result.ItemCount), formatVaultCount(result.VaultCount), *outputPath)
 	if *format == cliprotocol.ExportFormatPlain {
-		fmt.Fprintln(os.Stderr, "It is not encrypted; delete it when you are done.")
+		fmt.Fprintln(standardError(), "It is not encrypted; delete it when you are done.")
 	} else {
-		fmt.Fprintln(os.Stderr, "Keep the export passphrase somewhere safe: nobody, including Hisar, can open the file without it.")
+		fmt.Fprintln(standardError(), "Keep the export passphrase somewhere safe: nobody, including Hisar, can open the file without it.")
 	}
 	return nil
 }
@@ -143,4 +144,24 @@ func formatVaultCount(count int) string {
 		return "1 vault"
 	}
 	return fmt.Sprintf("%d vaults", count)
+}
+
+func printExportProvenance(provenance *export.Provenance) {
+	if provenance == nil {
+		return
+	}
+	if provenance.IsCachedCopy() {
+		fmt.Fprintln(standardError(), "Cached copy. Changes since this device's completed syncs may be absent.")
+	}
+	for _, checkpoint := range provenance.Vaults {
+		if checkpoint.HasCompletedSync {
+			fmt.Fprintf(standardError(), "  Vault %s last completed sync %s.\n", checkpoint.VaultID, checkpoint.CompletedAt)
+		}
+	}
+	if provenance.IsPartial() {
+		fmt.Fprintln(standardError(), "Partial copy. Known omissions follow.")
+	}
+	for _, omission := range provenance.Omissions {
+		fmt.Fprintf(standardError(), "  %s vault=%s item=%s revision=%s\n", omission.Kind, omission.VaultID, omission.ItemID, omission.Revision)
+	}
 }

@@ -22,6 +22,17 @@ type CredentialChangeResult struct {
 	SignedOutDeviceCount int    `json:"signedOutDeviceCount"`
 	// KeychainError is set when the new Secret Key could not be saved to the keychain; the user must write it down.
 	KeychainError string `json:"keychainError"`
+	// LocalError reports local finalization failures after the credentials have already changed.
+	LocalError         string `json:"localError"`
+	identity           credentialChangeIdentity
+	PendingOperationID string   `json:"pendingOperationId"`
+	SetupState         string   `json:"setupState"`
+	Problems           []string `json:"problems"`
+}
+
+type credentialChangeIdentity struct {
+	epoch     uint64
+	accountID string
 }
 
 type DeletionVault struct {
@@ -33,6 +44,7 @@ type DeletionVault struct {
 }
 
 type AccountDeletionPreview struct {
+	PlanVersion             string          `json:"planVersion"`
 	Email                   string          `json:"email"`
 	OwnedVaults             []DeletionVault `json:"ownedVaults"`
 	MemberVaults            []DeletionVault `json:"memberVaults"`
@@ -50,6 +62,7 @@ type DeletionOrganization struct {
 	Name         string `json:"name"`
 	IsDeleted    bool   `json:"isDeleted"`
 	NewAdminName string `json:"newAdminName"`
+	NewAdminID   string `json:"newAdminId"`
 }
 
 func convertAccountError(err error) error {
@@ -68,64 +81,148 @@ func convertAccountError(err error) error {
 	return convertError(err)
 }
 
+// convertAccountDeletionError asks for a new review only when the server says the plan changed; any other deletion
+// conflict (busy memberships, changed credentials) keeps the server's reason.
+func convertAccountDeletionError(err error) error {
+	var apiError *apiclient.APIError
+	switch {
+	case apiclient.IsDeletionPlanChanged(err):
+		return errors.New("the deletion plan changed; review the deletion again before confirming")
+	case errors.As(err, &apiError) && apiError.Status == http.StatusConflict:
+		return errors.New(apiError.Message)
+	}
+	return convertAccountError(err)
+}
+
 // ChangeMasterPassword keeps the Secret Key; every other device is signed out and must sign in with the new password.
 func (s *Service) ChangeMasterPassword(currentPassword, newPassword string) (CredentialChangeResult, error) {
 	newPasswordBytes := []byte(newPassword)
 	defer clear(newPasswordBytes)
-	return s.changeCredentials(currentPassword, func(ctx context.Context, unlockedSession *session.Session, currentPasswordBytes []byte, secretKey crypt.SecretKey) (*session.CredentialChange, error) {
+	return s.changeCredentials(currentPassword, func(ctx context.Context, unlockedSession *session.Session, currentPasswordBytes []byte, secretKey crypt.SecretKey, stage session.StagePendingFactor) (*session.CredentialChange, error) {
 		return unlockedSession.ChangeMasterPassword(ctx, currentPasswordBytes, newPasswordBytes, secretKey)
 	})
 }
 
 // ReplaceSecretKey makes a new Secret Key; the old one and its Emergency Kit stop working, and other devices are signed out.
 func (s *Service) ReplaceSecretKey(password string) (CredentialChangeResult, error) {
-	return s.changeCredentials(password, func(ctx context.Context, unlockedSession *session.Session, passwordBytes []byte, secretKey crypt.SecretKey) (*session.CredentialChange, error) {
-		return unlockedSession.ReplaceSecretKey(ctx, passwordBytes, secretKey)
+	return s.changeCredentials(password, func(ctx context.Context, unlockedSession *session.Session, passwordBytes []byte, secretKey crypt.SecretKey, stage session.StagePendingFactor) (*session.CredentialChange, error) {
+		return unlockedSession.ReplaceSecretKeyWithRecovery(ctx, passwordBytes, secretKey, stage)
 	})
 }
 
-func (s *Service) changeCredentials(password string, change func(context.Context, *session.Session, []byte, crypt.SecretKey) (*session.CredentialChange, error)) (CredentialChangeResult, error) {
+func (s *Service) changeCredentials(password string, change func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error)) (CredentialChangeResult, error) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	if err := s.requireUnlocked(); err != nil {
 		return CredentialChangeResult{}, err
 	}
-	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID)
-	if err != nil {
-		return CredentialChangeResult{}, fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
-	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
+	secretKey, err := s.loadAccountSecretKey(s.state.Server, s.state.AccountID, s.state.RecoveryOperationID, passwordBytes)
+	if err != nil {
+		return CredentialChangeResult{}, fmt.Errorf("the Secret Key is missing from the keychain or protected recovery storage: %w", err)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	credentialChange, err := change(ctx, s.unlockedSession, passwordBytes, secretKey)
+	stage, pending := s.stagePendingRecovery(s.state.Server, s.state.Email, s.name, passwordBytes)
+	credentialChange, err := change(ctx, s.unlockedSession, passwordBytes, secretKey, stage)
 	if err != nil {
+		if pending.OperationID != "" {
+			if errors.Is(err, session.ErrRecoveryDeliveryRequired) {
+				s.recoveryMutex.Lock()
+				stagedKey := s.pendingRecoveryFactors[pending.OperationID].SecretKey
+				s.recoveryMutex.Unlock()
+				return CredentialChangeResult{Status: s.buildStatus(), SecretKey: stagedKey, PendingOperationID: pending.OperationID, SetupState: pending.Phase, Problems: pending.Problems}, nil
+			}
+			pending.Problems = []string{"The credential change's remote outcome is not confirmed. Keep this recovery record and resume it when connected."}
+			_ = s.updatePendingRecovery(pending)
+			return CredentialChangeResult{Status: s.buildStatus(), PendingOperationID: pending.OperationID, SetupState: "outcome-unknown", Problems: pending.Problems}, nil
+		}
 		return CredentialChangeResult{}, convertAccountError(err)
 	}
 	defer clear(credentialChange.AccountUnlockKey)
+	var cacheErr error
+	if credentialChange.IsCachedAccountStale {
+		s.unlockedSession.Cache = nil
+		cacheErr = s.removeCache()
+		if cacheErr == nil {
+			cacheErr = s.attachCache(ctx, s.unlockedSession)
+		}
+	}
 
-	result := CredentialChangeResult{SignedOutDeviceCount: credentialChange.SignedOutDeviceCount}
+	result := CredentialChangeResult{
+		SignedOutDeviceCount: credentialChange.SignedOutDeviceCount,
+		identity:             credentialChangeIdentity{epoch: s.sessionEpoch, accountID: s.state.AccountID},
+	}
 	if credentialChange.SecretKey.Encode() != secretKey.Encode() {
 		newSecretKey := credentialChange.SecretKey
 		s.newAccountSecretKey = &newSecretKey
 		result.SecretKey = newSecretKey.Encode()
 		if err := s.config.SecretKeyStore.StoreSecretKey(newSecretKey); err != nil {
-			result.KeychainError = fmt.Sprintf("the new Secret Key could not be saved to the keychain (%v); save the Emergency Kit now", err)
+			result.KeychainError = "the new Secret Key could not be saved to the keychain; save its Emergency Kit from pending recovery"
 		}
 	}
+	if persistedKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID); err != nil || persistedKey.Encode() != credentialChange.SecretKey.Encode() {
+		result.KeychainError = "the current keychain or environment does not retain the new credentials; protected local recovery remains required"
+	}
+	s.biometricSetupRevision++
 	if len(s.state.BiometricUnlock) > 0 {
-		// Only a platform with a BiometricKeyPreparer needs a prompt to store the key; a keychain stores it silently.
-		if s.config.Biometric == nil || !s.config.Biometric.IsAvailable() {
+		setup, setupErr := s.snapshotBiometricSetup()
+		if setupErr != nil {
 			s.forgetBiometricUnlock()
-		} else if s.config.BiometricKeyPreparer != nil && s.authenticateToStoreBiometricKey("keep biometric unlock on for Hisar") != nil {
-			s.forgetBiometricUnlock()
-		} else if _, err := s.sealBiometricUnlock(credentialChange.AccountUnlockKey); err != nil {
-			s.forgetBiometricUnlock()
+		} else {
+			reason := ""
+			if s.config.BiometricKeyPreparer != nil {
+				reason = "keep biometric unlock on for Hisar"
+			}
+			s.mutex.Unlock()
+			s.biometricMutex.Lock()
+			sealed, isStored, setupErr := s.storeBiometricUnlock(setup, credentialChange.AccountUnlockKey, reason)
+			s.mutex.Lock()
+			switch {
+			case setupErr == nil && s.requireBiometricSetup(setup) == nil:
+				s.state.BiometricUnlock = sealed
+				s.biometricSetupRevision++
+				s.biometricSetupError = ""
+			case isStored:
+				s.discardStoredBiometricKey(setup.accountID)
+			case s.state.AccountID == setup.accountID:
+				// The sealed state opens the account unlock key this change replaced.
+				s.forgetBiometricUnlock()
+			}
+			s.biometricMutex.Unlock()
 		}
 	}
-	s.recordPasswordUnlock()
+	// The remote change is committed, so a lock or disabled Touch ID during the reseal must not skip saving it. After a
+	// sign-out or account switch the state is not this account's; the recovery record below still finishes.
+	if s.state.AccountID == result.identity.accountID {
+		if pending.OperationID != "" {
+			s.state.RecoveryOperationID = pending.OperationID
+		}
+		s.recordPasswordUnlock()
+		if err := errors.Join(cacheErr, s.state.Save()); err != nil {
+			result.LocalError = fmt.Sprintf("your credentials were changed, but this device could not finish saving the change: %v", err)
+		}
+	}
 	result.Status = s.buildStatus()
-	return result, s.state.Save()
+	if pending.OperationID != "" {
+		pending.Phase = "delivery-pending"
+		pending.ManualUnlock = result.KeychainError != ""
+		pending.Problems = []string{}
+		if result.KeychainError != "" {
+			pending.Problems = append(pending.Problems, "The keychain is unavailable. Keep its Emergency Kit. You will need its Secret Key to sign in after locking or restarting.")
+		}
+		if result.LocalError != "" {
+			pending.Problems = append(pending.Problems, result.LocalError)
+			pending.Phase = "needs-finishing"
+		}
+		if err := s.updatePendingRecovery(pending); err != nil {
+			pending.Problems = append(pending.Problems, "Recovery progress could not be saved. The original protected record remains available.")
+			pending.Phase = "needs-finishing"
+		}
+		result.PendingOperationID, result.SetupState, result.Problems = pending.OperationID, pending.Phase, pending.Problems
+	}
+	return result, nil
 }
 
 func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
@@ -141,6 +238,7 @@ func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
 		return AccountDeletionPreview{}, convertAccountError(err)
 	}
 	result := AccountDeletionPreview{
+		PlanVersion:             preview.PlanVersion,
 		Email:                   s.state.Email,
 		OwnedVaults:             convertDeletionVaults(preview.OwnedVaults),
 		MemberVaults:            convertDeletionVaults(preview.MemberVaults),
@@ -152,7 +250,7 @@ func (s *Service) PreviewAccountDeletion() (AccountDeletionPreview, error) {
 	}
 	for _, organization := range preview.Organizations {
 		result.Organizations = append(result.Organizations, DeletionOrganization{
-			ID: organization.OrganizationID, Name: organization.Name, IsDeleted: organization.IsDeleted, NewAdminName: organization.NewAdminName,
+			ID: organization.OrganizationID, Name: organization.Name, IsDeleted: organization.IsDeleted, NewAdminName: organization.NewAdminName, NewAdminID: organization.NewAdminID,
 		})
 	}
 	return result, nil
@@ -163,7 +261,7 @@ func convertDeletionVaults(vaults []session.DeletionVault) []DeletionVault {
 	for _, vault := range vaults {
 		name := vault.Name
 		if name == "" {
-			name = "A vault"
+			name = fmt.Sprintf("Vault %s (name unavailable)", vault.ID)
 		}
 		converted = append(converted, DeletionVault{ID: vault.ID, Name: name, Type: vault.Type, Role: vault.Role, OtherMemberCount: vault.OtherMemberCount})
 	}
@@ -177,19 +275,28 @@ func (s *Service) DeleteAccount(password, email string) (Status, error) {
 	if err := s.requireUnlocked(); err != nil {
 		return Status{}, err
 	}
+	return Status{}, errors.New("update Hisar to pass the reviewed account deletion plan")
+}
+
+func (s *Service) DeleteAccountWithPlan(password, email, planVersion string) (Status, error) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireUnlocked(); err != nil {
+		return Status{}, err
+	}
 	if !strings.EqualFold(strings.TrimSpace(email), s.state.Email) {
 		return Status{}, convertAccountError(session.ErrEmailMismatch)
 	}
-	secretKey, err := s.config.SecretKeyStore.LoadSecretKey(s.state.AccountID)
-	if err != nil {
-		return Status{}, fmt.Errorf("the Secret Key is missing from the keychain: %w", err)
-	}
 	passwordBytes := []byte(password)
 	defer clear(passwordBytes)
+	secretKey, err := s.loadAccountSecretKey(s.state.Server, s.state.AccountID, s.state.RecoveryOperationID, passwordBytes)
+	if err != nil {
+		return Status{}, errors.New("the Secret Key could not be opened from the keychain or protected recovery storage")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	if err := s.unlockedSession.DeleteAccount(ctx, passwordBytes, secretKey, email); err != nil {
-		return Status{}, convertAccountError(err)
+	if err := s.unlockedSession.DeleteAccount(ctx, passwordBytes, secretKey, email, planVersion); err != nil {
+		return Status{}, convertAccountDeletionError(err)
 	}
 	forgetErr := s.forgetLocalAccount()
 	return s.buildStatus(), forgetErr
@@ -201,16 +308,12 @@ func (s *Service) forgetLocalAccount() error {
 	if s.state.AccountID != "" {
 		secretKeyErr = s.config.SecretKeyStore.DeleteSecretKey(s.state.AccountID)
 	}
-	s.lockSession()
-	s.name = ""
-	s.forgetBiometricUnlock()
-	s.removeCache()
-	s.state.Reset()
+	cacheErr := s.resetAccount()
 	s.notifySessionChange()
 	if err := s.state.Save(); err != nil {
 		return err
 	}
-	return secretKeyErr
+	return errors.Join(secretKeyErr, cacheErr)
 }
 
 // lockSuspendedSession locks Hisar when the server refuses the session because an admin suspended the account. Unlike

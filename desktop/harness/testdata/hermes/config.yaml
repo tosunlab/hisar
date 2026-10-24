@@ -1,0 +1,2402 @@
+# xxxxxx xxxxx xxx xxxxxxxxxxxxx
+# xxxx xxxxxxxx xxxx xxxx xxxxxxx xxxx xxxxxxxxxxxxxxxxxxxxxx xx xxx
+# xxxxxxx xxxxxx xxx xxxxxxxxxxxxx xxxxxxxx xx xxxxxx xxx xxxxxx xxxxxxxx
+# xxxx xxxx xxxxxxxxxx xxx xxxxxxxxx xxxx xxxxxxxxxx xxxxxx xxxxxxxxxxx
+# xxxxxxxxx xx xxxx xxxx xxxxxxxxxx xxxx xxxxx xxxxxxxxxxxxx xxxxxxxxx
+
+# xxxxxx xxxxxxx xx xxxx xxxxx xxx xxxxxxxxxx xxxx xx xx xxxx xxxxxxxxxxxx xxx
+# xxxxxxx xxxxxxx xxxx xx xx xxxx xxxxx xxx-xxxx xxxxxxxxxx xxx xxxx xxxxxxx
+# xxxx xxxxxx xxxxxxx xxx xx xxx xxxx xx xxxx xxxxxxx xxxxxxx
+_config_version: 50
+
+# =============================================================================
+# xxxxxxxx xxxxxxxxxxxxx
+# =============================================================================
+# xxx xx xxx xxxxxx xxxxxxxx xxxxxx xxxxxxxxxxxxx xxxxx xxxx xx xxxxxx xxxx
+# xxxxxx xxxxxxx xxxx xxx xx xxxxxxxxxxxx xxxx xxx xxxxxxxxxxx xxx xxxx xx
+# xxxxxxxx xxxxxxxxxx xxx xxxxxxxxxxx xxxxx xxxxxxx xxxxxxxxxx xx xxx xxx
+# xxxxx-xxxxx xxxx xx xxxxx xxxxxxxxxx xxxx-xxxxxxx xxxxxxx xxxxx xxxxxxxxx
+# xxxx xx xxxx xxxxxx xxxx xxx xxxx-xxxxxxxxx x xxxxxxxx xxxxxxx xxxx xx xxxx
+database:
+  journal_mode: "wal"  # Supported values: "wal", "delete"
+  # xxxxxxxx xxx xxxxxx xxxxxxx xxxxxxxxxxx xxxxx = xxxxxx xxxxxxxxx
+  # wal_autocheckpoint: example
+  # journal_size_limit: example
+  #
+  # xxxxxxxxxx xxxxx xxx xxxxx xxxxxxxx xxxxxxxxxxx xxxx xxxxxxx xxxxx xxxxx
+  # xxx x-xxx xxxxx xxxxxx xxxxxxxx xxxxxxxx xxxxx xx xxxxx xx xx xxxxxxx xxxx
+  # xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxx xxxxxxxxx xxxxxxx xxxxxxx xxx xxxxxxx
+  # xxxxxxxxxxxx x xxxxxx xxxxxxx xxx x xxxxxxxx xxxx xxx xx xx xxx xxxx xx
+  # xxxx xxxxx xxx xxx xxx xxxxxxx xxxxxx xxxx xxxxx xxx xx xxxxx xxxx xx x
+  # xxxxxx xxx x xxxx xxxxxx xxxxx xxxx xxx xxxxxxx xxxxxxx xxxxxxxx xxxxxxx
+  # xxxx xxx xxxxxxxxx xxxxx xxxxxxxxx xxxxx xxxxx xx xxxxxxx xxxxxxxxx
+  # synchronous: example
+
+# =============================================================================
+# xxxxxxx xxxxxx
+# =============================================================================
+# xxxx-xxxxxxx xxxxxx xxxxxx xxxxxxxxx xxxxx xxxxx xxxxxxxxxxxxx xxxx xxxxx xx
+# xxxx xxxxx xxxx xxx xxxxxxxxx xxxxxx xxxxxxx xxx xxx xxxxx xx xxxxxxx xx xxx
+# xxxx xxxxx xxx xxxxx xxxxxx xx xxxxxxx xxxxxx xxxx xxxxxx xxx xx xx xxxxxx xx
+# xxxx xx xxxxxxx xxx xxxxxxxxxxx xxxxxxxx xxxxx
+runtime:
+  nofile_soft_limit: 4096
+
+# =============================================================================
+# xxxxxxxxxxx
+# =============================================================================
+# xxxxx xxx xxxxxxxxxxx xxxxxxx xxxxxx xxxxxxx xxxx xxxxxxxxxxx xxxxx xxxxxxx xxx
+# xxxxxx xxxxxx xxxx xxx xxxxxxxx x xxxxxxx xxxxx xx xxxxxxx x xxxxxxx xxx xxx
+# xxxxxxxxxxxx xx xxxx xxxxxxx xxxxxxxxxxx xxxx xxxx xxx xxxxxxxxxx
+#   xxxxxx-xxxx  xxxxxxxxx xxxxxxxx xxxxxxxxxxxxxxxxx x xxx xxxxxxxxx xxxxxxxxx
+#                 xxxxxxxx xxxx-xxxxxx xx xxxxxx xxxx xxxxxxx xxxxxx xxx xxxxxxxx
+#   xxxxxxxxx    xxxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx x xxxxxxx xxxxx xxxxxx
+#                 xxx xxxxxxx xxxxxxxxx xxxxx xx xxx xxxxxxxxx xxxxx xxx xxxxxx
+#                 xxxx xxx xxx xxxxxxxxxxx xxxxx x xxxxxx xxxxx xxxxxxxxx xxxxx
+#                 xxx xxxxxxx xxxx xxxxxxxxx xxxxxx xxxx
+attachments:
+  storage: "hermes-home"
+
+# =============================================================================
+# xxxxxx xxxxxxxxxxxx
+# =============================================================================
+plugins:
+  # xxxxxxxx xxx xxxx xxx xxxxxx xxxxx xx xxxxxxxx xxxxxx xxxxxx xxxxxxxx xxxxxxxx xxx
+  # xxxxxxxx xxxxxxxxxxxx xxxxxxxx xxxxxxxx xxxx xxxx xxxxxxx
+  # xxxxx xxxx xxx xxxxx xxxxxxxxxxxx xx xxxx xxxxxxxxxxxx xxxxxxxx xxxxx
+  clone_timeout_seconds: 300
+
+# =============================================================================
+# xxxxx xxxxxxxxxxxxx
+# =============================================================================
+model:
+  # xxxxxxx xxxxx xx xxx xxxx xx xxxxxxxxxx xxxx --xxxxx xxxxx
+  # xxxx xxxxxxxxx xxx xxxxxxx xxxx xx xxx xxx xxxx xxxxx
+  default: "example"
+
+  # xxxxxxxxx xxxxxxxx xxxxxxxxxx
+  #   xxxxxx         - xxxx-xxxxxx xxxx xxxxxxxxxxx xxxxxxxxx
+  #   xxxxxxxxxxxx   - xxxxxxxxxx xxxxxxxxxx xxxxxxxxxxxxxxxxxx xx xxxxxxxxxxxxxxx
+  #   xxxxxx         - xxxx xxxxxx xxxxx xxxxxxxxxx xxxxxx xxxx xxx xxxxx
+  #   xxxxx-xxxx     - xxxx xxxxxx xxx xxx xxxxxxxxxx xxxxxxxxxxxxx
+  #   xxxxxxxxxxx    - xxxxxx xxxxxxxxx xxx xxxxxxxxxx xxxxxxxxxxxxxxxxxx
+  #   xxxxxxx-xxxxxx - xxxxxx xxxxx xxxxxxxxxx xxxxxx xxxxx
+  #   xxxxxxxxx      - xxxxxx xxxxxxx x xxxxxx xxxxxx xxxxxxxxxx xxxxxxxxxxxxx
+  #   xxxxxxxx      - xxx xxxxxx xx xxxxxx xxxxxx xxxxxxxxxx xxxxxxxxxxxxxx xx xxxxxxxxxxxxxxx
+  #   xxxxx         - xxx xxxx x xxxxxxx xxx xxxxxx xxxxxxxxxx xxxxxxxxxxxx
+  #   xxxxx-xxxxxxx  - xxxx x xxxxxxxx xx xxxxxxxxxx xxxxxxxxxxxxx
+  #   xxxxxxxxx      - xxxxxxx xxxxxx xxxxxxxxxx xxxxxxxxxxxxxxxx
+  #   xxxxxxxx-xxx   - xxxxxxx xxxxx xxxxxxxxxx xxxxxxxxxxxxxxxxxxx
+  #   xxxxxxxxxxxxx  - xxxxxxx xxxx xxxxxxxxx xxxxxxxxxx xxxxxxxxx
+  #   xxxxxxxx       - xxxxxx xxx x xxxxxxxxxxxxxxxx xxxxxxxxxx xxxxxxxxxxxxxxx
+  #   xxxxxxxx       - xxxxxx xxxx xxxxxxxxxx xxxxxxxxxxxxxxx
+  #   xxxxxxx        - xxxxx xx xxxxxxx xxxxxx xxxxxxxxxx xxxxxxxxxxxxxxxx
+  #   xxxxxxx-xxxxxx - xxxxxx xxxxx xxxxxxxxxx xxxxxxxxxxxxxx x xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  #   xxxxxxxxxxx    - xxxxxxxxx xxxxxxxxxx xxxxxxxxxxxxxxxxxx
+  #   xxxxxxxxxx     - xxxxxxxx xxxxxxx xxxxxxxxxx xxxxxxxxxxxxxxxxx
+  #   xxx-xxxxxxxx   - xxxxxx xx xxxxxxx xxxxxxxxxx xxxxxxxxxxxxxxxxxxx
+  #   xxxxxx-xxxxxxxx - xxxxxxxxx xxxxxxx x xxxxx xxxxxx xxxx xxx xx xxxxx xxx
+  #   xxxxxxxxxx     - xx xxxxxx xxxxx xxxxxx xxxxxxxxxx xxxxxxxxxxx xxxxxxxx xx xxxxxxxxxxxxxxxxxxxxxxxxx
+  #
+  # xxxxx xxxxxxx xxx xxxxxxx xxxxxxx xxxxx xxxxxxxxxxx
+  #   xxxxxxxx       - xxx xxxxx xxxxxx-xxxxxxxxxx xxxxxxxxx xxx xxxxxxxx xxxxxx
+  #   Aliases: example
+  #   xx xxxxxx xx xxxxx-xxxxx xxx xxxx xxxxxxxxx xxxxxxxxxxx
+  #   xx xxxxx xxxx xxxx xx-xxxx xxx xxxx-xxxxxxx xxxxxx xxxxxx
+  #
+  # xxx xxxx xx xxxxxxxxxx xxx x xxxxxx xxxxxxxxxx xxxx xxx --xxxxxxxx xxxxx
+  provider: "example"
+
+  # xxx xxxxxxxxxxxxx xxxxxx xxxx xx xxxxxxxxxxxxxxxxxx xxx xxxx
+  # api_key: example
+  base_url: "example"
+
+  # xxxxxx xxx xxxxxxxxx xxxx xxx xxxxxxxx xxxxxxxxx xxxxxx xxx xxxxx xxxx
+  # xxxxxxx xxxxxxxxx xxx xxxxx xxxx x xxxxxxxxx xxxxxxxx x xxx xxxxxxxx
+  # xxxxxx-xxxxxxxxx xxx xxxxx xx xxxxx xxx-xxxxxxxxx xxxxxxxx xxx xxx xxxxx
+  # xxxxxxx xxxxxxxxx xxxxxx xxx-xxxxxxx xxxxx xxxxxxxxxx xxxxxx xxxxx xxx
+  # xxxx-xxxxxx xxxxxx-xxxxxxxxxx xxxxxxx xxxxx xxxxxxxxx xxxx-xxxx xxxx xx
+  # xxxxxx xxxxx xxxx xxxx --xxxx-xxxx-xxxxxx xxxxxxxxx x x xxxxxxxxx xxxxxx
+  # xxx xxxx xxxx xxxxx xxxx xxxxx xxxx xxxxxxx xx xxxxxxxxx xxxxxxxxxx x
+  # #xxxxxxx xxxxxxxxxx xx xxxxxxxxxxxxxxxxxx xxxxx xxxxxxxx xxxxx xxxxxxxxx
+  # xxxxx
+  # streaming: true
+
+  # xxxxx xxxxxxx xxxxxxx xxxx xxxxxxxx
+  # provider: example
+  # base_url: example
+  # auth_mode: example
+  # default: example
+  # entra:
+  #   scope: example
+
+  # ── xxxxx xxxxxx x xxx xxxxxxxxx xxxx xx xxxxxxx ──────────────────────────
+  #
+  # context_length: example
+  #   xxxxxxxx xxxx xxxxxx xxxxxxxxxx xxxxxxx xxx xxxxxxxxx xxxxxxxxx
+  #   xxxxx xxxxx x xxxxxx xxxx-xxxxxxx xxx xxxxxxx xxxxx xxxx xxx xxxxxxxxx
+  #   xxx xxxxxxxx xxxx xxxx xxxx-xxxxxxxxx xx xxxxx xxxxx x xxxxx xxxxxx xxxx
+  #   x xxxxxx xxxxxxxx xx x xxxxx xxxx xxxxxxx xxxxxx xxxxxxxxxxxx
+  #
+  # context_length: 131072
+  #
+  # ollama_num_ctx: example
+  #   xxxxxx xxxx-xxxxxxx xxx xxxxxxx xxxxxx xxx xxxxx xx xxxxxxx xxxxxxxxx
+  #   xxxxxxxx xx xxxxxx xxxxxxxxxxxxxxx xx xxxx xxxx xxx xxxxxxxx xxxxxx
+  #   xx xxxxxxxx xxxxxxxxxxxxxx xx xxxx xx-xx xxxxxx xxxxxxx x xxx xx xx
+  #   xxx xxxx xxxx
+  #
+  # ollama_num_ctx: 32768
+  #
+  # xxxxxx-xxxxx xxxxxx xxx xxxxxxxx-xxxxxx xxx xxxx xxxxxxxxxxxxxx xxxxxx
+  # xxxxxxxxx xxxxxxxxx x xxxxx xxxxxxx xx xxxxxxxx xxxxx xxxx xxxxxxx
+
+  # ── xxxxxx xxxxxxx xxxxxxx xxxxxxxxxx ─────────────────────────────────────
+  #
+  # default_headers: example
+  #   xxxxxx-xxxxxxxxxx xxxxxxxxx xxxx xxxxxx xxxx xxxxxxxxxx xxxx xxx
+  #   xxxxxxxxxxxx xxxxxxxxx xx xxxx xx xxx xxxxxxxxx xxx xx xxxxxxxx xxx
+  #   xxxxxx xxxxxx xxxxx xxxxxxxxxxx xxxxxxx xxxxx-xxxxxx xxxxxxxxxxxxx xxxx
+  #   x-xxxxxxxxx-xx xxxx x xxxxxx xxxxxxxx xxxx xxxxxx x xxxxxxxxxxx xxxx
+  #   xxxxxxx xxxx x xxxx xx xxxxxxxx xxxx xxxxxxx xxxx xxxxxxxx xxxxxx
+  #   xxxxxxxxxx xxx xxx xxx xxxxxxx xxxx-xxxxx xxx xxxxxxx x xxxxx xxxx
+  #   xxxxxxx xx xxx xxxxxx xxxx xxxx xxxx xxxxxx xxxxxxxxx x xxxxxxxxx
+  #
+  # default_headers:
+  #   xxxx-xxxxxx xxxxxxxxxxxx
+  #
+  # extra_headers: example
+  #   xxxxxxxxxxxxx xxxxxxx xxxx xxxx xxx xxxx x xxxxxxx xxx xxx-xxxxxxxx
+  #   xxxxxxxxxxxxx xxx xxxxxx
+  #
+  # xxx-xxxxxxxx xxxxxxxx xxxxx xxxxxxxxx x xxxxxxxxxxxxxxxx xxxxxxx xxxxxx xx
+  # xxxxxxxxxxxxx xxxx xxxxxx xx xxxx xxxxxxxx xxxx x xxx xxxxxxx xxxxxxxx
+  # xxxxxxxxx xx xxxxxx xxxx xxxxx xxxxxxxxxx xxxxxx xxxxxxx xxxxxxxx
+  # xxxxxx xxxx xxxxxxxxxxxx xxxxxxxx xxxx xxx xxxxxxx xxxxxx xxxxxxxx
+  # xxxxxx xxxxxx xxx xxxxxxx xx xxxxxxx xxx xxx xxxxx xxxxxxx
+  #
+  # providers:
+  #   xx-xxxxxx
+  #     base_url: example
+  #     key_env: example
+  #     extra_headers:
+  #       xx-xxxxxx-xxxxxx-xxx xxxxxxxxxxxxx
+  #       xx-xxxxxx-xxxxxx-xxxxxxx xxxxxxxxxxxxxxxxxxxxx
+  #       x-xxxxxx-xxxxx xxxxxxx-xxxxxx
+  #
+  # session_affinity_header: example
+  # xx xx xxxxx xxxxxxx xx xxxx xxxxxxxx xxxx xxxxxxxxx x xxxxxxxxx xxxxxxx xxx
+  # xxxxxx xxxx xxx xxxxxxx-xxxxx xxxxxxx xxxx xxxxxxxxx xxxxx xxxx xxxxx-xxxx
+  # xxxxxxx xx x xxx xxxxxxxxxxxx xxx xxxxxx xxx xxxxx xxxxxxx xxxxxxxxx
+  #
+  # providers:
+  #   xx-xxxxxx
+  #     base_url: example
+  #     session_affinity_header: example
+# providers:
+#   meta:
+#     base_url: example
+#     api_key: example
+#     # xxxxxxxx xxxx-xxxxxxxx xx xxxxxxxxxxxxxxx xxx xxxxxxxxxxxx xx xxxx xx xxx
+#     # xxxx xxxxxxx xxxx-xx xxxxxxxx xxxxxx xxxx x x xxxxx xxxxxx xxxxxxxx xx
+#     # xxxx xxxxxx xxx x xxx-xxxxxxx xxxx-xxxxxxxxxx xxxxxxxxx
+# xxxxxxxxxxxxx xxxx xxxxxx xx xxxxxx-xxxxxxxxxx xxxxxxx xx xxxxxx xxxxxxxxxxxxxxxxxx
+# xxxxxxxxx xxxx xxxxxxx xxxxx-xxxxx xxxxxxxxxx xxx x xxxxxxx xxx xxx xxx xxxx xxx
+# xxxxxxxxxxx xxxxx xx xxxxxx xxxx xxxxx xxxxxxx xxxxxx xx xxxx xxxxxxxxx
+# providers:
+#   xx-xxxxxxxx
+#     base_url: example
+#     api_key: example
+#     extra_body:
+#       service_tier: example
+# providers:
+#   router:
+#     base_url: example
+#     api_key: example
+#     # xxxxxxxx xxxx-xxxxxxxx xx xxxxxxxxxxxxxxx xxx xxxxxxxxxxxxxx x xxx
+#     # xxxxxxxxx xxx xx xxxxxxxx xxxxxx xxxx xxxxxxxxxxxxxxxxx xx xxxx x
+#     # xxxxxxxxxxxxx xxxxxx xxx xxxxxxx xxxxxx xxxxxxxx xxxxxx xxxxx x xxxxx
+#     # xxxxxx xxxxxxxx xx xxxx xxxxxx xxx x xxx-xxxxxxx xxxxxx-xxxxxxxxxx
+#     # xxxxxxxxx
+
+
+# xxxxxxx-xxxxxx xxxxxxxxxxx xxxxxxxxxxx xxxxxxx
+# ------------------------------------------------------------------
+# xxxxxxxxxx xxxxxxxx xxxxx xxxxx xxxxx-xxxxx xxxxxxx xxxxxxxxx xxxxxxxx xxxxx
+# xxxx xxxxxxxx xxxx xxxxxxxx xxxxxx xxxx xxxxxx xxx xxxxx xx x xxxxx xxxxxx
+# xxxx xxxx xxx xxxxxxxxx xx xxxxx xxxxxx xxx xxxx xxx xxxxx xxxxx xxxxxxx xxxxx
+# xxxxxxxxx xxxxx x xxxxxxx xxxx xxxxxx x xxxxx xxxxxxxx xxxxxx xxxx xx xxx
+# xxxxxxx xxxxxxx xxxxx xxxxxxx xxxxxx xxxxxxxx xx xxxx xxxxxxxx xxxx xxxxxxx
+# xxxx xx xxxxxxxx
+#
+# Contract: example
+# xxxxxxxxxxxxxx xxxxx xxxxxxxxxxxxx xx xxxxxxxxxx xxxx xxxxx xx xxxxx xxx
+# xxxxx xxxxxxxxxx xxxxxx xxxxxx xxxxxxxxxxxxxxx xxxxxxx xxxx
+# xxxxx-xxxxxx-xxxxxxx xxx xxxx xxx xxx-xxxxx-xxxxxxxxxx
+#
+# Precedence: example
+# xxxx xxxxxx xxxxxxx x xxxxxxx xx xxxx xxxxxx
+#
+# xxxxxxx xx xxx xxxx xxxxx xxxx xxx xx xxxxxxxxx xxxxx xxxxxx xxxxxxxxxxx
+# xxxxxxx xxxxxxxxxxxx xxxxxxx xxxxxxxxxx xxxxxx
+#
+# xxx xx xx xxxxxxxx xxxx xxxxxxxxxxxxxxxxxx xxxxx xx x xxxxxxxxx xxxxxxxxxx
+# xxxx xxx xxxx x xxxxxx xxxx xx xxxxxxx xx xxxxxxxx xxx xxxx xxx xxxx xxxxxxx
+# xx xxx xxxxxxx xxxxxx xxx xx xxx x xxxxx xx xxxxxxxx xxxxxx xxxx xxxxx xxxx x
+# xxx=xxxxx xxxxx xxx xxxxxxxxx xxxx xxx xxxxxxxx xxxxx x xxxxxxxxxx xxxxxxxxx
+# xxxxxx x xxxxxxxx xxxxxxx x xxxxxxx-xxxx xxx xxx xxxxxx xx xx-xxxxxx xxxxx xx
+# xxxxxxxx
+#
+# providers:
+#   xx-xxxxxxxx
+#     base_url: example
+#     api_mode: example
+#     key_cmd: example
+#
+# xxxxxx xxxxxxx x xx xx xxxxxxx xxxx xxxxxx xx xxxxx xxxxxxx xx xxx xxxxx xxx
+# xxxx xxxxxx xxxxxx xxx xxxx xxxxxxxxxx xxxxxxx
+#
+# providers:
+#   dbx: example
+#     base_url: example
+#     api_mode: example
+#     model: example
+#     key_cmd: example
+#   xxx-xxxx                         # xxxxxx xxxxxxxxx xxxxx
+#     base_url: example
+#     api_mode: example
+#     model: example
+#     key_cmd: example
+#   xxx-xxxxxxx                      # xxxxxxxxx xxxxxxxx xxxxx
+#     base_url: example
+#     api_mode: example
+#     model: example
+#     key_cmd: example
+
+# xxxxx xxxxxxxx xxxxxxxxx xxxxxxxxxx
+# xxx xxxx xxx xxx-xxxxxxxx xxxxxxx xxxxxxxxx xxx-xxxxxx xxxxx xxxxxxxxx
+# xxx xxx-xxxxx xxxxxxxxxxx
+# xxxxxxx xx xxx xxxxxxx xxxx xxxxxx xx xxxxx xxxxxxxx xxxxxxx-xxxxx xxxxxx
+# xxxxxxxxxx xxx xxxxxxxxx-xxxxxxxxxx xxxxxxxxxxx xxx xxxxxxxx xxxxxx xxx
+# xxxxxx xxxxxxxx xxxxxx xxxxxxxxxx xxxxxxxxx  xxx xxxxxx-xxxx xxxx
+# xxxxxxxxxxx xxxxxxxxxx xxx xxx-xxxxxxxxxx xxx xxxxxxxxxx xxxxx xx xxxx
+# xxxx xx xxx xxx-xxxxxxx xxxxxxxxx=xx xxxxx xx xx xxxx xxxx xxx xxxxxx
+# xxxxxxxxxxxxxxxxxx xxx xxx xxxxxx xxxxx xxxxxxx xxxx xx xxxxxx xx xxxxx
+# xxxxxxxxxxxxxxxxxxxxxxxxx xxxxxxxx xxx xxx-xxxxxxxxx xxxxx-xxxx xxxxxxxx xxx
+# xxxx xxxx xxx xxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxx xxxx xxxxxxx xxxxx
+# xxxxx xxxxx xxx xxxxxx xxxxxxxx xxxxxxxxxxxxxxxxxxx=xxxxxx
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxx=xxxx xxxxxx xxxxxxxxx xxxxxx xxx
+# xxxxxxxx xxx-xxxxxx xxxxx xxxxxxxx xx xxxx-xxxxxxxx xxx xxxxx xxxxxxxxx
+# xxx xxx xxxxx xxxxxx xxx xxxx xxxxx xxxxxxxxx
+#
+# xxx xxxxxxxxx xxxxx xxx xxx xxxxxxx xxxxxxxxxxxxxxxxx x xxxxxxxxxxxxxxxx
+# xxx xxxxxx x xxxxx xxx xxxxx xxxx xxx xxx xxxxxxx xxxxxxxxxxxxxx
+#
+# providers:
+#   xxxxxx-xxxxxx
+#     request_timeout_seconds: example
+#     stale_timeout_seconds: example
+#   anthropic:
+#     request_timeout_seconds: example
+#     models:
+#       xxxxxx-xxxx-xxxx
+#         timeout_seconds: example
+#   xxxxxx-xxxxxx
+#     models:
+#       xxx-xxxx
+#         stale_timeout_seconds: example
+
+# =============================================================================
+# xxxxxxx xxxxxxxx xxxxxxxxxx xxxxxxxxxx
+# =============================================================================
+# xxx xxxxx xx xxxxxxxx xxxxxxxx xxxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxxxxx
+# xxxx xxx xxxxxx xxxxx xxxxxxxx xx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# Precedence: example
+# xxxxxxxx x xx x xxxxxxxx xxxxx xxxxxxxx xxx xxxxx xxxxxxxxxxxx xxxx xxxxx
+# xxxxxx xxx xxxxxxx xx x xxxxxxxx-xxxx xxxxxxx xxxxxxxxxxxxxx
+#
+# xxxxxxxxx xxxxxxxx xxxx xxxxx xxxxx xxxxxxx xxxx xxxx xxxx x xxx xxxxx #xxxxxxx
+#
+# timeouts:
+#   tools:
+#     concurrent_batch: example
+#                             # xxxxxxx xxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#     sequential_call: example
+#                             # xxxxxxxx xx xxxxxxxxxxxxxxxxxx xxxxx xx xxx xxx
+#                             # xxxxxxxx xxxxx xxxx xx xxxxx xxxxx xxxxx
+#                             # xxxxxxxxx xxxxxxxx xxxxxxxx xxxxx xxxxx xxxxxxx xxx
+
+# =============================================================================
+# xxxxxxxxxx xxxxxxxx xxxxxxx xxxxx xxxxxxx xxxx xxxxx xxxxxxxxxxx
+# =============================================================================
+# xxxxxxx xxx xxxxxxxx xxx xxxxxx xxxxxx xxxxxxxxx xx xxxxxxxxxxx
+# See: example
+#
+# provider_routing:
+#   # xxxx xxxxxxxxx xxxxxxx xxxxxxxxxx xxxxxxxxxxxxx xx xxxxxxxxx
+#   # xxxxxx xxxxxx xx xxxxx xxxx xxx x xxxxxxxx xx xxxxxxxxxx xxxxxxxx
+#   sort: example
+#
+#   # xxxx xxxxx xxxxx xxxxxxxxx xxxxxxxxx xxxxx xxxx xxxxxxxxxxx
+#   # xxxxx xxxxxxxxxxxxx xxxxxxxxx
+#
+#   # xxxx xxxxx xxxxxxxxx xxxxxxxx
+#   # xxxxxxx xxxxxxxxxxxxx xxxxxxxxxxxx
+#
+#   # xxx xxxxxxxxx xx xxxx xxxxx xxxxxxxxxx xxxxxxx xxxx xxxxxxxxxx
+#   # xxxxxx xxxxxxxxxxxxx xxxxxxxxx xxxxxxxxxxx
+#
+#   # xxxxxxx xxxxxxxxx xx xxxxxxx xxx xxxxxxxxxx xx xxxx xxxxxxx
+#   # xxxxxxxxxxxxxxxxxxx xxxx
+#
+#   # xxxx xxxxxxx xxxxxxx xxxxxxxxx xx xxxxxx xx xxxxxxx xxxxxxxxx xxxx xxx xxxxx xxxx
+#   # xxxxxxxxxxxxxxxx xxxxxx
+#
+#   # xxx-xxxxx xxxxxxxxxx xxxx xxxxx xxxxxxx xxxx xxxx xxx xxxxx xx xx xxxx xxxxx
+#   # xxxxxxxxx-xxxxxxxx xxxxxx xxxxx xxxx xxxx xxxxxxx xx xxx xxxx xxxxxx xxxxxxx
+#   # xxxxxxx
+#   #   xxxxxxxxxxx-x-xxxxxxx
+#   #     xxxxx xxxxxxxxxx
+#   #   xxxxxxxxxxxxxxxxx-xxxxx-xxxxx
+#   #     xxxxx xxxxxxxxxxxxx
+
+# =============================================================================
+# xxxxxxxxxx xxxxxxxx xxxxxxx xxxxx xxxxxxx xxxx xxxxx xxxxxxxxxxx
+# =============================================================================
+# xxxxx xxxxxxxxx xxx xxxxxxxxx xx xxx xxxxxxxxxx xxxx xxx xxxx xxxxxxx xxxxxxxx
+# xxxx xxxxxxxx xxxxxxxxx xxxxxxxx xxxxx xxxxxx xxxxxxxxx xxxxxxxxxxx xxxxxx
+# xxxxxx xxxxxxxxx xxxx xxxx xxxxxxxx xxxxxxxx xxxx xxxxxxxxx xxxxxx xxxxxxxx
+# See: example
+#
+# openrouter:
+#   response_cache: example
+#   response_cache_ttl: example
+
+# =============================================================================
+# xxx xxxxxxxx xxxxxxxxx
+# =============================================================================
+# xxxx xxxxxxxx xxxx xxx xxxxxxx xxxxxxx xx xxxxxxxx xxx xxxxxxxx xx xxxxxxxx
+# xxxxxx xxx xxxx xx xxx xxxx xxxx xxxxxxxxxxxx xxxxxxx xxxx xxxxxxxxxxx
+# xxxxxxxxxx xx xxxxxx xxxxxxx --xxxxxxxx x -x xx xxx xxxxxxx xxxxx
+#
+# worktree: example
+# worktree: example
+#
+# xx xxxxxxx x xxx xxxxxxxx xxxxxxxx xxxx xxx xxxxxxx-xxxxxxx xxxxxx xxx
+# xxxx xxxxxxx xxxxxxxx xxxxxxxxx xxxx xxx xxxxxxxx xxxxxxx xxxxxxx xx xx
+# xxxxxx xxxxxxx xxxx xxx xxxxxxx xxxxxxx xx xxxx xxx xxxxx xxxxxxx
+# xxxxxxxxx xxxxxx xxxxx xxx xxxxxxxxxxxxxx xxxxx xx xxxxxx xxxx xxxxx xxxx
+# xxxxxxx x xxxxxx xxxx xxxxxxx xx xxxx xxx xxxxxxxxxxxx xxxx xxx xxxxxxx
+# xxxxx xxxxxxx xxxxx xx xxx xxxxx
+#
+# worktree_sync: example
+# worktree_sync: example
+
+# =============================================================================
+# xxxxxx xxxxxx xxxxxxxx
+# =============================================================================
+# xxxxx-xxxxx xxxxxx xxxxx xxx xxxxxxxxxx xxxxxxxxxxxxx xx xxxxxxxx xxx xxxxxx
+# xx xxxxxxx xxxx xxx xxxxxxx xxxx-xxxxxx xxxxx xxx xxx xxxxxxxx xxxxxxx xxxxxxx
+# xxxx xx xxx xxxxxxxx xxxxxxxxxxxx xx xxxxxxxx x xxxxxxx xxxxxxxx xxxxxxxx
+# xxxxxxx xxxx xxxx xxxx xxxxx xxxxxx xx xxxxxxxxx xxxxxxxx xxxx xxx xxxxxxxxxx
+  key_1: example
+kanban:
+  review_dispatch: true
+
+# =============================================================================
+# xxxxxxxx xxxx xxxxxxxxxxxxx
+# =============================================================================
+# xxxxxx xxx xx xxx xxxxxxxxx xxxxxxxx xxxxxxxxxxxxxx xx xxxxxxxxxxxx xxx
+# xxx xxxxxxxx xxxx xxxxxxxx xxxxxxxx xx xxx xxxxxxxxx xxxxxxxxxxxx
+
+# -----------------------------------------------------------------------------
+# xxxxxx xx xxxxx xxxxxxxxx xxxxxxxxx
+# xxxxxxxx xxx xxxxxxxx xx xxxx xxxxxxx xx xxx xxxxxxx xxxxxxxxx
+# -----------------------------------------------------------------------------
+# xxxxxxx xxxxxxxxx xxxxxxxxx
+#   - xxx xxxxxxxxx xxxxxxxxx xxxx xxx xxxxxxxx xxxxxxxxx xxxxx xxx xxx xxxxxxx
+#   - xxxxxxxxxxxxxxxxxxxxxxx xxxx xxxxxxxxxxxx xxxxx xxxxxx xxxx xxx xxxxxx xxx xxxxxxxxxx
+cron:
+  catch_up_missed: true  # False skips past-grace recurring misses after planned downtime.
+
+terminal:
+  backend: "local"
+  cwd: "."  # For local backend: "." = current directory. Ignored for remote backends unless a backend documents otherwise.
+  # xxxxxxx xxxxx xxxxx xxxxxxx xxx xxxx xxxxxxxx xxxx xxxxx xxxxxx xxxxxxxxxxxxx xxxxxxx
+  # font_family: example
+  timeout: 180
+  # xxxx xxxxxx xxx xxxx xxxxxxxxxxxxx
+  #   xxxx    - xxxxxxxx xxxx xxxx xxxx xxxx xxxxx xxxxxxxxxx xxx xxxxxxxxxxxxxxxx
+  #   xxxx    - xxxxx xxxx xxxx xx-xxxx xxxx
+  #   xxxxxxx - xxxxx xxxxxxxxxxxxxxxx xxx xxxxxx xxx-xxxxxxx xxx xxxxxx xxxxxxxxx
+  home_mode: "auto"
+  docker_mount_cwd_to_workspace: false  # SECURITY: off by default. Opt in to mount the launch cwd into Docker /workspace.
+  lifetime_seconds: 300
+  # sudo_password: example
+  # sudo_password: example
+
+# -----------------------------------------------------------------------------
+# xxxxxx xx xxx xxxxxx xxxxxxxxx
+# xxxxxxxx xxx xx x xxxxxx xxxxxx - xxxxx xxxx xxxxx xxxxx xxxxxxxxxxx
+# xxxxx xxxx xxxxxxx xxxxx xxxxxxxx xxxx xxx xxx xxxxx xxxxx xxxxxxxx xxxxxx xxxxxxxx
+# -----------------------------------------------------------------------------
+# terminal:
+#   backend: example
+#   cwd: example
+#   timeout: 180
+#   lifetime_seconds: 300
+#   ssh_host: example
+#   ssh_user: example
+#   ssh_port: 22
+#   ssh_key: example
+
+# -----------------------------------------------------------------------------
+# xxxxxx xx xxxxxx xxxxxxxxx
+# xxxxxxxx xxx xx xx xxxxxxxx xxxxxx xxxxxxxxx
+# xxxxx xxxx xxxxxxxxxxxx xxxxxxxxxxxxx xxxxxxxx xxxxxxxxx
+# -----------------------------------------------------------------------------
+# terminal:
+#   backend: example
+#   cwd: example
+#   timeout: 180
+#   lifetime_seconds: 300
+#   docker_image: example
+#   docker_mount_cwd_to_workspace: example
+#   # xxxxxxxxx xxx xxx xxxxxxxxx xx xxxx xxxx xxxxxx xxxxxxx xx xxxxx xxxxxxx
+#   # xxxx xxxx-xxxxxxx xxxx xxx xxxxx xx xxxx xxx xxxxx xxxxx xxxxxxxxxxxxx
+#   # xxxx xxx xxxxx xx xxxx xxxxxxxxx xxxx xx xxxxxxx xxxxx xxx xx xxxx
+#   # xxxxxx xxxxxxxxxxxx xxxxxxx xx xxxxx xx xxxxx
+#   docker_run_as_host_user: true
+#   # xxxxxxxxx xxxxxxxxxx xxxxxxx xxxxxxxx xxx xxxx xxxx xxxxxxx
+#   # xxxxx xxxxxx xxxx xxxx xxxx xxxxxxx xxxxx xxxxxx xxxx xxxxxxxxxxxxxxx
+#   # xxxxxxxx xxxxxxxx xxxxxxxxx xxxx xx xxxxxxx xx xxxxxxxx xxx xx xxx xxxxxxxxxx
+#   docker_forward_env:
+#     - xxxxxxxxxxxxxx
+#     - xxxxxxxxxxx
+#   # xxxxxxxxx xxxxx xxxxx xxxxxx xxxxxxxx xx xxxxxx xxx xxxxxxxxx xxxxx xxxxxxxx xxxxxxxxxx
+#   # xxxxxx xxx xxxxxx xxxxxxxxxxxx xxxxx xxx xxxxxxxx xxxxxxx xxxxxxx xx xxxxxx xxxxxxxx
+#   # xxxxxxxx xxx x xxxxx xxxxxxxxxx xxx xxxxxxxx xx xxxxxxx
+#   # xxxxxxxxxxxxxxxxxx
+#   #   - x--xxx-xxxx
+#   #   - xxxxxxxx
+
+# -----------------------------------------------------------------------------
+# xxxxxx xx xxxxxxxxxxxxxxxxxxxxx xxxxxxxxx
+# xxxxxxxx xxx xx x xxxxxxxxxxx xxxxxxxxx xxxxxxx xx xxx xxxxxxxxxxxxx
+# xxxxx xxxx xxx xxxxxxxxx xxxxxx xxxxxxx xxxxxxxxxxxx
+# -----------------------------------------------------------------------------
+# terminal:
+#   backend: example
+#   cwd: example
+#   timeout: 180
+#   lifetime_seconds: 300
+#   singularity_image: example
+
+# -----------------------------------------------------------------------------
+# xxxxxx xx xxxxx xxxxx xxxxxxxxx
+# xxxxxxxx xxx xx xxxxxxx xxxxx xxxxxxxxxxxxxx
+# xxxxx xxxx xxx xxxxxxx xxxxxxxx xxxxxxxx xxxxxxxxxx xxxxxxxxx
+# -----------------------------------------------------------------------------
+# terminal:
+#   backend: example
+#   cwd: example
+#   timeout: 180
+#   lifetime_seconds: 300
+#   modal_image: example
+
+# -----------------------------------------------------------------------------
+# xxxxxx xx xxxxxxx xxxxx xxxxxxxxx
+# xxxxxxxx xxx xx xxxxxxx xxxxx xxxxxxxxx
+# xxxxx xxxx xxxxx xxx xxxxxxxxxxxxx xxxxxxxxxx xxxxxxxxxxx xxxx xxxxxxxxxxxxx
+# Requires: example
+# -----------------------------------------------------------------------------
+# terminal:
+#   backend: example
+#   cwd: example
+#   timeout: 180
+#   lifetime_seconds: 300
+#   daytona_image: example
+#   container_disk: example
+
+#
+# --- xxxxxxxxx xxxxxxxx xxxxxx xxxxxxxx xxxxxxxxxxxx xxxxxx xxxxxxx -- xxxxxxx xxx xxxxxxxxxx ---
+# xxxxx xxxxxxxx xxxxx xx xxx xxxxxxxxx xxxxxxxxx xxxx xxxxxxx xxx xxxxxxxxx
+# xxxxxxxxx xx xxx xxxxxxx xxx xxxxxxx xxx xxxxxxxxxx xxxxxxxx xxxxxx xxxxxxxxx
+  container_cpu: 1              # CPU cores
+  container_memory: 5120        # Memory in MB (5120 = 5GB)
+  container_disk: 51200         # Disk in MB (51200 = 50GB)
+  container_persistent: true    # Persist filesystem across sessions (false = ephemeral)
+
+# -----------------------------------------------------------------------------
+# xxxx xxxxxxx xxxxxx xxxx xxx xxxxxxxx xxxxxx
+# -----------------------------------------------------------------------------
+# xxx xxxxxxxxxxxxx xx xxx xxxxxxxx xxxxxx xxxxx xx xxxxxx xxxx xxxxxxxxx
+# xxx xxxxxxxx xx xxxxx xxx xxxxx -xxx xxxxx xxxx xxxxxx xxxx xxxxxxx xxxx
+#
+# xxxxxxxx xxxxxxxx xxxxxxxx xxxxxx xx xxxxxxxxxx
+#
+# xxxxxxxxxxx xxxxxxx xx xxxxxxxxxxxxx xx xxxxx xxx xxx xxx xx xxxxxxxx
+# xxxxxx xx xxxxxxxx xx xxxxx xxxx xxxxxxxx xxxx xxxx xx xxxxxxx
+# - xx-xxxxxx xxxxxxx xxxxx-xxxxx xx xx xxxxxx
+# - xxxxx xxxxx xx xxxx xxxxxxxx xxxxx xxxxxxxxxxx
+# - xxxxxxxx xx xxxxxx xxxxx xxxxxx
+# - xxxxxxxx xx xxxxxx xxx xxx xxxxxxx
+#
+# xxxxx xxxxxxxxxx xxxxxxx xxxxxxxxxxxxx xx xx xxxxxxxx xxxxx xxxxxx xx xxxxxxxxx
+# xxxx xxxxxxx xx xxxxxx xxxxxx xxxx xxx xx xxxxx xxxxxxxx xxx xxxxx -xx xxx
+# xxxx xxx xxxx xxx xxxxxxxxxxx xxxxxxx xxxx xx xxxxxx xxx xxxxxxxxxxxx xxxxx
+# xxxxx xx xxxx xxxxxxx xxx xxxxxxxxxxxx xxxxx xxxxxxxxx xx xxxx xxxxxx
+#
+# ALTERNATIVES:
+# - xxx xxxxxxxx xxxxxxxxx xxxxxxxxxxxx xxxx xx xxx xxxxxx xxxxxx
+# - Containers: example
+# - Local: example
+#
+# xxxxxxx xxxx xx xxxx xxxxxxxx xxxxxxxxx
+#   sudo_password: example
+
+# =============================================================================
+# xxxxxxxx
+# =============================================================================
+# security:
+#   approval:
+#     transport: example
+#     transport_fallback: example
+#   # xxxxx xxxxxx xx xxxxxxxxxxx xxxxx xxxx xxxxx xxx xxxxx xxxxxx
+#   # xxxxxxxxxxx xxxxxxxxxx xxxxxxxx xxxx xxxxxx xxx xxx xxxxx xxxxxxxxx
+#   # xxxx xxxxx --xxxxx xxx xxx xxxxxxx xxxx xxxxxx xxx xxxxxxx xxx xxxxx xx
+#   # xxxxxxx xxx xxxxx xxx xxxxxxx xxxxxxxx xx xxx xxxxxxxx xx xxxxxxx xxxx xxxxxx
+#   protected_instruction_files: true
+#   protected_instruction_extra_patterns: []
+
+# =============================================================================
+# xxx xxxxxxxxxxx xxxxx-xxxxx xxxx xxx xxxxxxxxxx x xxxxxx
+# =============================================================================
+# lsp:
+#   enabled: true
+#   # xxxxxxxx xxxxxxx xxxx xxxx xxxx x xxxxxxx xxxxx xxxx xxxxx xxxxxxxxxxxx
+#   # xxxxxxxxxxxx xxxxxxxxxxx xxxxxxxxxxxxxxxxx xxxxxxxxxxxxxxxx xxxxx xxxxxx
+#   # xx xxx xxx xxxxxxxx xx xxx xxxxxxxxx xxx xxxxxxxx xxxxxx xx xx xxxxxx
+#   # xxx xxxxxxx xx xxxxxxx -xx x xxxxxxx xxxxxxxx xxxxxxxxxxxxxx xx xxxxx x
+#   # xxxxxxxxx xxxxxx xxxxx xx xxxxx xxxxxxxxxx xxxx xx x xxxxxxxxxx xxx xxxxx
+#   # xxxxxxx xxxx xxxxxxx xxxx xxx xx xxxxxxx xxxx xxxxx xxxxxxx xx
+#   # xxxxxx-xxxx xxxxxx xxx xxx xxx xxx x xxxxxxx xxxx xxxxxxxxx xxx xxxxxxxx
+#   trusted_workspaces:
+#     - xxxxxxxxx-xxx
+
+# =============================================================================
+# xxxxxxx xxxx xxxxxxxxxxxxx
+# =============================================================================
+browser:
+  # xxxxxxxxxx xxxxxxx xx xxxxxxx - xxxxxxx xxxxxxxx xxx xxxxxxxxxxxxx xxxxxx
+  # xxxxx xxxx xxxxxx xx xx xxxxxxxx xxxxxxx xxxxx xxxxx xxxxxxxxx xxx = x xxxxxxxx
+  inactivity_timeout: 120
+  # xxx xx xxxxxxxxxxxxx xxxxxxx xxxxxxxxx xxxxxxxx xx xxx xxxxxxxxxx xxx xx
+  # xxxxxxxx xxxxxx xxxxxxxx xxxxxxxx xx xxxxxxxx xxxxx xxx xxxxxxxxxxxx xxxx
+  # xxxxxxxx xxx xxx xxxxxx xxxxxx xxx xx xx xxxxxxxxxxx
+  extension_control:
+    enabled: false
+
+  # xxxxxxx xxxxxxxxxx xx xxxxxxxx xxxxxxx xxxxxx xxxxxxxx-xxx-xxxxxx
+  # xxxxxxxx xxx xxxx xxxxx xxxx xxxxxxxx xxxxxxxxxxxxx xx xxxxxxxxx xxxxxxxxx
+  # xx xxxxxxxx xx xxxxxx xxxxxxx xxxxxx xxxxxxxx xxxxx xxxxxxxx xxxxx
+  # xxxxx xxx-xxxx xxxxxx xx xxxxxxxxxxxxx
+  # snapshot_threshold: 15000
+
+  # xxxxxxxxxx xxxxxxxxxx xxxxxxxxxx xxxxx xxxxxxx xxxxxxx xxxxxxxxxxxxxxxxx
+  # xxxx xxxx x xxxxxxxx xxxx xxxxxx xxxxxxxxx xxxxxxxxxx xxxxxxxxx xxxxxxxx
+  # xxxxxxxxxx xxxxxxxx xxxx xxxxxxx xx xxxxxxxxxxxxxxxxxxxxxxxxxx=xxxx x xxx
+  # xx xxxx xxx xxxxx xxxxxx x xxxxxx-xx xxxxxxxx xxxxxxxxxxxxxxxxxxxxx xx xxx
+  # xxxxxx xxxxxxxx xxxx xxxxxxxx xxx xxxxxxxx xxxx xxx xxxx xxxx xxxxxxxx xx xxx
+  # restrict_evaluate: false
+  # allow_unsafe_evaluate: false
+
+# =============================================================================
+# xxxx xxxx xxxxxxxxxx
+# =============================================================================
+# xxxx xxxxxxxx xxx xxxxxxx xx xxxxxxxx xxxx xxxxxx xxxxxxxx xx xxxxxxxx xxxxxx
+# xx xxx-xxxxxxxxxxx xxxx xxxxxxx xxx xxxxx xxx xxx xxxx xxxxxxxx xxxx xxxxx xxxx
+# xxx-xx xxx xxxxxxxxxxx xxxxxxxxxxxxxxxxxxx xxxxxxxxx xxx xxxxxxx xx xxx xxxxxxxxxx
+# xxxxxxxxxxxx xxxxxxxx xxxxx xxxxxx xx xxxxxxx xx xxxxxxxxx x xxxxx xxxx
+# xxxxxxx xxxx xxxxxxxxx
+  key_2: example
+  key_3: true
+tool_loop_guardrails:
+  warnings_enabled: true
+  hard_stop_enabled: false
+  non_interactive_hard_stop_enabled: true
+  warn_after:
+    exact_failure: 2
+    same_tool_failure: 3
+    idempotent_no_progress: 2
+  hard_stop_after:
+    exact_failure: 5
+    same_tool_failure: 8
+    idempotent_no_progress: 5
+
+# =============================================================================
+# xxxxxxx xxxxxxxxxxx xxxxx-xxxxxxx xxxx xxxxxxxxxxxxxx
+# =============================================================================
+# xxxx xxxxxxxxxxxx xxxxxxxxxx xxxxxxx xxxxxxx xxxxxx xxxxxx xxxxx xxx
+# xxxxxxxxxxxxx xxxxxxxxxx xx xxxx xx xxxxx xxxxx xxxxxxxxxx xxxxxxxxx xxxxxxxx
+#
+# xxx xx xxxxxx
+# xx xxxxxx xxxxxx xxxxx xxxxx xxxx xxx xxxxxxxxx xxxx xxxxxxxxxx
+# xx xxxx xxxxxxxxxxxxx x= xxxxxxxxxx xx xxxxxxx xxxxxxxxxxxxxxx xxxxxxxx xxxxxxxxxxx
+# xx xxxxxxxx xxxxx x xxxxx xxxxxxx xxxxxxx xxxxxxx xxxxxxxx xxxxx xxxxxxxxx
+# xx xxxxxxxx xxxx x xxxxx xxxxxxxx xx xxxxxxxx = xxx xxxx xxxxx xx xxxxxx xxxxxxxx
+# xx xxxxxxxxxx xxxxxx xxxxx xxxxx x xxxxxxxxxx xxxxx
+# xx xxxxxxx xxxxxxx xx x xxxx xxxxxxxx xxxxxxxxx xxxxxxxxxxxx xxxxxxxxxx
+#
+# xxxx-xxxxxxxxxxx xxxx xxxxxx xx xxxxxxxxxxxx x xxxxxxxxx x xxxxxxxxxxxxxxx
+#   xxxx xxxxxxxx xxxxxxxxx xxxxx xxxxx xxxx x xxx xxxxxx xx xxxxxx xxxx xxxxxxxxx
+#   xx   xxxxxxxx xxxxxxxxx xxxxx xxxxx xxxx x xxxx xxxxxx xx xxxxxx xxxx xxxxxxxxx
+#
+compression:
+  # xxxxxx xxxxxxxxx xxxxxxx xxxxxxxxxxx xxxxxxxxx xxxxx
+  # xxx xx xxxxx xx xxx xxxxxx xx xxxxxx xxxxxxx xxxxxxxx xx xxxx xxxxxx xx xxxxxxxx
+  enabled: true
+
+  # xxxx xxxxxx xxxxxx xxxxx xxxxxxxxxx xxxxxx xx xxxxxx xxxxxx xxxxxxxx xxxx
+  # xxxxxxxxxx xxx xxx-xxxxxxxx xxxxxxxxxx xxxxxxxx xxxx xxx xxxxxxxx xxx
+  # xxxxxxx xxxxxxxxxx xxxxxxxxx xxxxxxx xxxx xxxx xx xxx xx xxxxxxxxxxx xxx
+  # xxxxxxxxxx xxxxxxx xxxxxx xxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxx xxx xxx
+  # xxxxxxxxxxxx xxxxxxxxxx xx xxxxxxxxx xxx x xxxxx xxxxxx xxx xxxx xxxxx xx
+  # xxxxx xxxxxxxxxx xxxxxxxxxx xxxxxx-xxxx xxxxxx xxxxxxxxxx
+  # xxxxxxxxxxxxxxxxxxxxxxxx xx xxxxxxxxxx xxxxx xxxxxx xxxx-xxxx
+  # xxxxx-xxxxxxxxxx xx xxxxxx xxx xxx xxxxxxxxxx xxxx xx xxx xxxxxx xxx xxx
+  # xxxxxxxxxxxxxxxx xxx xxxx xx xxxxxxx xx xxxxx xxxx xxxx xxxxx xxxxx
+  # xxxxxxxx xxx xxx xxxxxx x xx xxxxxxxxxx xxx xx xxxxxxxxxx xxxxxxx xxxx
+  # xxxxxx xx xxxx x xxxxxxxxxx-xxxxxxx xxxxxxxx xxxxxxxxxx x xxx
+  # xxxxxxxxxxxxxxxxxxxxxx-xxxxxxxxxxxx-xxxxxxxx-xxxxxxxxx
+  # xxxxx-xxxxxxxx xxxxxxxxxxxxxx
+  checkpoint_required: false
+
+  # xxx-xx xxxxxxxxxxx xxxxxxxx xxxxxxx xx xxxx xxxxxxxxx xxxxxxxxx xxxxxxx
+  # xx xxxxxxx xxxxxxx xxxxxxxxx xxxxxxxxxxx xx xxxxxx xx xxxxx-xxxxxx xxxx
+  # xxxxxxxx xxxxxxxxxx xxxxxxxx xxxxxx xxxx x xx xxxxxxx xx xxx xxxxxxxxxx
+  # xxxx xxxxxx-xxxx xxxxxxx xxxxx xxx xxxx xx xxxx xxxxxxx xxx xxxxxxx
+  # xxxxxxxx xxxxxxxx xxxxxxxxxxx xxxxxxxx xxxxxxxxxxxxx-xxx xxxxxxxxxxxx
+  # xxxx xxxxxxxxxxx xxxxx xxxxxxxxx xxx xxx xxxxxxxxxx-xxxxxxxx xxxxxxx xx
+  # xxxx xxxxxxxxxx xxxxxxxxx xxxxxxxxxxx xxxxx xxxxxxxxxx xxxxx xxxxxxxxx
+  # xxxxxxxx xxxxx xxxxxxxx xxxxx xxxxxxxxxx xxxxxx xxxx xxx xxxxxxxxxxx
+  # xxxxxxx xxxxxxx x xxxxxx xxxxxxxxx xxxxxxxx xxx xxxxxx xxxxxxx
+  # xxxxxxxxxx xx xxxx xxxxxxxx x#xxxxxx
+  progress_notices: false
+
+  # xxxxxxx xxxxxxxxxxx xx xxxx x xx xxxxxxx xxxxxxx xxxxx xxxxxxxxx xxxx = xxxx
+  # xxxxx xxxxxx = xxxx xxxxxxxxxx xxxxxxxxxxxx xxxxxx xxxxxx = xxxxxxxx xxxxx
+  # xxxxxx xxxx xxxxxxx xxxxxxx xxxxx xxxx xxx xxxxxxx xx xxxx xxxxxx-xxxxx xx
+  # xxxxxxxxxx xxxxxxx xxxx xxxx xxxx xxx xxxxxx xxxxx xxxxx xxx xxxxx xxxx xx xxxxxxxxx
+  threshold: 0.50
+
+  # xxx-xxxxx xxxxxxxxx xxxxxxxxxx xxxx xxx xxxxxxxxx-xxxxxxx xxxxxxx xxx xxxxx
+  # xxxx xxxxxxxx xxxxx xxxxxx xxxxxx xxxx xxxx xxxxxx xxxx xxxxxxxxx xxxxxxxxxx
+  # xxxxxx x xxxx x xx-xxxxxxx xxxxx xxx xxxxxxxx xxxxx xxxxxx xxxxx x xxxx
+  # xxxxx xxxxx xx xxxxxxxx xxxxxxx xxxxxxx xxx xxxxx-xxxxxxx xxxxx xxxx xxx
+  # xxxxx xxxxxxx xxxxx xxxxxxx xx xxx xx xxx-xxxxx xxxxxxxxxx
+  # model_thresholds:
+  #   xxxx-xxxxx xxxx
+  #   xxxxxxx-xxxxxxxx xxxx
+  #   xxxx-xxx xxxx
+
+  # xxxxxxxx xxxxxxxx xxxxx xxx xxx xxx xxxxxxxxxxx xxxxxxx xxxxxxxxx xxxx = xxxxxxxxxx
+  # xxxx xxxx xxxxxxxxxxx xxxxx xx xxx xxxxx xx xxx xxxxx-xxxxx xxxxxxxxx xxx xxxx
+  # xxxxxxxx xxxxx xxxxxx xxxxxxx xx xxx xxxxxxx xxxxxxx xxxxxx xx xxxxx-xxxxx xx x
+  # xxx xxxxx xxx xxxxxx xx x xx-xxx xxxxxxxx xxxxx xxxxxxxx xxx xxxxxxxx xxxxxxxxxxxx
+  # threshold_tokens: 200000
+
+  # xxxxxxxx xxxxx xxx-xxx xxxxxxxxx xxxxx xxxxxxx xxxxxxxxxx xxxxxxx xx xxx
+  # xxx xxx xxxxxxx xxxxx xxxxx xxxxxx xxx xxxxx xx xxx xxxx xxxx xx xxxxxxxxxx
+  codex_gpt55_autoraise: true
+
+  # xxxxxxxx xx xxx xxxxxxxxx xx xxxxxxxx xx xxxxxx xxxx xxxxxxxxx xxxx = xxxx
+  # xxxx xxx xx xxx xxxxxxxxx = xxx xx xxxxx xxxxxxx xxxx xx xxxxxx xxxxxxxxx
+  # xxxxxxx xxxxxx xx xxxxxxxxxx xxxxxx xx xxx xxxxxx xxxxxxx xxxxxx xxxxxxx
+  # Range: example
+  target_ratio: 0.20
+
+  # xxxxxx xx xxxx-xxxxxx xxxxxxxx xx xxxxxx xxxxxxxx xxxxxxxxx xx x xx xxxx xxxxxx
+  # xxxxxx xxxxxx xxxx xxxx xxxxxx xxxxxxxxxxxx xxxxxx xx xxx xxxx xx xxxx xxxxxxxxxx
+  # xxxxxxxxxxx xx xxxxx xxxxxx
+  protect_last_n: 20
+
+  # xxxxxxx xxxxxx xx xxxx xxxxxxxxxxxx xxxx xxxxxxxx xxxxxxxxxx xx xxxxxxx xx
+  # xxx xxxxxxxxxxxx xxxx xxxxxxxxx x = xxx xxxxxxxx xxxxxx xxxx-xxxx xxxxxxx
+  # xxxxxxxx-xxxxxxxxxxxx xxxxx xx xxxx x xx xxxx xxx xxxx x xxxx xxxx xxxxx
+  # xxxxxxxx xxxx xxxx xxxxx xxxx xxxxxxx xxxx xxx xxxx xxxxx xxxxxx x xxxxx
+  # xxxxxxxx xxxxxxx xxxxxxxxxx xxxxxxxxx xxx xxxxxxxxx xxxxxxxxxxxx xxxx xxxxx
+  # xxxxx xxxxxx xx xxx xxxx xxx xxxxxx xxx xxxxx xxxxxx xxxx xxxx xxxxx xxx
+  # xxx xxxxx xxx xxxxxxxxx xxxx xxxx xxx xxxxxx xx xxxxxxx
+  min_tail_user_messages: 1
+
+  # xxxxxxxxxxx xxxxx xxxxxx xxxxxx x xxxx xxxxx xx xxxx xxxx xxxxxxxxxxx
+  # xxxxxxxx xxxxxxxx xxxxxxxxx xx xxxx xx xxx xxxxxxxx xxxxxxxxx xxxxxxx
+  # xxxxx xxxxx xx xxx xxxx-xxxxxx-xxxxx xxxxxxxx xxxxx x xxxxxx xxxxxx xxxxx
+  # xxx xxxxxxx xxxxxxxx xxxxx xxx xxxxxxxxxx xxxxxxxxx x= xx xxxx xxx xxx
+  max_attempts: 3
+
+  # xxxxx xxx-xxxxxx xxxxxx xxx xxxxxxxx xxxxxx-xxxxxxxxxx xxxxx xxx xxxxx
+  # xxxxx xxxx xxx xxxx xxxxxx xxxxxxx xx xxxx xxxxxxxx xx xxxxxxx xxxxxxxxxx
+  # xxxxxx xxxxxx xx x xxxxxxxxxx xxxx xxxxxxx xxx xxx xxxxxx xxxxxxxx
+  #   xxxxxx = xxx xxxxx xxxxxx xxxx xx xxxxxxx xxx xxx xxxxxx xxxxxxxxx
+  #   xxxxxx = xxx xxxxxx xxxxxxxxx xxxxxxx xxxxx xxxxxxxxxxxxxxxxxxxx
+  #   xxx    = xxxxxx xxxx xxx xxxx-xxxxxxx xxxxxxxxxxx xxxxx xxx xxxxx xxxxxxx xxxxxxxx
+  codex_app_server_auto: native
+
+  # xxxxxx xxxxxx xxxxxxxxx xxxxxx-xxxx xxxxxxxxxx xxxxxxxxx xxxxxxx xxxx xxxxx
+  # xxx-xxx-xxxxxx xxxxxx xx xxx xxxxxx xxxxxx xxx xxxxxxxxxxxxxxxx xx x xxxxxxx
+  # xxxxx xxxxxxxxxxxxx xxxx xxx-x-xxxxx xxxx xxx -xxxx xxxxxx xx xxxxxxxx xxxxx xxxxxx xxxxxxx
+  # xxxxxx-xxxxx xxxxxx xxxxxx xxxxx xxxxxxx xxxx xx
+  # xxxxxxxxx xxxxxxxxxx xxxx xxxxxx xxxxxxx xx xxxxx xxxxxx xx xxxxx xxxxxxxxx
+  # xxxxxx xx xxxxx xx xxxxxxxxx xxxxxxx xxxxx xxxxxxxxxxx xxxxx xxxxx xx xxx
+  # xxxxxxxx xxx xxxxx xxxxxxx xxxxx xxx-xxxxxxxx xxxxxxxx
+  codex_responses_native: false
+
+  # xxxxxxxx xxxxxxxx xxxxxx xxxxxxxxxx xxxxxxx xx xxxxx xxxxxxx xxx xxxxxxx
+  # xxxx xxxxx xxxxxxx xxx xxxxxxxx xxxxx xxxxxxxxxxx xxxxxxx xxxx xx xxxx xxxxx
+  # xxxxxx xxxxxxx xxx xxxxxxxx x xxxxx xxxxxxx xx xxxxxx xxxxxxx xxxxxxx
+  # x xxxxxxxx xxxxxxx xxxxx xxxxxxxx xxx xxxx xxxxxx xxxxxxxx xxxx xxxxxx xx
+  # xxx xxxxxx xxxxxxxx xxxxxx xxxxxxx xxxxxx xxx xxxx xxxxxxxxx xxxxxxxxx xx
+  # xxx xxxxx xxxxxxx xx xxxxxxxxxxxx xxxxxxxxx xxxx xxxx xxxxxxx
+  codex_responses_compact_threshold:
+
+  # xxxxxx xx xxx-xxxxxx xxxxxxxx xx xxxxxxx xx xxx xxxx xx xxx xxxxxxxxxxx xx
+  # xxxxxxxx xx xxx xxxxxx xxxxxx xxxxxx xx xxxxxx xxxxxxxxxx xxxxxxxxxxx
+  # xxxx xxxxxxxx xxx xxxxx xxxxxxxxxx x xxxx xxxxxxx xxxxx xxxxxxxxxxx
+  # xxxxxxxxxxxxx xxxx xxxxx xxxxxx xxxxx xxxxxxx xxx xxxxxxxxxxxx xxxxxxxxx
+  # xxx xx xxxx-xxxxxxx xxxxxxxx xxxx xxxx xx xxxxxxx xxxxxxxxxx xxx xxxxxx
+  # xxxxxxx xxxxx xxx xxx xxxxx xxx xxx xxxx xxx xxxxxxx xxxxxx xxxx xxxxx
+  # xxx xx x xx xxxxxxxx xxxx xxx xxxxxx xxxxxx xxxxx xxx xxxxxxx xxxxxxx
+  # xxx xxxxxx xxxxx x xxx xxxxxxxx xxxxxxxxxxxxx xxx xxxx-xxxxxxx xxxxxxxxx
+  # xxxxxxx x xxxxxxxxx xxx xxxxxx xxxxxx xxxx xxx xxxxx xxxxx xxx-xxxxxx
+  # xxxx xxxxxxxxx xxxxxxxx xxx xxx-xxxxxxx xxxxxxxxxx
+  protect_first_n: 3
+
+  # xxxx xxxxxxxxxx xxxxxxxxx x = xxxxxxxxxx xxxx x xx x xxxxxxx xxxx xxxxxxx
+  # xxxxx xx xxxxx xxxx xxxx xxxxxxx xx xxxxxxxxxx xxxxxxxx xxx xxxxxxxxxxx
+  # xxxxxxx xx xxxxxx xxxxxx xxx xxxxx xxxxxx xx x xxxx-xxxxx xxxxxx xxx xxxx
+  # xxxx xx xxxxx xxxxxxx xx-xxxx xxx xxxx xxxxx xxxxxxx xx xxxxx xxxxx
+  # xxxx-xxxxxx xx xx xxxxxxxxxxx xxxxx xxx xxxxxxxx xxx xxxx-xxxxx xxxxxxxxxxx
+  # xxxxxx xx xx xxxxxxx xxxx xxx xxxxxxx xx xxxxxxx xxxxx xxx xx xxxxx xxx
+  # xxxx-xxxxxxxxxxx xxxxxx = xxxxxxxxx x xxxxxxxxxxxxxx xx xx xxxxx xxxxxx x
+  # xxxxxxxxxxxxx xx x xxxxx xxxx xxxxxxx xxxxxxxx xxxx = xxxxxxx xxxxx xx xxx xxxxx
+  idle_compact_after_seconds: 0
+
+  # xxxxxxx xxxxxxx-xxxxxxx xxxx-xxxx xxxxxx xxxxxxxxx xxxx xxx xxxxxxx xx
+  # xxxxxxxx xxxx xxxx xx xxxx xxxxx x xxxxx-xxxxxxxxx xxxxxxx xxxxxxx
+  # xxxxxxxxx xxxxxxxx xxxx xxxxxxxxxxxxxxxxxxxxxxx xxxxxxxxxxx xxxxxxxxxx
+  # xxxxxxxx xxxx xxxxxx xxxx-xxxxxxx xxxxxxx xx xxxx xxxxxxxxxx xxxxxxxxx
+  # xxxxx xx xxx xxxx x xxxxxx xxxxxxxxxxx xx xxxxxx xxx xxxx xxxxxxxx
+  # xxxxxxxxxxxxx xxx xxxxxxxx xxxxxx xxxxx xxx xxxxxx xxxxxxxxx xxxxx xxx
+  # xxxxxx xx xxxxxxxxx-xxxxxxx xxx xxx xxxxxxx xx xxxxxxx xx xxx xxxx xxxx
+  # xxxxxxxxx xxxxxxxx-xxxxx xxxxxxxxxxx xxxxx xxxx xxxxxx xxxx xxx xx xxxx
+  # xxx xxxxx xxxxxxx xxxxx x xxxxx xx xxx xxx x= xxxx xxxxxxxxxxxx xxxx
+  # xxxx-xx-xxxxx-xxxxxxxx xxxx xx xxx xxxx xxxx xxxx xx xxxx xxx xxx
+  # xxxxxxxxxxx xxxxxxx xx xxxxxxxx xx xxx xxxx xxxxx
+  hygiene_max_turn_hold_seconds: 10
+
+  # xxxxxxxxx xxxx-xxxxxx xxxxx xxxxxxxxx x = xxxxxxxxxx xxx-xx xxxxx xxxxxxx
+  # xxx x xxxxxxxxxxxxxx xx-xxx xxxxx xx xxx xxxx-xxxxxx xxxxxxxxx xxx
+  # xxxxxxxxxxxxx xx xxxxxxxxxxx xxxxxx xx xxxxx-xxxxxx xxxxxx xxxxxxxxx xxx
+  # xxxxx xxxxxxxxx xxxxxx xxxxxx xx xxxxx xxxx xxxxxxx xxxxxxxxx xxxxxx xxxx
+  # xxxxxx xxx xxxxxxxxx xxxx xxxxx xx xxxxxxx xxx xxx xx-xxxxxx xxxxx xxxxx
+  # xxxx xx-xxxx xxxxxxx xxxxxxx xxxx xxxx xxxxxxx xxx xxxxx xxxxxxx xxxxxxxxx
+  # xxxxxxxx xxxxxxxxxx xxxxx xxxxxxxxx xxxxx xxx xxxxxxxxx xxxxx xxxx-xxxx
+  # xxxxxxxxx x xxxxxxxxxx xxx xxxx xxxxxx xxxxxxxxxxxxxxxx xxxxxxxx xxx xxxxx
+  # xxxxxxx xxx xxxxxx xxx xxxxx xx xxxxxxx xxxxx-xx xxxxxxxxxx xxxxxx xxxxx
+  # xxxxx xxxxxxx xxxxxxx xxxxxxx x xxxx xx-xxx
+  # NOTE: example
+  # xxx xxxxxxxxxx xxxxxx-xxxxx xxxxxx x xxx xxxxxxxxxxx xxxx xxxxx xxxxx
+  # xxxxx xxxxx xxxxxx xxxxxxxx xxxxx x xxxxxxxxxxx xxxxxxxxx xxxxxxx xx
+  # xxx-xxxxx
+  proactive_prune_tokens: 0
+
+  # xxx xxxxxxx xxxxxxxxx xxxx xxxx xxxxxxx xxxx xxxxxxx xxxxxx xxxx xxxx xxxx
+  # xxxxxxxxxx xxxxxxxx xx x= xxx xx x xxxxxxxxx xxxxxxx xxxxx xx
+  # xx-xxxxxxxxxxxx xxxxxxx xxxxx
+  proactive_prune_min_result_chars: 8000
+
+  # x xxxxxxxxx xxxxx xxxx xxxxxxx xxxx xx xxxxxxxx xx xxxxx xxxx xxxx xxxxxx
+  # xxxxxxxxx xx xxx xxxxxx xxxxxxxx xxxx xx xxx xxxxxx-xxxxx xxxxxxxxxx xxxxx
+  # xxx xxxxxxxxxxx xxxxxxxxx xxxxx xxxxx xxx xxxxx xx xxxxx xxxx xxxxxx
+  # xxxxxxx xx x xxxx xxxxx xx xxxxx xxxx xxxxxxxxxx x = xxxxxx xxx xxx-xxxx
+  # xxxxxx xxxxxxx xxxxx
+  proactive_prune_min_reclaim_tokens: 4096
+
+  # xx xxx x xxxxxxxx xxxxxxxxxxxxxx xxx xxxxxxxxxxx xxxxxxxxxx xxx xxx
+  # xxxxxxxxx xxxxxxx xxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx x xxxxxxx
+
+# =============================================================================
+# xxxx-xxxxxx xxxxxx xxxxxxxxxx
+# =============================================================================
+# xxxxxxxx xxxx x xxxxx xxxx xxxxxx xx xxxxxxx xx xxxx xxxxx xxxxxx xxxxx xx
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxxxxxx x xxxx xxxx xx xxxxxxxxx xxx xxxx
+# xxxxxxx xxxxxx xxxxx xxxxxx xxxxx xx x xxxxxxx xxxxxx-xxxx xxxxxxxxx xxxx
+# xxx xxxxxxx xxxx xxxxxxxx xxx xxxxxxx xxxxxxxxx xxxxxx xx-xxxxxxxxx xx-xxx
+# xxxxxxxx xxxx xxxxx xxxxxxx xxx xxxx xxxxx xxxxxxxxxx xxxxx xxxxxxx xx
+# xxxx x xxx xxxx xxxxxx xx xx xxxx xxx xxxxxxxx xxxx xxxxxxxxxx
+#
+# tool_budget:
+#   mcp_result_size_chars: example
+
+# =============================================================================
+# xxxxxxxxx xxxxxx xxxxxxx xxx
+# =============================================================================
+# xxxx xxxxxx xxxxxxx xx xxxxxx xxxxxxx xxx xxxxxxxxxx xx xxxxxx xxxxxxxxxxx
+# xxxxxxxxx xxxxxxxx xxx xxx xxxxx xxx xxxxxx xxxxxxxxx xxxx xxxxxxxxx xxx
+# xxxxx xxxxx xxxxxx xxx xxxxxxx xxx xxxx xx xxxxx
+#
+prompt_caching:
+  cache_ttl: "5m" # use "1h" for long sessions with pauses between turns
+
+# =============================================================================
+# xxxxxxxxx xxxxxx xxxxxxxxx x xxxxxxxxxxxxx
+# =============================================================================
+# xxxxxx xxxx xxxxxxxxxxx xxxxxxxxxxx xxxxxx xxx xxxx xxxxxx xxxxx xxxxxxxxx
+# xxxxxxx xxxxxxxxxx xxxxxxxxx xxx xxxx xxxxxxxxxxxxxx xxx xxxxx-xxx xxxxxxxxxx
+# xxx xxxxxxx xxxxxxxxxxxx
+#
+# xx xxxxxxx xxxxx xxx xxxxxx xxxxx xxx xxxxxxxxxx xx xxxx xxxxxx xxx xxx
+# xxxx-xxxxxxxx xxxx xxxx xxxxxxxxxxxx  xxx xx xxx xxxx xx xxxxxx xxxxxxxx
+# xxxx xxx xxxxxx xxxxxx
+#
+# WARNING: example
+# xx xxxxxxxxxxxx xxx xxx xxx xxxxx  xxx xxx xxxxxxxxxxxxxxxx xxxxxxx xxxxxxx
+# xxxxxxx xxxxxx xxxxxxxxxx xx xxxxxx xxx xxxx xxx xxxxxxx  xxxxxx xx xxxx xxx
+# xxxx x xx xxxxxx xxxxxx xxxxx xx xxxxxx x xxxxx xxxxxxx
+#
+# xxxx xxxx xxx xxx xxx xxxxxxxx x xxxxx xxxx xx xxx xxx xxx xxxxxxxxxx
+# xxx xxxxxxxx xxxxxxxxxx xxx xxxxxx xxxxxx xxxxxxxxxxxx xxx xxxx xxxx
+# xxxxx xxxxxxxx xxx xxxxxxxxxxx xxxxx xxxxx xxxxxx
+#
+# xxxxxxxx xxxxxxxx
+#   xxxxxx       - xxxx xxxxxxxxxx xxxxxxxxxx x xxxx xxxxxx x xxxx xxxxxxxx xxxxxxxxx
+#   xxxxxxxxxxxx - xxxxx xxxxxxxxxx xxxxxxxxx xxxxxxxxxxxxxxxxxxx
+#   xxxxxx       - xxxxx xxxx xxxxxx xxxxxxxxxx xxxxxx xxxx xxx xxxxx
+#   xxxxxxxx      - xxxxx xxxxxx xx xxxxxx xxxxxx xxxxxxxxxx xxxxxxxxxxxxxx xx xxxxxxxxxxxxxxx
+#   xxxxxxx-xxxxxx - xxxxxx xxxxx xxxxxxxxxx xxxxxxxxxxxxxxx
+#   xxxxxxx       - xxxxx xxxxx xxxxx xxxxxxxxxx xxxxxx xxxxx x xxxxxxx
+#                  xxxx xxx-xxx-xxxxx xxxxx xxxxxxxx xxxxxxx
+#   xxxxxx       - xxx xxxx xxxxxx xxxxxxxx xxxxxxxxxxxxxxxx x xxxxxxxxxxxxxxxx
+#                  xxxxx xxxx xxxxxx xxxx xxxxx xxxxxxx xx xxx xxxxxx-xxxxxxxxxx
+#                  xxxxxxxxx  xxxx xxxxx xxxx xx xxxxx xxxxx xxx xxx-xxx xxxxxxxxxx
+#
+# Model: example
+# xxxx xxxxxxxxxxxxxx-x-xxxxx-xxxxxxxx xxx xxxx xxxx xxxxxxx-x-xxxxxxx
+# xxxxx xxxxxxxxx xxxx x xxxxxxxx xxxxxxx xxxxxxxxxxxxxx
+#
+# xxxxxx xxxxxx xxxxxx xxxxxxxxxxxxxxx x xxxxxxx xxxxxxxxxxx xxxx xxx xxxx xxxxx
+# xx xxxxxx-xxxxxxxx xxxx xxxxxxxxxxxx xxxxxxx xxx xxx xx-xxxx xx xxxxx xxxxx
+# xxx xxxxx xx xxxx xxxxx xxxxx xxxxx xxxxxxxxx xxxxx
+#
+# vision:
+#   # xxxx xxxxxx xxx xxx xxxxxxxx xxxxx xxxxxxxx xx xxxxxx xxxxx xxxxx xx xxx
+#   # xxxxx xxxxx xxxxxxxxxxx xx xxxxxx xxxx xxxx xx xxxxxxxxxxxx xx xxx xxx
+#   embed_target_bytes: 262144
+#   # xxx xxxxx xxxxxxxxxxxxxx xxx xxxxx xxx xxxx xxxxx xxxxxxx xxxxx xxxxxxxxx
+#   # xxx xxxxxxxx xxxxx = x xxxxxx xxxxxxxxx xxxxxxxxxx xxxxxxxxx xxx xxx xxxx
+#   # xxxxxx x xxxxxx xxxxxxx xxxxxxxxxxx x = xxxxxxxxxx
+#   max_calls_per_image: 3
+#
+# auxiliary:
+#   # xxxxx xxxxxxxxx xxxxxxxxxxxxxx xxxx x xxxxxxx xxxxxxxxxxx
+#   vision:
+#     provider: example
+#     model: example
+#     timeout: example
+#     download_timeout: example
+#                            # xxxxxxxx xxx xxxx xxxxxxxxxxx xx xxxx-xxxxxx xxxxx xxxxxxx
+#     reasoning_effort: example
+#                            # xxxxx xxxxxx xxxx xxxxxx xxxxx = xxxxxxxx xxxxxxxx
+#                            # xxxxx xx xxxxx xxxxxxxxx xxxx xxxxx xxxxxxxx
+#                            # xxxxxxxxxxxx xxxxxxxxxxxx xxxxxxxxxxxxxxxxx xxxxxxxx
+#                            # xxxxxxxxxxxxxxxxxx xxxxxxxxxxxxxx xxxxx xxxxxxxx xxx
+#                            # xxxxxxxxxxx xx xxxxx xxx xxxxxx xx xxxxxx xx xxx
+#                            # xxxx-xxxx xxxxxxxxxxxx xx xxxxxxxxx xxxxxxx
+#
+#   # xxx xxxx xxxxxxxx x xxxxxxxxxxxxx x xxxxxxx xxxx xxxx xxxxxxxxxx
+#   web_extract:
+#     provider: example
+#     model: example
+#     reasoning_effort: example
+#
+#   # xxxxxx xxx xxx xxxxxx xxxxx-xxx xxxxxxxxx
+#   tts_audio_tags:
+#     provider: example
+#     model: example
+#     timeout: 30
+#
+#   # xxxxxxxxx xxxxxxx xxxxx xxxxxxxxxx xxxxx xxx xxxxx xxxxxxxx
+#   title_generation:
+#     enabled: example
+#     model_upgrade_enabled: example
+#     provider: example
+#     model: example
+#     timeout: 30
+#     language: example
+#
+#   # xxxxxxx xxxxxx x xxxxxxxxxx xxxxxxxx xxxx xxxxxxxx
+#   session_search:
+#     provider: example
+#     model: example
+#     timeout: 30
+#     max_concurrency: example
+#     extra_body: example
+#                           # xxxxxxx xxx xxxxxxxxx xxxx xxxxxxx xxxxxxx-xxxx
+#                           # xxxxxxxxx xxxxxxxxx
+#                           # xxxxxxxxxxx
+#                           #   xxxxxxxxxxxxxxxx xxxxx
+#                           # xxxx xxxxxxxxx xxxxxxxxxxx xxxxxx xxxx xxxxxxx
+#                           # xxxxxxxxxxx
+#                           #   xxxxxxxxxxxxxxxxxxxxx
+#                           #     xxxxxxxxxxxxxxxx xxxxx
+#
+#   # xxxx-xxxxxxxxx xxxxx xxxxxxx xxxxxx xxxxx xxx xxxxx xxxxxxxxx
+#   # xxxx xxxxxx xxxxxxxxxxxxxxxx xxxxxxx xxx xxxxx x xxxxxxxxxx xxxxx
+#   # xxxxx  xxx xxxxxxxxxxx xx xxxx xxxxxxx xxxxxx xxxxxxxx xxxxxxxxx
+#   # xxxx xxxxxxxxxx xxx xxxxxxx xxxxxx  xxxxx xxxxx xxx xxxxxx xxxxxxxx
+#   # xxxxxxxxxxxx
+#   title_generation:
+#     provider: example
+#     model: example
+#     # xxxxxxxxxxxxxxxx x    # xxxxxxxxx xxx xxxxxxxxxxxx xxxxx xxxxx
+#
+#   # xxxxxxx xxxxxxxxxxx x xxxxxxxxxx xxxx xxxxxxxx xx xxxxxx xxx xxxxxxx
+#   # xxxxx xxx xxxxx xxxx xxx xxxxxxx xxxxxxxx xxxxxx  xxxxxxx x xxxxx
+#   # xxx xxxxxxxx xxxx xxxxxxxx xxxx xxxxxxxxxxx xxxxxxxxxxxxxx xxxxxx
+#   # xxxxxxxx xxxxxxxxxxxx  xxxxx xxxxx xxx xxxxxx xxxxxxxx xxxxxxxxxxxx
+#   compression:
+#     provider: example
+#     model: example
+#     # xxxxxxxxxxxxxxxx x    # xxxxxxxxx xxx xxxxxxxxxxxx xxxxxxxxxxx xxxxx
+#     # xxxxxxxxxxxxxxxxxxxx xx   # xxxxxxxxxxxxxxx-xxxxx xxxxxxx x xxxxxx xxx xx xxxxxxx x
+#                                 # xxxxxxxxxxx xxxxx xxxxxx xx xxxxx xxxx xxxxxxxxx xxxx
+#                                 # xxxxxxxxxxx xx xxxxxxxxx xxxxx xxxx xxxxxxx xxxxxxx
+#                                 # xxxxxxx x xxxxxxx xxxxxxxxx xxxxx xxxx xxx xxxxx xxxx
+#                                 # xxxxxxx xxxx xxxxxxxxxxx xxxxx xx-xxxx xxx x xxxx xxx
+#                                 # xxxxxxxxxxx xxxxxxxxxxxxxxxxx xxxxxx xx xxx xxxxxxxxx
+#
+#   # xxxx-xxxx xxxxxxxxxxxx xxxx-xxxxxxxxxxx xxxxxx xxxxx xxxx xxxxx x xxxx
+#   # xxxx xxx xxxxx xxxxxxxxx xxxxx xxxxxx xxxxxxxxxxxxxxx xx x xxxxxx xxxxxxx
+#   # xxxxx xx xxxxxxxx xxxxx xxxxxxxxxxxxxxxxxxx xxxx=xxxxxxxxxxxxxxxxxxxx
+#   background_review:
+#     enabled: example
+#     provider: example
+#     model: example
+
+# =============================================================================
+# xxxxxxxxxx xxxxxx
+# =============================================================================
+# xxxxxxx xxxxxxx xxxxxx xxxxxxxx xxxx xxx xxxxxx xxxxxx xxxxx xxxxxxxx
+# xxx xxxxxxx xxxxxxxxx xxxxxxxx xxxxxx xxx xxxxxxx xxxxx xxxxxxxxx
+# xxxxxxxxx xxxxxx xxxx xxx xxxxxx xxxxx xxx xxxxxxxx xxx xxxxx xxxxxxx
+# xxxxxxx -- xxxx xx xxx xxxxxx xx xxxx xxxxxxxxxxx xx xxxxxxx xxxxxxxx
+# xxxxxxxx xx xxxxxxx xx xxxxxxxxxxxxx
+#
+memory:
+  # xxxxxxx xxxxxxxx xxxxxx xxxxxxxxxxx xxxxxx xxxxxxxxxxxx xxxxxx xxxxxxx
+  memory_enabled: true
+
+  # xxxx xxxxxxxx xxxxxxxxxxxx xxxxxxxxxxxxx xxxxxx xxxxxxxxxxxx
+  user_profile_enabled: true
+
+  # xxxxxxxxx xxxxxx xxxxxx xxxxx xxx xxxxxx xxxxx-xxxxxxxxxxxx
+  memory_char_limit: 2200   # ~800 tokens
+  user_char_limit: 1375     # ~500 tokens
+
+  # xxxxxxxx xxxxxx xxxxxx xxxxxx xxx xxxxx xx xxxxxxxx xxxxxx xxxxxxxx
+  # xxxxx x xxxx xxxxxx xxx xx x xx xxxxxxxx xxxx xxxxxx xxxx xxxxxx xx xxxxxxxx
+  nudge_interval: 10        # Nudge every 10 user turns (0 = disabled)
+
+# =============================================================================
+# xxxxxxx xxxxxxxxxx xxxxxxxxxx xxxxxxxxxx
+# =============================================================================
+# xxxxxxxxxxxxx xxxxxxx xxxxxx xxxxxxxxxx xxx xxxxx xxxxxxxxxxx xxx xxxx xx
+# xxxxxx xxxxxxxxxxx xxxxxxx xxxxxxxxxxx xxxxxxx xxxx xxxxxxxxxxxxxx
+
+# xxxxxxx xxxxxx xx xxxxxxxxxxxxxx xxxxxx xxxx xxxxxxxx xxxxxx xxxx xxxx
+# xxxxxxxxx xxxxx xxx xxxxxxxxx xxxxxxxx xxx xx xxxxx xx xx xxxx xx xxxxx
+# xxxxxxxxx xxxxxxxxxx xxxxxxxxx xxxx xxx xxxxx xx xxxxxxxx xxx xxxxxxxx xxx x
+# xxxxx xxxxx xxxxx xxxxxxxx xxxxxx xxxxxxxx xxxx xxxxx xxxxxx xxxxxxxxx xxxx
+# xxx-xxxxx xxx xxxxx xxxxxxxxxx xxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxx xxx
+# xx x xxxx-xxxxxx xxxxxx-xxxxxxxxxxxx xxxxxxx xxxxxx xxxxxx xxxxx xxxx xx xxx
+# xxxxx xxxxxxx xxxxx xxxxxxxx xxxxxx xx xxxx xx xxxxxxx
+max_concurrent_sessions:
+
+# xxxx xxxxx xxxxxxxxxxxxx xxxxx xxx xxx xxxxxxx xxx xxxxxxxxxxx xxxx xxx xxxxxxxx
+# xxxxxxxx x xxxx xxx xxxx xx xxx xxxxxx xxxxxxx xxx xxxxxxxx xxxxx xx xxx xxxx
+# xxxx xxxx xxxxxxx xxxxxxxx xxxxxxxxxxx xxx xxxxx xxxxxx xxx xxxxx xxxx xx xxx
+# xxxxxxxxxx xxxx xxx xxxxxx xxxxx xxxxxx xxx xxxxxxxxxxxxxx
+group_sessions_per_user: true
+
+# =============================================================================
+# xxxxxxx xxxxxxx xxxxxxxxx xxxxxxxxxx
+# =============================================================================
+# xxxxxxxxxxxxxxxxxx xxxxx xxxxx xxxxxxxx xxxxxxxx xxx xxxx xxxxx xxxx xxx
+# xxxx xxxxxx xxxxxxxx xxxxx #xxxxxx xxxx-xxxxxxx xx xx xx xxxxxxx xx xxx xxxx
+# xxxxx xxxxxxxx xx xxxxxxxxxxxxxxxx xxxxxxx xxx xxxx xxxx xxx
+# xxxxxxxxxxxxxxxxxxx xxxxxx xxxxxxx xxxxx xxxxxxxx xxxxx xxxx xxxxxxxx xx
+# xxxxx xxxx xxxxxxxxxxxxxxx xxxxx xxxxxxx xxx xx-xxxxxxxx xxxxxxxx xxx xxxxx
+# xxxxxxxx xxxxx xxxxxxxxxx xxxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxx-xxxx xxxx xxxxx
+# xxxxxxx xxxx xxxxxxx xxxxxxx xxxx xxx xxxxx xxxxxxxxx xxxx xxxx xxxxxxx x
+# xxxxxxx xxxx xxxxxxxxx xxxxxx xxxxxx xxxxxxxx
+#
+# xxxxx x xxxxx xxxx xxxxxxx xxxxx xxxxxx xxxxxxxx xxxx xxxxx xxxx xxxx xxxx
+# xxx xxxx xxxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxx xxx xxxxxxx xxx xxxx xxxx xxx
+# xx xxx xxxxxx xxxxx xxx xxxxxxxxxxx x x xxxxx xxxxxxxx xxxxx xxxx xxx x xxxx
+# xxxxxxx xx xxxxxxx x xxx xxx
+#
+# xxxxxxxxx xx xxxxxx xxx xxxxxxxx xxxxxx xxx xxxxxxxxxxx xxxxx xx xxxx xxxxx
+# xxxxx xxxxxxx xxxxxxx xxxx xxx-#xxxxx xxxxxxxxxx
+# sessions:
+#   auto_prune: true
+#   retention_days: 90
+#   vacuum_after_prune: true
+#   min_vacuum_interval_days: 30
+#   min_interval_hours: 24
+
+# xxxxxxxx xxxxxx xxxxxxxx xxx xxxxxxxxxx xxx xxxx xxxxx xxxxxxxx xxxxxxxxx
+# xxxxx xxxxx xxx xxx xxxx xxxxxxxx xxxxxxx xxxxxxxxxxx xxxxx-xxxxxxx xxxxx xxx
+# xxxx-xxxxxxx xxxxx xxx xxxxx xxxxxxxx xx xxxxx xxxx xxx xxxx xxxx xx xxx
+# xxxxxx xxxxx xxxx xxx xxxx xxxxxxx xxxxxxx xxxxxx xxxxxxx xxx xxxxxx xxx xxx
+# xxxxxx xxx xxxxxxxxxx xxx xxxxxxx xxxxxxxxxxx xxxxxx xxxxxx xxx xxxxxx xx x
+# xxxxxxxx xxxxxxxxxxxx-xxxxxxx xxxxxx xxx xxxxxxx xxx-xxx xxxxxxxxx xxxxxxxxxx
+# x xxxxx xxxx xxxxxxx xxx xxxxx xxxx xxxxxxx xxx-xxx xxxxxxxx xxxxx xxxx xxxx
+# xxxxxxx xxxxxx xxxxxx xxxxx xx xxxxxxx xx xxx xxxx xxxxxxxx xxxx xxxxxxx xxxx
+# xxxx xxx xx xxxxxxxxxx
+# xxxxx xxxx xx xxxxxxxx xxxx xxx xxxxxxxx xxxxxxxx xxxxx xxxxxxxxx xxxx xxx
+# xxxx xxx xxxxxx
+#
+# gateway:
+#   room_link_url: example
+#
+# xxx xxxxxxxxxx xxxxxxxxxxx xxxxxxxx xx xxxxxxxxxxxxxxxxxxxxx xxxxx xxxxxxxx
+# xxx xxxxxxx xxx xxxxxxx xxx xxxxxx xxx xxxxx xxxx x xxxxxxxxx xxxxxx xxxx
+# xx-xxxxx xxx xxxxxxxx xxxxxxxx xxxxxxxxxxxxxx
+
+# xxxxxxx xxxxx xx xxxxxxx xxxx xxxxxxxx xx x xxxx xxxxxxx xxxxxxxx
+# xxx xxxxxx xxxxxxxxxx xxxxxxx xxxx xx xx xx-xxxxxxx xxxxx xxxxxx xx x
+# xxxxxxx xxxxxxx xxxxxxxx xxxxxx xxxxxxxx xxxxxx xxxxx xxxx xxxxxxxxxxx
+# xxxxxxxxx xx xxxxx xxxxxxx xxxx x xxxxx xxx xxxxx xxx xxxxxxxxxxxxxxxxx
+# xx xxxxxxx x xxxxxxxxxxxxxxxxxxxx xxxx xxxxx xxxxx xxxx xxx xxxxxx
+# xxxxxxx xxx xxxx xxxxx xxxx xxx xxxxxxx xxx xxxxxxxxxxxxxxxxxxxxxxxxxx
+# xxxxxxx xxx xxx xxxxxx xxxx xxxxxxxxxx xxxxxxxxxxxxxxxxxxxxxx
+# xxxxxxxxx-xxxxxxxx xxxxxxxx xxxxxxxxxx xxxxxxxx xxxx xxx xxxxx xxxxxxxx
+# xxxx xx-xxxxxx xxxxxxxx xxx xxxxxxxxx xxxxx xxxxxxxx xxxx xxxxxxxxxx
+#
+# dashboard:
+#   startup_orphan_sweep: true
+
+# ─────────────────────────────────────────────────────────────────────────────
+# xxx xxxxxx x xxx-xxxxxx xxxxx xxxxxxx
+# ─────────────────────────────────────────────────────────────────────────────
+# xxxxx xxxxxxxxx xxx xxxxxxx xx xxxxxxxxx xxxxxxxxxxxxxxxx xx x xxxxxx
+# xxxxxx xxxxxxxxxxx  xxxxxxx xxxxxx x xxxxxxx xx xxxxxxx x xxxxxxxx xxxxxx
+# xx xxx xxxxxx xxxxxxxxx xxxxxx  xxxxxxxx xxxxx xxxxxx xxxx xxxx xx xxx
+# xxxxxx xxxxx xxxxxxxxxx xx xxx xxxxxxxxxx xxxxxxx xxxxxx xxx xx xxxxxxxx
+# xxxxxxx xxxxxx xxxxxxxx xxxxxx xxxx xxxx x xxxxxx
+#
+# xxxxxxxxx xxx xxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxxxxxx
+# xxxxxx xxxxxx
+#
+#   platforms:
+#     api_server:
+#       enabled: true
+#       extra:
+#         key: example
+#         model_routes:
+#           # xxxxxxx xxxxxxx xxxx xxxxx=xxxxxxxx-xxx x xxxxxx xx xxxxxxx xxx xxxxxxxxxx
+#           xxxxxxx-xxx
+#             model: example
+#             provider: example
+#             # xxxxxxxx xxx-xxxx             # xxxxxxxx x xxx-xxxxx xxxxxxxx xxxxxxxx
+#             #                                 xxx xxxx xxxxxx xxxxx xxxxx xxxxxxx
+#             # xxxxxxxxx xxxxxxxxxxxxx       # xxxxxxxx x xxx-xxxxx xxxx xxx
+#           # xxx xxxxxxx xxxx xxxxx xxx xxxxx
+#           xxx-xx
+#             model: example
+#             provider: example
+#
+# xxxxxxxxxx xxxxxxx xxx xxxxxxxxxxxxx xxxxxx xx xxx xxxxxxxxxx xx xxxxxxx
+# xxx xxxxxxxx xxxx xxxxxxx xxxxxx xxxxxxxxxxxxx  xxxxxx xxxxxxxxxxxxxx xx
+# unchanged: example
+# xxx xxxxxxxxxxxxxx x xxxxxxxxxxxxxxxx
+
+# ─────────────────────────────────────────────────────────────────────────────
+# xxxxxxx xxxxxxxxx
+# ─────────────────────────────────────────────────────────────────────────────
+# xxxxxx xxxxxx xx xxxxxxxxx xxxxxxxxx xx xxxx-xxxxx xxx xxx xxxxx x xxxxxxx
+# xx xxxxx xxxxxx xxxx xxxxxxxxxxxxx xxxxx xx xx xxxx xxxxxx xxxxxxx
+# xxxxxxxx xx xxxxxxx x xxxxxx xx xxx xxx xxxxxxxxx xx xx xxxxxxxxxxxxxxxxxxxxxxx
+# xxx xxxxxxxxx xxxxxxx xxxxx xxx xxxx xx xxxxx xxxx xxx xxxx xxx xxxxx xxxx xxxx xxxxxxxxxxx
+streaming:
+  enabled: false
+  # transport: example
+  # edit_interval: example
+  # buffer_threshold: example
+  # cursor: example
+
+# =============================================================================
+# xxxxxx xxxxxxxxxxxxx
+# =============================================================================
+# xxxxxx xxx xxxxxxxx xxxxxxxxxx xxx xxxxx xxx xxxx xxx xxxxxxx xxx xxxxx xxx
+# xxxx xxxxxx xxx xxxxxx xxxxx xxxxxxxxxx xxxxxxx xxxxxx
+#
+skills:
+  # xxxxx xxx xxxxx xx xxxxxx xxxxxx xxxxx xxxxxxx xxxxxx
+  # xxxxx x xxxx-xxxxxxx xxxxxxxxxxx xxxxxx xxx xxxxx xx xxxxxxxx xxxxxx x xxxxxx
+  # xxx xx x xx xxxxxxxx
+  creation_nudge_interval: 15
+
+  # xxxxxxxx xxxxx xxxxxxxxxxx x xxxxx xxxxxx xxxxxx xxxxxxxxxxxx xxxxxxx
+  # xxxxxxx xxxx xxxx xxxxxxxxxxxxxxxxxx  xxxx xxxx xx xxxxxxxx xx xxx xxxxxxx
+  # xxx xxxxxxxx xx xx xxxxxxxx xxxxx  xxxxxxxx xxxx xxx xxxx-xxxxx xxxxx
+  # xxxxxxxx xxxxxx xxxxxx xx xxxxxxxxxxxxxxxxxx  xxxxx xxxxxx xxxx xxxxxxxxxx
+  # xxxx xxxxx xxxxxxxx
+  # external_dirs:
+  #   - xxxxxxxxxxxxxxxx
+  #   - xxxxxxxxxxxxxxxxx-xxxxxx
+
+# =============================================================================
+# xxxxx xxxxxxxx
+# =============================================================================
+agent:
+  # xxxxxxx xxxx-xxxxxxx xxxxxxxxxx xxx xxxxxxxxxxxx xxxxxxxxx xxxx
+  # xxxxxx = xxxx xxxx xxx xxxxxxx xxxxxx xxx xxxxx xxxx xxxxxx
+  # Recommended: example
+  max_turns: 500
+
+  # xxxxxxxxxx xxxxxxx xxx xxxxxxx xxxxx xxxx xxxxxxxxx x = xxxxxxxxxxx
+  # xxx xxxxx xxx xxx xxxxxxxxxxxx xxxx xxxxxxxx xxxxxxx xxxxx xx xxxxxxxxx
+  # xxx xxxxxxxxxx  xxxx xxxxx xxxxx xxx xxxxx xxx xxxx xxxx xxx xxxx xxxxxxxxx
+  # gateway_timeout: 1800
+
+  # xxxxxxx xxxx xx xxxxx xxxxxxx xxx xxxxx xxx xx xxxxxx xxxx xxxxxxx xxx xxxx
+  # xxxxxxxx xxxxxxx xxxxxx xx xxxxxx xxxxxx xxxxxxx xxxx xxxxxxx xxxxxxx xxx
+  # xxxx xxx xxxx xx xxxxxx xxxxxx xxxx xxxxxxx xx xxxxxxx xxxxxxxxxxxxxx
+  # xxx-xxxxxxxx xxxxxx xxxx xxxx xx xxx x-xxxxxx xxxxxxxx
+  # gateway_turn_lease_timeout: 5
+
+  # xxxxxx xxxxxxxx xxxx x xxxxxxx xxxxxx xxxxxxxxxx xx xxxx xxxxxxxx
+  # xxxxx xxxx xxx xxx xxxx xxxxxxxxxx xxxxxxx xxxx xxxxxxxxx xxxxxxxxxx
+  # xxx xx x xx xxxxxxx xxx xxxxxxxx
+  # gateway_timeout_warning: 900
+
+  # xxxxxxx xxxxx xxxxxxxx xxxxxxxxxx xxxx x xxxx xxxxxxx xxx x xxxxxxx
+  # xxxxxxx xxxxxx-xx xxx xxx xxxxx xxxxxxxx xxxxx xx xxxx xxxx xxxxx xxx
+  # xxxxxxx xxxx x xxxxxxx xxx xxxxxxxx xxx xxxx xx xxx xxxxx xxxx xxx xxxx
+  # xxx xxxx xxxx xxxxxxxxxxxxxxxxx x = xxxxxxxx xxxxxxx xxxx
+  # session_stall_timeout: 300
+
+  # xxxxxxxxxx-xxxxxxxxx xxxxxxxx-xxxx xxxxxxxxxx x#xxxxxxx xxx xxx-xxxx
+  # xxxxxxxxx xxxxxxxx xxxxxxx xxxxx xxx-xxxxx xxxxx xx xxx xxxx xxxxx xxxxx
+  # xxxx xxxx xxxx xxxxxx xxxxxx x xx-xxxxxx xxxxxxx xxxxxx xxxxxx xxxx xxx
+  # xxxxx xxxxx xxxxxxx xx x xxxx xxxxxxxx xxx xxxxx x xxx-xxxx xxx-xx-xxxx
+  # xxxxxx xx xxx xxxx xxxxxxxxxx xxxxxx xxxxx xx xxxxxxx xxxxxxxx xxx xxxxxx
+  # xxxx xxxxxxx xxx xxxxxx xxxxxxx xxxx x xxxxxxxxxxxx xxxxxxx xxx xxxxxx
+  # xxxxxxx xxx xxxxxxxxxx xxx x xx xxxxxxx xxxxxxxxxx xxxx-xxxxxx xxxxxxxx
+  # xxxxx xxxxxx xxxxxxx xx
+  # sanitizer_heal_escalation_threshold: 3
+
+  # xxxxxxx xx-xxxxx xxxxxxxxxxx xxxxxxxx xxxxx xxxx xxxxx xxx xxx-xxxxx
+  # compression: example
+  # xxxxxxxx xxxx xxxxxxxxxx x x xxxx xxxxxxxxxxx xx x xxxxxx xxxxx xxxxxxx
+  # compression:
+  #   context_timeout_seconds: example
+  #                                         # xxxxxxxxxxxxxxxx xx = xxxxxxxx
+  #   context_total_ceiling_seconds: example
+  #                                         # xxxx xxxx xxxxx xxxxxx xxxxxx
+
+  # xxxxxxxx xxxxx xxxxxxx xxx xxxxxxx xxxxxxxxxxxx xxxxxxxxxx
+  # xxxxxxx x = xx xxxxxx x xxxxxxx xxxxxxxxxx xx-xxxxxx xxxxxx xxxxxxxxxxxx
+  # xxxxxx xxx xxx xxxxxx xxx x xxxxxxxx xxxxx xxxx xx xxx xxxx x xxxxx
+  # xxxxxx xx xxxxxxxxx xxx xxxx xx xxxx xxxxx xxxxxxxxx xxxxxxxxxxxxxxx
+  # restart_drain_timeout: 0
+
+  # xxxxx xxxxx xxx xxxx xxxxx xxx xxxx xxxx xxx xxxxxxxxxx xxxxx xxxx
+  # xxxxxxxxxx xxxxxxx xxx
+  # xxxxxxxxxxxxxxxxxxxxx xxxxx xx xxxxxxx xxx xxxx xxxxxx xxxxx xxx xxxxx xx
+  # interrupt: example
+  # xxxxxxx xx xxxxx xxxx xxxxxxxx x xxxx xxx xxx xx xxxx xxxxxx xxx x xx xx
+  # xxxxxxxx xx xxxxxxxxx xx x xxxxxxxxx xxxxxxxx xxxxxx xx xxxxxxx xx xxx xxx
+  # x xxxxxxxxx xxx xxxxxx xxxxx xx xxx xxxx xxxxxxxxx xx xx-xxxxxx xxxx xxxx
+  # xxxx xxx xxx xxxxx xxxxxx xxxxxxx xx xxxxxxxxxx xxx x xxxxxx xxx xx xx
+  # xxxxxxxxxx xxxxx xxxxx xx xxxxxxxxxxx xxx xxx xxxxx xxx xxxxxxx xxxxxxx
+  # xxxxxxx xx xxxxxxx xx xxx xxxxxxxx-xxxxxxxx xxxxx xxxxxxxxxxxxxxxxxxxxxx
+  # x xxxx xxxxx xxxxxxxx xxxxxxxxx xx xxxxxx xxxx xxxx xxxx x xxxxxxxx
+  # xxxxxxxxxxxxxx xxxx xx xxxx xxxxxxx xxx x xx xxx xxx xxx xxxxx xxxx xxx
+  # xxx xxxx xx xxxxxxxxxxxxxxxxxxxxx xxxx xxxxxxx
+  # cron_drain_timeout: 30
+
+  # xx-xxxx xxxxxxx xxxx xxxxxxxxx xxx xxxxxx xxxxx xx xxxxxx xxxxxx xxxxxx
+  # xxxxxxx xxxxxxxx xxx xxxxxxx xxxxxx xxx xxxxx xxxx xxxx xx xx xxxx xxx xxx
+  # xx-xxxxxx xxxxxx xxxx xxx xxx xxxx xx xxxxxxxx xx xxx xxxxxxxxxx xxxx xx
+  # xxx xxx xxx xx xxxxxxxxxxxxxxxxxxxxxx x = xxxxx xxxxxxxxxxxx xxxxxxxxxxxx
+  # xxxxxxxx xxxx xxx xxxxx xxxxxx xxxxx xxx xxxx xxxx xxxxxxx xxxxxx xx x
+  # xxxxxx xx xxx xxx xxxxxxx-xxxx xxxxxxx xxxxx xxxxx xxxxxxx xxx xxxxxxxxx
+  # xxx xxxxxxx xxx xxxx xx x xxxxxx xxxxx xxx xxxxxx xxxxxxx xxx x xxxxxx
+  # xxxxxxxx xxxxx xx xxx xxxx xxxxxxxxxx xxxxxx xxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  # restart_after_turn_timeout: 1800
+
+  # xxxxx xxxxx xxxxxxxxx x xxxxxxxxx xxxxxx xxxxx xxx xxx xxxxxxxx xxxxx
+  # xxxxx xxxx xxxxxxxxxx xxxxx xxxxxxxxx xxxxxx xxxxx xxxxxx xxxxxxx xxxx x
+  # xxxxxxx xxxxxx xxx xxxx xx xxxxxxx x xxx xxxxxxx xx xxxxxxxxx xx xxxx xx
+  # xxx xxxxx xxxxxxxxxx xxx x xxxxxxxx xxxxxx xx xxxxx xxxx xxx x xx xxxx xxx
+  # xxxx xxxxx xx x xxxxxxxxx xxxx xxxxxx xxxxx xx xxx xxxxxxxxxxx xxxx xxxx
+  # xxxx xx xxxxxxxxxxx xxx xxxxxxxx xxxxxxx xxxx
+  # build_wait_timeout: 600
+
+  # xxx xxx-xxxxx xxxxx xxxxxxxx xxx xxx xxxxxx xxxxxxxxxxx xxxxxx xxxxxxxx
+  # xxxxxxxxx xxxx xxxxx xxxxxx xxx xxxxx xxxxxxxx xxx xxxxxxxx xxxxx xxxx
+  # xx x xx xxx xxx xxxxxxxx xxxxxxxxx xxx xxxx xxxx xxxxxxxx xx xxxxx
+  # xxxxxxxxx xxxxxxxx xxx xxx xxxxxx xxx xxxx xxx xxx xxx-xxxxx xxxxxxx
+  # xxxxxxxxxx xxxx xxxxxxx x xxxx xx xxx xxxxxx-xxxxx xxxxx
+  # api_max_retries: 3
+
+  # xxxx xxxxxxxxxxxxxxx xxx xxx xxxxxxxx xxxxx xxx xxxxx xx x xxxxxxxxx xxxxxx
+  # xxxxx xxxxxxxxxxxxxxx xxxxxxxxxxxx xxxxxxxxx xxx xxxxxxx xxx xxxx xxxxxxxxx
+  # xxxx xxxxxx xxxxx xxx xxxxxxx xxxx xxxx xxxx xxxxxx xxxxxxxxx xxxxxxxxxxxxxxxx
+  # x xxxxxxxx xxxxx-xxxxx xxxxx xx xx xxxxx xxxxxxx xxxxxxxxx xxxxxxxxxxx
+  # xxxxxxxxxxx x xxxxxxxx xxxxxxxxxxxxx xx xx xxxxxx xxxxx xxxxx xxx xx xxxxx
+  # xxxxxxx xx xxxxxx xxx xxxxx xxxxxxxxxxxxxxxxxxxxxxxxxx xxxxxx xxxxx xxxxxx
+  # xxx x xx xxxxxxx xxxxxxxx xxx
+  # auto_recovery_cycles: 5
+
+  # xxxxx xxx xxxxx xxxxx xxxx xxxxxxx xxxxx xxxxxxx xxxxxxxxxxxxx xxxxx xx xx
+  # xxxxxx xxxxxx xxxxxxxxxx xxx xx xxxxxxx xxxxxxxx xxx xxxx xx xxxxx xx xx
+  # xxxxxxxxxxx xx xxxxxx xxx xxx xxxxxxx-xxxxx xxxxx xx xxx xxxxxxxxxxx
+  # xxxxxx xxxxxxxx xxxxx xxxx xxxxxxxx xxx xxxxxxxxxxxx xxxxxxxx xxx xx
+  # xxxxxxxxxxxxxx xxxxxxxxx xxxxxxxx xxxxxxxxxx xxxxxxxx xxxxx xxxxx xxx
+  # xxxxxxxxxxxx xxxxxxx xxxxx xxxxx x xxxxx xx xxxx xxxxxx xxx
+  # xxxxxxxxxxxxxxxxxxxxx xxx xxx xxxxx xxxxx xxxxxxxxxxx
+  # verify_on_stop: false
+
+  # xxxxxxxx xxxxxxxx xxxxxxxxxxxx xxx xxx xxxxxx xxxxxxx xxxxx xxxxxx xx xx x
+  # xxxx xxxxxxxxxxx xxxxxxxx xx xxx xxxxxx xxxxx xx xx xxxxx xxxxxx xxxxxx xx
+  # xxx xxx xxx xxxxxxx-xxxx xxxxxxxx xxxxx xxxxxxx xxxxxxx xxx xxxxxxx xxxxxx
+  # xxxxxxx x xxxxxx xx x xxxx xx xxxxxxxx xxxxx xxxxxx xxxx xxxxxxxx
+  # coding_instructions:
+  #   - xxxx xx xxxxx xxxxx xxx xxxxxxxx xxxxx x xxxxxxx xxx xxxxxx
+  #   - xxxxxx xxx xxxx xxxxxx xxx xxxxxx xxx xxxxxx
+
+  # xxxx xxxxxx-xx-xxxx xxxxx xxxxxx xxxx xxxxxxx xxxxx xxxxxxxxxxxx xxxxxxxxx
+  # xxxxxx xxxxxxxx xxx xxxxxxxx xx xxxx xxxxxx xxxxx xxxxxxxxxxxxx xxxxxx xxxxxx
+  # xxxxxxxxx xxx xxxxx-xxxx xxxxxxxxxxxxx xxx xxxxx xx xxxx xxxx xxxxx xxxxxx
+  # verify_guidance: true
+
+  # x xxxxxxxxxxxx xxxx xxxxxxx xx xxxxxx xxx xxxxx xxxxx xxxxx xxx xxxx xxx
+  # xxxxx xxxxx xxx xxxx xxxx xx xxxxxxxxxxxx xxxxxx xxxxxxxxxx xxxx xxxx xxx
+  # xxxx xxxxx xxx xxxx xxx xx xxxxxx xx xxxxxxxxx xx x xxxx xxxxx xxxx xxx xxxxx
+  # xxxxxxx xx
+  # max_verify_nudges: 3
+
+  # xxxxxx xxxxxxx xxxxxxx
+  verbose: false
+
+  # xxxxxxxxx xxxxxx xxxxx xxxxxxxxxxx xxx xxxx xxxxxxx
+  # xxxxxxxx xxx xxxx xxxxxxxxxx xxx xxxxx xxxx xxxxxx xxxxxxxxxxx
+  # Options: example
+  # xxxxxxxxx xxxx xxxxxxx xxxxxxxx xxxxx xx xxxxx xxxxxxx xxxxxxxxxxxxxxx xxx xxx
+  # xxxx xxxx xxx xxx xxxxx xx xxxx xxxxxxxxx xxxx xxxxxxx xxxx xxxxxx xxxxx xxxxxxx
+  #   reasoning_effort:
+  #     enabled: true
+  #     effort: example
+  reasoning_effort: "example"
+
+  # xxx-xxxxx xxxxxxxxx xxxxxx xxxxxxxxx xxxxxxxxx xxxxx
+  # Key: example
+  #      xxxxxxxx xxxxxx xxxxxxxxxx xxxxx xxxxx xxxxx
+  # Value: example
+  # xxxxxxxx xxx xxxxxx xxxxxxxxxxxxxxxx xxx xxxx xxxxxxxx xxxxxx
+  # NOTE: example
+  # reasoning_overrides:
+  #   xxxxxxxxxxxxxxxxxxxxxxxxxxxx-xxxx-xxxxx xxxxxxx
+  #   xxxxxxxxxxx-xxx xxxxx
+  #   xxxxxxx-xxxx-xxxxx xxxxxx           # xxxx xxxxx xxxx xxxx xxxxx
+  #   xxxxxxxxxxxxxxxxxx-xx-xxxxx xxxxxxx # xxxx xxx xxxxxx xxx xxxxxxxxxxxxxxx
+
+  # xxxx xxxx xxxxxxx xxxxxxxx xxxxxxxxxx x xxx xxxx xxx x xxxxxxxxx xxxx xxxx
+  # xx xxxx xxxxxx xxxxxxx xxxxxxxx xxxx xxxx xx xxxxx-xxxxx xxxxxxxxxx
+  #   xx x xxxxxxxx - xxx xxxxxxxxx
+  #   xxxxxx        - xxxxx xxxxxxx
+  #   xxxxxx        - xxxx xxx xxxxx xxxxxxxxxxxxxxxxx xx xxxxx xxxx
+  #   xxxxxx        - xxxx xxxxxx xx xxx xxxxx xxxx xx x xxxxxxx xxxx
+  # Also: example
+  service_tier: ""
+  fast_auto_seconds: 60
+
+  # xxxxxx xxxxxxxxxxxxx xxxx xxxx xxxxxxxxxxxx xxxxxxxxx
+  # xxxxx-xxx xxxxxxxxx xxxxxxxx xxxxxxxxxx xxxxxxxxx xxxxxxxx xxxxxxx xxxxxxxx
+  # xxxxxxx xxxxxxxxxxxx xxxxxxx xxxxx xxxx xxxxxxxxxxxx xxxxx xxx xxxxxx
+  # xxxxxxxxx xx xxxxx xxxxxxx x xxxxxxx xxxx xx xxxxxxxxxxxxxxxxxxxxxxxxxx
+  # xxxxxxx xxxx xxx xxx xxxxxxxxxxxxx xx xxxxxxxx x xxxxx-xx xx xxxxx
+  # xxx xxxxxx xxxxxxxxx xx xxxxxx xx xxxxxxxxxxxxxxxxxxx xxxxxx xxxxx xxx
+  # xxxxx xx xxxxxxxxxxxxxxxxxxx x xxxx xxxxx xx xxxx xxxxxx xxxxxx xxxxxxxx
+  personalities: {}
+  #   mentor: example
+  #   reviewer:
+  #     system_prompt: example
+  #     tone: example
+  #     style: example
+
+# =============================================================================
+# xxxxxxx xxxxxxxxx
+# =============================================================================
+gateway:
+  key_4: 1
+  key_5: true
+  key_6: 30
+  key_7: true
+  key_8: 30.0
+  key_9: 10.0
+  key_10: 3
+  key_11: false
+  key_12:
+    enabled: true
+    key_13: 20
+    key_14: 300
+    key_15: 600
+  key_16: true
+  key_17: 300
+  key_18: true
+  key_19: true
+  key_20: true
+  key_21: []
+  key_22:
+    key_23: 2
+  key_24:
+    key_25: 3
+    key_14: 60
+    key_26: 300
+  key_27:
+    key_28: 5
+    key_14: 120
+  key_29:
+    enabled: false
+  key_30: 134217728
+  key_31: true
+  key_32: false
+  key_33: []
+  key_34: true
+  key_35: 600
+  key_36:
+    key_37: 10
+    key_38: 0
+  # xxxx-xxxxxxxxx xxxxx xxx xxxxxxx xxxxxx xxxxxx xx xxxxxxxxxx xxxxxxxx
+  # xxxxxxxx xxxxxxx xxx xxxxxxxx xxxxxxxx xxxxxx xxxxx xxxx xxxx xxxxxxx xxxx
+  # xx xx xxxxx xxx xxx xxxxxxxx xxxx xx xxxxx xxx xxxxxxx-xxxxxxx xxxx xxxxxxx
+  # signal_interrupt_grace_timeout: 1
+
+  # xxx xxxxxxxx xxxxxxxx xxxxx xxxxxxxxxx x xxxxxxxxxxx x xxxxxxxx xxxx
+  # xxxxxxxxxxxxxx xxxx xxx xxxxxxx xxxxxxxxxxxx xxxx xxxxx xxxxxx-xxxxx
+  # xxxx-xxxxxxxxxx xxx xx xxxxx xxxx xxx xxxxxxx xxxxxxxx x xxxxx xx xxxx xxx
+  # xxx xxxxx x xxxxxxx xxxxxxxxx xxxx xxxxxxx xx x xxxxx xxxxxxxxxxx xxxxx xxxx
+  # xxxxx xxxxxxxxx xxxxxxxx xxx-xxxxxxxx xxxx xxxx xxxxxxxxxxxxx xxxxx xxxxxx
+  # trust_env: true
+
+# =============================================================================
+# xxxxxxxx
+# =============================================================================
+# xxxxxxx xxxxx xxxxx xxx xxxxx xxx xxxxxx xxx
+# xxx xxxxxxx xxxxxx xx xxxxxxxxxxxxx xxxxxxxxxxxxxx xxxxx xxx xxxxxxxxx
+
+# =============================================================================
+# xxxxxxxx xxxxxxxx xxxx-xxxxxxxx xxxx xxxxxxxxxxxxxx
+# =============================================================================
+# xxxxxxxx xxxxx xxxxxxxx xxx xxxxxxxxx xx xxxx xxxxxxxxx
+# xx x xxxxxxxx xxxxx xxxxxx xxxxx xxx xxxxx-xx xxxxxxx xx xxxxx
+#
+# xxx xxx xxx xxxxxxx
+#   - x xxxxxx xxxx xxxxxxx-xxxx xx xxxxxxx-xxxxxxxxx xxxxxxxx xxxx xxxx
+#   - x xxxx xx xxxxxxxxxx xxxxxxxx xx xxxxxxx xxxx xxx xxxx xxxx xxxxxx
+#
+# xxxxxxxxx xxxxxxxx xxxxx xxxx xxxxxxxxx xxxxxxxx xxxxxxxxx xxxxxx xxxxxx xxxxxx xxxxxxxxxxx
+#
+# Examples:
+#
+#   # xxx xxxxxxx xxxxx xx xxxxxxxxxx
+#   platform_toolsets:
+#     cli: example
+#     telegram: example
+#
+#   # xxxxxxx xxxx xxxxxxxx xxxx xxx x xxxxxxxx x xxxx x xxxxxxxxx
+#   platform_toolsets:
+#     telegram: example
+#
+#   # xxxxxxx xxx xxxxxxx xxxxxxx xx xxxxx xxxx
+#   platform_toolsets:
+#     cli: example
+#
+#   # xxxxxxxxxxxx xxxxxxx xxxx xxxx-xxxx xxxxx xxxxx
+#   platform_toolsets:
+#     discord: example
+#
+# xx xxx xxxx xxxxxxxx xxxx
+#   cli: example
+#   telegram: example
+#   discord: example
+#   whatsapp: example
+#   slack: example
+#   signal: example
+#   qqbot: example
+#   teams: example
+#   google_chat: example
+#
+platform_toolsets:
+  cli: [hermes-cli]
+  telegram: [hermes-telegram]
+  discord: [hermes-discord]
+  whatsapp: [hermes-whatsapp]
+  slack: [hermes-slack]
+  signal: [hermes-signal]
+  qqbot: [hermes-qqbot]
+  yuanbao: [hermes-yuanbao]
+  teams: [hermes-teams]
+  google_chat: [hermes-google_chat]
+
+# =============================================================================
+# xxxxxxx xxxxxxxx xxxxxxxx
+# =============================================================================
+# xxxxxxxx xxx-xxxxxxxx xxxxxxxxx xxxxxxxxx
+# xxxxxxxx-xxxxxxxx xxxxx xxxx xxxxx xxxxxxxx
+#
+# platforms:
+#   telegram:
+#     reply_to_mode: example
+#     # xxxxxxxxxx xxxx xxxxxxxx xxxxxxxxx xxxx xxx-xxxxxxxxxxx xxxxxx xxxxxxxx
+#     # xxxxxxx xxxxxx xxxxxxxx xxxxxxxxx xxxxxxxx xxx xxxxx xxxx xxxxx xxxx xxxxxxxx
+#     guest_mode: false
+#     # xxxxxxxxxxxxxx xx-xxxxxxxxxxxxxxx
+#     extra:
+#       drop_pending_on_cold_boot: example
+#       disable_link_previews: example
+#       rich_messages: example
+#       rich_drafts: example
+#       allow_cjk_rich_messages: example
+#       command_menu:
+#         # xxxxxxxx xxxxxx xx xx xxx xxxxxxxxxxxx xxxxxx xxxxxxxx xx xx xx
+#         # xxx xxxxx-xx xxxxxxxx xxxx xxxxxx xxxxx xxxxxxxx xxxx xxxxxxx
+#         # xxxxx xxxxxxxxx xxxxx xxxxxxxxxx xxxxxxx-xxxx xxxxxx xxxxxxx xxxxxxx
+#         max_commands: 60
+#         # xxxxxxx = xxxx xxxxxxxx xxxxxx xxxx xxxxxx xxxxxxxx
+#         # xxxxxx  = xxxxxx xxxxxxxx xxxxxx xxxx xxxx xxxxxxxx
+#         # xxxxxxx = xxxx xxx xxxx xxxxx xxxxxxx xxxxxxxx
+#         priority_mode: example
+#         # xxxxxxxx xx xxxxxxx xxxxxx xxxx x xxxxxx x xxxxx xxxxxxxx xxxxxx
+#         # xxx xxxx xx x xxxxxx xxxxx xxxxxxx xxxxxx xxxxx x xxxx xxxxx
+#         priority:
+#           - xxxxxxxxxxxxxxxxx
+#           - xx-xxxxxxxxx-xxxxx
+#   slack:
+#     extra:
+#       # xxxxxx xxxx xxxx xxxxx xx xxxxx-xxxxxx xxxxxxxxx xxxxxx xxxx xxxxxxxx
+#       # xxx-xx xxxxx xxxx xxxxxx xxxxx xxxx xxxxxxxxxxxxx xxxxxxxx xx xxxx
+#       native_task_cards: false
+#       # xxxxx xxxx xxx xxxxx xxx-xxx xxxxx xxxxx xxxxxx xxxx xxxx xxx
+#       # xxxxxxxxxxxxxxxx xxxxx-xxxx xxxxx xx xxxxx xxxxxxx xx xxxxx xxxxxxx
+#       # xx xxx xxxxxxxx xxxxxxxx xxxx xxxxxxxxxxx xxxx xxxxx xxxx x xxxxx xxxxx
+#       api_human_users: example
+#       # xxxxxxxx xxxxxxxxx xxxx-xxxxxxx xxxxx xxxxxxx xxxxxxxx xxxxxxxxx xxxxxx
+#       # xxxx xxxxxx xxx xx xxxxxxxx xxxxxxx xxxxxxx xxx xxxx xxxxxxx xxxxx
+#       unfurl_links: false
+#       unfurl_media: false
+#   webhook:
+#     extra:
+#       # xxxxx xxxxxxx xxxxxxx xx x xx xxxxxx xxxxxxxx xxxxxxx xxxx xxxx xxxxx
+#       # xxx xxxxxx xxxxxxxxx xxxxxxx xxxxxxxxx xxx xxxxxxx xxxxxxx xxxx xx xxxxxx
+#       script_timeout_seconds: 30
+#
+# xxxxxxx-xxxxxxxx xxxxxxxx xxxxxxxxxxxx xxx-xxxxxx xxx xxxxx xxxxxxxxxxxx
+#
+# discord:
+#   require_mention: example
+#   bots_require_inline_mention: example
+#   auto_thread: example
+#   free_response_auto_thread: example
+#   free_response_channels: example
+#   reactions: example
+#   history_backfill: example
+#   history_backfill_limit: example
+
+# ─────────────────────────────────────────────────────────────────────────────
+# xxxxxxxxx xxxxxxxx xxxx xxxxx xxxxx xx xxxxxxxxxxxxxxxxx xx xxx xxxxxxxx xxxxx
+#
+# xxx xxxxxxx xxxx --xxxx-xxxxxxxxx xx xxx xxx xxxxxxxx xxx xxxxx xxxxxx
+# xxx xxxxxxx xxxx --xxxx-xxxxxx xx xxx xxxxx xxxxxxxxxx xxxx xxxx xxxxxxxxxxxxx
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# xxxxxxxxxx xxxxxxxx xxxxxxxx xxxx xxxxx
+#   xxx          - xxxxxxxxxxx xxxxxxxxxxx
+#   xxxxxx       - xxxxxxxxxx xxxx xxx xxxxxxxxx
+#   xxxxxxxx     - xxxxxxxxx xxxxxxx
+#   xxxx         - xxxxxxxxxx xxxxxxxxxxx xxxxxx xxxxxx
+#   xxxxxxx      - xxxxxxxxxxxxxxxxx xxxxxxxxxxxxxxxxx xxxxxxxxxxxxxx xxxxxxxxxxxxx
+#                  xxxxxxxxxxxxxxx xxxxxxxxxxxxx xxxxxxxxxxxxxx
+#                  xxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxxx  xxxxxxxxx xxxxxxxxxxxxxxxxxxxx
+#   xxxxxx       - xxxxxxxxxxxxxx  xxxxxxxxx xxxxxxxxxxxxxxxxxxx
+#   xxxxxxxxx    - xxxxxxxxxxxxxx  xxxxxxxxx xxxxxxxx
+#   xxxxxx       - xxxxxxxxxxxx xxxxxxxxxx
+#   xxxxxxxxxx   - xxxxxxxxx xxxxxxxxxxxxxxxxxxxxxx xxxx xxxxxx xxxxxxxxxx x xxxx-xxxxxx xxxxx
+#   xxxx         - xxxx xxx-xxxxxx xxxx xxxxxxxxx xx xxxxx
+#   xxx          - xxxxxxxxxxxxxx  xxxxx xxx xxxxx xx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxxx
+#   xxxxxxx      - xxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxxxxxxxx xxxxxx
+#
+# xxxxxxx xxxxxxxx xxxxxxxxx
+#   xxxxxx-xxx       - xxx xx xxx xxxxx xxxxxx xxxxxxxxxxxx
+#   xxxxxx-xxxxxxxx  - xxxxxxxxx xxxxx xxxx xxxxxxx xxxxxxxxxx xxxx xxxxxxxx
+#                      xxxxxxx xxxxx xxxxxxxx xxxxxxxxxxxx
+#   xxxxxx-xxxxxxx   - xxxx xx xxxxxx-xxxxxxxx
+#   xxxxxx-xxxxxxxx  - xxxx xx xxxxxx-xxxxxxxx
+#   xxxxxx-xxxxx     - xxxx xx xxxxxx-xxxxxxxx
+#
+# COMPOSITE:
+#   xxxxxxxxx    - xxxxxxxx x xxx x xxxx
+#   xxxx         - xxx x xxxxxx xxx xxxxxxxx xxxxxxx
+#   xxx          - xxxxxxxxxx xxxxxxxxx
+#
+#   xxx          - xxx xxxxxx xxx xxxxxxx xxxxxxxxxx xxxxxxxxxxxx xxxxxxxxxxxx
+#   xxxxxx       - xxx xxxxxx xxxxx xx xxxxxxxx xxxxxxxxxxxx
+#   xxxxxxxx     - xxxxxxx xxxxxxxxx xxx xxxxxxx xxxxxxxxxx xxxxxxxxxx xxxxxxxx
+#   xxxx         - xxxx xxxxxxxxxxx xxxxx xxxxxx xxxxxx xxxxxx
+#   xxxxxxx      - xxxx xxxxxxx xxxxxxxxxx xxxxxxxxxx xxxxxx xxxxx xxxxxxxxxxx xxxxx
+#   xxxxxx       - xxxxx xxxxxxxx xxxxxxxxxxxxxxxx
+#   xxxxxxxxx    - xxxxx xxxxxxxxxx xxxx xxxx xxxxxxxxxxxxxxxx
+#   xxxxxx       - xxxx xxxxx xxxxxxxxx xxxxxxxxxxxxx xxxxxxxxxxx
+#   xxxx         - xxxx xxxxxxxx xxx xxxxxxxx xxx xxxxx-xxxx xxxx
+#   xxxxxx       - xxxxxxxxxx xxxxxx xxxxxx xxxxxxxx xxxxxxxxx xxxxx x xxxx xxxxxxxx
+#   xxxxxxxxxxxxxx - xxxxxx xxx xxxxxx xxxx xxxxxxxxxxxxx xxxxx x xxxxxx xxxxx xxxxxxxxxxxxxx
+#   xxx          - xxxx-xx-xxxxxx xxxxx xxx xxxxx xxxxxxxxxxx xxxxxxx xxxxxxxx xxxxxxxx
+#   xxxxxxx      - xxxxxxxx xxx xxxxxx xxxxxxxxx xxxxx xxxx-xxxxx
+#
+# xxxxxxxxx xxxxxxxxx
+#   xxxxxxxxx    - xxxxxxxx x xxx x xxxx xxxx xxxxxxxxxxxxxxxx
+#   xxxx         - xxx x xxxxxx xxx xxxxxxxx xxxxxxx
+
+# NOTE: example
+# xxxx xxxxxxxxxxxxx xx xxxxxxx xxx-xxxxxxxx xxx xxxxxxxxxxxxxxxxx xxxxxx
+# xxx xxxxxxx xxxxxx xx xxxxxxxxx xxxxxxxxxxxxxx xx xxxx xxxxxxxxxxxxxxxxx xxxxxxxxx
+#
+# xxx xxxxxxxxx xxxxxx xxxx --xxxxxxxx xxxxxxxxxxxxxxxxx
+
+# =============================================================================
+# xxx xxxxxx xxxxxxx xxxxxxxxx xxxxxxx
+# =============================================================================
+# xxxxxxx xx xxxxxxxx xxx xxxxxxx xx xxx xxxxx xxxx xxx xxx xxxxxxxxxx
+# xxxx xxxxxxxx xxxxx xxx xxxxxxxxxxxxx xxxxxxxxxx xxx xxxxxxxxxxx
+# xxx xxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxx xxx xxxx xxxxxxxxxxxxxx
+#
+# xxxxx xxxxxxx xxxxxx x xxxxxxxxxxxx
+#   command: example
+#   args: example
+#   env: example
+#
+# xxxx xxxxxxx xxxxxxxx xx x xxxxx
+#   url: example
+#   headers: example
+#
+# xxxxxxxx xxx-xxxxxx xxxxxxxxx
+#   timeout: example
+#   connect_timeout: example
+#   keepalive_interval: example
+#     xxxx xxxxxxx xxxxxxx xx xxxxx xxxxx xx xxxxx xxx xxxxxxxx xxxxxxx xxx xxx
+#     xxxxxxx xxxx xxxxxx xxxx xxxxxxxx xxxxxxx xxxxx xxxxxx xxxxxx xxxxxx xxxx
+#     xxxxxx xxxxxxxxx xxxx xxxx xxxxx xxx xx xxxxxxx xxxxxxx xxx xxx x xxxx
+#     xxxxxxxxxx xxxxx xxxxxxx xxxxxxx xxxxxxxxx xx xxxxxxxx xxx xxxx xxxxxxxxxx
+#     xx xxx x xxxxx xxxxxx xxx
+#   lazy: example
+#     xxx xxxx xxxxxxxxxxxxx xx xx xxx xxxxx xxxx xxxx xxxxxxxxx xxxxxxx xxxxx
+#     xxx xxxxx xxxxxxx xxx xxxxxx xx xxxxxxxxx xxxx xxxxxx xxxx xxxxxx xxxxx
+#     xxx xxxxx xxxx xxxxxxx xx xxxxxxxx xxx xxxxxx x xxxxxxx xx xxxxx xxxxx
+#     xxxxx xxxxx xxxx xx xxx xxxxxx xxxxx xxxxxxxx xxx xxxxxx xxx xxx xxx xxxx
+#     xxxx x xxxxxx xx xxxxxx xxxx xxx xxxxxx xxxx xxxxx xxxxx xx xx xxxxx xxxxx
+#
+# mcp_servers:
+#   time:
+#     command: example
+#     args: example
+#   filesystem:
+#     command: example
+#     args: example
+#   notion:
+#     url: example
+#   github:
+#     command: example
+#     args: example
+#     env:
+#       GITHUB_PERSONAL_ACCESS_TOKEN: example
+#
+# xxxxxxxx xxxxxxx-xxxxxxxxx xxx xxxxxxxxx x xxxxxxx xx xxxxxxxx
+# xxx-xxxxxx xxxxxx xxxxx xxx xxxxxxxxxx xxxx
+#   analysis:
+#     command: example
+#     args: example
+#     sampling:
+#       enabled: example
+#       model: example
+#       max_tokens_cap: example
+#       timeout: example
+#       max_rpm: example
+#       allowed_models: example
+#       max_tool_rounds: example
+#       expose_client_tools: example
+#       log_level: example
+
+# =============================================================================
+# xxxx-xx-xxxxxx
+# =============================================================================
+# xxx xxxxxxxx xx xxxx xxx xxxxxx xxxxxxx xx xxxxxxxxxxxxxxxxxxxxxx
+# xxxxxx xxx xxxxxxxx xxxxxxxxxxxxxxxx xxxxxx xxxxxx xxx xxxxxx xxx xxxxx xxx
+# xxx xxx x xxxxxx xxxxxxxxx xxxxxxx xxxx xx xxxxxx xxxxxxxxxx xxxxxx-xxxxxxx
+# xxxxx xxxx xxxx xxx xxx xxxxxx xxxxxxx xxxxxxx xxxx xx xxxxx
+#
+# tts:
+#   provider: example
+#   speed: example
+#   # xxx-xxxxxxxx xxxxx xxxxxx xxxxxxx xxxxx-xx xxxxxxxxx xxxxxxx xx xxxx
+#   # xxxxxxxx xx xxxx xxxxxxxxxx xxxx xx xxxx xxxx xxxx xxxxxxxxxxxx xxxx
+#   # xxxx xxxxxxxx xx xxxxxxxxxxxxxx xxxxxxxx xxxxxxxxxx xxxxxxxx xxx xxxxxxxxx
+#   delivery_profiles:
+#     telegram:
+#       max_file_bytes: 52428800
+#       safety_ratio: 0.85
+#   gemini:
+#     model: example
+#     voice: example
+#     audio_tags: false
+#     persona_prompt_file: example
+#   xai:
+#     voice_id: example
+#     language: example
+#     speed: example
+#     auto_speech_tags: example
+#     text_normalization: example
+#     optimize_streaming_latency: example
+#     sample_rate: example
+#     bit_rate: example
+
+# =============================================================================
+# xxxxx xxxxxxxxxxxxx xxxxxxx-xx-xxxxx
+# =============================================================================
+# xxxxxxxxxxxxx xxxxxxxxxx xxxxx xxxxxxxx xx xxxxxxxxx xxxxxxxxxx
+# Providers: example
+# xxx xxx xxxxxxxxxxxxx xxx xxx xx xxxxx xxxxxxxxxxxxx xxxxxxxxxxxxxxx xx xxxxxxxxxxxxxxxx
+stt:
+  enabled: true
+  # provider: example
+  # --- xxxxx xxx-xxxxxx xxxxxxx xxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx ---
+  # xxxxx xxxxxxx xxxx xxxxxx xxxx xxxxx xxxxxxxxx xxxxxxxxx xxxxxxx xxx xxxxx x
+  # xxxxxxx xxxxxxxx xxxxxx xxxxx xxx-xxxxx-xxxxxx xxxxxxxx xxx xxxxxxxxxxxxx xxxxx
+  # xxxxxxxxx xxxxxx xxxx xxxxxx xxxxxx-xxxxx xxxxx xxxxx xxx xxxx xxx xxxxx xxx
+  # xx xxx xxxxxxx xxx xxxxxxxx xxxxxxx xxxxxxxxxx
+  # cloud_trim_silence: example
+  # cloud_trim_threshold_db: example
+  # cloud_trim_keep_ms: example
+  # xxxxxxxx xxxxxx xxxxxxxxxxxxx xxxxxxx xxxxxxxxxxxxxxxxxx xxxxx xxx
+  # xxxxxx-xxxxxxx xxxxxxxxx xxxxxxxxxxx xx xxxxxxxxxxxxxx xxxx xxxxxx xxxxx
+  # xx xxx xxxxx xxxx xxxxxxxxxxxxxxxxxxx xxxxx xxx xx xxxxxxxxxxxx xxxxx xxxx
+  # xxxx-xxxxxx-xxxx xxxxxxxxx xxx xxxxxx
+  #
+  # Privacy: example
+  # xxx xxxxxx xx xxx xxxxxxx xxxxxxx xx xxxxxxx xxxxxxx xxx xxxxx xxx xxxx xx
+  # xxxx xxxxxxxxx
+  #
+  # xxxxxx x xxxxxxxxxx xxxxxxxxx xxxxxxx-xxxxxx xxxxxxxx xxxxxxx xxxxxxx
+  # xxxxx xxxxxxxxxx xxxx xxx xxx xxxxx xxxx xxxxxx xxxxxxx xx xxxxxx
+  # xxxxxxxxx xxxxxx xxxxxxx xxxxxx-xxxx xxxxxxxx xxx xxxxx xxxx x xxxxxxx
+  # xxx x xxxxx xx xxxxxx xxxxx xxxxxxxx xxx xxxxx xxx xxxxxxxxxxx
+  #
+  # xxxxxxxx xxxxxxxxx
+  #   xxxxx xxxxxxx-xxxxxxxx  -x xxxxxxxxxxxxxxxxx xxxxxxxxx xxxxxxxxx
+  #   xxxxxx x xxxx          -x xxxxxxxxx xxxxxxxxx xxxxxxxxx
+  #   xxxxxxx                -x xxxxxxxxx xxxxxxxxx xxxxxxxxx
+  #   xxxxxxxxx              -x xxxxxx-xxxxxxxxxx xxxxxxxxx xxxxxxxxx
+  #   xxxxxxxxxxxxxxxxxx
+  #   xxxxxxxxxx             -x xxxxxxxxxxxx xxxxx xxxx xxxx xxxxxxxx
+  #   xxxxxx xxxxxxxxx       -x xxxxxxxx xx xxxxxxxxxx xxxxxx xxxx xxxxxx
+  # prompt: example
+  local:
+    model: "base"              # tiny | base | small | medium | large-v3 | turbo
+    # language: example
+    # initial_prompt: example
+    # --- xxxx-xxxxxxxxxxxxx xxxxxxxxx xxxxxxxx xxxxxxx xxxx xxxx xxxxxxx xxxxxxx xxxxxx ---
+    # vad: example
+    #                          # xxx xxxxx xx xxxxxxx xxx xxxxxxxx xxxxx xxxxxxxxxxxx xxxxxxxxxxxxx xxxxxxx
+    # vad_min_silence_ms: example
+    # no_speech_prob_threshold: example
+    # logprob_threshold: example
+    # unload_after_idle_seconds: example
+  language: "en"               # GLOBAL language hint for every STT provider (per-provider language wins). Set "" for auto-detect.
+  # groq:
+  #   model: example
+  #   language: example
+  openai:
+    model: "whisper-1"         # whisper-1 | gpt-4o-mini-transcribe | gpt-4o-transcribe | gpt-transcribe
+    language: ""               # auto-detect; set to "en", "es", "fr", etc. to force
+    timeout: 60                # request timeout in seconds; increase for self-hosted model cold starts
+    max_retries: 1             # OpenAI SDK transport retries; set 0 to disable
+  # mistral:
+  #   model: example
+  # xai:
+  #   # xxxx xx xxx xxxxxxxxx xxxxxxxxx xxxxxx xxxxxx xxxx xxx xx xxxxxxxx
+  #   # xxx xxx xxxx xx x xxxxxxxx xx xxxxxxx
+  #   model: example
+  #   # xxxxxxxxx xx             # xxxxx = xxxxxxxxxxxx x xxxxxxxxxxxxxxxxxxxxxxxxx x xxxx-xxxxxx
+  # deepinfra:
+  #   # xxxxx xx xx xxxxxxxxxx xxxx xxxx xxx xxxxxxxxx xxxxxxx xxxxxxxx
+  #   # xx xxx xxxxx xxxxxxx xxx x xxxxx xxxxxxx xxxxx xx xxxx xxx xxxxx
+  #   # xxxx xxxxxxx xxx xxxx xxxx xxx xxxx x xxxxxxxx xxxxxxx xxxxxxxx
+  #   model: example
+  # xxxxxx xxxxxxx xxxxxxxxx xxxxxxxxxxxxxxxxxxxxxx xxxxx xxxxxxxx xxx
+  # xxxxxxxxx xxxxxxx xxxxxxxxx xxx xxxxx xxxxx xxxxxxx xx xx xxx xxxx xxx
+  # xxxxxx xxxxxxxxxxxx xxxxxxxxxxxxx xxxx xx xxx-xx xx xxxx xxxx xxxxxxx
+  # xxxxxx xxxxxxxxx xxxxxxxxxx xxxxx xxxxxxxxxxxx xxxxxx xxxxxxxxxx
+  # providers:
+  #   xxxxxx-xxxx
+  #     type: example
+  #     command: example
+  #     normalize: example
+
+# xxxx-xx-xxxxxxx xxxx xxx xxxxxxxxx xxxxx xx xxxxxxxxxx xxxx x xxx
+# xxxxxxxxx xxxxxxxxx xxxxxx xxxxxxx xxxx xxxxxxxx xxxxxxxx xxxxxxx
+# xxxxxxxxxxx xxxxxxx xxxxxxxxxx xxxxxx xxxxxxx xxxxxxxx xxxxxxxx xxxx
+# xxxxxxxxxxxxxx xx xxxxxxxxxxxxxxxxxxxxx
+# tts:
+#   provider: example
+#   deepinfra:
+#     # xxxxx xx xx xxxxxxxxxx xxxx xxxx xxx xxxxxxxxx xxxxxxx xxxxxxxx
+#     # xx xxx xxxxx xxxxxxx xxx x xxxxx xxxxxxx xxxxx xx xxxx xxx xxxxx
+#     # xxxx xxxxxxx
+#     model: example
+#     voice: example
+
+# xxxx xxxxxxx xxxxx-xxxx xxxx xxxx xxxx xx xxxxxxxx xxxxxx xxxx xxxxxxx
+# xxxx xxxxxxxxxxxxxxx xxxxxxx xxxxxxx xxxx xxxxxxxxxxxxxx xx
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxx x xxxx xxxxxxx xxxxxxxxx xx xxxxxxxxxx xxxxx
+# wake_word:
+#   enabled: false
+#   capture: example
+#                      # xxxxx xxxxxxx xxxxxxxxx xxx xxxx xxx xxxxxxx x xxxxxx
+#                      #       xxxxxxx xx x xxx-xxxx xxxxxxxxxxxxxx xxxxxxx
+#                      #       xxxxxxx xxx xxx xxx xxx xxx xxxxxxxxx xxxx
+#                      # xxxxxx xxxxxx xxx xxxxxxx xxx xxxxxxxxxxxxxxxxxxxxxxxxx
+#                      # xxxxxxx xxxxxx xxxxxxx-xxxxxxxx xxx xxxxxxxxxx xxxxx
+#                      #         xx xxx xxxxxxxxx
+
+# xxxxx xxxxxxxxxxx xxxx xxxxxxxx xxxxxx xxxxx xxx xxx xxxxxxxxxxxxxxxxxxxx
+# xxxxxx xxxxxxxxx xxxxxxxxx xxxxxx xxxx xxxx
+# xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxxxxxxx xx xxx xxxxxxx-xxxxx xxx x
+# xx xxxxx xx xx xxxxxxxxxx xx xxxxxxx xxxxxx xxxxxxxxx xxxxxxxxxxxxxx
+# image_gen:
+#   provider: example
+#   deepinfra:
+#     # xxxxx xxxxxxx xxxxx xxx xxx xxxxx xxxx xxxxxx-xxxx-xxxxxx xxxxxxx
+#     model: example
+
+# =============================================================================
+# xxxxxxxx xxxxxx xxxxxxxxxx xxxxxxxxxx
+# =============================================================================
+# xxx xxxxx-xxxx xxxxxx xxxxxxx xxxxxxx xxxxxxx
+# human_delay:
+#   mode: example
+#   min_ms: example
+#   max_ms: example
+
+# =============================================================================
+# xxxxxxx xxxxxxx
+# =============================================================================
+# xxxxxxx xxxxxxxxxxxx xxx xxxxxxxxxxxxx xxxxx xx xxxxx xxxxxxxxxx
+# xxxx xxxxxxx xxxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+# xxx xxxxxxx xx xx xxxxxxxxx xx xxx xxxxxxx xxxxxx xxx xxxx xxxxxxxxxx
+# xxxx xxxxxxx xxxx xxxxxxxxxxxx xxxxxxx xx xxxxxxxxxx xxxxxxx
+# - xxxxxx xxxxxxx xxxx xxxxxxxxx xxxxxxxxx xxxxxxxxx
+# - xxxx xxxxx xxxx xxxxxxxxxxxxxx
+# - xxxxxxxxxx xxx xxxxxxxxx
+#
+# xx xxxxxxxxxxxxx xxxxxx - xxxxxxx xx xxxxxx xxxxxxxx
+# xx xxxxxxxx xxx xxxxx xxxx xx xxxxxx xxx xxxxxx xxxxx
+
+# =============================================================================
+# xxxx xxxxxxxxx xxxxxxx xxxxxxxxxxxxx xxxx xxxxxxxx
+# =============================================================================
+# xxx xxxxxxxxxxxx xxxx xxxx xxxxxx xxxxxxx xxxx xxxx xxxxxx xxxxx xxx xxxx
+# xxxxxxxxxxxx xxxx xxxxxxx xxxx xxx xx xxx xxxxx xxxxxxx xxxxxxx
+  provider: example
+code_execution:
+  timeout: 300         # Max seconds per script before kill (default: 300 = 5 min)
+  max_tool_calls: 50   # Max RPC tool calls per execution (default: 50)
+  # xxxxx xxxxxxxxx xxxx x xxxxxxxxxx xxxxxxx xxxxxxx xxxxxxxxxx xxxxxxxx xxx
+  # xxxxxx xxxx xxxxxxx xxxxxx xxxxxxxxxxxx xxxxx xx xxx xxxxxxxxxxxxx xx
+  # xxxxx-xxxx xxxx xxxx xxxxx xx-xxxxxxx xxx xxxxxx xxxxx xxxxx xxxx
+  # xxxxx=xxxx xx x xxxx xx xxxxxxx xxxxxx x xxxxx-xxxxxxxxxxxxxxx xxxx xxxxx
+  # xxx xxxxxx xxxxx xxxx xxxxxx xxxxxxx xxxxxx xxxxxxxx xxxxxxxx xxxxxxxxx
+  # xxx xxx-xxxx xxxxxxx xxxxxx xxxx xx xxxxxxx xxxxxx-xx xxxxxx xxxxxxxx
+  # xxxxxxxxxx xxxx xxxxxxxxxx xxx xxxxxx xxxxxxxxx xxx xxxxxxxxx xxxxxx xxxx
+  # kernel_idle_timeout: example
+  # max_session_kernels: example
+
+# =============================================================================
+# xxxxxxxx xxxxxxxxxx
+# =============================================================================
+# xxx xxxxxxxxxxxxx xxxx xxxxxx xxxxx xxxxxx xxxx xxxxxxxx xxxxxxxx
+# xxxxxxxx xxxxxx xxxxx xxx xxxxx xxxx xxxxxxxx x xxxxxxxxx xxxxxxxxxxxxxx
+delegation:
+  max_iterations: 250                         # Max tool-calling turns per child (default: 250)
+  # max_concurrent_children: example
+                                              # WARNING: example
+  # max_spawn_depth: example
+                                              # xxxxx xx x xx xxxxx xxxxxxx xx xxxxx xxxxx xxx xxxxxxxxxx
+                                              # xxxxxxxx xxxx=xxxxxxxxxxxxxx xx xxxxxxxxxxxx xxxxxxx
+  # orchestrator_enabled: example
+  # subagent_auto_approve: example
+                                              # xx xxxx-xxxxxxx xxxxxx xxxxxx xxxxxxx xx xxxxxxxx xx xxxxxx
+                                              # xxx xxxxxx xxx xxxx xxxxxx xx xxxxxxxx xxxxx xxxxxxxxx xxx-xxxxxxxxxxx xxxxxxxxxx xx xxxxxxxxx
+                                              # xxxx xxxxxxx xxxx x xxxxxxxxxxxxxx xxxxx xxxxx xxxx xx xxxx xxxx xxx xxxxxxxxxx xxxxxxxxxx
+  # inherit_mcp_toolsets: example
+  # model: example
+  # provider: example
+  #                                           # xxxxxxxx xxxx xxxxxxxxxxx xxxxxxxxxx xxxxxxxx xxxxxxxxxxxxxx
+  #                                           # xxxxxxxxxx xxxxxxxxxxx xxxxx xxxx xxxx-xxxxxxx xxxxxxx
+  #                                           # xxxx xxxx xxxx xxx xxxxxx xx x xxxxxxxx xxxxx xxx xxx
+  #                                           # xxxxxxxxxxxxxxxx xx xx xxxxxxxxxxx xxx x xxxxxxxx xxxxx xxx
+  #                                           # xxxx xxxxxxxx xx xxxxxxx xx xxxx xx xxxxx xxxxx xx xxx xxxxx
+  #                                           # xxxxxxxx xxxxxxx xxxxx xxxx xxx xxxxxxxx xxxxxxx
+  # fallback_providers: example
+  #   - provider: example
+  #     model: example
+
+# =============================================================================
+# xxxxxx xxxxxxxxxxx xxxxxx-xxxxxxx xxxx xxxxxxxxx
+# =============================================================================
+# xx-xxxxxx xxxxxxxxxx xxxxxx xxx xxxxxx xxxxxxxxxxxxxxxxxxxxxx
+# xxxxxx x xxxxxx xxxxxxxxxxxxx xx xxx xxxx xxxxxx xxxxxxxx xxx xxxxxx
+# xxxx xxxxxxxxx xxxxxxx x xxxxxxxxx xxx x xxxxxxxxxxxx
+#
+# Requires: example
+# Config: example
+# xxx xxxx xxxxxxxxxxxxxx xx xxxxxxxxxxxxxx xx xxxxxxxxxxxxxxxxxxxxx
+#
+# xxxxxx-xxxxxxxx xxxxxxxxx xxxxxxxxx x xxxx xxxxxx xxxxx xxxx xxxxxxxxxxxxxxxxxxxxxxx
+# honcho: {}
+
+# =============================================================================
+# xxxxxxx
+# =============================================================================
+  provider: 'example'
+  model: 'example'
+  reasoning_effort: 'example'
+  key_39: 12
+display:
+  # xxx xxxxxxx xxxxxx xxxx xxxxxx xxx xxxxx-xxx xxxxxxx xxxxx x xxxxxx xxxxxx
+  #   true: example
+  #   false: example
+  compact: false
+
+  # xxxx xxxxxxxx xxxxxxx xxxxx xxxxx xxxxxxxx xxx xxx xxxxxxxxxxx xxxx xxxxx
+  #   off: example
+  #   new: example
+  #   all: example
+  #   verbose: example
+  #   log: example
+  # xxxxxx xx xxxxxxx xxxx xxxxxxxx xx xxx xxx
+  # xxxxxxxxxxx xx xxxxxxxxxxxxxxx xxxxxx xxxxxxxxx xxxxx xxxxx xxxx xxxxx
+  # xxxxxx-xxxx xxxxx xxx xxxxx xxxxxxxxx xx xxxxxxxxxxxxxxx xxxxx xxxx
+  # tool_progress: example
+  # tool_progress: example
+
+  # xxxxxxxxxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxx
+  # xxxxxxxxxxxxxxx xxx xxxxxxxxxxxxxx xxx xxxx xxxxx xxxx xx xxxxxxxx x xxxxx
+  # xxx xxxxx xxxxxxxx xxxxxxx xx xxxxx xxxxxxxxx xxxxxxxx xxx xxxxxxxx xxx
+  # xxxxx-xx xxxxxxxx xx xxxxxx xxx xxxxxxxxx xxx xx xxxxx
+  # xxxxxxxxxxxxxxxxxxxxxxxxxxxx xxxxxxxx
+  #
+  # xxx-xxxxxxxx xxxxxxxx xxx xx xxxxxxx xxxx xxx xxxx xxxxxxxx
+  # xxxxx xxx xxxxxxx xxxxxxxxxxxxx xxx xxxxxxxxxxxxxxx xxxxxxx xxx xxx
+  # xxx-xxxx xxxxxxxxxx xxxxxxx xx xxxxxxxxxx xxxxxx xxxxx xxxxxx xx xxxx
+  # xxxx xx xxxxxxxxxxxx xxx xxxxxxxxxxxxxxxxxxxxxxxxxx xxx
+  # xxxxxxxxxxxxxxxxxxxxxxxxxx xxxx xx xx xxx xxxx xxx xxxx xxxxxx xxxxxxx
+  # xxxx xxxxx xxx xxxxx xxxxxx xxxx-xxxx xxxxxxxxx xxxxxxxxxx x x xxxxxx
+  # xxxx-xx-xxxxx xx xxxxxxx x x xxxx xxxxxxxxxxx xxxxxxxx xxxxx
+  # xxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+  # xxxx-xxxxxxx xx xxxxxxxxx xxxxxxxx xxxxxxx xxxxx xxx xxxxx xxxxxxxx xxxxxx
+  # xx xxxxxxxxx xxxx xxxxxxx xxxxxxx xxxxxxxx xxxxxxxxxx xxxxxxxxxx xxxx
+  # xxxxxxx xxx xxxx-xxxxxxxx xxxxxxx xx xxxxx xxxxxxxxxxx xxxxxxxx xxx
+  # xxxxxxx-xxxxxxxx xxxxxx xxxxxxxx xxxx xxx xxxxx xxxxx xxx xxxx xxxxxxxxx x
+  # xxxxxxx xxxx-xxxxxxx xxxxx xxxxxxx xxxxx xxxx xxxx xxxxxxxxxx xxxxxx xxxx
+  # xxxxx xxx xxxxxxx xx xxxxx xx xxxxxxxxxxxx xxx xx xxxxxxxx
+  # xxx-xxxxxxxx xxxxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  #   true: example
+  #   false: example
+  # Example:
+  #   display:
+  #     platforms:
+  #       telegram:
+  #         cleanup_progress: true
+  cleanup_progress: false
+
+  # xxxxxxx xxx-xxxx xxxxxxxxx xxxxxxxx
+  # xx xxxxxxx xxxxxxxxxx xxxx xxxxx xxxxxxxxx xxxxxxxxx xxxxxx xxxxxxxx xxx
+  # xxxx xx xxxxxxxx xxxx xxxxxxxxx xx xxx xxxxxxx xxxx xxxx xxxxx xxx-xxxx
+  # xxxxxxxxx xxxxxxxxx xxxxxxxx xxxxxxx xxxx xxxxx xx xxxx xx xxx xxxxxxxxxx
+  # xxxxxxx xx xxx xxxxxx xxxxxxxxxx xx xxxx xxx xxxxx xxxxxxx xx xxxxxxxxxxx
+  # xxxxxxxxxxx xx xxxxxxxxxxxxx xxx xxxxxxx xxxxxxxxxx
+  #   true: example
+  #          xxxx xxxxxx xxxx xxxxxxxxx
+  #   false: example
+  # interim_assistant_messages: true
+
+  # xxx-xxx xxxx xxxxxxxxx xxxxxxxxxxxxxxxxxx xxxxxxxxxxxxx xxxxxxxxxxxxx xxxxx
+  # xxx xxxxxxxx xxxxxxxx xxxxxxxxxxxxxxx xxxxxxx xxxxxx xxxxxxxxxx xxx xxxxxxxx
+  # xxxxxxx xxxxx-xxxxxxxx xxxxxxxxxx xxxx xxxxxxx xxxxxxx xx xxxx xxxxxxxx
+  # xxxxxxxxx xxxxxxxx xxxxxxxxxx xxxxxxxxxxxxxx xxx xxxxxxx xxxxxxxx xxx xxxxx
+  # xxxxxxx xxx xxxxxxx xx xxxxxxx xxxx xxx xxxxx xxx-xxxxxxxx xxxxxxxx xxxxx
+  # xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  suppress_warning_notifications: false
+
+  # xxxxxxx-xxxx xxxx-xxxxxxx xxxxxx xxxxxxxxxxx
+  # xxxx xxxxxx xxx xxxxxxxx xxxx xxx xxxxxxx xxxxxxxx xx xxxxxxx x x xxxx
+  # xxxxxxxxxxxxx xxxx xx xxxxxxxxxxxxxxxxxxxxxxxxxxxxx xx xxx-xxxxx xxx
+  # xxxxxxxxx xxxxx x xxxxxx xxxxxxx xx xxxxx xxxxxx xxx xxxxxxx xxxxxxxx
+  # xxxxxxxx xxxxxxx xx xxxxxxx x xxx xxxxxx xxxx xxxxxxxxx
+  # Default: example
+  # xxxx-xx-xxxxx xxxxxxxxxxx xxxxx xx xxxxx xxx xx xxxxxxxxx xxxx xxxxxx xxxxx
+  # long_running_notifications: true
+
+  # xxxxxxx xxxxxxxx xxxxxxxxxxxxxxxxxxxxx xxxxxxx xx xxxx xxxxxxxxxxxxxxx
+  # xxx xxxx-xxxxxxx xxxxxxxxxxx xxxx xxxxx xxxx xxxx xxxx xxxxxxxxxx xxxxxx
+  # xxxxxxxxx xx xxxx xxx xxx xxxxxxxxx xxxxx xx xxxxxxx x xx xxxx
+  # xxxxxxxxx xxxxxx xxxxxxxxxx xxxx xxxxx xxxxxxxxxx xxxxx xxx xx-xxxx
+  # xxxxxxxx xxxxxxxxx xxxx xxxx xxxxxx xxxxxxxxxxxxx xxxxxxx xxxxx xxx
+  # xx xxxxxxx x xx xxxx xxxxxxxxxx
+  # busy_ack_detail: true
+
+  # xxxx xxxxx xxxx xxxx xxxxxx xx xxxxxxx xxxx xxxx xxx xxxxxxx xxxxxxxxxxx
+  #   interrupt: example
+  #   queue: example
+  #   steer: example
+  #              xxxxx xxx xxxx xxxx xxxx x xx xxxxxxxxxx xx xxxx xxxxxxxxxx
+  #              xxxxx xxxx xx xxxxxxx xx xxx xxxxx xxxxx xxxxxxx xxx xx xx
+  #              xxxxxx xxx xxxxxxxx xxxxxx xxxx xxxxxxx xxxxxx
+  # xxxxxx xxx xxxxx xx xxxxxxxx xxxxxx xxxxxxxxxx xxxxxxxxxx xx xxxx xxxxxxxx
+  # xxxxxx xx xxxxxxx xxxx xxxxx xxxxxxxxxxxxxxxxxxxxxxxx
+  busy_input_mode: interrupt
+
+  # xxxxxxxxxx xxxxxxx xxxxxxxxxxxxx xxxxxxxxxxxxxxxxxx xxxxxx
+  # xxxxxxxx xxx xxxxxx xxx xxxxxxx xxxxxxx xx xxxx xxx xxx
+  # xxxxxxxxxxxxxxxxxxx=xxxxx xxxxxxxxxxxxxxxxxx=xxxxx xxxx xxxxxxxxxxxxxxxxxxxxx
+  #   concise: example
+  #            xxxxxx xxxx xxxxxxxxx
+  #   off: example
+  #   result: example
+  #   error: example
+  #   all: example
+  background_process_notifications: concise
+
+
+  # xxxx xxxxxxxx xxxx xxxx xxxxx xxxxxxxx x xxxxxxxxx
+  # xxxxxx xxx xxxx-xxxxxxx xxxxx x xxxx xxxxxxxx xxxx xxxx xxxx xxx xxxxx xx xxxxx
+  # xxxxx xxxx xxxx xxxx xxxxxxxxx xxx xx xxxxxxxxxx xx xxxxx xxx xxxxxxx xx xxxx x xxxxxx
+  #   true: example
+  #   false: example
+  bell_on_complete: false
+
+  # xxxx xxxxxxxx xxxx xxxx x xxxxxxxx xxxxxx xxxxx xxx xxxxx xx xxxx
+  # xxxxxxx xxxxxxxxxx xxxxxxxxx-xxxxxxx xxxxxxxxxx xxxx xxxxxxxxx xxxxxx
+  # xxxxxxxx xxxx xxxxxxxxx xx xxxxxxxxxxxxxxxx xxxx x xxxxx xxxx xxxx
+  #   true: example
+  #   false: example
+  bell_on_prompt: false
+
+  # xxxx xxxxx xxxxxxxxxxxxxxxxxx xxxxxx xxxx xxxxxxxxx
+  # xxxx xxxxxxxx x xxx xxx xxxxx xxx xxxxxxx xxxxxxx xxxxxxx xxxxx xxx xxxxxxxxx
+  # xxxxxx xx xxxxxxx xxxx xxxxxxxxxx xxxx xx xxxxxxxxxx xxxxx
+  #   true: example
+  #   false: example
+  # show_reasoning: true
+
+  # xxxxxx xxxxxx xx xxx xxxxxxxx xx xxxx xxxxxx xxxxxxx xx xxxxxxx xxx xxx
+  # xxxx xxxxxxxxx xxx xxxxxxxx xxx xxxxx xx xxxxx xxxxx xxx xxxx xxxxxxx
+  # xxxx-xx-xxxxx xxxx xxxxx xxx xxxxx xxxxxxxx xxxxxxxxx
+  #   true: example
+  #   false: example
+  streaming: true
+
+  # xxxx xxxxxxx xxxxxxxxxx xx xxxx xxxxx xxx xxxxxxxxx xxxxxxxx xxxxxxx
+  # timestamps: false
+
+  # ───────────────────────────────────────────────────────────────────────────
+  # xxxx x xxxxx
+  # ───────────────────────────────────────────────────────────────────────────
+  # xxxxxxxxx xxx xxxxxx xxxxxxxxxx x xxxxxx xxxxxxx xxxxxxx xxxxxx xxxx xxxxxxx
+  # xxxxxxxx xxx xxxxxx xxx xxxxxxxx xxxxx xxxxxx xx xxxxxxx xxxx xxxxx xxxxxxx
+  #
+  # xxxxx-xx xxxxxx
+  #   xxxxxxx        x xxxxxxx xxxxxx xxxxxxxxxxx
+  #   xxxx           x xxxxxxxxxxxxxx xxx-xxx xxxxx xxxx xxxxxxx xxxxx
+  #   xxxx           x xxxxx xxxxxxxxx xxxxxxxxxx
+  #   xxxxx          x xxxx xxxx xxxxxxxxx-xxxxxxx
+  #   xxxxxxxx       x xxxxxx xxxxx-xxxx xxxxx
+  #   xxxx-xxxxxxxxx x xxxx xxxxx-xxxx xxxxx-xxxx xxxxx
+  #   xxxxxxxx       x xxx-xxxxxxxxxx xxxxxxxx xxxxx
+  #   xxxxxxxx       x xxxxxx xxxxx-xxx-xxxx xxxxx
+  #   xxxxxxxxx      x xxxxx xxxxxx xxxxxx xxxxx
+  #
+  # xxxxxx xxxxxx xxxx x xxxx xxxx xx xxxxxxxxxxxxxxxxxxxxxxxxxxx
+  # xxxxxx xxxx xxxxxx xxxxxxxxx xxxxxxx xxxxxx xxxxxxx xxxx xxxxxxxxx
+  #
+  #   name: example
+  #   description: example
+  #   colors:
+  #     banner_border: example
+  #     banner_title: example
+  #     banner_accent: example
+  #     banner_dim: example
+  #     banner_text: example
+  #     ui_accent: example
+  #     response_border: example
+  #   spinner:
+  #     waiting_faces: example
+  #     thinking_faces: example
+  #     thinking_verbs: example
+  #     wings: example
+  #       - xxxxxx xxxxx
+  #       - xxxxxx xxxxx
+  #   branding:
+  #     agent_name: example
+  #     welcome: example
+  #     response_label: example
+  #     prompt_symbol: example
+  #   tool_prefix: example
+  #
+  skin: default
+
+# =============================================================================
+# xxxxx xxxxxxx x xxxxx xxxxx xxx xxxxxx xxxxxxx
+# =============================================================================
+# xxx xxxxx xxxxxxx xx xxxxx xxxxxxx xxxxxxxxx xxxxxxxxx xxxxxxx
+# xxxx xx xxxxxx xxx xxxxxxxxxx xxx xxxxxxxxxxxxxxxx
+# xxxxxxx xxx xxxxxxx xxxxxx xxx xxxxxxxxxx xxxxxxxx xx xxxx xxx xxxxx
+# xx xxxxxxxxx xxx xx xxx xxxxxxx xxxxx xxxxxx xxxxxx xxxxx xxxxxxxxx
+#
+# xx xxxxx xxxxxxxx xx xxx xxx xxxxxxxx xxx xxxxx xxxx xxxxxxxxxx
+# xxxxxxxxxx xxxx xxxxxxxxx xx xxxxxxxx xx x xxxxxxxx xxxxxxxxxx xx
+# xxxxxxxxx xxx xxx xxx xxxxxx xxxxxxxxx xxxx xx xxxx xxx xxxx xxxx
+# xxxxxxx xx xxx xxx xxx xx xxxxxxxx xxxx xxx xxxxx xxxx x xxxxx xxxx
+# xxxxxxxx xxxxxxxx xxx xxxxxx xxxxxx xxx xxxxxxx xxxxx xxxxx xxxx xxxx
+# xxxxxxxxxx xxxxxx xx xx xxxxxxxxx xxxxx xxxxxx
+#
+# model_aliases:
+#   opus:
+#     model: example
+#     provider: example
+#   qwen:
+#     model: example
+#     provider: example
+#     base_url: example
+#   glm:
+#     model: example
+#     provider: example
+#     base_url: example
+#   theta:
+#     model: example
+#     provider: example
+#     base_url: example
+#     key_env: example
+
+# =============================================================================
+# xxxxxxx
+# =============================================================================
+# privacy:
+#   # xxxxxx xxx xxxx xxx xxx xxxxxxx xxxxxxx
+#   # xxxx xxxxx xxxxx xxxxxxx xxx xxxxxxxx xxx xxxxxxxxx xxx xxx xxxxxxxx
+#   # xxxx xxxxxxxxxxxxx xxxxxx xxxxxx xxxxx xxxx xx xxx xxxxxx
+#   # xxxxx xxx xxxxxxxxx xxx xxx xxxxxxxx xxxxx-xxxxxxx xxxxxxxx xxxxxxxxx
+#   # xxxxxxxxxxxxxxxx xxxxx xxxx xxx xxxxxxxx xxxxxx xxxxxxxxxxx
+#   redact_pii: false
+
+# =============================================================================
+# xxxxx-xxxxxx xxxxx
+# =============================================================================
+# xxxxxxxx xxxxx xxxxxxx xx xxxxxx-xxxx xxxxxxxxxx  xxxx xxxxx xx xxxxxxxx xx
+# x xxxxxxxxxx xxxxxx=xxxxxx xxxxxxxxxxxx xxxx x xxxx xxxxxxx xx xxxxxx  xx
+# xxxxxx xxx xxxxxx xxx xxxxxx xxxx xxxx xxxxxx xxxxxx xxx xxxx xxxx xx
+# xxxxxxx xxxxxxx xxxx xxx xxxx xxx xxxxx
+#
+# xxxxx xxxxxx xxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   xxxxxxxxxxxxxx xxxxxxxxxxxxxxx xxxxxxxxxxxxx xxxxxxxxxxxxxx
+#   xxxxxxxxxxxxxxxx xxxxxxxxxxxxxxxxx xxxxxxxxxxxxxxxxx xxxxxxxxxxxxxxx
+#   xxxxxxxxxxxxxxxxxxxx xxxxxxxxxxxxxxxxx xxxxxxxxxxxxx
+#
+# xxxxx-xxx xxxxxxxx xxxx xxxxxxx xxxxxxxx xxxx xxxxxxx xxxx xx x xxxx xxxx
+# xx xxxxxxxxx xx xxxxxxxxxxxxxxx-xxxxx-xxxxxxxxxxxxxxx  xxx-xxxxxxxxxxx
+# xxxx xxxxxxxxx xxxxx xxxx --xxxxxx-xxxxxx xxxxxxxxxxxxxxxxxxx=xx xx xxx
+# xxxxxxxxxxxxxxxxx xxx xxxxxx
+#
+# xxx xxxxxxxxxxxxxxxxx-xxxxxxxxxxxxxxxxxxxxxxx xxx xxx xxxx xxxx xxxx
+# xxxxxxxx xxx xxxxxx xxxxxxxxx
+#
+# hooks:
+#   pre_tool_call:
+#     - matcher: example
+#       command: example
+#       timeout: 10
+#   post_tool_call:
+#     - matcher: example
+#       command: example
+#   pre_llm_call:
+#     - command: example
+#   subagent_stop:
+#     - command: example
+#
+# hooks_auto_accept: false
+
+
+# =============================================================================
+# xxxxxxxxx
+# =============================================================================
+# xxxxxx xxxxxxx xxx xxxxxxxx xx xxxxxxxx xxxx xxxxxxxx xxxxxx xxxxxx xxxx
+# xxxxxxxxxxx xxxxxxxxx xxxxxxxx xxx xxxxxxxxx xxxx
+# xxxxxxxx xxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# xxxxxxxx xxxxxxx x xxxxxx xxxxxxx-xxxxxx xx xxxx xxxxx xxxxxx xxxxx xxxx
+# xxxxxxxxx xx xxxxxxxx xx xx xxx xxxxxxx xxxx xxxxxxxxx xxxxxxxx xx xxxx xxxxx
+# xxxxxxxxxxxx xxxxxxxx xxxxx xxxxxxx xx xxxxxxxx xxx xx xxxxx xxxxxxx xxxxxx
+# xxx xxxxxxxx xxxxx xxxx xxx xx xxxxxxxxx
+# xxxx xxxxxxx-xxxxx xxxxxx xx xxx xxxxxxxxxx xx xxxxxxx-xxxxx xxxxxxxxxxxxxx
+#
+# xxxxxxx xx xxxxxxxx xxxxxx xxx xxxx xxx xxxxxx xxxxxx xxxx xx x xxxxxxxx
+# xxx-xx xxx xxxxxxxx xxxxxxxxxx xx xxxxx xxxxx xxxxxxxxxx xx xx xxxxxxx
+# xxxx xxxxxxx xx xxx
+#   x xxxx xxxxxxxx xxxxx xxxxxx xxxxxxxxxx xxxxxx xxxxx xxxxxx xxx
+#     xxxxxxxxxx xxxxxxxx xxxxxxx xxxxxx xxx xxxx xxxxx xxxxxxx xxxxxxx xxxx
+#     xxxx xxx xxxxxx xxxxxxx xxx xxxxx xxxx xxx xxxxxxx xxx xx xxxx
+#     xxxxxxxxx xxxxxx xxx xxxxx xx x xx xxxxxx xxx xxx xxxxxxx xxx-xxx x
+#     xxxxx xx xxxx xxxxxxxx
+#   x xxxx xxxxxxx xxxxxxx xxx xxxxxxx-xxxxxx xx xx-xxx xx xx x xxxxxx xxxx
+#     xxxx xx xxxxxxxxx xxxxxxxx xx xxxx-xxxxxxx xxxxxxxx xxx xxxxxxxx xxx
+#     xxxxxx-xxxxxxx xxxxxxxxx xxxxxx xxx
+# xxx xxxxxxxxxxxxxxxxxxxxxxxx-xxxxxx-xxxxxxxxxx xxxxxxxxx xx xxx xxx xxxx
+# xxxxxxxx xxxxxxxxx xxxxxxxxxx xxx xxxxxxxx xxxxxxxxxx
+  key_40:
+    enabled: true
+    key_41: example
+telemetry:
+  shared_metrics:
+    enabled: false
+    send: false
+    # endpoint: example
+
+
+# =============================================================================
+# xxxxx xxxxxx xxxxxxxxxxxx xxxxxxxxxx xxxx xx xxxxxxxxx x xxxxx
+# =============================================================================
+    key_42: 2
+auth:
+  # xxxxxx xxx xxxxxxx xxx xxxxx xxx xxxxxxxxxxxxxxxxxxxx xxx xxxxxx xxxx xxxxxx xxxx xxxxxx xxx
+  # xx xxxxxx xxxxx xx xxx xxxx xxxxx xxxxxxx xxxxxx xxx xxxxxx-xxxx xx xxx xxxxxxxx xx xxx xxxxx
+  # xxx xxx xxxx xxxxx xxxx xxx xxxxx xx xxxx xxxxxx xxx xxxx xxx xxx xxxxxxx
+  adopt_external_logins: true
+  # xxx xxxxxxx xxxx xxx xxxxxx-xxxxxx x xxxxxxx xxxxxx xxxx xx xx xxxxxx xxxxxx
+  #   xxxxxxxxxxx xxxxxxxxx x xxxx x xxx xxx xxxxx x xxxxx
+  #   xxxxxxx x xxxxxxxxxxxxx-xxxx x xxxx xx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxxx xxxxxxxx
+  #             xxxxxx xxxxxxxxxx xxx xxx xxxxx xxxxxxx xxx xxxxxxxxxxxxx xxxx xxxxxxx xxx
+  #             xxxxxx-xxxx xxxxxx xxxxx xxxx xx xxxxxx xxxx xxxx xxxx xxxx xx xxxxx
+  # xxxxxxx xxxx xxx xxxxxx-xxxxx --xxxxxxxx xxxx xx xxx x xxxxxx xxxxx xxxxxxx xxxxxxxx xxxxx
+  codex_login_flow: device_code
+
+
+# =============================================================================
+# xxxxxx xxxxxxxx
+# =============================================================================
+updates:
+  # xxxxxxx xxxxxxx xxxxxxxxxx xxxxxx xxxxxx xxxx xxxxxxx xxxxxx xxx xxxxxxxxxxxxx xxxxxxx
+  # xxxxxxxx xxxxxxx xxxxxx --xxxxxx xxx xxxxxxx xxxxxxx xxxxxx xxxxxxxxxx
+  check: true
+  # xxxxxx x xxxx xxxxxxxxxxx xxx xxxxxx xxxxx xxxxxxx xxxxxxxx
+  # xxxxxxx xxxx xx xxxxxxxxxxxxxxxxxx xxx xxx xx xxxxxxxx xxxx xxxxxxx xxxxxxxx
+  # xxx xx xxxxxxx xxxxxxx xxxxx xxxxx xxx xxx xxxxxxx xx xxxxx xxxxxxx
+  pre_update_backup: false
+
+  # xxxxxx xx xxx-xxxxxx xxxxxx xxxx xx xxxxxxx
+  backup_keep: 5
+
+  # xxxx xxx-xxxxxxxxxxx xxxxxxx xx xxxx xxxxx xxxxxx xxxxx xx xxx xxxxxx xxxxx
+  # xxxxxxxxxxx xxxxxxxx xxxxxxx xxxxxx xxxxxx xxxxxx xxxxxxxxx xxx xxxxxxxxxx
+  #
+  #   xxxxx   - xxxx-xxxxx xxxxxx xxxxx xxxx xxxx-xxxxxxx xxxxx xxxxxxx xxxxxxxxx
+  #   xxxxxxx - xxxx xxx xxxxxx-xxxxxxx xxxxx xxxxx xxxxxxxx xxx xxxx xx xxxxxxx
+  #             xxxxxxxx xxxxx xxxxx xxxxxx xxxxx xxxxxx xxx xxxxxxx
+  non_interactive_local_changes: "stash"
+
+
+# =============================================================================
+# xxx xxxxxxxxx
+# =============================================================================
+# xxxxx xxxx xxxxxxxxxxxxx xxx xxxxxxx xxxxxxxxx --xxxx xxxx-xxxxxxxxxxx
+# xxx xxxxxxx xxxx xxxxxx xxxxxx xxxxx xxxxx xx xxxxxxxx xxxxxxxx xxxx xxx
+# xxx xxxxxxxxx xxxxxxxx xxxx xxx xx xxxxxxxxxx xx xx xxxxxxxxxxx xxxxxxxxx
+#
+#   xxxxxxxxxxxxxxxxxxxxxxxxx   x-  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   xxxxxxxxxxxxxxxxxxxxxxxxxx  x-  xxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   xxxxxxxxxxxxxxxxxxxx        x-  xxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+# xxx xxxx xxxx xxx xx x xxx-xxxxx xxxxxx xxxx xx xxxx xxxxxxxx xxxxxxxx-
+# xxxxxx xxxxxxxxx xxxx xx xxxx xxx-xxxxxx xxxxxxxxxx xxxxxxx xxxxxxx xx
+# xxxx x xxxxxxxxxxx xxxx xxx xxxxxx xxxxx xxx xxxxxx xxx xxxxxxx xx xxxxx
+# xx x xxxxxxxxxxx-xxx-xxx-xxxxxxxxx xxxxxx xxxxx xxxxxx x xxxxx xxxxx xxxxx
+#
+# xxxxx xxx x xx-xxxx xxxxxxx xxxxxx xxxxxxxxx xxx xxxxx xxx xxxxxxxxxxx
+# xxxx xxxxxxxxxxxxxx xxxx xx xxxxxxxx xxx xxx xxxx xxx xxxxxxxxx
+#
+# dashboard:
+#   oauth:
+#     client_id: example
+#     portal_url: example
+#
+#   # xxxxx xxx xxxxxxxx xxxx xxx xxx xxxxx xxxxxxxx xxxx xxx xxxxx xxxxxx
+#   # xxx xxx xxxxxxxxx xxxxx xx xxxxxxxx xxxxxxxx xx xxxxx xxxxx xxx xxxx
+#   # xxx xxxxxxx xxxxxx xxxxxxx xxxxxxx xxxx xxxxx xxxxxxxx xxxxxxx
+#   # x-xxxxxxxxx-xxxx x x-xxxxxxxxx-xxxxx x x-xxxxxxxxx-xxxxxx xxxxxxx
+#   # xxxxx xxxxxxx xx-xxxx xxxxxxxxxx xxxxxx-xxxxxx xxx xxxxxxx xxxxxxx
+#   # xxxx xxxxx xxxxxx xxxxxxxx
+#   #
+#   # xxxx xxxx xxx xxxxx xx xxx xxxxxxxx xxxxxxxxxx xxxxxx x xxxx x
+#   # xxxxxxxx xxxx xxxxxx xxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx xxx xxxxx
+#   # xxxxxxxx xxx xxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxx x x-xxxxxxxxx-xxxxxx
+#   # xx xxxxxxx xx xxxx xxxx xxxx xxxxxxx xxx xxxxxxxx xxx xxxxxxxxxx
+#   # xxxxxxxx xxx xxxxxx xxx xxx xx xx xxxxxx xxxx xx xxxxxx
+#   #
+#   # xxxxx xxxxx xx xxx xxx xxxxxxxx xxxxx-xxxxxx xxxxxxxxxxxxxx xxxx
+#   # xxxxxxx x xxxxx xx xxxxxx xxx xx xxx xxxxx
+#   #
+#   #   xxxxxxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   #
+#   # xxxxxxx xxxxxxx xxxxxxxxxx xxxx xxxxxxx xxxxxxxxx xx xxxx xxx xxx
+#   # xxxxxxx xx xxxxxxxx xxx xxxx xxx xxxxxxx xxxxx xx xxxxxxxx xx x xxxxxxx
+#   # xxxx xxx x xxxxxxxxx xxxxx xxxxxxxx xx x-xxxxxxxxx-xxxxx xxx
+#   # x-xxxxxxxxx-xxx xxx xx xxxxxxxx xxxxxxxx xx xxxxxx xxxxxxxx xxxxxxxxx
+#   # xxx xx xxxxxxxx xxx xxxxxxxxx
+#   #
+#   #   xxxxxxxxxxxxxxxx
+#   #     - xxxxxxxxxxxx
+#   #     # - xxxxxxxxxxxxxxx  # xxxxxxxxx xxxxxxxx xx xxx xx xx xxxxxxx
+#
+# -----------------------------------------------------------------------------
+# xxxx-xxxxxx xxxx xxxxxxxxx xxxx xxxxxxxx xxxxxx xxxxxxx x xxxxxxxxxx
+# xxxxxxxxx xxxxxxxx xxxxxxxxx xxxxxx xxxxx xxxxxxx xxx xxx xxxx xxxxxxx xx xxx
+# xxxx xxxxx xxxxx xxxx xxxxxx xxx xxxxxxxxx xxxx xxxx xxx xxxxxxxx xxxxxxxxx
+# xxxx xxxxxxx xxx xx xxxxxxxxxx xx xx xxxxxxxxxxx xxxxxxxxx
+#
+#   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx         x-  xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx      x-  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx         x-  xxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#   xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  x-  xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#
+# dashboard:
+#   oauth:
+#     provider: example
+#     self_hosted:
+#       issuer: example
+#       client_id: example
+#       scopes: example
+#
+#       # xxxxxxxx x xxx xxxx xx xxxx xxx xxxxxxxxxx xxx xxxxxx xx
+#       # xxxxxxxxxxxxxx xxxxxxxxxx x xxxxxxxx xxxxx xxxxxxx xx xxxxxx xxxx
+#       # xxxx xxxxxx xxxxxxxxxxxxx xxx xxxxxx xx xxx xxxxx xxxxxxxx
+#       # xxxxxxxxxxxxxxxxxxxx xx xxxxxxxxxxxxxxxxxxx xxxx-xxxxxxxx xxxx xxx
+#       # xxxxx xxxxxxxxx xxxx xx xxxxxxxx xx xxxxx xxxxx xxxxx xxx x xxxxxx
+#       # xxxxx-xxxxx xxxxxx x xxx xxxxxx xxxxx
+#       #
+#       # xxxx xx x xxxxxxxxxxx xxxxxx xxxxxxx xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+#       # xx xxxxxxxxxxxxxx xxxx xxxxxxx xx xxxx xx xxxxxxxxxxxx
+#       #   xxxxxxxxxxxxxx xx
+
+# =============================================================================
+# xxxxxxxx xxxxxx xxxxxxx
+# =============================================================================
+# xxxx xxxxxxxx xxxxxxxxxxx xxxx xxxxxxxx xxxxxx xxxxxxxx xx xxxxxxx xxxxxxx
+# xxxxxxx xx xxxxxxx xxxx xx xxxxxxxxxxxxxxx xxxx xxx xxxxxxxxx xxxxxxxxx
+# xxxxxxxxxx xxxxx xxxxxxxxxxxxxxxx x xxxxxxxxxxxxxxxxxxxxxxxxx xxxxx xx xxxx
+# xxx xxxx xxxxx x xxxxxxx xxxxxxxxx xxxxxxxxxx xxxx xxxxxxx xxxxxxxxxx
+# xxxxxxxx xxxxx xxxxx xxxxxxx x xxxxxx xxxxx xxxx xxx xxxxxxxxx xxxx
+# xxxxxxxx xxxx xxxxxxx xxxx
+#
+# xxxxxxxx xxxxxxx xxx xx xxxxxxx xx xxxxx
+#   - xxxxxxxx xxxxxxx xxxxxxxxx xxx -x xxx xxxxxxxxx xxxx xxxxxxxxxxx xxxx
+#     xxxx xxxx xxxxxx xxxxxxx xxxxxx-xxxxxxx xxxxx xxxx xxxxxxxxx xxxx
+#   - xxxxxx x xxxxxx xxx xxxxx xxxxxx xx xxxxx x xxx xxxxx xxxxx xxxxxx
+#     xxx xxxxxxx xxxx x xxxxxxx xxxxxxx xxxxxx x xxxxxx xxxxxxxx
+#   - x xxxxxxxx xxxxxxxxxxxxxxxxx xxxx xx xxxx xxxxxxxxxx xxxxxxx xxx
+#     xxxxx xxxxxxx xxxxxx xxxxxxxx xxxxx
+# Docs: example
+#
+# secrets:
+#   # xxxxxxxx xxxxxxxx xxxxxxxx xx xxxxxxx xxxxxxxx
+#   # xxxxxxxx xxxxxxxxxxxxx xxxxxxxxxx
+#
+#   # ---- xxxxxxxxx xxxxxxx xxxxxxx xxxx xxxx --------------------------------
+#   bitwarden:
+#     enabled: false
+#     access_token_env: example
+#     project_id: example
+#     server_url: example
+#     cache_ttl_seconds: example
+#     encrypted_cache: example
+#       enabled: false
+#       max_stale_seconds: example
+#     override_existing: example
+#     auto_install: example
+#
+#   # ---- xxxxxxxxx xxx xxxx -------------------------------------------------
+#   onepassword:
+#     enabled: false
+#     # xxx xxx-xxx xxxxx xx xxxxx xxxxxx xxxxxxxxxxx xxxx xx xxxxxxxx xxxx x
+#     # xxxxxx xxx xxxxx xx xxxxxxxx
+#     env:
+#       OPENAI_API_KEY: example
+#       ANTHROPIC_API_KEY: example
+#     account: example
+#     service_account_token_env: example
+#     binary_path: example
+#     cache_ttl_seconds: example
+#     override_existing: example
+#
+#   # ---- xxxxxxx xxxxxx xxxx xxx xxxxxx --------------------------------------
+#   # xxx x xxxx-xxxxxxxxxx xxxxxx xxxx xxxxxx xxx=xxxxx xxxxx xx xxxxxx x
+#   # xxxxx xxxx xxx xxxxxx xxxxx xxxx xxx x xxxx xxxxxxxxx-xxxx xxxxxx-xxxxx
+#   # xxxxx xxxx xx x xxxxxx xxxx xxxx x xxxxx xxx xxxxx  xxxxxxxx xxxx xxx
+#   # xxxxxxx xxxxx xxxxxxx xxx xxxxxxxxxxxxx  xxxxx-xxxx xxxxxx xxxxxxxxx
+#   # xxx xxxxxx xxxx xx xxxx xxx xxx-xxxxxxxxxxx xxxxx xxxxxxxx x xxx xxxxx
+#   # xxx xxxxxx xx xxxxxxxxx xx xxxxxxxxxxx xxxxx xxxx xxxxxx xxxxxxxxx
+#   command:
+#     enabled: false
+#     command: example
+#     helper_timeout_seconds: 3
+#     override_existing: example
+#   # xxxx xxxx xxxx xxx xxxxxxx xx xxxxxxxx xx xx xxxxxx xxxxxxx x xxxxxxxxxx
+#   # xxxx xxxxxxx xxx-xxxxxxxx xxx x xxxxxx xxxxxxxx xxxxx xxxxx xxxxx
+#   # xx-xxxxxxx xxxxxx x xxxxxxxx xxx xxxxxxxxxxxxxxxxxxxxxxxxxx xxxxxxxx
+key_43:
+  backend: example
+key_44:
+  provider: example
+key_45:
+  provider: example
+key_46:
+  key_47:
+    key_48: true
+    key_49: true
+key_50:
+  key_51:
+    key_52:
+      key_53: example
+      key_54: example
+key_55:
+  key_56: "example"
+key_57:
+  key_58:
+    provider: example
+    model: 'example'
+key_59:
+  key_60: example

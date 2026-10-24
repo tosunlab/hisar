@@ -181,13 +181,23 @@ func TestReplaceSecretKey(t *testing.T) {
 	}
 }
 
-func startReauthentication(t *testing.T, apiClient *apiclient.Client, password []byte, secretKey crypt.SecretKey) (*apitypes.ReauthenticateResponse, []byte) {
+func startReauthentication(t *testing.T, apiClient *apiclient.Client, password []byte, secretKey crypt.SecretKey, scopes ...apitypes.ReauthenticationScope) (*apitypes.ReauthenticateResponse, []byte) {
 	t.Helper()
 	ctx := context.Background()
 	account := requireValue[*apitypes.Account](t)(apiClient.GetAccount(ctx))
 	derivedKeys := requireValue[*crypt.DerivedKeys](t)(crypt.DeriveKeys(password, account.Salt, account.Argon2, secretKey))
 	defer derivedKeys.Wipe()
-	opaqueClient, err := pake.NewConfig().Client()
+	configuration, err := pake.NewAuthConfig(apiClient.BaseURL, pake.Reauthenticate)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(scopes) > 0 {
+		configuration, err = pake.WithReauthenticationScope(configuration, scopes[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	opaqueClient, err := configuration.Client()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +205,11 @@ func startReauthentication(t *testing.T, apiClient *apiclient.Client, password [
 	if err != nil {
 		t.Fatal(err)
 	}
-	response := requireValue[*apitypes.ReauthenticateResponse](t)(apiClient.Reauthenticate(ctx, &apitypes.ReauthenticateRequest{KE1: keyExchange1.Serialize()}))
+	request := &apitypes.ReauthenticateRequest{KE1: keyExchange1.Serialize()}
+	if len(scopes) > 0 {
+		request.Scope = scopes[0]
+	}
+	response := requireValue[*apitypes.ReauthenticateResponse](t)(apiClient.Reauthenticate(ctx, request))
 	keyExchange2, err := opaqueClient.Deserialize.KE2(response.KE2)
 	if err != nil {
 		t.Fatal(err)
@@ -212,9 +226,11 @@ func TestReauthenticationIsBoundToItsSession(t *testing.T) {
 	ctx := context.Background()
 	alice := signUpLifecycleAccount(t, server, baseURL, "alice@example.com")
 	laptop := requireValue[*session.Session](t)(session.LogIn(ctx, apiclient.New(baseURL), "alice@example.com", alice.password, alice.secretKey, testDevice))
+	plan := reviewSessionDeletion(t, alice.session, ctx)
+	scope := apitypes.ReauthenticationScope{Action: "account-delete", Target: alice.session.AccountID, PlanVersion: plan}
 
-	reauthentication, keyExchange3 := startReauthentication(t, alice.session.Client, alice.password, alice.secretKey)
-	request := &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "alice@example.com"}
+	reauthentication, keyExchange3 := startReauthentication(t, alice.session.Client, alice.password, alice.secretKey, scope)
+	request := &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "alice@example.com", PlanVersion: plan}
 	if err := laptop.Client.DeleteAccount(ctx, request); !apiclient.IsStatus(err, http.StatusForbidden) {
 		t.Errorf("proof used by another session: %v", err)
 	}
@@ -224,14 +240,14 @@ func TestReauthenticationIsBoundToItsSession(t *testing.T) {
 		t.Errorf("a re-authentication created a session: %v", err)
 	}
 
-	reauthentication, keyExchange3 = startReauthentication(t, alice.session.Client, []byte("wrong password"), alice.secretKey)
-	request = &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "alice@example.com"}
+	reauthentication, keyExchange3 = startReauthentication(t, alice.session.Client, []byte("wrong password"), alice.secretKey, scope)
+	request = &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "alice@example.com", PlanVersion: plan}
 	if err := alice.session.Client.DeleteAccount(ctx, request); !apiclient.IsStatus(err, http.StatusForbidden) {
 		t.Errorf("a wrong proof: %v", err)
 	}
 
-	reauthentication, keyExchange3 = startReauthentication(t, alice.session.Client, alice.password, alice.secretKey)
-	request = &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "someone@example.com"}
+	reauthentication, keyExchange3 = startReauthentication(t, alice.session.Client, alice.password, alice.secretKey, scope)
+	request = &apitypes.DeleteAccountRequest{ReauthenticationID: reauthentication.ReauthenticationID, KE3: keyExchange3, Email: "someone@example.com", PlanVersion: plan}
 	if err := alice.session.Client.DeleteAccount(ctx, request); !apiclient.IsStatus(err, http.StatusBadRequest) {
 		t.Errorf("another email: %v", err)
 	}
@@ -298,10 +314,10 @@ func TestDeleteAccount(t *testing.T) {
 		t.Errorf("preview counts: %+v", preview)
 	}
 
-	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, "bob@example.com"); !errors.Is(err, session.ErrEmailMismatch) {
+	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, "bob@example.com", reviewSessionDeletion(t, alice.session, ctx)); !errors.Is(err, session.ErrEmailMismatch) {
 		t.Errorf("another email: %v", err)
 	}
-	if err := alice.session.DeleteAccount(ctx, []byte("wrong"), alice.secretKey, "alice@example.com"); !errors.Is(err, session.ErrBadCredentials) {
+	if err := alice.session.DeleteAccount(ctx, []byte("wrong"), alice.secretKey, "alice@example.com", reviewSessionDeletion(t, alice.session, ctx)); !errors.Is(err, session.ErrBadCredentials) {
 		t.Errorf("wrong password: %v", err)
 	}
 
@@ -312,7 +328,7 @@ func TestDeleteAccount(t *testing.T) {
 	waitForSubscriber(t, server, carol.session.AccountID, 1)
 	waitForSubscriber(t, server, alice.session.AccountID, 1)
 
-	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, " Alice@Example.com "); err != nil {
+	if err := alice.session.DeleteAccount(ctx, alice.password, alice.secretKey, " Alice@Example.com ", reviewSessionDeletion(t, alice.session, ctx)); err != nil {
 		t.Fatal(err)
 	}
 	bobEvents.waitForEvent(t, apitypes.EventVaultsChanged)
@@ -370,5 +386,45 @@ func TestDeleteAccount(t *testing.T) {
 	again := signUpLifecycleAccount(t, server, baseURL, "alice@example.com")
 	if again.session.AccountID == alice.session.AccountID && again.secretKey.Encode() == alice.secretKey.Encode() {
 		t.Error("signing up again reused the old Secret Key")
+	}
+}
+
+func TestLoginStartedBeforeAPasswordChangeCannotFinishAfterIt(t *testing.T) {
+	baseURL, server, _, _ := setupLifecycleServer(t)
+	ctx := context.Background()
+	alice := signUpLifecycleAccount(t, server, baseURL, "alice@example.com")
+	apiClient := apiclient.New(baseURL)
+	prelogin := requireValue[*apitypes.PreloginResponse](t)(apiClient.FetchPrelogin(ctx, "alice@example.com"))
+	derivedKeys := requireValue[*crypt.DerivedKeys](t)(crypt.DeriveKeys(alice.password, prelogin.Salt, prelogin.Argon2, alice.secretKey))
+	defer derivedKeys.Wipe()
+	configuration, err := pake.NewAuthConfig(apiClient.BaseURL, pake.Login)
+	if err != nil {
+		t.Fatal(err)
+	}
+	opaqueClient, err := configuration.Client()
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyExchange1, err := opaqueClient.GenerateKE1(derivedKeys.AuthKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	started := requireValue[*apitypes.LoginStartResponse](t)(apiClient.StartLogin(ctx, &apitypes.LoginStartRequest{Email: "alice@example.com", KE1: keyExchange1.Serialize()}))
+	keyExchange2, err := opaqueClient.Deserialize.KE2(started.KE2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyExchange3, _, _, err := opaqueClient.GenerateKE3(keyExchange2, []byte(alice.session.AccountID), pake.ServerIdentity())
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	change := requireValue[*session.CredentialChange](t)(alice.session.ChangeMasterPassword(ctx, alice.password, []byte("a brand new master password"), alice.secretKey))
+	clear(change.AccountUnlockKey)
+	if _, err := apiClient.FinishLogin(ctx, &apitypes.LoginFinishRequest{LoginID: started.LoginID, KE3: keyExchange3.Serialize(), Device: testDevice}); !apiclient.IsStatus(err, http.StatusUnauthorized) {
+		t.Errorf("a login proven with the old password finished after the change: %v", err)
+	}
+	if devices := requireValue[[]apitypes.Device](t)(alice.session.Client.ListDevices(ctx)); len(devices) != 1 {
+		t.Errorf("devices after the refused login: %+v", devices)
 	}
 }

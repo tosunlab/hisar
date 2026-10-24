@@ -1,9 +1,11 @@
 package api
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -13,8 +15,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"golang.org/x/time/rate"
 
@@ -33,8 +37,14 @@ import (
 
 var testDevice = apitypes.DeviceInfo{Name: "test", Platform: "go"}
 
+var testServerSecrets = generateSecrets()
+
 // Requires HISAR_TEST_DATABASE_URL pointing at a disposable database: the public schema is dropped.
 func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL string) {
+	return setupServerWithConfig(t, Config{Config: service.Config{PublicURL: "https://hisar.test"}})
+}
+
+func setupServerWithConfig(t *testing.T, config Config) (baseURL string, server *Server, databaseURL string) {
 	t.Helper()
 	databaseURL = os.Getenv("HISAR_TEST_DATABASE_URL")
 	if databaseURL == "" {
@@ -58,17 +68,19 @@ func setupServer(t *testing.T) (baseURL string, server *Server, databaseURL stri
 	if _, err := database.Migrate(ctx); err != nil {
 		t.Fatal(err)
 	}
-	server, err = NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}})
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { listener.Close() })
+	config.PublicURL = "http://" + listener.Addr().String()
+	server, err = NewServer(database, testServerSecrets, config)
 	if err != nil {
 		t.Fatal(err)
 	}
 	server.limiter = ratelimit.New(rate.Inf, 1)
 
 	app := server.CreateApp()
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
-	}
 	go app.Listener(listener, fiber.ListenConfig{DisableStartupMessage: true})
 	t.Cleanup(func() { app.Shutdown() })
 	return "http://" + listener.Addr().String(), server, databaseURL
@@ -114,11 +126,11 @@ func shareThroughInvitation(t *testing.T, owner, recipient *session.Session, vau
 	if err := recipient.Client.AcceptShareInvitation(ctx, invitationList.Received[invitationIndex].ID); err != nil {
 		t.Fatal(err)
 	}
-	completedShares, err := owner.CompleteAcceptedShares(ctx)
-	if err != nil || !slices.ContainsFunc(completedShares, func(completed session.CompletedShare) bool {
+	completedShares := completeReviewedShares(t, owner)
+	if !slices.ContainsFunc(completedShares, func(completed session.CompletedShare) bool {
 		return completed.VaultID == vault.ID && completed.Recipient.AccountID == recipient.AccountID && completed.Role == role
 	}) {
-		t.Fatalf("completed shares: %+v %v", completedShares, err)
+		t.Fatalf("completed shares: %+v", completedShares)
 	}
 }
 
@@ -290,8 +302,12 @@ func TestEndToEnd(t *testing.T) {
 		if _, err := connection.Exec(ctx, `UPDATE items SET details = set_byte(details, 30, get_byte(details, 30) # 1) WHERE id = $1`, bank.ID); err != nil {
 			t.Fatal(err)
 		}
-		if _, err := alice.ListItems(ctx, family); !errors.Is(err, crypt.ErrDecrypt) {
-			t.Errorf("tampered item: %v", err)
+		if _, err := alice.ListItems(ctx, family); !errors.Is(err, session.ErrIncompleteRead) {
+			t.Errorf("tampered item in a strict list: %v", err)
+		}
+		read, err := alice.ReadItems(ctx, family)
+		if err != nil || len(read.Issues) != 1 || read.Issues[0].ItemID != bank.ID || slices.ContainsFunc(read.Items, func(opened item.Item) bool { return opened.ID == bank.ID }) {
+			t.Errorf("tampered item opened or went unreported: %+v %v", read, err)
 		}
 	})
 
@@ -371,6 +387,7 @@ func TestEndToEnd(t *testing.T) {
 		}
 
 		staleRequest := &apitypes.RotateVaultRequest{
+			AccessRevision: 1, MetadataRevision: 1, KeyGeneration: trip.KeyGeneration,
 			EncName:  []byte{1},
 			Accesses: []apitypes.RotatedAccess{{AccountID: alice.AccountID, Role: apitypes.VaultOwner, WrappedKey: []byte{1}}},
 		}
@@ -406,7 +423,7 @@ func TestAdminAPINeedsAnAdminSession(t *testing.T) {
 		return response.StatusCode, strings.TrimSpace(string(body))
 	}
 
-	if status, body := get("/api/v1/admin/server", admin.Client.Token); status != http.StatusOK || body != `{"publicUrl":"https://hisar.test"}` {
+	if status, body := get("/api/v1/admin/server", admin.Client.Token); status != http.StatusOK || body != `{"publicUrl":"`+baseURL+`"}` {
 		t.Errorf("admin: %d %s", status, body)
 	}
 	if status, body := get("/api/v1/admin/server", member.Client.Token); status != http.StatusForbidden || body != `{"error":"admin only"}` {
@@ -445,7 +462,7 @@ func TestSessionLookupAnswers503WhenTheDatabaseIsDown(t *testing.T) {
 		t.Fatal(err)
 	}
 	database := requireValue[*store.Store](t)(store.Open(ctx, databaseURL))
-	disconnected := requireValue[*Server](t)(NewServer(database, generateSecrets(), Config{Config: service.Config{PublicURL: "https://hisar.test"}}))
+	disconnected := requireValue[*Server](t)(NewServer(database, testServerSecrets, Config{Config: service.Config{PublicURL: "https://hisar.test"}}))
 	database.Close()
 	app := disconnected.CreateApp()
 	for _, path := range []string{"/api/v1/vaults", "/api/v1/admin/server"} {
@@ -489,5 +506,62 @@ func TestEveryAdminRouteNeedsAnAdmin(t *testing.T) {
 	}
 	if adminRouteCount == 0 {
 		t.Fatal("no /api/v1/admin routes registered")
+	}
+}
+
+func TestOnlySignedInRotationsMaySendRotationSizedBodies(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	member := signUpTestAccount(t, ctx, server, baseURL, "member@example.com", apitypes.RoleMember)
+	const bodySize = 8 << 20
+	rotationPath := "/api/v1/vaults/" + uuid.NewString() + "/rotate"
+	sendHeadersOnly := func(path string) int {
+		t.Helper()
+		connection := requireValue[net.Conn](t)(net.Dial("tcp", strings.TrimPrefix(baseURL, "http://")))
+		defer connection.Close()
+		fmt.Fprintf(connection, "POST %s HTTP/1.1\r\nHost: hisar.test\r\nContent-Type: application/json\r\nContent-Length: %d\r\n\r\n{", path, bodySize)
+		connection.SetReadDeadline(time.Now().Add(5 * time.Second))
+		response, err := http.ReadResponse(bufio.NewReader(connection), nil)
+		if err != nil {
+			t.Fatalf("%s: no answer before the body was sent: %v", path, err)
+		}
+		response.Body.Close()
+		return response.StatusCode
+	}
+	for _, path := range []string{"/api/v1/auth/login/start", rotationPath} {
+		if status := sendHeadersOnly(path); status != http.StatusRequestEntityTooLarge {
+			t.Errorf("signed out, %s: %d", path, status)
+		}
+	}
+
+	request := requireValue[*http.Request](t)(http.NewRequestWithContext(ctx, http.MethodPost, baseURL+rotationPath, bytes.NewReader(bytes.Repeat([]byte(" "), bodySize))))
+	request.Header.Set("Authorization", "Bearer "+member.Client.Token)
+	response := requireValue[*http.Response](t)(http.DefaultClient.Do(request))
+	response.Body.Close()
+	if response.StatusCode == http.StatusRequestEntityTooLarge || response.StatusCode == http.StatusUnauthorized {
+		t.Errorf("signed in, a rotation-sized body: %d", response.StatusCode)
+	}
+}
+
+func TestSignUpRefusesLongAndControlCharacterNames(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	signUp := func(email, name string) error {
+		invite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, email, apitypes.RoleMember, nil))
+		_, _, err := session.SignUp(ctx, apiclient.New(baseURL), invite.Token, email, name, []byte("fixture master password"), testDevice)
+		return err
+	}
+	for name, accountName := range map[string]string{
+		"101 characters":    strings.Repeat("ş", 101),
+		"a line break":      "Ada\nInvitation accepted",
+		"a terminal escape": "Ada\x1b[2J",
+	} {
+		var apiError *apiclient.APIError
+		if err := signUp(strings.ReplaceAll(name, " ", "-")+"@example.com", accountName); !errors.As(err, &apiError) || apiError.Status != http.StatusBadRequest {
+			t.Errorf("a name with %s: %v", name, err)
+		}
+	}
+	if err := signUp("long@example.com", "  "+strings.Repeat("ş", 100)+"  "); err != nil {
+		t.Errorf("a name of 100 characters: %v", err)
 	}
 }

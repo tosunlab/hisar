@@ -1,6 +1,14 @@
 import Foundation
 @testable import Hisar
 
+/// FakeImportGroup is one source group of the pending import: the titles of its logins and the vault they go to.
+struct FakeImportGroup {
+    var id: String
+    var name: String
+    var allTitle: [String]
+    var vaultID: String
+}
+
 class FakeBackend: VaultBackend {
     static let password = "correct horse battery"
     static let secretKey = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
@@ -20,6 +28,8 @@ class FakeBackend: VaultBackend {
     var favoriteErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
+    var verifyPasskey: (String) -> Bool = { _ in true }
+    func cancelPasskeyCeremonies() {}
     var isOffline = false
     var allCopiedField: [String] = []
     var allCallName: [String] = []
@@ -28,6 +38,8 @@ class FakeBackend: VaultBackend {
     /// Runs when a refresh lists the passkeys, its last call, after the unlock check: a test can sign out or lock while a
     /// refresh that listed everything is still in flight.
     var onListAllPasskey: (() -> Void)?
+    /// Runs while a pending recovery's Emergency Kit is prepared: a test can lock or sign out meanwhile.
+    var onExportPendingRecoveryEmergencyKit: (() -> Void)?
     var allMember: [Member] = []
     var allVaultMemberByVaultID: [String: [Member]] = [:]
     var allInvitedEmail: [String] = []
@@ -36,6 +48,9 @@ class FakeBackend: VaultBackend {
     var isShareAwaitingUnlockFailing = false
     var allAnsweredInvitation: [String] = []
     var allPendingApproval: [PhoneApproval] = []
+    /// Runs when the open requests have been read and before they are returned: a test can hold an older listing while a
+    /// newer one runs.
+    var onListAllPendingApproval: (() -> Void)?
     var allApprovalAnswer: [String] = []
     var allDevice: [Device] = []
     var isMacApprovalAllowedValue = true
@@ -44,14 +59,24 @@ class FakeBackend: VaultBackend {
     var preparedIcon: Data?
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
+    /// The backend signs out on the phone even when it could not confirm everything, then reports that.
+    var signOutError: BackendError?
+    /// What the backend reports when the account is deleted but this phone's copy could not be removed.
+    var accountDeletionCleanupError: BackendError?
     var allCopiedReference: [String] = []
     var allPendingRemovedVault: [RemovedVaultNotice] = []
     var allDeletionRequest: [VaultDeletionRequest] = []
     var exportOptions = ExportOptions(isBiometricAvailable: true, minPassphraseLength: 10)
     var currentPassword = FakeBackend.password
     var currentSecretKey = FakeBackend.secretKey
-    var deletionPreview = AccountDeletionPreview(email: "alice@example.com")
+    var deletionPreview = AccountDeletionPreview(email: "alice@example.com", planVersion: "reviewed-plan")
     var isAccountDeleted = false
+    var allPendingRecovery: [PendingRecovery] = []
+    var pendingRecoveryPassword = FakeBackend.password
+    var pendingRecoverySecretKey = FakeBackend.secretKey
+    var isPendingRecoveryFactorAvailable = true
+    var pendingSignUpResult: SignUpResult?
+    var pendingCredentialChangeResult: CredentialChangeResult?
     /// The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence.
     var allOrganization: [Organization] = []
     var allOrganizationInvitation: [OrganizationInvitation] = []
@@ -60,10 +85,10 @@ class FakeBackend: VaultBackend {
     /// While set, listing the organizations or reading one fails with this sentence.
     var listAllOrganizationErrorMessage: String?
     var getOrganizationErrorMessage: String?
-    /// The import prepareCredentialExchangeImport keeps, as the items it would save; nil when none is pending.
-    var allPendingImportTitle: [String]?
+    /// The import prepareCredentialExchangeImport keeps, as the logins of each source group it would save; nil when none is pending.
+    var allPendingImportGroup: [FakeImportGroup]?
     var pendingImportVaultID = ""
-    var allQueuedImportTitle: [String] = []
+    var allQueuedImport: [(title: String, vaultID: String)] = []
     var importSavedCount = 0
     var importBatchSize = 2
     var allImportedCredentialData: [Data] = []
@@ -178,6 +203,17 @@ class FakeBackend: VaultBackend {
         shareInvitations.allSent.removeAll { $0.id == invitationID }
     }
 
+    func confirmShareRecipient(invitationID: String, reviewToken: String) throws {
+        record("confirmShareRecipient")
+        try requireUnlocked()
+        guard let invitation = shareInvitations.allSent.first(where: { $0.id == invitationID }),
+              invitation.requiresConfirmation == true, invitation.reviewToken == reviewToken, !reviewToken.isEmpty else {
+            throw BackendError(message: "Review this invitation again before confirming the recipient.")
+        }
+        _ = try findSharableVault(vaultID: invitation.vaultID)
+        shareInvitations.allSent.removeAll { $0.id == invitationID }
+    }
+
     func listAllVaultMember(vaultID: String) throws -> [Member] {
         record("listAllVaultMember")
         try requireUnlocked()
@@ -251,11 +287,14 @@ class FakeBackend: VaultBackend {
 
     // The server's answer to the next version check; nil means it accepts this version.
     var serverUpdateRequirement: UpdateRequirement?
+    var onCheckMinimumVersion: (() -> Void)?
 
     func checkMinimumVersion() -> VaultStatus {
         record("checkMinimumVersion")
         status.updateRequired = serverUpdateRequirement
-        return status
+        let answer = status
+        onCheckMinimumVersion?()
+        return answer
     }
 
     func signIn(server: String, email: String, secretKey: String, password: String) throws -> VaultStatus {
@@ -272,6 +311,7 @@ class FakeBackend: VaultBackend {
     func signUp(inviteLink: String, email: String, name: String, password: String) throws -> SignUpResult {
         record("signUp")
         guard inviteLink.contains("/invite/") else { throw BackendError(message: "Invalid invite link") }
+        if let pendingSignUpResult { return pendingSignUpResult }
         seedSignedIn()
         allItemByVaultID = ["personal": [], "family": []]
         status.email = email
@@ -336,6 +376,7 @@ class FakeBackend: VaultBackend {
         let lastServer = status.server
         status = .signedOut
         status.server = lastServer
+        if let signOutError { throw signOutError }
         return status
     }
 
@@ -461,6 +502,34 @@ class FakeBackend: VaultBackend {
         allPasskey.removeAll { $0.vaultID == vaultID && $0.itemID == itemID }
     }
 
+    func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws {
+        try requireUnlocked()
+        guard allItemByVaultID[vaultID]?.contains(where: { $0.id == itemID && $0.revision == revision && $0.readIssue?.canDelete == true }) == true else {
+            throw BackendError(message: "The unreadable record changed")
+        }
+        allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
+        if let index = allVault.firstIndex(where: { $0.id == vaultID }) { allVault[index].readIssues.removeAll { $0.itemId == itemID } }
+    }
+
+    func deleteUnreadableVault(vaultID: String, revision: String) throws {
+        try requireUnlocked()
+        guard allVault.contains(where: { $0.id == vaultID && $0.readIssues.contains(where: { $0.canDelete && $0.itemId == nil && $0.revision == revision }) }) else {
+            throw BackendError(message: "The unreadable vault changed")
+        }
+        allVault.removeAll { $0.id == vaultID }
+        allItemByVaultID.removeValue(forKey: vaultID)
+    }
+
+    func repairVaultName(vaultID: String, revision: String, name: String) throws -> VaultSummary {
+        try requireUnlocked()
+        guard let index = allVault.firstIndex(where: { $0.id == vaultID && $0.readIssues.contains(where: { $0.canRename && $0.revision == revision }) }) else {
+            throw BackendError(message: "The unreadable vault changed")
+        }
+        allVault[index].name = name.trimmingCharacters(in: .whitespaces)
+        allVault[index].readIssues.removeAll { $0.itemId == nil }
+        return allVault[index]
+    }
+
     func getOneTimeCode(vaultID: String, itemID: String) throws -> OneTimeCode {
         record("getOneTimeCode")
         guard try getItem(vaultID: vaultID, itemID: itemID).hasOneTimePassword else { throw BackendError(message: "One-time password not found") }
@@ -493,7 +562,7 @@ class FakeBackend: VaultBackend {
         var allLogin: [LoginMatch] = []
         for vault in allVault {
             for item in allItemByVaultID[vault.id] ?? [] where item.allURL.contains(where: { VaultLogic.extractHost($0).map { host.hasSuffix($0) || $0.hasSuffix(host) } ?? false }) {
-                allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name, hasOneTimePassword: item.hasOneTimePassword))
+                allLogin.append(LoginMatch(vaultID: vault.id, itemID: item.id, title: item.title, username: item.username, vaultName: vault.name, hasOneTimePassword: item.hasOneTimePassword, isPersonal: vault.type == "personal"))
             }
         }
         return allLogin
@@ -540,6 +609,7 @@ extension FakeBackend {
     func createPasskey(_ request: PasskeyRegistrationRequest, vaultID: String, itemID: String) throws -> PasskeyRegistrationResult {
         record("createPasskey")
         try requireUnlocked()
+        if request.userVerification != "discouraged" && !verifyPasskey("Create a passkey for \(request.relyingPartyID)") { throw BackendError(message: "Passkey verification was cancelled.", code: BackendError.passkeyVerificationFailed) }
         guard !checkIsExcluded(relyingPartyID: request.relyingPartyID, allExcludedCredentialID: request.allExcludedCredentialID) else {
             throw BackendError(message: "Hisar already has a passkey for this account")
         }
@@ -574,9 +644,10 @@ extension FakeBackend {
         allItemByVaultID[vaultID]?[index] = item
     }
 
-    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data) throws -> PasskeyAssertionResult {
+    func assertPasskey(relyingPartyID: String, credentialID: Data, clientDataHash: Data, userVerification: String) throws -> PasskeyAssertionResult {
         record("assertPasskey")
         try requireUnlocked()
+        if userVerification != "discouraged" && !verifyPasskey("Use your passkey for \(relyingPartyID)") { throw BackendError(message: "Passkey verification was cancelled.", code: BackendError.passkeyVerificationFailed) }
         guard clientDataHash.count == 32 else { throw BackendError(message: "the request is not valid") }
         guard let passkey = allPasskey.first(where: { $0.relyingPartyID == relyingPartyID && $0.credentialID == Base64URL.encode(credentialID) }) else {
             throw BackendError(message: "passkey not found")
@@ -602,7 +673,9 @@ extension FakeBackend {
 extension FakeBackend {
     func listAllPendingApproval() throws -> [PhoneApproval] {
         try requireUnlocked()
-        return withApprovalLock { allPendingApproval }
+        let allApproval = withApprovalLock { allPendingApproval }
+        onListAllPendingApproval?()
+        return allApproval
     }
 
     func approveApproval(requestID: String, isRemembered: Bool) throws {
@@ -757,36 +830,77 @@ extension FakeBackend {
         return ExportResult(path: path.path, vaultCount: allVault.count, itemCount: allItemByVaultID.values.map(\.count).reduce(0, +))
     }
 
-    private func buildImportPreview(vaultID: String) throws -> ImportPreview {
-        guard let allTitle = allPendingImportTitle else { throw BackendError(message: "There is no import to continue") }
+    private func checkImportVault(_ vaultID: String) throws -> VaultSummary {
         guard let vault = allVault.first(where: { $0.id == vaultID }) else { throw BackendError(message: "Vault not found") }
         guard vault.type == VaultSummary.typePersonal || vault.role != Member.vaultRoleReader else { throw BackendError(message: "You can only view this vault") }
-        let allExistingTitle = Set((allItemByVaultID[vaultID] ?? []).map(\.title))
-        let allDuplicate = allTitle.filter { allExistingTitle.contains($0) }.map { ImportDuplicate(title: $0) }
-        return ImportPreview(fileName: "Other Manager", vaultID: vault.id, vaultName: vault.name, itemCount: allTitle.count, loginCount: allTitle.count, allDuplicate: allDuplicate)
+        return vault
     }
 
+    /// buildImportPreview is the pending import as core/app previews it: vaultID is the vault every group goes to, or ""
+    /// when the groups go to different vaults.
+    private func buildImportPreview() throws -> ImportPreview {
+        guard let allGroup = allPendingImportGroup else { throw BackendError(message: "There is no import to continue") }
+        let allVaultID = Set(allGroup.map(\.vaultID))
+        let commonVault = allVaultID.count == 1 ? try checkImportVault(allGroup[0].vaultID) : nil
+        var allDuplicate: [ImportDuplicate] = []
+        var allSourceGroup: [ImportSourceGroup] = []
+        for group in allGroup {
+            let vault = try checkImportVault(group.vaultID)
+            let allExistingTitle = Set((allItemByVaultID[vault.id] ?? []).map(\.title))
+            allDuplicate += group.allTitle.filter { allExistingTitle.contains($0) }.map { ImportDuplicate(title: $0) }
+            allSourceGroup.append(ImportSourceGroup(id: group.id, name: group.name, isPrivate: true, itemCount: group.allTitle.count, vaultID: vault.id, vaultName: vault.name,
+                                                    members: allVaultMemberByVaultID[vault.id] ?? []))
+        }
+        let itemCount = allGroup.map(\.allTitle.count).reduce(0, +)
+        var preview = ImportPreview(fileName: "Other Manager", vaultID: commonVault?.id ?? "", vaultName: commonVault?.name ?? "the mapped vaults", itemCount: itemCount,
+                                    loginCount: itemCount, allDuplicate: allDuplicate)
+        preview.groups = allSourceGroup
+        return preview
+    }
+
+    /// prepareCredentialExchangeImport reads credentialData as the titles of the logins to import, or as one list of
+    /// titles per source group, like the collections of a Credential Exchange.
     func prepareCredentialExchangeImport(vaultID: String, credentialData: Data) throws -> ImportPreview {
         record("prepareCredentialExchangeImport")
         try requireUnlocked()
-        let exported = try JSONDecoder().decode([String].self, from: credentialData)
+        if let allTitle = try? JSONDecoder().decode([String].self, from: credentialData) {
+            allPendingImportGroup = [FakeImportGroup(id: "private", name: "Private or unspecified source", allTitle: allTitle, vaultID: vaultID)]
+        } else {
+            let allGroupTitle = try JSONDecoder().decode([[String]].self, from: credentialData)
+            allPendingImportGroup = allGroupTitle.enumerated().map { FakeImportGroup(id: "group-\($0.offset)", name: "Collection \($0.offset + 1)", allTitle: $0.element, vaultID: vaultID) }
+        }
         allImportedCredentialData.append(credentialData)
-        allPendingImportTitle = exported
-        return try buildImportPreview(vaultID: vaultID)
+        return try buildImportPreview()
     }
 
     func previewImport(vaultID: String) throws -> ImportPreview {
         record("previewImport")
         try requireUnlocked()
-        return try buildImportPreview(vaultID: vaultID)
+        guard allPendingImportGroup?.count == 1 else { throw BackendError(message: "Choose a destination for each source group") }
+        _ = try checkImportVault(vaultID)
+        allPendingImportGroup?[0].vaultID = vaultID
+        return try buildImportPreview()
+    }
+
+    func mapImportGroup(groupID: String, vaultID: String) throws -> ImportPreview {
+        record("mapImportGroup")
+        try requireUnlocked()
+        guard let index = allPendingImportGroup?.firstIndex(where: { $0.id == groupID }) else { throw BackendError(message: "Source group not found; choose the import file again") }
+        _ = try checkImportVault(vaultID)
+        allPendingImportGroup?[index].vaultID = vaultID
+        return try buildImportPreview()
     }
 
     func startImport(vaultID: String, isSkippingDuplicate: Bool) throws -> ImportProgress {
         record("startImport")
         try requireUnlocked()
-        let preview = try buildImportPreview(vaultID: vaultID)
-        let allDuplicateTitle = Set(preview.allDuplicate.map(\.title))
-        allQueuedImportTitle = (allPendingImportTitle ?? []).filter { !isSkippingDuplicate || !allDuplicateTitle.contains($0) }
+        let preview = try buildImportPreview()
+        guard vaultID == preview.vaultID else { throw BackendError(message: "Review the import destinations again") }
+        allQueuedImport = []
+        for group in allPendingImportGroup ?? [] {
+            let allExistingTitle = Set((allItemByVaultID[group.vaultID] ?? []).map(\.title))
+            allQueuedImport += group.allTitle.filter { !isSkippingDuplicate || !allExistingTitle.contains($0) }.map { (title: $0, vaultID: group.vaultID) }
+        }
         pendingImportVaultID = vaultID
         importSavedCount = 0
         return buildImportProgress()
@@ -795,30 +909,30 @@ extension FakeBackend {
     func continueImport() throws -> ImportProgress {
         record("continueImport")
         try requireUnlocked()
-        guard allPendingImportTitle != nil else { throw BackendError(message: "There is no import to continue") }
+        guard allPendingImportGroup != nil else { throw BackendError(message: "There is no import to continue") }
         if let continueImportErrorMessage {
             self.continueImportErrorMessage = nil
             throw BackendError(message: continueImportErrorMessage)
         }
-        for title in allQueuedImportTitle.prefix(importBatchSize) {
-            allItemByVaultID[pendingImportVaultID, default: []].append(ItemDetail(id: "imported-\(nextItemNumber)", revision: "r1", category: "login", title: title))
+        for queued in allQueuedImport.prefix(importBatchSize) {
+            allItemByVaultID[queued.vaultID, default: []].append(ItemDetail(id: "imported-\(nextItemNumber)", revision: "r1", category: "login", title: queued.title))
             nextItemNumber += 1
             importSavedCount += 1
         }
-        allQueuedImportTitle = Array(allQueuedImportTitle.dropFirst(importBatchSize))
+        allQueuedImport = Array(allQueuedImport.dropFirst(importBatchSize))
         return buildImportProgress()
     }
 
     private func buildImportProgress() -> ImportProgress {
-        let vaultName = allVault.first { $0.id == pendingImportVaultID }?.name ?? ""
+        let vaultName = allVault.first { $0.id == pendingImportVaultID }?.name ?? "the mapped vaults"
         return ImportProgress(fileName: "Other Manager", vaultID: pendingImportVaultID, vaultName: vaultName, savedCount: importSavedCount,
-                              totalCount: importSavedCount + allQueuedImportTitle.count, isDone: allQueuedImportTitle.isEmpty)
+                              totalCount: importSavedCount + allQueuedImport.count, isDone: allQueuedImport.isEmpty)
     }
 
     func cancelImport() {
         record("cancelImport")
-        allPendingImportTitle = nil
-        allQueuedImportTitle = []
+        allPendingImportGroup = nil
+        allQueuedImport = []
     }
 
     func exportEmergencyKit(password: String, directory: URL) throws -> EmergencyKitExport {
@@ -833,6 +947,7 @@ extension FakeBackend {
 
     func changeMasterPassword(currentPassword: String, newPassword: String) throws -> CredentialChangeResult {
         record("changeMasterPassword")
+        if let pendingCredentialChangeResult { return pendingCredentialChangeResult }
         try requireUnlocked()
         guard currentPassword == self.currentPassword else { throw BackendError(message: "The master password is not correct") }
         guard newPassword.count >= 10 else { throw BackendError(message: "Use a master password with at least 10 characters") }
@@ -842,6 +957,7 @@ extension FakeBackend {
 
     func replaceSecretKey(password: String, directory: URL) throws -> CredentialChangeResult {
         record("replaceSecretKey")
+        if let pendingCredentialChangeResult { return pendingCredentialChangeResult }
         try requireUnlocked()
         guard password == currentPassword else { throw BackendError(message: "The master password is not correct") }
         currentSecretKey = "H1-ABC123-ZZZZZ-YYYYY-XXXXX-WWWWW-VVVVVV"
@@ -857,14 +973,88 @@ extension FakeBackend {
         return deletionPreview
     }
 
-    func deleteAccount(password: String, email: String) throws -> VaultStatus {
-        record("deleteAccount")
+    func deleteAccountWithPlan(password: String, email: String, planVersion: String) throws -> VaultStatus {
+        record("deleteAccountWithPlan")
         try requireUnlocked()
+        guard !planVersion.isEmpty, planVersion == deletionPreview.planVersion else { throw BackendError(message: "The deletion plan changed. Review it again.") }
         guard email.trimmingCharacters(in: .whitespaces).lowercased() == status.email.lowercased() else { throw BackendError(message: "Type the email of this account to confirm") }
         guard password == currentPassword else { throw BackendError(message: "The master password is not correct") }
         isAccountDeleted = true
         status = .signedOut
+        if let accountDeletionCleanupError { throw accountDeletionCleanupError }
         return status
+    }
+
+    func listPendingRecovery() throws -> [PendingRecovery] {
+        record("listPendingRecovery")
+        return allPendingRecovery
+    }
+
+    func resumePendingRecovery(operationID: String, password: String) throws -> SignUpResult {
+        record("resumePendingRecovery")
+        guard password == pendingRecoveryPassword,
+              let index = allPendingRecovery.firstIndex(where: { $0.operationId == operationID }) else {
+            throw BackendError(message: "The recovery password is not correct.")
+        }
+        guard allPendingRecovery[index].phase != "awaiting-kit" else { throw BackendError(message: "Save and confirm the Emergency Kit before continuing.") }
+        guard allPendingRecovery[index].keychainProtected || isPendingRecoveryFactorAvailable else {
+            throw BackendError(message: "Enter the Secret Key from your saved Emergency Kit.")
+        }
+        allPendingRecovery[index].phase = "delivery-pending"
+        return SignUpResult(status: status, secretKey: pendingRecoverySecretKey, pendingOperationId: operationID, setupState: "delivery-pending", problems: allPendingRecovery[index].problems)
+    }
+
+    func resumePendingRecoveryWithSecretKey(operationID: String, password: String, secretKey: String, priorSecretKey: String) throws -> SignUpResult {
+        record("resumePendingRecoveryWithSecretKey")
+        guard secretKey == pendingRecoverySecretKey,
+              priorSecretKey.isEmpty || priorSecretKey == currentSecretKey else {
+            throw BackendError(message: "The Secret Key does not match this recovery.")
+        }
+        isPendingRecoveryFactorAvailable = true
+        return try resumePendingRecovery(operationID: operationID, password: password)
+    }
+
+    func discardPreparedRecovery(operationID: String, password: String) throws {
+        record("discardPreparedRecovery")
+        guard password == pendingRecoveryPassword,
+              let recovery = allPendingRecovery.first(where: { $0.operationId == operationID }),
+              recovery.phase == "awaiting-kit" || recovery.phase == "prepared" else {
+            throw BackendError(message: "Only an uncommitted setup can be discarded.")
+        }
+        allPendingRecovery.removeAll { $0.operationId == operationID }
+    }
+
+    func exportPendingRecoveryEmergencyKit(operationID: String, password: String, directory: URL) throws -> PendingRecoveryExport {
+        record("exportPendingRecoveryEmergencyKit")
+        onExportPendingRecoveryEmergencyKit?()
+        guard password == pendingRecoveryPassword,
+              let index = allPendingRecovery.firstIndex(where: { $0.operationId == operationID }),
+              allPendingRecovery[index].phase != "outcome-unknown" else {
+            throw BackendError(message: "Resume this recovery before preparing the Emergency Kit.")
+        }
+        guard allPendingRecovery[index].keychainProtected || isPendingRecoveryFactorAvailable else {
+            throw BackendError(message: "Enter the Secret Key from your saved Emergency Kit.")
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
+        try Data("%PDF-1.7".utf8).write(to: path)
+        allPendingRecovery[index].kitSaved = true
+        return PendingRecoveryExport(secretKey: pendingRecoverySecretKey, path: path.path)
+    }
+
+    func acknowledgePendingRecovery(operationID: String, password: String) throws {
+        record("acknowledgePendingRecovery")
+        guard password == pendingRecoveryPassword,
+              let recovery = allPendingRecovery.first(where: { $0.operationId == operationID }),
+              (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit"), recovery.kitSaved else {
+            throw BackendError(message: "Save the new Emergency Kit before finishing recovery.")
+        }
+        if recovery.phase == "awaiting-kit" || recovery.manualUnlock {
+            let index = allPendingRecovery.firstIndex { $0.operationId == operationID }!
+            allPendingRecovery[index].phase = recovery.phase == "awaiting-kit" ? "prepared" : "manual-unlock"
+        } else {
+            allPendingRecovery.removeAll { $0.operationId == operationID }
+        }
     }
 
     func dismissSignedOutReason() -> VaultStatus {
@@ -1115,6 +1305,28 @@ extension FakeBackend {
             guard let index = organization.allTeam.firstIndex(where: { $0.id == teamID }) else { return }
             change(&organization.allTeam[index])
         }
+    }
+}
+
+extension FakeBackend {
+    /// Holds a refresh at its last listing while change runs, as when the device is signed out, locks or hears of a
+    /// remote change meanwhile.
+    @MainActor
+    func finishRefresh(of model: AppModel, after change: () async -> Void) async {
+        let isListing = DispatchSemaphore(value: 0)
+        let mayFinish = DispatchSemaphore(value: 0)
+        onListAllPasskey = {
+            isListing.signal()
+            mayFinish.wait()
+        }
+        let refresh = Task { await model.refreshAll() }
+        while isListing.wait(timeout: .now()) == .timedOut {
+            try? await Task.sleep(nanoseconds: 10_000_000)
+        }
+        await change()
+        onListAllPasskey = nil
+        mayFinish.signal()
+        await refresh.value
     }
 }
 

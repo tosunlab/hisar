@@ -29,8 +29,14 @@ type AdminInviteCreator struct {
 
 // AdminInviteRequest is the body of POST /api/v1/admin/invites; Role is admin or member.
 type AdminInviteRequest struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	Email string                `json:"email"`
+	Role  string                `json:"role"`
+	Proof ReauthenticationProof `json:"proof"`
+}
+
+// AdminInviteResendRequest carries a fresh proof when the invite grants the admin role.
+type AdminInviteResendRequest struct {
+	Proof ReauthenticationProof `json:"proof"`
 }
 
 // AdminInviteCreated answers POST /api/v1/admin/invites and POST /api/v1/admin/invites/{id}/resend. The link is in no

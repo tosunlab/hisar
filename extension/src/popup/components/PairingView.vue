@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref } from "vue";
 import { describeError, sendToBackground } from "../api";
+import { toHisarError } from "../../shared/protocol";
 import AppIcon from "./AppIcon.vue";
 
 const emit = defineEmits<{ paired: [] }>();
@@ -23,7 +24,7 @@ async function startPairing(): Promise<void> {
     await nextTick();
     codeInput.value?.focus();
   } catch (error) {
-    errorMessage.value = describeError(error);
+    errorMessage.value = toHisarError(error).code === "locked" ? "Unlock Hisar first, then try pairing again." : describeError(error);
   } finally {
     isBusy.value = false;
   }
@@ -37,7 +38,11 @@ async function finishPairing(): Promise<void> {
     await sendToBackground({ type: "popup.finishPairing", code: normalizedCode.value });
     emit("paired");
   } catch (error) {
-    errorMessage.value = describeError(error);
+    if (toHisarError(error).code === "locked") {
+      step.value = "start";
+      code.value = "";
+      errorMessage.value = "Unlock Hisar first, then start pairing again.";
+    } else errorMessage.value = describeError(error);
   } finally {
     isBusy.value = false;
   }
@@ -48,7 +53,7 @@ async function finishPairing(): Promise<void> {
   <section class="panel" data-testid="pairing-view">
     <template v-if="step === 'start'">
       <h1>Connect to Hisar</h1>
-      <p class="subtitle">Pair this browser with the Hisar app on this computer to fill and save logins.</p>
+      <p class="subtitle">Unlock Hisar first, then pair this browser with the app on this computer to fill and save logins.</p>
       <p v-if="errorMessage" class="error">{{ errorMessage }}</p>
       <button type="button" class="primary full-width" :disabled="isBusy" data-testid="start-pairing" @click="startPairing">
         <AppIcon name="laptop" /> Pair with Hisar

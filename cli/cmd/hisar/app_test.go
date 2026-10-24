@@ -145,9 +145,9 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 	switch request.Type {
 	case cliprotocol.TypeAccount:
 		return cliprotocol.AccountResult{AccountID: "ABC123", Name: "Alice", Email: "alice@example.com", Role: "admin", Server: "https://hisar.example.com"}, nil
-	case cliprotocol.TypeListVault:
+	case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
 		return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"}, {ID: "family-id", Name: "Family", Type: "shared", Role: "reader"}}}, nil
-	case cliprotocol.TypeListItem:
+	case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
 		return cliprotocol.ItemListResult{Items: []cliprotocol.Item{
 			{ID: "github-id", Revision: "r1", Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Tags: []string{"work", "dev"}, HasOneTimePassword: true},
 			{ID: "bank-id", Revision: "r2", Title: "Bank", Username: "alice", Tags: []string{"Finance"}},
@@ -185,6 +185,8 @@ func answerFakeVaultRequest(request cliprotocol.Request) (any, *cliprotocol.Resp
 		return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "saved-id", Title: request.Item.Title}}, nil
 	case cliprotocol.TypeDeleteItem, cliprotocol.TypeShareVault, cliprotocol.TypeUnshareVault, cliprotocol.TypeRevokeDevice:
 		return struct{}{}, nil
+	case cliprotocol.TypeGetVaultActions:
+		return cliprotocol.VaultActionsResult{ImportScope: "reviewed-test-scope"}, nil
 	case cliprotocol.TypeImportItem:
 		return cliprotocol.ImportResult{SavedCount: len(request.ImportedItems), Failures: []cliprotocol.ImportFailure{}}, nil
 	case cliprotocol.TypeListPeople:
@@ -334,6 +336,53 @@ func TestCommandsRunThroughTheApp(t *testing.T) {
 	}
 }
 
+func TestCommandsPreferAVaultIDOverAName(t *testing.T) {
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		if request.Type == cliprotocol.TypeListVault || request.Type == cliprotocol.TypeReadVault {
+			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "mine-id", Name: "team-id", Type: "personal", Role: "owner"}, {ID: "team-id", Name: "Team", Type: "shared", Role: "owner"}}}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	if _, _, err := runCapturingOutput(t, false, "", "ls", "-v", "team-id"); err != nil {
+		t.Fatalf("ls by ID: %v", err)
+	}
+	if requests := app.findRequest(cliprotocol.TypeReadItem); len(requests) != 1 || requests[0].VaultID != "team-id" {
+		t.Errorf("a vault named like another vault's ID took its place: item requests %+v", requests)
+	}
+}
+
+func TestTextOthersWroteCannotDriveTheTerminal(t *testing.T) {
+	const hostile = "Eve\x1b]52;c;ZWNobyBoaQ==\x07\u009b"
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		switch request.Type {
+		case cliprotocol.TypeAccount:
+			return cliprotocol.AccountResult{AccountID: "ABC123", Name: hostile, Email: "eve@example.com", Role: "member", Server: "https://hisar.example.com"}, nil
+		case cliprotocol.TypeListVault, cliprotocol.TypeReadVault:
+			return cliprotocol.VaultListResult{Vaults: []cliprotocol.Vault{{ID: "personal-id", Name: "Personal", Type: "personal", Role: "owner"}, {ID: "shared-id", Name: hostile, Type: "shared", Role: "editor"}}}, nil
+		case cliprotocol.TypeListItem, cliprotocol.TypeReadItem:
+			return cliprotocol.ItemListResult{Items: []cliprotocol.Item{{ID: "shared-item", Title: hostile, Username: hostile}}}, nil
+		case cliprotocol.TypeGetItem:
+			return cliprotocol.ItemResult{Item: cliprotocol.Item{ID: "shared-item", Title: hostile, Notes: "line one\n" + hostile, Fields: []cliprotocol.Field{{Name: hostile, Value: hostile}}}}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	for _, args := range [][]string{{"whoami"}, {"vaults"}, {"ls"}, {"get", "shared-item"}} {
+		stdout, _, err := runCapturingOutput(t, false, "", args...)
+		if err != nil {
+			t.Fatalf("%v: %v", args, err)
+		}
+		if strings.ContainsAny(stdout, "\x1b\x07\u009b") || !strings.Contains(stdout, `Eve\x1b]52;c;ZWNobyBoaQ==\x07\x9b`) {
+			t.Errorf("%v: %q", args, stdout)
+		}
+	}
+}
+
 func TestListItemsByTagThroughTheApp(t *testing.T) {
 	app := startFakeApp(t)
 	stdout, _, err := runCapturingOutput(t, false, "", "ls")
@@ -375,8 +424,8 @@ func TestListItemsByTagThroughTheApp(t *testing.T) {
 	if _, _, err := runCapturingOutput(t, false, "", "ls", "--tag", "work"); err == nil || !strings.Contains(err.Error(), "does not list tags") {
 		t.Errorf("ls --tag through an older app: %v", err)
 	}
-	if _, _, err := runCapturingOutput(t, false, "", "ls"); err != nil {
-		t.Errorf("ls through an older app: %v", err)
+	if _, _, err := runCapturingOutput(t, false, "", "ls"); err == nil || !strings.Contains(err.Error(), "unreadable records") {
+		t.Errorf("ls silently accepted an older app: %v", err)
 	}
 }
 
@@ -646,6 +695,53 @@ func TestEditingAServerKeepsOrRemovesItsSSHKey(t *testing.T) {
 	}
 }
 
+func TestEditingAServerTakesAnIDThatTheLinkedKeyHasAsItsTitle(t *testing.T) {
+	const keyID = "12345678-1234-4234-8234-123456789abc"
+	originalReader := stdinReader
+	defer func() { stdinReader = originalReader }()
+	vaultItems := []item.Item{
+		{ID: "shadow-id", Overview: item.Overview{Title: keyID, Category: item.CategorySSHKey}},
+		{ID: keyID, Overview: item.Overview{Title: "Deploy key", Category: item.CategorySSHKey}},
+	}
+	stdinReader = bufio.NewReader(strings.NewReader("\n\n\n\n\n\n" + keyID + "\n"))
+	vaultItem := item.Item{Overview: item.Overview{Title: "Build", Category: item.CategoryServer}}
+	item.WriteServer(&vaultItem, item.Server{Host: "build.example.com", SSHKeyID: "shadow-id"}, nil)
+	if err := promptServer(&vaultItem, vaultItems); err != nil {
+		t.Fatal(err)
+	}
+	if server, _ := item.ReadServer(&vaultItem); server.SSHKeyID != keyID {
+		t.Errorf("typed ID %s linked %q", keyID, server.SSHKeyID)
+	}
+}
+
+func TestServerSSHKeyTakesAnIDThatAnotherKeyHasAsItsTitle(t *testing.T) {
+	const keyID = "12345678-1234-4234-8234-123456789abc"
+	app := startFakeApp(t)
+	app.mutex.Lock()
+	app.answer = func(request cliprotocol.Request) (any, *cliprotocol.ResponseError) {
+		if request.Type == cliprotocol.TypeListItem {
+			return cliprotocol.ItemListResult{Items: []cliprotocol.Item{
+				{ID: keyID, Category: item.CategorySSHKey, Title: "Deploy"}, {ID: "shadow-id", Category: item.CategorySSHKey, Title: keyID},
+				{ID: "twin-a", Category: item.CategorySSHKey, Title: "Twin"}, {ID: "twin-b", Category: item.CategorySSHKey, Title: "twin"},
+			}}, nil
+		}
+		return answerFakeVaultRequest(request)
+	}
+	app.mutex.Unlock()
+	input := "Build server\nbuild.example.com\n\ndeploy\nserver-password\n\ntwin\n" + keyID + "\n"
+	_, stderr, err := runCapturingOutput(t, false, input, "add", "--type", "server")
+	if err != nil {
+		t.Fatalf("add --type server: %q %v", stderr, err)
+	}
+	if !strings.Contains(stderr, "twin-a") || !strings.Contains(stderr, "twin-b") {
+		t.Errorf("two keys titled twin, without their IDs: %q", stderr)
+	}
+	added := app.findRequest(cliprotocol.TypeSaveItem)[0].Item
+	if added.Fields == nil || !slices.Contains(*added.Fields, cliprotocol.Field{Name: item.FieldSSHKey, Value: keyID}) {
+		t.Errorf("the server links %+v, not the key with ID %s", added.Fields, keyID)
+	}
+}
+
 func TestEditingAnAddressKeepsItsStreetOnAnEmptyLine(t *testing.T) {
 	originalReader := stdinReader
 	defer func() { stdinReader = originalReader }()
@@ -850,7 +946,8 @@ func TestStandaloneOnlyCommandsPointToTheApp(t *testing.T) {
 
 func TestRemovedRecoveryCommandsPointToTheEmergencyKit(t *testing.T) {
 	startFakeApp(t)
-	for _, commandName := range []string{"recover", "recovery-setup", "recovery-enable", "recovery-start", "recovery-list", "recovery-complete"} {
+	removedCommands := []string{"recover", "recovery-setup", "recovery-enable", "recovery-start", "recovery-list", "recovery-complete"}
+	for _, commandName := range removedCommands {
 		for _, isStandaloneForced := range []bool{false, true} {
 			_, _, err := runCapturingOutput(t, isStandaloneForced, "", commandName, "anything")
 			if err == nil || err.Error() != "account recovery was removed; sign in with your Emergency Kit" {
@@ -860,8 +957,16 @@ func TestRemovedRecoveryCommandsPointToTheEmergencyKit(t *testing.T) {
 	}
 	var usage strings.Builder
 	printUsage(&usage)
-	if strings.Contains(usage.String(), "recover") {
-		t.Errorf("usage lists recovery commands:\n%s", usage.String())
+	for _, line := range strings.Split(usage.String(), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 {
+			continue
+		}
+		for _, commandName := range removedCommands {
+			if fields[0] == commandName {
+				t.Errorf("usage lists removed recovery command %s", commandName)
+			}
+		}
 	}
 }
 
@@ -1001,6 +1106,37 @@ func TestSignupInsideAHarnessReachesNoServer(t *testing.T) {
 				t.Errorf("the server got %q", requestPaths)
 			}
 		})
+	}
+}
+
+func TestSignupRefusesAnExistingKitPathBeforeReachingTheServer(t *testing.T) {
+	var requestPaths []string
+	var mutex sync.Mutex
+	apiServer := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		mutex.Lock()
+		requestPaths = append(requestPaths, request.URL.Path)
+		mutex.Unlock()
+		writer.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer apiServer.Close()
+	t.Setenv("HISAR_STATE", filepath.Join(t.TempDir(), "state.json"))
+	t.Setenv(standaloneEnvironment, "1")
+	t.Setenv("HISAR_SECRET_KEY", "A3-ABCDEF-ABCDEF-ABCDE-FGHIJ-KLMNO-PQRST")
+	kitPath := filepath.Join(t.TempDir(), "Hisar Emergency Kit.pdf")
+	if err := os.WriteFile(kitPath, []byte("an earlier kit"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	input := "a@example.com\nA\npw-long-enough\npw-long-enough\n"
+	if _, _, err := runCapturingOutput(t, false, input, "signup", "-o", kitPath, "-y", apiServer.URL+"/invite/token"); err == nil {
+		t.Fatal("signup accepted a kit path that is taken")
+	}
+	if content, err := os.ReadFile(kitPath); err != nil || string(content) != "an earlier kit" {
+		t.Fatalf("the earlier kit changed: %q %v", content, err)
+	}
+	mutex.Lock()
+	defer mutex.Unlock()
+	if len(requestPaths) != 0 {
+		t.Errorf("signup reached the server before checking its kit path: %q", requestPaths)
 	}
 }
 

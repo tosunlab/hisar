@@ -1,0 +1,23 @@
+/* Hisar's neutral palette, from core/assets/themes/themes.json. */
+:root {
+  --ifm-color-primary: #1d2025;
+  --ifm-color-primary-dark: #1a1d21;
+  --ifm-color-primary-darker: #181b1f;
+  --ifm-color-primary-darkest: #14161a;
+  --ifm-color-primary-light: #343840;
+  --ifm-color-primary-lighter: #474d55;
+  --ifm-color-primary-lightest: #646b75;
+  --ifm-code-font-size: 95%;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.1);
+}
+
+[data-theme='dark'] {
+  --ifm-color-primary: #e6e8eb;
+  --ifm-color-primary-dark: #d3d6db;
+  --ifm-color-primary-darker: #c3c7cd;
+  --ifm-color-primary-darkest: #a8adb5;
+  --ifm-color-primary-light: #eef0f2;
+  --ifm-color-primary-lighter: #f3f4f6;
+  --ifm-color-primary-lightest: #ffffff;
+  --docusaurus-highlighted-code-line-bg: rgba(0, 0, 0, 0.3);
+}

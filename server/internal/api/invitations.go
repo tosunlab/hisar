@@ -36,11 +36,7 @@ func (s *Server) handleCreateShareInvitation(c fiber.Ctx) error {
 }
 
 func (s *Server) handleListShareInvitations(c fiber.Ctx) error {
-	invitations, err := s.service.ListShareInvitations(c.Context(), s.getActor(c))
-	if err != nil {
-		return err
-	}
-	return c.JSON(invitations)
+	return s.sendCollection(c)
 }
 
 func (s *Server) handleAcceptShareInvitation(c fiber.Ctx) error {
@@ -59,6 +55,20 @@ func (s *Server) handleDeclineShareInvitation(c fiber.Ctx) error {
 
 func (s *Server) handleCancelShareInvitation(c fiber.Ctx) error {
 	if err := s.service.CancelShareInvitation(c.Context(), s.getActor(c), c.Params("invitation")); err != nil {
+		return err
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (s *Server) handleCompleteSignedShare(c fiber.Ctx) error {
+	var request apitypes.CompleteShareRequest
+	if err := decodeBody(c, &request); err != nil {
+		return err
+	}
+	if request.Intent.Context.ID != c.Params("invitation") {
+		return fiber.ErrBadRequest
+	}
+	if err := s.service.CompleteSignedShare(c.Context(), s.getActor(c), &request); err != nil {
 		return err
 	}
 	return c.SendStatus(fiber.StatusNoContent)

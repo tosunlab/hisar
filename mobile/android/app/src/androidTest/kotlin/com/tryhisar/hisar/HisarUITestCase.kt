@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasAnyDescendant
@@ -13,6 +15,8 @@ import androidx.compose.ui.test.hasScrollAction
 import androidx.compose.ui.test.hasScrollToNodeAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.isRoot
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onLast
 import androidx.compose.ui.test.performClick
@@ -21,6 +25,7 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.printToString
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
@@ -62,16 +67,33 @@ abstract class HisarUITestCase {
         TestStorage().openOutputFile("android-$name.png").use { screenshot.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
+    /** On a timeout the failure carries the screen's semantics tree: an error banner, a disabled button or a spinner says why. */
     fun waitFor(matcher: SemanticsMatcher, timeoutMillis: Long = 30_000) {
-        composeRule.waitUntil("${matcher.description} appears", timeoutMillis) { exists(matcher) }
+        try {
+            composeRule.waitUntil("${matcher.description} appears", timeoutMillis) { exists(matcher) }
+        } catch (error: ComposeTimeoutException) {
+            val screen = composeRule.onAllNodes(isRoot(), useUnmergedTree = true).printToString(maxDepth = Int.MAX_VALUE)
+            throw AssertionError("${error.message}; the screen was:\n$screen", error)
+        }
     }
 
     fun waitFor(tag: String, timeoutMillis: Long = 30_000) = waitFor(hasTestTag(tag), timeoutMillis)
+
+    fun waitForGone(tag: String, timeoutMillis: Long = 30_000) {
+        composeRule.waitUntil("$tag goes", timeoutMillis) { !exists(hasTestTag(tag)) }
+    }
 
     fun exists(matcher: SemanticsMatcher): Boolean = composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
 
     fun tap(tag: String) {
         scrollTo(tag)
+        composeRule.onNode(hasTestTag(tag)).performClick()
+    }
+
+    /** Waits until [tag] is enabled, then taps it: a disabled button ignores the tap, while a user would wait for it. */
+    fun tapWhenEnabled(tag: String) {
+        scrollTo(tag)
+        waitFor(hasTestTag(tag) and isEnabled(), ACCOUNT_KEY_TIMEOUT)
         composeRule.onNode(hasTestTag(tag)).performClick()
     }
 
@@ -148,9 +170,15 @@ abstract class HisarUITestCase {
         }
     }
 
+    /**
+     * Typing needs no keyboard, but focusing the field asks for one, which a slow emulator shows a second or more later.
+     * Arriving after the next step scrolled, it would cover the button scrolled to, and that step's tap would land on
+     * nothing. Closing it at once keeps the screen as the next step finds it.
+     */
     fun type(text: String, tag: String) {
         scrollTo(tag)
         composeRule.onNode(hasTestTag(tag)).performTextInput(text)
+        Espresso.closeSoftKeyboard()
     }
 
     /** With [isBiometricOfferExpected], it stops at the biometric offer after the Secret Key; otherwise it declines any offer. */
@@ -166,21 +194,49 @@ abstract class HisarUITestCase {
         scrollTo("create-account-note")
         saveScreenshot("create-account")
         tap("sign-in-submit")
-        waitFor("new-secret-key", ACCOUNT_KEY_TIMEOUT)
-        val secretKey = readText("new-secret-key")
-        saveScreenshot("new-secret-key")
-        tap("new-secret-key-done")
+        val secretKey = finishPendingRecovery(email, MASTER_PASSWORD)
         if (isBiometricOfferExpected) {
             waitFor("biometric-offer-not-now", 10_000)
             return secretKey
         }
-        composeRule.waitUntil("the biometric offer or the vaults appear", 30_000) {
-            exists(hasTestTag("biometric-offer-not-now")) || exists(hasTestTag("vault-Personal"))
-        }
+        // The vaults are composed under the Secret Key screen and the biometric offer, so they exist before either closes.
+        waitForGone("new-secret-key")
         if (exists(hasTestTag("biometric-offer-not-now"))) {
             tap("biometric-offer-not-now")
+            waitForGone("biometric-offer-not-now")
         }
         waitFor("vault-Personal")
+        return secretKey
+    }
+
+    fun finishPendingRecovery(email: String, password: String): String {
+        val record = SemanticsMatcher("a pending recovery record") { node ->
+            node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("pending-recovery-") == true
+        }
+        val account = record and hasText(email, substring = true) and !hasText("manual-unlock", substring = true)
+        waitFor(account, ACCOUNT_KEY_TIMEOUT)
+        composeRule.onAllNodes(account).onLast().performClick()
+        val isPrecommit = readText("pending-recovery-phase") == "awaiting-kit"
+        type(password, "pending-recovery-password")
+        tapWhenEnabled("pending-recovery-export")
+        waitFor("pending-recovery-secret-key", ACCOUNT_KEY_TIMEOUT)
+        val secretKey = readText("pending-recovery-secret-key")
+        saveScreenshot("pending-recovery-kit")
+        type(password, "pending-recovery-password")
+        tapWhenEnabled("pending-recovery-acknowledge")
+        if (isPrecommit) {
+            waitFor(hasTestTag("pending-recovery-phase") and hasText("prepared"), ACCOUNT_KEY_TIMEOUT)
+            type(secretKey, "pending-recovery-input-secret-key")
+            type(password, "pending-recovery-password")
+            tapWhenEnabled("pending-recovery-resume")
+            waitFor(hasTestTag("pending-recovery-phase") and hasText("delivery-pending"), ACCOUNT_KEY_TIMEOUT)
+            type(password, "pending-recovery-password")
+            tapWhenEnabled("pending-recovery-acknowledge")
+        }
+        composeRule.waitUntil("recovery delivery is acknowledged", ACCOUNT_KEY_TIMEOUT) {
+            !exists(hasTestTag("pending-recovery-phase")) || exists(hasTestTag("pending-recovery-phase") and hasText("manual-unlock"))
+        }
+        if (exists(hasTestTag("pending-recovery-phase"))) tap("pending-recovery-later")
         return secretKey
     }
 

@@ -169,6 +169,17 @@ func lockAdminTarget(ctx context.Context, transaction pgx.Tx, actor AdminActor, 
 	return target, nil
 }
 
+// requireActiveAdmin returns ErrActorNotAdmin unless the account is an active admin. It share-locks the account's row,
+// so a demotion or suspension that commits meanwhile waits for the transaction, and one that committed before is seen.
+func requireActiveAdmin(ctx context.Context, transaction pgx.Tx, accountID string) error {
+	var isActiveAdmin bool
+	err := transaction.QueryRow(ctx, `SELECT role = 'admin' AND suspended_at IS NULL FROM accounts WHERE id = $1 FOR SHARE`, accountID).Scan(&isActiveAdmin)
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && !isActiveAdmin {
+		return ErrActorNotAdmin
+	}
+	return err
+}
+
 // SuspendAccount marks the account suspended. Its devices and sessions stay, but GetSessionByHash refuses them with
 // ErrAccountSuspended until it is reactivated; its vaults and organizations stay, and its share links stop opening. It
 // reports false, changing nothing, for a suspended account.
@@ -258,8 +269,8 @@ func (s *Store) SetAccountRole(ctx context.Context, actor AdminActor, accountID,
 }
 
 // DeleteAccountAsAdmin deletes the account like DeleteAccount, without a proof from the account itself.
-func (s *Store) DeleteAccountAsAdmin(ctx context.Context, actor AdminActor, accountID string) (*DeletedAccount, error) {
-	return s.deleteAccount(ctx, accountID, func(transaction pgx.Tx) (email, name string, err error) {
+func (s *Store) DeleteAccountAsAdmin(ctx context.Context, actor AdminActor, accountID, planVersion string) (*DeletedAccount, error) {
+	return s.deleteAccount(ctx, accountID, planVersion, func(transaction pgx.Tx) (email, name string, err error) {
 		target, err := lockAdminTarget(ctx, transaction, actor, accountID, true)
 		if err != nil {
 			return "", "", err

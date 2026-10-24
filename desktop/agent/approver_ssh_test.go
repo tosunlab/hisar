@@ -90,6 +90,39 @@ func TestSSHTitleNamesTheHarness(t *testing.T) {
 	waitForResult(t, resultChannel)
 }
 
+func TestSSHApprovalForAnAgentNeedsPresence(t *testing.T) {
+	emitter := createFakeEmitter()
+	unlocker := &fakeUnlocker{correctPassword: "right"}
+	approver := createSSHApprover(emitter, sshApproverOption{biometric: &fakeBiometric{isAvailable: false}, unlocker: unlocker, requester: createTernRequester(createOmpSSHChain())})
+	resultChannel := startApproval(approver, context.Background(), createOmpRequest(ompInPaneA))
+	event := waitForApprovalEvent(t, emitter)
+	if !event.RequiresPresence {
+		t.Errorf("event %+v", event)
+	}
+	approver.Respond(event.RequestID, true, false)
+	if failed := waitForFailedEvent(t, emitter); failed.Message != "Enter your master password to approve." {
+		t.Errorf("a click without Touch ID: %+v", failed)
+	}
+	select {
+	case result := <-resultChannel:
+		t.Fatalf("a click approved omp's SSH request: %+v", result)
+	case <-time.After(50 * time.Millisecond):
+	}
+	approver.RespondWithPassword(event.RequestID, "right", false)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed {
+		t.Errorf("the password did not approve: %+v", result)
+	}
+
+	resultChannel = startApproval(approver, context.Background(), createTestRequest())
+	if event = waitForApprovalEvent(t, emitter); event.RequiresPresence {
+		t.Errorf("the user's own SSH request needs presence: %+v", event)
+	}
+	approver.Respond(event.RequestID, true, false)
+	if result := waitForResult(t, resultChannel); !result.result.IsAllowed {
+		t.Errorf("a click did not approve the user's own request: %+v", result)
+	}
+}
+
 func TestAgentSessionHidesUntilLock(t *testing.T) {
 	emitter := createFakeEmitter()
 	approver := createSSHApprover(emitter, sshApproverOption{

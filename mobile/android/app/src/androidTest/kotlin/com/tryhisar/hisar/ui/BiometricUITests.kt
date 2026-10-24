@@ -40,6 +40,8 @@ class BiometricUITests : HisarUITestCase() {
         saveScreenshot("biometric-offer")
         tap("biometric-offer-turn-on")
         answerOnePrompt()
+        // The vaults are composed under the offer, so the offer closing is what shows that biometrics are on.
+        waitForGone("biometric-offer-turn-on", 20_000)
         waitFor("vault-Personal", 20_000)
 
         openSettings("open-security")

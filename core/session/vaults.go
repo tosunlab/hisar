@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/google/uuid"
@@ -35,8 +36,35 @@ func (s *Session) CreateOrganizationVault(ctx context.Context, name, organizatio
 	return s.createVault(ctx, name, &apitypes.CreateVaultRequest{Type: apitypes.VaultOrganization, OrganizationID: organizationID, TeamID: teamID})
 }
 
+// EnsurePersonalVault creates the Personal vault under vaultID unless the account already has one. A sign-up chooses
+// vaultID before it registers, so resumes that run at the same time create the same vault and the server refuses all
+// but the first; an empty vaultID gets a new one.
+func (s *Session) EnsurePersonalVault(ctx context.Context, vaultID string) error {
+	if found, err := s.hasPersonalVault(ctx); err != nil || found {
+		return err
+	}
+	_, err := s.createVault(ctx, "Personal", &apitypes.CreateVaultRequest{ID: vaultID, Type: apitypes.VaultPersonal})
+	if apiclient.IsStatus(err, http.StatusConflict) {
+		if found, listErr := s.hasPersonalVault(ctx); listErr == nil && found {
+			return nil
+		}
+	}
+	return err
+}
+
+func (s *Session) hasPersonalVault(ctx context.Context) (bool, error) {
+	vaults, err := s.Client.ListVaults(ctx)
+	if err != nil {
+		return false, err
+	}
+	return slices.ContainsFunc(vaults, func(vault apitypes.Vault) bool { return vault.Type == apitypes.VaultPersonal }), nil
+}
+
 func (s *Session) createVault(ctx context.Context, name string, request *apitypes.CreateVaultRequest) (*Vault, error) {
-	vaultID := uuid.NewString()
+	vaultID := request.ID
+	if vaultID == "" {
+		vaultID = uuid.NewString()
+	}
 	vaultKey := crypt.GenerateKey()
 	encryptedName, err := crypt.SealVaultName(vaultKey, vaultID, []byte(name))
 	if err != nil {
@@ -48,46 +76,93 @@ func (s *Session) createVault(ctx context.Context, name string, request *apitype
 	}
 	request.ID, request.EncName, request.WrappedKey = vaultID, encryptedName, wrappedKey
 	if err := s.Client.CreateVault(ctx, request); err != nil {
+		if request.Type == apitypes.VaultPersonal && apiclient.IsStatus(err, http.StatusConflict) {
+			result, readErr := s.ReadVaults(ctx)
+			if readErr != nil {
+				clear(vaultKey)
+				return nil, readErr
+			}
+			var primary *Vault
+			for index := range result.Vaults {
+				vault := &result.Vaults[index]
+				if vault.Type == apitypes.VaultPersonal && !vault.IsPersonalExtra {
+					primary = vault
+				} else {
+					clear(vault.Key)
+				}
+			}
+			clear(vaultKey)
+			if primary != nil {
+				return primary, nil
+			}
+			return nil, ErrIncompleteRead
+		}
 		return nil, err
+	}
+	record := apitypes.Vault{
+		ID: vaultID, Type: request.Type, EncName: encryptedName, Role: apitypes.VaultOwner, WrappedKey: wrappedKey,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1,
 	}
 	return &Vault{
 		ID: vaultID, Type: request.Type, Name: name, Role: apitypes.VaultOwner, Key: vaultKey,
-		OrganizationID: request.OrganizationID, KeyGeneration: 1,
+		OrganizationID: request.OrganizationID, KeyGeneration: 1, record: record,
 	}, nil
 }
 
+// ListVaults requires a complete readable inventory. Recovery views use ReadVaults.
 func (s *Session) ListVaults(ctx context.Context) ([]Vault, error) {
-	protoVaults, err := s.listProtoVaults(ctx)
+	result, err := s.ReadVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
-	vaults := make([]Vault, 0, len(protoVaults))
-	for _, protoVault := range protoVaults {
-		vaultKey, err := s.Keyset.UnwrapVaultKey(protoVault.ID, s.AccountID, protoVault.WrappedKey)
-		if err != nil {
-			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
-		}
-		name, err := crypt.OpenVaultName(vaultKey, protoVault.ID, protoVault.EncName)
-		if err != nil {
-			return nil, fmt.Errorf("vault %s: %w", protoVault.ID, err)
-		}
-		vaults = append(vaults, Vault{
-			ID: protoVault.ID, Type: protoVault.Type, Name: string(name), Role: protoVault.Role, Key: vaultKey,
-			OrganizationID: protoVault.OrganizationID, KeyGeneration: protoVault.KeyGeneration, NeedsRotation: protoVault.NeedsRotation,
-		})
+	if len(result.Issues) != 0 {
+		return nil, ErrIncompleteRead
 	}
-	return vaults, nil
+	return result.Vaults, nil
 }
 
+// FindVault finds a vault by ID, or by name only in a complete inventory: a vault whose key or name did not open may
+// carry the same name, so a name match among the others proves neither uniqueness nor absence (ErrIncompleteRead).
 func (s *Session) FindVault(ctx context.Context, nameOrID string) (*Vault, error) {
-	vaults, err := s.ListVaults(ctx)
+	result, err := s.ReadVaults(ctx)
 	if err != nil {
 		return nil, err
 	}
+	vaults := result.Vaults
 	for i := range vaults {
-		if vaults[i].ID == nameOrID || strings.EqualFold(vaults[i].Name, nameOrID) {
+		if vaults[i].ID == nameOrID {
 			return &vaults[i], nil
 		}
+	}
+	if len(result.Issues) != 0 {
+		return nil, ErrIncompleteRead
+	}
+	return selectVault(vaults, nameOrID)
+}
+
+// selectVault picks the vault with this ID, else the one vault with this name ignoring case; a name several vaults have
+// is refused with their IDs, so the caller can choose one. vaults must be a complete inventory.
+func selectVault(vaults []Vault, nameOrID string) (*Vault, error) {
+	for i := range vaults {
+		if vaults[i].ID == nameOrID {
+			return &vaults[i], nil
+		}
+	}
+	matches := []*Vault{}
+	for index := range vaults {
+		if strings.EqualFold(vaults[index].Name, nameOrID) {
+			matches = append(matches, &vaults[index])
+		}
+	}
+	if len(matches) == 1 {
+		return matches[0], nil
+	}
+	if len(matches) > 1 {
+		candidates := make([]string, 0, len(matches))
+		for _, vault := range matches {
+			candidates = append(candidates, fmt.Sprintf("%s (name %q, type %s, role %s)", vault.ID, vault.Name, vault.Type, vault.Role))
+		}
+		return nil, fmt.Errorf("%d vaults are named %q; use an ID instead: %s", len(matches), nameOrID, strings.Join(candidates, ", "))
 	}
 	return nil, fmt.Errorf("vault %q: %w", nameOrID, ErrNotFound)
 }
@@ -162,6 +237,9 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 	if vault.Role != apitypes.VaultOwner {
 		return ErrNotVaultOwner
 	}
+	if vault.NameUnreadable {
+		return s.repairVaultName(ctx, vault, apitypes.VaultReview{EncName: vault.record.EncName, WrappedKey: vault.record.WrappedKey, KeyGeneration: vault.record.KeyGeneration}, name)
+	}
 	encryptedName, err := crypt.SealVaultName(vault.Key, vault.ID, []byte(name))
 	if err != nil {
 		return err
@@ -171,6 +249,7 @@ func (s *Session) RenameVault(ctx context.Context, vault *Vault, name string) er
 		return err
 	}
 	vault.Name = name
+	vault.record.EncName = encryptedName
 	return nil
 }
 
@@ -197,11 +276,13 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 	if vault.Role != apitypes.VaultOwner {
 		return 0, ErrNotVaultOwner
 	}
-	if vault.Type == apitypes.VaultPersonal {
+	if vault.Type == apitypes.VaultPersonal && !vault.IsPersonalExtra {
 		return 0, ErrPersonalVault
 	}
 	if deletion.MoveTo == nil {
-		err := s.Client.DeleteVault(ctx, vault.ID, &apitypes.DeleteVaultRequest{IsDeletingItems: deletion.IsDeletingItems})
+		err := s.sendSealed(ctx, func() error {
+			return s.Client.DeleteVault(ctx, vault.ID, &apitypes.DeleteVaultRequest{IsDeletingItems: deletion.IsDeletingItems, KeyGeneration: vault.KeyGeneration})
+		}, vault)
 		if apiclient.IsStatus(err, http.StatusConflict) {
 			return 0, ErrVaultNotEmpty
 		}
@@ -215,44 +296,28 @@ func (s *Session) DeleteVault(ctx context.Context, vault *Vault, deletion VaultD
 		return 0, ErrTargetNotWritable
 	}
 	for attempt := 1; ; attempt++ {
-		var request *apitypes.DeleteVaultRequest
-		err := s.sendSealed(ctx, func() error {
-			var err error
-			if request, err = s.buildVaultMove(ctx, vault, target); err != nil {
-				return err
+		op, err := s.Client.BeginVaultTransition(ctx, vault.ID, &apitypes.BeginVaultTransitionRequest{
+			Protocol: apitypes.VaultTransitionProtocol, ID: uuid.NewString(), Kind: "delete-move",
+			KeyGeneration: vault.KeyGeneration, TargetID: target.ID, TargetKeyGeneration: target.KeyGeneration,
+		})
+		var moved int
+		if err == nil {
+			moved, err = s.stageVaultItems(ctx, vault, target, target.Key, op)
+			if err == nil {
+				_, err = s.commitVaultTransition(ctx, vault.ID, op, nil)
 			}
-			return s.Client.DeleteVault(ctx, vault.ID, request)
-		}, target)
+			s.abandonVaultTransition(ctx, vault.ID, op.ID)
+		}
 		if apiclient.IsStatus(err, http.StatusConflict) && attempt < maxRotationAttemptCount {
+			if err := s.reloadVaults(ctx, vault, target); err != nil {
+				return 0, err
+			}
 			continue
 		}
 		if err != nil {
 			return 0, err
 		}
 		s.noteOwnRemoval(vault.ID)
-		return len(request.MovedItems), nil
+		return moved, nil
 	}
-}
-
-func (s *Session) buildVaultMove(ctx context.Context, vault, target *Vault) (*apitypes.DeleteVaultRequest, error) {
-	protoItems, err := s.listProtoItems(ctx, vault)
-	if err != nil {
-		return nil, err
-	}
-	request := &apitypes.DeleteVaultRequest{MoveToVaultID: target.ID, MoveToKeyGeneration: target.KeyGeneration, MovedItems: []apitypes.MovedItem{}}
-	for index := range protoItems {
-		protoItem := &protoItems[index]
-		if protoItem.Deleted {
-			continue
-		}
-		// The item keeps its ID; the new AAD binds the target vault ID and a new revision.
-		moved, err := reencryptItem(vault.Key, vault.ID, target.Key, target.ID, protoItem)
-		if err != nil {
-			return nil, err
-		}
-		request.MovedItems = append(request.MovedItems, apitypes.MovedItem{
-			ID: protoItem.ID, BaseRevision: protoItem.Revision, Revision: moved.revision, Overview: moved.overview, Details: moved.details,
-		})
-	}
-	return request, nil
 }

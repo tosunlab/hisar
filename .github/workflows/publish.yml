@@ -18,7 +18,7 @@ on:
       app:
         description: What to publish
         type: choice
-        options: [server, cli, desktop, extension]
+        options: [server, cli, desktop, extension, docs]
       tag:
         description: Release tag, e.g. desktop-1.2.3
         required: true
@@ -26,13 +26,13 @@ on:
 permissions:
   contents: write
   packages: write
+  attestations: read
 
 env:
   APP: ${{ inputs.app }}
   TAG: ${{ inputs.tag }}
   GH_TOKEN: ${{ github.token }}
   GH_REPO: ${{ github.repository }}
-  SERVER_IMAGE: ghcr.io/tosunlab/hisar-server
 
 jobs:
   publish:
@@ -45,7 +45,8 @@ jobs:
       group: publish-${{ inputs.app }}
       cancel-in-progress: false
     steps:
-      # The default branch, for the scripts and install texts; the history and tags, for the release notes.
+      # The default branch, for the release notes script and install texts; the history and tags, for the release notes and
+      # the tested release commit.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.event.repository.default_branch }}
@@ -63,23 +64,41 @@ jobs:
           if [ -n "$publishedTag" ] && [ "$(printf '%s\n%s\n' "$version" "$publishedVersion" | sort -V | tail -n 1)" != "$version" ]; then
             echo "::error::$publishedTag is already published; publishing $TAG would go back to an older version"; exit 1
           fi
-          echo "VERSION=$version" >> "$GITHUB_ENV"
-          echo "PUBLISHED_TAG=$publishedTag" >> "$GITHUB_ENV"
+          {
+            echo "VERSION=$version"
+            echo "PUBLISHED_TAG=$publishedTag"
+            echo "SOURCE_SHA=$(git rev-parse "refs/tags/$TAG^{commit}")"
+          } >> "$GITHUB_ENV"
 
+      # The server and the docs site are images: publishing points their version, MAJOR.MINOR and latest tags at the image.
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
-        if: inputs.app == 'server'
+        if: inputs.app == 'server' || inputs.app == 'docs'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
-        if: inputs.app == 'server'
-      - name: Point the latest and MAJOR.MINOR server image tags at the version
-        if: inputs.app == 'server'
+        if: inputs.app == 'server' || inputs.app == 'docs'
+        with:
+          driver-opts: image=moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+      # The verifier comes from the tested release commit, so a later default-branch commit cannot change what is checked.
+      - name: Download and verify the exact tested release before publishing
         run: |
-          docker buildx imagetools inspect "$SERVER_IMAGE:$VERSION" >/dev/null || { echo "::error::$SERVER_IMAGE:$VERSION does not exist; run Release for server"; exit 1; }
-          docker buildx imagetools create -t "$SERVER_IMAGE:${VERSION%.*}" -t "$SERVER_IMAGE:latest" "$SERVER_IMAGE:$VERSION"
-          echo "Published $SERVER_IMAGE:$VERSION as latest and ${VERSION%.*}"
+          mkdir -p "$RUNNER_TEMP/release-files"
+          gh release download "$TAG" --dir "$RUNNER_TEMP/release-files"
+          git worktree add --detach "$RUNNER_TEMP/release-source" "$SOURCE_SHA"
+          python3 "$RUNNER_TEMP/release-source/scripts/release-evidence.py" verify "$APP" "$TAG" "$SOURCE_SHA" \
+            "$RUNNER_TEMP/release-files"
+      # The build pushed :X.Y.Z before approval, so publishing points it, :X.Y and :latest at the digest just verified; the
+      # verifier checked that the evidence names this app's image.
+      - name: Point the version, MAJOR.MINOR and latest image tags at the verified image
+        if: inputs.app == 'server' || inputs.app == 'docs'
+        run: |
+          name=$(jq -r .image.name "$RUNNER_TEMP/release-files/release-evidence.json")
+          digest=$(jq -r .image.digest "$RUNNER_TEMP/release-files/release-evidence.json")
+          docker buildx imagetools inspect "$name@$digest" >/dev/null
+          docker buildx imagetools create -t "$name:$VERSION" -t "$name:${VERSION%.*}" -t "$name:latest" "$name@$digest"
+          echo "Published $name@$digest as $VERSION, ${VERSION%.*} and latest"
 
       # Apps are offered a desktop version only once its release has an asset named update.json.
       - name: Offer the desktop version as an automatic update
@@ -97,3 +116,18 @@ jobs:
           bash scripts/release-notes.sh "$APP" "$PUBLISHED_TAG" "$TAG" "$VERSION" > "$RUNNER_TEMP/notes.md"
           gh release edit "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --prerelease=false --latest
           echo "Published [$TAG]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+
+      # Installed copies of the Firefox add-on update from the manifest's update_url, updates.json on the fixed prerelease
+      # extension-firefox-updates, which a maintainer creates once (docs/docs/development/releasing.md). It names this
+      # version, with the hash of the .xpi just verified, only now that the release is public.
+      - name: Offer the Firefox add-on as an update
+        if: inputs.app == 'extension'
+        run: |
+          xpi="hisar-extension-firefox-$VERSION.xpi"
+          hash=$(sha256sum "$RUNNER_TEMP/release-files/$xpi" | cut -d " " -f 1)
+          jq -n --arg id extension@tryhisar.com --arg version "$VERSION" --arg hash "sha256:$hash" \
+            --arg link "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/download/$TAG/$xpi" \
+            '{addons: {($id): {updates: [{version: $version, update_link: $link, update_hash: $hash}]}}}' > "$RUNNER_TEMP/updates.json"
+          gh release view extension-firefox-updates > /dev/null 2>&1 ||
+            { echo "::error::create the prerelease extension-firefox-updates once; see docs/docs/development/releasing.md"; exit 1; }
+          gh release upload extension-firefox-updates "$RUNNER_TEMP/updates.json" --clobber

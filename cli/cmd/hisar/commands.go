@@ -9,7 +9,6 @@ import (
 	"os"
 	"slices"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/tryhisar/hisar/core/apiclient"
@@ -81,6 +80,8 @@ func finishSession(currentState *localstate.State, currentSession *session.Sessi
 }
 
 func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
+	outputPath := flags.String("o", "Hisar Emergency Kit.pdf", "where to save the new Emergency Kit PDF")
+	isYes := flags.Bool("y", false, "acknowledge the saved Emergency Kit and finish setup without another prompt")
 	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
@@ -88,14 +89,18 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	if len(positionals) != 1 {
 		return errUsage
 	}
-	server, token, err := parseInvite(positionals[0])
+	_, _, err = parseInvite(positionals[0])
 	if err != nil {
 		return err
 	}
 	// Before anything reaches the server: inside an agent harness loadState refuses, and an account created first
 	// would be lost with its Secret Key.
-	currentState, err := loadState()
+	_, err = loadState()
 	if err != nil {
+		return err
+	}
+	// With a keychain the account is registered before its kit is written, so a taken kit path is refused first.
+	if err := refuseExistingOutput(*outputPath); err != nil {
 		return err
 	}
 
@@ -113,32 +118,49 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	}
 	defer clear(password)
 
-	fmt.Fprintln(os.Stderr, "Creating account...")
-	currentSession, secretKey, err := session.SignUp(ctx, createClient(server), token, email, name, password, getDeviceInfo())
+	fmt.Fprintln(standardError(), "Preparing account. The new Secret Key must reach the OS keychain or a saved Emergency Kit before registration can finish.")
+	service, err := newRecoveryService(*outputPath)
 	if err != nil {
 		return err
 	}
-	defer currentSession.Lock()
-
-	currentState.Reset()
-	currentState.Server, currentState.Email, currentState.AccountID, currentState.Token = server, strings.ToLower(email), currentSession.AccountID, currentSession.Client.Token
-	if err := currentState.Save(); err != nil {
+	result, err := service.SignUp(positionals[0], email, name, string(password))
+	if err != nil {
 		return err
 	}
-	if err := localstate.StoreSecretKey(secretKey); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not save Secret Key to keychain: %v\n", err)
+	if result.SecretKey == "" {
+		printPendingRecovery(result.PendingOperationID, result.SetupState, result.Problems)
+		return errors.New("account setup is pending; resume its protected operation instead of registering again")
 	}
-
-	fmt.Fprintf(os.Stderr, `
-Account created. This is your Secret Key:
-
-    %s
-
-Write it down and keep it with your master password somewhere safe, or save
-your Emergency Kit with "hisar emergency-kit". You need both to sign in on a
-new device. A forgotten master password cannot be recovered by anyone,
-including Hisar.
-`, secretKey.Encode())
+	path, saveErr := service.SavePendingRecoveryEmergencyKit(result.PendingOperationID, string(password))
+	if saveErr != nil {
+		return fmt.Errorf("setup is pending and the Emergency Kit could not be saved: %w", saveErr)
+	}
+	fmt.Fprintf(standardError(), "Saved your Emergency Kit to %s.\n", path)
+	wasManual := result.SetupState == "awaiting-kit"
+	if wasManual {
+		if err := confirmUnlessYes(*isYes, "Keep this saved Emergency Kit. Create the account with its Secret Key now?"); err != nil {
+			return err
+		}
+		if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
+			return err
+		}
+		result, err = service.ResumePendingRecovery(result.PendingOperationID, string(password))
+		if err != nil {
+			return err
+		}
+	}
+	if result.SetupState != "delivery-pending" {
+		printPendingRecovery(result.PendingOperationID, result.SetupState, result.Problems)
+		return errors.New("account setup has not finished; keep its Emergency Kit and resume the pending operation")
+	}
+	fmt.Fprintf(standardError(), "Account created. This is your Secret Key:\n\n    %s\n\nKeep it and your master password safe. You need both to sign in on a new device.\n", result.SecretKey)
+	if *isYes || wasManual {
+		if err := service.AcknowledgePendingRecovery(result.PendingOperationID, string(password)); err != nil {
+			return err
+		}
+	} else {
+		printPendingRecovery(result.PendingOperationID, result.SetupState, result.Problems)
+	}
 	return nil
 }
 
@@ -199,9 +221,9 @@ func runLogin(ctx context.Context, flags *flag.FlagSet, args []string) error {
 		return err
 	}
 	if err := localstate.StoreSecretKey(secretKey); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: could not save Secret Key to keychain: %v\n", err)
+		fmt.Fprintf(standardError(), "warning: could not save Secret Key to keychain: %v\n", err)
 	}
-	fmt.Fprintf(os.Stderr, "Signed in as %s (%s).\n", currentSession.Name, currentSession.Email)
+	fmt.Fprintf(standardError(), "Signed in as %s (%s).\n", currentSession.Name, currentSession.Email)
 	return nil
 }
 
@@ -236,16 +258,26 @@ func addVaultFlag(flags *flag.FlagSet) *string {
 	return flags.String("v", "Personal", "vault name or ID")
 }
 
+// findItem resolves an ID, an unambiguous exact title, or an unambiguous part of a title.
 func findItem(items []item.Item, query string) (*item.Item, error) {
+	for index := range items {
+		if items[index].ID == query {
+			return &items[index], nil
+		}
+	}
 	var matches []*item.Item
+	var exact []*item.Item
 	for index := range items {
 		vaultItem := &items[index]
-		if vaultItem.ID == query || strings.EqualFold(vaultItem.Overview.Title, query) {
-			return vaultItem, nil
+		if strings.EqualFold(vaultItem.Overview.Title, query) {
+			exact = append(exact, vaultItem)
 		}
 		if strings.Contains(strings.ToLower(vaultItem.Overview.Title), strings.ToLower(query)) {
 			matches = append(matches, vaultItem)
 		}
+	}
+	if len(exact) > 0 {
+		matches = exact
 	}
 	switch len(matches) {
 	case 0:
@@ -254,7 +286,7 @@ func findItem(items []item.Item, query string) (*item.Item, error) {
 		return matches[0], nil
 	}
 	var builder strings.Builder
-	fmt.Fprintf(&builder, "%q matches %d items; use the exact title or ID:", query, len(matches))
+	fmt.Fprintf(&builder, "%q matches %d items; use an ID (hisar ls -v <vault-ID> lists metadata):", query, len(matches))
 	for _, match := range matches {
 		fmt.Fprintf(&builder, "\n  %s  %s", match.ID, match.Overview.Title)
 	}
@@ -262,7 +294,7 @@ func findItem(items []item.Item, query string) (*item.Item, error) {
 }
 
 func writeItem(output io.Writer, vaultItem *item.Item) error {
-	writer := tabwriter.NewWriter(output, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(output)
 	fmt.Fprintf(writer, "title:\t%s\n", vaultItem.Overview.Title)
 	if vaultItem.Overview.Username != "" {
 		fmt.Fprintf(writer, "username:\t%s\n", vaultItem.Overview.Username)
@@ -434,7 +466,7 @@ func promptCard(vaultItem *item.Item) error {
 	description := item.DescribeCard(card.Number, card.Expiry, time.Now())
 	for _, warning := range []string{description.NumberWarning, description.ExpiryWarning} {
 		if warning != "" {
-			fmt.Fprintf(os.Stderr, "Note: %s.\n", warning)
+			fmt.Fprintf(standardError(), "Note: %s.\n", warning)
 		}
 	}
 	item.WriteCard(vaultItem, card, otherFields)
@@ -559,7 +591,7 @@ func promptServer(vaultItem *item.Item, vaultItems []item.Item) error {
 	item.WriteServer(vaultItem, server, otherFields)
 	item.NormalizeServer(vaultItem)
 	if warning := server.Normalize().PortWarning(); warning != "" {
-		fmt.Fprintln(os.Stderr, warning+".")
+		fmt.Fprintln(standardError(), warning+".")
 	}
 	return nil
 }
@@ -608,13 +640,13 @@ func promptDatabase(vaultItem *item.Item) error {
 	item.WriteDatabase(vaultItem, database, otherFields)
 	item.NormalizeDatabase(vaultItem)
 	if warning := database.Normalize().PortWarning(); warning != "" {
-		fmt.Fprintln(os.Stderr, warning+".")
+		fmt.Fprintln(standardError(), warning+".")
 	}
 	return nil
 }
 
-// promptSSHKey asks for the title of one of the vault's SSH keys and returns its ID; "none" removes the link, and an empty
-// answer keeps the current one.
+// promptSSHKey asks for the ID or title of one of the vault's SSH keys and returns its ID; "none" removes the link, and an
+// empty answer keeps the current one.
 func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 	var allKey []item.Item
 	currentTitle := ""
@@ -629,24 +661,28 @@ func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 	if currentID != "" && currentTitle == "" {
 		currentTitle = "missing key " + currentID
 	}
-	label := "SSH key (the title of an SSH key in this vault, empty for none)"
+	label := "SSH key (the title or ID of an SSH key in this vault, empty for none)"
 	if currentID != "" {
-		label = "SSH key (empty to keep, 'none' to remove)"
+		label = "SSH key (empty to keep, 'none' to remove) [" + currentTitle + "]"
 	}
 	for {
-		answer, err := prompt(label, currentTitle)
+		// Only an empty answer keeps the current key: a typed answer equal to its title may be another key's ID.
+		answer, err := prompt(label, "")
 		if err != nil {
 			return "", err
 		}
 		switch {
-		case answer == currentTitle:
+		case answer == "":
 			return currentID, nil
 		case strings.EqualFold(answer, "none"):
 			return "", nil
 		}
+		if index := slices.IndexFunc(allKey, func(key item.Item) bool { return key.ID == answer }); index >= 0 {
+			return allKey[index].ID, nil
+		}
 		var matches []item.Item
 		for _, key := range allKey {
-			if strings.EqualFold(strings.TrimSpace(key.Overview.Title), answer) || key.ID == answer {
+			if strings.EqualFold(strings.TrimSpace(key.Overview.Title), answer) {
 				matches = append(matches, key)
 			}
 		}
@@ -654,9 +690,12 @@ func promptSSHKey(currentID string, vaultItems []item.Item) (string, error) {
 		case 1:
 			return matches[0].ID, nil
 		case 0:
-			fmt.Fprintf(os.Stderr, "This vault has no SSH key called %q.\n", answer)
+			fmt.Fprintf(standardError(), "This vault has no SSH key called %q.\n", answer)
 		default:
-			fmt.Fprintf(os.Stderr, "%d SSH keys are called %q; enter one's ID instead.\n", len(matches), answer)
+			fmt.Fprintf(standardError(), "%d SSH keys are called %q; enter one's ID instead:\n", len(matches), answer)
+			for _, match := range matches {
+				fmt.Fprintf(standardError(), "  %s  %s\n", match.ID, match.Overview.Title)
+			}
 		}
 	}
 }
@@ -688,7 +727,7 @@ func promptItem(vaultItem *item.Item) error {
 		if vaultItem.Details.Password, err = item.GeneratePassword(item.DefaultGeneratorConfig()); err != nil {
 			return err
 		}
-		fmt.Fprintln(os.Stderr, "Generated a new password.")
+		fmt.Fprintln(standardError(), "Generated a new password.")
 	case len(password) > 0:
 		vaultItem.Details.Password = string(password)
 	}
@@ -718,7 +757,7 @@ func runWhoami(ctx context.Context, access backend, flags *flag.FlagSet, args []
 	if err != nil {
 		return err
 	}
-	fmt.Printf("%s <%s>\naccount: %s\nrole:    %s\nserver:  %s\n", account.Name, account.Email, account.AccountID, account.Role, account.Server)
+	fmt.Fprintf(terminalSafeWriter{output: os.Stdout}, "%s <%s>\naccount: %s\nrole:    %s\nserver:  %s\n", account.Name, account.Email, account.AccountID, account.Role, account.Server)
 	return nil
 }
 
@@ -730,7 +769,7 @@ func runListDevices(ctx context.Context, access backend, flags *flag.FlagSet, ar
 	if err != nil {
 		return err
 	}
-	writer := tabwriter.NewWriter(os.Stdout, 0, 4, 2, ' ', 0)
+	writer := newTableWriter(os.Stdout)
 	fmt.Fprintln(writer, "NAME\tPLATFORM\tLAST SEEN\tID")
 	for _, device := range devices {
 		name := device.Name
@@ -757,6 +796,6 @@ func runRevokeDevice(ctx context.Context, access backend, flags *flag.FlagSet, a
 	if err := access.revokeDevice(ctx, positionals[0]); err != nil {
 		return err
 	}
-	fmt.Fprintln(os.Stderr, "Device signed out.")
+	fmt.Fprintln(standardError(), "Device signed out.")
 	return nil
 }

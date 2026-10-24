@@ -30,6 +30,7 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 		SecretKey            string `json:"secretKey"`
 		SignedOutDeviceCount int    `json:"signedOutDeviceCount"`
 		EmergencyKitPath     string `json:"emergencyKitPath"`
+		PendingOperationID   string `json:"pendingOperationId"`
 	}
 	if _, err := hisar.ChangeMasterPassword("wrong password", newPassword); err == nil {
 		t.Error("changed with a wrong master password")
@@ -49,8 +50,11 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 	if !strings.HasPrefix(replaced.SecretKey, "H1-") || replaced.SecretKey == signUp.SecretKey {
 		t.Fatalf("new Secret Key: %+v", replaced)
 	}
-	if document, err := os.ReadFile(replaced.EmergencyKitPath); err != nil || !strings.HasPrefix(string(document), "%PDF-") || !strings.HasPrefix(replaced.EmergencyKitPath, kitDirectory) {
-		t.Errorf("new Emergency Kit at %q: %v", replaced.EmergencyKitPath, err)
+	kit := decodeJSON[struct {
+		Path string `json:"path"`
+	}](t)(hisar.ExportPendingRecoveryEmergencyKit(replaced.PendingOperationID, newPassword, kitDirectory))
+	if document, err := os.ReadFile(kit.Path); err != nil || !strings.HasPrefix(string(document), "%PDF-") || !strings.HasPrefix(kit.Path, kitDirectory) {
+		t.Errorf("new Emergency Kit at %q: %v", kit.Path, err)
 	}
 	accountID := strings.Split(replaced.SecretKey, "-")[1]
 	if storedSecretKey, err := secretKeyStore.LoadSecretKey(accountID); err != nil || storedSecretKey != replaced.SecretKey {
@@ -59,6 +63,7 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 
 	preview := decodeJSON[struct {
 		Email       string `json:"email"`
+		PlanVersion string `json:"planVersion"`
 		OwnedVaults []struct {
 			Name string `json:"name"`
 		} `json:"ownedVaults"`
@@ -67,13 +72,13 @@ func TestIntegrationMobileAccountLifecycle(t *testing.T) {
 	if preview.Email != email || len(preview.OwnedVaults) != 1 || preview.OwnedVaults[0].Name != "Personal" || preview.DeviceCount != 1 {
 		t.Errorf("deletion preview: %+v", preview)
 	}
-	if _, err := hisar.DeleteAccount(newPassword, "someone@example.com"); err == nil {
+	if _, err := hisar.DeleteAccountWithPlan(newPassword, "someone@example.com", preview.PlanVersion); err == nil {
 		t.Error("deleted with another email")
 	}
-	if _, err := hisar.DeleteAccount("", email); err == nil {
+	if _, err := hisar.DeleteAccountWithPlan("", email, preview.PlanVersion); err == nil {
 		t.Error("deleted without a master password")
 	}
-	deleted := decodeJSON[status](t)(hisar.DeleteAccount(newPassword, email))
+	deleted := decodeJSON[status](t)(hisar.DeleteAccountWithPlan(newPassword, email, preview.PlanVersion))
 	if deleted.State != "signed-out" || deleted.Email != "" {
 		t.Errorf("after deletion: %+v", deleted)
 	}

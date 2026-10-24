@@ -186,7 +186,8 @@ func (source *Source) GetAppcast(ctx context.Context) ([]byte, error) {
 	return current.appcast, nil
 }
 
-// OpenFile streams a file of a release in the appcast; the caller closes the reader.
+// OpenFile streams the update archive (update.json's archive) of a release in the appcast; the caller closes the reader.
+// The release's other assets stay on GitHub: a private repository may hold files that are not for every account.
 func (source *Source) OpenFile(ctx context.Context, version, fileName string) (io.ReadCloser, int64, error) {
 	if !IsValidVersion(version) || !IsValidFileName(fileName) {
 		return nil, 0, ErrFileNotFound
@@ -196,14 +197,10 @@ func (source *Source) OpenFile(ctx context.Context, version, fileName string) (i
 		return nil, 0, err
 	}
 	release, found := current.releasesByName[version]
-	if !found {
+	if !found || fileName != release.Archive {
 		return nil, 0, ErrFileNotFound
 	}
-	asset, found := release.assetsByName[fileName]
-	if !found {
-		return nil, 0, ErrFileNotFound
-	}
-	response, err := source.gitHub.openAsset(ctx, asset.ID)
+	response, err := source.gitHub.openAsset(ctx, release.archiveAsset.ID)
 	if errors.Is(err, errNotFound) {
 		return nil, 0, ErrFileNotFound
 	}
@@ -212,7 +209,7 @@ func (source *Source) OpenFile(ctx context.Context, version, fileName string) (i
 	}
 	size := response.ContentLength
 	if size < 0 {
-		size = asset.Size
+		size = release.archiveAsset.Size
 	}
 	return response.Body, size, nil
 }

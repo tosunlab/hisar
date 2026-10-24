@@ -47,11 +47,20 @@ class AssetLinksTests {
         assertEquals(
             listOf(
                 AssetLinks.Candidate("https://github.com", "https://github.com/.well-known/assetlinks.json"),
-                AssetLinks.Candidate("https://gist.github.com", "https://gist.github.com/.well-known/assetlinks.json"),
                 AssetLinks.Candidate("https://android.com", "https://android.com/.well-known/assetlinks.json"),
+                AssetLinks.Candidate("https://gist.github.com", "https://gist.github.com/.well-known/assetlinks.json"),
             ),
             AssetLinks.listAllCandidate(app, allWebsite),
         )
         assertEquals(emptyList(), AssetLinks.listAllCandidate(AndroidApp("org.unrelated.app", fingerprint), allWebsite))
+    }
+
+    @Test
+    fun testManyMatchingSitesAreAllAskedWithTheirDomainsFirst() {
+        val allWebsite = (1..500).map { LoginWebsite("host$it.github.com", "github.com") } + LoginWebsite("android.com", "android.com")
+        val allServiceIdentifier = AssetLinks.listAllCandidate(app, allWebsite).map { it.serviceIdentifier }
+        assertEquals(502, allServiceIdentifier.size)
+        assertEquals(listOf("https://github.com", "https://android.com"), allServiceIdentifier.take(2))
+        assertTrue("https://host500.github.com" in allServiceIdentifier, "the last host may be the only one that vouches")
     }
 }

@@ -10,6 +10,7 @@ import {
   createForwardedApprovalEvent,
   createHarnessApprovalEvent,
   createLauncherApprovalEvent,
+  createSignInApprovalEvent,
   createSigningApprovalEvent,
 } from "../testing";
 
@@ -512,9 +513,6 @@ describe("SSHApprovalWindow", () => {
     expect(wrapper.find(".subtitle").text()).toBe("via hisar mcp in Terminal");
     expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["/opt/homebrew/bin/hisar", "/dev/ttys003"]);
     expect(wrapper.find('input[name="isRemembered"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="approval-agent-note"]').text()).toBe(
-      "Lets Claude Code list and search the vaults available to agents until 10 minutes after its last request, or until Hisar locks. Using a secret always asks.",
-    );
     expect(api.respondSSHApproval).toHaveBeenCalledWith("agent-1", true, false);
     wrapper.unmount();
   });
@@ -562,7 +560,7 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
-  it("shows the command, the directory and the secrets of a run, with remembering off by default", async () => {
+  it("shows the command, the directory and the secrets of a run, allowed only this time by default", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createAgentRunApprovalEvent({ appName: "" }));
     await flushPromises();
@@ -570,11 +568,16 @@ describe("SSHApprovalWindow", () => {
     expect(wrapper.find(".subtitle").text()).toBe("via hisar mcp");
     expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["npm run deploy -- --env staging", "~/src/billing"]);
     expect(wrapper.findAll('[data-testid="approval-secrets"] li').map((line) => line.text())).toEqual(["Work › Stripe › api key", "Work › Postgres staging › password"]);
-    expect(wrapper.find(".remember").text()).toBe("Allow these secrets for this agent for 1 hour");
-    expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.find(".remember").exists()).toBe(false);
+    const menu = wrapper.find('[data-testid="approval-grant-duration-menu"]');
+    expect(menu.findAll("option").map((option) => option.text())).toEqual(["Only this time", "For 1 hour"]);
+    expect((menu.element as HTMLSelectElement).value).toBe("once");
+    expect(wrapper.find('[data-testid="approval-grant-note"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice covers only these secrets.");
     expect(api.respondSSHApproval).toHaveBeenCalledWith("agent-run-1", true, false);
-    await wrapper.find('input[name="isRemembered"]').setValue(true);
-    expect(api.setSSHApprovalRemembered).toHaveBeenCalledWith("agent-run-1", true);
+    await menu.setValue("hour");
+    expect(api.setSSHApprovalGrantDuration).toHaveBeenCalledWith("agent-run-1", "hour");
+    expect(approvalStore.grantDuration).toBe("hour");
     expect(wrapper.find('[data-testid="approval-agent-note"]').exists()).toBe(false);
     wrapper.unmount();
   });
@@ -600,10 +603,73 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find("#approval-title").text()).toBe("Claude Code wants to read “Stripe › api key”");
     expect(wrapper.find('[data-testid="approval-warning"]').text()).toBe("The value will be visible to Claude Code and can end up in its transcript and logs.");
-    expect(wrapper.find(".remember").text()).toBe("Allow every field of “Stripe” for this agent for 1 hour");
-    expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(false);
-    expect(approvalStore.isRemembered).toBe(false);
+    expect((wrapper.find('[data-testid="approval-grant-duration-menu"]').element as HTMLSelectElement).value).toBe("once");
+    expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice covers only reading “Stripe › api key” again, nothing else.");
     expect(wrapper.find('[data-testid="approval-agent-note"]').text()).toBe("Approving also lets Claude Code list and search the vaults available to agents.");
+    wrapper.unmount();
+  });
+
+  it("shows where a sign-in goes and the login, and keeps the choice in the menu", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createSignInApprovalEvent());
+    await flushPromises();
+    expect(wrapper.find("#approval-title").text()).toBe("Hermes in Terminal wants to sign in to https://tosunlab.com");
+    expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["https://tosunlab.com in Google Chrome"]);
+    expect(wrapper.find('[data-testid="approval-login"]').text()).toBe("Agents › Tosun Lab, user@example.com");
+    expect(wrapper.find('[data-testid="approval-sign-in-note"]').text()).toBe(
+      "Hisar enters the username, password and one-time code and submits them. Hermes in Terminal gets no password or one-time code from Hisar.",
+    );
+    const menu = wrapper.find('[data-testid="approval-grant-duration-menu"]');
+    expect(menu.findAll("option").map((option) => option.text())).toEqual(["Only this time", "For 1 hour", "For 1 day", "Always"]);
+    await menu.setValue("always");
+    expect(api.setSSHApprovalGrantDuration).toHaveBeenCalledWith("sign-in-1", "always");
+    wrapper.unmount();
+  });
+
+  it("lets the user pick the login when several are saved for the website", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent(
+      "ssh-approval",
+      createSignInApprovalEvent({
+        allLogin: [
+          { vaultName: "Agents", title: "Tosun Lab", username: "user@example.com" },
+          { vaultName: "Agents", title: "Tosun Lab admin", username: "ops@example.com" },
+        ],
+      }),
+    );
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid^="approval-login-"] .login-text').map((login) => login.text())).toEqual([
+      "Agents › Tosun Lab, user@example.com",
+      "Agents › Tosun Lab admin, ops@example.com",
+    ]);
+    expect((wrapper.find('[data-testid="approval-login-0"] input').element as HTMLInputElement).checked).toBe(true);
+    await wrapper.find('[data-testid="approval-login-1"] input').setValue(true);
+    expect(api.setSSHApprovalLogin).toHaveBeenCalledWith("sign-in-1", 1);
+    expect(approvalStore.loginIndex).toBe(1);
+    wrapper.unmount();
+  });
+
+  it("asks for the master password instead of a click for an agent on a Mac without Touch ID", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createSignInApprovalEvent({ isTouchIDApproval: false }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="authorize-approval"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="approval-password"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="submit-password"]').text()).toBe("Approve");
+    await wrapper.find('[data-testid="approval-password"]').setValue("correct horse");
+    await wrapper.find(".password-row").trigger("submit");
+    await flushPromises();
+    expect(api.respondApprovalWithPassword).toHaveBeenCalledWith("sign-in-1", "correct horse", false);
+    expect(api.respondSSHApproval).not.toHaveBeenCalledWith("sign-in-1", true, false);
+    wrapper.unmount();
+  });
+
+  it("tells a locked sign-in that the login shows after the unlock", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createSignInApprovalEvent({ allLogin: [], isUnlockRequired: true, isPasswordUnlock: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-login-locked"]').text()).toBe("Hisar shows the login saved for this website after you unlock it.");
+    expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves this request.");
     wrapper.unmount();
   });
 

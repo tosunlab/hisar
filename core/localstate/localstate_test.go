@@ -158,6 +158,56 @@ func TestLoadRejectsCorruptFile(t *testing.T) {
 	}
 }
 
+func TestLoadMakesAnExistingFilePrivate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "state.json")
+	if err := os.WriteFile(path, []byte(`{"token":"bearer"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state, err := Load(path)
+	if err != nil || state.Token != "bearer" {
+		t.Fatalf("load: %+v %v", state, err)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mode := info.Mode().Perm(); mode != 0o600 {
+		t.Errorf("the loaded bearer stays readable by others: mode %o", mode)
+	}
+}
+
+func TestSaveWritesOnlyANewFileOfItsOwn(t *testing.T) {
+	directory := t.TempDir()
+	path := filepath.Join(directory, "state.json")
+	victimPath := filepath.Join(directory, "victim")
+	if err := os.WriteFile(victimPath, []byte("victim"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(victimPath, path+".tmp"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	state, err := Load(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	state.Token = "bearer"
+	if err := state.Save(); err != nil {
+		t.Fatal(err)
+	}
+	if content, _ := os.ReadFile(victimPath); string(content) != "victim" {
+		t.Errorf("the save wrote through a symlink: %q", content)
+	}
+	if fileInfo, err := os.Lstat(path); err != nil || !fileInfo.Mode().IsRegular() || fileInfo.Mode().Perm() != 0o600 {
+		t.Errorf("state file: %v %v", fileInfo.Mode(), err)
+	}
+	if entries, _ := os.ReadDir(directory); len(entries) != 3 {
+		t.Errorf("the save left a temporary file: %v", entries)
+	}
+}
+
 func TestSecretKeyFromEnvironment(t *testing.T) {
 	secretKey, _ := crypt.GenerateSecretKey("ABC123")
 	t.Setenv("HISAR_SECRET_KEY", strings.ToLower(secretKey.Encode()))

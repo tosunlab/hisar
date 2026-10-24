@@ -14,8 +14,10 @@ export {
 
 export type {
     AccountDeletionPreview,
+    AgentGrant,
     AgentHost,
     AgentSession,
+    AgentSignIn,
     BrowserPairingRequest,
     BrowserStatus,
     CardDescription,
@@ -32,6 +34,7 @@ export type {
     ImportPreview,
     ImportProgress,
     ImportSkippedEntry,
+    ImportSourceGroup,
     ItemAPICredential,
     ItemAddress,
     ItemAndroidApp,
@@ -53,6 +56,7 @@ export type {
     Organizations,
     PairedBrowser,
     PasswordConfig,
+    PendingRecoverySummary,
     Person,
     ReceivedShareInvitation,
     RememberedAgentSecret,

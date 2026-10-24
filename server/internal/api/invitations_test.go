@@ -75,7 +75,7 @@ func TestInviteByEmail(t *testing.T) {
 	invite, found := findEmail(messages, "carol@example.com")
 	token := findInviteToken(t, server, recorder, "carol@example.com")
 	if !found || invite.Subject != "alice@example.com invited you to Hisar" ||
-		!strings.Contains(invite.Body, "https://hisar.test/invite/"+token) || !strings.Contains(invite.Body, "\n"+token+"\n") || !strings.Contains(invite.Body, "alice@example.com") {
+		!strings.Contains(invite.Body, baseURL+"/invite/"+token) || !strings.Contains(invite.Body, "\n"+token+"\n") || !strings.Contains(invite.Body, "alice@example.com") {
 		t.Errorf("invite email: %+v", invite)
 	}
 	carol, _, err := session.SignUp(ctx, apiclient.New(baseURL), token, "carol@example.com", "Carol", []byte("carol password"), testDevice)
@@ -132,8 +132,8 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 	emailCountBefore := len(recorder.ListMessages())
 
 	invitationPath := "/api/v1/vaults/" + family.ID + "/share-invitations"
-	existingStatus, existingBody := sendRawRequest(t, baseURL, alice.Client.Token, "POST", invitationPath, apitypes.ShareInvitationRequest{Email: "Bob@Example.com", Role: apitypes.VaultEditor})
-	unknownStatus, unknownBody := sendRawRequest(t, baseURL, alice.Client.Token, "POST", invitationPath, apitypes.ShareInvitationRequest{Email: "ghost@example.com", Role: apitypes.VaultEditor})
+	existingStatus, existingBody := sendRawRequest(t, baseURL, alice.Client.Token, "POST", invitationPath, signedShareRequest(t, alice, family, "Bob@Example.com", apitypes.VaultEditor, nil))
+	unknownStatus, unknownBody := sendRawRequest(t, baseURL, alice.Client.Token, "POST", invitationPath, signedShareRequest(t, alice, family, "ghost@example.com", apitypes.VaultEditor, nil))
 	if existingStatus != http.StatusAccepted || unknownStatus != existingStatus || unknownBody != existingBody || !strings.Contains(existingBody, apitypes.InvitationSentMessage) {
 		t.Fatalf("responses differ: %d %s / %d %s", existingStatus, existingBody, unknownStatus, unknownBody)
 	}
@@ -144,7 +144,7 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 		t.Errorf("email to Bob: %+v", toBob)
 	}
 	toGhost, isToGhost := findEmail(messages, "ghost@example.com")
-	if !isToGhost || !strings.Contains(toGhost.Body, "https://hisar.test/invite/") || strings.Contains(toGhost.Body, "Family") {
+	if !isToGhost || !strings.Contains(toGhost.Body, baseURL+"/invite/") || strings.Contains(toGhost.Body, "Family") {
 		t.Errorf("email to the unknown address: %+v", toGhost)
 	}
 
@@ -192,7 +192,7 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 	if carolList := requireValue[*apitypes.ShareInvitationList](t)(carol.Client.ListShareInvitations(ctx)); len(carolList.Sent) != 0 {
 		t.Errorf("a member who does not own the vault sees its invitations: %+v", carolList.Sent)
 	}
-	completedShares := requireValue[[]session.CompletedShare](t)(alice.CompleteAcceptedShares(ctx))
+	completedShares := completeReviewedShares(t, alice)
 	if len(completedShares) != 1 || completedShares[0].VaultName != "Family" || completedShares[0].Recipient.Email != "bob@example.com" {
 		t.Fatalf("completed: %+v", completedShares)
 	}
@@ -228,11 +228,13 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 		if err := alice.InviteToVault(ctx, family, "bob@example.com", apitypes.VaultReader); !apiclient.IsStatus(err, http.StatusConflict) {
 			t.Errorf("share with a member: %v", err)
 		}
-		if err := bob.InviteToVault(ctx, bobFamily, "carol@example.com", apitypes.VaultReader); !apiclient.IsStatus(err, http.StatusForbidden) {
+		bobRequest := signedShareRequest(t, bob, bobFamily, "carol@example.com", apitypes.VaultReader, nil)
+		if err := bob.Client.CreateSignedShareInvitation(ctx, family.ID, &bobRequest); !apiclient.IsStatus(err, http.StatusForbidden) {
 			t.Errorf("an editor shared: %v", err)
 		}
 		alicePersonal := requireValue[*session.Vault](t)(alice.FindVault(ctx, "Personal"))
-		if err := alice.InviteToVault(ctx, alicePersonal, "carol@example.com", apitypes.VaultReader); !apiclient.IsStatus(err, http.StatusBadRequest) {
+		personalRequest := signedShareRequest(t, alice, alicePersonal, "carol@example.com", apitypes.VaultReader, nil)
+		if err := alice.Client.CreateSignedShareInvitation(ctx, alicePersonal.ID, &personalRequest); !apiclient.IsStatus(err, http.StatusBadRequest) {
 			t.Errorf("shared a personal vault: %v", err)
 		}
 		if err := alice.InviteToVault(ctx, family, "carol@example.com", "admin"); !apiclient.IsStatus(err, http.StatusBadRequest) {
@@ -241,7 +243,7 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 		if err := alice.InviteToVault(ctx, family, "not an email", apitypes.VaultReader); !apiclient.IsStatus(err, http.StatusBadRequest) {
 			t.Errorf("invalid email: %v", err)
 		}
-		if err := carol.InviteToVault(ctx, family, "dave@example.com", apitypes.VaultReader); !apiclient.IsStatus(err, http.StatusNotFound) {
+		if _, err := carol.Client.CreateShareInvitation(ctx, family.ID, &apitypes.ShareInvitationRequest{Email: "dave@example.com", Role: apitypes.VaultReader}); !apiclient.IsStatus(err, http.StatusNotFound) {
 			t.Errorf("a non-member shared: %v", err)
 		}
 	})
@@ -293,10 +295,10 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 	})
 
 	t.Run("an account created from the share email sees the invitation", func(t *testing.T) {
-		token := findInviteToken(t, server, recorder, "ghost@example.com")
 		if err := alice.InviteToVault(ctx, family, "ghost@example.com", apitypes.VaultReader); err != nil {
 			t.Fatal(err)
 		}
+		token := findInviteToken(t, server, recorder, "ghost@example.com")
 		ghost, _, err := session.SignUp(ctx, apiclient.New(baseURL), token, "ghost@example.com", "Ghost", []byte("ghost password"), testDevice)
 		if err != nil {
 			t.Fatal(err)
@@ -308,7 +310,7 @@ func TestShareInvitationWithoutEnumeration(t *testing.T) {
 		if err := ghost.Client.AcceptShareInvitation(ctx, shareList.Received[0].ID); err != nil {
 			t.Fatal(err)
 		}
-		if completedShares := requireValue[[]session.CompletedShare](t)(alice.CompleteAcceptedShares(ctx)); len(completedShares) != 1 || completedShares[0].Role != apitypes.VaultReader {
+		if completedShares := completeReviewedShares(t, alice); len(completedShares) != 1 || completedShares[0].Role != apitypes.VaultReader {
 			t.Fatalf("completed: %+v", completedShares)
 		}
 		requireValue[*session.Vault](t)(ghost.FindVault(ctx, "Family"))
@@ -348,8 +350,9 @@ func TestCompleteAcceptedShareRefusesChangedKey(t *testing.T) {
 	if err := bob.Client.AcceptShareInvitation(ctx, invitationList.Received[0].ID); err != nil {
 		t.Fatal(err)
 	}
-	if completedShares, err := alice.CompleteAcceptedShares(ctx); len(completedShares) != 0 || err == nil || !strings.Contains(err.Error(), "signing key changed") {
-		t.Errorf("completed with a changed key: %+v %v", completedShares, err)
+	sent := requireValue[*apitypes.ShareInvitationList](t)(alice.Client.ListShareInvitations(ctx)).Sent[0]
+	if err := alice.ConfirmShareRecipient(ctx, sent.ID, session.ShareInvitationReviewHash(sent)); err == nil || !strings.Contains(err.Error(), "signing key changed") {
+		t.Errorf("confirmed with a changed key: %v", err)
 	}
 	if _, err := bob.FindVault(ctx, "Family"); !errors.Is(err, session.ErrNotFound) {
 		t.Errorf("Bob got access: %v", err)
@@ -409,7 +412,7 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 		t.Fatalf("accepted email: %+v", messages)
 	}
 
-	if completedShares := requireValue[[]session.CompletedShare](t)(alice.CompleteAcceptedShares(ctx)); len(completedShares) != 1 {
+	if completedShares := completeReviewedShares(t, alice); len(completedShares) != 1 {
 		t.Fatalf("completed: %+v", completedShares)
 	}
 	if bobList := requireValue[*apitypes.ShareInvitationList](t)(bob.Client.ListShareInvitations(ctx)); len(bobList.Waiting) != 0 {
@@ -419,7 +422,7 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 	t.Run("no email when the owner's app completes in time", func(t *testing.T) {
 		server.service.ShareAcceptedEmailDelay = time.Second
 		emailCountBefore := acceptInvitation(carol)
-		if completedShares := requireValue[[]session.CompletedShare](t)(alice.CompleteAcceptedShares(ctx)); len(completedShares) != 1 {
+		if completedShares := completeReviewedShares(t, alice); len(completedShares) != 1 {
 			t.Fatalf("completed: %+v", completedShares)
 		}
 		time.Sleep(1500 * time.Millisecond)
@@ -441,4 +444,57 @@ func TestAcceptedShareTellsInviterAndRecipient(t *testing.T) {
 			t.Errorf("emailed over the limit: %+v", messages)
 		}
 	})
+}
+
+func TestInvitationsOfARemovedOwnerGrantNothing(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	alice := signUpTestAccount(t, ctx, server, baseURL, "alice@example.com", apitypes.RoleMember)
+	bob := signUpTestAccount(t, ctx, server, baseURL, "bob@example.com", apitypes.RoleMember)
+	carol := signUpTestAccount(t, ctx, server, baseURL, "carol@example.com", apitypes.RoleMember)
+	dave := signUpTestAccount(t, ctx, server, baseURL, "dave@example.com", apitypes.RoleMember)
+	team := requireValue[*session.Vault](t)(alice.CreateVault(ctx, "Team", apitypes.VaultShared))
+	shareThroughInvitation(t, alice, bob, team, apitypes.VaultOwner)
+
+	for _, recipient := range []*session.Session{carol, dave} {
+		if err := alice.InviteToVault(ctx, team, recipient.Email, apitypes.VaultOwner); err != nil {
+			t.Fatal(err)
+		}
+	}
+	carolInvitations := requireValue[*apitypes.ShareInvitationList](t)(carol.Client.ListShareInvitations(ctx))
+	daveInvitations := requireValue[*apitypes.ShareInvitationList](t)(dave.Client.ListShareInvitations(ctx))
+	if len(carolInvitations.Received) != 1 || len(daveInvitations.Received) != 1 {
+		t.Fatalf("received: %+v %+v", carolInvitations, daveInvitations)
+	}
+	if err := dave.Client.AcceptShareInvitation(ctx, daveInvitations.Received[0].ID); err != nil {
+		t.Fatal(err)
+	}
+
+	bobTeam := requireValue[*session.Vault](t)(bob.FindVault(ctx, "Team"))
+	if err := bob.RemoveVaultMember(ctx, bobTeam, alice.AccountID); err != nil {
+		t.Fatal(err)
+	}
+
+	if received := requireValue[*apitypes.ShareInvitationList](t)(carol.Client.ListShareInvitations(ctx)).Received; len(received) != 0 {
+		t.Errorf("the removed owner's invitation is still offered: %+v", received)
+	}
+	if err := carol.Client.AcceptShareInvitation(ctx, carolInvitations.Received[0].ID); !apiclient.IsStatus(err, http.StatusNotFound) {
+		t.Errorf("accepting the removed owner's invitation: %v", err)
+	}
+	if waiting := requireValue[*apitypes.ShareInvitationList](t)(dave.Client.ListShareInvitations(ctx)).Waiting; len(waiting) != 0 {
+		t.Errorf("an acceptance of the removed owner's invitation still waits: %+v", waiting)
+	}
+	completedShares, err := bob.CompleteAcceptedShares(ctx)
+	if err != nil || len(completedShares) != 0 {
+		t.Errorf("the remaining owner's sync completed: %+v %v", completedShares, err)
+	}
+	for _, recipient := range []*session.Session{carol, dave} {
+		vaults := requireValue[[]apitypes.Vault](t)(recipient.Client.ListVaults(ctx))
+		if slices.ContainsFunc(vaults, func(vault apitypes.Vault) bool { return vault.ID == team.ID }) {
+			t.Errorf("%s got the vault through the removed owner's invitation", recipient.Email)
+		}
+	}
+	if err := bob.Client.SetAccess(ctx, team.ID, dave.AccountID, &apitypes.SetAccessRequest{WrappedKey: []byte{1}, Role: apitypes.VaultOwner, KeyGeneration: bobTeam.KeyGeneration}); !apiclient.IsStatus(err, http.StatusConflict) || !strings.Contains(err.Error(), "has not accepted an invitation") {
+		t.Errorf("granting the vault to the removed owner's invitee: %v", err)
+	}
 }

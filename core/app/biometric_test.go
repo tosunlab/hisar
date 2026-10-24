@@ -1,12 +1,14 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"slices"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/session"
@@ -141,7 +143,7 @@ func TestBiometricUnlockPreparesTheKeyFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	newAccountUnlockKey := crypt.GenerateKey()
-	changeMasterPassword := func(context.Context, *session.Session, []byte, crypt.SecretKey) (*session.CredentialChange, error) {
+	changeMasterPassword := func(context.Context, *session.Session, []byte, crypt.SecretKey, session.StagePendingFactor) (*session.CredentialChange, error) {
 		secretKey, _ := service.config.SecretKeyStore.LoadSecretKey(accountID)
 		return &session.CredentialChange{SecretKey: secretKey, AccountUnlockKey: append([]byte(nil), newAccountUnlockKey...)}, nil
 	}
@@ -168,4 +170,283 @@ func TestBiometricUnlockPreparesTheKeyFirst(t *testing.T) {
 		t.Errorf("biometric unlock stayed on with an invalidated key: %+v", status)
 	}
 	checkCalls("unlock after a new enrollment", "prepare load "+accountID)
+}
+
+// preparePausingBiometric holds a Touch ID unlock between preparing its key read and its own prompt.
+type preparePausingBiometric struct {
+	*perUseBiometric
+	pause *pause
+}
+
+func (biometric preparePausingBiometric) PrepareLoadKey(accountID string) error {
+	err := biometric.perUseBiometric.PrepareLoadKey(accountID)
+	biometric.pause.wait()
+	return err
+}
+
+func TestOtherTouchIDPromptsCannotTakeTheKeyReadAnUnlockPrepared(t *testing.T) {
+	const password = "correct horse battery"
+	for _, prompt := range []string{"approval", "export"} {
+		t.Run(prompt, func(t *testing.T) {
+			fixture := createUnlockedTestService(t)
+			prepareTestApprovalUnlock(t, fixture, password)
+			service := fixture.service
+			keys := &perUseBiometric{keys: map[string][]byte{}}
+			service.config.Biometric = keys
+			SetBiometricKeyPreparer(service, keys)
+			if _, err := service.EnableBiometricUnlock(password); err != nil {
+				t.Fatal(err)
+			}
+			prepared := newPause()
+			biometric := preparePausingBiometric{perUseBiometric: keys, pause: prepared}
+			SetBiometricKeyPreparer(service, biometric)
+			unlock := func() <-chan error {
+				unlocked := make(chan error, 1)
+				go func() { _, err := service.UnlockWithBiometric(); unlocked <- err }()
+				return unlocked
+			}
+			var unlocked <-chan error
+			promptDone := make(chan error, 1)
+			switch prompt {
+			case "approval":
+				service.config.Biometric = biometric
+				service.Lock()
+				unlocked = unlock()
+				<-prepared.reached
+				go func() {
+					promptDone <- NewApprovalUnlocker(service, nil).ConfirmWithTouchID(func() error { return biometric.Authenticate(`allow "Terminal" to use "GitHub"`) })
+				}()
+				select {
+				case err := <-promptDone:
+					promptDone <- err
+				case <-time.After(200 * time.Millisecond):
+				}
+				close(prepared.resume)
+			case "export":
+				exportPrompt := newPause()
+				service.config.Biometric = promptPausingBiometric{Biometric: biometric, pause: exportPrompt}
+				go func() {
+					_, err := ExportDataToDirectory(service, ExportRequest{Format: ExportFormatPlain}, t.TempDir())
+					promptDone <- err
+				}()
+				<-exportPrompt.reached
+				service.Lock()
+				unlocked = unlock()
+				select {
+				case <-prepared.reached:
+				case <-time.After(200 * time.Millisecond):
+				}
+				close(exportPrompt.resume)
+				<-promptDone
+				close(prepared.resume)
+			}
+			if err := <-unlocked; err != nil {
+				t.Fatalf("the unlock lost its prepared key read: %v", err)
+			}
+			if status := service.GetStatus(); status.State != StateUnlocked || !status.BiometricEnabled {
+				t.Fatalf("status after the unlock: %+v", status)
+			}
+			if prompt == "approval" {
+				if err := <-promptDone; err != nil {
+					t.Errorf("the approval's Touch ID check failed: %v", err)
+				}
+			}
+		})
+	}
+}
+
+type migratingBiometric struct {
+	*fakeBiometric
+	protected      bool
+	migrationError error
+	migrations     int
+}
+
+func (biometric *migratingBiometric) IsKeyProtected(string) bool { return biometric.protected }
+func (biometric *migratingBiometric) MigrateKey(string, []byte) error {
+	biometric.migrations++
+	if biometric.migrationError != nil {
+		return biometric.migrationError
+	}
+	biometric.protected = true
+	return nil
+}
+
+func TestPasswordUnlockMigratesBiometricProtectionWithoutLosingFallback(t *testing.T) {
+	const password = "correct horse battery"
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, password)
+	service := fixture.service
+	if _, err := service.EnableBiometricUnlock(password); err != nil {
+		t.Fatal(err)
+	}
+	sealed := append([]byte(nil), service.state.BiometricUnlock...)
+	platform := &migratingBiometric{fakeBiometric: service.config.Biometric.(*fakeBiometric), migrationError: errors.New("macOS provisioning profile required")}
+	service.config.Biometric = platform
+	service.Lock()
+	if status := service.GetStatus(); status.BiometricReady || !status.BiometricEnabled || status.BiometricSetupError == "" {
+		t.Fatalf("legacy wrapper was treated as protected: %+v", status)
+	}
+	if _, err := service.UnlockWithBiometric(); !errors.Is(err, ErrBiometricNotReady) {
+		t.Fatalf("legacy unlock: %v", err)
+	}
+	status, err := service.Unlock(password)
+	if err != nil || status.State != StateUnlocked || status.BiometricSetupError != platform.migrationError.Error() {
+		t.Fatalf("password fallback was lost: %+v %v", status, err)
+	}
+	if !bytes.Equal(sealed, service.state.BiometricUnlock) || platform.migrations != 1 {
+		t.Fatal("failed migration changed recoverable state")
+	}
+	service.Lock()
+	platform.migrationError = nil
+	if _, err := service.Unlock(password); err != nil {
+		t.Fatal(err)
+	}
+	service.Lock()
+	if status := service.GetStatus(); !status.BiometricReady || status.BiometricSetupError != "" {
+		t.Fatalf("successful migration: %+v", status)
+	}
+	if status, err := service.UnlockWithBiometric(); err != nil || status.State != StateUnlocked {
+		t.Fatalf("protected unlock: %+v %v", status, err)
+	}
+}
+
+type blockingKeyMigration struct {
+	*migratingBiometric
+	started chan struct{}
+	resume  chan struct{}
+}
+
+func (biometric *blockingKeyMigration) MigrateKey(accountID string, sealed []byte) error {
+	close(biometric.started)
+	<-biometric.resume
+	return biometric.migratingBiometric.MigrateKey(accountID, sealed)
+}
+
+func TestLockDoesNotWaitForBiometricMigrationOrAcceptItsLateUnlock(t *testing.T) {
+	const password = "correct horse battery"
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, password)
+	service := fixture.service
+	if _, err := service.EnableBiometricUnlock(password); err != nil {
+		t.Fatal(err)
+	}
+	platform := &blockingKeyMigration{
+		migratingBiometric: &migratingBiometric{fakeBiometric: service.config.Biometric.(*fakeBiometric)},
+		started:            make(chan struct{}), resume: make(chan struct{}),
+	}
+	release := sync.OnceFunc(func() { close(platform.resume) })
+	t.Cleanup(release)
+	service.config.Biometric = platform
+	service.Lock()
+	unlocked := make(chan error, 1)
+	go func() { _, err := service.Unlock(password); unlocked <- err }()
+	select {
+	case <-platform.started:
+	case err := <-unlocked:
+		t.Fatalf("unlock ended before migration: %v", err)
+	case <-time.After(5 * time.Second):
+		t.Fatal("password unlock did not reach migration")
+	}
+	locked := make(chan Status, 1)
+	go func() { locked <- service.Lock() }()
+	select {
+	case status := <-locked:
+		if status.State != StateLocked {
+			t.Fatalf("lock: %+v", status)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("lock waited for the OS keychain prompt")
+	}
+	release()
+	if err := <-unlocked; !errors.Is(err, errUnlockInterrupted) {
+		t.Fatalf("late migration reopened the session: %v", err)
+	}
+	if status := service.GetStatus(); status.State != StateLocked || !status.BiometricEnabled {
+		t.Fatalf("recovery state changed: %+v", status)
+	}
+}
+
+type promptingBiometric struct {
+	*migratingBiometric
+	prompted, dismissed chan struct{}
+}
+
+func (biometric *promptingBiometric) Authenticate(string) error {
+	close(biometric.prompted)
+	<-biometric.dismissed
+	return ErrBiometricCancelled
+}
+
+func TestPasswordUnlockDoesNotWaitForAPendingBiometricPrompt(t *testing.T) {
+	const password = "correct horse battery"
+	for _, isProtected := range []bool{true, false} {
+		name := "protected key, Touch ID unlock prompt"
+		if !isProtected {
+			name = "legacy key, setup prompt"
+		}
+		t.Run(name, func(t *testing.T) {
+			fixture := createUnlockedTestService(t)
+			prepareTestApprovalUnlock(t, fixture, password)
+			service := fixture.service
+			platform := &promptingBiometric{
+				migratingBiometric: &migratingBiometric{fakeBiometric: service.config.Biometric.(*fakeBiometric), protected: isProtected},
+				prompted:           make(chan struct{}), dismissed: make(chan struct{}),
+			}
+			dismiss := sync.OnceFunc(func() { close(platform.dismissed) })
+			t.Cleanup(dismiss)
+			service.config.Biometric = platform
+			prompt := make(chan error, 1)
+			if isProtected {
+				service.Lock()
+				go func() { _, err := service.UnlockWithBiometric(); prompt <- err }()
+			} else {
+				go func() { _, err := service.EnableBiometricUnlock(password); prompt <- err }()
+			}
+			select {
+			case <-platform.prompted:
+			case err := <-prompt:
+				t.Fatalf("no biometric prompt: %v", err)
+			case <-time.After(5 * time.Second):
+				t.Fatal("biometric prompt never shown")
+			}
+			if !isProtected {
+				service.Lock()
+			}
+			type result struct {
+				status Status
+				err    error
+			}
+			unlocked := make(chan result, 1)
+			go func() { status, err := service.Unlock(password); unlocked <- result{status, err} }()
+			select {
+			case r := <-unlocked:
+				if r.err != nil || r.status.State != StateUnlocked {
+					t.Fatalf("password unlock: %+v %v", r.status, r.err)
+				}
+				if !isProtected && (r.status.BiometricSetupError == "" || platform.migrations != 0) {
+					t.Fatalf("busy migration was not left pending: %+v, %d migrations", r.status, platform.migrations)
+				}
+			case <-time.After(2 * time.Second):
+				dismiss()
+				<-prompt
+				<-unlocked
+				t.Fatal("password unlock waited for the pending biometric prompt")
+			}
+			dismiss()
+			if err := <-prompt; err == nil {
+				t.Fatal("dismissed prompt reported success")
+			}
+			if isProtected {
+				if platform.migrations != 0 {
+					t.Fatalf("protected key was migrated again: %d", platform.migrations)
+				}
+				return
+			}
+			service.Lock()
+			if _, err := service.Unlock(password); err != nil || platform.migrations != 1 {
+				t.Fatalf("next password unlock did not migrate: %v, %d migrations", err, platform.migrations)
+			}
+		})
+	}
 }

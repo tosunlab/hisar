@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import packageJson from "../package.json";
+import { toFirefoxManifest } from "../tools/build-firefox.mjs";
 import manifest from "../public/manifest.json";
 
 function computeExtensionID(publicKey: string): string {
@@ -27,6 +28,8 @@ describe("manifest.json", () => {
       "scripting",
       "activeTab",
       "tabs",
+      "webNavigation",
+      "alarms",
       "contextMenus",
       "offscreen",
       "clipboardWrite",
@@ -55,5 +58,35 @@ describe("manifest.json", () => {
 
   it("has the same version as package.json", () => {
     expect(manifest.version).toBe(packageJson.version);
+  });
+});
+
+describe("the Firefox manifest", () => {
+  const firefoxManifest = toFirefoxManifest(manifest) as Record<string, unknown> & typeof manifest;
+
+  it("names the add-on by the ID the native host allows, from Firefox 140, which reads its data collection answer", () => {
+    expect(firefoxManifest.browser_specific_settings).toEqual({
+      gecko: {
+        id: "extension@tryhisar.com",
+        strict_min_version: "140.0",
+        update_url: "https://github.com/tosunlab/hisar/releases/download/extension-firefox-updates/updates.json",
+        data_collection_permissions: { required: ["none"] },
+      },
+    });
+    expect(firefoxManifest).not.toHaveProperty("key");
+    expect(firefoxManifest).not.toHaveProperty("minimum_chrome_version");
+  });
+
+  it("runs the background bundle as an event page and asks for Chrome's permissions but offscreen", () => {
+    expect(firefoxManifest.background).toEqual({ scripts: ["service-worker.js"], type: "module" });
+    expect(firefoxManifest.permissions).toEqual(manifest.permissions.filter((permission) => permission !== "offscreen"));
+    expect(firefoxManifest.host_permissions).toEqual(["<all_urls>"]);
+  });
+
+  it("keeps the content scripts, the passkey wrapper's world, the shortcuts and the exposed pages", () => {
+    expect(firefoxManifest.content_scripts).toEqual(manifest.content_scripts);
+    expect(firefoxManifest.commands).toEqual(manifest.commands);
+    expect(firefoxManifest.web_accessible_resources).toEqual([{ resources: ["inline-menu.html", "passkey-prompt.html"], matches: ["<all_urls>"] }]);
+    expect(firefoxManifest.version).toBe(manifest.version);
   });
 });

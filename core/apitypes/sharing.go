@@ -1,6 +1,7 @@
 package apitypes
 
 import (
+	"github.com/tryhisar/hisar/core/crypt"
 	"time"
 )
 
@@ -10,8 +11,9 @@ const (
 )
 
 type ShareInvitationRequest struct {
-	Email string `json:"email"`
-	Role  string `json:"role"`
+	Email  string             `json:"email"`
+	Role   string             `json:"role"`
+	Intent *SignedShareIntent `json:"intent,omitempty"`
 }
 
 type ReceivedShareInvitation struct {
@@ -35,8 +37,9 @@ type SentShareInvitation struct {
 	CreatedAt time.Time `json:"createdAt"`
 	ExpiresAt time.Time `json:"expiresAt"`
 	// AcceptedAt is set only once it was accepted.
-	AcceptedAt *time.Time `json:"acceptedAt,omitempty"`
-	Recipient  *Member    `json:"recipient,omitempty"`
+	AcceptedAt *time.Time         `json:"acceptedAt,omitempty"`
+	Recipient  *Member            `json:"recipient,omitempty"`
+	Intent     *SignedShareIntent `json:"intent,omitempty"`
 }
 
 // WaitingShareInvitation is an invitation the caller accepted that no owner's app has completed yet.
@@ -54,4 +57,14 @@ type ShareInvitationList struct {
 	Received []ReceivedShareInvitation `json:"received"`
 	Sent     []SentShareInvitation     `json:"sent"`
 	Waiting  []WaitingShareInvitation  `json:"waiting"`
+}
+
+type SignedShareIntent struct {
+	Context   crypt.ShareIntent `json:"context"`
+	Signature []byte            `json:"signature"`
+}
+
+type CompleteShareRequest struct {
+	Intent     SignedShareIntent `json:"intent"`
+	WrappedKey []byte            `json:"wrappedKey"`
 }

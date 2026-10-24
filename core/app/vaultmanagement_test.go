@@ -1,6 +1,7 @@
 package app
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -78,10 +79,74 @@ func (server *fakeAPIServer) addVaultManagementRoutes(mux *http.ServeMux) {
 		server.removeVault(vaultID)
 		writer.WriteHeader(http.StatusNoContent)
 	})
+	// The recovery routes act only while the vault is still the record the review names, as the real server does.
+	isStillReviewed := func(vaultID string, review apitypes.VaultReview) bool {
+		for _, vault := range server.vaults {
+			if vault.ID == vaultID {
+				return bytes.Equal(vault.EncName, review.EncName) && bytes.Equal(vault.WrappedKey, review.WrappedKey) && vault.KeyGeneration == review.KeyGeneration
+			}
+		}
+		return false
+	}
+	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/recovery/name", func(writer http.ResponseWriter, request *http.Request) {
+		var repairRequest apitypes.RepairVaultNameRequest
+		json.NewDecoder(request.Body).Decode(&repairRequest)
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		vaultID := request.PathValue("vaultID")
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
+			return
+		}
+		if !isStillReviewed(vaultID, repairRequest.Review) {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault changed since it was reviewed"})
+			return
+		}
+		for index := range server.vaults {
+			if server.vaults[index].ID == vaultID {
+				server.vaults[index].EncName = repairRequest.EncName
+			}
+		}
+		writer.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("POST /api/v1/vaults/{vaultID}/recovery/delete", func(writer http.ResponseWriter, request *http.Request) {
+		var deleteRequest apitypes.DeleteUnreadableVaultRequest
+		json.NewDecoder(request.Body).Decode(&deleteRequest)
+		server.mutex.Lock()
+		defer server.mutex.Unlock()
+		vaultID := request.PathValue("vaultID")
+		if server.getVaultRole(vaultID) != apitypes.VaultOwner {
+			writeJSON(writer, http.StatusForbidden, apitypes.Error{Error: "owner only"})
+			return
+		}
+		if !isStillReviewed(vaultID, deleteRequest.Review) {
+			writeJSON(writer, http.StatusConflict, apitypes.Error{Error: "the vault changed since it was reviewed"})
+			return
+		}
+		server.removeVault(vaultID)
+		writer.WriteHeader(http.StatusNoContent)
+	})
 	mux.HandleFunc("DELETE /api/v1/vaults/{vaultID}/access/{accountID}", func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
 		defer server.mutex.Unlock()
 		vaultID := request.PathValue("vaultID")
+		accountID := request.PathValue("accountID")
+		if accountID != server.accountID && server.getVaultRole(vaultID) == apitypes.VaultOwner {
+			accesses := server.accessesByVaultID[vaultID]
+			index := slices.IndexFunc(accesses, func(access apitypes.RotatedAccess) bool { return access.AccountID == accountID })
+			if index < 0 {
+				writeJSON(writer, 404, apitypes.Error{Error: "not found"})
+				return
+			}
+			server.accessesByVaultID[vaultID] = slices.Delete(accesses, index, index+1)
+			for index := range server.vaults {
+				if server.vaults[index].ID == vaultID {
+					server.vaults[index].NeedsRotation = true
+				}
+			}
+			writer.WriteHeader(http.StatusNoContent)
+			return
+		}
 		if request.PathValue("accountID") != server.accountID || server.getVaultRole(vaultID) == "" {
 			writeJSON(writer, http.StatusNotFound, apitypes.Error{Error: "not found"})
 			return
@@ -389,13 +454,14 @@ func TestExportAllData(t *testing.T) {
 		t.Errorf("plain export: %v", err)
 	}
 
-	if _, err := service.writeExportFile(ExportFormatPlain, "", saver.path+".again"); err != nil {
+	epoch := service.sessionEpoch
+	if _, err := service.writeExportFile(ExportFormatPlain, "", saver.path+".again", epoch); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := service.writeExportFile(ExportFormatPlain, "", saver.path+".again"); !errors.Is(err, errExportFileExists) {
+	if _, err := service.writeExportFile(ExportFormatPlain, "", saver.path+".again", epoch); !errors.Is(err, errExportFileExists) {
 		t.Errorf("the command-line export replaced a file: %v", err)
 	}
-	if _, err := service.writeExportFile(ExportFormatPlain, "", "relative.json"); err == nil {
+	if _, err := service.writeExportFile(ExportFormatPlain, "", "relative.json", epoch); err == nil {
 		t.Error("a relative path was accepted")
 	}
 }
@@ -441,7 +507,7 @@ func TestVaultManagementAndExportThroughTheCommandLine(t *testing.T) {
 
 	exportPath := filepath.Join(t.TempDir(), "export.hisar")
 	var exported cliprotocol.ExportResult
-	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: ExportFormatEncrypted, Passphrase: "a long export passphrase", Path: exportPath}}, &exported)
+	test.mustSend(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: ExportFormatEncrypted, Passphrase: "a long export passphrase", Path: exportPath, AcceptProvenance: true}}, &exported)
 	if exported.ItemCount != 2 || exported.VaultCount != 1 || exported.Path != exportPath {
 		t.Errorf("export: %+v", exported)
 	}
@@ -449,7 +515,7 @@ func TestVaultManagementAndExportThroughTheCommandLine(t *testing.T) {
 	if document, err := export.Decode(content, []byte("a long export passphrase")); err != nil || document.CountItem() != 2 {
 		t.Errorf("decode: %v", err)
 	}
-	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: ExportFormatPlain, Path: exportPath}}, nil); !strings.Contains(failure, "already exists") {
+	if failure := test.send(t, cliprotocol.Request{Type: cliprotocol.TypeExport, Export: &cliprotocol.ExportChange{Format: ExportFormatPlain, Path: exportPath, AcceptProvenance: true}}, nil); !strings.Contains(failure, "already exists") {
 		t.Errorf("the export replaced a file: %q", failure)
 	}
 }

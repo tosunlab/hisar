@@ -34,6 +34,16 @@ describe("one-time codes in the service worker", () => {
     expect(harness.getRequestTypes()).not.toContain("logins.code");
   });
 
+  it("copies no code after filling only the username of a sign-in in steps", async () => {
+    const harness = await createPairedHarness({ fillOutcome: { filledUsername: true, filledPassword: false } });
+    await harness.controller.fillLogin(1, "vault-personal", "item-example");
+    const { sessionID } = harness.service.openSession(pageFrame, pageUrl, pageUrl, "login");
+    await harness.service.getState(menuFrame, sessionID);
+    await harness.service.fillLogin(menuFrame, sessionID, "vault-personal", "item-example");
+    expect(harness.allClipboardText).toEqual([]);
+    expect(harness.getRequestTypes()).not.toContain("logins.code");
+  });
+
   it("still fills when the clipboard is not available", async () => {
     const harness = await createPairedHarness({ isClipboardUnavailable: true });
     expect(await harness.controller.fillLogin(1, "vault-personal", "item-example")).toMatchObject({ filledPassword: true });

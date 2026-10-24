@@ -17,6 +17,7 @@ import {
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
+import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
 
 const allVaultRole: VaultRole[] = ["owner", "editor", "reader"];
 
@@ -276,7 +277,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                   <span class="invitation-icon"><AppIcon name="mail" :size="15" /></span>
                   <div class="member-text">
                     <span class="member-name"><span class="name-text">{{ invitation.email }}</span></span>
-                    <span class="member-email">{{ invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : "Waiting for them to accept" }}</span>
+                    <span class="member-email">{{ invitation.requiresConfirmation ? "Accepted · Review recipient identity" : invitation.state === "accepted" ? "Accepted · Hisar is finishing sharing" : "Waiting for them to accept" }}</span>
                   </div>
                   <template v-if="cancellingInvitationID !== invitation.id">
                     <span class="role-label">{{ formatRole(invitation.role) }}</span>
@@ -297,6 +298,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                     </button>
                   </template>
                 </div>
+                <ShareRecipientConfirmation :invitation="invitation" />
               </li>
             </ul>
           </template>

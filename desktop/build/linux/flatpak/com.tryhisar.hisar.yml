@@ -32,6 +32,9 @@ finish-args:
   - --filesystem=xdg-config/vivaldi:create
   - --filesystem=xdg-config/vivaldi-snapshot:create
   - --filesystem=xdg-config/opera:create
+  # Firefox's host manifests, and its profiles.ini, which says it has run.
+  - --filesystem=~/.mozilla/native-messaging-hosts:create
+  - --filesystem=~/.mozilla/firefox/profiles.ini:ro
   # The Secret Key in the keyring, idle time for auto-lock, the tray icon and notifications. The tray registers with
   # the watcher under its unique bus name, so it needs no well-known name of its own (Wails asks for one and goes on).
   - --talk-name=org.freedesktop.secrets
@@ -59,26 +62,29 @@ modules:
       - install -Dm644 com.tryhisar.hisar.desktop /app/share/applications/com.tryhisar.hisar.desktop
       - install -Dm644 desktop/build/linux/appicon-512.png /app/share/icons/hicolor/512x512/apps/com.tryhisar.hisar.png
     sources:
-      # The checkout with the frontend already built (desktop/frontend/dist, which the app embeds).
+      # Only the three modules the build reads, so nothing else in the checkout (such as deploy/ with an operator's
+      # credentials) enters the build. desktop/ has the frontend already built (frontend/dist, which the app embeds).
       - type: dir
-        path: "@SOURCE@"
+        path: "@SOURCE@/core"
+        dest: core
+      - type: dir
+        path: "@SOURCE@/cli"
+        dest: cli
+      - type: dir
+        path: "@SOURCE@/desktop"
+        dest: desktop
         skip:
-          - .git
-          - desktop/bin
-          - desktop/frontend/node_modules
-          - desktop/build/linux/appimage/build
-          - desktop/build/linux/flatpak/build
-          - extension
-          - admin
-          - mobile
-          - raycast
+          - bin
+          - frontend/node_modules
+          - build/linux/appimage/build
+          - build/linux/flatpak/build
       - type: archive
-        url: https://go.dev/dl/go1.26.3.linux-amd64.tar.gz
-        sha256: 2b2cfc7148493da5e73981bffbf3353af381d5f93e789c82c79aff64962eb556
+        url: https://go.dev/dl/go1.26.10.linux-amd64.tar.gz
+        sha256: ccfe7ae822d2c2f41f4fe7c956199967a4dac22d0ee0d2b2bfdb440aab3b20c5
         only-arches: [x86_64]
         dest: go
       - type: archive
-        url: https://go.dev/dl/go1.26.3.linux-arm64.tar.gz
-        sha256: 9d89a3ea57d141c2b22d70083f2c8459ba3890f2d9e818e7e933b75614936565
+        url: https://go.dev/dl/go1.26.10.linux-arm64.tar.gz
+        sha256: 3f4227ce7b206a513e794f1393adb473a07b46e94d18bd15d1c684bbb7319797
         only-arches: [aarch64]
         dest: go

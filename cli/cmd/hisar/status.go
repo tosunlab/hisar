@@ -56,6 +56,7 @@ func writeStatusJSON(output io.Writer, report statusReport) error {
 }
 
 func writeAppStatus(output io.Writer, mode commandMode) {
+	output = terminalSafeWriter{output: output}
 	hello := mode.client.hello
 	fmt.Fprintf(output, "mode:    Hisar app (%s)\n", mode.socketPath)
 	switch hello.State {
@@ -75,6 +76,7 @@ func writeAppStatus(output io.Writer, mode commandMode) {
 }
 
 func writeStandaloneStatus(output io.Writer, mode commandMode, currentState *localstate.State, statePath string) {
+	output = terminalSafeWriter{output: output}
 	fmt.Fprintf(output, "mode:    standalone (%s)\n", mode.reason)
 	if !currentState.IsLoggedIn() {
 		fmt.Fprintln(output, "account: not signed in; run `hisar login` or `hisar signup <invite-link>`")

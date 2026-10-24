@@ -49,7 +49,6 @@ const isLoading = ref(true);
 const errorMessage = ref("");
 const selected = ref<ItemSummary>();
 const isCreating = ref(false);
-const pageUrl = ref("");
 const busyItemID = ref("");
 const searchInput = ref<HTMLInputElement>();
 let searchTimer: ReturnType<typeof setTimeout> | undefined;
@@ -107,9 +106,8 @@ watch(category, () => {
   void loadItems();
 });
 
-function rememberMatches(allLogin: LoginSummary[], url: string): void {
+function rememberMatches(allLogin: LoginSummary[]): void {
   allMatchingKey.value = new Set(allLogin.map(getKey));
-  pageUrl.value = url;
 }
 
 function showCreated(item: ItemSummary): void {
@@ -202,7 +200,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <NewItemView v-if="isCreating" :page-url="pageUrl" @cancel="closeCreate" @created="showCreated" />
+  <NewItemView v-if="isCreating" :tab-id="tabId" @cancel="closeCreate" @created="showCreated" />
   <ItemDetail
     v-else-if="selected"
     :summary="selected"

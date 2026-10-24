@@ -1,7 +1,9 @@
 // Development-only stand-in for the Go backend, used with `npm run preview:ui` to view the UI in a browser.
 import type {
+  AgentGrant,
   AgentHost,
   AgentSession,
+  AgentSignIn,
   CardDescription,
   ApprovalEvent,
   CodingAgent,
@@ -29,6 +31,7 @@ import type {
   ShareLinkField,
   ShareLinkRequest,
   SignUpResult,
+  PendingRecoverySummary,
   SSHAgentStatus,
   SSHKeyType,
   Status,
@@ -51,6 +54,23 @@ const previewParameter = new URLSearchParams(window.location.search);
 
 // &organizations=none starts outside any organization: no organization vaults, invitations or waiting keys.
 const hasPreviewOrganizations = previewParameter.get("organizations") !== "none";
+
+let previewRecovery: PendingRecoverySummary[] = previewParameter.has("recovery")
+  ? [{
+      operationId: "preview-recovery",
+      kind: "signup",
+      origin: "https://preview.hisar.test",
+      accountId: "preview-account",
+      email: "preview@example.com",
+      name: "Preview account",
+      phase: previewParameter.get("recovery") === "complete" ? "delivery-pending" : "needs-finishing",
+      kitSaved: false,
+      manualUnlock: false,
+      problems: ["Preview only. This screen does not contact a server or recover real keys."],
+      keychainProtected: true,
+      revision: 1,
+    }]
+  : [];
 
 const allPreviewVault: VaultSummary[] = [
   { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 },
@@ -362,6 +382,7 @@ const previewShareInvitations: ShareInvitations =
             state: "pending",
             expiresAt: new Date(Date.now() + 5 * 24 * hourInMilliseconds).toISOString(),
             acceptedAt: "",
+            requiresConfirmation: false, recipientId: "", securityCode: "", reviewToken: "",
           },
           {
             id: "to-ops",
@@ -373,6 +394,7 @@ const previewShareInvitations: ShareInvitations =
             state: "accepted",
             expiresAt: new Date(Date.now() + 2 * 24 * hourInMilliseconds).toISOString(),
             acceptedAt: new Date(Date.now() - 2 * hourInMilliseconds).toISOString(),
+            requiresConfirmation: true, recipientId: "ADAOPS", securityCode: "3F2A 91C0 7B44 E1D8", reviewToken: "preview-recipient",
           },
         ],
         waiting: [
@@ -564,11 +586,12 @@ function addPreviewItem(vaultID: string, detail: ItemDetail): ItemDetail {
 
 // agentVaults=none starts with every vault invisible to coding agents.
 let allPreviewAgentVaultID: string[] = previewParameter.get("agentVaults") === "none" ? [] : ["work"];
-// omp=, claudeCode=, codex= not-installed | available | connected | conflict | unknown
+// omp=, claudeCode=, codex=, hermes= not-installed | available | connected | conflict | unknown
 let allPreviewCodingAgent: CodingAgent[] = [
   { id: "omp", name: "omp", state: "available", detail: "" },
   { id: "claude-code", name: "Claude Code", state: "connected", detail: "" },
   { id: "codex", name: "Codex", state: "available", detail: "" },
+  { id: "hermes", name: "Hermes", state: "available", detail: "" },
 ].map((agent) => {
   const state = (previewParameter.get(agent.id === "claude-code" ? "claudeCode" : agent.id) ?? agent.state) as CodingAgentState;
   const detail =
@@ -619,6 +642,36 @@ let allPreviewAgentSession: AgentSession[] = isPreviewAgentSessionShown
 let allPreviewAgentHost: AgentHost[] = isPreviewAgentSessionShown
   ? [{ path: "/Applications/Tern.app", teamID: "VTLHGQC72S", name: "Tern", iconURL: previewParameter.get("appIcon") ?? "" }]
   : [];
+// agentSessions=1 also lists what omp and Hermes may do without asking.
+let allPreviewAgentGrant: AgentGrant[] = isPreviewAgentSessionShown
+  ? [
+      {
+        id: "harness/hermes/signin/v-agents/tosunlab/https://tosunlab.com",
+        scope: "harness",
+        harnessName: "Hermes",
+        name: "Agents › Tosun Lab",
+        kind: "sign-in",
+        website: "https://tosunlab.com",
+        expiresAt: new Date(Date.now() + 23 * 60 * 60_000).toISOString(),
+      },
+      { id: "harness/omp/use/v-agents/deploy/password", scope: "harness", harnessName: "omp", name: "Agents › Deploy token › password", kind: "run", website: "", expiresAt: "" },
+      {
+        id: "connection/7/reveal/v-agents/stripe/api key",
+        scope: "connection",
+        harnessName: "Claude Desktop",
+        name: "Agents › Stripe › api key",
+        kind: "reveal",
+        website: "",
+        expiresAt: new Date(Date.now() + 40 * 60_000).toISOString(),
+      },
+    ]
+  : [];
+// agentSignIn=on turns Website sign-in on with Accessibility allowed, =noAccess on without it; absent, it is off.
+const previewAgentSignIn: AgentSignIn = {
+  isAvailable: true,
+  isEnabled: previewParameter.has("agentSignIn"),
+  hasAccessibility: previewParameter.get("agentSignIn") !== "noAccess",
+};
 
 function buildPreviewVaultSummary(vault: VaultSummary): VaultSummary {
   return { ...vault, itemCount: allPreviewItemByVaultID[vault.id]?.length ?? 0 };
@@ -839,6 +892,8 @@ function createPreviewShareLinkFromRequest(request: ShareLinkRequest): ShareLink
   return createPreviewShareLink({ ...common, title: detail.title, vaultID: request.vaultID, itemID: request.itemID, fieldLabels });
 }
 
+const previewNoAgentChoice = { requiresPresence: false, allGrantDuration: [], grantDuration: "", grantScope: "", website: "", browserName: "", allLogin: [], loginIndex: 0 };
+
 // createPreviewCommandLineApproval: &approval=cli, plus &cliLocked=1 (Touch ID unlocks) or &cliPassword=1 (master password unlocks),
 // &coverage=app (hisar without a terminal in a signed app) or =connection (in no app Hisar can verify).
 function createPreviewCommandLineApproval(): ApprovalEvent {
@@ -887,6 +942,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     rememberPeriod: describePreviewSSHRememberPeriod(),
     isConnectionApproval: false,
     warning: "",
+    ...previewNoAgentChoice,
   };
 }
 
@@ -938,11 +994,13 @@ function createPreviewSSHApproval(): ApprovalEvent {
     rememberPeriod: describePreviewSSHRememberPeriod(),
     isConnectionApproval: false,
     warning: "",
+    ...previewNoAgentChoice,
   };
 }
 
 // createPreviewAgentApproval: &approval=agent (hisar mcp connects), =agent-run (run_with_secrets), =agent-reveal (get_secret),
-// =agent-code (get_one_time_code), plus &agentLocked=1 (master password unlocks first).
+// =agent-code (get_one_time_code), plus &agentLocked=1 (master password unlocks first). Every agent request needs Touch ID, the
+// master password (&noTouchID=1) or the phone.
 function createPreviewAgentApproval(kind: string): ApprovalEvent {
   const isLocked = previewParameter.get("agentLocked") === "1";
   const event: ApprovalEvent = {
@@ -962,7 +1020,9 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     isPasswordUnlock: isLocked,
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
     isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
+    requiresPresence: true,
   };
+  const allGrantDuration = ["once", "hour"];
   if (kind === "run") {
     return {
       ...event,
@@ -971,8 +1031,9 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
       commandLine: "npm run db:migrate -- --env staging",
       workingDirectory: "~/src/billing-api",
       allSecretName: ["Work › Postgres staging › password", "Work › Stripe › api key"],
-      isRememberable: true,
-      rememberLabel: "Allow these secrets for this agent for 1 hour",
+      allGrantDuration,
+      grantDuration: "once",
+      grantScope: "A longer choice covers only these secrets.",
       isConnectionApproval: false,
     };
   }
@@ -982,8 +1043,9 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
       purpose: "reveal",
       action: "read “Stripe › api key”",
       allSecretName: ["Work › Stripe › api key"],
-      isRememberable: true,
-      rememberLabel: "Allow every field of “Stripe” for this agent for 1 hour",
+      allGrantDuration,
+      grantDuration: "once",
+      grantScope: "A longer choice covers only reading “Stripe › api key” again, nothing else.",
       isConnectionApproval: false,
       warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
     };
@@ -994,8 +1056,9 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
       purpose: "code",
       action: "get the one-time code of “GitHub”",
       allSecretName: ["Personal › GitHub › one-time code"],
-      isRememberable: true,
-      rememberLabel: "Allow this one-time code for this agent for 1 hour",
+      allGrantDuration,
+      grantDuration: "once",
+      grantScope: "A longer choice covers only the one-time code of “GitHub”.",
       isConnectionApproval: false,
     };
   }
@@ -1034,6 +1097,7 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
       ...event,
       action: "read “Deploy token › password”",
       allSecretName: ["Agents › Deploy token › password"],
+      grantScope: "A longer choice covers only reading “Deploy token › password” again, nothing else.",
       warning: "The value will be visible to omp in Tern and can end up in its transcript and logs.",
     };
   }
@@ -1043,7 +1107,46 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
     commandLine: "npm run deploy",
     workingDirectory: "~/Chore/hisarapp-core",
     allSecretName: ["Agents › Deploy token › password"],
-    rememberLabel: "Allow this secret for this agent for 1 hour",
+    allGrantDuration: ["once", "hour", "day", "always"],
+    grantScope: "A longer choice covers only this secret.",
+  };
+}
+
+// createPreviewSignInApproval: &approval=sign-in (Hermes signs in to tosunlab.com in Google Chrome with one login), &logins=2 (the user
+// picks one), &agentLocked=1 (Hisar unlocks first, before it lists logins), &noTouchID=1 (the master password approves).
+function createPreviewSignInApproval(): ApprovalEvent {
+  const isLocked = previewParameter.get("agentLocked") === "1";
+  const allLogin = [{ vaultName: "Agents", title: "Tosun Lab", username: "user@example.com" }];
+  if (previewParameter.get("logins") === "2") {
+    allLogin.push({ vaultName: "Agents", title: "Tosun Lab admin", username: "ops@example.com" });
+  }
+  return {
+    ...createPreviewHarnessApproval("run"),
+    requestID: "preview-sign-in",
+    agentName: "Hermes in Terminal",
+    harnessName: "Hermes",
+    agentNameSource: "process",
+    projectName: "infra",
+    projectPath: "~/code/infra",
+    clientName: "hisar mcp",
+    ...createPreviewTerminalRequester(),
+    allChainProcess: [
+      { name: "hisar", commandLine: "hisar mcp --no-reveal" },
+      { name: "python3", commandLine: "python3 -I -c 'import hermes_cli.main'" },
+    ],
+    purpose: "sign-in",
+    action: "sign in to https://tosunlab.com",
+    commandLine: "",
+    workingDirectory: "",
+    allSecretName: [],
+    website: "https://tosunlab.com",
+    browserName: "Google Chrome",
+    allLogin: isLocked ? [] : allLogin,
+    grantScope: "A longer choice covers only the chosen login at https://tosunlab.com.",
+    isConnectionApproval: true,
+    isUnlockRequired: isLocked,
+    isPasswordUnlock: isLocked,
+    isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked && allLogin.length === 1,
   };
 }
 
@@ -1096,6 +1199,9 @@ function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {
   }
   if (approvalParameter === "agent" || approvalParameter.startsWith("agent-")) {
     return [createPreviewAgentApproval(approvalParameter.replace(/^agent-?/, ""))];
+  }
+  if (approvalParameter === "sign-in") {
+    return [createPreviewSignInApproval()];
   }
   if (approvalParameter === "omp" || approvalParameter.startsWith("omp-")) {
     return [createPreviewHarnessApproval(approvalParameter.replace(/^omp-?/, ""))];
@@ -1155,6 +1261,7 @@ const previewBrowserStatus: BrowserStatus = {
         { name: "Brave", manifestPath: "", isInstalled: true, errorMessage: "" },
         { name: "Microsoft Edge", manifestPath: "", isInstalled: true, errorMessage: "" },
         { name: "Arc", manifestPath: "", isInstalled: true, errorMessage: "" },
+        { name: "Firefox", manifestPath: "", isInstalled: true, errorMessage: "" },
         { name: "Vivaldi", manifestPath: "", isInstalled: false, errorMessage: "permission denied" },
       ],
   allPairedBrowser: hasNoPreviewBrowser
@@ -1315,6 +1422,7 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
     databaseCount: allPreviewImportItem.filter((detail) => detail.category === "database").length,
     passkeyCount: 0,
     allSkipped: allPreviewImportSkipped,
+    groups: [{ id: "private", name: "1Password Private", isPrivate: true, itemCount: allPreviewImportItem.length, vaultId: vaultID, vaultName: vault.name, members: listAllPreviewVaultMember(vaultID) }],
     allDuplicate: findAllPreviewImportDuplicate(vaultID).map((detail) => ({
       title: detail.title,
       username: detail.username,
@@ -1336,6 +1444,7 @@ function buildPreviewImportProgress(): ImportProgress {
     vaultName: vault.name,
     savedCount: previewImportRun.savedCount,
     totalCount: previewImportRun.savedCount + previewImportRun.allQueued.length,
+    leftBehindCount: allPreviewImportSkipped.length,
     isDone: previewImportRun.allQueued.length === 0,
     allFailed: [],
   };
@@ -1369,6 +1478,7 @@ export const previewApi = {
     ]),
   chooseImportFile: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   previewImport: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
+  mapImportGroup: (_groupID: string, vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   startImport: (vaultID: string, isSkippingDuplicate: boolean) => {
     const allDuplicate = isSkippingDuplicate ? findAllPreviewImportDuplicate(vaultID) : [];
     previewImportRun = { vaultID, allQueued: allPreviewImportItem.filter((detail) => !allDuplicate.includes(detail)), savedCount: 0 };
@@ -1397,7 +1507,7 @@ export const previewApi = {
   },
   signUp: (): Promise<SignUpResult> => {
     previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M" });
+    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
   },
   unlock: () => {
     previewState = "unlocked";
@@ -1511,6 +1621,26 @@ export const previewApi = {
     allPreviewItemByVaultID[vaultID] = allPreviewItemByVaultID[vaultID].filter((vaultItem) => vaultItem.id !== itemID);
     return resolveAfterDelay(undefined);
   },
+  deleteUnreadableItem: (vaultID: string, itemID: string, revision: string) => {
+    const record = allPreviewItemByVaultID[vaultID]?.find((item) => item.id === itemID && item.revision === revision && item.readIssue?.canDelete);
+    if (!record) return Promise.reject(new Error("The unreadable record changed"));
+    allPreviewItemByVaultID[vaultID] = allPreviewItemByVaultID[vaultID].filter((item) => item.id !== itemID);
+    return resolveAfterDelay(undefined);
+  },
+  deleteUnreadableVault: (vaultID: string, revision: string) => {
+    const index = allPreviewVault.findIndex((vault) => vault.id === vaultID && vault.readIssues?.some((issue) => issue.canDelete && !issue.itemId && issue.revision === revision));
+    if (index < 0) return Promise.reject(new Error("The unreadable vault changed"));
+    allPreviewVault.splice(index, 1);
+    delete allPreviewItemByVaultID[vaultID];
+    return resolveAfterDelay(undefined);
+  },
+  repairVaultName: (vaultID: string, revision: string, name: string) => {
+    const vault = allPreviewVault.find((candidate) => candidate.id === vaultID && candidate.readIssues?.some((issue) => issue.canRename && issue.revision === revision));
+    if (!vault) return Promise.reject(new Error("The unreadable vault changed"));
+    vault.name = name.trim();
+    vault.readIssues = vault.readIssues?.filter((issue) => issue.itemId);
+    return resolveAfterDelay(buildPreviewVaultSummary(vault));
+  },
   generatePassword: (config: PasswordConfig) => {
     const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ" + (config.digits ? "23456789" : "") + (config.symbols ? "!@#$%^&*-_=+?" : "");
     const allRandom = crypto.getRandomValues(new Uint32Array(config.length || 24));
@@ -1559,6 +1689,7 @@ export const previewApi = {
         state: "pending",
         expiresAt: new Date(Date.now() + 7 * 24 * hourInMilliseconds).toISOString(),
         acceptedAt: "",
+        requiresConfirmation: false, recipientId: "", securityCode: "", reviewToken: "",
       },
     ];
     return resolveAfterDelay(undefined);
@@ -1585,6 +1716,12 @@ export const previewApi = {
   },
   cancelShareInvitation: (invitationID: string) => {
     previewShareInvitations.sent = previewShareInvitations.sent.filter((invitation) => invitation.id !== invitationID);
+    return resolveAfterDelay(undefined);
+  },
+  confirmShareRecipient: (invitationID: string, reviewToken: string) => {
+    const invitation = previewShareInvitations.sent.find((candidate) => candidate.id === invitationID && candidate.reviewToken === reviewToken);
+    if (!invitation) return Promise.reject(new Error("Review this invitation again before confirming the recipient."));
+    previewShareInvitations.sent = previewShareInvitations.sent.filter((candidate) => candidate.id !== invitationID);
     return resolveAfterDelay(undefined);
   },
   listAllOrganization: () => resolveAfterDelay({ organizations: listAllPreviewOrganizationSummary(), invitations: structuredClone(allPreviewOrganizationInvitation) }),
@@ -1790,6 +1927,16 @@ export const previewApi = {
     return resolveAfterDelay(structuredClone(allPreviewAgentSession));
   },
   listAllAgentHost: () => resolveAfterDelay(structuredClone(allPreviewAgentHost)),
+  listAllAgentGrant: () => resolveAfterDelay(structuredClone(allPreviewAgentGrant)),
+  revokeAgentGrant: (id: string) => {
+    allPreviewAgentGrant = allPreviewAgentGrant.filter((grant) => grant.id !== id);
+    return resolveAfterDelay(structuredClone(allPreviewAgentGrant));
+  },
+  getAgentSignIn: () => resolveAfterDelay({ ...previewAgentSignIn }),
+  setAgentSignInEnabled: (isEnabled: boolean) => {
+    previewAgentSignIn.isEnabled = isEnabled;
+    return resolveAfterDelay({ ...previewAgentSignIn });
+  },
   forgetAgentHost: (path: string, teamID: string) => {
     allPreviewAgentHost = allPreviewAgentHost.filter((host) => host.path !== path || host.teamID !== teamID);
     return resolveAfterDelay(structuredClone(allPreviewAgentHost));
@@ -1882,6 +2029,8 @@ export const previewApi = {
   setTouchIDPromptFrame: () => Promise.resolve(),
   clearTouchIDPromptFrame: () => Promise.resolve(),
   setSSHApprovalRemembered: () => Promise.resolve(),
+  setSSHApprovalGrantDuration: () => Promise.resolve(),
+  setSSHApprovalLogin: () => Promise.resolve(),
   setCompactSSHApproval: (isCompact: boolean) => {
     isPreviewCompactApproval = isCompact;
     return resolveAfterDelay(previewAgentStatus());
@@ -1908,17 +2057,32 @@ export const previewApi = {
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   forgetNewAccountSecretKey: () => Promise.resolve(),
+  listPendingRecovery: () => resolveAfterDelay(previewRecovery.map((entry) => ({ ...entry }))),
+  resumePendingRecovery: (_operationID: string, password: string): Promise<SignUpResult> => {
+    if (password.length < 4) return Promise.reject(new Error("The password could not open this preview recovery operation."));
+    previewRecovery = previewRecovery.map((entry) => ({ ...entry, phase: "delivery-pending", problems: [] }));
+    previewState = "unlocked";
+    return resolveAfterDelay({ status: previewStatus(), secretKey: "", pendingOperationId: "preview-recovery", setupState: "delivery-pending", problems: [] });
+  },
+  savePendingRecoveryEmergencyKit: (_operationID: string, password: string) => password.length < 4
+    ? Promise.reject(new Error("The password could not open this preview recovery operation."))
+    : resolveAfterDelay("/Preview/Hisar Emergency Kit.pdf"),
+  acknowledgePendingRecovery: () => {
+    previewRecovery = [];
+    return Promise.resolve();
+  },
   changeMasterPassword: (currentPassword: string) =>
     currentPassword.length < 4
       ? Promise.reject(new Error("the master password is not correct"))
-      : resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "" }),
+      : resolveAfterDelay({ status: previewStatus(), secretKey: "", signedOutDeviceCount: 2, keychainError: "", localError: "" }),
   replaceSecretKey: (password: string) =>
     password.length < 4
       ? Promise.reject(new Error("the master password is not correct"))
-      : resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-8RW2N-QHT4M-0ZKXD-71BJE-P3SV6A", signedOutDeviceCount: 2, keychainError: "" }),
+      : resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-8RW2N-QHT4M-0ZKXD-71BJE-P3SV6A", signedOutDeviceCount: 2, keychainError: "", localError: "" }),
   previewAccountDeletion: () =>
     resolveAfterDelay({
       email: "alper@tryhisar.com",
+      planVersion: "preview-plan-1",
       ownedVaults: [
         { id: "personal", name: "Personal", type: "personal", role: "owner", otherMemberCount: 0 },
         { id: "family", name: "Family", type: "shared", role: "owner", otherMemberCount: 2 },

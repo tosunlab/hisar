@@ -51,21 +51,10 @@ open class HisarApplication : Application(), BackendProvider {
 
     override fun onCreate() {
         super.onCreate()
-        deleteLeftoverHandoffFiles()
+        deleteLeftoverHandoffFiles(cacheDir)
         clipboard = ClipboardAdapter(this)
         foregroundActivity = ForegroundActivity(this, onWindowFocus = clipboard::clearExpiredCopy)
         startBackend()
-    }
-
-    /**
-     * Emergency Kits, exports and their share copies live only while their screen is open, and no screen outlives the
-     * process, so whatever a killed process left behind is deleted before anything else runs. So is the file through
-     * which another app handed over its credentials, which the credential transfer library deletes once it has read it.
-     */
-    private fun deleteLeftoverHandoffFiles() {
-        File(cacheDir, SettingsModel.HANDOFF_FOLDER_NAME).deleteRecursively()
-        File(cacheDir, SHARED_FOLDER_NAME).deleteRecursively()
-        File(cacheDir, CREDENTIAL_TRANSFER_FOLDER_NAME).deleteRecursively()
     }
 
     protected open fun startBackend() {
@@ -87,4 +76,15 @@ open class HisarApplication : Application(), BackendProvider {
         appVersion = BuildConfig.VERSION_NAME,
         trustedCertificates = TrustedCertificates.readPem(),
     )
+}
+
+/**
+ * Emergency Kits, exports and their share copies live only while their screen is open, and no screen outlives the
+ * process, so whatever a killed process left behind is deleted before anything else runs. So is the file through which
+ * another app handed over its credentials, which the credential transfer library deletes once it has read it.
+ */
+internal fun deleteLeftoverHandoffFiles(cacheDir: File) {
+    File(cacheDir, SettingsModel.HANDOFF_FOLDER_NAME).deleteRecursively()
+    File(cacheDir, SHARED_FOLDER_NAME).deleteRecursively()
+    File(cacheDir, CREDENTIAL_TRANSFER_FOLDER_NAME).deleteRecursively()
 }

@@ -10,7 +10,7 @@
 # a tag that exists, and a plain release from any branch but main. It warns when a patch release has a breaking change: a
 # commit subject like "feat(core)!: …" or a "BREAKING CHANGE:" footer.
 #
-# Environment: APP (server, cli, desktop or extension), RELEASE_TYPE (patch, minor, major or custom), CUSTOM_VERSION (only
+# Environment: APP (server, cli, desktop, extension or docs), RELEASE_TYPE (patch, minor, major or custom), CUSTOM_VERSION (only
 # for custom) and GITHUB_REF (the branch released from; defaults to the checked-out branch). Writes tag, version, title,
 # previousTag, isCustomBuild, commitCount and changes to $GITHUB_OUTPUT and a summary to $GITHUB_STEP_SUMMARY.
 set -euo pipefail
@@ -29,7 +29,7 @@ warn() {
 # isNewer A B: whether version A is newer than version B (both MAJOR.MINOR.PATCH).
 isNewer() { [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -n 1)" = "$1" ]; }
 
-app=${APP:?set APP to server, cli, desktop or extension}
+app=${APP:?set APP to server, cli, desktop, extension or docs}
 releaseType=${RELEASE_TYPE:?set RELEASE_TYPE to patch, minor, major or custom}
 customVersion=${CUSTOM_VERSION:-}
 releaseRef=${GITHUB_REF:-$(git symbolic-ref -q HEAD || echo detached)}
@@ -39,7 +39,8 @@ case "$app" in
   cli) title="Hisar command-line tool" ;;
   desktop) title="Hisar" ;;
   extension) title="Hisar extension" ;;
-  *) fail "unknown app $app (server, cli, desktop or extension)" ;;
+  docs) title="Hisar docs" ;;
+  *) fail "unknown app $app (server, cli, desktop, extension or docs)" ;;
 esac
 setReleasePathspec "$app"
 

@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -65,6 +66,7 @@ import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.ScreenMargin
 import com.tryhisar.hisar.ui.theme.HisarTheme
+import com.tryhisar.hisar.ui.settings.ConfirmationDialog
 import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.BarCapsuleButton
 import com.tryhisar.hisar.ui.vaults.HisarMenu
@@ -206,14 +208,30 @@ fun MemberRow(
  * touch and hold offers "Cancel Invitation".
  */
 @Composable
-fun SentInvitationRow(invitation: SentShareInvitation, isVaultNameShown: Boolean, testTag: String, onCancel: (() -> Unit)? = null) {
+fun SentInvitationRow(invitation: SentShareInvitation, isVaultNameShown: Boolean, testTag: String, onCancel: (() -> Unit)? = null, onConfirm: ((SentShareInvitation) -> Unit)? = null) {
+    var reviewed by remember { mutableStateOf<SentShareInvitation?>(null) }
     val isAccepted = invitation.state == SentShareInvitation.STATE_ACCEPTED
-    val stateText = if (isAccepted) "Accepted, Hisar is finishing sharing" else "Waiting for them to accept"
+    val stateText = if (invitation.requiresConfirmation) "Accepted, review recipient identity" else if (isAccepted) "Accepted, Hisar is finishing sharing" else "Waiting for them to accept"
     val detail = if (isVaultNameShown) "${invitation.vaultName.ifEmpty { "A vault you own" }} · $stateText" else stateText
+    Column {
     InvitedRow(
         invitation.email, detail, VaultLogic.describeVaultRole(invitation.role), if (isAccepted) Icons.Outlined.Drafts else Icons.Outlined.Email, testTag,
         onCancel = onCancel,
     )
+    if (invitation.requiresConfirmation && onConfirm != null) {
+        TextButton(onClick = { reviewed = invitation }, modifier = Modifier.testTag("review-share-${invitation.email}")) { Text("Review recipient") }
+    }
+    }
+    reviewed?.let { snapshot ->
+        ConfirmationDialog(
+            title = "Give this person access?",
+            message = "${snapshot.email}\nVault ${snapshot.vaultName} · ${VaultLogic.describeVaultRole(snapshot.role)}\nAccount ${snapshot.recipientID}\nSecurity code ${snapshot.securityCode}\nCompare this code with the recipient over a channel you trust.",
+            confirmLabel = "Give access",
+            confirmTestTag = "confirm-share-recipient",
+            onConfirm = { reviewed = null; onConfirm?.invoke(snapshot) },
+            onDismiss = { reviewed = null },
+        )
+    }
 }
 
 /**
