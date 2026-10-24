@@ -63,7 +63,16 @@ npm run test:end-to-end     # builds, then runs the Playwright tests with the fa
 - the not-paired, locked and not-running states;
 - the suggested password on a sign-up page;
 - the settings;
-- clicks ignored while the page hides the menu (transparent page, or an overlay with `pointer-events: none`).
+- the menu staying visible and usable above a transparent page and an ordinary overlay, and clicks refused through a top-layer overlay with `pointer-events: none`.
+
+`end-to-end/fill-reliability.spec.ts` covers login pages that used to fill nothing:
+
+- a choice made as soon as the menu shows fills, or asks to choose again;
+- a login form in a modal dialog, and a page inverted by a filter on its root element;
+- fields the page renders again while the username is filled, a page that keeps its own copy of the value from key events, and a username read-only until focused;
+- a form added after the page loaded;
+- the first step of a sign-in without a form, beside a form that asks for an email address;
+- the notice the page shows when a fill from the shortcut or the right-click menu does nothing.
 
 `end-to-end/passkey.spec.ts` runs a relying party on `http://localhost` that verifies with `@simplewebauthn/server`; the fake host signs like the desktop (`tools/fake-passkey-authenticator.mjs`):
 
@@ -177,6 +186,7 @@ When a username or password field of a login form gets the focus, a Hisar icon a
 - **Addresses:** in a field of an address form (by its `autocomplete` token, or two address fields found by their labels), the menu offers Hisar's addresses and identities with an address, and fills the empty fields of that form's shipping or billing group. Only with a Hisar app that announces addresses.
 - **One-time codes:** in a two-factor field (`autocomplete="one-time-code"`, or a field named or labelled like otp, 2fa or verification code), and in a code split into one-character boxes, the menu offers the codes of the matching logins and fills the chosen one.
 - **Settings:** the popup's settings (the sliders button in the header) turn the icon off, or open the menu only on a click on the icon or the down arrow.
+- **When a fill does not work:** the menu stays open and says why. A fill from the keyboard shortcut or the right-click menu shows its reason in the page for a few seconds. To see more, turn on **Fill diagnostics** in the settings and open the page's console (Console, Verbose level): each fill logs the forms Hisar found, the fields it chose and whether each kept its value, never the values themselves.
 - **Isolation:** the menu is an extension page in an iframe, so the page never sees login titles or usernames.
 - **Clickjacking checks:** the menu fills only after it has been visible and uncovered for 300 ms. [Design §9.2](../design.md#92-browser-extension--typescript-mv3) describes these checks.
 
