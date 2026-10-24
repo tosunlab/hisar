@@ -50,6 +50,8 @@ class IosTestParityTest {
             "testSignedOutStartClearsLeftoverIdentities" to identityStore,
             "testForegroundWhileSignedOutClearsLeftoverIdentities" to identityStore,
             "testLockedStartKeepsAutoFillIdentities" to identityStore,
+            "testExportDatesReachTheBackendAsSecondsSince1970" to
+                "Android receives the Credential Exchange JSON as the exporter wrote it; only iOS decodes it into Dates first",
             "testReplacingTheSecretKeyUpdatesTheStoredItemInPlace" to
                 "Android seals the Secret Key into an AtomicFile, which replaces the old copy in one rename; there is no keychain item to delete first",
         )
