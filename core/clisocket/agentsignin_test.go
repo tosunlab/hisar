@@ -231,8 +231,18 @@ func TestHarnessGrantNeedsTheProgramItWasApprovedFor(t *testing.T) {
 	fixture.agentApprover.set(nil, AgentGrantAlways)
 	fixture.connectInside(t, omp, true).mustSend(t, signInRequest)
 
-	impostorProcess := exec.Command("/bin/sleep", "60")
+	// Linux lets Start return before the new program's arguments are in place, so /proc/<pid>/cmdline reads as empty
+	// for a moment. The shell's first byte of output shows that it runs its arguments; it then waits on the stdin pipe
+	// until the cleanup kills it.
+	impostorProcess := exec.Command("/bin/sh", "-c", "echo ready; read _")
 	impostorProcess.Args[0] = "omp"
+	if _, err := impostorProcess.StdinPipe(); err != nil {
+		t.Fatal(err)
+	}
+	ready, err := impostorProcess.StdoutPipe()
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := impostorProcess.Start(); err != nil {
 		t.Fatal(err)
 	}
@@ -240,6 +250,9 @@ func TestHarnessGrantNeedsTheProgramItWasApprovedFor(t *testing.T) {
 		impostorProcess.Process.Kill()
 		impostorProcess.Wait()
 	})
+	if _, err := ready.Read(make([]byte, 1)); err != nil {
+		t.Fatal(err)
+	}
 	impostor, isFound, err := agentharness.Find(agentharness.ReadChain(impostorProcess.Process.Pid, agentharness.SystemReader()))
 	if err != nil || !isFound || impostor.Harness.ID != "omp" || impostor.PID != impostorProcess.Process.Pid || impostor.Program.IsKnown() || impostor.IsSigned() {
 		t.Fatalf("the impostor's session %+v, %v, %v", impostor, isFound, err)
