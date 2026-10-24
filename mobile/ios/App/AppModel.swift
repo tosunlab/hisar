@@ -911,7 +911,7 @@ final class AppModel: ObservableObject {
     }
 
     nonisolated static func credentialExchangeSeconds(of date: Date, now: Date) -> Double {
-        date.timeIntervalSince1970
+        date > now.addingTimeInterval(24 * 60 * 60) ? date.timeIntervalSinceReferenceDate : date.timeIntervalSince1970
     }
 
     func receiveCredentialExchange(token: UUID) {
