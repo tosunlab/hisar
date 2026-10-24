@@ -14,8 +14,10 @@ export {
 
 export type {
     AccountDeletionPreview,
+    AgentGrant,
     AgentHost,
     AgentSession,
+    AgentSignIn,
     BrowserPairingRequest,
     BrowserStatus,
     CardDescription,

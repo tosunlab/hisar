@@ -13,6 +13,7 @@ import (
 
 func TestKeychainRoundtrip(t *testing.T) {
 	biometric := New("hisar-test-" + fmt.Sprint(time.Now().UnixNano()))
+	t.Logf("Keychain test service: %s", biometric.service)
 	accountID := "TEST01"
 	t.Cleanup(func() { biometric.DeleteKey(accountID) })
 

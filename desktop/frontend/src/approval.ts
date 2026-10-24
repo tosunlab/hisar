@@ -7,15 +7,23 @@ export const approvalStore = reactive({
   failureMessage: "",
   isAuthorizing: false,
   isRemembered: true,
+  grantDuration: "once",
+  loginIndex: 0,
   isPasswordChosen: false,
   isExpanded: false,
 });
+
+function applyAgentChoice(approval: ApprovalEvent | undefined): void {
+  approvalStore.grantDuration = approval?.grantDuration || "once";
+  approvalStore.loginIndex = approval?.loginIndex ?? 0;
+}
 
 // resetCurrentApproval prepares the next request; agent requests start with the checkbox off.
 function resetCurrentApproval(): void {
   approvalStore.failureMessage = "";
   approvalStore.isAuthorizing = false;
   approvalStore.isRemembered = approvalStore.allApproval[0]?.isRememberedByDefault ?? true;
+  applyAgentChoice(approvalStore.allApproval[0]);
   approvalStore.isPasswordChosen = false;
   approvalStore.isExpanded = false;
 }
@@ -34,6 +42,7 @@ export function addApproval(approval: ApprovalEvent): void {
     approvalStore.allApproval.push(approval);
     if (approvalStore.allApproval.length === 1) {
       approvalStore.isRemembered = approval.isRememberedByDefault ?? true;
+      applyAgentChoice(approval);
     }
   }
 }
@@ -96,6 +105,18 @@ export async function authorizeWithPassword(requestID: string, password: string)
 export async function setRemembered(requestID: string, isRemembered: boolean): Promise<void> {
   approvalStore.isRemembered = isRemembered;
   await api.setSSHApprovalRemembered(requestID, isRemembered).catch(() => undefined);
+}
+
+// setGrantDuration and setSignInLogin tell the backend at once: a Touch ID check in progress starts again with a reason
+// that names the new choice.
+export async function setGrantDuration(requestID: string, duration: string): Promise<void> {
+  approvalStore.grantDuration = duration;
+  await api.setSSHApprovalGrantDuration(requestID, duration).catch(() => undefined);
+}
+
+export async function setSignInLogin(requestID: string, loginIndex: number): Promise<void> {
+  approvalStore.loginIndex = loginIndex;
+  await api.setSSHApprovalLogin(requestID, loginIndex).catch(() => undefined);
 }
 
 // choosePassword stops Touch ID and shows the master password field; the request stays open.

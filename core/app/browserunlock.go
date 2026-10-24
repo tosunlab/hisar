@@ -49,6 +49,9 @@ func (bridge *BrowserBridge) unlockWithPassword(request *browserprotocol.Request
 	bridge.mutex.Lock()
 	delete(bridge.unlockFailures, browserKey)
 	bridge.mutex.Unlock()
+	if bridge.config.OnUnlock != nil {
+		bridge.config.OnUnlock()
+	}
 	return browserprotocol.StatusResult{State: status.State, Email: status.Email, IsOffline: status.IsOffline}, nil
 }
 

@@ -235,11 +235,11 @@ func TestToolsAreListedWithSchemasForModels(t *testing.T) {
 		toolsByName[tool.Name] = tool
 	}
 	slices.Sort(names)
-	if !slices.Equal(names, []string{"get_one_time_code", "get_secret", "list_vaults", "run_with_secrets", "search_items"}) {
+	if !slices.Equal(names, []string{"get_one_time_code", "get_secret", "list_vaults", "run_with_secrets", "search_items", "sign_in"}) {
 		t.Fatalf("tools = %q", names)
 	}
 	required := map[string][]string{
-		"list_vaults": nil, "search_items": {"query"}, "run_with_secrets": nil, "get_one_time_code": {"item"}, "get_secret": {"reference"},
+		"list_vaults": nil, "search_items": {"query"}, "run_with_secrets": nil, "get_one_time_code": {"item"}, "get_secret": {"reference"}, "sign_in": {"pid", "window_id"},
 	}
 	for name, expectedValues := range required {
 		schema, _ := json.Marshal(toolsByName[name].InputSchema)
@@ -285,7 +285,7 @@ func TestNoRevealLeavesOutTheToolsThatReturnValues(t *testing.T) {
 		}
 	}
 	slices.Sort(names)
-	if !slices.Equal(names, []string{"list_vaults", "run_with_secrets", "search_items"}) {
+	if !slices.Equal(names, []string{"list_vaults", "run_with_secrets", "search_items", "sign_in"}) {
 		t.Errorf("tools = %q", names)
 	}
 	if _, err := server.session.CallTool(context.Background(), &mcp.CallToolParams{Name: "get_secret", Arguments: map[string]any{"reference": "hisar://Work/Stripe/api%20key"}}); err == nil {

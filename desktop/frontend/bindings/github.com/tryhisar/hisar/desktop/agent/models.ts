@@ -84,6 +84,39 @@ export interface ApprovalEvent {
     "rememberPeriod": string;
     "isConnectionApproval": boolean;
     "warning": string;
+
+    /**
+     * RequiresPresence: Approve alone never approves, since an agent that controls the screen could click it; Touch ID,
+     * the master password or the phone does. Every agent request requires it.
+     */
+    "requiresPresence": boolean;
+
+    /**
+     * GrantDurations are how long the user may let the agent keep what it asks for (clisocket.AgentGrantDuration),
+     * "once" first, and GrantDuration the one chosen; none for a connection. GrantScope says what a longer choice
+     * covers: exactly what the request names, such as the one field a reveal reads.
+     */
+    "allGrantDuration": string[] | null;
+    "grantDuration": string;
+    "grantScope": string;
+
+    /**
+     * Website and BrowserName are where an agent sign-in goes, as Hisar observed it; Logins are the logins saved for
+     * Website, and LoginIndex the one chosen.
+     */
+    "website": string;
+    "browserName": string;
+    "allLogin": ApprovalLogin[] | null;
+    "loginIndex": number;
+}
+
+/**
+ * ApprovalLogin is a login an agent sign-in may use, as the dialog lists it.
+ */
+export interface ApprovalLogin {
+    "vaultName": string;
+    "title": string;
+    "username": string;
 }
 
 /**

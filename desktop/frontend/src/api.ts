@@ -16,8 +16,10 @@ import { Service as LoginItemService } from "../bindings/github.com/tryhisar/his
 import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type {
   AccountDeletionPreview as BoundAccountDeletionPreview,
+  AgentGrant,
   AgentHost,
   AgentSession as BoundAgentSession,
+  AgentSignIn,
   RememberedAgentSecret,
   BrowserPairingRequest,
   CardDescription,
@@ -86,7 +88,9 @@ import type {
 } from "../bindings/github.com/tryhisar/hisar/core/app";
 
 export type {
+  AgentGrant,
   AgentHost,
+  AgentSignIn,
   ApprovalEvent,
   RememberedAgentSecret,
   CardDescription,
@@ -431,6 +435,8 @@ const wailsApi = {
   respondApprovalWithPassword: (requestID: string, password: string, isRemembered: boolean): Promise<void> =>
     AgentService.RespondApprovalWithPassword(requestID, password, isRemembered),
   setSSHApprovalRemembered: (requestID: string, isRemembered: boolean): Promise<void> => AgentService.SetSSHApprovalRemembered(requestID, isRemembered),
+  setSSHApprovalGrantDuration: (requestID: string, duration: string): Promise<void> => AgentService.SetSSHApprovalGrantDuration(requestID, duration),
+  setSSHApprovalLogin: (requestID: string, loginIndex: number): Promise<void> => AgentService.SetSSHApprovalLogin(requestID, loginIndex),
   setCompactSSHApproval: (isCompact: boolean): Promise<SSHAgentStatus> => AgentService.SetCompactSSHApproval(isCompact),
   setPhoneApproval: (isEnabled: boolean): Promise<SSHAgentStatus> => AgentService.SetPhoneApproval(isEnabled),
   setSigningRemember: (seconds: number): Promise<SSHAgentStatus> => AgentService.SetSigningRemember(seconds),
@@ -501,6 +507,10 @@ const wailsApi = {
   listAllAgentSession: async (): Promise<AgentSession[]> => normalizeAgentSessions(await Service.ListAgentSessions()),
   revokeAgentSession: async (pid: number, startTime: number): Promise<AgentSession[]> =>
     normalizeAgentSessions(await Service.RevokeAgentSession(pid, startTime)),
+  listAllAgentGrant: async (): Promise<AgentGrant[]> => (await Service.ListAgentGrants()) ?? [],
+  revokeAgentGrant: async (id: string): Promise<AgentGrant[]> => (await Service.RevokeAgentGrant(id)) ?? [],
+  getAgentSignIn: (): Promise<AgentSignIn> => Service.GetAgentSignIn(),
+  setAgentSignInEnabled: (isEnabled: boolean): Promise<AgentSignIn> => Service.SetAgentSignInEnabled(isEnabled),
   listAllAgentHost: async (): Promise<AgentHost[]> => (await Service.ListAgentHosts()) ?? [],
   forgetAgentHost: async (path: string, teamID: string): Promise<AgentHost[]> => (await Service.ForgetAgentHost(path, teamID)) ?? [],
   listAllImportFormat: async (): Promise<ImportFormat[]> => (await Service.ListImportFormats()) ?? [],

@@ -16,6 +16,13 @@ var (
 	ErrOffline   = errors.New("cannot reach the Hisar server; changes can be saved once you are back online")
 )
 
+// ErrNoAgentGrantHead and ErrAgentGrantHeadUnavailable are what an AgentGrantHeadStore returns when it keeps no head,
+// and when it cannot be read or written.
+var (
+	ErrNoAgentGrantHead          = errors.New("no head of the saved agent grants")
+	ErrAgentGrantHeadUnavailable = errors.New("Hisar cannot keep agent grants on this device")
+)
+
 // errBadCredentials is a wrong master password, or email or Secret Key, as the user reads it.
 var errBadCredentials = errors.New("incorrect email, master password or Secret Key")
 

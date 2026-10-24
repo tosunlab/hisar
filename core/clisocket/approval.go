@@ -104,9 +104,13 @@ type SessionApprovals struct {
 	// agentSessions are the live agent sessions both sockets share; an agent session's grants end with it.
 	agentSessions         *agentharness.Sessions
 	onAgentSessionsChange func()
+	// agentGrants keeps what recognized harnesses may use without asking, across their sessions; ClearAll keeps them.
+	agentGrants AgentGrantStore
 	// agentHosts are the apps revokeApp ended, until ForgetAgentHost; an app approval for one of them is never recorded
 	// again, and a dialog answered after revokeApp is denied. ClearAll keeps them: they are no approval.
 	agentHosts map[AppIdentity]bool
+	// accountID is the account Hisar has open (SetAccount); generation changes with it, so no generation spans two.
+	accountID  string
 	generation int
 }
 
@@ -130,6 +134,7 @@ func NewSessionApprovals(lifetime time.Duration, now func() time.Time, agentSess
 		agentsByScope: map[approvalScope]*agentState{},
 		agentSessions: agentSessions,
 		agentHosts:    map[AppIdentity]bool{},
+		agentGrants:   &memoryAgentGrants{},
 	}
 	agentSessions.Watch(approvals.followAgentSession)
 	return approvals
@@ -221,10 +226,30 @@ func (approvals *SessionApprovals) isOutdated(scope approvalScope, generation in
 	return generation != approvals.generation || approvals.agentHosts[scope.app]
 }
 
-// ClearAll ends every approval, launchers' too, and every agent's remembered secrets, e.g. when Hisar locks; an approval
-// in progress is denied too.
+// ClearAll ends every approval, launchers' too, e.g. when Hisar locks; an approval in progress is denied too. What
+// agents remember stays for their sessions and connections, and the grants of recognized harnesses stay in the store:
+// signing out (SetAccount) ends them.
 func (approvals *SessionApprovals) ClearAll() {
 	approvals.mutex.Lock()
+	clear(approvals.commandLine.lastUsedByScope)
+	clear(approvals.launchers.lastUsedByScope)
+	for _, agent := range approvals.agentsByScope {
+		agent.isApproved = false
+	}
+	approvals.generation++
+	approvals.mutex.Unlock()
+	approvals.notifyAgentSessions()
+}
+
+// SetAccount tells the approvals which account Hisar has, "" once it signs out. Another account ends every approval
+// and every grant kept outside the store, like ClearAll, and so does signing out.
+func (approvals *SessionApprovals) SetAccount(accountID string) {
+	approvals.mutex.Lock()
+	if accountID == approvals.accountID {
+		approvals.mutex.Unlock()
+		return
+	}
+	approvals.accountID = accountID
 	clear(approvals.commandLine.lastUsedByScope)
 	clear(approvals.launchers.lastUsedByScope)
 	clear(approvals.agentsByScope)

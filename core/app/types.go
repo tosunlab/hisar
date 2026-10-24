@@ -7,6 +7,7 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/core/signin"
 )
 
 const (
@@ -450,6 +451,16 @@ type SecretKeyStore interface {
 	DeleteSecretKey(accountID string) error
 }
 
+// AgentGrantHeadStore keeps a random head replaced with every sealed grant update.
+// Storage must prevent another program from reading the head without user approval,
+// so restoring an older state file cannot restore grants. LoadAgentGrantHead returns
+// ErrNoAgentGrantHead for a missing head. Unusable storage returns ErrAgentGrantHeadUnavailable.
+type AgentGrantHeadStore interface {
+	LoadAgentGrantHead() ([]byte, error)
+	SaveAgentGrantHead(head []byte) error
+	DeleteAgentGrantHead() error
+}
+
 type KeychainSecretKeyStore struct{}
 
 func (KeychainSecretKeyStore) LoadSecretKey(accountID string) (crypt.SecretKey, error) {
@@ -521,6 +532,12 @@ type Config struct {
 	// DescribeApp names an app bundle and gives its icon as a data URL, for the coding agent sessions and agent hosts that
 	// Settings lists; nil names it by its file name, without an icon.
 	DescribeApp func(bundlePath string) (name string, iconURL string)
+	// SignInDriver fills browser windows for agent sign-in; nil where agents cannot sign in to websites (every platform
+	// but the Mac).
+	SignInDriver signin.Driver
+	// AgentGrantHeads keeps the head of the saved agent grants; nil keeps a harness's grants for one session only, as the
+	// approval dialog then offers.
+	AgentGrantHeads AgentGrantHeadStore
 }
 
 type WebsiteIconFetcher interface {

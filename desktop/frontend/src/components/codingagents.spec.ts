@@ -48,9 +48,13 @@ beforeEach(() => {
     allAgentVaultID: [],
     allAgentSession: [],
     allAgentHost: [],
+    allAgentGrant: [],
+    agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false },
     agentErrorMessage: "",
   });
   api.listAllAgentVaultID.mockResolvedValue([]);
+  api.listAllAgentGrant.mockResolvedValue([]);
+  api.getAgentSignIn.mockResolvedValue({ isAvailable: true, isEnabled: false, hasAccessibility: false });
   api.listAllAgentSession.mockResolvedValue([]);
   api.listAllAgentHost.mockResolvedValue([]);
 });
@@ -179,5 +183,111 @@ describe("CodingAgentsSection sessions and hosts", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="coding-agents-error"]').text()).toBe("the Hisar app could not revoke it");
     expect(wrapper.find('[data-testid="agent-session"]').exists()).toBe(true);
+  });
+});
+
+describe("CodingAgentsSection website sign-in", () => {
+  it("is off by default, and turning it on without Accessibility offers System Settings", async () => {
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    const toggle = wrapper.find('[data-testid="agent-sign-in-switch"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    expect(wrapper.find('[data-testid="agent-sign-in-accessibility"]').exists()).toBe(false);
+
+    api.setAgentSignInEnabled.mockResolvedValue({ isAvailable: true, isEnabled: true, hasAccessibility: false });
+    await toggle.setValue(true);
+    await flushPromises();
+    expect(api.setAgentSignInEnabled).toHaveBeenCalledWith(true);
+    expect(wrapper.find('[data-testid="agent-sign-in-accessibility"]').text()).toContain("Hisar needs the Accessibility permission to fill browser windows.");
+    await wrapper.find('[data-testid="open-accessibility-settings"]').trigger("click");
+    expect(api.openURL).toHaveBeenCalledWith("x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility");
+
+    api.getAgentSignIn.mockResolvedValue({ isAvailable: true, isEnabled: true, hasAccessibility: true });
+    window.dispatchEvent(new Event("focus"));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="agent-sign-in-accessibility"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="agent-sign-in-ready"]').text()).toContain("Hisar can fill browser windows.");
+    wrapper.unmount();
+  });
+
+  it("cannot be turned on outside Hisar for Mac", async () => {
+    api.getAgentSignIn.mockResolvedValue({ isAvailable: false, isEnabled: false, hasAccessibility: false });
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    expect((wrapper.find('[data-testid="agent-sign-in-switch"]').element as HTMLInputElement).disabled).toBe(true);
+    expect(wrapper.find('[data-testid="agent-sign-in-note"]').text()).toBe("Only Hisar for Mac signs agents in to websites.");
+  });
+});
+
+describe("CodingAgentsSection grants", () => {
+  const allGrant = [
+    {
+      id: "harness/hermes/signin/v/tosunlab/https://tosunlab.com",
+      scope: "harness",
+      harnessName: "Hermes",
+      name: "Agents › Tosun Lab",
+      kind: "sign-in",
+      website: "https://tosunlab.com",
+      expiresAt: new Date(Date.now() + 90 * 60_000).toISOString(),
+    },
+    { id: "harness/omp/use/v/deploy/password", scope: "harness", harnessName: "omp", name: "Agents › Deploy token › password", kind: "run", website: "", expiresAt: "" },
+    {
+      id: "connection/7/reveal/v/stripe/api key",
+      scope: "connection",
+      harnessName: "Claude Desktop",
+      name: "Agents › Stripe › api key",
+      kind: "reveal",
+      website: "",
+      expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    },
+    {
+      id: "session/3/use/v/npm/token",
+      scope: "session",
+      harnessName: "omp",
+      name: "Agents › npm › token",
+      kind: "run",
+      website: "",
+      expiresAt: new Date(Date.now() + 30 * 60_000).toISOString(),
+    },
+  ];
+
+  it("lists what each agent may do without asking, who holds it and its expiry, and revokes one", async () => {
+    api.listAllAgentGrant.mockResolvedValue(allGrant);
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="agent-grant-name"]').map((name) => name.text())).toEqual([
+      "Sign in to https://tosunlab.com as Agents › Tosun Lab",
+      "Use Agents › Deploy token › password",
+      "Read Agents › Stripe › api key",
+      "Use Agents › npm › token",
+    ]);
+    expect(wrapper.findAll('[data-testid="agent-grant-expiry"]').map((expiry) => expiry.text())).toEqual([
+      "Hermes · Expires in 2 hours",
+      "omp · Until you revoke it",
+      "Claude Desktop, while connected · Expires in 30 minutes",
+      "omp, this session · Expires in 30 minutes",
+    ]);
+
+    api.revokeAgentGrant.mockResolvedValue(allGrant.slice(0, 2).concat(allGrant[3]));
+    await wrapper.find('[data-testid="revoke-agent-grant-2"]').trigger("click");
+    await flushPromises();
+    expect(api.revokeAgentGrant).toHaveBeenCalledWith("connection/7/reveal/v/stripe/api key");
+    expect(wrapper.findAll('[data-testid="agent-grant"]')).toHaveLength(3);
+    expect(store.noticeMessage).toBe("Claude Desktop asks again the next time it needs Agents › Stripe › api key");
+  });
+
+  it("says every agent asks when nothing is allowed without asking", async () => {
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="agent-grants-empty"]').text()).toBe("Every agent asks before it uses a secret.");
+  });
+
+  it("names a session's sign-in flow by its website", async () => {
+    api.listAllAgentSession.mockResolvedValue([
+      createAgentSession({ allRememberedSecret: [{ name: "Agents › Tosun Lab", isReveal: false, website: "https://tosunlab.com", expiresAt: new Date(Date.now() + 4 * 60_000).toISOString() }] }),
+    ]);
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    expect(wrapper.findAll('[data-testid="agent-session-secrets"] li').map((line) => line.text())).toEqual(["Sign in to https://tosunlab.com as Agents › Tosun Lab"]);
   });
 });

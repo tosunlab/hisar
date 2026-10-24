@@ -306,6 +306,19 @@ func TestAccountPreferences(t *testing.T) {
 	}
 }
 
+func TestAgentGrants(t *testing.T) {
+	key := decodeHex(t, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
+	if plaintext, err := OpenAgentGrants(key, "ABC123", decodeHex(t, vectorAgentGrants)); err != nil || string(plaintext) != `[{"harnessId":"omp"}]` {
+		t.Fatalf("vector: %q, %v", plaintext, err)
+	}
+	if _, err := OpenAgentGrants(key, "XYZ789", decodeHex(t, vectorAgentGrants)); err == nil {
+		t.Error("opened under another account ID")
+	}
+	if _, err := OpenAccountPreferences(key, "ABC123", decodeHex(t, vectorAgentGrants)); err == nil {
+		t.Error("opened as account preferences")
+	}
+}
+
 func TestWebsiteIconKeys(t *testing.T) {
 	key := decodeHex(t, "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f")
 	keys, err := DeriveWebsiteIconKeys(key, "ABC123")

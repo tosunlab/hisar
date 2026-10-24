@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -19,6 +20,7 @@ import (
 	"github.com/tryhisar/hisar/core/itemicon"
 	"github.com/tryhisar/hisar/core/localstate"
 	"github.com/tryhisar/hisar/core/session"
+	"github.com/tryhisar/hisar/core/signin"
 )
 
 // Service may be a request-scoped view; callbacks and goroutines that outlive a request must retain only its shared state.
@@ -77,6 +79,12 @@ type serviceState struct {
 	serverTransport              http.RoundTripper
 	// commandLineApprovals are the CLI socket's approvals, set by NewCommandLineBridge; nil where Hisar has no socket.
 	commandLineApprovals *clisocket.SessionApprovals
+	// agentGrants are the harness grants opened from state.SealedAgentGrants while Hisar is unlocked; nil while locked.
+	agentGrants                 []clisocket.AgentGrant
+	isAgentGrantHeadUnavailable bool
+	signer                      *signin.Signer
+	agentSignInCancels          map[uint64]context.CancelFunc
+	lastAgentSignInID           uint64
 }
 
 // getCache opens the offline cache on first use and recreates it only after confirmed corruption.
@@ -158,7 +166,12 @@ func NewService(config Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{serviceState: &serviceState{config: config, state: state, phoneApprovals: createPhoneApprovalRelay()}}, nil
+	service := &Service{serviceState: &serviceState{config: config, state: state, phoneApprovals: createPhoneApprovalRelay()}}
+	if config.SignInDriver != nil {
+		homeDirectory, _ := os.UserHomeDir()
+		service.signer = signin.NewSigner(config.SignInDriver, homeDirectory, config.Now)
+	}
+	return service, nil
 }
 
 // SetTrustedCertificates makes requests to the Hisar server and website icon fetches trust only roots, for platforms

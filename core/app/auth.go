@@ -26,6 +26,10 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	s.notifyStatusListener()
 	s.itemsByVaultID = map[string][]item.Item{}
 	s.favorites = nil
+	if s.commandLineApprovals != nil {
+		s.commandLineApprovals.SetAccount(s.state.AccountID)
+	}
+	s.openAgentGrants()
 	s.scheduleLockTimer(s.getAutoLockAfter())
 	if !s.config.IsEventStreamDisabled {
 		eventContext, stopEvents := context.WithCancel(context.Background())
@@ -292,6 +296,7 @@ func (s *Service) resetAccount() error {
 	s.signedOutReason = ""
 	s.forgetBiometricUnlock()
 	cacheErr := s.removeCache()
+	s.forgetAgentAccount()
 	s.state.Reset()
 	return cacheErr
 }

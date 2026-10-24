@@ -89,6 +89,9 @@ func (session *appSession) call(ctx context.Context, identity cliprotocol.Reques
 	if hasLiteralRunInputs(request) && !session.connection.HasFeature(cliprotocol.FeatureAgentRunInputs) {
 		return errRunInputsNeedNewerApp
 	}
+	if request.Type == cliprotocol.TypeAgentSignIn && !session.connection.HasFeature(cliprotocol.FeatureAgentSignIn) {
+		return errSignInNeedsNewerApp
+	}
 	err := session.connection.Call(ctx, request, result)
 	var responseError *cliprotocol.ResponseError
 	if err != nil && !errors.As(err, &responseError) {
@@ -123,6 +126,9 @@ func describeAppError(err error) error {
 	case cliprotocol.ErrorDenied:
 		if strings.Contains(responseError.Message, "not answered") {
 			return ErrDialogTimedOut
+		}
+		if responseError.Message == "Hisar denied the request: it locked or signed out, or the agent's session ended, before the request ran" {
+			return errors.New("Hisar stopped the request because it locked or signed out, or the agent session ended.")
 		}
 		return ErrDeniedInHisar
 	case cliprotocol.ErrorSignedOut:

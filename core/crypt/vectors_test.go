@@ -10,6 +10,7 @@ const (
 	vectorAccountPreferences            = "016283e45b81372ec7fb02035107fa3171e57065245a6a1d181281a1689fcccfb4b26a2e358f943be9dec684c562ab9055b33769259f626ccec7bfc8b2c7607f4fad380cb3a548"
 	vectorWebsiteIconLookup             = "d20bf08a644e1ac34614ad56f0c4646abc245c968f22b924fbcc4818ca2ffe5d"
 	vectorWebsiteIconRecord             = "0199571df84388395236778c5bfee158f40e9475a2957e6ae25f9d9cbfb9664121e57fa58cb207f876504e91499375016d919e7092794528bb"
+	vectorAgentGrants                   = "019737798cabe57ac66e2db279daa9f6ff25ff4605ba59bb49e5d3149f0a11a74715ccbd5d3473b6e4f5a7ed8b8958990d52d86a9ac3d84b95b1bcf1e452"
 )
 
 // Phone approvals: a request sealed to the keyset whose seeds are the bytes 0..95, and an answer signature from it.

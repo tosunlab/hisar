@@ -52,6 +52,36 @@ func TestBrowserUnlockWithPassword(t *testing.T) {
 	}
 }
 
+func TestBrowserUnlockNotifiesMainWindow(t *testing.T) {
+	testBridge := createBrowserTestBridge(t)
+	service := testBridge.testService.service
+	prepareTestApprovalUnlock(t, testBridge.testService, "master password")
+	token := testBridge.pair(t, "chrome-1")
+	notified := 0
+	testBridge.bridge.config.OnUnlock = func() {
+		notified++
+		if service.GetStatus().State != StateUnlocked {
+			t.Error("the main window was notified before Hisar unlocked")
+		}
+	}
+	service.Lock()
+	unlock := func(password string) {
+		testBridge.sendRequest(browserprotocol.Request{Type: "unlock.password", Token: token, Password: password})
+	}
+	unlock("wrong password")
+	if notified != 0 {
+		t.Fatal("a wrong password notified the main window")
+	}
+	unlock("master password")
+	if notified != 1 {
+		t.Fatalf("successful unlock notified the main window %d times", notified)
+	}
+	unlock("anything")
+	if notified != 1 {
+		t.Fatalf("an already-unlocked request notified the main window again, %d calls", notified)
+	}
+}
+
 func TestBrowserUnlockWaitMessage(t *testing.T) {
 	testBridge := createBrowserTestBridge(t)
 	prepareTestApprovalUnlock(t, testBridge.testService, "master password")

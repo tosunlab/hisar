@@ -312,6 +312,14 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     rememberPeriod: "for 1 hour",
     isConnectionApproval: false,
     warning: "",
+    requiresPresence: false,
+    allGrantDuration: [],
+    grantDuration: "",
+    grantScope: "",
+    website: "",
+    browserName: "",
+    allLogin: [],
+    loginIndex: 0,
     ...overrides,
   };
 }
@@ -338,6 +346,7 @@ export function createAgentApprovalEvent(overrides: Partial<ApprovalEvent> = {})
     isRememberedByDefault: false,
     isConnectionApproval: true,
     terminalName: "ttys003",
+    requiresPresence: true,
     ...overrides,
   });
 }
@@ -350,8 +359,9 @@ export function createAgentRunApprovalEvent(overrides: Partial<ApprovalEvent> = 
     commandLine: "npm run deploy -- --env staging",
     workingDirectory: "~/src/billing",
     allSecretName: ["Work › Stripe › api key", "Work › Postgres staging › password"],
-    isRememberable: true,
-    rememberLabel: "Allow these secrets for this agent for 1 hour",
+    allGrantDuration: ["once", "hour"],
+    grantDuration: "once",
+    grantScope: "A longer choice covers only these secrets.",
     isConnectionApproval: false,
     ...overrides,
   });
@@ -363,10 +373,29 @@ export function createAgentRevealApprovalEvent(overrides: Partial<ApprovalEvent>
     purpose: "reveal",
     action: "read “Stripe › api key”",
     allSecretName: ["Work › Stripe › api key"],
-    isRememberable: true,
-    rememberLabel: "Allow every field of “Stripe” for this agent for 1 hour",
+    allGrantDuration: ["once", "hour"],
+    grantDuration: "once",
+    grantScope: "A longer choice covers only reading “Stripe › api key” again, nothing else.",
     isConnectionApproval: false,
     warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
+    ...overrides,
+  });
+}
+
+export function createSignInApprovalEvent(overrides: Partial<ApprovalEvent> = {}): ApprovalEvent {
+  return createAgentApprovalEvent({
+    requestID: "sign-in-1",
+    agentName: "Hermes in Terminal",
+    harnessName: "Hermes",
+    agentNameSource: "process",
+    purpose: "sign-in",
+    action: "sign in to https://tosunlab.com",
+    website: "https://tosunlab.com",
+    browserName: "Google Chrome",
+    allLogin: [{ vaultName: "Agents", title: "Tosun Lab", username: "user@example.com" }],
+    allGrantDuration: ["once", "hour", "day", "always"],
+    grantDuration: "once",
+    grantScope: "A longer choice covers only the chosen login at https://tosunlab.com.",
     ...overrides,
   });
 }
@@ -772,6 +801,8 @@ export function createApiMock() {
     setTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
     clearTouchIDPromptFrame: vi.fn().mockResolvedValue(undefined),
     setSSHApprovalRemembered: vi.fn().mockResolvedValue(undefined),
+    setSSHApprovalGrantDuration: vi.fn().mockResolvedValue(undefined),
+    setSSHApprovalLogin: vi.fn().mockResolvedValue(undefined),
     setCompactSSHApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isCompactApproval: true })),
     setPhoneApproval: vi.fn().mockResolvedValue(createSSHAgentStatus({ isPhoneApproval: false })),
     setSigningRemember: vi.fn().mockResolvedValue(createSSHAgentStatus({ signingRememberSeconds: 600 })),
@@ -809,6 +840,10 @@ export function createApiMock() {
     listAllAgentSession: vi.fn().mockResolvedValue([]),
     revokeAgentSession: vi.fn(),
     listAllAgentHost: vi.fn().mockResolvedValue([]),
+    listAllAgentGrant: vi.fn().mockResolvedValue([]),
+    revokeAgentGrant: vi.fn().mockResolvedValue([]),
+    getAgentSignIn: vi.fn().mockResolvedValue({ isAvailable: true, isEnabled: false, hasAccessibility: false }),
+    setAgentSignInEnabled: vi.fn(),
     forgetAgentHost: vi.fn(),
     listAllCodingAgent: vi.fn().mockResolvedValue([]),
     connectCodingAgent: vi.fn(),

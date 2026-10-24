@@ -22,11 +22,21 @@ func getDeviceName() string {
 
 // getSingleInstanceID lets a copy with its own HISAR_DESKTOP_STATE run next to the installed app.
 func getSingleInstanceID(statePath string) string {
+	return background.BundleID + getStateSuffix(statePath)
+}
+
+// getAgentGrantHeadService names the keychain item of the saved agent grants' head (granthead), which a copy with its
+// own HISAR_DESKTOP_STATE keeps apart from the installed app's.
+func getAgentGrantHeadService(statePath string) string {
+	return "Hisar agent grants" + getStateSuffix(statePath)
+}
+
+func getStateSuffix(statePath string) string {
 	if os.Getenv("HISAR_DESKTOP_STATE") == "" {
-		return background.BundleID
+		return ""
 	}
 	statePathHash := sha256.Sum256([]byte(statePath))
-	return background.BundleID + "." + hex.EncodeToString(statePathHash[:8])
+	return "." + hex.EncodeToString(statePathHash[:8])
 }
 
 // getAppVersion is the bundle's version, or the one the Linux packaging stamped; development builds send none, so no

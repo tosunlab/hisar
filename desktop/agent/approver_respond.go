@@ -2,6 +2,7 @@ package agent
 
 import (
 	"github.com/tryhisar/hisar/core/approval"
+	"github.com/tryhisar/hisar/core/clisocket"
 )
 
 // ListPendingApprovals lets a window that opens late show requests it missed.
@@ -16,10 +17,11 @@ func (approver *Approver) ListPendingApprovals() []ApprovalEvent {
 }
 
 // Respond answers a pending approval; it returns false for an unknown or finished request, or one already being answered.
+// An accepted Deny is final.
 func (approver *Approver) Respond(requestID string, isAuthorized, isRemembered bool) bool {
 	approver.mutex.Lock()
 	pending := approver.findPending(requestID)
-	if pending == nil {
+	if pending == nil || pending.isDenied {
 		approver.mutex.Unlock()
 		return false
 	}
@@ -27,6 +29,7 @@ func (approver *Approver) Respond(requestID string, isAuthorized, isRemembered b
 		pending.isRemembered = isRemembered
 	}
 	isSent := approver.sendResponse(pending, approvalResponse{isAuthorized: isAuthorized})
+	pending.isDenied = isSent && !isAuthorized
 	isCancellingTouchID := !isAuthorized && approver.markTouchIDCancelled(pending)
 	approver.mutex.Unlock()
 	if isCancellingTouchID {
@@ -43,7 +46,7 @@ func (approver *Approver) RespondWithPassword(requestID, password string, isReme
 	approver.mutex.Lock()
 	defer approver.mutex.Unlock()
 	pending := approver.findPending(requestID)
-	if pending == nil {
+	if pending == nil || pending.isDenied {
 		return false
 	}
 	pending.isRemembered = isRemembered
@@ -59,12 +62,14 @@ func (approver *Approver) sendResponse(pending *pendingApproval, response approv
 	}
 }
 
-// acceptPhoneAnswer applies the phone's own remember choice, never the Mac's checkbox, and returns its decision.
+// acceptPhoneAnswer applies the phone's own remember choice, never the Mac's checkbox, and returns its decision; after
+// an accepted Deny it denies. The phone chooses no duration, so an agent request it approves is approved this time only.
 func (approver *Approver) acceptPhoneAnswer(pending *pendingApproval, answer approval.AcceptedAnswer) bool {
-	isApproved := answer.Decision == approval.DecisionApprove
 	approver.mutex.Lock()
+	defer approver.mutex.Unlock()
+	isApproved := answer.Decision == approval.DecisionApprove && !pending.isDenied
 	pending.isRemembered = isApproved && answer.IsRemembered
-	approver.mutex.Unlock()
+	pending.approvedChoice = agentChoice{duration: clisocket.AgentGrantOnce, loginIndex: pending.choice.loginIndex}
 	return isApproved
 }
 
@@ -92,7 +97,9 @@ func (approver *Approver) DenyAll() {
 	approver.mutex.Lock()
 	isCancellingTouchID := false
 	for _, pending := range approver.pendingRequests {
-		approver.sendResponse(pending, approvalResponse{})
+		if approver.sendResponse(pending, approvalResponse{}) {
+			pending.isDenied = true
+		}
 		isCancellingTouchID = approver.markTouchIDCancelled(pending) || isCancellingTouchID
 	}
 	approver.mutex.Unlock()

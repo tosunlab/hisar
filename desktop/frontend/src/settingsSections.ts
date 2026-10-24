@@ -64,6 +64,8 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "command-line-integration", title: "Let the command-line tool use Hisar", keywords: "cli terminal approve session" },
       { id: "command-line-launchers", title: "Launchers", keywords: "raycast launcher approved apps revoke" },
       { id: "coding-agents", title: "Coding agents", keywords: "hisar mcp claude code codex cursor omp tern plugin connect disconnect agent available to agents vaults" },
+      { id: "agent-sign-in", title: "Website sign-in", keywords: "login website computer use hermes cua accessibility password chrome brave edge" },
+      { id: "agent-grants", title: "Allowed without asking", keywords: "coding agent remembered approval grant revoke always hour day" },
       { id: "agent-sessions", title: "Running agents", keywords: "omp coding agent session revoke remembered secrets" },
       { id: "agent-hosts", title: "Agent hosts", keywords: "tern omp app forget coding agent command-line approval" },
     ],
