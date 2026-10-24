@@ -186,11 +186,17 @@ export class BackgroundController {
   }
 
   // matchLoginsForUrl returns the logins for url with those filled most recently first; the rest keep Hisar's order. The
-  // popup, the inline menu and the fill shortcut all read this order, so the first login is the same in each.
-  async matchLoginsForUrl(url: string): Promise<LoginSummary[]> {
+  // popup, the inline menu and the fill shortcut all read this order, so the first login is the same in each. With the
+  // tab, the login whose username the site's previous step took comes first, so its password step offers that account.
+  async matchLoginsForUrl(url: string, tabId?: number): Promise<LoginSummary[]> {
     if (!isWebUrl(url)) return [];
     const result = await this.request(() => this.client.request("logins.match", { url }));
-    return this.sortByLastUse(result.logins ?? []);
+    const allLogin = await this.sortByLastUse(result.logins ?? []);
+    const pairingToken = tabId === undefined ? undefined : await this.storage.getToken();
+    const submittedUsername = tabId === undefined || !pairingToken ? undefined : this.allRememberedUsername.recall(tabId, getOrigin(url), pairingToken);
+    if (!submittedUsername) return allLogin;
+    const isSubmitted = (login: LoginSummary): boolean => login.username.trim().toLowerCase() === submittedUsername.trim().toLowerCase();
+    return [...allLogin.filter(isSubmitted), ...allLogin.filter((login) => !isSubmitted(login))];
   }
 
   private async sortByLastUse(allLogin: LoginSummary[]): Promise<LoginSummary[]> {
@@ -206,7 +212,7 @@ export class BackgroundController {
   async matchLogins(tabId: number): Promise<MatchResult> {
     const url = await this.browser.getTabUrl(tabId);
     if (!isWebUrl(url)) return { url: url ?? "", allLogin: [] };
-    return { url, allLogin: await this.matchLoginsForUrl(url) };
+    return { url, allLogin: await this.matchLoginsForUrl(url, tabId) };
   }
 
   async getOneTimeCode(vaultID: string, itemID: string, url: string): Promise<OneTimeCode> {
@@ -247,7 +253,8 @@ export class BackgroundController {
       username: credentials.username,
       password: credentials.password,
     });
-    if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "No login form found on this page");
+    // The probe found the form, so a fill that wrote nothing met a page that changed the form or emptied the fields again.
+    if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "The page did not keep the login. Click the field and try again");
     await this.recordUse(vaultID, itemID);
     await this.copyOneTimeCodeAfterFill(credentials, outcome, vaultID, itemID, target.url);
     return outcome;
@@ -635,12 +642,13 @@ export class BackgroundController {
   private async probeFillableFrames(tabId: number): Promise<ProbedFrame[]> {
     const allFillable = selectAllFillableFrame(await this.browser.getAllFrameInfo(tabId));
     if (allFillable.length === 0) throw new HisarError("not-found", "Hisar cannot fill this page");
-    let allProbed = await this.probeFrames(tabId, allFillable);
-    if (allProbed.length === 0) {
-      await this.browser.injectContentScript(tabId);
-      allProbed = await this.probeFrames(tabId, allFillable);
-    }
-    return allProbed;
+    const allProbed = await this.probeFrames(tabId, allFillable);
+    // A frame without the content script, as one loaded before the extension was installed or updated, gets it now; the
+    // script loads only once in a frame, so the frames that answered are left as they are.
+    const allSilent = allFillable.filter((frame) => !allProbed.some((probed) => probed.frameId === frame.frameId));
+    if (allSilent.length === 0) return allProbed;
+    await this.browser.injectContentScript(tabId);
+    return [...allProbed, ...(await this.probeFrames(tabId, allSilent))];
   }
 
   private async probeFrames(tabId: number, allFrame: FrameInfo[]): Promise<ProbedFrame[]> {

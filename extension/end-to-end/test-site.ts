@@ -134,6 +134,90 @@ const welcomePage = `<!doctype html>
 <html><head><meta charset="utf-8"><title>Welcome</title><style>body{font-family:sans-serif;background:#f4f4f5;margin:40px}</style></head>
 <body><h1>Welcome back</h1><p>You are signed in.</p></body></html>`;
 
+const pageStyle = `<style>body{font-family:sans-serif;background:#f4f4f5;margin:40px} form,.form{display:grid;gap:8px;width:280px} input{padding:8px;font-size:14px}</style>`;
+const loginFields = `<input id="username" name="username" autocomplete="username" placeholder="Email">
+  <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Password">
+  <button id="sign-in" type="submit">Sign in</button>`;
+
+// The login form in a modal dialog: the dialog is in the top layer and the rest of the page is inert.
+const dialogLoginPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Dialog login</title>${pageStyle}</head><body>
+<h1>A page behind the dialog</h1>
+<dialog id="login-dialog"><form id="login" method="post" action="/welcome">${loginFields}</form></dialog>
+<script>document.getElementById("login-dialog").showModal();</script>
+</body></html>`;
+
+// Like a framework that renders the form again on each change: a change to the username replaces the password field.
+const rerenderLoginPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Re-rendered login</title>${pageStyle}</head><body>
+<h1>Sign in</h1>
+<form id="login" method="post" action="/welcome"></form>
+<script>
+const form = document.getElementById("login");
+const model = { username: "", password: "" };
+function render() {
+  const active = document.activeElement?.id;
+  form.innerHTML = ${"`"}${loginFields}${"`"};
+  for (const name of ["username", "password"]) {
+    const input = document.getElementById(name);
+    input.value = model[name];
+    input.addEventListener("input", () => { model[name] = input.value; if (name === "username") render(); });
+  }
+  if (active) document.getElementById(active)?.focus();
+}
+render();
+</script>
+</body></html>`;
+
+// Like an input mask that keeps its own copy of the value from key events and writes it back on blur.
+const maskedLoginPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Masked login</title>${pageStyle}</head><body>
+<h1>Sign in</h1>
+<form id="login" method="post" action="/welcome">${loginFields}</form>
+<script>
+for (const input of document.querySelectorAll("input")) {
+  let kept = "";
+  input.addEventListener("keyup", () => { kept = input.value; });
+  input.addEventListener("blur", () => { input.value = kept; });
+}
+</script>
+</body></html>`;
+
+// The "read-only until focused" trick some sites use against autofill.
+const readOnlyLoginPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Read-only login</title>${pageStyle}</head><body>
+<h1>Sign in</h1>
+<form id="login" method="post" action="/welcome">${loginFields}</form>
+<script>
+for (const input of document.querySelectorAll("input")) {
+  input.readOnly = true;
+  input.addEventListener("focus", () => setTimeout(() => { input.readOnly = false; }));
+}
+</script>
+</body></html>`;
+
+const lateLoginPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Late login</title>${pageStyle}</head><body>
+<h1>Sign in</h1>
+<div id="slot"></div>
+<script>setTimeout(() => { document.getElementById("slot").innerHTML = ${"`"}<form id="login" method="post" action="/welcome">${loginFields}</form>${"`"}; }, 1000);</script>
+</body></html>`;
+
+// Dark Reader's filter mode inverts the whole page with a filter on the root element.
+const filteredLoginPage = `<!doctype html>
+<html style="filter: invert(1) hue-rotate(180deg)"><head><meta charset="utf-8"><title>Filtered login</title>${pageStyle}</head><body>
+<h1>Sign in</h1>
+<form id="login" method="post" action="/welcome">${loginFields}</form>
+</body></html>`;
+
+// The first step of a login without a form element, above a newsletter form in the footer.
+const formlessWithNewsletterPage = `<!doctype html>
+<html><head><meta charset="utf-8"><title>Sign in</title>${pageStyle}</head><body>
+<h1>Sign in</h1>
+<div class="form"><input id="username" type="email" autocomplete="username" placeholder="Email"><div role="button" id="next">Next</div></div>
+<footer><form action="/welcome" method="post"><input id="footer-email" type="email" name="email" placeholder="Email address"><button>Send me offers</button></form></footer>
+</body></html>`;
+
 export interface TestSite {
   origin: string;
   crossOrigin: string;
@@ -149,6 +233,13 @@ export async function startTestSite(): Promise<TestSite> {
       request.on("end", () => response.end(welcomePage));
       return;
     }
+    if (request.url?.startsWith("/dialog-login")) return response.end(dialogLoginPage);
+    if (request.url?.startsWith("/rerender-login")) return response.end(rerenderLoginPage);
+    if (request.url?.startsWith("/masked-login")) return response.end(maskedLoginPage);
+    if (request.url?.startsWith("/readonly-login")) return response.end(readOnlyLoginPage);
+    if (request.url?.startsWith("/late-login")) return response.end(lateLoginPage);
+    if (request.url?.startsWith("/filtered-login")) return response.end(filteredLoginPage);
+    if (request.url?.startsWith("/formless-with-newsletter")) return response.end(formlessWithNewsletterPage);
     if (request.url?.startsWith("/identity")) return response.end(identityPage);
     if (request.url?.startsWith("/card-frame")) return response.end(cardFramePage);
     if (request.url?.startsWith("/card")) return response.end(cardPage(`http://localhost:${port}/card-frame`));

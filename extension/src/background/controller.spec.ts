@@ -229,6 +229,38 @@ describe("fill and the frame rule", () => {
     expect(harness.getInjectionCount()).toBe(1);
   });
 
+  it("injects the content script into a frame without it while other frames answer, and fills the login there", async () => {
+    const harness = createHarness({
+      allFrame: [
+        { frameId: 0, url: "https://example.com/", origin: "https://example.com", allAncestorOrigin: [] },
+        { frameId: 3, url: "https://example.com/sign-in", origin: "https://example.com", allAncestorOrigin: ["https://example.com"] },
+      ],
+      allProbe: { 0: emptyProbe, 3: "no-content-script" },
+    });
+    await harness.pair();
+    await harness.controller.fillLogin(1, "vault-personal", "item-example");
+    expect(harness.getInjectionCount()).toBe(1);
+    expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.frameId).toBe(3);
+  });
+
+  it("puts the account the site's previous step took first on its password step, in this tab only", async () => {
+    const harness = createHarness();
+    harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-work", title: "Work", username: "work@example.com" });
+    await harness.pair();
+    expect((await harness.controller.matchLogins(1)).allLogin[0].itemID).toBe("item-example");
+    await harness.controller.handleUsernameSubmitted(1, "https://example.com/identifier", "Work@Example.com");
+    expect((await harness.controller.matchLogins(1)).allLogin.map((login) => login.itemID)).toEqual(["item-work", "item-example"]);
+    expect((await harness.controller.matchLoginsForUrl("https://example.com/", 2))[0].itemID).toBe("item-example");
+    await harness.controller.fillFirstLogin(1);
+    expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.message).toMatchObject({ username: "work@example.com" });
+  });
+
+  it("says the page did not keep the login when the form was found but nothing stayed filled", async () => {
+    const harness = createHarness({ fillOutcome: { filledUsername: false, filledPassword: false } });
+    await harness.pair();
+    await expect(harness.controller.fillLogin(1, "vault-personal", "item-example")).rejects.toThrow("The page did not keep the login. Click the field and try again");
+  });
+
   it("fills the first match for the keyboard shortcut", async () => {
     const harness = createHarness();
     harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-aardvark", title: "Aardvark", username: "first" });

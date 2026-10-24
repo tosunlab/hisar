@@ -1,6 +1,7 @@
-import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse } from "../shared/messages";
+import type { BackgroundToContentMessage, ContentToBackgroundMessage, FillOutcome, MessageResponse } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
-import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
+import { readPageSettings, parsePageSettings, allPageSettingKey, appFeaturesKey, readAppFeatures, type PageSettings } from "../shared/settings";
+import { setFillDiagnosticsEnabled } from "./diagnostics";
 import { featureAddresses, featureCards, featureIdentities } from "../shared/protocol";
 import { fillAddressIntoPage, fillAddressIntoScopeOf } from "./address-fill";
 import { fillCardIntoPage, fillCardIntoScopeOf } from "./card-fill";
@@ -16,6 +17,7 @@ import {
   probeFrame,
 } from "./fill";
 import { InlineMenuController } from "./inline-menu/controller";
+import { showNotice } from "./notice";
 
 // documentToken names this document for save offers in Firefox, which gives the background no documentId. Pages cannot
 // read it or send runtime messages, so only this content script can claim the document.
@@ -26,9 +28,20 @@ function sendToBackground<Result>(message: ContentToBackgroundMessage): Promise<
 }
 
 
+// isFilled tells a fill that wrote something from one that did not, whatever its kind of result.
+function isFilled(result: unknown): boolean {
+  if (typeof result === "number") return result > 0;
+  if (typeof result === "boolean") return result;
+  const outcome = result as FillOutcome | undefined;
+  return outcome?.filledUsername === true || outcome?.filledPassword === true;
+}
+
 export function handleBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
-  // A fill focuses the fields it writes; the menu must not open again on them.
-  if (message.type.startsWith("content.fill")) return inlineMenu.runWithoutOpeningOnFocus(() => answerBackgroundMessage(message, inlineMenu));
+  // A fill focuses the fields it writes; the menu must not open again on them, and closes only once the fill worked.
+  if (message.type.startsWith("content.fill")) {
+    const sessionID = "sessionID" in message ? message.sessionID : undefined;
+    return inlineMenu.runFill(sessionID, () => answerBackgroundMessage(message, inlineMenu), isFilled);
+  }
   return answerBackgroundMessage(message, inlineMenu);
 }
 
@@ -43,7 +56,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillLogin(document, message.username, message.password);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return { filledUsername: false, filledPassword: false };
-      inlineMenu.dismissMenu(message.sessionID);
       return fillLoginIntoScopeOf(document, field, message.username, message.password);
     }
     case "content.fillPassword": {
@@ -51,7 +63,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillPasswordIntoFocusedField(document, message.password);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return false;
-      inlineMenu.dismissMenu(message.sessionID);
       fillPasswordIntoField(document, field, message.password);
       return true;
     }
@@ -60,7 +71,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillOneTimeCodeIntoPage(document, message.code);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return false;
-      inlineMenu.dismissMenu(message.sessionID);
       return fillOneTimeCodeIntoField(field, message.code);
     }
     case "content.fillAddress": {
@@ -68,7 +78,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillAddressIntoPage(document, message.address);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return 0;
-      inlineMenu.dismissMenu(message.sessionID);
       return fillAddressIntoScopeOf(document, field, message.address);
     }
     case "content.fillCard": {
@@ -76,7 +85,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillCardIntoPage(document, message.card);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return 0;
-      inlineMenu.dismissMenu(message.sessionID);
       return fillCardIntoScopeOf(document, field, message.card);
     }
     case "content.fillIdentity": {
@@ -84,7 +92,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillIdentityIntoPage(document, message.identity);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return 0;
-      inlineMenu.dismissMenu(message.sessionID);
       return fillIdentityIntoScopeOf(document, field, message.identity);
     }
     case "content.isInlineMenuVisible":
@@ -97,7 +104,15 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       return true;
     case "content.openInlineMenuHere":
       return inlineMenu.openHere();
+    case "content.showNotice":
+      showNotice(document, message.text);
+      return true;
   }
+}
+
+function applyPageSettings(inlineMenu: InlineMenuController, settings: PageSettings): void {
+  inlineMenu.updateSettings(settings);
+  setFillDiagnosticsEnabled(settings.isFillDiagnosticsEnabled);
 }
 
 function startInlineMenu(): InlineMenuController {
@@ -110,8 +125,8 @@ function startInlineMenu(): InlineMenuController {
     getElementAtPoint: (x, y) => document.elementFromPoint(x, y),
     extensionBaseUrl: chrome.runtime.getURL(""),
   });
-  readInlineMenuSettings(chrome.storage.local)
-    .then((settings) => inlineMenu.updateSettings(settings))
+  readPageSettings(chrome.storage.local)
+    .then((settings) => applyPageSettings(inlineMenu, settings))
     .catch(() => undefined);
   const updateAppFeatures = (): void => {
     readAppFeatures(chrome.storage.local)
@@ -129,10 +144,10 @@ function startInlineMenu(): InlineMenuController {
   updateAppFeatures();
   chrome.storage.onChanged.addListener((allChange, areaName) => {
     if (areaName === "local" && appFeaturesKey in allChange) updateAppFeatures();
-    if (areaName !== "local" || !allInlineMenuSettingKey.some((key) => key in allChange)) return;
-    readInlineMenuSettings(chrome.storage.local)
-      .then((settings) => inlineMenu.updateSettings(settings))
-      .catch(() => inlineMenu.updateSettings(parseInlineMenuSettings({})));
+    if (areaName !== "local" || !allPageSettingKey.some((key) => key in allChange)) return;
+    readPageSettings(chrome.storage.local)
+      .then((settings) => applyPageSettings(inlineMenu, settings))
+      .catch(() => applyPageSettings(inlineMenu, parsePageSettings({})));
   });
   inlineMenu.start();
   return inlineMenu;
@@ -141,8 +156,13 @@ function startInlineMenu(): InlineMenuController {
 function startContentScript(): void {
   const inlineMenu = startInlineMenu();
   chrome.runtime.onMessage.addListener((message: BackgroundToContentMessage, _sender, sendResponse) => {
-    sendResponse(handleBackgroundMessage(message, inlineMenu));
-    return false;
+    const answer = handleBackgroundMessage(message, inlineMenu);
+    if (!(answer instanceof Promise)) {
+      sendResponse(answer);
+      return false;
+    }
+    answer.then(sendResponse, () => sendResponse(undefined));
+    return true;
   });
   attachSubmissionCapture(document, {
     onSubmission: (submission) => {

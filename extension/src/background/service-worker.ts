@@ -1,6 +1,6 @@
 import { copyText } from "../offscreen/copy";
 import { readFrameLocation } from "../shared/frame-ancestry";
-import type { BackgroundToContentMessage, OffscreenCopyMessage } from "../shared/messages";
+import { noticeMilliseconds, type BackgroundToContentMessage, type OffscreenCopyMessage } from "../shared/messages";
 import { nativeHostName, toHisarError } from "../shared/protocol";
 import { getBrowserName } from "../shared/url";
 import { BackgroundController, type BrowserBridge } from "./controller";
@@ -133,13 +133,29 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 const passkeyService = createPasskeyService(client, storage, () => getController(), () => crypto.randomUUID());
 chrome.runtime.onConnect.addListener((port) => passkeyService.handlePort(port));
 
+// reportFillFailure answers a fill from the keyboard shortcut or the right-click menu that did nothing: a locked Hisar
+// asks to be unlocked, and anything else is said in the page, or with the toolbar badge where the page cannot show it.
+async function reportFillFailure(tabId: number, error: unknown): Promise<void> {
+  const hisarError = toHisarError(error);
+  if (hisarError.code === "locked") {
+    await getController().unlock();
+    return;
+  }
+  const notice: BackgroundToContentMessage = { type: "content.showNotice", text: hisarError.message };
+  try {
+    await chrome.tabs.sendMessage(tabId, notice, { frameId: 0 });
+  } catch {
+    await chrome.action.setBadgeText({ tabId, text: "!" }).catch(() => undefined);
+    setTimeout(() => void updateBadge(tabId), noticeMilliseconds);
+  }
+}
+
 chrome.commands.onCommand.addListener((command, tab) => {
-  if (command !== "fill-login" || tab?.id === undefined) return;
+  const tabId = tab?.id;
+  if (command !== "fill-login" || tabId === undefined) return;
   getController()
-    .fillFirstLogin(tab.id)
-    .catch((error: unknown) => {
-      if (toHisarError(error).code === "locked") return getController().unlock();
-    })
+    .fillFirstLogin(tabId)
+    .catch((error: unknown) => reportFillFailure(tabId, error))
     .catch(() => undefined);
 });
 
@@ -191,13 +207,7 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     default:
       return;
   }
-  action
-    .catch((error: unknown) => {
-      // A locked Hisar asks to be unlocked; anything else, such as a page without a login form, is ignored, as with the
-      // keyboard shortcut.
-      if (toHisarError(error).code === "locked") return getController().unlock();
-    })
-    .catch(() => undefined);
+  action.catch((error: unknown) => reportFillFailure(tabId, error)).catch(() => undefined);
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {

@@ -9,7 +9,7 @@ import { findScopeOfField } from "../fill";
 import { findOneTimeCodeTarget } from "../one-time-code";
 import { computeUnionRect, isFieldLargeEnough, type Rect } from "./placement";
 
-export const allOwnHostTagName = ["HISAR-SAVE-BAR", "HISAR-INLINE-MENU"];
+export const allOwnHostTagName = ["HISAR-SAVE-BAR", "HISAR-INLINE-MENU", "HISAR-NOTICE"];
 
 export function isFrameEligibleForInlineMenu(window: Window): boolean {
   const { protocol, origin } = window.location;

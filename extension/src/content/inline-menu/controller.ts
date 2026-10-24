@@ -1,8 +1,8 @@
 import { VisibilityGuard } from "../../shared/click-guard";
 import { isExtensionPageUrl } from "../../shared/extension-url";
 import type { ContentToBackgroundMessage, InlineMenuKey, InlineMenuPurpose, MessageResponse } from "../../shared/messages";
-import { defaultInlineMenuSettings, type InlineMenuSettings } from "../../shared/settings";
-import { getParentAcrossShadow } from "../dom";
+import { defaultPageSettings, type PageSettings } from "../../shared/settings";
+import { getDeepActiveElement, getParentAcrossShadow } from "../dom";
 import { findOneTimeCodeTarget } from "../one-time-code";
 import { findInlineMenuPurpose, isFrameEligibleForInlineMenu } from "./eligibility";
 import { computeIconRect, computeIconRectBeside, computeMenuRect, computeUnionRect, iconSize, isRectInViewport, type Rect } from "./placement";
@@ -47,7 +47,7 @@ interface OpenMenu {
 }
 
 export class InlineMenuController {
-  private settings: InlineMenuSettings = { ...defaultInlineMenuSettings };
+  private settings: PageSettings = { ...defaultPageSettings };
   // isAddressFillAvailable: the paired app fills addresses; an older one does not, so address fields get no icon.
   private isAddressFillAvailable = false;
   // isCardFillAvailable: the paired app fills cards; with an older one, payment fields get no icon.
@@ -62,7 +62,7 @@ export class InlineMenuController {
   private icon: HTMLButtonElement | undefined;
   private menu: OpenMenu | undefined;
   private isOpening = false;
-  private isOpeningOnFocusSuppressed = false;
+  private isFilling = false;
   private trustedInputCount = 0;
   private frameHandle: number | undefined;
   private readonly guard = new VisibilityGuard();
@@ -86,6 +86,9 @@ export class InlineMenuController {
     this.listen(this.document, "pointerdown", (event) => this.handlePointerDown(event), true);
     this.listen(this.document, "input", (event) => this.handleInput(event), true);
     this.listen(this.window, "pagehide", () => this.hide());
+    // A field focused before the script started, as a dialog or the page focuses its first field, gets no focusin.
+    const active = getDeepActiveElement(this.document);
+    if (active && active !== this.document.body) this.focusOn(active);
   }
 
   stop(): void {
@@ -93,7 +96,7 @@ export class InlineMenuController {
     for (const detach of this.allDetach.splice(0)) detach();
   }
 
-  updateSettings(settings: InlineMenuSettings): void {
+  updateSettings(settings: PageSettings): void {
     this.settings = settings;
     if (!settings.isInlineMenuEnabled) this.hide();
   }
@@ -113,14 +116,22 @@ export class InlineMenuController {
     if (!isAvailable && this.purpose === "card") this.hide();
   }
 
-  // runWithoutOpeningOnFocus runs a fill, whose focus changes show the icon in a field but do not open the menu there.
-  runWithoutOpeningOnFocus<Result>(fill: () => Result): Result {
-    this.isOpeningOnFocusSuppressed = true;
+  // runFill runs a fill. The focus changes it makes leave the menu where it is, so a failed fill reports in the menu;
+  // the menu of sessionID closes only after a fill that wrote a value, and the icon then moves to the focused field
+  // without opening the menu there.
+  async runFill<Result>(sessionID: string | undefined, fill: () => Result | Promise<Result>, isFilled: (result: Result) => boolean): Promise<Result> {
+    this.isFilling = true;
+    let result: Result;
     try {
-      return fill();
+      result = await fill();
     } finally {
-      this.isOpeningOnFocusSuppressed = false;
+      this.isFilling = false;
     }
+    if (sessionID !== undefined && !isFilled(result)) return result;
+    if (sessionID !== undefined) this.dismissMenu(sessionID);
+    const active = getDeepActiveElement(this.document);
+    if (active && active !== this.field && !(this.host && this.host.contains(active))) this.anchorTo(active);
+    return result;
   }
 
   getAnchoredField(sessionID: string): HTMLInputElement | undefined {
@@ -205,12 +216,22 @@ export class InlineMenuController {
   }
 
   private handleFocusIn(event: Event): void {
-    if (!this.settings.isInlineMenuEnabled) return;
     const target = event.composedPath()[0];
-    if (!(target instanceof Element)) return;
+    if (target instanceof Element) this.focusOn(target);
+  }
+
+  private focusOn(target: Element, isRetry = false): void {
+    if (!this.settings.isInlineMenuEnabled || this.isFilling) return;
+    // A field read-only until focused, a trick against autofill, becomes editable in its own focus handler.
+    if (!isRetry && (target as HTMLInputElement).readOnly === true) {
+      setTimeout(() => {
+        if (getDeepActiveElement(this.document) === target) this.focusOn(target, true);
+      }, 0);
+      return;
+    }
     if (this.host && (target === this.host || this.host.contains(target))) return;
     if (this.isFieldOfMenu(target)) return;
-    if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus && !this.isOpeningOnFocusSuppressed) void this.openMenu();
+    if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus) void this.openMenu();
   }
 
   // anchorTo shows the icon in a field the menu serves and reports whether it is one; any other field hides it.
@@ -232,8 +253,7 @@ export class InlineMenuController {
   // reports whether that field is one the menu serves.
   openHere(): boolean {
     if (!isFrameEligibleForInlineMenu(this.window)) return false;
-    let active: Element | null = this.document.activeElement;
-    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    const active = getDeepActiveElement(this.document);
     if (!active || !this.anchorTo(active)) return false;
     void this.openMenu();
     return true;
@@ -241,7 +261,7 @@ export class InlineMenuController {
 
   private handleFocusOut(): void {
     setTimeout(() => {
-      if (!this.field) return;
+      if (!this.field || this.isFilling) return;
       const active = this.document.activeElement;
       if (active === this.host) return;
       let deepActive: Element | null = active;
@@ -319,7 +339,12 @@ export class InlineMenuController {
       else void this.openMenu();
     });
     shadowRoot.append(style, icon);
-    this.document.documentElement.append(host);
+    // In the top layer the host is drawn above the page and outside any filter or transform on the page's elements. Inside
+    // the field's modal dialog or popover it is not inert, as the rest of the page is while a modal dialog is open.
+    const isPopoverSupported = typeof host.showPopover === "function";
+    if (isPopoverSupported) host.setAttribute("popover", "manual");
+    (findTopLayerAncestor(this.field) ?? this.document.documentElement).append(host);
+    if (isPopoverSupported) host.showPopover();
     this.host = host;
     this.shadowRoot = shadowRoot;
     this.icon = icon;
@@ -360,7 +385,7 @@ export class InlineMenuController {
     if (rect.width < 40 || rect.height < 30 || !isRectInViewport(rect, viewport)) return false;
     const view = this.document.defaultView;
     if (!view) return false;
-    for (let element: Element | null = iframe; element; element = getParentAcrossShadow(element)) {
+    for (let element: Element | null = iframe; element; element = element === this.host && isInTopLayer(element) ? null : getParentAcrossShadow(element)) {
       const style = view.getComputedStyle(element);
       if (style.display === "none" || style.visibility === "hidden" || Number.parseFloat(style.opacity || "1") < 1) return false;
       if (style.filter && style.filter !== "none") return false;
@@ -374,6 +399,21 @@ export class InlineMenuController {
     ];
     return allPoint.every(([x, y]) => this.dependencies.getElementAtPoint(x, y) === this.host);
   }
+}
+
+function isInTopLayer(element: Element): boolean {
+  try {
+    return element.matches(":popover-open") || element.matches("dialog:modal");
+  } catch {
+    return false;
+  }
+}
+
+function findTopLayerAncestor(field: Element | undefined): Element | undefined {
+  for (let element = field ? getParentAcrossShadow(field) : null; element; element = getParentAcrossShadow(element)) {
+    if (isInTopLayer(element)) return element;
+  }
+  return undefined;
 }
 
 function placeElement(element: HTMLElement, rect: Rect): void {

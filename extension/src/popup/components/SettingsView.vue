@@ -1,24 +1,24 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { defaultInlineMenuSettings, readInlineMenuSettings, writeInlineMenuSetting, type InlineMenuSettings } from "../../shared/settings";
+import { defaultPageSettings, readPageSettings, writePageSetting, type PageSettings } from "../../shared/settings";
 
 const emit = defineEmits<{ close: [] }>();
 
-const settings = ref<InlineMenuSettings>({ ...defaultInlineMenuSettings });
+const settings = ref<PageSettings>({ ...defaultPageSettings });
 const errorMessage = ref("");
 
-async function updateSetting(key: keyof InlineMenuSettings, event: Event): Promise<void> {
+async function updateSetting(key: keyof PageSettings, event: Event): Promise<void> {
   const value = (event.target as HTMLInputElement).checked;
   settings.value = { ...settings.value, [key]: value };
   try {
-    await writeInlineMenuSetting(chrome.storage.local, key, value);
+    await writePageSetting(chrome.storage.local, key, value);
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : String(error);
   }
 }
 
 onMounted(async () => {
-  settings.value = await readInlineMenuSettings(chrome.storage.local);
+  settings.value = await readPageSettings(chrome.storage.local);
 });
 </script>
 
@@ -50,6 +50,18 @@ onMounted(async () => {
       <span>
         <span class="label">Open the menu when a login field is focused</span>
         <span class="hint muted">Otherwise click the icon or press the down arrow.</span>
+      </span>
+    </label>
+    <label class="setting">
+      <input
+        type="checkbox"
+        :checked="settings.isFillDiagnosticsEnabled"
+        data-testid="setting-fill-diagnostics"
+        @change="updateSetting('isFillDiagnosticsEnabled', $event)"
+      />
+      <span>
+        <span class="label">Fill diagnostics</span>
+        <span class="hint muted">Writes the fields Hisar found and what each fill did to the page's console, without their values. For reporting a fill that did not work.</span>
       </span>
     </label>
     <button type="button" class="full-width" data-testid="settings-done" @click="emit('close')">Done</button>

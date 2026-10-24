@@ -75,7 +75,7 @@ export class InlineMenuService {
         session.suggestedPassword = await this.controller.generatePassword({});
         return { ...base, view: "logins", suggestedPassword: session.suggestedPassword };
       }
-      let allLogin = await this.controller.matchLoginsForUrl(session.frameUrl);
+      let allLogin = await this.controller.matchLoginsForUrl(session.frameUrl, session.tabId);
       if (session.purpose === "one-time-code") allLogin = allLogin.filter((login) => login.hasOneTimePassword);
       return { ...base, view: "logins", allLogin: allLogin.slice(0, maximumInlineLoginCount), hasMoreLogin: allLogin.length > maximumInlineLoginCount };
     } catch (error) {
@@ -99,7 +99,7 @@ export class InlineMenuService {
       password: credentials.password,
       sessionID,
     });
-    if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "The login field is gone");
+    if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "Hisar couldn't fill this form. Click the field and try again");
     this.allSession.remove(sessionID);
     await this.controller.recordUse(vaultID, itemID);
     await this.controller.copyOneTimeCodeAfterFill(credentials, outcome, vaultID, itemID, session.frameUrl);

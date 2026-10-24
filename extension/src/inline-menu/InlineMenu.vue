@@ -38,6 +38,8 @@ type MenuAction =
 const menuState = ref<InlineMenuState>();
 const selectedIndex = ref(-1);
 const errorMessage = ref("");
+// isRunning is true while a fill runs; the menu takes no other choice then, so one click fills once.
+const isRunning = ref(false);
 const isWaiting = ref(false);
 const root = ref<HTMLElement>();
 const guard = new VisibilityGuard();
@@ -92,9 +94,14 @@ const allAction = computed<MenuAction[]>(() => {
   }
 });
 
-function isClickAllowed(event: Event): boolean {
-  if (!props.isEventTrusted(event)) return false;
-  return !props.isVisibilityTracked || guard.isInteractionAllowed(props.now());
+// A choice made before the menu has been fully visible for a moment is refused, and never carried out later: the page
+// may have covered the menu while it was made. The menu says so instead of ignoring it.
+const notYetVisibleMessage = "Hisar is making sure this menu is visible. Choose again";
+
+function isChoiceAllowed(): boolean {
+  if (!props.isVisibilityTracked || guard.isInteractionAllowed(props.now())) return true;
+  errorMessage.value = notYetVisibleMessage;
+  return false;
 }
 
 async function loadState(): Promise<void> {
@@ -124,7 +131,9 @@ function pollUntilUnlocked(remaining: number): void {
 }
 
 async function runAction(action: MenuAction): Promise<void> {
+  if (isRunning.value) return;
   errorMessage.value = "";
+  isRunning.value = true;
   try {
     switch (action.kind) {
       case "login":
@@ -163,11 +172,13 @@ async function runAction(action: MenuAction): Promise<void> {
   } catch (error) {
     isWaiting.value = false;
     errorMessage.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    isRunning.value = false;
   }
 }
 
 function chooseAction(action: MenuAction, event: Event): void {
-  if (!isClickAllowed(event)) return;
+  if (!props.isEventTrusted(event) || !isChoiceAllowed()) return;
   void runAction(action);
 }
 
@@ -177,7 +188,7 @@ function pressKey(key: InlineMenuBroadcast["key"]): void {
   if (key === "ArrowDown") selectedIndex.value = (selectedIndex.value + 1) % count;
   else if (key === "ArrowUp") selectedIndex.value = selectedIndex.value <= 0 ? count - 1 : selectedIndex.value - 1;
   else if (key === "Enter" && selectedIndex.value >= 0) {
-    if (props.isVisibilityTracked && !guard.isInteractionAllowed(props.now())) return;
+    if (!isChoiceAllowed()) return;
     void runAction(allAction.value[selectedIndex.value]);
   }
 }
@@ -244,7 +255,8 @@ defineExpose({ pressKey });
 </script>
 
 <template>
-  <div ref="root" class="menu" role="listbox" aria-label="Hisar">
+  <div ref="root" class="menu" :class="{ busy: isRunning }" role="listbox" aria-label="Hisar" :aria-busy="isRunning">
+    <p v-if="errorMessage" class="message error" data-testid="inline-error">{{ errorMessage }}</p>
     <p v-if="!menuState && !errorMessage" class="message muted">Loading…</p>
     <template v-else-if="menuState?.view === 'logins' && menuState.purpose === 'new-password'">
       <button
@@ -444,7 +456,6 @@ defineExpose({ pressKey });
         }}
       </button>
     </template>
-    <p v-if="errorMessage" class="message error" data-testid="inline-error">{{ errorMessage }}</p>
   </div>
 </template>
 
@@ -477,6 +488,11 @@ body {
   border: 1px solid #30343a;
   border-radius: 10px;
   background: #111214;
+}
+
+.menu.busy .item {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 .item {
