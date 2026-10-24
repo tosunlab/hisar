@@ -1,22 +1,23 @@
 import { describe, expect, it } from "vitest";
 import { createMemoryArea } from "../background/testing";
 import { VisibilityGuard } from "./click-guard";
-import { parseInlineMenuSettings, readInlineMenuSettings, writeInlineMenuSetting } from "./settings";
+import { parsePageSettings, readPageSettings, writePageSetting } from "./settings";
 
-describe("inline menu settings", () => {
-  it("defaults to on and ignores values that are not booleans", () => {
-    expect(parseInlineMenuSettings({})).toEqual({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: true });
-    expect(parseInlineMenuSettings({ isInlineMenuEnabled: "no", isInlineMenuOpenedOnFocus: false })).toEqual({
+describe("page settings", () => {
+  it("defaults to the menu on and diagnostics off, and ignores values that are not booleans", () => {
+    expect(parsePageSettings({})).toEqual({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: true, isFillDiagnosticsEnabled: false });
+    expect(parsePageSettings({ isInlineMenuEnabled: "no", isInlineMenuOpenedOnFocus: false, isFillDiagnosticsEnabled: 1 })).toEqual({
       isInlineMenuEnabled: true,
       isInlineMenuOpenedOnFocus: false,
+      isFillDiagnosticsEnabled: false,
     });
   });
 
   it("writes and reads back each setting", async () => {
     const area = createMemoryArea();
-    await writeInlineMenuSetting(area, "isInlineMenuEnabled", false);
+    await writePageSetting(area, "isInlineMenuEnabled", false);
     expect(area.data).toEqual({ isInlineMenuEnabled: false });
-    expect(await readInlineMenuSettings(area)).toEqual({ isInlineMenuEnabled: false, isInlineMenuOpenedOnFocus: true });
+    expect(await readPageSettings(area)).toEqual({ isInlineMenuEnabled: false, isInlineMenuOpenedOnFocus: true, isFillDiagnosticsEnabled: false });
   });
 });
 

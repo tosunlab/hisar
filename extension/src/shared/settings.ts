@@ -1,30 +1,34 @@
-export interface InlineMenuSettings {
+// PageSettings are this browser's settings for what Hisar does in web pages.
+export interface PageSettings {
   isInlineMenuEnabled: boolean;
   isInlineMenuOpenedOnFocus: boolean;
+  // isFillDiagnosticsEnabled writes what Hisar found in a page, and what a fill did, to the page's console.
+  isFillDiagnosticsEnabled: boolean;
 }
 
-export const defaultInlineMenuSettings: InlineMenuSettings = {
+export const defaultPageSettings: PageSettings = {
   isInlineMenuEnabled: true,
   isInlineMenuOpenedOnFocus: true,
+  isFillDiagnosticsEnabled: false,
 };
 
-export const allInlineMenuSettingKey = Object.keys(defaultInlineMenuSettings) as (keyof InlineMenuSettings)[];
+export const allPageSettingKey = Object.keys(defaultPageSettings) as (keyof PageSettings)[];
 
 export interface SettingsArea {
   get(allKey: string[]): Promise<Record<string, unknown>>;
   set(allEntry: Record<string, unknown>): Promise<void>;
 }
 
-export function parseInlineMenuSettings(stored: Record<string, unknown>): InlineMenuSettings {
-  const settings = { ...defaultInlineMenuSettings };
-  for (const key of allInlineMenuSettingKey) {
+export function parsePageSettings(stored: Record<string, unknown>): PageSettings {
+  const settings = { ...defaultPageSettings };
+  for (const key of allPageSettingKey) {
     if (typeof stored[key] === "boolean") settings[key] = stored[key];
   }
   return settings;
 }
 
-export async function readInlineMenuSettings(area: SettingsArea): Promise<InlineMenuSettings> {
-  return parseInlineMenuSettings(await area.get(allInlineMenuSettingKey));
+export async function readPageSettings(area: SettingsArea): Promise<PageSettings> {
+  return parsePageSettings(await area.get(allPageSettingKey));
 }
 
 // appFeaturesKey holds the features the paired app announced in its last hello, so a page knows whether to offer what
@@ -36,6 +40,6 @@ export async function readAppFeatures(area: SettingsArea): Promise<string[]> {
   return Array.isArray(stored) ? stored.filter((feature): feature is string => typeof feature === "string") : [];
 }
 
-export async function writeInlineMenuSetting(area: SettingsArea, key: keyof InlineMenuSettings, value: boolean): Promise<void> {
+export async function writePageSetting(area: SettingsArea, key: keyof PageSettings, value: boolean): Promise<void> {
   await area.set({ [key]: value });
 }

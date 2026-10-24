@@ -162,6 +162,9 @@ export interface InlineMenuBroadcast {
   key: InlineMenuKey;
 }
 
+// noticeMilliseconds is how long the page shows a notice before it goes away.
+export const noticeMilliseconds = 4000;
+
 export type BackgroundToContentMessage =
   | { type: "content.probe" }
   | { type: "content.getDocumentToken" }
@@ -174,7 +177,8 @@ export type BackgroundToContentMessage =
   | { type: "content.isInlineMenuVisible"; sessionID: string }
   | { type: "content.resizeInlineMenu"; sessionID: string; height: number }
   | { type: "content.dismissInlineMenu"; sessionID: string }
-  | { type: "content.openInlineMenuHere" };
+  | { type: "content.openInlineMenuHere" }
+  | { type: "content.showNotice"; text: string };
 
 export interface OffscreenCopyMessage {
   target: "offscreen";

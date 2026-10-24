@@ -1,7 +1,7 @@
 import { VisibilityGuard } from "../../shared/click-guard";
 import { isExtensionPageUrl } from "../../shared/extension-url";
 import type { ContentToBackgroundMessage, InlineMenuKey, InlineMenuPurpose, MessageResponse } from "../../shared/messages";
-import { defaultInlineMenuSettings, type InlineMenuSettings } from "../../shared/settings";
+import { defaultPageSettings, type PageSettings } from "../../shared/settings";
 import { getDeepActiveElement, getParentAcrossShadow } from "../dom";
 import { findOneTimeCodeTarget } from "../one-time-code";
 import { findInlineMenuPurpose, isFrameEligibleForInlineMenu } from "./eligibility";
@@ -47,7 +47,7 @@ interface OpenMenu {
 }
 
 export class InlineMenuController {
-  private settings: InlineMenuSettings = { ...defaultInlineMenuSettings };
+  private settings: PageSettings = { ...defaultPageSettings };
   // isAddressFillAvailable: the paired app fills addresses; an older one does not, so address fields get no icon.
   private isAddressFillAvailable = false;
   // isCardFillAvailable: the paired app fills cards; with an older one, payment fields get no icon.
@@ -96,7 +96,7 @@ export class InlineMenuController {
     for (const detach of this.allDetach.splice(0)) detach();
   }
 
-  updateSettings(settings: InlineMenuSettings): void {
+  updateSettings(settings: PageSettings): void {
     this.settings = settings;
     if (!settings.isInlineMenuEnabled) this.hide();
   }

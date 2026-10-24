@@ -1,6 +1,7 @@
 import type { BackgroundToContentMessage, ContentToBackgroundMessage, FillOutcome, MessageResponse } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
-import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
+import { readPageSettings, parsePageSettings, allPageSettingKey, appFeaturesKey, readAppFeatures, type PageSettings } from "../shared/settings";
+import { setFillDiagnosticsEnabled } from "./diagnostics";
 import { featureAddresses, featureCards, featureIdentities } from "../shared/protocol";
 import { fillAddressIntoPage, fillAddressIntoScopeOf } from "./address-fill";
 import { fillCardIntoPage, fillCardIntoScopeOf } from "./card-fill";
@@ -16,6 +17,7 @@ import {
   probeFrame,
 } from "./fill";
 import { InlineMenuController } from "./inline-menu/controller";
+import { showNotice } from "./notice";
 
 // documentToken names this document for save offers in Firefox, which gives the background no documentId. Pages cannot
 // read it or send runtime messages, so only this content script can claim the document.
@@ -102,7 +104,15 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       return true;
     case "content.openInlineMenuHere":
       return inlineMenu.openHere();
+    case "content.showNotice":
+      showNotice(document, message.text);
+      return true;
   }
+}
+
+function applyPageSettings(inlineMenu: InlineMenuController, settings: PageSettings): void {
+  inlineMenu.updateSettings(settings);
+  setFillDiagnosticsEnabled(settings.isFillDiagnosticsEnabled);
 }
 
 function startInlineMenu(): InlineMenuController {
@@ -115,8 +125,8 @@ function startInlineMenu(): InlineMenuController {
     getElementAtPoint: (x, y) => document.elementFromPoint(x, y),
     extensionBaseUrl: chrome.runtime.getURL(""),
   });
-  readInlineMenuSettings(chrome.storage.local)
-    .then((settings) => inlineMenu.updateSettings(settings))
+  readPageSettings(chrome.storage.local)
+    .then((settings) => applyPageSettings(inlineMenu, settings))
     .catch(() => undefined);
   const updateAppFeatures = (): void => {
     readAppFeatures(chrome.storage.local)
@@ -134,10 +144,10 @@ function startInlineMenu(): InlineMenuController {
   updateAppFeatures();
   chrome.storage.onChanged.addListener((allChange, areaName) => {
     if (areaName === "local" && appFeaturesKey in allChange) updateAppFeatures();
-    if (areaName !== "local" || !allInlineMenuSettingKey.some((key) => key in allChange)) return;
-    readInlineMenuSettings(chrome.storage.local)
-      .then((settings) => inlineMenu.updateSettings(settings))
-      .catch(() => inlineMenu.updateSettings(parseInlineMenuSettings({})));
+    if (areaName !== "local" || !allPageSettingKey.some((key) => key in allChange)) return;
+    readPageSettings(chrome.storage.local)
+      .then((settings) => applyPageSettings(inlineMenu, settings))
+      .catch(() => applyPageSettings(inlineMenu, parsePageSettings({})));
   });
   inlineMenu.start();
   return inlineMenu;

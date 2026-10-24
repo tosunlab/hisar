@@ -108,3 +108,17 @@ test("fills the first step of a login without a form, not the newsletter form", 
   await expect(page.locator("#username")).toHaveValue("alex@example.com");
   await expect(page.locator("#newsletter-email")).toHaveValue("");
 });
+
+// The keyboard shortcut and the right-click menu have no menu to report in, so the page shows why a fill did nothing.
+test("shows a notice in the page that the page cannot read", async () => {
+  const page = await harness.context.newPage();
+  await page.goto(`${harness.site.origin}/welcome`);
+  const tabId = await harness.getTabId(`${harness.site.origin}/welcome`);
+  await harness.evaluateInExtension(
+    (id) => chrome.tabs.sendMessage(id, { type: "content.showNotice", text: "No login form found on this page" }, { frameId: 0 }),
+    tabId,
+  );
+  await expect.poll(() => page.evaluate(() => document.querySelector("hisar-notice") !== null)).toBe(true);
+  expect(await page.evaluate(() => document.documentElement.innerText.includes("No login form found"))).toBe(false);
+  await expect.poll(() => page.evaluate(() => document.querySelector("hisar-notice") !== null), { timeout: 8000 }).toBe(false);
+});

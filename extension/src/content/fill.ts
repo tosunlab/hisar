@@ -3,6 +3,7 @@ import type { FillOutcome, FrameProbe } from "../shared/messages";
 import { hasAddressForm, isFocusedAddressField } from "./address-fill";
 import { hasCardForm, isFocusedCardField } from "./card-fill";
 import { hasIdentityForm, isFocusedIdentityField } from "./identity-fill";
+import { describeFieldForDiagnostics, logFillDiagnostics } from "./diagnostics";
 import { findAllLoginScope, getAutocompleteTokens, isTextField, type LoginScope } from "./detection";
 import { collectAllDeepElement, containsAcrossShadow, getDeepActiveElement, isInputElement } from "./dom";
 import { findFirstOneTimeCodeTarget, fillOneTimeCodeIntoTarget, findOneTimeCodeTarget } from "./one-time-code";
@@ -112,6 +113,7 @@ function findFocusedScope(document: Document, allScope: LoginScope[]): LoginScop
 
 export function chooseFillScope(document: Document): LoginScope | undefined {
   const allScope = findAllLoginScope(document).filter((scope) => scope.kind === "login" || scope.kind === "username-only");
+  logFillDiagnostics("login forms found", { allScope: allScope.map((scope) => ({ kind: scope.kind, username: describeFieldForDiagnostics(scope.usernameField) })) });
   const focused = findFocusedScope(document, allScope);
   if (focused) return focused;
   return allScope.find((scope) => scope.kind === "login") ?? allScope[0];
@@ -140,9 +142,15 @@ async function fillLoginIntoScope(document: Document, scope: LoginScope | undefi
   const allFill: { reference: FieldReference; value: string; key: "filledUsername" | "filledPassword" }[] = [];
   if (scope.usernameField && username) allFill.push({ reference: describeField(scope.usernameField), value: username, key: "filledUsername" });
   if (scope.allPasswordField[0] && password) allFill.push({ reference: describeField(scope.allPasswordField[0]), value: password, key: "filledPassword" });
+  logFillDiagnostics("login fill", {
+    scope: scope.kind,
+    username: describeFieldForDiagnostics(scope.usernameField),
+    password: describeFieldForDiagnostics(scope.allPasswordField[0]),
+  });
   const allWritten = [];
   for (const fill of allFill) {
     if (await writeLoginField(document, fill.reference, fill.value)) allWritten.push(fill);
+    else logFillDiagnostics("field not written", { field: describeFieldForDiagnostics(fill.reference.field), isConnected: fill.reference.field.isConnected, isReadOnly: fill.reference.field.readOnly });
   }
   if (allWritten.length === 0) return outcome;
   const window = document.defaultView;
@@ -151,12 +159,14 @@ async function fillLoginIntoScope(document: Document, scope: LoginScope | undefi
     const isKept = (field: HTMLInputElement | undefined) => field !== undefined && isSameValue(field.value, fill.value, fill.key === "filledUsername");
     let field = resolveLiveField(document, fill.reference);
     if (field && !isKept(field) && !field.readOnly && !field.disabled) {
+      logFillDiagnostics("value not kept, typing it", { field: describeFieldForDiagnostics(field), isReplaced: field !== fill.reference.field });
       typeInputValue(field, fill.value);
       if (window) await waitForRender(window);
       field = resolveLiveField(document, fill.reference);
     }
     outcome[fill.key] = isKept(field);
   }
+  logFillDiagnostics("login fill done", { ...outcome });
   return outcome;
 }
 

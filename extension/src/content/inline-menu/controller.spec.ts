@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ContentToBackgroundMessage } from "../../shared/messages";
+import { defaultPageSettings } from "../../shared/settings";
 import addressAutocompletePage from "../fixtures/address-autocomplete.html?raw";
 import signUpPage from "../fixtures/sign-up.html?raw";
 import simpleLoginPage from "../fixtures/simple-login.html?raw";
@@ -79,7 +80,7 @@ afterEach(() => {
 
 describe("InlineMenuController", () => {
   it("opens the menu at the focused field when asked from the right-click menu, even where it does not open on focus", async () => {
-    controller.updateSettings({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
+    controller.updateSettings({ ...defaultPageSettings, isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
     getInput("#login_field").focus();
     expect(allSent).toEqual([]);
     expect(controller.openHere()).toBe(true);
@@ -207,7 +208,7 @@ describe("InlineMenuController", () => {
   });
 
   it("shows only the icon when opening on focus is off, and opens on ArrowDown", async () => {
-    controller.updateSettings({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
+    controller.updateSettings({ ...defaultPageSettings, isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
     const field = getInput("#login_field");
     field.focus();
     expect(controller.getIconElement()).toBeDefined();
@@ -220,7 +221,7 @@ describe("InlineMenuController", () => {
   it("shows nothing when the setting is off and hides an open menu when it is turned off", async () => {
     getInput("#login_field").focus();
     await vi.waitFor(() => expect(controller.getMenuElement()).toBeDefined());
-    controller.updateSettings({ isInlineMenuEnabled: false, isInlineMenuOpenedOnFocus: true });
+    controller.updateSettings({ ...defaultPageSettings, isInlineMenuEnabled: false, isInlineMenuOpenedOnFocus: true });
     expect(controller.getIconElement()).toBeUndefined();
     expect(allSent).toContainEqual({ type: "content.closeInlineMenu", sessionID: "session-1" });
     getInput("#password").focus();
@@ -246,7 +247,7 @@ describe("InlineMenuController", () => {
     controller.stop();
     controller = createController({ isTrustedEvent: (event) => event.isTrusted });
     controller.start();
-    controller.updateSettings({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
+    controller.updateSettings({ ...defaultPageSettings, isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
     const field = getInput("#login_field");
     field.focus();
     controller.getIconElement()!.click();
@@ -256,7 +257,7 @@ describe("InlineMenuController", () => {
   });
 
   it("toggles the menu with the icon and keeps the focus in the field", async () => {
-    controller.updateSettings({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
+    controller.updateSettings({ ...defaultPageSettings, isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
     const field = getInput("#login_field");
     field.focus();
     const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
@@ -301,7 +302,7 @@ describe("InlineMenuController", () => {
   });
 
   it("does not open the menu when the user typed while it was loading", async () => {
-    controller.updateSettings({ isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
+    controller.updateSettings({ ...defaultPageSettings, isInlineMenuEnabled: true, isInlineMenuOpenedOnFocus: false });
     const field = getInput("#login_field");
     field.focus();
     const opening = controller.openMenu();
