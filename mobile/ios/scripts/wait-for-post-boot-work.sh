@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
-# Returns once a booted simulator has run its post-boot background work, so the first UI test does not run inside it.
+# Returns once a booted simulator has run SpringBoard's poster prewarm, the post-boot task dasd defers for minutes.
 # Usage: wait-for-post-boot-work.sh <udid>
 #
 # simctl bootstatus returns once SpringBoard is up, but the simulator then runs a wave of background tasks (post-install and
-# first-unlock work, dyld closures, and SpringBoard's poster prewarm, which renders every wallpaper through its extension). On
-# a 3-core runner that wave can start minutes after bootstatus and keep the cores busy for two more, and a first test in it
-# loses taps. The prewarm is the wave's longest task, and dasd logs when it submits, starts and completes it:
-# - completed or canceled: the wave is over;
+# first-unlock work, Spotlight, dyld closures, and SpringBoard's poster prewarm, which renders every wallpaper through its
+# extension). The prewarm can start minutes after bootstatus, while the simulator looks idle, so a wait on the simulator's CPU
+# alone (simulator-load.py) can end before it; the rest of the wave outlasts it, so this wait alone ends too early.
+# dasd logs when it submits, starts and completes the prewarm:
+# - completed or canceled: the prewarm is over;
 # - not submitted 8 minutes after the boot: this boot has none (on the runners it came 3.6 to 4.6 minutes after the boot);
 # - submitted but not started 15 minutes after the boot: dasd is not running it, so it cannot load the tests either;
 # - started and still running 15 minutes after the boot: the script fails with what dasd logged.
@@ -31,7 +32,7 @@ predicate+=" OR eventMessage BEGINSWITH \"STARTING: \" OR eventMessage BEGINSWIT
 error_file=$(mktemp)
 trap 'rm -f "$error_file"' EXIT
 
-echo "Waiting for the simulator's post-boot background work (SpringBoard's poster prewarm), booted at $boot_time"
+echo "Waiting for SpringBoard's poster prewarm, booted at $boot_time"
 reported=
 while true; do
   if ! lines=$(xcrun simctl spawn "$udid" log show --start "$boot_time" --style compact --predicate "$predicate" 2>"$error_file"); then
@@ -57,9 +58,9 @@ while true; do
   fi
   reported=$state
   case "$state" in
-    finished) echo "The simulator's post-boot background work finished ($seconds s after the boot)"; exit 0 ;;
-    never-submitted) echo "No poster prewarm was submitted in the 8 minutes after the boot; the tests start"; exit 0 ;;
-    never-started) echo "dasd submitted the poster prewarm but did not start it in the 15 minutes after the boot; the tests start"; exit 0 ;;
+    finished) echo "The poster prewarm finished ($seconds s after the boot)"; exit 0 ;;
+    never-submitted) echo "No poster prewarm was submitted in the 8 minutes after the boot"; exit 0 ;;
+    never-started) echo "dasd submitted the poster prewarm but did not start it in the 15 minutes after the boot"; exit 0 ;;
     stuck)
       echo "the simulator's poster prewarm was still running 15 minutes after the boot; dasd logged:" >&2
       printf '%s\n' "$lines" >&2

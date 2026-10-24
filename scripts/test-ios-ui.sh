@@ -9,9 +9,9 @@
 # tests make build-ios built instead of building them again. IOS_UI_TEST_PART=1, 2 or 3 runs one of three parts of similar
 # length, for three CI jobs, as scripts/ui-test-parts.sh splits the classes; part 3 also runs every class new to its table.
 #
-# The simulator boots after the server and the partner are ready, and the tests start once it has finished booting and run its
-# post-boot background work. A simulator booted earlier and then left alone goes down with CoreSimulatorService, which macOS
-# reclaims when nothing is using it and memory runs short; xcodebuild then finds no simulator at all.
+# The simulator boots after the server and the partner are ready, and the tests start once it has finished booting and its
+# post-boot background work is over. A simulator booted earlier and then left alone goes down with CoreSimulatorService, which
+# macOS reclaims when nothing is using it and memory runs short; xcodebuild then finds no simulator at all.
 set -euo pipefail
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -44,17 +44,11 @@ WORKERS=${IOS_UI_TEST_WORKERS:-1}
 PARALLEL=(-parallel-testing-enabled NO)
 if [ "$WORKERS" -gt 1 ]; then PARALLEL=(-parallel-testing-enabled YES -parallel-testing-worker-count "$WORKERS"); fi
 
-# xcodebuild boots its own clones of the simulator, and a booted simulator cannot be cloned. The tests start once the simulator
-# has run its post-boot background work (mobile/ios/scripts/wait-for-post-boot-work.sh).
-if [ "$WORKERS" -eq 1 ]; then
-  xcrun simctl bootstatus "$SIMULATOR_ID" -b
-  "$ROOT/mobile/ios/scripts/wait-for-post-boot-work.sh" "$SIMULATOR_ID"
-fi
-
 # XCTest fails a stalled app with "main thread busy for 30.0s" and no frame, so a sampler records what the main thread
 # was doing (mobile/ios/scripts/sample-stalled-app.py) and a failure prints it. It watches one simulator, not clones.
 # The diagnostic never decides the result: its output is bounded, its errors are ignored, and the exit status is the tests'.
 UI_TEST_STALL_SAMPLER=
+UI_TEST_LOAD_RECORDER=
 stop_stall_sampler() {
   local pid=$UI_TEST_STALL_SAMPLER
   [ -n "$pid" ] || return 0
@@ -68,10 +62,32 @@ stop_stall_sampler() {
   kill -KILL "$pid" 2>/dev/null || true
   wait "$pid" 2>/dev/null || true
 }
+stop_load_recorder() {
+  local pid=$UI_TEST_LOAD_RECORDER
+  [ -n "$pid" ] || return 0
+  UI_TEST_LOAD_RECORDER=
+  # The recorder stops within one sample of SIGTERM; one still running after 5 s is killed.
+  kill -TERM "$pid" 2>/dev/null || true
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    kill -0 "$pid" 2>/dev/null || break
+    sleep 0.5
+  done
+  kill -KILL "$pid" 2>/dev/null || true
+  wait "$pid" 2>/dev/null || true
+}
+# xcodebuild boots its own clones of the simulator, and a booted simulator cannot be cloned. The tests start once the
+# simulator has run its deferred post-boot work (mobile/ios/scripts/wait-for-post-boot-work.sh: the poster prewarm comes
+# minutes after the boot) and its own processes are then quiet (mobile/ios/scripts/simulator-load.py), because the rest of
+# the wave outlasts the prewarm. The recording goes on through the tests, and a failure prints it.
 if [ "$WORKERS" -eq 1 ]; then
+  trap 'status=$?; stop_stall_sampler; stop_load_recorder; ui_test_stop; exit $status' EXIT
+  xcrun simctl bootstatus "$SIMULATOR_ID" -b
+  /usr/bin/python3 -I "$ROOT/mobile/ios/scripts/simulator-load.py" record "$SIMULATOR_ID" "$T/simulator-load.jsonl" &
+  UI_TEST_LOAD_RECORDER=$!
+  "$ROOT/mobile/ios/scripts/wait-for-post-boot-work.sh" "$SIMULATOR_ID"
+  /usr/bin/python3 -I "$ROOT/mobile/ios/scripts/simulator-load.py" wait "$T/simulator-load.jsonl"
   /usr/bin/python3 -I "$ROOT/mobile/ios/scripts/sample-stalled-app.py" "$SIMULATOR_ID" "$T/main-thread" >/dev/null 2>&1 &
   UI_TEST_STALL_SAMPLER=$!
-  trap 'status=$?; stop_stall_sampler; ui_test_stop; exit $status' EXIT
 fi
 print_main_thread_samples() {
   local sample
@@ -89,5 +105,6 @@ if ! env "${UI_TEST_VALUES[@]/#/TEST_RUNNER_}" TEST_RUNNER_HISAR_UI_TEST_SCREENS
   -destination "id=$SIMULATOR_ID" "${PARALLEL[@]}" ${IOS_DERIVED_DATA:+-derivedDataPath "$IOS_DERIVED_DATA"} ${IOS_RESULT_BUNDLE:+-resultBundlePath "$IOS_RESULT_BUNDLE"}; then
   ui_test_print_logs
   print_main_thread_samples || true
+  /usr/bin/python3 -I "$ROOT/mobile/ios/scripts/simulator-load.py" report "$T/simulator-load.jsonl" >&2 || true
   exit 1
 fi

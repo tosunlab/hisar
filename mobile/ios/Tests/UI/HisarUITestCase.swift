@@ -88,6 +88,22 @@ class HisarUITestCase: XCTestCase {
         backButton.tap()
     }
 
+    enum SwipeDirection {
+        case left, right
+    }
+
+    // Reveals a list row's swipe actions. swipeLeft() and swipeRight() are a flick whose moves can reach a loaded simulator
+    // too late, and the row then takes it for a tap (job 120598941516 opened "AWS Console" instead of its actions). This drag
+    // moves at a set speed and ends a third of the row away: far enough to open the actions, short of a full swipe, which
+    // would run the first action at once.
+    func revealSwipeActions(of row: XCUIElement, _ direction: SwipeDirection, file: StaticString = #filePath, line: UInt = #line) {
+        waitForHittable(row, file: file, line: line)
+        let (start, end): (CGFloat, CGFloat) = direction == .right ? (0.2, 0.55) : (0.8, 0.45)
+        row.coordinate(withNormalizedOffset: CGVector(dx: start, dy: 0.5)).press(
+            forDuration: 0.05, thenDragTo: row.coordinate(withNormalizedOffset: CGVector(dx: end, dy: 0.5)),
+            withVelocity: .slow, thenHoldForDuration: 0.1)
+    }
+
     func openTab(_ name: String, file: StaticString = #filePath, line: UInt = #line) {
         let tabButton = app.tabBars.buttons[name].exists ? app.tabBars.buttons[name] : app.buttons[name].firstMatch
         waitForHittable(tabButton, file: file, line: line)
