@@ -124,8 +124,27 @@ describe("InlineMenuController", () => {
     expect(controller.getMenuElement()?.src).toBe("chrome-extension://dynamic/inline-menu.html#session-1");
   });
 
+  it("opens the menu at a field that its page makes editable once focused", async () => {
+    const field = getInput("#password");
+    field.readOnly = true;
+    field.addEventListener("focus", () => setTimeout(() => (field.readOnly = false)));
+    field.focus();
+    await vi.waitFor(() => expect(allSent).toContainEqual({ type: "content.openInlineMenu", purpose: "login" }));
+  });
+
+  it("keeps the menu open through a fill that wrote nothing and closes it after one that did", async () => {
+    getInput("#login_field").focus();
+    await vi.waitFor(() => expect(controller.getMenuElement()).toBeDefined());
+    await controller.runFill("session-1", () => getInput("#password").focus(), () => false);
+    expect(controller.getMenuElement()).toBeDefined();
+    await controller.runFill("session-1", () => getInput("#password").focus(), () => true);
+    expect(controller.getMenuElement()).toBeUndefined();
+    expect(controller.getIconElement()).toBeDefined();
+    expect(allSent.filter((message) => message.type === "content.openInlineMenu")).toHaveLength(1);
+  });
+
   it("does not open the menu on a field that a fill focuses", async () => {
-    controller.runWithoutOpeningOnFocus(() => getInput("#password").focus());
+    await controller.runFill(undefined, () => getInput("#password").focus(), () => true);
     expect(controller.getIconElement()).toBeDefined();
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(allSent).toEqual([]);

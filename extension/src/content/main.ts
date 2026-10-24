@@ -1,4 +1,4 @@
-import type { BackgroundToContentMessage, ContentToBackgroundMessage, MessageResponse } from "../shared/messages";
+import type { BackgroundToContentMessage, ContentToBackgroundMessage, FillOutcome, MessageResponse } from "../shared/messages";
 import { attachSubmissionCapture } from "./capture";
 import { readInlineMenuSettings, parseInlineMenuSettings, allInlineMenuSettingKey, appFeaturesKey, readAppFeatures } from "../shared/settings";
 import { featureAddresses, featureCards, featureIdentities } from "../shared/protocol";
@@ -26,9 +26,20 @@ function sendToBackground<Result>(message: ContentToBackgroundMessage): Promise<
 }
 
 
+// isFilled tells a fill that wrote something from one that did not, whatever its kind of result.
+function isFilled(result: unknown): boolean {
+  if (typeof result === "number") return result > 0;
+  if (typeof result === "boolean") return result;
+  const outcome = result as FillOutcome | undefined;
+  return outcome?.filledUsername === true || outcome?.filledPassword === true;
+}
+
 export function handleBackgroundMessage(message: BackgroundToContentMessage, inlineMenu: InlineMenuController): unknown {
-  // A fill focuses the fields it writes; the menu must not open again on them.
-  if (message.type.startsWith("content.fill")) return inlineMenu.runWithoutOpeningOnFocus(() => answerBackgroundMessage(message, inlineMenu));
+  // A fill focuses the fields it writes; the menu must not open again on them, and closes only once the fill worked.
+  if (message.type.startsWith("content.fill")) {
+    const sessionID = "sessionID" in message ? message.sessionID : undefined;
+    return inlineMenu.runFill(sessionID, () => answerBackgroundMessage(message, inlineMenu), isFilled);
+  }
   return answerBackgroundMessage(message, inlineMenu);
 }
 
@@ -43,7 +54,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillLogin(document, message.username, message.password);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return { filledUsername: false, filledPassword: false };
-      inlineMenu.dismissMenu(message.sessionID);
       return fillLoginIntoScopeOf(document, field, message.username, message.password);
     }
     case "content.fillPassword": {
@@ -51,7 +61,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillPasswordIntoFocusedField(document, message.password);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return false;
-      inlineMenu.dismissMenu(message.sessionID);
       fillPasswordIntoField(document, field, message.password);
       return true;
     }
@@ -60,7 +69,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillOneTimeCodeIntoPage(document, message.code);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return false;
-      inlineMenu.dismissMenu(message.sessionID);
       return fillOneTimeCodeIntoField(field, message.code);
     }
     case "content.fillAddress": {
@@ -68,7 +76,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillAddressIntoPage(document, message.address);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return 0;
-      inlineMenu.dismissMenu(message.sessionID);
       return fillAddressIntoScopeOf(document, field, message.address);
     }
     case "content.fillCard": {
@@ -76,7 +83,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillCardIntoPage(document, message.card);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return 0;
-      inlineMenu.dismissMenu(message.sessionID);
       return fillCardIntoScopeOf(document, field, message.card);
     }
     case "content.fillIdentity": {
@@ -84,7 +90,6 @@ function answerBackgroundMessage(message: BackgroundToContentMessage, inlineMenu
       if (message.sessionID === undefined) return fillIdentityIntoPage(document, message.identity);
       const field = inlineMenu.getAnchoredField(message.sessionID);
       if (!field) return 0;
-      inlineMenu.dismissMenu(message.sessionID);
       return fillIdentityIntoScopeOf(document, field, message.identity);
     }
     case "content.isInlineMenuVisible":
@@ -141,8 +146,13 @@ function startInlineMenu(): InlineMenuController {
 function startContentScript(): void {
   const inlineMenu = startInlineMenu();
   chrome.runtime.onMessage.addListener((message: BackgroundToContentMessage, _sender, sendResponse) => {
-    sendResponse(handleBackgroundMessage(message, inlineMenu));
-    return false;
+    const answer = handleBackgroundMessage(message, inlineMenu);
+    if (!(answer instanceof Promise)) {
+      sendResponse(answer);
+      return false;
+    }
+    answer.then(sendResponse, () => sendResponse(undefined));
+    return true;
   });
   attachSubmissionCapture(document, {
     onSubmission: (submission) => {

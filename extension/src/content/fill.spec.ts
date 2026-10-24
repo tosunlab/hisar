@@ -61,40 +61,76 @@ describe("setInputValue", () => {
 });
 
 describe("fillLogin", () => {
-  it("fills the username and password of the login form", () => {
+  it("fills the username and password of the login form", async () => {
     document.body.innerHTML = simpleLoginPage;
-    expect(fillLogin(document, "alex", "secret")).toEqual({ filledUsername: true, filledPassword: true });
+    expect(await fillLogin(document, "alex", "secret")).toEqual({ filledUsername: true, filledPassword: true });
     expect(getInput("#login_field").value).toBe("alex");
     expect(getInput("#password").value).toBe("secret");
     expect(document.querySelector<HTMLInputElement>("[name=newsletter_email]")!.value).toBe("");
     expect(document.querySelector<HTMLInputElement>("[name=q]")!.value).toBe("");
   });
 
-  it("fills the form that holds the focus when there are several", () => {
+  it("fills the form that holds the focus when there are several", async () => {
     document.body.innerHTML = modalAndPageLoginPage;
     getInput("#modal-email").focus();
-    fillLogin(document, "alex", "secret");
+    await fillLogin(document, "alex", "secret");
     expect(getInput("#modal-email").value).toBe("alex");
     expect(getInput("#modal-pass").value).toBe("secret");
     expect(getInput("#page-user").value).toBe("");
   });
 
-  it("fills only the username on the first step of an email-first sign-in", () => {
+  it("fills only the username on the first step of an email-first sign-in", async () => {
     document.body.innerHTML = emailFirstStepOnePage;
-    expect(fillLogin(document, "alex@example.com", "secret")).toEqual({ filledUsername: true, filledPassword: false });
+    expect(await fillLogin(document, "alex@example.com", "secret")).toEqual({ filledUsername: true, filledPassword: false });
     expect(getInput("#identifierId").value).toBe("alex@example.com");
   });
 
-  it("does not fill a sign-up form", () => {
+  it("does not fill a sign-up form", async () => {
     document.body.innerHTML = signUpPage;
-    expect(fillLogin(document, "alex", "secret")).toEqual({ filledUsername: false, filledPassword: false });
+    expect(await fillLogin(document, "alex", "secret")).toEqual({ filledUsername: false, filledPassword: false });
     expect(getInput("#new-password").value).toBe("");
   });
 
-  it("does not overwrite a read-only username", () => {
+  it("does not overwrite a read-only username", async () => {
     document.body.innerHTML = `<form><input id="user" autocomplete="username" value="fixed" readonly /><input type="password" id="pass" /></form>`;
-    expect(fillLogin(document, "other", "secret")).toEqual({ filledUsername: false, filledPassword: true });
+    expect(await fillLogin(document, "other", "secret")).toEqual({ filledUsername: false, filledPassword: true });
     expect(getInput("#user").value).toBe("fixed");
+  });
+  it("fills the password field the page put in place of the one it had while the username was filled", async () => {
+    document.body.innerHTML = `<form id="login"></form>`;
+    const form = document.querySelector("form")!;
+    const render = (username: string) => {
+      form.innerHTML = `<input id="user" autocomplete="username"><input id="pass" type="password" autocomplete="current-password"><button>Sign in</button>`;
+      getInput("#user").value = username;
+      getInput("#user").addEventListener("input", (event) => render((event.target as HTMLInputElement).value));
+    };
+    render("");
+    expect(await fillLogin(document, "alex", "secret")).toEqual({ filledUsername: true, filledPassword: true });
+    expect(getInput("#user").value).toBe("alex");
+    expect(getInput("#pass").value).toBe("secret");
+  });
+
+  it("fills a page that keeps its own copy of the value from key events", async () => {
+    document.body.innerHTML = simpleLoginPage;
+    let kept = "";
+    getInput("#login_field").addEventListener("keyup", () => (kept = getInput("#login_field").value));
+    getInput("#login_field").addEventListener("blur", () => (getInput("#login_field").value = kept));
+    expect(await fillLogin(document, "alex", "secret")).toEqual({ filledUsername: true, filledPassword: true });
+    expect(getInput("#login_field").value).toBe("alex");
+  });
+
+  it("fills a username that is read-only until focused", async () => {
+    document.body.innerHTML = `<form><input id="user" autocomplete="username" readonly /><input type="password" id="pass" /></form>`;
+    getInput("#user").addEventListener("focus", () => setTimeout(() => (getInput("#user").readOnly = false)));
+    expect(await fillLogin(document, "alex", "secret")).toEqual({ filledUsername: true, filledPassword: true });
+    expect(getInput("#user").value).toBe("alex");
+  });
+
+  it("reports a field that the page empties again as not filled, and accepts a username whose case the page changes", async () => {
+    document.body.innerHTML = simpleLoginPage;
+    getInput("#password").addEventListener("input", () => setTimeout(() => (getInput("#password").value = "")));
+    getInput("#login_field").addEventListener("change", () => (getInput("#login_field").value = getInput("#login_field").value.toLowerCase()));
+    expect(await fillLogin(document, "Alex", "secret")).toEqual({ filledUsername: true, filledPassword: false });
   });
 });
 

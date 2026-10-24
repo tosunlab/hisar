@@ -62,7 +62,7 @@ export class InlineMenuController {
   private icon: HTMLButtonElement | undefined;
   private menu: OpenMenu | undefined;
   private isOpening = false;
-  private isOpeningOnFocusSuppressed = false;
+  private isFilling = false;
   private trustedInputCount = 0;
   private frameHandle: number | undefined;
   private readonly guard = new VisibilityGuard();
@@ -116,14 +116,22 @@ export class InlineMenuController {
     if (!isAvailable && this.purpose === "card") this.hide();
   }
 
-  // runWithoutOpeningOnFocus runs a fill, whose focus changes show the icon in a field but do not open the menu there.
-  runWithoutOpeningOnFocus<Result>(fill: () => Result): Result {
-    this.isOpeningOnFocusSuppressed = true;
+  // runFill runs a fill. The focus changes it makes leave the menu where it is, so a failed fill reports in the menu;
+  // the menu of sessionID closes only after a fill that wrote a value, and the icon then moves to the focused field
+  // without opening the menu there.
+  async runFill<Result>(sessionID: string | undefined, fill: () => Result | Promise<Result>, isFilled: (result: Result) => boolean): Promise<Result> {
+    this.isFilling = true;
+    let result: Result;
     try {
-      return fill();
+      result = await fill();
     } finally {
-      this.isOpeningOnFocusSuppressed = false;
+      this.isFilling = false;
     }
+    if (sessionID !== undefined && !isFilled(result)) return result;
+    if (sessionID !== undefined) this.dismissMenu(sessionID);
+    const active = getDeepActiveElement(this.document);
+    if (active && active !== this.field && !(this.host && this.host.contains(active))) this.anchorTo(active);
+    return result;
   }
 
   getAnchoredField(sessionID: string): HTMLInputElement | undefined {
@@ -212,11 +220,18 @@ export class InlineMenuController {
     if (target instanceof Element) this.focusOn(target);
   }
 
-  private focusOn(target: Element): void {
-    if (!this.settings.isInlineMenuEnabled) return;
+  private focusOn(target: Element, isRetry = false): void {
+    if (!this.settings.isInlineMenuEnabled || this.isFilling) return;
+    // A field read-only until focused, a trick against autofill, becomes editable in its own focus handler.
+    if (!isRetry && (target as HTMLInputElement).readOnly === true) {
+      setTimeout(() => {
+        if (getDeepActiveElement(this.document) === target) this.focusOn(target, true);
+      }, 0);
+      return;
+    }
     if (this.host && (target === this.host || this.host.contains(target))) return;
     if (this.isFieldOfMenu(target)) return;
-    if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus && !this.isOpeningOnFocusSuppressed) void this.openMenu();
+    if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus) void this.openMenu();
   }
 
   // anchorTo shows the icon in a field the menu serves and reports whether it is one; any other field hides it.
@@ -246,7 +261,7 @@ export class InlineMenuController {
 
   private handleFocusOut(): void {
     setTimeout(() => {
-      if (!this.field) return;
+      if (!this.field || this.isFilling) return;
       const active = this.document.activeElement;
       if (active === this.host) return;
       let deepActive: Element | null = active;

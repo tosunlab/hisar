@@ -4,7 +4,7 @@ import { hasAddressForm, isFocusedAddressField } from "./address-fill";
 import { hasCardForm, isFocusedCardField } from "./card-fill";
 import { hasIdentityForm, isFocusedIdentityField } from "./identity-fill";
 import { findAllLoginScope, getAutocompleteTokens, isTextField, type LoginScope } from "./detection";
-import { containsAcrossShadow, getDeepActiveElement, isInputElement } from "./dom";
+import { collectAllDeepElement, containsAcrossShadow, getDeepActiveElement, isInputElement } from "./dom";
 import { findFirstOneTimeCodeTarget, fillOneTimeCodeIntoTarget, findOneTimeCodeTarget } from "./one-time-code";
 
 export function isFrameFillable(window: Window, expectedOrigin: string): boolean {
@@ -12,13 +12,96 @@ export function isFrameFillable(window: Window, expectedOrigin: string): boolean
   return readAncestorOrigins(window).every((origin) => origin === expectedOrigin);
 }
 
-export function setInputValue(input: HTMLInputElement, value: string): void {
-  input.focus();
+function setNativeValue(input: HTMLInputElement, value: string): void {
   const valueSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
   if (valueSetter) valueSetter.call(input, value);
   else input.value = value;
+}
+
+function dispatchKey(input: HTMLInputElement, type: "keydown" | "keypress" | "keyup", key: string): void {
+  input.dispatchEvent(new KeyboardEvent(type, { key, bubbles: true, composed: true, cancelable: true }));
+}
+
+// setInputValue writes the value as a paste would, with key events around it for pages that keep their own copy of a
+// field's value from key events.
+export function setInputValue(input: HTMLInputElement, value: string): void {
+  input.focus();
+  const lastKey = value.at(-1) ?? "";
+  dispatchKey(input, "keydown", lastKey);
+  setNativeValue(input, value);
   input.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "insertReplacementText", data: value }));
+  dispatchKey(input, "keyup", lastKey);
   input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+// typeInputValue enters the value one character at a time, for pages that rewrite a pasted value.
+function typeInputValue(input: HTMLInputElement, value: string): void {
+  input.focus();
+  setNativeValue(input, "");
+  for (let index = 0; index < value.length; index += 1) {
+    const key = value[index];
+    dispatchKey(input, "keydown", key);
+    dispatchKey(input, "keypress", key);
+    setNativeValue(input, value.slice(0, index + 1));
+    input.dispatchEvent(new InputEvent("input", { bubbles: true, composed: true, inputType: "insertText", data: key }));
+    dispatchKey(input, "keyup", key);
+  }
+  input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function waitForTask(): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+// waitForRender waits until the page has handled the fill's events and drawn once; requestAnimationFrame alone never
+// fires in a background tab.
+function waitForRender(window: Window): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, 100);
+    window.requestAnimationFrame(() => {
+      clearTimeout(timer);
+      setTimeout(resolve, 0);
+    });
+  });
+}
+
+// isSameValue allows a page to trim a username or change its case, as some sign-in pages do with email addresses.
+function isSameValue(fieldValue: string, value: string, isUsername: boolean): boolean {
+  if (fieldValue === value) return true;
+  return isUsername && fieldValue.trim().toLowerCase() === value.trim().toLowerCase();
+}
+
+interface FieldReference {
+  field: HTMLInputElement;
+  id: string;
+  name: string;
+  type: string;
+}
+
+function describeField(field: HTMLInputElement): FieldReference {
+  return { field, id: field.id, name: field.name, type: field.type };
+}
+
+// resolveLiveField returns the field, or the one the page put in its place when it rendered the form again.
+export function resolveLiveField(document: Document, reference: FieldReference): HTMLInputElement | undefined {
+  if (reference.field.isConnected) return reference.field;
+  if (!reference.id && !reference.name) return undefined;
+  return collectAllDeepElement(document, isInputElement).find(
+    (input) => input.type === reference.type && (reference.id ? input.id === reference.id : input.name === reference.name),
+  );
+}
+
+// writeLoginField fills one field and reports whether it took the value. A field read-only until focused, a trick
+// against autofill, is filled once its focus handler has run.
+async function writeLoginField(document: Document, reference: FieldReference, value: string): Promise<boolean> {
+  let field = resolveLiveField(document, reference);
+  if (!field || field.disabled) return false;
+  field.focus();
+  if (field.readOnly) await waitForTask();
+  field = resolveLiveField(document, reference);
+  if (!field || field.readOnly || field.disabled) return false;
+  setInputValue(field, value);
+  return true;
 }
 
 function findFocusedScope(document: Document, allScope: LoginScope[]): LoginScope | undefined {
@@ -34,31 +117,45 @@ export function chooseFillScope(document: Document): LoginScope | undefined {
   return allScope.find((scope) => scope.kind === "login") ?? allScope[0];
 }
 
-export function fillLogin(document: Document, username: string, password: string): FillOutcome {
-  return fillLoginIntoScope(chooseFillScope(document), username, password);
+export function fillLogin(document: Document, username: string, password: string): Promise<FillOutcome> {
+  return fillLoginIntoScope(document, chooseFillScope(document), username, password);
 }
 
 export function findScopeOfField(document: Document, field: HTMLInputElement): LoginScope | undefined {
   return findAllLoginScope(document).find((scope) => scope.usernameField === field || scope.allPasswordField.includes(field));
 }
 
-export function fillLoginIntoScopeOf(document: Document, field: HTMLInputElement, username: string, password: string): FillOutcome {
+export async function fillLoginIntoScopeOf(document: Document, field: HTMLInputElement, username: string, password: string): Promise<FillOutcome> {
   const scope = findScopeOfField(document, field);
   if (!scope || (scope.kind !== "login" && scope.kind !== "username-only")) return { filledUsername: false, filledPassword: false };
-  return fillLoginIntoScope(scope, username, password);
+  return fillLoginIntoScope(document, scope, username, password);
 }
 
-function fillLoginIntoScope(scope: LoginScope | undefined, username: string, password: string): FillOutcome {
+// fillLoginIntoScope fills the username and the password, then checks after the page has handled the events that each
+// field kept its value, and types it in once more where the page rewrote it. A field reports filled only when it holds
+// the value.
+async function fillLoginIntoScope(document: Document, scope: LoginScope | undefined, username: string, password: string): Promise<FillOutcome> {
   const outcome: FillOutcome = { filledUsername: false, filledPassword: false };
   if (!scope) return outcome;
-  if (scope.usernameField && username && !scope.usernameField.readOnly) {
-    setInputValue(scope.usernameField, username);
-    outcome.filledUsername = true;
+  const allFill: { reference: FieldReference; value: string; key: "filledUsername" | "filledPassword" }[] = [];
+  if (scope.usernameField && username) allFill.push({ reference: describeField(scope.usernameField), value: username, key: "filledUsername" });
+  if (scope.allPasswordField[0] && password) allFill.push({ reference: describeField(scope.allPasswordField[0]), value: password, key: "filledPassword" });
+  const allWritten = [];
+  for (const fill of allFill) {
+    if (await writeLoginField(document, fill.reference, fill.value)) allWritten.push(fill);
   }
-  const passwordField = scope.allPasswordField[0];
-  if (passwordField && password) {
-    setInputValue(passwordField, password);
-    outcome.filledPassword = true;
+  if (allWritten.length === 0) return outcome;
+  const window = document.defaultView;
+  if (window) await waitForRender(window);
+  for (const fill of allWritten) {
+    const isKept = (field: HTMLInputElement | undefined) => field !== undefined && isSameValue(field.value, fill.value, fill.key === "filledUsername");
+    let field = resolveLiveField(document, fill.reference);
+    if (field && !isKept(field) && !field.readOnly && !field.disabled) {
+      typeInputValue(field, fill.value);
+      if (window) await waitForRender(window);
+      field = resolveLiveField(document, fill.reference);
+    }
+    outcome[fill.key] = isKept(field);
   }
   return outcome;
 }
