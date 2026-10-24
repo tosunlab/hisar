@@ -157,6 +157,10 @@ jobs:
     uses: ./.github/workflows/release-extension.yml
     with:
       tag: ${{ needs.plan.outputs.tag }}
+    # A custom build's Firefox package is not signed, so it never gets the AMO key.
+    secrets:
+      AMO_JWT_ISSUER: ${{ needs.plan.outputs.isCustomBuild == 'false' && secrets.AMO_JWT_ISSUER || '' }}
+      AMO_JWT_SECRET: ${{ needs.plan.outputs.isCustomBuild == 'false' && secrets.AMO_JWT_SECRET || '' }}
 
   build-docs:
     name: Build

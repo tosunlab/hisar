@@ -15,7 +15,7 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 | `cli/` | `hisar` | `core` |
 | `desktop/` | The Wails app, `hisar-browser-host`, `hisar-update-key` | `core`; `cli/mcpserver` in tests only |
 | `mobile/` | `HisarKit.xcframework` (gomobile) for `mobile/ios` and `HisarKit.aar` for `mobile/android` | `core`; `desktop` in one integration test only |
-| `extension/` | The browser extension (TypeScript, MV3) | none |
+| `extension/` | The browser extension (TypeScript, MV3) for Chromium browsers and Firefox: one build, `dist` and `dist-firefox` (`tools/build-firefox.mjs` derives the Firefox manifest) | none |
 | `raycast/` | The Raycast extension (TypeScript), installed in Raycast's development mode; it talks to the desktop app on `cli.sock` as a launcher | none |
 | `omp/` | The Hisar plugin for omp (TypeScript, Bun), which `omp plugin link` loads: an extension, the `hisar` skill and the `hisar mcp --no-reveal` MCP server; it runs `hisar` and never imports Hisar code | none |
 | `admin/` | The admin dashboard (Vue, TypeScript) that `hisar-server` embeds and serves at `/admin` | none; its crypto is `server/cmd/hisar-admin-wasm` |
@@ -254,6 +254,7 @@ make build build-cli-all # hisar-server with the admin dashboard (needs Node 24)
 make test-end-to-end     # needs HISAR_DATABASE_URL to an empty database
 make test-desktop-frontend
 make test-agent-sign-in  # local Mac only, not CI; terminal Accessibility and Screen Recording, hisar-pg, official test browsers, yabai and two Spaces
+make test-extension-firefox-end-to-end # the extension in a pinned Firefox through geckodriver; HISAR_TEST_FIREFOX=esr_140.17.0esr for the oldest supported
 make test-raycast        # the Raycast extension's typecheck, tests, lint and build; it never installs into Raycast
 make test-docs           # the docs site's typecheck and build; make build-docs builds it alone
 make test-omp            # the omp plugin's typecheck, tests and format check (needs Bun)
@@ -280,7 +281,9 @@ One run of Actions → Release per release (`gh workflow run release.yml -f app=
 it plans the version (`scripts/plan-release.sh`), requires full CI on the exact release SHA and macOS tests for desktop,
 pushes the `<app>-X.Y.Z` tag, and builds through `release-<app>.yml`. It attests every delivered file and the server and
 docs image digests, creates the GitHub prerelease, then verifies that evidence before approval-gated publication in
-`publish-<app>`. Dry runs only plan. Custom builds require the same tests and cannot publish. `runTests=false` is not
+`publish-<app>`. Dry runs only plan. Custom builds require the same tests and cannot publish. An extension release also has the Firefox add-on,
+which addons.mozilla.org signs as unlisted (`AMO_JWT_ISSUER`, `AMO_JWT_SECRET`); publishing it writes `updates.json` to the
+prerelease `extension-firefox-updates`. `runTests=false` is not
 supported. What an app is built from lives in `scripts/app-paths.sh`, shared with
 `scripts/detect-app-changes.sh`; a new build input of an app goes there. A release's install text is
 `.github/release-notes/<app>.md`, and `scripts/check-release-files.sh` lists the files each release must have.
