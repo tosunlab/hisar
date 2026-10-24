@@ -93,6 +93,8 @@ targets:
         com.apple.developer.authentication-services.autofill-credential-provider: true
         com.apple.security.application-groups: [$(HISAR_APP_GROUP_IDENTIFIER)]
         keychain-access-groups: [$(HISAR_KEYCHAIN_ACCESS_GROUP)]
+        # Push notifications; exporting for the App Store takes "production" from the distribution profile.
+        aps-environment: development
     dependencies:
       - target: HisarAutoFill
 

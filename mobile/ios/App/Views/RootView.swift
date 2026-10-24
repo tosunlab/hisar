@@ -116,6 +116,10 @@ struct MainTabView: View {
             }
         }
         .onChange(of: model.selectedTab) { _, _ in model.reportActivity() }
+        // A notification tapped while Hisar was locked opens its screen once the tabs show, after unlocking.
+        .onReceive(model.notifications.$openedKind) { kind in
+            if let kind { model.showNotification(kind) }
+        }
         .sheet(isPresented: Binding(get: { model.isCredentialImportShown }, set: { if !$0 { model.closeCredentialImport() } })) {
             CredentialImportView()
                 .environmentObject(model)

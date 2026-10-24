@@ -55,6 +55,8 @@ class FakeBackend: VaultBackend {
     var allDevice: [Device] = []
     var isMacApprovalAllowedValue = true
     var isWebsiteIconsEnabledValue = true
+    var allPushToken: [String] = []
+    var pushSettings = PushSettings(isAvailable: false, isServerSending: true, enabledKinds: PushKind.allCases.map(\.rawValue), errorMessage: nil)
     var websiteIconByURL: [String: Data] = [:]
     var preparedIcon: Data?
     var theme = VaultTheme.standard
@@ -1099,6 +1101,22 @@ extension FakeBackend {
     func setWebsiteIconsEnabled(_ isEnabled: Bool) throws {
         record("setWebsiteIconsEnabled")
         isWebsiteIconsEnabledValue = isEnabled
+    }
+
+    func setPushToken(platform: String, token: String) throws {
+        record("setPushToken")
+        allPushToken.append("\(platform):\(token)")
+        pushSettings.isAvailable = pushSettings.isServerSending
+    }
+
+    func setPushKindEnabled(_ kind: PushKind, isEnabled: Bool) throws {
+        record("setPushKindEnabled")
+        pushSettings.enabledKinds.removeAll { $0 == kind.rawValue }
+        if isEnabled { pushSettings.enabledKinds.append(kind.rawValue) }
+    }
+
+    func getPushSettings() throws -> PushSettings {
+        pushSettings
     }
 
     func getTheme() -> VaultTheme {

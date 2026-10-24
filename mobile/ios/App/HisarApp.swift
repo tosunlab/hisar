@@ -1,9 +1,48 @@
 import AuthenticationServices
 import SwiftUI
 import UIKit
+import UserNotifications
+
+/// AppDelegate takes what iOS hands the app delegate: the APNs token and the notifications Hisar shows or the user
+/// taps. A tap that launched Hisar arrives before the model exists, so it waits for it.
+final class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    @MainActor weak var model: AppModel? {
+        didSet {
+            guard let model, let pendingUserInfo else { return }
+            self.pendingUserInfo = nil
+            model.notifications.open(userInfo: pendingUserInfo)
+        }
+    }
+    @MainActor private var pendingUserInfo: [AnyHashable: Any]?
+
+    func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        UNUserNotificationCenter.current().delegate = self
+        return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        Task { @MainActor in await model?.notifications.receiveDeviceToken(deviceToken) }
+    }
+
+    /// While Hisar is open, an approval already shows as a card in the app, so only the other kinds show a banner.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        notification.request.content.userInfo["kind"] as? String == PushKind.approval.rawValue ? [] : [.banner, .sound, .list]
+    }
+
+    @MainActor
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let userInfo = response.notification.request.content.userInfo
+        if let model {
+            model.notifications.open(userInfo: userInfo)
+        } else {
+            pendingUserInfo = userInfo
+        }
+    }
+}
 
 @main
 struct HisarApp: App {
+    @UIApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var model = AppModel(credentialIdentityStore: SystemCredentialIdentityStore())
     @Environment(\.scenePhase) private var scenePhase
     @State private var hasEnteredBackground = false
@@ -80,6 +119,7 @@ struct HisarApp: App {
               !PendingApprovalPreviewView.isRequested(), !UpdateRequiredPreview.isRequested() else { return }
         #endif
         guard model.screen == .starting else { return }
+        appDelegate.model = model
         lockEventRelay.setHandler { [weak model] in model?.handleLockedEvent() }
         lockEventRelay.setApprovalHandler { [weak model] eventName, requestID in model?.handleApprovalEvent(name: eventName, requestID: requestID) }
         lockEventRelay.setRemoteChangeHandler { [weak model] in model?.handleRemoteChange() }

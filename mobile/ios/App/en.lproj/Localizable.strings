@@ -1,0 +1,7 @@
+/* The text of a push notification, chosen by its kind: the push carries only the key, so the lock screen shows no details. */
+"push.approval" = "Approval requested. Open Hisar to answer it.";
+"push.security" = "Security alert for your Hisar account. Open Hisar to see it.";
+"push.sharing" = "Someone shared with you in Hisar. Open Hisar to see it.";
+
+/* The reminder Hisar leaves when it goes to the background with an approval request still waiting. */
+"push.approval.waiting" = "An approval request is still waiting in Hisar.";

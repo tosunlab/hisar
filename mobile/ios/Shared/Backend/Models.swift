@@ -1423,6 +1423,27 @@ struct VaultSharing: Codable, Hashable {
 }
 
 // Device is a signed-in device of the account; lastSeenAt is RFC 3339.
+/// PushKind is what a push notification is about; the push carries nothing else.
+enum PushKind: String, Codable, CaseIterable, Hashable {
+    case approval
+    case security
+    case sharing
+}
+
+/// PushSettings is app.PushSettings: whether notifications can reach this iPhone, and the kinds turned on.
+struct PushSettings: Codable, Equatable {
+    var isAvailable: Bool
+    var isServerSending: Bool
+    var enabledKinds: [String]
+    var errorMessage: String?
+
+    static let unavailable = PushSettings(isAvailable: false, isServerSending: false, enabledKinds: PushKind.allCases.map(\.rawValue), errorMessage: nil)
+
+    func isEnabled(_ kind: PushKind) -> Bool {
+        enabledKinds.contains(kind.rawValue)
+    }
+}
+
 struct Device: Codable, Identifiable, Hashable {
     var id: String
     var name: String

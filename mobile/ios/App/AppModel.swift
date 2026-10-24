@@ -1,6 +1,7 @@
 import AuthenticationServices
 import Foundation
 import SwiftUI
+import UIKit
 
 @MainActor
 final class AppModel: ObservableObject {
@@ -102,13 +103,24 @@ final class AppModel: ObservableObject {
     private var isRefreshRequestedAgain = false
     static let approvalPollInterval: TimeInterval = 15
 
+    /// notifications holds Settings → Notifications and what a tapped notification opens.
+    private(set) lazy var notifications = PushNotificationsModel(
+        center: notificationCenter, registerForRemoteNotifications: registerForRemoteNotifications, getBackend: { [weak self] in self?.backend }
+    )
+    private let notificationCenter: NotificationScheduling
+    private let registerForRemoteNotifications: @MainActor () -> Void
+
     init(
         credentialIdentityStore: CredentialIdentityUpdating, getCurrentDate: @escaping () -> Date = Date.init,
-        receiveExportedCredentials: @escaping @MainActor (UUID) async throws -> Data = { try await AppModel.importExportedCredentials(token: $0) }
+        receiveExportedCredentials: @escaping @MainActor (UUID) async throws -> Data = { try await AppModel.importExportedCredentials(token: $0) },
+        notificationCenter: NotificationScheduling = SystemNotificationCenter(),
+        registerForRemoteNotifications: @escaping @MainActor () -> Void = { UIApplication.shared.registerForRemoteNotifications() }
     ) {
         self.credentialIdentityStore = credentialIdentityStore
         self.getCurrentDate = getCurrentDate
         self.receiveExportedCredentials = receiveExportedCredentials
+        self.notificationCenter = notificationCenter
+        self.registerForRemoteNotifications = registerForRemoteNotifications
     }
 
     /// Returns the work start() begins, the first refresh and the version check, or nil when the backend failed. The app
@@ -126,10 +138,12 @@ final class AppModel: ObservableObject {
             let firstRefresh = status.isUnlocked ? Task { await refreshAll() } : nil
             let versionCheck = Task { await checkMinimumVersion() }
             let pendingRecovery = Task { await refreshPendingRecovery() }
+            let notificationStart = Task { await notifications.startAtLaunch() }
             return Task {
                 await firstRefresh?.value
                 await versionCheck.value
                 await pendingRecovery.value
+                await notificationStart.value
             }
         } catch {
             screen = .failed(describeError(error))
@@ -381,9 +395,21 @@ final class AppModel: ObservableObject {
         enteredBackgroundAt = getCurrentDate()
         isInForeground = false
         stopApprovalPolling()
+        let isApprovalWaiting = !allPendingApproval.isEmpty
+        Task { await notifications.remindOfWaitingApproval(isWaiting: isApprovalWaiting) }
+    }
+
+    /// showNotification opens what a tapped notification is about, once Hisar is unlocked: the Approvals tab for an
+    /// approval, Settings for a security alert or a sharing invitation.
+    func showNotification(_ kind: PushKind) {
+        guard status.isUnlocked else { return }
+        notifications.openedKind = nil
+        selectedTab = kind == .approval ? .approvals : .settings
+        if kind == .approval { Task { await refreshPendingApproval() } }
     }
 
     func handleWillEnterForeground() {
+        notifications.clearApprovalReminder()
         Task { await checkMinimumVersion() }
         isInForeground = true
         defer {
