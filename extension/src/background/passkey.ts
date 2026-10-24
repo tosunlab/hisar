@@ -1,3 +1,4 @@
+import { isExtensionPageUrl } from "../shared/extension-url";
 import type { PopupView } from "../shared/messages";
 import {
   passkeyContentPortName,
@@ -54,13 +55,8 @@ interface PasskeySession {
   allVisibilityCheck: Map<string, (isVisible: boolean) => void>;
 }
 
-function isPromptSender(sender: PasskeySender | undefined): boolean {
-  try {
-    const url = new URL(sender?.url ?? "");
-    return url.protocol === "chrome-extension:" && url.pathname === passkeyPromptPath;
-  } catch {
-    return false;
-  }
+function isPromptSender(sender: PasskeySender | undefined, promptUrl: string): boolean {
+  return isExtensionPageUrl(sender?.url, promptUrl, passkeyPromptPath);
 }
 
 export class PasskeyService {
@@ -219,7 +215,7 @@ export class PasskeyService {
   }
 
   private handlePromptPort(port: PasskeyPort): void {
-    if (!isPromptSender(port.sender) || port.sender?.tab?.id === undefined || port.sender.frameId === undefined) {
+    if (!isPromptSender(port.sender, this.dependencies.getPromptUrl()) || port.sender?.tab?.id === undefined || port.sender.frameId === undefined) {
       port.disconnect();
       return;
     }

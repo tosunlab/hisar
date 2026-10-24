@@ -134,7 +134,8 @@ export type PopupMessage =
   | { type: "popup.setFavorite"; vaultID: string; itemID: string; isFavorite: boolean };
 
 export type ContentToBackgroundMessage =
-  | { type: "content.loginSubmitted"; username: string; password: string }
+  // documentToken names the submitting document where the browser gives no documentId (Firefox).
+  | { type: "content.loginSubmitted"; username: string; password: string; documentToken: string }
   | { type: "content.usernameSubmitted"; username: string }
   | { type: "content.openInlineMenu"; purpose: InlineMenuPurpose }
   | { type: "content.closeInlineMenu"; sessionID: string }
@@ -163,6 +164,7 @@ export interface InlineMenuBroadcast {
 
 export type BackgroundToContentMessage =
   | { type: "content.probe" }
+  | { type: "content.getDocumentToken" }
   | { type: "content.fillLogin"; expectedOrigin: string; username: string; password: string; sessionID?: string }
   | { type: "content.fillPassword"; expectedOrigin: string; password: string; sessionID?: string }
   | { type: "content.fillOneTimeCode"; expectedOrigin: string; code: string; sessionID?: string }

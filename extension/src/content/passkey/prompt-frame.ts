@@ -1,4 +1,5 @@
 import { VisibilityGuard } from "../../shared/click-guard";
+import { isExtensionPageUrl } from "../../shared/extension-url";
 import { getParentAcrossShadow } from "../dom";
 import { isRectInViewport, type Rect, type Viewport } from "../inline-menu/placement";
 
@@ -13,6 +14,8 @@ export interface PromptFrameDependencies {
   cancelFrame: (handle: number) => void;
   getRect: (element: Element) => Rect;
   getElementAtPoint: (x: number, y: number) => Element | null;
+  // extensionBaseUrl is chrome.runtime.getURL(""): the prompt opens only from this browser's extension pages.
+  extensionBaseUrl: string;
 }
 
 const styles = `
@@ -55,7 +58,7 @@ export class PasskeyPromptFrame {
 
   show(promptUrl: string): void {
     this.remove();
-    if (!promptUrl.startsWith("chrome-extension://")) return;
+    if (!isExtensionPageUrl(promptUrl, this.dependencies.extensionBaseUrl)) return;
     const host = this.document.createElement(promptHostTagName);
     const shadowRoot = host.attachShadow({ mode: "closed" });
     const style = this.document.createElement("style");

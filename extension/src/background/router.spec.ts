@@ -75,6 +75,18 @@ describe("routeMessage", () => {
     expect(controller.handleLoginSubmitted).toHaveBeenCalledWith(9, "https://example.com/login", "alex", "pw", 0, "https://example.com/login", "document-1");
   });
 
+  it("names the submitting document by the browser's documentId, else by the content script's token in Firefox", async () => {
+    const controller = createController();
+    const submission = { type: "content.loginSubmitted", username: "alex", password: "pw", documentToken: "token-1" } as never;
+    await routeMessage(createServices(controller), submission, contentSender, context);
+    expect(vi.mocked(controller.handleLoginSubmitted).mock.calls[0][6]).toBe("document-1");
+    const firefoxSender = { ...contentSender, documentId: undefined };
+    await routeMessage(createServices(controller), submission, firefoxSender, context);
+    expect(vi.mocked(controller.handleLoginSubmitted).mock.calls[1][6]).toBe("token-1");
+    const withoutDocument = { type: "content.loginSubmitted", username: "alex", password: "pw" } as never;
+    expect(await routeMessage(createServices(controller), withoutDocument, firefoxSender, context)).toMatchObject({ ok: false, error: { code: "invalid-request" } });
+  });
+
   it("refuses content messages without a tab", async () => {
     const response = await routeMessage(createServices(createController()), { type: "content.getPendingSaveOffer" }, popupSender, context);
     expect(response).toMatchObject({ ok: false, error: { code: "invalid-request" } });
@@ -130,6 +142,17 @@ describe("routeMessage", () => {
       });
     }
     expect(getState).toHaveBeenCalledTimes(1);
+  });
+
+  it("takes the inline menu page's scheme from the browser, so Firefox's moz-extension pages count and Chrome's do not there", async () => {
+    const getState = vi.fn(async () => ({ view: "logins" }));
+    const services = { controller: createController(), inlineMenu: { getState } as unknown as InlineMenuService };
+    const firefoxContext = { extensionID: "extension@tryhisar.com", extensionOrigin: "moz-extension://5f0c6a1e-uuid/" };
+    const menuSender = { id: firefoxContext.extensionID, url: "moz-extension://5f0c6a1e-uuid/inline-menu.html#s", tab: { id: 9 }, frameId: 4 };
+    expect(await routeMessage(services, { type: "inlineMenu.getState", sessionID: "s" } as never, menuSender, firefoxContext)).toMatchObject({ ok: true });
+    const chromeSchemeSender = { ...menuSender, url: "chrome-extension://5f0c6a1e-uuid/inline-menu.html#s" };
+    expect(await routeMessage(services, { type: "inlineMenu.getState", sessionID: "s" } as never, chromeSchemeSender, firefoxContext)).toMatchObject({ ok: false });
+    expect(await routeMessage(services, { type: "inlineMenu.getState", sessionID: "s" } as never, menuSender, context)).toMatchObject({ ok: false });
   });
 
   it("opens inline menu sessions with the frame and tab URLs from the sender", async () => {

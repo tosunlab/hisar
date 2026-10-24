@@ -1,3 +1,4 @@
+import { isExtensionPageUrl } from "../shared/extension-url";
 import type { ContentToBackgroundMessage, InlineMenuMessage, MessageResponse, PopupMessage } from "../shared/messages";
 import { HisarError, toHisarError } from "../shared/protocol";
 import type { BackgroundController } from "./controller";
@@ -103,10 +104,13 @@ async function routeContentMessage(
       return null;
     case "content.pressInlineMenuKey":
       return inlineMenu.pressKey(sender, message.sessionID, message.key);
-    case "content.loginSubmitted":
-      if (!documentID) throw new HisarError("invalid-request", "A current document is required");
-      void controller.handleLoginSubmitted(tabId, frameUrl, message.username, message.password, sender.frameId, tabUrl ?? frameUrl, documentID).catch(() => undefined);
+    case "content.loginSubmitted": {
+      // Chrome names the document itself; in Firefox the frame's content script does (getFrameDocumentID asks it back).
+      const currentDocumentID = documentID ?? message.documentToken;
+      if (!currentDocumentID) throw new HisarError("invalid-request", "A current document is required");
+      void controller.handleLoginSubmitted(tabId, frameUrl, message.username, message.password, sender.frameId, tabUrl ?? frameUrl, currentDocumentID).catch(() => undefined);
       return null;
+    }
     case "content.usernameSubmitted":
       await controller.handleUsernameSubmitted(tabId, frameUrl, message.username);
       return null;
@@ -143,13 +147,8 @@ async function routeInlineMenuMessage(inlineMenu: InlineMenuService, message: In
   }
 }
 
-function isFromInlineMenuPage(sender: MessageSender): boolean {
-  try {
-    const url = new URL(sender.url ?? "");
-    return url.protocol === "chrome-extension:" && url.pathname === "/inline-menu.html";
-  } catch {
-    return false;
-  }
+function isFromInlineMenuPage(sender: MessageSender, context: RouterContext): boolean {
+  return isExtensionPageUrl(sender.url, context.extensionOrigin, "/inline-menu.html");
 }
 
 export async function routeMessage(
@@ -174,7 +173,7 @@ export async function routeMessage(
       result = await routeContentMessage(services, message as ContentToBackgroundMessage, frameSender, sender.url, sender.tab?.url, sender.documentId);
     } else if (message.type.startsWith("inlineMenu.")) {
       const tabId = sender.tab?.id;
-      if (tabId === undefined || sender.frameId === undefined || !isFromInlineMenuPage(sender)) {
+      if (tabId === undefined || sender.frameId === undefined || !isFromInlineMenuPage(sender, context)) {
         throw new HisarError("invalid-request", "Only the inline menu may send this message");
       }
       result = await routeInlineMenuMessage(services.inlineMenu, message as InlineMenuMessage, { tabId, frameId: sender.frameId });

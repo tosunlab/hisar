@@ -1,3 +1,5 @@
+import { copyText } from "../offscreen/copy";
+import { readFrameLocation } from "../shared/frame-ancestry";
 import type { BackgroundToContentMessage, OffscreenCopyMessage } from "../shared/messages";
 import { nativeHostName, toHisarError } from "../shared/protocol";
 import { getBrowserName } from "../shared/url";
@@ -11,14 +13,7 @@ import { SaveExpiryScheduler } from "./save-expiry";
 import { ExtensionStorage } from "./storage";
 
 async function getAllFrameInfo(tabId: number): Promise<FrameInfo[]> {
-  const allResult = await chrome.scripting.executeScript({
-    target: { tabId, allFrames: true },
-    func: () => ({
-      url: location.href,
-      origin: location.origin,
-      allAncestorOrigin: Array.from(location.ancestorOrigins ?? []),
-    }),
-  });
+  const allResult = await chrome.scripting.executeScript({ target: { tabId, allFrames: true }, func: readFrameLocation });
   return allResult.flatMap((injection) => (injection.result ? [{ frameId: injection.frameId, ...injection.result }] : []));
 }
 
@@ -34,8 +29,13 @@ async function ensureOffscreenDocument(): Promise<void> {
   await offscreenCreation;
 }
 
-// A service worker has no clipboard, so an offscreen document copies.
+// Chrome's service worker has no clipboard, so an offscreen document copies. Firefox runs the background as an event page,
+// which has a document and copies itself.
 async function writeToClipboard(text: string): Promise<void> {
+  if (!chrome.offscreen) {
+    if (!copyText(document, text)) throw new Error("The clipboard is not available");
+    return;
+  }
   await ensureOffscreenDocument();
   const message: OffscreenCopyMessage = { target: "offscreen", type: "offscreen.copy", text };
   const isCopied = await chrome.runtime.sendMessage(message);
@@ -59,7 +59,10 @@ const bridge: BrowserBridge = {
     return (await chrome.tabs.get(tabId)).url;
   },
   async getFrameDocumentID(tabId, frameId) {
-    return (await chrome.webNavigation.getFrame({ tabId, frameId }))?.documentId;
+    const frame = await chrome.webNavigation.getFrame({ tabId, frameId });
+    if (frame?.documentId !== undefined) return frame.documentId;
+    // Firefox has no documentId: the content script now in that frame names its document.
+    return chrome.tabs.sendMessage<BackgroundToContentMessage, string>(tabId, { type: "content.getDocumentToken" }, { frameId }).catch(() => undefined);
   },
   getAllFrameInfo,
   async injectContentScript(tabId) {

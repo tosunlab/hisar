@@ -1,3 +1,4 @@
+import { readAncestorOrigins } from "../../shared/frame-ancestry";
 import { passkeyContentPortName } from "../../shared/passkey";
 import { PasskeyContentBridge, type PasskeyContentPort } from "./content";
 import { PasskeyPromptFrame } from "./prompt-frame";
@@ -28,8 +29,9 @@ if (typeof chrome !== "undefined" && chrome.runtime?.id && !globalScope.isHisarP
         cancelFrame: (handle) => window.cancelAnimationFrame(handle),
         getRect: (element) => element.getBoundingClientRect(),
         getElementAtPoint: (x, y) => document.elementFromPoint(x, y),
+        extensionBaseUrl: chrome.runtime.getURL(""),
       }),
-    getAllAncestorOrigin: () => Array.from(location.ancestorOrigins ?? []),
+    getAllAncestorOrigin: () => readAncestorOrigins(window),
     isPermissionPolicyAllowed,
     setInterval: (callback, milliseconds) => setInterval(callback, milliseconds),
     clearInterval: (handle) => clearInterval(handle),

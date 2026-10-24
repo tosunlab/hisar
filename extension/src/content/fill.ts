@@ -1,3 +1,4 @@
+import { readAncestorOrigins } from "../shared/frame-ancestry";
 import type { FillOutcome, FrameProbe } from "../shared/messages";
 import { hasAddressForm, isFocusedAddressField } from "./address-fill";
 import { hasCardForm, isFocusedCardField } from "./card-fill";
@@ -8,8 +9,7 @@ import { findFirstOneTimeCodeTarget, fillOneTimeCodeIntoTarget, findOneTimeCodeT
 
 export function isFrameFillable(window: Window, expectedOrigin: string): boolean {
   if (window.location.origin !== expectedOrigin || expectedOrigin === "null") return false;
-  const allAncestorOrigin = Array.from(window.location.ancestorOrigins ?? []);
-  return allAncestorOrigin.every((origin) => origin === expectedOrigin);
+  return readAncestorOrigins(window).every((origin) => origin === expectedOrigin);
 }
 
 export function setInputValue(input: HTMLInputElement, value: string): void {

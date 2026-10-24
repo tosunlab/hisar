@@ -76,6 +76,7 @@ beforeEach(() => {
         cancelFrame: () => undefined,
         getRect: (element) => (element.tagName === "IFRAME" ? { left: 600, top: 12, width: 360, height: 180 } : { left: 0, top: 0, width: 100, height: 20 }),
         getElementAtPoint: () => elementAtPoint,
+        extensionBaseUrl: "chrome-extension://static-id/",
       }),
     getAllAncestorOrigin: () => ["https://top.example"],
     isPermissionPolicyAllowed: (feature) => isPolicyAllowed && feature.startsWith("publickey-credentials"),
@@ -209,7 +210,7 @@ describe("prompt placement and fields", () => {
   });
 
   it("refuses prompt URLs outside the extension", () => {
-    const frame = new PasskeyPromptFrame(document, window, { now: () => 0, requestFrame: () => 0, cancelFrame: () => undefined, getRect: () => ({ left: 0, top: 0, width: 0, height: 0 }), getElementAtPoint: () => null });
+    const frame = new PasskeyPromptFrame(document, window, { now: () => 0, requestFrame: () => 0, cancelFrame: () => undefined, getRect: () => ({ left: 0, top: 0, width: 0, height: 0 }), getElementAtPoint: () => null, extensionBaseUrl: "chrome-extension://static-id/" });
     frame.show("https://evil.example/passkey-prompt.html");
     expect(frame.isShown()).toBe(false);
   });
