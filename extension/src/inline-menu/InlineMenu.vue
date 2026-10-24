@@ -92,9 +92,14 @@ const allAction = computed<MenuAction[]>(() => {
   }
 });
 
-function isClickAllowed(event: Event): boolean {
-  if (!props.isEventTrusted(event)) return false;
-  return !props.isVisibilityTracked || guard.isInteractionAllowed(props.now());
+// A choice made before the menu has been fully visible for a moment is refused, and never carried out later: the page
+// may have covered the menu while it was made. The menu says so instead of ignoring it.
+const notYetVisibleMessage = "Hisar is making sure this menu is visible. Choose again";
+
+function isChoiceAllowed(): boolean {
+  if (!props.isVisibilityTracked || guard.isInteractionAllowed(props.now())) return true;
+  errorMessage.value = notYetVisibleMessage;
+  return false;
 }
 
 async function loadState(): Promise<void> {
@@ -167,7 +172,7 @@ async function runAction(action: MenuAction): Promise<void> {
 }
 
 function chooseAction(action: MenuAction, event: Event): void {
-  if (!isClickAllowed(event)) return;
+  if (!props.isEventTrusted(event) || !isChoiceAllowed()) return;
   void runAction(action);
 }
 
@@ -177,7 +182,7 @@ function pressKey(key: InlineMenuBroadcast["key"]): void {
   if (key === "ArrowDown") selectedIndex.value = (selectedIndex.value + 1) % count;
   else if (key === "ArrowUp") selectedIndex.value = selectedIndex.value <= 0 ? count - 1 : selectedIndex.value - 1;
   else if (key === "Enter" && selectedIndex.value >= 0) {
-    if (props.isVisibilityTracked && !guard.isInteractionAllowed(props.now())) return;
+    if (!isChoiceAllowed()) return;
     void runAction(allAction.value[selectedIndex.value]);
   }
 }

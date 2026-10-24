@@ -14,11 +14,11 @@ async function waitForClickGuard(page: Page): Promise<void> {
   await page.waitForTimeout(500);
 }
 
-async function fillFromMenu(page: Page, fieldSelector: string, options: { isGuardAwaited?: boolean } = {}): Promise<void> {
+async function fillFromMenu(page: Page, fieldSelector: string): Promise<void> {
   await page.locator(fieldSelector).click();
   const menu = await waitForMenu(page);
   await expect(menu.getByTestId("inline-login")).toHaveCount(1);
-  if (options.isGuardAwaited !== false) await waitForClickGuard(page);
+  await waitForClickGuard(page);
   await menu.getByTestId("inline-login").click();
 }
 
@@ -36,10 +36,20 @@ test.afterEach(async () => {
   await harness?.close();
 });
 
-test("fills when the login is clicked as soon as the menu shows it", async () => {
+// A click before the menu has been visible for 300 ms is refused, but never silently: the menu asks to choose again.
+test("fills, or asks to choose again, when the login is clicked as soon as the menu shows it", async () => {
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
-  await fillFromMenu(page, "#username", { isGuardAwaited: false });
+  await page.locator("#username").click();
+  const menu = await waitForMenu(page);
+  await expect(menu.getByTestId("inline-login")).toHaveCount(1);
+  await menu.getByTestId("inline-login").click();
+  const readError = () => menu.getByTestId("inline-error").count().catch(() => 0);
+  await expect.poll(async () => (await page.locator("#username").inputValue()) !== "" || (await readError()) > 0).toBe(true);
+  if ((await page.locator("#username").inputValue()) === "") {
+    await waitForClickGuard(page);
+    await menu.getByTestId("inline-login").click();
+  }
   await expectFilled(page);
 });
 

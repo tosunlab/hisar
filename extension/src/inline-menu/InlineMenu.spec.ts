@@ -126,7 +126,7 @@ describe("inline menu page", () => {
     expect(allMessage.some((message) => message.type === "inlineMenu.fillLogin")).toBe(false);
   });
 
-  it("ignores clicks until visibility tracking has seen the menu for 300 ms", async () => {
+  it("refuses clicks with a message until visibility tracking has seen the menu for 300 ms, and never runs them later", async () => {
     let observerCallback: IntersectionObserverCallback = () => undefined;
     vi.stubGlobal(
       "IntersectionObserver",
@@ -149,7 +149,10 @@ describe("inline menu page", () => {
     await wrapper.find('[data-testid="inline-login"]').trigger("click");
     await flushPromises();
     expect(allMessage.some((message) => message.type === "inlineMenu.fillLogin")).toBe(false);
+    expect(wrapper.find('[data-testid="inline-error"]').text()).toBe("Hisar is making sure this menu is visible. Choose again");
     now = 300;
+    await flushPromises();
+    expect(allMessage.some((message) => message.type === "inlineMenu.fillLogin")).toBe(false);
     await wrapper.find('[data-testid="inline-login"]').trigger("click");
     await flushPromises();
     expect(allMessage.filter((message) => message.type === "inlineMenu.fillLogin")).toHaveLength(1);
