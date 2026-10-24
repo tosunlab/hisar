@@ -98,7 +98,7 @@ func (s *Server) serveConnection(ctx context.Context, connection net.Conn) {
 		return
 	}
 	var connect browserprotocol.ConnectMessage
-	if json.Unmarshal(firstMessage, &connect) != nil || connect.Type != "connect" || connect.ExtensionOrigin != browserprotocol.AllowedOrigin {
+	if json.Unmarshal(firstMessage, &connect) != nil || connect.Type != "connect" || !browserprotocol.IsAllowedCaller(connect.ExtensionOrigin) {
 		log.Printf("browser: refused extension origin %q", connect.ExtensionOrigin)
 		return
 	}

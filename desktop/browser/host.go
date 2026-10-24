@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +15,21 @@ import (
 
 func GetDefaultSocketPath(homeDirectory string) string {
 	return filepath.Join(homeDirectory, ".hisar", "browser.sock")
+}
+
+// ReadCaller returns the extension that started the host, from its arguments. Chromium browsers pass the extension's
+// origin first (and on Windows a parent window after it); Firefox passes the path of the host manifest, then the add-on
+// ID.
+func ReadCaller(arguments []string) string {
+	switch {
+	case len(arguments) > 1 && strings.HasPrefix(arguments[1], "chrome-extension://"):
+		return arguments[1]
+	case len(arguments) > 2:
+		return arguments[2]
+	case len(arguments) > 1:
+		return arguments[1]
+	}
+	return ""
 }
 
 type HostConfig struct {

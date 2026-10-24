@@ -75,7 +75,7 @@ export const allSettingsSection: SettingsSection[] = [
     label: "Browser",
     icon: "globe",
     allRow: [
-      { id: "browser-extension", title: "Browser extension", keywords: "chrome brave edge arc vivaldi installed" },
+      { id: "browser-extension", title: "Browser extension", keywords: "chrome firefox brave edge arc vivaldi installed" },
       { id: "paired-browsers", title: "Paired browsers", keywords: "pair remove extension" },
       { id: "exact-host", title: "Only fill on the exact host", keywords: "autofill domain subdomain url matching" },
     ],

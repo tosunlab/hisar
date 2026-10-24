@@ -15,8 +15,17 @@ const (
 	HostName        = "com.tryhisar.hisar"
 	ExtensionID     = "mmipiffoogblblocokimpemdopmdjghf"
 	AllowedOrigin   = "chrome-extension://" + ExtensionID + "/"
-	MaxMessageSize  = 1 << 20
+	// FirefoxExtensionID is the add-on's ID in Firefox (browser_specific_settings.gecko.id), which Firefox passes the host
+	// instead of an origin.
+	FirefoxExtensionID = "extension@tryhisar.com"
+	MaxMessageSize     = 1 << 20
 )
+
+// IsAllowedCaller reports whether the extension the host relays for is Hisar's: the origin Chromium browsers pass, or the
+// add-on ID Firefox passes. Any local process can start the host with either, so pairing remains the check that matters.
+func IsAllowedCaller(caller string) bool {
+	return caller == AllowedOrigin || caller == FirefoxExtensionID
+}
 
 const (
 	ErrorInvalidRequest     = "invalid-request"
@@ -86,6 +95,8 @@ func NewError(code, message string) *ResponseError {
 	return &ResponseError{Code: code, Message: message}
 }
 
+// ConnectMessage: ExtensionOrigin is the caller the browser named when it started the host, an origin from a Chromium
+// browser or an add-on ID from Firefox (IsAllowedCaller).
 type ConnectMessage struct {
 	Type            string `json:"type"`
 	ExtensionOrigin string `json:"extensionOrigin"`
