@@ -63,6 +63,19 @@ test under its Swift name and delete its line from
 CI's `android` job (`.github/workflows/ci.yml`) runs `make build-android-aar`, the `ThemePalettes.kt` freshness check,
 `make build-android`, `make test-android` and `make test-android-ui` on an x86_64 API 37 emulator with Postgres.
 
+### Push notifications
+
+Firebase delivers the Android app's notifications ([Design](../design.md) §9.12). The app sets Firebase up from Gradle
+properties instead of `google-services.json`; a build without them has no push notifications and works otherwise:
+
+```properties
+# ~/.gradle/gradle.properties or -P on the command line; these identify the app to Firebase and are not secrets
+hisar.firebase.applicationId=1:000000000000:android:0000000000000000
+hisar.firebase.projectId=hisar-example
+hisar.firebase.apiKey=AIza...
+hisar.firebase.senderId=000000000000
+```
+
 ### Running the app
 
 Install `android/app/build/outputs/apk/debug/app-debug.apk` with `adb install -r`. To reach a server on your computer,

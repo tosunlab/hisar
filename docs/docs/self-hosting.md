@@ -127,6 +127,18 @@ Then `chmod 600 .env && docker compose up -d`. The log says `email through smtp.
 The server never sends credentials without TLS. The emails are plain text without tracking; failures are logged as
 `email not sent: …`, without the recipient's address.
 
+## Push notifications
+
+The iPhone and Android apps get a notification when your Mac asks the phone to approve something, when a device signs
+in to the account, and when someone shares with you ([Design](./design.md) §9.12). Your server sends these through
+Hisar's push relay at `https://push.tryhisar.com`, which holds Apple's and Google's keys for the official apps, so you
+need no Apple or Google account. A notification names only its kind ("Approval requested"), never what or who it is
+about; the relay never learns which server or account sent it.
+
+To turn notifications off, open **Settings → Push notifications** in the dashboard and empty the field, or set
+`HISAR_PUSH_RELAY_URL=off` in `.env`. Your own relay (`hisar-server push-relay`, with its own APNs key and Firebase
+project) only works with apps you build and sign yourself.
+
 ## Instance settings
 
 Admins change the server's settings in the admin dashboard under **Settings**, without a restart: **Email** (above),
