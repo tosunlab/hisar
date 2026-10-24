@@ -71,6 +71,9 @@ fun MainTabs(model: AppModel, approvalBadgeCount: Int = 0) {
     val isSheetShown by model.navigation.isSheetShown.collectAsStateWithLifecycle()
     val stateHolder = rememberSaveableStateHolder()
     LaunchedEffect(selectedTab) { model.reportActivity() }
+    // A notification tapped while Hisar was locked opens its screen once the tabs show, after unlocking.
+    val openedKind by model.notifications.openedKind.collectAsStateWithLifecycle()
+    LaunchedEffect(openedKind) { openedKind?.let(model::showNotification) }
     BackHandler(enabled = selectedTab != Tab.VAULTS) { model.selectedTab.value = Tab.VAULTS }
     Box(Modifier.fillMaxSize().background(HisarTheme.colors.groupedBackground)) {
         stateHolder.SaveableStateProvider(selectedTab) {

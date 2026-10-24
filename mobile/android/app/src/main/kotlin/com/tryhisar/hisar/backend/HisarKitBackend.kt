@@ -7,8 +7,6 @@ import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.Base64URL
 import com.tryhisar.hisar.model.CardDescription
 import com.tryhisar.hisar.model.CredentialChangeResult
-import com.tryhisar.hisar.model.PendingRecovery
-import com.tryhisar.hisar.model.PendingRecoveryExport
 import com.tryhisar.hisar.model.Device
 import com.tryhisar.hisar.model.EmergencyKitExport
 import com.tryhisar.hisar.model.ExportFormat
@@ -30,7 +28,11 @@ import com.tryhisar.hisar.model.PasskeyClientData
 import com.tryhisar.hisar.model.PasskeyRegistrationOptions
 import com.tryhisar.hisar.model.PasskeyRegistrationRequest
 import com.tryhisar.hisar.model.PasskeyRegistrationResult
+import com.tryhisar.hisar.model.PendingRecovery
+import com.tryhisar.hisar.model.PendingRecoveryExport
 import com.tryhisar.hisar.model.PhoneApproval
+import com.tryhisar.hisar.model.PushKind
+import com.tryhisar.hisar.model.PushSettings
 import com.tryhisar.hisar.model.RemovedVaultNotice
 import com.tryhisar.hisar.model.ShareAwaitingUnlock
 import com.tryhisar.hisar.model.ShareInvitations
@@ -496,6 +498,12 @@ class HisarKitBackend(
     override fun isWebsiteIconsEnabled(): Boolean = call { isWebsiteIconsEnabled() }
 
     override fun setWebsiteIconsEnabled(isEnabled: Boolean) = call { setWebsiteIconsEnabled(isEnabled) }
+
+    override fun setPushToken(platform: String, token: String) = call { setPushToken(platform, token) }
+
+    override fun setPushKindEnabled(kind: PushKind, isEnabled: Boolean) = call { setPushKindEnabled(kind.value, isEnabled) }
+
+    override fun getPushSettings(): PushSettings = decode(PushSettings.serializer(), call { getPushSettings() })
 
     override fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail =
         decode(ItemDetail.serializer(), call { addAndroidApp(vaultID, itemID, packageName, certificateSHA256) })

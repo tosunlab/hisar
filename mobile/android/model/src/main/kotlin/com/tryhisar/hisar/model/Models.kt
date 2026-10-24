@@ -1008,6 +1008,33 @@ data class VaultSharing(
     val completionError: String = "",
 )
 
+/** What a push notification is about; the push carries nothing else. */
+enum class PushKind(val value: String) {
+    APPROVAL("approval"),
+    SECURITY("security"),
+    SHARING("sharing"),
+    ;
+
+    companion object {
+        fun parse(text: String?): PushKind? = entries.firstOrNull { it.value == text }
+    }
+}
+
+/** HisarKit's app.PushSettings: whether notifications can reach this phone, and the kinds turned on. */
+@Serializable
+data class PushSettings(
+    val isAvailable: Boolean = false,
+    val isServerSending: Boolean = false,
+    val enabledKinds: List<String> = PushKind.entries.map { it.value },
+    val errorMessage: String? = null,
+) {
+    fun isEnabled(kind: PushKind): Boolean = kind.value in enabledKinds
+
+    companion object {
+        val unavailable = PushSettings()
+    }
+}
+
 /** A signed-in device of the account; the times are RFC 3339. */
 @Serializable
 data class Device(

@@ -166,6 +166,11 @@ interface VaultBackend {
     fun isWebsiteIconsEnabled(): Boolean
     fun setWebsiteIconsEnabled(isEnabled: Boolean)
 
+    /** Registers the push token Firebase gave this phone ("fcm") for the signed-in account; it reaches the server and the push relay. */
+    fun setPushToken(platform: String, token: String)
+    fun setPushKindEnabled(kind: PushKind, isEnabled: Boolean)
+    fun getPushSettings(): PushSettings
+
     /** Links a login to an Android app, so AutoFill offers it there; linking it again changes nothing. */
     fun addAndroidApp(vaultID: String, itemID: String, packageName: String, certificateSHA256: String): ItemDetail
 

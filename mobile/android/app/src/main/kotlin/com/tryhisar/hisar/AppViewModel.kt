@@ -6,6 +6,7 @@ import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.NotificationPlatform
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
@@ -13,8 +14,10 @@ import kotlinx.coroutines.launch
  * Keeps the app model across configuration changes, starts it on the Application's backend, and tells it when the whole
  * app goes to the background and comes back, which locks it after the auto-lock delay.
  */
-class AppViewModel(private val provider: BackendProvider) : ViewModel() {
-    val model = AppModel(viewModelScope, Dispatchers.IO, provider, provider.events, isPlainHttpAllowed = BuildConfig.DEBUG)
+class AppViewModel(private val provider: BackendProvider, notificationPlatform: NotificationPlatform) : ViewModel() {
+    val model = AppModel(
+        viewModelScope, Dispatchers.IO, provider, provider.events, isPlainHttpAllowed = BuildConfig.DEBUG, notificationPlatform = notificationPlatform,
+    )
     private var hasEnteredBackground = false
 
     private val processObserver = object : DefaultLifecycleObserver {

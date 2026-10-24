@@ -18,14 +18,38 @@ class AppModelHarness(private val testScope: TestScope, val backend: FakeBackend
     val events = MutableSharedFlow<BackendEvent>()
     val clipboard = FakeTextClipboard()
 
-    fun createModel(ioDispatcher: CoroutineDispatcher = StandardTestDispatcher(testScope.testScheduler)): AppModel =
-        AppModel(testScope.backgroundScope, ioDispatcher, clipboard, events, now = { currentDate }, isPlainHttpAllowed = isPlainHttpAllowed)
+    val notificationPlatform = FakeNotificationPlatform()
+
+    fun createModel(ioDispatcher: CoroutineDispatcher = StandardTestDispatcher(testScope.testScheduler)): AppModel = AppModel(
+        testScope.backgroundScope, ioDispatcher, clipboard, events, now = { currentDate }, isPlainHttpAllowed = isPlainHttpAllowed,
+        notificationPlatform = notificationPlatform,
+    )
 
     suspend fun startModel(): AppModel = createModel().also { model -> model.start { backend } }
 
     suspend fun startUnlockedModel(): AppModel {
         backend.seedSignedIn()
         return startModel().also { it.refreshAll() }
+    }
+}
+
+/** A phone's notifications for tests: the permission is a switch, and the reminder is a count of posts. */
+class FakeNotificationPlatform : NotificationPlatform {
+    var isGranted = false
+    var isReminderPosted = false
+        private set
+    var postCount = 0
+        private set
+
+    override fun isPermissionGranted(): Boolean = isGranted
+
+    override fun postApprovalReminder() {
+        postCount += 1
+        isReminderPosted = true
+    }
+
+    override fun cancelApprovalReminder() {
+        isReminderPosted = false
     }
 }
 

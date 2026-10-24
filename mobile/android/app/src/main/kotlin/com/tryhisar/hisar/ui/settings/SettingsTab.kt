@@ -26,6 +26,7 @@ import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.LaptopMac
+import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Password
 import androidx.compose.material.icons.outlined.Security
@@ -74,6 +75,7 @@ enum class SettingsDestination {
     SECURITY,
     APPEARANCE,
     MAC_APPROVALS,
+    NOTIFICATIONS,
     AUTOFILL,
     PASSWORD_GENERATOR,
     PEOPLE,
@@ -126,6 +128,7 @@ fun SettingsTab(model: AppModel) {
             SettingsDestination.SECURITY -> SecurityScreen(model, push, pop)
             SettingsDestination.APPEARANCE -> AppearanceScreen(model, pop)
             SettingsDestination.MAC_APPROVALS -> MacApprovalsScreen(model, pop)
+            SettingsDestination.NOTIFICATIONS -> NotificationsScreen(model, pop)
             SettingsDestination.DEVICES -> DevicesScreen(model, pop)
             SettingsDestination.HELP -> HelpScreen(model, pop)
             SettingsDestination.ABOUT -> AboutScreen(pop)
@@ -168,6 +171,8 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
                 "Mac approvals", "open-mac-approvals", { push(SettingsDestination.MAC_APPROVALS) }, Icons.Outlined.LaptopMac,
                 value = if (isMacApprovalAllowed) "On" else "Off",
             )
+            RowDivider()
+            NavigationRow("Notifications", "open-notifications", { push(SettingsDestination.NOTIFICATIONS) }, Icons.Outlined.Notifications)
             RowDivider()
             NavigationRow("Secret Key and Emergency Kit", "open-secret-key", { push(SettingsDestination.SECRET_KEY) }, Icons.Outlined.Description)
         }

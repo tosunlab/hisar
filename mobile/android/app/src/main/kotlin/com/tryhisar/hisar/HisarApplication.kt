@@ -9,6 +9,7 @@ import com.tryhisar.hisar.autofill.HttpAssetLinksVerifier
 import com.tryhisar.hisar.backend.HisarKitBackend
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.VaultBackend
+import com.tryhisar.hisar.notifications.HisarNotifications
 import com.tryhisar.hisar.passkey.RelyingPartyVerifier
 import com.tryhisar.hisar.platform.BiometricKeystore
 import com.tryhisar.hisar.platform.ClipboardAdapter
@@ -54,6 +55,8 @@ open class HisarApplication : Application(), BackendProvider {
         deleteLeftoverHandoffFiles(cacheDir)
         clipboard = ClipboardAdapter(this)
         foregroundActivity = ForegroundActivity(this, onWindowFocus = clipboard::clearExpiredCopy)
+        HisarNotifications.createChannels(this)
+        HisarNotifications.startFirebase(this)
         startBackend()
     }
 
