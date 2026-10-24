@@ -1,3 +1,4 @@
+import AuthenticationServices
 import XCTest
 @testable import Hisar
 
@@ -45,6 +46,23 @@ final class CredentialImportTests: XCTestCase {
     private func receivePreview(_ model: AppModel) async {
         model.receiveCredentialExchange(token: UUID())
         await waitUntil("the preview arrives") { model.credentialImportPreview != nil }
+    }
+
+    func testExportDatesReachTheBackendAsSecondsSince1970() throws {
+        let now = Date(timeIntervalSince1970: 1_791_547_200)
+        let exporterSeconds = 1_699_200_000.0
+        let readAgainst2001 = Date(timeIntervalSinceReferenceDate: exporterSeconds)
+        let readAgainst1970 = Date(timeIntervalSince1970: exporterSeconds)
+        for created in [readAgainst2001, readAgainst1970] {
+            let item = ASImportableItem(id: Data("item".utf8), created: created, lastModified: created, title: "amazon.com", credentials: [])
+            let account = ASImportableAccount(id: Data("account".utf8), userName: "alper", email: "alper@example.com", collections: [], items: [item])
+            let exported = ASExportedCredentialData(accounts: [account], formatVersion: .v1, exporterRelyingPartyIdentifier: "example.com", exporterDisplayName: "Passwords", timestamp: created)
+            let json = try JSONSerialization.jsonObject(with: AppModel.makeCredentialExchangeEncoder(now: now).encode(exported)) as? [String: Any]
+            let encodedItem = ((json?["accounts"] as? [[String: Any]])?.first?["items"] as? [[String: Any]])?.first
+            XCTAssertEqual(encodedItem?["creationAt"] as? Double, exporterSeconds, "created \(created)")
+            XCTAssertEqual(encodedItem?["modifiedAt"] as? Double, exporterSeconds, "modified \(created)")
+            XCTAssertEqual(json?["timestamp"] as? Double, exporterSeconds, "exported \(created)")
+        }
     }
 
     func testTokenWaitsForUnlockAndPreparesOnce() async {

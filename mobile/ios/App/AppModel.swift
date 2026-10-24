@@ -921,9 +921,23 @@ final class AppModel: ObservableObject {
     /// the backend reads (dates as seconds since 1970).
     static func importExportedCredentials(token: UUID) async throws -> Data {
         let exported = try await ASCredentialImportManager().importCredentials(token: token)
+        return try makeCredentialExchangeEncoder().encode(exported)
+    }
+
+    /// The encoder of that JSON. iOS 26 reads the exporter's seconds since 1970 as seconds since 2001, so a passkey made in
+    /// 2023 arrives dated 2054. No export holds a date after now, so such a date is read back against 2001, which gives the
+    /// exporter's number exactly, and a date the system read correctly keeps it.
+    static func makeCredentialExchangeEncoder(now: Date = Date()) -> JSONEncoder {
         let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .secondsSince1970
-        return try encoder.encode(exported)
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            var container = encoder.singleValueContainer()
+            try container.encode(credentialExchangeSeconds(of: date, now: now))
+        }
+        return encoder
+    }
+
+    nonisolated static func credentialExchangeSeconds(of date: Date, now: Date) -> Double {
+        date > now.addingTimeInterval(24 * 60 * 60) ? date.timeIntervalSinceReferenceDate : date.timeIntervalSince1970
     }
 
     func receiveCredentialExchange(token: UUID) {
