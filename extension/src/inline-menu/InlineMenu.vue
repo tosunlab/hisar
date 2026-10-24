@@ -38,6 +38,8 @@ type MenuAction =
 const menuState = ref<InlineMenuState>();
 const selectedIndex = ref(-1);
 const errorMessage = ref("");
+// isRunning is true while a fill runs; the menu takes no other choice then, so one click fills once.
+const isRunning = ref(false);
 const isWaiting = ref(false);
 const root = ref<HTMLElement>();
 const guard = new VisibilityGuard();
@@ -129,7 +131,9 @@ function pollUntilUnlocked(remaining: number): void {
 }
 
 async function runAction(action: MenuAction): Promise<void> {
+  if (isRunning.value) return;
   errorMessage.value = "";
+  isRunning.value = true;
   try {
     switch (action.kind) {
       case "login":
@@ -168,6 +172,8 @@ async function runAction(action: MenuAction): Promise<void> {
   } catch (error) {
     isWaiting.value = false;
     errorMessage.value = error instanceof Error ? error.message : String(error);
+  } finally {
+    isRunning.value = false;
   }
 }
 
@@ -249,7 +255,8 @@ defineExpose({ pressKey });
 </script>
 
 <template>
-  <div ref="root" class="menu" role="listbox" aria-label="Hisar">
+  <div ref="root" class="menu" :class="{ busy: isRunning }" role="listbox" aria-label="Hisar" :aria-busy="isRunning">
+    <p v-if="errorMessage" class="message error" data-testid="inline-error">{{ errorMessage }}</p>
     <p v-if="!menuState && !errorMessage" class="message muted">Loading…</p>
     <template v-else-if="menuState?.view === 'logins' && menuState.purpose === 'new-password'">
       <button
@@ -449,7 +456,6 @@ defineExpose({ pressKey });
         }}
       </button>
     </template>
-    <p v-if="errorMessage" class="message error" data-testid="inline-error">{{ errorMessage }}</p>
   </div>
 </template>
 
@@ -482,6 +488,11 @@ body {
   border: 1px solid #30343a;
   border-radius: 10px;
   background: #111214;
+}
+
+.menu.busy .item {
+  opacity: 0.6;
+  cursor: progress;
 }
 
 .item {

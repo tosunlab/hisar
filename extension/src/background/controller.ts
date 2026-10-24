@@ -253,7 +253,8 @@ export class BackgroundController {
       username: credentials.username,
       password: credentials.password,
     });
-    if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "No login form found on this page");
+    // The probe found the form, so a fill that wrote nothing met a page that changed the form or emptied the fields again.
+    if (!outcome?.filledUsername && !outcome?.filledPassword) throw new HisarError("not-found", "The page did not keep the login. Click the field and try again");
     await this.recordUse(vaultID, itemID);
     await this.copyOneTimeCodeAfterFill(credentials, outcome, vaultID, itemID, target.url);
     return outcome;

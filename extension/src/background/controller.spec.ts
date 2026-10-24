@@ -255,6 +255,12 @@ describe("fill and the frame rule", () => {
     expect(harness.allFrameMessage.find((entry) => entry.message.type === "content.fillLogin")?.message).toMatchObject({ username: "work@example.com" });
   });
 
+  it("says the page did not keep the login when the form was found but nothing stayed filled", async () => {
+    const harness = createHarness({ fillOutcome: { filledUsername: false, filledPassword: false } });
+    await harness.pair();
+    await expect(harness.controller.fillLogin(1, "vault-personal", "item-example")).rejects.toThrow("The page did not keep the login. Click the field and try again");
+  });
+
   it("fills the first match for the keyboard shortcut", async () => {
     const harness = createHarness();
     harness.state.allLogin.push({ ...harness.state.allLogin[0], itemID: "item-aardvark", title: "Aardvark", username: "first" });

@@ -163,6 +163,19 @@ describe("inline menu page", () => {
     expect(allMessage.filter((message) => message.type === "inlineMenu.fillLogin")).toHaveLength(1);
   });
 
+  it("fills once however many times the login is clicked while the fill runs", async () => {
+    let finishFill: (() => void) | undefined;
+    respondWith(createState(), { "inlineMenu.fillLogin": () => new Promise<null>((resolve) => (finishFill = () => resolve(null))) });
+    const wrapper = await mountMenu();
+    await wrapper.find('[data-testid="inline-login"]').trigger("click");
+    await wrapper.find('[data-testid="inline-login"]').trigger("click");
+    expect(wrapper.find(".menu").attributes("aria-busy")).toBe("true");
+    finishFill?.();
+    await flushPromises();
+    expect(allMessage.filter((message) => message.type === "inlineMenu.fillLogin")).toHaveLength(1);
+    expect(wrapper.find(".menu").attributes("aria-busy")).toBe("false");
+  });
+
   it("offers More in Hisar when there are more logins", async () => {
     respondWith(createState({ hasMoreLogin: true }));
     const wrapper = await mountMenu();
