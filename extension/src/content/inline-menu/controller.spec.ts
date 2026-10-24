@@ -105,6 +105,15 @@ describe("InlineMenuController", () => {
     expect(controller.getIconElement()).toBeUndefined();
   });
 
+  it("opens the menu at a field focused before it started, as a dialog focuses its first field", async () => {
+    controller.stop();
+    getInput("#password").focus();
+    controller = createController();
+    controller.start();
+    expect(controller.getIconElement()).toBeDefined();
+    await vi.waitFor(() => expect(allSent).toContainEqual({ type: "content.openInlineMenu", purpose: "login" }));
+  });
+
   it("shows the icon in a focused login field and opens the menu from the service worker's URL", async () => {
     getInput("#password").focus();
     expect(controller.getIconElement()).toBeDefined();

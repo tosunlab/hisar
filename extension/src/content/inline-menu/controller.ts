@@ -2,7 +2,7 @@ import { VisibilityGuard } from "../../shared/click-guard";
 import { isExtensionPageUrl } from "../../shared/extension-url";
 import type { ContentToBackgroundMessage, InlineMenuKey, InlineMenuPurpose, MessageResponse } from "../../shared/messages";
 import { defaultInlineMenuSettings, type InlineMenuSettings } from "../../shared/settings";
-import { getParentAcrossShadow } from "../dom";
+import { getDeepActiveElement, getParentAcrossShadow } from "../dom";
 import { findOneTimeCodeTarget } from "../one-time-code";
 import { findInlineMenuPurpose, isFrameEligibleForInlineMenu } from "./eligibility";
 import { computeIconRect, computeIconRectBeside, computeMenuRect, computeUnionRect, iconSize, isRectInViewport, type Rect } from "./placement";
@@ -86,6 +86,9 @@ export class InlineMenuController {
     this.listen(this.document, "pointerdown", (event) => this.handlePointerDown(event), true);
     this.listen(this.document, "input", (event) => this.handleInput(event), true);
     this.listen(this.window, "pagehide", () => this.hide());
+    // A field focused before the script started, as a dialog or the page focuses its first field, gets no focusin.
+    const active = getDeepActiveElement(this.document);
+    if (active && active !== this.document.body) this.focusOn(active);
   }
 
   stop(): void {
@@ -205,9 +208,12 @@ export class InlineMenuController {
   }
 
   private handleFocusIn(event: Event): void {
-    if (!this.settings.isInlineMenuEnabled) return;
     const target = event.composedPath()[0];
-    if (!(target instanceof Element)) return;
+    if (target instanceof Element) this.focusOn(target);
+  }
+
+  private focusOn(target: Element): void {
+    if (!this.settings.isInlineMenuEnabled) return;
     if (this.host && (target === this.host || this.host.contains(target))) return;
     if (this.isFieldOfMenu(target)) return;
     if (this.anchorTo(target) && this.settings.isInlineMenuOpenedOnFocus && !this.isOpeningOnFocusSuppressed) void this.openMenu();
@@ -232,8 +238,7 @@ export class InlineMenuController {
   // reports whether that field is one the menu serves.
   openHere(): boolean {
     if (!isFrameEligibleForInlineMenu(this.window)) return false;
-    let active: Element | null = this.document.activeElement;
-    while (active?.shadowRoot?.activeElement) active = active.shadowRoot.activeElement;
+    const active = getDeepActiveElement(this.document);
     if (!active || !this.anchorTo(active)) return false;
     void this.openMenu();
     return true;
@@ -319,7 +324,12 @@ export class InlineMenuController {
       else void this.openMenu();
     });
     shadowRoot.append(style, icon);
-    this.document.documentElement.append(host);
+    // In the top layer the host is drawn above the page and outside any filter or transform on the page's elements. Inside
+    // the field's modal dialog or popover it is not inert, as the rest of the page is while a modal dialog is open.
+    const isPopoverSupported = typeof host.showPopover === "function";
+    if (isPopoverSupported) host.setAttribute("popover", "manual");
+    (findTopLayerAncestor(this.field) ?? this.document.documentElement).append(host);
+    if (isPopoverSupported) host.showPopover();
     this.host = host;
     this.shadowRoot = shadowRoot;
     this.icon = icon;
@@ -360,7 +370,7 @@ export class InlineMenuController {
     if (rect.width < 40 || rect.height < 30 || !isRectInViewport(rect, viewport)) return false;
     const view = this.document.defaultView;
     if (!view) return false;
-    for (let element: Element | null = iframe; element; element = getParentAcrossShadow(element)) {
+    for (let element: Element | null = iframe; element; element = element === this.host && isInTopLayer(element) ? null : getParentAcrossShadow(element)) {
       const style = view.getComputedStyle(element);
       if (style.display === "none" || style.visibility === "hidden" || Number.parseFloat(style.opacity || "1") < 1) return false;
       if (style.filter && style.filter !== "none") return false;
@@ -374,6 +384,21 @@ export class InlineMenuController {
     ];
     return allPoint.every(([x, y]) => this.dependencies.getElementAtPoint(x, y) === this.host);
   }
+}
+
+function isInTopLayer(element: Element): boolean {
+  try {
+    return element.matches(":popover-open") || element.matches("dialog:modal");
+  } catch {
+    return false;
+  }
+}
+
+function findTopLayerAncestor(field: Element | undefined): Element | undefined {
+  for (let element = field ? getParentAcrossShadow(field) : null; element; element = getParentAcrossShadow(element)) {
+    if (isInTopLayer(element)) return element;
+  }
+  return undefined;
 }
 
 function placeElement(element: HTMLElement, rect: Rect): void {

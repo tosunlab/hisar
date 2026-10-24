@@ -86,26 +86,28 @@ test("serves the menu from a dynamic extension URL", async () => {
   await page.close();
 });
 
-test("ignores clicks while the page makes the menu transparent", async () => {
+// The menu is in the top layer, outside the page's own elements: making the page transparent or covering it with an
+// ordinary element does not hide the menu.
+test("keeps the menu visible above a transparent page and an ordinary overlay", async () => {
   await harness.pairWithoutPopup();
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
   await page.locator("#username").focus();
   const menu = await waitForMenu(page);
   await expect(menu.getByTestId("inline-login")).toHaveCount(1);
-  await page.evaluate(() => (document.documentElement.style.opacity = "0.01"));
-  await waitForClickGuard(page);
-  await menu.getByTestId("inline-login").click({ force: true });
-  await page.waitForTimeout(500);
-  await expect(page.locator("#password")).toHaveValue("");
-  await page.evaluate(() => (document.documentElement.style.opacity = ""));
+  await page.evaluate(() => {
+    document.documentElement.style.opacity = "0.01";
+    const overlay = document.createElement("div");
+    overlay.style.cssText = "position:fixed;inset:0;background:#f4f4f5;pointer-events:none;z-index:2147483647";
+    document.documentElement.append(overlay);
+  });
   await waitForClickGuard(page);
   await menu.getByTestId("inline-login").click();
   await expect(page.locator("#password")).toHaveValue("old password");
   await page.close();
 });
 
-test("ignores clicks through an overlay that lets pointer events pass", async () => {
+test("ignores clicks through a top-layer overlay that lets pointer events pass", async () => {
   await harness.pairWithoutPopup();
   const page = await harness.context.newPage();
   await page.goto(`${harness.site.origin}/login`);
@@ -116,8 +118,10 @@ test("ignores clicks through an overlay that lets pointer events pass", async ()
   test.skip(!isTracked, "IntersectionObserver v2 is not available in this browser");
   await page.evaluate(() => {
     const overlay = document.createElement("div");
-    overlay.style.cssText = "position:fixed;inset:0;background:#f4f4f5;pointer-events:none;z-index:2147483647";
-    document.documentElement.append(overlay);
+    overlay.popover = "manual";
+    overlay.style.cssText = "position:fixed;inset:0;width:auto;height:auto;margin:0;border:0;background:#f4f4f5;pointer-events:none";
+    document.body.append(overlay);
+    overlay.showPopover();
   });
   await waitForClickGuard(page);
   await menu.getByTestId("inline-login").click({ force: true });
