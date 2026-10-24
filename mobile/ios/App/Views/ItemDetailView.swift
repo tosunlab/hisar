@@ -566,29 +566,25 @@ struct ItemDetailView: View {
     }
 
     private func buildPasskeyRow(_ passkey: ItemPasskey) -> some View {
-        Label {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(passkey.relyingPartyID)
-                Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
-                    .font(.footnote)
-                    .foregroundStyle(.themeSecondary)
-                if let createdDate = passkey.createdDate {
-                    Text("Created \(createdDate.formatted(date: .abbreviated, time: .omitted))")
+        HStack(spacing: 12) {
+            Label {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(passkey.relyingPartyID)
+                    Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
                         .font(.footnote)
                         .foregroundStyle(.themeSecondary)
+                    if let createdDate = passkey.createdDate {
+                        Text("Created \(createdDate.formatted(date: .abbreviated, time: .omitted))")
+                            .font(.footnote)
+                            .foregroundStyle(.themeSecondary)
+                    }
                 }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("passkey-\(passkey.relyingPartyID)")
+            } icon: {
+                Image(systemName: "person.badge.key")
             }
-            .accessibilityElement(children: .combine)
-            .accessibilityIdentifier("passkey-\(passkey.relyingPartyID)")
-        } icon: {
-            Image(systemName: "person.badge.key")
-        }
-        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-            if isWritable {
-                Button("Delete", role: .destructive) { passkeyToDelete = passkey }
-            }
-        }
-        .overlay(alignment: .trailing) {
+            Spacer(minLength: 0)
             if isWritable {
                 Button {
                     passkeyToDelete = passkey
@@ -599,6 +595,11 @@ struct ItemDetailView: View {
                 .foregroundStyle(.red)
                 .accessibilityLabel("Delete passkey for \(passkey.relyingPartyID)")
                 .accessibilityIdentifier("delete-passkey-\(passkey.relyingPartyID)")
+            }
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            if isWritable {
+                Button("Delete", role: .destructive) { passkeyToDelete = passkey }
             }
         }
     }
