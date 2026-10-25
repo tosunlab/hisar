@@ -45,7 +45,7 @@ data class SignInLink(val server: String, val email: String, val secretKey: Stri
 
         private fun isServerAddress(text: String): Boolean {
             val server = parseHTTPURI(text) ?: return false
-            return server.rawUserInfo == null && server.fragment == null
+            return '@' !in server.rawAuthority && server.fragment == null
         }
     }
 }
@@ -76,7 +76,10 @@ data class InviteLink(val invite: String) {
     }
 }
 
-/** Parses an HTTP(S) URI, converting only an internationalized host to ASCII. */
+/**
+ * Parses an HTTP(S) URI. java.net.URI reads an internationalized host only as a registry name, so that host is checked
+ * in its ASCII form but kept as written: java.net.IDN is IDNA2003, which turns faß.de into the other domain fass.de.
+ */
 internal fun parseHTTPURI(text: String): URI? {
     return try {
         val url = URI(text)
@@ -87,8 +90,7 @@ internal fun parseHTTPURI(text: String): URI? {
         val hostEnd = authority.indexOf(':', hostStart).takeIf { it >= 0 } ?: authority.length
         val host = IDN.toASCII(authority.substring(hostStart, hostEnd), IDN.USE_STD3_ASCII_RULES)
         val authorityStart = url.scheme.length + 3
-        URI(text.replaceRange(authorityStart + hostStart, authorityStart + hostEnd, host))
-            .takeIf { !it.host.isNullOrEmpty() }
+        url.takeIf { !URI(text.replaceRange(authorityStart + hostStart, authorityStart + hostEnd, host)).host.isNullOrEmpty() }
     } catch (_: URISyntaxException) {
         null
     } catch (_: IllegalArgumentException) {

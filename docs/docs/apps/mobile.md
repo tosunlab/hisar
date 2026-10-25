@@ -29,10 +29,11 @@ android/app/       :app: HisarApplication, MainActivity, HisarKitBackend, the pl
   src/debug/       PreviewActivity, which shows AutoFill's screens to UI tests
 ```
 
-Website, admin-console and download links accept internationalized host names. Android opens them with the host
-converted to IDNA ASCII, while labels and Copy keep the original stored address. The JVM model shares this URI parsing
-with Emergency Kit server validation and invite app links, and leaves user info, ports, paths, queries and fragments
-unchanged. Invite links keep the original server origin when they prefill Create account.
+Website, admin-console and download links accept internationalized host names. The JVM model checks such a host in
+its IDNA ASCII form, but Open, Share, labels and Copy keep the stored address as written and leave the conversion to
+the browser: `java.net.IDN` is IDNA2003, which would turn `faß.de` into the different domain `fass.de`. Emergency Kit
+server validation and invite app links share this URI parsing, and invite links keep the original server origin when
+they prefill Create account.
 
 ### Build and test
 

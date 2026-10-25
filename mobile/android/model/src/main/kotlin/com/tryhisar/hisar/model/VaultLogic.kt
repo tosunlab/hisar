@@ -117,10 +117,11 @@ object VaultLogic {
     /** The server's host, and its port when it has one, as the sign-in form names it. */
     fun describeServer(server: String): String {
         val url = convertToOpenableURL(server) ?: return server
-        return if (url.port == -1) url.host else "${url.host}:${url.port}"
+        val host = url.host ?: return server
+        return if (url.port == -1) host else "$host:${url.port}"
     }
 
-    /** The HTTP(S) URI to open, adding https:// and converting IDN hosts without changing the stored website. */
+    /** The http or https URL a typed website means, adding https:// when it has no scheme, or null when it is none. */
     fun convertToOpenableURL(text: String): URI? {
         val trimmedText = text.trimmingWhitespacesAndNewlines()
         if (trimmedText.isEmpty()) return null

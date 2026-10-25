@@ -76,14 +76,14 @@ class ItemDetailLogicTests {
     fun testOpenableURLSupportsInternationalHostsWithoutChangingStoredText() {
         val item = backendJson.decodeFromString<ItemDetail>("""{"urls":["https://例え.test:8443/a%2Fb/東京?q=%2F+one#part%20two"]}""")
         assertEquals(
-            "https://xn--r8jz45g.test:8443/a%2Fb/東京?q=%2F+one#part%20two",
+            "https://例え.test:8443/a%2Fb/東京?q=%2F+one#part%20two",
             VaultLogic.convertToOpenableURL(item.allURL.single())?.toString(),
         )
         assertEquals("https://例え.test:8443/a%2Fb/東京?q=%2F+one#part%20two", item.allURL.single())
         val expectedByWebsite = mapOf(
-            "例え.test" to "https://xn--r8jz45g.test",
-            "HTTP://bücher.test:8080/download" to "HTTP://xn--bcher-kva.test:8080/download",
-            "https://user%3Aname:p%40ss@例え.test:8443/a%2Fb?q=%2F#part" to "https://user%3Aname:p%40ss@xn--r8jz45g.test:8443/a%2Fb?q=%2F#part",
+            "例え.test" to "https://例え.test",
+            "HTTP://bücher.test:8080/download" to "HTTP://bücher.test:8080/download",
+            "https://user%3Aname:p%40ss@例え.test:8443/a%2Fb?q=%2F#part" to "https://user%3Aname:p%40ss@例え.test:8443/a%2Fb?q=%2F#part",
             "https://user:pass@Example.COM:8443/a%2Fb?q=%2F#part" to "https://user:pass@Example.COM:8443/a%2Fb?q=%2F#part",
             "http://user:pass@[2001:db8::1]:8080/a%2Fb?q=%2F#part" to "http://user:pass@[2001:db8::1]:8080/a%2Fb?q=%2F#part",
             "https://xn--r8jz45g.test" to "https://xn--r8jz45g.test",
@@ -94,7 +94,13 @@ class ItemDetailLogicTests {
         for (invalid in listOf("https://例え..test", "https://-例え.test", "https://例え-.test", "https://\u200D.test", "https://例え.test:port", "https://例え.test:８０", "https://例え.test/%zz", "ftp://例え.test")) {
             assertNull(VaultLogic.convertToOpenableURL(invalid), invalid)
         }
-        assertEquals("xn--r8jz45g.test", VaultLogic.extractHost("https://例え.test"))
+        assertNull(VaultLogic.extractHost("https://例え.test"))
+    }
+
+    @Test
+    fun testInternationalHostOpensTheStoredDomain() {
+        assertEquals("https://faß.de/path", VaultLogic.convertToOpenableURL("https://faß.de/path")?.toString())
+        assertNull(VaultLogic.extractHost("https://faß.de/path"))
     }
 
     @Test

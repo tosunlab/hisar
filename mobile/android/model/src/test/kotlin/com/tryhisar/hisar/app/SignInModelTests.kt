@@ -125,6 +125,7 @@ class SignInModelTests {
     fun testDescribeServerShowsTheHost() {
         assertEquals("api.tryhisar.com", VaultLogic.describeServer("https://api.tryhisar.com"))
         assertEquals("127.0.0.1:18080", VaultLogic.describeServer("http://127.0.0.1:18080"))
+        assertEquals("https://faß.de:8443", VaultLogic.describeServer("https://faß.de:8443"))
     }
 
     @Test
@@ -209,7 +210,7 @@ class SignInModelTests {
     fun testInviteLinkPreservesInternationalServerOrigin() {
         val link = InviteLink.parse("hisar://invite/abc?server=https%3A%2F%2F%E4%BE%8B%E3%81%88.test%3A8443")
         assertEquals(InviteLink("https://例え.test:8443/invite/abc"), link)
-        assertEquals("https://xn--r8jz45g.test:8443/invite/abc", VaultLogic.convertToOpenableURL(link!!.invite)?.toString())
+        assertEquals("https://例え.test:8443/invite/abc", VaultLogic.convertToOpenableURL(link!!.invite)?.toString())
         val expectedByServer = mapOf(
             "例え.test" to "https://例え.test/invite/abc",
             " https://例え.test:8443/// " to "https://例え.test:8443/invite/abc",
