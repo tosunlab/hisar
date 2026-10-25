@@ -91,15 +91,21 @@ class AutofillServiceUITests {
 
         testBackend.lock()
         openPage(AutofillTestPageActivity.MIXED_PAGE)
-        chooseSuggestion("Unlock Hisar", By.res("code"))
-        waitForObject(By.res("unlock-password")).text = MASTER_PASSWORD
-        waitForObject(By.res("unlock-submit")).click()
-        val codeLogin = waitForObject(By.res("autofill-login-Example"))
-        waitForCode("username=; password=0 characters; code=") { codeLogin.click() }
-        clearClipboard()
+        findSuggestion("Unlock Hisar", By.res("username"))
+        dismissKeyboard("Unlock Hisar")
+        unlockAndFillCode()
         chooseSuggestion("Unlock Hisar", By.res("username"))
         waitForObject(By.res("autofill-login-Example")).click()
-        assertTrue("username focus still fills the login", device.wait(Until.hasObject(By.text(Regex("username=code-user; password=13 characters; code=\\d{6}").toPattern())), 10_000))
+        assertTrue("the locked username response still fills the login", device.wait(Until.hasObject(By.text(Regex("username=code-user; password=13 characters; code=\\d{6}").toPattern())), 10_000))
+        clearClipboard()
+
+        withoutPageLoadRequest {
+            testBackend.lock()
+            openPage(AutofillTestPageActivity.MIXED_PAGE)
+            unlockAndFillCode()
+            chooseSuggestion("Example", By.res("username"))
+            assertTrue("after a code-first unlock, username focus offers the unlocked login", device.wait(Until.hasObject(By.text(Regex("username=code-user; password=13 characters; code=\\d{6}").toPattern())), 10_000))
+        }
 
         clearClipboard()
         val personal = testBackend.listAllVault().single { it.name == "Personal" }
@@ -202,6 +208,21 @@ class AutofillServiceUITests {
             device.pressBack()
         }
         error("no AutoFill suggestion \"$title\" for $field")
+    }
+
+    // Hiding the keyboard takes the focused field's suggestions with it, so a later field's suggestion is not a stale one.
+    private fun dismissKeyboard(title: String) {
+        device.pressBack()
+        assertTrue("the suggestions close", device.wait(Until.gone(By.text(title)), 10_000) && device.wait(Until.gone(By.descStartsWith(title)), 10_000))
+    }
+
+    private fun unlockAndFillCode() {
+        chooseSuggestion("Unlock Hisar", By.res("code"))
+        waitForObject(By.res("unlock-password")).text = MASTER_PASSWORD
+        waitForObject(By.res("unlock-submit")).click()
+        val codeLogin = waitForObject(By.res("autofill-login-Example"))
+        waitForCode("username=; password=0 characters; code=") { codeLogin.click() }
+        clearClipboard()
     }
 
     // On Android 13 and later a page with a password field asks for a fill as it loads, before any field is focused, when
