@@ -65,16 +65,11 @@ CI's `android` job (`.github/workflows/ci.yml`) runs `make build-android-aar`, t
 
 ### Push notifications
 
-Firebase delivers the Android app's notifications ([Design](../design.md) §9.12). The app sets Firebase up from Gradle
-properties instead of `google-services.json`; a build without them has no push notifications and works otherwise:
-
-```properties
-# ~/.gradle/gradle.properties or -P on the command line; these identify the app to Firebase and are not secrets
-hisar.firebase.applicationId=1:000000000000:android:0000000000000000
-hisar.firebase.projectId=hisar-example
-hisar.firebase.apiKey=AIza...
-hisar.firebase.senderId=000000000000
-```
+The Android app gets its notifications through UnifiedPush, with no Firebase or Google service
+([Design](../design.md) §9.12). Install a UnifiedPush distributor on the phone or emulator, such as ntfy from F-Droid,
+then turn notifications on in Settings → Notifications; Hisar registers with the distributor and gives its endpoint to
+the server, which sends to it directly. Without a distributor, that screen links to UnifiedPush's list of them.
+`scripts/check-android-no-firebase.sh`, which CI runs, fails if the release build depends on Firebase.
 
 ### Running the app
 

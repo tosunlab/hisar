@@ -1,5 +1,7 @@
 package apitypes
 
+import "time"
+
 // PushKind names what a push notification is about. It is all a push carries: the phone shows a sentence for the kind,
 // and the details only once Hisar is open and unlocked.
 type PushKind string
@@ -24,25 +26,44 @@ func IsValidPushKind(kind PushKind) bool {
 	return false
 }
 
-// PushPlatform is the push service a phone's token belongs to.
+// GetTimeToLive is how long a push service keeps trying to deliver a push of the kind: an approval request ends within
+// minutes, the others stay worth seeing for a day.
+func (kind PushKind) GetTimeToLive() time.Duration {
+	if kind == PushKindApproval {
+		return 3 * time.Minute
+	}
+	return 24 * time.Hour
+}
+
+// PushPlatform is the push service an iPhone's token belongs to. Android phones use Web Push instead, through the
+// UnifiedPush distributor the user installed.
 type PushPlatform string
 
 const (
 	PushPlatformAPNs PushPlatform = "apns"
 	// PushPlatformAPNsSandbox is the APNs development environment, for builds signed for development.
 	PushPlatformAPNsSandbox PushPlatform = "apns-sandbox"
-	PushPlatformFCM         PushPlatform = "fcm"
 )
 
-// PushRegistration is the body of PUT /api/v1/devices/current/push: the push relay's handle for this phone and the
-// kinds it wants. The server never sees the push service's own token.
+// PushRegistration is the body of PUT /api/v1/devices/current/push: where this phone gets its pushes, and the kinds it
+// wants. An iPhone sends the push relay's handle, and the server never sees its APNs token; an Android phone sends the
+// Web Push subscription of its UnifiedPush distributor, which the server sends to directly. Exactly one is set.
 type PushRegistration struct {
-	Handle  string     `json:"handle"`
-	AllKind []PushKind `json:"kinds"`
+	Handle  string               `json:"handle,omitempty"`
+	WebPush *WebPushSubscription `json:"webPush,omitempty"`
+	AllKind []PushKind           `json:"kinds"`
 }
 
-// PushConfig is GET /api/v1/push/config: the push relay this server sends through. An empty URL means the server
-// sends no push notifications.
+// WebPushSubscription is a Web Push endpoint and the keys its messages are encrypted to (RFC 8291). P256DH, the
+// phone's public key, and Auth, the authentication secret, are base64url without padding, as UnifiedPush gives them.
+type WebPushSubscription struct {
+	Endpoint string `json:"endpoint"`
+	P256DH   string `json:"p256dh"`
+	Auth     string `json:"auth"`
+}
+
+// PushConfig is GET /api/v1/push/config: the push relay this server sends iPhones' pushes through. An empty URL means
+// the server sends no push notifications, to iPhones or Android phones.
 type PushConfig struct {
 	RelayURL string `json:"relayURL"`
 }

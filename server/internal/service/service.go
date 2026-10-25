@@ -60,6 +60,8 @@ type Limiters struct {
 	ShareLinkAccount       *ratelimit.Limiter
 	Reauthentication       *ratelimit.Limiter
 	TestEmail              *ratelimit.Limiter
+	// WebPush allows one Web Push message of a kind to a phone every 30 seconds.
+	WebPush *ratelimit.Limiter
 }
 
 const (
@@ -85,6 +87,7 @@ func newLimiters(factory *ratelimit.Factory) Limiters {
 		Reauthentication:       factory.New(rate.Every(30*time.Second), 5),
 		// An admin's test emails: a few at once, then five a minute, since each one connects to a host the admin chose.
 		TestEmail: factory.New(rate.Every(time.Minute/testEmailPerAccountBurst), testEmailPerAccountBurst),
+		WebPush:   factory.New(rate.Every(webPushInterval), 1),
 	}
 }
 
@@ -120,8 +123,9 @@ type Service struct {
 	NewMailer func(settings.SMTP) mail.Mailer
 	// Approvals relays phone approvals between the devices of an account.
 	Approvals *ApprovalRelay
-	// PushClient sends to the push relay.
+	// PushClient sends to the push relay, and WebPushClient to Android phones' Web Push endpoints.
 	PushClient     *http.Client
+	WebPushClient  *http.Client
 	backgroundWork sync.WaitGroup
 }
 
@@ -139,6 +143,7 @@ func New(database *store.Store, events *realtime.Broker, keys Keys, config Confi
 		NewMailer:               newSMTPMailer,
 		Approvals:               newApprovalRelay(factory.New(rate.Every(approvalRateEvery), ApprovalRateBurst)),
 		PushClient:              &http.Client{Timeout: 10 * time.Second},
+		WebPushClient:           newWebPushClient(),
 	}
 }
 
@@ -159,7 +164,7 @@ func (s *Service) MaintainAuthenticationState() {
 	for _, limiter := range []*ratelimit.Limiter{
 		s.Limiters.InviteAccount, s.Limiters.InviteIP, s.Limiters.ShareInvitationAccount,
 		s.Limiters.ShareInvitationIP, s.Limiters.ShareAcceptedEmail, s.Limiters.ShareLinkAccount,
-		s.Limiters.Reauthentication, s.Limiters.TestEmail,
+		s.Limiters.Reauthentication, s.Limiters.TestEmail, s.Limiters.WebPush,
 	} {
 		limiter.Maintain()
 	}

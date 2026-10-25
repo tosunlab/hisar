@@ -56,7 +56,6 @@ open class HisarApplication : Application(), BackendProvider {
         clipboard = ClipboardAdapter(this)
         foregroundActivity = ForegroundActivity(this, onWindowFocus = clipboard::clearExpiredCopy)
         HisarNotifications.createChannels(this)
-        HisarNotifications.startFirebase(this)
         startBackend()
     }
 

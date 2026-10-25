@@ -620,6 +620,14 @@ export function RemoveVaultMember(vaultID: string, accountID: string): $Cancella
 }
 
 /**
+ * RemoveWebPushEndpoint forgets the subscription after the distributor ended it or the user removed the distributor,
+ * and tells the server to stop sending to it.
+ */
+export function RemoveWebPushEndpoint(): $CancellablePromise<void> {
+    return $Call.ByID(2274842900);
+}
+
+/**
  * RenameOrganization is for admins; the name is visible to the server.
  */
 export function RenameOrganization(organizationID: string, name: string): $CancellablePromise<void> {
@@ -754,7 +762,7 @@ export function SetPushKindEnabled(kind: string, isEnabled: boolean): $Cancellab
 
 /**
  * SetPushToken takes the push service token the phone's OS gave Hisar, and registers it with the push relay and the
- * server for the signed-in account. platform is apitypes.PushPlatform: "apns", "apns-sandbox" or "fcm". The phones call
+ * server for the signed-in account. platform is apitypes.PushPlatform: "apns" or "apns-sandbox". The phones call
  * it at every launch and whenever the OS replaces the token, never on the main thread.
  */
 export function SetPushToken(platform: string, token: string): $CancellablePromise<void> {
@@ -773,6 +781,16 @@ export function SetTheme(appearance: string, color: string): $CancellablePromise
  */
 export function SetVaultAvailableToAgents(vaultID: string, isAvailable: boolean): $CancellablePromise<string[] | null> {
     return $Call.ByID(4293153903, vaultID, isAvailable);
+}
+
+/**
+ * SetWebPushEndpoint takes the Web Push subscription an Android phone's UnifiedPush distributor gave Hisar: the
+ * endpoint, and the phone's public key (p256dh) and authentication secret (auth) in base64url. It registers it with the
+ * server, which sends there directly. The phone calls it whenever the distributor gives an endpoint, never on the main
+ * thread.
+ */
+export function SetWebPushEndpoint(endpoint: string, p256dh: string, auth: string): $CancellablePromise<void> {
+    return $Call.ByID(4011990710, endpoint, p256dh, auth);
 }
 
 /**

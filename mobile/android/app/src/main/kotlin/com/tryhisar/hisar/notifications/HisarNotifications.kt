@@ -9,18 +9,16 @@ import android.os.Handler
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import com.google.firebase.FirebaseApp
-import com.google.firebase.FirebaseOptions
-import com.google.firebase.messaging.FirebaseMessaging
-import com.tryhisar.hisar.BuildConfig
+import android.app.Activity
 import com.tryhisar.hisar.MainActivity
 import com.tryhisar.hisar.R
 import com.tryhisar.hisar.app.NotificationPlatform
 import com.tryhisar.hisar.model.PushKind
+import org.unifiedpush.android.connector.UnifiedPush
 
 /**
- * Hisar's notifications on Android: one channel per kind, the notification a push or the reminder posts, and Firebase,
- * which delivers pushes. A notification shows Hisar's own sentence for its kind and nothing else, on the lock screen too.
+ * Hisar's notifications on Android: one channel per kind, the notification a push or the reminder posts, and the
+ * UnifiedPush distributor the user installed, such as ntfy, which delivers pushes. A notification shows Hisar's own sentence for its kind and nothing else, on the lock screen too.
  */
 object HisarNotifications {
     /** The extra on MainActivity's intent naming the kind of the notification the user tapped. */
@@ -83,30 +81,25 @@ object HisarNotifications {
         post(context, getChannel(kind), kind.ordinal + 1, kind, getText(context, kind))
     }
 
-    /** Sets Firebase up from the build's properties; false for a build without them, which has no push notifications. */
-    fun startFirebase(context: Context): Boolean {
-        if (BuildConfig.FIREBASE_APPLICATION_ID.isEmpty()) return false
-        if (FirebaseApp.getApps(context).isEmpty()) {
-            val options = FirebaseOptions.Builder()
-                .setApplicationId(BuildConfig.FIREBASE_APPLICATION_ID)
-                .setProjectId(BuildConfig.FIREBASE_PROJECT_ID)
-                .setApiKey(BuildConfig.FIREBASE_API_KEY)
-                .setGcmSenderId(BuildConfig.FIREBASE_SENDER_ID)
-                .build()
-            FirebaseApp.initializeApp(context, options)
-        }
-        return true
-    }
+    fun isDistributorInstalled(context: Context): Boolean = UnifiedPush.getDistributors(context).any { it != context.packageName }
 
-    /** Asks Firebase for this launch's token; [receive] gets it on the main thread. */
-    fun fetchToken(context: Context, receive: (String) -> Unit) {
-        if (!startFirebase(context)) return
-        FirebaseMessaging.getInstance().token.addOnSuccessListener { token -> if (!token.isNullOrEmpty()) receive(token) }
+    /**
+     * Registers with the distributor the user chose before, else their default one; with several and no default, Android
+     * asks which. The distributor then gives HisarPushService the endpoint. [done] runs once the choice is made.
+     */
+    fun startPush(activity: Activity, done: () -> Unit) {
+        if (!isDistributorInstalled(activity)) return
+        UnifiedPush.tryUseCurrentOrDefaultDistributor(activity) { isChosen ->
+            if (isChosen) UnifiedPush.register(activity, messageForDistributor = activity.getString(R.string.app_name))
+            done()
+        }
     }
 
     /** Android's side of the app model's notifications. */
     class Platform(private val context: Context) : NotificationPlatform {
         override fun isPermissionGranted(): Boolean = NotificationManagerCompat.from(context).areNotificationsEnabled()
+
+        override fun isDistributorInstalled(): Boolean = isDistributorInstalled(context)
 
         override fun postApprovalReminder() {
             cancelApprovalReminder()

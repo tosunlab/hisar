@@ -57,7 +57,8 @@ open class FakeBackend : VaultBackend {
     var listAllDeviceErrorMessage: String? = null
     var isMacApprovalAllowedValue = true
     var isWebsiteIconsEnabledValue = true
-    val allPushToken = mutableListOf<String>()
+    /** The Web Push endpoint the app registered; null before it has one and after it removed it. */
+    var webPushEndpoint: String? = null
     var pushSettingsValue = PushSettings(isServerSending = true)
     var websiteIconByURL: MutableMap<String, ByteString> = mutableMapOf()
     var preparedIcon: ByteString? = null
@@ -1151,10 +1152,16 @@ open class FakeBackend : VaultBackend {
 
     override fun isWebsiteIconsEnabled(): Boolean = isWebsiteIconsEnabledValue
 
-    override fun setPushToken(platform: String, token: String) {
-        record("setPushToken")
-        allPushToken += "$platform:$token"
+    override fun setWebPushEndpoint(endpoint: String, p256dh: String, auth: String) {
+        record("setWebPushEndpoint")
+        webPushEndpoint = endpoint
         pushSettingsValue = pushSettingsValue.copy(isAvailable = pushSettingsValue.isServerSending)
+    }
+
+    override fun removeWebPushEndpoint() {
+        record("removeWebPushEndpoint")
+        webPushEndpoint = null
+        pushSettingsValue = pushSettingsValue.copy(isAvailable = false)
     }
 
     override fun setPushKindEnabled(kind: PushKind, isEnabled: Boolean) {

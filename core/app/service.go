@@ -85,9 +85,11 @@ type serviceState struct {
 	signer                      *signin.Signer
 	agentSignInCancels          map[uint64]context.CancelFunc
 	lastAgentSignInID           uint64
-	// pushPlatform and pushToken are what the phone's OS gave for push notifications at this launch; never saved.
+	// pushPlatform and pushToken are what an iPhone's OS gave for push notifications at this launch, and webPush the
+	// subscription an Android phone's UnifiedPush distributor gave; never saved.
 	pushPlatform        apitypes.PushPlatform
 	pushToken           string
+	webPush             *apitypes.WebPushSubscription
 	isPushServerSending bool
 	pushErrorMessage    string
 }
@@ -197,8 +199,8 @@ func (s *Service) notifySessionChange() {
 	if s.onSessionChange != nil {
 		s.onSessionChange(s.state.Server, s.state.Token, s.state.IsLoggedIn())
 	}
-	// A phone that already has a push token registers it for the account it just signed in to.
-	if s.state.IsLoggedIn() && s.pushToken != "" {
+	// A phone that already has a push token or subscription registers it for the account it just signed in to.
+	if s.state.IsLoggedIn() && s.hasPushTarget() {
 		go s.registerPush()
 	}
 }

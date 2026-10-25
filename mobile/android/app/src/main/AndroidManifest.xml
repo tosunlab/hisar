@@ -58,16 +58,12 @@
             android:exported="true"
             android:targetActivity=".MainActivity" />
         <service
-            android:name=".notifications.HisarMessagingService"
+            android:name=".notifications.HisarPushService"
             android:exported="false">
             <intent-filter>
-                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+                <action android:name="org.unifiedpush.android.connector.PUSH_EVENT" />
             </intent-filter>
         </service>
-        <!-- Firebase is set up from the build's properties, not from google-services.json, and only with them. -->
-        <meta-data
-            android:name="firebase_messaging_auto_init_enabled"
-            android:value="false" />
         <receiver
             android:name=".platform.ClipboardClearReceiver"
             android:exported="false" />

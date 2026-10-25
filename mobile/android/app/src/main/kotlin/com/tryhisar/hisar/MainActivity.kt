@@ -39,8 +39,9 @@ class MainActivity : FragmentActivity() {
             openAutoFillSettings(intent)
             openNotification(intent)
         }
-        // Once the user allowed notifications, each launch hands HisarKit Firebase's current token.
-        if (viewModel.model.notifications.isPermissionGranted.value) fetchPushToken()
+        // Once the user allowed notifications, each launch registers with the UnifiedPush distributor again, which then
+        // gives HisarPushService its endpoint.
+        if (viewModel.model.notifications.isPermissionGranted.value) startPush()
         setContent { RootScreen(viewModel.model, viewModel::copySecret) }
     }
 
@@ -56,8 +57,8 @@ class MainActivity : FragmentActivity() {
         viewModel.model.notifications.open(intent.getStringExtra(HisarNotifications.EXTRA_KIND))
     }
 
-    fun fetchPushToken() {
-        HisarNotifications.fetchToken(this) { token -> lifecycleScope.launch { viewModel.model.notifications.receiveToken(token) } }
+    fun startPush() {
+        HisarNotifications.startPush(this) { lifecycleScope.launch { viewModel.model.notifications.refresh() } }
     }
 
     override fun onResume() {

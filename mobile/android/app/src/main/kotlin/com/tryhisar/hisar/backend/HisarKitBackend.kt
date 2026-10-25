@@ -499,7 +499,9 @@ class HisarKitBackend(
 
     override fun setWebsiteIconsEnabled(isEnabled: Boolean) = call { setWebsiteIconsEnabled(isEnabled) }
 
-    override fun setPushToken(platform: String, token: String) = call { setPushToken(platform, token) }
+    override fun setWebPushEndpoint(endpoint: String, p256dh: String, auth: String) = call { setWebPushEndpoint(endpoint, p256dh, auth) }
+
+    override fun removeWebPushEndpoint() = call { removeWebPushEndpoint() }
 
     override fun setPushKindEnabled(kind: PushKind, isEnabled: Boolean) = call { setPushKindEnabled(kind.value, isEnabled) }
 

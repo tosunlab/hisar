@@ -27,15 +27,6 @@ const (
 	pushInterval = 30 * time.Second
 )
 
-// getTimeToLive is how long the push service keeps trying to deliver a push of the kind: an approval request ends
-// within minutes, the others stay worth seeing for a day.
-func getTimeToLive(kind apitypes.PushKind) time.Duration {
-	if kind == apitypes.PushKindApproval {
-		return 3 * time.Minute
-	}
-	return 24 * time.Hour
-}
-
 // Sender delivers a push of a kind to one push service token.
 type Sender interface {
 	Send(ctx context.Context, platform apitypes.PushPlatform, token string, kind apitypes.PushKind) error

@@ -19,3 +19,15 @@ const (
 	vectorApprovalAnswerMessage   = "68697361722f76312f617070726f76616c2d616e737765720000000641424331323300000020303031313232333334343535363637373838393961616262636364646565666600000020b50af7d73a3ca6520897d826dfb0267f5cb4786b88b45d023b9d587e2fbab36f00000007617070726f76650000000770686f6e652d310000000f4869736172206f6e206950686f6e6500000018323032362d31302d31315431323a30303a30302e3030305a"
 	vectorApprovalAnswerSignature = "6f5646f0c66eedff6393c6401fd1d4ca1c945eda2192719cdbd3e18ecfc37d7f687e913a2bd7305d7af79e1bc1e1231a507b9efa771be5d26f64a9ddd2a9490c"
 )
+
+// Web Push: RFC 8291 Appendix A, base64url without padding. A Hisar server must produce exactly this message, or
+// UnifiedPush distributors and phones could not read it.
+const (
+	vectorWebPushPlaintext    = "When I grow up, I want to be a watermelon"
+	vectorWebPushSenderKey    = "yfWPiYE-n46HLnH0KqZOF1fJJU3MYrct3AELtAQ-oRw"
+	vectorWebPushUserAgentKey = "q1dXpw3UpT5VOmu_cf_v6ih07Aems3njxI-JWgLcM94"
+	vectorWebPushUserAgentPub = "BCVxsr7N_eNgVRqvHtD0zTZsEc6-VV-JvLexhqUzORcxaOzi6-AYWXvTBHm4bjyPjs7Vd8pZGH6SRpkNtoIAiw4"
+	vectorWebPushSalt         = "DGv6ra1nlYgDCS1FRnbzlw"
+	vectorWebPushAuthSecret   = "BTBZMqHH6r4Tts7J_aSIgg"
+	vectorWebPushMessage      = "DGv6ra1nlYgDCS1FRnbzlwAAEABBBP4z9KsN6nGRTbVYI_c7VJSPQTBtkgcy27mlmlMoZIIgDll6e3vCYLocInmYWAmS6TlzAC8wEqKK6PBru3jl7A_yl95bQpu6cVPTpK4Mqgkf1CXztLVBSt2Ks3oZwbuwXPXLWyouBWLVWGNWQexSgSxsj_Qulcy4a-fN"
+)

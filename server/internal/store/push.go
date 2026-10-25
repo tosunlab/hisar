@@ -6,20 +6,30 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// PushTarget is a phone to send a push to: its device and its push relay handle.
+// PushTarget is a phone to send a push to: its device, and either its push relay handle or its Web Push subscription.
 type PushTarget struct {
 	DeviceID string
 	Handle   string
+	WebPush  *WebPushSubscription
 }
 
-// SetDevicePush saves the push relay handle and the push kinds of a phone that is still signed in; for any other device
-// it fails with ErrNotFound.
-func (s *Store) SetDevicePush(ctx context.Context, accountID, deviceID, handle string, allKind []string) error {
+// WebPushSubscription is a Web Push endpoint with the phone's public key and authentication secret, decoded.
+type WebPushSubscription struct {
+	Endpoint string
+	P256DH   []byte
+	Auth     []byte
+}
+
+// SetDevicePush saves where a phone that is still signed in gets its pushes, target.Handle or target.WebPush, and its
+// push kinds; for any other device it fails with ErrNotFound.
+func (s *Store) SetDevicePush(ctx context.Context, accountID string, target PushTarget, allKind []string) error {
+	handle, endpoint, p256dh, auth := target.columns()
 	commandTag, err := s.pool.Exec(ctx, `
-		INSERT INTO device_push (device_id, handle, kinds)
-		SELECT id, $3, $4 FROM devices WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL AND platform LIKE '%/mobile'
-		ON CONFLICT (device_id) DO UPDATE SET handle = excluded.handle, kinds = excluded.kinds, updated_at = now()`,
-		deviceID, accountID, handle, allKind)
+		INSERT INTO device_push (device_id, handle, web_push_endpoint, web_push_p256dh, web_push_auth, kinds)
+		SELECT id, $3, $4, $5, $6, $7 FROM devices WHERE id = $1 AND account_id = $2 AND revoked_at IS NULL AND platform LIKE '%/mobile'
+		ON CONFLICT (device_id) DO UPDATE SET handle = excluded.handle, web_push_endpoint = excluded.web_push_endpoint,
+			web_push_p256dh = excluded.web_push_p256dh, web_push_auth = excluded.web_push_auth, kinds = excluded.kinds, updated_at = now()`,
+		target.DeviceID, accountID, handle, endpoint, p256dh, auth, allKind)
 	if err != nil {
 		return err
 	}
@@ -29,22 +39,34 @@ func (s *Store) SetDevicePush(ctx context.Context, accountID, deviceID, handle s
 	return nil
 }
 
+// columns returns the target's handle or Web Push subscription as the nullable columns of device_push.
+func (target PushTarget) columns() (handle, endpoint *string, p256dh, auth []byte) {
+	if target.WebPush != nil {
+		return nil, &target.WebPush.Endpoint, target.WebPush.P256DH, target.WebPush.Auth
+	}
+	return &target.Handle, nil, nil, nil
+}
+
 func (s *Store) DeleteDevicePush(ctx context.Context, deviceID string) error {
 	_, err := s.pool.Exec(ctx, `DELETE FROM device_push WHERE device_id = $1`, deviceID)
 	return err
 }
 
-// DeleteDevicePushHandle forgets a handle the push relay no longer delivers to, unless the phone has since sent a new
-// one.
-func (s *Store) DeleteDevicePushHandle(ctx context.Context, deviceID, handle string) error {
-	_, err := s.pool.Exec(ctx, `DELETE FROM device_push WHERE device_id = $1 AND handle = $2`, deviceID, handle)
+// DeleteStalePushTarget forgets a handle or Web Push endpoint that no longer delivers, unless the phone has since sent
+// a new one.
+func (s *Store) DeleteStalePushTarget(ctx context.Context, target PushTarget) error {
+	handle, endpoint, _, _ := target.columns()
+	_, err := s.pool.Exec(ctx, `
+		DELETE FROM device_push WHERE device_id = $1 AND handle IS NOT DISTINCT FROM $2 AND web_push_endpoint IS NOT DISTINCT FROM $3`,
+		target.DeviceID, handle, endpoint)
 	return err
 }
 
 // ListPushTargets returns the account's signed-in devices that want pushes of the kind, except exceptDeviceID.
 func (s *Store) ListPushTargets(ctx context.Context, accountID, kind, exceptDeviceID string) ([]PushTarget, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT d.id, p.handle FROM device_push p JOIN devices d ON d.id = p.device_id
+		SELECT d.id, p.handle, p.web_push_endpoint, p.web_push_p256dh, p.web_push_auth
+		FROM device_push p JOIN devices d ON d.id = p.device_id
 		WHERE d.account_id = $1 AND d.revoked_at IS NULL AND $2 = ANY (p.kinds) AND d.id::text <> $3
 		ORDER BY d.id`,
 		accountID, kind, exceptDeviceID)
@@ -53,7 +75,16 @@ func (s *Store) ListPushTargets(ctx context.Context, accountID, kind, exceptDevi
 	}
 	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (PushTarget, error) {
 		var target PushTarget
-		err := row.Scan(&target.DeviceID, &target.Handle)
-		return target, err
+		var handle, endpoint *string
+		var p256dh, auth []byte
+		if err := row.Scan(&target.DeviceID, &handle, &endpoint, &p256dh, &auth); err != nil {
+			return target, err
+		}
+		if endpoint != nil {
+			target.WebPush = &WebPushSubscription{Endpoint: *endpoint, P256DH: p256dh, Auth: auth}
+		} else if handle != nil {
+			target.Handle = *handle
+		}
+		return target, nil
 	})
 }
