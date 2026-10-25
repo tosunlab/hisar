@@ -42,12 +42,14 @@ import kotlinx.coroutines.launch
 /** UnifiedPush's own list of distributors, ntfy among them. */
 private const val DISTRIBUTORS_URL = "https://unifiedpush.org/users/distributors/"
 
-private data class KindDescription(val title: String, val icon: ImageVector)
+private data class KindDescription(val title: String, val detail: String, val icon: ImageVector)
 
 private fun describe(kind: PushKind): KindDescription = when (kind) {
-    PushKind.APPROVAL -> KindDescription("Approval requests", Icons.Outlined.LaptopMac)
-    PushKind.SECURITY -> KindDescription("Security alerts", Icons.Outlined.Security)
-    PushKind.SHARING -> KindDescription("Sharing", Icons.Outlined.Group)
+    PushKind.APPROVAL -> KindDescription(
+        "Approval requests", "Your Mac asks this device to approve an SSH key, the command-line tool or an app.", Icons.Outlined.LaptopMac,
+    )
+    PushKind.SECURITY -> KindDescription("Security alerts", "A new device signed in, or your master password or Secret Key changed.", Icons.Outlined.Security)
+    PushKind.SHARING -> KindDescription("Sharing", "Someone invited you to a vault or an organization.", Icons.Outlined.Group)
 }
 
 /** Settings → Notifications: the iPhone app's NotificationSettingsView, with Android 13's permission prompt. */
@@ -110,6 +112,7 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
                             testTag = "notifications-${kind.value}-toggle",
                             icon = description.icon,
                             enabled = settings.isServerSending,
+                            subtitle = description.detail,
                         )
                     }
                     // The UnifiedPush app has not given an endpoint yet, or the user has several and has not chosen one.
