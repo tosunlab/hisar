@@ -24,6 +24,12 @@ func TestPushSettingsAreJSONWithEveryKindOnAtFirst(t *testing.T) {
 	if err := hisar.SetPushToken("apns", "token"); err != nil {
 		t.Fatalf("a token while signed out: %v", err)
 	}
+	if err := hisar.SetWebPushEndpoint("https://ntfy.example/upAbC", "public-key", "secret"); err != nil {
+		t.Fatalf("a Web Push subscription while signed out: %v", err)
+	}
+	if err := hisar.RemoveWebPushEndpoint(); err != nil {
+		t.Fatalf("removing it while signed out: %v", err)
+	}
 	if err := hisar.SetPushKindEnabled("marketing", true); err == nil {
 		t.Fatal("an unknown kind was taken")
 	}

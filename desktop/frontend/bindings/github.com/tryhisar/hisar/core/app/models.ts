@@ -649,7 +649,8 @@ export interface Person {
  */
 export interface PushSettings {
     /**
-     * IsAvailable is true once the server sends push notifications and this phone has a push token.
+     * IsAvailable is true once the server sends push notifications and this phone has a push token or a Web Push
+     * subscription.
      */
     "isAvailable": boolean;
 

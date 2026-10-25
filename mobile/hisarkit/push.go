@@ -15,3 +15,16 @@ func (hisar *Hisar) SetPushKindEnabled(kind string, isEnabled bool) error {
 func (hisar *Hisar) GetPushSettings() (string, error) {
 	return encodeJSON(hisar.service.GetPushSettings(), nil)
 }
+
+// SetWebPushEndpoint takes the Web Push subscription an Android phone's UnifiedPush distributor gave the app: the
+// endpoint URL, and the phone's public key and authentication secret in base64url. Call it off the main thread: it
+// reaches the server.
+func (hisar *Hisar) SetWebPushEndpoint(endpoint, p256dh, auth string) error {
+	return hisar.service.SetWebPushEndpoint(endpoint, p256dh, auth)
+}
+
+// RemoveWebPushEndpoint forgets the subscription once the distributor ended it, and tells the server. Call it off the
+// main thread.
+func (hisar *Hisar) RemoveWebPushEndpoint() error {
+	return hisar.service.RemoveWebPushEndpoint()
+}

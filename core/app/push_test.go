@@ -132,3 +132,43 @@ func TestPushReportsAnUnreachableRelay(t *testing.T) {
 		t.Fatalf("settings = %+v", settings)
 	}
 }
+
+func TestWebPushEndpointGoesToTheServerWithoutTheRelay(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	relay := startFakeRelayForApp(t)
+	fixture.apiServer.pushRelayURL = relay.server.URL
+
+	if err := fixture.service.SetWebPushEndpoint("https://ntfy.example/upAbC", "public-key", "secret"); err != nil {
+		t.Fatal(err)
+	}
+	registration := fixture.apiServer.getPushRegistration()
+	want := apitypes.WebPushSubscription{Endpoint: "https://ntfy.example/upAbC", P256DH: "public-key", Auth: "secret"}
+	if registration == nil || registration.Handle != "" || registration.WebPush == nil || *registration.WebPush != want || len(registration.AllKind) != 3 {
+		t.Fatalf("server registration = %+v", registration)
+	}
+	if relay.registeredCount() != 0 {
+		t.Fatal("a Web Push subscription went to the push relay")
+	}
+	if settings := fixture.service.GetPushSettings(); !settings.IsAvailable {
+		t.Fatalf("settings = %+v", settings)
+	}
+	if err := fixture.service.SetPushKindEnabled("sharing", false); err != nil {
+		t.Fatal(err)
+	}
+	if registration := fixture.apiServer.getPushRegistration(); registration.WebPush == nil || len(registration.AllKind) != 2 {
+		t.Fatalf("after turning sharing off = %+v", registration)
+	}
+
+	if err := fixture.service.RemoveWebPushEndpoint(); err != nil {
+		t.Fatal(err)
+	}
+	if fixture.apiServer.getPushRegistration() != nil {
+		t.Fatal("the server still sends to a subscription the distributor ended")
+	}
+	if settings := fixture.service.GetPushSettings(); settings.IsAvailable {
+		t.Fatalf("settings after the distributor ended the subscription = %+v", settings)
+	}
+	if err := fixture.service.SetWebPushEndpoint("https://ntfy.example/upAbC", "", "secret"); err == nil {
+		t.Fatal("an incomplete subscription was taken")
+	}
+}
