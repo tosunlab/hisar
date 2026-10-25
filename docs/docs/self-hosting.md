@@ -130,14 +130,18 @@ The server never sends credentials without TLS. The emails are plain text withou
 ## Push notifications
 
 The iPhone and Android apps get a notification when your Mac asks the phone to approve something, when a device signs
-in to the account, and when someone shares with you ([Design](./design.md) §9.12). Your server sends these through
-Hisar's push relay at `https://push.tryhisar.com`, which holds Apple's and Google's keys for the official apps, so you
-need no Apple or Google account. A notification names only its kind ("Approval requested"), never what or who it is
-about; the relay never learns which server or account sent it.
+in to the account, and when someone shares with you ([Design](./design.md) §9.12). A notification names only its kind
+("Approval requested"), never what or who it is about.
+
+- **iPhones:** your server sends through Hisar's push relay at `https://push.tryhisar.com`, which holds Apple's key for
+  the official app, so you need no Apple account. The relay never learns which server or account sent a push.
+- **Android phones:** your server sends to the UnifiedPush app each user installed, such as ntfy, by Web Push, encrypted
+  to the phone, with no relay and no Google service. The server needs outbound HTTPS to those apps' servers, and it
+  refuses endpoints on private or loopback addresses, so a ntfy on your own network must have a public address.
 
 To turn notifications off, open **Settings → Push notifications** in the dashboard and empty the field, or set
-`HISAR_PUSH_RELAY_URL=off` in `.env`. Your own relay (`hisar-server push-relay`, with its own APNs key and Firebase
-project) only works with apps you build and sign yourself.
+`HISAR_PUSH_RELAY_URL=off` in `.env`; this turns off Android notifications too. Your own relay (`hisar-server push-relay`,
+with its own APNs key) only works with an iPhone app you build and sign yourself.
 
 ## Instance settings
 
