@@ -86,6 +86,7 @@ ui_test_add_account ITEM_CATEGORIES_ "android-item-categories-$(date +%s)-$RANDO
 ui_test_add_account ITEM_APP_LINK_ "android-item-app-link-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account QR_SCANNER_ "android-qr-scanner-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PASSKEY_UV_ "android-passkey-uv-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account IDLE_LOCK_ "android-idle-lock-$(date +%s)-$RANDOM@example.com"
 for account in WEB CODE APP SAVE; do
   ui_test_add_account "AUTOFILL_SERVICE_${account}_" "android-autofill-service-$(echo "$account" | tr A-Z a-z)-$(date +%s)-$RANDOM@example.com"
 done
