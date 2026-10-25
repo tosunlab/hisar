@@ -1,5 +1,8 @@
 package com.tryhisar.hisar.ui
 
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasTestTag
 import com.tryhisar.hisar.HisarUITestCase
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -37,7 +40,9 @@ class AccountLifecycleUITests : HisarUITestCase() {
         waitFor("delete-account-password")
         saveScreenshot("account-life-delete-account-preview")
         type(NEW_MASTER_PASSWORD, "delete-account-password")
+        composeRule.onNode(hasTestTag("delete-account-submit")).assertIsNotEnabled()
         type(email, "delete-account-email")
+        composeRule.onNode(hasTestTag("delete-account-submit")).assertIsEnabled()
         saveScreenshot("account-life-delete-account")
         tap("delete-account-submit")
         tap("delete-account-confirm")
