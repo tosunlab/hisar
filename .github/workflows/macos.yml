@@ -228,3 +228,21 @@ jobs:
           name: HisarUITests-${{ matrix.part }}.xcresult
           path: HisarUITests.xcresult
           retention-days: 7
+
+  # The one check of this workflow that the main branch ruleset requires, so auto-merge waits for every job above. It passes
+  # when each job passed or was skipped; scripts/check-ci-result-needs.py fails a job missing from its needs. A run for an
+  # unrelated label skips every job, and a draft's run skips the iPhone UI tests, so their result goes by another name: on the
+  # same commit it would otherwise stand in for the real run's result.
+  result:
+    name: ${{ ((github.event.action == 'labeled' && github.event.label.name != 'run-macos') || github.event.pull_request.draft) && 'macOS and iOS result (not required)' || 'macOS and iOS result' }}
+    needs: [changes, desktop-macos, ios-build, ios]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check that every job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -n "$failed" ]; then echo "$failed"; exit 1; fi

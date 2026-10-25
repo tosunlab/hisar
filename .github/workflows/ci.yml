@@ -45,6 +45,8 @@ jobs:
         run: bash scripts/test-app-paths.sh
       - name: Check immutable build image inputs
         run: python3 scripts/check-build-images.py
+      - name: Check that the result jobs need every job
+        run: python3 scripts/check-ci-result-needs.py
       - name: Test release evidence and publication gates
         run: python3 scripts/test-release-evidence.py
       - name: Compare the pull request with its base
@@ -521,3 +523,19 @@ jobs:
             mobile/android/*/build/reports
             mobile/android/*/build/outputs/androidTest-results
           retention-days: 7
+
+  # The one check of this workflow that the main branch ruleset requires, so auto-merge waits for every job above. It passes
+  # when each job passed or was skipped; scripts/check-ci-result-needs.py fails a job missing from its needs.
+  result:
+    name: CI result
+    needs: [changes, go, server-image-check, desktop-frontend, desktop-linux, desktop-flatpak, extension, extension-firefox, docs, raycast, omp, share-link-page, admin, android-build, android]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check that every job passed or was skipped
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: |
+          failed=$(jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped") | "\(.key): \(.value.result)"' <<<"$NEEDS")
+          if [ -n "$failed" ]; then echo "$failed"; exit 1; fi
