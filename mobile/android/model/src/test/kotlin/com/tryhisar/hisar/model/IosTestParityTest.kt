@@ -47,7 +47,9 @@ class IosTestParityTest {
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,
             "testDeletingAnItemRemovesItsPasskeyIdentities" to identityStore,
             "testCredentialIdentitiesSkipNonLoginsAndEmptyUsernames" to identityStore,
-            "testCredentialIdentitiesOfferAServerOnItsAdminConsole" to identityStore,
+            "testCredentialIdentitiesOfferAServerOnItsAdminConsole" to
+                "Only identity publication is inapplicable because Android has no credential identity store. " +
+                    "VaultSearchTests.testServersAreFoundByTheirHostPortAndAddress covers the search and category assertions.",
             "testOneTimeCodeIdentitiesForLoginsWithACode" to identityStore,
             "testSignedOutStartClearsLeftoverIdentities" to identityStore,
             "testForegroundWhileSignedOutClearsLeftoverIdentities" to identityStore,
