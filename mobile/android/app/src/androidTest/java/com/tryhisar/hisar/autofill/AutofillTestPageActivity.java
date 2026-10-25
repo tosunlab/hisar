@@ -23,11 +23,12 @@ public class AutofillTestPageActivity extends Activity {
     public static final String EXTRA_PAGE = "page";
 
     private static final String REPORT = """
-        <p id="result">nothing typed</p>
+        <p id="result">nothing typed</p><p id="exact-result"></p>
         <script>
           function report() {
             const fields = [...document.querySelectorAll('input')].map(input => input.name + '=' + (input.type === 'password' ? input.value.length + ' characters' : input.value));
             document.getElementById('result').textContent = fields.join('; ');
+            document.getElementById('exact-result').textContent = [...document.querySelectorAll('input')].map(input => input.name + '=' + input.value).join('; ');
           }
           document.querySelectorAll('input').forEach(input => input.addEventListener('input', report));
           setInterval(report, 300);

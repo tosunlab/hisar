@@ -150,6 +150,19 @@ class AutofillServiceUITests {
         }
         assertEquals("new-user", waitForObject(By.res("editor-username")).text)
         saveScreenshot("autofill-service-save-editor")
+        assertEquals("https://accounts.example.com", waitForObject(By.res("editor-website-0")).text)
+        waitForObject(By.res("editor-save")).click()
+        assertTrue("the editor closes after saving", device.wait(Until.gone(By.res("editor-save")), 20_000))
+        val personal = testBackend.listAllVault().single { it.name == "Personal" }
+        val saved = testBackend.listAllItem(personal.id).single { it.username == "new-user" }
+        val detail = testBackend.getItem(personal.id, saved.id)
+        assertEquals("new-user", detail.username)
+        assertEquals("new-password", detail.password)
+        assertEquals(listOf("https://accounts.example.com"), detail.allURL)
+
+        openPage(AutofillTestPageActivity.LOGIN_PAGE)
+        chooseSuggestion(detail.title, By.res("username"))
+        assertNotNull("a later visit receives the exact saved login", device.wait(Until.findObject(By.text("username=new-user; password=new-password")), 20_000))
     }
 
     private fun openPage(page: String) = open(AutofillTestPageActivity::class.java.name, By.res("result")) { putExtra(AutofillTestPageActivity.EXTRA_PAGE, page) }
