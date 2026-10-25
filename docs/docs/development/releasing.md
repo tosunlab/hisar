@@ -57,6 +57,10 @@ Actions → Release → Run workflow (or `gh workflow run release.yml -f app=ser
   `1.0.0`; an app's first release is `0.1.0`), and `custom` takes **Version** as it is: `0.2.1`, or `0.3.0-rc1` for a custom
   build that is built the same way, marked "(custom build)" and can never be published. A custom build may run on any branch.
 - **Dry run**: only the plan.
+- **Skip the tests**: for emergencies only. The run skips CI and the macOS tests and goes straight to the tag and the build.
+  The run name, its summary, `release-evidence.json` (`tests.ci: "skipped"`) and a warning on the publish step all say that
+  the release was not tested; the approver of the publication sees it there. Everything else, the attestations included, is
+  unchanged.
 
 The run then goes on by itself (`scripts/plan-release.sh` plans it):
 
@@ -66,7 +70,8 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
    release without such commits, and warns about a patch release with a breaking change (`feat(core)!: …` or a
    `BREAKING CHANGE:` footer). The run summary shows the plan.
 2. **CI** runs every `ci.yml` job on the exact event commit, plus the desktop jobs in `macos.yml` for desktop releases.
-   Successful tests are mandatory, including custom builds. There is no `runTests=false` bypass. A dry run stops after the plan.
+   Successful tests are mandatory, including custom builds, unless the run was started with **Skip the tests**; then both
+   jobs are skipped and the evidence records it. A dry run stops after the plan.
 3. **Tag**: the annotated tag on that commit; its message is the title and the changes, which the desktop app's Sparkle
    update shows as release notes. The deploy key in `RELEASE_DEPLOY_KEY` pushes it, past the tag ruleset.
 4. **Build**: `release-<app>.yml`, which only the Release workflow calls. The desktop app builds the Mac DMG and Sparkle update
@@ -76,9 +81,9 @@ The run then goes on by itself (`scripts/plan-release.sh` plans it):
    `hisar-extension-firefox-X.Y.Z.xpi`. AMO signs each version once, even if its prerelease is never published, so the next
    release needs a new version; a custom build's Firefox package is the unsigned `hisar-extension-firefox-X.Y.Z-label-unsigned.zip`.
    Every builder checks out the immutable event SHA, not the release tag.
-5. **Prerelease** contains every release file and `release-evidence.json`. The evidence binds the commit, test results, workflow
-   run, file digests, and the server or docs image digest. Keyless GitHub artifact attestations cover every final file and the
-   image index after packaging and signing. The run verifies them and rejects a moved release tag before creating the prerelease.
+5. **Prerelease** contains every release file and `release-evidence.json`. The evidence binds the commit, test results (or that
+   the tests were skipped), workflow run, file digests, and the server or docs image digest. Keyless GitHub artifact
+   attestations cover every final file and the image index after packaging and signing. The run verifies them and rejects a moved release tag before creating the prerelease.
 6. **Publish**: waits in the environment `publish-<app>` until a reviewer approves it (Review deployments on the run). A newer
    release of the app that reaches this step replaces an older one still waiting. It refuses a version older than the app's
    published release, verifies the evidence and attestations against the tag's full source SHA with the verifier from that

@@ -284,8 +284,9 @@ pushes the `<app>-X.Y.Z` tag, and builds through `release-<app>.yml`. It attests
 docs image digests, creates the GitHub prerelease, then verifies that evidence before approval-gated publication in
 `publish-<app>`. Dry runs only plan. Custom builds require the same tests and cannot publish. An extension release also has the Firefox add-on,
 which addons.mozilla.org signs as unlisted (`AMO_JWT_ISSUER`, `AMO_JWT_SECRET`); publishing it writes `updates.json` to the
-prerelease `extension-firefox-updates`. `runTests=false` is not
-supported. What an app is built from lives in `scripts/app-paths.sh`, shared with
+prerelease `extension-firefox-updates`. `skipTests=true` (the "Skip the tests" checkbox, for emergencies) skips CI and the
+macOS tests; the evidence then records `tests.ci: "skipped"`, which `scripts/release-evidence.py` accepts only when the run
+asked for it, and the publish step warns the approver. What an app is built from lives in `scripts/app-paths.sh`, shared with
 `scripts/detect-app-changes.sh`; a new build input of an app goes there. A release's install text is
 `.github/release-notes/<app>.md`, and `scripts/check-release-files.sh` lists the files each release must have.
 

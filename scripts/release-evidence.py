@@ -50,11 +50,16 @@ def files(directory):
     return result
 
 
+def tests(app, result):
+    """The test record of a release whose CI, and macOS tests for the desktop app, ended with the given result."""
+    return {"ci": result, "macos": result if app == "desktop" else "not-required"}
+
+
 def validate(record, app, tag, sha, repository, directory):
     require(record.get("schema") == 1, "unsupported release evidence schema")
     for key, expected in (("app", app), ("tag", tag), ("commit", sha), ("repository", repository)):
         require(record.get(key) == expected, f"release evidence {key} differs")
-    require(record.get("tests") == {"ci": "success", "macos": "success" if app == "desktop" else "not-required"},
+    require(record.get("tests") in (tests(app, "success"), tests(app, "skipped")),
             "required exact-commit release tests did not succeed")
     require(record.get("files") == files(directory), "release file set or bytes differ from test evidence")
     require(re.fullmatch(r"[1-9][0-9]*", record.get("runID", "")), "missing release workflow run")
@@ -94,12 +99,17 @@ def main():
                             "macos": os.environ.get("MACOS_RESULT") if app == "desktop" else "not-required"},
                   "files": files(directory),
                   "image": {"name": IMAGES[app][0], "digest": os.environ.get("IMAGE_DIGEST", "")} if app in IMAGES else None}
+        # Skipped tests are evidence only when the run asked to skip them; a test job skipped for any other reason is a bug.
+        require(os.environ.get("SKIP_TESTS") == "true" or "skipped" not in record["tests"].values(),
+                "release tests were skipped without skipTests")
         validate(record, app, tag, sha, repository, directory)
         evidence.write_text(json.dumps(record, indent=2, sort_keys=True) + "\n")
     elif command == "verify":
         require(evidence.is_file() and not evidence.is_symlink(), "missing release evidence")
         record = json.loads(evidence.read_text())
         validate(record, app, tag, sha, repository, directory)
+        if record["tests"] == tests(app, "skipped"):
+            print(f"::warning::{tag} was released with its tests skipped; nothing ran against {sha}", flush=True)
         subprocess.run(["bash", str(Path(__file__).with_name("check-release-files.sh")),
                         app, tag.removeprefix(app + "-"), str(directory)], check=True)
         # Verify the evidence itself as well as every byte it identifies.
