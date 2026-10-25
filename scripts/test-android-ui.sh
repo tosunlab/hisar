@@ -262,9 +262,8 @@ if "$RUN_RECOVERY"; then
   if ! "$RECOVERY_ONLY"; then
     (cd "$ROOT/mobile/android" && ./gradlew --console=plain installDebug installDebugAndroidTest) || STATUS=$?
   fi
-  SERVICES_VERSION=$(sed -n 's/^androidxTestServices = "\(.*\)"/\1/p' "$ROOT/mobile/android/gradle/libs.versions.toml")
-  SERVICES_APK=$(find "${GRADLE_USER_HOME:-$HOME/.gradle}/caches/modules-2/files-2.1/androidx.test.services/test-services/$SERVICES_VERSION" -name '*.apk')
-  [ -f "$SERVICES_APK" ] || { echo "the pinned Android test services APK is missing" >&2; exit 1; }
+  SERVICES_APK=$(cd "$ROOT/mobile/android" && ./gradlew --quiet :app:printTestServicesApk)
+  [ -f "$SERVICES_APK" ] || { echo "Gradle did not resolve the pinned Android test services APK: $SERVICES_APK" >&2; exit 1; }
   "$ADB" install -r -g "$SERVICES_APK"
   if [ "$("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')" -ge 30 ]; then
     "$ADB" shell appops set androidx.test.services MANAGE_EXTERNAL_STORAGE allow

@@ -50,6 +50,15 @@ tasks.named("preBuild") {
     }
 }
 
+// scripts/test-android-ui.sh installs the test services APK itself for the test that restarts the app's process.
+tasks.register("printTestServicesApk") {
+    val testUtilities: FileCollection = configurations.getByName("androidTestUtil")
+    inputs.files(testUtilities)
+    doLast {
+        println(testUtilities.single { it.name.startsWith("test-services-") })
+    }
+}
+
 dependencies {
     implementation(project(":model"))
     implementation(files(hisarKit))
