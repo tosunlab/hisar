@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -81,7 +83,13 @@ fun PasswordGeneratorSheet(model: AppModel, onUse: (String) -> Unit, onDismiss: 
             Text("Password generator", style = HisarType.headline, color = HisarTheme.colors.label, modifier = Modifier.weight(1f), textAlign = TextAlign.Center)
             GlassTextButton("Use", onClick = { onUse(password) }, testTag = "generator-use", enabled = password.isNotEmpty(), isProminent = true)
         }
-        Column(Modifier.padding(horizontal = 16.dp).padding(bottom = 32.dp)) {
+        Column(
+            Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(bottom = 32.dp),
+        ) {
             PasswordGeneratorForm(model, password, onPasswordChange = { password = it })
         }
     }

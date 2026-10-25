@@ -94,3 +94,8 @@ This validation does not normalize the password or change the shared Go checks.
 
 Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
 does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
+
+### Password generator
+
+The item editor's generator sheet scrolls its options within the available height, including in landscape.
+Close and Use stay above the scrolling content. The Settings generator remains a separate scrolling screen.

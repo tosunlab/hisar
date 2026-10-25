@@ -80,6 +80,7 @@ ui_test_add_account CREDENTIAL_CHANGE_ "android-credential-change-$(date +%s)-$R
 ui_test_add_account ITEM_EDITOR_ "android-item-editor-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_EDITOR_EDIT_ "android-item-editor-edit-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account IMPORT_CANCEL_ "android-import-cancel-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account GENERATOR_SHEET_ "android-generator-sheet-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_DETAIL_ "android-item-detail-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_CATEGORIES_ "android-item-categories-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_APP_LINK_ "android-item-app-link-$(date +%s)-$RANDOM@example.com"
