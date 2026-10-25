@@ -72,6 +72,16 @@ class ItemModelTests {
         val model = harness.startUnlockedModel()
         assertEquals(listOf(FakeBackend.gitHubPasskey), model.unlockedData.value.allPasskey)
 
+        val loaded = assertNotNull(model.itemEditor.loadItem("personal", "github"))
+        val draft = ItemEditorDraft.open(loaded, isNew = false).withItem { it.copy(title = "GitHub work") }
+        val saved = assertNotNull(model.itemEditor.saveItem("personal", draft.buildItem()))
+        assertEquals("GitHub work", saved.title)
+        assertEquals(listOf(FakeBackend.gitHubPasskey.credentialID), saved.allPasskey.map { it.credentialID }, "editing keeps the same credential")
+        assertEquals(loaded.allPasskey, saved.allPasskey)
+        assertEquals(saved.allPasskey, model.item.loadItem("personal", "github")?.allPasskey)
+        assertEquals(saved.allPasskey.map { it.credentialID }, model.unlockedData.value.allPasskey.map { it.credentialID })
+        assertEquals(saved.allPasskey, model.findSummary("personal", "github")?.allPasskey)
+
         val afterDelete = model.item.deletePasskey("personal", "github", FakeBackend.gitHubPasskey.credentialID)
         assertEquals(emptyList(), afterDelete?.allPasskey)
         assertEquals(emptyList(), model.unlockedData.value.allPasskey)
@@ -94,6 +104,20 @@ class ItemModelTests {
         model.copyField("personal", "github", "one-time code", "One-time code")
         assertEquals(listOf("github.one-time code"), harness.backend.allCopiedField)
         assertEquals("One-time code copied. It clears in about 2 minutes.", model.notice.value)
+
+        val draft = ItemDetail(
+            title = "Mastodon",
+            username = "alice",
+            allURL = listOf("mastodon.social"),
+            password = "secret",
+            oneTimePassword = "jbsw y3dp ehpk 3pxp",
+        )
+        val saved = assertNotNull(model.itemEditor.saveItem("personal", draft))
+        assertEquals("otpauth://totp/?secret=JBSWY3DPEHPK3PXP", saved.oneTimePassword)
+        val summary = assertNotNull(model.findSummary("personal", saved.id))
+        assertEquals("", summary.oneTimePassword, "new summaries never carry the secret")
+        assertTrue(summary.hasOneTimePassword)
+        assertEquals(FakeBackend.oneTimeCode, model.item.loadOneTimeCode("personal", saved.id))
     }
 
     @Test

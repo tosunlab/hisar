@@ -29,6 +29,12 @@ android/app/       :app: HisarApplication, MainActivity, HisarKitBackend, the pl
   src/debug/       PreviewActivity, which shows AutoFill's screens to UI tests
 ```
 
+Website, admin-console and download links accept internationalized host names. The JVM model checks such a host in
+its IDNA ASCII form, but Open, Share, labels and Copy keep the stored address as written and leave the conversion to
+the browser: `java.net.IDN` is IDNA2003, which would turn `faß.de` into the different domain `fass.de`. Emergency Kit
+server validation and invite app links share this URI parsing, and invite links keep the original server origin when
+they prefill Create account.
+
 ### Build and test
 
 You need Go, JDK 21 (the Gradle daemon asks for it in `android/gradle/gradle-daemon-jvm.properties`), and the Android
@@ -79,3 +85,24 @@ release builds sign in only over `https://`. The release APK is unsigned.
 
 To fill logins, turn on Hisar in Settings → AutoFill → **Turn on Hisar AutoFill**. Chrome fills with Google until you
 choose **Autofill using another service** in Chrome's autofill settings and restart Chrome; the same screen opens them.
+
+Focus a one-time-code field to fill only its current code, even on a form that also has a username and password.
+Focus the username or password to fill the login without changing the code field.
+
+On Android 14 and later, Credential Manager's password sheet also offers **Search Hisar** for logins that do not match
+the requesting app or site. For an unlinked app, choose **Only this time** or **Always use for this app** before filling.
+When the sheet has no matching credentials, Hisar returns your search choice to the sheet for you to confirm.
+
+### Account passwords and exports
+
+The new master password and encrypted-export passphrase forms count extended grapheme clusters for their
+ten-character minimum, like the iPhone app. Combining marks, flags and joined emoji each stay with their character.
+This validation does not normalize the password or change the shared Go checks.
+
+Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
+does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
+
+### Password generator
+
+The item editor's generator sheet scrolls its options within the available height, including in landscape.
+Close and Use stay above the scrolling content. The Settings generator remains a separate scrolling screen.

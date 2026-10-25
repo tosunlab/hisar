@@ -20,7 +20,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -39,12 +42,14 @@ import kotlinx.coroutines.launch
 /** UnifiedPush's own list of distributors, ntfy among them. */
 private const val DISTRIBUTORS_URL = "https://unifiedpush.org/users/distributors/"
 
-private data class KindDescription(val title: String, val icon: ImageVector)
+private data class KindDescription(val title: String, val detail: String, val icon: ImageVector)
 
 private fun describe(kind: PushKind): KindDescription = when (kind) {
-    PushKind.APPROVAL -> KindDescription("Approval requests", Icons.Outlined.LaptopMac)
-    PushKind.SECURITY -> KindDescription("Security alerts", Icons.Outlined.Security)
-    PushKind.SHARING -> KindDescription("Sharing", Icons.Outlined.Group)
+    PushKind.APPROVAL -> KindDescription(
+        "Approval requests", "Your Mac asks this device to approve an SSH key, the command-line tool or an app.", Icons.Outlined.LaptopMac,
+    )
+    PushKind.SECURITY -> KindDescription("Security alerts", "A new device signed in, or your master password or Secret Key changed.", Icons.Outlined.Security)
+    PushKind.SHARING -> KindDescription("Sharing", "Someone invited you to a vault or an organization.", Icons.Outlined.Group)
 }
 
 /** Settings → Notifications: the iPhone app's NotificationSettingsView, with Android 13's permission prompt. */
@@ -62,9 +67,13 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
     LaunchedEffect(lifecycleState) {
         if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) notifications.refresh()
     }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        if (isGranted) (context as? MainActivity)?.startPush()
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         scope.launch { notifications.refresh() }
+    }
+    var wasPermissionGranted by remember { mutableStateOf(isPermissionGranted) }
+    LaunchedEffect(isPermissionGranted) {
+        if (isPermissionGranted && !wasPermissionGranted) (context as? MainActivity)?.startPush()
+        wasPermissionGranted = isPermissionGranted
     }
     val hasAskedBefore = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         (context as? Activity)?.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) == true
@@ -102,6 +111,7 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
                             testTag = "notifications-${kind.value}-toggle",
                             icon = description.icon,
                             enabled = settings.isServerSending,
+                            subtitle = description.detail,
                         )
                     }
                     // The UnifiedPush app has not given an endpoint yet, or the user has several and has not chosen one.
@@ -115,20 +125,27 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
                         )
                     }
                 }
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasAskedBefore -> FormButtonRow(
-                    "Turn on notifications",
-                    onClick = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                    testTag = "notifications-turn-on",
-                    icon = Icons.Outlined.Notifications,
-                )
-                else -> FormButtonRow(
-                    "Allow notifications in Android settings",
-                    onClick = {
-                        context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-                    },
-                    testTag = "notifications-open-settings",
-                    icon = Icons.Outlined.Settings,
-                )
+                else -> {
+                    // Android stops showing its prompt once the user denied it for good, which looks the same here as never
+                    // asked, so its settings stay one tap away.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasAskedBefore) {
+                        FormButtonRow(
+                            "Turn on notifications",
+                            onClick = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                            testTag = "notifications-turn-on",
+                            icon = Icons.Outlined.Notifications,
+                        )
+                        RowDivider()
+                    }
+                    FormButtonRow(
+                        "Allow notifications in Android settings",
+                        onClick = {
+                            context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                        },
+                        testTag = "notifications-open-settings",
+                        icon = Icons.Outlined.Settings,
+                    )
+                }
             }
         }
         (errorMessage ?: settings.errorMessage)?.let { message ->

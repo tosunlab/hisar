@@ -1,8 +1,10 @@
 package com.tryhisar.hisar
 
+import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
+import android.os.Build
 import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.core.content.edit
@@ -40,12 +42,32 @@ class ScreenshotSetting(context: Context) {
     }
 }
 
-/** Keeps the activity's window secure while screenshots are not allowed, now and after every change of the setting. */
+/**
+ * Keeps the activity out of the app switcher's captures, and its window secure while screenshots are not allowed, now
+ * and after every change of the setting. A window that cannot be kept out of the captures stays secure.
+ */
 fun ComponentActivity.followScreenshotSetting() {
+    val isRecentsCaptureOff = turnOffRecentsCapture()
     val setting = ScreenshotSetting(this)
-    applyScreenshotSetting(setting.isAllowed)
+    applyScreenshotSetting(setting.isAllowed && isRecentsCaptureOff)
     lifecycleScope.launch {
-        repeatOnLifecycle(Lifecycle.State.CREATED) { setting.allowedChanges.collect(::applyScreenshotSetting) }
+        repeatOnLifecycle(Lifecycle.State.CREATED) { setting.allowedChanges.collect { applyScreenshotSetting(it && isRecentsCaptureOff) } }
+    }
+}
+
+// Recents shows the theme's background instead of a capture of the task: sheets and dialogs are windows of their own,
+// above the privacy cover, and a capture is taken before the cover is drawn. Before API 33 the switch is
+// setDisablePreviewScreenshots, outside the SDK but open to apps on Android 10 to 12L.
+private fun Activity.turnOffRecentsCapture(): Boolean {
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        setRecentsScreenshotEnabled(false)
+        return true
+    }
+    return try {
+        Activity::class.java.getMethod("setDisablePreviewScreenshots", Boolean::class.javaPrimitiveType).invoke(this, true)
+        true
+    } catch (_: ReflectiveOperationException) {
+        false
     }
 }
 

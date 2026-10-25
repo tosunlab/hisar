@@ -181,7 +181,7 @@ class FillRequestParserTests {
             ),
             app("com.example.bank"),
         )
-        assertEquals(LoginForm(AutofillSource.App("com.example.bank"), "a", "b", "c"), form)
+        assertEquals(LoginForm(AutofillSource.App("com.example.bank"), "a", "b", null), form)
     }
 
     @Test
@@ -219,6 +219,25 @@ class FillRequestParserTests {
         val form = parse(listOf(page(input("code", "type" to "text", hints = listOf("one-time-code")))))
         assertEquals(LoginForm(AutofillSource.Web("http", "127.0.0.1"), null, null, "code"), form)
         assertEquals(RequestKind.ONE_TIME_CODE, form?.kind)
+    }
+
+    @Test
+    fun testMixedFormPartitionsTheFocusedCodeFromLoginFields() {
+        val fields = listOf(
+            input("u", hints = listOf("username")),
+            input("p", hints = listOf("password")),
+            input("first-code", hints = listOf("one-time-code")),
+            input("focused-code", hints = listOf("one-time-code")),
+        )
+        for (focusedID in listOf("u", "p", "focused-code", null)) {
+            val form = parse(listOf(page(*fields.map { it.copy(isFocused = it.autofillID == focusedID) }.toTypedArray())))
+            val expected = if (focusedID == "focused-code") {
+                LoginForm(AutofillSource.Web("http", "127.0.0.1"), null, null, "focused-code")
+            } else {
+                LoginForm(AutofillSource.Web("http", "127.0.0.1"), "u", "p", null)
+            }
+            assertEquals(expected, form)
+        }
     }
 
     @Test

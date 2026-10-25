@@ -189,6 +189,7 @@ fun ToggleRow(
     testTag: String,
     icon: ImageVector? = null,
     enabled: Boolean = true,
+    subtitle: String? = null,
 ) {
     val colors = HisarTheme.colors
     Row(
@@ -201,7 +202,10 @@ fun ToggleRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         if (icon != null) RowIcon(icon, if (enabled) colors.tint else colors.secondaryLabel)
-        Text(text, style = HisarType.body, color = if (enabled) colors.label else colors.secondaryLabel, modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(text, style = HisarType.body, color = if (enabled) colors.label else colors.secondaryLabel)
+            if (subtitle != null) Text(subtitle, style = HisarType.footnote, color = colors.secondaryLabel)
+        }
         Switch(
             checked = isOn,
             onCheckedChange = null,

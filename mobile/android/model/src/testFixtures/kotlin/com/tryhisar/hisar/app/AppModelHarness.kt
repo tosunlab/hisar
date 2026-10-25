@@ -41,17 +41,19 @@ class FakeNotificationPlatform : NotificationPlatform {
     var isGranted = false
     var isDistributorInstalledValue = true
     var isReminderPosted = false
-        private set
     var postCount = 0
+        private set
+    var reminderWaitingUntil: Instant? = null
         private set
 
     override fun isPermissionGranted(): Boolean = isGranted
 
     override fun isDistributorInstalled(): Boolean = isDistributorInstalledValue
 
-    override fun postApprovalReminder() {
+    override fun postApprovalReminder(waitingUntil: Instant) {
         postCount += 1
         isReminderPosted = true
+        reminderWaitingUntil = waitingUntil
     }
 
     override fun cancelApprovalReminder() {

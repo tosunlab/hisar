@@ -3,6 +3,7 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.PushKind
 import com.tryhisar.hisar.model.PushSettings
 import com.tryhisar.hisar.model.VaultBackend
+import java.time.Instant
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -15,15 +16,20 @@ interface NotificationPlatform {
     fun isPermissionGranted(): Boolean
     fun isDistributorInstalled(): Boolean
 
-    /** Posts the reminder of an approval left waiting, after a moment; it says no more than a push would. */
-    fun postApprovalReminder()
+    /**
+     * Posts the reminder of an approval left waiting, after a moment, unless [waitingUntil], when the last waiting
+     * approval expires, has passed by then; it says no more than a push would.
+     */
+    fun postApprovalReminder(waitingUntil: Instant)
+
+    /** Removes the reminder, still due or already shown, even one an earlier process left. */
     fun cancelApprovalReminder()
 
     /** A phone without notifications, as in tests that do not need them. */
     object None : NotificationPlatform {
         override fun isPermissionGranted(): Boolean = false
         override fun isDistributorInstalled(): Boolean = false
-        override fun postApprovalReminder() = Unit
+        override fun postApprovalReminder(waitingUntil: Instant) = Unit
         override fun cancelApprovalReminder() = Unit
     }
 }
@@ -66,10 +72,13 @@ class NotificationsModel(private val context: ModelContext, private val platform
         PushKind.parse(kindText)?.let { openedKind.value = it }
     }
 
-    /** Leaves the reminder when Hisar goes to the background with an approval waiting, and removes it otherwise. */
-    fun remindOfWaitingApproval(isWaiting: Boolean) {
+    /**
+     * Leaves the reminder when Hisar goes to the background with an approval waiting until [waitingUntil], the expiry of
+     * the last one, and removes it otherwise.
+     */
+    fun remindOfWaitingApproval(waitingUntil: Instant?) {
         platform.cancelApprovalReminder()
-        if (isWaiting && settings.value.isEnabled(PushKind.APPROVAL) && platform.isPermissionGranted()) platform.postApprovalReminder()
+        if (waitingUntil != null && settings.value.isEnabled(PushKind.APPROVAL) && platform.isPermissionGranted()) platform.postApprovalReminder(waitingUntil)
     }
 
     fun clearApprovalReminder() {

@@ -65,7 +65,8 @@ object FillRequestParser {
         val classified = allField.mapNotNull { node -> classify(node)?.let { node to it } }
         val password = classified.firstOrNull { it.second == FieldKind.PASSWORD }?.first
         val username = classified.firstOrNull { it.second == FieldKind.USERNAME }?.first ?: password?.let { findTextFieldBefore(allField, it) }
-        val oneTimeCode = classified.firstOrNull { it.second == FieldKind.ONE_TIME_CODE }?.first
+        val oneTimeCode = classified.firstOrNull { it.second == FieldKind.ONE_TIME_CODE && it.first.isFocused }?.first
+            ?: classified.firstOrNull { it.second == FieldKind.ONE_TIME_CODE }?.first
         if (username == null && password == null && oneTimeCode == null) return null
         val caller = certificateSHA256?.let { AndroidApp(packageName, it) }
         val source = when {
@@ -73,7 +74,11 @@ object FillRequestParser {
             browsers.isBrowser(caller) -> AutofillSource.UnknownPage(packageName)
             else -> AutofillSource.App(packageName)
         }
-        return LoginForm(source, username?.autofillID, password?.autofillID, oneTimeCode?.autofillID)
+        return if (oneTimeCode?.isFocused == true || (username == null && password == null)) {
+            LoginForm(source, null, null, oneTimeCode?.autofillID)
+        } else {
+            LoginForm(source, username?.autofillID, password?.autofillID, null)
+        }
     }
 
     /** The text fields that are or lie below a node with a page address, each with the page of the nearest such node. */

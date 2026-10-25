@@ -1,5 +1,17 @@
 package com.tryhisar.hisar.model
 
+import java.text.BreakIterator
+import java.util.Locale
+
+// Not regex \X: Android 10's ICU regex splits flags and joined emoji, unlike its BreakIterator and Swift's String.count.
+private fun String.characterCount(): Int {
+    val boundaries = BreakIterator.getCharacterInstance(Locale.ROOT)
+    boundaries.setText(this)
+    var count = 0
+    while (boundaries.next() != BreakIterator.DONE) count++
+    return count
+}
+
 /** The rules and sentences of changing the master password, replacing the Secret Key and deleting the account. */
 object AccountLifecycleLogic {
     const val MINIMUM_PASSWORD_LENGTH = 10
@@ -10,7 +22,7 @@ object AccountLifecycleLogic {
 
     fun describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String): String? = when {
         newPassword.isEmpty() -> null
-        newPassword.length < MINIMUM_PASSWORD_LENGTH -> "Use at least $MINIMUM_PASSWORD_LENGTH characters."
+        newPassword.characterCount() < MINIMUM_PASSWORD_LENGTH -> "Use at least $MINIMUM_PASSWORD_LENGTH characters."
         newPassword == currentPassword -> "The new master password is the same as the current one."
         repeatedPassword.isNotEmpty() && repeatedPassword != newPassword -> "The passwords do not match."
         else -> null
@@ -74,7 +86,7 @@ object ExportLogic {
     /** What is missing before an export can start, or null. */
     fun checkInput(format: ExportFormat, passphrase: String, repeatedPassphrase: String, minPassphraseLength: Int): String? = when {
         format != ExportFormat.ENCRYPTED -> null
-        passphrase.length < minPassphraseLength -> "Use at least $minPassphraseLength characters for the export passphrase."
+        passphrase.characterCount() < minPassphraseLength -> "Use at least $minPassphraseLength characters for the export passphrase."
         passphrase != repeatedPassphrase -> "The passphrases don't match."
         else -> null
     }

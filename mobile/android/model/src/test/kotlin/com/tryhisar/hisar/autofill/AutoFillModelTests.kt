@@ -52,7 +52,7 @@ class AutoFillModelTests {
     private val bankApp = AndroidApp("com.example.bank", "AB:".repeat(31) + "AB")
     private val bankAppTarget = FillTarget.App(bankApp, "Example Bank")
 
-    private fun TestScope.createModel() = AutoFillModel(
+    private fun TestScope.createModel(completeSelection: ((LoginMatch) -> Unit)? = null) = AutoFillModel(
         scope = backgroundScope,
         ioDispatcher = StandardTestDispatcher(testScheduler),
         createBackend = { backend.also { it.verifyPasskey = { reason -> allDeviceOwnerReason += reason; isDeviceOwnerConfirming } } },
@@ -71,6 +71,7 @@ class AutoFillModelTests {
             rejectExcludedRegistration = { rejectedRegistrationCount += 1 },
             completeUnlock = { allUnlockCompletion += Unit },
         ),
+        completeSelection = completeSelection,
     )
 
     private fun websites(vararg allServiceIdentifier: String) = FillTarget.Websites(allServiceIdentifier.toList())
@@ -139,6 +140,25 @@ class AutoFillModelTests {
         assertEquals(listOf("Bank"), model.allVisibleOtherLogin.map { it.title })
         model.select(model.allVisibleOtherLogin[0])
         assertEquals(listOf(LoginCredential("alice@example.com", "bank-password")), allCompletedCredential)
+    }
+
+    @Test
+    fun testChoosingALoginForTheSheetReturnsOnlyTheExplicitSelection() = runTest {
+        backend.seedSignedIn(state = VaultStatus.STATE_LOCKED)
+        val selected = mutableListOf<LoginMatch>()
+        val model = createModel { selected += it }
+        model.prepareCredentialList(bankAppTarget)
+        assertTrue(model.unlock(FakeBackend.PASSWORD))
+        model.updateSearchText("Bank")
+        model.loadAllOtherLogin()
+        model.select(model.allVisibleOtherLogin.single())
+        assertTrue(selected.isEmpty(), "choosing an unlinked login still needs confirmation")
+        model.fillLoginToLink(isLinked = false)
+        assertEquals(listOf("personal/bank"), selected.map { it.id })
+        assertTrue(allCompletedCredential.isEmpty(), "the gateway returns a selection, not the password")
+        assertTrue(allCopiedCode.isEmpty())
+        assertTrue(backend.getItem("personal", "bank").allAndroidApp.isEmpty())
+        assertEquals(LoginCredential("alice@example.com", "bank-password"), model.provideCredentialWithoutUserInteraction(selected.single().id, null))
     }
 
     @Test

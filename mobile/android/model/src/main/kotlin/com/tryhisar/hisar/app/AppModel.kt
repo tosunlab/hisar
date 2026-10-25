@@ -117,6 +117,7 @@ class AppModel(
 
     /** Builds the backend, then shows the screen its status asks for; a backend that cannot start shows why. */
     suspend fun start(createBackend: () -> VaultBackend) {
+        notifications.clearApprovalReminder()
         // Events are not replayed, so they are collected before the backend is first asked for its status.
         scope.launch(start = CoroutineStart.UNDISPATCHED) { backendEvents.collect(::handleEvent) }
         val started = try {
@@ -251,7 +252,7 @@ class AppModel(
     fun handleDidEnterBackground() {
         enteredBackgroundAt = now()
         mutableIsInForeground.value = false
-        notifications.remindOfWaitingApproval(approvals.allPendingApproval.value.isNotEmpty())
+        notifications.remindOfWaitingApproval(approvals.allPendingApproval.value.mapNotNull { it.expiryDate }.maxOrNull())
     }
 
     /**

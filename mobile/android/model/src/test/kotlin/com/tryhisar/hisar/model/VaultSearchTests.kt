@@ -123,6 +123,22 @@ class VaultSearchTests {
     }
 
     @Test
+    fun testServersAreFoundByTheirHostPortAndAddress() {
+        val server = makeReference("Build server", username = "admin", allURL = listOf("https://console.example.com"), category = ItemDetail.CATEGORY_SERVER)
+            .withItem { it.copy(server = ItemServer(host = "build.example.com", port = "2222")) }
+        val ipv6Server = makeReference("Database", category = ItemDetail.CATEGORY_SERVER)
+            .withItem { it.copy(server = ItemServer(host = "2001:db8::1", port = "5432")) }
+        val note = makeReference("Notes", username = "admin", allURL = listOf("https://notes.example.com"), category = ItemDetail.CATEGORY_SECURE_NOTE)
+        val allItem = listOf(server, ipv6Server, note, makeReference("GitHub"))
+        for (searchText in listOf("build.example", "2222", "build.example.com:2222")) {
+            assertEquals(listOf("Build server"), VaultLogic.filterAllItem(allItem, searchText).titles(), searchText)
+        }
+        assertEquals(listOf("Database"), VaultLogic.filterAllItem(allItem, searchText = "[2001:db8::1]:5432").titles())
+        assertEquals(listOf("Build server", "Database"), allItem.filter { ItemCategory.SERVERS.includes(it.item) }.titles())
+        assertEquals(listOf("GitHub"), allItem.filter { ItemCategory.LOGINS.includes(it.item) }.titles())
+    }
+
+    @Test
     fun testDatabasesAreFoundByTheirEngineAddressAndName() {
         val database = makeReference("Prod db", username = "app", category = ItemDetail.CATEGORY_DATABASE)
             .withItem { it.copy(database = ItemDatabase(engine = "postgresql", engineName = "PostgreSQL", host = "db.example.com", port = "5432", name = "orders")) }

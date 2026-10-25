@@ -97,6 +97,27 @@ class PushNotificationTests {
     }
 
     @Test
+    fun testTheReminderLastsUntilTheLastWaitingApprovalExpires() = runTest {
+        val harness = AppModelHarness(this)
+        harness.notificationPlatform.isGranted = true
+        val allApproval = listOf(150L, 60L).mapIndexed { index, secondCount ->
+            PhoneApproval(requestID = "waiting-$index", requesterDeviceName = "MacBook Pro", expiresAt = currentDate.plusSeconds(secondCount).toString(), kind = PhoneApproval.KIND_SSH)
+        }
+        val model = createUnlockedModel(harness, allApproval)
+        model.handleDidEnterBackground()
+        assertEquals(currentDate.plusSeconds(150), harness.notificationPlatform.reminderWaitingUntil, "a reminder delivered after every request expired would point at nothing")
+    }
+
+    @Test
+    fun testALaunchRemovesTheReminderAnEarlierProcessLeft() = runTest {
+        val harness = AppModelHarness(this)
+        harness.notificationPlatform.isGranted = true
+        harness.notificationPlatform.isReminderPosted = true
+        createUnlockedModel(harness)
+        assertFalse(harness.notificationPlatform.isReminderPosted, "the reopened app shows the request itself")
+    }
+
+    @Test
     fun testNoReminderWithoutAWaitingApprovalOrPermission() = runTest {
         val harness = AppModelHarness(this)
         harness.notificationPlatform.isGranted = true
@@ -104,7 +125,7 @@ class PushNotificationTests {
         model.handleDidEnterBackground()
         assertEquals(0, harness.notificationPlatform.postCount)
         harness.notificationPlatform.isGranted = false
-        model.notifications.remindOfWaitingApproval(isWaiting = true)
+        model.notifications.remindOfWaitingApproval(waitingUntil = currentDate.plusSeconds(60))
         assertEquals(0, harness.notificationPlatform.postCount)
     }
 }

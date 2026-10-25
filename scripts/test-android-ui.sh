@@ -14,7 +14,7 @@ set -euo pipefail
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 : "${ANDROID_HOME:?set ANDROID_HOME to the Android SDK}"
 ADB=$ANDROID_HOME/platform-tools/adb
-SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,HarnessServerTests
+SMOKE_TESTS=HisarKitBackendTests,KeystoreSecretKeyStoreTests,BiometricKeystoreTests,ClipboardAdapterTests,testAccountItemLockAndSignInFlow,testBiometricUnlockAfterTurningItOn,AutofillServiceUITests#testWebViewFormFillsAfterUnlock,testRegisterPasskeyThenSignInWithIt,HarnessServerTests,testAppSwitcherHidesAnOpenSheet
 # The runner matches tests_regex against package.Class#test: part 1 names its classes, and part 2 leaves out those of part 1.
 source "$ROOT/scripts/ui-test-parts.sh"
 TESTS_REGEX=
@@ -79,13 +79,22 @@ ui_test_add_account PLATFORM_TIME_ZONE_ "android-platform-time-zone-$(date +%s)-
 ui_test_add_account CREDENTIAL_CHANGE_ "android-credential-change-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_EDITOR_ "android-item-editor-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_EDITOR_EDIT_ "android-item-editor-edit-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account IMPORT_CANCEL_ "android-import-cancel-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account GENERATOR_SHEET_ "android-generator-sheet-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_DETAIL_ "android-item-detail-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_CATEGORIES_ "android-item-categories-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account ITEM_APP_LINK_ "android-item-app-link-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account QR_SCANNER_ "android-qr-scanner-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account PASSKEY_UV_ "android-passkey-uv-$(date +%s)-$RANDOM@example.com"
-for account in WEB CODE APP SAVE; do
-  ui_test_add_account "AUTOFILL_SERVICE_${account}_" "android-autofill-service-$(echo "$account" | tr A-Z a-z)-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account IDLE_LOCK_ "android-idle-lock-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account VAULT_MOVE_ "android-vault-move-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account PASSWORD_SEARCH_ "android-password-search-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account PRIVACY_ "android-privacy-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account FILE_HANDOFF_EXPORT_ "android-file-handoff-export-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account FILE_HANDOFF_KIT_ "android-file-handoff-kit-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account FILE_HANDOFF_FAILURE_ "android-file-handoff-failure-$(date +%s)-$RANDOM@example.com"
+for account in WEB CODE APP SAVE SAVE_CODE RECENTS; do
+  ui_test_add_account "AUTOFILL_SERVICE_${account}_" "android-autofill-service-$(echo "$account" | tr A-Z_ a-z-)-$(date +%s)-$RANDOM@example.com"
 done
 # The phone approval test signs in to an account whose Mac is played by hisar-ui-test-mac: it signs up first, then sends
 # the phone its requests and saves each answer it verified in the Personal vault.
@@ -226,6 +235,17 @@ if [ -n "$TESTS" ]; then
   # `class` would lose every name after the first comma.
   TESTS_REGEX="^(${SELECTED//./\\.})(#|\$)"
 fi
+RECOVERY_TEST=com.tryhisar.hisar.ui.AccountLifecycleUITests#testChangePasswordReplaceSecretKeyAndDeleteAccount
+RUN_RECOVERY=false
+if python3 -c 'import re, sys; sys.exit(not re.search(sys.argv[1] or ".*", sys.argv[2]))' "$TESTS_REGEX" "$RECOVERY_TEST"; then
+  RUN_RECOVERY=true
+fi
+RECOVERY_ONLY=false
+case "${ANDROID_UI_TESTS:-}" in
+  AccountLifecycleUITests|AccountLifecycleUITests#testChangePasswordReplaceSecretKeyAndDeleteAccount|testChangePasswordReplaceSecretKeyAndDeleteAccount) RECOVERY_ONLY=true ;;
+  "$RECOVERY_TEST"|"${RECOVERY_TEST%#*}") RECOVERY_ONLY=true ;;
+esac
+TESTS_REGEX="^(?!${RECOVERY_TEST//./\\.}\$)${TESTS_REGEX:-.*}"
 # The quotes keep the regex whole in the device's shell.
 if [ -n "$TESTS_REGEX" ]; then
   GRADLE_ARGUMENTS+=("-Pandroid.testInstrumentationRunnerArguments.tests_regex='$TESTS_REGEX'")
@@ -235,7 +255,62 @@ OUTPUT=$ROOT/mobile/android/app/build/outputs/connected_android_test_additional_
 RESULTS=$ROOT/mobile/android/app/build/outputs/androidTest-results/connected
 rm -rf "$OUTPUT" "$RESULTS"
 STATUS=0
-(cd "$ROOT/mobile/android" && ./gradlew --console=plain connectedDebugAndroidTest "${GRADLE_ARGUMENTS[@]}") || STATUS=$?
+if "$RECOVERY_ONLY"; then
+  (cd "$ROOT/mobile/android" && ./gradlew --console=plain installDebug installDebugAndroidTest) || STATUS=$?
+else
+  (cd "$ROOT/mobile/android" && ./gradlew --console=plain connectedDebugAndroidTest "${GRADLE_ARGUMENTS[@]}") || STATUS=$?
+fi
+
+# Instrumentation shares the app process. These phases preserve app data while force-stop discards every in-memory key.
+if "$RUN_RECOVERY"; then
+  mkdir -p "$RESULTS/recovery-process-restart"
+  if ! "$RECOVERY_ONLY"; then
+    (cd "$ROOT/mobile/android" && ./gradlew --console=plain installDebug installDebugAndroidTest) || STATUS=$?
+  fi
+  SERVICES_APK=$(cd "$ROOT/mobile/android" && ./gradlew --quiet :app:printTestServicesApk)
+  [ -f "$SERVICES_APK" ] || { echo "Gradle did not resolve the pinned Android test services APK: $SERVICES_APK" >&2; exit 1; }
+  "$ADB" install -r -g "$SERVICES_APK"
+  if [ "$("$ADB" shell getprop ro.build.version.sdk | tr -d '\r')" -ge 30 ]; then
+    "$ADB" shell appops set androidx.test.services MANAGE_EXTERNAL_STORAGE allow
+  fi
+  RECOVERY_STATUS=0
+  RECOVERY_ARGUMENTS=(-e class "$RECOVERY_TEST" -e useTestStorageService true)
+  for VALUE in "${UI_TEST_VALUES[@]}"; do
+    RECOVERY_ARGUMENTS+=(-e "${VALUE%%=*}" "${VALUE#*=}")
+  done
+  "$ADB" shell pm clear com.tryhisar.hisar.debug >/dev/null
+  "$ADB" shell pm clear com.tryhisar.hisar.debug.test >/dev/null
+  for PHASE in prepare-replacement-kit finish-after-process-restart; do
+    PHASE_LOG=$RESULTS/recovery-process-restart/$PHASE.txt
+    if ! "$ADB" shell am instrument -w -r "${RECOVERY_ARGUMENTS[@]}" -e HISAR_UI_TEST_RECOVERY_PHASE "$PHASE" \
+      com.tryhisar.hisar.debug.test/com.tryhisar.hisar.HisarTestRunner >"$PHASE_LOG" 2>&1 ||
+      ! grep -q '^OK (1 test)' "$PHASE_LOG"; then
+      cat "$PHASE_LOG" >&2
+      RECOVERY_STATUS=1
+      break
+    fi
+    cat "$PHASE_LOG"
+    "$ADB" shell am force-stop com.tryhisar.hisar.debug
+    if [ -n "$("$ADB" shell pidof com.tryhisar.hisar.debug | tr -d '\r')" ]; then
+      echo "the recovery app process survived force-stop" >&2
+      RECOVERY_STATUS=1
+      break
+    fi
+  done
+  {
+    printf '<testsuite name="RecoveryAcrossProcessRestart" tests="1" failures="%s"><testcase name="%s" classname="%s">' \
+      "$RECOVERY_STATUS" "${RECOVERY_TEST#*#}" "${RECOVERY_TEST%#*}"
+    if [ "$RECOVERY_STATUS" != 0 ]; then
+      printf '<failure message="Recovery process-restart phase failed. See prepare-replacement-kit.txt and finish-after-process-restart.txt."/>'
+      STATUS=1
+    fi
+    printf '</testcase></testsuite>\n'
+  } >"$RESULTS/recovery-process-restart/TEST-recovery-process-restart.xml"
+  if [ -n "${HISAR_UI_TEST_SCREENSHOT_DIRECTORY:-}" ]; then
+    mkdir -p "$OUTPUT/recovery-process-restart"
+    "$ADB" pull /sdcard/googletest/test_outputfiles/. "$OUTPUT/recovery-process-restart" >/dev/null
+  fi
+fi
 # Gradle passes a run whose test runner crashed before it found any test, or whose ANDROID_UI_TESTS matched none.
 if [ "$STATUS" = 0 ] && ! grep -rqsE '<testsuites? [^>]*tests="[1-9]' "$RESULTS"; then
   echo "no test ran" >&2

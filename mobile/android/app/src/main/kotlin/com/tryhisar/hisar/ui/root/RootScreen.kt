@@ -144,7 +144,6 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
     }
 }
 
-/** What the app shows while it is not in front, so the app switcher never shows vault content. */
 @Composable
 private fun PrivacyCover() {
     Box(

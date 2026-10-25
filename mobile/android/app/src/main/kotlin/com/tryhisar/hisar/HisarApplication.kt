@@ -50,6 +50,9 @@ open class HisarApplication : Application(), BackendProvider {
     /** Receives another app's credentials through Android's credential transfer; instrumented tests answer for it. */
     open fun createCredentialExchangeReceiver(activity: Activity): CredentialExchangeReceiver = CredentialTransfer(activity)
 
+    /** Copies a file to share into the folder the FileProvider serves; instrumented tests hold it to close its screen meanwhile. */
+    open fun copyForShare(source: File, target: File): File = source.copyTo(target, overwrite = true)
+
     override fun onCreate() {
         super.onCreate()
         deleteLeftoverHandoffFiles(cacheDir)

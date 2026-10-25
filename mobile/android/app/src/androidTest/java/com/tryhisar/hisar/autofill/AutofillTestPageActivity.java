@@ -23,11 +23,12 @@ public class AutofillTestPageActivity extends Activity {
     public static final String EXTRA_PAGE = "page";
 
     private static final String REPORT = """
-        <p id="result">nothing typed</p>
+        <p id="result">nothing typed</p><p id="exact-result"></p>
         <script>
           function report() {
             const fields = [...document.querySelectorAll('input')].map(input => input.name + '=' + (input.type === 'password' ? input.value.length + ' characters' : input.value));
             document.getElementById('result').textContent = fields.join('; ');
+            document.getElementById('exact-result').textContent = [...document.querySelectorAll('input')].map(input => input.name + '=' + input.value).join('; ');
           }
           document.querySelectorAll('input').forEach(input => input.addEventListener('input', report));
           setInterval(report, 300);
@@ -45,6 +46,15 @@ public class AutofillTestPageActivity extends Activity {
         <!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>
         <form action="javascript:void(0)">
           <p><input id="code" name="code" autocomplete="one-time-code" inputmode="numeric" placeholder="Code"></p>
+        </form>""" + REPORT + "</body></html>";
+
+    public static final String MIXED_PAGE = """
+        <!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>
+        <form action="welcome" method="get">
+          <p><input id="username" name="username" autocomplete="username" placeholder="Email"></p>
+          <p><input id="password" name="password" type="password" autocomplete="current-password" placeholder="Password"></p>
+          <p><input id="code" name="code" autocomplete="one-time-code" inputmode="numeric" placeholder="Code"></p>
+          <p><button type="submit">Sign in</button></p>
         </form>""" + REPORT + "</body></html>";
 
     private static final String WELCOME_PAGE = "<!doctype html><html><body><p id=\"result\">signed in</p></body></html>";

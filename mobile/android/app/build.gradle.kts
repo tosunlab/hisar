@@ -50,6 +50,14 @@ tasks.named("preBuild") {
     }
 }
 
+tasks.register("printTestServicesApk") {
+    val testUtilities: FileCollection = configurations.getByName("androidTestUtil")
+    inputs.files(testUtilities)
+    doLast {
+        println(testUtilities.single { it.name.startsWith("test-services-") })
+    }
+}
+
 dependencies {
     implementation(project(":model"))
     implementation(files(hisarKit))
