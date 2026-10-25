@@ -92,7 +92,7 @@ ui_test_add_account PASSWORD_SEARCH_ "android-password-search-$(date +%s)-$RANDO
 ui_test_add_account PRIVACY_ "android-privacy-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account FILE_HANDOFF_EXPORT_ "android-file-handoff-export-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account FILE_HANDOFF_KIT_ "android-file-handoff-kit-$(date +%s)-$RANDOM@example.com"
-for account in WEB CODE APP SAVE SAVE_CODE; do
+for account in WEB CODE APP SAVE SAVE_CODE RECENTS; do
   ui_test_add_account "AUTOFILL_SERVICE_${account}_" "android-autofill-service-$(echo "$account" | tr A-Z_ a-z-)-$(date +%s)-$RANDOM@example.com"
 done
 # The phone approval test signs in to an account whose Mac is played by hisar-ui-test-mac: it signs up first, then sends

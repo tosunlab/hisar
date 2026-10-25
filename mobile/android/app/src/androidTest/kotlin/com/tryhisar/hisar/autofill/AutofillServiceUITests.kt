@@ -16,6 +16,9 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import com.tryhisar.hisar.HisarUITestCase.Companion.MASTER_PASSWORD
+import com.tryhisar.hisar.countInk
+import com.tryhisar.hisar.findRecentsCard
+import com.tryhisar.hisar.takeScreenshot
 import com.tryhisar.hisar.model.ItemDetail
 import java.util.concurrent.TimeoutException
 import org.junit.After
@@ -182,6 +185,30 @@ class AutofillServiceUITests {
             type("second-password", "username=second-user; password=15 characters; code=")
             saveTypedLogin("second-user", "second-password")
         }
+    }
+
+    @Test
+    fun testAppSwitcherHidesTheLoginPicker() {
+        signUpWithLogins("AUTOFILL_SERVICE_RECENTS_", login("Example Bank", "recents-user", "recents-password", "bank.example.com"))
+
+        openForm()
+        chooseSuggestion("Search Hisar", By.hint("Email"))
+        waitForObject(By.res("autofill-search")).text = "bank"
+        val login = waitForObject(By.res("autofill-login-Example Bank")).visibleBounds
+        val inFront = countInk(takeScreenshot(), login)
+        assertTrue("a screenshot shows the picker's login while it is in front ($inFront marked pixels)", inFront > 0)
+
+        device.pressHome()
+        device.pressRecentApps()
+        // The picker sits on top of the form's task. Measured: API 31's launcher names that task after the picker, Hisar,
+        // and API 37's after the form.
+        val card = device.findRecentsCard { it == "Hisar" || it.endsWith("Test form") }
+        saveScreenshot("autofill-service-recents")
+        val inRecents = countInk(takeScreenshot(), card)
+        assertTrue("Recents shows the picker's card with Hisar's logins on it ($inRecents marked pixels of ${card.width() * card.height()})", inRecents * 1000 < card.width() * card.height())
+
+        device.click(card.centerX(), card.centerY())
+        waitForObject(By.res("autofill-login-Example Bank"))
     }
 
     private fun openPage(page: String) = open(AutofillTestPageActivity::class.java.name, By.res("result")) { putExtra(AutofillTestPageActivity.EXTRA_PAGE, page) }
