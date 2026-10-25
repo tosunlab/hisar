@@ -65,7 +65,7 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
         else -> ""
     }
 
-    BackHandler(enabled = !isImporting) { credentialImport.closeCredentialImport() }
+    BackHandler { credentialImport.closeCredentialImport() }
     // The tabs stay composed under the screen, so it comes back to them as they were; taps must not reach them.
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures() }) {
         SettingsScreen(
@@ -79,7 +79,7 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
                     sheet is CredentialImportSheet.Failed -> "Close"
                     else -> "Cancel"
                 }
-                PlainButton(closeTitle, credentialImport::closeCredentialImport, testTag = if (isDone) "credential-import-done" else "credential-import-cancel", enabled = !isImporting)
+                PlainButton(closeTitle, credentialImport::closeCredentialImport, testTag = if (isDone) "credential-import-done" else "credential-import-cancel")
             },
         ) {
             Column(Modifier.testTag("credential-import")) {

@@ -91,3 +91,6 @@ choose **Autofill using another service** in Chrome's autofill settings and rest
 The new master password and encrypted-export passphrase forms count extended grapheme clusters for their
 ten-character minimum, like the iPhone app. Combining marks, flags and joined emoji each stay with their character.
 This validation does not normalize the password or change the shared Go checks.
+
+Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
+does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
