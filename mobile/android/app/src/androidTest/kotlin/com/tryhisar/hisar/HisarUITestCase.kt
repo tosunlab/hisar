@@ -1,6 +1,7 @@
 package com.tryhisar.hisar
 
 import android.graphics.Bitmap
+import android.os.Process
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -209,24 +210,39 @@ abstract class HisarUITestCase {
         return secretKey
     }
 
-    fun finishPendingRecovery(email: String, password: String): String {
+    data class PendingRecoveryKit(val recordTag: String, val secretKey: String, val phase: String, val processID: Int)
+
+    fun preparePendingRecoveryKit(email: String, password: String): PendingRecoveryKit {
         val record = SemanticsMatcher("a pending recovery record") { node ->
             node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("pending-recovery-") == true
         }
         val account = record and hasText(email, substring = true) and !hasText("manual-unlock", substring = true)
         waitFor(account, ACCOUNT_KEY_TIMEOUT)
-        composeRule.onAllNodes(account).onLast().performClick()
-        val isPrecommit = readText("pending-recovery-phase") == "awaiting-kit"
+        val row = composeRule.onAllNodes(account).onLast()
+        val recordTag = row.fetchSemanticsNode().config[SemanticsProperties.TestTag]
+        row.performClick()
+        val phase = readText("pending-recovery-phase")
         type(password, "pending-recovery-password")
         tapWhenEnabled("pending-recovery-export")
         waitFor("pending-recovery-secret-key", ACCOUNT_KEY_TIMEOUT)
         val secretKey = readText("pending-recovery-secret-key")
         saveScreenshot("pending-recovery-kit")
+        return PendingRecoveryKit(recordTag, secretKey, phase, Process.myPid())
+    }
+
+    fun finishPendingRecovery(email: String, password: String, preparedKit: PendingRecoveryKit? = null): String {
+        val kit = preparedKit ?: preparePendingRecoveryKit(email, password)
+        if (preparedKit != null) {
+            check(Process.myPid() != kit.processID) { "recovery must resume in a different app process" }
+            waitFor(hasTestTag(kit.recordTag) and hasText(email, substring = true), ACCOUNT_KEY_TIMEOUT)
+            tap(kit.recordTag)
+            check(readText("pending-recovery-phase") == kit.phase) { "the prepared recovery changed across process restart" }
+        }
         type(password, "pending-recovery-password")
         tapWhenEnabled("pending-recovery-acknowledge")
-        if (isPrecommit) {
+        if (kit.phase == "awaiting-kit") {
             waitFor(hasTestTag("pending-recovery-phase") and hasText("prepared"), ACCOUNT_KEY_TIMEOUT)
-            type(secretKey, "pending-recovery-input-secret-key")
+            type(kit.secretKey, "pending-recovery-input-secret-key")
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-resume")
             waitFor(hasTestTag("pending-recovery-phase") and hasText("delivery-pending"), ACCOUNT_KEY_TIMEOUT)
@@ -237,7 +253,7 @@ abstract class HisarUITestCase {
             !exists(hasTestTag("pending-recovery-phase")) || exists(hasTestTag("pending-recovery-phase") and hasText("manual-unlock"))
         }
         if (exists(hasTestTag("pending-recovery-phase"))) tap("pending-recovery-later")
-        return secretKey
+        return kit.secretKey
     }
 
     /** Signs in to the harness server with an account another device created. */
