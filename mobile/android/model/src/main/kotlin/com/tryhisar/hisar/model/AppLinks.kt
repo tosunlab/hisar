@@ -70,12 +70,7 @@ data class InviteLink(val invite: String) {
         private fun resolveServer(text: String): String? {
             var server = text.trimmingWhitespacesAndNewlines().trimEnd('/')
             if (server.isNotEmpty() && "://" !in server) server = "https://$server"
-            val url = try {
-                URI(server)
-            } catch (_: URISyntaxException) {
-                return null
-            }
-            if (url.scheme?.lowercase() !in listOf("https", "http") || url.host.isNullOrEmpty()) return null
+            if (parseHTTPURI(server) == null) return null
             return server
         }
     }

@@ -31,7 +31,8 @@ android/app/       :app: HisarApplication, MainActivity, HisarKitBackend, the pl
 
 Website, admin-console and download links accept internationalized host names. Android opens them with the host
 converted to IDNA ASCII, while labels and Copy keep the original stored address. The JVM model shares this URI parsing
-with Emergency Kit server validation and leaves user info, ports, paths, queries and fragments unchanged.
+with Emergency Kit server validation and invite app links, and leaves user info, ports, paths, queries and fragments
+unchanged. Invite links keep the original server origin when they prefill Create account.
 
 ### Build and test
 

@@ -206,6 +206,29 @@ class SignInModelTests {
     }
 
     @Test
+    fun testInviteLinkPreservesInternationalServerOrigin() {
+        val link = InviteLink.parse("hisar://invite/abc?server=https%3A%2F%2F%E4%BE%8B%E3%81%88.test%3A8443")
+        assertEquals(InviteLink("https://例え.test:8443/invite/abc"), link)
+        assertEquals("https://xn--r8jz45g.test:8443/invite/abc", VaultLogic.convertToOpenableURL(link!!.invite)?.toString())
+        val expectedByServer = mapOf(
+            "例え.test" to "https://例え.test/invite/abc",
+            " https://例え.test:8443/// " to "https://例え.test:8443/invite/abc",
+            "HTTP://bücher.test:8080" to "HTTP://bücher.test:8080/invite/abc",
+            "http://user:pass@例え.test:8443" to "http://user:pass@例え.test:8443/invite/abc",
+            "https://Example.COM:8443/base%2Fpath" to "https://Example.COM:8443/base%2Fpath/invite/abc",
+            "http://user:pass@[2001:db8::1]:8080" to "http://user:pass@[2001:db8::1]:8080/invite/abc",
+            "https://xn--r8jz45g.test:8443" to "https://xn--r8jz45g.test:8443/invite/abc",
+        )
+        fun appLink(server: String) = "hisar://invite/abc?server=" + java.net.URLEncoder.encode(server, Charsets.UTF_8).replace("+", "%20")
+        for ((server, expected) in expectedByServer) {
+            assertEquals(InviteLink(expected), InviteLink.parse(appLink(server)), server)
+        }
+        for (invalid in listOf("https://例え..test", "https://-例え.test", "https://例え-.test", "https://\u200D.test", "https://例え.test:port", "https://例え.test:８０", "https://例え.test/%zz", "ftp://例え.test")) {
+            assertNull(InviteLink.parse(appLink(invalid)), invalid)
+        }
+    }
+
+    @Test
     fun testInviteLinkPrefillsCreateAccountWhenSignedOut() = runTest {
         val model = AppModelHarness(this).startModel()
         val link = InviteLink("https://hisar.example.com/invite/abc")
