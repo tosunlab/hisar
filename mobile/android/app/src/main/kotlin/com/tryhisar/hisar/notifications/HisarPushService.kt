@@ -20,7 +20,6 @@ class HisarPushService : PushService() {
         // A message the connector could not decrypt was not sent by a Hisar server, which always encrypts.
         if (!message.decrypted) return
         val kind = PushKind.parseMessage(message.content.decodeToString()) ?: return
-        // MainActivity shows an approval request itself, as the iPhone app does; AutoFill and passkey screens do not.
         if (kind == PushKind.APPROVAL && (application as HisarApplication).foregroundActivity.isMainActivityStarted) return
         HisarNotifications.postPush(this, kind)
     }

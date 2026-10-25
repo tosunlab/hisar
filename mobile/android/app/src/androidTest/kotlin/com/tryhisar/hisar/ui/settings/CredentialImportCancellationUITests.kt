@@ -80,7 +80,6 @@ class CredentialImportCancellationUITests : HisarUITestCase() {
     }
 }
 
-/** Relays every request to hisar-server, holding one item-save request at the network boundary. */
 private class ImportSaveBarrier(private val upstream: String) : Closeable {
     private val listener = ServerSocket(0)
     private val workers = Executors.newCachedThreadPool()

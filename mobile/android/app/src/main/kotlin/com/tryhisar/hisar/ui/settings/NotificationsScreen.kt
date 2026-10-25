@@ -70,7 +70,6 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         scope.launch { notifications.refresh() }
     }
-    // A launch without permission started no push, so allowing notifications here or in Android's settings starts it.
     var wasPermissionGranted by remember { mutableStateOf(isPermissionGranted) }
     LaunchedEffect(isPermissionGranted) {
         if (isPermissionGranted && !wasPermissionGranted) (context as? MainActivity)?.startPush()

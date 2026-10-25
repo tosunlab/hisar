@@ -29,7 +29,6 @@ object HisarNotifications {
     private const val REMINDER_ID = 100
     private const val REMINDER_DELAY_MILLISECONDS = 5_000L
 
-    /** The extra on the reminder's alarm: when the last waiting approval expires, in milliseconds since the epoch. */
     internal const val EXTRA_WAITING_UNTIL = "com.tryhisar.hisar.reminder-waiting-until"
 
     fun getChannel(kind: PushKind): String = kind.value
@@ -97,7 +96,6 @@ object HisarNotifications {
         }
     }
 
-    /** Posts the reminder of an approval left waiting; it says no more than a push would. */
     internal fun postApprovalReminder(context: Context) {
         post(context, REMINDER_CHANNEL, REMINDER_ID, PushKind.APPROVAL, context.getString(R.string.push_approval_waiting))
     }
@@ -114,7 +112,6 @@ object HisarNotifications {
 
         override fun isDistributorInstalled(): Boolean = isDistributorInstalled(context)
 
-        // The system's alarm posts the reminder, so it still comes if Android ends Hisar's process in the background.
         override fun postApprovalReminder(waitingUntil: Instant) {
             context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,

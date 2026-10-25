@@ -16,10 +16,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * What the app switcher shows of Hisar on a real account, with screenshots allowed. A sheet is a window of its own,
- * above the activity's privacy cover, so the card Android captures for Recents must hide it as it hides the screen.
- */
 @RunWith(AndroidJUnit4::class)
 class PrivacyUITests : HisarUITestCase() {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()

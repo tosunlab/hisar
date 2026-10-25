@@ -26,11 +26,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/**
- * Sharing a plain export or an Emergency Kit on a real account: Hisar copies the file into the folder its FileProvider
- * serves, and that copy goes when its screen closes, also when the screen closes while the copy is still being made. A
- * share whose copy fails takes only its own copy with it.
- */
 @RunWith(AndroidJUnit4::class)
 class FileHandoffUITests : HisarUITestCase() {
     private val application = ApplicationProvider.getApplicationContext<HisarTestApplication>()
@@ -131,11 +126,6 @@ class FileHandoffUITests : HisarUITestCase() {
         false
     }
 
-    /**
-     * Taps [shareTag] and closes the screen with [close] while the share copy is being made. The copy waits in its folder,
-     * which nothing can delete from meanwhile, as when the screen's deletion listed the folder an instant before the copy
-     * appeared in it: the deletion fails, and the copy is finished after its screen has gone.
-     */
     private fun shareWhileClosing(shareTag: String, close: () -> Unit) {
         val source = findHandoffFile()
         val isCopied = CountDownLatch(1)

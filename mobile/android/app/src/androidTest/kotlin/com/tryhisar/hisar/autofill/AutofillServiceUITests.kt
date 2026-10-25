@@ -157,8 +157,6 @@ class AutofillServiceUITests {
         assertNotNull("a later visit receives the exact saved login", device.wait(Until.findObject(By.text("username=new-user; password=new-password")), 20_000))
     }
 
-    // The system decides whether to save from the latest fill response only, and a field no earlier response covers asks
-    // for a new one, so the code field's response comes between typing a login and signing in.
     @Test
     fun testMixedFormSavesTheTypedLoginAroundTheCodeField() {
         signUpWithLogins("AUTOFILL_SERVICE_SAVE_CODE_")
@@ -237,7 +235,6 @@ class AutofillServiceUITests {
         error("no AutoFill suggestion \"$title\" for $field")
     }
 
-    // Hiding the keyboard takes the focused field's suggestions with it, so a later field's suggestion is not a stale one.
     private fun dismissKeyboard(title: String) {
         device.pressBack()
         assertTrue("the suggestions close", device.wait(Until.gone(By.text(title)), 10_000) && device.wait(Until.gone(By.descStartsWith(title)), 10_000))
@@ -265,7 +262,6 @@ class AutofillServiceUITests {
         }
     }
 
-    /** Signs in with what was typed, accepts the system's offer to save and saves Hisar's editor; returns the saved login. */
     private fun saveTypedLogin(username: String, password: String): ItemDetail {
         waitForObject(By.text("Sign in")).click()
         val save = device.wait(Until.findObject(By.text("Save")), 15_000) ?: error("the system offered no save sheet")

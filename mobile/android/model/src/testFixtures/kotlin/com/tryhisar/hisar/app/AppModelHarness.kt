@@ -40,11 +40,9 @@ class AppModelHarness(private val testScope: TestScope, val backend: FakeBackend
 class FakeNotificationPlatform : NotificationPlatform {
     var isGranted = false
     var isDistributorInstalledValue = true
-    /** True while a reminder is due or shown; a test sets it for one an earlier process left. */
     var isReminderPosted = false
     var postCount = 0
         private set
-    /** The deadline the last reminder was posted with: the expiry of the last of its waiting approvals. */
     var reminderWaitingUntil: Instant? = null
         private set
 

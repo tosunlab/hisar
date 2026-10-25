@@ -72,10 +72,6 @@ fun takeScreenshot(): Bitmap {
 
 private fun crop(screenshot: Bitmap, area: Rect): Bitmap = Bitmap.createBitmap(screenshot, area.left, area.top, area.width(), area.height())
 
-/**
- * The pixels in [area] that stand out from the most common colour of their row as text does, beyond anti-aliasing and
- * shading. A band of one colour across the area, such as a system bar's background in a Recents card, has none.
- */
 fun countInk(screenshot: Bitmap, area: Rect): Int {
     val row = IntArray(area.width())
     return (area.top until area.bottom).sumOf { y ->

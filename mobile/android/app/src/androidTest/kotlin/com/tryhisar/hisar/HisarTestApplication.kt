@@ -35,7 +35,6 @@ class HisarTestApplication : HisarApplication() {
     override fun createCredentialExchangeReceiver(activity: Activity): CredentialExchangeReceiver =
         credentialExchangeReceiver ?: super.createCredentialExchangeReceiver(activity)
 
-    /** Makes the copy a share sends in place of Hisar's own; null copies as Hisar does. */
     var shareCopy: ((source: File, target: File) -> File)? = null
 
     override fun copyForShare(source: File, target: File): File = shareCopy?.invoke(source, target) ?: super.copyForShare(source, target)

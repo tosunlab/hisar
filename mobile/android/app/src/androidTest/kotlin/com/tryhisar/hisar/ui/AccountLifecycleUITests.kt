@@ -96,7 +96,6 @@ class AccountLifecycleUITests : HisarUITestCase() {
         openSettings("open-account")
         tap("open-delete-account")
         waitFor("delete-account-password")
-        // The preview's spinner is the screen's only progress indicator; the submit stays disabled while it shows.
         composeRule.waitUntil("the deletion preview loads", ACCOUNT_KEY_TIMEOUT) {
             !exists(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo))
         }
@@ -113,7 +112,6 @@ class AccountLifecycleUITests : HisarUITestCase() {
         checkpoint.openInternalOutputFile(RECOVERY_CHECKPOINT).close()
     }
 
-    /** Waits for the rejection itself, a fresh error with the submit enabled again, rather than the busy state between. */
     private fun submitRejectedSignIn(reason: String) {
         assertFalse("no earlier error is shown before this attempt", exists(hasTestTag("error-message")))
         tapWhenEnabled("sign-in-submit")
@@ -122,7 +120,6 @@ class AccountLifecycleUITests : HisarUITestCase() {
         assertFalse(reason, exists(hasTestTag("vault-Personal")))
     }
 
-    /** Switching to Create account and back clears the error, as a user would see it go before trying again. */
     private fun clearSignInError() {
         for (mode in listOf("Create account", "Sign in")) {
             composeRule.onNode(hasText(mode) and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()

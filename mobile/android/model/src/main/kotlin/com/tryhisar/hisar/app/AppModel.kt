@@ -117,7 +117,6 @@ class AppModel(
 
     /** Builds the backend, then shows the screen its status asks for; a backend that cannot start shows why. */
     suspend fun start(createBackend: () -> VaultBackend) {
-        // The reminder is the system's alarm, so one an earlier process left may still be due or shown.
         notifications.clearApprovalReminder()
         // Events are not replayed, so they are collected before the backend is first asked for its status.
         scope.launch(start = CoroutineStart.UNDISPATCHED) { backendEvents.collect(::handleEvent) }
