@@ -20,7 +20,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.Lifecycle
@@ -62,9 +65,14 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
     LaunchedEffect(lifecycleState) {
         if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) notifications.refresh()
     }
-    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        if (isGranted) (context as? MainActivity)?.startPush()
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         scope.launch { notifications.refresh() }
+    }
+    // A launch without permission started no push, so allowing notifications here or in Android's settings starts it.
+    var wasPermissionGranted by remember { mutableStateOf(isPermissionGranted) }
+    LaunchedEffect(isPermissionGranted) {
+        if (isPermissionGranted && !wasPermissionGranted) (context as? MainActivity)?.startPush()
+        wasPermissionGranted = isPermissionGranted
     }
     val hasAskedBefore = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
         (context as? Activity)?.shouldShowRequestPermissionRationale(Manifest.permission.POST_NOTIFICATIONS) == true
@@ -115,20 +123,27 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
                         )
                     }
                 }
-                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasAskedBefore -> FormButtonRow(
-                    "Turn on notifications",
-                    onClick = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
-                    testTag = "notifications-turn-on",
-                    icon = Icons.Outlined.Notifications,
-                )
-                else -> FormButtonRow(
-                    "Allow notifications in Android settings",
-                    onClick = {
-                        context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
-                    },
-                    testTag = "notifications-open-settings",
-                    icon = Icons.Outlined.Settings,
-                )
+                else -> {
+                    // Android stops showing its prompt once the user denied it for good, which looks the same here as never
+                    // asked, so its settings stay one tap away.
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasAskedBefore) {
+                        FormButtonRow(
+                            "Turn on notifications",
+                            onClick = { permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) },
+                            testTag = "notifications-turn-on",
+                            icon = Icons.Outlined.Notifications,
+                        )
+                        RowDivider()
+                    }
+                    FormButtonRow(
+                        "Allow notifications in Android settings",
+                        onClick = {
+                            context.startActivity(Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName))
+                        },
+                        testTag = "notifications-open-settings",
+                        icon = Icons.Outlined.Settings,
+                    )
+                }
             }
         }
         (errorMessage ?: settings.errorMessage)?.let { message ->
