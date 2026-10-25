@@ -2,8 +2,11 @@ package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.isEnabled
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextReplacement
 import androidx.test.services.storage.TestStorage
 import com.tryhisar.hisar.HisarUITestCase
@@ -77,18 +80,11 @@ class AccountLifecycleUITests : HisarUITestCase() {
         val saved = JSONObject(checkpoint.openInternalInputFile(RECOVERY_CHECKPOINT).bufferedReader().use { it.readText() })
         type(saved.getString("oldSecretKey"), "sign-in-secret-key")
         type(NEW_MASTER_PASSWORD, "sign-in-password")
-        tapWhenEnabled("sign-in-submit")
-        waitFor(hasTestTag("sign-in-submit") and !isEnabled())
-        waitFor(hasTestTag("sign-in-submit") and isEnabled(), ACCOUNT_KEY_TIMEOUT)
-        waitFor("error-message")
-        assertFalse("the replaced Secret Key cannot sign in", exists(hasTestTag("vault-Personal")))
+        submitRejectedSignIn("the replaced Secret Key cannot sign in")
+        clearSignInError()
         composeRule.onNode(hasTestTag("sign-in-secret-key")).performTextReplacement(newSecretKey)
         composeRule.onNode(hasTestTag("sign-in-password")).performTextReplacement(MASTER_PASSWORD)
-        tapWhenEnabled("sign-in-submit")
-        waitFor(hasTestTag("sign-in-submit") and !isEnabled())
-        waitFor(hasTestTag("sign-in-submit") and isEnabled(), ACCOUNT_KEY_TIMEOUT)
-        waitFor("error-message")
-        assertFalse("the previous password cannot sign in", exists(hasTestTag("vault-Personal")))
+        submitRejectedSignIn("the previous password cannot sign in")
         composeRule.onNode(hasTestTag("sign-in-password")).performTextReplacement(NEW_MASTER_PASSWORD)
         tapWhenEnabled("sign-in-submit")
         waitFor("vault-Personal", ACCOUNT_KEY_TIMEOUT)
@@ -110,6 +106,23 @@ class AccountLifecycleUITests : HisarUITestCase() {
         waitFor("sign-in-mode", ACCOUNT_KEY_TIMEOUT)
         saveScreenshot("account-life-deleted")
         checkpoint.openInternalOutputFile(RECOVERY_CHECKPOINT).close()
+    }
+
+    /** Waits for the rejection itself, a fresh error with the submit enabled again, rather than the busy state between. */
+    private fun submitRejectedSignIn(reason: String) {
+        assertFalse("no earlier error is shown before this attempt", exists(hasTestTag("error-message")))
+        tapWhenEnabled("sign-in-submit")
+        waitFor("error-message", ACCOUNT_KEY_TIMEOUT)
+        waitFor(hasTestTag("sign-in-submit") and isEnabled())
+        assertFalse(reason, exists(hasTestTag("vault-Personal")))
+    }
+
+    /** Switching to Create account and back clears the error, as a user would see it go before trying again. */
+    private fun clearSignInError() {
+        for (mode in listOf("Create account", "Sign in")) {
+            composeRule.onNode(hasText(mode) and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()
+        }
+        waitForGone("error-message")
     }
 
     private companion object {
