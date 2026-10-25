@@ -1,5 +1,16 @@
 package com.tryhisar.hisar.model
 
+import java.util.regex.Pattern
+
+private val graphemePattern = Pattern.compile("\\X")
+
+private fun String.characterCount(): Int {
+    val matcher = graphemePattern.matcher(this)
+    var count = 0
+    while (matcher.find()) count++
+    return count
+}
+
 /** The rules and sentences of changing the master password, replacing the Secret Key and deleting the account. */
 object AccountLifecycleLogic {
     const val MINIMUM_PASSWORD_LENGTH = 10
@@ -10,7 +21,7 @@ object AccountLifecycleLogic {
 
     fun describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String): String? = when {
         newPassword.isEmpty() -> null
-        newPassword.length < MINIMUM_PASSWORD_LENGTH -> "Use at least $MINIMUM_PASSWORD_LENGTH characters."
+        newPassword.characterCount() < MINIMUM_PASSWORD_LENGTH -> "Use at least $MINIMUM_PASSWORD_LENGTH characters."
         newPassword == currentPassword -> "The new master password is the same as the current one."
         repeatedPassword.isNotEmpty() && repeatedPassword != newPassword -> "The passwords do not match."
         else -> null
@@ -74,7 +85,7 @@ object ExportLogic {
     /** What is missing before an export can start, or null. */
     fun checkInput(format: ExportFormat, passphrase: String, repeatedPassphrase: String, minPassphraseLength: Int): String? = when {
         format != ExportFormat.ENCRYPTED -> null
-        passphrase.length < minPassphraseLength -> "Use at least $minPassphraseLength characters for the export passphrase."
+        passphrase.characterCount() < minPassphraseLength -> "Use at least $minPassphraseLength characters for the export passphrase."
         passphrase != repeatedPassphrase -> "The passphrases don't match."
         else -> null
     }

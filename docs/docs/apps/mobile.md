@@ -85,3 +85,9 @@ release builds sign in only over `https://`. The release APK is unsigned.
 
 To fill logins, turn on Hisar in Settings → AutoFill → **Turn on Hisar AutoFill**. Chrome fills with Google until you
 choose **Autofill using another service** in Chrome's autofill settings and restart Chrome; the same screen opens them.
+
+### Account passwords and exports
+
+The new master password and encrypted-export passphrase forms count extended grapheme clusters for their
+ten-character minimum, like the iPhone app. Combining marks, flags and joined emoji each stay with their character.
+This validation does not normalize the password or change the shared Go checks.
