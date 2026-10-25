@@ -4,8 +4,10 @@ name: Release
 # the annotated tag, builds the app, creates the GitHub prerelease with all its files at once, and then waits in the
 # environment publish-<app> until a reviewer approves publishing it (publish.yml). CI tests the exact release commit.
 # Desktop releases also require the macOS tests. A custom build (a version with a -label) stops at the prerelease.
+# "Skip the tests" is for emergencies: the run goes straight to the tag and build, the release evidence records the tests
+# as skipped, and the run name, the summary and the publish step say so to the approver.
 # Re-run failed jobs to continue a run; a new run refuses a tag that exists.
-run-name: Release ${{ inputs.app }} (${{ inputs.type == 'custom' && inputs.version || inputs.type }})${{ inputs.dryRun && ', dry run' || '' }}
+run-name: Release ${{ inputs.app }} (${{ inputs.type == 'custom' && inputs.version || inputs.type }})${{ inputs.dryRun && ', dry run' || '' }}${{ inputs.skipTests && !inputs.dryRun && ', tests skipped' || '' }}
 on:
   workflow_dispatch:
     inputs:
@@ -24,6 +26,10 @@ on:
         default: ""
       dryRun:
         description: Only show the plan
+        type: boolean
+        default: false
+      skipTests:
+        description: "Emergency only: skip the tests. The release records that its tests were skipped"
         type: boolean
         default: false
 
@@ -61,7 +67,7 @@ jobs:
   ci:
     name: CI
     needs: plan
-    if: ${{ !inputs.dryRun }}
+    if: ${{ !inputs.dryRun && !inputs.skipTests }}
     uses: ./.github/workflows/ci.yml
     with:
       baseRef: ""
@@ -69,14 +75,14 @@ jobs:
   macos:
     name: macOS
     needs: plan
-    if: ${{ !inputs.dryRun && inputs.app == 'desktop' }}
+    if: ${{ !inputs.dryRun && !inputs.skipTests && inputs.app == 'desktop' }}
     uses: ./.github/workflows/macos.yml
 
   # The deploy key in RELEASE_DEPLOY_KEY may create tags past the ruleset "tags: only maintainers create".
   tag:
     name: Push the tag
     needs: [plan, ci, macos]
-    if: ${{ !cancelled() && !inputs.dryRun && needs.ci.result == 'success' && (inputs.app != 'desktop' || needs.macos.result == 'success') }}
+    if: ${{ !cancelled() && !inputs.dryRun && needs.ci.result == (inputs.skipTests && 'skipped' || 'success') && (inputs.app != 'desktop' || needs.macos.result == (inputs.skipTests && 'skipped' || 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
@@ -178,7 +184,7 @@ jobs:
   release:
     name: Create the GitHub prerelease
     needs: [plan, ci, macos, tag, build-server, build-cli, build-desktop, build-extension, build-docs]
-    if: ${{ !cancelled() && needs.tag.result == 'success' && needs.ci.result == 'success' && (inputs.app != 'desktop' || needs.macos.result == 'success') && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (needs.build-server.result == 'success' || needs.build-cli.result == 'success' || needs.build-desktop.result == 'success' || needs.build-extension.result == 'success' || needs.build-docs.result == 'success') }}
+    if: ${{ !cancelled() && needs.tag.result == 'success' && needs.ci.result == (inputs.skipTests && 'skipped' || 'success') && (inputs.app != 'desktop' || needs.macos.result == (inputs.skipTests && 'skipped' || 'success')) && !contains(needs.*.result, 'failure') && !contains(needs.*.result, 'cancelled') && (needs.build-server.result == 'success' || needs.build-cli.result == 'success' || needs.build-desktop.result == 'success' || needs.build-extension.result == 'success' || needs.build-docs.result == 'success') }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -192,6 +198,7 @@ jobs:
       VERSION: ${{ needs.plan.outputs.version }}
       TITLE: ${{ needs.plan.outputs.title }}
       PREVIOUS_TAG: ${{ needs.plan.outputs.previousTag }}
+      SKIP_TESTS: ${{ inputs.skipTests }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -246,6 +253,10 @@ jobs:
             *) gh release create "$TAG" --verify-tag --prerelease --latest=false --title "$TITLE" --notes-file "$RUNNER_TEMP/notes.md" "${allFile[@]}" ;;
           esac
           echo "Created the prerelease [$TITLE]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/releases/tag/$TAG)" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$SKIP_TESTS" = true ]; then
+            echo "::warning::$TAG was released with its tests skipped"
+            echo "**The tests were skipped.** Nothing ran against this commit." >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   publish:
     name: Publish

@@ -185,6 +185,36 @@ class ReleaseEvidenceTests(unittest.TestCase):
                     self.assertFalse((self.directory / "release-evidence.json").exists())
             self.env[key] = "success"
 
+    def test_skipped_tests_are_evidence_only_when_the_run_asked_to_skip_them(self):
+        self.fixture("desktop")
+        self.env.update(SKIP_TESTS="true", CI_RESULT="skipped", MACOS_RESULT="skipped")
+        self.create()
+        record = json.loads((self.directory / "release-evidence.json").read_text())
+        self.assertEqual(record["tests"], {"ci": "skipped", "macos": "skipped"})
+        self.assertIn("::warning::", self.verify().stdout)
+        self.env["SKIP_TESTS"] = "false"
+        self.verify()
+
+    def test_skipping_tests_does_not_excuse_failed_or_cancelled_tests(self):
+        self.fixture("desktop")
+        self.env["SKIP_TESTS"] = "true"
+        for key in ("CI_RESULT", "MACOS_RESULT"):
+            for result in ("failure", "cancelled", ""):
+                with self.subTest(key=key, result=result):
+                    self.env[key] = result
+                    self.create(success=False)
+                    self.assertFalse((self.directory / "release-evidence.json").exists())
+            self.env[key] = "skipped"
+
+    def test_half_skipped_tests_cannot_create_evidence(self):
+        self.fixture("desktop")
+        self.env["SKIP_TESTS"] = "true"
+        for ci, macos in (("success", "skipped"), ("skipped", "success")):
+            with self.subTest(ci=ci, macos=macos):
+                self.env.update(CI_RESULT=ci, MACOS_RESULT=macos)
+                self.create(success=False)
+                self.assertFalse((self.directory / "release-evidence.json").exists())
+
     def test_custom_version_still_requires_tested_source_and_files(self):
         self.fixture("desktop", "1.2.3-local")
         self.create()
