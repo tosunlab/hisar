@@ -7,6 +7,7 @@ import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.VaultBackend
 import com.tryhisar.hisar.passkey.RelyingPartyVerifier
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -33,6 +34,11 @@ class HisarTestApplication : HisarApplication() {
 
     override fun createCredentialExchangeReceiver(activity: Activity): CredentialExchangeReceiver =
         credentialExchangeReceiver ?: super.createCredentialExchangeReceiver(activity)
+
+    /** Makes the copy a share sends in place of Hisar's own; null copies as Hisar does. */
+    var shareCopy: ((source: File, target: File) -> File)? = null
+
+    override fun copyForShare(source: File, target: File): File = shareCopy?.invoke(source, target) ?: super.copyForShare(source, target)
 
     override val backend: VaultBackend
         get() = fakeBackend ?: super.backend

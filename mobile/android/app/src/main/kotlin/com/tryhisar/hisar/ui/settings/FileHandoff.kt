@@ -22,6 +22,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
+import com.tryhisar.hisar.HisarApplication
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -82,24 +83,33 @@ fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit 
     }
     return { file ->
         scope.launch {
-            val copy = withContext(Dispatchers.IO) {
-                try {
-                    file.copyTo(File(folder, file.name), overwrite = true)
-                } catch (_: IOException) {
-                    null
+            // The copy blocks and runs to its end even when the screen leaves meanwhile, and the screen's deletion can fail
+            // on a copy that appears while it runs. Cancelled, the coroutine resumes only once the copy has ended, so a
+            // copy that never reached the share sheet is deleted here, after it is complete.
+            var isPublished = false
+            try {
+                val copy = withContext(Dispatchers.IO) {
+                    try {
+                        (context.applicationContext as HisarApplication).copyForShare(file, File(folder, file.name))
+                    } catch (_: IOException) {
+                        null
+                    }
                 }
+                if (copy == null) {
+                    onFailure()
+                    return@launch
+                }
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", copy)
+                val intent = Intent(Intent.ACTION_SEND)
+                    .setType(mimeType)
+                    .putExtra(Intent.EXTRA_STREAM, uri)
+                    .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                intent.clipData = ClipData.newRawUri(file.name, uri)
+                context.startActivity(Intent.createChooser(intent, null))
+                isPublished = true
+            } finally {
+                if (!isPublished) folder.deleteRecursively()
             }
-            if (copy == null) {
-                onFailure()
-                return@launch
-            }
-            val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", copy)
-            val intent = Intent(Intent.ACTION_SEND)
-                .setType(mimeType)
-                .putExtra(Intent.EXTRA_STREAM, uri)
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            intent.clipData = ClipData.newRawUri(file.name, uri)
-            context.startActivity(Intent.createChooser(intent, null))
         }
     }
 }
