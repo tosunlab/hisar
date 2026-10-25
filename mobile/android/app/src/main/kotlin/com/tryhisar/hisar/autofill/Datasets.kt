@@ -27,16 +27,15 @@ class Suggestion(val title: String, val subtitle: String)
  * Builds the datasets of a fill response. A suggestion fills nothing by itself: picking it opens [AutofillActivity],
  * which hands the system the values of that one login, so a secret leaves Hisar only for the login the user picked.
  */
-class Datasets(private val context: Context, private val inlineRequest: InlineSuggestionsRequest?) {
-    private var requestCode = 0
+class Datasets(private val context: Context, private val inlineRequest: InlineSuggestionsRequest?, private val fillRequestID: Int) {
 
     /** How many suggestions the keyboard takes; the dropdown takes any number. */
     val inlineLimit: Int? get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) inlineRequest?.maxSuggestionCount else null
 
     fun buildSuggestion(request: AutofillRequest, suggestion: Suggestion, index: Int): Dataset {
-        val intent = request.writeTo(Intent(context, AutofillActivity::class.java))
+        val intent = request.writeTo(Intent(context, AutofillActivity::class.java)).setIdentifier(fillRequestID.toString())
         // The system adds the request's structure to the intent, so it stays mutable; it names Hisar's own activity.
-        val pendingIntent = PendingIntent.getActivity(context, requestCode++, intent, PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_CANCEL_CURRENT)
+        val pendingIntent = PendingIntent.getActivity(context, index, intent, PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_CANCEL_CURRENT)
         val presentation = buildPresentation(suggestion)
         val inline = buildInlinePresentation(suggestion, index, pendingIntent)
         val builder = Dataset.Builder(presentation)
@@ -71,7 +70,7 @@ class Datasets(private val context: Context, private val inlineRequest: InlineSu
     companion object {
         /** The values of the login the user picked, as [AutofillActivity] returns them to the system. */
         fun buildFilled(context: Context, allValue: List<Pair<AutofillId, String>>, title: String): Dataset {
-            val presentation = Datasets(context, null).buildPresentation(Suggestion(title, ""))
+            val presentation = Datasets(context, null, 0).buildPresentation(Suggestion(title, ""))
             val builder = Dataset.Builder(presentation)
             for ((id, value) in allValue) setValue(builder, id, AutofillValue.forText(value), presentation, null)
             return builder.build()

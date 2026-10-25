@@ -86,6 +86,9 @@ release builds sign in only over `https://`. The release APK is unsigned.
 To fill logins, turn on Hisar in Settings → AutoFill → **Turn on Hisar AutoFill**. Chrome fills with Google until you
 choose **Autofill using another service** in Chrome's autofill settings and restart Chrome; the same screen opens them.
 
+Focus a one-time-code field to fill only its current code, even on a form that also has a username and password.
+Focus the username or password to fill the login without changing the code field.
+
 ### Account passwords and exports
 
 The new master password and encrypted-export passphrase forms count extended grapheme clusters for their

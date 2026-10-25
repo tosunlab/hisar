@@ -43,7 +43,7 @@ class HisarAutofillService : AutofillService() {
                 val app = InstalledApps.readAndroidApp(this, packageName)
                 FillRequestParser.parse(allRoot, packageName, app?.certificateSHA256, PrivilegedBrowserList.read(this))?.let { form ->
                     val inlineRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) request.inlineSuggestionsRequest else null
-                    buildResponse(form, app, Datasets(this, inlineRequest))
+                    buildResponse(form, app, Datasets(this, inlineRequest, request.id))
                 }
             } catch (error: Exception) {
                 Log.w("Hisar", "AutoFill could not answer", error)

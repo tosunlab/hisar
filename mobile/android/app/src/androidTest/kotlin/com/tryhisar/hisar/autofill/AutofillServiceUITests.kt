@@ -82,9 +82,34 @@ class AutofillServiceUITests {
     fun testOneTimeCodeFieldGetsTheCode() {
         signUpWithLogins("AUTOFILL_SERVICE_CODE_", login("Example", "code-user", "code-password", "accounts.example.com", ONE_TIME_PASSWORD))
 
-        openPage(AutofillTestPageActivity.ONE_TIME_CODE_PAGE)
-        chooseSuggestion("Example", By.res("code"))
-        assertNotNull("a six-digit code is filled", device.wait(Until.findObject(By.text(Regex("code=\\d{6}").toPattern())), 10_000))
+        openPage(AutofillTestPageActivity.MIXED_PAGE)
+        chooseSuggestion("Example", By.res("username"))
+        waitForReport("username=code-user; password=13 characters; code=")
+        clearClipboard()
+        waitForCode("username=code-user; password=13 characters; code=") { chooseSuggestion("Example", By.res("code")) }
+
+        testBackend.lock()
+        openPage(AutofillTestPageActivity.MIXED_PAGE)
+        chooseSuggestion("Unlock Hisar", By.res("code"))
+        waitForObject(By.res("unlock-password")).text = MASTER_PASSWORD
+        waitForObject(By.res("unlock-submit")).click()
+        val codeLogin = waitForObject(By.res("autofill-login-Example"))
+        waitForCode("username=; password=0 characters; code=") { codeLogin.click() }
+        clearClipboard()
+        chooseSuggestion("Unlock Hisar", By.res("username"))
+        waitForObject(By.res("autofill-login-Example")).click()
+        assertTrue("username focus still fills the login", device.wait(Until.hasObject(By.text(Regex("username=code-user; password=13 characters; code=\\d{6}").toPattern())), 10_000))
+
+        clearClipboard()
+        val personal = testBackend.listAllVault().single { it.name == "Personal" }
+        val saved = testBackend.listAllItem(personal.id).single { it.title == "Example" }
+        val caller = checkNotNull(InstalledApps.readAndroidApp(instrumentation.targetContext, testPackage))
+        testBackend.addAndroidApp(personal.id, saved.id, caller.packageName, caller.certificateSHA256)
+        open(AutofillTestFormActivity::class.java.name, By.desc("report")) { putExtra(AutofillTestFormActivity.EXTRA_CODE, true) }
+        chooseSuggestion("Example", By.hint("Email"))
+        waitForReport("username=code-user; password=13 characters; code=")
+        clearClipboard()
+        waitForCode("username=code-user; password=13 characters; code=") { chooseSuggestion("Example", By.hint("Code")) }
     }
 
     @Test
@@ -151,6 +176,17 @@ class AutofillServiceUITests {
             device.pressBack()
         }
         error("no AutoFill suggestion \"$title\" for $field")
+    }
+
+    private fun waitForCode(prefix: String, fill: () -> Unit) {
+        val personal = testBackend.listAllVault().single { it.name == "Personal" }
+        val login = testBackend.listAllItem(personal.id).single { it.title == "Example" }
+        val before = testBackend.getOneTimeCode(personal.id, login.id).code
+        fill()
+        val report = device.wait(Until.findObject(By.text(Regex("${Regex.escape(prefix)}\\d{6}").toPattern())), 10_000)
+        assertNotNull("only the code is filled, preserving the login fields", report)
+        val after = testBackend.getOneTimeCode(personal.id, login.id).code
+        assertTrue("the field receives the current code", report!!.text.removePrefix(prefix) in setOf(before, after))
     }
 
     private fun waitForReport(expected: String) {
