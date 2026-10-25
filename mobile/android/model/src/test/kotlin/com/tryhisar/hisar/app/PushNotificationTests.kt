@@ -97,6 +97,15 @@ class PushNotificationTests {
     }
 
     @Test
+    fun testALaunchRemovesTheReminderAnEarlierProcessLeft() = runTest {
+        val harness = AppModelHarness(this)
+        harness.notificationPlatform.isGranted = true
+        harness.notificationPlatform.isReminderPosted = true
+        createUnlockedModel(harness)
+        assertFalse(harness.notificationPlatform.isReminderPosted, "the reopened app shows the request itself")
+    }
+
+    @Test
     fun testNoReminderWithoutAWaitingApprovalOrPermission() = runTest {
         val harness = AppModelHarness(this)
         harness.notificationPlatform.isGranted = true

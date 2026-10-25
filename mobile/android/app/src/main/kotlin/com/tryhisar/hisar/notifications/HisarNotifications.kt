@@ -1,12 +1,13 @@
 package com.tryhisar.hisar.notifications
 
+import android.app.AlarmManager
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import android.app.Activity
@@ -26,9 +27,6 @@ object HisarNotifications {
     private const val REMINDER_CHANNEL = "reminders"
     private const val REMINDER_ID = 100
     private const val REMINDER_DELAY_MILLISECONDS = 5_000L
-
-    private val reminderHandler = Handler(Looper.getMainLooper())
-    private var pendingReminder: Runnable? = null
 
     fun getChannel(kind: PushKind): String = kind.value
 
@@ -95,23 +93,41 @@ object HisarNotifications {
         }
     }
 
+    /** Posts the reminder of an approval left waiting; it says no more than a push would. */
+    internal fun postApprovalReminder(context: Context) {
+        post(context, REMINDER_CHANNEL, REMINDER_ID, PushKind.APPROVAL, context.getString(R.string.push_approval_waiting))
+    }
+
+    private fun createReminderIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
+        context,
+        0,
+        Intent(context, ApprovalReminderReceiver::class.java),
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+    )
+
     /** Android's side of the app model's notifications. */
     class Platform(private val context: Context) : NotificationPlatform {
         override fun isPermissionGranted(): Boolean = NotificationManagerCompat.from(context).areNotificationsEnabled()
 
         override fun isDistributorInstalled(): Boolean = isDistributorInstalled(context)
 
+        // The system's alarm posts the reminder, so it still comes if Android ends Hisar's process in the background.
         override fun postApprovalReminder() {
-            cancelApprovalReminder()
-            val reminder = Runnable { post(context, REMINDER_CHANNEL, REMINDER_ID, PushKind.APPROVAL, context.getString(R.string.push_approval_waiting)) }
-            pendingReminder = reminder
-            reminderHandler.postDelayed(reminder, REMINDER_DELAY_MILLISECONDS)
+            context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(
+                AlarmManager.ELAPSED_REALTIME_WAKEUP,
+                SystemClock.elapsedRealtime() + REMINDER_DELAY_MILLISECONDS,
+                createReminderIntent(context),
+            )
         }
 
         override fun cancelApprovalReminder() {
-            pendingReminder?.let(reminderHandler::removeCallbacks)
-            pendingReminder = null
+            context.getSystemService(AlarmManager::class.java).cancel(createReminderIntent(context))
             NotificationManagerCompat.from(context).cancel(REMINDER_ID)
         }
     }
+}
+
+/** The alarm of the reminder of an approval left waiting; it may run in a new process after Hisar was closed. */
+class ApprovalReminderReceiver : BroadcastReceiver() {
+    override fun onReceive(context: Context, intent: Intent) = HisarNotifications.postApprovalReminder(context)
 }

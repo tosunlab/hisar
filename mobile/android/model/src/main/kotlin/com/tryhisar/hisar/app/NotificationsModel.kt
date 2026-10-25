@@ -17,6 +17,8 @@ interface NotificationPlatform {
 
     /** Posts the reminder of an approval left waiting, after a moment; it says no more than a push would. */
     fun postApprovalReminder()
+
+    /** Removes the reminder, still due or already shown, even one an earlier process left. */
     fun cancelApprovalReminder()
 
     /** A phone without notifications, as in tests that do not need them. */
