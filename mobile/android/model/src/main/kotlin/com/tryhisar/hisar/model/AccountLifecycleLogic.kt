@@ -1,13 +1,14 @@
 package com.tryhisar.hisar.model
 
-import java.util.regex.Pattern
+import java.text.BreakIterator
+import java.util.Locale
 
-private val graphemePattern = Pattern.compile("\\X")
-
+// Not regex \X: Android 10's ICU regex splits flags and joined emoji, unlike its BreakIterator and Swift's String.count.
 private fun String.characterCount(): Int {
-    val matcher = graphemePattern.matcher(this)
+    val boundaries = BreakIterator.getCharacterInstance(Locale.ROOT)
+    boundaries.setText(this)
     var count = 0
-    while (matcher.find()) count++
+    while (boundaries.next() != BreakIterator.DONE) count++
     return count
 }
 
