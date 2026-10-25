@@ -72,6 +72,16 @@ class ItemModelTests {
         val model = harness.startUnlockedModel()
         assertEquals(listOf(FakeBackend.gitHubPasskey), model.unlockedData.value.allPasskey)
 
+        val loaded = assertNotNull(model.itemEditor.loadItem("personal", "github"))
+        val draft = ItemEditorDraft.open(loaded, isNew = false).withItem { it.copy(title = "GitHub work") }
+        val saved = assertNotNull(model.itemEditor.saveItem("personal", draft.buildItem()))
+        assertEquals("GitHub work", saved.title)
+        assertEquals(listOf(FakeBackend.gitHubPasskey.credentialID), saved.allPasskey.map { it.credentialID }, "editing keeps the same credential")
+        assertEquals(loaded.allPasskey, saved.allPasskey)
+        assertEquals(saved.allPasskey, model.item.loadItem("personal", "github")?.allPasskey)
+        assertEquals(saved.allPasskey.map { it.credentialID }, model.unlockedData.value.allPasskey.map { it.credentialID })
+        assertEquals(saved.allPasskey, model.findSummary("personal", "github")?.allPasskey)
+
         val afterDelete = model.item.deletePasskey("personal", "github", FakeBackend.gitHubPasskey.credentialID)
         assertEquals(emptyList(), afterDelete?.allPasskey)
         assertEquals(emptyList(), model.unlockedData.value.allPasskey)
