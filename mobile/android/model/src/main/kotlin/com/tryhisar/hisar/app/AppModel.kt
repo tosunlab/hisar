@@ -253,7 +253,7 @@ class AppModel(
     fun handleDidEnterBackground() {
         enteredBackgroundAt = now()
         mutableIsInForeground.value = false
-        notifications.remindOfWaitingApproval(approvals.allPendingApproval.value.isNotEmpty())
+        notifications.remindOfWaitingApproval(approvals.allPendingApproval.value.mapNotNull { it.expiryDate }.maxOrNull())
     }
 
     /**

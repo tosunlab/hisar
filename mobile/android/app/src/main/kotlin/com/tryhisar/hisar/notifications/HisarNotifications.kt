@@ -15,6 +15,7 @@ import com.tryhisar.hisar.MainActivity
 import com.tryhisar.hisar.R
 import com.tryhisar.hisar.app.NotificationPlatform
 import com.tryhisar.hisar.model.PushKind
+import java.time.Instant
 import org.unifiedpush.android.connector.UnifiedPush
 
 /**
@@ -27,6 +28,9 @@ object HisarNotifications {
     private const val REMINDER_CHANNEL = "reminders"
     private const val REMINDER_ID = 100
     private const val REMINDER_DELAY_MILLISECONDS = 5_000L
+
+    /** The extra on the reminder's alarm: when the last waiting approval expires, in milliseconds since the epoch. */
+    internal const val EXTRA_WAITING_UNTIL = "com.tryhisar.hisar.reminder-waiting-until"
 
     fun getChannel(kind: PushKind): String = kind.value
 
@@ -98,12 +102,11 @@ object HisarNotifications {
         post(context, REMINDER_CHANNEL, REMINDER_ID, PushKind.APPROVAL, context.getString(R.string.push_approval_waiting))
     }
 
-    private fun createReminderIntent(context: Context): PendingIntent = PendingIntent.getBroadcast(
-        context,
-        0,
-        Intent(context, ApprovalReminderReceiver::class.java),
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
-    )
+    private fun createReminderIntent(context: Context, waitingUntil: Instant? = null): PendingIntent {
+        val intent = Intent(context, ApprovalReminderReceiver::class.java)
+        waitingUntil?.let { intent.putExtra(EXTRA_WAITING_UNTIL, it.toEpochMilli()) }
+        return PendingIntent.getBroadcast(context, 0, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
+    }
 
     /** Android's side of the app model's notifications. */
     class Platform(private val context: Context) : NotificationPlatform {
@@ -112,11 +115,11 @@ object HisarNotifications {
         override fun isDistributorInstalled(): Boolean = isDistributorInstalled(context)
 
         // The system's alarm posts the reminder, so it still comes if Android ends Hisar's process in the background.
-        override fun postApprovalReminder() {
+        override fun postApprovalReminder(waitingUntil: Instant) {
             context.getSystemService(AlarmManager::class.java).setAndAllowWhileIdle(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,
                 SystemClock.elapsedRealtime() + REMINDER_DELAY_MILLISECONDS,
-                createReminderIntent(context),
+                createReminderIntent(context, waitingUntil),
             )
         }
 
@@ -129,5 +132,8 @@ object HisarNotifications {
 
 /** The alarm of the reminder of an approval left waiting; it may run in a new process after Hisar was closed. */
 class ApprovalReminderReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent) = HisarNotifications.postApprovalReminder(context)
+    // Android may deliver the alarm long after it was due, when every approval it reminds of has expired.
+    override fun onReceive(context: Context, intent: Intent) {
+        if (System.currentTimeMillis() < intent.getLongExtra(HisarNotifications.EXTRA_WAITING_UNTIL, 0)) HisarNotifications.postApprovalReminder(context)
+    }
 }
