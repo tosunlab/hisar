@@ -77,15 +77,16 @@ const val SHARED_FOLDER_NAME = "shared"
 fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val folder = remember { File(context.cacheDir, "$SHARED_FOLDER_NAME/${UUID.randomUUID()}") }
-    DisposableEffect(folder) {
-        onDispose { folder.deleteRecursively() }
+    val allPublishedFolder = remember { mutableListOf<File>() }
+    DisposableEffect(Unit) {
+        onDispose { allPublishedFolder.forEach(File::deleteRecursively) }
     }
     return { file ->
         scope.launch {
-            // The copy blocks and runs to its end even when the screen leaves meanwhile, and the screen's deletion can fail
-            // on a copy that appears while it runs. Cancelled, the coroutine resumes only once the copy has ended, so a
-            // copy that never reached the share sheet is deleted here, after it is complete.
+            // Each share has a folder of its own, so a share that fails deletes only its own copy. The copy blocks and
+            // runs to its end even when the screen leaves meanwhile. Cancelled, the coroutine resumes only once the copy
+            // has ended, so a copy that never reached the share sheet is deleted here, after it is complete.
+            val folder = File(context.cacheDir, "$SHARED_FOLDER_NAME/${UUID.randomUUID()}")
             var isPublished = false
             try {
                 val copy = withContext(Dispatchers.IO) {
@@ -106,6 +107,7 @@ fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit 
                     .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                 intent.clipData = ClipData.newRawUri(file.name, uri)
                 context.startActivity(Intent.createChooser(intent, null))
+                allPublishedFolder += folder
                 isPublished = true
             } finally {
                 if (!isPublished) folder.deleteRecursively()

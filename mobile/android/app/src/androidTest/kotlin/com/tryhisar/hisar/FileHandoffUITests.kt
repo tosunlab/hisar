@@ -2,6 +2,8 @@ package com.tryhisar.hisar
 
 import androidx.compose.ui.test.ComposeTimeoutException
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.core.content.FileProvider
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
@@ -9,9 +11,13 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import com.tryhisar.hisar.app.SettingsModel
 import com.tryhisar.hisar.ui.settings.SHARED_FOLDER_NAME
+import com.tryhisar.hisar.ui.settings.SHARE_FAILED_MESSAGE
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicReference
 import java.util.regex.Pattern
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -22,7 +28,8 @@ import org.junit.runner.RunWith
 
 /**
  * Sharing a plain export or an Emergency Kit on a real account: Hisar copies the file into the folder its FileProvider
- * serves, and that copy goes when its screen closes, also when the screen closes while the copy is still being made.
+ * serves, and that copy goes when its screen closes, also when the screen closes while the copy is still being made. A
+ * share whose copy fails takes only its own copy with it.
  */
 @RunWith(AndroidJUnit4::class)
 class FileHandoffUITests : HisarUITestCase() {
@@ -47,7 +54,7 @@ class FileHandoffUITests : HisarUITestCase() {
         composeRule.waitUntil("the share sheet closes", 10_000) { !device.hasObject(shareSheet) }
         tap("export-done")
         composeRule.waitUntil("the export is deleted", 10_000) { !export.exists() }
-        assertEquals("the share copy is deleted with its screen", emptyList<File>(), findSharedFiles())
+        assertEquals("the share copy is deleted with its screen", emptyList<String>(), listSharedFolder())
 
         exportPlainData()
         shareWhileClosing("share-export") { tap("export-done") }
@@ -64,6 +71,44 @@ class FileHandoffUITests : HisarUITestCase() {
         shareWhileClosing("share-emergency-kit") { goBack() }
     }
 
+    @Test
+    fun testFailedShareLeavesAnotherShareReadable() {
+        launch()
+        signUp(readArgument("HISAR_UI_TEST_FILE_HANDOFF_FAILURE_INVITE_LINK"), readArgument("HISAR_UI_TEST_FILE_HANDOFF_FAILURE_EMAIL"), "Android Share Failure")
+        openSettings("open-account")
+        exportPlainData()
+        val export = findHandoffFile()
+        val isFailing = CountDownLatch(1)
+        val fail = CountDownLatch(1)
+        val shareCount = AtomicInteger()
+        val shared = AtomicReference<File>()
+        application.shareCopy = { from, target ->
+            if (shareCount.getAndIncrement() == 0) {
+                isFailing.countDown()
+                fail.await(60, TimeUnit.SECONDS)
+                throw IOException("the first share's copy fails")
+            }
+            from.copyTo(target, overwrite = true).also(shared::set)
+        }
+        try {
+            tap("share-export")
+            composeRule.waitUntil("the first share's copy is being made", 10_000) { isFailing.count == 0L }
+            tap("share-export")
+            assertTrue("the second share opens the share sheet", waitForShareSheet(10_000))
+        } finally {
+            fail.countDown()
+        }
+        device.pressBack()
+        composeRule.waitUntil("the share sheet closes", 10_000) { !device.hasObject(shareSheet) }
+        waitFor(hasText(SHARE_FAILED_MESSAGE))
+        val uri = FileProvider.getUriForFile(application, "${application.packageName}.files", shared.get())
+        val received = checkNotNull(application.contentResolver.openInputStream(uri)).use { it.readBytes() }
+        assertArrayEquals("the shared file stays readable after the other share failed", export.readBytes(), received)
+        tap("export-done")
+        composeRule.waitUntil("the export is deleted", 10_000) { !export.exists() }
+        assertEquals("every share copy is deleted with its screen", emptyList<String>(), listSharedFolder())
+    }
+
     private fun exportPlainData() {
         tap("open-export")
         tap("export-format-plain")
@@ -75,6 +120,8 @@ class FileHandoffUITests : HisarUITestCase() {
     private fun findHandoffFile(): File = handoffFolder.walk().single { it.isFile }
 
     private fun findSharedFiles(): List<File> = sharedFolder.walk().filter { it.isFile }.toList()
+
+    private fun listSharedFolder(): List<String> = sharedFolder.list().orEmpty().toList()
 
     /** The sharer's coroutines run on the Compose test clock, which waitUntil advances while it waits. */
     private fun waitForShareSheet(timeoutMillis: Long): Boolean = try {
@@ -116,7 +163,7 @@ class FileHandoffUITests : HisarUITestCase() {
             release.countDown()
         }
         composeRule.waitUntil("the share copy is finished", 10_000) { isFinished.count == 0L }
-        composeRule.waitUntil("the share copy is deleted once it is finished: ${findSharedFiles()}", 10_000) { findSharedFiles().isEmpty() }
+        composeRule.waitUntil("the share copy is deleted once it is finished: ${listSharedFolder()}", 10_000) { listSharedFolder().isEmpty() }
         assertFalse("no share sheet opens for a screen that closed", waitForShareSheet(2_000))
     }
 }
