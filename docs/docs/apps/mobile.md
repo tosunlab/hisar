@@ -29,6 +29,10 @@ android/app/       :app: HisarApplication, MainActivity, HisarKitBackend, the pl
   src/debug/       PreviewActivity, which shows AutoFill's screens to UI tests
 ```
 
+Website, admin-console and download links accept internationalized host names. Android opens them with the host
+converted to IDNA ASCII, while labels and Copy keep the original stored address. The JVM model shares this URI parsing
+with Emergency Kit server validation and leaves user info, ports, paths, queries and fragments unchanged.
+
 ### Build and test
 
 You need Go, JDK 21 (the Gradle daemon asks for it in `android/gradle/gradle-daemon-jvm.properties`), and the Android

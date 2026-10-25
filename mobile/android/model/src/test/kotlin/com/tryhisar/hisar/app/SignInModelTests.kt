@@ -169,6 +169,17 @@ class SignInModelTests {
         assertEquals(SignInLink("https://例え.test:8443", "李雷@例え.test", "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"), SignInLink.parse(payload))
         val withUser = "HISARKIT1 eyJzZXJ2ZXIiOiJodHRwczovL3VzZXJA5L6L44GILnRlc3QiLCJlbWFpbCI6Iuadjumbt0DkvovjgYgudGVzdCIsInNlY3JldEtleSI6IkgxLUdWQzJLQS1UNVhWWS1KUVoxRy00MkNFWS0xQzIzUC1WNUY4OU0ifQ"
         assertNull(SignInLink.parse(withUser))
+        val key = "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M"
+        fun kit(server: String): String {
+            val json = """{"server":"$server","email":"alice@example.test","secretKey":"$key"}"""
+            return "HISARKIT1 " + java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(json.toByteArray(Charsets.UTF_8))
+        }
+        for (server in listOf("https://Example.COM:8443/a%2Fb?q=%2F+one", "http://[2001:db8::1]:8080/path", "https://例え.test:8443/東京?q=%2F")) {
+            assertEquals(SignInLink(server, "alice@example.test", key), SignInLink.parse(kit(server)), server)
+        }
+        for (invalid in listOf("https://例え..test", "https://-例え.test", "https://\u200D.test", "https://user@例え.test", "https://例え.test/#fragment")) {
+            assertNull(SignInLink.parse(kit(invalid)), invalid)
+        }
     }
 
     @Test

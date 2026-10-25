@@ -43,13 +43,9 @@ data class SignInLink(val server: String, val email: String, val secretKey: Stri
             }.getOrNull()
         }
 
-        // java.net.URI reads only ASCII host names, so a server Go and Swift accept with an internationalized name is
-        // checked in its ASCII form.
         private fun isServerAddress(text: String): Boolean {
-            val server = URI(text)
-            val authority = server.rawAuthority ?: return false
-            if (server.scheme?.lowercase() !in listOf("https", "http") || '@' in authority || server.fragment != null) return false
-            return !URI("${server.scheme}://${IDN.toASCII(authority)}").host.isNullOrEmpty()
+            val server = parseHTTPURI(text) ?: return false
+            return server.rawUserInfo == null && server.fragment == null
         }
     }
 }
@@ -82,6 +78,26 @@ data class InviteLink(val invite: String) {
             if (url.scheme?.lowercase() !in listOf("https", "http") || url.host.isNullOrEmpty()) return null
             return server
         }
+    }
+}
+
+/** Parses an HTTP(S) URI, converting only an internationalized host to ASCII. */
+internal fun parseHTTPURI(text: String): URI? {
+    return try {
+        val url = URI(text)
+        if (!url.scheme.equals("https", ignoreCase = true) && !url.scheme.equals("http", ignoreCase = true)) return null
+        if (!url.host.isNullOrEmpty()) return url
+        val authority = url.rawAuthority ?: return null
+        val hostStart = authority.lastIndexOf('@') + 1
+        val hostEnd = authority.indexOf(':', hostStart).takeIf { it >= 0 } ?: authority.length
+        val host = IDN.toASCII(authority.substring(hostStart, hostEnd), IDN.USE_STD3_ASCII_RULES)
+        val authorityStart = url.scheme.length + 3
+        URI(text.replaceRange(authorityStart + hostStart, authorityStart + hostEnd, host))
+            .takeIf { !it.host.isNullOrEmpty() }
+    } catch (_: URISyntaxException) {
+        null
+    } catch (_: IllegalArgumentException) {
+        null
     }
 }
 
