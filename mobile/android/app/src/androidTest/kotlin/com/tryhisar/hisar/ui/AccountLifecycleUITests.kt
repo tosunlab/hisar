@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui
 
-import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
@@ -95,11 +96,15 @@ class AccountLifecycleUITests : HisarUITestCase() {
         openSettings("open-account")
         tap("open-delete-account")
         waitFor("delete-account-password")
+        // The preview's spinner is the screen's only progress indicator; the submit stays disabled while it shows.
+        composeRule.waitUntil("the deletion preview loads", ACCOUNT_KEY_TIMEOUT) {
+            !exists(SemanticsMatcher.keyIsDefined(SemanticsProperties.ProgressBarRangeInfo))
+        }
         saveScreenshot("account-life-delete-account-preview")
         type(NEW_MASTER_PASSWORD, "delete-account-password")
         composeRule.onNode(hasTestTag("delete-account-submit")).assertIsNotEnabled()
         type(email, "delete-account-email")
-        composeRule.onNode(hasTestTag("delete-account-submit")).assertIsEnabled()
+        waitFor(hasTestTag("delete-account-submit") and isEnabled())
         saveScreenshot("account-life-delete-account")
         tap("delete-account-submit")
         tap("delete-account-confirm")
