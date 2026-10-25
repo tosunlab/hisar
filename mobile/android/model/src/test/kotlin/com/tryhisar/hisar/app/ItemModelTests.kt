@@ -104,6 +104,20 @@ class ItemModelTests {
         model.copyField("personal", "github", "one-time code", "One-time code")
         assertEquals(listOf("github.one-time code"), harness.backend.allCopiedField)
         assertEquals("One-time code copied. It clears in about 2 minutes.", model.notice.value)
+
+        val draft = ItemDetail(
+            title = "Mastodon",
+            username = "alice",
+            allURL = listOf("mastodon.social"),
+            password = "secret",
+            oneTimePassword = "jbsw y3dp ehpk 3pxp",
+        )
+        val saved = assertNotNull(model.itemEditor.saveItem("personal", draft))
+        assertEquals("otpauth://totp/?secret=JBSWY3DPEHPK3PXP", saved.oneTimePassword)
+        val summary = assertNotNull(model.findSummary("personal", saved.id))
+        assertEquals("", summary.oneTimePassword, "new summaries never carry the secret")
+        assertTrue(summary.hasOneTimePassword)
+        assertEquals(FakeBackend.oneTimeCode, model.item.loadOneTimeCode("personal", saved.id))
     }
 
     @Test
