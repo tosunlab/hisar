@@ -33,15 +33,21 @@ class AppModelHarness(private val testScope: TestScope, val backend: FakeBackend
     }
 }
 
-/** A phone's notifications for tests: the permission is a switch, and the reminder is a count of posts. */
+/**
+ * A phone's notifications for tests: the permission and the UnifiedPush distributor are switches, and the reminder is
+ * a count of posts.
+ */
 class FakeNotificationPlatform : NotificationPlatform {
     var isGranted = false
+    var isDistributorInstalledValue = true
     var isReminderPosted = false
         private set
     var postCount = 0
         private set
 
     override fun isPermissionGranted(): Boolean = isGranted
+
+    override fun isDistributorInstalled(): Boolean = isDistributorInstalledValue
 
     override fun postApprovalReminder() {
         postCount += 1

@@ -167,7 +167,9 @@ interface VaultBackend {
     fun setWebsiteIconsEnabled(isEnabled: Boolean)
 
     /** Registers the push token Firebase gave this phone ("fcm") for the signed-in account; it reaches the server and the push relay. */
-    fun setPushToken(platform: String, token: String)
+    /** The Web Push subscription the UnifiedPush distributor gave, which the server then sends to. */
+    fun setWebPushEndpoint(endpoint: String, p256dh: String, auth: String)
+    fun removeWebPushEndpoint()
     fun setPushKindEnabled(kind: PushKind, isEnabled: Boolean)
     fun getPushSettings(): PushSettings
 

@@ -7,9 +7,13 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-/** What only Android does for notifications: whether the user allowed them, and the reminder of a waiting approval. */
+/**
+ * What only Android does for notifications: whether the user allowed them, whether a UnifiedPush distributor that
+ * delivers them is installed, and the reminder of a waiting approval.
+ */
 interface NotificationPlatform {
     fun isPermissionGranted(): Boolean
+    fun isDistributorInstalled(): Boolean
 
     /** Posts the reminder of an approval left waiting, after a moment; it says no more than a push would. */
     fun postApprovalReminder()
@@ -18,23 +22,29 @@ interface NotificationPlatform {
     /** A phone without notifications, as in tests that do not need them. */
     object None : NotificationPlatform {
         override fun isPermissionGranted(): Boolean = false
+        override fun isDistributorInstalled(): Boolean = false
         override fun postApprovalReminder() = Unit
         override fun cancelApprovalReminder() = Unit
     }
 }
 
 /**
- * Settings → Notifications and what a notification does, the iPhone app's PushNotificationsModel ported: Firebase's
- * token for HisarKit, the kinds turned on, the screen a tapped notification opens, and the reminder of an approval left
- * waiting. A notification says only what kind of thing happened; Hisar shows the rest once unlocked.
+ * Settings → Notifications and what a notification does, the iPhone app's PushNotificationsModel ported: whether a
+ * UnifiedPush distributor can deliver pushes, the kinds turned on, the screen a tapped notification opens, and the
+ * reminder of an approval left waiting. The distributor's endpoint reaches HisarKit from HisarPushService, not from
+ * here. A notification says only what kind of thing happened; Hisar shows the rest once unlocked.
  */
 class NotificationsModel(private val context: ModelContext, private val platform: NotificationPlatform) {
     private val mutableSettings = MutableStateFlow(PushSettings.unavailable)
     private val mutableIsPermissionGranted = MutableStateFlow(platform.isPermissionGranted())
+    private val mutableIsDistributorInstalled = MutableStateFlow(platform.isDistributorInstalled())
     private val mutableErrorMessage = MutableStateFlow<String?>(null)
 
     val settings: StateFlow<PushSettings> = mutableSettings.asStateFlow()
     val isPermissionGranted: StateFlow<Boolean> = mutableIsPermissionGranted.asStateFlow()
+
+    /** False until the user installs a UnifiedPush distributor, such as ntfy: without one, no push reaches Hisar. */
+    val isDistributorInstalled: StateFlow<Boolean> = mutableIsDistributorInstalled.asStateFlow()
     val errorMessage: StateFlow<String?> = mutableErrorMessage.asStateFlow()
 
     /** The kind of the notification the user tapped, until the app has shown its screen. */
@@ -42,13 +52,8 @@ class NotificationsModel(private val context: ModelContext, private val platform
 
     suspend fun refresh() {
         mutableIsPermissionGranted.value = platform.isPermissionGranted()
+        mutableIsDistributorInstalled.value = platform.isDistributorInstalled()
         context.attempt { it.getPushSettings() }?.let { mutableSettings.value = it }
-    }
-
-    /** Hands HisarKit the token Firebase gave this launch, or a new one Firebase replaced it with. */
-    suspend fun receiveToken(token: String) {
-        mutableErrorMessage.value = runCatchingBackend { it.setPushToken(PLATFORM, token) }
-        refresh()
     }
 
     suspend fun setEnabled(kind: PushKind, isEnabled: Boolean) {
@@ -82,9 +87,5 @@ class NotificationsModel(private val context: ModelContext, private val platform
             }
         }
         return failure
-    }
-
-    companion object {
-        const val PLATFORM = "fcm"
     }
 }

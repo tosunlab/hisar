@@ -3,13 +3,16 @@ package com.tryhisar.hisar.ui.settings
 import android.Manifest
 import android.app.Activity
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.LaptopMac
+import androidx.compose.material.icons.outlined.Link
 import androidx.compose.material.icons.outlined.Notifications
 import androidx.compose.material.icons.outlined.Security
 import androidx.compose.material.icons.outlined.Settings
@@ -33,6 +36,9 @@ import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.RowDivider
 import kotlinx.coroutines.launch
 
+/** UnifiedPush's own list of distributors, ntfy among them. */
+private const val DISTRIBUTORS_URL = "https://unifiedpush.org/users/distributors/"
+
 private data class KindDescription(val title: String, val icon: ImageVector)
 
 private fun describe(kind: PushKind): KindDescription = when (kind) {
@@ -47,6 +53,7 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
     val notifications = model.notifications
     val settings by notifications.settings.collectAsStateWithLifecycle()
     val isPermissionGranted by notifications.isPermissionGranted.collectAsStateWithLifecycle()
+    val isDistributorInstalled by notifications.isDistributorInstalled.collectAsStateWithLifecycle()
     val errorMessage by notifications.errorMessage.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -56,7 +63,7 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
         if (lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) notifications.refresh()
     }
     val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-        if (isGranted) (context as? MainActivity)?.fetchPushToken()
+        if (isGranted) (context as? MainActivity)?.startPush()
         scope.launch { notifications.refresh() }
     }
     val hasAskedBefore = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -66,26 +73,47 @@ fun NotificationsScreen(model: AppModel, onBack: () -> Unit) {
         FormSection(
             footer = {
                 Text(
-                    if (isPermissionGranted && !settings.isServerSending) {
-                        "Your Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
-                    } else {
-                        "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Hisar's push relay, Google and your Hisar server see when a notification is sent, but not what it is about."
+                    when {
+                        isPermissionGranted && !isDistributorInstalled ->
+                            "Hisar gets notifications through a UnifiedPush app, such as ntfy, which keeps one connection open for all your apps. Install one, then come back here."
+                        isPermissionGranted && !settings.isServerSending ->
+                            "Your Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
+                        else ->
+                            "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Your Hisar server and your UnifiedPush app see when a notification is sent, but not what it is about."
                     },
                 )
             },
         ) {
             when {
-                isPermissionGranted -> PushKind.entries.forEachIndexed { index, kind ->
-                    if (index > 0) RowDivider()
-                    val description = describe(kind)
-                    ToggleRow(
-                        description.title,
-                        isOn = settings.isEnabled(kind),
-                        onChange = { isEnabled -> scope.launch { notifications.setEnabled(kind, isEnabled) } },
-                        testTag = "notifications-${kind.value}-toggle",
-                        icon = description.icon,
-                        enabled = settings.isServerSending,
-                    )
+                isPermissionGranted && !isDistributorInstalled -> FormButtonRow(
+                    "Get a UnifiedPush app",
+                    onClick = { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(DISTRIBUTORS_URL))) },
+                    testTag = "notifications-get-distributor",
+                    icon = Icons.Outlined.Download,
+                )
+                isPermissionGranted -> {
+                    PushKind.entries.forEachIndexed { index, kind ->
+                        if (index > 0) RowDivider()
+                        val description = describe(kind)
+                        ToggleRow(
+                            description.title,
+                            isOn = settings.isEnabled(kind),
+                            onChange = { isEnabled -> scope.launch { notifications.setEnabled(kind, isEnabled) } },
+                            testTag = "notifications-${kind.value}-toggle",
+                            icon = description.icon,
+                            enabled = settings.isServerSending,
+                        )
+                    }
+                    // The UnifiedPush app has not given an endpoint yet, or the user has several and has not chosen one.
+                    if (settings.isServerSending && !settings.isAvailable) {
+                        RowDivider()
+                        FormButtonRow(
+                            "Connect to your UnifiedPush app",
+                            onClick = { (context as? MainActivity)?.startPush() },
+                            testTag = "notifications-connect-distributor",
+                            icon = Icons.Outlined.Link,
+                        )
+                    }
                 }
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && !hasAskedBefore -> FormButtonRow(
                     "Turn on notifications",

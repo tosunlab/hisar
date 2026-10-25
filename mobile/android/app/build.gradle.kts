@@ -16,16 +16,6 @@ android {
         versionCode = providers.gradleProperty("hisar.versionCode").get().toInt()
         versionName = providers.gradleProperty("hisar.versionName").get()
         testInstrumentationRunner = "com.tryhisar.hisar.HisarTestRunner"
-        // The Firebase project that delivers push notifications. These identify the app to Firebase and are not secrets;
-        // a build without them has no push notifications.
-        for ((field, property) in listOf(
-            "FIREBASE_APPLICATION_ID" to "hisar.firebase.applicationId",
-            "FIREBASE_PROJECT_ID" to "hisar.firebase.projectId",
-            "FIREBASE_API_KEY" to "hisar.firebase.apiKey",
-            "FIREBASE_SENDER_ID" to "hisar.firebase.senderId",
-        )) {
-            buildConfigField("String", field, "\"${providers.gradleProperty(property).orElse("").get()}\"")
-        }
     }
 
     buildTypes {
@@ -78,7 +68,7 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
     implementation(libs.androidx.camera.view)
     implementation(libs.zxing.core)
-    implementation(libs.firebase.messaging)
+    implementation(libs.unifiedpush.connector)
     implementation(libs.androidx.autofill)
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.providerevents)

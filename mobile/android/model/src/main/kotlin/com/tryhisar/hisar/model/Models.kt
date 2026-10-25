@@ -1017,8 +1017,18 @@ enum class PushKind(val value: String) {
 
     companion object {
         fun parse(text: String?): PushKind? = entries.firstOrNull { it.value == text }
+
+        /** The kind in a Web Push message from a Hisar server, {"kind":"approval"}; null for anything else. */
+        fun parseMessage(text: String): PushKind? = try {
+            parse(backendJson.decodeFromString(WebPushMessage.serializer(), text).kind)
+        } catch (_: IllegalArgumentException) {
+            null
+        }
     }
 }
+
+@Serializable
+private data class WebPushMessage(val kind: String = "")
 
 /** HisarKit's app.PushSettings: whether notifications can reach this phone, and the kinds turned on. */
 @Serializable

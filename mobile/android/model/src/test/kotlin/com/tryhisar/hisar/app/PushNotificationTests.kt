@@ -12,7 +12,7 @@ import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
-/** Notifications: Firebase's token for HisarKit, the kinds turned on, what a tap opens, and the waiting-approval reminder. */
+/** Notifications: the UnifiedPush distributor, the kinds turned on, what a tap opens, and the waiting-approval reminder. */
 class PushNotificationTests {
     private val currentDate: Instant = Instant.ofEpochSecond(1_800_000_000)
 
@@ -27,14 +27,28 @@ class PushNotificationTests {
     }
 
     @Test
-    fun testTurningNotificationsOnRegistersTheFirebaseToken() = runTest {
+    fun testTurningNotificationsOnNeedsAUnifiedPushDistributor() = runTest {
         val harness = AppModelHarness(this)
         harness.notificationPlatform.isGranted = true
+        harness.notificationPlatform.isDistributorInstalledValue = false
         val model = createUnlockedModel(harness)
-        model.notifications.receiveToken("firebase-token")
-        assertEquals(listOf("fcm:firebase-token"), harness.backend.allPushToken)
+        assertFalse(model.notifications.isDistributorInstalled.value, "without a distributor, Settings asks for one")
+        harness.notificationPlatform.isDistributorInstalledValue = true
+        model.notifications.refresh()
+        assertTrue(model.notifications.isDistributorInstalled.value, "installing ntfy is seen once the user comes back")
+        assertFalse(model.notifications.settings.value.isAvailable, "pushes are available only once the distributor gave an endpoint")
+        harness.backend.setWebPushEndpoint("https://ntfy.example/upAbC", "public-key", "secret")
+        model.notifications.refresh()
         assertTrue(model.notifications.settings.value.isAvailable)
         assertTrue(model.notifications.isPermissionGranted.value)
+    }
+
+    @Test
+    fun testOnlyAHisarWebPushMessageNamesAKind() {
+        assertEquals(PushKind.APPROVAL, PushKind.parseMessage("""{"kind":"approval"}"""))
+        assertNull(PushKind.parseMessage("""{"kind":"marketing"}"""))
+        assertNull(PushKind.parseMessage("not json"))
+        assertNull(PushKind.parseMessage("""{"title":"Hello"}"""))
     }
 
     @Test
