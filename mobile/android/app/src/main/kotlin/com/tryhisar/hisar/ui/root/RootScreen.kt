@@ -144,7 +144,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
     }
 }
 
-/** What the app shows while it is not in front, so the app switcher never shows vault content. */
+/** What the app shows while it is not in front, as the iPhone's privacy shield; the app switcher's card is the theme's background (MainActivity). */
 @Composable
 private fun PrivacyCover() {
     Box(

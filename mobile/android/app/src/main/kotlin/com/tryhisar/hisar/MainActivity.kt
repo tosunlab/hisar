@@ -1,5 +1,6 @@
 package com.tryhisar.hisar
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -32,7 +33,14 @@ class MainActivity : FragmentActivity() {
         installSplashScreen()
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) setRecentsScreenshotEnabled(false)
+        // Recents shows the theme's background instead of a capture of the task: sheets and dialogs are windows of their
+        // own, above the privacy cover, and a capture is taken before the cover is drawn. Before API 33 the switch is
+        // setDisablePreviewScreenshots, outside the SDK but open to apps on Android 10 to 12L.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            setRecentsScreenshotEnabled(false)
+        } else {
+            Activity::class.java.getMethod("setDisablePreviewScreenshots", Boolean::class.javaPrimitiveType).invoke(this, true)
+        }
         followScreenshotSetting()
         if (savedInstanceState == null) {
             openLink(intent)
