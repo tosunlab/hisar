@@ -49,6 +49,7 @@ class AutoFillModel(
     copyOneTimeCode: (String) -> Unit,
     private val cancelRequest: (CancelReason) -> Unit,
     passkeyCompletion: PasskeyCompletion,
+    private val completeSelection: ((LoginMatch) -> Unit)? = null,
 ) {
     /** Final passkey operations are verified by the native backend, not sheet continuation extras. */
     class PasskeyCompletion(
@@ -341,7 +342,7 @@ class AutoFillModel(
     }
 
     // Without user interaction only a backend that is prepared and still unlocked can answer.
-    suspend fun provideCredentialWithoutUserInteraction(recordIdentifier: String, source: LoginSource): LoginCredential? = withinUnlock {
+    suspend fun provideCredentialWithoutUserInteraction(recordIdentifier: String, source: LoginSource?): LoginCredential? = withinUnlock {
         val backend = backend ?: return@withinUnlock null
         val (vaultID, itemID) = LoginMatch.parseRecordIdentifier(recordIdentifier) ?: return@withinUnlock null
         val credential = withinUnlock {
@@ -604,6 +605,10 @@ class AutoFillModel(
         withinUnlock {
             if (mutableRequestKind.value == RequestKind.ONE_TIME_CODE) {
                 performWithinUnlock { matcher(it).getOneTimeCode(login.vaultID, login.itemID, source) }?.let { completeOneTimeCodeRequest(it.code) }
+                return@withinUnlock
+            }
+            if (completeSelection != null) {
+                completeWithinUnlock { completeSelection(login) }
                 return@withinUnlock
             }
             val credential = performWithinUnlock { matcher(it).getLogin(login.vaultID, login.itemID, source) } ?: return@withinUnlock

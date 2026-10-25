@@ -13,6 +13,7 @@ import androidx.credentials.CreatePublicKeyCredentialRequest
 import androidx.credentials.CreatePublicKeyCredentialResponse
 import androidx.credentials.GetCredentialResponse
 import androidx.credentials.GetPublicKeyCredentialOption
+import androidx.credentials.GetPasswordOption
 import androidx.credentials.PasswordCredential
 import androidx.credentials.PublicKeyCredential
 import androidx.credentials.exceptions.CreateCredentialCancellationException
@@ -28,8 +29,10 @@ import androidx.credentials.exceptions.domerrors.SecurityError
 import androidx.credentials.exceptions.publickeycredential.CreatePublicKeyCredentialDomException
 import androidx.credentials.exceptions.publickeycredential.GetPublicKeyCredentialDomException
 import androidx.credentials.provider.BeginGetCredentialResponse
+import androidx.credentials.provider.BeginGetPasswordOption
 import androidx.credentials.provider.BeginGetPublicKeyCredentialOption
 import androidx.credentials.provider.CallingAppInfo
+import androidx.credentials.provider.PasswordCredentialEntry
 import androidx.credentials.provider.PendingIntentHandler
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.AndroidViewModel
@@ -48,6 +51,7 @@ import com.tryhisar.hisar.autofill.HttpAssetLinksVerifier
 import com.tryhisar.hisar.autofill.LoginMatcher
 import com.tryhisar.hisar.followScreenshotSetting
 import com.tryhisar.hisar.model.LoginCredential
+import com.tryhisar.hisar.model.LoginMatch
 import com.tryhisar.hisar.model.PasskeyAssertionCredential
 import com.tryhisar.hisar.model.PasskeyAssertionRequest
 import com.tryhisar.hisar.model.PasskeyRegistrationCredential
@@ -91,6 +95,7 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         copyOneTimeCode = ::copyOneTimeCode,
         cancelRequest = ::cancel,
         passkeyCompletion = AutoFillModel.PasskeyCompletion(::completeAssertion, ::completeRegistration, ::rejectExcludedRegistration, ::completeUnlock),
+        completeSelection = if (pick == CredentialPick.SearchToOffer) ::completeSelection else null,
     )
 
     private val access by lazy { CredentialAccess(hisar.backend, hisar.relyingPartyVerifier, HttpAssetLinksVerifier) }
@@ -115,6 +120,8 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         when (val current = pick) {
             null -> refuse("Hisar did not make this request.")
             CredentialPick.Unlock -> startUnlock()
+            CredentialPick.Search, CredentialPick.SearchToOffer -> startSearch()
+            is CredentialPick.SelectedPassword -> startSelectedPassword(current)
             is CredentialPick.Passkey -> startPasskey(current)
             is CredentialPick.Password -> startPassword(current)
             CredentialPick.Create -> startCreate()
@@ -134,6 +141,14 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         }
         isContentShown.value = true
         model.prepareUnlock(if (passkeyRequest != null) FillTarget.Websites(emptyList()) else access.buildFillTarget(caller), passkeyRequest)
+    }
+
+    private suspend fun startSearch() {
+        val request = PendingIntentHandler.retrieveBeginGetCredentialRequest(intent) ?: return refuse("Hisar did not make this request.")
+        if (request.beginGetCredentialOptions.none { it is BeginGetPasswordOption }) return refuse("The request asks for no password.")
+        val caller = request.callingAppInfo?.let { readCaller(it) } ?: return refuse("Hisar does not answer this app.")
+        isContentShown.value = true
+        model.prepareCredentialList(access.buildFillTarget(caller))
     }
 
     private suspend fun startPasskey(pick: CredentialPick.Passkey) {
@@ -168,6 +183,16 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         if (source != null) model.provideCredentialWithoutUserInteraction(pick.recordIdentifier, source)?.let { return completePassword(it) }
         isContentShown.value = true
         model.prepareCredentialList(target)
+    }
+
+    private suspend fun startSelectedPassword(pick: CredentialPick.SelectedPassword) {
+        val request = PendingIntentHandler.retrieveProviderGetCredentialRequest(intent) ?: return refuse("Hisar did not make this request.")
+        if (request.credentialOptions.none { it is GetPasswordOption }) return refuse("The request asks for no password.")
+        val caller = readCaller(request.callingAppInfo) ?: return refuse("Hisar does not answer this app.")
+        model.prepare()
+        model.provideCredentialWithoutUserInteraction(pick.recordIdentifier, null)?.let { return completePassword(it) }
+        isContentShown.value = true
+        model.prepareCredentialList(access.buildFillTarget(caller))
     }
 
     private suspend fun startCreate() {
@@ -230,6 +255,18 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         finish { PendingIntentHandler.setGetCredentialResponse(it, GetCredentialResponse(PasswordCredential(credential.username, credential.password))) }
     }
 
+    private fun completeSelection(login: LoginMatch) {
+        val request = PendingIntentHandler.retrieveBeginGetCredentialRequest(intent) ?: return refuse("Hisar did not make this request.")
+        val option = request.beginGetCredentialOptions.filterIsInstance<BeginGetPasswordOption>().firstOrNull() ?: return refuse("The request asks for no password.")
+        val entry = PasswordCredentialEntry.Builder(
+            getApplication(),
+            login.username.ifEmpty { login.title },
+            CredentialPick.buildPendingIntent(getApplication(), CredentialPick.SelectedPassword(login.id)),
+            option,
+        ).setDisplayName(login.title).build()
+        finish { PendingIntentHandler.setBeginGetCredentialResponse(it, BeginGetCredentialResponse(credentialEntries = listOf(entry))) }
+    }
+
     private fun copyOneTimeCode(code: String) {
         if (hisar.copySecret(code)) {
             Toast.makeText(getApplication(), "One-time code copied. It clears in about 2 minutes.", Toast.LENGTH_LONG).show()
@@ -240,7 +277,7 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         finish {
             when (pick) {
                 CredentialPick.Create -> PendingIntentHandler.setCreateCredentialException(it, buildCreateException(reason))
-                CredentialPick.Unlock, null -> Unit
+                CredentialPick.Unlock, CredentialPick.SearchToOffer, null -> Unit
                 else -> PendingIntentHandler.setGetCredentialException(it, buildGetException(reason))
             }
         }
@@ -261,7 +298,7 @@ class CredentialViewModel(application: Application, private val intent: Intent) 
         finish {
             when (pick) {
                 CredentialPick.Create -> PendingIntentHandler.setCreateCredentialException(it, CreateCredentialUnknownException(message))
-                CredentialPick.Unlock, null -> PendingIntentHandler.setBeginGetCredentialResponse(it, BeginGetCredentialResponse())
+                CredentialPick.Unlock, CredentialPick.SearchToOffer, null -> PendingIntentHandler.setBeginGetCredentialResponse(it, BeginGetCredentialResponse())
                 else -> PendingIntentHandler.setGetCredentialException(it, GetCredentialUnknownException(message))
             }
         }

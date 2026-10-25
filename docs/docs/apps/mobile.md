@@ -89,6 +89,10 @@ choose **Autofill using another service** in Chrome's autofill settings and rest
 Focus a one-time-code field to fill only its current code, even on a form that also has a username and password.
 Focus the username or password to fill the login without changing the code field.
 
+On Android 14 and later, Credential Manager's password sheet also offers **Search Hisar** for logins that do not match
+the requesting app or site. For an unlinked app, choose **Only this time** or **Always use for this app** before filling.
+When the sheet has no matching credentials, Hisar returns your search choice to the sheet for you to confirm.
+
 ### Account passwords and exports
 
 The new master password and encrypted-export passphrase forms count extended grapheme clusters for their

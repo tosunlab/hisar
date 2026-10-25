@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.credentials.provider.Action
 import androidx.credentials.provider.AuthenticationAction
 import androidx.credentials.provider.BeginGetCredentialOption
 import androidx.credentials.provider.BeginGetCredentialResponse
@@ -22,6 +23,12 @@ import kotlinx.io.bytestring.ByteString
 sealed interface CredentialPick {
     data object Unlock : CredentialPick
 
+    data object Search : CredentialPick
+
+    data object SearchToOffer : CredentialPick
+
+    data class SelectedPassword(val recordIdentifier: String) : CredentialPick
+
     data class Passkey(val credentialID: ByteString) : CredentialPick
 
     /** A login; its match is checked again against the caller before its password leaves. */
@@ -36,6 +43,9 @@ sealed interface CredentialPick {
 
         fun read(intent: Intent): CredentialPick? = when (intent.getStringExtra(EXTRA_PICK)) {
             "unlock" -> Unlock
+            "search" -> Search
+            "search-to-offer" -> SearchToOffer
+            "selected-password" -> intent.getStringExtra(EXTRA_RECORD)?.let(::SelectedPassword)
             "passkey" -> intent.getStringExtra(EXTRA_CREDENTIAL_ID)?.let(Base64URL::decode)?.let { Passkey(it) }
             "password" -> intent.getStringExtra(EXTRA_RECORD)?.let(::Password)
             "create" -> Create
@@ -44,6 +54,9 @@ sealed interface CredentialPick {
 
         private fun write(pick: CredentialPick, intent: Intent): Intent = when (pick) {
             Unlock -> intent.putExtra(EXTRA_PICK, "unlock")
+            Search -> intent.putExtra(EXTRA_PICK, "search")
+            SearchToOffer -> intent.putExtra(EXTRA_PICK, "search-to-offer")
+            is SelectedPassword -> intent.putExtra(EXTRA_PICK, "selected-password").putExtra(EXTRA_RECORD, pick.recordIdentifier)
             is Passkey -> intent.putExtra(EXTRA_PICK, "passkey").putExtra(EXTRA_CREDENTIAL_ID, Base64URL.encode(pick.credentialID))
             is Password -> intent.putExtra(EXTRA_PICK, "password").putExtra(EXTRA_RECORD, pick.recordIdentifier)
             Create -> intent.putExtra(EXTRA_PICK, "create")
@@ -77,11 +90,28 @@ object CredentialEntries {
         context: Context,
         offer: CredentialOffer,
         allOption: List<Pair<BeginGetCredentialOption, CredentialOption>>,
-    ): BeginGetCredentialResponse =
-        when (offer) {
+    ): BeginGetCredentialResponse {
+        val hasPassword = allOption.any { it.second == CredentialOption.Password }
+        val needsSearchGateway = hasPassword && when (offer) {
+            CredentialOffer.Unlock -> allOption.none { it.second is CredentialOption.Passkey }
+            is CredentialOffer.Entries -> offer.allLogin.isEmpty() && offer.allPasskey.isEmpty()
+            CredentialOffer.Nothing -> false
+        }
+        val searchGateway = if (needsSearchGateway) {
+            listOf(AuthenticationAction("Search Hisar", CredentialPick.buildPendingIntent(context, CredentialPick.SearchToOffer)))
+        } else {
+            emptyList()
+        }
+        val actions = if (offer != CredentialOffer.Nothing && hasPassword && !needsSearchGateway) {
+            listOf(Action("Search Hisar", CredentialPick.buildPendingIntent(context, CredentialPick.Search), "Search all logins"))
+        } else {
+            emptyList()
+        }
+        return when (offer) {
             CredentialOffer.Nothing -> BeginGetCredentialResponse()
             CredentialOffer.Unlock -> BeginGetCredentialResponse(
-                authenticationActions = listOf(AuthenticationAction("Unlock Hisar", CredentialPick.buildPendingIntent(context, CredentialPick.Unlock))),
+                authenticationActions = if (needsSearchGateway) searchGateway else listOf(AuthenticationAction("Unlock Hisar", CredentialPick.buildPendingIntent(context, CredentialPick.Unlock))),
+                actions = actions,
             )
             is CredentialOffer.Entries -> BeginGetCredentialResponse(
                 credentialEntries = offer.allPasskey.mapNotNull { (index, passkey) ->
@@ -100,8 +130,11 @@ object CredentialEntries {
                         allOption[index].first as BeginGetPasswordOption,
                     ).setDisplayName(match.login.title).build()
                 },
+                actions = actions,
+                authenticationActions = searchGateway,
             )
         }
+    }
 
     fun buildCreateEntry(context: Context, accountName: String): CreateEntry =
         CreateEntry(accountName, CredentialPick.buildPendingIntent(context, CredentialPick.Create))

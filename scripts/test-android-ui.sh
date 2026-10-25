@@ -88,6 +88,7 @@ ui_test_add_account QR_SCANNER_ "android-qr-scanner-$(date +%s)-$RANDOM@example.
 ui_test_add_account PASSKEY_UV_ "android-passkey-uv-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account IDLE_LOCK_ "android-idle-lock-$(date +%s)-$RANDOM@example.com"
 ui_test_add_account VAULT_MOVE_ "android-vault-move-$(date +%s)-$RANDOM@example.com"
+ui_test_add_account PASSWORD_SEARCH_ "android-password-search-$(date +%s)-$RANDOM@example.com"
 for account in WEB CODE APP SAVE; do
   ui_test_add_account "AUTOFILL_SERVICE_${account}_" "android-autofill-service-$(echo "$account" | tr A-Z a-z)-$(date +%s)-$RANDOM@example.com"
 done

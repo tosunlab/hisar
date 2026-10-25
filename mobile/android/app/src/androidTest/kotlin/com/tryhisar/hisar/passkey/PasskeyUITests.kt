@@ -159,6 +159,61 @@ class PasskeyUITests : HisarUITestCase() {
         assertEquals("deleting the passkey keeps the login", "passkey-user", readText("username-value"))
     }
 
+    @Test
+    fun testPasswordRequestSearchesUnmatchedLogins() {
+        launch()
+        signUp(readArgument("HISAR_UI_TEST_PASSWORD_SEARCH_INVITE_LINK"), readArgument("HISAR_UI_TEST_PASSWORD_SEARCH_EMAIL"), "Android Password Search")
+        addLogin(title = "Other site", username = "searched-user", password = "searched-password-42", website = "other.example.com")
+        closeApp()
+        turnOnHisarForPasskeys()
+        val personal = testBackend.listAllVault().single { it.name == "Personal" }
+        testBackend.saveItem(personal.id, ItemDetail(title = "Second site", username = "second-user", password = "second-password-84", allURL = listOf("second.example.com")))
+        val login = testBackend.listAllItem(personal.id).single { it.title == "Other site" }
+
+        for (isLocked in listOf(false, true)) {
+            if (isLocked) testBackend.lock()
+            val password = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
+                answerSheet("password-search-sheet", "Search Hisar") {
+                    device.hasObject(By.res(if (isLocked) "unlock-password" else "autofill-search"))
+                }
+                if (isLocked) {
+                    type(MASTER_PASSWORD, "unlock-password")
+                    tap("unlock-submit")
+                }
+                type("Other site", "autofill-search")
+                tap("autofill-login-Other site")
+                tap("autofill-link-once")
+                answerSheet("password-search-selection", "searched-user") { device.hasObject(callerOutcome) }
+            }
+            assertEquals("password searched-user searched-password-42", password)
+            assertTrue("Only this time does not link the app", testBackend.getItem(personal.id, login.id).allAndroidApp.isEmpty())
+        }
+
+        val linked = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
+            answerSheet("password-link-search-sheet", "Search Hisar") { device.hasObject(By.res("autofill-search")) }
+            type("Other site", "autofill-search")
+            tap("autofill-login-Other site")
+            tap("autofill-link-always")
+            answerSheet("password-link-selection", "searched-user") { device.hasObject(callerOutcome) }
+        }
+        assertEquals("password searched-user searched-password-42", linked)
+        assertEquals(callerApp.packageName, testBackend.getItem(personal.id, login.id).allAndroidApp.single().packageName)
+        val matched = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
+            answerSheet("password-linked-sheet", "searched-user") { device.hasObject(callerOutcome) }
+        }
+        assertEquals("password searched-user searched-password-42", matched)
+
+        val searchedAgain = callCredentialManager(CredentialCallerActivity.MODE_GET_PASSWORD, "") {
+            answerSheet("password-search-action", "Search Hisar") { device.hasObject(By.res("autofill-search")) }
+            type("Second site", "autofill-search")
+            tap("autofill-login-Second site")
+            tap("autofill-link-once")
+        }
+        assertEquals("password second-user second-password-84", searchedAgain)
+        val second = testBackend.listAllItem(personal.id).single { it.title == "Second site" }
+        assertTrue(testBackend.getItem(personal.id, second.id).allAndroidApp.isEmpty())
+    }
+
     /** Native verification supplies signed UV. A sheet unlock never authorizes the final concrete challenge. */
     @Test
     @SdkSuppress(minSdkVersion = 37)
@@ -292,12 +347,17 @@ class PasskeyUITests : HisarUITestCase() {
     private fun answerSheet(screenshot: String, choice: String, isDone: () -> Boolean) {
         val confirm = By.pkg(SHEET_PACKAGE).text(Pattern.compile("Continue|Create|Sign in"))
         val entry = By.pkg(SHEET_PACKAGE).text(Pattern.compile(choice))
+        val options = By.pkg(SHEET_PACKAGE).text(Pattern.compile("More options|Sign-in options|Sign in options"))
         var isScreenshotSaved = false
         val deadline = System.currentTimeMillis() + 60_000
         while (!isDone()) {
             check(System.currentTimeMillis() < deadline) { "the sheet did not lead on; ${dumpWindow(screenshot)}" }
-            if (!waitUntil(2_000) { isDone() || device.hasObject(confirm) || device.hasObject(entry) }) continue
-            val button = device.findObject(confirm) ?: device.findObject(entry) ?: continue
+            if (!waitUntil(2_000) { isDone() || device.hasObject(confirm) || device.hasObject(entry) || choice == "Search Hisar" && device.hasObject(options) }) continue
+            val button = if (choice == "Search Hisar") {
+                device.findObject(entry) ?: device.findObject(options) ?: device.findObject(confirm)
+            } else {
+                device.findObject(confirm) ?: device.findObject(entry)
+            } ?: continue
             if (!isScreenshotSaved) {
                 saveScreenshot(screenshot)
                 isScreenshotSaved = true
