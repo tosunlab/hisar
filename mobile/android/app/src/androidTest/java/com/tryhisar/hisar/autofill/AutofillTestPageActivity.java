@@ -50,10 +50,11 @@ public class AutofillTestPageActivity extends Activity {
 
     public static final String MIXED_PAGE = """
         <!doctype html><html><head><meta name="viewport" content="width=device-width"></head><body>
-        <form action="javascript:void(0)">
+        <form action="welcome" method="get">
           <p><input id="username" name="username" autocomplete="username" placeholder="Email"></p>
           <p><input id="password" name="password" type="password" autocomplete="current-password" placeholder="Password"></p>
           <p><input id="code" name="code" autocomplete="one-time-code" inputmode="numeric" placeholder="Code"></p>
+          <p><button type="submit">Sign in</button></p>
         </form>""" + REPORT + "</body></html>";
 
     private static final String WELCOME_PAGE = "<!doctype html><html><body><p id=\"result\">signed in</p></body></html>";

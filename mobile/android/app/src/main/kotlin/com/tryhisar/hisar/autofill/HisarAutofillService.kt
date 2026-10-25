@@ -43,7 +43,7 @@ class HisarAutofillService : AutofillService() {
                 val app = InstalledApps.readAndroidApp(this, packageName)
                 FillRequestParser.parse(allRoot, packageName, app?.certificateSHA256, PrivilegedBrowserList.read(this))?.let { form ->
                     val inlineRequest = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) request.inlineSuggestionsRequest else null
-                    buildResponse(form, app, Datasets(this, inlineRequest, request.id))
+                    buildResponse(form, app, Datasets(this, inlineRequest, request.id), request.clientState)
                 }
             } catch (error: Exception) {
                 Log.w("Hisar", "AutoFill could not answer", error)
@@ -54,7 +54,7 @@ class HisarAutofillService : AutofillService() {
         cancellationSignal.setOnCancelListener { task.cancel(true) }
     }
 
-    private fun buildResponse(form: LoginForm<AutofillId>, app: AndroidApp?, datasets: Datasets): FillResponse {
+    private fun buildResponse(form: LoginForm<AutofillId>, app: AndroidApp?, datasets: Datasets, previousClientState: Bundle?): FillResponse {
         val target = when (val source = form.source) {
             is AutofillSource.Web -> FillTarget.Websites(listOf(source.serviceIdentifier))
             is AutofillSource.UnknownPage -> FillTarget.Websites(emptyList())
@@ -65,7 +65,11 @@ class HisarAutofillService : AutofillService() {
         for ((index, suggestion) in listAllSuggestion(request, datasets).withIndex()) {
             response.addDataset(datasets.buildSuggestion(suggestion.first, suggestion.second, index))
         }
-        buildSaveInfo(form, target)?.let { (saveInfo, clientState) ->
+        // The system decides whether to save from the latest response alone, so a response without a login of its own,
+        // such as a code field's, repeats the login an earlier response asked to save. Its IDs are already in that
+        // response's SaveInfo, so repeating them never keeps a later login field from asking for its own response.
+        val clientState = buildClientState(form, target) ?: previousClientState
+        clientState?.let(::buildSaveInfo)?.let { saveInfo ->
             response.setSaveInfo(saveInfo)
             response.setClientState(clientState)
         }
@@ -92,9 +96,9 @@ class HisarAutofillService : AutofillService() {
 
     private fun describe(login: LoginMatch): String = login.username.ifEmpty { login.vaultName }
 
-    private fun buildSaveInfo(form: LoginForm<AutofillId>, target: FillTarget): Pair<SaveInfo, Bundle>? {
+    private fun buildClientState(form: LoginForm<AutofillId>, target: FillTarget): Bundle? {
         val password = form.password ?: return null
-        val clientState = Bundle().apply {
+        return Bundle().apply {
             putParcelable(STATE_USERNAME, form.username)
             putParcelable(STATE_PASSWORD, password)
             when (target) {
@@ -106,11 +110,15 @@ class HisarAutofillService : AutofillService() {
                 }
             }
         }
-        val saveInfo = SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD, arrayOf(password))
-            .apply { form.username?.let { setOptionalIds(arrayOf(it)) } }
+    }
+
+    private fun buildSaveInfo(clientState: Bundle): SaveInfo? {
+        val password = BundleCompat.getParcelable(clientState, STATE_PASSWORD, AutofillId::class.java) ?: return null
+        val username = BundleCompat.getParcelable(clientState, STATE_USERNAME, AutofillId::class.java)
+        return SaveInfo.Builder(SaveInfo.SAVE_DATA_TYPE_USERNAME or SaveInfo.SAVE_DATA_TYPE_PASSWORD, arrayOf(password))
+            .apply { username?.let { setOptionalIds(arrayOf(it)) } }
             .setFlags(SaveInfo.FLAG_SAVE_ON_ALL_VIEWS_INVISIBLE)
             .build()
-        return saveInfo to clientState
     }
 
     override fun onSaveRequest(request: SaveRequest, callback: SaveCallback) {

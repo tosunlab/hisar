@@ -16,6 +16,7 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import com.tryhisar.hisar.HisarUITestCase.Companion.MASTER_PASSWORD
+import com.tryhisar.hisar.model.ItemDetail
 import java.util.concurrent.TimeoutException
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -140,29 +141,41 @@ class AutofillServiceUITests {
         type("new-user", "username=new-user; password=0 characters")
         waitForObject(By.res("password")).click()
         type("new-password", "username=new-user; password=12 characters")
-        waitForObject(By.text("Sign in")).click()
-        val save = device.wait(Until.findObject(By.text("Save")), 15_000) ?: error("the system offered no save sheet")
-        saveScreenshot("autofill-service-save-prompt")
-        save.click()
-        if (!saveSheetOpensHisar) {
-            device.wait(Until.gone(By.text("Save")), 10_000)
-            instrumentation.targetContext.startActivity(checkNotNull(instrumentation.targetContext.packageManager.getLaunchIntentForPackage(appPackage)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        }
-        assertEquals("new-user", waitForObject(By.res("editor-username")).text)
-        saveScreenshot("autofill-service-save-editor")
-        assertEquals("https://accounts.example.com", waitForObject(By.res("editor-website-0")).text)
-        waitForObject(By.res("editor-save")).click()
-        assertTrue("the editor closes after saving", device.wait(Until.gone(By.res("editor-save")), 20_000))
-        val personal = testBackend.listAllVault().single { it.name == "Personal" }
-        val saved = testBackend.listAllItem(personal.id).single { it.username == "new-user" }
-        val detail = testBackend.getItem(personal.id, saved.id)
-        assertEquals("new-user", detail.username)
-        assertEquals("new-password", detail.password)
-        assertEquals(listOf("https://accounts.example.com"), detail.allURL)
+        val detail = saveTypedLogin("new-user", "new-password")
 
         openPage(AutofillTestPageActivity.LOGIN_PAGE)
         chooseSuggestion(detail.title, By.res("username"))
         assertNotNull("a later visit receives the exact saved login", device.wait(Until.findObject(By.text("username=new-user; password=new-password")), 20_000))
+    }
+
+    // The system decides whether to save from the latest fill response only, and a field no earlier response covers asks
+    // for a new one, so the code field's response comes between typing a login and signing in.
+    @Test
+    fun testMixedFormSavesTheTypedLoginAroundTheCodeField() {
+        signUpWithLogins("AUTOFILL_SERVICE_SAVE_CODE_")
+
+        openPage(AutofillTestPageActivity.MIXED_PAGE)
+        findSuggestion("Search Hisar", By.res("username"))
+        type("first-user", "username=first-user; password=0 characters; code=")
+        waitForObject(By.res("password")).click()
+        type("first-password", "username=first-user; password=14 characters; code=")
+        findSuggestion("Search Hisar", By.res("code"))
+        val first = saveTypedLogin("first-user", "first-password")
+
+        withoutPageLoadRequest {
+            openPage(AutofillTestPageActivity.MIXED_PAGE)
+            findSuggestion("Search Hisar", By.res("code"))
+            chooseSuggestion(first.title, By.res("username"))
+            assertNotNull("a login field focused after the code field fills", device.wait(Until.findObject(By.text("username=first-user; password=first-password; code=")), 20_000))
+
+            openPage(AutofillTestPageActivity.MIXED_PAGE)
+            findSuggestion("Search Hisar", By.res("code"))
+            findSuggestion("Search Hisar", By.res("username"))
+            type("second-user", "username=second-user; password=0 characters; code=")
+            waitForObject(By.res("password")).click()
+            type("second-password", "username=second-user; password=15 characters; code=")
+            saveTypedLogin("second-user", "second-password")
+        }
     }
 
     private fun openPage(page: String) = open(AutofillTestPageActivity::class.java.name, By.res("result")) { putExtra(AutofillTestPageActivity.EXTRA_PAGE, page) }
@@ -189,6 +202,43 @@ class AutofillServiceUITests {
             device.pressBack()
         }
         error("no AutoFill suggestion \"$title\" for $field")
+    }
+
+    // On Android 13 and later a page with a password field asks for a fill as it loads, before any field is focused, when
+    // the device's autofill_dialog_hints name password, as Google Play's do, so the login fields always answer first.
+    // Without that request the code field asks first, as it does on devices without those hints.
+    private fun withoutPageLoadRequest(block: () -> Unit) {
+        val valuesByKey = listOf("autofill_dialog_enabled", "autofill_dialog_hints").associateWith { shell("device_config get autofill $it").trim() }
+        for (key in valuesByKey.keys) shell("device_config delete autofill $key")
+        try {
+            block()
+        } finally {
+            for ((key, value) in valuesByKey) if (value != "null") shell("device_config put autofill $key $value")
+        }
+    }
+
+    /** Signs in with what was typed, accepts the system's offer to save and saves Hisar's editor; returns the saved login. */
+    private fun saveTypedLogin(username: String, password: String): ItemDetail {
+        waitForObject(By.text("Sign in")).click()
+        val save = device.wait(Until.findObject(By.text("Save")), 15_000) ?: error("the system offered no save sheet")
+        saveScreenshot("autofill-service-save-prompt-$username")
+        save.click()
+        if (!saveSheetOpensHisar) {
+            device.wait(Until.gone(By.text("Save")), 10_000)
+            instrumentation.targetContext.startActivity(checkNotNull(instrumentation.targetContext.packageManager.getLaunchIntentForPackage(appPackage)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }
+        assertEquals(username, waitForObject(By.res("editor-username")).text)
+        saveScreenshot("autofill-service-save-editor-$username")
+        assertEquals("https://accounts.example.com", waitForObject(By.res("editor-website-0")).text)
+        waitForObject(By.res("editor-save")).click()
+        assertTrue("the editor closes after saving", device.wait(Until.gone(By.res("editor-save")), 20_000))
+        val personal = testBackend.listAllVault().single { it.name == "Personal" }
+        val saved = testBackend.listAllItem(personal.id).single { it.username == username }
+        val detail = testBackend.getItem(personal.id, saved.id)
+        assertEquals(username, detail.username)
+        assertEquals(password, detail.password)
+        assertEquals(listOf("https://accounts.example.com"), detail.allURL)
+        return detail
     }
 
     private fun waitForCode(prefix: String, fill: () -> Unit) {
