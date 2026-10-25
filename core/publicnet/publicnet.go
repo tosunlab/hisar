@@ -3,9 +3,28 @@
 package publicnet
 
 import (
+	"errors"
+	"fmt"
 	"net/netip"
 	"slices"
+	"syscall"
 )
+
+// ErrNotPublic is what RefuseNonPublic returns for an address that is not a public one.
+var ErrNotPublic = errors.New("publicnet: not a public internet address")
+
+// RefuseNonPublic is a net.Dialer Control: it refuses every connection to an address that is not public, after name
+// resolution, so a public name that resolves to a local address is refused too.
+func RefuseNonPublic(_, address string, _ syscall.RawConn) error {
+	addressPort, err := netip.ParseAddrPort(address)
+	if err != nil {
+		return fmt.Errorf("publicnet: address %q: %w", address, err)
+	}
+	if !IsPublicAddress(addressPort.Addr()) {
+		return ErrNotPublic
+	}
+	return nil
+}
 
 var (
 	sharedAddressSpace = netip.MustParsePrefix("100.64.0.0/10")

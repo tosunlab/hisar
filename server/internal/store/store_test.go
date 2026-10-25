@@ -165,8 +165,12 @@ func TestMigrations(t *testing.T) {
 			t.Errorf("%s missing", indexName)
 		}
 	}
-	if countTable(t, database, "device_push") != 1 {
-		t.Fatal("device push migration is missing")
+	if countTable(t, database, "device_push") != 1 || countColumn(t, database, "device_push", "web_push_endpoint") != 1 {
+		t.Fatal("device push migrations are missing")
+	}
+	rollbackTestMigrationsTo(t, database, 19)
+	if countColumn(t, database, "device_push", "web_push_endpoint") != 0 || countConstraint(t, database, "device_push_one_target") != 0 {
+		t.Fatal("rolling back Web Push left its columns or constraints")
 	}
 	rollbackTestMigrationsTo(t, database, 18)
 	if countTable(t, database, "device_push") != 0 {

@@ -1,6 +1,7 @@
 package publicnet
 
 import (
+	"errors"
 	"net/netip"
 	"testing"
 )
@@ -23,5 +24,16 @@ func TestIsPublicAddress(t *testing.T) {
 		if got := IsPublicAddress(netip.MustParseAddr(address)); got != want {
 			t.Errorf("IsPublicAddress(%s) = %v", address, got)
 		}
+	}
+}
+
+func TestRefuseNonPublic(t *testing.T) {
+	for _, address := range []string{"127.0.0.1:443", "[::1]:8080", "10.1.2.3:443", "[64:ff9b::a00:1]:443"} {
+		if err := RefuseNonPublic("tcp", address, nil); !errors.Is(err, ErrNotPublic) {
+			t.Errorf("dialing %s: %v", address, err)
+		}
+	}
+	if err := RefuseNonPublic("tcp", "140.82.112.3:443", nil); err != nil {
+		t.Errorf("a public address was refused: %v", err)
 	}
 }

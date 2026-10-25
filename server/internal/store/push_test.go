@@ -23,23 +23,23 @@ func TestPushTargetsAreTheAccountsSignedInDevicesThatWantTheKind(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := database.SetDevicePush(ctx, "AAAAAA", firstDevice.ID, "handle-1", []string{"approval", "security"}); err != nil {
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: firstDevice.ID, Handle: "handle-1"}, []string{"approval", "security"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetDevicePush(ctx, "AAAAAA", secondDevice.ID, "handle-2", []string{"security"}); err != nil {
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: secondDevice.ID, Handle: "handle-2"}, []string{"security"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetDevicePush(ctx, "AAAAAA", otherDevice.ID, "handle-3", []string{"approval"}); !errors.Is(err, ErrNotFound) {
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: otherDevice.ID, Handle: "handle-3"}, []string{"approval"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("another account's device took a handle: %v", err)
 	}
 	macDevice := &Device{ID: uuid.NewString(), AccountID: "AAAAAA", Name: "mac", Platform: "darwin/desktop"}
 	if err := database.CreateDeviceSession(ctx, macDevice, &Session{TokenHash: []byte("token-mac"), AccountID: "AAAAAA", DeviceID: macDevice.ID, ExpiresAt: time.Now().Add(time.Hour)}, HashOpaqueRecord([]byte{1})); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.SetDevicePush(ctx, "AAAAAA", macDevice.ID, "handle-mac", []string{"approval"}); !errors.Is(err, ErrNotFound) {
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: macDevice.ID, Handle: "handle-mac"}, []string{"approval"}); !errors.Is(err, ErrNotFound) {
 		t.Fatalf("a Mac took a handle: %v", err)
 	}
-	if err := database.SetDevicePush(ctx, "AAAAAA", firstDevice.ID, "handle-1", []string{"marketing"}); err == nil {
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: firstDevice.ID, Handle: "handle-1"}, []string{"marketing"}); err == nil {
 		t.Fatal("an unknown kind was saved")
 	}
 
@@ -51,7 +51,11 @@ func TestPushTargetsAreTheAccountsSignedInDevicesThatWantTheKind(t *testing.T) {
 		}
 		got := []string{}
 		for _, target := range allTarget {
-			got = append(got, target.Handle)
+			if target.WebPush != nil {
+				got = append(got, target.WebPush.Endpoint)
+			} else {
+				got = append(got, target.Handle)
+			}
 		}
 		if len(got) != len(want) || (len(want) > 0 && !sameStrings(got, want)) {
 			t.Fatalf("%s targets except %s = %v, want %v", kind, exceptDeviceID, got, want)
@@ -62,13 +66,38 @@ func TestPushTargetsAreTheAccountsSignedInDevicesThatWantTheKind(t *testing.T) {
 	expectTargets("security", firstDevice.ID, "handle-2")
 	expectTargets("sharing", "")
 
-	if err := database.SetDevicePush(ctx, "AAAAAA", firstDevice.ID, "handle-1b", []string{"approval"}); err != nil {
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: firstDevice.ID, Handle: "handle-1b"}, []string{"approval"}); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.DeleteDevicePushHandle(ctx, firstDevice.ID, "handle-1"); err != nil {
+	if err := database.DeleteStalePushTarget(ctx, PushTarget{DeviceID: firstDevice.ID, Handle: "handle-1"}); err != nil {
 		t.Fatal(err)
 	}
 	expectTargets("approval", "", "handle-1b")
+
+	// An Android phone's Web Push subscription replaces its handle, and goes stale the same way.
+	webPush := &WebPushSubscription{Endpoint: "https://ntfy.example/upABC", P256DH: make([]byte, 65), Auth: make([]byte, 16)}
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: firstDevice.ID, WebPush: webPush}, []string{"approval"}); err != nil {
+		t.Fatal(err)
+	}
+	expectTargets("approval", "", "https://ntfy.example/upABC")
+	if allTarget, _ := database.ListPushTargets(ctx, "AAAAAA", "approval", ""); allTarget[0].Handle != "" || len(allTarget[0].WebPush.P256DH) != 65 {
+		t.Fatalf("Web Push target = %+v", allTarget[0])
+	}
+	badWebPush := &WebPushSubscription{Endpoint: "https://ntfy.example/upABC", P256DH: make([]byte, 64), Auth: make([]byte, 16)}
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: firstDevice.ID, WebPush: badWebPush}, []string{"approval"}); err == nil {
+		t.Fatal("a public key of the wrong size was saved")
+	}
+	if err := database.DeleteStalePushTarget(ctx, PushTarget{DeviceID: firstDevice.ID, Handle: "handle-1b"}); err != nil {
+		t.Fatal(err)
+	}
+	expectTargets("approval", "", "https://ntfy.example/upABC")
+	if err := database.DeleteStalePushTarget(ctx, PushTarget{DeviceID: firstDevice.ID, WebPush: webPush}); err != nil {
+		t.Fatal(err)
+	}
+	expectTargets("approval", "")
+	if err := database.SetDevicePush(ctx, "AAAAAA", PushTarget{DeviceID: firstDevice.ID, Handle: "handle-1c"}, []string{"approval"}); err != nil {
+		t.Fatal(err)
+	}
 
 	if _, err := database.RevokeDevice(ctx, "AAAAAA", secondDevice.ID); err != nil {
 		t.Fatal(err)
