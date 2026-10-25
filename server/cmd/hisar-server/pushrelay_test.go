@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestPushRelayNeedsItsSealingKeyAndAPushService(t *testing.T) {
+func TestPushRelayNeedsItsSealingKeyAndTheAPNsKey(t *testing.T) {
 	directory := t.TempDir()
 	keyFile := filepath.Join(directory, "sealing-key")
 	t.Setenv("HISAR_PUSH_RELAY_SEALING_KEY_FILE", keyFile)
@@ -22,7 +22,7 @@ func TestPushRelayNeedsItsSealingKeyAndAPushService(t *testing.T) {
 	}
 	os.WriteFile(keyFile, []byte(base64.StdEncoding.EncodeToString(make([]byte, 32))+"\n"), 0o600)
 	if _, err := newPushRelayFromEnvironment(); err == nil || !strings.Contains(err.Error(), "APNS_KEY_FILE") {
-		t.Fatalf("a relay without APNs or FCM started: %v", err)
+		t.Fatalf("a relay without APNs started: %v", err)
 	}
 	apnsKey, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	keyBytes, _ := x509.MarshalPKCS8PrivateKey(apnsKey)

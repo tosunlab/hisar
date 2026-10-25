@@ -21,7 +21,7 @@ func TestPushSettingsAreJSONWithEveryKindOnAtFirst(t *testing.T) {
 	if err := json.Unmarshal([]byte(text), &settings); err != nil || settings.IsAvailable || len(settings.AllEnabledKind) != 3 {
 		t.Fatalf("settings = %s %v", text, err)
 	}
-	if err := hisar.SetPushToken("fcm", "token"); err != nil {
+	if err := hisar.SetPushToken("apns", "token"); err != nil {
 		t.Fatalf("a token while signed out: %v", err)
 	}
 	if err := hisar.SetPushKindEnabled("marketing", true); err == nil {

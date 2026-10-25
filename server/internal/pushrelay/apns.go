@@ -141,7 +141,7 @@ func (sender *APNsSender) Send(ctx context.Context, platform apitypes.PushPlatfo
 	request.Header.Set("apns-push-type", "alert")
 	request.Header.Set("apns-priority", "10")
 	request.Header.Set("apns-collapse-id", string(kind))
-	request.Header.Set("apns-expiration", strconv.FormatInt(sender.config.Now().Add(getTimeToLive(kind)).Unix(), 10))
+	request.Header.Set("apns-expiration", strconv.FormatInt(sender.config.Now().Add(kind.GetTimeToLive()).Unix(), 10))
 	response, err := sender.config.Client.Do(request)
 	if err != nil {
 		return err

@@ -31,10 +31,10 @@ type PushSettings struct {
 }
 
 // SetPushToken takes the push service token the phone's OS gave Hisar, and registers it with the push relay and the
-// server for the signed-in account. platform is apitypes.PushPlatform: "apns", "apns-sandbox" or "fcm". The phones call
+// server for the signed-in account. platform is apitypes.PushPlatform: "apns" or "apns-sandbox". The phones call
 // it at every launch and whenever the OS replaces the token, never on the main thread.
 func (s *Service) SetPushToken(platform, token string) error {
-	if platform != string(apitypes.PushPlatformAPNs) && platform != string(apitypes.PushPlatformAPNsSandbox) && platform != string(apitypes.PushPlatformFCM) {
+	if platform != string(apitypes.PushPlatformAPNs) && platform != string(apitypes.PushPlatformAPNsSandbox) {
 		return fmt.Errorf("unknown push platform %q", platform)
 	}
 	s.mutex.Lock()

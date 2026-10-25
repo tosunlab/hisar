@@ -5,21 +5,16 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/rsa"
 	"crypto/sha256"
-	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
-	"encoding/pem"
 	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/tryhisar/hisar/core/apitypes"
 )
@@ -193,69 +188,11 @@ func TestRelayAnswersGoneForAnUnregisteredTokenAndLimitsEachKind(t *testing.T) {
 
 func TestRelayRefusesPlatformsItHasNoSenderFor(t *testing.T) {
 	relay := NewRelay(newTestSealer(t), map[apitypes.PushPlatform]Sender{})
-	body, _ := json.Marshal(apitypes.RelayRegisterRequest{Platform: apitypes.PushPlatformFCM, Token: "token"})
+	body, _ := json.Marshal(apitypes.RelayRegisterRequest{Platform: "fcm", Token: "token"})
 	recorder := httptest.NewRecorder()
 	relay.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/register", bytes.NewReader(body)))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("register answered %d", recorder.Code)
-	}
-}
-
-func TestFCMPushIsADataMessageWithTheKindOnly(t *testing.T) {
-	key, _ := rsa.GenerateKey(rand.Reader, 2048)
-	keyBytes, _ := x509.MarshalPKCS8PrivateKey(key)
-	var allTokenRequest []url.Values
-	var allSend []map[string]any
-	var allAuthorization []string
-	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
-		switch request.URL.Path {
-		case "/token":
-			request.ParseForm()
-			allTokenRequest = append(allTokenRequest, request.PostForm)
-			writer.Write([]byte(`{"access_token":"access-1","expires_in":3600}`))
-		case "/v1/projects/hisar-test/messages:send":
-			allAuthorization = append(allAuthorization, request.Header.Get("Authorization"))
-			var body map[string]any
-			json.NewDecoder(request.Body).Decode(&body)
-			allSend = append(allSend, body)
-			if strings.Contains(mustJSON(body), "removed") {
-				writer.WriteHeader(http.StatusNotFound)
-				writer.Write([]byte(`{"error":{"status":"NOT_FOUND","details":[{"errorCode":"UNREGISTERED"}]}}`))
-				return
-			}
-			writer.Write([]byte(`{"name":"projects/hisar-test/messages/1"}`))
-		default:
-			t.Errorf("unexpected %s", request.URL.Path)
-		}
-	}))
-	defer server.Close()
-	sender, err := NewFCMSender(FCMConfig{
-		Account: FCMServiceAccount{
-			ProjectID: "hisar-test", ClientEmail: "relay@hisar-test.iam.gserviceaccount.com", TokenURI: server.URL + "/token",
-			PrivateKey: string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyBytes})),
-		},
-		BaseURL: server.URL,
-		Now:     func() time.Time { return time.Unix(1_800_000_000, 0) },
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	relay := NewRelay(newTestSealer(t), map[apitypes.PushPlatform]Sender{apitypes.PushPlatformFCM: sender})
-	if code := pushThrough(t, relay, register(t, relay, apitypes.PushPlatformFCM, "fcm-token"), apitypes.PushKindSharing); code != http.StatusNoContent {
-		t.Fatalf("push answered %d", code)
-	}
-	if code := pushThrough(t, relay, register(t, relay, apitypes.PushPlatformFCM, "removed"), apitypes.PushKindSharing); code != http.StatusGone {
-		t.Fatalf("an unregistered token answered %d", code)
-	}
-	if len(allTokenRequest) != 1 || allTokenRequest[0].Get("grant_type") != googleGrant {
-		t.Fatalf("token requests = %v", allTokenRequest)
-	}
-	if allAuthorization[0] != "Bearer access-1" || allAuthorization[1] != "Bearer access-1" {
-		t.Fatalf("authorization = %v", allAuthorization)
-	}
-	want := `{"message":{"android":{"collapse_key":"sharing","priority":"HIGH","ttl":"86400s"},"data":{"kind":"sharing"},"token":"fcm-token"}}`
-	if got := mustJSON(allSend[0]); got != want {
-		t.Fatalf("message = %s", got)
 	}
 }
 

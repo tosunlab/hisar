@@ -28,7 +28,6 @@ var ErrInvalidHandle = errors.New("pushrelay: invalid handle")
 var allPlatformByte = map[apitypes.PushPlatform]byte{
 	apitypes.PushPlatformAPNs:        1,
 	apitypes.PushPlatformAPNsSandbox: 2,
-	apitypes.PushPlatformFCM:         3,
 }
 
 // Sealer turns a platform and token into a handle and back, with AES-256-GCM under the relay's key. A handle is

@@ -100,7 +100,7 @@ func TestPushTokenRegistersWithTheRelayOnceAndTheServerWithTheEnabledKinds(t *te
 
 func TestPushIsUnavailableWithoutARelayOrWithAnOlderServer(t *testing.T) {
 	fixture := createUnlockedTestService(t)
-	if err := fixture.service.SetPushToken("fcm", "token"); err != nil {
+	if err := fixture.service.SetPushToken("apns", "token"); err != nil {
 		t.Fatal(err)
 	}
 	if settings := fixture.service.GetPushSettings(); settings.IsAvailable || settings.IsServerSending {
@@ -109,14 +109,14 @@ func TestPushIsUnavailableWithoutARelayOrWithAnOlderServer(t *testing.T) {
 	fixture.apiServer.mutex.Lock()
 	fixture.apiServer.isPushUnsupported = true
 	fixture.apiServer.mutex.Unlock()
-	if err := fixture.service.SetPushToken("fcm", "token"); err != nil {
+	if err := fixture.service.SetPushToken("apns", "token"); err != nil {
 		t.Fatalf("an older server is not an error: %v", err)
 	}
 	if fixture.apiServer.getPushRegistration() != nil {
 		t.Fatal("registered with a server that sends no pushes")
 	}
-	if err := fixture.service.SetPushToken("webpush", "token"); err == nil {
-		t.Fatal("an unknown platform was taken")
+	if err := fixture.service.SetPushToken("fcm", "token"); err == nil {
+		t.Fatal("FCM, which Hisar no longer uses, was taken")
 	}
 }
 

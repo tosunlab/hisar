@@ -1,6 +1,6 @@
 package hisarkit
 
-// SetPushToken takes the push token the OS gave the app ("apns", "apns-sandbox" or "fcm" with the token) and registers
+// SetPushToken takes the push token the OS gave the app ("apns" or "apns-sandbox" with the token) and registers
 // it for the signed-in account. Call it off the main thread: it reaches the server and the push relay.
 func (hisar *Hisar) SetPushToken(platform, token string) error {
 	return hisar.service.SetPushToken(platform, token)

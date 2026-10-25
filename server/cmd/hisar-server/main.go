@@ -45,14 +45,13 @@ desktop updates (the Mac app's Sparkle feed) and the newest server release for t
   HISAR_DESKTOP_UPDATE_GITHUB_TOKEN       optional read-only token (Contents: read), needed while the repository is private
   HISAR_DESKTOP_UPDATE_GITHUB_API_URL     GitHub API base URL (default https://api.github.com)
 
-push relay (push-relay only; it needs the sealing key and at least one of APNs and FCM):
-  HISAR_PUSH_RELAY_ADDR                      listen address (default :8090)
-  HISAR_PUSH_RELAY_SEALING_KEY_FILE          32 random bytes in base64, which seal phones' push tokens into handles (default push-relay-sealing-key)
-  HISAR_PUSH_RELAY_APNS_KEY_FILE             the APNs Auth Key (.p8)
-  HISAR_PUSH_RELAY_APNS_KEY_ID               its key ID
-  HISAR_PUSH_RELAY_APNS_TEAM_ID              the Apple developer team ID
-  HISAR_PUSH_RELAY_APNS_TOPIC                the iPhone app's bundle ID (default com.tryhisar.hisar)
-  HISAR_PUSH_RELAY_FCM_SERVICE_ACCOUNT_FILE  a Firebase service account's JSON key
+push relay (push-relay only; it needs the sealing key and the APNs key):
+  HISAR_PUSH_RELAY_ADDR              listen address (default :8090)
+  HISAR_PUSH_RELAY_SEALING_KEY_FILE  32 random bytes in base64, which seal phones' push tokens into handles (default push-relay-sealing-key)
+  HISAR_PUSH_RELAY_APNS_KEY_FILE     the APNs Auth Key (.p8)
+  HISAR_PUSH_RELAY_APNS_KEY_ID       its key ID
+  HISAR_PUSH_RELAY_APNS_TEAM_ID      the Apple developer team ID
+  HISAR_PUSH_RELAY_APNS_TOPIC        the iPhone app's bundle ID (default com.tryhisar.hisar)
 
 minimum app versions (optional; empty leaves the dashboard's value, older apps get 426 Upgrade Required):
   HISAR_MINIMUM_VERSION_DESKTOP_MACOS  e.g. 0.1.6

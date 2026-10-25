@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
@@ -16,7 +15,7 @@ import (
 	"github.com/tryhisar/hisar/server/internal/pushrelay"
 )
 
-// pushRelay runs Hisar's push relay, which holds the APNs and FCM keys for every Hisar server. It needs no database.
+// pushRelay runs Hisar's push relay, which holds the APNs key for every Hisar server: Android phones get their pushes from the servers directly, through Web Push. It needs no database.
 func pushRelay(ctx context.Context, _ []string) error {
 	relay, err := newPushRelayFromEnvironment()
 	if err != nil {
@@ -59,41 +58,23 @@ func newPushRelayFromEnvironment() (*pushrelay.Relay, error) {
 	if err != nil {
 		return nil, err
 	}
-	allSender := map[apitypes.PushPlatform]pushrelay.Sender{}
-	if path := os.Getenv("HISAR_PUSH_RELAY_APNS_KEY_FILE"); path != "" {
-		pemBytes, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("push relay: the APNs key: %w", err)
-		}
-		apnsKey, err := pushrelay.ParseAPNsKey(pemBytes)
-		if err != nil {
-			return nil, err
-		}
-		keyID, teamID := os.Getenv("HISAR_PUSH_RELAY_APNS_KEY_ID"), os.Getenv("HISAR_PUSH_RELAY_APNS_TEAM_ID")
-		if keyID == "" || teamID == "" {
-			return nil, errors.New("push relay: HISAR_PUSH_RELAY_APNS_KEY_ID and HISAR_PUSH_RELAY_APNS_TEAM_ID are needed with the APNs key")
-		}
-		sender := pushrelay.NewAPNsSender(pushrelay.APNsConfig{KeyID: keyID, TeamID: teamID, Topic: getEnv("HISAR_PUSH_RELAY_APNS_TOPIC", "com.tryhisar.hisar"), Key: apnsKey})
-		allSender[apitypes.PushPlatformAPNs] = sender
-		allSender[apitypes.PushPlatformAPNsSandbox] = sender
+	path := os.Getenv("HISAR_PUSH_RELAY_APNS_KEY_FILE")
+	if path == "" {
+		return nil, errors.New("push relay: set HISAR_PUSH_RELAY_APNS_KEY_FILE")
 	}
-	if path := os.Getenv("HISAR_PUSH_RELAY_FCM_SERVICE_ACCOUNT_FILE"); path != "" {
-		accountJSON, err := os.ReadFile(path)
-		if err != nil {
-			return nil, fmt.Errorf("push relay: the FCM service account: %w", err)
-		}
-		var account pushrelay.FCMServiceAccount
-		if err := json.Unmarshal(accountJSON, &account); err != nil {
-			return nil, fmt.Errorf("push relay: the FCM service account: %w", err)
-		}
-		sender, err := pushrelay.NewFCMSender(pushrelay.FCMConfig{Account: account})
-		if err != nil {
-			return nil, err
-		}
-		allSender[apitypes.PushPlatformFCM] = sender
+	pemBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("push relay: the APNs key: %w", err)
 	}
-	if len(allSender) == 0 {
-		return nil, errors.New("push relay: set HISAR_PUSH_RELAY_APNS_KEY_FILE, HISAR_PUSH_RELAY_FCM_SERVICE_ACCOUNT_FILE or both")
+	apnsKey, err := pushrelay.ParseAPNsKey(pemBytes)
+	if err != nil {
+		return nil, err
 	}
+	keyID, teamID := os.Getenv("HISAR_PUSH_RELAY_APNS_KEY_ID"), os.Getenv("HISAR_PUSH_RELAY_APNS_TEAM_ID")
+	if keyID == "" || teamID == "" {
+		return nil, errors.New("push relay: HISAR_PUSH_RELAY_APNS_KEY_ID and HISAR_PUSH_RELAY_APNS_TEAM_ID are needed with the APNs key")
+	}
+	sender := pushrelay.NewAPNsSender(pushrelay.APNsConfig{KeyID: keyID, TeamID: teamID, Topic: getEnv("HISAR_PUSH_RELAY_APNS_TOPIC", "com.tryhisar.hisar"), Key: apnsKey})
+	allSender := map[apitypes.PushPlatform]pushrelay.Sender{apitypes.PushPlatformAPNs: sender, apitypes.PushPlatformAPNsSandbox: sender}
 	return pushrelay.NewRelay(sealer, allSender), nil
 }
