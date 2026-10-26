@@ -132,12 +132,17 @@ class HisarUITestCase: XCTestCase {
         let menuButton = app.buttons[menu]
         waitForHittable(menuButton, file: file, line: line)
         menuButton.tap()
+        let itemButton = app.buttons[item]
         if let submenu {
             let submenuButton = app.buttons[submenu]
             waitForHittable(submenuButton, file: file, line: line)
-            submenuButton.tap()
+            for _ in 0..<5 {
+                submenuButton.tap()
+                if itemButton.waitForExistence(timeout: 5) {
+                    break
+                }
+            }
         }
-        let itemButton = app.buttons[item]
         waitFor(itemButton, file: file, line: line)
         for _ in 0..<5 {
             itemButton.tap()
