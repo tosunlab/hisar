@@ -182,6 +182,14 @@ class ItemDetailScreenTests {
         assertEquals(listOf("Copy username"), username.config[SemanticsProperties.ContentDescription])
         assertTrue("the row owns its label and value", username.config[SemanticsProperties.Text].size >= 2)
         assertEquals("inner copy stays a separate action", 1, composeRule.onAllNodes(hasTestTag("copy-username")).fetchSemanticsNodes().size)
+
+        composeRule.waitForTag("one-time-code-value")
+        val code = composeRule.onNodeWithTag("one-time-code-value", useUnmergedTree = true)
+            .fetchSemanticsNode().config[SemanticsProperties.Text].single().text
+        val codeRow = composeRule.onNode(hasClickLabel("Copy one-time code")).fetchSemanticsNode()
+        assertEquals(Role.Button, codeRow.config[SemanticsProperties.Role])
+        assertTrue("TalkBack can read the code on the copy row", codeRow.config[SemanticsProperties.Text].any { it.text == code })
+        assertEquals(FakeBackend.oneTimeCode.formattedCode, code)
     }
 
     private fun hasClickLabel(label: String) = SemanticsMatcher("a click action labelled $label") { it.config.getOrNull(SemanticsActions.OnClick)?.label == label }

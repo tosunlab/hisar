@@ -1,7 +1,6 @@
 package com.tryhisar.hisar.ui.item
 
 import android.content.ClipboardManager
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.longClick
@@ -93,7 +92,7 @@ class ItemDetailUITests : HisarUITestCase() {
         val startedAt = Instant.now().minusSeconds(1)
         waitFor("one-time-code-value")
         composeRule.waitUntil("the current code shows", 10_000) {
-            val shown = composeRule.onNode(hasTestTag("one-time-code-value")).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
+            val shown = readText("one-time-code-value")
             shown.replace(" ", "") in listOf(computeCode(Instant.now().minusSeconds(1)), computeCode(Instant.now()))
         }
         assertTrue(exists(hasTestTag("one-time-code-seconds")))
