@@ -51,7 +51,7 @@ describe("UnlockView with Touch ID", () => {
     expect(api.setTouchIDPromptFrame).toHaveBeenCalled();
     expect(api.unlockWithBiometric).toHaveBeenCalledTimes(1);
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="unlock-status"]').text()).toContain("Touch ID is waiting");
+    expect(wrapper.find('[data-testid="unlock-status"]').text()).toBe("Touch ID is waiting. Or type your master password.");
 
     api.getStatus.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
@@ -59,6 +59,7 @@ describe("UnlockView with Touch ID", () => {
     await flushPromises();
     expect(store.status.state).toBe("unlocked");
     expect(api.clearTouchIDPromptFrame).toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="unlock-status"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -90,6 +91,7 @@ describe("UnlockView with Touch ID", () => {
     expect(store.errorMessage).toContain("turned off");
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="use-touch-id"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="unlock-status"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
@@ -99,6 +101,8 @@ describe("UnlockView with Touch ID", () => {
     expect(api.unlockWithBiometric).not.toHaveBeenCalled();
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="use-touch-id"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="unlock-status"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 
   it("explains pending keychain setup without removing the password fallback", async () => {

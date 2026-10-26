@@ -118,8 +118,8 @@ onBeforeUnmount(() => {
           </label>
           <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
         </form>
-        <p class="muted status" aria-live="polite" data-testid="unlock-status">
-          {{ isWaitingForTouchID ? "Touch ID is waiting. Or type your master password." : "Enter your master password." }}
+        <p v-if="isWaitingForTouchID" class="muted status" aria-live="polite" data-testid="unlock-status">
+          Touch ID is waiting. Or type your master password.
         </p>
 
         <div class="sign-out">
