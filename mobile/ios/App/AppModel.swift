@@ -263,6 +263,7 @@ final class AppModel: ObservableObject {
 
     func showNotice(_ message: String) {
         noticeMessage = message
+        AccessibilityNotification.Announcement(message).post()
         noticeTask?.cancel()
         noticeTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 2_500_000_000)
