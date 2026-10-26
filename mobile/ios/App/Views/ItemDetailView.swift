@@ -185,12 +185,17 @@ struct ItemDetailView: View {
                                 Link(destination: openableURL) {
                                     Image(systemName: "safari")
                                         .iconButtonHitArea()
+                                        .padding(.trailing, 20)
+                                        .frame(maxHeight: .infinity)
+                                        .contentShape(.rect)
                                 }
                                 .buttonStyle(.borderless)
                                 .accessibilityLabel("Open website")
                                 .accessibilityIdentifier("open-website")
                             }
                         }
+                        .fixedSize(horizontal: false, vertical: true)
+                        .listRowInsets(EdgeInsets())
                         .contextMenu {
                             Button {
                                 model.copyText(url, label: "Website")
@@ -287,18 +292,12 @@ struct ItemDetailView: View {
                     )
                 }
                 if !server.port.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        SecretFieldRow(
-                            label: ServerFieldName.port, value: server.port, isConcealed: false, isRevealed: true, toggleReveal: nil,
-                            copy: { copy(fieldName: ServerFieldName.port, label: ServerFieldName.port) },
-                            copyReference: { copyReference(fieldName: ServerFieldName.port) }
-                        )
-                        if !server.portWarning.isEmpty {
-                            Text(server.portWarning)
-                                .font(.footnote)
-                                .foregroundStyle(.orange)
-                        }
-                    }
+                    SecretFieldRow(
+                        label: ServerFieldName.port, value: server.port, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                        copy: { copy(fieldName: ServerFieldName.port, label: ServerFieldName.port) },
+                        copyReference: { copyReference(fieldName: ServerFieldName.port) },
+                        warning: server.portWarning
+                    )
                 }
                 if !server.sshKeyID.isEmpty {
                     if server.sshKeyTitle.isEmpty {
@@ -491,21 +490,14 @@ struct ItemDetailView: View {
                     .foregroundStyle(.themeSecondary)
             }
             ForEach(allShownRow, id: \.label) { row in
-                VStack(alignment: .leading, spacing: 4) {
-                    SecretFieldRow(
-                        label: row.label, value: row.value, isConcealed: row.isConcealed,
-                        isRevealed: !row.isConcealed || allRevealedFieldName.contains(row.label),
-                        toggleReveal: row.isConcealed ? { toggleReveal(fieldName: row.label) } : nil,
-                        copy: { copy(fieldName: row.label, label: row.label) },
-                        copyReference: { copyReference(fieldName: row.label) }
-                    )
-                    if !row.warning.isEmpty {
-                        Text(row.warning)
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                            .accessibilityIdentifier("card-warning-\(row.label)")
-                    }
-                }
+                SecretFieldRow(
+                    label: row.label, value: row.value, isConcealed: row.isConcealed,
+                    isRevealed: !row.isConcealed || allRevealedFieldName.contains(row.label),
+                    toggleReveal: row.isConcealed ? { toggleReveal(fieldName: row.label) } : nil,
+                    copy: { copy(fieldName: row.label, label: row.label) },
+                    copyReference: { copyReference(fieldName: row.label) },
+                    warning: row.warning
+                )
             }
         } header: {
             Text(title)
@@ -522,12 +514,18 @@ struct ItemDetailView: View {
                 CopyFieldButton(label: "notes", value: item.notes, identifier: "secure-note-notes", copy: { copy(fieldName: "notes", label: "Notes") }) {
                     Text(item.notes)
                 }
-                Button {
-                    copy(fieldName: "notes", label: "Notes")
-                } label: {
-                    Label("Copy notes", systemImage: "doc.on.doc")
+                .contextMenu {
+                    Button {
+                        copy(fieldName: "notes", label: "Notes")
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                    Button {
+                        copyReference(fieldName: "notes")
+                    } label: {
+                        Label("Copy secret reference", systemImage: "terminal")
+                    }
                 }
-                .accessibilityIdentifier("copy-notes")
             }
         } header: {
             Text("Note")
@@ -646,6 +644,7 @@ struct SecretFieldRow: View {
     var toggleReveal: (() -> Void)?
     var copy: () -> Void
     var copyReference: () -> Void
+    var warning = ""
 
     private var isHidden: Bool { isConcealed && !isRevealed }
 
@@ -665,6 +664,12 @@ struct SecretFieldRow: View {
                     Text(isHidden ? String(repeating: "•", count: 12) : value)
                         .font(isConcealed ? .body.monospaced() : .body)
                         .lineLimit(isConcealed ? 3 : 5)
+                    if !warning.isEmpty {
+                        Text(warning)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("card-warning-\(label)")
+                    }
                 }
             }
             if let toggleReveal {
@@ -672,6 +677,8 @@ struct SecretFieldRow: View {
                     Image(systemName: isRevealed ? "eye.slash" : "eye")
                         .contentTransition(.symbolEffect(.replace))
                         .iconButtonHitArea()
+                        .frame(maxHeight: .infinity)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(isRevealed ? "Hide \(actionLabel)" : "Reveal \(actionLabel)")
@@ -679,6 +686,8 @@ struct SecretFieldRow: View {
             }
             CopyIconButton(copy: copy)
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .listRowInsets(EdgeInsets())
         .foregroundStyle(.primary)
         .contextMenu {
             Button(action: copy) {
@@ -709,9 +718,12 @@ struct CopyFieldButton<Content: View>: View {
         Button(action: copy) {
             content
                 .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
                 .contentShape(.rect)
         }
         .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets())
         .accessibilityLabel("Copy \(label)")
         .accessibilityValue(value)
         .accessibilityIdentifier(identifier ?? "copy-\(label.lowercased())")
@@ -726,6 +738,9 @@ struct CopyIconButton: View {
         Button(action: copy) {
             Image(systemName: "doc.on.doc")
                 .iconButtonHitArea()
+                .padding(.trailing, 20)
+                .frame(maxHeight: .infinity)
+                .contentShape(.rect)
         }
         .buttonStyle(.borderless)
         .accessibilityHidden(true)

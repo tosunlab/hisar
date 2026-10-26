@@ -61,7 +61,8 @@ the project; CI fails if the committed project differs.
 
 What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, Favorites (the star in an item,
 the swipe actions and the Favorites section at the top of Vaults), item detail
-(reveal, copy), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
+(tap a field anywhere to copy, including a concealed field, reveal independently with the eye, and long-press for
+Copy or Copy secret reference), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
 password with the Emergency Kit share), sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
 with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.

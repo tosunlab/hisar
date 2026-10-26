@@ -1,4 +1,5 @@
 import CryptoKit
+import UIKit
 import XCTest
 
 final class OneTimeCodeUITests: HisarUITestCase {
@@ -44,13 +45,28 @@ final class OneTimeCodeUITests: HisarUITestCase {
 
         let startedAt = Date()
         app.buttons["item-Example"].tap()
-        // The row is the button "Copy one-time code" and appears once the code is loaded, which is its value.
+        let copyNotice = app.staticTexts["One-time code copied. It clears in 90 seconds."]
         let codeRow = app.buttons["copy-one-time-code"]
         waitFor(codeRow)
-        let shownCode = (codeRow.value as? String) ?? ""
+        let value = (codeRow.value as? String) ?? ""
+        let shownCode = String(value.split(separator: ",").first ?? "")
+        XCTAssertTrue(value.contains("seconds left"))
         checkCurrentCode(shownCode.replacingOccurrences(of: " ", with: ""), startedAt: startedAt)
         saveScreenshot("otp-item-detail")
         codeRow.tap()
+        waitFor(copyNotice)
+        checkCurrentCode(UIPasteboard.general.string ?? "", startedAt: startedAt)
+        XCTAssertTrue(copyNotice.waitForNonExistence(timeout: 10))
+        let countdownTapStartedAt = Date()
+        codeRow.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.02)).tap()
+        waitFor(copyNotice)
+        checkCurrentCode(UIPasteboard.general.string ?? "", startedAt: countdownTapStartedAt)
+        XCTAssertTrue(copyNotice.waitForNonExistence(timeout: 10))
+        let codeCell = app.cells.containing(.button, identifier: "copy-one-time-code").firstMatch
+        let edgeTapStartedAt = Date()
+        codeCell.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.95)).tap()
+        waitFor(copyNotice)
+        checkCurrentCode(UIPasteboard.general.string ?? "", startedAt: edgeTapStartedAt)
         saveScreenshot("otp-copied")
 
         launchAutoFill(argument: "-HisarAutoFillOneTimeCodePreview")

@@ -14,16 +14,20 @@ struct OneTimeCodeRow: View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             HStack(spacing: 0) {
                 if let oneTimeCode {
-                    CopyFieldButton(label: "one-time code", value: oneTimeCode.formattedCode, identifier: "copy-one-time-code", copy: copy) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            title
-                            Text(oneTimeCode.formattedCode)
-                                .font(.title2.weight(.semibold).monospacedDigit())
-                                .contentTransition(.numericText())
+                    let secondsLeft = oneTimeCode.countSecondsLeft(at: context.date)
+                    CopyFieldButton(label: "one-time code", value: "\(oneTimeCode.formattedCode), \(secondsLeft) seconds left", identifier: "copy-one-time-code", copy: copy) {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                title
+                                Text(oneTimeCode.formattedCode)
+                                    .font(.title2.weight(.semibold).monospacedDigit())
+                                    .contentTransition(.numericText())
+                            }
+                            Spacer(minLength: 8)
+                            CountdownRing(secondsLeft: secondsLeft, period: oneTimeCode.period)
+                                .accessibilityHidden(true)
                         }
                     }
-                    CountdownRing(secondsLeft: oneTimeCode.countSecondsLeft(at: context.date), period: oneTimeCode.period)
-                        .onTapGesture(perform: copy)
                     CopyIconButton(copy: copy)
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
@@ -39,6 +43,8 @@ struct OneTimeCodeRow: View {
                 }
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .listRowInsets(EdgeInsets())
         .contextMenu {
             Button(action: copy) {
                 Label("Copy one-time code", systemImage: "doc.on.doc")

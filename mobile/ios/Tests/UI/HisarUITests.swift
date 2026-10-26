@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 final class HisarUITests: HisarUITestCase {
@@ -12,16 +13,33 @@ final class HisarUITests: HisarUITestCase {
         addLogin(title: "GitHub", username: "octo-alice", password: "ui-test-password-1", website: "github.com")
         saveScreenshot("items")
         app.buttons["item-GitHub"].tap()
-        // A field row is one button, "Copy <field>", whose value is what the row shows: "Hidden" until revealed.
+        let passwordNotice = app.staticTexts["Password copied. It clears in 90 seconds."]
         let passwordRow = app.buttons["copy-password"]
         waitFor(passwordRow)
         XCTAssertEqual(passwordRow.value as? String, "Hidden")
         XCTAssertEqual(passwordRow.label, "Copy password")
         XCTAssertEqual(app.buttons["reveal-password"].label, "Reveal password")
+        let passwordCell = app.cells.containing(.button, identifier: "copy-password").firstMatch
+        waitFor(passwordCell)
+        for point in [CGVector(dx: 0.01, dy: 0.05), CGVector(dx: 0.99, dy: 0.95)] {
+            passwordCell.coordinate(withNormalizedOffset: point).tap()
+            waitFor(passwordNotice)
+            XCTAssertEqual(UIPasteboard.general.string, "ui-test-password-1")
+            XCTAssertEqual(passwordRow.value as? String, "Hidden")
+            XCTAssertTrue(passwordNotice.waitForNonExistence(timeout: 10))
+        }
         app.buttons["reveal-password"].tap()
         XCTAssertEqual(passwordRow.value as? String, "ui-test-password-1")
+        XCTAssertFalse(passwordNotice.waitForExistence(timeout: 2), "revealing must not copy")
+        XCTAssertEqual(UIPasteboard.general.string, "ui-test-password-1")
         saveScreenshot("item-detail")
-        passwordRow.tap()
+        app.buttons["open-website"].tap()
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 10))
+        app.activate()
+        waitFor(passwordRow)
+        XCTAssertFalse(app.staticTexts["Website copied. It clears in 90 seconds."].waitForExistence(timeout: 2))
+        XCTAssertEqual(UIPasteboard.general.string, "ui-test-password-1", "opening a website must not copy")
 
         app.buttons["edit-item"].tap()
         app.buttons["editor-generate-password"].tap()
@@ -46,6 +64,18 @@ final class HisarUITests: HisarUITestCase {
         waitFor(notesRow)
         XCTAssertEqual(notesRow.value as? String, "4821-9930")
         saveScreenshot("secure-note")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Copy notes")).count, 1)
+        notesRow.press(forDuration: 1)
+        let copyNotes = app.buttons["Copy"].firstMatch
+        waitFor(copyNotes)
+        XCTAssertTrue(app.buttons["Copy secret reference"].exists)
+        copyNotes.tap()
+        waitFor(app.staticTexts["Notes copied. It clears in 90 seconds."])
+        XCTAssertEqual(UIPasteboard.general.string, "4821-9930")
+        notesRow.press(forDuration: 1)
+        app.buttons["Copy secret reference"].tap()
+        waitFor(app.staticTexts["Secret reference copied."])
+        XCTAssertTrue(UIPasteboard.general.string?.hasSuffix("/notes") == true)
         goBack()
 
         choose("new-credit-card", from: "new-menu", under: "new-more")
