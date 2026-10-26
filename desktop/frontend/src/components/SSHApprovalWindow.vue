@@ -17,6 +17,7 @@ import {
   setSignInLogin,
 } from "../approval";
 import { startThemeSync } from "../theme";
+import { getThisDeviceName } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 
@@ -467,7 +468,7 @@ onBeforeUnmount(() => {
             <AppIcon name="warning" :size="16" />
             <p>
               <strong>Forwarded from another computer</strong> — this request comes from
-              <strong class="monospace">{{ approval.forwardedFromHost || "a remote host" }}</strong> through agent forwarding, not from this Mac
+              <strong class="monospace">{{ approval.forwardedFromHost || "a remote host" }}</strong> through agent forwarding, not from {{ getThisDeviceName() }}
             </p>
           </div>
 

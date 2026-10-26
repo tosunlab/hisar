@@ -256,7 +256,7 @@ async function submitCreateAccount(): Promise<void> {
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
           <p class="hint muted" data-testid="create-account-note">
-            Your master password never leaves this Mac. A forgotten master password can't be recovered by anyone, including Hisar.
+            Your master password never leaves {{ getThisDeviceName() }}. A forgotten master password can't be recovered by anyone, including Hisar.
           </p>
           <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://api.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://api.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
         </form>

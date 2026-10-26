@@ -18,7 +18,7 @@ onMounted(loadWebsiteIconSetting);
       <div v-show="isRowVisible('appearance')" class="setting">
         <div class="setting-text">
           <strong id="appearance-label">Appearance</strong>
-          <p class="muted">System switches between light and dark with macOS.</p>
+          <p class="muted">System switches between light and dark with the system.</p>
         </div>
         <div class="segmented" role="radiogroup" aria-labelledby="appearance-label">
           <button

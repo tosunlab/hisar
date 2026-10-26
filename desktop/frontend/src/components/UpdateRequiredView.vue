@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { checkMinimumVersion, store, updateNow } from "../store";
+import { getThisDeviceName } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const isChecking = ref(false);
@@ -22,11 +23,11 @@ async function checkAgain(): Promise<void> {
         <span class="update-icon"><AppIcon name="refresh" :size="28" /></span>
         <h1 id="update-required-title">Update required</h1>
         <p class="subtitle" data-testid="update-required-versions">
-          This server needs Hisar {{ requirement?.minimumVersion }} or later. This Mac has {{ currentVersion }}.
+          This server needs Hisar {{ requirement?.minimumVersion }} or later. {{ getThisDeviceName().replace(/^this/, "This") }} has {{ currentVersion }}.
         </p>
         <p class="subtitle">
           Until Hisar is updated, the SSH agent, the hisar command-line tool and the browser extension answer with "Hisar needs an update". Your
-          items stay encrypted on this Mac and on the server.
+          items stay encrypted on {{ getThisDeviceName() }} and on the server.
         </p>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
         <button class="primary full-width" data-testid="update-now" :disabled="store.isBusy" @click="updateNow">Update now</button>
