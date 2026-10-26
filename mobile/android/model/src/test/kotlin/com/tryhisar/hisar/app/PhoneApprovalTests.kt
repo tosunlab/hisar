@@ -159,11 +159,9 @@ class PhoneApprovalTests {
             """,
         ).first()
         assertEquals("Raycast wants to create a share link for “GitHub”", approval.summary)
-        assertEquals(listOf("App", "Secrets", "Link", "Warning"), approval.allDetailRow.map { it.label }, "a share link lasts for this one request")
-        assertEquals(
-            listOf("Raycast", "username\npassword", "Expires in 7 days · 1 view", "Anyone with the link can read these until it expires or its views run out."),
-            approval.allDetailRow.map { it.value },
-        )
+        assertEquals(listOf("App", "Secrets", "Link"), approval.allDetailRow.map { it.label }, "a share link lasts for this one request")
+        assertEquals(listOf("Raycast", "username\npassword", "Expires in 7 days · 1 view"), approval.allDetailRow.map { it.value })
+        assertEquals("Anyone with the link can read these until it expires or its views run out.", approval.appWarning)
         assertEquals("Approving lets this one request continue; it does not unlock Hisar on your Mac.", approval.approvalNote)
         assertEquals("username, password", approval.detailLine, "the card names what the link shares")
         assertFalse(approval.isRememberable)
@@ -182,8 +180,10 @@ class PhoneApprovalTests {
         assertEquals("iTerm2 wants to sign a commit", approval.summary)
         val appIcon = assertNotNull(approval.appIcon)
         assertNotNull(ImageIO.read(ByteArrayInputStream(appIcon.toByteArray())), "the icon is an image")
-        assertEquals(listOf("App", "Warning", "Command"), approval.allDetailRow.map { it.label })
+        assertEquals("iTerm2 is not signed, so macOS cannot confirm who made it.", approval.appWarning, "the sheet shows the warning on its own, not as a row")
+        assertEquals(listOf("App", "Command"), approval.allDetailRow.map { it.label })
         assertNull(createApproval().appIcon)
+        assertEquals("", createApproval().appWarning)
     }
 
     @Test
@@ -260,15 +260,22 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testCardSwitchIsSentWithTheApproval() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModel(
+            harness,
+            listOf(createRememberingApproval("ssh"), createRememberingApproval("signing", isRememberedByDefault = false), createApproval("once")),
+        )
+        model.approvals.approve(model.approvals.allPendingApproval.value[0], isRemembered = false)
+        model.approvals.approve(model.approvals.allPendingApproval.value[0], isRemembered = true)
+        model.approvals.approve(model.approvals.allPendingApproval.value[0], isRemembered = true)
+        assertEquals(listOf("approve ssh", "approve remembered signing", "approve once"), harness.backend.allApprovalAnswer)
+    }
+
+    @Test
     fun testCardFooterNamesWhatApproveSends() {
-        assertEquals(
-            "Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.",
-            createRememberingApproval("ssh").cardApprovalNote,
-        )
-        assertEquals(
-            "Approving answers this one request. It never unlocks Hisar on your Mac.",
-            createRememberingApproval("signing", isRememberedByDefault = false).cardApprovalNote,
-        )
+        assertEquals("It never unlocks Hisar on your Mac.", createRememberingApproval("ssh").cardApprovalNote, "the switch on the card says the rest")
+        assertEquals("It never unlocks Hisar on your Mac.", createRememberingApproval("signing", isRememberedByDefault = false).cardApprovalNote)
         assertEquals("Approving answers this one request. It never unlocks Hisar on your Mac.", createApproval("once").cardApprovalNote)
     }
 

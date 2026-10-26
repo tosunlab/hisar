@@ -41,7 +41,7 @@ data class PhoneApproval(
     val secrets: List<String> = emptyList(),
     @Serializable(with = AppIconSerializer::class) val appIcon: ByteString? = null,
     val appWarning: String = "",
-    /** Set when approving can also be remembered on the Mac; the sheet shows it as a switch. */
+    /** Set when approving can also be remembered on the Mac; the sheet and the Vaults card show it as a switch. */
     val rememberLabel: String = "",
     val isRememberedByDefault: Boolean = false,
 ) {
@@ -56,10 +56,10 @@ data class PhoneApproval(
     /** The switch as the user left it, or its default; a request without the switch is never remembered. */
     fun resolveRememberChoice(chosenValue: Boolean?): Boolean = isRememberable && (chosenValue ?: isRememberedByDefault)
 
-    /** The Vaults card's footer: the card has no switch, so it says what its Approve sends. */
+    /** The Vaults card's footer: the card's switch says what else approving allows, so the footer says only what it never does. */
     val cardApprovalNote: String
-        get() = if (resolveRememberChoice(null)) {
-            "$rememberLabel. Tap the request to approve it once. It never unlocks Hisar on your Mac."
+        get() = if (isRememberable) {
+            "It never unlocks Hisar on your Mac."
         } else {
             "Approving answers this one request. It never unlocks Hisar on your Mac."
         }
@@ -120,16 +120,13 @@ data class PhoneApproval(
     val allDetailRow: List<DetailRow>
         get() {
             val appRow = DetailRow("App", appName, false)
-            val warningRow = DetailRow("Warning", appWarning, false)
             val secretRow = DetailRow("Secrets", secrets.joinToString("\n"), false)
-            // A launcher's command line is its share link's limit, and its warning is about what the link shares, so the
-            // warning follows the secrets and the limit.
+            // The sheet shows appWarning on its own above these rows.
             val allCandidate = if (kind == KIND_LAUNCHER) {
-                listOf(appRow, secretRow, DetailRow("Link", commandLine, false), warningRow, DetailRow("Lasts", lifetime, false))
+                listOf(appRow, secretRow, DetailRow("Link", commandLine, false), DetailRow("Lasts", lifetime, false))
             } else {
                 listOf(
                     appRow,
-                    warningRow,
                     DetailRow("Project", projectPath, true),
                     DetailRow(if (kind == KIND_COMMAND_LINE && secrets.isEmpty()) "Program" else "Command", commandLine, true),
                     DetailRow("Repository", if (isRepositoryTheProject) "" else repositoryPath, true),

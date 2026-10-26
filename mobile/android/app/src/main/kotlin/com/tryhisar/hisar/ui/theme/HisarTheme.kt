@@ -57,7 +57,7 @@ object HisarType {
     val subheadline = TextStyle(fontSize = 15.sp, lineHeight = 20.sp)
     val footnote = TextStyle(fontSize = 13.sp, lineHeight = 18.sp)
     val sectionHeader = TextStyle(fontSize = 17.sp, lineHeight = 22.sp, fontWeight = FontWeight.SemiBold)
-    val tabLabel = TextStyle(fontSize = 10.sp, lineHeight = 12.sp, fontWeight = FontWeight.Medium)
+    val tabLabel = TextStyle(fontSize = 12.sp, lineHeight = 16.sp, fontWeight = FontWeight.Medium)
 }
 
 private val LocalHisarColors = staticCompositionLocalOf { buildColors(VaultTheme.standard, isDark = false) }

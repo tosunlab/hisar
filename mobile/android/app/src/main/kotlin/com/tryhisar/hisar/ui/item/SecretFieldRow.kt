@@ -23,6 +23,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -167,11 +168,12 @@ internal fun SecretFieldRow(
     }
 }
 
-/** A borderless symbol button inside a row, tinted with the theme. */
+/** A borderless symbol button inside a row, tinted with the theme; it answers touches on the 48 dp around it. */
 @Composable
 internal fun FieldIconButton(icon: ImageVector, contentDescription: String, testTag: String, onClick: () -> Unit, tint: Color = HisarTheme.colors.tint) {
     Box(
         Modifier
+            .minimumInteractiveComponentSize()
             .size(36.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(testTag),

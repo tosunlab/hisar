@@ -5,11 +5,13 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.selection.selectable
@@ -21,6 +23,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -81,10 +84,11 @@ private fun CapsuleButton(onClick: () -> Unit, testTag: String, enabled: Boolean
     Row(
         Modifier
             .fillMaxWidth()
-            .height(ButtonHeight)
+            .heightIn(min = ButtonHeight)
             .background(background, CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
-            .testTag(testTag),
+            .testTag(testTag)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -112,6 +116,7 @@ fun PlainButton(
 ) {
     Box(
         Modifier
+            .minimumInteractiveComponentSize()
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .testTag(testTag)
             .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -127,7 +132,8 @@ fun <Option> SegmentedControl(options: List<Option>, selected: Option, label: (O
     Row(
         Modifier
             .fillMaxWidth()
-            .height(36.dp)
+            .heightIn(min = 36.dp)
+            .height(IntrinsicSize.Min)
             .background(colors.fill, CircleShape)
             .padding(2.dp)
             .selectableGroup()
@@ -143,7 +149,14 @@ fun <Option> SegmentedControl(options: List<Option>, selected: Option, label: (O
                     .selectable(selected = isSelected, role = Role.Tab, onClick = { onSelect(option) }),
                 contentAlignment = Alignment.Center,
             ) {
-                Text(label(option), style = HisarType.subheadline, fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal, color = colors.label)
+                Text(
+                    label(option),
+                    style = HisarType.subheadline,
+                    fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = colors.label,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                )
             }
         }
     }

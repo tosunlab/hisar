@@ -41,6 +41,7 @@ import com.tryhisar.hisar.model.PhoneApproval
 import com.tryhisar.hisar.model.PhoneApprovalIcon
 import com.tryhisar.hisar.ui.components.GlassButton
 import com.tryhisar.hisar.ui.components.ProminentButton
+import com.tryhisar.hisar.ui.settings.ToggleRow
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.cardSection
@@ -84,21 +85,27 @@ private const val MORE_ROW = "more"
 @Composable
 private fun PendingApprovalCard(model: AppModel, approval: PhoneApproval, isBusy: Boolean) {
     val scope = rememberCoroutineScope()
-    Column(Modifier.padding(horizontal = 16.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    var chosenRemember by remember(approval.requestID) { mutableStateOf<Boolean?>(null) }
+    val isRemembered = approval.resolveRememberChoice(chosenRemember)
+    Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PendingApprovalSummary(
             approval,
             Modifier
                 .clickable(role = Role.Button, onClickLabel = "Shows the request's details") { model.approvals.reviewApproval(approval) }
-                .testTag("pending-approval-${approval.requestID}"),
+                .testTag("pending-approval-${approval.requestID}")
+                .padding(horizontal = 16.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        if (approval.isRememberable) {
+            ToggleRow(approval.rememberLabel, isRemembered, { chosenRemember = it }, testTag = "pending-approval-remember-${approval.requestID}", enabled = !isBusy)
+        }
+        Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f)) {
                 GlassButton("Deny", { scope.launch { model.approvals.deny(approval) } }, testTag = "pending-approval-deny-${approval.requestID}", enabled = !isBusy)
             }
             Box(Modifier.weight(1f)) {
                 ProminentButton(
                     "Approve",
-                    { scope.launch { model.approvals.approve(approval) } },
+                    { scope.launch { model.approvals.approve(approval, isRemembered) } },
                     testTag = "pending-approval-approve-${approval.requestID}",
                     enabled = !isBusy,
                     icon = Icons.Filled.Fingerprint,

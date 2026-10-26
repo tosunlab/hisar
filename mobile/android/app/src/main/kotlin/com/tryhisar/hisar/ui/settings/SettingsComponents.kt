@@ -92,7 +92,7 @@ fun SettingsScreen(
                 Modifier
                     .fillMaxWidth()
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .height(52.dp)
+                    .heightIn(min = 52.dp)
                     .padding(horizontal = ScreenMargin),
             ) {
                 Box(Modifier.align(Alignment.CenterStart)) { leading?.invoke() }

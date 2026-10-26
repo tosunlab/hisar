@@ -158,7 +158,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
 
     /**
      * Approve asks for biometrics; when the master password is needed instead, the request's sheet opens and asks for it.
-     * The Vaults card has no remember switch, so it approves as the switch starts: remembered when the Mac's checkbox would be.
+     * [isRemembered] is the Vaults card's switch; without one, the request is remembered as the Mac's checkbox starts.
      */
     suspend fun approve(approval: PhoneApproval, isRemembered: Boolean? = null) {
         val isApprovalRemembered = approval.resolveRememberChoice(isRemembered)

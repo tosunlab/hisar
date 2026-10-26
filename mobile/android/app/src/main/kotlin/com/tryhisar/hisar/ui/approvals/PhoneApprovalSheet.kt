@@ -54,6 +54,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
@@ -132,6 +133,9 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
                 .padding(horizontal = 16.dp),
         ) {
             Header(approval)
+            if (approval.appWarning.isNotEmpty()) {
+                FormSection { NoticeRow(approval.appWarning, HisarTheme.colors.warning, "phone-approval-warning") }
+            }
             errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
             if (isPasswordRequired) {
                 FormSection(
@@ -158,22 +162,12 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
             }
             if (approval.isForwarded) {
                 FormSection {
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .semantics(mergeDescendants = true) {}
-                            .testTag("phone-approval-forwarded")
-                            .padding(16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                        Icon(Icons.Filled.Warning, contentDescription = null, tint = HisarTheme.colors.destructive, modifier = Modifier.size(20.dp))
-                        Text(
-                            "Forwarded from another computer: this request comes from ${approval.forwardedFromHost.ifEmpty { "a remote host" }} " +
-                                "through agent forwarding, not from your Mac. Approving allows it once.",
-                            style = HisarType.subheadline,
-                            color = HisarTheme.colors.label,
-                        )
-                    }
+                    NoticeRow(
+                        "Forwarded from another computer: this request comes from ${approval.forwardedFromHost.ifEmpty { "a remote host" }} " +
+                            "through agent forwarding, not from your Mac. Approving allows it once.",
+                        HisarTheme.colors.destructive,
+                        "phone-approval-forwarded",
+                    )
                 }
             }
             FormSection(
@@ -266,6 +260,22 @@ private fun Header(approval: PhoneApproval) {
             color = colors.warning,
             modifier = Modifier.testTag("phone-approval-expiry"),
         )
+    }
+}
+
+/** A warning the user reads before the details: a triangle in [tint] and a full-width sentence. */
+@Composable
+private fun NoticeRow(text: String, tint: Color, testTag: String) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .semantics(mergeDescendants = true) {}
+            .testTag(testTag)
+            .padding(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Icon(Icons.Filled.Warning, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
+        Text(text, style = HisarType.subheadline, color = HisarTheme.colors.label)
     }
 }
 

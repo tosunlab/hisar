@@ -49,6 +49,7 @@ import androidx.compose.material3.SwipeToDismissBoxValue
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
 import androidx.compose.runtime.Composable
@@ -277,6 +278,7 @@ fun EditorField(
 fun RowIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit, testTag: String = "", tint: Color = HisarTheme.colors.secondaryLabel) {
     Box(
         Modifier
+            .minimumInteractiveComponentSize()
             .size(44.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription }

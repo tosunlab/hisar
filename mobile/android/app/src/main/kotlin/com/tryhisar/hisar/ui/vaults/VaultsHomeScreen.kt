@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
@@ -44,6 +45,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -156,7 +158,7 @@ fun VaultsHomeScreen(model: AppModel) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .height(52.dp)
+                .heightIn(min = 52.dp)
                 .padding(horizontal = ScreenMargin),
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
             verticalAlignment = Alignment.CenterVertically,
@@ -350,6 +352,7 @@ private fun RemovedVaultNoticeRow(id: String, message: String, onDismiss: () -> 
         Text(message, style = HisarType.subheadline, color = HisarTheme.colors.label, modifier = Modifier.weight(1f))
         Box(
             Modifier
+                .minimumInteractiveComponentSize()
                 .size(32.dp)
                 .clickable(role = Role.Button, onClick = onDismiss)
                 .semantics { contentDescription = "Dismiss" }

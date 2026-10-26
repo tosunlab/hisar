@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -29,14 +31,21 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
@@ -51,15 +60,21 @@ import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.VaultsTab
 
-/** The floating tab bar's own height, above the system navigation bar. */
+/** The floating tab bar's own height above the system navigation bar at the default font size; its labels grow with the font. */
 val FloatingTabBarHeight = 84.dp
 
+/** The tab bar as drawn, with the system navigation bar under it; null until it is measured. */
+private val LocalMeasuredTabBarHeight = compositionLocalOf<Dp?> { null }
+
 /**
- * What the floating tab bar covers at the bottom of each tab, which lists leave free under their last row: the bar and
- * the system navigation bar under it, tall with three-button navigation.
+ * What the floating tab bar covers at the bottom of each tab, which lists leave free under their last row: the bar as
+ * drawn, at least [FloatingTabBarHeight], and the system navigation bar under it, tall with three-button navigation.
  */
 val TabBarHeight: Dp
-    @Composable get() = FloatingTabBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    @Composable get() {
+        val minimum = FloatingTabBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        return LocalMeasuredTabBarHeight.current?.coerceAtLeast(minimum) ?: minimum
+    }
 
 /**
  * The unlocked app: four tabs, each keeping its own screens and scroll while another is shown, under the iPhone app's
@@ -70,22 +85,33 @@ fun MainTabs(model: AppModel, approvalBadgeCount: Int = 0) {
     val selectedTab by model.selectedTab.collectAsStateWithLifecycle()
     val isSheetShown by model.navigation.isSheetShown.collectAsStateWithLifecycle()
     val stateHolder = rememberSaveableStateHolder()
+    val density = LocalDensity.current
+    var measuredTabBarHeight by remember { mutableStateOf<Dp?>(null) }
     LaunchedEffect(selectedTab) { model.reportActivity() }
     // A notification tapped while Hisar was locked opens its screen once the tabs show, after unlocking.
     val openedKind by model.notifications.openedKind.collectAsStateWithLifecycle()
     LaunchedEffect(openedKind) { openedKind?.let(model::showNotification) }
     BackHandler(enabled = selectedTab != Tab.VAULTS) { model.selectedTab.value = Tab.VAULTS }
     Box(Modifier.fillMaxSize().background(HisarTheme.colors.groupedBackground)) {
-        stateHolder.SaveableStateProvider(selectedTab) {
-            when (selectedTab) {
-                Tab.VAULTS -> VaultsTab(model)
-                Tab.APPROVALS -> ApprovalsTab(model)
-                Tab.SETTINGS -> SettingsTab(model)
-                Tab.SEARCH -> SearchTab(model)
+        CompositionLocalProvider(LocalMeasuredTabBarHeight provides measuredTabBarHeight) {
+            stateHolder.SaveableStateProvider(selectedTab) {
+                when (selectedTab) {
+                    Tab.VAULTS -> VaultsTab(model)
+                    Tab.APPROVALS -> ApprovalsTab(model)
+                    Tab.SETTINGS -> SettingsTab(model)
+                    Tab.SEARCH -> SearchTab(model)
+                }
             }
         }
         if (!isSheetShown) {
-            TabBar(selectedTab, approvalBadgeCount, onSelect = { model.selectedTab.value = it }, modifier = Modifier.align(Alignment.BottomCenter))
+            TabBar(
+                selectedTab,
+                approvalBadgeCount,
+                onSelect = { model.selectedTab.value = it },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .onSizeChanged { measuredTabBarHeight = with(density) { it.height.toDp() } },
+            )
         }
     }
 }
@@ -112,7 +138,8 @@ private fun TabBar(selectedTab: Tab, approvalBadgeCount: Int, onSelect: (Tab) ->
         Row(
             Modifier
                 .weight(1f)
-                .height(62.dp)
+                .heightIn(min = 62.dp)
+                .height(IntrinsicSize.Min)
                 .shadow(12.dp, CircleShape)
                 .background(colors.cellBackground, CircleShape)
                 .padding(4.dp)
