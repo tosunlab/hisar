@@ -101,8 +101,9 @@ describe("Copy secret reference", () => {
     await flushPromises();
     await wrapper.find('button[aria-label="Copy secret reference for API token"]').trigger("click");
     await flushPromises();
-    expect(store.errorMessage).toBe('2 fields are labelled "API token"; rename one of them to reference it');
-    expect(store.noticeMessage).toBe("");
+    expect(store.noticeMessage).toBe('2 fields are labelled "API token"; rename one of them to reference it');
+    expect(store.noticeKind).toBe("error");
+    expect(store.errorMessage).toBe("");
     wrapper.unmount();
   });
 

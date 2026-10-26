@@ -78,7 +78,9 @@ onBeforeUnmount(() => {
   <button v-if="!store.isRecoveryOpen && store.pendingRecovery.length > 0" class="recovery-reminder" data-testid="open-pending-recovery" @click="store.isRecoveryOpen = true">
     Account recovery and kit sign-in ({{ store.pendingRecovery.length }})
   </button>
-  <div v-if="store.noticeMessage" class="notice" role="status"><AppIcon name="check" /> {{ store.noticeMessage }}</div>
+  <div v-if="store.noticeMessage" class="notice" :class="{ 'notice-error': store.noticeKind === 'error' }" :role="store.noticeKind === 'error' ? 'alert' : 'status'" data-testid="notice">
+    <AppIcon :name="store.noticeKind === 'error' ? 'warning' : 'check'" /> {{ store.noticeMessage }}
+  </div>
 </template>
 
 <style scoped>

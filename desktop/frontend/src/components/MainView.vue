@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
+  clearError,
   copyItemField,
   createOrganizationVault,
   createVault,
@@ -37,6 +38,7 @@ import {
   store,
   syncInBackground,
   syncInterval,
+  takeErrorMessage,
   toggleSelectedItemFavorite,
 } from "../store";
 import { api, type FavoriteItem, type ItemDetail, type VaultSummary } from "../api";
@@ -113,6 +115,8 @@ const newVaultWhere = ref("");
 // latest one ends it.
 const isLoadingTeams = ref(false);
 let newVaultTeamLoad = 0;
+// newVaultErrorMessage is why the last Create failed, shown in the form.
+const newVaultErrorMessage = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
@@ -314,6 +318,7 @@ function openVaultMenuBelow(event: MouseEvent): void {
 
 async function startCreatingVault(): Promise<void> {
   newVaultWhere.value = "";
+  newVaultErrorMessage.value = "";
   isCreatingVault.value = true;
   isLoadingTeams.value = true;
   const load = ++newVaultTeamLoad;
@@ -333,6 +338,7 @@ async function submitNewVault(): Promise<void> {
     newVaultName.value = "";
     isCreatingVault.value = false;
   }
+  newVaultErrorMessage.value = isCreated ? "" : takeErrorMessage();
 }
 
 function chooseNewItem(create: () => void): void {
@@ -453,6 +459,7 @@ onBeforeUnmount(() => {
           <p v-if="selectedTeamChoice" class="muted new-vault-note" data-testid="new-vault-where-note">
             {{ selectedTeamChoice.teamName }}'s members get this vault. Manage it in Settings → Organizations.
           </p>
+          <p v-if="newVaultErrorMessage" class="error new-vault-error" role="alert" data-testid="new-vault-error">{{ newVaultErrorMessage }}</p>
           <div class="row">
             <button type="button" class="ghost" @click="isCreatingVault = false">Cancel</button>
             <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
@@ -672,7 +679,10 @@ onBeforeUnmount(() => {
     <main class="detail">
       <div class="title-bar"></div>
       <div class="detail-content">
-        <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+        <p v-if="store.errorMessage" class="error detail-error" role="alert">
+          <span>{{ store.errorMessage }}</span>
+          <button class="ghost icon-button" aria-label="Dismiss" title="Dismiss" data-testid="dismiss-error" @click="clearError"><AppIcon name="close" :size="13" /></button>
+        </p>
         <p v-if="store.status.biometricSetupError" class="error" role="status" data-testid="biometric-setup-error">{{ store.status.biometricSetupError }}</p>
         <SSHKeyForm v-if="store.editorMode === 'create-ssh-key'" />
         <ItemEditor v-else-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
@@ -867,6 +877,12 @@ onBeforeUnmount(() => {
   margin: 0 2px 8px;
   font-size: 11px;
   line-height: 1.4;
+}
+
+.new-vault-error {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  font-size: 12px;
 }
 
 .new-vault .row {
@@ -1113,6 +1129,17 @@ onBeforeUnmount(() => {
   flex: 1;
   padding: 4px 32px 32px;
   overflow-y: auto;
+}
+
+.detail-error {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail-error .icon-button {
+  flex: none;
+  margin: -4px -6px -4px 0;
+  color: inherit;
 }
 
 .detail-empty {

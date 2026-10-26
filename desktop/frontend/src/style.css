@@ -301,6 +301,15 @@ kbd {
   font-size: 12px;
 }
 
+/* A failed copy can come from a dialog, so its notice shows above the dialog's backdrop. */
+.notice-error {
+  z-index: 30;
+  max-width: min(520px, calc(100% - 40px));
+  border-color: var(--color-danger-border);
+  background: var(--color-danger-background);
+  color: var(--color-danger-text);
+}
+
 .row {
   display: flex;
   gap: 8px;

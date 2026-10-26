@@ -116,6 +116,8 @@ export const store = reactive({
   pendingInvite: "",
   errorMessage: "",
   noticeMessage: "",
+  // noticeKind is "error" for a failed copy, whose sentence shows where the copy was asked for.
+  noticeKind: "done" as "done" | "error",
   isBusy: false,
   isSettingsOpen: false,
   sshAgentStatus: null as SSHAgentStatus | null,
@@ -163,14 +165,34 @@ export const store = reactive({
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let navigationVersion = 0;
 
-export function showNotice(message: string): void {
+export function showNotice(message: string, kind: "done" | "error" = "done"): void {
   store.noticeMessage = message;
+  store.noticeKind = kind;
   clearTimeout(noticeTimer);
-  noticeTimer = setTimeout(() => (store.noticeMessage = ""), 2500);
+  noticeTimer = setTimeout(() => (store.noticeMessage = ""), kind === "error" ? 6000 : 2500);
 }
 
 export function clearError(): void {
   store.errorMessage = "";
+}
+
+// takeErrorMessage hands a failed action's error to the view that asked for it, to show there instead of the detail column.
+// A lock keeps its message for the unlock screen.
+export function takeErrorMessage(): string {
+  if (store.status.state !== "unlocked") {
+    return "";
+  }
+  const message = store.errorMessage;
+  store.errorMessage = "";
+  return message;
+}
+
+// showCopyFailure shows a failed copy's error as an error notice, which every pane shares, instead of in the detail column.
+function showCopyFailure(): void {
+  const message = takeErrorMessage();
+  if (message) {
+    showNotice(message, "error");
+  }
 }
 
 // runAction serializes UI actions and turns failures into a visible error message.
@@ -1293,6 +1315,8 @@ export async function copyItemField(vaultID: string, itemID: string, fieldName: 
   });
   if (copied) {
     showNotice(`${label} copied, clears in 90 seconds`);
+  } else {
+    showCopyFailure();
   }
 }
 
@@ -1304,6 +1328,8 @@ export async function copySecretReference(fieldName: string): Promise<void> {
   const reference = await runAction(() => api.copySecretReference(store.selectedVaultID, itemID, fieldName));
   if (reference) {
     showNotice(`Copied ${reference} — use it with hisar run or hisar read`);
+  } else {
+    showCopyFailure();
   }
 }
 
@@ -2073,6 +2099,8 @@ export async function copyText(text: string, label: string): Promise<void> {
   });
   if (copied) {
     showNotice(`${label} copied, clears in 90 seconds`);
+  } else {
+    showCopyFailure();
   }
 }
 
