@@ -304,6 +304,6 @@ describe("Importing addresses", () => {
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-address"]');
     expect(count.text()).toContain("1");
-    expect(count.text()).toContain("Address");
+    expect(count.text()).toContain("address");
   });
 });

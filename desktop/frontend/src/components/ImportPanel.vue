@@ -21,27 +21,17 @@ const allCount = computed(() => {
     return [];
   }
   return [
-    { label: preview.loginCount === 1 ? "Login" : "Logins", count: preview.loginCount, icon: "globe" as const, testID: "login" },
-    { label: preview.secureNoteCount === 1 ? "Secure note" : "Secure notes", count: preview.secureNoteCount, icon: "note" as const, testID: "secure-note" },
-    { label: preview.sshKeyCount === 1 ? "SSH key" : "SSH keys", count: preview.sshKeyCount, icon: "key" as const, testID: "ssh-key" },
-    { label: preview.creditCardCount === 1 ? "Credit card" : "Credit cards", count: preview.creditCardCount, icon: "card" as const, testID: "credit-card" },
-    { label: preview.identityCount === 1 ? "Identity" : "Identities", count: preview.identityCount, icon: "identity" as const, testID: "identity" },
-    {
-      label: preview.apiCredentialCount === 1 ? "API credential" : "API credentials",
-      count: preview.apiCredentialCount,
-      icon: "apiKey" as const,
-      testID: "api-credential",
-    },
-    { label: preview.addressCount === 1 ? "Address" : "Addresses", count: preview.addressCount, icon: "address" as const, testID: "address" },
-    {
-      label: preview.softwareLicenseCount === 1 ? "Software license" : "Software licenses",
-      count: preview.softwareLicenseCount,
-      icon: "license" as const,
-      testID: "software-license",
-    },
-    { label: preview.serverCount === 1 ? "Server" : "Servers", count: preview.serverCount, icon: "server" as const, testID: "server" },
-    { label: preview.databaseCount === 1 ? "Database" : "Databases", count: preview.databaseCount, icon: "database" as const, testID: "database" },
-  ];
+    { label: preview.loginCount === 1 ? "login" : "logins", count: preview.loginCount, testID: "login" },
+    { label: preview.secureNoteCount === 1 ? "secure note" : "secure notes", count: preview.secureNoteCount, testID: "secure-note" },
+    { label: preview.sshKeyCount === 1 ? "SSH key" : "SSH keys", count: preview.sshKeyCount, testID: "ssh-key" },
+    { label: preview.creditCardCount === 1 ? "credit card" : "credit cards", count: preview.creditCardCount, testID: "credit-card" },
+    { label: preview.identityCount === 1 ? "identity" : "identities", count: preview.identityCount, testID: "identity" },
+    { label: preview.apiCredentialCount === 1 ? "API credential" : "API credentials", count: preview.apiCredentialCount, testID: "api-credential" },
+    { label: preview.addressCount === 1 ? "address" : "addresses", count: preview.addressCount, testID: "address" },
+    { label: preview.softwareLicenseCount === 1 ? "software license" : "software licenses", count: preview.softwareLicenseCount, testID: "software-license" },
+    { label: preview.serverCount === 1 ? "server" : "servers", count: preview.serverCount, testID: "server" },
+    { label: preview.databaseCount === 1 ? "database" : "databases", count: preview.databaseCount, testID: "database" },
+  ].filter((entry) => entry.count > 0);
 });
 const importCount = computed(() => {
   const preview = store.importPreview;
@@ -160,13 +150,13 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             </ul>
           </template>
         </section>
-        <div class="count-grid">
-          <div v-for="countEntry in allCount" :key="countEntry.testID" class="count" :data-testid="`import-count-${countEntry.testID}`">
-            <AppIcon :name="countEntry.icon" class="count-icon" />
-            <strong>{{ countEntry.count }}</strong>
-            <span class="muted">{{ countEntry.label }}</span>
-          </div>
-        </div>
+        <h3 data-testid="import-headline">{{ formatCount(importCount) }} to import into {{ store.importPreview.vaultName }}</h3>
+        <p v-if="allCount.length > 0" class="category-counts muted" data-testid="import-category-counts">
+          <template v-for="(countEntry, index) in allCount" :key="countEntry.testID">
+            <template v-if="index > 0"> · </template>
+            <span :data-testid="`import-count-${countEntry.testID}`">{{ countEntry.count }} {{ countEntry.label }}</span>
+          </template>
+        </p>
         <p v-if="store.importPreview.format === '1pux'" class="muted hint" data-testid="import-passkey-warning">
           1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.
         </p>
@@ -402,34 +392,12 @@ select {
   font-size: 12px;
 }
 
-.count-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
-  margin-bottom: 16px;
+.category-counts {
+  margin: 4px 0 16px;
 }
 
-.count {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 10px 12px;
-  border: 1px solid var(--color-border);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-}
-
-.count strong {
-  font-size: 20px;
-  font-weight: 650;
-}
-
-.count span {
-  font-size: 12px;
-}
-
-.count-icon {
-  color: var(--color-text-muted);
+.category-counts span {
+  white-space: nowrap;
 }
 
 section {

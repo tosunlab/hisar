@@ -199,6 +199,6 @@ describe("Importing identities", () => {
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-identity"]');
     expect(count.text()).toContain("2");
-    expect(count.text()).toContain("Identities");
+    expect(count.text()).toContain("identities");
   });
 });

@@ -167,6 +167,6 @@ describe("Importing servers", () => {
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-server"]');
     expect(count.text()).toContain("1");
-    expect(count.text()).toContain("Server");
+    expect(count.text()).toContain("server");
   });
 });

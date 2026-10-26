@@ -185,6 +185,6 @@ describe("Importing databases", () => {
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-database"]');
     expect(count.text()).toContain("1");
-    expect(count.text()).toContain("Database");
+    expect(count.text()).toContain("database");
   });
 });
