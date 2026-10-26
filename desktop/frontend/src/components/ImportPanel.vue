@@ -78,7 +78,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       <header class="panel-header">
         <span class="panel-icon"><AppIcon name="import" :size="18" /></span>
         <div class="panel-heading">
-          <h2 id="import-title">Import passwords</h2>
+          <h2 id="import-title">Import items</h2>
           <p class="muted">From 1Password, Bitwarden, LastPass, or a CSV file from your browser</p>
         </div>
         <button class="ghost icon-button" aria-label="Close" :disabled="store.isBusy" @click="closeImport"><AppIcon name="close" /></button>

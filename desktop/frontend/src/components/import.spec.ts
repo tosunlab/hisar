@@ -215,6 +215,7 @@ describe("Import panel", () => {
       "CSV (Chrome, Firefox, Safari, Edge and others)",
     ]);
     expect(wrapper.text()).toContain("From 1Password, Bitwarden, LastPass, or a CSV file from your browser");
+    expect(wrapper.get("#import-title").text()).toBe("Import items");
     expect(wrapper.find(".how-to").text()).toContain("LastPassAccount options → Advanced → Export, then save the file as CSV.");
     expect(wrapper.find(".how-to").text()).toContain("1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.");
     await wrapper.find('[data-testid="import-format"]').setValue("csv");
