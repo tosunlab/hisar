@@ -409,7 +409,7 @@ describe("Organization vaults in the vault list", () => {
     await flushPromises();
 
     const allChoice = wrapper.findAll('[data-testid="new-vault-where"] option').map((option) => option.text());
-    expect(allChoice).toEqual(["Shared vault", "Acme › Platform"]);
+    expect(allChoice).toEqual(["Your own vault (share it later)", "Acme › Platform (team vault)"]);
     await wrapper.find('input[name="vaultName"]').setValue("Release");
     await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
     expect(wrapper.find('[data-testid="new-vault-where-note"]').text()).toContain("Platform's members get this vault");
@@ -422,7 +422,7 @@ describe("Organization vaults in the vault list", () => {
     wrapper.unmount();
   });
 
-  it("creates a shared vault when Where stays on Shared vault", async () => {
+  it("creates the user's own vault when Where stays on Your own vault", async () => {
     api.createVault.mockResolvedValue({ ...familyVault, id: "notes", name: "Notes" });
     const wrapper = mount(MainView, { attachTo: document.body });
     await wrapper.find('[data-testid="new-vault"]').trigger("click");
@@ -446,7 +446,7 @@ describe("Organization vaults in the vault list", () => {
     await syncInBackground();
     await flushPromises();
     const where = wrapper.find('[data-testid="new-vault-where"]');
-    expect(listAllWhereChoice(wrapper)).toEqual(["Shared vault", "Globex › Research"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Globex › Research (team vault)"]);
     expect((where.element as HTMLSelectElement).selectedIndex).toBe(-1);
     expect(wrapper.find('[data-testid="new-vault-where-note"]').exists()).toBe(false);
     expect(isCreateDisabled(wrapper)).toBe(true);
@@ -482,7 +482,7 @@ describe("Organization vaults in the vault list", () => {
 
     finishLoading();
     await flushPromises();
-    expect(listAllWhereChoice(wrapper)).toEqual(["Shared vault", "Acme › Platform", "Globex › Research"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Acme › Platform (team vault)", "Globex › Research (team vault)"]);
     expect(isCreateDisabled(wrapper)).toBe(false);
     await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
 
@@ -493,7 +493,7 @@ describe("Organization vaults in the vault list", () => {
     await syncInBackground();
     await flushPromises();
     expect(store.isSettingsOpen || store.isSharingOpen).toBe(false);
-    expect(listAllWhereChoice(wrapper)).toEqual(["Shared vault", "Acme › Ops", "Globex › Research"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Acme › Ops (team vault)", "Globex › Research (team vault)"]);
     expect(isCreateDisabled(wrapper)).toBe(true);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();

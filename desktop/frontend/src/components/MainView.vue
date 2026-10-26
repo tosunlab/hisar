@@ -108,7 +108,7 @@ interface VaultGroup {
 
 const isCreatingVault = ref(false);
 const newVaultName = ref("");
-// newVaultWhere is "" for a shared vault, or the key of the team that gets the new organization vault.
+// newVaultWhere is "" for the user's own vault, or the key of the team that gets the new organization vault.
 const newVaultWhere = ref("");
 // isLoadingTeams is true while the new-vault form loads the teams for Where; newVaultTeamLoad counts the loads so only the
 // latest one ends it.
@@ -161,13 +161,13 @@ const allTeamChoice = computed<TeamChoice[]>(() =>
         organizationID: organization.id,
         teamID: team.id,
         teamName: team.name,
-        label: `${organization.name} › ${team.name}`,
+        label: `${organization.name} › ${team.name} (team vault)`,
       })),
   ),
 );
 const selectedTeamChoice = computed(() => allTeamChoice.value.find((choice) => choice.key === newVaultWhere.value));
-// canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: Shared vault or one of the teams.
-// A team that is no longer listed (its organization or the user's place in it changed) never falls back to a shared vault.
+// canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: the user's own vault or one of the
+// teams. A team that is no longer listed (its organization or the user's place in it changed) never falls back to an own vault.
 const canSubmitNewVault = computed(
   () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
 );
@@ -451,7 +451,7 @@ onBeforeUnmount(() => {
           <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
             <span>Where</span>
             <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where">
-              <option value="">Shared vault</option>
+              <option value="">Your own vault (share it later)</option>
               <option v-for="choice in allTeamChoice" :key="choice.key" :value="choice.key">{{ choice.label }}</option>
             </select>
           </label>
