@@ -75,7 +75,7 @@ func settingsWindowOptions() application.WebviewWindowOptions {
 func approvalWindowOptions() application.WebviewWindowOptions {
 	return application.WebviewWindowOptions{
 		Name:                "ssh-approval",
-		Title:               "Hisar Access Requested",
+		Title:               "Approve request",
 		Width:               fullApprovalWidth,
 		Height:              defaultApprovalHeight,
 		Hidden:              true,
