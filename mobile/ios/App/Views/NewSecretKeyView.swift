@@ -1,20 +1,59 @@
 import SwiftUI
 
 struct NewSecretKeyView: View {
+    @EnvironmentObject private var model: AppModel
     var secretKey: String
-    var email: String
-    var server: String
-    var finish: () -> Void
 
     @State private var isCopied = false
+    @State private var export: EmergencyKitExport?
+    @State private var isKitShared = false
 
     var body: some View {
         NavigationStack {
             List {
                 Section {
-                    Text("Your account is ready. To sign in on another device you need two secrets: your master password and this Secret Key. Hisar keeps the Secret Key on this iPhone; nobody else has a copy.")
+                    Text("To sign in on another device you need your master password and this Secret Key.")
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+                }
+                Section {
+                    Text(secretKey)
+                        .font(.title3.monospaced().weight(.medium))
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("new-secret-key")
+                    Button {
+                        _ = PasteboardClipboard().setText(secretKey)
+                        isCopied = true
+                    } label: {
+                        Label(isCopied ? "Copied · clears in 90 seconds" : "Copy Secret Key", systemImage: isCopied ? "checkmark" : "doc.on.doc")
+                            .contentTransition(.symbolEffect(.replace))
+                    }
+                    .sensoryFeedback(.success, trigger: isCopied)
+                    .accessibilityIdentifier("new-secret-key-copy")
+                } header: {
+                    Text("Secret Key")
+                }
+                Section {
+                    if let export {
+                        ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
+                            Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .applyProminentGlassStyle()
+                        .controlSize(.large)
+                        .simultaneousGesture(TapGesture().onEnded { isKitShared = true })
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets())
+                        .accessibilityIdentifier("new-secret-key-share-kit")
+                    } else if model.errorMessage == nil {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .listRowBackground(Color.clear)
+                    }
+                } header: {
+                    Text("Emergency Kit")
+                } footer: {
+                    Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Keep it away from your devices.")
                 }
                 Section {
                     Label {
@@ -27,43 +66,50 @@ struct NewSecretKeyView: View {
                     .accessibilityElement(children: .combine)
                     .accessibilityIdentifier("master-password-warning")
                 }
-                Section {
-                    Text(secretKey)
-                        .font(.title3.monospaced().weight(.medium))
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("new-secret-key")
-                    Button {
-                        _ = PasteboardClipboard().setText(secretKey)
-                        isCopied = true
-                    } label: {
-                        Label(isCopied ? "Copied" : "Copy Secret Key", systemImage: isCopied ? "checkmark" : "doc.on.doc")
-                            .contentTransition(.symbolEffect(.replace))
+                if let errorMessage = model.errorMessage {
+                    Section {
+                        ErrorBanner(message: errorMessage)
                     }
-                    .sensoryFeedback(.success, trigger: isCopied)
-                } header: {
-                    Text("Secret Key")
-                }
-                Section {
-                    LabeledContent("Server", value: server)
-                    LabeledContent("Email", value: email)
-                } header: {
-                    Text("Make an Emergency Kit")
-                } footer: {
-                    Text("The Emergency Kit is a page with your server, email and Secret Key, and a space to write your master password. Save or print it from Settings, Secret Key and Emergency Kit, or write these down now and keep them somewhere safe, away from your devices.")
                 }
             }
             .applyThemedListStyle()
             .navigationTitle("Save your Secret Key")
             .safeAreaInset(edge: .bottom) {
-                Button(action: finish) {
-                    Text("I saved my Secret Key")
+                VStack(spacing: 8) {
+                    Button {
+                        Task { await model.finishNewSecretKey() }
+                    } label: {
+                        Group {
+                            if model.isBusy {
+                                ProgressView()
+                            } else {
+                                Text("I saved my Emergency Kit")
+                            }
+                        }
                         .frame(maxWidth: .infinity)
+                    }
+                    .applyProminentGlassStyle()
+                    .controlSize(.large)
+                    .disabled(export == nil || !(isKitShared || isCopied) || model.isBusy)
+                    .accessibilityIdentifier("new-secret-key-done")
+                    Button("Finish later") {
+                        Task { await model.postponeNewSecretKey() }
+                    }
+                    .controlSize(.large)
+                    .disabled(model.isBusy)
+                    .accessibilityIdentifier("new-secret-key-later")
                 }
-                .applyProminentGlassStyle()
-                .controlSize(.large)
                 .padding(.horizontal, 20)
                 .padding(.bottom, 8)
-                .accessibilityIdentifier("new-secret-key-done")
+            }
+            .task {
+                export = await model.exportNewAccountEmergencyKit()
+            }
+            .onDisappear {
+                if let export {
+                    model.removeEmergencyKit(export)
+                }
+                export = nil
             }
         }
     }

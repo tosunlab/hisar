@@ -74,9 +74,7 @@ struct RootView: View {
             } else if model.isBiometricOfferShown {
                 BiometricOfferView()
             } else {
-                NewSecretKeyView(secretKey: model.newSecretKey ?? "", email: model.status.email, server: model.status.server) {
-                    model.finishNewSecretKey()
-                }
+                NewSecretKeyView(secretKey: model.newSecretKey ?? "")
             }
         }
         .applyTheme(model.theme)

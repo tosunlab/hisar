@@ -246,15 +246,14 @@ func TestIntegrationMobileFlow(t *testing.T) {
 	if signUp.Status.State != "unlocked" || !strings.HasPrefix(signUp.SecretKey, "H1-") {
 		t.Fatalf("sign up: %+v", signUp)
 	}
-	// The iPhone saves the new account's Emergency Kit and acknowledges it, which ends the pending recovery operation.
+	// The iPhone's Secret Key screen saves the new account's Emergency Kit and acknowledges it without the password,
+	// which ends the pending recovery operation.
 	kitDirectory := t.TempDir()
-	kit := decodeJSON[struct {
-		Path string `json:"path"`
-	}](t)(hisar.ExportPendingRecoveryEmergencyKit(signUp.PendingOperationID, password, kitDirectory))
-	if !strings.HasPrefix(kit.Path, kitDirectory) {
-		t.Fatalf("sign-up Emergency Kit at %q", kit.Path)
+	kit := decodeJSON[emergencyKitResult](t)(hisar.ExportNewAccountEmergencyKit(kitDirectory))
+	if !strings.HasPrefix(kit.EmergencyKitPath, kitDirectory) || kit.SecretKey != signUp.SecretKey {
+		t.Fatalf("sign-up Emergency Kit: %+v", kit)
 	}
-	if err := hisar.AcknowledgePendingRecovery(signUp.PendingOperationID, password); err != nil {
+	if err := hisar.AcknowledgeNewAccountRecovery(); err != nil {
 		t.Fatal(err)
 	}
 	if current := decodeJSON[status](t)(hisar.EnableNewAccountBiometricUnlock()); !current.BiometricEnabled {

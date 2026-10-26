@@ -78,6 +78,7 @@ class FakeBackend: VaultBackend {
     var pendingRecoverySecretKey = FakeBackend.secretKey
     var isPendingRecoveryFactorAvailable = true
     var pendingSignUpResult: SignUpResult?
+    var isNewAccountSecretKeyRetained = false
     var pendingCredentialChangeResult: CredentialChangeResult?
     /// The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence.
     var allOrganization: [Organization] = []
@@ -318,7 +319,9 @@ class FakeBackend: VaultBackend {
         allItemByVaultID = ["personal": [], "family": []]
         status.email = email
         status.name = name
-        return SignUpResult(status: status, secretKey: Self.secretKey)
+        isNewAccountSecretKeyRetained = true
+        allPendingRecovery.append(PendingRecovery(operationId: "signup-1", kind: "signup", origin: status.server, accountId: "new-account", email: email, name: name, phase: "delivery-pending", kitSaved: false, problems: [], keychainProtected: true))
+        return SignUpResult(status: status, secretKey: Self.secretKey, pendingOperationId: "signup-1", setupState: "delivery-pending")
     }
 
     func unlock(password: String) throws -> VaultStatus {
@@ -355,8 +358,32 @@ class FakeBackend: VaultBackend {
         return status
     }
 
+    func exportNewAccountEmergencyKit(directory: URL) throws -> EmergencyKitExport {
+        record("exportNewAccountEmergencyKit")
+        try requireUnlocked()
+        guard isNewAccountSecretKeyRetained, let index = allPendingRecovery.firstIndex(where: { $0.operationId == "signup-1" }) else {
+            throw BackendError(message: "This account's setup needs finishing from the account recovery screen")
+        }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let path = directory.appendingPathComponent("Hisar Emergency Kit.pdf")
+        try Data("%PDF-1.7".utf8).write(to: path)
+        allPendingRecovery[index].kitSaved = true
+        return EmergencyKitExport(secretKey: Self.secretKey, emergencyKitPath: path.path)
+    }
+
+    func acknowledgeNewAccountRecovery() throws {
+        record("acknowledgeNewAccountRecovery")
+        try requireUnlocked()
+        guard isNewAccountSecretKeyRetained, let recovery = allPendingRecovery.first(where: { $0.operationId == "signup-1" }) else {
+            throw BackendError(message: "This account's setup needs finishing from the account recovery screen")
+        }
+        guard recovery.kitSaved else { throw BackendError(message: "Save the Emergency Kit before acknowledging delivery") }
+        allPendingRecovery.removeAll { $0.operationId == "signup-1" }
+    }
+
     func forgetNewAccountSecretKey() {
         record("forgetNewAccountSecretKey")
+        isNewAccountSecretKeyRetained = false
     }
 
     func disableBiometricUnlock() throws -> VaultStatus {
