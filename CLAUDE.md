@@ -101,7 +101,7 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 
 | Package | What it holds |
 |---|---|
-| root (`main`) | Wails wiring: `main.go`, `adapters.go`, `windows.go`, `events.go`, `tray.go`, `touchid.go`, `helpers*.go` (where the browser host and `hisar` are: in Hisar.app, or at the Linux package's fixed paths) |
+| root (`main`) | Wails wiring: `main.go`, `adapters.go`, `windows.go`, `events.go`, `tray.go` (the menu bar item; its Quit Hisar Completely is the only quit), `appmenu.go` (the macOS menus, whose ⌘Q closes the window), `touchid.go`, `helpers*.go` (where the browser host and `hisar` are: in Hisar.app, or at the Linux package's fixed paths) |
 | `agent` | SSH agent in the app and the approval queue (`approver*.go`, `presenter.go`, `purpose.go`, `sshconfig.go`) |
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
 | `axfill` | The macOS `signin.Driver` (cgo, Objective-C): reads a browser window's pages through Accessibility and enters, submits and clears fields, checking the window, process and frame origin before each action; `New` returns nil elsewhere. `TestIntegrationSignIn` signs in to `hisar-sign-in-site-fixture` in the browsers `HISAR_TEST_SIGN_IN_BROWSERS` names, and `TestIntegrationRecordPages -update` writes `core/signin`'s page fixtures |
