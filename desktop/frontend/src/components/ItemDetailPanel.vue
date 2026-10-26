@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
   convertToSecureNote,
   copyField,
@@ -67,9 +67,8 @@ defineProps<{ canEdit: boolean; vaultName: string; vaultType: string }>();
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
-// itemMenu is the header's ⋯ menu, opened below its button; dialog is the Move or Delete dialog one of its actions opens.
+// itemMenu is the header's ⋯ menu, opened below its button.
 const itemMenu = ref<{ x: number; y: number; trigger: HTMLButtonElement } | null>(null);
-const dialog = ref<"move" | "delete" | null>(null);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
 const isSecureNote = computed(() => store.selectedItem?.category === secureNoteCategory);
 const isCreditCard = computed(() => store.selectedItem?.category === creditCardCategory);
@@ -205,10 +204,12 @@ watch(
     isConnectionStringRevealed.value = false;
     allRevealedFieldName.value = [];
     itemMenu.value = null;
-    dialog.value = null;
+    store.itemDetailDialog = null;
     fieldMenu.value = null;
   },
 );
+
+onBeforeUnmount(() => { store.itemDetailDialog = null; });
 
 function toggleFieldReveal(fieldName: string): void {
   allRevealedFieldName.value = allRevealedFieldName.value.includes(fieldName)
@@ -227,8 +228,8 @@ function buildItemMenuActions(): ContextMenuAction[] {
   const hasMoveTarget = store.allVault.some((vault) => vault.id !== vaultID && vault.role !== "reader");
   const allAction: (ContextMenuAction | null)[] = [
     item.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate", run: () => duplicateItem(vaultID, item.id) } : null,
-    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", run: () => (dialog.value = "move") } : null,
-    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, run: () => (dialog.value = "delete") },
+    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", run: () => (store.itemDetailDialog = "move") } : null,
+    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, run: () => (store.itemDetailDialog = "delete") },
   ];
   return allAction.filter((action): action is ContextMenuAction => action !== null);
 }
@@ -732,8 +733,8 @@ function maskSecret(secret: string): string {
       :all-action="buildItemMenuActions()"
       @close="closeItemMenu"
     />
-    <MoveItemDialog v-if="dialog === 'move'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="dialog = null" />
-    <ConfirmDeleteDialog v-if="dialog === 'delete'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="dialog = null" />
+    <MoveItemDialog v-if="store.itemDetailDialog === 'move'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="store.itemDetailDialog = null" />
+    <ConfirmDeleteDialog v-if="store.itemDetailDialog === 'delete'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="store.itemDetailDialog = null" />
   </article>
 </template>
 

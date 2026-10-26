@@ -153,6 +153,8 @@ export const store = reactive({
   isShareLinksOpen: false,
   shareLinkDialog: null as ShareLinkDialog | null,
   vaultDialog: null as VaultDialog | null,
+  itemDetailDialog: null as "move" | "delete" | null,
+  isDiscardConfirmShown: false,
   allRemovedVaultNotice: [] as RemovedVaultNotice[],
   organizations: { organizations: [], invitations: [] } as Organizations,
   // organizationByID holds the organizations this window opened: in Settings, an organization vault's sharing panel and Where.
@@ -248,6 +250,8 @@ function clearAllVaultData(): void {
   store.isShareLinksOpen = false;
   store.shareLinkDialog = null;
   store.vaultDialog = null;
+  store.itemDetailDialog = null;
+  store.isDiscardConfirmShown = false;
   store.allRemovedVaultNotice = [];
   store.organizations = { organizations: [], invitations: [] };
   store.organizationByID = {};

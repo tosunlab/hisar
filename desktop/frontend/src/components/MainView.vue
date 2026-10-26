@@ -395,6 +395,8 @@ const isOverlayOpen = computed(
     store.shareLinkDialog !== null ||
     store.vaultDialog !== null ||
     store.browserPairing !== null ||
+    store.itemDetailDialog !== null ||
+    store.isDiscardConfirmShown ||
     itemToDelete.value !== null ||
     itemToMove.value !== null,
 );

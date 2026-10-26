@@ -262,7 +262,6 @@ const form = ref<HTMLFormElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 // savedDraft is what the editor opened with, so Esc can tell whether leaving drops anything.
 const savedDraft = serializeDraft();
-const isDiscardConfirmShown = ref(false);
 
 function serializeDraft(): string {
   return JSON.stringify([draft, urlText.value, tagText.value.trim()]);
@@ -273,7 +272,7 @@ function cancelOnEscape(): void {
   if (serializeDraft() === savedDraft) {
     cancelEditing();
   } else {
-    isDiscardConfirmShown.value = true;
+    store.isDiscardConfirmShown = true;
   }
 }
 
@@ -281,7 +280,7 @@ function cancelOnEscape(): void {
 // form's checks, such as the required title, before submitItem.
 function handleShortcut(event: KeyboardEvent): void {
   const target = event.target;
-  if (isDiscardConfirmShown.value || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
+  if (store.isDiscardConfirmShown || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
     return;
   }
   const isCommand = event.metaKey || event.ctrlKey;
@@ -297,7 +296,10 @@ function handleShortcut(event: KeyboardEvent): void {
 }
 
 onMounted(() => window.addEventListener("keydown", handleShortcut));
-onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", handleShortcut);
+  store.isDiscardConfirmShown = false;
+});
 </script>
 
 <template>
@@ -729,16 +731,16 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
       </button>
     </div>
     <AccountDialog
-      v-if="isDiscardConfirmShown"
+      v-if="store.isDiscardConfirmShown"
       :title="draft.title.trim() ? `Discard changes to “${draft.title.trim()}”?` : 'Discard this new item?'"
       subtitle="What you changed here is not saved."
       icon="edit"
       is-danger
       data-testid="discard-changes-dialog"
-      @close="isDiscardConfirmShown = false"
+      @close="store.isDiscardConfirmShown = false"
     >
       <div class="row actions">
-        <button type="button" class="ghost" autofocus data-testid="keep-editing" @click="isDiscardConfirmShown = false">Keep editing</button>
+        <button type="button" class="ghost" autofocus data-testid="keep-editing" @click="store.isDiscardConfirmShown = false">Keep editing</button>
         <button type="button" class="danger-solid" data-testid="discard-changes" @click="cancelEditing">Discard</button>
       </div>
     </AccountDialog>
