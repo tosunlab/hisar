@@ -131,8 +131,9 @@ final class HisarUITests: HisarUITestCase {
         type("api.stripe.com", into: app.textFields["editor-api-credential-host"])
         saveScreenshot("add-api-credential")
         app.buttons["editor-save"].tap()
-        let credentialSummary = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Stripe · api.stripe.com")).firstMatch
-        waitFor(credentialSummary)
+        waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Personal · API credential")).firstMatch)
+        XCTAssertEqual(app.buttons["copy-service"].value as? String, "Stripe")
+        XCTAssertEqual(app.buttons["copy-host"].value as? String, "api.stripe.com")
         let secretRow = app.buttons["copy-secret"]
         XCTAssertEqual(secretRow.value as? String, "Hidden", "the secret is shown before it is revealed")
         saveScreenshot("api-credential")

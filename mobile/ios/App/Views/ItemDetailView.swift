@@ -365,8 +365,6 @@ struct ItemDetailView: View {
         return item.password.isEmpty ? nil : "password"
     }
 
-    /// The line under the title: the category, or a card's, identity's, API credential's, address's or software license's
-    /// summary.
     /// A database's engine, by its name, host, port, name and options, each with copy and copy reference.
     private func buildDatabaseSection(database: ItemDatabase) -> some View {
         buildNamedSection(title: "Database", emptyText: "This database has no details yet.", allRow: [
@@ -393,12 +391,14 @@ struct ItemDetailView: View {
         }
     }
 
+    /// The line under the title: the category, or a card's, identity's, address's, software license's, server's or
+    /// database's summary. An API credential's summary repeats its Service and Host rows, so it shows the category.
     private func describeCategory(item: ItemDetail) -> String {
         if item.isSSHKey { return "SSH key" }
         if item.isSecureNote { return "Secure note" }
         if item.isCreditCard { return (item.card ?? ItemCard()).summary }
         if item.isIdentity { return (item.identity ?? ItemIdentity()).summary }
-        if item.isAPICredential { return (item.apiCredential ?? ItemAPICredential()).summary }
+        if item.isAPICredential { return "API credential" }
         if item.isAddress { return (item.address ?? ItemAddress()).summary }
         if item.isSoftwareLicense { return (item.softwareLicense ?? ItemSoftwareLicense()).summary }
         if item.isServer { return (item.server ?? ItemServer()).summary(username: item.username) }
