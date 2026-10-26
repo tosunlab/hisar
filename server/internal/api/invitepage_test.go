@@ -167,8 +167,8 @@ func TestInvitePageRateLimit(t *testing.T) {
 
 func TestInviteDeepLink(t *testing.T) {
 	for publicURL, expected := range map[string]string{
-		"https://api.tryhisar.com/":  "hisar://invite/abc_DEF-1?server=https%3A%2F%2Fapi.tryhisar.com",
-		"http://api.tryhisar.com":    "hisar://invite/abc_DEF-1?server=https%3A%2F%2Fapi.tryhisar.com",
+		"https://eu.tryhisar.com/":   "hisar://invite/abc_DEF-1?server=https%3A%2F%2Feu.tryhisar.com",
+		"http://eu.tryhisar.com":     "hisar://invite/abc_DEF-1?server=https%3A%2F%2Feu.tryhisar.com",
 		"http://127.0.0.1:19400/sub": "hisar://invite/abc_DEF-1?server=http%3A%2F%2F127.0.0.1%3A19400",
 	} {
 		server := &Server{config: Config{Config: service.Config{PublicURL: publicURL}}}

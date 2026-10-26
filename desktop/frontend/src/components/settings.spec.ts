@@ -78,10 +78,11 @@ describe("Settings sidebar", () => {
     expect(findPage(settings, "general").isVisible()).toBe(true);
     expect(findPage(settings, "security").isVisible()).toBe(false);
     expect(findPage(settings, "general").text()).toContain("Open Hisar at login");
-    expect(findPage(settings, "general").text()).not.toContain("Import from another password manager");
+    expect(findPage(settings, "general").text()).not.toContain("Import a Hisar export or another password manager");
     await settings.find('[data-testid="settings-section-export"]').trigger("click");
     expect(settings.find("#settings-title").text()).toBe("Import & Export");
     const transferPage = findPage(settings, "export");
+    expect(transferPage.text()).toContain("Import a Hisar export or another password manager");
     expect(transferPage.findAll("section").map((section) => section.attributes("data-testid"))).toEqual(["import-section", "export-section"]);
   });
 
@@ -317,7 +318,7 @@ describe("Settings search", () => {
 
 describe("Settings help", () => {
   beforeEach(() => {
-    store.status = { ...createStatus("unlocked"), server: "https://api.tryhisar.com" };
+    store.status = { ...createStatus("unlocked"), server: "https://eu.tryhisar.com" };
     store.updateStatus = null;
     store.allDevice = [];
     api.getUpdateStatus.mockResolvedValue(createUpdateStatus());
@@ -344,13 +345,13 @@ describe("Settings help", () => {
     const help = findPage(settings, "help");
     expect(help.find('[data-testid="help-app-version"]').text()).toBe("0.2.1 (2001)");
     expect(help.find('[data-testid="help-operating-system"]').text()).toBe("macOS 26.0.1");
-    expect(help.find('[data-testid="help-server"]').text()).toBe("https://api.tryhisar.com");
+    expect(help.find('[data-testid="help-server"]').text()).toBe("https://eu.tryhisar.com");
     expect(help.text()).not.toContain("The server does not report its version.");
     expect(help.find('[data-testid="help-device-id"]').text()).toBe("device-mac");
     await help.find('[data-testid="copy-diagnostics"]').trigger("click");
     await flushPromises();
     const diagnostics = api.copyText.mock.calls[0][0] as string;
-    expect(diagnostics).toBe(["Hisar for Mac 0.2.1 (2001)", "System: macOS 26.0.1", "Server: https://api.tryhisar.com", "Device ID: device-mac"].join("\n"));
+    expect(diagnostics).toBe(["Hisar for Mac 0.2.1 (2001)", "System: macOS 26.0.1", "Server: https://eu.tryhisar.com", "Device ID: device-mac"].join("\n"));
     expect(diagnostics).not.toMatch(/alice@example.com|bob@example.com|device-phone/);
   });
 

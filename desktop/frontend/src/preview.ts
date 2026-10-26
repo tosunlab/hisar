@@ -309,7 +309,7 @@ const previewMinimumVersion = previewParameter.get("updateRequired");
 const previewUpdateRequired = previewMinimumVersion ? { currentVersion: "0.1.0", minimumVersion: previewMinimumVersion, updateURL: "https://tryhisar.com/download" } : null;
 const previewStatus = (): Status => ({
   state: previewState,
-  server: "https://api.tryhisar.com",
+  server: "https://eu.tryhisar.com",
   email: previewState === "signed-out" ? previewSignedOutEmail : "alper@tryhisar.com",
   name: "Alper",
   biometricAvailable: true,
@@ -887,7 +887,7 @@ function createPreviewShareLinkFromRequest(request: ShareLinkRequest): ShareLink
   const shareLinkID = createRandomText(22).replaceAll("+", "-").replaceAll("/", "_");
   const common = {
     id: shareLinkID,
-    url: `https://api.tryhisar.com/s/${shareLinkID}#${linkKey}`,
+    url: `https://eu.tryhisar.com/s/${shareLinkID}#${linkKey}`,
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + request.expiresInSeconds * 1000).toISOString(),
     maxViews: request.maxViews,
@@ -1442,6 +1442,11 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
       detail: [detail.username, detail.urls[0] ? getDomain(detail.urls[0]) : ""].filter(Boolean).join(" · "),
       passkeyCount: 0,
     })),
+    isPassphraseRequired: false,
+    notice: "",
+    isSourceKept: false,
+    exportedFrom: "",
+    exportedAt: "",
   };
 }
 
@@ -1459,6 +1464,7 @@ function buildPreviewImportProgress(): ImportProgress {
     leftBehindCount: allPreviewImportSkipped.length,
     isDone: previewImportRun.allQueued.length === 0,
     allFailed: [],
+    isSourceKept: false,
   };
 }
 
@@ -1489,6 +1495,7 @@ export const previewApi = {
       { id: "csv", name: "CSV (Chrome, Firefox, Safari, Edge and others)" },
     ]),
   chooseImportFile: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
+  openImportFile: (_passphrase: string) => resolveAfterDelay(buildPreviewImportPreview(previewImportRun.vaultID || allPreviewVault[0].id)),
   previewImport: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   mapImportGroup: (_groupID: string, vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   startImport: (vaultID: string, isSkippingDuplicate: boolean) => {

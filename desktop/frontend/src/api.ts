@@ -530,6 +530,7 @@ const wailsApi = {
   listAllImportFormat: async (): Promise<ImportFormat[]> => (await Service.ListImportFormats()) ?? [],
   chooseImportFile: async (vaultID: string, format: string): Promise<ImportPreview> =>
     normalizeImportPreview(await Service.ChooseImportFile(vaultID, format)),
+  openImportFile: async (passphrase: string): Promise<ImportPreview> => normalizeImportPreview(await Service.OpenImportFile(passphrase)),
   previewImport: async (vaultID: string): Promise<ImportPreview> => normalizeImportPreview(await Service.PreviewImport(vaultID)),
   mapImportGroup: async (groupID: string, vaultID: string): Promise<ImportPreview> => normalizeImportPreview(await Service.MapImportGroup(groupID, vaultID)),
   startImport: async (vaultID: string, isSkippingDuplicate: boolean): Promise<ImportProgress> =>

@@ -5,6 +5,7 @@ import SwiftUI
 struct CredentialImportView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isSkippingDuplicate = true
+    @State private var exportPassphrase = ""
 
     private var preview: ImportPreview? { model.credentialImportPreview }
     private var progress: ImportProgress? { model.credentialImportProgress }
@@ -16,7 +17,11 @@ struct CredentialImportView: View {
                 if let progress {
                     progressSections(progress)
                 } else if let preview {
-                    previewSections(preview)
+                    if preview.isPassphraseRequired {
+                        passphraseSection(preview)
+                    } else {
+                        previewSections(preview)
+                    }
                 } else if let errorMessage = model.errorMessage, !model.isReceivingCredentialImport {
                     Section {
                         ErrorBanner(message: errorMessage)
@@ -25,7 +30,7 @@ struct CredentialImportView: View {
                     Section {
                         HStack(spacing: 12) {
                             ProgressView()
-                            Text("Receiving items from the other app…")
+                            Text(model.isHisarExportImport ? "Reading the export…" : "Receiving items from the other app…")
                                 .foregroundStyle(.themeSecondary)
                         }
                         .accessibilityIdentifier("credential-import-receiving")
@@ -53,11 +58,63 @@ struct CredentialImportView: View {
     }
 
     @ViewBuilder
+    private func passphraseSection(_ preview: ImportPreview) -> some View {
+        Section {
+            SecureField("Export passphrase", text: $exportPassphrase)
+                .textContentType(.password)
+                .accessibilityIdentifier("credential-import-passphrase")
+            if let errorMessage = model.errorMessage {
+                ErrorBanner(message: errorMessage)
+            }
+            Button {
+                // The field is emptied after every try, so a wrong passphrase is not kept or added to.
+                let entered = exportPassphrase
+                exportPassphrase = ""
+                Task { await model.openCredentialImportFile(passphrase: entered) }
+            } label: {
+                Group {
+                    if model.isBusy {
+                        ProgressView()
+                    } else {
+                        Text("Open")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .applyProminentGlassStyle()
+            .controlSize(.large)
+            .disabled(model.isBusy || exportPassphrase.isEmpty)
+            .listRowBackground(Color.clear)
+            .listRowInsets(EdgeInsets())
+            .accessibilityIdentifier("credential-import-open")
+        } header: {
+            Text("Enter the export passphrase")
+        } footer: {
+            Text("This export is encrypted. Enter the passphrase it was exported with.")
+        }
+    }
+
+    @ViewBuilder
     private func previewSections(_ preview: ImportPreview) -> some View {
         let isGrouped = preview.groups.count > 1
+        if preview.exportedDescription != nil || !preview.notice.isEmpty {
+            Section {
+                if let exportedDescription = preview.exportedDescription {
+                    Text(exportedDescription)
+                        .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("credential-import-exported-from")
+                }
+                if !preview.notice.isEmpty {
+                    Label(preview.notice, systemImage: "exclamationmark.triangle")
+                        .accessibilityIdentifier("credential-import-notice")
+                }
+            }
+        }
         Section {
             if isGrouped {
-                Text("The other app kept these items in \(preview.groups.count) groups. Each goes to your Personal vault unless you choose another vault for it.")
+                Text(preview.isHisarExport
+                    ? "This export has \(preview.groups.count) vaults. Each goes to the vault it came from, or your Personal vault, unless you choose another."
+                    : "The other app kept these items in \(preview.groups.count) groups. Each goes to your Personal vault unless you choose another vault for it.")
             } else {
                 Picker("Vault", selection: Binding(get: { preview.vaultID }, set: { vaultID in
                     Task { await model.previewCredentialImport(vaultID: vaultID) }

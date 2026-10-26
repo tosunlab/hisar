@@ -73,6 +73,19 @@ interface VaultBackend {
      */
     fun prepareCredentialExchangeImport(vaultID: String, credentialData: ByteArray): ImportPreview
 
+    /**
+     * Reads a Hisar export (a `.hisar`, or a plain `.json`) the file picker opened, keeping it in memory until the import
+     * starts or is cancelled. An encrypted export comes back with [ImportPreview.isPassphraseRequired]; [openImportFile]
+     * then opens it. A file that is not a Hisar export fails with "this is not a Hisar export".
+     */
+    fun prepareHisarExportImport(vaultID: String, fileName: String, content: ByteArray): ImportPreview
+
+    /**
+     * Opens the encrypted Hisar export [prepareHisarExportImport] read with its export passphrase and returns the full
+     * preview. A wrong passphrase fails and leaves the export waiting for the right one.
+     */
+    fun openImportFile(passphrase: String): ImportPreview
+
     /** Shows the prepared import again for another vault, with that vault's duplicates. */
     fun previewImport(vaultID: String): ImportPreview
 

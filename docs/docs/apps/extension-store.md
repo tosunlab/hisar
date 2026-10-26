@@ -23,7 +23,7 @@ The store rejects a manifest with a `key` field, so `package:store` removes it. 
 1. Create the developer account at https://chrome.google.com/webstore/devconsole (one-time registration fee) and verify the contact email.
 2. **Add new item** and upload `hisar-extension-<version>-store-first-upload.zip`.
 3. **Store listing:** the text below, the icon `dist/icons/icon-128.png` and the screenshots in `store/screenshots/` (1280×800).
-4. **Privacy:** the single purpose, the permission justifications and the data usage answers below. Privacy policy URL: `https://api.tryhisar.com/privacy`, served by `hisar-server`.
+4. **Privacy:** the single purpose, the permission justifications and the data usage answers below. Privacy policy URL: `https://eu.tryhisar.com/privacy`, served by `hisar-server`.
 5. **Distribution:** Visibility **Unlisted**, all regions.
 6. Submit for review. After it is published, check that the item's ID is `mmipiffoogblblocokimpemdopmdjghf`, then share the store link with the people you invited.
 

@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.HisarApplication
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.AccountLifecycleLogic
 import com.tryhisar.hisar.model.CredentialChangeResult
@@ -86,6 +87,9 @@ private const val SAVE_FAILED_MESSAGE = "Hisar could not save the file there. Ch
 fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: () -> Unit) {
     val status by model.status.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
+    val pickHisarExport = rememberHisarExportPicker(
+        onProblem = { model.credentialImport.message.value = it },
+    ) { fileName, content -> model.credentialImport.startHisarExport(fileName, content) }
     SettingsScreen("Account", onBack) {
         FormSection {
             LabeledRow("Name", status.name)
@@ -116,6 +120,15 @@ fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: 
                     }
                 },
                 testTag = "open-credential-import",
+                icon = Icons.Outlined.Download,
+                color = HisarTheme.colors.tint,
+            )
+        }
+        FormSection(footer = { Text("A Hisar export you made from Hisar, encrypted (.hisar) or plain JSON.") }) {
+            FormButtonRow(
+                "Import a Hisar export…",
+                pickHisarExport,
+                testTag = "open-hisar-export-import",
                 icon = Icons.Outlined.Download,
                 color = HisarTheme.colors.tint,
             )
