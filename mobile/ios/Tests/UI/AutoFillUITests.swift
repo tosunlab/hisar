@@ -9,6 +9,7 @@ final class AutoFillUITests: HisarUITestCase {
         app.launch()
         _ = signUp(inviteLink: inviteLink, email: "ios-autofill@example.com", name: "iOS AutoFill")
         openSettings("open-autofill")
+        waitFor(app.navigationBars["AutoFill"])
         XCTAssertFalse(app.staticTexts["You can also turn it on in the Settings app: General, AutoFill & Passwords."].exists)
         goBack()
         openTab("Vaults")

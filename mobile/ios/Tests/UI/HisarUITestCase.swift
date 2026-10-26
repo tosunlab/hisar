@@ -113,6 +113,7 @@ class HisarUITestCase: XCTestCase {
     func openSettings(_ identifier: String, file: StaticString = #filePath, line: UInt = #line) {
         openTab("Settings", file: file, line: line)
         let row = app.buttons[identifier]
+        scrollTo(row, file: file, line: line)
         waitForHittable(row, file: file, line: line)
         row.tap()
     }
