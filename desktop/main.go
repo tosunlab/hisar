@@ -347,7 +347,7 @@ func main() {
 	// No file type filter: exports often have other extensions, and the importer detects the format from the content.
 	fileOpener.chooseOpenPath = func() (string, error) {
 		return wailsApp.Dialog.OpenFile().
-			SetTitle("Import passwords").
+			SetTitle("Import items").
 			CanChooseFiles(true).
 			AttachToWindow(getDialogWindow()).
 			PromptForSingleSelection()
