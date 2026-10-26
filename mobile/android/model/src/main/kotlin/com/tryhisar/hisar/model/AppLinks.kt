@@ -53,7 +53,7 @@ data class SignInLink(val server: String, val email: String, val secretKey: Stri
 /** What Create account accepts: the bare code for the default server, otherwise the invite link on its server. */
 data class InviteLink(val invite: String) {
     companion object {
-        const val DEFAULT_SERVER = "https://api.tryhisar.com"
+        const val DEFAULT_SERVER = "https://eu.tryhisar.com"
         private val codePattern = Regex("^[A-Za-z0-9_-]+$")
 
         /** hisar://invite/<code>?server=<origin>, from the invite page's Open in Hisar button. */

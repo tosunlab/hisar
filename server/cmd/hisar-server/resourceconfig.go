@@ -8,7 +8,7 @@ import (
 )
 
 func readResourceConfig() (service.Config, error) {
-	config := service.Config{PublicURL: getEnv("HISAR_PUBLIC_URL", "https://api.tryhisar.com")}
+	config := service.Config{PublicURL: getEnv("HISAR_PUBLIC_URL", "https://eu.tryhisar.com")}
 	for _, entry := range []struct {
 		name   string
 		target *int

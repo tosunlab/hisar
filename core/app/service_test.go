@@ -130,7 +130,7 @@ func TestParseInviteLink(t *testing.T) {
 
 func TestParseInvite(t *testing.T) {
 	server, token, err := parseInvite(" abc_DEF-123 ")
-	if err != nil || server != "https://api.tryhisar.com" || token != "abc_DEF-123" {
+	if err != nil || server != "https://eu.tryhisar.com" || token != "abc_DEF-123" {
 		t.Errorf("code: %q %q %v", server, token, err)
 	}
 	server, token, err = parseInvite("https://hisar.example.com/invite/xyz")
@@ -146,9 +146,9 @@ func TestParseInvite(t *testing.T) {
 
 func TestResolveServer(t *testing.T) {
 	cases := map[string]string{
-		"api.tryhisar.com":           "https://api.tryhisar.com",
-		" api.tryhisar.com/ ":        "https://api.tryhisar.com",
-		"https://api.tryhisar.com":   "https://api.tryhisar.com",
+		"eu.tryhisar.com":            "https://eu.tryhisar.com",
+		" eu.tryhisar.com/ ":         "https://eu.tryhisar.com",
+		"https://eu.tryhisar.com":    "https://eu.tryhisar.com",
 		"http://127.0.0.1:18080":     "http://127.0.0.1:18080",
 		"hisar.example.com:8443/api": "https://hisar.example.com:8443/api",
 	}
