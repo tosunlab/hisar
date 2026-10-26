@@ -34,6 +34,16 @@ body {
   background: var(--color-text-selection);
 }
 
+.copy-prefix {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 .title-bar {
   height: var(--title-bar-height);
   flex: none;

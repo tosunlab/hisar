@@ -1,7 +1,7 @@
 import { copyField } from "./store";
 
-export function bindCopyTarget(name: string): Record<string, unknown> {
-  return { role: "button", tabindex: 0, "aria-label": `Copy ${name}`, "data-copy-target": "" };
+export function bindCopyTarget(): Record<string, unknown> {
+  return { role: "button", tabindex: 0, "data-copy-target": "" };
 }
 
 export function bindCopyRow(copy: () => unknown): Record<string, unknown> {

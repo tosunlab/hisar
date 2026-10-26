@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type DOMWrapper, type VueWrapper } from "@vue/test-utils";
+import { computeAccessibleName } from "dom-accessibility-api";
 import { allTestVault, createApiMock, createItem, createSecureNoteItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -25,7 +26,7 @@ function mountDetail(): VueWrapper {
 }
 
 function findRow(wrapper: VueWrapper, label: string): DOMWrapper<Element> {
-  return wrapper.find(`[role="button"][aria-label="Copy ${label}"]`);
+  return wrapper.findAll("[data-copy-target]").find((row) => row.find(".field-label, .section-label").text().toLowerCase() === label.toLowerCase())!;
 }
 
 beforeEach(() => {
@@ -52,6 +53,31 @@ beforeEach(() => {
 });
 
 describe("A click on a field row copies it", () => {
+  it("names a plain field's copy target with its label and displayed value", () => {
+    store.selectedItem = createItem({ username: "alper" });
+    const row = findRow(mountDetail(), "username");
+    expect(row.attributes("role")).toBe("button");
+    expect(computeAccessibleName(row.element)).toMatch(/^Copy\s*Username\s*alper$/);
+  });
+
+  it("keeps concealed passwords and custom fields out of their copy target names", () => {
+    const wrapper = mountDetail();
+    for (const [label, secret] of [["password", "hunter2hunter2"], ["Recovery code", "abcd-efgh"]]) {
+      const name = computeAccessibleName(findRow(wrapper, label).element);
+      expect(name).toMatch(new RegExp(`^Copy\\s*${label}\\s*`, "i"));
+      expect(name).toContain("••");
+      expect(name).not.toContain(secret);
+    }
+  });
+
+  it("reads a secret only after the user reveals it, and masks it again when hidden", async () => {
+    const wrapper = mountDetail();
+    await wrapper.get('button[aria-label="Reveal password"]').trigger("click");
+    expect(computeAccessibleName(findRow(wrapper, "password").element)).toContain("hunter2hunter2");
+    await wrapper.get('button[aria-label="Hide password"]').trigger("click");
+    expect(computeAccessibleName(findRow(wrapper, "password").element)).not.toContain("hunter2hunter2");
+  });
+
   it("copies the password from a click on its label, as its copy button does, without revealing it", async () => {
     const wrapper = mountDetail();
     const row = findRow(wrapper, "password");
@@ -83,7 +109,7 @@ describe("A click on a field row copies it", () => {
   it("copies a website row's own link", async () => {
     store.selectedItem = createItem({ id: "github", urls: ["https://github.com", "https://gist.github.com"] });
     const wrapper = mountDetail();
-    const allRow = wrapper.findAll('[role="button"][aria-label="Copy website"]');
+    const allRow = wrapper.findAll("[data-copy-target]").filter((row) => row.find(".field-label, .section-label").text() === "Website");
     await allRow[1].trigger("click");
     await flushPromises();
     expect(api.copyText).toHaveBeenCalledWith("https://gist.github.com");
@@ -100,7 +126,7 @@ describe("A click on a field row copies it", () => {
 
   it("leaves the row's own buttons to their action, with no second copy", async () => {
     const wrapper = mountDetail();
-    const row = wrapper.get('[aria-label="Copy password"][data-copy-target]').element.parentElement!;
+    const row = findRow(wrapper, "password").element.parentElement!;
     (row.querySelector('button[aria-label="Reveal password"]') as HTMLButtonElement).click();
     (row.querySelector('[data-testid="copy-secret-reference"]') as HTMLButtonElement).click();
     await flushPromises();
@@ -159,7 +185,7 @@ describe("A click on a field row copies it", () => {
       expect(target.find("button, a, input, select, textarea").exists()).toBe(false);
       expect(target.element.parentElement?.querySelector(".field-actions")).not.toBeNull();
     }
-    const row = wrapper.get('[data-copy-target][aria-label="Copy password"]').element.parentElement!;
+    const row = findRow(wrapper, "password").element.parentElement!;
     expect(row.getAttribute("role")).toBeNull();
     row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     await flushPromises();
