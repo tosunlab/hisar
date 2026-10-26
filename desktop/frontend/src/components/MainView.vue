@@ -17,7 +17,6 @@ import {
   openShareLinks,
   openWebsite,
   openSharing,
-  openTextShareLinkDialog,
   selectFavoriteItem,
   selectFavorites,
   selectItem,
@@ -592,11 +591,9 @@ onBeforeUnmount(() => {
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
             </button>
+            <hr class="new-item-separator" />
             <button class="ghost" role="menuitem" data-testid="new-import" @click="chooseNewItem(openImport)">
               <AppIcon name="import" /> Import…
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-share-text" @click="chooseNewItem(openTextShareLinkDialog)">
-              <AppIcon name="link" /> Share text…
             </button>
           </div>
         </div>
@@ -1025,6 +1022,13 @@ onBeforeUnmount(() => {
 
 .new-item-menu kbd {
   margin-left: auto;
+}
+
+.new-item-separator {
+  width: 100%;
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
 }
 
 .search {

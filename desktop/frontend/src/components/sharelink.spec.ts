@@ -158,11 +158,15 @@ describe("share link dialog", () => {
     wrapper.unmount();
   });
 
-  it("shares a piece of text from the new item menu", async () => {
+  it("shares a piece of text from the Shared links panel, not the new item menu", async () => {
     api.createShareLink.mockResolvedValue(createShareLink({ url: createdURL, title: "Staging database URL", fieldLabels: ["text"], isText: true, itemID: "", vaultID: "" }));
     const wrapper = mount(MainView, { attachTo: document.body });
     await wrapper.find('button[aria-label="New item"]').trigger("click");
-    await wrapper.find('[data-testid="new-share-text"]').trigger("click");
+    expect(wrapper.find('[data-testid="new-import"]').exists()).toBe(true);
+    expect(wrapper.find(".new-item-menu").text()).not.toContain("Share text");
+    await wrapper.find('[data-testid="open-shared-links"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="share-text-from-panel"]').trigger("click");
     expect(wrapper.find('[data-testid="share-link-dialog"]').text()).toContain("Share text");
     await wrapper.find("form").trigger("submit");
     expect(wrapper.find('[data-testid="share-link-validation"]').text()).toBe("Enter the text to share.");
