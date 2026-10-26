@@ -7,6 +7,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
         launchPreview("ssh")
         waitFor(app.descendants(matching: .any)["phone-approval"])
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Terminal wants to push to git.tryhisar.com")
+        XCTAssertEqual(app.buttons["phone-approval-approve"].label, "Approve with Face ID")
         let rememberSwitch = app.switches["phone-approval-remember"]
         XCTAssertEqual(rememberSwitch.value as? String, "1", "the switch starts as the Mac's checkbox does")
         saveScreenshot("phone-approval-ssh")
@@ -95,6 +96,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
         app.buttons["phone-approval-approve"].tap()
         let passwordField = app.secureTextFields["phone-approval-password"]
         type("not the password", into: passwordField)
+        XCTAssertTrue(app.staticTexts["Face ID is not available, so Hisar checks your master password instead."].exists)
         app.buttons["phone-approval-approve-password"].tap()
         waitFor(app.descendants(matching: .any)["error-message"])
         saveScreenshot("phone-approval-password")

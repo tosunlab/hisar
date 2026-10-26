@@ -39,7 +39,7 @@ struct PhoneApprovalSheet: View {
                     } header: {
                         Text("Approve with your master password")
                     } footer: {
-                        Text("Face ID is not available, so Hisar checks your master password instead.")
+                        Text("\(SettingsView.biometryName) is not available, so Hisar checks your master password instead.")
                     }
                 }
                 if approval.isRememberable {
@@ -182,7 +182,7 @@ struct PhoneApprovalSheet: View {
                             if isBusy {
                                 ProgressView()
                             } else {
-                                Label("Approve with Face ID", systemImage: "faceid")
+                                Label("Approve with \(SettingsView.biometryName)", systemImage: SettingsView.biometrySystemImage)
                             }
                         }
                         .frame(maxWidth: .infinity)
