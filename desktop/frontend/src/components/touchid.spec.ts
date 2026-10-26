@@ -46,6 +46,7 @@ describe("UnlockView with Touch ID", () => {
     const pending = createPendingPromise<ReturnType<typeof createStatus>>();
     api.unlockWithBiometric.mockReturnValue(pending.promise);
     const wrapper = mount(UnlockView, { attachTo: document.body });
+    const statusRegion = wrapper.get('[data-testid="unlock-status"]').element;
     await flushPromises();
     expect(wrapper.find('[data-testid="touch-id-slot"]').exists()).toBe(true);
     expect(api.setTouchIDPromptFrame).toHaveBeenCalled();
@@ -59,7 +60,8 @@ describe("UnlockView with Touch ID", () => {
     await flushPromises();
     expect(store.status.state).toBe("unlocked");
     expect(api.clearTouchIDPromptFrame).toHaveBeenCalled();
-    expect(wrapper.find('[data-testid="unlock-status"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="unlock-status"]').element).toBe(statusRegion);
+    expect(wrapper.get('[data-testid="unlock-status"]').text()).toBe("");
     wrapper.unmount();
   });
 
@@ -91,7 +93,7 @@ describe("UnlockView with Touch ID", () => {
     expect(store.errorMessage).toContain("turned off");
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="use-touch-id"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="unlock-status"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="unlock-status"]').text()).toBe("");
     wrapper.unmount();
   });
 
@@ -101,7 +103,8 @@ describe("UnlockView with Touch ID", () => {
     expect(api.unlockWithBiometric).not.toHaveBeenCalled();
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="use-touch-id"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="unlock-status"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="unlock-status"]').text()).toBe("");
+    expect(wrapper.get('[data-testid="unlock-status"]').attributes("aria-live")).toBe("polite");
     wrapper.unmount();
   });
 
