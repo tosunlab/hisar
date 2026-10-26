@@ -241,12 +241,12 @@ describe("Selection for assistive technology", () => {
     await flushPromises();
     sendEvent("show-item", { vaultID: "work", itemID: "grafana", isEditing: false });
     await flushPromises();
-    const list = wrapper.find('[role="listbox"]');
-    expect(list.attributes("aria-label")).toBe("Work");
-    expect(list.findAll('[role="option"]').map((option) => [option.find(".item-title").text(), option.attributes("aria-selected")])).toEqual([
-      ["Deploy", "false"],
+    const list = wrapper.find('.list ul[aria-label="Work"]');
+    expect(list.findAll("button.item").map((item) => [item.find(".item-title").text(), item.attributes("aria-current")])).toEqual([
+      ["Deploy", undefined],
       ["Grafana", "true"],
     ]);
-    expect(wrapper.findAll('[aria-current="true"]').map((vault) => vault.attributes("data-testid"))).toEqual(["vault-work"]);
+    expect(wrapper.find('[role="listbox"], [role="option"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-work"]').attributes("aria-current")).toBe("true");
   });
 });

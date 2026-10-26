@@ -650,13 +650,12 @@ onBeforeUnmount(() => {
             <p class="muted">Star an item with <AppIcon name="star" :size="12" /> or {{ shortcutModifier }}D to keep it here, across all your vaults and devices. Only you see your favorites.</p>
           </template>
         </div>
-        <ul v-else role="listbox" aria-label="Favorites" data-testid="favorites-list">
-          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="none">
+        <ul v-else aria-label="Favorites" data-testid="favorites-list">
+          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`">
             <button
               class="item"
               :class="{ selected: isSelectedFavorite(favorite) }"
-              role="option"
-              :aria-selected="isSelectedFavorite(favorite)"
+              :aria-current="isSelectedFavorite(favorite) ? 'true' : undefined"
               @click="selectFavoriteItem(favorite)"
               @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
@@ -682,13 +681,12 @@ onBeforeUnmount(() => {
         <p>{{ emptyListMessage }}</p>
         <button v-if="!store.searchQuery && !store.selectedTag && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
-      <ul v-else role="listbox" :aria-label="selectedVault?.name ?? 'Items'">
-        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id" role="none">
+      <ul v-else :aria-label="selectedVault?.name ?? 'Items'">
+        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id">
           <button
             class="item"
             :class="{ selected: store.selectedItem?.id === vaultItem.id }"
-            role="option"
-            :aria-selected="store.selectedItem?.id === vaultItem.id"
+            :aria-current="store.selectedItem?.id === vaultItem.id ? 'true' : undefined"
             @click="selectItem(vaultItem.id)"
             @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
           >
