@@ -308,6 +308,22 @@ describe("The item list's context menu", () => {
   });
 });
 
+describe("The detail header's actions menu", () => {
+  it("restores focus to Item actions when Escape closes the menu", async () => {
+    store.selectedItem = githubDetail;
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
+    const trigger = wrapper.get('[data-testid="item-actions"]');
+    (trigger.element as HTMLButtonElement).focus();
+    await trigger.trigger("click");
+    expect(document.activeElement).toBe(wrapper.get('[data-testid="context-menu-duplicate"]').element);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="context-menu"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(trigger.element);
+    wrapper.unmount();
+  });
+});
+
 describe("A detail field's context menu", () => {
   it("offers the row's own actions: reveal, copy and copy the secret reference", async () => {
     store.selectedItem = githubDetail;

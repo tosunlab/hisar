@@ -67,7 +67,7 @@ const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
 // itemMenu is the header's ⋯ menu, opened below its button; dialog is the Move or Delete dialog one of its actions opens.
-const itemMenu = ref<{ x: number; y: number } | null>(null);
+const itemMenu = ref<{ x: number; y: number; trigger: HTMLButtonElement } | null>(null);
 const dialog = ref<"move" | "delete" | null>(null);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
 const isSecureNote = computed(() => store.selectedItem?.category === secureNoteCategory);
@@ -233,8 +233,14 @@ function buildItemMenuActions(): ContextMenuAction[] {
 }
 
 function openItemMenu(event: MouseEvent): void {
-  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  itemMenu.value = { x: Math.max(8, bounds.right - 200), y: bounds.bottom + 6 };
+  const trigger = event.currentTarget as HTMLButtonElement;
+  const bounds = trigger.getBoundingClientRect();
+  itemMenu.value = { x: Math.max(8, bounds.right - 200), y: bounds.bottom + 6, trigger };
+}
+
+function closeItemMenu(): void {
+  itemMenu.value?.trigger.focus();
+  itemMenu.value = null;
 }
 
 // fieldMenu is the right-click menu of a field row. It offers the row's own buttons, by their labels, so it always matches
@@ -695,7 +701,7 @@ function maskSecret(secret: string): string {
       :x="itemMenu.x"
       :y="itemMenu.y"
       :all-action="buildItemMenuActions()"
-      @close="itemMenu = null"
+      @close="closeItemMenu"
     />
     <MoveItemDialog v-if="dialog === 'move'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="dialog = null" />
     <ConfirmDeleteDialog v-if="dialog === 'delete'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="dialog = null" />
