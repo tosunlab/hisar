@@ -126,7 +126,6 @@ class ItemDetailUITests : HisarUITestCase() {
         waitUntil(10_000, "the clipboard holds the certificate") { clipboardText == "14".repeat(32) }
         tap("remove-android-app-com.bank.app")
         confirm("Remove app", excludingTag = "remove-android-app-com.bank.app")
-        // The notice shows for 2.5 seconds, so it is read while it shows, not after the slower wait for the row.
         waitFor(hasText("Android app removed."))
         composeRule.waitUntil("the app's row goes", 30_000) { !exists(hasTestTag("android-app-com.bank.app")) }
         assertEquals(emptyList<Any>(), backend.getItem(personalID, login.id).allAndroidApp)

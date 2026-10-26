@@ -222,6 +222,6 @@ class OrganizationTests {
         assertTrue(model.organizations.leaveOrganization("acme"))
         assertEquals(emptyList(), model.unlockedData.value.allOrganization)
         assertEquals(emptyList(), model.unlockedData.value.allVault.filter { it.isOrganization })
-        assertEquals("You left Acme.", model.notice.value)
+        assertEquals("You left Acme.", model.notice.value?.message)
     }
 }

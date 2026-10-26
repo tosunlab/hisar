@@ -110,10 +110,10 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
             actions = {
                 if (shownItem != null) {
                     ItemToolbar(
-                        isFavorite = shownItem.isFavorite,
+                        isFavorite = summary?.isFavorite ?: shownItem.isFavorite,
                         toggleFavorite = {
                             scope.launch {
-                                val isFavorite = !shownItem.isFavorite
+                                val isFavorite = !(summary?.isFavorite ?: shownItem.isFavorite)
                                 if (model.favorites.setItemFavorite(vaultID, shownItem.id, isFavorite)) item = item?.copy(isFavorite = isFavorite)
                             }
                         },

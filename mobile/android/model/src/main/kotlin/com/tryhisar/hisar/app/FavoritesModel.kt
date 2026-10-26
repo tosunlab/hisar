@@ -10,7 +10,10 @@ class FavoritesModel(private val context: ModelContext) {
             val allChangedItem = allItem.map { if (it.id == itemID) it.copy(isFavorite = isFavorite) else it }
             data.copy(allItemByVaultID = data.allItemByVaultID + (vaultID to allChangedItem))
         }
-        context.showNotice(if (isFavorite) "Added to Favorites." else "Removed from Favorites.")
+        context.showNotice(
+            if (isFavorite) "Added to Favorites." else "Removed from Favorites.",
+            Notice.Action("Undo") { setItemFavorite(vaultID, itemID, !isFavorite) },
+        )
         true
     }
 }

@@ -20,8 +20,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,13 +53,12 @@ class AppModel(
     private val mutableIsBusy = MutableStateFlow(false)
     private val mutableIsRefreshing = MutableStateFlow(false)
     private val mutableIsCheckingMinimumVersion = MutableStateFlow(false)
-    private val mutableNotice = MutableStateFlow<String?>(null)
+    private val mutableNotice = MutableStateFlow<Notice?>(null)
     private val mutableLockCount = MutableStateFlow(0)
     private val mutableCopyCount = MutableStateFlow(0)
     private val mutableRemoteChangeCount = MutableStateFlow(0)
     private val allStatusListener = mutableListOf<(VaultStatus, VaultStatus) -> Unit>()
     private var enteredBackgroundAt: Instant? = null
-    private var noticeJob: Job? = null
     private var isRefreshRequestedAgain = false
     private var startedRefreshCount = 0L
     private var shownRefresh = 0L
@@ -78,7 +75,7 @@ class AppModel(
     override val isWebsiteIconsEnabled = MutableStateFlow(true)
     val isRefreshing: StateFlow<Boolean> = mutableIsRefreshing.asStateFlow()
     val isCheckingMinimumVersion: StateFlow<Boolean> = mutableIsCheckingMinimumVersion.asStateFlow()
-    val notice: StateFlow<String?> = mutableNotice.asStateFlow()
+    val notice: StateFlow<Notice?> = mutableNotice.asStateFlow()
 
     /** An editor some other surface asks the app to open, such as AutoFill's save prompt; the Vaults tab shows it. */
     val requestedEditor = MutableStateFlow<EditorRequest?>(null)
@@ -183,6 +180,7 @@ class AppModel(
             else -> Screen.SignedOut
         }
         if (previous.isUnlocked && !newStatus.isUnlocked) {
+            mutableNotice.value = null
             mutableUnlockedData.value = UnlockedData()
             mutableLockCount.update { it + 1 }
             selectedTab.value = Tab.VAULTS
@@ -222,13 +220,18 @@ class AppModel(
         }
     }
 
-    override fun showNotice(message: String) {
-        mutableNotice.value = message
-        noticeJob?.cancel()
-        noticeJob = scope.launch {
-            delay(NOTICE_DURATION_MILLISECONDS)
-            mutableNotice.value = null
-        }
+    override fun showNotice(message: String, action: Notice.Action?) {
+        mutableNotice.value = Notice(message, action)
+    }
+
+    fun dismissNotice(notice: Notice) {
+        if (mutableNotice.value === notice) mutableNotice.value = null
+    }
+
+    suspend fun performNoticeAction(notice: Notice) {
+        if (mutableNotice.value !== notice) return
+        mutableNotice.value = null
+        notice.action?.perform()
     }
 
     override suspend fun refreshStatus() {
@@ -391,8 +394,6 @@ class AppModel(
     }
 
     companion object {
-        const val NOTICE_DURATION_MILLISECONDS = 2_500L
-
         /** Android clears a copy with an inexact alarm, which lands between 90 seconds and about 2.5 minutes. */
         private const val CLEARING_NOTICE = "It clears in about 2 minutes."
 

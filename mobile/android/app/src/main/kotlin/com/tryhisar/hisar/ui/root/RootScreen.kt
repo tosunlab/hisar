@@ -1,10 +1,5 @@
 package com.tryhisar.hisar.ui.root
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,6 +9,7 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -33,7 +29,7 @@ import com.tryhisar.hisar.app.NewAccountStep
 import com.tryhisar.hisar.app.Screen
 import com.tryhisar.hisar.ui.approvals.PhoneApprovalSheet
 import com.tryhisar.hisar.ui.components.LogoMark
-import com.tryhisar.hisar.ui.components.NoticeToast
+import com.tryhisar.hisar.ui.components.NoticeHost
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.exposeTestTags
 import com.tryhisar.hisar.ui.components.performConfirmHaptic
@@ -59,7 +55,6 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val status by model.status.collectAsStateWithLifecycle()
         val newAccountStep by model.signIn.newAccountStep.collectAsStateWithLifecycle()
         val inviteLinkMessage by model.signIn.inviteLinkMessage.collectAsStateWithLifecycle()
-        val notice by model.notice.collectAsStateWithLifecycle()
         val copyCount by model.copyCount.collectAsStateWithLifecycle()
         val isCheckingMinimumVersion by model.isCheckingMinimumVersion.collectAsStateWithLifecycle()
         val allPendingApproval by model.approvals.allPendingApproval.collectAsStateWithLifecycle()
@@ -69,6 +64,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
         val pendingRecovery by model.pendingRecovery.allRecovery.collectAsStateWithLifecycle()
         val isRecoveryShown by model.pendingRecovery.isShown.collectAsStateWithLifecycle()
+        val isSheetShown by model.navigation.isSheetShown.collectAsStateWithLifecycle()
         val view = LocalView.current
         val scope = rememberCoroutineScope()
 
@@ -77,50 +73,49 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         }
 
         Box(Modifier.fillMaxSize().exposeTestTags()) {
-            when (val current = screen) {
-                Screen.Starting -> StartingScreen()
-                is Screen.Failed -> StartupFailureScreen(current.message)
-                is Screen.UpdateRequired -> UpdateRequiredScreen(current.requirement, isCheckingMinimumVersion) {
-                    scope.launch { model.checkMinimumVersion() }
+            Scaffold(
+                contentWindowInsets = WindowInsets.navigationBars,
+                snackbarHost = { NoticeHost(model) },
+                bottomBar = {
+                    if (screen == Screen.Unlocked && !isSheetShown && newAccountStep == null && !isRecoveryShown) {
+                        MainTabBar(model, allPendingApproval.size)
+                    }
+                },
+            ) { padding ->
+                Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
+                    when (val current = screen) {
+                        Screen.Starting -> StartingScreen()
+                        is Screen.Failed -> StartupFailureScreen(current.message)
+                        is Screen.UpdateRequired -> UpdateRequiredScreen(current.requirement, isCheckingMinimumVersion) {
+                            scope.launch { model.checkMinimumVersion() }
+                        }
+                        Screen.SignedOut -> SignInScreen(model)
+                        Screen.Locked -> LockScreen(model)
+                        Screen.Unlocked -> MainTabs(model)
+                    }
+
+                    when (val step = newAccountStep) {
+                        is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(step.secretKey, status.email, status.server, copySecret, model.signIn::finishNewSecretKey)
+                        NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
+                        null -> Unit
+                    }
+
+                    credentialImportSheet?.let { sheet ->
+                        if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) CredentialImportScreen(model, sheet)
+                    }
+
+                    presentedApproval?.let { approval ->
+                        if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) PhoneApprovalSheet(model, approval)
+                    }
+
+                    if (pendingRecovery.isNotEmpty() && !isRecoveryShown) {
+                        Box(Modifier.align(Alignment.TopCenter).background(HisarTheme.colors.systemBackground).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp)) {
+                            PlainButton("Finish account recovery", model.pendingRecovery::open, testTag = "pending-recovery-open")
+                        }
+                    }
+                    if (isRecoveryShown) PendingRecoveryScreen(model)
                 }
-                Screen.SignedOut -> SignInScreen(model)
-                Screen.Locked -> LockScreen(model)
-                Screen.Unlocked -> MainTabs(model, approvalBadgeCount = allPendingApproval.size)
             }
-
-            when (val step = newAccountStep) {
-                is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(step.secretKey, status.email, status.server, copySecret, model.signIn::finishNewSecretKey)
-                NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
-                null -> Unit
-            }
-
-            credentialImportSheet?.let { sheet ->
-                if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) CredentialImportScreen(model, sheet)
-            }
-
-            presentedApproval?.let { approval ->
-                if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) PhoneApprovalSheet(model, approval)
-            }
-
-            if (pendingRecovery.isNotEmpty() && !isRecoveryShown) {
-                Box(Modifier.align(Alignment.TopCenter).background(HisarTheme.colors.systemBackground).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp)) {
-                    PlainButton("Finish account recovery", model.pendingRecovery::open, testTag = "pending-recovery-open")
-                }
-            }
-            if (isRecoveryShown) PendingRecoveryScreen(model)
-
-            AnimatedVisibility(
-                visible = notice != null,
-                enter = slideInVertically { it } + fadeIn(),
-                exit = slideOutVertically { it } + fadeOut(),
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(bottom = if (screen == Screen.Unlocked) FloatingTabBarHeight else 24.dp),
-            ) {
-                NoticeToast(notice.orEmpty())
-            }
-
             if (!lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) PrivacyCover()
         }
 

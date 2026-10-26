@@ -310,7 +310,7 @@ class PhoneApprovalTests {
         assertEquals(listOf("approve 0123456789abcdef0123456789abcdef"), harness.backend.allApprovalAnswer)
         assertNull(model.approvals.presentedApproval.value)
         assertTrue(model.approvals.allPendingApproval.value.isEmpty())
-        assertEquals("Approved on your Mac", model.notice.value)
+        assertEquals("Approved on your Mac", model.notice.value?.message)
         assertNull(model.approvals.approvalErrorMessage.value)
     }
 
@@ -322,7 +322,7 @@ class PhoneApprovalTests {
         model.approvals.denyPendingApproval()
         assertEquals(listOf("deny 0123456789abcdef0123456789abcdef"), harness.backend.allApprovalAnswer)
         assertNull(model.approvals.presentedApproval.value)
-        assertEquals("Denied on your Mac", model.notice.value)
+        assertEquals("Denied on your Mac", model.notice.value?.message)
     }
 
     @Test
@@ -363,7 +363,7 @@ class PhoneApprovalTests {
         model.approvals.approvePendingApproval(isRemembered = false)
         assertNull(model.approvals.presentedApproval.value)
         assertTrue(model.approvals.allPendingApproval.value.isEmpty())
-        assertEquals("The request is no longer waiting", model.notice.value)
+        assertEquals("The request is no longer waiting", model.notice.value?.message)
     }
 
     @Test

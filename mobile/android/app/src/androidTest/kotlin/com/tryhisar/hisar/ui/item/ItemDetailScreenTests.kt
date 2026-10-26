@@ -5,6 +5,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assertContentDescriptionEquals
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.longClick
@@ -137,7 +138,21 @@ class ItemDetailScreenTests {
         composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performTouchInput { longClick() }
         composeRule.onNode(hasText("Copy")).performClick()
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
-        assertEquals("Website copied. It clears in about 2 minutes.", host.model.notice.value)
+        assertEquals("Website copied. It clears in about 2 minutes.", host.model.notice.value?.message)
+    }
+
+    @Test
+    fun testFavoriteSnackbarUndoUpdatesTheDetailToolbar() {
+        val host = openHost()
+        host.show("personal", "github")
+        composeRule.waitForTag("favorite-item")
+        composeRule.onNodeWithTag("favorite-item").assertContentDescriptionEquals("Add to Favorites")
+        composeRule.tap("favorite-item")
+        composeRule.waitForTag("notice")
+        composeRule.onNodeWithTag("favorite-item").assertContentDescriptionEquals("Remove from Favorites")
+        composeRule.onNode(hasText("Undo")).performClick()
+        composeRule.waitUntil(5_000) { backend.allFavoriteRecordID.isEmpty() }
+        composeRule.onNodeWithTag("favorite-item").assertContentDescriptionEquals("Add to Favorites")
     }
 
     @Test
