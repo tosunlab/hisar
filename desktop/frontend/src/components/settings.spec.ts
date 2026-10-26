@@ -69,12 +69,16 @@ afterEach(() => {
 describe("Settings sidebar", () => {
   it("lists the sections in order and opens on General", async () => {
     const settings = await mountSettings();
-    expect(readAllSectionLabel(settings)).toEqual(["General", "Security", "SSH & Git", "Developer tools", "Browser", "People", "Organizations", "Devices", "Export", "Account", "Help"]);
+    expect(readAllSectionLabel(settings)).toEqual(["General", "Security", "SSH & Git", "Developer tools", "Browser", "People", "Organizations", "Devices", "Import & Export", "Account", "Help"]);
     expect(settings.find("#settings-title").text()).toBe("General");
     expect(findPage(settings, "general").isVisible()).toBe(true);
     expect(findPage(settings, "security").isVisible()).toBe(false);
     expect(findPage(settings, "general").text()).toContain("Open Hisar at login");
-    expect(findPage(settings, "general").text()).toContain("Import from another password manager");
+    expect(findPage(settings, "general").text()).not.toContain("Import from another password manager");
+    await settings.find('[data-testid="settings-section-export"]').trigger("click");
+    expect(settings.find("#settings-title").text()).toBe("Import & Export");
+    const transferPage = findPage(settings, "export");
+    expect(transferPage.findAll("section").map((section) => section.attributes("data-testid"))).toEqual(["import-section", "export-section"]);
   });
 
   it("shows the chosen section and keeps every section's rows where they belong", async () => {
@@ -204,7 +208,7 @@ describe("Settings search", () => {
     expect(readSelectedSection(settings)).toBe("settings-section-general");
     expect(findPage(settings, "general").find('[data-testid="updates-section"]').isVisible()).toBe(true);
     expect(findPage(settings, "general").find('[data-testid="open-at-login-section"]').isVisible()).toBe(false);
-    expect(findPage(settings, "general").find('[data-testid="import-section"]').isVisible()).toBe(false);
+    expect(findPage(settings, "export").find('[data-testid="import-section"]').isVisible()).toBe(false);
   });
 
   it("leaves out invitation rows that do not exist", async () => {
@@ -225,7 +229,8 @@ describe("Settings search", () => {
     expect(readAllSectionLabel(settings)).toHaveLength(11);
     expect(settings.find('[data-testid="settings-no-results"]').exists()).toBe(false);
     expect(findPage(settings, "general").isVisible()).toBe(true);
-    expect(findPage(settings, "general").find('[data-testid="import-section"]').isVisible()).toBe(true);
+    await settings.find('[data-testid="settings-section-export"]').trigger("click");
+    expect(findPage(settings, "export").find('[data-testid="import-section"]').isVisible()).toBe(true);
   });
 
   it("focuses the search with Command-F and clears it with Escape before closing", async () => {

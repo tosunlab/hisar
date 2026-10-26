@@ -208,7 +208,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             <AppearanceSection />
             <OpenAtLoginSection />
             <UpdatesSection />
-            <ImportSection />
           </div>
           <div v-show="displayedSection?.id === 'security'" data-testid="settings-page-security">
             <SecuritySection />
@@ -233,6 +232,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             <DevicesSection />
           </div>
           <div v-show="displayedSection?.id === 'export'" data-testid="settings-page-export">
+            <ImportSection />
             <ExportSection />
           </div>
           <div v-show="displayedSection?.id === 'account'" data-testid="settings-page-account">

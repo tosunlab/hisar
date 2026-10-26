@@ -28,7 +28,6 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "open-at-login", title: "Open Hisar at login", keywords: "startup login items menu bar launch" },
       { id: "version", title: "Check for updates", keywords: "version update release" },
       { id: "automatic-updates", title: "Automatically check for updates", keywords: "update daily" },
-      { id: "import", title: "Import from another password manager", keywords: "1password bitwarden csv chrome firefox safari edge export" },
     ],
   },
   {
@@ -109,9 +108,12 @@ export const allSettingsSection: SettingsSection[] = [
   },
   {
     id: "export",
-    label: "Export",
+    label: "Import & Export",
     icon: "export",
-    allRow: [{ id: "export", title: "Export your data", keywords: "export backup json download data encrypted passphrase plain file" }],
+    allRow: [
+      { id: "import", title: "Import from another password manager", keywords: "1password bitwarden csv chrome firefox safari edge export" },
+      { id: "export", title: "Export your data", keywords: "export backup json download data encrypted passphrase plain file" },
+    ],
   },
   {
     id: "account",
