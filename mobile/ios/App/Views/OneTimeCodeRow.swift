@@ -44,7 +44,7 @@ struct OneTimeCodeRow: View {
                 Label("Copy one-time code", systemImage: "doc.on.doc")
             }
             Button(action: copyReference) {
-                Label("Copy Secret Reference", systemImage: "terminal")
+                Label("Copy secret reference", systemImage: "terminal")
             }
         }
         .task(id: itemID) { await refreshCode() }
