@@ -82,9 +82,8 @@ describe("Settings rows", () => {
 describe("Change master password", () => {
   it("says what happens to other devices before anything is changed", () => {
     const wrapper = mount(ChangeMasterPasswordDialog);
-    expect(wrapper.find('[data-testid="change-master-password-consequences"]').text()).toContain(
-      "Your other devices will be signed out. Sign in on them with the new master password.",
-    );
+    expect(wrapper.find(".panel-heading p").text()).toBe("Your other devices will be signed out. Sign in on them with the new master password.");
+    expect(wrapper.find('[data-testid="change-master-password-consequences"]').text()).toBe("Nobody can recover a forgotten master password, including Hisar.");
     expect(api.changeMasterPassword).not.toHaveBeenCalled();
   });
 
@@ -132,6 +131,11 @@ describe("Replace Secret Key", () => {
   it("warns that the old Emergency Kit stops working before asking for the master password", () => {
     const wrapper = mount(ReplaceSecretKeyDialog);
     expect(wrapper.find('[data-testid="replace-secret-key-consequences"]').text()).toContain("Your old Emergency Kit stops working.");
+    expect(wrapper.find(".panel-heading p").text()).toBe(
+      "Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit.",
+    );
+    expect(wrapper.find('[data-testid="replace-secret-key-consequences"]').text()).not.toContain("signed out");
+    expect(wrapper.find('[data-testid="replace-secret-key-consequences"]').text()).toContain("Your master password stays the same.");
     expect(wrapper.find('[data-testid="confirm-replace-secret-key"]').attributes("disabled")).toBeDefined();
   });
 

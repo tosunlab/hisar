@@ -119,14 +119,14 @@ async function submitSaveEmergencyKit(): Promise<void> {
         <div v-show="isRowVisible('change-master-password')" class="setting">
           <div class="setting-text">
             <strong>Master password</strong>
-            <p class="muted">Changing it signs out your other devices. Your Secret Key and Emergency Kit stay the same.</p>
+            <p class="muted">Signs out your other devices.</p>
           </div>
           <button data-testid="change-master-password" @click="isChangingMasterPassword = true">Change master password…</button>
         </div>
         <div v-show="isRowVisible('replace-secret-key')" class="setting">
           <div class="setting-text">
             <strong>Secret Key</strong>
-            <p class="muted">Replace it if your Secret Key or Emergency Kit may have been seen by someone else. You get a new Emergency Kit, and your other devices are signed out.</p>
+            <p class="muted">Signs out your other devices.</p>
           </div>
           <button data-testid="replace-secret-key" @click="isReplacingSecretKey = true">Replace Secret Key…</button>
         </div>
