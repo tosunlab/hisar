@@ -218,7 +218,7 @@ struct AccountView: View {
             }
             Section {
                 NavigationLink(value: SettingsDestination.deleteAccount) {
-                    Label("Delete account", systemImage: "person.crop.circle.badge.xmark")
+                    Label("Delete account…", systemImage: "person.crop.circle.badge.xmark")
                         .foregroundStyle(.red)
                 }
                 .disabled(model.status.isOffline)
@@ -378,11 +378,11 @@ struct SecurityView: View {
             }
             Section {
                 NavigationLink(value: SettingsDestination.changeMasterPassword) {
-                    Label("Change master password", systemImage: "key")
+                    Label("Change master password…", systemImage: "key")
                 }
                 .accessibilityIdentifier("open-change-master-password")
                 NavigationLink(value: SettingsDestination.replaceSecretKey) {
-                    Label("Replace Secret Key", systemImage: "doc.badge.arrow.up")
+                    Label("Replace Secret Key…", systemImage: "doc.badge.arrow.up")
                 }
                 .accessibilityIdentifier("open-replace-secret-key")
             } footer: {
@@ -686,9 +686,9 @@ struct NotificationSettingsView: View {
 
     private var footer: String {
         if notifications.authorization == .allowed && !notifications.settings.isServerSending {
-            return "Your Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
+            return "The Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
         }
-        return "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Hisar's push relay, Apple and your Hisar server see when a notification is sent, but not what it is about."
+        return "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Hisar's push relay, Apple and the Hisar server see when a notification is sent, but not what it is about."
     }
 }
 

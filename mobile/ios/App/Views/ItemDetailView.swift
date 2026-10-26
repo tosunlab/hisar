@@ -164,7 +164,7 @@ struct ItemDetailView: View {
                 Section("Other fields") {
                     ForEach(Array(item.allField.enumerated()), id: \.offset) { _, field in
                         SecretFieldRow(
-                            label: field.name, value: field.value, isConcealed: field.concealed,
+                            label: field.name, isCustomField: true, value: field.value, isConcealed: field.concealed,
                             isRevealed: allRevealedFieldName.contains(field.name),
                             toggleReveal: { toggleReveal(fieldName: field.name) },
                             copy: { copy(fieldName: field.name, label: field.name) },
@@ -639,6 +639,7 @@ struct ItemDetailView: View {
 
 struct SecretFieldRow: View {
     var label: String
+    var isCustomField = false
     var value: String
     var isConcealed: Bool
     var isRevealed: Bool
@@ -648,9 +649,15 @@ struct SecretFieldRow: View {
 
     private var isHidden: Bool { isConcealed && !isRevealed }
 
+    private var actionLabel: String {
+        let firstWord = label.prefix { !$0.isWhitespace }
+        if isCustomField || (firstWord.count > 1 && firstWord == firstWord.uppercased()) { return label }
+        return label.prefix(1).lowercased() + label.dropFirst()
+    }
+
     var body: some View {
         HStack(spacing: 0) {
-            CopyFieldButton(label: label, value: isHidden ? "Hidden" : value, copy: copy) {
+            CopyFieldButton(label: actionLabel, value: isHidden ? "Hidden" : value, copy: copy) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(label)
                         .font(.footnote)
@@ -667,7 +674,7 @@ struct SecretFieldRow: View {
                         .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel(isRevealed ? "Hide \(label)" : "Reveal \(label)")
+                .accessibilityLabel(isRevealed ? "Hide \(actionLabel)" : "Reveal \(actionLabel)")
                 .accessibilityIdentifier("reveal-\(label.lowercased())")
             }
             CopyIconButton(copy: copy)
@@ -675,7 +682,7 @@ struct SecretFieldRow: View {
         .foregroundStyle(.primary)
         .contextMenu {
             Button(action: copy) {
-                Label("Copy \(label)", systemImage: "doc.on.doc")
+                Label("Copy", systemImage: "doc.on.doc")
             }
             Button(action: copyReference) {
                 Label("Copy secret reference", systemImage: "terminal")

@@ -472,7 +472,7 @@ struct PendingRecoveryView: View {
                                 .textSelection(.enabled)
                                 .accessibilityIdentifier("pending-recovery-secret-key")
                             ShareLink(item: URL(fileURLWithPath: export.path), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                                Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
+                                Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
                             }
                             .accessibilityIdentifier("pending-recovery-share-kit")
                         }

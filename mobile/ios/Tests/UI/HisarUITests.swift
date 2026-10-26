@@ -16,6 +16,8 @@ final class HisarUITests: HisarUITestCase {
         let passwordRow = app.buttons["copy-password"]
         waitFor(passwordRow)
         XCTAssertEqual(passwordRow.value as? String, "Hidden")
+        XCTAssertEqual(passwordRow.label, "Copy password")
+        XCTAssertEqual(app.buttons["reveal-password"].label, "Reveal password")
         app.buttons["reveal-password"].tap()
         XCTAssertEqual(passwordRow.value as? String, "ui-test-password-1")
         saveScreenshot("item-detail")
