@@ -47,7 +47,6 @@ final class PhoneApprovalTests: XCTestCase {
         let allApproval = try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8))
         XCTAssertEqual(allApproval.count, 1)
         let approval = allApproval[0]
-        XCTAssertEqual(approval.title, "Approve on MacBook Pro?")
         XCTAssertEqual(approval.summary, "hisar in Terminal wants to use Hisar")
         XCTAssertEqual(approval.bannerTitle, "MacBook Pro is asking to use Hisar from the command line")
         XCTAssertEqual(approval.systemImage, "apple.terminal")
@@ -102,7 +101,6 @@ final class PhoneApprovalTests: XCTestCase {
           "appIcon":"iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="}]
         """
         let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
-        XCTAssertEqual(approval.title, "Approve on MacBook Pro?")
         XCTAssertEqual(approval.summary, "Raycast wants to search Hisar and copy or paste passwords and one-time codes")
         XCTAssertEqual(approval.bannerTitle, "MacBook Pro is asking to let Raycast use Hisar")
         XCTAssertEqual(approval.systemImage, "magnifyingglass")
@@ -123,10 +121,9 @@ final class PhoneApprovalTests: XCTestCase {
         """
         let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
         XCTAssertEqual(approval.summary, "Raycast wants to create a share link for “GitHub”")
-        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Secrets", "Link", "Warning"], "a share link lasts for this one request")
-        XCTAssertEqual(approval.allDetailRow.map(\.value), [
-            "Raycast", "username\npassword", "Expires in 7 days · 1 view", "Anyone with the link can read these until it expires or its views run out.",
-        ])
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Secrets", "Link"], "a share link lasts for this one request")
+        XCTAssertEqual(approval.allDetailRow.map(\.value), ["Raycast", "username\npassword", "Expires in 7 days · 1 view"])
+        XCTAssertEqual(approval.appWarning, "Anyone with the link can read these until it expires or its views run out.")
         XCTAssertEqual(approval.approvalNote, "Approving lets this one request continue; it does not unlock Hisar on your Mac.")
         XCTAssertEqual(approval.detailLine, "username, password", "the card names what the link shares")
         XCTAssertFalse(approval.isRememberable)
@@ -142,7 +139,8 @@ final class PhoneApprovalTests: XCTestCase {
         let approval = try XCTUnwrap(try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8)).first)
         XCTAssertEqual(approval.summary, "iTerm2 wants to sign a commit")
         XCTAssertNotNil(approval.appIcon.flatMap(UIImage.init(data:)))
-        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Warning", "Command"])
+        XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Command"])
+        XCTAssertEqual(approval.appWarning, "iTerm2 is not signed, so macOS cannot confirm who made it.")
         XCTAssertNil(createApproval().appIcon)
     }
 
@@ -213,12 +211,6 @@ final class PhoneApprovalTests: XCTestCase {
         await model.approve(model.allPendingApproval[0])
         await model.approve(model.allPendingApproval[0])
         XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered ssh", "approve signing", "approve once"])
-    }
-
-    func testCardFooterNamesWhatApproveSends() {
-        XCTAssertEqual(createRememberingApproval(requestID: "ssh").cardApprovalNote, "Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.")
-        XCTAssertEqual(createRememberingApproval(requestID: "signing", isRememberedByDefault: false).cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
-        XCTAssertEqual(createApproval(requestID: "once").cardApprovalNote, "Approving answers this one request. It never unlocks Hisar on your Mac.")
     }
 
     func testSheetSwitchIsSentWithTheApproval() async {

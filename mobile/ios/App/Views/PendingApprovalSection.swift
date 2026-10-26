@@ -5,7 +5,7 @@ struct PendingApprovalCardSection: View {
     var allApproval: [PhoneApproval]
     var isBusy: Bool
     var review: (PhoneApproval) -> Void
-    var approve: (PhoneApproval) -> Void
+    var approve: (PhoneApproval, _ isRemembered: Bool) -> Void
     var deny: (PhoneApproval) -> Void
     var showAll: () -> Void
 
@@ -25,10 +25,6 @@ struct PendingApprovalCardSection: View {
                 Text(allApproval.count == 1 ? "Waiting for your approval" : "\(allApproval.count) requests waiting for your approval")
                     .foregroundStyle(.themeSecondary)
                     .accessibilityIdentifier("pending-approval-header")
-            } footer: {
-                Text(approval.cardApprovalNote)
-                    .foregroundStyle(.themeSecondary)
-                    .accessibilityIdentifier("pending-approval-footer")
             }
         }
     }
@@ -38,8 +34,10 @@ struct PendingApprovalCard: View {
     var approval: PhoneApproval
     var isBusy: Bool
     var review: (PhoneApproval) -> Void
-    var approve: (PhoneApproval) -> Void
+    var approve: (PhoneApproval, _ isRemembered: Bool) -> Void
     var deny: (PhoneApproval) -> Void
+
+    @State private var chosenRemember: Bool?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -52,6 +50,12 @@ struct PendingApprovalCard: View {
             .buttonStyle(.plain)
             .accessibilityHint("Shows the request's details")
             .accessibilityIdentifier("pending-approval-\(approval.requestID)")
+            if approval.isRememberable {
+                Toggle(approval.rememberLabel, isOn: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }))
+                    .font(.subheadline)
+                    .disabled(isBusy)
+                    .accessibilityIdentifier("pending-approval-remember-\(approval.requestID)")
+            }
             HStack(spacing: 10) {
                 Button {
                     deny(approval)
@@ -62,9 +66,9 @@ struct PendingApprovalCard: View {
                 .buttonStyle(.glass)
                 .accessibilityIdentifier("pending-approval-deny-\(approval.requestID)")
                 Button {
-                    approve(approval)
+                    approve(approval, approval.resolveRememberChoice(chosenRemember))
                 } label: {
-                    Label("Approve", systemImage: "faceid")
+                    Label("Approve", systemImage: SettingsView.biometrySystemImage)
                         .frame(maxWidth: .infinity)
                 }
                 .applyProminentGlassStyle()
@@ -74,6 +78,9 @@ struct PendingApprovalCard: View {
             .disabled(isBusy)
         }
         .padding(.vertical, 6)
+        .onChange(of: approval.requestID) {
+            chosenRemember = nil
+        }
     }
 }
 

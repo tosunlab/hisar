@@ -5,12 +5,18 @@ struct ItemEditorView: View {
     var originalItem: ItemDetail?
     /// The category of a new item; an existing item keeps its own.
     var newCategory: String = ItemDetail.categoryLogin
-    var finish: (ItemDetail?) -> Void
+    /// The saved item, or nil after a deletion, and the vault it is in.
+    var finish: (ItemDetail?, _ vaultID: String) -> Void
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var draft = ItemDetail()
     @State private var allURLText: [String] = [""]
+    /// A new item's vault: the one the editor opened from, until the user picks another.
+    @State private var chosenVaultID = ""
+    /// The draft as loaded, so Cancel and a swipe down know whether there is anything to discard.
+    @State private var loadedItem = ItemDetail()
+    @State private var isDiscardConfirmationShown = false
     @State private var isPasswordRevealed = false
     @State private var isGeneratorShown = false
     @State private var isIconPickerShown = false
@@ -29,6 +35,12 @@ struct ItemEditorView: View {
     @State private var numberBrand = ""
 
     private var isNew: Bool { originalItem == nil }
+
+    private var hasChanges: Bool {
+        hasLoadedDraft && (buildIconPreviewItem() != loadedItem || !newTagText.isEmpty)
+    }
+
+    private var allWritableVault: [VaultSummary] { model.allVault.filter(AppModel.isWritableVault) }
 
     private var credentialExpiryWarning: String {
         ItemAPICredential.describeEditedExpiry(draft.apiCredential?.expiry ?? "", saved: originalItem?.apiCredential)
@@ -60,6 +72,14 @@ struct ItemEditorView: View {
                         .accessibilityIdentifier("editor-icon")
                         TextField("Title", text: $draft.title)
                             .accessibilityIdentifier("editor-title")
+                    }
+                    if isNew {
+                        Picker("Vault", selection: $chosenVaultID) {
+                            ForEach(allWritableVault) { vault in
+                                Text(vault.name).tag(vault.id)
+                            }
+                        }
+                        .accessibilityIdentifier("editor-vault")
                     }
                 }
                 if draft.isSecureNote {
@@ -183,10 +203,8 @@ struct ItemEditorView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") {
-                        model.clearError()
-                        dismiss()
-                    }
+                    Button("Cancel", action: cancel)
+                        .accessibilityIdentifier("editor-cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     if model.isBusy {
@@ -203,6 +221,13 @@ struct ItemEditorView: View {
             } message: {
                 Text("It is deleted on every device that can see this vault.")
             }
+            .confirmationDialog("Discard changes?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
+                Button("Discard", role: .destructive, action: close)
+                    .accessibilityIdentifier("editor-discard")
+                Button("Keep editing", role: .cancel) {}
+                    .accessibilityIdentifier("editor-keep-editing")
+            }
+            .background(SheetDismissAttemptObserver { isDiscardConfirmationShown = true })
             .sheet(isPresented: $isGeneratorShown) {
                 PasswordGeneratorSheet { password in
                     draft.password = password
@@ -216,14 +241,28 @@ struct ItemEditorView: View {
                 IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
             }
         }
-        .interactiveDismissDisabled(model.isBusy)
+        .interactiveDismissDisabled(model.isBusy || hasChanges)
         .onAppear(perform: loadDraft)
+    }
+
+    private func cancel() {
+        if hasChanges {
+            isDiscardConfirmationShown = true
+        } else {
+            close()
+        }
+    }
+
+    private func close() {
+        model.clearError()
+        dismiss()
     }
 
     private func loadDraft() {
         guard !hasLoadedDraft else { return }
         hasLoadedDraft = true
         model.clearError()
+        chosenVaultID = vaultID
         if let originalItem {
             draft = originalItem
             allURLText = originalItem.allURL.isEmpty ? [""] : originalItem.allURL
@@ -255,6 +294,7 @@ struct ItemEditorView: View {
             cardDescription = CardDescription(brand: card.brand, last4: card.last4, numberWarning: card.numberWarning, expiryWarning: card.expiryWarning)
             numberBrand = card.brand
         }
+        loadedItem = buildIconPreviewItem()
     }
 
     /// The types the picker offers: the known brands, plus a type saved from elsewhere that is not one of them.
@@ -604,7 +644,7 @@ struct ItemEditorView: View {
 
     /// The SSH keys a server may use: its vault's, so everyone who sees the server can use the key.
     private var allVaultSSHKey: [ItemDetail] {
-        model.listAllItemReference(vaultID: vaultID).map(\.item).filter(\.isSSHKey)
+        model.listAllItemReference(vaultID: chosenVaultID).map(\.item).filter(\.isSSHKey)
     }
 
     @ViewBuilder
@@ -848,9 +888,11 @@ struct ItemEditorView: View {
         addTags()
         var item = draft
         item.allURL = allURLText.map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let vaultID = chosenVaultID
         Task {
             if let savedItem = await model.saveItem(vaultID: vaultID, item: item) {
-                finish(savedItem)
+                loadedItem = buildIconPreviewItem()
+                finish(savedItem, vaultID)
                 dismiss()
             }
         }
@@ -860,9 +902,57 @@ struct ItemEditorView: View {
         guard let originalItem else { return }
         Task {
             if await model.deleteItem(vaultID: vaultID, itemID: originalItem.id) {
+                loadedItem = buildIconPreviewItem()
                 dismiss()
-                finish(nil)
+                finish(nil, vaultID)
             }
+        }
+    }
+}
+
+/// Calls back when a swipe down is blocked by interactiveDismissDisabled, which SwiftUI itself does not report: the sheet's
+/// presentation controller gets a delegate that answers that one question and forwards the rest to SwiftUI's.
+private struct SheetDismissAttemptObserver: UIViewControllerRepresentable {
+    var onAttempt: () -> Void
+
+    func makeUIViewController(context: Context) -> ObserverController {
+        ObserverController()
+    }
+
+    func updateUIViewController(_ controller: ObserverController, context: Context) {
+        controller.onAttempt = onAttempt
+        controller.install()
+    }
+
+    final class ObserverController: UIViewController, UIAdaptivePresentationControllerDelegate {
+        var onAttempt: () -> Void = {}
+        private weak var originalDelegate: UIAdaptivePresentationControllerDelegate?
+
+        override func viewDidAppear(_ animated: Bool) {
+            super.viewDidAppear(animated)
+            install()
+        }
+
+        func install() {
+            var sheet: UIViewController = self
+            while let parent = sheet.parent {
+                sheet = parent
+            }
+            guard let presentation = sheet.presentationController, presentation.delegate !== self else { return }
+            originalDelegate = presentation.delegate
+            presentation.delegate = self
+        }
+
+        func presentationControllerDidAttemptToDismiss(_ presentationController: UIPresentationController) {
+            onAttempt()
+        }
+
+        override func responds(to aSelector: Selector!) -> Bool {
+            super.responds(to: aSelector) || originalDelegate?.responds(to: aSelector) == true
+        }
+
+        override func forwardingTarget(for aSelector: Selector!) -> Any? {
+            originalDelegate?.responds(to: aSelector) == true ? originalDelegate : super.forwardingTarget(for: aSelector)
         }
     }
 }

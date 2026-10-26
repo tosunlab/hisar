@@ -102,7 +102,7 @@ struct VaultsView: View {
                     allApproval: model.allPendingApproval,
                     isBusy: model.isAnsweringApproval,
                     review: { model.reviewApproval($0) },
-                    approve: { approval in Task { await model.approve(approval) } },
+                    approve: { approval, isRemembered in Task { await model.approve(approval, isRemembered: isRemembered) } },
                     deny: { approval in Task { await model.deny(approval) } },
                     showAll: { model.selectedTab = .approvals }
                 )
@@ -264,9 +264,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewLoginShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)
@@ -274,9 +274,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewAddressShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAddress) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAddress) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)
@@ -284,9 +284,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewDatabaseShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryDatabase) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryDatabase) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)
@@ -294,9 +294,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewServerShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryServer) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryServer) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)
@@ -304,9 +304,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewSoftwareLicenseShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySoftwareLicense) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySoftwareLicense) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)
@@ -314,9 +314,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewAPICredentialShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAPICredential) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAPICredential) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)
@@ -324,9 +324,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewIdentityShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryIdentity) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryIdentity) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)
@@ -334,9 +334,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewCreditCardShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryCreditCard) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryCreditCard) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)
@@ -344,9 +344,9 @@ struct VaultsView: View {
         }
         .sheet(isPresented: $isNewSecureNoteShown) {
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySecureNote) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySecureNote) { savedItem, vaultID in
                     if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
+                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
                 }
                 .environmentObject(model)

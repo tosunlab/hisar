@@ -49,14 +49,6 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
         isRememberable && (chosenValue ?? isRememberedByDefault)
     }
 
-    // cardApprovalNote is the Vaults card's footer: the card has no switch, so it says what its Approve sends.
-    var cardApprovalNote: String {
-        if resolveRememberChoice(nil) {
-            return "\(rememberLabel). Tap the request to approve it once. It never unlocks Hisar on your Mac."
-        }
-        return "Approving answers this one request. It never unlocks Hisar on your Mac."
-    }
-
     enum CodingKeys: String, CodingKey {
         case requestID = "requestId"
         case requesterDeviceName, createdAt, expiresAt, kind, appName, purpose, host, commandLine, repositoryPath, projectPath, keyName, isForwarded, forwardedFromHost, terminalName, secrets, appIcon, appWarning, rememberLabel, isRememberedByDefault
@@ -112,8 +104,6 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     var expiryDate: Date? { Self.parseDate(expiresAt) }
 
     var macName: String { requesterDeviceName.isEmpty ? "your Mac" : requesterDeviceName }
-
-    var title: String { "Approve on \(macName)?" }
 
     var summary: String {
         let requester = isForwarded ? (forwardedFromHost.isEmpty ? "Another computer" : forwardedFromHost) : appName
@@ -176,19 +166,15 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
 
     var allDetailRow: [DetailRow] {
         let appRow = DetailRow(label: "App", value: appName, isMonospaced: false)
-        let warningRow = DetailRow(label: "Warning", value: appWarning, isMonospaced: false)
         let secretRow = DetailRow(label: "Secrets", value: secrets.joined(separator: "\n"), isMonospaced: false)
-        // A launcher's command line is its share link's limit, and its warning is about what the link shares, so the
-        // warning follows the secrets and the limit.
+        // The sheet shows appWarning as a notice of its own, above these rows.
         let allCandidate = kind == Self.kindLauncher ? [
             appRow,
             secretRow,
             DetailRow(label: "Link", value: commandLine, isMonospaced: false),
-            warningRow,
             DetailRow(label: "Lasts", value: lifetime, isMonospaced: false),
         ] : [
             appRow,
-            warningRow,
             DetailRow(label: "Project", value: projectPath, isMonospaced: true),
             DetailRow(label: kind == Self.kindCommandLine && secrets.isEmpty ? "Program" : "Command", value: commandLine, isMonospaced: true),
             DetailRow(label: "Repository", value: isRepositoryTheProject ? "" : repositoryPath, isMonospaced: true),

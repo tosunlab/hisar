@@ -13,7 +13,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         signUp(inviteLink: inviteLink, email: email, name: "Lifecycle")
         dismissSavePasswordPrompt()
 
-        openSettings("open-security")
+        openSettings("open-account")
         app.buttons["open-change-master-password"].tap()
         type(Self.masterPassword, into: app.secureTextFields["change-password-current"])
         type(Self.newMasterPassword, into: app.secureTextFields["change-password-new"])

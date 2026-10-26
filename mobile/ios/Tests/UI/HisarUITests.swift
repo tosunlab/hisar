@@ -181,6 +181,8 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("appearance")
         goBack()
 
+        app.buttons["open-account"].tap()
+        waitForHittable(app.buttons["open-secret-key"])
         app.buttons["open-secret-key"].tap()
         type(Self.masterPassword, into: app.secureTextFields["secret-key-password"])
         app.buttons["secret-key-reveal"].tap()
@@ -188,6 +190,7 @@ final class HisarUITests: HisarUITestCase {
         waitFor(shownSecretKey, timeout: 60)
         XCTAssertEqual(shownSecretKey.label, secretKey)
         saveScreenshot("secret-key")
+        goBack()
         goBack()
 
         for _ in 0..<5 where !app.buttons["open-help"].isHittable {

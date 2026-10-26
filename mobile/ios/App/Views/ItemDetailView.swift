@@ -57,7 +57,7 @@ struct ItemDetailView: View {
         }
         .sheet(isPresented: $isEditorShown) {
             if let item {
-                ItemEditorView(vaultID: vaultID, originalItem: item) { savedItem in
+                ItemEditorView(vaultID: vaultID, originalItem: item) { savedItem, _ in
                     if let savedItem {
                         self.item = savedItem
                     } else {
