@@ -75,7 +75,7 @@ function close(): void {
     <p v-if="!preview && !store.errorMessage" class="muted loading">Checking what your account holds…</p>
     <form v-if="preview" novalidate @submit.prevent="submitDeletion">
       <p v-if="!preview.planVersion" class="error" role="alert">This server cannot confirm the reviewed deletion plan. Update the server before deleting your account.</p>
-      <p class="export-advice" data-testid="delete-account-export">Export your items first in Settings → Export. Nobody can restore them after the account is deleted.</p>
+      <p class="export-advice" data-testid="delete-account-export">Export your items first in Settings → Import &amp; Export. Nobody can restore them after the account is deleted.</p>
       <ul class="consequences warning" data-testid="delete-account-consequences">
         <li v-if="allPrivateOwnedVault.length > 0">
           Deleted with their items: {{ describePrivateVaults(allPrivateOwnedVault) }}.
