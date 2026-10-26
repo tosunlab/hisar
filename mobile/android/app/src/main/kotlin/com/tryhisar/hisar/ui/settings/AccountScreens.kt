@@ -125,7 +125,7 @@ fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: 
         }
         FormSection(footer = { Text("Deletes your account and the vaults only you own from the Hisar server. ${AccountLifecycleLogic.EXPORT_ADVICE}") }) {
             NavigationRow(
-                "Delete account", "open-delete-account", { push(SettingsDestination.DELETE_ACCOUNT) }, Icons.Outlined.PersonRemove,
+                "Delete account…", "open-delete-account", { push(SettingsDestination.DELETE_ACCOUNT) }, Icons.Outlined.PersonRemove,
                 color = HisarTheme.colors.destructive,
                 enabled = !status.isOffline,
             )

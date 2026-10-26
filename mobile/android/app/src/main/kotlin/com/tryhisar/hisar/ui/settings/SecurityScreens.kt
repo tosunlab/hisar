@@ -101,9 +101,9 @@ fun SecurityScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack:
             )
         }
         FormSection(footer = { Text("Both sign out your other devices. They need a connection to the Hisar server.") }) {
-            NavigationRow("Change master password", "open-change-master-password", { push(SettingsDestination.CHANGE_MASTER_PASSWORD) }, Icons.Outlined.Key)
+            NavigationRow("Change master password…", "open-change-master-password", { push(SettingsDestination.CHANGE_MASTER_PASSWORD) }, Icons.Outlined.Key)
             RowDivider()
-            NavigationRow("Replace Secret Key", "open-replace-secret-key", { push(SettingsDestination.REPLACE_SECRET_KEY) }, Icons.Outlined.FindReplace)
+            NavigationRow("Replace Secret Key…", "open-replace-secret-key", { push(SettingsDestination.REPLACE_SECRET_KEY) }, Icons.Outlined.FindReplace)
         }
         FormSection {
             FormButtonRow("Lock Hisar now", { scope.launch { model.lock() } }, testTag = "settings-lock-now", icon = Icons.Outlined.Lock, color = HisarTheme.colors.tint)
