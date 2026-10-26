@@ -13,15 +13,17 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
@@ -31,7 +33,6 @@ import com.tryhisar.hisar.ui.components.LargeTitle
 import com.tryhisar.hisar.ui.components.ScreenMargin
 import com.tryhisar.hisar.ui.root.TabBarHeight
 import com.tryhisar.hisar.ui.theme.HisarTheme
-import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.NoSearchResults
 import com.tryhisar.hisar.ui.vaults.SearchField
 import com.tryhisar.hisar.ui.vaults.TabStack
@@ -43,11 +44,14 @@ fun SearchTab(model: AppModel) {
     TabStack(model, model.navigation.search) { SearchScreen(model) }
 }
 
+/** The tab is composed each time it is selected, so an empty search takes the focus and the keyboard then. */
 @Composable
 private fun SearchScreen(model: AppModel) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
     var searchText by rememberSaveable { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
     val allMatch = if (searchText.isEmpty()) emptyList() else VaultLogic.filterAllItem(data.listAllItemReference(), searchText)
+    LaunchedEffect(Unit) { if (searchText.isEmpty()) focusRequester.requestFocus() }
     Column(
         Modifier
             .fillMaxSize()
@@ -67,6 +71,7 @@ private fun SearchScreen(model: AppModel) {
                         },
                         "Logins, keys and notes",
                         testTag = "search-field",
+                        modifier = Modifier.focusRequester(focusRequester),
                     )
                 }
                 crossVaultRows(model, model.navigation.search, allMatch)
@@ -74,14 +79,7 @@ private fun SearchScreen(model: AppModel) {
             }
             Box(Modifier.padding(top = 120.dp, bottom = TabBarHeight)) {
                 when {
-                    searchText.isEmpty() -> ContentUnavailable("Search Hisar", Icons.Outlined.Search, Modifier.testTag("search-empty")) {
-                        Text(
-                            "Find logins, SSH keys and notes in every vault.",
-                            style = HisarType.subheadline,
-                            color = HisarTheme.colors.secondaryLabel,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
+                    searchText.isEmpty() -> ContentUnavailable("Search Hisar", Icons.Outlined.Search, Modifier.testTag("search-empty"))
                     allMatch.isEmpty() -> NoSearchResults(searchText)
                 }
             }

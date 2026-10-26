@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
@@ -230,6 +231,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor("vaults-list")
             tap("tab-search")
             waitFor("search-empty")
+            composeRule.waitUntil("the empty search takes the focus", 5_000) { exists(hasTestTag("search-field") and isFocused()) }
             saveScreenshot("search-empty")
             type("alice", "search-field")
             waitFor("item-GitHub")
