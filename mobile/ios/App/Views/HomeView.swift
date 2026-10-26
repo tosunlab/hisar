@@ -108,8 +108,7 @@ struct VaultsView: View {
                 )
                 RemovedVaultNoticeSection(allNotice: model.allRemovedVaultNotice) { model.dismissRemovedVaultNotice($0) }
                 keyWarningSection
-                receivedInvitationSection
-                organizationInvitationSection
+                invitationSection
                 favoriteSection
                 let grouping = OrganizationLogic.groupVaults(model.allVault, allOrganization: model.allOrganization, allWaiting: model.waitingVaultKeys.allWaiting)
                 vaultSection(grouping.allOtherVault)
@@ -355,8 +354,8 @@ struct VaultsView: View {
     }
 
     @ViewBuilder
-    private var receivedInvitationSection: some View {
-        if !model.allReceivedInvitation.isEmpty || !model.allWaitingInvitation.isEmpty {
+    private var invitationSection: some View {
+        if !model.allReceivedInvitation.isEmpty || !model.allWaitingInvitation.isEmpty || !model.allOrganizationInvitation.isEmpty {
             Section {
                 ForEach(model.allReceivedInvitation) { invitation in
                     ReceivedInvitationRow(invitation: invitation, identifierPrefix: "banner-") {
@@ -379,8 +378,27 @@ struct VaultsView: View {
                         .foregroundStyle(.themeSecondary)
                         .accessibilityIdentifier("waiting-\(invitation.id)")
                 }
+                ForEach(model.allOrganizationInvitation) { invitation in
+                    OrganizationInvitationRow(invitation: invitation, identifierPrefix: "banner-") {
+                        Task {
+                            if await model.acceptOrganizationInvitation(invitationID: invitation.id) {
+                                model.showNotice(OrganizationInvitationRow.describeJoined(invitation))
+                            } else {
+                                refusal = model.takeRefusal(title: "Accept")
+                            }
+                        }
+                    } decline: {
+                        Task {
+                            if await model.declineOrganizationInvitation(invitationID: invitation.id) {
+                                model.showNotice("Invitation declined.")
+                            } else {
+                                refusal = model.takeRefusal(title: "Decline")
+                            }
+                        }
+                    }
+                }
             } header: {
-                Text("Shared with you")
+                Text("Invitations for you")
                     .foregroundStyle(.themeSecondary)
             }
         }
@@ -431,36 +449,6 @@ struct VaultsView: View {
                 }
             } footer: {
                 Text("Hisar gives vault keys only to the keys it pinned for each person. Compare security codes in Settings → Organizations.")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var organizationInvitationSection: some View {
-        if !model.allOrganizationInvitation.isEmpty {
-            Section {
-                ForEach(model.allOrganizationInvitation) { invitation in
-                    OrganizationInvitationRow(invitation: invitation, identifierPrefix: "banner-") {
-                        Task {
-                            if await model.acceptOrganizationInvitation(invitationID: invitation.id) {
-                                model.showNotice(OrganizationInvitationRow.describeJoined(invitation))
-                            } else {
-                                refusal = model.takeRefusal(title: "Accept")
-                            }
-                        }
-                    } decline: {
-                        Task {
-                            if await model.declineOrganizationInvitation(invitationID: invitation.id) {
-                                model.showNotice("Invitation declined.")
-                            } else {
-                                refusal = model.takeRefusal(title: "Decline")
-                            }
-                        }
-                    }
-                }
-            } header: {
-                Text("Invitations for you")
-                    .foregroundStyle(.themeSecondary)
             }
         }
     }
