@@ -134,19 +134,23 @@ beforeEach(() => {
 });
 
 describe("Organization invitations", () => {
-  it("accepts an invitation from the banner above the vaults", async () => {
+  it("counts an invitation on the Inbox and accepts it in Settings → Organizations", async () => {
     const invitation = createOrganizationInvitation();
     store.organizations = listOrganizations({ invitations: [invitation] });
+    api.listAllOrganization.mockResolvedValueOnce(listOrganizations({ invitations: [invitation] }));
     const wrapper = mount(MainView, { attachTo: document.body });
-    const banner = wrapper.find('[data-testid="organization-banner-invitation-invitation-to-globex"]');
-    expect(banner.text()).toContain("Ada invited you to Globex as a member");
+    expect(wrapper.find(".sidebar").text()).not.toContain("invited you");
+    expect(wrapper.find('[data-testid="inbox-count"]').text()).toBe("1");
+    await wrapper.find('[data-testid="open-inbox"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-page-organizations"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="organization-invitation-invitation-to-globex"]').text()).toContain("Ada invited you to Globex as a member");
 
-    api.listAllOrganization.mockResolvedValue(listOrganizations());
-    await banner.find('[data-testid="organization-banner-accept-invitation-to-globex"]').trigger("click");
+    await wrapper.find('[data-testid="accept-organization-invitation-invitation-to-globex"]').trigger("click");
     await flushPromises();
 
     expect(api.acceptOrganizationInvitation).toHaveBeenCalledWith("invitation-to-globex");
-    expect(wrapper.find('[data-testid="organization-banner-invitation-invitation-to-globex"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="open-inbox"]').exists()).toBe(false);
     expect(store.noticeMessage).toContain("You joined Globex");
     wrapper.unmount();
   });
@@ -519,7 +523,7 @@ describe("Organization vaults in the vault list", () => {
     wrapper.unmount();
   });
 
-  it("says per organization which vaults wait for a key, and what Hisar could not do", async () => {
+  it("says per organization which vaults wait for a key in the Inbox, and what Hisar could not do above the vaults", async () => {
     const metrics: WaitingVaultKey = { vaultId: "metrics", organizationId: "acme", organizationName: "Acme", role: "editor" };
     const billing: WaitingVaultKey = { vaultId: "billing", organizationId: "acme", organizationName: "Acme", role: "reader" };
     const notes: WaitingVaultKey = { vaultId: "notes", organizationId: "globex", organizationName: "Globex", role: "editor" };
@@ -528,15 +532,24 @@ describe("Organization vaults in the vault list", () => {
     api.listAllWaitingVaultKey.mockResolvedValue({ waiting: [metrics, billing, notes], deliveryError, rotationError });
     const wrapper = mount(MainView, { attachTo: document.body });
     expect(wrapper.find('[data-testid="organization-banner"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="open-inbox"]').exists()).toBe(false);
 
     await syncInBackground();
     await flushPromises();
-    expect(wrapper.findAll('[data-testid^="organization-banner-waiting-"]').map((line) => line.text())).toEqual([
+    expect(wrapper.find('[data-testid="organization-banner-delivery-error"]').text()).toBe(`Hisar couldn't give every vault key: ${deliveryError}`);
+    expect(wrapper.find('[data-testid="organization-banner-delivery-error"] button').attributes("aria-expanded")).toBe("false");
+    await wrapper.find('[data-testid="organization-banner-delivery-error"] button').trigger("click");
+    expect(wrapper.find('[data-testid="organization-banner-delivery-error"] button').attributes("aria-expanded")).toBe("true");
+    expect(wrapper.find('[data-testid="organization-banner-rotation-error"]').text()).toBe(`Hisar couldn't re-encrypt every vault that needs a new key: ${rotationError}`);
+    expect(wrapper.find('[data-testid="inbox-count"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="open-inbox"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-page-organizations"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="waiting-vault-keys"]').text()).toContain("Vault keys on their way");
+    expect(wrapper.findAll('[data-testid^="organization-waiting-"]').map((line) => line.text())).toEqual([
       "Waiting for the owners of 2 vaults in Acme to give you their keys",
       "Waiting for an owner of a vault in Globex to give you its key",
     ]);
-    expect(wrapper.find('[data-testid="organization-banner-delivery-error"]').text()).toBe(`Hisar couldn't give every vault key: ${deliveryError}`);
-    expect(wrapper.find('[data-testid="organization-banner-rotation-error"]').text()).toBe(`Hisar couldn't re-encrypt every vault that needs a new key: ${rotationError}`);
 
     // Metrics arrives though the response still lists it, Billing still waits, Globex's vault waits no more, and the rotation is done.
     const metricsVault: VaultSummary = { id: "metrics", name: "Metrics", type: "organization", role: "editor", itemCount: 0, organizationId: "acme" };
@@ -545,7 +558,8 @@ describe("Organization vaults in the vault list", () => {
     await syncInBackground();
     await flushPromises();
     expect(wrapper.find('[data-testid="vault-metrics"]').exists()).toBe(true);
-    expect(wrapper.findAll('[data-testid^="organization-banner-waiting-"]').map((line) => line.text())).toEqual(["Waiting for an owner of a vault in Acme to give you its key"]);
+    expect(wrapper.findAll('[data-testid^="organization-waiting-"]').map((line) => line.text())).toEqual(["Waiting for an owner of a vault in Acme to give you its key"]);
+    expect(wrapper.find('[data-testid="organization-waiting-globex"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="organization-banner-delivery-error"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="organization-banner-rotation-error"]').exists()).toBe(false);
     wrapper.unmount();

@@ -46,7 +46,7 @@ function countPendingInvitations(sectionID: SettingsSectionID): number {
 
 function isRowAvailable(rowID: string): boolean {
   if (rowID === "received-invitations") {
-    return store.shareInvitations.received.length > 0;
+    return store.shareInvitations.received.length > 0 || (store.shareInvitations.waiting ?? []).length > 0;
   }
   if (rowID === "sent-invitations") {
     return store.shareInvitations.sent.length > 0;

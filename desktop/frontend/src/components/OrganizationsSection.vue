@@ -17,6 +17,28 @@ const selectedOrganizationName = computed(
   () => store.organizations.organizations.find((organization) => organization.id === store.selectedOrganizationID)?.name ?? "",
 );
 
+interface WaitingOrganization {
+  organizationID: string;
+  organizationName: string;
+  vaultCount: number;
+}
+
+// allWaitingOrganization counts per organization the vaults still waiting for a key; a vault already in the list arrived.
+const allWaitingOrganization = computed(() => {
+  const waitingByID = new Map<string, WaitingOrganization>();
+  for (const waiting of store.waitingVaultKeys.waiting) {
+    if (store.allVault.some((vault) => vault.id === waiting.vaultId)) {
+      continue;
+    }
+    const organizationName =
+      waiting.organizationName || store.organizations.organizations.find((organization) => organization.id === waiting.organizationId)?.name || "an organization";
+    const waitingOrganization = waitingByID.get(waiting.organizationId) ?? { organizationID: waiting.organizationId, organizationName, vaultCount: 0 };
+    waitingOrganization.vaultCount += 1;
+    waitingByID.set(waiting.organizationId, waitingOrganization);
+  }
+  return [...waitingByID.values()];
+});
+
 async function submitCreate(): Promise<void> {
   if (await createOrganization(newOrganizationName.value.trim())) {
     newOrganizationName.value = "";
@@ -74,6 +96,17 @@ onMounted(async () => {
             <button class="primary" :disabled="store.isBusy" :data-testid="`accept-organization-invitation-${invitation.id}`" @click="acceptOrganizationInvitation(invitation)">
               Accept
             </button>
+          </div>
+        </div>
+      </div>
+
+      <div v-if="allWaitingOrganization.length > 0" v-show="isRowVisible('organizations')" class="settings-block" data-testid="waiting-vault-keys">
+        <p class="section-label">Vault keys on their way</p>
+        <div class="settings-group">
+          <div v-for="waiting in allWaitingOrganization" :key="waiting.organizationID" class="setting" :data-testid="`organization-waiting-${waiting.organizationID}`">
+            <span class="settings-row-icon"><AppIcon name="clock" :size="14" /></span>
+            <span v-if="waiting.vaultCount === 1" class="setting-text">Waiting for an owner of a vault in {{ waiting.organizationName }} to give you its key</span>
+            <span v-else class="setting-text">Waiting for the owners of {{ waiting.vaultCount }} vaults in {{ waiting.organizationName }} to give you their keys</span>
           </div>
         </div>
       </div>

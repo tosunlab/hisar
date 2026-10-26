@@ -16,6 +16,7 @@ import {
   openItemShareLinkDialog,
   openShareLinks,
   openWebsite,
+  openSettings,
   openSharing,
   selectFavoriteItem,
   selectFavorites,
@@ -84,7 +85,6 @@ import OrganizationAlert from "./OrganizationAlert.vue";
 import ReadIssuesPanel from "./ReadIssuesPanel.vue";
 import OrganizationBanner from "./OrganizationBanner.vue";
 import RemovedVaultBanner from "./RemovedVaultBanner.vue";
-import ShareInvitationBanner from "./ShareInvitationBanner.vue";
 import SharedLinksPanel from "./SharedLinksPanel.vue";
 import ShareLinkDialog from "./ShareLinkDialog.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
@@ -133,6 +133,22 @@ const unreadableItemCount = computed(() => store.allItem.filter((item) => item.r
 const healthyItemCount = computed(() => store.allItem.length - unreadableItemCount.value);
 const allVisibleFavorite = computed(() => filterAllFavorite(store.allFavorite, store.searchQuery));
 const allTag = computed(() => listAllTag(store.allItem));
+// inbox gathers what does not need the sidebar's room: invitations to answer, shares waiting on someone's Hisar, and
+// organization vault keys on their way. actionCount is what waits for the user, as on Settings' badges; the row opens
+// the Settings section where that is answered first.
+const inbox = computed(() => {
+  const allAcceptedSent = store.shareInvitations.sent.filter((invitation) => invitation.state === "accepted");
+  const shareActionCount = store.shareInvitations.received.length + allAcceptedSent.filter((invitation) => invitation.requiresConfirmation).length;
+  const shareCount = store.shareInvitations.received.length + allAcceptedSent.length + (store.shareInvitations.waiting?.length ?? 0);
+  const organizationActionCount = store.organizations.invitations.length;
+  const waitingKeyCount = store.waitingVaultKeys.waiting.filter((waiting) => !store.allVault.some((vault) => vault.id === waiting.vaultId)).length;
+  const isPeopleFirst = shareActionCount > 0 || (organizationActionCount === 0 && shareCount > 0);
+  return {
+    entryCount: shareCount + organizationActionCount + waitingKeyCount,
+    actionCount: shareActionCount + organizationActionCount,
+    sectionID: isPeopleFirst ? "people" : "organizations",
+  };
+});
 const emptyListMessage = computed(() => {
   if (store.searchQuery) {
     return "No items match your search.";
@@ -410,7 +426,6 @@ onBeforeUnmount(() => {
     <aside class="sidebar">
       <div class="title-bar"></div>
       <div class="sidebar-brand"><HisarLogo :size="24" show-wordmark /></div>
-      <ShareInvitationBanner />
       <OrganizationBanner />
       <RemovedVaultBanner />
 
@@ -425,6 +440,13 @@ onBeforeUnmount(() => {
           <AppIcon name="star" />
           <span class="vault-name">Favorites</span>
           <span v-if="store.allFavorite.length > 0" class="vault-count" data-testid="favorites-count">{{ store.allFavorite.length }}</span>
+        </button>
+      </nav>
+      <nav v-if="inbox.entryCount > 0" aria-label="Inbox" class="inbox-nav">
+        <button class="vault" data-testid="open-inbox" @click="openSettings(inbox.sectionID)">
+          <AppIcon name="mail" />
+          <span class="vault-name">Inbox</span>
+          <span v-if="inbox.actionCount > 0" class="inbox-badge" data-testid="inbox-count" :aria-label="`${inbox.actionCount} waiting for you`">{{ inbox.actionCount }}</span>
         </button>
       </nav>
 
@@ -838,6 +860,22 @@ onBeforeUnmount(() => {
 
 .favorites-nav {
   margin-bottom: 14px;
+}
+
+.inbox-nav {
+  margin: -13px 0 14px;
+}
+
+.inbox-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 18px;
+  text-align: center;
 }
 
 .item-star {

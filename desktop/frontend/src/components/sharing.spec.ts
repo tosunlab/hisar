@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import type { VaultSummary } from "../api";
 import {
   createApiMock,
@@ -248,12 +248,22 @@ describe("Vault sharing panel", () => {
   });
 });
 
-describe("Share invitation banner", () => {
-  it("reviews the concrete recipient and sends only that displayed authorization", async () => {
+describe("Inbox", () => {
+  async function openInbox(wrapper: VueWrapper): Promise<void> {
+    await wrapper.find('[data-testid="open-inbox"]').trigger("click");
+    await flushPromises();
+  }
+
+  it("reviews the concrete recipient from the Inbox and sends only that displayed authorization", async () => {
     const invitation = createSentShareInvitation({ id: "new-recipient", state: "accepted", requiresConfirmation: true, recipientId: "NEW123", securityCode: "1111 2222 3333 4444", reviewToken: "exact-reviewed-context", email: "new@example.com", role: "reader" });
     store.shareInvitations = { received: [], sent: [invitation], completionError: "" };
+    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [invitation], completionError: "" });
     api.confirmShareRecipient.mockResolvedValue(undefined);
     const wrapper = mount(MainView, { attachTo: document.body });
+    expect(wrapper.find('[data-testid="inbox-count"]').text()).toBe("1");
+    expect(wrapper.find('[data-testid="review-share-new-recipient"]').exists()).toBe(false);
+    await openInbox(wrapper);
+    expect(wrapper.find('[data-testid="settings-page-people"]').isVisible()).toBe(true);
     expect(api.confirmShareRecipient).not.toHaveBeenCalled();
     await wrapper.find('[data-testid="review-share-new-recipient"]').trigger("click");
     const dialog = wrapper.find('[data-testid="share-recipient-confirmation"]');
@@ -269,38 +279,42 @@ describe("Share invitation banner", () => {
     wrapper.unmount();
   });
 
-  it("shows received invitations above the vaults and accepts or declines them", async () => {
-    store.shareInvitations = { received: [createReceivedShareInvitation(), createReceivedShareInvitation({ id: "from-dave", invitedByName: "", invitedByEmail: "dave@example.com", role: "reader" })], sent: [], completionError: "" };
+  it("counts received invitations on the Inbox, not above the vaults, and answers them in Settings → People", async () => {
+    const allReceived = [createReceivedShareInvitation(), createReceivedShareInvitation({ id: "from-dave", invitedByName: "", invitedByEmail: "dave@example.com", role: "reader" })];
+    store.shareInvitations = { received: allReceived, sent: [], completionError: "" };
+    api.listAllShareInvitation.mockResolvedValueOnce({ received: allReceived, sent: [], completionError: "" }).mockResolvedValue({ received: [], sent: [], completionError: "" });
     api.acceptShareInvitation.mockResolvedValue(undefined);
     api.declineShareInvitation.mockResolvedValue(undefined);
-    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
     const wrapper = mount(MainView, { attachTo: document.body });
-    const banner = wrapper.find('[data-testid="share-invitation-banner"]');
-    expect(banner.text()).toContain("Carol shared a vault with you as editor");
-    expect(banner.text()).toContain("dave@example.com shared a vault with you as reader");
+    expect(wrapper.find(".sidebar").text()).not.toContain("shared a vault");
+    expect(wrapper.find('[data-testid="inbox-count"]').text()).toBe("2");
+    expect(wrapper.find('[data-testid="inbox-count"]').attributes("aria-label")).toBe("2 waiting for you");
+    await openInbox(wrapper);
+    expect(wrapper.find('[data-testid="received-invitations"]').text()).toContain("dave@example.com shared a vault with you");
 
-    await wrapper.find('[data-testid="banner-decline-from-dave"]').trigger("click");
+    await wrapper.find('[data-testid="decline-invitation-from-dave"]').trigger("click");
     await flushPromises();
     expect(api.declineShareInvitation).toHaveBeenCalledWith("from-dave");
     store.shareInvitations = { received: [createReceivedShareInvitation()], sent: [], completionError: "" };
     await flushPromises();
-    await wrapper.find('[data-testid="banner-accept-invitation-from-carol"]').trigger("click");
+    expect(wrapper.find('[data-testid="inbox-count"]').text()).toBe("1");
+    await wrapper.find('[data-testid="accept-invitation-invitation-from-carol"]').trigger("click");
     await flushPromises();
     expect(api.acceptShareInvitation).toHaveBeenCalledWith("invitation-from-carol");
-    expect(wrapper.find('[data-testid="share-invitation-banner"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="open-inbox"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("is hidden without invitations", () => {
+  it("is hidden when nothing is in it", () => {
     const wrapper = mount(MainView, { attachTo: document.body });
-    expect(wrapper.find('[data-testid="share-invitation-banner"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="open-inbox"]').exists()).toBe(false);
     wrapper.unmount();
   });
 
-  it("tells the recipient whose Hisar the share is waiting for and since when", () => {
+  it("tells the recipient whose Hisar the share is waiting for and since when", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(new Date("2026-10-11T10:00:00Z"));
-    store.shareInvitations = {
+    const shareInvitations = {
       received: [],
       sent: [],
       waiting: [
@@ -309,16 +323,22 @@ describe("Share invitation banner", () => {
       ],
       completionError: "",
     };
+    store.shareInvitations = structuredClone(shareInvitations);
+    api.listAllShareInvitation.mockResolvedValue(structuredClone(shareInvitations));
     const wrapper = mount(MainView, { attachTo: document.body });
-    expect(wrapper.find('[data-testid="banner-waiting-from-carol"]').text()).toBe("Waiting for Carol's Hisar to finish sharing · accepted 2 h ago");
-    expect(wrapper.find('[data-testid="banner-waiting-from-dave"]').text()).toContain("Waiting for dave@example.com's Hisar to finish sharing · accepted 5 min ago");
-    expect(wrapper.find('[data-testid="share-invitation-banner"] button').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="inbox-count"]').exists()).toBe(false);
+    await openInbox(wrapper);
+    expect(wrapper.find('[data-testid="waiting-invitation-from-carol"] .title-text').text()).toBe("Waiting for Carol's Hisar to finish sharing");
+    expect(wrapper.find('[data-testid="waiting-invitation-from-carol"]').text()).toContain("Accepted 2 h ago");
+    expect(wrapper.find('[data-testid="waiting-invitation-from-dave"]').text()).toContain("Waiting for dave@example.com's Hisar to finish sharing");
+    expect(wrapper.find('[data-testid="waiting-invitation-from-dave"]').text()).toContain("Accepted 5 min ago");
+    expect(wrapper.find('[data-testid="waiting-invitation-from-dave"] button').exists()).toBe(false);
     wrapper.unmount();
     vi.useRealTimers();
   });
 
-  it("tells the owner when an accepted share could not be finished", () => {
-    store.shareInvitations = {
+  it("tells the owner when an accepted share could not be finished", async () => {
+    const shareInvitations = {
       received: [],
       sent: [
         createSentShareInvitation({ id: "to-erin", email: "erin@example.com", recipientName: "Erin", state: "accepted", vaultName: "Work", acceptedAt: "2026-10-11T08:00:00Z" }),
@@ -327,12 +347,14 @@ describe("Share invitation banner", () => {
       ],
       completionError: "the signing key of erin@example.com changed since you last shared with them",
     };
+    store.shareInvitations = structuredClone(shareInvitations);
+    api.listAllShareInvitation.mockResolvedValue(structuredClone(shareInvitations));
     const wrapper = mount(MainView, { attachTo: document.body });
-    expect(wrapper.find('[data-testid="banner-accepted-to-erin"]').text()).toBe(
-      "Erin accepted your invitation to Work. Hisar couldn't finish sharing: the signing key of erin@example.com changed since you last shared with them",
+    await openInbox(wrapper);
+    expect(wrapper.find('[data-testid="share-completion-error"]').text()).toBe(
+      "Could not finish sharing: the signing key of erin@example.com changed since you last shared with them",
     );
-    expect(wrapper.find('[data-testid="banner-accepted-to-frank"]').text()).toBe("Frank accepted your invitation to Family. Finishing sharing…");
-    expect(wrapper.find('[data-testid="banner-accepted-invitation-to-dave"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="sent-invitation-to-frank"]').text()).toContain("Family · Accepted · Hisar is finishing sharing");
     wrapper.unmount();
   });
 });

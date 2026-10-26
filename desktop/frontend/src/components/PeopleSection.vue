@@ -3,7 +3,7 @@ import { computed, ref } from "vue";
 import type { SentShareInvitation } from "../api";
 import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, invitePerson, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { formatRole } from "../util";
+import { describePerson, formatRole, formatTimeAgo } from "../util";
 import AppIcon from "./AppIcon.vue";
 import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -53,7 +53,12 @@ function describeInviter(name: string, email: string): string {
       </div>
     </div>
 
-    <div v-if="store.shareInvitations.received.length > 0" v-show="isRowVisible('received-invitations')" class="settings-block" data-testid="received-invitations">
+    <div
+      v-if="store.shareInvitations.received.length > 0 || (store.shareInvitations.waiting ?? []).length > 0"
+      v-show="isRowVisible('received-invitations')"
+      class="settings-block"
+      data-testid="received-invitations"
+    >
       <p class="section-label">Invitations for you</p>
       <div class="settings-group">
         <div v-for="invitation in store.shareInvitations.received" :key="invitation.id" class="setting" :data-testid="`received-invitation-${invitation.id}`">
@@ -67,6 +72,16 @@ function describeInviter(name: string, email: string): string {
           </div>
           <button class="ghost" :disabled="store.isBusy" :data-testid="`decline-invitation-${invitation.id}`" @click="declineShareInvitation(invitation)">Decline</button>
           <button class="primary" :disabled="store.isBusy" :data-testid="`accept-invitation-${invitation.id}`" @click="acceptShareInvitation(invitation)">Accept</button>
+        </div>
+        <div v-for="waiting in store.shareInvitations.waiting ?? []" :key="waiting.id" class="setting" :data-testid="`waiting-invitation-${waiting.id}`">
+          <span class="settings-row-icon"><AppIcon name="clock" :size="14" /></span>
+          <div class="setting-text">
+            <strong class="title-line">
+              <span class="title-text">Waiting for {{ describePerson(waiting.invitedByName, waiting.invitedByEmail) }}'s Hisar to finish sharing</span>
+              <span class="tag">{{ formatRole(waiting.role) }}</span>
+            </strong>
+            <p class="muted">Accepted {{ formatTimeAgo(waiting.acceptedAt) }}</p>
+          </div>
         </div>
       </div>
     </div>
