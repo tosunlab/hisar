@@ -77,7 +77,7 @@ fun LoginSections(
         }
     }
     if (!item.isDatabase) {
-        FormSection(header = "One-time password", footer = { Text("The setup key or link from the site's two-factor setup. Hisar then shows the current code.") }) {
+        FormSection(header = "One-time password") {
             EditorField(
                 item.oneTimePassword,
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
