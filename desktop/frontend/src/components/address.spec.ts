@@ -216,7 +216,7 @@ describe("Addresses on identities and cards", () => {
 });
 
 describe("Viewing an address", () => {
-  it("shows its values with copy and secret reference buttons", async () => {
+  it("shows its values with copy buttons and the secret reference in the row menu", async () => {
     store.selectedItem = createAddressItem();
     const wrapper = mount(ItemDetailPanel, {
       props: { canEdit: true, vaultName: "Personal", vaultType: "personal" },
@@ -233,9 +233,8 @@ describe("Viewing an address", () => {
     expect(wrapper.text()).toContain("Gate code");
     await wrapper.find('button[aria-label="Copy City"]').trigger("click");
     expect(api.copyField).toHaveBeenCalledWith("personal", "home-1", "City");
-    await wrapper
-      .find('button[aria-label="Copy secret reference for City"]')
-      .trigger("click");
+    await wrapper.find('[role="button"][aria-label="Copy City"]').trigger("contextmenu");
+    await wrapper.find('[data-testid="context-menu-copy-secret-reference-for-city"]').trigger("click");
     expect(api.copySecretReference).toHaveBeenCalledWith(
       "personal",
       "home-1",

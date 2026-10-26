@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import {
   convertToSecureNote,
   copyField,
+  copySecretReference,
   copyText,
   duplicateItem,
   getAllShareLinkForItem,
@@ -282,6 +283,13 @@ function openFieldMenu(event: MouseEvent): void {
     const label = button.getAttribute("aria-label") ?? "";
     return { id: label.toLowerCase().replace(/[^a-z0-9]+/g, "-"), label, icon: chooseFieldMenuIcon(label), run: () => button.click() };
   });
+  // Only secrets show a secret reference button; any other field offers its reference here.
+  const referenceField = row.dataset.referenceField;
+  const referenceLabel = `Copy secret reference for ${referenceField}`;
+  if (referenceField && !allAction.some((action) => action.label === referenceLabel)) {
+    const id = referenceLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    allAction.push({ id, label: referenceLabel, icon: "terminal", run: () => copySecretReference(referenceField) });
+  }
   const label = row.querySelector(".field-label, .section-label")?.textContent?.trim() || "Field";
   fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction };
 }
@@ -305,7 +313,7 @@ function maskSecret(secret: string): string {
         <h2>{{ store.selectedItem.title }}</h2>
         <div class="meta">
           <span class="badge" data-testid="item-vault"><AppIcon :name="vaultType === 'personal' ? 'user' : 'users'" :size="12" /> {{ vaultName }}</span>
-          <span v-if="vaultType === 'shared'" class="badge" data-testid="item-shared">shared</span>
+          <span v-if="vaultType === 'shared'" class="badge" data-testid="item-shared">Shared</span>
           <span v-if="isSSHKey" class="muted">SSH key</span>
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
@@ -381,7 +389,6 @@ function maskSecret(secret: string): string {
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy fingerprint" title="Copy" @click="copyField('fingerprint', 'Fingerprint')"><AppIcon name="copy" /></button>
-            <SecretReferenceButton field-name="fingerprint" label="fingerprint" />
           </span>
         </div>
         <div class="field">
@@ -434,7 +441,7 @@ function maskSecret(secret: string): string {
             <AppIcon name="external" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton :field-name="row.name" :label="row.name" />
+          <SecretReferenceButton v-if="row.concealed" :field-name="row.name" :label="row.name" />
         </span>
       </div>
       <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
@@ -454,7 +461,7 @@ function maskSecret(secret: string): string {
             <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton :field-name="field.name" :label="field.name" />
+          <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
         </span>
       </div>
       <p v-if="allNamedRow.length === 0 && store.selectedItem.fields.length === 0" class="muted no-fields">
@@ -497,7 +504,7 @@ function maskSecret(secret: string): string {
               <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
             </button>
             <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
-            <SecretReferenceButton :field-name="field.name" :label="field.name" />
+            <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
           </span>
         </div>
       </section>
@@ -512,7 +519,6 @@ function maskSecret(secret: string): string {
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Host" title="Copy" @click="copyField(serverFieldName.host, serverFieldName.host)"><AppIcon name="copy" /></button>
-            <SecretReferenceButton :field-name="serverFieldName.host" :label="serverFieldName.host" />
           </span>
         </div>
         <div v-if="server.port" class="field" v-bind="bindFieldRow(serverFieldName.port, serverFieldName.port)">
@@ -525,7 +531,6 @@ function maskSecret(secret: string): string {
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Port" title="Copy" @click="copyField(serverFieldName.port, serverFieldName.port)"><AppIcon name="copy" /></button>
-            <SecretReferenceButton :field-name="serverFieldName.port" :label="serverFieldName.port" />
           </span>
         </div>
         <div v-if="server.sshKeyId" class="field" data-testid="server-ssh-key">
@@ -553,7 +558,6 @@ function maskSecret(secret: string): string {
         </div>
         <span class="field-actions">
           <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton :field-name="row.name" :label="row.name" />
         </span>
       </div>
 
@@ -564,7 +568,6 @@ function maskSecret(secret: string): string {
         </div>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Copy username" title="Copy" @click="copyField('username', 'Username')"><AppIcon name="copy" /></button>
-          <SecretReferenceButton field-name="username" label="username" />
         </span>
       </div>
 
@@ -600,7 +603,6 @@ function maskSecret(secret: string): string {
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Options" title="Copy" @click="copyField(databaseFieldName.options, databaseFieldName.options)"><AppIcon name="copy" /></button>
-            <SecretReferenceButton :field-name="databaseFieldName.options" :label="databaseFieldName.options" />
           </span>
         </div>
         <div
@@ -675,7 +677,7 @@ function maskSecret(secret: string): string {
             <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton :field-name="field.name" :label="field.name" />
+          <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
         </span>
       </div>
 

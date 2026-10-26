@@ -531,7 +531,7 @@ describe("Organization vaults in the vault list", () => {
     store.selectedVaultID = "family";
     await nextTick();
     expect(wrapper.find('[data-testid="share-vault"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="item-shared"]').text()).toBe("shared");
+    expect(wrapper.find('[data-testid="item-shared"]').text()).toBe("Shared");
     wrapper.unmount();
   });
 
