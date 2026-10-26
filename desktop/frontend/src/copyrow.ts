@@ -1,13 +1,11 @@
 import { copyField } from "./store";
 
-// bindCopyRow makes a field row on item detail a button that copies its field, to spread on the row with v-bind: a click
-// anywhere on it, or Enter or Space while the row has focus. A click on a control inside the row, such as reveal or open,
-// is that control's alone, and a click that ends a text selection in the row leaves the selection to copy by hand.
-export function bindCopyRow(name: string, copy: () => unknown): Record<string, unknown> {
+export function bindCopyTarget(name: string): Record<string, unknown> {
+  return { role: "button", tabindex: 0, "aria-label": `Copy ${name}`, "data-copy-target": "" };
+}
+
+export function bindCopyRow(copy: () => unknown): Record<string, unknown> {
   return {
-    role: "button",
-    tabindex: 0,
-    "aria-label": `Copy ${name}`,
     "data-copy-row": "",
     onClick: (event: MouseEvent) => {
       if (isRowClick(event)) {
@@ -15,7 +13,7 @@ export function bindCopyRow(name: string, copy: () => unknown): Record<string, u
       }
     },
     onKeydown: (event: KeyboardEvent) => {
-      if (event.target === event.currentTarget && (event.key === "Enter" || event.key === " ")) {
+      if (event.target === (event.currentTarget as HTMLElement).querySelector("[data-copy-target]") && (event.key === "Enter" || event.key === " ")) {
         event.preventDefault();
         copy();
       }
@@ -25,7 +23,7 @@ export function bindCopyRow(name: string, copy: () => unknown): Record<string, u
 
 // bindFieldRow is bindCopyRow for a field the backend copies by name, as the row's copy button does.
 export function bindFieldRow(fieldName: string, label: string): Record<string, unknown> {
-  return bindCopyRow(fieldName, () => copyField(fieldName, label));
+  return bindCopyRow(() => copyField(fieldName, label));
 }
 
 function isRowClick(event: MouseEvent): boolean {

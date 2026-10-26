@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, type OneTimeCode } from "../api";
-import { bindFieldRow } from "../copyrow";
+import { bindCopyTarget, bindFieldRow } from "../copyrow";
 import { copyField } from "../store";
 import AppIcon from "./AppIcon.vue";
 import SecretReferenceButton from "./SecretReferenceButton.vue";
@@ -62,6 +62,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 
 <template>
   <div class="field" data-testid="one-time-code" v-bind="oneTimeCode ? bindFieldRow('one-time code', 'One-time code') : {}">
+    <div class="field-copy-target" v-bind="oneTimeCode ? bindCopyTarget('one-time code') : {}">
     <span class="field-label">One-time code</span>
     <span class="field-value code-value">
       <template v-if="oneTimeCode && !isUnavailable">
@@ -74,6 +75,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
       </template>
       <span v-else-if="isUnavailable" class="muted">The one-time code could not be read.</span>
     </span>
+    </div>
     <span class="field-actions">
       <button class="ghost icon-button" aria-label="Copy one-time code" title="Copy" :disabled="!oneTimeCode" @click="copyField('one-time code', 'One-time code')">
         <AppIcon name="copy" />
@@ -84,6 +86,19 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 </template>
 
 <style scoped>
+.field-copy-target {
+  display: grid;
+  grid-column: 1 / span 2;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-width: 0;
+}
+
+[data-copy-target]:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
 /* The detail panel's scoped row styles reach only this component's root, so the label and actions match them here. */
 .field-label {
   font-size: 12px;

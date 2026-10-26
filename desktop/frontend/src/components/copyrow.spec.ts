@@ -100,15 +100,15 @@ describe("A click on a field row copies it", () => {
 
   it("leaves the row's own buttons to their action, with no second copy", async () => {
     const wrapper = mountDetail();
-    const row = findRow(wrapper, "password");
-    await row.find('button[aria-label="Reveal password"]').trigger("click");
-    await row.find('[data-testid="copy-secret-reference"]').trigger("click");
+    const row = wrapper.get('[aria-label="Copy password"][data-copy-target]').element.parentElement!;
+    (row.querySelector('button[aria-label="Reveal password"]') as HTMLButtonElement).click();
+    (row.querySelector('[data-testid="copy-secret-reference"]') as HTMLButtonElement).click();
     await flushPromises();
     expect(wrapper.find('[data-testid="password-value"]').text()).toBe("hunter2hunter2");
     expect(api.copySecretReference).toHaveBeenCalledTimes(1);
     expect(api.copyField).not.toHaveBeenCalled();
 
-    await row.find('button[aria-label="Copy password"]').trigger("click");
+    (row.querySelector('button[aria-label="Copy password"]') as HTMLButtonElement).click();
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledTimes(1);
   });
@@ -138,7 +138,7 @@ describe("A click on a field row copies it", () => {
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledTimes(2);
 
-    await row.find('[data-testid="copy-secret-reference"]').trigger("keydown", { key: "Enter" });
+    await wrapper.get('button[aria-label="Copy username"]').trigger("keydown", { key: "Enter" });
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledTimes(2);
   });
@@ -150,5 +150,19 @@ describe("A click on a field row copies it", () => {
     });
     const wrapper = mountDetail();
     expect(wrapper.find('[data-testid="android-app-row"]').attributes("role")).toBeUndefined();
+  });
+
+  it("keeps field actions outside the copy button, and still copies a click on row padding", async () => {
+    const wrapper = mountDetail();
+    await flushPromises();
+    for (const target of wrapper.findAll("[data-copy-target]")) {
+      expect(target.find("button, a, input, select, textarea").exists()).toBe(false);
+      expect(target.element.parentElement?.querySelector(".field-actions")).not.toBeNull();
+    }
+    const row = wrapper.get('[data-copy-target][aria-label="Copy password"]').element.parentElement!;
+    expect(row.getAttribute("role")).toBeNull();
+    row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await flushPromises();
+    expect(api.copyField).toHaveBeenCalledWith("personal", "github", "password");
   });
 });

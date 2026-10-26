@@ -15,7 +15,7 @@ import {
   store,
   toggleSelectedItemFavorite,
 } from "../store";
-import { bindCopyRow, bindFieldRow } from "../copyrow";
+import { bindCopyRow, bindCopyTarget, bindFieldRow } from "../copyrow";
 import {
   addressCategory,
   addressFieldName,
@@ -375,8 +375,10 @@ function maskSecret(secret: string): string {
           <span class="field-actions"></span>
         </div>
         <div class="field" v-bind="bindFieldRow('fingerprint', 'Fingerprint')">
+          <div class="field-copy-target" v-bind="bindCopyTarget('fingerprint')">
           <span class="field-label">Fingerprint</span>
           <span class="field-value monospace" data-testid="fingerprint">{{ store.selectedItem.fingerprint }}</span>
+          </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy fingerprint" title="Copy" @click="copyField('fingerprint', 'Fingerprint')"><AppIcon name="copy" /></button>
             <SecretReferenceButton field-name="fingerprint" label="fingerprint" />
@@ -387,14 +389,15 @@ function maskSecret(secret: string): string {
           <span class="field-value muted">Never leaves Hisar; the SSH agent uses it</span>
           <span class="field-actions"></span>
         </div>
-        <div class="public-key-field" data-field-menu-row v-bind="bindFieldRow('public key', 'Public key')">
-          <div class="row" data-field-menu-actions>
+        <div class="public-key-field copy-block" data-field-menu-row v-bind="bindFieldRow('public key', 'Public key')">
+          <div class="block-copy-target" v-bind="bindCopyTarget('public key')">
             <span class="field-label">Public key</span>
-            <div class="spacer"></div>
+            <p class="public-key monospace" data-testid="public-key">{{ store.selectedItem.publicKey }}</p>
+          </div>
+          <div class="row field-actions" data-field-menu-actions>
             <button data-testid="copy-public-key" aria-label="Copy public key" @click="copyField('public key', 'Public key')"><AppIcon name="copy" /> Copy public key</button>
             <SecretReferenceButton field-name="public key" label="public key" />
           </div>
-          <p class="public-key monospace" data-testid="public-key">{{ store.selectedItem.publicKey }}</p>
         </div>
       </section>
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
@@ -406,6 +409,7 @@ function maskSecret(secret: string): string {
       :data-testid="namedType.testID"
     >
       <div v-for="row in allNamedRow" :key="row.name" class="field" v-bind="bindFieldRow(row.name, row.name)">
+        <div class="field-copy-target" v-bind="bindCopyTarget(row.name)">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
           <span
@@ -416,6 +420,7 @@ function maskSecret(secret: string): string {
           </span>
           <small v-if="row.warning" class="field-warning" :data-testid="`card-warning-${row.name}`">{{ row.warning }}</small>
         </span>
+        </div>
         <span class="field-actions">
           <button
             v-if="row.concealed"
@@ -433,10 +438,12 @@ function maskSecret(secret: string): string {
         </span>
       </div>
       <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
+        <div class="field-copy-target" v-bind="bindCopyTarget(field.name)">
         <span class="field-label">{{ field.name }}</span>
         <span class="field-value" :class="{ monospace: field.concealed }">
           {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
         </span>
+        </div>
         <span class="field-actions">
           <button
             v-if="field.concealed"
@@ -457,28 +464,29 @@ function maskSecret(secret: string): string {
 
     <template v-else-if="isSecureNote">
       <section
-        class="card notes-card secure-note"
+        class="card notes-card secure-note copy-block"
         data-testid="secure-note-notes"
         data-field-menu-row
         v-bind="store.selectedItem.notes ? bindFieldRow('notes', 'Notes') : {}"
       >
-        <div class="row" data-field-menu-actions>
+        <div class="block-copy-target" v-bind="store.selectedItem.notes ? bindCopyTarget('notes') : {}">
           <p class="section-label">Notes</p>
-          <div class="spacer"></div>
-          <template v-if="store.selectedItem.notes">
-            <button data-testid="copy-notes" aria-label="Copy notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
-            <SecretReferenceButton field-name="notes" label="notes" />
-          </template>
+          <p v-if="store.selectedItem.notes" class="notes">{{ store.selectedItem.notes }}</p>
+          <p v-else class="muted no-fields">This note is empty.</p>
         </div>
-        <p v-if="store.selectedItem.notes" class="notes">{{ store.selectedItem.notes }}</p>
-        <p v-else class="muted no-fields">This note is empty.</p>
+        <div v-if="store.selectedItem.notes" class="row field-actions" data-field-menu-actions>
+          <button data-testid="copy-notes" aria-label="Copy notes" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /> Copy</button>
+          <SecretReferenceButton field-name="notes" label="notes" />
+        </div>
       </section>
       <section v-if="store.selectedItem.fields.length > 0" class="card field-card note-fields">
         <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
+          <div class="field-copy-target" v-bind="bindCopyTarget(field.name)">
           <span class="field-label">{{ field.name }}</span>
           <span class="field-value" :class="{ monospace: field.concealed }">
             {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
           </span>
+          </div>
           <span class="field-actions">
             <button
               v-if="field.concealed"
@@ -498,19 +506,23 @@ function maskSecret(secret: string): string {
     <section v-else class="card field-card">
       <template v-if="server">
         <div v-if="server.host" class="field" v-bind="bindFieldRow(serverFieldName.host, serverFieldName.host)">
+          <div class="field-copy-target" v-bind="bindCopyTarget(serverFieldName.host)">
           <span class="field-label">{{ serverFieldName.host }}</span>
           <span class="field-value monospace" data-testid="server-host">{{ formatServerAddress(server) }}</span>
+          </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Host" title="Copy" @click="copyField(serverFieldName.host, serverFieldName.host)"><AppIcon name="copy" /></button>
             <SecretReferenceButton :field-name="serverFieldName.host" :label="serverFieldName.host" />
           </span>
         </div>
         <div v-if="server.port" class="field" v-bind="bindFieldRow(serverFieldName.port, serverFieldName.port)">
+          <div class="field-copy-target" v-bind="bindCopyTarget(serverFieldName.port)">
           <span class="field-label">{{ serverFieldName.port }}</span>
           <span class="field-value">
             <span data-testid="server-port">{{ server.port }}</span>
             <small v-if="server.portWarning" class="field-warning" data-testid="server-port-warning">{{ server.portWarning }}</small>
           </span>
+          </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Port" title="Copy" @click="copyField(serverFieldName.port, serverFieldName.port)"><AppIcon name="copy" /></button>
             <SecretReferenceButton :field-name="serverFieldName.port" :label="serverFieldName.port" />
@@ -532,11 +544,13 @@ function maskSecret(secret: string): string {
       </template>
 
       <div v-for="row in allDatabaseRow" :key="row.name" class="field" v-bind="bindFieldRow(row.name, row.name)">
+        <div class="field-copy-target" v-bind="bindCopyTarget(row.name)">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
           <span :data-testid="`database-${row.name}`">{{ row.value }}</span>
           <small v-if="row.warning" class="field-warning" data-testid="database-port-warning">{{ row.warning }}</small>
         </span>
+        </div>
         <span class="field-actions">
           <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
           <SecretReferenceButton :field-name="row.name" :label="row.name" />
@@ -544,8 +558,10 @@ function maskSecret(secret: string): string {
       </div>
 
       <div v-if="store.selectedItem.username" class="field" v-bind="bindFieldRow('username', 'Username')">
+        <div class="field-copy-target" v-bind="bindCopyTarget('username')">
         <span class="field-label">Username</span>
         <span class="field-value">{{ store.selectedItem.username }}</span>
+        </div>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Copy username" title="Copy" @click="copyField('username', 'Username')"><AppIcon name="copy" /></button>
           <SecretReferenceButton field-name="username" label="username" />
@@ -553,6 +569,7 @@ function maskSecret(secret: string): string {
       </div>
 
       <div v-if="store.selectedItem.password" class="field" v-bind="bindFieldRow('password', 'Password')">
+        <div class="field-copy-target" v-bind="bindCopyTarget('password')">
         <span class="field-label">Password</span>
         <span class="field-value">
           <span class="monospace secret" data-testid="password-value">
@@ -560,6 +577,7 @@ function maskSecret(secret: string): string {
           </span>
           <StrengthMeter :password="store.selectedItem.password" />
         </span>
+        </div>
         <span class="field-actions">
           <button
             class="ghost icon-button"
@@ -576,8 +594,10 @@ function maskSecret(secret: string): string {
 
       <template v-if="database">
         <div v-if="database.options" class="field" v-bind="bindFieldRow(databaseFieldName.options, databaseFieldName.options)">
+          <div class="field-copy-target" v-bind="bindCopyTarget(databaseFieldName.options)">
           <span class="field-label">{{ databaseFieldName.options }}</span>
           <span class="field-value monospace" data-testid="database-options">{{ database.options }}</span>
+          </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Options" title="Copy" @click="copyField(databaseFieldName.options, databaseFieldName.options)"><AppIcon name="copy" /></button>
             <SecretReferenceButton :field-name="databaseFieldName.options" :label="databaseFieldName.options" />
@@ -589,10 +609,12 @@ function maskSecret(secret: string): string {
           data-testid="database-connection-string"
           v-bind="bindFieldRow('connection string', 'Connection string')"
         >
+          <div class="field-copy-target" v-bind="bindCopyTarget('connection string')">
           <span class="field-label">Connection string</span>
           <span class="field-value monospace secret" data-testid="connection-string-value">
             {{ isConnectionStringRevealed ? database.connectionString : maskSecret(database.connectionString) }}
           </span>
+          </div>
           <span class="field-actions">
             <button
               class="ghost icon-button"
@@ -612,9 +634,11 @@ function maskSecret(secret: string): string {
 
       <OneTimeCodeField v-if="store.selectedItem.hasOneTimePassword" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" />
 
-      <div v-for="link in store.selectedItem.urls" :key="link" class="field" v-bind="bindCopyRow(websiteLabel.toLowerCase(), () => copyText(link, websiteLabel))">
+      <div v-for="link in store.selectedItem.urls" :key="link" class="field" v-bind="bindCopyRow(() => copyText(link, websiteLabel))">
+        <div class="field-copy-target" v-bind="bindCopyTarget(websiteLabel.toLowerCase())">
         <span class="field-label">{{ websiteLabel }}</span>
         <span class="field-value">{{ link }}</span>
+        </div>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Open website" title="Open in browser" @click="openWebsite(link)"><AppIcon name="external" /></button>
           <button class="ghost icon-button" :aria-label="`Copy ${websiteLabel.toLowerCase()}`" title="Copy" @click="copyText(link, websiteLabel)"><AppIcon name="copy" /></button>
@@ -635,10 +659,12 @@ function maskSecret(secret: string): string {
       </div>
 
       <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
+        <div class="field-copy-target" v-bind="bindCopyTarget(field.name)">
         <span class="field-label">{{ field.name }}</span>
         <span class="field-value" :class="{ monospace: field.concealed }">
           {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
         </span>
+        </div>
         <span class="field-actions">
           <button
             v-if="field.concealed"
@@ -675,13 +701,14 @@ function maskSecret(secret: string): string {
 
     <PasskeyList v-if="(store.selectedItem.passkeys ?? []).length > 0" :passkeys="store.selectedItem.passkeys ?? []" :can-delete="canEdit" />
 
-    <section v-if="store.selectedItem.notes && !isSecureNote" class="card notes-card" data-field-menu-row v-bind="bindFieldRow('notes', 'Notes')">
-      <div class="row" data-field-menu-actions>
+    <section v-if="store.selectedItem.notes && !isSecureNote" class="card notes-card copy-block" data-field-menu-row v-bind="bindFieldRow('notes', 'Notes')">
+      <div class="block-copy-target" v-bind="bindCopyTarget('notes')">
         <p class="section-label">Notes</p>
-        <div class="spacer"></div>
+        <p class="notes">{{ store.selectedItem.notes }}</p>
+      </div>
+      <div class="row field-actions" data-field-menu-actions>
         <button class="ghost icon-button" aria-label="Copy notes" title="Copy" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /></button>
       </div>
-      <p class="notes">{{ store.selectedItem.notes }}</p>
     </section>
 
     <p v-if="canEdit && store.selectedItem.canConvertToSecureNote" class="convert-note muted" data-testid="convert-note">
@@ -806,6 +833,39 @@ h2 {
   border-bottom: none;
 }
 
+.field-copy-target {
+  display: grid;
+  grid-column: 1 / span 2;
+  grid-template-columns: subgrid;
+  align-items: center;
+  min-width: 0;
+}
+
+.copy-block {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.block-copy-target {
+  grid-column: 1 / -1;
+  grid-row: 1;
+  min-width: 0;
+}
+
+.block-copy-target > .field-label,
+.block-copy-target > .section-label {
+  display: block;
+  min-height: 30px;
+  padding-right: 180px;
+  margin-bottom: 8px;
+}
+
+.copy-block > .field-actions {
+  grid-column: 2;
+  grid-row: 1;
+  align-self: start;
+}
+
 [data-copy-row] {
   cursor: pointer;
 }
@@ -815,7 +875,7 @@ h2 {
   background: var(--color-hover);
 }
 
-[data-copy-row]:focus-visible {
+[data-copy-target]:focus-visible {
   outline: 2px solid var(--color-focus);
   outline-offset: -2px;
 }
