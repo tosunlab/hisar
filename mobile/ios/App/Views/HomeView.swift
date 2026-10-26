@@ -155,7 +155,6 @@ enum NewItemType: String, CaseIterable, Identifiable {
     }
 }
 
-/// The button that starts a new item of one type in a + menu.
 struct NewItemButton: View {
     var type: NewItemType
     var placement: NewItemType.Placement
@@ -171,7 +170,6 @@ struct NewItemButton: View {
     }
 }
 
-/// A + menu's submenu with the types that are not on the menu itself.
 struct NewItemMoreMenu: View {
     var placement: NewItemType.Placement
     var choose: (NewItemType) -> Void
