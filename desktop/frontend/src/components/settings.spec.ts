@@ -301,6 +301,7 @@ describe("Settings help", () => {
     expect(help.find('[data-testid="help-app-version"]').text()).toBe("0.2.1 (2001)");
     expect(help.find('[data-testid="help-operating-system"]').text()).toBe("macOS 26.0.1");
     expect(help.find('[data-testid="help-server"]').text()).toBe("https://api.tryhisar.com");
+    expect(help.text()).not.toContain("The server does not report its version.");
     expect(help.find('[data-testid="help-device-id"]').text()).toBe("device-mac");
     await help.find('[data-testid="copy-diagnostics"]').trigger("click");
     await flushPromises();

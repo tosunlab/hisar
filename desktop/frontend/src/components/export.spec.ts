@@ -52,6 +52,7 @@ describe("Export section", () => {
   it("exports with Touch ID and says where the file went", async () => {
     api.exportAllData.mockResolvedValue({ path: "/Users/alice/Documents/Hisar export 2026-10-11.hisar", vaultCount: 3, itemCount: 42 });
     const wrapper = await mountExport();
+    expect(wrapper.text()).not.toContain("Export works any time.");
     await wrapper.find('[data-testid="export-passphrase"]').setValue("orange cactus harbor");
     await wrapper.find('[data-testid="export-passphrase-repeat"]').setValue("orange cactus harbor");
     await wrapper.find("form").trigger("submit");

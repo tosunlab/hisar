@@ -49,7 +49,6 @@ onMounted(() => {
         <div class="setting">
           <div class="setting-text">
             <strong>Server</strong>
-            <p class="muted">The server does not report its version.</p>
           </div>
           <span class="selectable value" data-testid="help-server">{{ store.status.server || "not signed in" }}</span>
         </div>
