@@ -114,6 +114,23 @@ func TestDeadlineEndsATouchIDCheckNobodyAnswers(t *testing.T) {
 	}
 }
 
+func TestApprovalEventKeepsMillisecondDeadlineAndLifetime(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		time.Sleep(321 * time.Millisecond)
+		startedAt := time.Now()
+		emitter := createFakeEmitter()
+		approver := NewApprover(ApproverConfig{Emit: emitter.emit, Timeout: 43210 * time.Millisecond})
+		resultChannel := startApproval(approver, context.Background(), createTestRequest())
+		event := waitForApprovalEvent(t, emitter)
+		deadline, err := time.Parse(time.RFC3339Nano, event.TimeoutAt)
+		if err != nil || !deadline.Equal(startedAt.Add(43210*time.Millisecond)) || event.TimeoutMilliseconds != 43210 {
+			t.Fatalf("deadline %q, lifetime %d: %v", event.TimeoutAt, event.TimeoutMilliseconds, err)
+		}
+		approver.Respond(event.RequestID, false, false)
+		waitForResult(t, resultChannel)
+	})
+}
+
 func TestDeadlineDeniesBeforeHidingTheNotice(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		emitter := createFakeEmitter()

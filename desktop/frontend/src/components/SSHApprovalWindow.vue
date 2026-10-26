@@ -56,7 +56,7 @@ const secondsLeft = computed(() => Math.max(0, Math.ceil((timeoutAt.value - now.
 const isExpired = computed(() => Number.isFinite(timeoutAt.value) && secondsLeft.value === 0);
 const expiryText = computed(() =>
   isExpired.value
-    ? `Denied: no answer in ${approval.value?.isPhoneApproval ? 120 : 60} seconds`
+    ? `No answer in ${Math.ceil((approval.value?.timeoutMilliseconds ?? 0) / 1000)} seconds.`
     : `Expires in ${secondsLeft.value} ${secondsLeft.value === 1 ? "second" : "seconds"}`,
 );
 let countdownTimer: ReturnType<typeof setInterval> | undefined;

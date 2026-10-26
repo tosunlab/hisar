@@ -299,6 +299,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     isPhoneApproval: false,
     isTooLongForPhone: false,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+    timeoutMilliseconds: 60_000,
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",

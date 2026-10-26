@@ -126,7 +126,8 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 		}
 	}
 	timeoutAt := pending.receivedAt.Add(timeout)
-	pending.event.TimeoutAt = timeoutAt.UTC().Format(time.RFC3339)
+	pending.event.TimeoutAt = timeoutAt.UTC().Format("2006-01-02T15:04:05.000Z07:00")
+	pending.event.TimeoutMilliseconds = timeout.Milliseconds()
 	timer := time.NewTimer(max(timeoutAt.Sub(approver.config.Now()), 0))
 	defer timer.Stop()
 	approver.mutex.Lock()

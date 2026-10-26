@@ -56,11 +56,11 @@ afterEach(() => {
 
 describe("SSHApprovalWindow", () => {
   it.each([false, true])("counts down to the hard deadline and keeps the denial visible, phone %s", async (isPhoneApproval) => {
-    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
-    const lifetime = isPhoneApproval ? 120 : 60;
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00.321Z") });
+    const lifetime = isPhoneApproval ? 95 : 43;
     const wrapper = mount(SSHApprovalWindow);
     expect(vi.getTimerCount()).toBe(0);
-    sendEvent("ssh-approval", createApprovalEvent({ isPhoneApproval, timeoutAt: new Date(Date.now() + lifetime * 1000).toISOString() }));
+    sendEvent("ssh-approval", createApprovalEvent({ isPhoneApproval, timeoutMilliseconds: lifetime * 1000, timeoutAt: new Date(Date.now() + lifetime * 1000).toISOString() }));
     await flushPromises();
     const expiry = () => wrapper.get('[data-testid="approval-expiry"]');
     expect(expiry().text()).toBe(`Expires in ${lifetime} seconds`);
@@ -74,7 +74,8 @@ describe("SSHApprovalWindow", () => {
     await vi.advanceTimersByTimeAsync(8000);
     expect(expiry().text()).toBe("Expires in 1 second");
     await vi.advanceTimersByTimeAsync(1000);
-    expect(expiry().text()).toBe(`Denied: no answer in ${lifetime} seconds`);
+    expect(expiry().text()).toBe(`No answer in ${lifetime} seconds.`);
+    expect(wrapper.get("h1").text()).toBe("Request denied");
     expect(wrapper.find("button").exists()).toBe(false);
     const responseCount = api.respondSSHApproval.mock.calls.length;
     pressKey("Enter");
@@ -82,7 +83,7 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledTimes(responseCount);
     await vi.advanceTimersByTimeAsync(2999);
-    expect(expiry().text()).toBe(`Denied: no answer in ${lifetime} seconds`);
+    expect(expiry().text()).toBe(`No answer in ${lifetime} seconds.`);
     sendEvent("ssh-approval-closed", "request-1");
     await flushPromises();
     expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
@@ -94,12 +95,12 @@ describe("SSHApprovalWindow", () => {
   it("shows the countdown on compact cards and restores the next request's deadline", async () => {
     vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
     const wrapper = mount(SSHApprovalWindow);
-    sendEvent("ssh-approval", createApprovalEvent({ isCompact: true, timeoutAt: new Date(Date.now() + 2000).toISOString() }));
+    sendEvent("ssh-approval", createApprovalEvent({ isCompact: true, timeoutMilliseconds: 2000, timeoutAt: new Date(Date.now() + 2000).toISOString() }));
     sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", timeoutAt: new Date(Date.now() + 60_000).toISOString() }));
     await flushPromises();
     expect(wrapper.get(".compact-card [data-testid='approval-expiry']").text()).toBe("Expires in 2 seconds");
     await vi.advanceTimersByTimeAsync(2000);
-    expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("Denied: no answer in 60 seconds");
+    expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("No answer in 2 seconds.");
     sendEvent("ssh-approval-closed", "request-1");
     await flushPromises();
     expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("Expires in 58 seconds");
