@@ -48,7 +48,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         waitFor(app.buttons["open-replace-secret-key"], timeout: 60)
 
         app.buttons["open-replace-secret-key"].tap()
-        let secretKeyWarning = app.staticTexts["Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working."]
+        let secretKeyWarning = app.staticTexts.matching(NSPredicate(format: "label == %@", "Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working.")).firstMatch
         XCTAssertFalse(secretKeyWarning.exists)
         type(Self.newMasterPassword, into: app.secureTextFields["replace-secret-key-password"])
         saveScreenshot("account-life-replace-secret-key\(screenshotSuffix)")
