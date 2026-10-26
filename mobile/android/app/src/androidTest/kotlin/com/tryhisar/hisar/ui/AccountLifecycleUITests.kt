@@ -37,6 +37,7 @@ class AccountLifecycleUITests : HisarUITestCase() {
                 tap("change-password-submit")
                 tap("change-password-confirm")
                 waitFor("open-replace-secret-key", ACCOUNT_KEY_TIMEOUT)
+                dismissNotice()
                 tap("open-replace-secret-key")
                 type(NEW_MASTER_PASSWORD, "replace-secret-key-password")
                 tap("replace-secret-key-submit")
@@ -74,8 +75,9 @@ class AccountLifecycleUITests : HisarUITestCase() {
         assertEquals("recovery-password-canary", readText("password-value"))
 
         openTab("Settings")
+        dismissNotice()
         tap("sign-out")
-        confirm("Sign out", excludingTag = "sign-out")
+        tap("confirm-sign-out")
         waitFor("sign-in-email")
         type(email, "sign-in-email")
         val saved = JSONObject(checkpoint.openInternalInputFile(RECOVERY_CHECKPOINT).bufferedReader().use { it.readText() })

@@ -222,8 +222,9 @@ class AccountItemFlowUITests : HisarUITestCase() {
 
         scrollTo("sign-out")
         saveScreenshot("settings")
+        dismissNotice()
         tap("sign-out")
-        confirm("Sign out", excludingTag = "sign-out")
+        tap("confirm-sign-out")
         waitFor("sign-in-email")
 
         // Signing out keeps the server, behind the disclosure: signing back in needs no server typed.

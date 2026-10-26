@@ -156,6 +156,43 @@ class VaultsScreenUITests : HisarUITestCase() {
     }
 
     @Test
+    fun testSettingsRowsRemainReachableAfterNotices() {
+        launchApp(buildBackend()).use {
+            waitFor("vaults-list")
+            openSettings("open-help")
+            tap("copy-diagnostics")
+            waitFor("notice")
+            goBack()
+            scrollTo("sign-out")
+            saveScreenshot("settings-sign-out-notice")
+            dismissNotice()
+            tap("sign-out")
+            tap("cancel-confirmation")
+
+            tap("open-security")
+            tap("open-change-master-password")
+            type(FakeBackend.PASSWORD, "change-password-current")
+            type("changed master password", "change-password-new")
+            type("changed master password", "change-password-repeated")
+            tap("change-password-submit")
+            tap("change-password-confirm")
+            waitFor("open-replace-secret-key")
+            waitFor("notice")
+            saveScreenshot("security-password-change-notice")
+            dismissNotice()
+            tap("open-replace-secret-key")
+            waitFor("replace-secret-key-password")
+            goBack()
+            goBack()
+
+            scrollTo("sign-out")
+            tap("sign-out")
+            tap("confirm-sign-out")
+            waitFor("sign-in-mode")
+        }
+    }
+
+    @Test
     fun testVaultActionsRenameDeleteAndLeave() {
         launchApp(buildBackend()).use {
             waitFor("vaults-list")
@@ -181,7 +218,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor("notice")
             val notice = composeRule.onNodeWithTag("notice").fetchSemanticsNode().boundsInRoot
             val deleteButton = composeRule.onNodeWithTag("delete-vault-confirm").fetchSemanticsNode().boundsInRoot
-            assertTrue("the rename snackbar stays above Delete vault", notice.bottom <= deleteButton.top)
+            assertTrue("the rename snackbar ($notice) stays above Delete vault ($deleteButton)", notice.bottom <= deleteButton.top)
             saveScreenshot("vault-delete-items")
             tap("delete-vault-confirm")
             waitForNotice("Deleted Work 2026.")

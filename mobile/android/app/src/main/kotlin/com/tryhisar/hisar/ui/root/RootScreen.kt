@@ -3,7 +3,10 @@ package com.tryhisar.hisar.ui.root
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.exclude
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.padding
@@ -76,7 +79,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val scope = rememberCoroutineScope()
         val noticeLayout = remember { NoticeLayout() }
         val density = LocalDensity.current
-        val navigationInset = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
+        val navigationInset = with(density) { WindowInsets.navigationBars.exclude(WindowInsets.ime).getBottom(this).toDp() }
         val noticeInset = (with(density) { noticeLayout.clearance.toDp() } - navigationInset).coerceAtLeast(0.dp)
         val showsTabs = screen == Screen.Unlocked && !isSheetShown && newAccountStep == null && !isRecoveryShown && credentialImportSheet == null
 
@@ -84,9 +87,10 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
             if (copyCount > 0) view.performConfirmHaptic()
         }
 
-        Box(Modifier.fillMaxSize().exposeTestTags().onGloballyPositioned { noticeLayout.windowBottom = it.boundsInWindow().bottom }) {
+        Box(Modifier.fillMaxSize().exposeTestTags()) {
             CompositionLocalProvider(LocalNoticeLayout provides noticeLayout) {
             Scaffold(
+                modifier = Modifier.imePadding().onGloballyPositioned { noticeLayout.windowBottom = it.boundsInWindow().bottom },
                 contentWindowInsets = WindowInsets.navigationBars,
                 snackbarHost = { NoticeHost(model, Modifier.padding(bottom = noticeInset)) },
                 floatingActionButton = {
