@@ -31,10 +31,7 @@ async function copyAllCommand(): Promise<void> {
     <div class="row host-row">
       <div class="host-text">
         <strong>Use this key for Git</strong>
-        <p class="muted">
-          Add to GitHub or GitLab copies the public key and opens the page to paste it. On GitHub, add it as a Signing Key for commit signing (and as an
-          Authentication Key for SSH); on GitLab, choose Authentication &amp; Signing.
-        </p>
+        <p class="muted">Copies the public key and opens the page to paste it; on GitHub add it as a Signing Key too.</p>
       </div>
     </div>
     <div class="row actions">

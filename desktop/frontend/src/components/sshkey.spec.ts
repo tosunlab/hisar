@@ -188,7 +188,8 @@ describe("SSH key detail", () => {
     expect(wrapper.find('[data-testid="public-key"]').text()).toBe("ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIHisarTestKey Laptop key");
     expect(wrapper.find('[data-testid="public-key"]').classes()).toContain("monospace");
     expect(wrapper.text()).toContain("Used for GitHub");
-    expect(wrapper.text()).toContain("Hisar's SSH agent offers this key while Hisar is unlocked");
+    expect(wrapper.text()).not.toContain("SSH agent offers this key");
+    expect(wrapper.text()).not.toContain("End-to-end encrypted with");
     expect(wrapper.text()).not.toContain("PRIVATE KEY");
     expect(wrapper.text()).toContain("Private keyNever leaves Hisar; the SSH agent uses it");
     expect(wrapper.find('button[aria-label="Reveal password"]').exists()).toBe(false);

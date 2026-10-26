@@ -387,7 +387,6 @@ function maskSecret(secret: string): string {
           <p class="public-key monospace" data-testid="public-key">{{ store.selectedItem.publicKey }}</p>
         </div>
       </section>
-      <p class="agent-hint muted"><AppIcon name="terminal" :size="14" /> Hisar's SSH agent offers this key while Hisar is unlocked.</p>
       <CommitSigningPanel v-if="store.selectedItem.publicKey" :public-key="store.selectedItem.publicKey" />
     </template>
 
@@ -670,7 +669,6 @@ function maskSecret(secret: string): string {
       <SharedLinksList :all-share-link="allItemShareLink" :is-title-shown="false" />
     </section>
 
-    <p class="footer muted"><AppIcon name="shield" :size="12" /> End-to-end encrypted with the {{ vaultName }} vault key</p>
     <ContextMenu v-if="fieldMenu" :label="fieldMenu.label" :x="fieldMenu.x" :y="fieldMenu.y" :all-action="fieldMenu.allAction" @close="fieldMenu = null" />
     <ContextMenu
       v-if="itemMenu"
@@ -794,14 +792,6 @@ h2 {
   -webkit-user-select: text;
 }
 
-.agent-hint {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin: 12px 2px 0;
-  font-size: 12px;
-}
-
 .field-label {
   font-size: 12px;
   color: var(--color-text-muted);
@@ -895,13 +885,5 @@ h2 {
 
 .share-links-card .section-label {
   padding: 0 16px;
-}
-
-.footer {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 18px;
-  font-size: 11px;
 }
 </style>
