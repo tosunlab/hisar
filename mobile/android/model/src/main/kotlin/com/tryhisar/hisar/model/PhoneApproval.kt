@@ -45,7 +45,7 @@ data class PhoneApproval(
     val rememberLabel: String = "",
     val isRememberedByDefault: Boolean = false,
 ) {
-    data class DetailRow(val label: String, val value: String, val isMonospaced: Boolean) {
+    data class DetailRow(val label: String, val value: String, val isMonospaced: Boolean, val isCompact: Boolean = false) {
         val id: String get() = label
     }
 
@@ -115,13 +115,13 @@ data class PhoneApproval(
 
     val allDetailRow: List<DetailRow>
         get() {
-            val appRow = DetailRow("App", appName, false)
+            val appRow = DetailRow("App", appName, false, isCompact = true)
             val warningRow = DetailRow("Warning", appWarning, false)
             val secretRow = DetailRow("Secrets", secrets.joinToString("\n"), false)
             // A launcher's command line is its share link's limit, and its warning is about what the link shares, so the
             // warning follows the secrets and the limit.
             val allCandidate = if (kind == KIND_LAUNCHER) {
-                listOf(appRow, secretRow, DetailRow("Link", commandLine, false), warningRow, DetailRow("Lasts", lifetime, false))
+                listOf(appRow, secretRow, DetailRow("Link", commandLine, false), warningRow, DetailRow("Lasts", lifetime, false, isCompact = true))
             } else {
                 listOf(
                     appRow,
@@ -130,7 +130,7 @@ data class PhoneApproval(
                     DetailRow(if (kind == KIND_COMMAND_LINE && secrets.isEmpty()) "Program" else "Command", commandLine, true),
                     DetailRow("Repository", if (isRepositoryTheProject) "" else repositoryPath, true),
                     DetailRow("Server", host, true),
-                    DetailRow("Key", keyName, false),
+                    DetailRow("Key", keyName, false, isCompact = true),
                     secretRow,
                     DetailRow("Forwarded from", if (isForwarded) forwardedFromHost else "", true),
                     DetailRow("Terminal", if (terminalName.isEmpty()) "" else "/dev/$terminalName", true),

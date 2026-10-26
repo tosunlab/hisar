@@ -97,6 +97,8 @@ class PhoneApprovalTests {
         assertEquals("MacBook Pro is asking to use Hisar from the command line", approval.bannerTitle)
         assertEquals(listOf("App", "Command", "Secrets", "Terminal"), approval.allDetailRow.map { it.label })
         assertEquals("Personal › GitHub › password\nWork › AWS › access key\nand 3 more", approval.allDetailRow[2].value)
+        assertFalse(approval.allDetailRow[2].isCompact)
+        assertTrue(approval.allDetailRow.first().isCompact)
     }
 
     @Test

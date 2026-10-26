@@ -271,18 +271,18 @@ private fun Header(approval: PhoneApproval) {
 }
 
 @Composable
-private fun DetailRow(row: PhoneApproval.DetailRow) {
+internal fun DetailRow(row: PhoneApproval.DetailRow) {
     val modifier = Modifier
         .fillMaxWidth()
         .heightIn(min = 52.dp)
         .padding(horizontal = 16.dp, vertical = 14.dp)
-    if (row.isMonospaced) {
+    if (!row.isCompact || row.value.length > 40 || '\n' in row.value) {
         Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(row.label, style = HisarType.footnote.copy(fontSize = 13.sp), color = HisarTheme.colors.secondaryLabel)
+            Text(row.label, style = HisarType.footnote.copy(fontSize = 13.sp), color = HisarTheme.colors.secondaryLabel, modifier = Modifier.testTag("phone-approval-label-${row.label}"))
             SelectionContainer {
                 Text(
                     row.value,
-                    style = HisarType.bodyMonospaced.copy(fontSize = 15.sp),
+                    style = (if (row.isMonospaced) HisarType.bodyMonospaced else HisarType.body).copy(fontSize = 15.sp),
                     color = HisarTheme.colors.label,
                     modifier = Modifier.fillMaxWidth().testTag("phone-approval-row-${row.label}"),
                 )
