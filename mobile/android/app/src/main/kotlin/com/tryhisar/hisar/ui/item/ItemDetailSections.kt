@@ -118,7 +118,7 @@ internal fun ItemDetailContent(
     if (item.allField.isNotEmpty()) {
         RowsSection(header = "Other fields") {
             item.allField.forEach { field ->
-                row { FieldRow(actions, field.name, field.name, field.value, field.concealed) }
+                row { FieldRow(actions, field.name, field.name, field.value, field.concealed, isCustom = true) }
             }
         }
     }
@@ -212,7 +212,7 @@ private fun ColumnScope.DividedRows(allRow: List<@Composable () -> Unit>) {
 
 /** A field with copy and copy reference; a concealed one is hidden until revealed. */
 @Composable
-private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String, value: String, isConcealed: Boolean, warning: String = "") {
+private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String, value: String, isConcealed: Boolean, warning: String = "", isCustom: Boolean = false) {
     SecretFieldRow(
         label = label,
         value = value,
@@ -222,6 +222,7 @@ private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String
         copy = { actions.copy(fieldName, label) },
         copyReference = { actions.copyReference(fieldName) },
         warning = warning,
+        actionLabel = if (isCustom || label.take(2).all(Char::isUpperCase)) label else label.replaceFirstChar { it.lowercase() },
     )
 }
 

@@ -129,17 +129,18 @@ internal fun SecretFieldRow(
     copy: () -> Unit,
     copyReference: () -> Unit,
     warning: String = "",
+    actionLabel: String = label,
 ) {
     val isHidden = isConcealed && !isRevealed
     val tagName = label.lowercase()
     val allAction = buildList {
-        add(MenuAction("Copy $label", Icons.Outlined.ContentCopy, copy))
+        add(MenuAction("Copy $actionLabel", Icons.Outlined.ContentCopy, copy))
         add(MenuAction("Copy secret reference", Icons.Outlined.Terminal, copyReference))
         if (toggleReveal != null) {
             add(MenuAction(if (isRevealed) "Hide" else "Reveal", if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, toggleReveal))
         }
     }
-    MenuRow(allAction, onClick = copy, onClickLabel = "Copy $label") {
+    MenuRow(allAction, onClick = copy, onClickLabel = "Copy $actionLabel") {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).heightIn(min = 30.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
@@ -163,13 +164,13 @@ internal fun SecretFieldRow(
                 if (toggleReveal != null) {
                     FieldIconButton(
                         if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility,
-                        if (isRevealed) "Hide $label" else "Reveal $label",
+                        if (isRevealed) "Hide $actionLabel" else "Reveal $actionLabel",
                         "reveal-$tagName",
                         toggleReveal,
                         tint = HisarTheme.colors.label,
                     )
                 }
-                FieldIconButton(Icons.Outlined.ContentCopy, "Copy $label", "copy-$tagName", copy, tint = HisarTheme.colors.label)
+                FieldIconButton(Icons.Outlined.ContentCopy, "Copy $actionLabel", "copy-$tagName", copy, tint = HisarTheme.colors.label)
             }
             if (warning.isNotEmpty()) {
                 Spacer(Modifier.size(4.dp))

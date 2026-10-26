@@ -94,9 +94,9 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                 },
             ) {
                 if (exported.warning.isNotEmpty()) Text(exported.warning, color = HisarTheme.colors.warning, modifier = Modifier.testTag("export-provenance"))
-                FormButtonRow("Save Export", { save(file) }, testTag = "save-export", icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
+                FormButtonRow("Save export", { save(file) }, testTag = "save-export", icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
                 RowDivider()
-                FormButtonRow("Share Export", { share(file) }, testTag = "share-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
+                FormButtonRow("Share export", { share(file) }, testTag = "share-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
         } else {

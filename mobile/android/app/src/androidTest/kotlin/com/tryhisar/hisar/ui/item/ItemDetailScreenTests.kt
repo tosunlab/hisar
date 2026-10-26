@@ -178,7 +178,7 @@ class ItemDetailScreenTests {
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
         assertTrue(
             "the row reads as a button that copies",
-            composeRule.onAllNodes(hasClickLabel("Copy Username")).fetchSemanticsNodes().isNotEmpty(),
+            composeRule.onAllNodes(hasClickLabel("Copy username")).fetchSemanticsNodes().isNotEmpty(),
         )
     }
 
