@@ -579,10 +579,10 @@ onBeforeUnmount(() => {
 
           <div v-if="allGrantDuration.length > 0" class="grant-duration" data-testid="approval-grant-duration">
             <label>
-              Allow
+              Approve for
               <select
                 name="grantDuration"
-                aria-label="How long to allow it"
+                aria-label="How long to approve it"
                 data-testid="approval-grant-duration-menu"
                 :value="approvalStore.grantDuration"
                 @change="setGrantDuration(approval.requestID, ($event.target as HTMLSelectElement).value)"

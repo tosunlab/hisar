@@ -627,6 +627,8 @@ describe("SSHApprovalWindow", () => {
     expect(wrapper.findAll('[data-testid="approval-secrets"] li').map((line) => line.text())).toEqual(["Work › Stripe › api key", "Work › Postgres staging › password"]);
     expect(wrapper.find(".remember").exists()).toBe(false);
     const menu = wrapper.find('[data-testid="approval-grant-duration-menu"]');
+    expect(menu.attributes("aria-label")).toBe("How long to approve it");
+    expect(wrapper.get('[data-testid="approval-grant-duration"] label').text()).toContain("Approve for");
     expect(menu.findAll("option").map((option) => option.text())).toEqual(["Only this time", "For 1 hour"]);
     expect((menu.element as HTMLSelectElement).value).toBe("once");
     expect(wrapper.find('[data-testid="approval-grant-note"]').exists()).toBe(false);
