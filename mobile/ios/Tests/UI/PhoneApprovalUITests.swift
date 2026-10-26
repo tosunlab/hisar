@@ -137,6 +137,9 @@ final class PhoneApprovalUITests: HisarUITestCase {
         app.buttons["pending-approval-approve-preview-launcher"].tap()
         XCTAssertTrue(header.waitForNonExistence(timeout: 10), "no requests, no card")
         XCTAssertEqual(result.label, "Approved preview-launcher with Face ID")
+        openTab("Approvals")
+        waitFor(app.staticTexts["No requests waiting"])
+        XCTAssertTrue(app.staticTexts["Requests from Hisar on your Mac appear here while this iPhone is unlocked."].exists)
     }
 
     private func launchPreview(_ kind: String) {

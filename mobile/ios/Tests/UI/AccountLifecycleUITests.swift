@@ -20,7 +20,18 @@ final class AccountLifecycleUITests: HisarUITestCase {
         openSettings("open-mac-approvals")
         XCTAssertTrue(app.staticTexts["When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone."].exists)
         XCTAssertFalse(app.staticTexts["How requests appear"].exists)
+        let macApprovalToggle = app.switches["mac-approval-toggle"]
+        if macApprovalToggle.value as? String == "1" {
+            macApprovalToggle.switches.firstMatch.tap()
+        }
         goBack()
+        openTab("Approvals")
+        let allowApproval = app.buttons["approvals-allow"]
+        waitFor(allowApproval)
+        XCTAssertEqual(allowApproval.label, "Approve requests from my Mac")
+        allowApproval.tap()
+        waitFor(app.staticTexts["No requests waiting"])
+        XCTAssertTrue(app.staticTexts["Requests from Hisar on your Mac appear here while this iPhone is unlocked."].exists)
 
         openSettings("open-security")
         app.buttons["open-change-master-password"].tap()

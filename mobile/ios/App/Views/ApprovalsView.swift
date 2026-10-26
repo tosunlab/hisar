@@ -67,7 +67,7 @@ struct ApprovalList: View {
                 ContentUnavailableView {
                     Label("No requests waiting", systemImage: "laptopcomputer.and.iphone")
                 } description: {
-                    Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, or to let an app like Raycast use Hisar, the request appears here while Hisar is open and unlocked on this iPhone.")
+                    Text("Requests from Hisar on your Mac appear here while this iPhone is unlocked.")
                 }
                 .accessibilityIdentifier("approvals-empty")
             }
