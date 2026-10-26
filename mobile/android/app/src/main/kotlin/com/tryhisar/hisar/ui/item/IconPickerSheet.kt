@@ -77,7 +77,7 @@ private const val COLUMN_COUNT = 6
 fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon?) -> Unit, onDismiss: () -> Unit) {
     val icon = item.icon
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
-    var color by remember { mutableStateOf(icon?.color.orEmpty()) }
+    val color = icon?.color.orEmpty()
     var isPreparing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -190,25 +190,25 @@ fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon
                         .horizontalScroll(rememberScrollState())
                         .padding(horizontal = 16.dp, vertical = 12.dp)
                         .alpha(if (isPhoto) 0.4f else 1f),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     for (hue in listOf("") + ChosenIcon.allColor) {
                         val isChosen = !isPhoto && color == hue
                         Box(
                             Modifier
-                                .size(28.dp)
-                                .background(ItemIconStyle.getColor(hue, HisarTheme.colors.isDark) ?: HisarTheme.colors.fill, CircleShape)
-                                .border(2.5.dp, if (isChosen) HisarTheme.colors.tint else Color.Transparent, CircleShape)
+                                .size(48.dp)
                                 .clickable(enabled = !isPhoto, role = Role.Button) {
-                                    color = hue
-                                    val colored = ChosenIcon.applyColor(icon, hue)
+                                    val colored = ChosenIcon.applyColor(icon, hue, item.category)
                                     if (colored != icon) onIconChange(colored)
                                 }
                                 .semantics {
                                     contentDescription = if (hue.isEmpty()) "No color" else hue.replaceFirstChar { it.uppercase() }
                                     selected = isChosen
                                 }
-                                .testTag("icon-color-${hue.ifEmpty { "none" }}"),
+                                .testTag("icon-color-${hue.ifEmpty { "none" }}")
+                                .padding(10.dp)
+                                .background(ItemIconStyle.getColor(hue, HisarTheme.colors.isDark) ?: HisarTheme.colors.fill, CircleShape)
+                                .border(2.5.dp, if (isChosen) HisarTheme.colors.tint else Color.Transparent, CircleShape),
                         )
                     }
                 }
