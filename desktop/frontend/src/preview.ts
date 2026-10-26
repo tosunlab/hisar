@@ -299,7 +299,7 @@ const previewMinimumVersion = previewParameter.get("updateRequired");
 const previewUpdateRequired = previewMinimumVersion ? { currentVersion: "0.1.0", minimumVersion: previewMinimumVersion, updateURL: "https://tryhisar.com/download" } : null;
 const previewStatus = (): Status => ({
   state: previewState,
-  server: "https://api.tryhisar.com",
+  server: "https://eu.tryhisar.com",
   email: previewState === "signed-out" ? previewSignedOutEmail : "alper@tryhisar.com",
   name: "Alper",
   biometricAvailable: true,
@@ -877,7 +877,7 @@ function createPreviewShareLinkFromRequest(request: ShareLinkRequest): ShareLink
   const shareLinkID = createRandomText(22).replaceAll("+", "-").replaceAll("/", "_");
   const common = {
     id: shareLinkID,
-    url: `https://api.tryhisar.com/s/${shareLinkID}#${linkKey}`,
+    url: `https://eu.tryhisar.com/s/${shareLinkID}#${linkKey}`,
     createdAt: new Date().toISOString(),
     expiresAt: new Date(Date.now() + request.expiresInSeconds * 1000).toISOString(),
     maxViews: request.maxViews,

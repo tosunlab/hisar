@@ -230,7 +230,7 @@ final class HisarUITests: HisarUITestCase {
         useDifferentServerButton.tap()
         let serverField = app.textFields["sign-in-server"]
         waitFor(serverField)
-        XCTAssertEqual(serverField.value as? String, "https://api.tryhisar.com")
+        XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
     }
 
     func testPrivacyCoverHidesContentInTheBackground() throws {

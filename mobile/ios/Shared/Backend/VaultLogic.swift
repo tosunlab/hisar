@@ -50,7 +50,7 @@ struct SignInLink: Equatable {
 }
 
 struct InviteLink: Equatable {
-    static let defaultServer = "https://api.tryhisar.com"
+    static let defaultServer = "https://eu.tryhisar.com"
 
     // What Create account accepts: the bare code for the default server, otherwise the invite link on its server.
     var invite: String
