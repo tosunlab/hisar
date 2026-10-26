@@ -77,9 +77,18 @@ final class SharingUITests: HisarUITestCase {
         let cancelAction = app.buttons["Cancel"].firstMatch
         waitForHittable(cancelAction)
         cancelAction.tap()
-        XCTAssertEqual(app.buttons["confirm-cancel-invitation"].firstMatch.label, "Cancel invitation")
-        XCTAssertTrue(app.buttons["Keep invitation"].exists)
-        app.buttons["confirm-cancel-invitation"].firstMatch.tap()
+        let confirmation = app.buttons["confirm-cancel-invitation"].firstMatch
+        waitForHittable(confirmation)
+        XCTAssertEqual(confirmation.label, "Cancel invitation")
+        // iOS 26 popovers omit the cancel-role button. Tapping outside keeps the invitation.
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.5)).tap()
+        XCTAssertTrue(confirmation.waitForNonExistence(timeout: 5))
+        XCTAssertTrue(unknownInvitation.exists, "dismissing the confirmation keeps the invitation")
+        revealSwipeActions(of: unknownInvitation, .left)
+        waitForHittable(cancelAction)
+        cancelAction.tap()
+        waitForHittable(confirmation)
+        confirmation.tap()
         XCTAssertTrue(unknownInvitation.waitForNonExistence(timeout: 30), "the cancelled invitation disappears")
 
         partnerRow.tap()
