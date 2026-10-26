@@ -792,15 +792,23 @@ struct ItemEditorView: View {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
-                        .font(.caption)
-                    if draft.allField[index].concealed {
-                        SecureField("Value", text: $draft.allField[index].value)
-                    } else {
-                        TextField("Value", text: $draft.allField[index].value)
-                    }
-                    Toggle("Secret", isOn: $draft.allField[index].concealed)
-                        .font(.caption)
+                    HStack {
+                        if draft.allField[index].concealed {
+                            SecureField("Value", text: $draft.allField[index].value)
+                        } else {
+                            TextField("Value", text: $draft.allField[index].value)
+                        }
+                        Button {
+                            draft.allField[index].concealed.toggle()
+                        } label: {
+                            Image(systemName: draft.allField[index].concealed ? "eye.slash" : "eye")
+                                .iconButtonHitArea()
+                        }
+                        .buttonStyle(.borderless)
                         .foregroundStyle(.themeSecondary)
+                        .accessibilityLabel("Secret")
+                        .accessibilityAddTraits(draft.allField[index].concealed ? .isSelected : [])
+                    }
                 }
             }
             .onDelete { draft.allField.remove(atOffsets: $0) }
