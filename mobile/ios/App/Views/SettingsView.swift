@@ -23,6 +23,8 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isSignOutConfirmationShown = false
     @State private var isAutoFillEnabled = false
+    /// The Settings screens pushed, of several value types (organizations and their members push their own).
+    @State private var path = NavigationPath()
 
     static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
     static let biometrySystemImage = biometryName == "Touch ID" ? "touchid" : "faceid"
@@ -39,7 +41,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     NavigationLink(value: SettingsDestination.account) {
@@ -181,6 +183,12 @@ struct SettingsView: View {
             .task {
                 isAutoFillEnabled = await AutoFillSettings.checkIsEnabled()
                 await model.refreshReceivedInvitationCount()
+            }
+            .onReceive(model.$requestedSettingsDestination) { destination in
+                guard let destination else { return }
+                model.requestedSettingsDestination = nil
+                // The new Secret Key is shown only once, so its screen stays until Done.
+                if !model.isNewSecretKeyShown { path = NavigationPath([destination]) }
             }
         }
     }

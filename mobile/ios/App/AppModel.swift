@@ -42,6 +42,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var isApprovalPasswordRequired = false
     @Published var approvalErrorMessage: String?
     @Published var selectedTab: Tab = .vaults
+    /// requestedSettingsDestination is a Settings screen something outside the tab asks it to show, Devices for a tapped
+    /// security alert; the Settings tab shows it and clears it.
+    @Published var requestedSettingsDestination: SettingsDestination?
+    /// isNewSecretKeyShown is true while Settings shows a replaced Secret Key, which shows only once.
+    private(set) var isNewSecretKeyShown = false
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
     @Published private(set) var isWebsiteIconsEnabled = true
@@ -400,12 +405,14 @@ final class AppModel: ObservableObject {
     }
 
     /// showNotification opens what a tapped notification is about, once Hisar is unlocked: the Approvals tab for an
-    /// approval, Settings for a security alert or a sharing invitation.
+    /// approval, Settings → Devices for a security alert, where a device that just signed in shows, and Settings for a
+    /// sharing invitation.
     func showNotification(_ kind: PushKind) {
         guard status.isUnlocked else { return }
         notifications.openedKind = nil
         selectedTab = kind == .approval ? .approvals : .settings
         if kind == .approval { Task { await refreshPendingApproval() } }
+        if kind == .security { requestedSettingsDestination = .devices }
     }
 
     func handleWillEnterForeground() {
@@ -1280,11 +1287,13 @@ final class AppModel: ObservableObject {
             errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
             return result
         }
+        isNewSecretKeyShown = true
         applyStatus(result.status)
         return result
     }
 
     func finishSecretKeyReplacement(_ result: CredentialChangeResult) {
+        isNewSecretKeyShown = false
         removeEmergencyKitFile(path: result.emergencyKitPath)
         guard let backend else { return }
         Task { try? await runInBackground { backend.forgetNewAccountSecretKey() } }

@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.HisarApplication
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.AccountLifecycleLogic
 import com.tryhisar.hisar.model.CredentialChangeResult
