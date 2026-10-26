@@ -173,7 +173,7 @@ describe("Organization invitations", () => {
 });
 
 describe("Organization screen", () => {
-  it("lists members with security codes, teams and the vaults this Mac can't open", async () => {
+  it("expands security codes from member menus and separates members, teams and invitations", async () => {
     api.getOrganization.mockResolvedValue(
       createOrganizationDetail({
         members: [createOrganizationMember(), createOrganizationMember({ ...testBob, role: "member", isKeyChanged: true })],
@@ -183,34 +183,129 @@ describe("Organization screen", () => {
     const settings = await openOrganizationInSettings();
     expect(api.getOrganization).toHaveBeenCalledWith("acme");
     const bob = settings.find('[data-testid="organization-member-BOB222"]');
+    expect(settings.find('[data-testid="organization-segment-members"]').attributes("aria-selected")).toBe("true");
+    expect(settings.find('[data-testid="organization-teams"]').isVisible()).toBe(false);
+    expect(settings.find('[data-testid="organization-invite"]').isVisible()).toBe(false);
+    expect(bob.find('[data-testid="organization-member-security-code"]').exists()).toBe(false);
+    await bob.find('[data-testid="organization-member-menu-BOB222"]').trigger("click");
+    await settings.find('[data-testid="context-menu-organization-security-code"]').trigger("click");
     expect(bob.find('[data-testid="organization-member-security-code"]').text()).toBe(testBob.securityCode);
     expect(bob.find('[data-testid="organization-member-key-changed"]').exists()).toBe(true);
+    await bob.find('[data-testid="organization-member-menu-BOB222"]').trigger("click");
+    expect(settings.find('[data-testid="context-menu-organization-security-code"]').text()).toBe("Hide security code");
+    await settings.find('[data-testid="context-menu-organization-security-code"]').trigger("click");
+    expect(bob.find('[data-testid="organization-member-security-code"]').exists()).toBe(false);
+    await settings.find('[data-testid="organization-segment-teams"]').trigger("click");
+    expect(settings.find('[data-testid="organization-members"]').isVisible()).toBe(false);
+    expect(settings.find('[data-testid="organization-teams"]').isVisible()).toBe(true);
     const allVaultName = settings.findAll('[data-testid="team-platform"] [data-testid="team-vault-name"]').map((name) => name.text());
     expect(allVaultName).toEqual(["Deploy", "A vault you can't open"]);
+    await settings.find('[data-testid="organization-segment-invitations"]').trigger("click");
+    expect(settings.find('[data-testid="organization-invite"]').isVisible()).toBe(true);
+    expect(settings.find('[data-testid="organization-no-invitations"]').text()).toBe("No pending invitations.");
     settings.unmount();
   });
 
   it("gives admins the admin actions and hides them from members", async () => {
     const admin = await openOrganizationInSettings();
-    for (const testID of ["organization-invite", "rename-organization", "delete-organization", "new-team", "rename-team-platform", "delete-team-platform", "toggle-organization-role-BOB222", "remove-organization-member-BOB222", "remove-team-member-platform-BOB222", "take-back-platform-deploy"]) {
-      expect(admin.find(`[data-testid="${testID}"]`).exists(), testID).toBe(true);
+    for (const testID of ["rename-organization", "delete-organization"]) {
+      expect(admin.find(`[data-testid="${testID}"]`).isVisible(), testID).toBe(true);
     }
+    await admin.find('[data-testid="organization-member-menu-BOB222"]').trigger("click");
+    expect(admin.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Show security code", "Make admin", "Remove from Acme…"]);
+    await admin.find('[data-testid="context-menu-organization-role"]').trigger("click");
+    await flushPromises();
+    expect(api.setOrganizationMemberRole).toHaveBeenCalledWith("acme", "BOB222", "admin");
+    await admin.find('[data-testid="organization-member-menu-ALICE1"]').trigger("click");
+    expect(admin.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Show security code", "Make member"]);
+    await admin.find('[data-testid="context-menu-organization-security-code"]').trigger("keydown", { key: "Escape" });
+    expect(admin.find('[data-testid="context-menu"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(admin.find('[data-testid="organization-member-menu-ALICE1"]').element);
+    await admin.find('[data-testid="organization-segment-teams"]').trigger("click");
+    for (const testID of ["new-team", "remove-team-member-platform-BOB222", "take-back-platform-deploy"]) {
+      expect(admin.find(`[data-testid="${testID}"]`).isVisible(), testID).toBe(true);
+    }
+    await admin.find('[data-testid="organization-team-menu-platform"]').trigger("click");
+    expect(admin.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Rename…", "Give a vault…", "Delete team…"]);
+    await admin.find('[data-testid="context-menu-rename-team"]').trigger("click");
+    expect(admin.find('[data-testid="organization-dialog-rename-team"]').isVisible()).toBe(true);
+    await admin.find('[data-testid="organization-dialog-rename-team"] button.ghost').trigger("click");
+    await admin.find('[data-testid="organization-team-menu-platform"]').trigger("click");
+    await admin.find('[data-testid="context-menu-delete-team"]').trigger("click");
+    expect(admin.find('[data-testid="organization-dialog-delete-team"]').isVisible()).toBe(true);
+    await admin.find('[data-testid="organization-dialog-delete-team"] button.ghost').trigger("click");
+    await admin.find('[data-testid="organization-segment-invitations"]').trigger("click");
+    expect(admin.find('[data-testid="organization-invite"]').isVisible()).toBe(true);
     admin.unmount();
 
     resetStore();
     api.getOrganization.mockResolvedValue(createOrganizationDetail({ role: "member", isAdmin: false, members: [createOrganizationMember({ role: "member" }), createOrganizationMember({ ...testBob, role: "admin" })] }));
     const member = await openOrganizationInSettings();
     expect(member.find('[data-testid="organization-name"]').text()).toBe("Acme");
-    for (const testID of ["organization-invite", "rename-organization", "delete-organization", "new-team", "rename-team-platform", "delete-team-platform", "toggle-organization-role-BOB222", "remove-organization-member-BOB222", "remove-team-member-platform-BOB222", "take-back-platform-deploy", "give-vault-platform"]) {
+    await member.find('[data-testid="organization-member-menu-BOB222"]').trigger("click");
+    expect(member.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Show security code"]);
+    await member.find('[data-testid="context-menu-organization-security-code"]').trigger("click");
+    expect(member.find('[data-testid="organization-member-BOB222"] [data-testid="organization-member-security-code"]').text()).toBe(testBob.securityCode);
+    expect(member.find('[data-testid="leave-organization"]').text()).toBe("Leave Acme…");
+    await member.find('[data-testid="organization-segment-teams"]').trigger("click");
+    for (const testID of ["rename-organization", "delete-organization", "new-team", "organization-team-menu-platform", "remove-team-member-platform-BOB222", "take-back-platform-deploy"]) {
       expect(member.find(`[data-testid="${testID}"]`).exists(), testID).toBe(false);
     }
-    expect(member.find('[data-testid="leave-organization"]').text()).toBe("Leave Acme…");
-    expect(member.find('[data-testid="organization-member-BOB222"] [data-testid="organization-member-security-code"]').exists()).toBe(true);
+    await member.find('[data-testid="organization-segment-invitations"]').trigger("click");
+    expect(member.find('[data-testid="organization-invite"]').exists()).toBe(false);
+    expect(member.find('[data-testid="organization-no-invitations"]').isVisible()).toBe(true);
     member.unmount();
+  });
+
+  it("keeps adding members and giving vaults reachable in a team's menu", async () => {
+    api.getOrganization.mockResolvedValue(createOrganizationDetail({ teams: [createOrganizationTeam(), createOrganizationTeam({ id: "ops", name: "Ops", members: [], vaults: [] })] }));
+    const settings = await openOrganizationInSettings();
+    await settings.find('[data-testid="organization-segment-teams"]').trigger("click");
+    await settings.find('[data-testid="organization-team-menu-ops"]').trigger("click");
+    expect(settings.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Rename…", "Add member", "Give a vault…", "Delete team…"]);
+    await settings.find('[data-testid="context-menu-add-team-member"]').trigger("click");
+    await settings.find('[data-testid="team-add-member-select"]').setValue("BOB222");
+    await settings.find('[data-testid="team-add-member-form"]').trigger("submit");
+    await flushPromises();
+    expect(api.addTeamMember).toHaveBeenCalledWith("acme", "ops", "BOB222");
+    await settings.find('[data-testid="organization-team-menu-ops"]').trigger("click");
+    await settings.find('[data-testid="context-menu-give-vault"]').trigger("click");
+    await settings.find('[data-testid="organization-dialog-role"]').setValue("reader");
+    await settings.find('[data-testid="organization-dialog-give-vault"] form').trigger("submit");
+    await flushPromises();
+    expect(api.giveVaultToTeam).toHaveBeenCalledWith("acme", "ops", "deploy", "reader");
+    settings.unmount();
+  });
+
+  it("supports keyboard navigation between organization segments", async () => {
+    const settings = await openOrganizationInSettings();
+    await settings.find('[data-testid="organization-segment-members"]').trigger("keydown", { key: "ArrowRight" });
+    expect(settings.find('[data-testid="organization-segment-teams"]').attributes("aria-selected")).toBe("true");
+    expect(document.activeElement).toBe(settings.find('[data-testid="organization-segment-teams"]').element);
+    await settings.find('[data-testid="organization-segment-teams"]').trigger("keydown", { key: "End" });
+    expect(settings.find('[data-testid="organization-segment-invitations"]').attributes("aria-selected")).toBe("true");
+    await settings.find('[data-testid="organization-segment-invitations"]').trigger("keydown", { key: "Home" });
+    expect(settings.find('[data-testid="organization-segment-members"]').attributes("aria-selected")).toBe("true");
+    await settings.find('[data-testid="organization-segment-members"]').trigger("keydown", { key: "ArrowLeft" });
+    expect(settings.find('[data-testid="organization-segment-invitations"]').attributes("aria-selected")).toBe("true");
+    settings.unmount();
+  });
+
+  it("cancels a sent invitation after confirmation in Invitations", async () => {
+    api.getOrganization.mockResolvedValue(createOrganizationDetail({ invitations: [{ id: "dave", email: "dave@example.com", role: "member", createdAt: "2026-10-21T09:00:00Z", expiresAt: "2026-10-28T09:00:00Z" }] }));
+    const settings = await openOrganizationInSettings();
+    await settings.find('[data-testid="organization-segment-invitations"]').trigger("click");
+    await settings.find('[data-testid="cancel-organization-invitation-dave"]').trigger("click");
+    expect(api.cancelOrganizationInvitation).not.toHaveBeenCalled();
+    await settings.find('[data-testid="confirm-cancel-organization-invitation"]').trigger("click");
+    await flushPromises();
+    expect(api.cancelOrganizationInvitation).toHaveBeenCalledWith("acme", "dave");
+    settings.unmount();
   });
 
   it("invites by email with a role and says the same for every address", async () => {
     const settings = await openOrganizationInSettings();
+    await settings.find('[data-testid="organization-segment-invitations"]').trigger("click");
     await settings.find('[data-testid="organization-invite-email"]').setValue("dave@example.com");
     await settings.find('[data-testid="organization-invite-role"]').setValue("admin");
     await settings.find('[data-testid="organization-invite"] form').trigger("submit");
@@ -222,7 +317,8 @@ describe("Organization screen", () => {
 
   it("names what goes before removing someone from the organization", async () => {
     const settings = await openOrganizationInSettings();
-    await settings.find('[data-testid="remove-organization-member-BOB222"]').trigger("click");
+    await settings.find('[data-testid="organization-member-menu-BOB222"]').trigger("click");
+    await settings.find('[data-testid="context-menu-remove-organization-member"]').trigger("click");
     const dialog = settings.find('[data-testid="organization-dialog-remove-member"]');
     expect(dialog.text()).toContain("Bob Stone loses the vaults they have through Acme's teams.");
     expect(dialog.find('[data-testid="organization-dialog-vaults"]').text()).toContain("Deploy");
@@ -255,6 +351,7 @@ describe("Organization screen", () => {
 
   it("refreshes the open organization when the app reports a remote change", async () => {
     const settings = await openOrganizationInSettings();
+    await settings.find('[data-testid="organization-segment-teams"]').trigger("click");
     store.isSettingsOpen = true;
     expect(settings.find('[data-testid="team-member-platform-CAROL3"]').exists()).toBe(false);
 
