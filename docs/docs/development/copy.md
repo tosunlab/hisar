@@ -107,7 +107,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | SSH agent, Use Hisar for SSH | key agent |
 | Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
 | Approve, Deny | Allow, Reject |
-| "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet only) | Repeating it in cards, the Approvals tab or Settings |
+| "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 
 ## Invites and updates
@@ -184,7 +184,7 @@ The Android app uses the iPhone's copy with these changes. Shared sentences from
 | biometrics, biometric unlock ("Unlock with biometrics", "Approve with biometrics", "Biometric unlock is on", "Biometrics are not available, so Hisar checks your master password instead.") | Face ID, Touch ID, fingerprint | Lock screen, the offer after the new Secret Key, Settings → Security, the approval sheet, export |
 | "\<Field> copied. It clears in about 2 minutes." · "Hisar locks after this long without activity. Copied values are cleared after about 2 minutes." · "One-time code copied. It clears in about 2 minutes." | "It clears in 90 seconds.", "…cleared after 90 seconds." (the iPhone's copy) | Copy notices, Settings → Security footer, AutoFill. Android's clear alarm is inexact: measured on emulators, it lands 90 to about 160 seconds after the copy ([Design](../design.md) §9.3), so the copy never promises 90 seconds |
 | Approve requests on my smart device (the Mac's setting; see Developer tools) | Approve requests on my iPhone | Mac Settings → SSH & Git |
-| Save Emergency Kit · Print Emergency Kit · Share Emergency Kit · Save Export · Share Export · Emergency Kit saved · Export saved | Save or print Emergency Kit, Save or share export | Settings; Android saves through the system's file creator, prints through its print dialog and shares through its share sheet |
+| Save Emergency Kit · Print Emergency Kit · Share Emergency Kit · Save export · Share export · Emergency Kit saved · Open · Export saved | Save or print Emergency Kit, Save or share export | Settings; Android saves through the system's file creator, offers Open for a saved Emergency Kit, prints through its print dialog and shares through its share sheet |
 | Open Settings (Settings → AutoFill before API 34, which opens the Settings app) | Open AutoFill & Passwords | Settings → AutoFill |
 | Allow screenshots · "Off, screenshots, screen recordings and the app switcher show nothing of Hisar." | Block screenshots, Secure mode | Settings → Security (Android only) |
 | Unlock Hisar · Sign in to Hisar · Search Hisar · "Fill a login for \<site>" · Always use for this app, Only this time · Turn on Hisar AutoFill | Unlock vault, Log in, Remember this app | AutoFill suggestions, the AutoFill screen, Settings → AutoFill |
@@ -194,6 +194,6 @@ The Android app uses the iPhone's copy with these changes. Shared sentences from
 
 - Plain sentences: no exclamation marks, no comma splices, and only claims the code keeps ("private keys never leave Hisar"; the command-line tool reads passwords and one-time codes but never private keys).
 - Developer features lead; sharing with other people is described as person-to-person, never as family sharing.
-- Sentence case for buttons, labels and menu items ("Copy one-time code"), title case only for product names (Secret Key, Emergency Kit, Touch ID).
+- Sentence case for buttons, labels and menu items ("Copy one-time code"), title case only for product names (Secret Key, Emergency Kit, Touch ID). Generated action labels preserve user-authored custom field names and acronyms.
 - An ellipsis (…) on an action that opens more input; "…" while busy ("Signing in…").
 - Settings paths in prose: Settings, Security (in a sentence) or Settings → Security (in docs).
