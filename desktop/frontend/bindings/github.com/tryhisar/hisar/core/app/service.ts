@@ -815,8 +815,20 @@ export function SignOut(): $CancellablePromise<$models.Status> {
     return $Call.ByID(2100968612);
 }
 
+/**
+ * SignUp creates an account with an invite: a code for the default server, or a pasted invite link, which names its
+ * own server.
+ */
 export function SignUp(invite: string, email: string, name: string, password: string): $CancellablePromise<$models.SignUpResult> {
     return $Call.ByID(995975149, invite, email, name, password);
+}
+
+/**
+ * SignUpWithoutInvite creates an account on a server whose admin opened registration. The server answers
+ * apitypes.RegistrationClosedMessage when it did not.
+ */
+export function SignUpWithoutInvite(server: string, email: string, name: string, password: string): $CancellablePromise<$models.SignUpResult> {
+    return $Call.ByID(4279417622, server, email, name, password);
 }
 
 /**

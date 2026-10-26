@@ -79,6 +79,10 @@ final class HisarKitBackend: VaultBackend {
         try decode(SignUpResult.self, from: callReturningText { hisar.signUp(inviteLink, email: email, name: name, password: password, error: $0) })
     }
 
+    func signUpWithoutInvite(server: String, email: String, name: String, password: String) throws -> SignUpResult {
+        try decode(SignUpResult.self, from: callReturningText { hisar.signUpWithoutInvite(server, email: email, name: name, password: password, error: $0) })
+    }
+
     func unlock(password: String) throws -> VaultStatus {
         try decode(VaultStatus.self, from: callReturningText { hisar.unlock(password, error: $0) })
     }

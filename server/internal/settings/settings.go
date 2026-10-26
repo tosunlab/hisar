@@ -23,8 +23,11 @@ import (
 type Settings struct {
 	SMTP            SMTP            `json:"smtp"`
 	MinimumVersions MinimumVersions `json:"minimumVersions"`
-	InvitePolicy    InvitePolicy    `json:"invitePolicy"`
-	SessionLifetime Days            `json:"sessionLifetimeDays"`
+	// OpenRegistration lets anyone who knows the server's address sign up without an invitation. Off, sign-up needs
+	// an invite.
+	OpenRegistration bool         `json:"openRegistration"`
+	InvitePolicy     InvitePolicy `json:"invitePolicy"`
+	SessionLifetime  Days         `json:"sessionLifetimeDays"`
 	// AuthBurst is how many sign-in requests one IP address may make before it is limited to one every 6 seconds.
 	AuthBurst int       `json:"authBurst"`
 	Retention Retention `json:"retention"`
@@ -235,6 +238,7 @@ func ListFields() []Field {
 		{Name: "smtp.username", Environment: "HISAR_SMTP_USERNAME"},
 		{Name: "smtp.password", Environment: "HISAR_SMTP_PASSWORD", IsSecret: true},
 		{Name: "smtp.from", Environment: "HISAR_SMTP_FROM"},
+		{Name: "openRegistration", Environment: "HISAR_OPEN_REGISTRATION"},
 		{Name: "invitePolicy"},
 		{Name: "minimumVersions.desktopMacOS", Environment: "HISAR_MINIMUM_VERSION_DESKTOP_MACOS"},
 		{Name: "minimumVersions.iOS", Environment: "HISAR_MINIMUM_VERSION_IOS"},
@@ -342,14 +346,21 @@ func readEnvironmentText(field Field, environment Environment) string {
 }
 
 func parseEnvironmentValue(field Field, defaultValue any, text string) (any, error) {
-	if _, isNumber := defaultValue.(json.Number); !isNumber {
-		return text, nil
+	switch defaultValue.(type) {
+	case json.Number:
+		number, err := strconv.Atoi(text)
+		if err != nil {
+			return nil, fmt.Errorf("%s must be a whole number", field.Environment)
+		}
+		return number, nil
+	case bool:
+		isSet, err := strconv.ParseBool(text)
+		if err != nil {
+			return nil, fmt.Errorf("%s must be true or false", field.Environment)
+		}
+		return isSet, nil
 	}
-	number, err := strconv.Atoi(text)
-	if err != nil {
-		return nil, fmt.Errorf("%s must be a whole number", field.Environment)
-	}
-	return number, nil
+	return text, nil
 }
 
 // Apply sets the changed fields in a stored document and returns the new document. A change names a field from
@@ -425,6 +436,10 @@ func checkValueType(name string, defaultValue, value any) error {
 	case string:
 		if _, isString := value.(string); !isString {
 			return fmt.Errorf("%s must be text.", name)
+		}
+	case bool:
+		if _, isBool := value.(bool); !isBool {
+			return fmt.Errorf("%s must be true or false.", name)
 		}
 	}
 	return nil

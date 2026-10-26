@@ -143,6 +143,9 @@ class HisarKitBackend(
     override fun signUp(inviteLink: String, email: String, name: String, password: String): SignUpResult =
         decode(SignUpResult.serializer(), call { signUp(inviteLink, email, name, password) })
 
+    override fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult =
+        decode(SignUpResult.serializer(), call { signUpWithoutInvite(server, email, name, password) })
+
     override fun unlock(password: String): VaultStatus = decode(VaultStatus.serializer(), call { unlock(password) })
 
     override fun unlockWithBiometric(): VaultStatus = decode(VaultStatus.serializer(), call { unlockWithBiometric() })

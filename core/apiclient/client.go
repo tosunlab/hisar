@@ -63,6 +63,10 @@ func (e *APIError) Error() string { return fmt.Sprintf("server: %s (%d)", e.Mess
 // not an APIError, so no check for a plain 403 mistakes it for another refusal, and the device keeps its session.
 var ErrAccountSuspended = errors.New(apitypes.AccountSuspendedMessage)
 
+// ErrSignUpClosed is the server's 403 with apitypes.RegistrationClosedMessage: a sign-up without an invite on a server
+// whose admin has not opened registration. The sentence is the one to show.
+var ErrSignUpClosed = errors.New(apitypes.RegistrationClosedMessage)
+
 // ErrInsecureRedirect is a redirect from https to plain http, which would expose the bearer and the traffic.
 var ErrInsecureRedirect = errors.New("the server redirected from https to an unencrypted http address")
 
@@ -83,6 +87,9 @@ func readError(status int, data []byte) error {
 	}
 	if status == http.StatusForbidden && errorBody.Error == apitypes.AccountSuspendedMessage {
 		return ErrAccountSuspended
+	}
+	if status == http.StatusForbidden && errorBody.Error == apitypes.RegistrationClosedMessage {
+		return ErrSignUpClosed
 	}
 	if status == http.StatusInsufficientStorage {
 		return &ResourceBudgetError{Message: errorBody.Error}

@@ -78,6 +78,10 @@ class FakeBackend: VaultBackend {
     var pendingRecoverySecretKey = FakeBackend.secretKey
     var isPendingRecoveryFactorAvailable = true
     var pendingSignUpResult: SignUpResult?
+    /// The server signUpWithoutInvite was last asked to create an account on; nil until it is called.
+    var signUpWithoutInviteServer: String?
+    /// While set, signUpWithoutInvite fails with this sentence: the server's admin has not opened registration.
+    var signUpWithoutInviteErrorMessage: String?
     var pendingCredentialChangeResult: CredentialChangeResult?
     /// The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence.
     var allOrganization: [Organization] = []
@@ -316,6 +320,19 @@ class FakeBackend: VaultBackend {
         if let pendingSignUpResult { return pendingSignUpResult }
         seedSignedIn()
         allItemByVaultID = ["personal": [], "family": []]
+        status.email = email
+        status.name = name
+        return SignUpResult(status: status, secretKey: Self.secretKey)
+    }
+
+    func signUpWithoutInvite(server: String, email: String, name: String, password: String) throws -> SignUpResult {
+        record("signUpWithoutInvite")
+        signUpWithoutInviteServer = server
+        if let signUpWithoutInviteErrorMessage { throw BackendError(message: signUpWithoutInviteErrorMessage) }
+        if let pendingSignUpResult { return pendingSignUpResult }
+        seedSignedIn()
+        allItemByVaultID = ["personal": [], "family": []]
+        status.server = server
         status.email = email
         status.name = name
         return SignUpResult(status: status, secretKey: Self.secretKey)

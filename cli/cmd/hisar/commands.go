@@ -13,6 +13,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/app"
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/invitelink"
 	"github.com/tryhisar/hisar/core/item"
@@ -79,25 +80,36 @@ func finishSession(currentState *localstate.State, currentSession *session.Sessi
 	return err
 }
 
+// runSignup creates an account from an invite link, or without one on a server whose admin opened registration: the
+// server from -server, or asked for when neither is given.
 func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	outputPath := flags.String("o", "Hisar Emergency Kit.pdf", "where to save the new Emergency Kit PDF")
 	isYes := flags.Bool("y", false, "acknowledge the saved Emergency Kit and finish setup without another prompt")
+	server := flags.String("server", "", "the server to sign up on without an invite, when its admin opened registration")
 	positionals, err := parse(flags, args)
 	if err != nil {
 		return err
 	}
-	if len(positionals) != 1 {
+	if len(positionals) > 1 || (len(positionals) == 1 && *server != "") {
 		return errUsage
 	}
-	_, _, err = parseInvite(positionals[0])
-	if err != nil {
-		return err
+	invite := ""
+	if len(positionals) == 1 {
+		invite = positionals[0]
+		if _, _, err := parseInvite(invite); err != nil {
+			return err
+		}
 	}
 	// Before anything reaches the server: inside an agent harness loadState refuses, and an account created first
 	// would be lost with its Secret Key.
-	_, err = loadState()
+	currentState, err := loadState()
 	if err != nil {
 		return err
+	}
+	if invite == "" && *server == "" {
+		if *server, err = promptRequired("Server", getFirstNonEmpty(currentState.Server, defaultServer)); err != nil {
+			return err
+		}
 	}
 	// With a keychain the account is registered before its kit is written, so a taken kit path is refused first.
 	if err := refuseExistingOutput(*outputPath); err != nil {
@@ -123,7 +135,12 @@ func runSignup(ctx context.Context, flags *flag.FlagSet, args []string) error {
 	if err != nil {
 		return err
 	}
-	result, err := service.SignUp(positionals[0], email, name, string(password))
+	var result app.SignUpResult
+	if invite != "" {
+		result, err = service.SignUp(invite, email, name, string(password))
+	} else {
+		result, err = service.SignUpWithoutInvite(*server, email, name, string(password))
+	}
 	if err != nil {
 		return err
 	}

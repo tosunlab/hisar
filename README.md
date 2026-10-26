@@ -59,7 +59,7 @@ Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/release
 | **Command-line tool** (Windows, servers, without the app) | The standalone `hisar-<version>-<os>-<arch>` archive from a `cli-<version>` release; see [Command-line tool](docs/docs/apps/cli.md). |
 | **Server** | `ghcr.io/tosunlab/hisar-server:<version>` for linux/amd64 and linux/arm64, run with Docker Compose behind your own TLS: [Self-hosting](docs/docs/self-hosting.md). |
 
-Sign-up is invite-only: an existing user invites you by email, or you run your own server and invite yourself from its admin dashboard.
+Sign-up needs an invite unless the server's admin opens registration: an existing user invites you by email, or you run your own server and invite yourself from its admin dashboard, or let anyone sign up under Settings → Sign-up.
 
 ### Desktop app on Linux
 

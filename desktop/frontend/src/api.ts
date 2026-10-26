@@ -336,6 +336,8 @@ const wailsApi = {
     Service.SignIn(server, email, secretKey, password),
   signUp: (invite: string, email: string, name: string, password: string): Promise<SignUpResult> =>
     Service.SignUp(invite, email, name, password),
+  signUpWithoutInvite: (server: string, email: string, name: string, password: string): Promise<SignUpResult> =>
+    Service.SignUpWithoutInvite(server, email, name, password),
   unlock: (password: string): Promise<Status> => Service.Unlock(password),
   lock: (): Promise<Status> => Service.Lock(),
   signOut: (): Promise<Status> => Service.SignOut(),
