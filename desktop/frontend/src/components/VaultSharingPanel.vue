@@ -126,7 +126,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <div class="sharing-heading">
           <h2 id="sharing-title">Share “{{ vault?.name }}”</h2>
           <p v-if="organizationID" class="muted" data-testid="sharing-organization">Shared through teams in {{ organizationName }}</p>
-          <p v-else class="muted">{{ memberCountText }} · Everyone here can open the items in this vault</p>
+          <p v-else class="muted" data-testid="sharing-member-count">{{ memberCountText }}</p>
         </div>
         <button class="ghost icon-button" aria-label="Close sharing" @click="closeSharing"><AppIcon name="close" /></button>
       </header>
@@ -321,10 +321,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
               </select>
               <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Share</button>
             </div>
-            <p class="muted hint">
-              Shares this vault. They get an email and accept in Hisar; without an account, the email lets them create one first. Your Hisar then
-              shares the vault key with them.
-            </p>
+            <p class="muted hint">They get an email and accept in Hisar; without an account they create one first.</p>
           </form>
         </template>
         <p v-else class="read-only-note" data-testid="sharing-read-only">

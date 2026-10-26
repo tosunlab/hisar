@@ -89,7 +89,7 @@ describe("Vault sharing panel", () => {
     expect(api.listAllVaultMember).toHaveBeenCalledWith("family");
     const panel = wrapper.find('[data-testid="vault-sharing-panel"]');
     expect(panel.text()).toContain("Share “Family”");
-    expect(panel.text()).toContain("2 members");
+    expect(panel.find('[data-testid="sharing-member-count"]').text()).toBe("2 members");
 
     const own = panel.find('[data-testid="vault-member-ALICE1"]');
     expect(own.text()).toContain("you");
@@ -107,6 +107,9 @@ describe("Vault sharing panel", () => {
     }
     expect(panel.text()).not.toContain("Readers view items");
     expect(panel.text()).not.toContain("Editors can add and change items");
+    store.allVaultMember = [store.allVaultMember[0]!];
+    await flushPromises();
+    expect(panel.find('[data-testid="sharing-member-count"]').text()).toBe("1 member");
     wrapper.unmount();
   });
 
@@ -119,7 +122,7 @@ describe("Vault sharing panel", () => {
     expect(sendButton.attributes("disabled")).toBeDefined();
     expect(sendButton.text()).toBe("Share");
     expect(wrapper.find('[data-testid="add-member"]').text()).toContain("Invite by email");
-    expect(wrapper.find('[data-testid="add-member"]').text()).toContain("Shares this vault.");
+    expect(wrapper.find('[data-testid="add-member"] .hint').text()).toBe("They get an email and accept in Hisar; without an account they create one first.");
 
     await wrapper.find('[data-testid="new-member-email"]').setValue("carol@example.com");
     await wrapper.find('[data-testid="new-member-role"]').setValue("reader");
