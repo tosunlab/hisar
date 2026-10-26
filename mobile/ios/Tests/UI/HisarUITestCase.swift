@@ -29,7 +29,8 @@ class HisarUITestCase: XCTestCase {
         guard let directory = ProcessInfo.processInfo.environment["HISAR_UI_TEST_SCREENSHOT_DIRECTORY"], !directory.isEmpty else {
             return
         }
-        let screenshot = XCUIScreen.main.screenshot()
+        // The app's own window: the main screen of an open iPhone Duo is its dark outer display.
+        let screenshot = app.screenshot()
         let attachment = XCTAttachment(screenshot: screenshot)
         attachment.name = name
         attachment.lifetime = .keepAlways

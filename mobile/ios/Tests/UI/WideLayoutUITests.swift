@@ -41,10 +41,11 @@ final class WideLayoutUITests: HisarUITestCase {
         if !isWide {
             goBack()
         }
-        let closeSearchButton = app.buttons["Close"].exists ? app.buttons["Close"] : app.buttons["Cancel"]
-        if closeSearchButton.firstMatch.exists {
-            closeSearchButton.firstMatch.tap()
-        }
+        // The search stays active after the result closes, and the tab bar is under it until the search is dismissed; its
+        // Close (or Cancel) button comes back with the field.
+        let closeSearchButton = app.buttons["Close"].waitForExistence(timeout: 5) ? app.buttons["Close"] : app.buttons["Cancel"]
+        waitForHittable(closeSearchButton.firstMatch)
+        closeSearchButton.firstMatch.tap()
 
         openSettings("open-security")
         waitFor(app.navigationBars["Security"])

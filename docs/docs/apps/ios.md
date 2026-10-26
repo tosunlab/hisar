@@ -46,6 +46,10 @@ stack every other iPhone shows. The system does the rest: sheets center on the i
 the side next to the camera on the outer display, and sheets, alerts and menus keep away from the fold. Nothing reads
 `UIScreen.main`, which is ambiguous on two displays.
 
+![The open iPhone Duo in landscape: the Vaults list on the left, the GitHub login on the right, the toolbar buttons and the tabs in a column beside the camera.](/img/iphone-duo/vaults-and-item.png)
+
+![Settings beside its Security screen on the open iPhone Duo.](/img/iphone-duo/settings-and-security.png)
+
 The whole inner display is only used by a build with the iOS 27.1 SDK (Xcode 27.1); an older build runs letterboxed.
 CI builds and tests the app on the `xcode-27` runner image for that reason, while the Mac app stays on `macos-26`. To try
 a layout, run the app on the iPhone Duo simulator (Xcode 27.1 with the iOS 27.1 runtime: `xcodebuild -downloadPlatform iOS`)

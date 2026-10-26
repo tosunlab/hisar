@@ -6,13 +6,14 @@
 # The seconds are each class's median on GitHub's runners, measured on 2026-10-23:
 # - iOS (macos-26): the "Test Suite '<class>' passed ... in N (M) seconds" lines, M, of the 14 green "iPhone UI tests" jobs of
 #   macOS and iOS runs 39851893409, 39871406706, 39874975576, 39899514473, 39902774426, 39905934704 and 39909260176.
+#   WideLayoutUITests: one run on a Mac's iPhone 17 Pro simulator on 2026-10-27 (118 s), until CI has run it.
 # - Android (ubuntu-latest, API 36 emulator): the testcase times in the JUnit XML of 69 android-reports-<part> artifacts of
 #   48 CI runs from 2026-10-22 and 2026-10-23, passing tests only, the median per test added up per class. Classes under
 #   half a second, and those only API 37 runs, are left out.
 # Measure again when a part grows well past the others.
 IOS_UI_TEST_SECONDS=(
   HisarUITests=417 OrganizationUITests=226 FavoritesUITests=176 SharingUITests=173 AccountLifecycleUITests=143
-  AutoFillUITests=132 PasskeyUITests=109 PhoneApprovalUITests=107 OneTimeCodeUITests=95 FaceIDUITests=83
+  AutoFillUITests=132 WideLayoutUITests=118 PasskeyUITests=109 PhoneApprovalUITests=107 OneTimeCodeUITests=95 FaceIDUITests=83
 )
 # Classes of the package com.tryhisar.hisar.
 ANDROID_UI_TEST_SECONDS=(
