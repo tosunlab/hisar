@@ -59,9 +59,11 @@ final class AccountLifecycleUITests: HisarUITestCase {
         XCTAssertTrue(newSecretKey.hasPrefix("H1-"), newSecretKey)
         saveScreenshot("account-life-new-secret-key\(screenshotSuffix)")
 
-        if app.secureTextFields["unlock-password"].waitForExistence(timeout: 2) {
-            waitFor(app.keyboards.firstMatch)
-            type(Self.newMasterPassword, into: app.secureTextFields["unlock-password"])
+        let passwordField = app.secureTextFields["unlock-password"]
+        if passwordField.waitForExistence(timeout: 2) {
+            expectation(for: NSPredicate(format: "hasKeyboardFocus == true"), evaluatedWith: passwordField)
+            waitForExpectations(timeout: 10)
+            typeText(Self.newMasterPassword, into: passwordField)
             app.buttons["unlock-submit"].tap()
         }
         waitFor(app.buttons["vault-Personal"], timeout: 60)
