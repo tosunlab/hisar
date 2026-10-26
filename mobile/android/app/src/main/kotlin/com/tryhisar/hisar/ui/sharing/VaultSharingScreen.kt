@@ -45,7 +45,7 @@ private const val REMOVAL_EXPLANATION =
     "Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them."
 
 /**
- * A shared vault's sheet from the vault's toolbar: owners invite by email, see who is invited and manage members; others
+ * A shared vault's sheet from the vault's actions menu: owners invite by email, see who is invited and manage members; others
  * see the members. The iPhone's VaultSharingView, with VaultMemberView pushed inside it.
  */
 @Composable
