@@ -140,13 +140,18 @@ describe("SignInView", () => {
     expect(wrapper.text()).not.toMatch(/recover|admin/i);
   });
 
-  it("says at account creation that a forgotten master password can't be recovered", async () => {
+  it("saves the recovery warning for the Secret Key screen", async () => {
     const wrapper = mount(SignInView);
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
-    expect(wrapper.find('[data-testid="create-account-note"]').text()).toBe(
-      "Your master password never leaves this Mac. A forgotten master password can't be recovered by anyone, including Hisar.",
-    );
-    expect(wrapper.text()).not.toMatch(/admin/i);
+    expect(wrapper.text()).toContain("Your master password and a Secret Key you get next. Neither is ever sent to the server.");
+    expect(wrapper.text()).not.toMatch(/can't be recovered|Nobody can reset/);
+    expect(wrapper.find('[data-testid="create-account-note"]').exists()).toBe(false);
+    wrapper.unmount();
+    store.pendingSecretKey = "H1-ABC123-SECRET";
+    const secretKey = mount(SecretKeyView);
+    expect(secretKey.findAll('[data-testid="master-password-warning"]')).toHaveLength(1);
+    expect(secretKey.get('[data-testid="master-password-warning"]').text()).toBe("A forgotten master password can't be recovered by anyone, including Hisar.");
+    secretKey.unmount();
   });
 
   it("hides the server behind a disclosure and signs in to the hosted server by default", async () => {

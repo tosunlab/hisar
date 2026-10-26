@@ -55,10 +55,9 @@ describe("Settings on Linux", () => {
 });
 
 describe("Authentication on Linux", () => {
-  it("names this computer when creating an account", async () => {
+  it("names this computer when signing in", () => {
     const wrapper = mount(SignInView);
-    await wrapper.findAll('[role="tab"]')[1].trigger("click");
-    expect(wrapper.get('[data-testid="create-account-note"]').text()).toContain("Your master password never leaves this computer.");
+    expect(wrapper.text()).toContain("Sign in to Hisar on this computer.");
     wrapper.unmount();
   });
 

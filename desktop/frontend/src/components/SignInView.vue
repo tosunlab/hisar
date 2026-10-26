@@ -71,7 +71,7 @@ const allCreateAccountFeature: Feature[] = [
   {
     icon: "key",
     title: "Two secrets, only yours",
-    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server. Nobody can reset them for you, not even Hisar.",
+    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server.",
   },
   { icon: "note", title: "An Emergency Kit to keep", text: "Print it or store it offline. With it, you can sign in again on any new device." },
 ];
@@ -255,9 +255,6 @@ async function submitCreateAccount(): Promise<void> {
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || passwordFeedback.isBlocking">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
-          <p class="hint muted" data-testid="create-account-note">
-            Your master password never leaves {{ getThisDeviceName() }}. A forgotten master password can't be recovered by anyone, including Hisar.
-          </p>
           <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://api.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://api.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
         </form>
       </div>
