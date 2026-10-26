@@ -5,8 +5,9 @@ final class FavoritesUITests: HisarUITestCase {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_FAVORITES_INVITE_LINK")
         app.launch()
         signUp(inviteLink: inviteLink, email: "ios-favorites@example.com", name: "iOS Favorites")
-        let emptyNote = app.staticTexts["Star an item to keep it here, on all your devices. Only you see your favorites."]
-        waitFor(emptyNote)
+        let favoritesHeader = app.staticTexts["favorites-header"]
+        waitFor(app.buttons["vault-Personal"])
+        XCTAssertFalse(favoritesHeader.exists, "Vaults shows Favorites before anything is starred")
         saveScreenshot("favorites-empty")
 
         addLogin(title: "GitHub", username: "octocat", password: "favorite-github-password", website: "https://github.com")
@@ -45,7 +46,7 @@ final class FavoritesUITests: HisarUITestCase {
         let gitHubFavorite = app.buttons["favorite-GitHub"]
         waitFor(gitHubFavorite)
         waitFor(app.buttons["favorite-AWS Console"])
-        XCTAssertFalse(emptyNote.exists)
+        XCTAssertTrue(favoritesHeader.exists, "Vaults does not show Favorites once items are starred")
         saveScreenshot("favorites-vaults")
 
         revealSwipeActions(of: gitHubFavorite, .left)

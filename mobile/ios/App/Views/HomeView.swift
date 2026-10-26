@@ -115,21 +115,25 @@ struct VaultsView: View {
                 ForEach(grouping.allGroup) { group in
                     organizationVaultSection(group)
                 }
-                if !model.allVault.isEmpty {
+                let allItemReference = model.listAllItemReference()
+                let allCategoryCount = ItemCategoryDestination.allCases
+                    .map { category in (category: category, count: allItemReference.filter { category.includes($0.item) }.count) }
+                    .filter { $0.count > 0 }
+                if !allCategoryCount.isEmpty {
                     Section {
-                        ForEach(ItemCategoryDestination.allCases, id: \.self) { category in
-                            NavigationLink(value: category) {
-                                Label(category.title, systemImage: category.systemImage)
-                                    .badge(model.listAllItemReference().filter { category.includes($0.item) }.count)
+                        ForEach(allCategoryCount, id: \.category) { categoryCount in
+                            NavigationLink(value: categoryCount.category) {
+                                Label(categoryCount.category.title, systemImage: categoryCount.category.systemImage)
+                                    .badge(categoryCount.count)
                             }
-                            .accessibilityIdentifier("category-\(category.rawValue)")
+                            .accessibilityIdentifier("category-\(categoryCount.category.rawValue)")
                         }
                     } header: {
                         Text("By type")
                             .foregroundStyle(.themeSecondary)
                     }
                 }
-                let allTag = VaultLogic.listAllTag(model.listAllItemReference())
+                let allTag = VaultLogic.listAllTag(allItemReference)
                 if !allTag.isEmpty {
                     Section {
                         ForEach(allTag) { tag in
@@ -406,15 +410,9 @@ struct VaultsView: View {
 
     @ViewBuilder
     private var favoriteSection: some View {
-        if !model.allVault.isEmpty {
-            let allFavorite = model.listAllFavoriteReference()
+        let allFavorite = model.listAllFavoriteReference()
+        if !allFavorite.isEmpty {
             Section {
-                if allFavorite.isEmpty {
-                    Label("Star an item to keep it here, on all your devices. Only you see your favorites.", systemImage: "star")
-                        .font(.subheadline)
-                        .foregroundStyle(.themeSecondary)
-                        .accessibilityIdentifier("favorites-empty")
-                }
                 ForEach(allFavorite) { reference in
                     NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                         ItemRow(item: reference.item, vaultName: reference.vaultName)
@@ -427,6 +425,7 @@ struct VaultsView: View {
             } header: {
                 Text("Favorites")
                     .foregroundStyle(.themeSecondary)
+                    .accessibilityIdentifier("favorites-header")
             }
         }
     }
