@@ -41,11 +41,12 @@ final class WideLayoutUITests: HisarUITestCase {
         if !isWide {
             goBack()
         }
-        // The search stays active after the result closes, and the tab bar is under it until the search is dismissed; its
-        // Close (or Cancel) button comes back with the field.
+        // The search stays active after the result closes; its Close (or Cancel) button comes back with the field. In the
+        // Search tab the tab bar is a pill with the Vaults tab alone, so Settings is reached from Vaults.
         let closeSearchButton = app.buttons["Close"].waitForExistence(timeout: 5) ? app.buttons["Close"] : app.buttons["Cancel"]
         waitForHittable(closeSearchButton.firstMatch)
         closeSearchButton.firstMatch.tap()
+        openTab("Vaults")
 
         openSettings("open-security")
         waitFor(app.navigationBars["Security"])
