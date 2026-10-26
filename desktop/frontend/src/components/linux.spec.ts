@@ -83,7 +83,7 @@ describe("Authentication on Linux", () => {
   it("follows the system appearance without naming macOS", async () => {
     const wrapper = mount(AppearanceSection);
     await flushPromises();
-    expect(wrapper.text()).toContain("System switches between light and dark with the system.");
+    expect(wrapper.text()).toContain("Choose System to follow the system's light or dark appearance.");
     expect(wrapper.text()).not.toContain("macOS");
     wrapper.unmount();
   });

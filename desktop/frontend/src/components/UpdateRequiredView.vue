@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { checkMinimumVersion, store, updateNow } from "../store";
-import { getThisDeviceName } from "../util";
+import { capitalizeFirstLetter, getThisDeviceName } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const isChecking = ref(false);
@@ -23,7 +23,7 @@ async function checkAgain(): Promise<void> {
         <span class="update-icon"><AppIcon name="refresh" :size="28" /></span>
         <h1 id="update-required-title">Update required</h1>
         <p class="subtitle" data-testid="update-required-versions">
-          This server needs Hisar {{ requirement?.minimumVersion }} or later. {{ getThisDeviceName().replace(/^this/, "This") }} has {{ currentVersion }}.
+          This server needs Hisar {{ requirement?.minimumVersion }} or later. {{ capitalizeFirstLetter(getThisDeviceName()) }} has {{ currentVersion }}.
         </p>
         <p class="subtitle">
           Until Hisar is updated, the SSH agent, the hisar command-line tool and the browser extension answer with "Hisar needs an update". Your

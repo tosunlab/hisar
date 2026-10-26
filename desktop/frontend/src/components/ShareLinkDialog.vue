@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { ShareLink } from "../api";
 import { closeShareLinkDialog, copyText, createShareLink, store } from "../store";
-import { allShareLinkExpiry, describeShareLinkContent, formatDateTime, formatViewLimit } from "../util";
+import { allShareLinkExpiry, capitalizeFirstLetter, describeShareLinkContent, formatDateTime, formatViewLimit } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const minimumPassphraseLength = 8;
@@ -66,10 +66,6 @@ async function copyCreatedLink(): Promise<void> {
   if (createdShareLink.value) {
     await copyText(createdShareLink.value.url, "Link");
   }
-}
-
-function capitalizeFirstLetter(label: string): string {
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function selectLinkText(event: Event): void {
