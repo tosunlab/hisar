@@ -259,7 +259,7 @@ fun VaultDeletionScreen(model: AppModel, actions: VaultActions, onClose: () -> U
                 enabled = request != null && !isBusy,
                 colors = ButtonDefaults.buttonColors(
                     containerColor = HisarTheme.colors.destructive,
-                    contentColor = Color.White,
+                    contentColor = Color.Black,
                     disabledContainerColor = HisarTheme.colors.fill,
                     disabledContentColor = HisarTheme.colors.secondaryLabel,
                 ),
