@@ -107,6 +107,9 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["confirm-remove-member"].firstMatch.tap()
         XCTAssertTrue(findElement("vault-member-\(partnerEmail)").waitForNonExistence(timeout: 60), "the removed person leaves the members")
         app.buttons["vault-sharing-done"].tap()
+        choose("delete-vault", from: "vault-actions")
+        waitFor(app.navigationBars["Delete “Deploy keys”?"])
+        app.buttons["delete-vault-cancel"].tap()
 
         goBack()
         openSettings("open-people")
