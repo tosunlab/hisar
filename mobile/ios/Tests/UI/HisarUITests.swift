@@ -248,8 +248,13 @@ final class HisarUITests: HisarUITestCase {
             app.swipeUp()
         }
         app.buttons["open-help"].tap()
+        XCTAssertFalse(app.descendants(matching: .any)["help-app-version"].exists)
         app.buttons["copy-diagnostics"].tap()
         saveScreenshot("settings-help")
+        goBack()
+        XCTAssertEqual(app.buttons["open-about"].label, "About Hisar")
+        app.buttons["open-about"].tap()
+        XCTAssertTrue(app.staticTexts["Version"].exists)
         goBack()
 
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {
