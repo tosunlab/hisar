@@ -26,6 +26,8 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.printToString
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
@@ -82,6 +84,12 @@ abstract class HisarUITestCase {
 
     fun waitForGone(tag: String, timeoutMillis: Long = 30_000) {
         composeRule.waitUntil("$tag goes", timeoutMillis) { !exists(hasTestTag(tag)) }
+    }
+
+    fun dismissNotice() {
+        if (!exists(hasTestTag("notice"))) return
+        composeRule.onNode(hasTestTag("notice")).performTouchInput { swipeLeft() }
+        waitForGone("notice")
     }
 
     fun exists(matcher: SemanticsMatcher): Boolean = composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() ||

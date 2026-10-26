@@ -3,7 +3,10 @@ package com.tryhisar.hisar.app
 /** Starring items. Favorites belong to the user's account; the lists read them from each item's isFavorite. */
 class FavoritesModel(private val context: ModelContext) {
     // Unstarring in Favorites removes the row that asked, so the change runs in the model's scope.
-    suspend fun setItemFavorite(vaultID: String, itemID: String, isFavorite: Boolean): Boolean = context.runInModel {
+    suspend fun setItemFavorite(vaultID: String, itemID: String, isFavorite: Boolean): Boolean =
+        setFavorite(vaultID, itemID, isFavorite, offersUndo = true)
+
+    private suspend fun setFavorite(vaultID: String, itemID: String, isFavorite: Boolean, offersUndo: Boolean): Boolean = context.runInModel {
         context.perform(isBusyShown = false) { it.setItemFavorite(vaultID, itemID, isFavorite) } ?: return@runInModel false
         context.updateUnlockedData { data ->
             val allItem = data.allItemByVaultID[vaultID] ?: return@updateUnlockedData data
@@ -12,7 +15,7 @@ class FavoritesModel(private val context: ModelContext) {
         }
         context.showNotice(
             if (isFavorite) "Added to Favorites." else "Removed from Favorites.",
-            Notice.Action("Undo") { setItemFavorite(vaultID, itemID, !isFavorite) },
+            if (offersUndo) Notice.Action("Undo") { setFavorite(vaultID, itemID, !isFavorite, offersUndo = false) } else null,
         )
         true
     }

@@ -245,7 +245,7 @@ fun VaultsHomeScreen(model: AppModel) {
                 }
                 item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp + NewButtonClearance)) }
             }
-            NewButton(onClick = { isNewSheetShown = true }, modifier = Modifier.align(Alignment.BottomEnd))
+            NewButton(onClick = { isNewSheetShown = true })
         }
     }
     if (isNewSheetShown) {

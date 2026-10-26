@@ -20,7 +20,7 @@ import com.tryhisar.hisar.app.AppModel
 
 /** Material owns notice duration, placement and accessibility announcements. */
 @Composable
-fun NoticeHost(model: AppModel) {
+fun NoticeHost(model: AppModel, modifier: Modifier = Modifier) {
     val notice by model.notice.collectAsStateWithLifecycle()
     val host = remember { SnackbarHostState() }
     LaunchedEffect(notice) {
@@ -33,7 +33,7 @@ fun NoticeHost(model: AppModel) {
         )
         if (result == SnackbarResult.ActionPerformed) model.performNoticeAction(shown) else model.dismissNotice(shown)
     }
-    SnackbarHost(hostState = host) { data ->
+    SnackbarHost(hostState = host, modifier = modifier) { data ->
         key(data) {
             val dismissState = rememberSwipeToDismissBoxState()
             LaunchedEffect(dismissState.currentValue) {

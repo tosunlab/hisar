@@ -104,6 +104,7 @@ class FavoritesTests {
         model.performNoticeAction(notice)
         assertEquals(listOf("Bank"), model.unlockedData.value.listAllFavoriteReference().map { it.item.title })
         assertEquals(setOf("personal/bank"), harness.backend.allFavoriteRecordID)
+        assertEquals(null, model.notice.value?.action, "Undo does not start another Undo chain")
         val callCount = harness.backend.allCallName.count { it == "setItemFavorite" }
         model.performNoticeAction(notice)
         assertEquals(callCount, harness.backend.allCallName.count { it == "setItemFavorite" })

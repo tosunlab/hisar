@@ -3,6 +3,7 @@ package com.tryhisar.hisar.ui.settings
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
@@ -33,10 +34,10 @@ import kotlinx.coroutines.withContext
 
 /**
  * Saves a file Hisar wrote (an Emergency Kit, an export) where the user picks, through the system's file creator.
- * [onFinish] gets whether the copy was written; picking nothing calls nothing.
+ * [onFinish] gets the saved document's URI, or null on failure; picking nothing calls nothing.
  */
 @Composable
-fun rememberFileSaver(mimeType: String, onFinish: (isSaved: Boolean) -> Unit): (File) -> Unit {
+fun rememberFileSaver(mimeType: String, onFinish: (savedURI: Uri?) -> Unit): (File) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var pendingFile by remember { mutableStateOf<File?>(null) }
@@ -54,7 +55,7 @@ fun rememberFileSaver(mimeType: String, onFinish: (isSaved: Boolean) -> Unit): (
                     false
                 }
             }
-            onFinish(isSaved)
+            onFinish(uri.takeIf { isSaved })
         }
     }
     return { file ->

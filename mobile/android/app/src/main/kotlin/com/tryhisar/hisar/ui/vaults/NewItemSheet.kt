@@ -23,6 +23,8 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -38,7 +40,7 @@ import com.tryhisar.hisar.ui.components.FormButtonRow
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.ScreenMargin
-import com.tryhisar.hisar.ui.root.TabBarHeight
+import com.tryhisar.hisar.ui.components.LocalNoticeLayout
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 
@@ -61,17 +63,23 @@ private val allNewItemChoice = listOf(
 
 /** The extended New button of the Vaults and vault screens, just above the floating tab bar. */
 @Composable
-fun NewButton(onClick: () -> Unit, modifier: Modifier = Modifier) {
-    ExtendedFloatingActionButton(
-        text = { Text("New", style = HisarType.headline) },
-        icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
-        onClick = onClick,
-        containerColor = HisarTheme.colors.tint,
-        contentColor = HisarTheme.colors.onTint,
-        modifier = modifier
-            .padding(end = ScreenMargin, bottom = TabBarHeight + 12.dp)
-            .testTag("new-menu"),
-    )
+fun NewButton(onClick: () -> Unit) {
+    val layout = requireNotNull(LocalNoticeLayout.current)
+    val currentOnClick by rememberUpdatedState(onClick)
+    DisposableEffect(layout) {
+        val button: @Composable () -> Unit = {
+            ExtendedFloatingActionButton(
+                text = { Text("New", style = HisarType.headline) },
+                icon = { Icon(Icons.Outlined.Add, contentDescription = null) },
+                onClick = { currentOnClick() },
+                containerColor = HisarTheme.colors.tint,
+                contentColor = HisarTheme.colors.onTint,
+                modifier = Modifier.testTag("new-menu"),
+            )
+        }
+        layout.floatingAction = button
+        onDispose { if (layout.floatingAction === button) layout.floatingAction = null }
+    }
 }
 
 /**

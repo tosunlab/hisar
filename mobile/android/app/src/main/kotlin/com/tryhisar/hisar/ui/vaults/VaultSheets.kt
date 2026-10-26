@@ -66,6 +66,7 @@ import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.ScreenMargin
+import com.tryhisar.hisar.ui.components.noticeClearance
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
@@ -93,6 +94,7 @@ fun SheetPage(bar: @Composable () -> Unit, bottomBar: (@Composable ColumnScope.(
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .noticeClearance()
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(horizontal = ScreenMargin, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),

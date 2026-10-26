@@ -81,8 +81,8 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
         if (exported != null) {
             val file = File(exported.path)
             val mimeType = if (file.extension == "json") "application/json" else "application/octet-stream"
-            val save = rememberFileSaver(mimeType) { isSaved ->
-                if (isSaved) model.showNotice("Export saved") else model.errorMessage.value = "Hisar could not save the file there. Choose another place."
+            val save = rememberFileSaver(mimeType) { savedURI ->
+                if (savedURI != null) model.showNotice("Export saved") else model.errorMessage.value = "Hisar could not save the file there. Choose another place."
             }
             val share = rememberFileSharer(mimeType) { model.errorMessage.value = SHARE_FAILED_MESSAGE }
             FormSection(

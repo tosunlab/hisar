@@ -130,6 +130,15 @@ class VaultsScreenUITests : HisarUITestCase() {
             composeRule.onNodeWithTag("favorite-Netflix").performTouchInput { swipeLeft() }
             tap("unfavorite-Netflix")
             composeRule.waitUntil(10_000) { !exists(hasTestTag("favorite-Netflix")) }
+            waitForNotice("Removed from Favorites.")
+            val notice = composeRule.onNodeWithTag("notice").fetchSemanticsNode().boundsInRoot
+            val newButton = composeRule.onNodeWithTag("new-menu").fetchSemanticsNode().boundsInRoot
+            assertTrue("the snackbar stays above New", notice.bottom <= newButton.top)
+            saveScreenshot("vaults-snackbar")
+            composeRule.onNodeWithTag("new-menu").performClick()
+            waitFor("new-sheet")
+            goBack()
+            dismissNotice()
 
             tap("category-creditCards")
             waitFor("item-Visa")
@@ -169,6 +178,10 @@ class VaultsScreenUITests : HisarUITestCase() {
             tap("deletion-choice-delete")
             waitFor("deletion-confirm-name")
             type("Work 2026", "deletion-confirm-name")
+            waitFor("notice")
+            val notice = composeRule.onNodeWithTag("notice").fetchSemanticsNode().boundsInRoot
+            val deleteButton = composeRule.onNodeWithTag("delete-vault-confirm").fetchSemanticsNode().boundsInRoot
+            assertTrue("the rename snackbar stays above Delete vault", notice.bottom <= deleteButton.top)
             saveScreenshot("vault-delete-items")
             tap("delete-vault-confirm")
             waitForNotice("Deleted Work 2026.")

@@ -45,6 +45,7 @@ class InvitationMenuUITests : HisarUITestCase() {
     }
 
     private fun touchAndHold(tag: String) {
+        dismissNotice()
         waitFor(tag)
         composeRule.onNodeWithTag(tag).performScrollTo().performTouchInput { longClick() }
     }

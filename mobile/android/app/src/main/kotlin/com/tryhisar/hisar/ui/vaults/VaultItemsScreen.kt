@@ -82,6 +82,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         stack.push(if (vault.isOrganization) VaultsDestination.OrganizationVaultSharing(vaultID, vault.organizationID) else VaultsDestination.VaultSharing(vaultID))
     }
     val allMatch = VaultLogic.filterAllItem(data.listAllItemReference(vaultID), searchText).filter { it.item.readIssue == null }
+    if (isWritable) NewButton(onClick = { isNewSheetShown = true })
 
     PushedListScaffold(
         title = vault.name,
@@ -90,7 +91,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         isEmpty = allMatch.isEmpty() && vault.readIssues.isEmpty(),
         emptyContent = { if (searchText.isEmpty()) NoItemsYet(isWritable) else NoSearchResults(searchText) },
         searchField = { SearchField(searchText, { searchText = it }, "Search ${vault.name}", testTag = "vault-search") },
-        floatingButton = if (isWritable) ({ NewButton(onClick = { isNewSheetShown = true }, modifier = Modifier.align(Alignment.BottomEnd)) }) else null,
+        bottomClearance = if (isWritable) NewButtonClearance else 0.dp,
         actions = {
             Box {
                 ToolbarIconButton(Icons.Outlined.MoreHoriz, "Vault actions", testTag = "vault-actions") { isActionMenuShown = true }

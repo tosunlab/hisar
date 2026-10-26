@@ -12,12 +12,17 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
@@ -30,6 +35,8 @@ import com.tryhisar.hisar.app.Screen
 import com.tryhisar.hisar.ui.approvals.PhoneApprovalSheet
 import com.tryhisar.hisar.ui.components.LogoMark
 import com.tryhisar.hisar.ui.components.NoticeHost
+import com.tryhisar.hisar.ui.components.LocalNoticeLayout
+import com.tryhisar.hisar.ui.components.NoticeLayout
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.exposeTestTags
 import com.tryhisar.hisar.ui.components.performConfirmHaptic
@@ -67,17 +74,26 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val isSheetShown by model.navigation.isSheetShown.collectAsStateWithLifecycle()
         val view = LocalView.current
         val scope = rememberCoroutineScope()
+        val noticeLayout = remember { NoticeLayout() }
+        val density = LocalDensity.current
+        val navigationInset = with(density) { WindowInsets.navigationBars.getBottom(this).toDp() }
+        val noticeInset = (with(density) { noticeLayout.clearance.toDp() } - navigationInset).coerceAtLeast(0.dp)
+        val showsTabs = screen == Screen.Unlocked && !isSheetShown && newAccountStep == null && !isRecoveryShown && credentialImportSheet == null
 
         LaunchedEffect(copyCount) {
             if (copyCount > 0) view.performConfirmHaptic()
         }
 
-        Box(Modifier.fillMaxSize().exposeTestTags()) {
+        Box(Modifier.fillMaxSize().exposeTestTags().onGloballyPositioned { noticeLayout.windowBottom = it.boundsInWindow().bottom }) {
+            CompositionLocalProvider(LocalNoticeLayout provides noticeLayout) {
             Scaffold(
                 contentWindowInsets = WindowInsets.navigationBars,
-                snackbarHost = { NoticeHost(model) },
+                snackbarHost = { NoticeHost(model, Modifier.padding(bottom = noticeInset)) },
+                floatingActionButton = {
+                    if (showsTabs && presentedApproval == null) noticeLayout.floatingAction?.invoke()
+                },
                 bottomBar = {
-                    if (screen == Screen.Unlocked && !isSheetShown && newAccountStep == null && !isRecoveryShown) {
+                    if (showsTabs) {
                         MainTabBar(model, allPendingApproval.size)
                     }
                 },
@@ -115,6 +131,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                     }
                     if (isRecoveryShown) PendingRecoveryScreen(model)
                 }
+            }
             }
             if (!lifecycleState.isAtLeast(Lifecycle.State.RESUMED)) PrivacyCover()
         }

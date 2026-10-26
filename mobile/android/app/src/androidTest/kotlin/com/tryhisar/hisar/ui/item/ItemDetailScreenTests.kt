@@ -148,7 +148,7 @@ class ItemDetailScreenTests {
         host.show("personal", "github")
         composeRule.waitForTag("favorite-item")
         composeRule.onNodeWithTag("favorite-item").assertContentDescriptionEquals("Add to Favorites")
-        composeRule.tap("favorite-item")
+        composeRule.onNodeWithTag("favorite-item").performClick()
         composeRule.waitForTag("notice")
         composeRule.onNodeWithTag("favorite-item").assertContentDescriptionEquals("Remove from Favorites")
         composeRule.onNode(hasText("Undo")).performClick()
