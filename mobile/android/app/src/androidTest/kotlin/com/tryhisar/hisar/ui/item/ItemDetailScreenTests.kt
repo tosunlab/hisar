@@ -1,6 +1,10 @@
 package com.tryhisar.hisar.ui.item
 
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.longClick
@@ -130,9 +134,38 @@ class ItemDetailScreenTests {
         composeRule.onNode(hasText("Copy Secret Reference")).performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedReference == listOf("hisar://Personal/GitHub/username") }
 
-        composeRule.onNodeWithTag("open-website").performScrollTo().performTouchInput { longClick() }
+        composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performTouchInput { longClick() }
         composeRule.onNode(hasText("Copy")).performClick()
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
         assertEquals("Website copied. It clears in about 2 minutes.", host.model.notice.value)
     }
+
+    @Test
+    fun testTappingAFieldRowCopiesItAndItsButtonsKeepTheirOwnAction() {
+        val host = openHost()
+        host.show("personal", "github")
+        composeRule.waitForTag("password-value")
+        val hiddenPassword = composeRule.onNodeWithTag("password-value").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
+        composeRule.onNodeWithTag("username-value").performClick()
+        composeRule.waitUntil(5_000) { backend.allCopiedField == listOf("github.username") }
+        composeRule.onNodeWithTag("password-value").performClick()
+        composeRule.waitUntil(5_000) { backend.allCopiedField == listOf("github.username", "github.password") }
+        assertEquals("Password copied. It clears in about 2 minutes.", host.model.notice.value)
+        assertEquals("a tap copies without revealing", hiddenPassword, composeRule.onNodeWithTag("password-value").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString(""))
+
+        composeRule.tap("reveal-password")
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasTestTag("password-value") and hasText("github-password")).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("the reveal button does not also copy", 2, backend.allCopiedField.size)
+
+        composeRule.onNodeWithTag("pin-value").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) { backend.allCopiedField.last() == "github.PIN" }
+        composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performClick()
+        composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
+        assertTrue(
+            "the row reads as a button that copies",
+            composeRule.onAllNodes(hasClickLabel("Copy Username")).fetchSemanticsNodes().isNotEmpty(),
+        )
+    }
+
+    private fun hasClickLabel(label: String) = SemanticsMatcher("a click action labelled $label") { it.config.getOrNull(SemanticsActions.OnClick)?.label == label }
 }

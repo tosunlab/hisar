@@ -41,6 +41,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
 import androidx.compose.ui.semantics.onLongClick
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,18 +52,26 @@ import com.tryhisar.hisar.ui.theme.HisarType
 internal class MenuAction(val title: String, val icon: ImageVector, val perform: () -> Unit)
 
 /**
- * A row with a touch-and-hold menu, as SwiftUI's contextMenu. Unlike a clickable row it keeps its fields apart for
- * accessibility and tests, as the iPhone app's rows do: "password-value" stays its own element.
+ * A row with a touch-and-hold menu, as SwiftUI's contextMenu, that [onClick] makes a button read as [onClickLabel]. Unlike
+ * a clickable row it keeps its fields apart for accessibility and tests, as the iPhone app's rows do: "password-value"
+ * stays its own element. A button inside the row keeps its tap to itself.
  */
 @Composable
-internal fun MenuRow(allAction: List<MenuAction>, modifier: Modifier = Modifier, onClick: (() -> Unit)? = null, content: @Composable () -> Unit) {
+internal fun MenuRow(
+    allAction: List<MenuAction>,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    onClickLabel: String? = null,
+    content: @Composable () -> Unit,
+) {
     var isMenuShown by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
+    val hasMenu = allAction.isNotEmpty()
     Box(
         modifier
             .fillMaxWidth()
             .indication(interactionSource, ripple())
-            .pointerInput(onClick) {
+            .pointerInput(onClick, hasMenu) {
                 detectTapGestures(
                     onPress = { offset ->
                         val press = PressInteraction.Press(offset)
@@ -70,19 +79,22 @@ internal fun MenuRow(allAction: List<MenuAction>, modifier: Modifier = Modifier,
                         interactionSource.emit(if (tryAwaitRelease()) PressInteraction.Release(press) else PressInteraction.Cancel(press))
                     },
                     onTap = onClick?.let { { _: Offset -> it() } },
-                    onLongPress = { isMenuShown = true },
+                    onLongPress = if (hasMenu) ({ isMenuShown = true }) else null,
                 )
             }
             .semantics {
                 if (onClick != null) {
-                    onClick {
+                    role = Role.Button
+                    onClick(onClickLabel) {
                         onClick()
                         true
                     }
                 }
-                onLongClick("Show actions") {
-                    isMenuShown = true
-                    true
+                if (hasMenu) {
+                    onLongClick("Show actions") {
+                        isMenuShown = true
+                        true
+                    }
                 }
             },
     ) {
@@ -127,7 +139,7 @@ internal fun SecretFieldRow(
             add(MenuAction(if (isRevealed) "Hide" else "Reveal", if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, toggleReveal))
         }
     }
-    MenuRow(allAction) {
+    MenuRow(allAction, onClick = copy, onClickLabel = "Copy $label") {
         Column(Modifier.padding(horizontal = 16.dp, vertical = 11.dp).heightIn(min = 30.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {

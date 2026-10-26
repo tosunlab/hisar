@@ -20,6 +20,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
@@ -157,6 +158,8 @@ internal fun ItemDetailContent(
                     MenuAction("Copy", Icons.Outlined.ContentCopy) { actions.copy("notes", "Notes") },
                     MenuAction("Copy Secret Reference", Icons.Outlined.Terminal) { actions.copyReference("notes") },
                 ),
+                onClick = { actions.copy("notes", "Notes") },
+                onClickLabel = "Copy notes",
             ) {
                 FormRow { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label) }
             }
@@ -305,7 +308,9 @@ private fun SecureNoteSection(item: ItemDetail, actions: ItemFieldActions) {
         if (item.notes.isEmpty()) {
             FormRow { Text("This note is empty.", style = HisarType.body, color = HisarTheme.colors.secondaryLabel) }
         } else {
-            FormRow { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("secure-note-notes")) }
+            MenuRow(emptyList(), onClick = { actions.copy("notes", "Notes") }, onClickLabel = "Copy notes") {
+                FormRow { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("secure-note-notes")) }
+            }
             RowDivider()
             FormButtonRow("Copy notes", onClick = { actions.copy("notes", "Notes") }, testTag = "copy-notes", icon = Icons.Outlined.ContentCopy, color = HisarTheme.colors.tint)
         }
@@ -442,7 +447,10 @@ private fun ConnectionStringSection(connectionString: String, actions: ItemField
     }
 }
 
-/** Each website opens in the browser; touch and hold copies or shares it. A server calls them its admin console. */
+/**
+ * A tap copies a website and its button opens it in the browser; touch and hold copies or shares it. A server calls them
+ * its admin console.
+ */
 @Composable
 private fun WebsiteSection(model: AppModel, item: ItemDetail) {
     val context = LocalContext.current
@@ -455,18 +463,29 @@ private fun WebsiteSection(model: AppModel, item: ItemDetail) {
         item.allURL.forEach { url ->
             row {
                 val openableURL = VaultLogic.convertToOpenableURL(url)?.toString()
-                if (openableURL == null) {
-                    FormRow { Text(url, style = HisarType.body, color = HisarTheme.colors.label) }
-                } else {
-                    MenuRow(
-                        listOf(
-                            MenuAction("Copy", Icons.Outlined.ContentCopy) { model.copyText(url, "Website") },
-                            MenuAction("Share", Icons.Outlined.Share) { shareURL(context, openableURL) },
-                        ),
-                        onClick = { openURL(context, openableURL) },
-                        modifier = Modifier.testTag("open-website"),
+                val copy = { model.copyText(url, "Website") }
+                MenuRow(
+                    listOfNotNull(
+                        MenuAction("Copy", Icons.Outlined.ContentCopy, copy),
+                        openableURL?.let { MenuAction("Share", Icons.Outlined.Share) { shareURL(context, it) } },
+                    ),
+                    onClick = copy,
+                    onClickLabel = "Copy website",
+                    modifier = Modifier.testTag("website-$url"),
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp)
+                            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        LinkLabel(url, Icons.Outlined.Language)
+                        Icon(Icons.Outlined.Language, contentDescription = null, tint = HisarTheme.colors.secondaryLabel, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.size(14.dp))
+                        Text(url, style = HisarType.body, color = HisarTheme.colors.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        if (openableURL != null) {
+                            FieldIconButton(Icons.AutoMirrored.Outlined.OpenInNew, "Open website", "open-website", { openURL(context, openableURL) })
+                        }
                     }
                 }
             }
