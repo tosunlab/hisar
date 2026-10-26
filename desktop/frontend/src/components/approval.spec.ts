@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import {
   createAgentApprovalEvent,
@@ -50,7 +50,63 @@ beforeEach(() => {
   api.listAllPendingSSHApproval.mockResolvedValue([]);
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("SSHApprovalWindow", () => {
+  it.each([false, true])("counts down to the hard deadline and keeps the denial visible, phone %s", async (isPhoneApproval) => {
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
+    const lifetime = isPhoneApproval ? 120 : 60;
+    const wrapper = mount(SSHApprovalWindow);
+    expect(vi.getTimerCount()).toBe(0);
+    sendEvent("ssh-approval", createApprovalEvent({ isPhoneApproval, timeoutAt: new Date(Date.now() + lifetime * 1000).toISOString() }));
+    await flushPromises();
+    const expiry = () => wrapper.get('[data-testid="approval-expiry"]');
+    expect(expiry().text()).toBe(`Expires in ${lifetime} seconds`);
+    expect(expiry().classes()).not.toContain("is-warning");
+    await vi.advanceTimersByTimeAsync((lifetime - 10) * 1000);
+    expect(expiry().text()).toBe("Expires in 10 seconds");
+    expect(expiry().classes()).not.toContain("is-warning");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(expiry().text()).toBe("Expires in 9 seconds");
+    expect(expiry().classes()).toContain("is-warning");
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(expiry().text()).toBe("Expires in 1 second");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(expiry().text()).toBe(`Denied: no answer in ${lifetime} seconds`);
+    expect(wrapper.find("button").exists()).toBe(false);
+    const responseCount = api.respondSSHApproval.mock.calls.length;
+    pressKey("Enter");
+    pressKey("Escape");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(responseCount);
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(expiry().text()).toBe(`Denied: no answer in ${lifetime} seconds`);
+    sendEvent("ssh-approval-closed", "request-1");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    wrapper.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("shows the countdown on compact cards and restores the next request's deadline", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ isCompact: true, timeoutAt: new Date(Date.now() + 2000).toISOString() }));
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", timeoutAt: new Date(Date.now() + 60_000).toISOString() }));
+    await flushPromises();
+    expect(wrapper.get(".compact-card [data-testid='approval-expiry']").text()).toBe("Expires in 2 seconds");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("Denied: no answer in 60 seconds");
+    sendEvent("ssh-approval-closed", "request-1");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("Expires in 58 seconds");
+    expect(wrapper.find(".expired-notice").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("takes the saved theme and follows a theme chosen in Settings", async () => {
     api.getTheme.mockResolvedValue({ appearance: "light", color: "purple" });
     const wrapper = mount(SSHApprovalWindow);

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -111,6 +112,62 @@ func TestDeadlineEndsATouchIDCheckNobodyAnswers(t *testing.T) {
 	if startCount, _ := phone.getStartAndFinishCount(); startCount != 0 {
 		t.Errorf("an unavailable phone was asked %d times", startCount)
 	}
+}
+
+func TestDeadlineDeniesBeforeHidingTheNotice(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		emitter := createFakeEmitter()
+		approver := NewApprover(ApproverConfig{
+			Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
+		})
+		resultChannel := startApproval(approver, context.Background(), createTestRequest())
+		event := waitForApprovalEvent(t, emitter)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		if result := waitForResult(t, resultChannel); result.result.IsAllowed {
+			t.Fatal("the expired request was approved")
+		}
+		if len(approver.ListPendingApprovals()) != 0 || approver.Respond(event.RequestID, true, true) {
+			t.Fatal("the expired request can still be approved")
+		}
+		time.Sleep(2999 * time.Millisecond)
+		synctest.Wait()
+		if _, hidden := emitter.getWindowCount(); hidden != 0 {
+			t.Fatal("the window hid before the denial could be read")
+		}
+		time.Sleep(time.Millisecond)
+		synctest.Wait()
+		if _, hidden := emitter.getWindowCount(); hidden != 1 {
+			t.Fatalf("window hidden %d times, want once after the notice", hidden)
+		}
+	})
+}
+
+func TestExpiredNoticeDoesNotHideANewRequest(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		emitter := createFakeEmitter()
+		approver := NewApprover(ApproverConfig{
+			Emit: emitter.emit, ShowApprovalWindow: emitter.showWindow, HideApprovalWindow: emitter.hideWindow,
+		})
+		first := startApproval(approver, context.Background(), createTestRequest())
+		waitForApprovalEvent(t, emitter)
+		time.Sleep(time.Minute)
+		synctest.Wait()
+		waitForResult(t, first)
+		second := startApproval(approver, context.Background(), createTestRequest())
+		event := waitForApprovalEvent(t, emitter)
+		time.Sleep(3 * time.Second)
+		synctest.Wait()
+		if _, hidden := emitter.getWindowCount(); hidden != 0 {
+			t.Fatal("an expired notice hid a newer request")
+		}
+		approver.Respond(event.RequestID, false, false)
+		waitForResult(t, second)
+		synctest.Wait()
+		if _, hidden := emitter.getWindowCount(); hidden != 1 {
+			t.Fatalf("window hidden %d times, want once after denying the newer request", hidden)
+		}
+	})
 }
 
 func TestDeadlineAndPhoneDoNotWaitForTheWindow(t *testing.T) {

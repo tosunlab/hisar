@@ -230,6 +230,7 @@ type Approver struct {
 	authorizing     sync.WaitGroup
 	mutex           sync.Mutex
 	pendingRequests []*pendingApproval
+	expiredNotices  int
 	presenter       presenter
 	// signing is guarded by mutex.
 	signing rememberedSigning

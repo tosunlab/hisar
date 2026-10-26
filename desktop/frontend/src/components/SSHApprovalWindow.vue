@@ -49,6 +49,16 @@ const passwordInput = ref<HTMLInputElement | null>(null);
 const denyButton = ref<HTMLButtonElement | null>(null);
 const contentElement = ref<HTMLElement | null>(null);
 const approval = computed(() => approvalStore.allApproval[0]);
+const now = ref(Date.now());
+const timeoutAt = computed(() => Date.parse(approval.value?.timeoutAt ?? ""));
+const secondsLeft = computed(() => Math.max(0, Math.ceil((timeoutAt.value - now.value) / 1000)));
+const isExpired = computed(() => Number.isFinite(timeoutAt.value) && secondsLeft.value === 0);
+const expiryText = computed(() =>
+  isExpired.value
+    ? `Denied: no answer in ${approval.value?.isPhoneApproval ? 120 : 60} seconds`
+    : `Expires in ${secondsLeft.value} ${secondsLeft.value === 1 ? "second" : "seconds"}`,
+);
+let countdownTimer: ReturnType<typeof setInterval> | undefined;
 const isCommandLine = computed(() => approval.value?.kind === "command-line");
 const isAgent = computed(() => approval.value?.kind === "agent");
 const isLauncher = computed(() => approval.value?.kind === "launcher");
@@ -276,7 +286,7 @@ async function fitWindow(): Promise<void> {
 
 async function startAuthorizing(): Promise<void> {
   const current = approval.value;
-  if (!current || approvalStore.isAuthorizing) {
+  if (!current || approvalStore.isAuthorizing || Date.now() >= timeoutAt.value) {
     return;
   }
   if (isTouchIDUsed.value) {
@@ -288,7 +298,7 @@ async function startAuthorizing(): Promise<void> {
 
 async function submitPassword(): Promise<void> {
   const current = approval.value;
-  if (!current || approvalStore.isAuthorizing) {
+  if (!current || approvalStore.isAuthorizing || Date.now() >= timeoutAt.value) {
     return;
   }
   if (!password.value) {
@@ -321,10 +331,15 @@ watch(
   () => approval.value?.requestID,
   async (requestID) => {
     password.value = "";
+    now.value = Date.now();
+    clearInterval(countdownTimer);
     if (!requestID) {
       api.clearApprovalTouchIDFrame().catch(() => undefined);
       return;
     }
+    countdownTimer = setInterval(() => {
+      now.value = Date.now();
+    }, 250);
     await nextTick();
     if (isPasswordShown.value) {
       passwordInput.value?.focus();
@@ -334,15 +349,23 @@ watch(
       startAuthorizing();
     }
   },
+  { immediate: true },
 );
 
 watch(
-  () => [approval.value?.requestID, isCompactShown.value, isPasswordShown.value, approvalStore.failureMessage, approvalStore.allApproval.length, isWaitingForTouchID.value],
+  () => [approval.value?.requestID, isCompactShown.value, isPasswordShown.value, approvalStore.failureMessage, approvalStore.allApproval.length, isWaitingForTouchID.value, isExpired.value],
   () => fitWindow(),
 );
 
+watch(isExpired, (expired) => {
+  if (expired) {
+    password.value = "";
+    api.clearApprovalTouchIDFrame().catch(() => undefined);
+  }
+});
+
 function handleKey(event: KeyboardEvent): void {
-  if (!approval.value) {
+  if (!approval.value || isExpired.value) {
     return;
   }
   if (event.key === "Escape") {
@@ -377,6 +400,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  clearInterval(countdownTimer);
   allRemoveListener.forEach((removeListener) => removeListener());
   window.removeEventListener("keydown", handleKey);
   window.removeEventListener("resize", sendPromptFrame);
@@ -389,7 +413,18 @@ onBeforeUnmount(() => {
     <div ref="contentElement" class="approval-content">
       <template v-if="approval">
         <section
-          v-if="isCompactShown"
+          v-if="isExpired"
+          :class="isCompactShown ? 'compact-card expired-notice' : 'dialog expired-notice'"
+          role="alertdialog"
+          aria-labelledby="approval-title"
+          aria-describedby="approval-expiry"
+          data-testid="ssh-approval"
+        >
+          <h1 id="approval-title">Request denied</h1>
+          <p id="approval-expiry" class="expiry is-warning" role="status" data-testid="approval-expiry">{{ expiryText }}</p>
+        </section>
+        <section
+          v-else-if="isCompactShown"
           class="compact-card"
           role="alertdialog"
           aria-labelledby="approval-title"
@@ -407,6 +442,7 @@ onBeforeUnmount(() => {
               <strong data-testid="approval-app">{{ approval.appName }}</strong> · {{ allCompactAction[approval.purpose] ?? "Use SSH key" }}
             </p>
             <p class="compact-subtitle">{{ compactSubtitle }}</p>
+            <p v-if="Number.isFinite(timeoutAt)" class="expiry" :class="{ 'is-warning': secondsLeft < 10 }" data-testid="approval-expiry">{{ expiryText }}</p>
             <p v-if="appWarning" class="compact-subtitle app-warning-line" data-testid="approval-app-warning">
               <AppIcon name="warning" :size="12" /> {{ approval.appSigner }} — check this is the app you expect
             </p>
@@ -455,6 +491,7 @@ onBeforeUnmount(() => {
                 <span v-else data-testid="approval-app">{{ requesterName }}</span> wants to {{ purposeText }}
               </h1>
               <p id="approval-subtitle" class="subtitle" :title="approval.fingerprint">{{ subtitle }}</p>
+              <p v-if="Number.isFinite(timeoutAt)" class="expiry" :class="{ 'is-warning': secondsLeft < 10 }" data-testid="approval-expiry">{{ expiryText }}</p>
               <p v-if="approval.projectName" class="agent-line" data-testid="approval-project">
                 <AppIcon name="folder" :size="12" /> <span class="agent-line-text" :title="approval.projectPath">{{ approval.projectName }}</span>
               </p>
@@ -618,6 +655,24 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.expiry {
+  margin: 6px 0 0;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+.expiry.is-warning {
+  color: var(--color-warning);
+}
+
+.approval-content > .expired-notice {
+  padding: 30px 28px;
+}
+
+.expired-notice h1 {
+  margin: 0;
+}
+
 .approval-window {
   height: 100vh;
   overflow: hidden;

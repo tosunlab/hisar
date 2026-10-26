@@ -298,7 +298,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     isTouchIDApproval: true,
     isPhoneApproval: false,
     isTooLongForPhone: false,
-    timeoutAt: "2026-10-09T12:01:00Z",
+    timeoutAt: new Date(Date.now() + 60_000).toISOString(),
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",
