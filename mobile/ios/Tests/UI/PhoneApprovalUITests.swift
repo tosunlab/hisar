@@ -40,8 +40,8 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertFalse(app.staticTexts["phone-approval-row-Program"].exists)
         XCTAssertFalse(app.staticTexts["phone-approval-row-Terminal"].exists)
         XCTAssertFalse(app.switches["phone-approval-remember"].exists, "a launcher's approval always lasts until Hisar locks")
-        let note = app.descendants(matching: .any)["phone-approval-encryption-note"].label
-        XCTAssertTrue(note.contains("Approving lets Raycast use Hisar until it locks on your Mac"), note)
+        let note = app.descendants(matching: .any)["phone-approval-note"].label
+        XCTAssertEqual(note, "Approving lets this one request continue; it does not unlock Hisar on your Mac.")
         saveScreenshot("phone-approval-launcher")
         app.buttons["phone-approval-approve"].tap()
         checkResult("Approved preview-launcher with Face ID")
@@ -56,8 +56,8 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertEqual(app.staticTexts["phone-approval-row-Link"].label, "Link, Expires in 7 days · 1 view")
         XCTAssertEqual(app.staticTexts["phone-approval-row-Warning"].label, "Warning, Anyone with the link can read these until it expires or its views run out.")
         XCTAssertFalse(app.staticTexts["phone-approval-row-Lasts"].exists, "a share link is approved once")
-        let note = app.descendants(matching: .any)["phone-approval-encryption-note"].label
-        XCTAssertTrue(note.contains("Approving lets this one request continue"), note)
+        let note = app.descendants(matching: .any)["phone-approval-note"].label
+        XCTAssertEqual(note, "Approving lets this one request continue; it does not unlock Hisar on your Mac.")
         saveScreenshot("phone-approval-launcher-share")
         app.buttons["phone-approval-approve"].tap()
         checkResult("Approved preview-launcher-share with Face ID")

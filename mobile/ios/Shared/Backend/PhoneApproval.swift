@@ -52,9 +52,9 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     // cardApprovalNote is the Vaults card's footer: the card has no switch, so it says what its Approve sends.
     var cardApprovalNote: String {
         if resolveRememberChoice(nil) {
-            return "\(rememberLabel). Tap the request to approve it once. It never unlocks Hisar on your Mac."
+            return "\(rememberLabel). Tap the request to approve it once."
         }
-        return "Approving answers this one request. It never unlocks Hisar on your Mac."
+        return "Approving answers this one request."
     }
 
     enum CodingKeys: String, CodingKey {
@@ -134,13 +134,6 @@ struct PhoneApproval: Codable, Equatable, Identifiable {
     // lifetime is set for an approval that outlasts the request: a launcher keeps its approval until Hisar locks on the Mac.
     // A launcher request that names secrets is a share link, which is approved once like any other request.
     var lifetime: String { kind == Self.kindLauncher && secrets.isEmpty ? "Until Hisar locks on \(macName)" : "" }
-
-    var approvalNote: String {
-        if !lifetime.isEmpty {
-            return "Approving lets \(appName) use Hisar until it locks on your Mac; it does not unlock Hisar there."
-        }
-        return "Approving lets this one request continue; it does not unlock Hisar on your Mac."
-    }
 
     var detailLine: String {
         if !keyName.isEmpty {

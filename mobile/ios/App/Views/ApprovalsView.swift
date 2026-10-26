@@ -46,7 +46,7 @@ struct ApprovalList: View {
                     Text(allApproval.count == 1 ? "1 request waiting" : "\(allApproval.count) requests waiting")
                         .accessibilityIdentifier("approvals-header")
                 } footer: {
-                    Text("Tap a request to see what it asks for. Approving answers that one request; it never unlocks Hisar on your Mac.")
+                    Text("Tap a request to see what it asks for.")
                 }
             }
         }
