@@ -193,10 +193,9 @@ async function submit(): Promise<void> {
         </label>
         <label>
           <span>Role</span>
-          <select v-model="role" name="organizationDialogRole" data-testid="organization-dialog-role">
+          <select v-model="role" name="organizationDialogRole" title="Readers view items, editors also change them, owners also share, rename and delete the vault." data-testid="organization-dialog-role">
             <option v-for="vaultRole in allVaultRole" :key="vaultRole" :value="vaultRole">{{ formatRole(vaultRole) }}</option>
           </select>
-          <span class="muted hint">Editors can add and change items, readers can only view them, and owners can also rename and delete the vault.</span>
         </label>
       </template>
       <ul v-if="allLostVaultLine.length > 0" class="consequences warning" data-testid="organization-dialog-vaults">
