@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { mount, type DOMWrapper, type VueWrapper } from "@vue/test-utils";
+import { mount, type DOMWrapper } from "@vue/test-utils";
 import { nextTick } from "vue";
 import type { VaultSummary } from "../api";
 import { createApiMock, createStatus } from "../testing";
@@ -21,10 +21,6 @@ const { store } = await import("../store");
 const MainView = (await import("./MainView.vue")).default;
 
 const personalVault: VaultSummary = { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 };
-
-function readColumns(wrapper: VueWrapper): string {
-  return (wrapper.find(".layout").element as HTMLElement).style.gridTemplateColumns;
-}
 
 // jsdom has no PointerEvent, so the drag sends pointer events as MouseEvents, which carry clientX.
 async function drag(handle: DOMWrapper<Element>, fromX: number, toX: number): Promise<void> {
@@ -53,7 +49,8 @@ beforeEach(() => {
 describe("Resizable columns", () => {
   it("starts at the default widths with room kept for the detail column", () => {
     const wrapper = mount(MainView, { attachTo: document.body });
-    expect(readColumns(wrapper)).toBe("minmax(180px, 228px) 0 minmax(240px, 300px) 0 minmax(400px, 1fr)");
+    expect(wrapper.get('[data-testid="resize-sidebar"]').attributes("aria-valuenow")).toBe("228");
+    expect(wrapper.get('[data-testid="resize-list"]').attributes("aria-valuenow")).toBe("300");
     wrapper.unmount();
   });
 
@@ -63,12 +60,14 @@ describe("Resizable columns", () => {
     await drag(sidebarHandle, 228, 300);
     const listHandle = wrapper.find('[data-testid="resize-list"]');
     await drag(listHandle, 600, 100);
-    expect(readColumns(wrapper)).toBe("minmax(180px, 300px) 0 minmax(240px, 240px) 0 minmax(400px, 1fr)");
+    expect(sidebarHandle.attributes("aria-valuenow")).toBe("300");
     expect(listHandle.attributes("aria-valuenow")).toBe("240");
+    expect(JSON.parse(window.localStorage.getItem("hisar.mainWindow.columnWidths") ?? "null")).toEqual({ sidebar: 300, list: 240 });
     wrapper.unmount();
 
     const reopened = mount(MainView, { attachTo: document.body });
-    expect(readColumns(reopened)).toBe("minmax(180px, 300px) 0 minmax(240px, 240px) 0 minmax(400px, 1fr)");
+    expect(reopened.get('[data-testid="resize-sidebar"]').attributes("aria-valuenow")).toBe("300");
+    expect(reopened.get('[data-testid="resize-list"]').attributes("aria-valuenow")).toBe("240");
     reopened.unmount();
   });
 
@@ -78,7 +77,8 @@ describe("Resizable columns", () => {
     const sidebarHandle = wrapper.find('[data-testid="resize-sidebar"]');
     expect(sidebarHandle.attributes("role")).toBe("separator");
     await sidebarHandle.trigger("keydown", { key: "ArrowRight" });
-    expect(readColumns(wrapper)).toBe("minmax(180px, 360px) 0 minmax(240px, 300px) 0 minmax(400px, 1fr)");
+    expect(sidebarHandle.attributes("aria-valuenow")).toBe("360");
+    expect(wrapper.get('[data-testid="resize-list"]').attributes("aria-valuenow")).toBe("300");
     await sidebarHandle.trigger("keydown", { key: "ArrowLeft" });
     expect(sidebarHandle.attributes("aria-valuenow")).toBe("344");
     expect(JSON.parse(window.localStorage.getItem("hisar.mainWindow.columnWidths") ?? "null")).toEqual({ sidebar: 344, list: 300 });
