@@ -13,7 +13,7 @@ import {
   store,
   takeVaultFromTeam,
 } from "../store";
-import { formatCount, formatRole } from "../util";
+import { formatCount, formatRole, vaultRoleDescription } from "../util";
 import AppIcon from "./AppIcon.vue";
 import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -362,7 +362,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
               class="role-select"
               :value="teamVault.role"
               :aria-label="`Role of ${team.name} in ${describeTeamVault(teamVault)}`"
-              title="Readers view items, editors also change them, owners also share, rename and delete the vault."
+              :title="vaultRoleDescription"
               :disabled="store.isBusy"
               :data-testid="`team-vault-role-${team.id}-${teamVault.vaultId}`"
               @change="changeTeamVaultRole(team, teamVault, $event)"

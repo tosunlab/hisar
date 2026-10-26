@@ -14,7 +14,7 @@ import {
   renameTeam,
   store,
 } from "../store";
-import { formatRole } from "../util";
+import { formatRole, vaultRoleDescription } from "../util";
 import AccountDialog from "./AccountDialog.vue";
 import type { IconName } from "./AppIcon.vue";
 
@@ -193,7 +193,7 @@ async function submit(): Promise<void> {
         </label>
         <label>
           <span>Role</span>
-          <select v-model="role" name="organizationDialogRole" title="Readers view items, editors also change them, owners also share, rename and delete the vault." data-testid="organization-dialog-role">
+          <select v-model="role" name="organizationDialogRole" :title="vaultRoleDescription" data-testid="organization-dialog-role">
             <option v-for="vaultRole in allVaultRole" :key="vaultRole" :value="vaultRole">{{ formatRole(vaultRole) }}</option>
           </select>
         </label>
