@@ -90,8 +90,9 @@ struct PhoneApprovalSheet: View {
                         }
                     }
                 } footer: {
-                    Text("Approving lets this one request continue; it does not unlock Hisar on your Mac.")
-                        .accessibilityElement(children: .combine)
+                    Text(approval.lifetime.isEmpty
+                         ? "Approving lets this one request continue; it does not unlock Hisar on your Mac."
+                         : "Approving lets \(approval.appName) use Hisar until it locks on your Mac; it does not unlock Hisar there.")
                         .accessibilityIdentifier("phone-approval-note")
                 }
             }

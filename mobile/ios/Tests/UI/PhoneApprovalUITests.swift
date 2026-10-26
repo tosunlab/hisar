@@ -41,7 +41,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertFalse(app.staticTexts["phone-approval-row-Terminal"].exists)
         XCTAssertFalse(app.switches["phone-approval-remember"].exists, "a launcher's approval always lasts until Hisar locks")
         let note = app.descendants(matching: .any)["phone-approval-note"].label
-        XCTAssertEqual(note, "Approving lets this one request continue; it does not unlock Hisar on your Mac.")
+        XCTAssertEqual(note, "Approving lets Raycast use Hisar until it locks on your Mac; it does not unlock Hisar there.")
         saveScreenshot("phone-approval-launcher")
         app.buttons["phone-approval-approve"].tap()
         checkResult("Approved preview-launcher with Face ID")
