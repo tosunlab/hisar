@@ -99,6 +99,8 @@ class ItemDetailUITests : HisarUITestCase() {
         waitUntil(10_000, "the clipboard holds the code") { clipboardText?.length == 6 }
         assertTrue("${clipboardText} is not the current code", clipboardText in listOf(computeCode(startedAt), computeCode(Instant.now())))
 
+        waitFor(hasText("One-time code copied. It clears in about 2 minutes."))
+        dismissNotice()
         tap("copy-secret-reference")
         waitUntil(10_000, "the clipboard holds the password's reference") { clipboardText == "hisar://Personal/GitHub/password" }
         waitFor(hasText("Secret reference copied."))

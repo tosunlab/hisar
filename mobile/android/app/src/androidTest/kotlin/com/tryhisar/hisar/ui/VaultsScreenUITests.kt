@@ -125,6 +125,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             Espresso.closeSoftKeyboard()
             goBack()
 
+            dismissNotice()
             scrollTo("favorite-GitHub")
             scrollTo("favorite-Netflix")
             composeRule.onNodeWithTag("favorite-Netflix").performTouchInput { swipeLeft() }

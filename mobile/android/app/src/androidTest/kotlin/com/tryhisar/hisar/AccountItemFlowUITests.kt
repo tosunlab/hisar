@@ -59,6 +59,7 @@ class AccountItemFlowUITests : HisarUITestCase() {
         waitFor("password-value")
         assertNotEquals("the generated password replaced the old one", "ui-test-password-1", readText("password-value"))
 
+        dismissNotice()
         tap("copy-secret-reference")
         goBack()
         goBack()

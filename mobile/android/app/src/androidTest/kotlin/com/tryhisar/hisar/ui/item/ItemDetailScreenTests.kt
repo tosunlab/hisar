@@ -64,6 +64,12 @@ class ItemDetailScreenTests {
 
     private fun exists(tag: String) = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
 
+    private fun dismissNotice() {
+        composeRule.waitForTag("notice")
+        composeRule.onNodeWithTag("notice").performTouchInput { swipeLeft() }
+        composeRule.waitForTagToGo("notice")
+    }
+
     @Test
     fun testServerOpensItsSSHKeyAndBackReturnsToTheServer() {
         val host = openHost()
@@ -136,6 +142,7 @@ class ItemDetailScreenTests {
         composeRule.onNodeWithTag("field-action-Copy secret reference").performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedReference == listOf("hisar://Personal/GitHub/username") }
 
+        dismissNotice()
         composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performTouchInput { longClick() }
         composeRule.onNodeWithTag("field-action-Copy").performClick()
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
@@ -188,8 +195,10 @@ class ItemDetailScreenTests {
         composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasTestTag("password-value") and hasText("github-password"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         assertEquals("the reveal button does not also copy", 2, backend.allCopiedField.size)
 
+        dismissNotice()
         composeRule.onNode(hasClickLabel("Copy PIN")).performScrollTo().performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedField.last() == "github.PIN" }
+        dismissNotice()
         composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performClick()
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
         val username = composeRule.onNode(hasClickLabel("Copy username")).fetchSemanticsNode()

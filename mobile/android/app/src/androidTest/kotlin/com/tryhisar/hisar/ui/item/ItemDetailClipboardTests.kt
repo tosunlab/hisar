@@ -12,6 +12,7 @@ import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.platform.targetContext
 import com.tryhisar.hisar.platform.waitUntil
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 
@@ -23,7 +24,20 @@ class ItemDetailClipboardTests : HisarUITestCase() {
     private val clipboardText: String?
         get() = clipboardManager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
 
-    private val backend = FakeBackend().apply { seedSignedIn() }
+    private val backend = object : FakeBackend() {
+        override fun copyField(vaultID: String, itemID: String, fieldName: String) {
+            super.copyField(vaultID, itemID, fieldName)
+            val text = when (fieldName) {
+                "password" -> getItem(vaultID, itemID).password
+                "one-time code" -> oneTimeCode.code
+                else -> error("Unexpected copy field $fieldName")
+            }
+            assertTrue(application.copySecret(text))
+        }
+
+        override fun copySecretReference(vaultID: String, itemID: String, fieldName: String): String =
+            super.copySecretReference(vaultID, itemID, fieldName).also { assertTrue(application.copyPlain(it)) }
+    }.apply { seedSignedIn() }
     private var host: ItemDetailHost? = null
 
     private fun openHost() = ItemDetailHost(backend, application).also { host = it }
@@ -31,6 +45,24 @@ class ItemDetailClipboardTests : HisarUITestCase() {
     @After
     fun closeHost() {
         host?.close()
+    }
+
+    @Test
+    fun testSecretReferenceAfterCopyNotices() {
+        openHost().show("personal", "github")
+        waitFor("password-value")
+        tap("copy-password")
+        waitUntil(10_000, "the clipboard holds the password") { clipboardText == "github-password" }
+        waitFor(hasText("Password copied. It clears in about 2 minutes."))
+        tap("copy-one-time-code")
+        waitUntil(10_000, "the clipboard holds the code") { clipboardText == "287082" }
+        waitFor(hasText("One-time code copied. It clears in about 2 minutes."))
+        scrollTo("copy-secret-reference")
+        saveScreenshot("secret-reference-under-copy-notice")
+        dismissNotice()
+        tap("copy-secret-reference")
+        waitUntil(10_000, "the clipboard holds the password's reference") { clipboardText == "hisar://Personal/GitHub/password" }
+        waitFor(hasText("Secret reference copied."))
     }
 
     @Test
