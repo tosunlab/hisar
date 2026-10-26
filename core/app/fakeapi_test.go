@@ -57,6 +57,8 @@ type fakeAPIServer struct {
 	pushRelayURL      string
 	isPushUnsupported bool
 	pushRegistration  *apitypes.PushRegistration
+	// isSessionEnded answers every request 401, as the server does once it ended this device's session.
+	isSessionEnded bool
 }
 
 // refusesSuspended answers 403 with the suspension sentence while the account is suspended.
@@ -310,10 +312,14 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 	server.addOrganizationRoutes(mux)
 	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 		server.mutex.Lock()
-		isUnreachable := server.isUnreachable
+		isUnreachable, isSessionEnded := server.isUnreachable, server.isSessionEnded
 		server.mutex.Unlock()
 		if isUnreachable {
 			writer.WriteHeader(http.StatusBadGateway)
+			return
+		}
+		if isSessionEnded {
+			writeJSON(writer, http.StatusUnauthorized, apitypes.Error{Error: "unauthorized"})
 			return
 		}
 		mux.ServeHTTP(writer, request)
