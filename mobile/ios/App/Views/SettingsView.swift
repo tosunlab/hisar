@@ -611,16 +611,7 @@ struct MacApprovalsView: View {
                 }
                 .accessibilityIdentifier("mac-approval-toggle")
             } footer: {
-                Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, or to let an app like Raycast use Hisar, you can approve or deny the request here, while Hisar is open and unlocked on this iPhone. Turned off, your Mac decides on its own.")
-            }
-            Section {
-                Label("A card at the top of Vaults, with Deny and Approve", systemImage: "rectangle.stack")
-                Label("Every waiting request in the Approvals tab, with a countdown", systemImage: "list.bullet.rectangle")
-                Label("Approve asks for \(SettingsView.biometryName) or your master password", systemImage: SettingsView.biometrySystemImage)
-            } header: {
-                Text("How requests appear")
-            } footer: {
-                Text("The Mac sends requests only while “Approve requests on my smart device” is on in its SSH agent settings.")
+                Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
             }
         }
         .applyThemedListStyle()

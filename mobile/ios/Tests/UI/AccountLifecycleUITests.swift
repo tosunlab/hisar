@@ -13,6 +13,11 @@ final class AccountLifecycleUITests: HisarUITestCase {
         signUp(inviteLink: inviteLink, email: email, name: "Lifecycle")
         dismissSavePasswordPrompt()
 
+        openSettings("open-mac-approvals")
+        XCTAssertTrue(app.staticTexts["When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone."].exists)
+        XCTAssertFalse(app.staticTexts["How requests appear"].exists)
+        goBack()
+
         openSettings("open-security")
         app.buttons["open-change-master-password"].tap()
         type(Self.masterPassword, into: app.secureTextFields["change-password-current"])
