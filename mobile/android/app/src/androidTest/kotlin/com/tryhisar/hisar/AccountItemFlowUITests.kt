@@ -205,12 +205,14 @@ class AccountItemFlowUITests : HisarUITestCase() {
         saveScreenshot("appearance")
         goBack()
 
-        tap("open-secret-key")
+        tap("open-account")
+        tap("open-account-secret-key")
         type(MASTER_PASSWORD, "secret-key-password")
         tap("secret-key-reveal")
         waitFor("secret-key-value", ACCOUNT_KEY_TIMEOUT)
         assertEquals(secretKey, readText("secret-key-value"))
         saveScreenshot("secret-key")
+        goBack()
         goBack()
 
         tap("open-help")
