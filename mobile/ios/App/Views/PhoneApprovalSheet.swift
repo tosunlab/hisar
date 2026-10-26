@@ -5,6 +5,8 @@ struct PhoneApprovalSheet: View {
     var isBusy: Bool
     var isPasswordRequired: Bool
     var errorMessage: String?
+    var biometryName = SettingsView.biometryName
+    var biometrySystemImage = SettingsView.biometrySystemImage
     var approve: (_ isRemembered: Bool) async -> Void
     var approveWithPassword: (_ password: String, _ isRemembered: Bool) async -> Void
     var deny: () async -> Void
@@ -39,7 +41,7 @@ struct PhoneApprovalSheet: View {
                     } header: {
                         Text("Approve with your master password")
                     } footer: {
-                        Text("\(SettingsView.biometryName) is not available, so Hisar checks your master password instead.")
+                        Text("\(biometryName) is not available, so Hisar checks your master password instead.")
                     }
                 }
                 if approval.isRememberable {
@@ -197,12 +199,20 @@ struct PhoneApprovalSheet: View {
                             if isBusy {
                                 ProgressView()
                             } else {
-                                Label("Approve with \(SettingsView.biometryName)", systemImage: SettingsView.biometrySystemImage)
+                                Label {
+                                    Text("Approve with \(biometryName)")
+                                } icon: {
+                                    Image(systemName: biometrySystemImage)
+                                        .accessibilityHidden(false)
+                                        .accessibilityLabel(biometryName)
+                                        .accessibilityIdentifier("phone-approval-biometry-\(biometrySystemImage)")
+                                }
                             }
                         }
                         .frame(maxWidth: .infinity)
                     }
                     .applyProminentGlassStyle()
+                    .accessibilityLabel("Approve with \(biometryName)")
                     .accessibilityIdentifier("phone-approval-approve")
                 }
             }

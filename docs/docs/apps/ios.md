@@ -69,8 +69,9 @@ with it, check the attestation and the ES256 signature with CryptoKit, then see 
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or
-`cli`, `forwarded`, `signing`, `launcher`, `launcher-share`), plus `-HisarApprovalPreviewPassword` to act as if Face ID
-were unavailable, and `-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
+`cli`, `forwarded`, `signing`, `launcher`, `launcher-share`). Add `-HisarApprovalPreviewTouchID` for Touch ID button
+copy and its symbol, or `-HisarApprovalPreviewPassword` for the master password fallback.
+`-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
 whole flow between a desktop backend and a HisarKit backend in `make test-end-to-end`.
 
 **AutoFill in the simulator.** A simulator build without a development team ("Sign to Run Locally") is registered

@@ -4,16 +4,21 @@ import XCTest
 // cannot run in the simulator, and Go tests cover it end to end.
 final class PhoneApprovalUITests: HisarUITestCase {
     func testApproveSSHRequestWithFaceID() {
-        launchPreview("ssh")
-        waitFor(app.descendants(matching: .any)["phone-approval"])
-        XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Terminal wants to push to git.tryhisar.com")
-        XCTAssertEqual(app.buttons["phone-approval-approve"].label, "Approve with Face ID")
-        let rememberSwitch = app.switches["phone-approval-remember"]
-        XCTAssertEqual(rememberSwitch.value as? String, "1", "the switch starts as the Mac's checkbox does")
-        saveScreenshot("phone-approval-ssh")
-        rememberSwitch.switches.firstMatch.tap()
-        app.buttons["phone-approval-approve"].tap()
-        checkResult("Approved preview-ssh with Face ID")
+        for sensor in ["Face ID", "Touch ID"] {
+            launchPreview("ssh", sensor: sensor)
+            waitFor(app.descendants(matching: .any)["phone-approval"])
+            XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Terminal wants to push to git.tryhisar.com")
+            XCTAssertEqual(app.buttons["phone-approval-approve"].label, "Approve with \(sensor)")
+            let symbol = sensor == "Touch ID" ? "touchid" : "faceid"
+            XCTAssertTrue(app.descendants(matching: .any)["phone-approval-biometry-\(symbol)"].exists)
+            let rememberSwitch = app.switches["phone-approval-remember"]
+            XCTAssertEqual(rememberSwitch.value as? String, "1", "the switch starts as the Mac's checkbox does")
+            saveScreenshot("phone-approval-ssh-\(symbol)")
+            rememberSwitch.switches.firstMatch.tap()
+            app.buttons["phone-approval-approve"].tap()
+            checkResult("Approved preview-ssh with \(sensor)")
+            app.terminate()
+        }
     }
 
     func testRememberedSSHApproval() {
@@ -88,21 +93,23 @@ final class PhoneApprovalUITests: HisarUITestCase {
     }
 
     func testApproveWithMasterPasswordWhenFaceIDIsUnavailable() {
-        app.launchArguments = ["-HisarUITest", "-HisarApprovalPreview", "signing", "-HisarApprovalPreviewPassword"]
-        app.launch()
-        waitFor(app.buttons["phone-approval-approve"])
-        XCTAssertEqual(app.switches["phone-approval-remember"].value as? String, "0", "commit signing is never remembered by default")
-        saveScreenshot("phone-approval-signing")
-        app.buttons["phone-approval-approve"].tap()
-        let passwordField = app.secureTextFields["phone-approval-password"]
-        type("not the password", into: passwordField)
-        XCTAssertTrue(app.staticTexts["Face ID is not available, so Hisar checks your master password instead."].exists)
-        app.buttons["phone-approval-approve-password"].tap()
-        waitFor(app.descendants(matching: .any)["error-message"])
-        saveScreenshot("phone-approval-password")
-        type("preview master password", into: passwordField)
-        app.buttons["phone-approval-approve-password"].tap()
-        checkResult("Approved preview-signing with the master password")
+        for sensor in ["Face ID", "Touch ID"] {
+            launchPreview("signing", sensor: sensor, requiresPassword: true)
+            waitFor(app.buttons["phone-approval-approve"])
+            XCTAssertEqual(app.switches["phone-approval-remember"].value as? String, "0", "commit signing is never remembered by default")
+            saveScreenshot("phone-approval-signing")
+            app.buttons["phone-approval-approve"].tap()
+            let passwordField = app.secureTextFields["phone-approval-password"]
+            type("not the password", into: passwordField)
+            XCTAssertTrue(app.staticTexts["\(sensor) is not available, so Hisar checks your master password instead."].exists)
+            app.buttons["phone-approval-approve-password"].tap()
+            waitFor(app.descendants(matching: .any)["error-message"])
+            saveScreenshot("phone-approval-password")
+            type("preview master password", into: passwordField)
+            app.buttons["phone-approval-approve-password"].tap()
+            checkResult("Approved preview-signing with the master password")
+            app.terminate()
+        }
     }
 
     func testWaitingRequestsAreACardOnVaultsAndListedInApprovals() {
@@ -142,8 +149,10 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertTrue(app.staticTexts["Requests from Hisar on your Mac appear here while this iPhone is unlocked."].exists)
     }
 
-    private func launchPreview(_ kind: String) {
+    private func launchPreview(_ kind: String, sensor: String = "Face ID", requiresPassword: Bool = false) {
         app.launchArguments = ["-HisarUITest", "-HisarApprovalPreview", kind]
+        if sensor == "Touch ID" { app.launchArguments.append("-HisarApprovalPreviewTouchID") }
+        if requiresPassword { app.launchArguments.append("-HisarApprovalPreviewPassword") }
         app.launch()
     }
 
