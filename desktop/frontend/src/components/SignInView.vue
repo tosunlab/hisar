@@ -43,9 +43,9 @@ const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
 );
 const passwordFeedback = computed(() => getMasterPasswordFeedback(mode.value === "sign-in" ? "" : password.value));
-const allHeading: Record<Mode, { title: string; subtitle: string }> = {
-  "sign-in": { title: "Welcome back", subtitle: `Sign in to Hisar on ${getThisDeviceName()}.` },
-  "create-account": { title: "Create your account", subtitle: "Enter the invite code you received. Pasting the whole invite link works too." },
+const allSubtitle: Record<Mode, string> = {
+  "sign-in": `Sign in to Hisar on ${getThisDeviceName()}.`,
+  "create-account": "Hisar is invite-only: paste the code or link you received.",
 };
 
 type Feature = { icon: IconName; title: string; text: string };
@@ -176,8 +176,8 @@ async function submitCreateAccount(): Promise<void> {
           </button>
         </div>
 
-        <h1>{{ allHeading[mode].title }}</h1>
-        <p class="subtitle">{{ allHeading[mode].subtitle }}</p>
+        <h1 v-if="mode === 'create-account'">Create your account</h1>
+        <p class="subtitle">{{ allSubtitle[mode] }}</p>
 
         <div v-if="store.status.signedOutReason" class="signed-out-notice" role="status" data-testid="signed-out-reason">
           <AppIcon name="shield" />
