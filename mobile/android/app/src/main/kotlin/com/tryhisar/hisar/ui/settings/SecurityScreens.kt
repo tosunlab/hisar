@@ -4,17 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.outlined.ListAlt
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.outlined.FindReplace
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.LaptopMac
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Screenshot
-import androidx.compose.material.icons.outlined.ViewAgenda
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -25,7 +22,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -35,13 +31,11 @@ import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
-import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.theme.HisarTheme
-import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
 
 /** Settings → Security: biometric unlock, auto-lock, screenshots, the two credential changes, and locking now. */
@@ -150,7 +144,7 @@ private fun BiometricPasswordAlert(onTurnOn: (String) -> Unit, onDismiss: () -> 
     )
 }
 
-/** Settings → Mac approvals: whether this device answers the Mac's requests, and how they appear. */
+/** Settings → Mac approvals: whether this device answers the Mac's requests. */
 @Composable
 fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
     val isMacApprovalAllowed by model.isMacApprovalAllowed.collectAsStateWithLifecycle()
@@ -159,7 +153,7 @@ fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
         FormSection(
             footer = {
                 Text(
-                    "When Hisar on your Mac asks to use an SSH key or the command-line tool, or to let an app like Raycast use Hisar, you can approve or deny the request here, while Hisar is open and unlocked on this device. Turned off, your Mac decides on its own.",
+                    "Requests from Hisar on your Mac appear in the Approvals tab while Hisar is open and unlocked on this device.",
                 )
             },
         ) {
@@ -170,25 +164,6 @@ fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
                 testTag = "mac-approval-toggle",
                 icon = Icons.Outlined.LaptopMac,
             )
-        }
-        FormSection(
-            header = "How requests appear",
-        ) {
-            ExplanationRow(Icons.Outlined.ViewAgenda, "A card at the top of Vaults, with Deny and Approve")
-            RowDivider()
-            ExplanationRow(Icons.AutoMirrored.Outlined.ListAlt, "Every waiting request in the Approvals tab, with a countdown")
-            RowDivider()
-            ExplanationRow(Icons.Filled.Fingerprint, "Approve asks for biometrics or your master password")
-        }
-    }
-}
-
-@Composable
-private fun ExplanationRow(icon: ImageVector, text: String) {
-    FormRow {
-        Row {
-            RowIcon(icon)
-            Text(text, style = HisarType.body, color = HisarTheme.colors.label)
         }
     }
 }
