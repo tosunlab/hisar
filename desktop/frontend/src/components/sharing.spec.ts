@@ -441,7 +441,7 @@ describe("Settings people and devices", () => {
     api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
     const wrapper = mount(SettingsPanel);
     await flushPromises();
-    expect(wrapper.find('[data-testid="people-empty-hint"]').text()).toContain("People appear here once you share a vault with them");
+    expect(wrapper.find('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
     expect(wrapper.find('[data-testid="sent-invitations"]').exists()).toBe(false);
     wrapper.unmount();
   });

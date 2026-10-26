@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createApiMock, createDevice, createPerson, createReceivedShareInvitation, createSSHAgentStatus, createStatus, createUpdateStatus } from "../testing";
+import MainView from "./MainView.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -52,6 +53,8 @@ beforeEach(() => {
     isBusy: false,
     isSettingsOpen: true,
     allVault: [],
+    selectedVaultID: "",
+    isSharingOpen: false,
     allPerson: [],
     allDevice: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
@@ -164,6 +167,32 @@ describe("Settings sidebar", () => {
     await settings.find('[data-testid="settings-section-devices"]').trigger("click");
     await settings.find('[data-testid="settings-section-people"]').trigger("click");
     expect(settings.find('[data-testid="invite-form"]').exists()).toBe(false);
+  });
+});
+
+describe("People empty state", () => {
+  it.each([
+    { name: "no people", allPerson: [] },
+    { name: "only you", allPerson: [createPerson()] },
+  ])("offers the same sharing action with $name", async ({ allPerson }) => {
+    api.listAllPerson.mockResolvedValue(allPerson);
+    const settings = await mountSettings();
+    await settings.get('[data-testid="settings-section-people"]').trigger("click");
+    expect(settings.get('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
+    expect(settings.get('[data-testid="people-share-vault"]').attributes("disabled")).toBeDefined();
+  });
+
+  it("opens the selected vault's Share panel and closes Settings", async () => {
+    store.allVault = [{ id: "team", name: "Team", type: "shared", role: "owner", itemCount: 0 }];
+    store.selectedVaultID = "team";
+    window.localStorage.setItem("hisar.settings.selectedSection", "people");
+    wrapper = mount(MainView);
+    await flushPromises();
+    await wrapper.get('[data-testid="people-share-vault"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-search"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="vault-sharing-panel"]').text()).toContain("Share “Team”");
+    expect(api.listAllVaultMember).toHaveBeenCalledWith("team");
   });
 });
 
