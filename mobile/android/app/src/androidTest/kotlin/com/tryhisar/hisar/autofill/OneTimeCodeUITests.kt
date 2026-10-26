@@ -35,7 +35,7 @@ class OneTimeCodeUITests : HisarUITestCase() {
         signUp(readArgument("HISAR_UI_TEST_ONE_TIME_CODE_INVITE_LINK"), readArgument("HISAR_UI_TEST_ONE_TIME_CODE_EMAIL"), "Android One-Time Code")
 
         tap("vault-Personal")
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type("Example", "editor-title")
         type("code-user", "editor-username")
         type("code-password-1", "editor-password")

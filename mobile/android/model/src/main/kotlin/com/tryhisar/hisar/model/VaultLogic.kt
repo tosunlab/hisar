@@ -109,6 +109,18 @@ object VaultLogic {
         else -> ""
     }
 
+    /** Whether the user may add and change items in [vault]: their Personal vault, or one they edit or own whose key opened. */
+    fun isWritable(vault: VaultSummary): Boolean =
+        vault.readIssues.none { it.kind == "vault-key" } && (vault.type == VaultSummary.TYPE_PERSONAL || vault.role != Member.VAULT_ROLE_READER)
+
+    /** The vault a new item goes into: [currentVaultID] when the user may write there, else the Personal vault, else the first they may write to. */
+    fun chooseNewItemVault(allVault: List<VaultSummary>, currentVaultID: String?): VaultSummary? {
+        val allWritable = allVault.filter(::isWritable)
+        return allWritable.firstOrNull { it.id == currentVaultID }
+            ?: allWritable.firstOrNull { it.type == VaultSummary.TYPE_PERSONAL }
+            ?: allWritable.firstOrNull()
+    }
+
     fun describeItemCount(count: Int): String = if (count == 1) "1 item" else "$count items"
 
     /** The Secret Key as the backend reads it: upper case, without the spaces and line breaks a paste brings. */

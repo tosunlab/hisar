@@ -22,7 +22,7 @@ class PasswordGeneratorSheetUITests : HisarUITestCase() {
         launch()
         signUp(readArgument("HISAR_UI_TEST_GENERATOR_SHEET_INVITE_LINK"), readArgument("HISAR_UI_TEST_GENERATOR_SHEET_EMAIL"), "Generator sheet")
         tap("vault-Personal")
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type("Landscape password", "editor-title")
         try {
             device.setOrientationLeft()

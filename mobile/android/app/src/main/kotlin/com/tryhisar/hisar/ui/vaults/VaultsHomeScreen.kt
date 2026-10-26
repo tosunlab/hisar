@@ -22,23 +22,12 @@ import androidx.compose.material.icons.filled.Business
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.Badge
-import androidx.compose.material.icons.outlined.CreateNewFolder
-import androidx.compose.material.icons.outlined.CreditCard
-import androidx.compose.material.icons.outlined.DataObject
-import androidx.compose.material.icons.outlined.Dns
 import androidx.compose.material.icons.outlined.Inventory2
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
-import androidx.compose.material.icons.outlined.Password
-import androidx.compose.material.icons.outlined.Place
 import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.StarOutline
-import androidx.compose.material.icons.automirrored.outlined.StickyNote2
-import androidx.compose.material.icons.outlined.Storage
-import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -99,21 +88,6 @@ fun RefusalAlert(refusal: Refusal?, onDismiss: () -> Unit) {
     )
 }
 
-/** The New menu's item categories, in its order: each opens the editor for a new item in the Personal vault. */
-private class NewItemChoice(val title: String, val category: String, val testTag: String, val icon: ImageVector)
-
-private val allNewItemChoice = listOf(
-    NewItemChoice("New login", ItemDetail.CATEGORY_LOGIN, "new-login", Icons.Outlined.Password),
-    NewItemChoice("New secure note", ItemDetail.CATEGORY_SECURE_NOTE, "new-secure-note", Icons.AutoMirrored.Outlined.StickyNote2),
-    NewItemChoice("New credit card", ItemDetail.CATEGORY_CREDIT_CARD, "new-credit-card", Icons.Outlined.CreditCard),
-    NewItemChoice("New identity", ItemDetail.CATEGORY_IDENTITY, "new-identity", Icons.Outlined.Badge),
-    NewItemChoice("New API credential", ItemDetail.CATEGORY_API_CREDENTIAL, "new-api-credential", Icons.Outlined.DataObject),
-    NewItemChoice("New address", ItemDetail.CATEGORY_ADDRESS, "new-address", Icons.Outlined.Place),
-    NewItemChoice("New software license", ItemDetail.CATEGORY_SOFTWARE_LICENSE, "new-software-license", Icons.Outlined.Verified),
-    NewItemChoice("New server", ItemDetail.CATEGORY_SERVER, "new-server", Icons.Outlined.Dns),
-    NewItemChoice("New database", ItemDetail.CATEGORY_DATABASE, "new-database", Icons.Outlined.Storage),
-)
-
 /**
  * The Vaults tab's root, in the iPhone's section order: offline note, the Mac's waiting request, removed-vault notices,
  * key warnings, vaults shared with the user, organization invitations, favorites, vaults, one section per organization,
@@ -129,10 +103,9 @@ fun VaultsHomeScreen(model: AppModel) {
     val isAnsweringApproval by model.approvals.isAnsweringApproval.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     val stack = model.navigation.vaults
-    var isNewMenuShown by remember { mutableStateOf(false) }
+    var isNewSheetShown by remember { mutableStateOf(false) }
     var isPulling by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<Refusal?>(null) }
-    val personalVault = data.allVault.firstOrNull { it.type == VaultSummary.TYPE_PERSONAL }
     val allItem = data.listAllItemReference()
     val grouping = OrganizationLogic.groupVaults(data.allVault, data.allOrganization, data.waitingVaultKeys.allWaiting)
 
@@ -162,23 +135,6 @@ fun VaultsHomeScreen(model: AppModel) {
             verticalAlignment = Alignment.CenterVertically,
         ) {
             ToolbarIconButton(Icons.Outlined.Lock, "Lock", testTag = "lock-now") { scope.launch { model.lock() } }
-            Box {
-                ToolbarIconButton(Icons.Outlined.Add, "New", testTag = "new-menu") { isNewMenuShown = true }
-                HisarMenu(isExpanded = isNewMenuShown, onDismiss = { isNewMenuShown = false }) {
-                    for (choice in allNewItemChoice) {
-                        HisarMenuItem(choice.title, choice.testTag, icon = choice.icon, enabled = personalVault != null, onClick = {
-                            isNewMenuShown = false
-                            personalVault?.let { vault ->
-                                stack.push(VaultsDestination.Editor(EditorRequest.New(vault.id, ItemDetail(category = choice.category)), opensSavedItem = true))
-                            }
-                        })
-                    }
-                    HisarMenuItem("New vault", "new-vault", icon = Icons.Outlined.CreateNewFolder, onClick = {
-                        isNewMenuShown = false
-                        stack.push(VaultsDestination.NewVault)
-                    })
-                }
-            }
         }
         PullToRefreshBox(
             isRefreshing = isPulling,
@@ -287,9 +243,19 @@ fun VaultsHomeScreen(model: AppModel) {
                         leading = { RowSymbol(Icons.Outlined.Sell) },
                     ) { Text(tag.name, style = HisarType.body, color = HisarTheme.colors.label) }
                 }
-                item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp)) }
+                item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp + NewButtonClearance)) }
             }
+            NewButton(onClick = { isNewSheetShown = true }, modifier = Modifier.align(Alignment.BottomEnd))
         }
+    }
+    if (isNewSheetShown) {
+        NewItemSheet(
+            allVault = data.allVault,
+            currentVaultID = null,
+            onNewItem = { vaultID, category -> stack.push(VaultsDestination.Editor(EditorRequest.New(vaultID, ItemDetail(category = category)), opensSavedItem = true)) },
+            onNewVault = { stack.push(VaultsDestination.NewVault) },
+            onDismiss = { isNewSheetShown = false },
+        )
     }
     RefusalAlert(refusal) { refusal = null }
 }

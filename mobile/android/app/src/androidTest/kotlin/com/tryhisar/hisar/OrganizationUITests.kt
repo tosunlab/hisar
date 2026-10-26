@@ -45,7 +45,7 @@ class OrganizationUITests : HisarUITestCase() {
 
         tap("vault-Audit")
         waitFor("item-Audit log", 30_000)
-        assertFalse("readers cannot add items", exists(hasTestTag("add-item")))
+        assertFalse("readers cannot add items", exists(hasTestTag("new-menu")))
         tap("item-Audit log")
         waitFor("favorite-item")
         assertFalse("readers cannot edit", exists(hasTestTag("edit-item")))
@@ -67,7 +67,7 @@ class OrganizationUITests : HisarUITestCase() {
         waitFor(hasText("Can't do that"))
         tap("blocked-reason-ok")
 
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type("Remove me", "editor-title")
         type("member", "editor-username")
         tap("editor-save")
@@ -123,7 +123,7 @@ class OrganizationUITests : HisarUITestCase() {
         waitFor("vault-search")
         waitFor(hasText("Runbooks"))
 
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type("Pager", "editor-title")
         type("pager-oncall", "editor-username")
         tap("editor-save")

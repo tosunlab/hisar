@@ -2,6 +2,7 @@ package com.tryhisar.hisar.ui.vaults
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -47,7 +48,7 @@ import kotlinx.coroutines.launch
 
 /**
  * A pushed list with a large title that moves into the bar once scrolled away, an optional search field under it, pull to
- * refresh, and [emptyContent] in place of the rows when there are none.
+ * refresh, [emptyContent] in place of the rows when there are none, and an optional [floatingButton] over the list's corner.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +60,7 @@ fun PushedListScaffold(
     emptyContent: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
     searchField: (@Composable () -> Unit)? = null,
+    floatingButton: (@Composable BoxScope.() -> Unit)? = null,
     content: LazyListScope.() -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -82,9 +84,10 @@ fun PushedListScaffold(
                 item(key = "title") { Box(Modifier.padding(horizontal = ScreenMargin)) { LargeTitle(title, topPadding = 0.dp) } }
                 if (searchField != null) item(key = "search") { searchField() }
                 content()
-                item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp)) }
+                item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp + if (floatingButton != null) NewButtonClearance else 0.dp)) }
             }
             if (isEmpty) Box(Modifier.padding(top = 120.dp, bottom = TabBarHeight)) { emptyContent() }
+            floatingButton?.invoke(this)
         }
     }
 }

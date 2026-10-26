@@ -127,7 +127,7 @@ abstract class HisarUITestCase {
 
     fun choose(item: String, menu: String) {
         tap(menu)
-        waitFor(item)
+        scrollTo(item)
         composeRule.onNode(hasTestTag(item)).performClick()
         composeRule.waitUntil("the $menu menu closes after choosing $item", 10_000) { !exists(hasTestTag(item)) }
     }
@@ -270,7 +270,7 @@ abstract class HisarUITestCase {
 
     fun addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
         tap("vault-Personal")
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type(title, "editor-title")
         type(username, "editor-username")
         type(password, "editor-password")
