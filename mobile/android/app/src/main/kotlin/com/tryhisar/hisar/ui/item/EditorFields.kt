@@ -277,7 +277,7 @@ fun EditorField(
 fun RowIconButton(icon: ImageVector, contentDescription: String, onClick: () -> Unit, testTag: String = "", tint: Color = HisarTheme.colors.secondaryLabel) {
     Box(
         Modifier
-            .size(44.dp)
+            .size(48.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .semantics { this.contentDescription = contentDescription }
             .then(if (testTag.isEmpty()) Modifier else Modifier.testTag(testTag)),
@@ -285,6 +285,12 @@ fun RowIconButton(icon: ImageVector, contentDescription: String, onClick: () -> 
     ) {
         Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(22.dp))
     }
+}
+
+/** The red minus that removes a website, a custom field, a tag or a date from the item. */
+@Composable
+fun RemoveRowButton(contentDescription: String, testTag: String, onClick: () -> Unit) {
+    RowIconButton(Icons.Outlined.RemoveCircleOutline, contentDescription, onClick = onClick, testTag = testTag, tint = HisarTheme.colors.destructive)
 }
 
 /** The eye that reveals or hides one secret field. */
@@ -438,7 +444,7 @@ fun DateRow(title: String, value: String, onValueChange: (String) -> Unit, testT
                     Text(date.format(dateFormatter), style = HisarType.body, color = HisarTheme.colors.label)
                 }
                 Spacer(Modifier.width(4.dp))
-                RowIconButton(Icons.Outlined.RemoveCircleOutline, "Remove ${title.lowercase()}", onClick = { onValueChange("") }, tint = HisarTheme.colors.destructive)
+                RemoveRowButton("Remove ${title.lowercase()}", "$testTag-remove", onClick = { onValueChange("") })
             }
             if (isPickerShown) {
                 val latest = CalendarDate.getToday()
