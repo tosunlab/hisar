@@ -55,7 +55,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.SentShareInvitation
 import com.tryhisar.hisar.model.VaultLogic
@@ -72,8 +71,6 @@ import com.tryhisar.hisar.ui.vaults.BarCapsuleButton
 import com.tryhisar.hisar.ui.vaults.HisarMenu
 import com.tryhisar.hisar.ui.vaults.HisarMenuItem
 
-private val CaptionStyle = HisarType.footnote.copy(fontSize = 12.sp, lineHeight = 16.sp)
-private val SecurityCodeCaptionStyle = HisarType.bodyMonospaced.copy(fontSize = 11.sp, lineHeight = 13.sp)
 private val SentColor = Color(0xFF34C759)
 
 /** Keeps a pushed person across rotation and tab switches; a Member is saved as the JSON HisarKit sends. */
@@ -148,8 +145,8 @@ fun ModalSheetBar(title: String, onCancel: () -> Unit, action: @Composable RowSc
 }
 
 /**
- * A person with access: name, email, security code and a changed-key warning, the role on the right, as the iPhone's
- * MemberRow inside a NavigationLink. A long press opens [menu] when there is one.
+ * A person with access: name, email and a changed-key warning, the role on the right, as the iPhone's MemberRow inside a
+ * NavigationLink; the security code is on the person's screen. A long press opens [menu] when there is one.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -181,16 +178,13 @@ fun MemberRow(
             )
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(describeMemberName(member), style = HisarType.body, color = colors.label)
-                Text(member.email, style = CaptionStyle, color = colors.secondaryLabel)
-                if (member.securityCode.isNotEmpty()) {
-                    Text("Security code ${member.securityCode}", style = SecurityCodeCaptionStyle, color = colors.secondaryLabel)
-                }
+                Text(member.email, style = HisarType.footnote, color = colors.secondaryLabel)
                 if (member.isKeyChanged) {
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(Icons.Filled.Warning, contentDescription = null, tint = colors.warning, modifier = Modifier.size(14.dp))
                         Text(
                             "Their key changed since you last shared with them. Check the security code with them before sharing again.",
-                            style = CaptionStyle,
+                            style = HisarType.footnote,
                             color = colors.warning,
                         )
                     }

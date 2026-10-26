@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Notes
 import androidx.compose.material.icons.outlined.ChevronRight
@@ -128,9 +127,17 @@ internal fun ItemDetailContent(
     if (item.allAndroidApp.isNotEmpty()) {
         RowsSection(
             header = if (item.allAndroidApp.size == 1) "Android app" else "Android apps",
-            footer = "AutoFill offers this login in these apps.",
+            footer = "AutoFill offers this login in these apps. Touch and hold an app to copy its signing certificate.",
         ) {
-            item.allAndroidApp.forEach { androidApp -> row { AndroidAppRow(androidApp, isWritable) { removeAndroidApp(androidApp) } } }
+            item.allAndroidApp.forEach { androidApp ->
+                row {
+                    AndroidAppRow(
+                        androidApp, isWritable,
+                        copyCertificate = { model.copyPlainText(androidApp.certificateSHA256, "Certificate") },
+                        remove = { removeAndroidApp(androidApp) },
+                    )
+                }
+            }
         }
     }
     if (item.allPasskey.isNotEmpty()) {
@@ -487,20 +494,16 @@ private fun LinkLabel(title: String, icon: ImageVector) {
     }
 }
 
+/** An app the login fills into; touch and hold copies its signing certificate's SHA-256, which the row leaves out. */
 @Composable
-private fun AndroidAppRow(androidApp: ItemAndroidApp, isWritable: Boolean, remove: () -> Unit) {
-    IconRow(Icons.Outlined.PhoneAndroid, "android-app-${androidApp.packageName}", trailing = {
-        if (isWritable) {
-            FieldIconButton(Icons.Outlined.Delete, "Remove ${androidApp.packageName}", "remove-android-app-${androidApp.packageName}", remove, tint = HisarTheme.colors.destructive)
-        }
-    }) {
-        SelectionContainer { Text(androidApp.packageName, style = HisarType.body, color = HisarTheme.colors.label) }
-        SelectionContainer {
-            Text(
-                "Certificate SHA-256 ${androidApp.certificateSHA256}",
-                style = HisarType.footnote.copy(fontSize = HisarType.footnote.fontSize * 0.92f, fontFamily = HisarType.bodyMonospaced.fontFamily),
-                color = HisarTheme.colors.secondaryLabel,
-            )
+private fun AndroidAppRow(androidApp: ItemAndroidApp, isWritable: Boolean, copyCertificate: () -> Unit, remove: () -> Unit) {
+    MenuRow(listOf(MenuAction("Copy certificate", Icons.Outlined.ContentCopy, copyCertificate))) {
+        IconRow(Icons.Outlined.PhoneAndroid, "android-app-${androidApp.packageName}", trailing = {
+            if (isWritable) {
+                FieldIconButton(Icons.Outlined.Delete, "Remove ${androidApp.packageName}", "remove-android-app-${androidApp.packageName}", remove, tint = HisarTheme.colors.destructive)
+            }
+        }) {
+            Text(androidApp.packageName, style = HisarType.body, color = HisarTheme.colors.label)
         }
     }
 }
