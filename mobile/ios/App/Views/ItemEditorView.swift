@@ -797,7 +797,7 @@ struct ItemEditorView: View {
                         Button {
                             draft.allField[index].concealed.toggle()
                         } label: {
-                            Image(systemName: draft.allField[index].concealed ? "eye.slash" : "eye")
+                            Image(systemName: draft.allField[index].concealed ? "eye" : "eye.slash")
                                 .iconButtonHitArea()
                         }
                         .buttonStyle(.borderless)
