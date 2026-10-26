@@ -378,12 +378,32 @@ function closeNewItemMenu(event: Event): void {
   }
 }
 
+// isOverlayOpen: a panel or dialog covers the main window, so shortcuts must not act on the vault behind it.
+const isOverlayOpen = computed(
+  () =>
+    store.isSettingsOpen ||
+    store.isSharingOpen ||
+    store.isImportOpen ||
+    store.isShareLinksOpen ||
+    store.shareLinkDialog !== null ||
+    store.vaultDialog !== null ||
+    store.browserPairing !== null ||
+    itemToDelete.value !== null ||
+    itemToMove.value !== null,
+);
+
 function handleShortcut(event: KeyboardEvent): void {
   if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
     return;
   }
   const key = event.key.toLowerCase();
-  if (key === "f" && store.isSettingsOpen) {
+  // Locking stays available everywhere: it is the shortcut that protects the vault.
+  if (key === "l") {
+    event.preventDefault();
+    lock();
+    return;
+  }
+  if (isOverlayOpen.value) {
     return;
   }
   if (key === "f") {
@@ -392,12 +412,9 @@ function handleShortcut(event: KeyboardEvent): void {
   } else if (key === "n" && canCreate.value) {
     event.preventDefault();
     startCreatingItem();
-  } else if (key === "d" && store.selectedItem && store.editorMode === "view" && !store.isSettingsOpen) {
+  } else if (key === "d" && store.selectedItem && store.editorMode === "view") {
     event.preventDefault();
     toggleSelectedItemFavorite();
-  } else if (key === "l") {
-    event.preventDefault();
-    lock();
   } else if (key === ",") {
     event.preventDefault();
     store.isSettingsOpen = true;
