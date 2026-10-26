@@ -60,6 +60,21 @@ import { forgetWebsiteIcons } from "./websiteicons";
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
 export type ImportStep = "choose" | "preview" | "saving" | "done";
 
+// EditorDraft is what the item editor holds so far: kept across a lock, and compared with the item it started from.
+export interface EditorDraft {
+  mode: EditorMode;
+  vaultID: string;
+  itemID: string;
+  item: ItemDetail;
+  urlText: string;
+  isDirty: boolean;
+}
+
+export interface DiscardDraftPrompt {
+  title: string;
+  answer: (isDiscarded: boolean) => void;
+}
+
 export interface ShareLinkDialog {
   mode: "item" | "text";
   vaultID: string;
@@ -104,6 +119,8 @@ export const store = reactive({
   allFavorite: [] as FavoriteItem[],
   isFavoritesSelected: false,
   editorMode: "view" as EditorMode,
+  editorDraft: null as EditorDraft | null,
+  discardDraftPrompt: null as DiscardDraftPrompt | null,
   searchQuery: "",
   // selectedTag narrows the list to the items carrying it; "" shows every item.
   selectedTag: "",
@@ -224,15 +241,24 @@ function clearAllVaultData(): void {
   store.allFavorite = [];
   store.isFavoritesSelected = false;
   store.editorMode = "view";
+  store.editorDraft = null;
+  store.discardDraftPrompt?.answer(false);
   store.searchQuery = "";
   store.selectedTag = "";
 }
 
 let sessionGeneration = 0;
 let browserPairingGeneration = 0;
+// draftKeptForUnlock is the editor's unsaved draft when the vault locked; the next unlock opens it again, and the editor
+// it opens takes it as draftToRestore.
+let draftKeptForUnlock: EditorDraft | null = null;
+let draftToRestore: EditorDraft | null = null;
 
 // clearLockedVaultData also hides a new Secret Key not yet confirmed: the session that made it ended.
 function clearLockedVaultData(): void {
+  if (store.editorDraft) {
+    draftKeptForUnlock = store.editorDraft;
+  }
   sessionGeneration++;
   store.recoveryEpoch++;
   store.recoveryFactor = null;
@@ -245,8 +271,12 @@ async function applyStatus(status: Status): Promise<void> {
   store.status = status;
   if (status.state === "unlocked" && !status.updateRequired) {
     await loadAllVault();
+    await restoreKeptDraft();
   } else if (status.state !== "unlocked") {
     clearLockedVaultData();
+    if (status.state === "signed-out") {
+      draftKeptForUnlock = null;
+    }
   } else {
     clearAllVaultData();
   }
@@ -633,6 +663,59 @@ export async function loadAllVault(): Promise<void> {
   await refreshOrganizationsQuietly();
 }
 
+// restoreKeptDraft reopens the editor a lock closed, with what was typed, once its vault and item are on screen again.
+// It keeps the navigation version like loadAllVault does, so a launcher request waiting for the unlock still wins.
+async function restoreKeptDraft(): Promise<void> {
+  const draft = draftKeptForUnlock;
+  draftKeptForUnlock = null;
+  if (!draft || !store.allVault.some((vault) => vault.id === draft.vaultID)) {
+    return;
+  }
+  const version = navigationVersion;
+  if (store.selectedVaultID !== draft.vaultID) {
+    await loadVaultItems(draft.vaultID, version);
+  }
+  if (draft.itemID) {
+    await loadSelectedItem(draft.itemID, version);
+  }
+  if (version !== navigationVersion || store.selectedVaultID !== draft.vaultID || (store.selectedItem?.id ?? "") !== draft.itemID) {
+    return;
+  }
+  draftToRestore = draft;
+  store.editorMode = draft.mode;
+}
+
+// takeRestoredDraft gives the editor the draft an unlock restored for the item it opens with, once.
+export function takeRestoredDraft(): EditorDraft | null {
+  const draft = draftToRestore;
+  draftToRestore = null;
+  return draft && draft.mode === store.editorMode && draft.vaultID === store.selectedVaultID && draft.itemID === (store.selectedItem?.id ?? "") ? draft : null;
+}
+
+// afterDiscardingDraft runs leave, which closes the editor, at once when nothing typed there would be lost; otherwise it
+// asks first and runs leave only when the user chooses Discard.
+function afterDiscardingDraft(leave: () => void | Promise<void>): Promise<void> {
+  if (store.editorMode === "view" || !store.editorDraft?.isDirty) {
+    return Promise.resolve(leave());
+  }
+  if (store.discardDraftPrompt) {
+    return Promise.resolve();
+  }
+  const title = store.selectedItem?.title || store.editorDraft.item.title.trim();
+  return new Promise((resolve) => {
+    store.discardDraftPrompt = {
+      title,
+      answer: async (isDiscarded) => {
+        store.discardDraftPrompt = null;
+        if (isDiscarded) {
+          await leave();
+        }
+        resolve();
+      },
+    };
+  });
+}
+
 function findPersonalVaultID(allVault: VaultSummary[]): string {
   return (allVault.find((vault) => vault.type === "personal") ?? allVault[0]).id;
 }
@@ -800,8 +883,8 @@ export async function syncInBackground(): Promise<void> {
   }
 }
 
-export async function selectVault(vaultID: string): Promise<void> {
-  await loadVaultItems(vaultID, ++navigationVersion);
+export function selectVault(vaultID: string): Promise<void> {
+  return afterDiscardingDraft(() => loadVaultItems(vaultID, ++navigationVersion));
 }
 
 async function loadVaultItems(vaultID: string, version: number): Promise<void> {
@@ -849,26 +932,30 @@ export async function loadAllFavoriteQuietly(): Promise<void> {
 }
 
 // selectFavorites lists the starred items of every vault; picking one makes its vault the one item actions use.
-export async function selectFavorites(): Promise<void> {
-  navigationVersion++;
-  store.isFavoritesSelected = true;
-  store.selectedItem = null;
-  store.editorMode = "view";
-  store.searchQuery = "";
-  const allFavorite = await runAction(() => api.listAllFavoriteItem());
-  if (allFavorite) {
-    store.allFavorite = allFavorite;
-  }
+export function selectFavorites(): Promise<void> {
+  return afterDiscardingDraft(async () => {
+    navigationVersion++;
+    store.isFavoritesSelected = true;
+    store.selectedItem = null;
+    store.editorMode = "view";
+    store.searchQuery = "";
+    const allFavorite = await runAction(() => api.listAllFavoriteItem());
+    if (allFavorite) {
+      store.allFavorite = allFavorite;
+    }
+  });
 }
 
-export async function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
-  const version = ++navigationVersion;
-  const detail = await runAction(() => api.getItem(favorite.vaultId, favorite.item.id));
-  if (detail && version === navigationVersion) {
-    store.selectedVaultID = favorite.vaultId;
-    store.selectedItem = detail;
-    store.editorMode = "view";
-  }
+export function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
+  return afterDiscardingDraft(async () => {
+    const version = ++navigationVersion;
+    const detail = await runAction(() => api.getItem(favorite.vaultId, favorite.item.id));
+    if (detail && version === navigationVersion) {
+      store.selectedVaultID = favorite.vaultId;
+      store.selectedItem = detail;
+      store.editorMode = "view";
+    }
+  });
 }
 
 export function filterAllFavorite(allFavorite: FavoriteItem[], query: string): FavoriteItem[] {
@@ -961,14 +1048,19 @@ export function listAllTag(allItem: ItemDetail[]): TagSummary[] {
 }
 
 // selectTag filters the list by the tag, and clears the filter when the tag is already selected.
-export function selectTag(tag: string): void {
-  store.selectedTag = store.selectedTag === tag ? "" : tag;
+export function selectTag(tag: string): Promise<void> {
+  const nextTag = store.selectedTag === tag ? "" : tag;
+  if (!store.isFavoritesSelected) {
+    store.selectedTag = nextTag;
+    return Promise.resolve();
+  }
   // The filter narrows the selected vault's list, so choosing a tag from Favorites returns to that list.
-  if (store.isFavoritesSelected) {
+  return afterDiscardingDraft(() => {
+    store.selectedTag = nextTag;
     store.isFavoritesSelected = false;
     store.selectedItem = null;
     store.editorMode = "view";
-  }
+  });
 }
 
 // updateSelectedVaultSummary makes the selected vault's summary describe store.allItem, its latest acquisition: the
@@ -981,8 +1073,8 @@ function updateSelectedVaultSummary(): void {
   }
 }
 
-export async function selectItem(itemID: string): Promise<void> {
-  await loadSelectedItem(itemID, ++navigationVersion);
+export function selectItem(itemID: string): Promise<void> {
+  return afterDiscardingDraft(() => loadSelectedItem(itemID, ++navigationVersion));
 }
 
 async function loadSelectedItem(itemID: string, version: number): Promise<void> {
@@ -1008,7 +1100,11 @@ export async function openSettings(sectionID: string): Promise<void> {
 
 // showItem follows a launcher's Open in Hisar: the item in its vault, in its editor when asked and the vault allows it.
 // The window may not have heard yet about the unlock that came with the launcher's approval.
-export async function showItem(location: ItemLocation): Promise<void> {
+export function showItem(location: ItemLocation): Promise<void> {
+  return afterDiscardingDraft(() => openShownItem(location));
+}
+
+async function openShownItem(location: ItemLocation): Promise<void> {
   const version = ++navigationVersion;
   if (store.status.state !== "unlocked") {
     await loadStatus();
@@ -1033,54 +1129,51 @@ export async function showItem(location: ItemLocation): Promise<void> {
   }
 }
 
-export function startCreatingItem(): void {
-  store.selectedItem = null;
-  store.editorMode = "create";
+function startCreating(mode: EditorMode): Promise<void> {
+  return afterDiscardingDraft(() => {
+    store.selectedItem = null;
+    store.editorMode = mode;
+  });
 }
 
-export function startCreatingSecureNote(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-secure-note";
+export function startCreatingItem(): Promise<void> {
+  return startCreating("create");
 }
 
-export function startCreatingCard(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-credit-card";
+export function startCreatingSecureNote(): Promise<void> {
+  return startCreating("create-secure-note");
 }
 
-export function startCreatingIdentity(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-identity";
+export function startCreatingCard(): Promise<void> {
+  return startCreating("create-credit-card");
 }
 
-export function startCreatingAPICredential(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-api-credential";
+export function startCreatingIdentity(): Promise<void> {
+  return startCreating("create-identity");
 }
 
-export function startCreatingAddress(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-address";
+export function startCreatingAPICredential(): Promise<void> {
+  return startCreating("create-api-credential");
 }
 
-export function startCreatingSoftwareLicense(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-software-license";
+export function startCreatingAddress(): Promise<void> {
+  return startCreating("create-address");
 }
 
-export function startCreatingServer(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-server";
+export function startCreatingSoftwareLicense(): Promise<void> {
+  return startCreating("create-software-license");
 }
 
-export function startCreatingDatabase(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-database";
+export function startCreatingServer(): Promise<void> {
+  return startCreating("create-server");
 }
 
-export function startCreatingSSHKey(): void {
-  store.selectedItem = null;
-  store.editorMode = "create-ssh-key";
+export function startCreatingDatabase(): Promise<void> {
+  return startCreating("create-database");
+}
+
+export function startCreatingSSHKey(): Promise<void> {
+  return startCreating("create-ssh-key");
 }
 
 async function showCreatedItem(created: ItemDetail): Promise<void> {
@@ -1119,8 +1212,10 @@ export function startEditingItem(): void {
   }
 }
 
-export function cancelEditing(): void {
-  store.editorMode = "view";
+export function cancelEditing(): Promise<void> {
+  return afterDiscardingDraft(() => {
+    store.editorMode = "view";
+  });
 }
 
 export async function saveItem(detail: ItemDetail): Promise<boolean> {
