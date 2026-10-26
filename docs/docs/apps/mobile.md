@@ -96,6 +96,9 @@ When the sheet has no matching credentials, Hisar returns your search choice to 
 Copy and action notices use Material snackbars above the tab bar. Favorite changes offer **Undo** until the
 snackbar is dismissed. TalkBack announces each notice. Swipe it away or use its dismiss button to close it without undoing the action.
 
+Touch and hold an Android app linked to a login, then choose **Copy certificate** to copy its full signing-certificate
+SHA-256. The copy uses uppercase hex bytes separated by colons, as `apksigner` and Digital Asset Links show it.
+
 ### Account passwords and exports
 
 The new master password and encrypted-export passphrase forms count extended grapheme clusters for their

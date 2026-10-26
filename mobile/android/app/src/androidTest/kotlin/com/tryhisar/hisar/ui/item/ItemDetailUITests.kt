@@ -113,16 +113,18 @@ class ItemDetailUITests : HisarUITestCase() {
         val backend = application.backend
         val login = backend.saveItem(personalID, ItemDetail(title = "Bank", username = "alice", password = PASSWORD, allURL = listOf("https://bank.example")))
         backend.addAndroidApp(personalID, login.id, "com.bank.app", "14".repeat(32))
+        val certificate = List(32) { "14" }.joinToString(":")
         val host = openHost()
         host.show(personalID, login.id)
 
         waitFor("android-app-com.bank.app")
         saveScreenshot("item-detail-android-app")
-        assertFalse("the row leaves out the certificate", exists(hasText("14".repeat(32), substring = true)))
+        assertFalse("the row leaves out the certificate", exists(hasText(certificate, substring = true)))
         composeRule.onNodeWithTag("android-app-com.bank.app").performTouchInput { longClick() }
         tap("field-action-Copy certificate")
         waitForGone("field-action-Copy certificate")
-        waitUntil(10_000, "the clipboard holds the certificate") { clipboardText == "14".repeat(32) }
+        waitFor(hasText("Certificate copied"))
+        waitUntil(10_000, "the clipboard holds the certificate") { clipboardText == certificate }
         tap("remove-android-app-com.bank.app")
         confirm("Remove app", excludingTag = "remove-android-app-com.bank.app")
         waitFor(hasText("Android app removed."))
