@@ -41,7 +41,7 @@ class OneTimeCodeUITests : HisarUITestCase() {
         type("code-password-1", "editor-password")
         type("not a setup key!", "editor-one-time-password")
         tap("editor-save")
-        waitFor(hasText("The one-time password is not a valid secret or otpauth:// link"))
+        waitFor(hasText("The one-time code is not a valid secret or otpauth:// link"))
         saveScreenshot("otp-editor-invalid")
         composeRule.onNode(hasTestTag("editor-one-time-password")).performTextReplacement(SETUP_KEY)
         type("accounts.example.com", "editor-website-0")

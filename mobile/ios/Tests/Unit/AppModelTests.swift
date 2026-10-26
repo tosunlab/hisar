@@ -308,7 +308,7 @@ final class AppModelTests: XCTestCase {
         let model = await createUnlockedModel()
         let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(title: "Broken", oneTimePassword: "not a secret!"))
         XCTAssertNil(savedItem)
-        XCTAssertEqual(model.errorMessage, "The one-time password is not a valid secret or otpauth:// link")
+        XCTAssertEqual(model.errorMessage, "The one-time code is not a valid secret or otpauth:// link")
     }
 
     func testSaveNewItemAddsItWithoutSecretsAndUpdatesIdentities() async {

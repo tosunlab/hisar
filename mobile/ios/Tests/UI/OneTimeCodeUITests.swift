@@ -32,7 +32,7 @@ final class OneTimeCodeUITests: HisarUITestCase {
         type("code-password-1", into: app.secureTextFields["editor-password"])
         type("not a setup key!", into: app.textFields["editor-one-time-password"])
         app.buttons["editor-save"].tap()
-        waitFor(app.staticTexts["The one-time password is not a valid secret or otpauth:// link"])
+        waitFor(app.staticTexts["The one-time code is not a valid secret or otpauth:// link"])
         saveScreenshot("otp-editor-invalid")
         let oneTimePasswordField = app.textFields["editor-one-time-password"]
         oneTimePasswordField.tap()

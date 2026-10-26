@@ -50,7 +50,7 @@ class ItemEditorModelTests {
         val model = createUnlockedModel()
         val savedItem = model.itemEditor.saveItem("personal", ItemDetail(title = "Broken", oneTimePassword = "not a secret!"))
         assertNull(savedItem)
-        assertEquals("The one-time password is not a valid secret or otpauth:// link", model.errorMessage.value)
+        assertEquals("The one-time code is not a valid secret or otpauth:// link", model.errorMessage.value)
     }
 
     @Test

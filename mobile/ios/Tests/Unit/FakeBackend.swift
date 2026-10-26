@@ -421,7 +421,7 @@ class FakeBackend: VaultBackend {
         var savedItem = item
         let oneTimePassword = item.oneTimePassword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard oneTimePassword.isEmpty || oneTimePassword.hasPrefix("otpauth://totp/") || oneTimePassword.replacingOccurrences(of: " ", with: "").allSatisfy({ "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".contains($0.uppercased()) }) else {
-            throw BackendError(message: "The one-time password is not a valid secret or otpauth:// link")
+            throw BackendError(message: "The one-time code is not a valid secret or otpauth:// link")
         }
         savedItem.oneTimePassword = oneTimePassword.isEmpty ? "" : (oneTimePassword.hasPrefix("otpauth://") ? oneTimePassword : "otpauth://totp/?secret=\(oneTimePassword.uppercased().replacingOccurrences(of: " ", with: ""))")
         savedItem.hasOneTimePassword = !oneTimePassword.isEmpty
