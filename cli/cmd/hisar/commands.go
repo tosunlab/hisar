@@ -21,7 +21,7 @@ import (
 	"github.com/tryhisar/hisar/core/session"
 )
 
-const defaultServer = "https://api.tryhisar.com"
+const defaultServer = "https://eu.tryhisar.com"
 
 func getDeviceInfo() apitypes.DeviceInfo {
 	host, err := os.Hostname()

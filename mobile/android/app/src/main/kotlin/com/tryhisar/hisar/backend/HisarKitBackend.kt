@@ -282,6 +282,12 @@ class HisarKitBackend(
     override fun prepareCredentialExchangeImport(vaultID: String, credentialData: ByteArray): ImportPreview =
         decode(ImportPreview.serializer(), call { prepareCredentialExchangeImport(vaultID, credentialData) })
 
+    override fun prepareHisarExportImport(vaultID: String, fileName: String, content: ByteArray): ImportPreview =
+        decode(ImportPreview.serializer(), call { prepareHisarExportImport(vaultID, fileName, content) })
+
+    override fun openImportFile(passphrase: String): ImportPreview =
+        decode(ImportPreview.serializer(), call { openImportFile(passphrase) })
+
     override fun previewImport(vaultID: String): ImportPreview = decode(ImportPreview.serializer(), call { previewImport(vaultID) })
 
     override fun mapImportGroup(groupID: String, vaultID: String): ImportPreview =

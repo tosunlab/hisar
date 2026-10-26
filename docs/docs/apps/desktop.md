@@ -254,8 +254,8 @@ fail at once. So the app keeps itself available (design: [Design](../design.md) 
 - Settings → General → **Open Hisar at login** (on by default; registered once on the first launch, never again after you turn it off).
   macOS uses `SMAppService` and Settings shows what System Settings → General → Login Items says, with **Open Login Items** when macOS
   wants your approval; Linux writes `~/.config/autostart/com.tryhisar.hisar.desktop`. At login Hisar opens locked and without a window.
-- Closing the window keeps Hisar running in the menu bar (Open Hisar, Lock or Unlock…, Quit Hisar); the Dock icon shows only while the
-  window is open. ⌘Q or **Quit Hisar** quits.
+- Closing the window, or ⌘Q, keeps Hisar running in the menu bar (Open Hisar, Lock or Unlock…, Quit Hisar Completely); the Dock icon
+  shows only while the window is open. **Quit Hisar Completely** quits.
 - `HISAR_DESKTOP_STATE` also separates the single-instance lock, so a development copy with its own state runs next to the installed app.
 
 ## Command-line tool

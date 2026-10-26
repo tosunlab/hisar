@@ -169,7 +169,7 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
     private fun isRefusedAsPlainHttp(address: String): Boolean = !isPlainHttpAllowed && address.startsWith("http://", ignoreCase = true)
 
     companion object {
-        const val DEFAULT_SERVER = "https://api.tryhisar.com"
+        const val DEFAULT_SERVER = "https://eu.tryhisar.com"
         const val PLAIN_HTTP_SERVER_REFUSAL = "This server's address starts with http://, so the connection would not be encrypted. Hisar signs in only over https://."
         const val PLAIN_HTTP_INVITE_REFUSAL = "This invite link starts with http://, so the connection would not be encrypted. Hisar creates accounts only over https://."
 

@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.CredentialImportModel
 import com.tryhisar.hisar.app.CredentialImportSheet
 import com.tryhisar.hisar.model.ImportPreview
 import com.tryhisar.hisar.model.ImportProgress
@@ -38,12 +39,17 @@ import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
 import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
+import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.LabeledRow
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ProminentButton
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
+import java.time.format.FormatStyle
 import kotlinx.coroutines.launch
 
 /**
@@ -60,6 +66,7 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
     var isSkippingDuplicate by remember { mutableStateOf(true) }
     val isDone = (sheet as? CredentialImportSheet.Importing)?.progress?.isDone == true
     val sourceName = when (sheet) {
+        is CredentialImportSheet.EnteringPassphrase -> sheet.fileName
         is CredentialImportSheet.Previewing -> sheet.preview.fileName
         is CredentialImportSheet.Importing -> sheet.progress.fileName
         else -> ""
@@ -93,6 +100,7 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
                         }
                     }
                     is CredentialImportSheet.Failed -> FormSection(Modifier.testTag("credential-import-failed-transfer")) { ErrorBanner(sheet.message) }
+                    is CredentialImportSheet.EnteringPassphrase -> PassphraseSection(credentialImport, errorMessage, isBusy || isImporting)
                     is CredentialImportSheet.Previewing -> PreviewSections(
                         model, sheet.preview, isSkippingDuplicate, { isSkippingDuplicate = it }, errorMessage, isBusy || isImporting,
                     ) { scope.launch { credentialImport.startCredentialImport(isSkippingDuplicate) } }
@@ -118,6 +126,15 @@ private fun PreviewSections(
     val scope = rememberCoroutineScope()
     val allVault = model.credentialImport.allVault
     val isGrouped = preview.groups.size > 1
+    val exportOrigin = describeExportOrigin(preview.exportedFrom, preview.exportedAt)
+    if (exportOrigin != null || preview.notice.isNotEmpty()) {
+        FormSection(modifier = Modifier.testTag("hisar-import-origin")) {
+            exportOrigin?.let { Text(it, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel) }
+            if (preview.notice.isNotEmpty()) {
+                Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("hisar-import-notice"))
+            }
+        }
+    }
     FormSection(
         header = "Vault",
         footer = { Text("${VaultLogic.describeItemCount(preview.itemCount)} from ${preview.fileName}.") },
@@ -195,6 +212,47 @@ private fun PreviewSections(
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
         ProminentButton("Import into ${preview.vaultName}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking)
+    }
+}
+
+/** The export passphrase step for an encrypted Hisar export: openImportFile opens it, and a wrong one keeps this step. */
+@Composable
+private fun PassphraseSection(credentialImport: CredentialImportModel, errorMessage: String?, isWorking: Boolean) {
+    val scope = rememberCoroutineScope()
+    var passphrase by remember { mutableStateOf("") }
+    // The field is emptied after every try, so a wrong passphrase is not kept or added to.
+    val open: () -> Unit = {
+        val entered = passphrase
+        if (entered.isNotEmpty() && !isWorking) {
+            passphrase = ""
+            scope.launch { credentialImport.openImportFile(entered) }
+        }
+    }
+    FormSection(
+        header = "Enter the export passphrase",
+        footer = { Text("This export is encrypted. Enter the passphrase it was exported with.") },
+        modifier = Modifier.testTag("hisar-import-passphrase"),
+    ) {
+        FormTextField(passphrase, { passphrase = it }, "Export passphrase", testTag = "hisar-import-passphrase-field", isSecure = true)
+    }
+    errorMessage?.let { FormSection { ErrorBanner(it) } }
+    ClearSection {
+        ProminentButton("Open", open, testTag = "hisar-import-open", enabled = passphrase.isNotEmpty() && !isWorking, isBusy = isWorking)
+    }
+}
+
+/** "Exported from <email> on <date>", in the device's medium date style; "from <email>" and "on <date>" drop when absent. */
+private fun describeExportOrigin(exportedFrom: String, exportedAt: String): String? {
+    val date = exportedAt.takeIf { it.isNotEmpty() }?.let {
+        runCatching {
+            DateTimeFormatter.ofLocalizedDate(FormatStyle.MEDIUM).format(Instant.parse(it).atZone(ZoneId.systemDefault()).toLocalDate())
+        }.getOrNull()
+    }
+    return when {
+        exportedFrom.isNotEmpty() && date != null -> "Exported from $exportedFrom on $date"
+        exportedFrom.isNotEmpty() -> "Exported from $exportedFrom"
+        date != null -> "Exported on $date"
+        else -> null
     }
 }
 

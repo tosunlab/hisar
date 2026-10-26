@@ -256,7 +256,7 @@ final class VaultLogicTests: XCTestCase {
     func testInviteLinkFromInvitePage() {
         let expectedByLink = [
             "hisar://invite/abc_DEF-123": "abc_DEF-123",
-            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Fapi.tryhisar.com ": "abc_DEF-123",
+            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Feu.tryhisar.com ": "abc_DEF-123",
             "HISAR://INVITE/abc?server=https%3A%2F%2Fhisar.example.com": "https://hisar.example.com/invite/abc",
             "hisar://invite/abc?server=http%3A%2F%2F127.0.0.1%3A19400": "http://127.0.0.1:19400/invite/abc",
             "hisar://invite/abc?server=hisar.example.com": "https://hisar.example.com/invite/abc",
@@ -265,7 +265,7 @@ final class VaultLogicTests: XCTestCase {
         for (link, expected) in expectedByLink {
             XCTAssertEqual(InviteLink.parse(link), InviteLink(invite: expected), link)
         }
-        for link in ["", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://api.tryhisar.com/invite/abc", "hisar://invite/a%20b", "hisar://invite/abc?server=ftp%3A%2F%2Fx"] {
+        for link in ["", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://eu.tryhisar.com/invite/abc", "hisar://invite/a%20b", "hisar://invite/abc?server=ftp%3A%2F%2Fx"] {
             XCTAssertNil(InviteLink.parse(link), link)
         }
         XCTAssertNil(SignInLink.parse("hisar://invite/abc"))

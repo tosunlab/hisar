@@ -42,6 +42,11 @@ final class AppModel: ObservableObject {
     @Published private(set) var isApprovalPasswordRequired = false
     @Published var approvalErrorMessage: String?
     @Published var selectedTab: Tab = .vaults
+    /// requestedSettingsDestination is a Settings screen something outside the tab asks it to show, Devices for a tapped
+    /// security alert; the Settings tab shows it and clears it.
+    @Published var requestedSettingsDestination: SettingsDestination?
+    /// isNewSecretKeyShown is true while Settings shows a replaced Secret Key, which shows only once.
+    private(set) var isNewSecretKeyShown = false
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
     @Published private(set) var isWebsiteIconsEnabled = true
@@ -67,6 +72,9 @@ final class AppModel: ObservableObject {
     @Published private(set) var credentialImportProgress: ImportProgress?
     @Published private(set) var isImportingCredentials = false
     @Published var credentialImportMessage: String?
+    /// isHisarExportImport is true while the open import sheet is a Hisar export the user picked, not another app's
+    /// Credential Exchange data; it chooses the sheet's wording.
+    @Published private(set) var isHisarExportImport = false
     private var startedRefreshCount: UInt64 = 0
     private var shownRefresh: UInt64 = 0
     private var startedApprovalListCount: UInt64 = 0
@@ -415,12 +423,14 @@ final class AppModel: ObservableObject {
     }
 
     /// showNotification opens what a tapped notification is about, once Hisar is unlocked: the Approvals tab for an
-    /// approval, Settings for a security alert or a sharing invitation.
+    /// approval, Settings → Devices for a security alert, where a device that just signed in shows, and Settings for a
+    /// sharing invitation.
     func showNotification(_ kind: PushKind) {
         guard status.isUnlocked else { return }
         notifications.openedKind = nil
         selectedTab = kind == .approval ? .approvals : .settings
         if kind == .approval { Task { await refreshPendingApproval() } }
+        if kind == .security { requestedSettingsDestination = .devices }
     }
 
     func handleWillEnterForeground() {
@@ -960,6 +970,63 @@ final class AppModel: ObservableObject {
         handlePendingCredentialImport()
     }
 
+    // A Hisar export (.hisar or plain .json) the user picks in Settings → Account. The file picker hands over a
+    // security-scoped URL; its bytes go to the backend, which previews the export like a chosen file.
+    static let importFileSizeLimit = 100 * 1024 * 1024
+
+    /// importHisarExport reads the Hisar export at url, previews it for the personal vault, and opens the import sheet.
+    /// An encrypted export shows the passphrase step first; openCredentialImportFile then opens it.
+    func importHisarExport(from url: URL) async {
+        guard status.isUnlocked, status.updateRequired == nil, !isCredentialImportShown else { return }
+        errorMessage = nil
+        isHisarExportImport = true
+        isCredentialImportShown = true
+        isReceivingCredentialImport = true
+        defer { isReceivingCredentialImport = false }
+        let fileName = url.lastPathComponent
+        let content: Data
+        let didAccess = url.startAccessingSecurityScopedResource()
+        do {
+            defer { if didAccess { url.stopAccessingSecurityScopedResource() } }
+            // A file over the limit is refused before it is read into memory.
+            if let size = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize, size > Self.importFileSizeLimit {
+                if isCredentialImportShown { errorMessage = "the file is larger than 100 MB" }
+                return
+            }
+            content = try Data(contentsOf: url)
+        } catch {
+            if isCredentialImportShown { errorMessage = "Hisar couldn't read \(fileName). (\(describeError(error)))" }
+            return
+        }
+        guard content.count <= Self.importFileSizeLimit else {
+            if isCredentialImportShown { errorMessage = "the file is larger than 100 MB" }
+            return
+        }
+        let allKnownVault = allVault
+        let preview = await perform { backend -> ImportPreview in
+            let allVault = allKnownVault.isEmpty ? try backend.listAllVault() : allKnownVault
+            guard let vault = Self.chooseCredentialImportVault(allVault) else {
+                throw BackendError(message: "You have no vault you can add items to.")
+            }
+            return try backend.prepareHisarExportImport(vaultID: vault.id, fileName: fileName, content: content)
+        }
+        guard isCredentialImportShown else {
+            // Closed or locked while preparing: drop what the backend just prepared, and any sentence about it.
+            if preview == nil { errorMessage = nil }
+            cancelBackendImport()
+            return
+        }
+        credentialImportPreview = preview
+    }
+
+    /// openCredentialImportFile opens the waiting encrypted Hisar export with its passphrase. A wrong one keeps the
+    /// export waiting, with the backend's sentence, so the user can try again.
+    func openCredentialImportFile(passphrase: String) async {
+        guard let preview = credentialImportPreview, preview.isPassphraseRequired, credentialImportProgress == nil else { return }
+        guard let opened = await perform({ try $0.openImportFile(passphrase: passphrase) }), isCredentialImportShown else { return }
+        credentialImportPreview = opened
+    }
+
     /// The vaults an import can go to: the personal vault and those the user may edit.
     var allCredentialImportVault: [VaultSummary] { allVault.filter(Self.isWritableVault) }
 
@@ -1094,6 +1161,7 @@ final class AppModel: ObservableObject {
         isReceivingCredentialImport = false
         credentialImportPreview = nil
         credentialImportProgress = nil
+        isHisarExportImport = false
     }
 
     func saveItem(vaultID: String, item: ItemDetail) async -> ItemDetail? {
@@ -1295,11 +1363,13 @@ final class AppModel: ObservableObject {
             errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
             return result
         }
+        isNewSecretKeyShown = true
         applyStatus(result.status)
         return result
     }
 
     func finishSecretKeyReplacement(_ result: CredentialChangeResult) {
+        isNewSecretKeyShown = false
         removeEmergencyKitFile(path: result.emergencyKitPath)
         guard let backend else { return }
         Task { try? await runInBackground { backend.forgetNewAccountSecretKey() } }

@@ -81,7 +81,7 @@ onMounted(async () => {
         <input v-model="format" type="radio" name="exportFormat" value="encrypted" data-testid="export-format-encrypted" />
         <span class="setting-text">
           <strong>Encrypted export (recommended)</strong>
-          <p class="muted">Protected by an export passphrase you choose. Hisar can open it again with <code>hisar import</code>.</p>
+          <p class="muted">Protected by an export passphrase you choose. Hisar can import it again on any of your devices.</p>
         </span>
       </label>
       <div v-if="format === 'encrypted'" class="settings-group-detail passphrase-fields">

@@ -83,8 +83,11 @@ class AppModel(
     /** An editor some other surface asks the app to open, such as AutoFill's save prompt; the Vaults tab shows it. */
     val requestedEditor = MutableStateFlow<EditorRequest?>(null)
 
-    /** Set when the system's Autofill service screen opens Hisar's settings; the Settings tab then shows AutoFill. */
-    val isAutoFillSettingsRequested = MutableStateFlow(false)
+    /**
+     * A Settings screen something outside the tab asks it to show: AutoFill for the system's Autofill service screen,
+     * Devices for a tapped security alert. The Settings tab shows it and clears it.
+     */
+    val requestedSettings = MutableStateFlow<SettingsDestination?>(null)
 
     /** Grows with every lock; the lock screen offers biometrics once per value. */
     val lockCount: StateFlow<Int> = mutableLockCount.asStateFlow()
@@ -256,13 +259,14 @@ class AppModel(
     }
 
     /**
-     * Opens what a tapped notification is about, once Hisar is unlocked: the Approvals tab for an approval, Settings for
-     * a security alert or a sharing invitation.
+     * Opens what a tapped notification is about, once Hisar is unlocked: the Approvals tab for an approval, Settings →
+     * Devices for a security alert, where a device that just signed in shows, and Settings for a sharing invitation.
      */
     fun showNotification(kind: PushKind) {
         if (!status.value.isUnlocked) return
         notifications.openedKind.value = null
         selectedTab.value = if (kind == PushKind.APPROVAL) Tab.APPROVALS else Tab.SETTINGS
+        if (kind == PushKind.SECURITY) requestedSettings.value = SettingsDestination.DEVICES
     }
 
     suspend fun handleWillEnterForeground() {

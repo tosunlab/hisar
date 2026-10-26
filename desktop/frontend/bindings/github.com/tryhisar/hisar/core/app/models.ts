@@ -211,7 +211,11 @@ export interface ImportFormat {
 
 /**
  * ImportPreview: an empty FileName means the user cancelled the file dialog. A Credential Exchange import has no file:
- * FileName names the app the items came from and FilePath is empty.
+ * FileName names the app the items came from and FilePath is empty. An encrypted Hisar export first comes back with only
+ * the file and IsPassphraseRequired; OpenImportFile with its passphrase returns the full preview. Notice describes a
+ * Hisar export that is a cached or partial copy, and IsSourceKept says the file stays: Hisar never deletes an encrypted
+ * export, a backup, nor a copy that may not hold everything. ExportedFrom and ExportedAt name the account and the time
+ * of a Hisar export.
  */
 export interface ImportPreview {
     "fileName": string;
@@ -259,6 +263,15 @@ export interface ImportPreview {
     "allSkipped": ImportSkippedEntry[] | null;
     "allDuplicate": ImportDuplicate[] | null;
     "groups": ImportSourceGroup[] | null;
+
+    /**
+     * IsPassphraseRequired: the file is an encrypted Hisar export; OpenImportFile opens it.
+     */
+    "isPassphraseRequired": boolean;
+    "notice": string;
+    "isSourceKept": boolean;
+    "exportedFrom": string;
+    "exportedAt": string;
 }
 
 export interface ImportProgress {
@@ -271,6 +284,11 @@ export interface ImportProgress {
     "leftBehindCount": number;
     "isDone": boolean;
     "allFailed": ImportSkippedEntry[] | null;
+
+    /**
+     * IsSourceKept: the file is not offered for deletion, see ImportPreview.
+     */
+    "isSourceKept": boolean;
 }
 
 export interface ImportSkippedEntry {

@@ -45,7 +45,7 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	}
 }
 
-const defaultServer = "https://api.tryhisar.com"
+const defaultServer = "https://eu.tryhisar.com"
 
 func resolveServer(server string) (string, error) {
 	server = strings.TrimSpace(server)
@@ -56,7 +56,7 @@ func resolveServer(server string) (string, error) {
 	}
 	parsedURL, err := url.ParseRequestURI(server)
 	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
-		return "", errors.New("enter the server address, e.g. api.tryhisar.com")
+		return "", errors.New("enter the server address, e.g. eu.tryhisar.com")
 	}
 	return server, nil
 }

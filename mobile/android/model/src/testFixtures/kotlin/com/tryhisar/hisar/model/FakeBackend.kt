@@ -104,6 +104,18 @@ open class FakeBackend : VaultBackend {
     val allImportedCredentialData = mutableListOf<ByteArray>()
     /** While set, the next continueImport fails with this sentence and saves nothing. */
     var continueImportErrorMessage: String? = null
+    /** Whether the next prepareHisarExportImport reads an encrypted export, which asks for its passphrase first. */
+    var isHisarExportEncrypted = true
+    /** The logins a Hisar export would import, as one source group named for its vault. */
+    var allHisarExportTitle = listOf("GitHub", "Figma")
+    /** The account the Hisar export came from, shown in the preview. */
+    var hisarExportFrom = "alice@example.com"
+    /** When the Hisar export was made, shown in the preview. */
+    var hisarExportAt = "2026-10-20T12:00:00Z"
+    /** A warning the Hisar export carries, e.g. a cached or partial copy; empty when none. */
+    var hisarExportNotice = ""
+    /** Set while an encrypted Hisar export waits for its passphrase: the vaultID and file name openImportFile opens. */
+    private var waitingHisarExport: Pair<String, String>? = null
 
     fun <Value> withApprovalLock(operation: () -> Value): Value = synchronized(approvalLock, operation)
 
@@ -954,6 +966,39 @@ open class FakeBackend : VaultBackend {
         return buildImportPreview()
     }
 
+    /** Reads a Hisar export: an encrypted one waits for its passphrase, a plain one previews at once. */
+    override fun prepareHisarExportImport(vaultID: String, fileName: String, content: ByteArray): ImportPreview {
+        record("prepareHisarExportImport")
+        requireUnlocked()
+        if (content.isEmpty()) throw BackendError("this is not a Hisar export")
+        if (isHisarExportEncrypted) {
+            waitingHisarExport = vaultID to fileName
+            return ImportPreview(
+                fileName = fileName, format = "hisar-encrypted-export", formatName = "Hisar encrypted export",
+                isPassphraseRequired = true, isSourceKept = true,
+            )
+        }
+        return openHisarExport(vaultID, fileName)
+    }
+
+    /** Opens the waiting encrypted Hisar export; only [HISAR_EXPORT_PASSPHRASE] opens it, and a wrong one keeps it waiting. */
+    override fun openImportFile(passphrase: String): ImportPreview {
+        record("openImportFile")
+        requireUnlocked()
+        val (vaultID, fileName) = waitingHisarExport ?: throw BackendError("this Hisar export is encrypted; enter its export passphrase")
+        if (passphrase != HISAR_EXPORT_PASSPHRASE) throw BackendError("that passphrase doesn't open this export")
+        waitingHisarExport = null
+        return openHisarExport(vaultID, fileName)
+    }
+
+    private fun openHisarExport(vaultID: String, fileName: String): ImportPreview {
+        allPendingImportGroup = listOf(FakeImportGroup("personal", "Personal", allHisarExportTitle, vaultID))
+        return buildImportPreview().copy(
+            fileName = fileName, format = "hisar-export", formatName = "Hisar export",
+            notice = hisarExportNotice, exportedFrom = hisarExportFrom, exportedAt = hisarExportAt,
+        )
+    }
+
     override fun previewImport(vaultID: String): ImportPreview {
         record("previewImport")
         requireUnlocked()
@@ -1012,6 +1057,7 @@ open class FakeBackend : VaultBackend {
         record("cancelImport")
         allPendingImportGroup = null
         allQueuedImport = emptyList()
+        waitingHisarExport = null
     }
 
     override fun exportEmergencyKit(password: String, directory: File): EmergencyKitExport {
@@ -1419,6 +1465,7 @@ open class FakeBackend : VaultBackend {
 
     companion object {
         const val PASSWORD = "correct horse battery"
+        const val HISAR_EXPORT_PASSPHRASE = "orange cactus harbor"
         const val SECRET_KEY = "H1-ABC123-AAAAA-BBBBB-CCCCC-DDDDD-EEEEEE"
         const val ONE_TIME_PASSWORD = "otpauth://totp/GitHub:alice?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" // gitleaks:allow, the RFC 6238 test secret
         const val SIGN_OUT_OFFLINE_MESSAGE = "Signed out on this device, but the server could not be reached to end the session"

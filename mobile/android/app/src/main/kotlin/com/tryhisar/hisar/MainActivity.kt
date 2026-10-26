@@ -11,6 +11,7 @@ import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.tryhisar.hisar.app.Screen
+import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.app.Tab
 import com.tryhisar.hisar.autofill.SavedLoginInbox
 import com.tryhisar.hisar.notifications.HisarNotifications
@@ -77,7 +78,7 @@ class MainActivity : FragmentActivity() {
     private fun openAutoFillSettings(intent: Intent) {
         if (intent.component?.className != AUTOFILL_SETTINGS_ACTIVITY) return
         viewModel.model.selectedTab.value = Tab.SETTINGS
-        viewModel.model.isAutoFillSettingsRequested.value = true
+        viewModel.model.requestedSettings.value = SettingsDestination.AUTOFILL
     }
 
     private companion object {

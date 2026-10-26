@@ -137,9 +137,9 @@ class SignInModelTests {
     @Test
     fun testSignInServerDefaultsToTheHostedService() {
         assertTrue(SignInModel.isDefaultServer(""))
-        assertTrue(SignInModel.isDefaultServer("https://api.tryhisar.com/"))
+        assertTrue(SignInModel.isDefaultServer("https://eu.tryhisar.com/"))
         assertFalse(SignInModel.isDefaultServer("http://127.0.0.1:18080"))
-        assertEquals("api.tryhisar.com", SignInModel.describeServer(SignInModel.DEFAULT_SERVER))
+        assertEquals("eu.tryhisar.com", SignInModel.describeServer(SignInModel.DEFAULT_SERVER))
     }
 
     @Test
@@ -149,7 +149,7 @@ class SignInModelTests {
 
     @Test
     fun testDescribeServerShowsTheHost() {
-        assertEquals("api.tryhisar.com", VaultLogic.describeServer("https://api.tryhisar.com"))
+        assertEquals("eu.tryhisar.com", VaultLogic.describeServer("https://eu.tryhisar.com"))
         assertEquals("127.0.0.1:18080", VaultLogic.describeServer("http://127.0.0.1:18080"))
         assertEquals("https://faß.de:8443", VaultLogic.describeServer("https://faß.de:8443"))
     }
@@ -213,7 +213,7 @@ class SignInModelTests {
     fun testInviteLinkFromInvitePage() {
         val expectedByLink = mapOf(
             "hisar://invite/abc_DEF-123" to "abc_DEF-123",
-            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Fapi.tryhisar.com " to "abc_DEF-123",
+            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Feu.tryhisar.com " to "abc_DEF-123",
             "HISAR://INVITE/abc?server=https%3A%2F%2Fhisar.example.com" to "https://hisar.example.com/invite/abc",
             "hisar://invite/abc?server=http%3A%2F%2F127.0.0.1%3A19400" to "http://127.0.0.1:19400/invite/abc",
             "hisar://invite/abc?server=hisar.example.com" to "https://hisar.example.com/invite/abc",
@@ -223,7 +223,7 @@ class SignInModelTests {
             assertEquals(InviteLink(expected), InviteLink.parse(link), link)
         }
         val allInvalid = listOf(
-            "", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://api.tryhisar.com/invite/abc",
+            "", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://eu.tryhisar.com/invite/abc",
             "hisar://invite/a%20b", "hisar://invite/abc?server=ftp%3A%2F%2Fx",
         )
         for (link in allInvalid) {

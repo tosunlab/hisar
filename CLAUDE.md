@@ -65,7 +65,7 @@ Five Go modules joined by `go.work`, plus seven non-Go apps.
 `invitations.go`, `sharelink.go`, `browser.go` (extension pairing), `logins.go` (login matching, for pages and Android apps), `androidapps.go` (linking logins to Android apps), `passkey*.go`,
 `platformpasskey.go` (iOS), `commandline*.go`, `codingagent.go` and `launcher.go` (the CLI socket handler), `agentgrants.go` (what
 agent harnesses may do without asking, sealed into `state.json` with a head that `desktop/granthead` keeps), `agentsignin.go` (Website sign-in for agents), `approvals.go`,
-`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (phone side), `import.go`, `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
+`phoneapproval.go` (Mac side), `phoneapproval_answer.go` (phone side), `import.go`, `hisarexport.go` (importing Hisar's own export, with its passphrase step), `export.go`, `settings.go`, `favorites.go`, `websiteicons.go` (the sealed website icon cache and its setting), `addresses.go` (addresses and identities for the extension), `cards.go` (cards for the extension),
 `browseritems.go` (the extension popup's vault: items, vaults, new items), `browserunlock.go` (the popup's master password unlock),
 `organizations.go` (organizations, teams, organization vaults, and delivering and rotating their keys on every sync), `push.go` (the iPhone's push token, registered with the push relay and the server, and the Android phone's Web Push subscription, registered with the server).
 Shared test fixtures are in `helpers_test.go`, the in-memory API in `fakeapi_test.go`. `Config` (`types.go`) has
@@ -101,7 +101,7 @@ replaces it with the device's Face ID or Touch ID), "biometric" on Android.
 
 | Package | What it holds |
 |---|---|
-| root (`main`) | Wails wiring: `main.go`, `adapters.go`, `windows.go`, `events.go`, `tray.go`, `touchid.go`, `helpers*.go` (where the browser host and `hisar` are: in Hisar.app, or at the Linux package's fixed paths) |
+| root (`main`) | Wails wiring: `main.go`, `adapters.go`, `windows.go`, `events.go`, `tray.go` (the menu bar item; its Quit Hisar Completely is the only quit), `appmenu.go` (the macOS menus, whose ⌘Q closes the window), `touchid.go`, `helpers*.go` (where the browser host and `hisar` are: in Hisar.app, or at the Linux package's fixed paths) |
 | `agent` | SSH agent in the app and the approval queue (`approver*.go`, `presenter.go`, `purpose.go`, `sshconfig.go`) |
 | `appinfo` | The app behind a process (`resolver.go`, `chain.go`, `findapp.go`, `bundle.go`) |
 | `axfill` | The macOS `signin.Driver` (cgo, Objective-C): reads a browser window's pages through Accessibility and enters, submits and clears fields, checking the window, process and frame origin before each action; `New` returns nil elsewhere. `TestIntegrationSignIn` signs in to `hisar-sign-in-site-fixture` in the browsers `HISAR_TEST_SIGN_IN_BROWSERS` names, and `TestIntegrationRecordPages -update` writes `core/signin`'s page fixtures |

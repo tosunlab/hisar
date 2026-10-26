@@ -8,7 +8,7 @@ import StrengthMeter from "./StrengthMeter.vue";
 
 type Mode = "sign-in" | "create-account";
 
-const defaultServer = "api.tryhisar.com";
+const defaultServer = "eu.tryhisar.com";
 const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
 
 function getDisplayServer(serverURL: string): string {
@@ -270,7 +270,7 @@ async function submitCreateAccount(): Promise<void> {
           <p class="hint muted" data-testid="create-account-note">
             Your master password never leaves this Mac. A forgotten master password can't be recovered by anyone, including Hisar.
           </p>
-          <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://api.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://api.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
+          <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
           <p v-if="!isServerShown && !hasInvite" class="hint">
             <span class="muted" data-testid="create-account-server">Creates the account on {{ server }}.</span>
             <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>

@@ -1359,6 +1359,16 @@ data class ImportPreview(
     val allSkipped: List<ImportSkippedEntry> = emptyList(),
     val allDuplicate: List<ImportDuplicate> = emptyList(),
     val groups: List<ImportSourceGroup> = emptyList(),
+    /** The file is an encrypted Hisar export; openImportFile opens it. */
+    val isPassphraseRequired: Boolean = false,
+    /** A warning for the preview when non-empty, e.g. a cached or partial Hisar export. */
+    val notice: String = "",
+    /** The source is kept rather than offered for deletion: an encrypted export or a cached or partial copy. */
+    val isSourceKept: Boolean = false,
+    /** The account the Hisar export came from, or empty. */
+    val exportedFrom: String = "",
+    /** When the Hisar export was made, RFC 3339 UTC, or empty. */
+    val exportedAt: String = "",
 ) {
     /** The preview's non-zero counts, as the import sheet lists them. */
     val allCountRow: List<ImportCountRow>
@@ -1392,4 +1402,6 @@ data class ImportProgress(
     val totalCount: Int = 0,
     val isDone: Boolean = false,
     val allFailed: List<ImportSkippedEntry> = emptyList(),
+    /** The source is kept rather than offered for deletion, see [ImportPreview.isSourceKept]. */
+    val isSourceKept: Boolean = false,
 )

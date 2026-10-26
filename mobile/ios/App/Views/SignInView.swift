@@ -7,7 +7,7 @@ struct SignInView: View {
         var id: String { rawValue }
     }
 
-    static let defaultServer = "https://api.tryhisar.com"
+    static let defaultServer = "https://eu.tryhisar.com"
 
     @EnvironmentObject private var model: AppModel
     @State private var mode: Mode = .signIn
