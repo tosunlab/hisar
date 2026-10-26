@@ -32,7 +32,7 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertEqual(passwordRow.value as? String, "ui-test-password-1")
         XCTAssertFalse(passwordNotice.waitForExistence(timeout: 2), "revealing must not copy")
         saveScreenshot("item-detail")
-        app.buttons["open-website"].tap()
+        app.descendants(matching: .any)["open-website"].firstMatch.tap()
         let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
         XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 10))
         app.activate()
@@ -81,13 +81,16 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("secure-note")
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Copy notes")).count, 1)
         notesRow.press(forDuration: 1)
+        let copyNotesReference = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND identifier != %@", "Copy secret reference", "copy-secret-reference"
+        )).firstMatch
         let copyNotes = app.buttons["Copy"].firstMatch
         waitFor(copyNotes)
-        XCTAssertTrue(app.buttons["Copy secret reference"].exists)
+        waitFor(copyNotesReference)
         copyNotes.tap()
         waitFor(app.staticTexts["Notes copied. It clears in 90 seconds."])
         notesRow.press(forDuration: 1)
-        app.buttons["Copy secret reference"].tap()
+        copyNotesReference.tap()
         waitFor(app.staticTexts["Secret reference copied."])
         goBack()
 
