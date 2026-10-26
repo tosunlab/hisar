@@ -764,6 +764,7 @@ h2 {
 
 .meta {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   font-size: 12px;
@@ -824,6 +825,16 @@ h2 {
 }
 
 @container detail (max-width: 559px) {
+  header {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .header-actions {
+    grid-column: 1 / -1;
+    flex-wrap: wrap;
+  }
+
   .field {
     grid-template-columns: 90px 1fr auto;
   }

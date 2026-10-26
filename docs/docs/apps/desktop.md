@@ -110,6 +110,7 @@ Design: [Design](../design.md) §9.1 (desktop: item menu).
 
 Click a field's label, value or row padding to copy it. You can also focus the field and press Enter or Space.
 Screen readers announce the copy action, field label and displayed value. Secret values stay masked until revealed.
+In a narrow detail column, the item header's actions move below its title and vault badge.
 
 ## Item icons
 
