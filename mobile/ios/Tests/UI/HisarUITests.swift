@@ -8,6 +8,7 @@ final class HisarUITests: HisarUITestCase {
         app.launch()
 
         let secretKey = signUp(inviteLink: inviteLink, email: email, name: "iOS UI")
+        XCTAssertFalse(app.buttons["open-tags"].exists, "Vaults shows Tags before any item is tagged")
         saveScreenshot("vaults")
 
         addLogin(title: "GitHub", username: "octo-alice", password: "ui-test-password-1", website: "github.com")
@@ -45,12 +46,29 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["editor-generate-password"].tap()
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
+        type("dev, work", into: app.textFields["editor-new-tag"])
         app.buttons["editor-save"].tap()
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
         XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
 
         app.buttons["copy-secret-reference"].tap()
+        goBack()
+        goBack()
+        let tagsRow = app.buttons["open-tags"]
+        waitFor(tagsRow)
+        XCTAssertEqual(app.buttons.matching(identifier: "open-tags").count, 1)
+        XCTAssertFalse(app.buttons["tag-dev"].exists, "Vaults lists individual tags instead of one Tags row")
+        XCTAssertFalse(app.buttons["tag-work"].exists, "Vaults lists individual tags instead of one Tags row")
+        tagsRow.tap()
+        waitFor(app.buttons["tag-dev"])
+        XCTAssertTrue(app.buttons["tag-work"].exists)
+        saveScreenshot("tags")
+        app.buttons["tag-work"].tap()
+        waitFor(app.buttons["item-GitHub"])
+        app.buttons["item-GitHub"].tap()
+        waitFor(app.buttons["copy-password"])
+        goBack()
         goBack()
         goBack()
 

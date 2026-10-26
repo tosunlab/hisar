@@ -9,6 +9,8 @@ struct ItemDestination: Hashable {
     var itemID: String
 }
 
+struct TagsDestination: Hashable {}
+
 struct TagDestination: Hashable {
     var tag: String
 }
@@ -241,16 +243,11 @@ struct VaultsView: View {
                 let allTag = VaultLogic.listAllTag(allItemReference)
                 if !allTag.isEmpty {
                     Section {
-                        ForEach(allTag) { tag in
-                            NavigationLink(value: TagDestination(tag: tag.name)) {
-                                Label(tag.name, systemImage: "tag")
-                                    .badge(tag.itemCount)
-                            }
-                            .accessibilityIdentifier("tag-\(tag.name)")
+                        NavigationLink(value: TagsDestination()) {
+                            Label("Tags", systemImage: "tag")
+                                .badge(allTag.count)
                         }
-                    } header: {
-                        Text("Tags")
-                            .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("open-tags")
                     }
                 }
             }
@@ -294,6 +291,9 @@ struct VaultsView: View {
             }
             .navigationDestination(for: ItemCategoryDestination.self) { category in
                 ItemCategoryListView(category: category)
+            }
+            .navigationDestination(for: TagsDestination.self) { _ in
+                TagListView()
             }
             .navigationDestination(for: TagDestination.self) { destination in
                 ItemTagListView(tag: destination.tag)
@@ -468,6 +468,26 @@ struct VaultsView: View {
                 .foregroundStyle(.themeSecondary)
                 .accessibilityIdentifier("organization-section-\(group.name)")
         }
+    }
+}
+
+struct TagListView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        let allTag = VaultLogic.listAllTag(model.listAllItemReference())
+        List {
+            ForEach(allTag) { tag in
+                NavigationLink(value: TagDestination(tag: tag.name)) {
+                    Label(tag.name, systemImage: "tag")
+                        .badge(tag.itemCount)
+                }
+                .accessibilityIdentifier("tag-\(tag.name)")
+            }
+        }
+        .applyThemedListStyle()
+        .refreshable { await model.refreshAll() }
+        .navigationTitle("Tags")
     }
 }
 

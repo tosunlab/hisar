@@ -834,7 +834,7 @@ struct ItemEditorView: View {
             Text("Tags")
         } footer: {
             if draft.allTag.isEmpty {
-                Text("Tags group items across vaults; the Vaults screen lists them.")
+                Text("Tags group items across vaults; open Tags on the Vaults screen to browse them.")
             }
         }
     }
