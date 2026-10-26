@@ -180,6 +180,11 @@ class ItemEditorUITests {
             type("editor-field-0-name", "Recovery PIN")
             type("editor-field-0-value", "2468")
             tap("editor-field-0-secret")
+            tap("editor-add-field")
+            type("editor-field-1-name", "Temporary")
+            type("editor-field-1-value", "remove-me")
+            tap("editor-field-1-remove")
+            composeRule.waitUntil(5_000) { !exists("editor-field-1-name") }
             type("editor-new-tag", "work, code, draft")
             composeRule.onNodeWithTag("editor-new-tag").performImeAction()
             tap("editor-tag-draft-remove")

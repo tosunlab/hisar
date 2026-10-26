@@ -98,7 +98,7 @@ fun LoginSections(
                         "editor-website-$index",
                         kind = FieldKind.URL,
                     ) {
-                        RemoveRowButton("Remove website", "editor-website-$index-remove", remove)
+                        RemoveRowButton("Remove website ${text.ifEmpty { "${index + 1}" }}", "editor-website-$index-remove", remove)
                     }
                 }
                 RowDivider()
@@ -364,7 +364,7 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
                         )
                         ToggleRow("Secret", field.concealed, { isOn -> update(index) { it.copy(concealed = isOn) } }, testTag = "editor-field-$index-secret")
                     }
-                    RemoveRowButton("Remove field", "editor-field-$index-remove", remove)
+                    RemoveRowButton("Remove field ${field.name.ifEmpty { "${index + 1}" }}", "editor-field-$index-remove", remove)
                 }
             }
             RowDivider()
@@ -401,7 +401,7 @@ fun TagSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit) {
                     Icon(Icons.AutoMirrored.Outlined.Label, contentDescription = null, tint = HisarTheme.colors.tint, modifier = Modifier.size(22.dp))
                     Spacer(Modifier.size(12.dp))
                     Text(tag, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.weight(1f))
-                    RemoveRowButton("Remove tag", "editor-tag-$tag-remove", remove)
+                    RemoveRowButton("Remove tag $tag", "editor-tag-$tag-remove", remove)
                 }
             }
             RowDivider()
