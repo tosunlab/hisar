@@ -25,6 +25,17 @@ class ItemIconPickerTests {
     }
 
     @Test
+    fun testChoosingAColorShowsOnTheIcon() {
+        assertEquals(ChosenIcon(preset = "bank", color = "blue"), ChosenIcon.applyColor(null, "blue"), "an automatic icon becomes the first preset")
+        assertNull(ChosenIcon.applyColor(null, ""), "no color keeps the icon automatic")
+        assertEquals(ChosenIcon(preset = "code", color = "red"), ChosenIcon.applyColor(ChosenIcon(preset = "code", color = "blue"), "red"))
+        assertEquals(ChosenIcon(preset = "code"), ChosenIcon.applyColor(ChosenIcon(preset = "code", color = "blue"), ""))
+        assertEquals(ChosenIcon(preset = "rocket", color = "red"), ChosenIcon.applyColor(ChosenIcon(preset = "rocket"), "red"), "a newer app's preset keeps its ID")
+        val photo = ChosenIcon(image = ByteString(1, 2, 3))
+        assertEquals(photo, ChosenIcon.applyColor(photo, "red"), "a photo has no color")
+    }
+
+    @Test
     fun testPreparingAPhotoShowsWhyItWasRefused() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()

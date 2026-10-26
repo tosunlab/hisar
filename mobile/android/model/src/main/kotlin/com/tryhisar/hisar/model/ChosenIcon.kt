@@ -26,5 +26,16 @@ data class ChosenIcon(
 
         /** The icon color IDs of core/item; "" is the neutral tile. */
         val allColor = listOf("red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray")
+
+        /**
+         * The icon once [color] is chosen in the picker: the chosen preset in that color, or the first preset when the icon
+         * is automatic, so the color shows. A photo has no color, and "no color" leaves an automatic icon automatic.
+         */
+        fun applyColor(icon: ChosenIcon?, color: String): ChosenIcon? = when {
+            icon?.image != null -> icon
+            icon != null && icon.preset.isNotEmpty() -> icon.copy(color = color)
+            color.isEmpty() -> icon
+            else -> ChosenIcon(preset = allPreset.first(), color = color)
+        }
     }
 }
