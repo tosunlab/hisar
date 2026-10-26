@@ -10,6 +10,9 @@ data class VaultItemReference(val vaultID: String, val vaultName: String, val it
 /** A tag with how many items carry it. */
 data class TagSummary(val name: String, val itemCount: Int)
 
+/** An item type with how many items are of it. */
+data class CategorySummary(val category: ItemCategory, val itemCount: Int)
+
 /** The item types the Vaults screen lists under By type, in its order; [id] names the row in tests, as on the iPhone. */
 enum class ItemCategory(val id: String, val title: String) {
     LOGINS("logins", "Logins"),
@@ -73,6 +76,10 @@ object VaultLogic {
         allItem.flatMap { it.item.allTag }.groupingBy { it }.eachCount()
             .map { (name, count) -> TagSummary(name, count) }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+
+    /** The item types that have items, with how many, in By type's order. */
+    fun listAllCategory(allItem: List<VaultItemReference>): List<CategorySummary> =
+        ItemCategory.entries.map { category -> CategorySummary(category, allItem.count { category.includes(it.item) }) }.filter { it.itemCount > 0 }
 
     fun sortAllItem(allItem: List<VaultItemReference>): List<VaultItemReference> =
         allItem.sortedWith(compareBy<VaultItemReference, String>(String.CASE_INSENSITIVE_ORDER) { it.item.title }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.item.username })
