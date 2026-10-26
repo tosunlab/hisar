@@ -2322,6 +2322,8 @@ export async function copyShareLink(shareLink: ShareLink): Promise<void> {
   });
   if (copied) {
     showNotice("Link copied, clears in 90 seconds");
+  } else {
+    showCopyFailure();
   }
 }
 

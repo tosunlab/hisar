@@ -211,6 +211,21 @@ describe("shared links", () => {
     wrapper.unmount();
   });
 
+  it("shows a failed link copy as an error notice while the overview stays open", async () => {
+    api.listAllShareLink.mockResolvedValue(allShareLink);
+    api.copyShareLink.mockRejectedValue(new Error("the clipboard is not available"));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.find('[data-testid="open-shared-links"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('button[aria-label="Copy link to AWS Console"]').trigger("click");
+    await flushPromises();
+    expect(store.noticeMessage).toBe("the clipboard is not available");
+    expect(store.noticeKind).toBe("error");
+    expect(store.errorMessage).toBe("");
+    expect(wrapper.find('[data-testid="shared-links-panel"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
   it("opens the overview from the sidebar, copies and revokes after confirming", async () => {
     api.listAllShareLink.mockResolvedValueOnce(allShareLink).mockResolvedValueOnce(allShareLink.slice(1));
     const wrapper = mount(MainView, { attachTo: document.body });
