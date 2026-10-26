@@ -253,9 +253,11 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["copy-diagnostics"].tap()
         saveScreenshot("settings-help")
         goBack()
-        XCTAssertEqual(app.buttons["open-about"].label, "About Hisar")
-        app.buttons["open-about"].tap()
-        XCTAssertTrue(app.staticTexts["Version"].exists)
+        let about = app.buttons["open-about"]
+        scrollTo(about)
+        XCTAssertEqual(about.label, "About Hisar")
+        about.tap()
+        waitFor(app.staticTexts["Version"])
         goBack()
 
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {
