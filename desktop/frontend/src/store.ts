@@ -162,6 +162,13 @@ export const store = reactive({
   organizationAlert: null as OrganizationAlert | null,
 });
 
+export function countPendingInvitations(sectionID: string): number {
+  if (sectionID === "people") {
+    return store.shareInvitations.received.length + store.shareInvitations.sent.filter((invitation) => invitation.state === "accepted" && invitation.requiresConfirmation).length;
+  }
+  return sectionID === "organizations" ? store.organizations.invitations.length : 0;
+}
+
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 let navigationVersion = 0;
 

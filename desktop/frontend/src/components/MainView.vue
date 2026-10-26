@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import {
   clearError,
   copyItemField,
+  countPendingInvitations,
   createOrganizationVault,
   createVault,
   duplicateItem,
@@ -138,9 +139,9 @@ const allTag = computed(() => listAllTag(store.allItem));
 // the Settings section where that is answered first.
 const inbox = computed(() => {
   const allAcceptedSent = store.shareInvitations.sent.filter((invitation) => invitation.state === "accepted");
-  const shareActionCount = store.shareInvitations.received.length + allAcceptedSent.filter((invitation) => invitation.requiresConfirmation).length;
+  const shareActionCount = countPendingInvitations("people");
   const shareCount = store.shareInvitations.received.length + allAcceptedSent.length + (store.shareInvitations.waiting?.length ?? 0);
-  const organizationActionCount = store.organizations.invitations.length;
+  const organizationActionCount = countPendingInvitations("organizations");
   const waitingKeyCount = store.waitingVaultKeys.waiting.filter((waiting) => !store.allVault.some((vault) => vault.id === waiting.vaultId)).length;
   const isPeopleFirst = shareActionCount > 0 || (organizationActionCount === 0 && shareCount > 0);
   return {

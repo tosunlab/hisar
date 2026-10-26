@@ -264,6 +264,7 @@ describe("Inbox", () => {
     expect(wrapper.find('[data-testid="review-share-new-recipient"]').exists()).toBe(false);
     await openInbox(wrapper);
     expect(wrapper.find('[data-testid="settings-page-people"]').isVisible()).toBe(true);
+    expect(wrapper.find('[data-testid="people-invitation-badge"]').text()).toBe("1");
     expect(api.confirmShareRecipient).not.toHaveBeenCalled();
     await wrapper.find('[data-testid="review-share-new-recipient"]').trigger("click");
     const dialog = wrapper.find('[data-testid="share-recipient-confirmation"]');
@@ -276,6 +277,8 @@ describe("Inbox", () => {
     await wrapper.find('[data-testid="confirm-share-recipient"]').trigger("click");
     await flushPromises();
     expect(api.confirmShareRecipient).toHaveBeenCalledWith("new-recipient", "exact-reviewed-context");
+    expect(wrapper.find('[data-testid="people-invitation-badge"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="open-inbox"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

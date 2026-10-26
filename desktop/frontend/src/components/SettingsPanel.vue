@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
-import { loadSettingsData, loadSSHAgentStatus, store } from "../store";
+import { countPendingInvitations, loadSettingsData, loadSSHAgentStatus, store } from "../store";
 import {
   allSettingsSection,
   findAllMatchingRowID,
@@ -37,12 +37,6 @@ const sectionContent = ref<HTMLElement | null>(null);
 const isSearching = computed(() => searchQuery.value.trim() !== "");
 const allMatchingRowID = computed(() => findAllMatchingRowID(searchQuery.value));
 
-function countPendingInvitations(sectionID: SettingsSectionID): number {
-  if (sectionID === "people") {
-    return store.shareInvitations.received.length;
-  }
-  return sectionID === "organizations" ? store.organizations.invitations.length : 0;
-}
 
 function isRowAvailable(rowID: string): boolean {
   if (rowID === "received-invitations") {
