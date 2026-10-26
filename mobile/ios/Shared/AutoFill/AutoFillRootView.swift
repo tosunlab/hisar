@@ -151,7 +151,7 @@ private struct AutoFillListView: View {
 
     private var emptyMessage: String {
         switch (model.requestKind, model.searchText.isEmpty) {
-        case (.oneTimeCode, true): "No login for this site has a one-time password. Search all logins above."
+        case (.oneTimeCode, true): "No login for this site has a one-time code. Search all logins above."
         case (.oneTimeCode, false): "No matching one-time codes for this site."
         case (.password, true): "No logins saved for this site. Search all logins above."
         case (.password, false): "No matching logins for this site."

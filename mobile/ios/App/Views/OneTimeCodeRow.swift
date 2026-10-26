@@ -29,7 +29,7 @@ struct OneTimeCodeRow: View {
                     VStack(alignment: .leading, spacing: 3) {
                         title
                         if isUnavailable {
-                            Text("The one-time password could not be read.")
+                            Text("The one-time code could not be read.")
                                 .foregroundStyle(.themeSecondary)
                         } else {
                             ProgressView()

@@ -134,16 +134,12 @@ struct ItemEditorView: View {
                         }
                     }
                     if !draft.isDatabase {
-                        Section {
+                        Section("One-time code") {
                             TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
                                 .font(.system(.body, design: .monospaced))
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("editor-one-time-password")
-                        } header: {
-                            Text("One-time password")
-                        } footer: {
-                            Text("The setup key or link from the site's two-factor setup. Hisar then shows the current code.")
                         }
                         Section(draft.isServer ? "Admin console" : "Websites") {
                             ForEach(allURLText.indices, id: \.self) { index in
