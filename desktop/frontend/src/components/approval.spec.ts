@@ -315,7 +315,7 @@ describe("SSHApprovalWindow", () => {
     const denyButton = wrapper.find('[data-testid="deny-approval"]');
     expect(denyButton.classes()).toContain("primary");
     expect(document.activeElement).toBe(denyButton.element);
-    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Allow once");
+    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Approve once");
     await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledWith("forwarded-1", true, false);
@@ -338,7 +338,7 @@ describe("SSHApprovalWindow", () => {
     sendEvent("ssh-approval-closed", "request-1");
     sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", isCompact: true, rememberPeriod: "until Hisar locks" }));
     await flushPromises();
-    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to allow until Hisar locks");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to approve until Hisar locks");
     wrapper.unmount();
   });
 
@@ -348,7 +348,7 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-compact-title"]').text()).toBe("Terminal · Push");
     expect(wrapper.find(".compact-subtitle").text()).toBe("git.tryhisar.com with “Laptop key”");
-    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to allow for 1 hour");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to approve for 1 hour");
     expect(wrapper.find("h1").exists()).toBe(false);
     expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
     expect(api.fitSSHApprovalWindow).toHaveBeenLastCalledWith(true, expect.any(Number));

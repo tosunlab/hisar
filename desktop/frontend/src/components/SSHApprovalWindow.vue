@@ -253,7 +253,7 @@ const touchIDLabel = computed(() => (approval.value?.isUnlockRequired ? "Touch I
 const passwordButtonLabel = computed(() => (approval.value?.isUnlockRequired ? "Unlock" : "Approve"));
 const approveButtonLabel = computed(() => {
   if (isForwarded.value) {
-    return "Allow once";
+    return "Approve once";
   }
   return approval.value?.isUnlockRequired ? "Unlock" : "Approve";
 });
@@ -453,7 +453,7 @@ onBeforeUnmount(() => {
                 <div ref="promptSlot" class="prompt-slot small">
                   <AppIcon v-if="!api.hasNativeTouchIDView" name="fingerprint" :size="20" />
                 </div>
-                <span>{{ isSigning ? "Touch ID to sign" : `Touch ID to allow ${approval.rememberPeriod || "for 1 hour"}` }}</span>
+                <span>{{ isSigning ? "Touch ID to sign" : `Touch ID to approve ${approval.rememberPeriod || "for 1 hour"}` }}</span>
               </div>
               <button v-else class="link" data-testid="authorize-approval" @click.stop="startAuthorizing">Try Touch ID again</button>
               <button class="compact-deny" data-testid="deny-approval" @click.stop="deny">Deny</button>
