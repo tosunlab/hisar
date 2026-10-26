@@ -56,13 +56,9 @@ data class PhoneApproval(
     /** The switch as the user left it, or its default; a request without the switch is never remembered. */
     fun resolveRememberChoice(chosenValue: Boolean?): Boolean = isRememberable && (chosenValue ?: isRememberedByDefault)
 
-    /** The Vaults card's footer: the card has no switch, so it says what its Approve sends. */
-    val cardApprovalNote: String
-        get() = if (resolveRememberChoice(null)) {
-            "$rememberLabel. Tap the request to approve it once. It never unlocks Hisar on your Mac."
-        } else {
-            "Approving answers this one request. It never unlocks Hisar on your Mac."
-        }
+    /** The Vaults card names the remembered access its Approve sends, when there is any. */
+    val cardApprovalNote: String?
+        get() = if (resolveRememberChoice(null)) "$rememberLabel." else null
 
     val expiryDate: Instant? get() = parseTimestamp(expiresAt)
 

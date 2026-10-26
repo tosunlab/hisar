@@ -262,14 +262,11 @@ class PhoneApprovalTests {
     @Test
     fun testCardFooterNamesWhatApproveSends() {
         assertEquals(
-            "Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac.",
+            "Also allows Terminal for 1 hour.",
             createRememberingApproval("ssh").cardApprovalNote,
         )
-        assertEquals(
-            "Approving answers this one request. It never unlocks Hisar on your Mac.",
-            createRememberingApproval("signing", isRememberedByDefault = false).cardApprovalNote,
-        )
-        assertEquals("Approving answers this one request. It never unlocks Hisar on your Mac.", createApproval("once").cardApprovalNote)
+        assertNull(createRememberingApproval("signing", isRememberedByDefault = false).cardApprovalNote)
+        assertNull(createApproval("once").cardApprovalNote)
     }
 
     @Test

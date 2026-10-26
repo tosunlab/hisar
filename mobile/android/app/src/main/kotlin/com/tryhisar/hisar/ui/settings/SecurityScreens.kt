@@ -173,11 +173,6 @@ fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
         }
         FormSection(
             header = "How requests appear",
-            footer = {
-                Text(
-                    "Approving answers one request and never unlocks Hisar on your Mac. The Mac sends requests only while “Approve requests on my smart device” is on in its SSH agent settings.",
-                )
-            },
         ) {
             ExplanationRow(Icons.Outlined.ViewAgenda, "A card at the top of Vaults, with Deny and Approve")
             RowDivider()
