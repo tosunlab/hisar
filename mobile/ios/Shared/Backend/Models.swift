@@ -1661,6 +1661,8 @@ struct ImportSourceGroup: Codable, Equatable, Identifiable {
 
 struct ImportPreview: Codable, Equatable {
     static let formatCredentialExchange = "credential-exchange"
+    static let formatHisarExport = "hisar-export"
+    static let formatHisarEncryptedExport = "hisar-encrypted-export"
 
     var fileName: String
     var filePath: String = ""
@@ -1683,12 +1685,21 @@ struct ImportPreview: Codable, Equatable {
     var allSkipped: [ImportSkippedEntry] = []
     var allDuplicate: [ImportDuplicate] = []
     var groups: [ImportSourceGroup] = []
+    /// isPassphraseRequired: the file is an encrypted Hisar export; openImportFile opens it with the export passphrase.
+    var isPassphraseRequired = false
+    /// notice describes a Hisar export that is a cached or partial copy; shown as a warning in the preview.
+    var notice = ""
+    /// isSourceKept: the file stays on disk (an encrypted export, a backup, or a copy that may not hold everything).
+    var isSourceKept = false
+    /// exportedFrom and exportedAt name the account and time a Hisar export was made; either may be empty.
+    var exportedFrom = ""
+    var exportedAt = ""
 
     enum CodingKeys: String, CodingKey {
         case fileName, filePath, format, formatName, vaultName, itemCount, loginCount, secureNoteCount, sshKeyCount
         case creditCardCount, identityCount, apiCredentialCount, addressCount, softwareLicenseCount, serverCount
         case databaseCount, passkeyCount, allSkipped, allDuplicate
-        case groups
+        case groups, isPassphraseRequired, notice, isSourceKept, exportedFrom, exportedAt
         case vaultID = "vaultId"
     }
 
@@ -1730,6 +1741,21 @@ struct ImportPreview: Codable, Equatable {
         allSkipped = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allSkipped) ?? []
         allDuplicate = try container.decodeIfPresent([ImportDuplicate].self, forKey: .allDuplicate) ?? []
         groups = try container.decodeIfPresent([ImportSourceGroup].self, forKey: .groups) ?? []
+        isPassphraseRequired = try container.decodeIfPresent(Bool.self, forKey: .isPassphraseRequired) ?? false
+        notice = try container.decodeIfPresent(String.self, forKey: .notice) ?? ""
+        isSourceKept = try container.decodeIfPresent(Bool.self, forKey: .isSourceKept) ?? false
+        exportedFrom = try container.decodeIfPresent(String.self, forKey: .exportedFrom) ?? ""
+        exportedAt = try container.decodeIfPresent(String.self, forKey: .exportedAt) ?? ""
+    }
+
+    /// Whether this preview is a Hisar export rather than another app's Credential Exchange data.
+    var isHisarExport: Bool { format == Self.formatHisarExport || format == Self.formatHisarEncryptedExport }
+
+    /// The "Exported from <email> on <date>" line, with the date in the platform's medium style; nil when no date is known.
+    var exportedDescription: String? {
+        guard !exportedAt.isEmpty, let date = ISO8601DateFormatter().date(from: exportedAt) else { return nil }
+        let dateText = date.formatted(date: .abbreviated, time: .omitted)
+        return exportedFrom.isEmpty ? "Exported on \(dateText)" : "Exported from \(exportedFrom) on \(dateText)"
     }
 
     /// The preview's non-zero counts, as the import sheet lists them.
@@ -1765,9 +1791,11 @@ struct ImportProgress: Codable, Equatable {
     var totalCount: Int
     var isDone: Bool
     var allFailed: [ImportSkippedEntry] = []
+    /// isSourceKept: the file is not offered for deletion, as in ImportPreview.
+    var isSourceKept = false
 
     enum CodingKeys: String, CodingKey {
-        case fileName, filePath, vaultName, savedCount, totalCount, isDone, allFailed
+        case fileName, filePath, vaultName, savedCount, totalCount, isDone, allFailed, isSourceKept
         case vaultID = "vaultId"
     }
 
@@ -1791,6 +1819,7 @@ struct ImportProgress: Codable, Equatable {
         totalCount = try container.decodeIfPresent(Int.self, forKey: .totalCount) ?? 0
         isDone = try container.decodeIfPresent(Bool.self, forKey: .isDone) ?? false
         allFailed = try container.decodeIfPresent([ImportSkippedEntry].self, forKey: .allFailed) ?? []
+        isSourceKept = try container.decodeIfPresent(Bool.self, forKey: .isSourceKept) ?? false
     }
 }
 

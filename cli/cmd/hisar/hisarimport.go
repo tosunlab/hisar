@@ -69,14 +69,7 @@ func planHisarImport(ctx context.Context, access backend, document *export.Docum
 	if err != nil {
 		return nil, err
 	}
-	result := &importer.Result{}
-	for _, exported := range document.Vaults {
-		source := importer.SourceGroup{ID: exported.ID, Name: exported.Name, IsPrivate: exported.Type == apitypes.VaultPersonal}
-		for _, entry := range exported.Items {
-			source.Items = append(source.Items, entry.ConvertToItem())
-		}
-		result.Groups = append(result.Groups, source)
-	}
+	result := &importer.Result{Groups: document.SourceGroups()}
 	mappings := append([]string{}, option.mappings...)
 	if !option.isConfirmed && !option.isVaultChosen {
 		explicit, err := importMappings(mappings)

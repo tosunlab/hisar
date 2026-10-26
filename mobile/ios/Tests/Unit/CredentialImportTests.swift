@@ -48,6 +48,13 @@ final class CredentialImportTests: XCTestCase {
         await waitUntil("the preview arrives") { model.credentialImportPreview != nil }
     }
 
+    /// Writes a throwaway file the file picker would hand to importHisarExport; FakeBackend ignores its bytes.
+    private func makeExportFile(_ name: String = "export.hisar") -> URL {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString)-\(name)")
+        try! Data("{\"format\":\"hisar-encrypted-export\"}".utf8).write(to: url)
+        return url
+    }
+
     func testExportDatesReachTheBackendAsSecondsSince1970() throws {
         let now = Date(timeIntervalSince1970: 1_791_547_200)
         let exporterSeconds = 1_699_200_000.0
@@ -188,5 +195,44 @@ final class CredentialImportTests: XCTestCase {
         model.lock()
         XCTAssertFalse(model.isCredentialImportShown)
         XCTAssertNil(model.credentialImportPreview)
+    }
+
+    func testImportingAnEncryptedHisarExportAsksForItsPassphrase() async {
+        let model = await createUnlockedModel()
+        await model.importHisarExport(from: makeExportFile())
+
+        XCTAssertTrue(model.isCredentialImportShown)
+        XCTAssertTrue(model.isHisarExportImport)
+        XCTAssertEqual(model.credentialImportPreview?.isPassphraseRequired, true)
+        XCTAssertNil(model.credentialImportProgress)
+        XCTAssertEqual(countCall("prepareHisarExportImport"), 1)
+        XCTAssertEqual(countCall("openImportFile"), 0)
+    }
+
+    func testAWrongExportPassphraseKeepsTheExportWaiting() async {
+        let model = await createUnlockedModel()
+        await model.importHisarExport(from: makeExportFile())
+
+        await model.openCredentialImportFile(passphrase: "not the one")
+        XCTAssertEqual(model.errorMessage, "that passphrase doesn't open this export")
+        XCTAssertEqual(model.credentialImportPreview?.isPassphraseRequired, true, "the export still waits for the right passphrase")
+        XCTAssertNil(model.credentialImportProgress)
+
+        await model.openCredentialImportFile(passphrase: backend.hisarExportPassphrase)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.credentialImportPreview?.isPassphraseRequired, false)
+        XCTAssertEqual(model.credentialImportPreview?.itemCount, 3)
+    }
+
+    func testAPlainHisarExportPreviewsAtOnce() async {
+        backend.hisarExportPreview = FakeBackend.plainHisarExportPreview()
+        let model = await createUnlockedModel()
+        await model.importHisarExport(from: makeExportFile("export.json"))
+
+        XCTAssertTrue(model.isCredentialImportShown)
+        XCTAssertEqual(model.credentialImportPreview?.isPassphraseRequired, false)
+        XCTAssertEqual(model.credentialImportPreview?.itemCount, 3)
+        XCTAssertEqual(model.credentialImportPreview?.groups.map(\.name), ["Personal"])
+        XCTAssertEqual(countCall("openImportFile"), 0)
     }
 }

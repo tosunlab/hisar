@@ -295,6 +295,15 @@ final class HisarKitBackend: VaultBackend {
         try decode(ImportPreview.self, from: callReturningText { hisar.prepareCredentialExchangeImport(vaultID, credentialData: credentialData, error: $0) })
     }
 
+    func prepareHisarExportImport(vaultID: String, fileName: String, content: Data) throws -> ImportPreview {
+        // Swift's ObjC importer drops the "Hisar" that matches the HisarkitHisar type, so the selector imports as prepareExportImport.
+        try decode(ImportPreview.self, from: callReturningText { hisar.prepareExportImport(vaultID, fileName: fileName, content: content, error: $0) })
+    }
+
+    func openImportFile(passphrase: String) throws -> ImportPreview {
+        try decode(ImportPreview.self, from: callReturningText { hisar.openImportFile(passphrase, error: $0) })
+    }
+
     func previewImport(vaultID: String) throws -> ImportPreview {
         try decode(ImportPreview.self, from: callReturningText { hisar.previewImport(vaultID, error: $0) })
     }

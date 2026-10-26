@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum SettingsDestination: Hashable {
     case account
@@ -197,6 +198,9 @@ struct SettingsView: View {
 struct AccountView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isExportShown = false
+    @State private var isHisarImportShown = false
+
+    private static let hisarExportTypes: [UTType] = [.json, UTType(filenameExtension: "hisar") ?? .data]
 
     var body: some View {
         List {
@@ -221,8 +225,14 @@ struct AccountView: View {
                     Label("Export data…", systemImage: "square.and.arrow.up.on.square")
                 }
                 .accessibilityIdentifier("open-export")
+                Button {
+                    isHisarImportShown = true
+                } label: {
+                    Label("Import a Hisar export…", systemImage: "square.and.arrow.down.on.square")
+                }
+                .accessibilityIdentifier("open-hisar-export-import")
             } footer: {
-                Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON.")
+                Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON. You can import a Hisar export back into your vaults.")
             }
             Section {
                 NavigationLink(value: SettingsDestination.deleteAccount) {
@@ -240,6 +250,11 @@ struct AccountView: View {
         .sheet(isPresented: $isExportShown) {
             ExportDataView()
                 .environmentObject(model)
+        }
+        .fileImporter(isPresented: $isHisarImportShown, allowedContentTypes: Self.hisarExportTypes) { result in
+            if case .success(let url) = result {
+                Task { await model.importHisarExport(from: url) }
+            }
         }
     }
 }
