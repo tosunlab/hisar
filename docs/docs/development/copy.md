@@ -77,6 +77,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Item actions (the ⋯ button in the Mac's item header) | Unlabelled ⋯ |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
 | secret reference | secret URI, reference link |
+| "\<Field> copied. It clears in 90 seconds." (Mac and iPhone copy notices) | "\<Field> copied, clears in 90 seconds" |
 | Favorites (the list at the top of the sidebar and of Vaults), favorite, star (the icon) | Starred, Pinned, Bookmarks |
 | Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
 | Added to Favorites · Removed from Favorites (notices; the iPhone ends them with a period) · `Added "GitHub" (Personal) to Favorites.` (`hisar favorite`) | Starred!, Pinned |
@@ -182,7 +183,7 @@ The Android app uses the iPhone's copy with these changes. Shared sentences from
 |---|---|---|
 | this device ("Sign out of Hisar on this device?", "…while Hisar is open and unlocked on this device.") | this iPhone | Everywhere |
 | biometrics, biometric unlock ("Unlock with biometrics", "Approve with biometrics", "Biometric unlock is on", "Biometrics are not available, so Hisar checks your master password instead.") | Face ID, Touch ID, fingerprint | Lock screen, the offer after the new Secret Key, Settings → Security, the approval sheet, export |
-| "\<Field> copied. It clears in about 2 minutes." · "Hisar locks after this long without activity. Copied values are cleared after about 2 minutes." · "One-time code copied. It clears in about 2 minutes." | "It clears in 90 seconds.", "…cleared after 90 seconds." (the iPhone's copy) | Copy notices, Settings → Security footer, AutoFill. Android's clear alarm is inexact: measured on emulators, it lands 90 to about 160 seconds after the copy ([Design](../design.md) §9.3), so the copy never promises 90 seconds |
+| "\<Field> copied. It clears in about 2 minutes." · "Hisar locks after this long without activity. Copied values are cleared after about 2 minutes." · "One-time code copied. It clears in about 2 minutes." | "It clears in 90 seconds.", "…cleared after 90 seconds." (the Mac's and iPhone's copy) | Copy notices, Settings → Security footer, AutoFill. Android's clear alarm is inexact: measured on emulators, it lands 90 to about 160 seconds after the copy ([Design](../design.md) §9.3), so the copy never promises 90 seconds |
 | Approve requests on my smart device (the Mac's setting; see Developer tools) | Approve requests on my iPhone | Mac Settings → SSH & Git |
 | Save Emergency Kit · Print Emergency Kit · Share Emergency Kit · Save export · Share export · Emergency Kit saved · Open · Export saved | Save or print Emergency Kit, Save or share export | Settings; Android saves through the system's file creator, offers Open for a saved Emergency Kit, prints through its print dialog and shares through its share sheet |
 | Open Settings (Settings → AutoFill before API 34, which opens the Settings app) | Open AutoFill & Passwords | Settings → AutoFill |
