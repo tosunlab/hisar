@@ -208,7 +208,7 @@ Design: [Design](../design.md) §4.5 (categories) and §9.4.1 (secret references
 
 ## Import from other password managers
 
-Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: [Design](../design.md) §9.7).
+Settings → Import & Export → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: [Design](../design.md) §9.7).
 
 1. Choose the format, or let Hisar detect it, then pick the file. Hisar reads 1Password `.1pux` and CSV, unencrypted Bitwarden JSON and CSV, LastPass CSV, and browser CSV exports. The initial destination is Personal, even when you opened Import from a shared vault.
 2. The preview counts logins, secure notes, SSH keys, credit cards, identities, API credentials and addresses, lists what is not imported and why (documents, archived items, passphrase-protected SSH keys), and lists items already in the vault, which are skipped unless you untick the box. A login matches on its title, username and website, a card on its title and last four digits, an identity on its title, name, email and first document number, an API credential on its title and key ID (or host, or secret when it has neither), and an address on its title, street, postal code and country. Nothing is saved before **Import**.
