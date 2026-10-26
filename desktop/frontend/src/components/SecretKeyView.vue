@@ -28,7 +28,7 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
         </div>
         <div class="row actions">
           <button @click="copyText(store.pendingSecretKey, 'Secret Key')"><AppIcon name="copy" /> Copy</button>
-          <button data-testid="save-emergency-kit" @click="saveNewAccountEmergencyKit"><AppIcon name="note" /> Save Emergency Kit (PDF)</button>
+          <button data-testid="save-emergency-kit" @click="saveNewAccountEmergencyKit"><AppIcon name="note" /> Save Emergency Kit…</button>
         </div>
         <label class="row confirmation">
           <input v-model="hasSaved" type="checkbox" name="hasSaved" />

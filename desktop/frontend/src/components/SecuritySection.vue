@@ -141,7 +141,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             <strong>Emergency Kit</strong>
             <p class="muted">A printable PDF with your sign-in address, email and Secret Key, for signing in on a new device. It is the only way back in if you lose your devices.</p>
           </div>
-          <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save PDF</button>
+          <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save Emergency Kit…</button>
         </div>
         <form v-if="isSavingEmergencyKit" class="settings-group-form" @submit.prevent="submitSaveEmergencyKit">
           <input
@@ -155,7 +155,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             required
           />
           <button type="button" class="ghost" @click="isSavingEmergencyKit = false">Cancel</button>
-          <button class="primary" type="submit" :disabled="store.isBusy">Save</button>
+          <button class="primary" type="submit" :disabled="store.isBusy">Save Emergency Kit…</button>
         </form>
       </div>
     </div>
