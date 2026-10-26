@@ -234,3 +234,19 @@ describe("Open in Hisar from a launcher", () => {
     expect(wrapper.findAll(".item .item-title").map((title) => title.text())).toEqual(["Deploy", "Grafana"]);
   });
 });
+
+describe("Selection for assistive technology", () => {
+  it("marks the selected item and the current vault", async () => {
+    const wrapper = mount(App);
+    await flushPromises();
+    sendEvent("show-item", { vaultID: "work", itemID: "grafana", isEditing: false });
+    await flushPromises();
+    const list = wrapper.find('[role="listbox"]');
+    expect(list.attributes("aria-label")).toBe("Work");
+    expect(list.findAll('[role="option"]').map((option) => [option.find(".item-title").text(), option.attributes("aria-selected")])).toEqual([
+      ["Deploy", "false"],
+      ["Grafana", "true"],
+    ]);
+    expect(wrapper.findAll('[aria-current="true"]').map((vault) => vault.attributes("data-testid"))).toEqual(["vault-work"]);
+  });
+});

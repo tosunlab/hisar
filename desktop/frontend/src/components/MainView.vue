@@ -403,7 +403,13 @@ onBeforeUnmount(() => {
       <RemovedVaultBanner />
 
       <nav aria-label="Favorites" class="favorites-nav">
-        <button class="vault" :class="{ selected: store.isFavoritesSelected }" data-testid="open-favorites" @click="selectFavorites">
+        <button
+          class="vault"
+          :class="{ selected: store.isFavoritesSelected }"
+          :aria-current="store.isFavoritesSelected ? 'true' : undefined"
+          data-testid="open-favorites"
+          @click="selectFavorites"
+        >
           <AppIcon name="star" />
           <span class="vault-name">Favorites</span>
           <span v-if="store.allFavorite.length > 0" class="vault-count" data-testid="favorites-count">{{ store.allFavorite.length }}</span>
@@ -425,6 +431,7 @@ onBeforeUnmount(() => {
             :key="vault.id"
             class="vault"
             :class="{ selected: !store.isFavoritesSelected && vault.id === store.selectedVaultID }"
+            :aria-current="!store.isFavoritesSelected && vault.id === store.selectedVaultID ? 'true' : undefined"
             :data-testid="`vault-${vault.id}`"
             @click="selectVault(vault.id)"
             @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
@@ -609,11 +616,13 @@ onBeforeUnmount(() => {
             <p class="muted">Star an item with <AppIcon name="star" :size="12" /> or {{ shortcutModifier }}D to keep it here, across all your vaults and devices. Only you see your favorites.</p>
           </template>
         </div>
-        <ul v-else data-testid="favorites-list">
-          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`">
+        <ul v-else role="listbox" aria-label="Favorites" data-testid="favorites-list">
+          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="none">
             <button
               class="item"
               :class="{ selected: isSelectedFavorite(favorite) }"
+              role="option"
+              :aria-selected="isSelectedFavorite(favorite)"
               @click="selectFavoriteItem(favorite)"
               @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
@@ -639,11 +648,13 @@ onBeforeUnmount(() => {
         <p>{{ emptyListMessage }}</p>
         <button v-if="!store.searchQuery && !store.selectedTag && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
-      <ul v-else>
-        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id">
+      <ul v-else role="listbox" :aria-label="selectedVault?.name ?? 'Items'">
+        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id" role="none">
           <button
             class="item"
             :class="{ selected: store.selectedItem?.id === vaultItem.id }"
+            role="option"
+            :aria-selected="store.selectedItem?.id === vaultItem.id"
             @click="selectItem(vaultItem.id)"
             @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
           >

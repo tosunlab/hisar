@@ -97,7 +97,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 }
 
 .field:hover .field-actions,
-.field-actions:focus-within {
+.field:focus-within .field-actions {
   opacity: 1;
 }
 
