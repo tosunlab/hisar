@@ -39,7 +39,7 @@ func mainWindowOptions() application.WebviewWindowOptions {
 		Title:     "Hisar",
 		Width:     1100,
 		Height:    700,
-		MinWidth:  760,
+		MinWidth:  900,
 		MinHeight: 480,
 		Hidden:    true,
 		Mac: application.MacWindow{

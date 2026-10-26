@@ -790,6 +790,12 @@ h2 {
   border-bottom: 1px solid var(--color-border);
 }
 
+@container detail (max-width: 559px) {
+  .field {
+    grid-template-columns: 90px 1fr auto;
+  }
+}
+
 .field:last-child {
   border-bottom: none;
 }

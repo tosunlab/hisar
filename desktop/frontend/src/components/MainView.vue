@@ -68,7 +68,9 @@ import {
   softwareLicenseFieldName,
   sshKeyCategory,
 } from "../util";
+import { allColumnBound, detailMinWidth, loadColumnWidths, saveColumnWidths } from "../columnWidths";
 import AppIcon from "./AppIcon.vue";
+import ColumnResizer from "./ColumnResizer.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
@@ -91,6 +93,11 @@ import VaultMenu from "./VaultMenu.vue";
 import VaultSharingPanel from "./VaultSharingPanel.vue";
 
 const personalVaultNotice = "Personal vaults are private. Create a shared vault to share items with other people.";
+
+const columnWidths = ref(loadColumnWidths());
+const layoutStyle = computed(() => ({
+  gridTemplateColumns: `minmax(${allColumnBound.sidebar.min}px, ${columnWidths.value.sidebar}px) 0 minmax(${allColumnBound.list.min}px, ${columnWidths.value.list}px) 0 minmax(${detailMinWidth}px, 1fr)`,
+}));
 
 interface TeamChoice {
   key: string;
@@ -399,7 +406,7 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="layout">
+  <div class="layout" :style="layoutStyle">
     <aside class="sidebar">
       <div class="title-bar"></div>
       <div class="sidebar-brand"><HisarLogo :size="24" show-wordmark /></div>
@@ -510,6 +517,7 @@ onBeforeUnmount(() => {
         <button class="ghost icon-button" :title="`Lock (${shortcutModifier}L)`" aria-label="Lock" @click="lock"><AppIcon name="lock" /></button>
       </div>
     </aside>
+    <ColumnResizer v-model="columnWidths.sidebar" column="sidebar" label="Sidebar width" @commit="saveColumnWidths(columnWidths)" />
 
     <section class="list">
       <ReadIssuesPanel />
@@ -672,6 +680,7 @@ onBeforeUnmount(() => {
         </li>
       </ul>
     </section>
+    <ColumnResizer v-model="columnWidths.list" column="list" label="Item list width" @commit="saveColumnWidths(columnWidths)" />
 
     <main class="detail">
       <div class="title-bar"></div>
@@ -722,7 +731,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .layout {
   display: grid;
-  grid-template-columns: 228px 300px 1fr;
   height: 100%;
 }
 
@@ -1127,6 +1135,7 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  container: detail / inline-size;
 }
 
 .detail-content {
