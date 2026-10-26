@@ -48,7 +48,7 @@ import com.tryhisar.hisar.app.EditorRequest
 import com.tryhisar.hisar.model.ItemAndroidApp
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ItemPasskey
-import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.ui.components.ContentUnavailable
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.PushedTopBar
@@ -98,7 +98,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     }
 
     val shownItem = item
-    val isWritable = vault != null && (vault.type == VaultSummary.TYPE_PERSONAL || vault.role != "reader")
+    val isWritable = vault?.let(VaultLogic::isWritable) == true
     Column(
         Modifier
             .fillMaxSize()
