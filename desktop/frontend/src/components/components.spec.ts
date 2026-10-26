@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { createApiMock, createItem, createStatus } from "../testing";
+import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 const lockedListener = vi.hoisted(() => ({ current: undefined as undefined | (() => void) }));
@@ -387,20 +387,35 @@ describe("ItemDetailPanel", () => {
     expect(api.copyField).toHaveBeenCalledWith("personal", "item-1", "password");
   });
 
-  it("asks for confirmation before deleting", async () => {
+  it("deletes from the ⋯ menu through the one confirmation dialog", async () => {
     api.deleteItem.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
-    await wrapper.find('button[aria-label="Delete item"]').trigger("click");
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
+    expect(wrapper.find('button[aria-label="Delete item"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="item-actions"]').trigger("click");
+    expect(wrapper.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Duplicate", "Delete…"]);
+    await wrapper.find('[data-testid="context-menu-delete"]').trigger("click");
     expect(api.deleteItem).not.toHaveBeenCalled();
-    await wrapper.find('[data-testid="confirm-delete"]').trigger("click");
+    expect(wrapper.find('[data-testid="confirm-delete-dialog"]').text()).toContain("Delete “GitHub”?");
+    await wrapper.find('[data-testid="confirm-delete-item"]').trigger("click");
     await flushPromises();
     expect(api.deleteItem).toHaveBeenCalledWith("personal", "item-1");
+    wrapper.unmount();
   });
 
-  it("hides edit and delete for read-only vaults", () => {
+  it("offers Move to… in the ⋯ menu when another vault takes items", async () => {
+    store.allVault = [allTestVault[0], { id: "work", name: "Work", type: "shared", role: "editor", itemCount: 0 }];
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
+    await wrapper.find('[data-testid="item-actions"]').trigger("click");
+    expect(wrapper.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Duplicate", "Move to…", "Delete…"]);
+    await wrapper.find('[data-testid="context-menu-move"]').trigger("click");
+    expect(wrapper.find('[data-testid="move-item-dialog"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("hides edit and the ⋯ menu for read-only vaults", () => {
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", vaultType: "shared" } });
     expect(wrapper.findAll("button").map((button) => button.text())).not.toContain("Edit");
-    expect(wrapper.find('button[aria-label="Delete item"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="item-actions"]').exists()).toBe(false);
   });
 });
 

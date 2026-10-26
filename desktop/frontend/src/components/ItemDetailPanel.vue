@@ -3,7 +3,7 @@ import { computed, ref, watch } from "vue";
 import {
   convertToSecureNote,
   copyField,
-  deleteItem,
+  duplicateItem,
   getAllShareLinkForItem,
   hasShareableField,
   openItemShareLinkDialog,
@@ -48,8 +48,10 @@ import {
 } from "../util";
 import AppIcon from "./AppIcon.vue";
 import CommitSigningPanel from "./CommitSigningPanel.vue";
+import ConfirmDeleteDialog from "./ConfirmDeleteDialog.vue";
 import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import ItemTile from "./ItemTile.vue";
+import MoveItemDialog from "./MoveItemDialog.vue";
 import OneTimeCodeField from "./OneTimeCodeField.vue";
 import PasskeyList from "./PasskeyList.vue";
 import SecretReferenceButton from "./SecretReferenceButton.vue";
@@ -62,7 +64,9 @@ defineProps<{ canEdit: boolean; vaultName: string; vaultType: string }>();
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
-const isConfirmingDelete = ref(false);
+// itemMenu is the header's ⋯ menu, opened below its button; dialog is the Move or Delete dialog one of its actions opens.
+const itemMenu = ref<{ x: number; y: number } | null>(null);
+const dialog = ref<"move" | "delete" | null>(null);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
 const isSecureNote = computed(() => store.selectedItem?.category === secureNoteCategory);
 const isCreditCard = computed(() => store.selectedItem?.category === creditCardCategory);
@@ -195,7 +199,8 @@ watch(
     isPasswordRevealed.value = false;
     isConnectionStringRevealed.value = false;
     allRevealedFieldName.value = [];
-    isConfirmingDelete.value = false;
+    itemMenu.value = null;
+    dialog.value = null;
     fieldMenu.value = null;
   },
 );
@@ -204,6 +209,28 @@ function toggleFieldReveal(fieldName: string): void {
   allRevealedFieldName.value = allRevealedFieldName.value.includes(fieldName)
     ? allRevealedFieldName.value.filter((name) => name !== fieldName)
     : [...allRevealedFieldName.value, fieldName];
+}
+
+// buildItemMenuActions lists what the ⋯ menu offers, as the item's right-click menu in the list does: Duplicate (not for an
+// SSH key, whose private key stays one), Move to… when another vault takes items, and Delete… last.
+function buildItemMenuActions(): ContextMenuAction[] {
+  const item = store.selectedItem;
+  if (!item) {
+    return [];
+  }
+  const vaultID = store.selectedVaultID;
+  const hasMoveTarget = store.allVault.some((vault) => vault.id !== vaultID && vault.role !== "reader");
+  const allAction: (ContextMenuAction | null)[] = [
+    item.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate", run: () => duplicateItem(vaultID, item.id) } : null,
+    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", run: () => (dialog.value = "move") } : null,
+    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, run: () => (dialog.value = "delete") },
+  ];
+  return allAction.filter((action): action is ContextMenuAction => action !== null);
+}
+
+function openItemMenu(event: MouseEvent): void {
+  const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  itemMenu.value = { x: Math.max(8, bounds.right - 200), y: bounds.bottom + 6 };
 }
 
 // fieldMenu is the right-click menu of a field row. It offers the row's own buttons, by their labels, so it always matches
@@ -314,20 +341,21 @@ function maskSecret(secret: string): string {
         </button>
         <template v-if="canEdit">
           <button @click="startEditingItem"><AppIcon name="edit" /> Edit</button>
-          <button v-if="!isConfirmingDelete" class="ghost icon-button" aria-label="Delete item" title="Delete" @click="isConfirmingDelete = true">
-            <AppIcon name="trash" />
+          <button
+            class="ghost icon-button"
+            aria-label="Item actions"
+            title="Item actions"
+            aria-haspopup="menu"
+            :aria-expanded="itemMenu !== null"
+            data-testid="item-actions"
+            @pointerdown.stop
+            @click="itemMenu ? (itemMenu = null) : openItemMenu($event)"
+          >
+            <AppIcon name="more" />
           </button>
         </template>
       </div>
     </header>
-
-    <div v-if="isConfirmingDelete" class="card delete-confirm" role="alertdialog">
-      <span>Delete <strong>{{ store.selectedItem.title }}</strong> from {{ vaultName }}?</span>
-      <div class="row">
-        <button class="ghost" @click="isConfirmingDelete = false">Cancel</button>
-        <button class="danger-solid" data-testid="confirm-delete" @click="deleteItem(store.selectedItem.id)">Delete item</button>
-      </div>
-    </div>
 
     <template v-if="isSSHKey">
       <section class="card field-card" data-testid="ssh-key-fields">
@@ -644,6 +672,16 @@ function maskSecret(secret: string): string {
 
     <p class="footer muted"><AppIcon name="shield" :size="12" /> End-to-end encrypted with the {{ vaultName }} vault key</p>
     <ContextMenu v-if="fieldMenu" :label="fieldMenu.label" :x="fieldMenu.x" :y="fieldMenu.y" :all-action="fieldMenu.allAction" @close="fieldMenu = null" />
+    <ContextMenu
+      v-if="itemMenu"
+      :label="store.selectedItem.title"
+      :x="itemMenu.x"
+      :y="itemMenu.y"
+      :all-action="buildItemMenuActions()"
+      @close="itemMenu = null"
+    />
+    <MoveItemDialog v-if="dialog === 'move'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="dialog = null" />
+    <ConfirmDeleteDialog v-if="dialog === 'delete'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="dialog = null" />
   </article>
 </template>
 
@@ -719,17 +757,6 @@ h2 {
 
 .favorite-button.is-favorite {
   color: var(--color-warning);
-}
-
-.delete-confirm {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 14px;
-  padding: 12px 14px;
-  border-color: var(--color-danger-border);
-  background: var(--color-danger-background);
 }
 
 .field-card {
