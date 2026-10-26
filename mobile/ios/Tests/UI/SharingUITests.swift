@@ -53,6 +53,7 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["share-vault"].tap()
         type(partnerEmail, into: app.textFields["share-email"])
         chooseRole("Reader", in: app.buttons["share-role"])
+        XCTAssertEqual(app.buttons["share-vault-submit"].label, "Send invitation")
         app.buttons["share-vault-submit"].tap()
         waitFor(findText(containing: "Invitation sent to \(partnerEmail)"), timeout: 30)
         saveLightAndDarkScreenshot("sharing-share-sheet")
@@ -76,6 +77,8 @@ final class SharingUITests: HisarUITestCase {
         let cancelAction = app.buttons["Cancel"].firstMatch
         waitForHittable(cancelAction)
         cancelAction.tap()
+        XCTAssertEqual(app.buttons["confirm-cancel-invitation"].firstMatch.label, "Cancel invitation")
+        XCTAssertTrue(app.buttons["Keep invitation"].exists)
         app.buttons["confirm-cancel-invitation"].firstMatch.tap()
         XCTAssertTrue(unknownInvitation.waitForNonExistence(timeout: 30), "the cancelled invitation disappears")
 
@@ -88,6 +91,7 @@ final class SharingUITests: HisarUITestCase {
         findElement("vault-member-\(partnerEmail)").tap()
         saveScreenshot("sharing-member-editor")
         app.swipeUp()
+        XCTAssertEqual(app.buttons["remove-member"].label, "Remove from vault")
         app.buttons["remove-member"].tap()
         app.buttons["confirm-remove-member"].firstMatch.tap()
         XCTAssertTrue(findElement("vault-member-\(partnerEmail)").waitForNonExistence(timeout: 60), "the removed person leaves the members")

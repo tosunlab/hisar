@@ -263,7 +263,7 @@ struct SecretKeyView: View {
                 }
                 Section {
                     ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                        Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
+                        Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
                     }
                     .accessibilityIdentifier("share-emergency-kit")
                 } header: {

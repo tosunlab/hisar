@@ -210,7 +210,7 @@ struct ReplaceSecretKeyView: View {
         if !result.emergencyKitPath.isEmpty {
             Section {
                 ShareLink(item: URL(fileURLWithPath: result.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                    Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
+                    Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
                 }
                 .accessibilityIdentifier("share-new-emergency-kit")
             } header: {

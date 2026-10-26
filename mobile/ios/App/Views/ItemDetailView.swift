@@ -73,7 +73,7 @@ struct ItemDetailView: View {
             titleVisibility: .visible,
             presenting: passkeyToDelete
         ) { passkey in
-            Button("Delete Passkey", role: .destructive) {
+            Button("Delete passkey", role: .destructive) {
                 Task { await deletePasskey(passkey) }
             }
             .accessibilityIdentifier("confirm-delete-passkey")
@@ -227,7 +227,7 @@ struct ItemDetailView: View {
                             Button {
                                 copyReference(fieldName: "notes")
                             } label: {
-                                Label("Copy Secret Reference", systemImage: "terminal")
+                                Label("Copy secret reference", systemImage: "terminal")
                             }
                         }
                 } header: {
@@ -675,7 +675,7 @@ struct SecretFieldRow: View {
                 Label("Copy \(label)", systemImage: "doc.on.doc")
             }
             Button(action: copyReference) {
-                Label("Copy Secret Reference", systemImage: "terminal")
+                Label("Copy secret reference", systemImage: "terminal")
             }
             if let toggleReveal {
                 Button(action: toggleReveal) {

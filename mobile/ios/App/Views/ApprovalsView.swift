@@ -58,7 +58,7 @@ struct ApprovalList: View {
                 } description: {
                     Text("Your Mac decides on its own: Touch ID or the master password there.")
                 } actions: {
-                    Button("Allow Approving Mac Requests", action: allowMacApproval)
+                    Button("Approve requests from my Mac", action: allowMacApproval)
                         .buttonStyle(.glass)
                         .accessibilityIdentifier("approvals-allow")
                 }

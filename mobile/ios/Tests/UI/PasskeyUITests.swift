@@ -58,6 +58,7 @@ final class PasskeyUITests: HisarUITestCase {
         let passkeyItem = app.descendants(matching: .any)["passkey-example.com"]
         saveScreenshot("passkey-item-detail")
         app.buttons["delete-passkey-example.com"].tap()
+        XCTAssertEqual(app.buttons["confirm-delete-passkey"].firstMatch.label, "Delete passkey")
         app.buttons["confirm-delete-passkey"].firstMatch.tap()
         XCTAssertTrue(passkeyItem.waitForNonExistence(timeout: 30), "the passkey is still listed after deleting it")
         XCTAssertEqual(app.staticTexts["username-value"].label, "passkey-user", "deleting the passkey keeps the login")
