@@ -73,7 +73,7 @@ func (s *Service) RemoveWebPushEndpoint() error {
 	client := s.createClient(server)
 	client.Token = sessionToken
 	if err := client.DeleteDevicePush(ctx); err != nil && !apiclient.IsStatus(err, http.StatusNotFound) {
-		return s.recordPushError(fmt.Errorf("Hisar could not turn notifications off on the server: %w", err))
+		return s.recordServerPushError(fmt.Errorf("Hisar could not turn notifications off on the server: %w", err))
 	}
 	return s.recordPushError(nil)
 }
@@ -148,7 +148,7 @@ func (s *Service) registerPush() error {
 		config, err = apitypes.PushConfig{}, nil
 	}
 	if err != nil {
-		return s.recordPushError(fmt.Errorf("Hisar could not reach the server to set up notifications: %w", err))
+		return s.recordServerPushError(fmt.Errorf("Hisar could not reach the server to set up notifications: %w", err))
 	}
 	s.mutex.Lock()
 	s.isPushServerSending = config.RelayURL != ""
@@ -158,7 +158,7 @@ func (s *Service) registerPush() error {
 	}
 	if len(allEnabledKind) == 0 {
 		if err := client.DeleteDevicePush(ctx); err != nil {
-			return s.recordPushError(fmt.Errorf("Hisar could not turn notifications off on the server: %w", err))
+			return s.recordServerPushError(fmt.Errorf("Hisar could not turn notifications off on the server: %w", err))
 		}
 		return s.recordPushError(nil)
 	}
@@ -169,7 +169,7 @@ func (s *Service) registerPush() error {
 	}
 	if webPush != nil {
 		if err := client.SetDevicePush(ctx, apitypes.PushRegistration{WebPush: webPush, AllKind: allKind}); err != nil {
-			return s.recordPushError(fmt.Errorf("Hisar could not set up notifications on the server: %w", err))
+			return s.recordServerPushError(fmt.Errorf("Hisar could not set up notifications on the server: %w", err))
 		}
 		return s.recordPushError(nil)
 	}
@@ -183,7 +183,7 @@ func (s *Service) registerPush() error {
 		registration = localstate.PushRegistration{RelayURL: config.RelayURL, TokenHash: tokenHash, Handle: handle}
 	}
 	if err := client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: registration.Handle, AllKind: allKind}); err != nil {
-		return s.recordPushError(fmt.Errorf("Hisar could not set up notifications on the server: %w", err))
+		return s.recordServerPushError(fmt.Errorf("Hisar could not set up notifications on the server: %w", err))
 	}
 
 	s.mutex.Lock()
@@ -205,6 +205,17 @@ func (s *Service) recordPushError(err error) error {
 		s.pushErrorMessage = err.Error()
 	}
 	return err
+}
+
+// recordServerPushError records a failed push request to the server. A 401 is not a notification problem: the server
+// ended the session the request was made with (another device changed the credentials or revoked this one, or this
+// device signed in again since). Unlocking or the event stream signs out such a session, and the next sign-in registers
+// again, so Settings → Notifications keeps no sentence of it.
+func (s *Service) recordServerPushError(err error) error {
+	if apiclient.IsStatus(err, http.StatusUnauthorized) {
+		return nil
+	}
+	return s.recordPushError(err)
 }
 
 // hashPushToken names the token in state.json, which then never holds the token itself.

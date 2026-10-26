@@ -133,6 +133,25 @@ func TestPushReportsAnUnreachableRelay(t *testing.T) {
 	}
 }
 
+// A phone that launches with a session the server ended (another device changed the credentials, or revoked this one)
+// shows no notification error for it: unlocking signs it out as before, and the next sign-in registers again.
+func TestPushWithASessionTheServerEndedShowsNoNotificationError(t *testing.T) {
+	fixture := createLockedUnlockableService(t)
+	fixture.apiServer.pushRelayURL = startFakeRelayForApp(t).server.URL
+	fixture.apiServer.mutex.Lock()
+	fixture.apiServer.isSessionEnded = true
+	fixture.apiServer.mutex.Unlock()
+	if err := fixture.service.SetPushToken("apns", "device-token"); err != nil {
+		t.Fatalf("an ended session was reported as a notification error: %v", err)
+	}
+	if settings := fixture.service.GetPushSettings(); settings.ErrorMessage != "" {
+		t.Fatalf("settings = %+v", settings)
+	}
+	if status, err := fixture.service.Unlock(testMasterPassword); err != nil || status.State != StateSignedOut || status.SignedOutReason != signedOutByServerReason {
+		t.Fatalf("unlock with the ended session: %+v %v", status, err)
+	}
+}
+
 func TestWebPushEndpointGoesToTheServerWithoutTheRelay(t *testing.T) {
 	fixture := createUnlockedTestService(t)
 	relay := startFakeRelayForApp(t)
