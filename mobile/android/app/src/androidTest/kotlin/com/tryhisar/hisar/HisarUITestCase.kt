@@ -84,7 +84,8 @@ abstract class HisarUITestCase {
         composeRule.waitUntil("$tag goes", timeoutMillis) { !exists(hasTestTag(tag)) }
     }
 
-    fun exists(matcher: SemanticsMatcher): Boolean = composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
+    fun exists(matcher: SemanticsMatcher): Boolean = composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() ||
+        composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
     fun tap(tag: String) {
         scrollTo(tag)
@@ -100,7 +101,9 @@ abstract class HisarUITestCase {
 
     fun readText(tag: String): String {
         waitFor(tag)
-        return composeRule.onNode(hasTestTag(tag)).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
+        val node = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().singleOrNull()
+            ?: composeRule.onNode(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNode()
+        return node.config[SemanticsProperties.Text].joinToString("")
     }
 
     fun goBack() {

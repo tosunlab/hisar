@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,11 +52,7 @@ import com.tryhisar.hisar.ui.theme.HisarType
 /** One entry of a row's touch-and-hold menu, as a SwiftUI context menu button. */
 internal class MenuAction(val title: String, val icon: ImageVector, val perform: () -> Unit)
 
-/**
- * A row with a touch-and-hold menu, as SwiftUI's contextMenu, that [onClick] makes a button read as [onClickLabel]. Unlike
- * a clickable row it keeps its fields apart for accessibility and tests, as the iPhone app's rows do: "password-value"
- * stays its own element. A button inside the row keeps its tap to itself.
- */
+/** A copyable field merges its text into one button; inner buttons retain their own actions. */
 @Composable
 internal fun MenuRow(
     allAction: List<MenuAction>,
@@ -67,26 +64,29 @@ internal fun MenuRow(
     var isMenuShown by remember { mutableStateOf(false) }
     val interactionSource = remember { MutableInteractionSource() }
     val hasMenu = allAction.isNotEmpty()
+    val currentOnClick by rememberUpdatedState(onClick)
     Box(
         modifier
             .fillMaxWidth()
+            .heightIn(min = 48.dp)
             .indication(interactionSource, ripple())
-            .pointerInput(onClick, hasMenu) {
+            .pointerInput(onClick != null, hasMenu) {
                 detectTapGestures(
                     onPress = { offset ->
                         val press = PressInteraction.Press(offset)
                         interactionSource.emit(press)
                         interactionSource.emit(if (tryAwaitRelease()) PressInteraction.Release(press) else PressInteraction.Cancel(press))
                     },
-                    onTap = onClick?.let { { _: Offset -> it() } },
+                    onTap = if (onClick != null) ({ _: Offset -> currentOnClick?.invoke() }) else null,
                     onLongPress = if (hasMenu) ({ isMenuShown = true }) else null,
                 )
             }
-            .semantics {
+            .semantics(mergeDescendants = onClick != null) {
                 if (onClick != null) {
                     role = Role.Button
+                    onClickLabel?.let { contentDescription = it }
                     onClick(onClickLabel) {
-                        onClick()
+                        currentOnClick?.invoke()
                         true
                     }
                 }
@@ -104,6 +104,7 @@ internal fun MenuRow(
                 DropdownMenuItem(
                     text = { Text(action.title, style = HisarType.body, color = HisarTheme.colors.label) },
                     trailingIcon = { Icon(action.icon, contentDescription = null, tint = HisarTheme.colors.label) },
+                    modifier = Modifier.testTag("field-action-${action.title}"),
                     onClick = {
                         isMenuShown = false
                         action.perform()
@@ -185,7 +186,7 @@ internal fun SecretFieldRow(
 internal fun FieldIconButton(icon: ImageVector, contentDescription: String, testTag: String, onClick: () -> Unit, tint: Color = HisarTheme.colors.tint) {
     Box(
         Modifier
-            .size(36.dp)
+            .size(48.dp)
             .clickable(role = Role.Button, onClick = onClick)
             .testTag(testTag),
         contentAlignment = Alignment.Center,

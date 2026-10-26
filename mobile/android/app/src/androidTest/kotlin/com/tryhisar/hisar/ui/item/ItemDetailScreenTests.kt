@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui.item
 
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
@@ -131,12 +132,12 @@ class ItemDetailScreenTests {
         val host = openHost()
         host.show("personal", "github")
         composeRule.waitForTag("username-value")
-        composeRule.onNodeWithTag("username-value").performTouchInput { longClick() }
-        composeRule.onNode(hasText("Copy secret reference")).performClick()
+        composeRule.onNodeWithTag("username-value", useUnmergedTree = true).performTouchInput { longClick() }
+        composeRule.onNodeWithTag("field-action-Copy secret reference").performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedReference == listOf("hisar://Personal/GitHub/username") }
 
         composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performTouchInput { longClick() }
-        composeRule.onNode(hasText("Copy")).performClick()
+        composeRule.onNodeWithTag("field-action-Copy").performClick()
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
         assertEquals("Website copied. It clears in about 2 minutes.", host.model.notice.value?.message)
     }
@@ -160,26 +161,27 @@ class ItemDetailScreenTests {
         val host = openHost()
         host.show("personal", "github")
         composeRule.waitForTag("password-value")
-        val hiddenPassword = composeRule.onNodeWithTag("password-value").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
-        composeRule.onNodeWithTag("username-value").performClick()
+        val hiddenPassword = composeRule.onNodeWithTag("password-value", useUnmergedTree = true).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
+        composeRule.onNode(hasClickLabel("Copy username")).performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedField == listOf("github.username") }
-        composeRule.onNodeWithTag("password-value").performClick()
+        composeRule.onNode(hasClickLabel("Copy password")).performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedField == listOf("github.username", "github.password") }
-        assertEquals("Password copied. It clears in about 2 minutes.", host.model.notice.value)
-        assertEquals("a tap copies without revealing", hiddenPassword, composeRule.onNodeWithTag("password-value").fetchSemanticsNode().config[SemanticsProperties.Text].joinToString(""))
+        assertEquals("Password copied. It clears in about 2 minutes.", host.model.notice.value?.message)
+        assertEquals("a tap copies without revealing", hiddenPassword, composeRule.onNodeWithTag("password-value", useUnmergedTree = true).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString(""))
 
         composeRule.tap("reveal-password")
-        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasTestTag("password-value") and hasText("github-password")).fetchSemanticsNodes().isNotEmpty() }
+        composeRule.waitUntil(5_000) { composeRule.onAllNodes(hasTestTag("password-value") and hasText("github-password"), useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         assertEquals("the reveal button does not also copy", 2, backend.allCopiedField.size)
 
-        composeRule.onNodeWithTag("pin-value").performScrollTo().performClick()
+        composeRule.onNode(hasClickLabel("Copy PIN")).performScrollTo().performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedField.last() == "github.PIN" }
         composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performClick()
         composeRule.waitUntil(5_000) { clipboard.allCopiedSecret == listOf("https://github.com") }
-        assertTrue(
-            "the row reads as a button that copies",
-            composeRule.onAllNodes(hasClickLabel("Copy username")).fetchSemanticsNodes().isNotEmpty(),
-        )
+        val username = composeRule.onNode(hasClickLabel("Copy username")).fetchSemanticsNode()
+        assertEquals(Role.Button, username.config[SemanticsProperties.Role])
+        assertEquals(listOf("Copy username"), username.config[SemanticsProperties.ContentDescription])
+        assertTrue("the row owns its label and value", username.config[SemanticsProperties.Text].size >= 2)
+        assertEquals("inner copy stays a separate action", 1, composeRule.onAllNodes(hasTestTag("copy-username")).fetchSemanticsNodes().size)
     }
 
     private fun hasClickLabel(label: String) = SemanticsMatcher("a click action labelled $label") { it.config.getOrNull(SemanticsActions.OnClick)?.label == label }

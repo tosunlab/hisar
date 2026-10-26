@@ -485,7 +485,7 @@ private fun WebsiteSection(model: AppModel, item: ItemDetail) {
                         Spacer(Modifier.size(14.dp))
                         Text(url, style = HisarType.body, color = HisarTheme.colors.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
                         if (openableURL != null) {
-                            FieldIconButton(Icons.AutoMirrored.Outlined.OpenInNew, "Open website", "open-website", { openURL(context, openableURL) })
+                            FieldIconButton(Icons.AutoMirrored.Outlined.OpenInNew, "Open website", "open-website-$url", { openURL(context, openableURL) })
                         }
                     }
                 }
