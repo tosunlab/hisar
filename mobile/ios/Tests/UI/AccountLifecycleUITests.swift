@@ -18,7 +18,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         dismissSavePasswordPrompt()
 
         openSettings("open-mac-approvals")
-        XCTAssertTrue(app.staticTexts["When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone."].exists)
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label == %@", "When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")).firstMatch.exists)
         XCTAssertFalse(app.staticTexts["How requests appear"].exists)
         let macApprovalToggle = app.switches["mac-approval-toggle"]
         if macApprovalToggle.value as? String == "1" {
