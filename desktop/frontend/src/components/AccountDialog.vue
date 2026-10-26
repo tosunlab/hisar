@@ -93,13 +93,13 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape, true)
 
 h2 {
   margin: 0;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
 }
 
 .panel-heading p {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 :slotted(.consequences) {
@@ -111,7 +111,7 @@ h2 {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -134,7 +134,7 @@ h2 {
 :slotted(label > span) {
   display: block;
   margin-bottom: 5px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 500;
   color: var(--color-text-secondary);
 }
@@ -145,14 +145,14 @@ h2 {
 
 :slotted(.hint) {
   margin: 6px 0 0;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 :slotted(.check-row) {
   display: flex;
   align-items: center;
   gap: 8px;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   cursor: pointer;
 }
 

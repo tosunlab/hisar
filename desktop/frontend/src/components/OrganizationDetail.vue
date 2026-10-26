@@ -448,20 +448,20 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .organization-heading h3 {
   margin: 0;
   overflow: hidden;
-  font-size: 15px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .organization-heading p {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .security-code {
   flex: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
   user-select: text;
   -webkit-user-select: text;
@@ -510,7 +510,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 
 .code-detail p {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -530,7 +530,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
   flex: none;
   padding-top: 5px;
   padding-bottom: 5px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .invite-form .role-select {
@@ -546,7 +546,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .invite-hint {
   margin: 0;
   padding: 8px 14px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -564,7 +564,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .small-button {
   gap: 5px;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .team + .team {
@@ -578,7 +578,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .team-label {
   margin: 0;
   padding: 8px 14px 2px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 600;
   color: var(--color-text-muted);
 }
@@ -586,7 +586,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .team-empty {
   margin: 0;
   padding: 2px 14px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .settings-group > .team-row {
@@ -599,7 +599,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
   flex: none;
   max-width: 40%;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -612,7 +612,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .team-row button {
   flex: none;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .vault-icon {

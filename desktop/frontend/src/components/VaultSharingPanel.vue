@@ -382,20 +382,20 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 h2 {
   margin: 0;
   overflow: hidden;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sharing-heading p {
   margin: 1px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .loading {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .member-list {
@@ -445,7 +445,7 @@ h2 {
 }
 
 .member-email {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
@@ -472,12 +472,12 @@ h2 {
   width: 96px;
   padding-top: 5px;
   padding-bottom: 5px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .role-label {
   width: 96px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
   text-align: right;
 }
@@ -501,7 +501,7 @@ h2 {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-panel);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .member-detail p {
@@ -535,7 +535,7 @@ h2 {
 }
 
 .security-code {
-  font-size: 16px;
+  font-size: var(--font-size-17);
   font-weight: 600;
   letter-spacing: 0.12em;
   color: var(--color-text);
@@ -572,7 +572,7 @@ h2 {
 
 .hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .hint + .hint {
@@ -587,7 +587,7 @@ h2 {
   padding: 10px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -607,7 +607,7 @@ h2 {
 .take-back-button {
   flex: none;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .team-select {

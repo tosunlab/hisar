@@ -224,7 +224,7 @@ onMounted(loadWebsiteIconSetting);
 }
 
 .swatch-name {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-align: center;
 }
 

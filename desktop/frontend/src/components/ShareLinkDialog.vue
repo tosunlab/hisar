@@ -231,15 +231,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 h2 {
   margin: 0;
   overflow: hidden;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .panel-heading p {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .field-list {
@@ -252,7 +252,7 @@ h2 {
 
 legend {
   padding: 0 4px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 500;
   color: var(--color-text-secondary);
 }
@@ -267,7 +267,7 @@ legend {
 
 .check-row .check-label {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text);
 }
 
@@ -285,18 +285,18 @@ input[type="number"] {
 small {
   display: block;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .hint {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .link-input {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .summary {
@@ -309,7 +309,7 @@ small {
   border-radius: var(--radius);
   background: var(--color-surface);
   list-style: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 

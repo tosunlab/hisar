@@ -103,6 +103,6 @@ onMounted(loadBrowserStatus);
 }
 
 .pairing-hint {
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 </style>

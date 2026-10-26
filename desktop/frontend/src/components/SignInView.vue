@@ -277,7 +277,7 @@ async function submitCreateAccount(): Promise<void> {
 .signed-out-notice p {
   flex: 1;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 .signed-out-notice button {
@@ -310,8 +310,8 @@ async function submitCreateAccount(): Promise<void> {
 
 .brand h2 {
   margin: 28px 0 32px;
-  font-size: 24px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.02em;
 }
@@ -366,8 +366,8 @@ async function submitCreateAccount(): Promise<void> {
 
 h1 {
   margin: 24px 0 4px;
-  font-size: 22px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
@@ -429,7 +429,7 @@ h1 {
 
 .hint {
   margin: 14px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-align: center;
 }
 
@@ -438,7 +438,7 @@ h1 {
   border: none;
   background: none;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -450,14 +450,14 @@ h1 {
 .password-feedback {
   display: block;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 400;
 }
 
 .invite-server {
   display: block;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 400;
 }
 

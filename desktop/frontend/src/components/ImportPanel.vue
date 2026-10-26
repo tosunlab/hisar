@@ -298,13 +298,13 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 
 h2 {
   margin: 0;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
 }
 
 .panel-heading p {
   margin: 1px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 select {
@@ -313,7 +313,7 @@ select {
 
 .how-to {
   margin-bottom: 12px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -344,7 +344,7 @@ select {
 
 .hint {
   margin: 0 0 4px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .actions {
@@ -389,7 +389,7 @@ select {
 }
 
 .file-text span {
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .category-counts {
@@ -420,7 +420,7 @@ section {
   gap: 10px;
   padding: 7px 12px;
   border-bottom: 1px solid var(--color-border);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .entry-list li:last-child {
@@ -448,7 +448,7 @@ section {
   align-items: center;
   gap: 8px;
   margin: 10px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .checkbox-row span {
@@ -500,7 +500,7 @@ section {
   border: 1px solid var(--color-warning-border);
   border-radius: var(--radius);
   background: var(--color-warning-background);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .confirm-icon {
@@ -521,7 +521,7 @@ section {
 
 .file-path {
   overflow: hidden;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   text-overflow: ellipsis;
   white-space: nowrap;
   user-select: text;

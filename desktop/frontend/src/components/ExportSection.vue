@@ -144,7 +144,7 @@ onMounted(async () => {
 <style scoped>
 .intro {
   margin: 0 2px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -171,7 +171,7 @@ onMounted(async () => {
 
 .problem {
   color: var(--color-danger-text);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .warning-box {
@@ -182,7 +182,7 @@ onMounted(async () => {
   border-radius: var(--radius);
   background: var(--color-warning-background);
   color: var(--color-warning-text);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -213,7 +213,7 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   margin: 10px 2px 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
   user-select: text;
   -webkit-user-select: text;

@@ -127,11 +127,11 @@ function close(): void {
 <style scoped>
 .export-advice {
   margin: 0 0 10px;
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 
 .loading {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 </style>

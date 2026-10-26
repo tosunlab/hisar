@@ -757,8 +757,8 @@ header {
 h2 {
   margin: 0 0 6px;
   overflow: hidden;
-  font-size: 20px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -769,7 +769,7 @@ h2 {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .badge {
@@ -794,7 +794,7 @@ h2 {
   padding: 1px 8px;
   border-radius: 10px;
   background: var(--color-surface);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -903,7 +903,7 @@ h2 {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   user-select: text;
@@ -911,7 +911,7 @@ h2 {
 }
 
 .field-label {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
@@ -925,7 +925,7 @@ h2 {
 .android-app-certificate {
   display: block;
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .secret {
@@ -981,7 +981,7 @@ h2 {
   display: block;
   margin-top: 2px;
   color: var(--color-warning);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .multiline-value {
@@ -993,7 +993,7 @@ h2 {
   align-items: center;
   gap: 8px;
   margin: 12px 2px 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .share-links-card {

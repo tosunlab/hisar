@@ -155,7 +155,7 @@ const allSigningRememberOption = [
 
 .config-details summary {
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 

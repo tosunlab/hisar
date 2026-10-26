@@ -269,7 +269,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
 .empty-row {
   margin: 0;
   padding: 10px 14px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .available-text {
@@ -303,7 +303,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
   margin: 4px 0 0;
   padding: 0;
   list-style: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .remembered-list li {

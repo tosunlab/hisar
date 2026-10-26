@@ -187,7 +187,7 @@ onMounted(async () => {
 
 .organization-summary {
   margin-top: 2px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .row-chevron {
@@ -197,7 +197,7 @@ onMounted(async () => {
 .create-explanation {
   margin: 0;
   padding: 10px 14px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .settings-group-form input {

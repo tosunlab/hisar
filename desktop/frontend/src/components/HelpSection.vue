@@ -79,7 +79,7 @@ onMounted(() => {
 
 .value {
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   text-align: right;
 }
 </style>

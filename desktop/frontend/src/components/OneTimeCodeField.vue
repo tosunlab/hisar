@@ -101,7 +101,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 
 /* The detail panel's scoped row styles reach only this component's root, so the label and actions match them here. */
 .field-label {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
@@ -124,7 +124,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 }
 
 .code {
-  font-size: 18px;
+  font-size: var(--font-size-17);
   letter-spacing: 0.08em;
 }
 
@@ -151,7 +151,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 }
 
 .seconds {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-variant-numeric: tabular-nums;
 }
 </style>

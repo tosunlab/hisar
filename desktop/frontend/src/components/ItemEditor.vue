@@ -790,8 +790,8 @@ header {
   padding: 6px 8px;
   border-color: transparent;
   background: transparent;
-  font-size: 20px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
 }
 
 .title-input:hover {
@@ -810,7 +810,7 @@ label.last {
 .hint {
   display: block;
   margin-top: 4px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .warning-text {
@@ -844,7 +844,7 @@ label.last {
   gap: 8px;
   margin: 0 0 12px;
   padding: 12px 16px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .row input {
@@ -873,7 +873,7 @@ button.active {
 
 .concealed span {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 400;
   color: var(--color-text-secondary);
 }
@@ -916,7 +916,7 @@ button.active {
   padding: 1px 2px 1px 8px;
   border-radius: 10px;
   background: var(--color-selected);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .tag-chip .icon-button {
@@ -944,7 +944,7 @@ button.active {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .passkey-line {
@@ -956,6 +956,6 @@ button.active {
 
 .passkey-note {
   margin: 8px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 </style>

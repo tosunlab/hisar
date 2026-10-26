@@ -367,15 +367,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
   border-radius: 9px;
   background: var(--color-primary);
   color: var(--color-primary-text);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--font-size-11);
+  font-weight: 600;
   line-height: 18px;
   text-align: center;
 }
 
 .no-section {
   margin: 4px 9px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .settings-main {
@@ -398,8 +398,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
 }
 
 .settings-header button {

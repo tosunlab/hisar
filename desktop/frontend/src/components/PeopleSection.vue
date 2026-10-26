@@ -161,12 +161,12 @@ function describeInviter(name: string, email: string): string {
 .invite-explanation {
   margin: 0;
   padding: 10px 14px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .security-code {
   flex: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
   user-select: text;
   -webkit-user-select: text;
