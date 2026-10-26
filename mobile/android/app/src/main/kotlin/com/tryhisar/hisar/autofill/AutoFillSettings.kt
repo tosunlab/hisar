@@ -57,7 +57,7 @@ fun ColumnScope.AutoFillSettingsSections() {
     }
     LifecycleEventEffect(Lifecycle.Event.ON_RESUME) { isEnabled = isAutoFillEnabled(context) }
 
-    FormSection(footer = { Text(systemSettingsFooter) }) {
+    FormSection(footer = { Text(systemSettingsFooter(isEnabled)) }) {
         if (isEnabled) {
             FormRow(Modifier.testTag("autofill-is-on")) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -111,12 +111,18 @@ fun ColumnScope.AutoFillSettingsSections() {
     }
 }
 
-private val systemSettingsFooter: String
-    get() = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-        "You can also turn it on in the Settings app: Passwords, passkeys & accounts."
+private fun systemSettingsFooter(isEnabled: Boolean): String {
+    val path = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+        "Passwords, passkeys & accounts"
     } else {
-        "You can also turn it on in the Settings app: System, Languages & input, Autofill service."
+        "System, Languages & input, Autofill service"
     }
+    return if (isEnabled) {
+        "Change the service in the Settings app: $path."
+    } else {
+        "You can also turn it on in the Settings app: $path."
+    }
+}
 
 // Settings answers ACTION_CREDENTIAL_PROVIDER only with a package: data URI; without one the intent finds no activity.
 private fun openSystemSettings(context: Context) {
