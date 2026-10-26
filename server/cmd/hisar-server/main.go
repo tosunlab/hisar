@@ -24,7 +24,7 @@ commands:
 environment:
   HISAR_DATABASE_URL   Postgres connection string (required)
   HISAR_ADDR           listen address (default :8080)
-  HISAR_PUBLIC_URL     public base URL (default https://api.tryhisar.com)
+  HISAR_PUBLIC_URL     public base URL (default https://eu.tryhisar.com)
   HISAR_SECRETS_FILE   server secrets file, created only for an empty uninitialized database (default hisar-secrets.json)
   HISAR_TRUST_PROXY    trust X-Forwarded-For from the reverse proxy (default false)
   HISAR_AUTO_MIGRATE   apply pending migrations on start (default true)

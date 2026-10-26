@@ -351,7 +351,7 @@ func TestImportPausesWhileOffline(t *testing.T) {
 func TestListAllImportFormat(t *testing.T) {
 	test := createUnlockedTestService(t)
 	formats := test.service.ListImportFormats()
-	if len(formats) != 6 || formats[0].ID != "1pux" || formats[4].ID != "lastpass-csv" || formats[5].ID != "csv" {
+	if len(formats) != 7 || formats[0].ID != FormatHisarExport || formats[1].ID != "1pux" || formats[5].ID != "lastpass-csv" || formats[6].ID != "csv" {
 		t.Errorf("formats = %+v", formats)
 	}
 }

@@ -58,7 +58,7 @@ import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFull
 import { forgetWebsiteIcons } from "./websiteicons";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
-export type ImportStep = "choose" | "preview" | "saving" | "done";
+export type ImportStep = "choose" | "passphrase" | "preview" | "saving" | "done";
 
 // EditorDraft is what the item editor holds so far: kept across a lock, and compared with the item it started from.
 export interface EditorDraft {
@@ -2208,6 +2208,17 @@ export function getAllEditableVault(): VaultSummary[] {
 export async function chooseImportFile(vaultID: string, format: string): Promise<boolean> {
   const preview = await runAction(() => api.chooseImportFile(vaultID, format));
   if (!preview?.fileName) {
+    return false;
+  }
+  store.importPreview = preview;
+  store.importStep = preview.isPassphraseRequired ? "passphrase" : "preview";
+  return true;
+}
+
+// openImportFile opens the waiting encrypted Hisar export; a wrong passphrase keeps the passphrase step, with the error.
+export async function openImportFile(passphrase: string): Promise<boolean> {
+  const preview = await runAction(() => api.openImportFile(passphrase));
+  if (!preview) {
     return false;
   }
   store.importPreview = preview;
