@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, reactive, ref, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from "vue";
 import {
   api,
   createEmptyAddress,
@@ -29,6 +29,7 @@ import {
   getItemIcon,
   getWebsiteIconURL,
   isCalendarDate,
+  isMacPlatform,
   isKnownDatabaseEngine,
   secureNoteCategory,
   serverCategory,
@@ -36,6 +37,7 @@ import {
   sshKeyCategory,
 } from "../util";
 import { cancelEditing, saveItem, store } from "../store";
+import AccountDialog from "./AccountDialog.vue";
 import AddressFields from "./AddressFields.vue";
 import AppIcon from "./AppIcon.vue";
 import IconPicker from "./IconPicker.vue";
@@ -255,10 +257,51 @@ async function submitItem(): Promise<void> {
     .filter((link) => link !== "");
   await saveItem({ ...draft });
 }
+
+const form = ref<HTMLFormElement | null>(null);
+const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
+// savedDraft is what the editor opened with, so Esc can tell whether leaving drops anything.
+const savedDraft = serializeDraft();
+const isDiscardConfirmShown = ref(false);
+
+function serializeDraft(): string {
+  return JSON.stringify([draft, urlText.value, tagText.value.trim()]);
+}
+
+// cancelOnEscape leaves the editor at once when nothing changed, and otherwise asks first: a stray Esc must not drop edits.
+function cancelOnEscape(): void {
+  if (serializeDraft() === savedDraft) {
+    cancelEditing();
+  } else {
+    isDiscardConfirmShown.value = true;
+  }
+}
+
+// handleShortcut binds Esc to Cancel and ⌘S or ⌘↩ to Save while the editor, or nothing, has focus. requestSubmit runs the
+// form's checks, such as the required title, before submitItem.
+function handleShortcut(event: KeyboardEvent): void {
+  const target = event.target as Node | null;
+  if (isDiscardConfirmShown.value || !(target === document.body || form.value?.contains(target))) {
+    return;
+  }
+  const isCommand = event.metaKey || event.ctrlKey;
+  if (isCommand && !event.altKey && !event.shiftKey && (event.key.toLowerCase() === "s" || event.key === "Enter")) {
+    event.preventDefault();
+    if (!store.isBusy) {
+      form.value?.requestSubmit();
+    }
+  } else if (event.key === "Escape" && !isCommand && !event.defaultPrevented) {
+    event.preventDefault();
+    cancelOnEscape();
+  }
+}
+
+onMounted(() => window.addEventListener("keydown", handleShortcut));
+onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
 </script>
 
 <template>
-  <form class="item-editor" @submit.prevent="submitItem">
+  <form ref="form" class="item-editor" @submit.prevent="submitItem">
     <header>
       <div class="icon-anchor">
         <button
@@ -680,9 +723,25 @@ async function submitItem(): Promise<void> {
     <div class="row footer">
       <span class="muted"><AppIcon name="shield" :size="12" /> Encrypted on this device before saving</span>
       <div class="spacer"></div>
-      <button type="button" class="ghost" @click="cancelEditing">Cancel</button>
-      <button class="primary" type="submit" :disabled="store.isBusy">{{ isCreating ? "Add item" : "Save" }}</button>
+      <button type="button" class="ghost" data-testid="editor-cancel" @click="cancelEditing">Cancel <kbd>Esc</kbd></button>
+      <button class="primary" type="submit" :disabled="store.isBusy" :title="`${shortcutModifier}S or ${shortcutModifier}↩`">
+        {{ isCreating ? "Add item" : "Save" }} <kbd>{{ shortcutModifier }}S</kbd>
+      </button>
     </div>
+    <AccountDialog
+      v-if="isDiscardConfirmShown"
+      :title="draft.title.trim() ? `Discard changes to “${draft.title.trim()}”?` : 'Discard this new item?'"
+      subtitle="What you changed here is not saved."
+      icon="edit"
+      is-danger
+      data-testid="discard-changes-dialog"
+      @close="isDiscardConfirmShown = false"
+    >
+      <div class="row actions">
+        <button type="button" class="ghost" autofocus data-testid="keep-editing" @click="isDiscardConfirmShown = false">Keep editing</button>
+        <button type="button" class="danger-solid" data-testid="discard-changes" @click="cancelEditing">Discard</button>
+      </div>
+    </AccountDialog>
   </form>
 </template>
 
@@ -864,8 +923,21 @@ button.active {
   padding: 2px;
 }
 
+/* Sticky at the bottom of the detail column, whose 32px bottom padding the margin and padding take back. */
 .footer {
-  margin-top: 4px;
+  position: sticky;
+  bottom: -32px;
+  z-index: 1;
+  margin: 4px 0 -32px;
+  padding: 12px 0 32px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-background);
+}
+
+.footer kbd {
+  border-color: currentColor;
+  color: inherit;
+  opacity: 0.7;
 }
 
 .footer .muted {
