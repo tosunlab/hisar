@@ -123,6 +123,10 @@ fun UnlockPanel(
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
 
+    LaunchedEffect(isBiometricReady) {
+        if (!isBiometricReady) focusRequester.requestFocus()
+    }
+
     fun submit() {
         if (password.isEmpty() || isBusy) return
         val enteredPassword = password

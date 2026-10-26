@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -102,6 +103,7 @@ class RootScreenUITests {
             composeRule.waitForTag("lock-now")
             composeRule.onNodeWithTag("lock-now").performClick()
             composeRule.waitForTag("unlock-password")
+            composeRule.onNodeWithTag("unlock-password").assertIsFocused()
             composeRule.onNodeWithTag("lock-email").assertTextEquals("alice@example.com")
             composeRule.type("unlock-password", "wrong")
             composeRule.tap("unlock-submit")
