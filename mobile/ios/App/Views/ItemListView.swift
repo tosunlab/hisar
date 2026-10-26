@@ -108,60 +108,10 @@ struct ItemListView: View {
             if isWritable {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button {
-                            newItemCategory = ItemDetail.categoryLogin
-                        } label: {
-                            Label("Login", systemImage: "person.badge.key")
+                        ForEach(NewItemType.allOnMenu) { type in
+                            NewItemButton(type: type, placement: .vault) { newItemCategory = $0.category }
                         }
-                        .accessibilityIdentifier("add-login")
-                        Button {
-                            newItemCategory = ItemDetail.categorySecureNote
-                        } label: {
-                            Label("Secure note", systemImage: "note.text")
-                        }
-                        .accessibilityIdentifier("add-secure-note")
-                        Button {
-                            newItemCategory = ItemDetail.categoryCreditCard
-                        } label: {
-                            Label("Credit card", systemImage: "creditcard")
-                        }
-                        .accessibilityIdentifier("add-credit-card")
-                        Button {
-                            newItemCategory = ItemDetail.categoryIdentity
-                        } label: {
-                            Label("Identity", systemImage: "person.text.rectangle")
-                        }
-                        .accessibilityIdentifier("add-identity")
-                        Button {
-                            newItemCategory = ItemDetail.categoryAPICredential
-                        } label: {
-                            Label("API credential", systemImage: "curlybraces.square")
-                        }
-                        .accessibilityIdentifier("add-api-credential")
-                        Button {
-                            newItemCategory = ItemDetail.categoryAddress
-                        } label: {
-                            Label("Address", systemImage: "mappin.and.ellipse")
-                        }
-                        .accessibilityIdentifier("add-address")
-                        Button {
-                            newItemCategory = ItemDetail.categorySoftwareLicense
-                        } label: {
-                            Label("Software license", systemImage: "checkmark.seal")
-                        }
-                        .accessibilityIdentifier("add-software-license")
-                        Button {
-                            newItemCategory = ItemDetail.categoryServer
-                        } label: {
-                            Label("Server", systemImage: "server.rack")
-                        }
-                        .accessibilityIdentifier("add-server")
-                        Button {
-                            newItemCategory = ItemDetail.categoryDatabase
-                        } label: {
-                            Label("Database", systemImage: "cylinder.split.1x2")
-                        }
-                        .accessibilityIdentifier("add-database")
+                        NewItemMoreMenu(placement: .vault) { newItemCategory = $0.category }
                     } label: {
                         Label("Add item", systemImage: "plus")
                     }

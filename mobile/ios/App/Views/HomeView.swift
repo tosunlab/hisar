@@ -73,19 +73,126 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
     }
 }
 
+/// The item types the + menus create, in the Mac's order; the raw value names their buttons' identifiers.
+enum NewItemType: String, CaseIterable, Identifiable {
+    case login
+    case secureNote = "secure-note"
+    case creditCard = "credit-card"
+    case identity
+    case apiCredential = "api-credential"
+    case address
+    case softwareLicense = "software-license"
+    case server
+    case database
+
+    /// Where a + menu is: Vaults, which creates in the Personal vault ("New login"), or a vault ("Login").
+    enum Placement {
+        case vaults
+        case vault
+    }
+
+    /// The types on the menu itself; the others are under More….
+    static let allOnMenu: [NewItemType] = [.login, .secureNote]
+    static let allUnderMore: [NewItemType] = allCases.filter { !allOnMenu.contains($0) }
+
+    var id: Self { self }
+
+    var category: String {
+        switch self {
+        case .login: ItemDetail.categoryLogin
+        case .secureNote: ItemDetail.categorySecureNote
+        case .creditCard: ItemDetail.categoryCreditCard
+        case .identity: ItemDetail.categoryIdentity
+        case .apiCredential: ItemDetail.categoryAPICredential
+        case .address: ItemDetail.categoryAddress
+        case .softwareLicense: ItemDetail.categorySoftwareLicense
+        case .server: ItemDetail.categoryServer
+        case .database: ItemDetail.categoryDatabase
+        }
+    }
+
+    /// The type's name within a sentence.
+    private var name: String {
+        switch self {
+        case .login: "login"
+        case .secureNote: "secure note"
+        case .creditCard: "credit card"
+        case .identity: "identity"
+        case .apiCredential: "API credential"
+        case .address: "address"
+        case .softwareLicense: "software license"
+        case .server: "server"
+        case .database: "database"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .login: "person.badge.key"
+        case .secureNote: "note.text"
+        case .creditCard: "creditcard"
+        case .identity: "person.text.rectangle"
+        case .apiCredential: "curlybraces.square"
+        case .address: "mappin.and.ellipse"
+        case .softwareLicense: "checkmark.seal"
+        case .server: "server.rack"
+        case .database: "cylinder.split.1x2"
+        }
+    }
+
+    func title(in placement: Placement) -> String {
+        switch placement {
+        case .vaults: "New \(name)"
+        case .vault: name.prefix(1).uppercased() + name.dropFirst()
+        }
+    }
+
+    func identifier(in placement: Placement) -> String {
+        switch placement {
+        case .vaults: "new-\(rawValue)"
+        case .vault: "add-\(rawValue)"
+        }
+    }
+}
+
+/// The button that starts a new item of one type in a + menu.
+struct NewItemButton: View {
+    var type: NewItemType
+    var placement: NewItemType.Placement
+    var choose: (NewItemType) -> Void
+
+    var body: some View {
+        Button {
+            choose(type)
+        } label: {
+            Label(type.title(in: placement), systemImage: type.systemImage)
+        }
+        .accessibilityIdentifier(type.identifier(in: placement))
+    }
+}
+
+/// A + menu's submenu with the types that are not on the menu itself.
+struct NewItemMoreMenu: View {
+    var placement: NewItemType.Placement
+    var choose: (NewItemType) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(NewItemType.allUnderMore) { type in
+                NewItemButton(type: type, placement: placement, choose: choose)
+            }
+        } label: {
+            Label("More…", systemImage: "ellipsis")
+        }
+        .accessibilityIdentifier(placement == .vaults ? "new-more" : "add-more")
+    }
+}
+
 struct VaultsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var navigationPath = NavigationPath()
     @State private var isNewVaultShown = false
-    @State private var isNewLoginShown = false
-    @State private var isNewSecureNoteShown = false
-    @State private var isNewCreditCardShown = false
-    @State private var isNewIdentityShown = false
-    @State private var isNewAPICredentialShown = false
-    @State private var isNewAddressShown = false
-    @State private var isNewSoftwareLicenseShown = false
-    @State private var isNewServerShown = false
-    @State private var isNewDatabaseShown = false
+    @State private var newItemType: NewItemType?
     @State private var refusal: Refusal?
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
@@ -165,69 +272,13 @@ struct VaultsView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button {
-                            isNewLoginShown = true
-                        } label: {
-                            Label("New login", systemImage: "person.badge.key")
+                        ForEach(NewItemType.allOnMenu) { type in
+                            NewItemButton(type: type, placement: .vaults) { newItemType = $0 }
                         }
                         .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-login")
-                        Button {
-                            isNewSecureNoteShown = true
-                        } label: {
-                            Label("New secure note", systemImage: "note.text")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-secure-note")
-                        Button {
-                            isNewCreditCardShown = true
-                        } label: {
-                            Label("New credit card", systemImage: "creditcard")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-credit-card")
-                        Button {
-                            isNewIdentityShown = true
-                        } label: {
-                            Label("New identity", systemImage: "person.text.rectangle")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-identity")
-                        Button {
-                            isNewAPICredentialShown = true
-                        } label: {
-                            Label("New API credential", systemImage: "curlybraces.square")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-api-credential")
-                        Button {
-                            isNewAddressShown = true
-                        } label: {
-                            Label("New address", systemImage: "mappin.and.ellipse")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-address")
-                        Button {
-                            isNewSoftwareLicenseShown = true
-                        } label: {
-                            Label("New software license", systemImage: "checkmark.seal")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-software-license")
-                        Button {
-                            isNewServerShown = true
-                        } label: {
-                            Label("New server", systemImage: "server.rack")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-server")
-                        Button {
-                            isNewDatabaseShown = true
-                        } label: {
-                            Label("New database", systemImage: "cylinder.split.1x2")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-database")
+                        NewItemMoreMenu(placement: .vaults) { newItemType = $0 }
+                            .disabled(personalVault == nil)
+                        Divider()
                         Button {
                             isNewVaultShown = true
                         } label: {
@@ -265,89 +316,9 @@ struct VaultsView: View {
             }
             .environmentObject(model)
         }
-        .sheet(isPresented: $isNewLoginShown) {
+        .sheet(item: $newItemType) { type in
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil) { savedItem in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewAddressShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAddress) { savedItem in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewDatabaseShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryDatabase) { savedItem in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewServerShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryServer) { savedItem in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewSoftwareLicenseShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySoftwareLicense) { savedItem in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewAPICredentialShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAPICredential) { savedItem in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewIdentityShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryIdentity) { savedItem in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewCreditCardShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryCreditCard) { savedItem in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewSecureNoteShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySecureNote) { savedItem in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: type.category) { savedItem in
                     if let savedItem {
                         navigationPath.append(ItemDestination(vaultID: personalVault.id, itemID: savedItem.id))
                     }

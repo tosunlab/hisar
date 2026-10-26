@@ -127,10 +127,16 @@ class HisarUITestCase: XCTestCase {
 
     // On a slow machine a tap on an item of a Menu still animating in is ignored and the menu stays open, where the swipe
     // `type` makes to find the editor presses whichever item it crosses. So the item is tapped until the menu is gone.
-    func choose(_ item: String, from menu: String, file: StaticString = #filePath, line: UInt = #line) {
+    // `submenu` is the nested menu the item is in, such as the + menu's More….
+    func choose(_ item: String, from menu: String, under submenu: String? = nil, file: StaticString = #filePath, line: UInt = #line) {
         let menuButton = app.buttons[menu]
         waitForHittable(menuButton, file: file, line: line)
         menuButton.tap()
+        if let submenu {
+            let submenuButton = app.buttons[submenu]
+            waitForHittable(submenuButton, file: file, line: line)
+            submenuButton.tap()
+        }
         let itemButton = app.buttons[item]
         waitFor(itemButton, file: file, line: line)
         for _ in 0..<5 {

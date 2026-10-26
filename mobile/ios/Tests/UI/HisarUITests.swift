@@ -43,7 +43,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("secure-note")
         goBack()
 
-        choose("new-credit-card", from: "new-menu")
+        choose("new-credit-card", from: "new-menu", under: "new-more")
         type("Visa", into: app.textFields["editor-title"])
         type("4111111111111111", into: app.secureTextFields["editor-card-number"], normalizedBy: CardInput.formatNumber)
         type("1229", into: app.textFields["editor-card-expiry"], normalizedBy: CardInput.formatExpiry)
@@ -55,7 +55,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("credit-card")
         goBack()
 
-        choose("new-identity", from: "new-menu")
+        choose("new-identity", from: "new-menu", under: "new-more")
         type("Passport", into: app.textFields["editor-title"])
         type("Alice", into: app.textFields["editor-identity-first-name"])
         type("Example", into: app.textFields["editor-identity-last-name"])
@@ -71,7 +71,7 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts["U1234567"], timeout: 5)
         goBack()
 
-        choose("new-api-credential", from: "new-menu")
+        choose("new-api-credential", from: "new-menu", under: "new-more")
         type("Billing key", into: app.textFields["editor-title"])
         type("Stripe", into: app.textFields["editor-api-credential-service"])
         type("key_1", into: app.textFields["editor-api-credential-key-id"])
@@ -87,7 +87,7 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts["sk_live_from_the_phone"], timeout: 5)
         goBack()
 
-        choose("new-address", from: "new-menu")
+        choose("new-address", from: "new-menu", under: "new-more")
         type("Home", into: app.textFields["editor-title"])
         // A street may take several lines, so it is a text view rather than a text field.
         type("1 Main St", into: app.descendants(matching: .any)["editor-address-street"].firstMatch)
@@ -100,7 +100,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("address")
         goBack()
 
-        choose("new-software-license", from: "new-menu")
+        choose("new-software-license", from: "new-menu", under: "new-more")
         type("Sketch", into: app.textFields["editor-title"])
         type("Sketch", into: app.textFields["editor-license-product"])
         type("100", into: app.textFields["editor-license-version"])
@@ -113,7 +113,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("software-license")
         goBack()
 
-        choose("new-server", from: "new-menu")
+        choose("new-server", from: "new-menu", under: "new-more")
         type("Build server", into: app.textFields["editor-title"])
         type("build.example.com", into: app.textFields["editor-server-host"])
         type("2222", into: app.textFields["editor-server-port"])
@@ -126,7 +126,7 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("server")
         goBack()
 
-        choose("new-database", from: "new-menu")
+        choose("new-database", from: "new-menu", under: "new-more")
         type("Prod db", into: app.textFields["editor-title"])
         // The placeholders are db.example.com, 5432 and app, which the fields' values could not be told apart from.
         type("pg.example.com", into: app.textFields["editor-database-host"])
