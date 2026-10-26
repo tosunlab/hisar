@@ -13,6 +13,7 @@ import {
   listAllTag,
   loadAllOrganizationQuietly,
   lock,
+  lockOnShortcut,
   openImport,
   openItemShareLinkDialog,
   openShareLinks,
@@ -397,10 +398,7 @@ function handleShortcut(event: KeyboardEvent): void {
     return;
   }
   const key = event.key.toLowerCase();
-  // Locking stays available everywhere: it is the shortcut that protects the vault.
-  if (key === "l") {
-    event.preventDefault();
-    lock();
+  if (lockOnShortcut(event)) {
     return;
   }
   if (isOverlayOpen.value) {

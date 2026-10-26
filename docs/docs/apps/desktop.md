@@ -99,7 +99,7 @@ cd desktop/frontend && npm run preview:ui
 
 The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
 
-On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `windows.go`, `SettingsWindowService`, `src/SettingsWindow.vue`); its page reloads whenever it closes, and it closes when Hisar locks or signs out. Import and a vault's sharing panel, reached from Settings, open in the main window. On Linux and in the preview, Settings is an overlay in the main window.
+On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `windows.go`, `SettingsWindowService`, `src/SettingsWindow.vue`); its page reloads whenever it closes, and it closes when Hisar locks or signs out. `SettingsWindowService` keeps the section Settings was asked to open at until the page takes it, so Settings asked for while Hisar is locked opens after the unlock. The window shows settings only: it never loads items or removed-vault notices. Import, a vault's sharing panel and the pending recovery after replacing the Secret Key open in the main window, which owns them; the website icon setting reaches every window as an event. On Linux and in the preview, Settings is an overlay in the main window; the preview shows the Settings window at `?window=settings&settingsSection=<section>`.
 
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 

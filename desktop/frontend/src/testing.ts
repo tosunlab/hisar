@@ -811,6 +811,8 @@ export function createApiMock() {
     fitSSHApprovalWindow: vi.fn().mockResolvedValue(undefined),
     showSettingsWindow: vi.fn().mockResolvedValue(false),
     hideSettingsWindow: vi.fn().mockResolvedValue(undefined),
+    takeSettingsWindowRequest: vi.fn<() => Promise<string | null>>().mockResolvedValue(null),
+    openInMainWindow: vi.fn().mockResolvedValue(undefined),
     cancelApprovalTouchID: vi.fn().mockResolvedValue(undefined),
     setApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),
     clearApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),

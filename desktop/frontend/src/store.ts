@@ -1,5 +1,4 @@
 import { nextTick, reactive } from "vue";
-import { Events } from "@wailsio/runtime";
 import {
   type AccountDeletionPreview,
   type AgentGrant,
@@ -38,6 +37,7 @@ import {
   type ImportProgress,
   type ItemDetail,
   type ItemLocation,
+  type MainWindowAction,
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
@@ -560,6 +560,17 @@ export async function lock(): Promise<void> {
   }
 }
 
+// lockOnShortcut locks Hisar on ⌘L in any window, over every panel and dialog: it is the shortcut that protects the vault.
+// It reports whether the key was that shortcut.
+export function lockOnShortcut(event: KeyboardEvent): boolean {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "l") {
+    return false;
+  }
+  event.preventDefault();
+  lock();
+  return true;
+}
+
 // The backend also sends "locked" when the server signed this device out, so the screen follows the status it reports.
 export async function handleLocked(): Promise<void> {
   clearLockedVaultData();
@@ -605,6 +616,12 @@ export async function replaceSecretKey(password: string): Promise<CredentialChan
   }
   if (result) {
     if (result.pendingOperationId) {
+      // Pending recovery covers the main window, which owns it: the Settings window hands it there and closes, so its
+      // dialog never shows this change as finished.
+      if (isSettingsWindow) {
+        await openFromSettings("recovery");
+        return undefined;
+      }
       await loadPendingRecovery();
       if (generation !== sessionGeneration) return undefined;
       store.recoveryFactor = result.secretKey ? { operationId: result.pendingOperationId, secretKey: result.secretKey } : null;
@@ -835,6 +852,27 @@ export async function syncInBackground(): Promise<void> {
   }
 }
 
+// loadSettingsWindow loads what the macOS Settings window shows besides its sections' own data: the status, the vaults
+// Coding agents lists, invitations and organizations. It never loads items, removed-vault notices or pending recovery:
+// the main window owns them, and a removed-vault notice comes only once.
+export async function loadSettingsWindow(): Promise<void> {
+  try {
+    const status = await api.getStatus();
+    store.status = status;
+    if (status.state !== "unlocked") {
+      return;
+    }
+    const allVault = await api.listAllVault();
+    if (store.status.state === "unlocked") {
+      store.allVault = allVault;
+    }
+  } catch {
+    return;
+  }
+  await loadShareInvitationsQuietly();
+  await refreshOrganizationsQuietly();
+}
+
 export async function selectVault(vaultID: string): Promise<void> {
   await loadVaultItems(vaultID, ++navigationVersion);
 }
@@ -1033,7 +1071,8 @@ async function loadSelectedItem(itemID: string, version: number): Promise<void> 
 export const isSettingsWindow = new URLSearchParams(window.location.search).get("window") === "settings";
 
 // openSettings opens Settings at sectionID, or at its last section when sectionID is "": in its own window on macOS, as an
-// overlay in the main window elsewhere. An overlay already open closes first, so it opens at that section.
+// overlay in the main window elsewhere. The window opens after the unlock when Hisar is locked; an overlay already open
+// closes first, so it opens at that section.
 export async function openSettings(sectionID = ""): Promise<void> {
   if (sectionID !== "" && !isSettingsSectionID(sectionID)) {
     return;
@@ -1041,7 +1080,7 @@ export async function openSettings(sectionID = ""): Promise<void> {
   if (sectionID !== "") {
     saveSelectedSectionID(sectionID);
   }
-  if (store.status.state === "unlocked" && (await api.showSettingsWindow(sectionID).catch(() => false))) {
+  if (await api.showSettingsWindow(sectionID).catch(() => false)) {
     return;
   }
   store.isSettingsOpen = false;
@@ -1049,17 +1088,32 @@ export async function openSettings(sectionID = ""): Promise<void> {
   store.isSettingsOpen = true;
 }
 
-export type MainWindowAction = "import" | "sharing";
+// openPendingRecovery shows the recovery a Secret Key replacement left, such as one made in the Settings window.
+async function openPendingRecovery(): Promise<void> {
+  await loadPendingRecovery();
+  store.isRecoveryOpen = store.pendingRecovery.length > 0;
+}
 
-// openFromSettings runs a Settings action that leads to the main window: Import, or the sharing panel of the vault selected
-// there. The macOS Settings window closes and hands the action to the main window, whose App listens for it.
+const mainWindowActions: Record<MainWindowAction, () => Promise<void>> = {
+  import: openImport,
+  sharing: openSharing,
+  recovery: openPendingRecovery,
+};
+
+export function isMainWindowAction(action: unknown): action is MainWindowAction {
+  return typeof action === "string" && Object.hasOwn(mainWindowActions, action);
+}
+
+// openFromSettings runs a Settings action that leads to the main window: Import, the sharing panel of the vault selected
+// there, or pending recovery. The macOS Settings window closes and hands the action to the main window, whose App
+// listens for it.
 export async function openFromSettings(action: MainWindowAction): Promise<void> {
-  store.isSettingsOpen = false;
   if (isSettingsWindow) {
-    await Events.Emit("open-from-settings", action);
+    await api.openInMainWindow(action);
     return;
   }
-  await (action === "import" ? openImport() : openSharing());
+  store.isSettingsOpen = false;
+  await mainWindowActions[action]();
 }
 
 const activityReportInterval = 30_000;

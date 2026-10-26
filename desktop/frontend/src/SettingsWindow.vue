@@ -3,20 +3,27 @@ import { onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { Events } from "@wailsio/runtime";
 import { api } from "./api";
 import { isSettingsSectionID, saveSelectedSectionID } from "./settingsSections";
-import { loadStatus, reportActivity, store, syncInBackground } from "./store";
+import { loadSettingsWindow, lockOnShortcut, reportActivity, store } from "./store";
 import { startThemeSync } from "./theme";
-import AppIcon from "./components/AppIcon.vue";
+import { startWebsiteIconSync } from "./websiteicons";
+import AppNotice from "./components/AppNotice.vue";
 import OrganizationAlert from "./components/OrganizationAlert.vue";
 import SettingsPanel from "./components/SettingsPanel.vue";
 
-// The macOS Settings window. Go shows it after asking it to open a section, and hides it when Hisar locks or signs out,
-// from any window; its page reloads whenever it closes, so each opening loads the account afresh. Closing Settings here
-// hides the window.
+// The macOS Settings window shows Settings only. Go keeps the section it was asked to open at until this page takes it,
+// so a request made while the page reloads, or while Hisar is locked, still opens it; the event only wakes the page. Go
+// hides the window when Hisar locks or signs out, and its page reloads whenever it closes. Items, removed-vault notices
+// and pending recovery belong to the main window: actions that need them hand off to it. Closing Settings here hides the
+// window.
 const openCount = ref(0);
 let allRemoveListener: (() => void)[] = [];
 
-async function open(sectionID: string): Promise<void> {
-  await loadStatus();
+async function openRequestedSection(): Promise<void> {
+  const sectionID = await api.takeSettingsWindowRequest();
+  if (sectionID === null) {
+    return;
+  }
+  await loadSettingsWindow();
   if (store.status.state !== "unlocked") {
     await api.hideSettingsWindow();
     return;
@@ -37,19 +44,26 @@ watch(
   },
 );
 
+function handleKeydown(event: KeyboardEvent): void {
+  reportActivity();
+  lockOnShortcut(event);
+}
+
 onMounted(() => {
   allRemoveListener = [
     startThemeSync(),
-    Events.On("open-settings-window", (event) => open(event.data ?? "")),
-    Events.On("remote-change", () => syncInBackground()),
+    startWebsiteIconSync(),
+    Events.On("open-settings-window", () => openRequestedSection()),
+    Events.On("remote-change", () => store.isSettingsOpen && loadSettingsWindow()),
   ];
-  window.addEventListener("keydown", reportActivity);
+  window.addEventListener("keydown", handleKeydown);
   window.addEventListener("pointerdown", reportActivity);
+  openRequestedSection();
 });
 
 onBeforeUnmount(() => {
   allRemoveListener.forEach((removeListener) => removeListener());
-  window.removeEventListener("keydown", reportActivity);
+  window.removeEventListener("keydown", handleKeydown);
   window.removeEventListener("pointerdown", reportActivity);
 });
 </script>
@@ -57,5 +71,5 @@ onBeforeUnmount(() => {
 <template>
   <SettingsPanel v-if="store.isSettingsOpen && store.status.state === 'unlocked'" :key="openCount" />
   <OrganizationAlert />
-  <div v-if="store.noticeMessage" class="notice" role="status"><AppIcon name="check" /> {{ store.noticeMessage }}</div>
+  <AppNotice />
 </template>

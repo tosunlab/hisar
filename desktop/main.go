@@ -86,9 +86,10 @@ func main() {
 				approver.ClearRememberedSignings()
 			}
 		},
-		OnRemoteChange:     notifier.NotifyRemoteChange,
-		OnShareLinksChange: notifier.NotifyShareLinksChange,
-		OnThemeChange:      notifier.NotifyThemeChange,
+		OnRemoteChange:       notifier.NotifyRemoteChange,
+		OnShareLinksChange:   notifier.NotifyShareLinksChange,
+		OnThemeChange:        notifier.NotifyThemeChange,
+		OnWebsiteIconsChange: notifier.NotifyWebsiteIconsChange,
 		OnUpdateRequired: func(requirement app.UpdateRequirement) {
 			if showUpdateRequired != nil {
 				showUpdateRequired(requirement)
@@ -119,7 +120,7 @@ func main() {
 
 	var wailsApp *application.App
 	var window *application.WebviewWindow
-	settingsWindowService := &SettingsWindowService{}
+	settingsWindowService := &SettingsWindowService{isUnlocked: func() bool { return vaultService.GetStatus().State == app.StateUnlocked }}
 	// The browser bridge calls this from its own goroutines; AppKit aborts unless window calls run on the main thread.
 	showWindow := func() {
 		application.InvokeAsync(func() {
@@ -404,24 +405,12 @@ func main() {
 	})
 	if runtime.GOOS == "darwin" {
 		settingsWindow := wailsApp.Window.NewWithOptions(settingsWindowOptions())
-		settingsWindowService.window = settingsWindow
+		settingsWindowService.window, settingsWindowService.showMainWindow = settingsWindow, showWindow
 		settingsWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
 			event.Cancel()
 			settingsWindowService.Hide()
 		})
-		// Settings closes when Hisar locks or signs out, from any window. The main window hears of it too, since it
-		// does not hear of a sign-out made in Settings.
-		app.AddStatusListener(vaultService, func() {
-			if vaultService.GetStatus().State == app.StateUnlocked {
-				return
-			}
-			application.InvokeAsync(func() {
-				if settingsWindow.IsVisible() {
-					settingsWindowService.Hide()
-					wailsApp.Event.Emit(eventLocked, "settings")
-				}
-			})
-		})
+		app.AddStatusListener(vaultService, func() { settingsWindowService.followStatus(vaultService.GetStatus().State) })
 	}
 
 	go func() {
