@@ -63,7 +63,7 @@ describe("Copy secret reference", () => {
     const allLabel = wrapper.findAll('[data-testid="copy-secret-reference"]').map((button) => button.attributes("aria-label"));
     expect(allLabel).toEqual(["Copy secret reference for password", "Copy secret reference for one-time code", "Copy secret reference for API token"]);
     api.copySecretReference.mockResolvedValue("hisar://Personal/GitHub/username");
-    await wrapper.find('[role="button"][aria-label="Copy username"]').trigger("contextmenu");
+    await wrapper.find('[data-reference-field="username"] [data-copy-target]').trigger("contextmenu");
     expect(wrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Copy username", "Copy secret reference for username"]);
     await wrapper.find('[data-testid="context-menu-copy-secret-reference-for-username"]').trigger("click");
     await flushPromises();

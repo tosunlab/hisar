@@ -134,7 +134,7 @@ describe("Viewing a database", () => {
     await wrapper.find('button[aria-label="Copy secret reference for connection string"]').trigger("click");
     expect(api.copySecretReference).toHaveBeenCalledWith("personal", "db-1", "connection string");
     expect(wrapper.find('button[aria-label="Copy secret reference for Host"]').exists()).toBe(false);
-    await wrapper.find('[role="button"][aria-label="Copy Host"]').trigger("contextmenu");
+    await wrapper.find('[data-reference-field="Host"] [data-copy-target]').trigger("contextmenu");
     await wrapper.find('[data-testid="context-menu-copy-secret-reference-for-host"]').trigger("click");
     expect(api.copySecretReference).toHaveBeenCalledWith("personal", "db-1", "Host");
     expect(wrapper.text()).not.toContain("Website");

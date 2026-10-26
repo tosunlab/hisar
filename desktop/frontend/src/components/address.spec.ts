@@ -233,7 +233,7 @@ describe("Viewing an address", () => {
     expect(wrapper.text()).toContain("Gate code");
     await wrapper.find('button[aria-label="Copy City"]').trigger("click");
     expect(api.copyField).toHaveBeenCalledWith("personal", "home-1", "City");
-    await wrapper.find('[role="button"][aria-label="Copy City"]').trigger("contextmenu");
+    await wrapper.find('[data-reference-field="City"] [data-copy-target]').trigger("contextmenu");
     await wrapper.find('[data-testid="context-menu-copy-secret-reference-for-city"]').trigger("click");
     expect(api.copySecretReference).toHaveBeenCalledWith(
       "personal",
