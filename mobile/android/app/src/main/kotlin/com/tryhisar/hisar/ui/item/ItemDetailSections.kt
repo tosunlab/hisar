@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -83,13 +84,17 @@ import java.time.format.FormatStyle
 /** A value of a type kept in named fields; its label is also the field name copying and references use. */
 private class NamedRow(val label: String, val value: String, val isConcealed: Boolean = false, val warning: String = "")
 
-/** The sections of one item, in the iPhone app's order: header, category, other fields, websites, apps, passkeys, notes. */
+/**
+ * The sections of one item, in the iPhone app's order: header, category, other fields, websites, apps, passkeys, notes.
+ * [onHeaderHeightChange] gets the header's height, which the bar's title waits for to scroll away.
+ */
 @Composable
 internal fun ItemDetailContent(
     model: AppModel,
     vaultID: String,
     vaultName: String,
     item: ItemDetail,
+    onHeaderHeightChange: (Int) -> Unit,
     isWritable: Boolean,
     actions: ItemFieldActions,
     openSSHKey: (String) -> Unit,
@@ -98,7 +103,7 @@ internal fun ItemDetailContent(
     convertToSecureNote: () -> Unit,
 ) {
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
-    HeaderSection(model, vaultName, item)
+    HeaderSection(model, vaultName, item, Modifier.onSizeChanged { onHeaderHeightChange(it.height) })
     when {
         item.isSSHKey -> SSHKeySection(item, actions)
         item.isSecureNote -> SecureNoteSection(item, actions)
@@ -227,8 +232,8 @@ private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String
 }
 
 @Composable
-private fun HeaderSection(model: AppModel, vaultName: String, item: ItemDetail) {
-    ClearSection {
+private fun HeaderSection(model: AppModel, vaultName: String, item: ItemDetail, modifier: Modifier) {
+    ClearSection(modifier) {
         Row(
             Modifier.padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
