@@ -3,6 +3,7 @@ import { computed, ref, watch } from "vue";
 import {
   convertToSecureNote,
   copyField,
+  copyText,
   duplicateItem,
   getAllShareLinkForItem,
   hasShareableField,
@@ -14,6 +15,7 @@ import {
   store,
   toggleSelectedItemFavorite,
 } from "../store";
+import { bindCopyRow, bindFieldRow } from "../copyrow";
 import {
   addressCategory,
   addressFieldName,
@@ -79,6 +81,8 @@ const server = computed(() => (isServer.value ? store.selectedItem?.server : und
 const isDatabase = computed(() => store.selectedItem?.category === databaseCategory);
 const database = computed(() => (isDatabase.value ? store.selectedItem?.database : undefined));
 const isConnectionStringRevealed = ref(false);
+// websiteLabel names a URL row: a server's is its admin console.
+const websiteLabel = computed(() => (isServer.value ? "Admin console" : "Website"));
 // A database's values before its login data: the engine by its name, the host, port and database name.
 const allDatabaseRow = computed(() => {
   const value = database.value;
@@ -364,7 +368,7 @@ function maskSecret(secret: string): string {
           <span class="field-value">{{ formatKeyType(store.selectedItem.keyType) }}</span>
           <span class="field-actions"></span>
         </div>
-        <div class="field">
+        <div class="field" v-bind="bindFieldRow('fingerprint', 'Fingerprint')">
           <span class="field-label">Fingerprint</span>
           <span class="field-value monospace" data-testid="fingerprint">{{ store.selectedItem.fingerprint }}</span>
           <span class="field-actions">
@@ -377,7 +381,7 @@ function maskSecret(secret: string): string {
           <span class="field-value muted">Never leaves Hisar; the SSH agent uses it</span>
           <span class="field-actions"></span>
         </div>
-        <div class="public-key-field" data-field-menu-row>
+        <div class="public-key-field" data-field-menu-row v-bind="bindFieldRow('public key', 'Public key')">
           <div class="row" data-field-menu-actions>
             <span class="field-label">Public key</span>
             <div class="spacer"></div>
@@ -395,7 +399,7 @@ function maskSecret(secret: string): string {
       class="card field-card"
       :data-testid="namedType.testID"
     >
-      <div v-for="row in allNamedRow" :key="row.name" class="field">
+      <div v-for="row in allNamedRow" :key="row.name" class="field" v-bind="bindFieldRow(row.name, row.name)">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
           <span
@@ -422,7 +426,7 @@ function maskSecret(secret: string): string {
           <SecretReferenceButton :field-name="row.name" :label="row.name" />
         </span>
       </div>
-      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field">
+      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
         <span class="field-label">{{ field.name }}</span>
         <span class="field-value" :class="{ monospace: field.concealed }">
           {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
@@ -446,7 +450,12 @@ function maskSecret(secret: string): string {
     </section>
 
     <template v-else-if="isSecureNote">
-      <section class="card notes-card secure-note" data-testid="secure-note-notes" data-field-menu-row>
+      <section
+        class="card notes-card secure-note"
+        data-testid="secure-note-notes"
+        data-field-menu-row
+        v-bind="store.selectedItem.notes ? bindFieldRow('notes', 'Notes') : {}"
+      >
         <div class="row" data-field-menu-actions>
           <p class="section-label">Notes</p>
           <div class="spacer"></div>
@@ -459,7 +468,7 @@ function maskSecret(secret: string): string {
         <p v-else class="muted no-fields">This note is empty.</p>
       </section>
       <section v-if="store.selectedItem.fields.length > 0" class="card field-card note-fields">
-        <div v-for="field in store.selectedItem.fields" :key="field.name" class="field">
+        <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
           <span class="field-label">{{ field.name }}</span>
           <span class="field-value" :class="{ monospace: field.concealed }">
             {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
@@ -482,7 +491,7 @@ function maskSecret(secret: string): string {
 
     <section v-else class="card field-card">
       <template v-if="server">
-        <div v-if="server.host" class="field">
+        <div v-if="server.host" class="field" v-bind="bindFieldRow(serverFieldName.host, serverFieldName.host)">
           <span class="field-label">{{ serverFieldName.host }}</span>
           <span class="field-value monospace" data-testid="server-host">{{ formatServerAddress(server) }}</span>
           <span class="field-actions">
@@ -490,7 +499,7 @@ function maskSecret(secret: string): string {
             <SecretReferenceButton :field-name="serverFieldName.host" :label="serverFieldName.host" />
           </span>
         </div>
-        <div v-if="server.port" class="field">
+        <div v-if="server.port" class="field" v-bind="bindFieldRow(serverFieldName.port, serverFieldName.port)">
           <span class="field-label">{{ serverFieldName.port }}</span>
           <span class="field-value">
             <span data-testid="server-port">{{ server.port }}</span>
@@ -516,7 +525,7 @@ function maskSecret(secret: string): string {
         </div>
       </template>
 
-      <div v-for="row in allDatabaseRow" :key="row.name" class="field">
+      <div v-for="row in allDatabaseRow" :key="row.name" class="field" v-bind="bindFieldRow(row.name, row.name)">
         <span class="field-label">{{ row.name }}</span>
         <span class="field-value">
           <span :data-testid="`database-${row.name}`">{{ row.value }}</span>
@@ -528,7 +537,7 @@ function maskSecret(secret: string): string {
         </span>
       </div>
 
-      <div v-if="store.selectedItem.username" class="field">
+      <div v-if="store.selectedItem.username" class="field" v-bind="bindFieldRow('username', 'Username')">
         <span class="field-label">Username</span>
         <span class="field-value">{{ store.selectedItem.username }}</span>
         <span class="field-actions">
@@ -537,7 +546,7 @@ function maskSecret(secret: string): string {
         </span>
       </div>
 
-      <div v-if="store.selectedItem.password" class="field">
+      <div v-if="store.selectedItem.password" class="field" v-bind="bindFieldRow('password', 'Password')">
         <span class="field-label">Password</span>
         <span class="field-value">
           <span class="monospace secret" data-testid="password-value">
@@ -560,7 +569,7 @@ function maskSecret(secret: string): string {
       </div>
 
       <template v-if="database">
-        <div v-if="database.options" class="field">
+        <div v-if="database.options" class="field" v-bind="bindFieldRow(databaseFieldName.options, databaseFieldName.options)">
           <span class="field-label">{{ databaseFieldName.options }}</span>
           <span class="field-value monospace" data-testid="database-options">{{ database.options }}</span>
           <span class="field-actions">
@@ -568,7 +577,12 @@ function maskSecret(secret: string): string {
             <SecretReferenceButton :field-name="databaseFieldName.options" :label="databaseFieldName.options" />
           </span>
         </div>
-        <div v-if="database.connectionString" class="field" data-testid="database-connection-string">
+        <div
+          v-if="database.connectionString"
+          class="field"
+          data-testid="database-connection-string"
+          v-bind="bindFieldRow('connection string', 'Connection string')"
+        >
           <span class="field-label">Connection string</span>
           <span class="field-value monospace secret" data-testid="connection-string-value">
             {{ isConnectionStringRevealed ? database.connectionString : maskSecret(database.connectionString) }}
@@ -592,11 +606,12 @@ function maskSecret(secret: string): string {
 
       <OneTimeCodeField v-if="store.selectedItem.hasOneTimePassword" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" />
 
-      <div v-for="link in store.selectedItem.urls" :key="link" class="field">
-        <span class="field-label">{{ isServer ? "Admin console" : "Website" }}</span>
+      <div v-for="link in store.selectedItem.urls" :key="link" class="field" v-bind="bindCopyRow(websiteLabel.toLowerCase(), () => copyText(link, websiteLabel))">
+        <span class="field-label">{{ websiteLabel }}</span>
         <span class="field-value">{{ link }}</span>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Open website" title="Open in browser" @click="openWebsite(link)"><AppIcon name="external" /></button>
+          <button class="ghost icon-button" :aria-label="`Copy ${websiteLabel.toLowerCase()}`" title="Copy" @click="copyText(link, websiteLabel)"><AppIcon name="copy" /></button>
         </span>
       </div>
 
@@ -613,7 +628,7 @@ function maskSecret(secret: string): string {
         </span>
       </div>
 
-      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field">
+      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
         <span class="field-label">{{ field.name }}</span>
         <span class="field-value" :class="{ monospace: field.concealed }">
           {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
@@ -654,8 +669,12 @@ function maskSecret(secret: string): string {
 
     <PasskeyList v-if="(store.selectedItem.passkeys ?? []).length > 0" :passkeys="store.selectedItem.passkeys ?? []" :can-delete="canEdit" />
 
-    <section v-if="store.selectedItem.notes && !isSecureNote" class="card notes-card">
-      <p class="section-label">Notes</p>
+    <section v-if="store.selectedItem.notes && !isSecureNote" class="card notes-card" data-field-menu-row v-bind="bindFieldRow('notes', 'Notes')">
+      <div class="row" data-field-menu-actions>
+        <p class="section-label">Notes</p>
+        <div class="spacer"></div>
+        <button class="ghost icon-button" aria-label="Copy notes" title="Copy" @click="copyField('notes', 'Notes')"><AppIcon name="copy" /></button>
+      </div>
       <p class="notes">{{ store.selectedItem.notes }}</p>
     </section>
 
@@ -775,6 +794,20 @@ h2 {
   border-bottom: none;
 }
 
+[data-copy-row] {
+  cursor: pointer;
+}
+
+.field[data-copy-row]:hover,
+.public-key-field[data-copy-row]:hover {
+  background: var(--color-hover);
+}
+
+[data-copy-row]:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: -2px;
+}
+
 .public-key-field {
   padding: 12px 10px 14px 16px;
 }
@@ -847,11 +880,11 @@ h2 {
   margin-top: 0;
 }
 
-.secure-note .row {
+.notes-card .row {
   margin-bottom: 8px;
 }
 
-.secure-note .section-label {
+.notes-card .section-label {
   margin: 0;
 }
 

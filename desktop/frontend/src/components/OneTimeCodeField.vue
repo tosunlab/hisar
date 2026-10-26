@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { api, type OneTimeCode } from "../api";
+import { bindFieldRow } from "../copyrow";
 import { copyField } from "../store";
 import AppIcon from "./AppIcon.vue";
 import SecretReferenceButton from "./SecretReferenceButton.vue";
@@ -60,7 +61,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 </script>
 
 <template>
-  <div class="field" data-testid="one-time-code">
+  <div class="field" data-testid="one-time-code" v-bind="oneTimeCode ? bindFieldRow('one-time code', 'One-time code') : {}">
     <span class="field-label">One-time code</span>
     <span class="field-value code-value">
       <template v-if="oneTimeCode && !isUnavailable">

@@ -332,7 +332,7 @@ describe("A detail field's context menu", () => {
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
     const websiteRow = wrapper.findAll(".field").find((row) => row.text().includes("https://github.com"));
     await websiteRow!.trigger("contextmenu");
-    expect(wrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Open website"]);
+    expect(wrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Open website", "Copy website"]);
     await wrapper.find('[data-testid="context-menu-open-website"]').trigger("click");
     expect(api.openURL).toHaveBeenCalledWith("https://github.com");
 
