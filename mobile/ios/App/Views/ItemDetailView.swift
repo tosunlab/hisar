@@ -590,6 +590,7 @@ struct ItemDetailView: View {
                     passkeyToDelete = passkey
                 } label: {
                     Image(systemName: "trash")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.red)
@@ -657,6 +658,7 @@ struct SecretFieldRow: View {
                 Button(action: toggleReveal) {
                     Image(systemName: isRevealed ? "eye.slash" : "eye")
                         .contentTransition(.symbolEffect(.replace))
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(isRevealed ? "Hide \(label)" : "Reveal \(label)")
@@ -664,6 +666,7 @@ struct SecretFieldRow: View {
             }
             Button(action: copy) {
                 Image(systemName: "doc.on.doc")
+                    .iconButtonHitArea()
             }
             .buttonStyle(.borderless)
             .accessibilityLabel("Copy \(label)")
@@ -683,5 +686,12 @@ struct SecretFieldRow: View {
                 }
             }
         }
+    }
+}
+
+extension View {
+    /// An icon-only button's 44-point hit area, on its label: a borderless button takes taps only on its label.
+    func iconButtonHitArea() -> some View {
+        frame(minWidth: 44, minHeight: 44).contentShape(.rect)
     }
 }

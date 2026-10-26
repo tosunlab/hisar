@@ -34,6 +34,7 @@ struct OneTimeCodeRow: View {
                     CountdownRing(secondsLeft: oneTimeCode.countSecondsLeft(at: context.date), period: oneTimeCode.period)
                     Button(action: copy) {
                         Image(systemName: "doc.on.doc")
+                            .iconButtonHitArea()
                     }
                     .buttonStyle(.borderless)
                     .accessibilityLabel("Copy one-time code")

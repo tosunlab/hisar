@@ -116,6 +116,7 @@ struct ItemEditorView: View {
                                 isPasswordRevealed.toggle()
                             } label: {
                                 Image(systemName: isPasswordRevealed ? "eye.slash" : "eye")
+                                    .iconButtonHitArea()
                             }
                             .buttonStyle(.borderless)
                             .foregroundStyle(.themeSecondary)
@@ -124,6 +125,7 @@ struct ItemEditorView: View {
                                 isGeneratorShown = true
                             } label: {
                                 Image(systemName: "wand.and.stars")
+                                    .iconButtonHitArea()
                             }
                             .buttonStyle(.borderless)
                             .foregroundStyle(.themeSecondary)
@@ -402,6 +404,7 @@ struct ItemEditorView: View {
                     value.wrappedValue = ""
                 } label: {
                     Image(systemName: "minus.circle")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Remove \(title.lowercased())")
@@ -568,6 +571,7 @@ struct ItemEditorView: View {
                     isCredentialSecretRevealed.toggle()
                 } label: {
                     Image(systemName: isCredentialSecretRevealed ? "eye.slash" : "eye")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.themeSecondary)
@@ -758,6 +762,7 @@ struct ItemEditorView: View {
                     isLicenseKeyRevealed.toggle()
                 } label: {
                     Image(systemName: isLicenseKeyRevealed ? "eye.slash" : "eye")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.themeSecondary)
