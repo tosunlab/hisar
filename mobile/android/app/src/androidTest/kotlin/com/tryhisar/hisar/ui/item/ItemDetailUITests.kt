@@ -5,7 +5,6 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.HisarTestApplication
@@ -121,7 +120,8 @@ class ItemDetailUITests : HisarUITestCase() {
         saveScreenshot("item-detail-android-app")
         assertFalse("the row leaves out the certificate", exists(hasText("14".repeat(32), substring = true)))
         composeRule.onNodeWithTag("android-app-com.bank.app").performTouchInput { longClick() }
-        composeRule.onNode(hasText("Copy certificate")).performClick()
+        tap("field-action-Copy certificate")
+        waitForGone("field-action-Copy certificate")
         waitUntil(10_000, "the clipboard holds the certificate") { clipboardText == "14".repeat(32) }
         tap("remove-android-app-com.bank.app")
         confirm("Remove app", excludingTag = "remove-android-app-com.bank.app")
