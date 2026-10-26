@@ -367,6 +367,9 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
     expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("or approve on your smart device");
+    expect(wrapper.findAll('.request-header [data-testid="approval-phone"]')).toHaveLength(1);
+    expect(wrapper.find('.footer-bar [data-testid="approval-phone"]').exists()).toBe(false);
+    expect(wrapper.get('.touch-id-text [data-testid="use-password"]').text()).toBe("or use your master password");
     sendEvent("ssh-approval-closed", "request-1");
     await flushPromises();
     expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
@@ -396,6 +399,8 @@ describe("SSHApprovalWindow", () => {
     sendEvent("ssh-approval", createApprovalEvent({ isTooLongForPhone: true }));
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("This request is too long to approve on your phone.");
+    expect(wrapper.find('.request-header [data-testid="approval-phone"]').exists()).toBe(true);
+    expect(wrapper.find('.footer-bar [data-testid="approval-phone"]').exists()).toBe(false);
     sendEvent("ssh-approval-closed", "request-1");
     await flushPromises();
 

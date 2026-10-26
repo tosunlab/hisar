@@ -493,6 +493,7 @@ onBeforeUnmount(() => {
               </h1>
               <p id="approval-subtitle" class="subtitle" :title="approval.fingerprint">{{ subtitle }}</p>
               <p v-if="Number.isFinite(timeoutAt)" class="expiry" :class="{ 'is-warning': secondsLeft < 10 }" data-testid="approval-expiry">{{ expiryText }}</p>
+              <p v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</p>
               <p v-if="approval.projectName" class="agent-line" data-testid="approval-project">
                 <AppIcon name="folder" :size="12" /> <span class="agent-line-text" :title="approval.projectPath">{{ approval.projectName }}</span>
               </p>
@@ -627,7 +628,6 @@ onBeforeUnmount(() => {
               <div class="touch-id-text">
                 <span>{{ touchIDLabel }}</span>
                 <button class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
-                <span v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</span>
               </div>
             </div>
             <div v-else-if="!isPasswordShown" class="touch-id manual">
@@ -641,9 +641,7 @@ onBeforeUnmount(() => {
                 {{ approvalStore.failureMessage && !isForwarded ? "Try again" : approveButtonLabel }}
               </button>
               <button v-if="canChoosePassword" class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
-              <span v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</span>
             </div>
-            <span v-else-if="phoneNote" class="phone-note footer-spacer" data-testid="approval-phone">{{ phoneNote }}</span>
             <span v-else class="footer-spacer"></span>
             <span v-if="approvalStore.allApproval.length > 1" class="muted waiting">{{ approvalStore.allApproval.length - 1 }} more waiting</span>
             <button ref="denyButton" :class="{ primary: isForwarded }" data-testid="deny-approval" @click="deny">Deny</button>
@@ -1204,6 +1202,10 @@ h1 {
 .phone-note {
   font-size: 12px;
   color: var(--color-text-muted);
+}
+
+.request-text > .phone-note {
+  margin: 6px 0 0;
 }
 
 .waiting {
