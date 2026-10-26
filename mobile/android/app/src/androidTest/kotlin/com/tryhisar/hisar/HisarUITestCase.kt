@@ -192,7 +192,7 @@ abstract class HisarUITestCase {
         type(name, "sign-up-name")
         type(MASTER_PASSWORD, "sign-up-password")
         type(MASTER_PASSWORD, "sign-up-repeated-password")
-        scrollTo("create-account-note")
+        scrollTo("sign-in-submit")
         saveScreenshot("create-account")
         tap("sign-in-submit")
         val secretKey = finishPendingRecovery(email, MASTER_PASSWORD)

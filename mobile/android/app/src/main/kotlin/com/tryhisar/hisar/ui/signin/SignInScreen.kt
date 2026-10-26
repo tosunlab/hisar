@@ -169,16 +169,14 @@ fun SignInScreen(model: AppModel) {
             )
         }
         ClearSection(
-            footer = {
-                Text(
-                    if (mode == SignInMode.SIGN_IN) {
-                        "Lost your Secret Key? It's on your Emergency Kit."
-                    } else {
-                        "Your master password never leaves this device. A forgotten master password can't be recovered by anyone, including Hisar."
-                    },
-                    modifier = Modifier.padding(top = 8.dp).testTag(if (mode == SignInMode.SIGN_IN) "secret-key-note" else "create-account-note"),
-                )
-            },
+            footer = if (mode == SignInMode.SIGN_IN) {
+                {
+                    Text(
+                        "Lost your Secret Key? It's on your Emergency Kit.",
+                        modifier = Modifier.padding(top = 8.dp).testTag("secret-key-note"),
+                    )
+                }
+            } else null,
         ) {
             ProminentButton(mode.title, ::submit, testTag = "sign-in-submit", enabled = canSubmit, isBusy = isBusy)
         }
