@@ -294,7 +294,7 @@ func TestSignOutKeepsOnlyTheServerOfASessionFromBeforeLastServer(t *testing.T) {
 
 func TestDescribeServer(t *testing.T) {
 	for server, want := range map[string]string{
-		"https://api.tryhisar.com": "api.tryhisar.com", "https://hisar.example.com/": "hisar.example.com", "http://127.0.0.1:8080": "http://127.0.0.1:8080",
+		"https://eu.tryhisar.com": "eu.tryhisar.com", "https://hisar.example.com/": "hisar.example.com", "http://127.0.0.1:8080": "http://127.0.0.1:8080",
 	} {
 		if got := describeServer(server); got != want {
 			t.Errorf("describeServer(%q) = %q", server, got)

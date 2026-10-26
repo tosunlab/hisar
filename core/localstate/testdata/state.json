@@ -1,5 +1,5 @@
 {
-  "server": "https://api.tryhisar.com",
+  "server": "https://eu.tryhisar.com",
   "email": "a@example.com",
   "accountId": "ABC123",
   "token": "tok",

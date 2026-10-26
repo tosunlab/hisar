@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createAPICredentialItem, createApiMock, createItem, createStatus } from "../testing";
+import { allTestVault, createAPICredentialItem, createApiMock, createImportPreview, createItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -174,29 +174,19 @@ describe("Viewing an API credential", () => {
 
 describe("Importing API credentials", () => {
   it("counts them in the preview", () => {
-    store.importPreview = {
+    store.importPreview = createImportPreview({
       fileName: "export.1pux",
       filePath: "/tmp/export.1pux",
       format: "1pux",
       formatName: "1Password export (.1pux)",
-      vaultId: "personal",
-      vaultName: "Personal",
       itemCount: 3,
       loginCount: 2,
       secureNoteCount: 0,
       sshKeyCount: 0,
-      creditCardCount: 0,
-      identityCount: 0,
       apiCredentialCount: 1,
-      addressCount: 0,
-      softwareLicenseCount: 0,
-      serverCount: 0,
-      databaseCount: 0,
-      passkeyCount: 0,
-      groups: [],
       allSkipped: [],
       allDuplicate: [],
-    };
+    });
     store.importStep = "preview";
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-api-credential"]');
@@ -205,32 +195,21 @@ describe("Importing API credentials", () => {
   });
 
   it("tells duplicates with the same title apart by their key IDs", () => {
-    store.importPreview = {
+    store.importPreview = createImportPreview({
       fileName: "export.1pux",
       filePath: "/tmp/export.1pux",
       format: "1pux",
       formatName: "1Password export (.1pux)",
-      vaultId: "personal",
-      vaultName: "Personal",
       itemCount: 2,
       loginCount: 0,
-      secureNoteCount: 0,
       sshKeyCount: 0,
-      creditCardCount: 0,
-      identityCount: 0,
       apiCredentialCount: 2,
-      addressCount: 0,
-      softwareLicenseCount: 0,
-      serverCount: 0,
-      databaseCount: 0,
-      passkeyCount: 0,
-      groups: [],
       allSkipped: [],
       allDuplicate: [
         { title: "Stripe", username: "", url: "", detail: "key_1", passkeyCount: 0 },
         { title: "Stripe", username: "", url: "", detail: "key_2", passkeyCount: 0 },
       ],
-    };
+    });
     store.importStep = "preview";
     const wrapper = mount(ImportPanel);
     const allLine = wrapper.findAll('[data-testid="import-duplicates"] li').map((line) => [line.find("strong").text(), line.find(".muted").text()]);

@@ -3,6 +3,7 @@ package com.tryhisar.hisar.ui.settings
 import android.content.ClipData
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.CancellationSignal
 import android.os.ParcelFileDescriptor
@@ -11,6 +12,7 @@ import android.print.PrintAttributes
 import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import android.print.PrintManager
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -23,6 +25,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.FileProvider
 import com.tryhisar.hisar.HisarApplication
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -115,6 +118,68 @@ fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit 
         }
     }
 }
+
+/** The largest import file HisarKit reads, 100 MB; a larger file is refused before it is read. */
+const val IMPORT_FILE_SIZE_LIMIT = 100L * 1024 * 1024
+
+const val IMPORT_FILE_TOO_LARGE_MESSAGE = "That file is too large to import. A Hisar export is under 100 MB."
+const val IMPORT_FILE_UNREADABLE_MESSAGE = "Hisar couldn't read that file. Choose the Hisar export again."
+
+/**
+ * Lets the user pick a Hisar export (a `.hisar` or a plain `.json`) through the system's file picker, reads its bytes off
+ * the main thread under the 100 MB limit, and hands them to [onFile] with the file's display name. [onProblem] gets a
+ * sentence when the file is too large or cannot be read; picking nothing calls nothing.
+ */
+@Composable
+fun rememberHisarExportPicker(onProblem: (String) -> Unit, onFile: (fileName: String, content: ByteArray) -> Unit): () -> Unit {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        scope.launch {
+            when (val result = withContext(Dispatchers.IO) { readImportFile(context, uri) }) {
+                is ImportFileRead.Content -> onFile(result.fileName, result.content)
+                is ImportFileRead.Problem -> onProblem(result.message)
+            }
+        }
+    }
+    // ".hisar" has no registered type, so the octet-stream and */* entries keep it selectable beside the plain JSON.
+    return { launcher.launch(arrayOf("application/json", "application/octet-stream", "*/*")) }
+}
+
+private sealed interface ImportFileRead {
+    data class Content(val fileName: String, val content: ByteArray) : ImportFileRead
+
+    data class Problem(val message: String) : ImportFileRead
+}
+
+private fun readImportFile(context: Context, uri: Uri): ImportFileRead {
+    val fileName = queryDisplayName(context, uri) ?: "export"
+    return try {
+        val content = context.contentResolver.openInputStream(uri)?.use { input ->
+            val buffer = ByteArrayOutputStream()
+            val chunk = ByteArray(1 shl 16)
+            while (true) {
+                val read = input.read(chunk)
+                if (read < 0) break
+                if (buffer.size().toLong() + read > IMPORT_FILE_SIZE_LIMIT) return ImportFileRead.Problem(IMPORT_FILE_TOO_LARGE_MESSAGE)
+                buffer.write(chunk, 0, read)
+            }
+            buffer.toByteArray()
+        } ?: return ImportFileRead.Problem(IMPORT_FILE_UNREADABLE_MESSAGE)
+        ImportFileRead.Content(fileName, content)
+    } catch (_: IOException) {
+        ImportFileRead.Problem(IMPORT_FILE_UNREADABLE_MESSAGE)
+    } catch (_: SecurityException) {
+        ImportFileRead.Problem(IMPORT_FILE_UNREADABLE_MESSAGE)
+    }
+}
+
+private fun queryDisplayName(context: Context, uri: Uri): String? =
+    context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+        val index = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+        if (cursor.moveToFirst() && index >= 0) cursor.getString(index) else null
+    }?.takeIf { it.isNotEmpty() }
 
 /** Opens the system's print dialog for a PDF Hisar wrote. */
 fun printPdf(context: Context, file: File, jobName: String) {

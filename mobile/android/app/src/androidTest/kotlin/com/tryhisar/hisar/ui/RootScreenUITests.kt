@@ -38,7 +38,7 @@ class RootScreenUITests {
             assertFalse(composeRule.isTagShown("sign-in-server"))
             composeRule.tap("sign-in-use-different-server")
             composeRule.waitForTag("sign-in-server")
-            composeRule.assertFieldText("sign-in-server", "https://api.tryhisar.com")
+            composeRule.assertFieldText("sign-in-server", "https://eu.tryhisar.com")
         }
     }
 

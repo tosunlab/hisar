@@ -853,6 +853,7 @@ export function createApiMock() {
     openLoginItemSettings: vi.fn().mockResolvedValue(undefined),
     listAllImportFormat: vi.fn().mockResolvedValue([]),
     chooseImportFile: vi.fn(),
+    openImportFile: vi.fn(),
     previewImport: vi.fn(),
     mapImportGroup: vi.fn(),
     startImport: vi.fn(),
@@ -899,6 +900,11 @@ export function createImportPreview(overrides: Partial<ImportPreview> = {}): Imp
     allSkipped: [{ title: "Visa", reason: "Bitwarden cards are not supported in Hisar yet" }],
     allDuplicate: [{ title: "GitHub", username: "alice", url: "https://github.com", detail: "alice · github.com", passkeyCount: 0 }],
     groups: [],
+    isPassphraseRequired: false,
+    notice: "",
+    isSourceKept: false,
+    exportedFrom: "",
+    exportedAt: "",
     ...overrides,
   };
 }
@@ -914,6 +920,7 @@ export function createImportProgress(overrides: Partial<ImportProgress> = {}): I
     leftBehindCount: 0,
     isDone: false,
     allFailed: [],
+    isSourceKept: false,
     ...overrides,
   };
 }

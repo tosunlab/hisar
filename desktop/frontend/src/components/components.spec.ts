@@ -160,16 +160,16 @@ describe("SignInView", () => {
     await wrapper.find('input[name="password"]').setValue("master password");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
-    expect(api.signIn).toHaveBeenCalledWith("api.tryhisar.com", "alice@example.com", "H1-KEY", "master password");
+    expect(api.signIn).toHaveBeenCalledWith("eu.tryhisar.com", "alice@example.com", "H1-KEY", "master password");
   });
 
   it("shows the server field after choosing a different server", async () => {
-    store.status = { ...store.status, server: "https://api.tryhisar.com/" };
+    store.status = { ...store.status, server: "https://eu.tryhisar.com/" };
     const wrapper = mount(SignInView);
     const disclosure = wrapper.find('[data-testid="use-different-server"]');
     expect(disclosure.text()).toBe("Use a different server…");
     await disclosure.trigger("click");
-    expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("api.tryhisar.com");
+    expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("eu.tryhisar.com");
     expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
   });
 
@@ -203,7 +203,7 @@ describe("SignInView", () => {
     api.signIn.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
     const wrapper = mount(SignInView);
-    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to api.tryhisar.com.");
+    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to eu.tryhisar.com.");
     store.status = { ...createStatus("signed-out"), server: "http://127.0.0.1:8080", email: "" };
     await flushPromises();
     expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to http://127.0.0.1:8080.");
