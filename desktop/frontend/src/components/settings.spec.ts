@@ -89,6 +89,11 @@ describe("Settings sidebar", () => {
     expect(findPage(settings, "general").isVisible()).toBe(false);
     expect(findPage(settings, "ssh").text()).toContain("Compact SSH approvals");
     expect(findPage(settings, "ssh").find('[data-testid="commit-signing"]').text()).toContain("Remember commit signing");
+    expect(findPage(settings, "ssh").find('[data-testid="commit-signing"] .muted').text()).toBe(
+      "Lets the signing dialog offer “Don’t ask again” for one app, repository and key. Tags always ask.",
+    );
+    expect(findPage(settings, "ssh").text()).not.toContain("gpg.format");
+    expect(findPage(settings, "ssh").text()).not.toContain("has its own setting below");
     expect((findPage(settings, "ssh").find('[data-testid="signing-remember"]').element as HTMLSelectElement).value).toBe("0");
     expect(findPage(settings, "developer").find('[data-testid="command-line-section"]').exists()).toBe(true);
     expect(findPage(settings, "developer").find('[data-testid="coding-agents-section"]').exists()).toBe(true);
