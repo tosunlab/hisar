@@ -67,8 +67,8 @@ final class PhoneApprovalUITests: HisarUITestCase {
         launchPreview("agent")
         waitFor(app.staticTexts["phone-approval-title"])
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "omp in Tern (via hisar) wants to use 2 secrets")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Project"].label, "Project, ~/src/acme-web")
-        XCTAssertEqual(app.staticTexts["phone-approval-row-Command"].label, "Command, npm run db:migrate")
+        XCTAssertEqual(app.descendants(matching: .any)["phone-approval-row-Project"].label, "Project, ~/src/acme-web")
+        XCTAssertEqual(app.descendants(matching: .any)["phone-approval-row-Command"].label, "Command, npm run db:migrate")
         XCTAssertFalse(app.staticTexts["phone-approval-row-Repository"].exists, "the agent runs in its project's root")
         let secrets = app.staticTexts["phone-approval-row-Secrets"].label
         XCTAssertTrue(secrets.contains("Agents › Staging Postgres › connection string") && secrets.contains("Agents › Stripe › secret key"), secrets)

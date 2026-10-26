@@ -66,13 +66,27 @@ struct PhoneApprovalSheet: View {
                 }
                 Section {
                     ForEach(approval.allDetailRow) { row in
-                        LabeledContent(row.label) {
-                            Text(row.value)
-                                .font(row.isMonospaced ? .system(.subheadline, design: .monospaced) : .subheadline)
-                                .foregroundStyle(.primary)
-                                .multilineTextAlignment(.trailing)
-                                .textSelection(.enabled)
-                                .accessibilityIdentifier("phone-approval-row-\(row.label)")
+                        if row.isMonospaced {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(row.label)
+                                    .font(.caption)
+                                    .foregroundStyle(.themeSecondary)
+                                Text(row.value)
+                                    .font(.system(.subheadline, design: .monospaced))
+                                    .textSelection(.enabled)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("phone-approval-row-\(row.label)")
+                        } else {
+                            LabeledContent(row.label) {
+                                Text(row.value)
+                                    .font(.subheadline)
+                                    .foregroundStyle(.primary)
+                                    .multilineTextAlignment(.trailing)
+                                    .textSelection(.enabled)
+                                    .accessibilityIdentifier("phone-approval-row-\(row.label)")
+                            }
                         }
                     }
                 } footer: {
