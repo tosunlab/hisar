@@ -8,7 +8,7 @@ import StrengthMeter from "./StrengthMeter.vue";
 
 type Mode = "sign-in" | "create-account";
 
-const defaultServer = "api.tryhisar.com";
+const defaultServer = "eu.tryhisar.com";
 const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
 
 function getDisplayServer(serverURL: string): string {
@@ -255,7 +255,7 @@ async function submitCreateAccount(): Promise<void> {
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || passwordFeedback.isBlocking">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
-          <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://api.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://api.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
+          <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
         </form>
       </div>
     </main>

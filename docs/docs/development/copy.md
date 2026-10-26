@@ -13,7 +13,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|---|
 | End-to-end encrypted password, SSH key and secrets manager for developers. | self-hosted, family password manager | App descriptions, Info.plist, Linux `.desktop`, store listing, share link page |
 | Passwords, SSH keys and secrets for developers, end-to-end encrypted. | Two taglines, exclamation marks | The one tagline: Mac sign-in, iPhone About |
-| `api.tryhisar.com` | `tryhisar.com` (serves no page yet), `hisar.example.com` as a suggestion | Default server, links, privacy policy URL (`https://api.tryhisar.com/privacy`) |
+| `eu.tryhisar.com` | `tryhisar.com` (serves no page yet), `hisar.example.com` as a suggestion | Default server, links, privacy policy URL (`https://eu.tryhisar.com/privacy`) |
 | Use a different server… | A required Server field | Sign in, Mac, iPhone and Android |
 | the Hisar server | your Hisar server, your family's server | Explanations |
 

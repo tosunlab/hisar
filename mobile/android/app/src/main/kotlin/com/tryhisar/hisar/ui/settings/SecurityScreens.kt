@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.ScreenshotSetting
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow

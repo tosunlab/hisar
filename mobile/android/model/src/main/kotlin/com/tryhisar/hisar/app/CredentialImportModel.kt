@@ -38,6 +38,9 @@ sealed interface CredentialImportSheet {
 
     data class Previewing(val preview: ImportPreview) : CredentialImportSheet
 
+    /** An encrypted Hisar export is open: the user enters its export passphrase and openImportFile opens it. */
+    data class EnteringPassphrase(val fileName: String) : CredentialImportSheet
+
     data class Importing(val progress: ImportProgress) : CredentialImportSheet
 }
 
@@ -90,6 +93,58 @@ class CredentialImportModel(private val context: ModelContext) {
         val current = session
         mutableSheet.value = CredentialImportSheet.Receiving
         receiveJob = context.scope.launch { receive(current, receiver) }
+    }
+
+    /** Opens the sheet with a Hisar export [content] the user picked ([fileName] names it), read by the backend. */
+    fun startHisarExport(fileName: String, content: ByteArray) {
+        val status = context.status.value
+        if (!status.isSignedIn) {
+            message.value = SIGNED_OUT_MESSAGE
+            content.fill(0)
+            return
+        }
+        if (!status.isUnlocked || isShown) {
+            content.fill(0)
+            return
+        }
+        context.errorMessage.value = null
+        val current = session
+        mutableSheet.value = CredentialImportSheet.Receiving
+        context.scope.launch { prepareHisarExport(current, fileName, content) }
+    }
+
+    private suspend fun prepareHisarExport(current: Int, fileName: String, content: ByteArray) {
+        val allKnownVault = context.unlockedData.value.allVault
+        val preview = context.perform { backend ->
+            val vault = chooseVault(allKnownVault.ifEmpty { backend.listAllVault() })
+                ?: throw BackendError("You have no vault you can add items to.")
+            backend.prepareHisarExportImport(vault.id, fileName, content)
+        }
+        content.fill(0)
+        if (session != current) {
+            // Closed or signed out while reading: drop what the backend prepared, and any sentence about it.
+            if (preview == null) context.errorMessage.value = null
+            cancelBackendImport()
+            return
+        }
+        mutableSheet.value = when {
+            preview == null -> CredentialImportSheet.Failed(context.errorMessage.value ?: UNREADABLE_MESSAGE).also { context.errorMessage.value = null }
+            preview.isPassphraseRequired -> CredentialImportSheet.EnteringPassphrase(preview.fileName)
+            else -> CredentialImportSheet.Previewing(preview)
+        }
+    }
+
+    /** Opens the waiting encrypted Hisar export with its export passphrase; a wrong one keeps the passphrase step. */
+    suspend fun openImportFile(passphrase: String) {
+        if (sheet.value !is CredentialImportSheet.EnteringPassphrase) return
+        val current = session
+        val preview = context.perform { it.openImportFile(passphrase) }
+        if (session != current || sheet.value !is CredentialImportSheet.EnteringPassphrase) return
+        // A wrong passphrase leaves its sentence in errorMessage and keeps the passphrase step.
+        if (preview != null) {
+            context.errorMessage.value = null
+            mutableSheet.value = CredentialImportSheet.Previewing(preview)
+        }
     }
 
     private suspend fun receive(current: Int, receiver: CredentialExchangeReceiver) {
@@ -234,7 +289,8 @@ class CredentialImportModel(private val context: ModelContext) {
         receiveJob = null
         pendingCredentialData?.fill(0)
         pendingCredentialData = null
-        if (preview != null || progress != null) cancelBackendImport()
+        // A previewed, running, or waiting (encrypted, not yet opened) import is dropped in the backend too.
+        if (preview != null || progress != null || sheet.value is CredentialImportSheet.EnteringPassphrase) cancelBackendImport()
         mutableSheet.value = null
     }
 

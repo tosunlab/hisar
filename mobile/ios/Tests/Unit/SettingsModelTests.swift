@@ -197,7 +197,7 @@ final class SettingsModelTests: XCTestCase {
     }
 
     func testDescribeServerShowsTheHost() {
-        XCTAssertEqual(VaultLogic.describeServer("https://api.tryhisar.com"), "api.tryhisar.com")
+        XCTAssertEqual(VaultLogic.describeServer("https://eu.tryhisar.com"), "eu.tryhisar.com")
         XCTAssertEqual(VaultLogic.describeServer("http://127.0.0.1:18080"), "127.0.0.1:18080")
     }
 }

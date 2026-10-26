@@ -60,6 +60,11 @@ protocol VaultBackend: AnyObject {
     /// prepareCredentialExchangeImport reads the credentials another app exported to Hisar (ASExportedCredentialData as
     /// JSON) and keeps them, in memory only, until the import starts or is cancelled.
     func prepareCredentialExchangeImport(vaultID: String, credentialData: Data) throws -> ImportPreview
+    /// prepareHisarExportImport reads a Hisar export the file picker opened (.hisar or plain .json) and previews it. An
+    /// encrypted export comes back with isPassphraseRequired, and openImportFile opens it with the export passphrase.
+    func prepareHisarExportImport(vaultID: String, fileName: String, content: Data) throws -> ImportPreview
+    /// openImportFile opens the waiting encrypted Hisar export with its passphrase; a wrong one keeps it waiting.
+    func openImportFile(passphrase: String) throws -> ImportPreview
     /// previewImport shows the prepared import again for another vault, with that vault's duplicates.
     func previewImport(vaultID: String) throws -> ImportPreview
     /// mapImportGroup sends one source group of the prepared import, such as a Credential Exchange collection, to vaultID;

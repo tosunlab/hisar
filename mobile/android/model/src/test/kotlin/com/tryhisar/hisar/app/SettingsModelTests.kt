@@ -172,8 +172,8 @@ class SettingsModelTests {
 
     @Test
     fun testDiagnosticsHoldVersionsServerAndDeviceOnly() {
-        val diagnostics = HelpLogic.buildDiagnostics("1.2 (34)", "16", "Pixel 9", "https://api.tryhisar.com", "device-1")
-        assertEquals("Hisar 1.2 (34)\nAndroid 16 on Pixel 9\nServer https://api.tryhisar.com\nDevice ID device-1", diagnostics)
+        val diagnostics = HelpLogic.buildDiagnostics("1.2 (34)", "16", "Pixel 9", "https://eu.tryhisar.com", "device-1")
+        assertEquals("Hisar 1.2 (34)\nAndroid 16 on Pixel 9\nServer https://eu.tryhisar.com\nDevice ID device-1", diagnostics)
         assertEquals(
             "Hisar 1.2 (34)\nAndroid 16 on Pixel 9\nServer not signed in",
             HelpLogic.buildDiagnostics("1.2 (34)", "16", "Pixel 9", "", null),

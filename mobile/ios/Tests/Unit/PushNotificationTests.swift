@@ -99,11 +99,21 @@ final class PushNotificationTests: XCTestCase {
         model.showNotification(.approval)
         XCTAssertEqual(model.selectedTab, .approvals)
         XCTAssertNil(model.notifications.openedKind)
+        model.notifications.open(userInfo: ["kind": "marketing"])
+        XCTAssertNil(model.notifications.openedKind, "an unknown kind opens nothing")
+    }
+
+    func testATappedSecurityAlertOpensDevices() async {
+        let model = await createUnlockedModel(authorization: .allowed)
+        model.selectedTab = .vaults
         model.notifications.open(userInfo: ["kind": "security"])
         model.showNotification(.security)
         XCTAssertEqual(model.selectedTab, .settings)
-        model.notifications.open(userInfo: ["kind": "marketing"])
-        XCTAssertNil(model.notifications.openedKind, "an unknown kind opens nothing")
+        XCTAssertEqual(model.requestedSettingsDestination, .devices, "Devices shows the device that just signed in")
+        model.requestedSettingsDestination = nil
+        model.notifications.open(userInfo: ["kind": "sharing"])
+        model.showNotification(.sharing)
+        XCTAssertNil(model.requestedSettingsDestination, "an invitation opens Settings itself")
     }
 
     func testLeavingWithAnApprovalWaitingLeavesAReminderThatSaysNoMore() async throws {

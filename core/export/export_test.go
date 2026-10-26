@@ -39,7 +39,7 @@ func buildTestDocument() *Document {
 		ConvertVault("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Work / Ops", "shared", items[2:]),
 		ConvertVault("cccccccc-cccc-cccc-cccc-cccccccccccc", "Empty", "shared", nil),
 	}
-	return Build(Account{Email: "alice@example.com", Server: "https://api.tryhisar.com"}, vaults, time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC))
+	return Build(Account{Email: "alice@example.com", Server: "https://eu.tryhisar.com"}, vaults, time.Date(2026, 10, 11, 12, 0, 0, 0, time.UTC))
 }
 
 func TestPlainExportRoundTrip(t *testing.T) {
@@ -206,7 +206,7 @@ func TestExportKeepsAndroidApps(t *testing.T) {
 	bank := item.Item{ID: "33333333-3333-3333-3333-333333333333", Overview: item.Overview{Title: "Bank", URLs: []string{"https://bank.example"}}, Details: item.Details{Password: "p"}}
 	bank.AddAndroidApp(bankApp)
 	vaults := []Vault{ConvertVault("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa", "Personal", "personal", []item.Item{bank})}
-	encoded, err := EncodePlain(Build(Account{Email: "alice@example.com", Server: "https://api.tryhisar.com"}, vaults, time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)))
+	encoded, err := EncodePlain(Build(Account{Email: "alice@example.com", Server: "https://eu.tryhisar.com"}, vaults, time.Date(2026, 10, 18, 12, 0, 0, 0, time.UTC)))
 	if err != nil {
 		t.Fatal(err)
 	}

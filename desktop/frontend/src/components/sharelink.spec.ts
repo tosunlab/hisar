@@ -27,7 +27,7 @@ const allGitHubField = [
   createShareLinkField({ key: "urls", label: "website", isDefault: false }),
   createShareLinkField({ key: "field:0", label: "Recovery code", isDefault: false, isConcealed: true }),
 ];
-const createdURL = "https://api.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s";
+const createdURL = "https://eu.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s";
 
 function resetStore(): void {
   Object.assign(store, {
