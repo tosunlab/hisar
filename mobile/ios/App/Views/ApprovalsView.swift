@@ -55,6 +55,7 @@ struct ApprovalList: View {
             if !isMacApprovalAllowed {
                 ContentUnavailableView {
                     Label("Approving Mac requests is off", systemImage: "laptopcomputer.slash")
+                        .accessibilityIdentifier("approvals-off")
                 } description: {
                     Text("Your Mac decides on its own: Touch ID or the master password there.")
                 } actions: {
@@ -62,7 +63,6 @@ struct ApprovalList: View {
                         .buttonStyle(.glass)
                         .accessibilityIdentifier("approvals-allow")
                 }
-                .accessibilityIdentifier("approvals-off")
             } else if allApproval.isEmpty {
                 ContentUnavailableView {
                     Label("No requests waiting", systemImage: "laptopcomputer.and.iphone")

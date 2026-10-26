@@ -24,8 +24,10 @@ final class AccountLifecycleUITests: HisarUITestCase {
         if macApprovalToggle.value as? String == "1" {
             macApprovalToggle.switches.firstMatch.tap()
         }
+        XCTAssertEqual(macApprovalToggle.value as? String, "0")
         goBack()
         openTab("Approvals")
+        waitFor(app.staticTexts["approvals-off"])
         let allowApproval = app.buttons["approvals-allow"]
         waitFor(allowApproval)
         XCTAssertEqual(allowApproval.label, "Approve requests from my Mac")
