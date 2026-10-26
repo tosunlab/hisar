@@ -1,5 +1,5 @@
 import { Browser } from "@wailsio/runtime";
-import { ApprovalTouchIDService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
+import { ApprovalTouchIDService, SettingsWindowService, TouchIDPromptService } from "../bindings/github.com/tryhisar/hisar/desktop";
 import { Service as AgentService } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github.com/tryhisar/hisar/desktop/agent";
 import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
@@ -446,6 +446,9 @@ const wailsApi = {
     ApprovalTouchIDService.SetApprovalPromptFrame(x, y, width, height),
   clearApprovalTouchIDFrame: (): Promise<void> => ApprovalTouchIDService.ClearApprovalPromptFrame(),
   cancelApprovalTouchID: (): Promise<void> => ApprovalTouchIDService.CancelApprovalPrompt(),
+  // showSettingsWindow opens Settings in its own window and reports false where Settings is an overlay instead (Linux).
+  showSettingsWindow: (sectionID: string): Promise<boolean> => SettingsWindowService.Show(sectionID),
+  hideSettingsWindow: (): Promise<void> => SettingsWindowService.Hide(),
   getOneTimeCode: (vaultID: string, itemID: string): Promise<OneTimeCode> => Service.GetOneTimeCode(vaultID, itemID),
   copyField: (vaultID: string, itemID: string, fieldName: string): Promise<void> =>
     Service.CopyField(vaultID, itemID, fieldName),

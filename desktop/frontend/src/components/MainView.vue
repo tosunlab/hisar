@@ -417,7 +417,7 @@ function handleShortcut(event: KeyboardEvent): void {
     toggleSelectedItemFavorite();
   } else if (key === ",") {
     event.preventDefault();
-    store.isSettingsOpen = true;
+    openSettings();
   }
 }
 
@@ -553,7 +553,7 @@ onBeforeUnmount(() => {
           <strong>{{ store.status.name || store.status.email }}</strong>
           <span class="muted">{{ store.status.email }}</span>
         </div>
-        <button class="ghost icon-button" :title="`Settings (${shortcutModifier},)`" aria-label="Settings" @click="store.isSettingsOpen = true"><AppIcon name="settings" /></button>
+        <button class="ghost icon-button" :title="`Settings (${shortcutModifier},)`" aria-label="Settings" @click="openSettings()"><AppIcon name="settings" /></button>
         <button class="ghost icon-button" :title="`Lock (${shortcutModifier}L)`" aria-label="Lock" @click="lock"><AppIcon name="lock" /></button>
       </div>
     </aside>

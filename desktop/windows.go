@@ -52,6 +52,22 @@ func mainWindowOptions() application.WebviewWindowOptions {
 	}
 }
 
+// settingsWindowOptions is Settings in its own window on macOS, hidden until Settings opens and reused.
+func settingsWindowOptions() application.WebviewWindowOptions {
+	return application.WebviewWindowOptions{
+		Name:             "settings",
+		Title:            "Settings",
+		Width:            880,
+		Height:           620,
+		MinWidth:         720,
+		MinHeight:        480,
+		Hidden:           true,
+		InitialPosition:  application.WindowCentered,
+		BackgroundColour: application.NewRGB(13, 14, 16),
+		URL:              "/?window=settings",
+	}
+}
+
 // approvalWindowOptions is the window that asks to approve SSH, command-line and coding-agent requests; it is reused.
 // It is on every Space, so it shows on the one the user is on, and showing it never switches to the Space of the
 // main window. It is a non-activating panel: the app the user was in stays active while it shows, so hiding it after

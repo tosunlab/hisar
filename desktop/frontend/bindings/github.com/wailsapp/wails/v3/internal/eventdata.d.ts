@@ -18,6 +18,8 @@ declare module "@wailsio/runtime" {
             "agent-sessions-changed": string;
             "invite-link": string;
             "locked": string;
+            "open-from-settings": string;
+            "open-settings-window": string;
             "show-item": app$0.ItemLocation;
             "show-settings": string;
             "ssh-approval": agent$0.ApprovalEvent;

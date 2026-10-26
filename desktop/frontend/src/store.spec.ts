@@ -316,6 +316,22 @@ describe("openSettings", () => {
     expect(store.isSettingsOpen).toBe(true);
     expect(loadSelectedSectionID()).toBe("developer");
   });
+
+  it("opens the Settings window instead of the overlay where there is one, and only while unlocked", async () => {
+    resetStore();
+    store.isSettingsOpen = false;
+    store.status = createStatus("unlocked");
+    api.showSettingsWindow.mockResolvedValueOnce(true);
+    await storeModule.openSettings("security");
+    expect(api.showSettingsWindow).toHaveBeenCalledWith("security");
+    expect(store.isSettingsOpen).toBe(false);
+    expect(loadSelectedSectionID()).toBe("security");
+
+    api.showSettingsWindow.mockClear();
+    store.status = createStatus("locked");
+    await storeModule.openSettings("");
+    expect(api.showSettingsWindow).not.toHaveBeenCalled();
+  });
 });
 
 describe("vault item counts", () => {

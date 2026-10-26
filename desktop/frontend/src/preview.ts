@@ -2050,6 +2050,9 @@ export const previewApi = {
     return resolveAfterDelay(previewAgentStatus());
   },
   fitSSHApprovalWindow: () => Promise.resolve(),
+  // The preview runs in one browser tab, so Settings stays an overlay there.
+  showSettingsWindow: () => Promise.resolve(false),
+  hideSettingsWindow: () => Promise.resolve(),
   setApprovalTouchIDFrame: () => Promise.resolve(),
   clearApprovalTouchIDFrame: () => Promise.resolve(),
   cancelApprovalTouchID: () => Promise.resolve(),

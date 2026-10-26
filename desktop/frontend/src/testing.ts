@@ -809,6 +809,8 @@ export function createApiMock() {
     setSigningRemember: vi.fn().mockResolvedValue(createSSHAgentStatus({ signingRememberSeconds: 600 })),
     setSSHRemember: vi.fn().mockResolvedValue(createSSHAgentStatus({ sshRememberSeconds: -1 })),
     fitSSHApprovalWindow: vi.fn().mockResolvedValue(undefined),
+    showSettingsWindow: vi.fn().mockResolvedValue(false),
+    hideSettingsWindow: vi.fn().mockResolvedValue(undefined),
     cancelApprovalTouchID: vi.fn().mockResolvedValue(undefined),
     setApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),
     clearApprovalTouchIDFrame: vi.fn().mockResolvedValue(undefined),

@@ -1,6 +1,7 @@
 import { createApp } from "vue";
 import App from "./App.vue";
 import SSHApprovalWindow from "./components/SSHApprovalWindow.vue";
+import SettingsWindow from "./SettingsWindow.vue";
 import { api } from "./api";
 import { applyCachedTheme } from "./theme";
 import { openExternalLink } from "./externalLink";
@@ -15,8 +16,8 @@ async function startApp(): Promise<void> {
   }
   applyCachedTheme();
   document.addEventListener("click", openExternalLink);
-  const isApprovalWindow = new URLSearchParams(window.location.search).get("window") === "ssh-approval";
-  createApp(isApprovalWindow ? SSHApprovalWindow : App).mount("#app");
+  const windowName = new URLSearchParams(window.location.search).get("window");
+  createApp(windowName === "ssh-approval" ? SSHApprovalWindow : windowName === "settings" ? SettingsWindow : App).mount("#app");
   if (import.meta.env.VITE_PREVIEW === "true") {
     const { applyPreviewParameter } = await import("./preview-bootstrap");
     await applyPreviewParameter();

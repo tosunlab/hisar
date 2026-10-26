@@ -1,15 +1,16 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
-import { api } from "./api";
 import { startThemeSync } from "./theme";
 import {
   handleLocked,
   handleUnlockedElsewhere,
   loadAllShareLinkQuietly,
   loadStatus,
+  openFromSettings,
   openInviteLink,
   openSettings,
+  reportActivity,
   restoreBrowserPairing,
   showBrowserPairing,
   showUpdateRequired,
@@ -28,18 +29,7 @@ import AppIcon from "./components/AppIcon.vue";
 import BrowserPairingModal from "./components/BrowserPairingModal.vue";
 import PendingRecoveryView from "./components/PendingRecoveryView.vue";
 
-const activityReportInterval = 30_000;
-let lastActivityReport = 0;
 let allRemoveListener: (() => void)[] = [];
-
-function reportActivity(): void {
-  const now = Date.now();
-  if (store.status.state !== "unlocked" || now - lastActivityReport < activityReportInterval) {
-    return;
-  }
-  lastActivityReport = now;
-  api.reportActivity().catch(() => undefined);
-}
 
 onMounted(() => {
   loadStatus().then(async () => { await takePendingInviteQuietly(); await restoreBrowserPairing(); });
@@ -54,6 +44,7 @@ onMounted(() => {
     Events.On("browser-pairing", (event) => showBrowserPairing(event.data ?? null)),
     Events.On("show-item", (event) => showItem(event.data)),
     Events.On("show-settings", (event) => openSettings(event.data ?? "")),
+    Events.On("open-from-settings", (event) => (event.data === "import" || event.data === "sharing") && openFromSettings(event.data)),
   ];
   window.addEventListener("keydown", reportActivity);
   window.addEventListener("pointerdown", reportActivity);

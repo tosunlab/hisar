@@ -1,4 +1,5 @@
 import { nextTick, reactive } from "vue";
+import { Events } from "@wailsio/runtime";
 import {
   type AccountDeletionPreview,
   type AgentGrant,
@@ -1028,16 +1029,50 @@ async function loadSelectedItem(itemID: string, version: number): Promise<void> 
   }
 }
 
-// openSettings follows the app's request to show a Settings section; Settings already open closes first, so it opens
-// at that section.
-export async function openSettings(sectionID: string): Promise<void> {
-  if (!isSettingsSectionID(sectionID)) {
+// isSettingsWindow is true in the macOS Settings window, which runs this code with a store of its own.
+export const isSettingsWindow = new URLSearchParams(window.location.search).get("window") === "settings";
+
+// openSettings opens Settings at sectionID, or at its last section when sectionID is "": in its own window on macOS, as an
+// overlay in the main window elsewhere. An overlay already open closes first, so it opens at that section.
+export async function openSettings(sectionID = ""): Promise<void> {
+  if (sectionID !== "" && !isSettingsSectionID(sectionID)) {
     return;
   }
-  saveSelectedSectionID(sectionID);
+  if (sectionID !== "") {
+    saveSelectedSectionID(sectionID);
+  }
+  if (store.status.state === "unlocked" && (await api.showSettingsWindow(sectionID).catch(() => false))) {
+    return;
+  }
   store.isSettingsOpen = false;
   await nextTick();
   store.isSettingsOpen = true;
+}
+
+export type MainWindowAction = "import" | "sharing";
+
+// openFromSettings runs a Settings action that leads to the main window: Import, or the sharing panel of the vault selected
+// there. The macOS Settings window closes and hands the action to the main window, whose App listens for it.
+export async function openFromSettings(action: MainWindowAction): Promise<void> {
+  store.isSettingsOpen = false;
+  if (isSettingsWindow) {
+    await Events.Emit("open-from-settings", action);
+    return;
+  }
+  await (action === "import" ? openImport() : openSharing());
+}
+
+const activityReportInterval = 30_000;
+let lastActivityReport = 0;
+
+// reportActivity tells the backend that the user works in a window, at most every 30 s, so auto-lock waits.
+export function reportActivity(): void {
+  const now = Date.now();
+  if (store.status.state !== "unlocked" || now - lastActivityReport < activityReportInterval) {
+    return;
+  }
+  lastActivityReport = now;
+  api.reportActivity().catch(() => undefined);
 }
 
 // showItem follows a launcher's Open in Hisar: the item in its vault, in its editor when asked and the vault allows it.
