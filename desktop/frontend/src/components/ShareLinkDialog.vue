@@ -137,7 +137,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <span class="check-label">{{ capitalizeFirstLetter(field.label) }}</span>
             <AppIcon v-if="field.isConcealed" name="lock" :size="12" class="muted" />
           </label>
-          <p class="muted hint">SSH private keys, passkeys and one-time password secrets are never shared.</p>
+          <p class="muted hint">SSH private keys, passkeys and one-time code secrets are never shared.</p>
         </fieldset>
 
         <div class="option-grid">

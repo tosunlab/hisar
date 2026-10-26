@@ -71,7 +71,7 @@ onBeforeUnmount(() => clearInterval(clockTimer));
         </svg>
         <span class="muted seconds" data-testid="one-time-code-seconds">{{ secondsLeft }}s</span>
       </template>
-      <span v-else-if="isUnavailable" class="muted">The one-time password could not be read.</span>
+      <span v-else-if="isUnavailable" class="muted">The one-time code could not be read.</span>
     </span>
     <span class="field-actions">
       <button class="ghost icon-button" aria-label="Copy one-time code" title="Copy" :disabled="!oneTimeCode" @click="copyField('one-time code', 'One-time code')">

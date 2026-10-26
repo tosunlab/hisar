@@ -645,14 +645,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
         ></textarea>
       </label>
       <label v-if="!isDatabase" class="last">
-        <span>One-time password</span>
+        <span>One-time code setup key</span>
         <input
           v-model="draft.oneTimePassword"
           name="oneTimePassword"
           class="monospace"
           autocomplete="off"
           spellcheck="false"
-          placeholder="Setup key or otpauth:// link from the site's two-factor setup"
+          placeholder="Setup key or otpauth:// link"
         />
       </label>
     </section>
