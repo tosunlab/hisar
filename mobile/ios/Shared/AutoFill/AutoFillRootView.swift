@@ -56,7 +56,6 @@ private struct MessageView: View {
 
 private struct AutoFillLockView: View {
     @ObservedObject var model: AutoFillModel
-    @State private var promptedLockCount = -1
     private static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
 
     var body: some View {
@@ -64,17 +63,13 @@ private struct AutoFillLockView: View {
             email: model.status.email,
             requestDescription: model.serviceName.isEmpty ? "" : requestDescription,
             isBiometricReady: model.status.biometricReady,
+            lockCount: model.lockCount,
             biometryName: Self.biometryName,
             isBusy: model.isBusy,
             errorMessage: model.errorMessage,
             submitPassword: { await model.unlock(password: $0) },
             submitBiometric: { await model.unlockWithBiometric() }
         )
-        .onAppear {
-            guard model.status.biometricReady, promptedLockCount != model.lockCount else { return }
-            promptedLockCount = model.lockCount
-            Task { await model.unlockWithBiometric() }
-        }
     }
 }
 
