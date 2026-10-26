@@ -41,9 +41,6 @@ struct SignInView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 14) {
                         LogoMark(size: 56)
-                        Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Enter the invite code you received, or paste the invite link.")
-                            .font(.subheadline)
-                            .foregroundStyle(.themeSecondary)
                         Picker("Mode", selection: $mode) {
                             ForEach(Mode.allCases) { mode in
                                 Text(mode.rawValue).tag(mode)

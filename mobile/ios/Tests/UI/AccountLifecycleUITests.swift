@@ -10,6 +10,10 @@ final class AccountLifecycleUITests: HisarUITestCase {
         }
         let screenshotSuffix = ProcessInfo.processInfo.environment["HISAR_UI_TEST_SCREENSHOT_SUFFIX"] ?? ""
         app.launch()
+        waitFor(app.segmentedControls["sign-in-mode"])
+        XCTAssertFalse(app.staticTexts["Sign in to use Hisar on this iPhone."].exists)
+        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        XCTAssertFalse(app.staticTexts["Enter the invite code you received, or paste the invite link."].exists)
         signUp(inviteLink: inviteLink, email: email, name: "Lifecycle")
         dismissSavePasswordPrompt()
 
