@@ -176,22 +176,30 @@ struct ItemDetailView: View {
             if !item.allURL.isEmpty {
                 Section(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites") {
                     ForEach(Array(item.allURL.enumerated()), id: \.offset) { _, url in
-                        if let openableURL = VaultLogic.convertToOpenableURL(url) {
-                            Link(destination: openableURL) {
-                                Label(url, systemImage: "safari")
+                        HStack(spacing: 0) {
+                            CopyFieldButton(label: "website", value: url, copy: { model.copyText(url, label: "Website") }) {
+                                Text(url)
                                     .lineLimit(1)
                             }
-                            .contextMenu {
-                                Button {
-                                    model.copyText(url, label: "Website")
-                                } label: {
-                                    Label("Copy", systemImage: "doc.on.doc")
+                            if let openableURL = VaultLogic.convertToOpenableURL(url) {
+                                Link(destination: openableURL) {
+                                    Image(systemName: "safari")
+                                        .iconButtonHitArea()
                                 }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Open website")
+                                .accessibilityIdentifier("open-website")
+                            }
+                        }
+                        .contextMenu {
+                            Button {
+                                model.copyText(url, label: "Website")
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                            if let openableURL = VaultLogic.convertToOpenableURL(url) {
                                 ShareLink(item: openableURL)
                             }
-                            .accessibilityIdentifier("open-website")
-                        } else {
-                            Text(url)
                         }
                     }
                 }
@@ -216,20 +224,21 @@ struct ItemDetailView: View {
             }
             if !item.notes.isEmpty && !item.isSecureNote {
                 Section {
-                    Text(item.notes)
-                        .textSelection(.enabled)
-                        .contextMenu {
-                            Button {
-                                copy(fieldName: "notes", label: "Notes")
-                            } label: {
-                                Label("Copy", systemImage: "doc.on.doc")
-                            }
-                            Button {
-                                copyReference(fieldName: "notes")
-                            } label: {
-                                Label("Copy secret reference", systemImage: "terminal")
-                            }
+                    CopyFieldButton(label: "notes", value: item.notes, copy: { copy(fieldName: "notes", label: "Notes") }) {
+                        Text(item.notes)
+                    }
+                    .contextMenu {
+                        Button {
+                            copy(fieldName: "notes", label: "Notes")
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
                         }
+                        Button {
+                            copyReference(fieldName: "notes")
+                        } label: {
+                            Label("Copy secret reference", systemImage: "terminal")
+                        }
+                    }
                 } header: {
                     Text("Notes")
                 }
@@ -380,7 +389,6 @@ struct ItemDetailView: View {
                 copy: { copy(fieldName: DatabaseFieldName.connectionString, label: "Connection string") },
                 copyReference: { copyReference(fieldName: DatabaseFieldName.connectionString) }
             )
-            .accessibilityIdentifier("database-connection-string")
         } footer: {
             Text("Built from the fields above, so it always has the current password.")
         }
@@ -511,9 +519,9 @@ struct ItemDetailView: View {
                 Text("This note is empty.")
                     .foregroundStyle(.themeSecondary)
             } else {
-                Text(item.notes)
-                    .textSelection(.enabled)
-                    .accessibilityIdentifier("secure-note-notes")
+                CopyFieldButton(label: "notes", value: item.notes, identifier: "secure-note-notes", copy: { copy(fieldName: "notes", label: "Notes") }) {
+                    Text(item.notes)
+                }
                 Button {
                     copy(fieldName: "notes", label: "Notes")
                 } label: {
@@ -641,19 +649,17 @@ struct SecretFieldRow: View {
     private var isHidden: Bool { isConcealed && !isRevealed }
 
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(label)
-                    .font(.footnote)
-                    .foregroundStyle(.themeSecondary)
-                Text(isHidden ? String(repeating: "•", count: 12) : value)
-                    .font(isConcealed ? .body.monospaced() : .body)
-                    .lineLimit(isConcealed ? 3 : 5)
-                    .textSelection(.enabled)
-                    .accessibilityLabel(isHidden ? "Hidden" : value)
-                    .accessibilityIdentifier("\(label.lowercased())-value")
+        HStack(spacing: 0) {
+            CopyFieldButton(label: label, value: isHidden ? "Hidden" : value, copy: copy) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(label)
+                        .font(.footnote)
+                        .foregroundStyle(.themeSecondary)
+                    Text(isHidden ? String(repeating: "•", count: 12) : value)
+                        .font(isConcealed ? .body.monospaced() : .body)
+                        .lineLimit(isConcealed ? 3 : 5)
+                }
             }
-            Spacer(minLength: 0)
             if let toggleReveal {
                 Button(action: toggleReveal) {
                     Image(systemName: isRevealed ? "eye.slash" : "eye")
@@ -664,13 +670,7 @@ struct SecretFieldRow: View {
                 .accessibilityLabel(isRevealed ? "Hide \(label)" : "Reveal \(label)")
                 .accessibilityIdentifier("reveal-\(label.lowercased())")
             }
-            Button(action: copy) {
-                Image(systemName: "doc.on.doc")
-                    .iconButtonHitArea()
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("Copy \(label)")
-            .accessibilityIdentifier("copy-\(label.lowercased())")
+            CopyIconButton(copy: copy)
         }
         .foregroundStyle(.primary)
         .contextMenu {
@@ -686,6 +686,42 @@ struct SecretFieldRow: View {
                 }
             }
         }
+    }
+}
+
+/// A field row's label and value, which copy the field on a tap. Assistive technology reads them as the button
+/// "Copy <label>" with the value, or "Hidden" for a secret that is not revealed.
+struct CopyFieldButton<Content: View>: View {
+    var label: String
+    var value: String
+    var identifier: String?
+    var copy: () -> Void
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        Button(action: copy) {
+            content
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Copy \(label)")
+        .accessibilityValue(value)
+        .accessibilityIdentifier(identifier ?? "copy-\(label.lowercased())")
+    }
+}
+
+/// The copy icon at the end of a field row. The row's CopyFieldButton already copies for assistive technology.
+struct CopyIconButton: View {
+    var copy: () -> Void
+
+    var body: some View {
+        Button(action: copy) {
+            Image(systemName: "doc.on.doc")
+                .iconButtonHitArea()
+        }
+        .buttonStyle(.borderless)
+        .accessibilityHidden(true)
     }
 }
 

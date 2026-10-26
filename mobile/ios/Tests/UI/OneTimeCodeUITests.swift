@@ -44,11 +44,13 @@ final class OneTimeCodeUITests: HisarUITestCase {
 
         let startedAt = Date()
         app.buttons["item-Example"].tap()
-        let codeText = app.staticTexts["one-time-code-value"]
-        waitFor(codeText)
-        checkCurrentCode(codeText.label.replacingOccurrences(of: " ", with: ""), startedAt: startedAt)
+        // The row is the button "Copy one-time code" and appears once the code is loaded, which is its value.
+        let codeRow = app.buttons["copy-one-time-code"]
+        waitFor(codeRow)
+        let shownCode = (codeRow.value as? String) ?? ""
+        checkCurrentCode(shownCode.replacingOccurrences(of: " ", with: ""), startedAt: startedAt)
         saveScreenshot("otp-item-detail")
-        app.buttons["copy-one-time-code"].tap()
+        codeRow.tap()
         saveScreenshot("otp-copied")
 
         launchAutoFill(argument: "-HisarAutoFillOneTimeCodePreview")
