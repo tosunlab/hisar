@@ -213,11 +213,13 @@ describe("inline menu page", () => {
     let state = createState({ view: "locked", allLogin: [] });
     handler = (message) => (message.type === "inlineMenu.getState" ? state : null);
     const wrapper = await mountMenu({ pollIntervalMilliseconds: 100 });
-    expect(wrapper.find('[data-testid="inline-status"]').text()).toBe("Hisar is locked");
-    await wrapper.find('[data-testid="inline-action"]').trigger("click");
+    // The locked menu is one row, as a login would be, not a notice with a button.
+    expect(wrapper.find('[data-testid="inline-status"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="inline-unlock"] .title').text()).toBe("Unlock Hisar");
+    await wrapper.find('[data-testid="inline-unlock"]').trigger("click");
     await flushPromises();
     expect(allMessage).toContainEqual({ type: "inlineMenu.unlock", sessionID: "session-1" });
-    expect(wrapper.find('[data-testid="inline-action"]').text()).toBe("Waiting for Hisar…");
+    expect(wrapper.find('[data-testid="inline-unlock"] .title').text()).toBe("Waiting for Hisar…");
     state = createState();
     await vi.advanceTimersByTimeAsync(100);
     await flushPromises();

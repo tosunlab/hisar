@@ -17,7 +17,8 @@ popup.html, inline-menu.html, passkey-prompt.html
 src/background/           service worker: native port (native-client.ts), popup/content handlers (controller.ts, router.ts),
                           frame rule (frames.ts), save offers (save.ts), chrome.storage.local (storage.ts)
 src/content/              content script (all frames): form detection, fill, submit capture; no save confirmation UI;
-                          payment forms (card-detection.ts, card-fill.ts), personal details (identity-detection.ts, identity-fill.ts)
+                          payment forms (card-detection.ts, card-fill.ts), personal details (identity-detection.ts, identity-fill.ts),
+                          the search boxes no detector may take (search-field.ts)
 src/content/inline-menu/  inline icon and menu frame placement, eligibility, keyboard, clickjacking checks
 src/inline-menu/          the menu page shown in the iframe under a login field (inline-menu.html)
 src/content/passkey/      passkeys (DESIGN §9.8): the MAIN-world navigator.credentials wrapper with PRF, the signal methods
@@ -64,6 +65,8 @@ npm run test:end-to-end     # builds, then runs the Playwright tests with the fa
 - the suggested password on a sign-up page;
 - the settings;
 - the menu staying visible and usable above a transparent page and an ordinary overlay, and clicks refused through a top-layer overlay with `pointer-events: none`.
+
+`end-to-end/survey.spec.ts` is not in `npm run test:end-to-end`: it opens real sites in the extension's browser, focuses every visible input and writes which ones got the icon, and which menu, to `HISAR_SURVEY_REPORT` (or `survey.txt` in the working directory). Run it with `npx playwright test survey.spec` after a detection change, and read the report by hand: a search box with the icon is a bug, a login field without one too.
 
 `end-to-end/fill-reliability.spec.ts` covers login pages that used to fill nothing:
 
