@@ -21,6 +21,8 @@ enum SettingsDestination: Hashable {
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var selection: SettingsDestination?
+    @State private var detailPath = NavigationPath()
     @State private var isSignOutConfirmationShown = false
     @State private var isAutoFillEnabled = false
 
@@ -39,8 +41,8 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            List {
+        NavigationSplitView {
+            List(selection: $selection) {
                 Section {
                     NavigationLink(value: SettingsDestination.account) {
                         HStack(spacing: 14) {
@@ -151,26 +153,6 @@ struct SettingsView: View {
             }
             .applyThemedListStyle()
             .navigationTitle("Settings")
-            .navigationDestination(for: SettingsDestination.self) { destination in
-                switch destination {
-                case .account: AccountView()
-                case .secretKey: SecretKeyView()
-                case .security: SecurityView()
-                case .appearance: AppearanceView()
-                case .macApprovals: MacApprovalsView()
-                case .notifications: NotificationSettingsView(notifications: model.notifications)
-                case .people: PeopleView()
-                case .organizations: OrganizationsView()
-                case .devices: DevicesView()
-                case .autoFill: AutoFillSettingsView(isEnabled: $isAutoFillEnabled)
-                case .passwordGenerator: StandalonePasswordGeneratorView()
-                case .help: HelpView()
-                case .about: AboutView()
-                case .changeMasterPassword: ChangeMasterPasswordView()
-                case .replaceSecretKey: ReplaceSecretKeyView()
-                case .deleteAccount: DeleteAccountView()
-                }
-            }
             .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     Task { await model.signOut() }
@@ -182,6 +164,45 @@ struct SettingsView: View {
                 isAutoFillEnabled = await AutoFillSettings.checkIsEnabled()
                 await model.refreshReceivedInvitationCount()
             }
+        } detail: {
+            // Beside the list on the open iPhone Duo, pushed over it on any other iPhone. Screens below a section (Account →
+            // Change master password) push within the detail column.
+            NavigationStack(path: $detailPath) {
+                Group {
+                    if let selection {
+                        buildDestination(selection)
+                    } else {
+                        ContentUnavailableView("Settings", systemImage: "gearshape", description: Text("Choose a section."))
+                    }
+                }
+                .navigationDestination(for: SettingsDestination.self) { destination in
+                    buildDestination(destination)
+                }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: selection) { _, _ in detailPath = NavigationPath() }
+    }
+
+    @ViewBuilder
+    private func buildDestination(_ destination: SettingsDestination) -> some View {
+        switch destination {
+        case .account: AccountView()
+        case .secretKey: SecretKeyView()
+        case .security: SecurityView()
+        case .appearance: AppearanceView()
+        case .macApprovals: MacApprovalsView()
+        case .notifications: NotificationSettingsView(notifications: model.notifications)
+        case .people: PeopleView()
+        case .organizations: OrganizationsView()
+        case .devices: DevicesView()
+        case .autoFill: AutoFillSettingsView(isEnabled: $isAutoFillEnabled)
+        case .passwordGenerator: StandalonePasswordGeneratorView()
+        case .help: HelpView()
+        case .about: AboutView()
+        case .changeMasterPassword: ChangeMasterPasswordView()
+        case .replaceSecretKey: ReplaceSecretKeyView()
+        case .deleteAccount: DeleteAccountView()
         }
     }
 }

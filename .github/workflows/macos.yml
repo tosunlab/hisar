@@ -128,9 +128,12 @@ jobs:
     name: iPhone app build and unit tests
     needs: changes
     if: needs.changes.outputs.isMobileChanged == 'true' && !contains(github.event.pull_request.labels.*.name, 'skip-ios')
-    runs-on: macos-26
+    # The iPhone app is built with the iOS 27.1 SDK, which lets it use the whole inner display of the iPhone Duo; the
+    # xcode-27 image is the one with that Xcode.
+    runs-on: xcode-27
     timeout-minutes: 60
     env:
+      XCODE_PATH: /Applications/Xcode_27.1.app
       IOS_DERIVED_DATA: ${{ github.workspace }}/DerivedData
       # make build-ios builds the app and the tests once; the unit tests and the UI test jobs run what it built.
       IOS_TESTS_PREBUILT: "1"
@@ -185,7 +188,7 @@ jobs:
     name: iPhone UI tests against the server (part ${{ matrix.part }} of 3)
     needs: [changes, ios-build]
     if: github.event_name != 'pull_request' || !github.event.pull_request.draft
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     # Each part runs about a third of the UI tests (IOS_UI_TEST_PART in scripts/test-ios-ui.sh) on its own simulator, with the
     # app and tests ios-build built. The script boots the simulator once the server is up, right before the tests.
@@ -194,6 +197,7 @@ jobs:
       matrix:
         part: [1, 2, 3]
     env:
+      XCODE_PATH: /Applications/Xcode_27.1.app
       DATABASE_NAME: hisar_ios_${{ github.run_id }}_${{ github.run_attempt }}
       IOS_DERIVED_DATA: ${{ github.workspace }}/DerivedData
       IOS_TESTS_PREBUILT: "1"

@@ -60,6 +60,7 @@
 		481FE0BCCD0D2166F4469760 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
 		4AA5D5C3D6DAB5608269335B /* AutoFillUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED00276374ABADC314F5DF91 /* AutoFillUITests.swift */; };
 		4AC348C1E48603BA2998A584 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7FEB2D8C212608F4623951C3 /* Localizable.strings */; };
+		4C2B8094565EFE9F42D49B68 /* WideLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D8EF29B82716EB114C89A6 /* WideLayoutUITests.swift */; };
 		51EDF0E5D9F05E3726D3D785 /* KeychainSecretKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */; };
 		545172F0BC0BA184895F99DD /* FavoritesUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4FA213E40620F47F0F235DA0 /* FavoritesUITests.swift */; };
 		5807CCBF70BA02987A3B8671 /* UnlockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */; };
@@ -255,6 +256,7 @@
 		56632F6C54EBD5227BCBED2E /* LockView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LockView.swift; sourceTree = "<group>"; };
 		583B03B9AF903A2AFD45D820 /* ItemIconTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemIconTests.swift; sourceTree = "<group>"; };
 		58725D5CFD94EED72E93193F /* ItemEditorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemEditorView.swift; sourceTree = "<group>"; };
+		58D8EF29B82716EB114C89A6 /* WideLayoutUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WideLayoutUITests.swift; sourceTree = "<group>"; };
 		5C081C11B996ABE21B047D8D /* HisarUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HisarUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillModelTests.swift; sourceTree = "<group>"; };
 		5EE425D9595F773B531C1A3C /* OrganizationUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrganizationUITests.swift; sourceTree = "<group>"; };
@@ -354,6 +356,7 @@
 				D2035F9DF60C25E43AE30712 /* PhoneApprovalUITests.swift */,
 				F3BABA9BC4C53A440760BE78 /* SharingUITests.swift */,
 				2EBDE8A6FD6D000957E09DBB /* TypedText.swift */,
+				58D8EF29B82716EB114C89A6 /* WideLayoutUITests.swift */,
 			);
 			path = UI;
 			sourceTree = "<group>";
@@ -742,6 +745,7 @@
 				CD13D5C1F809E78A136237D9 /* PhoneApprovalUITests.swift in Sources */,
 				E13D73A18E4FF3B92CC31E2A /* SharingUITests.swift in Sources */,
 				8C85AA76C86CB2117B3F98C4 /* TypedText.swift in Sources */,
+				4C2B8094565EFE9F42D49B68 /* WideLayoutUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

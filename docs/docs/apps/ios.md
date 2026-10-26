@@ -37,9 +37,24 @@ Secret Key through `ResumePendingRecoveryWithSecretKey`. Metadata-only manual-un
 future sign-ins. `DiscardPreparedRecovery` removes only a setup for which no remote change was sent.
 The Android root screen and `PendingRecoveryModel` use the same protocol and test names.
 
+## iPhone Duo
+
+The open iPhone Duo is regular in both size classes, like an iPad; closed, it is a compact iPhone, and the app resizes as
+the phone opens and closes. The layout follows the size class, never the device or the orientation: Vaults, Search and
+Settings are `NavigationSplitView`s, which show the list beside what it opens on the open phone and collapse into the one
+stack every other iPhone shows. The system does the rest: sheets center on the inner display, toolbars and tabs move to
+the side next to the camera on the outer display, and sheets, alerts and menus keep away from the fold. Nothing reads
+`UIScreen.main`, which is ambiguous on two displays.
+
+The whole inner display is only used by a build with the iOS 27.1 SDK (Xcode 27.1); an older build runs letterboxed.
+CI builds and tests the app on the `xcode-27` runner image for that reason, while the Mac app stays on `macos-26`. To try
+a layout, run the app on the iPhone Duo simulator (Xcode 27.1 with the iOS 27.1 runtime: `xcodebuild -downloadPlatform iOS`)
+and check every pose from Device Hub's buttons: open and closed, both orientations, half folded, and Split View on
+either side.
+
 ## Build and test
 
-Requirements: Xcode with an iOS simulator runtime, Go, and for regenerating the project XcodeGen 2.46.0
+Requirements: Xcode 27.1 with an iOS simulator runtime, Go, and for regenerating the project XcodeGen 2.46.0
 (`brew install xcodegen`).
 
 ```sh
@@ -50,8 +65,8 @@ make build                  # hisar-server, for the UI tests
 HISAR_DATABASE_URL=postgres://…/hisar_ios_empty make test-ios-ui   # UI tests against a fresh server
 ```
 
-`IOS_SIMULATOR_ID=<udid>` picks the simulator; by default the first iPhone of the newest runtime is used
-(`scripts/find-simulator.sh`). The UI test script starts `hisar-server` on port 18082, creates invites, and passes them
+`IOS_SIMULATOR_ID=<udid>` picks the simulator; by default a numbered iPhone of the newest runtime is used
+(`scripts/find-simulator.sh`), never the iPhone Duo while another iPhone exists, so the tests run in the compact layout. The UI test script starts `hisar-server` on port 18082, creates invites, and passes them
 to the tests as `TEST_RUNNER_HISAR_UI_TEST_*` variables. The test classes run one after another; `IOS_UI_TEST_WORKERS=2`
 runs them on two clones of the simulator at once, which is quicker on a Mac with cores to spare but a loss on the CI runners.
 Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save a PNG of each screen.
@@ -65,6 +80,8 @@ the swipe actions and the Favorites section at the top of Vaults), item detail
 password with the Emergency Kit share), sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
 with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
+`WideLayoutUITests` checks the split views: beside their list on a wide screen, pushed over it on a compact one, so it
+means something on both the iPhone Duo simulator and the compact one CI uses.
 
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,

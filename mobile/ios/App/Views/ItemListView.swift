@@ -310,11 +310,13 @@ struct ItemTagListView: View {
 struct SearchView: View {
     @EnvironmentObject private var model: AppModel
     @State private var searchText = ""
+    @State private var selection: ItemDestination?
+    @State private var detailPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationSplitView {
             let allMatch = VaultLogic.filterAllItem(model.listAllItemReference(), searchText: searchText)
-            List {
+            List(selection: $selection) {
                 ForEach(searchText.isEmpty ? [] : allMatch) { reference in
                     NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                         ItemRow(item: reference.item, vaultName: reference.vaultName)
@@ -331,10 +333,23 @@ struct SearchView: View {
             }
             .navigationTitle("Search")
             .searchable(text: $searchText, prompt: "Logins, keys and notes")
-            .navigationDestination(for: ItemDestination.self) { destination in
-                ItemDetailView(vaultID: destination.vaultID, itemID: destination.itemID)
+        } detail: {
+            // A server's SSH key link pushes within the detail column.
+            NavigationStack(path: $detailPath) {
+                Group {
+                    if let selection {
+                        ItemDetailView(vaultID: selection.vaultID, itemID: selection.itemID)
+                    } else {
+                        ContentUnavailableView("No item chosen", systemImage: "magnifyingglass", description: Text("A result opens here."))
+                    }
+                }
+                .navigationDestination(for: ItemDestination.self) { destination in
+                    ItemDetailView(vaultID: destination.vaultID, itemID: destination.itemID)
+                }
             }
         }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: selection) { _, _ in detailPath = NavigationPath() }
         .onChange(of: searchText) { _, _ in model.reportActivity() }
     }
 }
