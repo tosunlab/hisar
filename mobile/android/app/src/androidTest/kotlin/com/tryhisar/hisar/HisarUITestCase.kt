@@ -152,7 +152,7 @@ abstract class HisarUITestCase {
         composeRule.waitUntil("$tag appears", 30_000) { exists(node) || isScrolledInto(node) }
         if (exists(node and hasAnyAncestor(hasScrollAction()))) {
             composeRule.onNode(node).performScrollTo()
-            scrollClearOfTabBar(node)
+            scrollClearOfFloatingControls(node)
         }
     }
 
@@ -167,18 +167,22 @@ abstract class HisarUITestCase {
     }
 
     /**
-     * performScrollTo stops with the node at the list's bottom edge, which lies under the floating tab bar, where a tap
-     * lands on the bar. As XCUITest makes an element hittable, the list scrolls on until the node clears the bar.
+     * performScrollTo stops at the scroll viewport's edge, beneath the floating tab bar and New button. Scroll farther
+     * so taps and swipes reach the row instead of those controls.
      */
-    private fun scrollClearOfTabBar(node: SemanticsMatcher) {
+    private fun scrollClearOfFloatingControls(node: SemanticsMatcher) {
         val tabBar = hasTestTag("tab-vaults")
         if (!exists(tabBar)) return
-        val barTop = composeRule.onNode(tabBar).fetchSemanticsNode().boundsInRoot.top
+        var controlTop = composeRule.onNode(tabBar).fetchSemanticsNode().boundsInRoot.top
+        val newButton = hasTestTag("new-menu")
+        if (exists(newButton)) {
+            controlTop = minOf(controlTop, composeRule.onNode(newButton).fetchSemanticsNode().boundsInRoot.top)
+        }
         val nodeBottom = composeRule.onNode(node).fetchSemanticsNode().boundsInRoot.bottom
-        val overlap = nodeBottom - barTop
+        val overlap = nodeBottom - controlTop
         if (overlap > 0) {
             composeRule.onAllNodes(hasScrollAction() and hasAnyDescendant(node)).onLast()
-                .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(0f, overlap + TAB_BAR_CLEARANCE) }
+                .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(0f, overlap + FLOATING_CONTROL_CLEARANCE) }
         }
     }
 
@@ -307,7 +311,7 @@ abstract class HisarUITestCase {
          */
         const val ACCOUNT_KEY_TIMEOUT = 130_000L
 
-        /** How far above the tab bar, in pixels, a tapped node ends up. */
-        private const val TAB_BAR_CLEARANCE = 48f
+        /** How far above floating controls, in pixels, a tapped node ends up. */
+        private const val FLOATING_CONTROL_CLEARANCE = 48f
     }
 }

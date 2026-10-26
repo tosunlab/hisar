@@ -90,6 +90,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             scrollTo("favorite-Netflix")
             saveScreenshot("vaults-home-favorites")
             scrollTo("organization-section-Acme")
+            scrollTo("waiting-vault-key-Acme")
             assertTrue(exists(hasTestTag("waiting-vault-key-Acme")))
             saveScreenshot("vaults-home-vaults")
             scrollTo("tag-work")
