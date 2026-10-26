@@ -716,9 +716,9 @@ struct AutoFillSettingsView: View {
                     .accessibilityIdentifier("turn-on-autofill")
                 }
             } footer: {
-                Text(Self.isAutoFillIncluded
-                     ? "You can also turn it on in the Settings app: General, AutoFill & Passwords."
-                     : "This build is signed with a free Apple ID, which cannot include the AutoFill extension.")
+                if !Self.isAutoFillIncluded {
+                    Text("This build is signed with a free Apple ID, which cannot include the AutoFill extension.")
+                }
             }
             if Self.isAutoFillIncluded {
                 Section {
