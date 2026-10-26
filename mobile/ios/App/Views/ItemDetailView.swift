@@ -266,7 +266,7 @@ struct ItemDetailView: View {
                     .foregroundStyle(.primary)
                     .accessibilityIdentifier("copy-secret-reference")
                 } footer: {
-                    Text("A hisar:// reference to the \(referenceField), for hisar run and hisar read. Touch and hold a field for its own reference.")
+                    Text("For hisar run and hisar read on your Mac.")
                 }
             }
         }
