@@ -24,19 +24,25 @@ final class AccountLifecycleUITests: HisarUITestCase {
 
         openSettings("open-security")
         app.buttons["open-change-master-password"].tap()
+        let passwordWarning = app.staticTexts["Your other devices will be signed out. Sign in on them with the new master password."]
+        XCTAssertFalse(passwordWarning.exists)
         type(Self.masterPassword, into: app.secureTextFields["change-password-current"])
         type(Self.newMasterPassword, into: app.secureTextFields["change-password-new"])
         type(Self.newMasterPassword, into: app.secureTextFields["change-password-repeated"])
         saveScreenshot("account-life-change-master-password\(screenshotSuffix)")
         app.buttons["change-password-submit"].tap()
+        waitFor(passwordWarning)
         tapConfirmation(identifier: "change-password-confirm")
         dismissSavePasswordPrompt()
         waitFor(app.buttons["open-replace-secret-key"], timeout: 60)
 
         app.buttons["open-replace-secret-key"].tap()
+        let secretKeyWarning = app.staticTexts["Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working."]
+        XCTAssertFalse(secretKeyWarning.exists)
         type(Self.newMasterPassword, into: app.secureTextFields["replace-secret-key-password"])
         saveScreenshot("account-life-replace-secret-key\(screenshotSuffix)")
         app.buttons["replace-secret-key-submit"].tap()
+        waitFor(secretKeyWarning)
         tapConfirmation(identifier: "replace-secret-key-confirm")
         let newSecretKey = finishPendingRecovery(email: email, password: Self.newMasterPassword, restartAfterPreparingKit: true)
         XCTAssertTrue(newSecretKey.hasPrefix("H1-"), newSecretKey)
