@@ -1430,6 +1430,11 @@ function buildPreviewImportPreview(vaultID: string): ImportPreview {
       detail: [detail.username, detail.urls[0] ? getDomain(detail.urls[0]) : ""].filter(Boolean).join(" · "),
       passkeyCount: 0,
     })),
+    isPassphraseRequired: false,
+    notice: "",
+    isSourceKept: false,
+    exportedFrom: "",
+    exportedAt: "",
   };
 }
 
@@ -1447,6 +1452,7 @@ function buildPreviewImportProgress(): ImportProgress {
     leftBehindCount: allPreviewImportSkipped.length,
     isDone: previewImportRun.allQueued.length === 0,
     allFailed: [],
+    isSourceKept: false,
   };
 }
 
@@ -1477,6 +1483,7 @@ export const previewApi = {
       { id: "csv", name: "CSV (Chrome, Firefox, Safari, Edge and others)" },
     ]),
   chooseImportFile: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
+  openImportFile: (_passphrase: string) => resolveAfterDelay(buildPreviewImportPreview(previewImportRun.vaultID || allPreviewVault[0].id)),
   previewImport: (vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   mapImportGroup: (_groupID: string, vaultID: string) => resolveAfterDelay(buildPreviewImportPreview(vaultID)),
   startImport: (vaultID: string, isSkippingDuplicate: boolean) => {

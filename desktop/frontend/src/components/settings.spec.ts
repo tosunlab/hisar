@@ -74,7 +74,7 @@ describe("Settings sidebar", () => {
     expect(findPage(settings, "general").isVisible()).toBe(true);
     expect(findPage(settings, "security").isVisible()).toBe(false);
     expect(findPage(settings, "general").text()).toContain("Open Hisar at login");
-    expect(findPage(settings, "general").text()).toContain("Import from another password manager");
+    expect(findPage(settings, "general").text()).toContain("Import a Hisar export or another password manager");
   });
 
   it("shows the chosen section and keeps every section's rows where they belong", async () => {
