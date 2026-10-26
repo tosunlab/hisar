@@ -249,7 +249,7 @@ final class HisarUITests: HisarUITestCase {
             app.swipeUp()
         }
         app.buttons["open-help"].tap()
-        XCTAssertFalse(app.descendants(matching: .any)["help-app-version"].exists)
+        XCTAssertFalse(app.staticTexts["App version"].exists)
         app.buttons["copy-diagnostics"].tap()
         saveScreenshot("settings-help")
         goBack()
