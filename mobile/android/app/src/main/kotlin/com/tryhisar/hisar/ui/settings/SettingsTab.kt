@@ -204,7 +204,8 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
             NavigationRow("Help", "open-help", { push(SettingsDestination.HELP) }, Icons.AutoMirrored.Outlined.HelpOutline)
             RowDivider()
             NavigationRow("About Hisar", "open-about", { push(SettingsDestination.ABOUT) }, Icons.Outlined.Info, value = appVersionText(context))
-            RowDivider()
+        }
+        FormSection {
             DestructiveRow("Sign out", { isSignOutConfirmationShown = true }, testTag = "sign-out")
         }
     }
