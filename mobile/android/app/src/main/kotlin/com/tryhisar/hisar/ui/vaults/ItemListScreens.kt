@@ -94,7 +94,7 @@ fun PushedListScaffold(
 /** The search's empty result, as ContentUnavailableView.search. */
 @Composable
 fun NoSearchResults(searchText: String) {
-    ContentUnavailable("No Results for “$searchText”", Icons.Outlined.Search, Modifier.testTag("no-results")) {
+    ContentUnavailable("No results for “$searchText”", Icons.Outlined.Search, Modifier.testTag("no-results")) {
         Text("Check the spelling or try a new search.", style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center)
     }
 }
@@ -141,7 +141,7 @@ fun TagItemsScreen(model: AppModel, stack: NavigationStack, tag: String) {
 fun NoItemsYet(isWritable: Boolean) {
     ContentUnavailable("No items yet", Icons.Outlined.Inbox, Modifier.testTag("no-items")) {
         Text(
-            if (isWritable) "Tap + to add a login." else "Items appear here once an editor adds them.",
+            if (isWritable) "Tap New to add your first item." else "Items appear here once an editor adds them.",
             style = HisarType.subheadline,
             color = HisarTheme.colors.secondaryLabel,
             textAlign = TextAlign.Center,
