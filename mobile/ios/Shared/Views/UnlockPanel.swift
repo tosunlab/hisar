@@ -106,6 +106,15 @@ struct UnlockPanel: View {
         }
         .scrollDismissesKeyboard(.interactively)
         .applyThemedListBackground()
+        .onAppear {
+            if !isBiometricReady { isPasswordFocused = true }
+        }
+        .onChange(of: isBiometricReady) { _, isReady in
+            if !isReady { isPasswordFocused = true }
+        }
+        .onChange(of: errorMessage) { _, message in
+            if message != nil { isPasswordFocused = true }
+        }
     }
 
     private func submit() {

@@ -49,6 +49,7 @@ final class AccountLifecycleUITests: HisarUITestCase {
         saveScreenshot("account-life-new-secret-key\(screenshotSuffix)")
 
         if app.secureTextFields["unlock-password"].waitForExistence(timeout: 2) {
+            waitFor(app.keyboards.firstMatch)
             type(Self.newMasterPassword, into: app.secureTextFields["unlock-password"])
             app.buttons["unlock-submit"].tap()
         }
