@@ -113,7 +113,7 @@ fun ApprovalsTab(model: AppModel) {
                     actions = {
                         Box(Modifier.widthIn(max = 320.dp)) {
                             GlassButton(
-                                "Allow Approving Mac Requests",
+                                "Turn on Mac approvals",
                                 { scope.launch { model.settings.setMacApprovalAllowed(true) } },
                                 testTag = "approvals-allow",
                             )

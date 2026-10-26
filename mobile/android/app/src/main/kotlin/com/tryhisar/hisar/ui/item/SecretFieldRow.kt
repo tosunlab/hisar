@@ -134,7 +134,7 @@ internal fun SecretFieldRow(
     val tagName = label.lowercase()
     val allAction = buildList {
         add(MenuAction("Copy $label", Icons.Outlined.ContentCopy, copy))
-        add(MenuAction("Copy Secret Reference", Icons.Outlined.Terminal, copyReference))
+        add(MenuAction("Copy secret reference", Icons.Outlined.Terminal, copyReference))
         if (toggleReveal != null) {
             add(MenuAction(if (isRevealed) "Hide" else "Reveal", if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, toggleReveal))
         }

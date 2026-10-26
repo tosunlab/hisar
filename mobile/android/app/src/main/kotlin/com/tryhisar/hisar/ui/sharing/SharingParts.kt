@@ -199,7 +199,7 @@ fun MemberRow(
 
 /**
  * An invitation someone has not accepted yet: the email, where it stands, and its role on the right. With [onCancel],
- * touch and hold offers "Cancel Invitation".
+ * touch and hold offers "Cancel invitation".
  */
 @Composable
 fun SentInvitationRow(invitation: SentShareInvitation, isVaultNameShown: Boolean, testTag: String, onCancel: (() -> Unit)? = null, onConfirm: ((SentShareInvitation) -> Unit)? = null) {
@@ -240,7 +240,7 @@ fun InvitedRow(
     icon: ImageVector,
     testTag: String,
     onCancel: (() -> Unit)? = null,
-    cancelLabel: String = "Cancel Invitation",
+    cancelLabel: String = "Cancel invitation",
 ) {
     val colors = HisarTheme.colors
     var isMenuShown by remember { mutableStateOf(false) }
@@ -341,7 +341,7 @@ fun PersonHeader(member: Member) {
     }
 }
 
-/** A security code in large monospaced type; with [isShareable], Share My Security Code under the user's own. */
+/** A security code in large monospaced type; with [isShareable], Share my security code under the user's own. */
 @Composable
 fun SecurityCodeSection(member: Member, footer: String, testTag: String, isShareable: Boolean = true) {
     if (member.securityCode.isEmpty()) return
@@ -360,7 +360,7 @@ fun SecurityCodeSection(member: Member, footer: String, testTag: String, isShare
         }
         if (member.isCurrentUser && isShareable) {
             RowDivider()
-            ShareRow("Share My Security Code") { shareText(context, "My Hisar security code: ${member.securityCode}") }
+            ShareRow("Share my security code") { shareText(context, "My Hisar security code: ${member.securityCode}") }
         }
     }
 }

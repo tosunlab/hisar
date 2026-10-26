@@ -181,7 +181,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
             title = { Text("Delete this passkey?") },
             text = { Text("You can no longer sign in to ${passkey.relyingPartyID} as ${passkey.userName} with it.") },
             confirmButton = {
-                PlainButton("Delete Passkey", {
+                PlainButton("Delete passkey", {
                     passkeyToDelete = null
                     scope.launch { model.item.deletePasskey(vaultID, itemID, passkey.credentialID)?.let { item = it } }
                 }, testTag = "confirm-delete-passkey", color = HisarTheme.colors.destructive)
@@ -195,7 +195,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
             title = { Text("Remove this app?") },
             text = { Text("AutoFill no longer offers this login in ${androidApp.packageName}.") },
             confirmButton = {
-                PlainButton("Remove App", {
+                PlainButton("Remove app", {
                     androidAppToRemove = null
                     scope.launch { model.item.removeAndroidApp(vaultID, itemID, androidApp)?.let { item = it } }
                 }, testTag = "confirm-remove-android-app", color = HisarTheme.colors.destructive)

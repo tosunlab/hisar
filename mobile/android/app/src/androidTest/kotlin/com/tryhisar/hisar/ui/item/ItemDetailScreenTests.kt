@@ -131,7 +131,7 @@ class ItemDetailScreenTests {
         host.show("personal", "github")
         composeRule.waitForTag("username-value")
         composeRule.onNodeWithTag("username-value").performTouchInput { longClick() }
-        composeRule.onNode(hasText("Copy Secret Reference")).performClick()
+        composeRule.onNode(hasText("Copy secret reference")).performClick()
         composeRule.waitUntil(5_000) { backend.allCopiedReference == listOf("hisar://Personal/GitHub/username") }
 
         composeRule.onNodeWithTag("website-https://github.com").performScrollTo().performTouchInput { longClick() }

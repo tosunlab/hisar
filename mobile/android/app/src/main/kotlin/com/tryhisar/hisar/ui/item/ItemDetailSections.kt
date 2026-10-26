@@ -156,7 +156,7 @@ internal fun ItemDetailContent(
             MenuRow(
                 listOf(
                     MenuAction("Copy", Icons.Outlined.ContentCopy) { actions.copy("notes", "Notes") },
-                    MenuAction("Copy Secret Reference", Icons.Outlined.Terminal) { actions.copyReference("notes") },
+                    MenuAction("Copy secret reference", Icons.Outlined.Terminal) { actions.copyReference("notes") },
                 ),
                 onClick = { actions.copy("notes", "Notes") },
                 onClickLabel = "Copy notes",

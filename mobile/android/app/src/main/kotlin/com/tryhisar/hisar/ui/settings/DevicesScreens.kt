@@ -147,7 +147,7 @@ fun DevicesScreen(model: AppModel, onBack: () -> Unit) {
         ConfirmationDialog(
             title = "Sign out ${device.name.ifEmpty { "this device" }}?",
             message = REVOKE_MESSAGE,
-            confirmLabel = "Sign Out Device",
+            confirmLabel = "Sign out device",
             confirmTestTag = "confirm-revoke-device",
             onConfirm = { scope.launch { if (model.settings.revokeDevice(device)) load() } },
             onDismiss = { deviceToRevoke = null },
@@ -155,7 +155,7 @@ fun DevicesScreen(model: AppModel, onBack: () -> Unit) {
     }
 }
 
-/** A device row that reveals a red "Sign Out" when swiped to the start, as the iPhone's swipe action. */
+/** A device row that reveals a red "Sign out" when swiped to the start, as the iPhone's swipe action. */
 @Composable
 private fun SwipeToSignOut(onSwipe: () -> Unit, content: @Composable () -> Unit) {
     val state = rememberSwipeToDismissBoxState()
@@ -176,7 +176,7 @@ private fun SwipeToSignOut(onSwipe: () -> Unit, content: @Composable () -> Unit)
                     .padding(horizontal = 20.dp),
                 contentAlignment = Alignment.CenterEnd,
             ) {
-                Text("Sign Out", style = HisarType.body, color = Color.White)
+                Text("Sign out", style = HisarType.body, color = Color.White)
             }
         },
     ) {
@@ -240,14 +240,14 @@ private fun DeviceScreen(model: AppModel, device: Device, onBack: () -> Unit, fi
             }
         }
         FormSection(footer = { Text("Signing out ends the device's session on the server, so it can no longer sync your vaults or answer for your account.") }) {
-            DestructiveRow("Sign Out Device", { isRevokeConfirmationShown = true }, testTag = "revoke-device")
+            DestructiveRow("Sign out device", { isRevokeConfirmationShown = true }, testTag = "revoke-device")
         }
     }
     if (isRevokeConfirmationShown) {
         ConfirmationDialog(
             title = "Sign out ${device.name}?",
             message = REVOKE_MESSAGE,
-            confirmLabel = "Sign Out Device",
+            confirmLabel = "Sign out device",
             confirmTestTag = "confirm-revoke-device",
             onConfirm = { scope.launch { if (model.settings.revokeDevice(device)) finishRevoke() } },
             onDismiss = { isRevokeConfirmationShown = false },
