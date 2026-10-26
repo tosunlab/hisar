@@ -36,7 +36,8 @@ export const allSettingsSection: SettingsSection[] = [
     icon: "lock",
     allRow: [
       { id: "touch-id", title: "Unlock with Touch ID", keywords: "biometric fingerprint unlock" },
-      { id: "auto-lock", title: "Auto-lock", keywords: "lock idle timeout clipboard minutes" },
+      { id: "auto-lock", title: "Auto-lock", keywords: "lock idle timeout minutes" },
+      { id: "clipboard", title: "Clear copied values after 90 seconds", keywords: "clipboard copy clear" },
       { id: "change-master-password", title: "Change master password", keywords: "password change new rotate" },
       { id: "replace-secret-key", title: "Replace Secret Key", keywords: "secret key rotate new emergency kit leaked compromised" },
       { id: "emergency-kit", title: "Emergency Kit", keywords: "secret key pdf recovery backup new device" },

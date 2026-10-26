@@ -174,6 +174,14 @@ describe("Settings search", () => {
     expect(security.find('[data-testid="save-emergency-kit"]').isVisible()).toBe(false);
   });
 
+  it("finds the read-only clipboard policy separately from auto-lock", async () => {
+    const settings = await mountSettings();
+    await search(settings, "clipboard");
+    expect(readAllSectionLabel(settings)).toEqual(["Security"]);
+    expect(settings.get('[data-testid="clipboard-clearing"]').isVisible()).toBe(true);
+    expect(settings.get('[data-testid="auto-lock"]').isVisible()).toBe(false);
+  });
+
   it("matches keywords and section names", async () => {
     const settings = await mountSettings();
     await search(settings, "mcp");

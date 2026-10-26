@@ -38,7 +38,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
 
 <template>
   <section data-testid="security-section">
-    <div v-show="isRowVisible('touch-id') || isRowVisible('auto-lock')" class="settings-block">
+    <div v-show="isRowVisible('touch-id') || isRowVisible('auto-lock') || isRowVisible('clipboard')" class="settings-block">
       <p class="section-label">Unlock</p>
       <div class="settings-group">
         <div v-show="isRowVisible('touch-id')" class="setting">
@@ -91,8 +91,8 @@ async function submitSaveEmergencyKit(): Promise<void> {
         <div v-show="isRowVisible('auto-lock')" class="setting">
           <div class="setting-text">
             <strong>Auto-lock</strong>
-            <p v-if="isMacPlatform()" class="muted">Hisar locks once your Mac has had no keyboard, mouse or trackpad input for this long, and when the screen locks or the Mac sleeps. Typing in a terminal or editor keeps it unlocked; SSH, command-line and agent requests alone do not. Copied values are cleared after 90 seconds.</p>
-            <p v-else class="muted">Hisar locks once this computer has had no keyboard or mouse input for this long; on a desktop that does not report it, once Hisar itself has not been used for this long. Copied values are cleared after 90 seconds.</p>
+            <p v-if="isMacPlatform()" class="muted">Hisar locks after this long without keyboard, mouse or trackpad input on this Mac, and when the screen locks.</p>
+            <p v-else class="muted">Hisar locks once this computer has had no keyboard or mouse input for this long; on a desktop that does not report it, once Hisar itself has not been used for this long.</p>
           </div>
           <select
             class="auto-lock"
@@ -104,6 +104,11 @@ async function submitSaveEmergencyKit(): Promise<void> {
           >
             <option v-for="option in allAutoLockOption" :key="option.seconds" :value="option.seconds">{{ option.label }}</option>
           </select>
+        </div>
+        <div v-show="isRowVisible('clipboard')" class="setting" data-testid="clipboard-clearing">
+          <div class="setting-text">
+            <strong>Clear copied values after 90 seconds</strong>
+          </div>
         </div>
       </div>
     </div>

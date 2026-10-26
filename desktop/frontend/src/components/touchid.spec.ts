@@ -143,6 +143,11 @@ describe("SettingsPanel", () => {
     const select = wrapper.find('[data-testid="auto-lock"]');
     expect((select.element as HTMLSelectElement).value).toBe("600");
     expect(select.findAll("option").map((option) => option.text())).toEqual(["30 seconds", "1 minute", "5 minutes", "10 minutes", "1 hour"]);
+    expect(select.element.closest(".setting")?.textContent).toContain("Hisar locks after this long without keyboard, mouse or trackpad input on this Mac, and when the screen locks.");
+    expect(select.element.closest(".setting")?.textContent).not.toContain("Copied values");
+    const clipboard = wrapper.get('[data-testid="clipboard-clearing"]');
+    expect(clipboard.text()).toBe("Clear copied values after 90 seconds");
+    expect(clipboard.find("input, select, button").exists()).toBe(false);
     await select.setValue("30");
     await flushPromises();
     expect(api.setAutoLock).toHaveBeenCalledWith(30);
