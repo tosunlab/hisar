@@ -111,6 +111,20 @@ describe("Editor keyboard shortcuts", () => {
     wrapper.unmount();
   });
 
+  it("ignores shortcuts dispatched on Window without throwing or saving", async () => {
+    const wrapper = mountEditor();
+    const onError = vi.fn();
+    window.addEventListener("error", onError);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "s", metaKey: true }));
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(onError).not.toHaveBeenCalled();
+    expect(api.saveItem).not.toHaveBeenCalled();
+    expect(store.editorMode).toBe("edit");
+    window.removeEventListener("error", onError);
+    wrapper.unmount();
+  });
+
   it("leaves keys typed outside the editor, such as in Settings, alone", async () => {
     const wrapper = mountEditor();
     const outside = document.createElement("input");

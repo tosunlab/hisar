@@ -280,8 +280,8 @@ function cancelOnEscape(): void {
 // handleShortcut binds Esc to Cancel and ⌘S or ⌘↩ to Save while the editor, or nothing, has focus. requestSubmit runs the
 // form's checks, such as the required title, before submitItem.
 function handleShortcut(event: KeyboardEvent): void {
-  const target = event.target as Node | null;
-  if (isDiscardConfirmShown.value || !(target === document.body || form.value?.contains(target))) {
+  const target = event.target;
+  if (isDiscardConfirmShown.value || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
     return;
   }
   const isCommand = event.metaKey || event.ctrlKey;
