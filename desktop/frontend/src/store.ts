@@ -202,6 +202,11 @@ function showCopyFailure(): void {
   }
 }
 
+// describeCopy is the notice after a copy, the iPhone's sentence.
+function describeCopy(label: string): string {
+  return `${label} copied. It clears in 90 seconds.`;
+}
+
 // runAction serializes UI actions and turns failures into a visible error message.
 async function runAction<Result>(action: () => Promise<Result>): Promise<Result | undefined> {
   store.isBusy = true;
@@ -1321,7 +1326,7 @@ export async function copyItemField(vaultID: string, itemID: string, fieldName: 
     return true;
   });
   if (copied) {
-    showNotice(`${label} copied, clears in 90 seconds`);
+    showNotice(describeCopy(label));
   } else {
     showCopyFailure();
   }
@@ -2105,7 +2110,7 @@ export async function copyText(text: string, label: string): Promise<void> {
     return true;
   });
   if (copied) {
-    showNotice(`${label} copied, clears in 90 seconds`);
+    showNotice(describeCopy(label));
   } else {
     showCopyFailure();
   }
@@ -2328,7 +2333,7 @@ export async function copyShareLink(shareLink: ShareLink): Promise<void> {
     return true;
   });
   if (copied) {
-    showNotice("Link copied, clears in 90 seconds");
+    showNotice(describeCopy("Link"));
   } else {
     showCopyFailure();
   }

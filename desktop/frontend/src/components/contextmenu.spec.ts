@@ -96,7 +96,7 @@ describe("The item list's context menu", () => {
     await wrapper.find('[data-testid="context-menu-copy-password"]').trigger("click");
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledWith("personal", "github", "password");
-    expect(store.noticeMessage).toBe("Password copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Password copied. It clears in 90 seconds.");
     expect(store.selectedItem).toBeNull();
     expect(wrapper.find('[data-testid="context-menu"]').exists()).toBe(false);
     wrapper.unmount();

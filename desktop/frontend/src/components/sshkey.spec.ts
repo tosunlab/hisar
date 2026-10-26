@@ -225,7 +225,7 @@ describe("SSH key detail", () => {
     await wrapper.find('[data-testid="copy-all-commit-signing"]').trigger("click");
     await flushPromises();
     expect(api.copyText).toHaveBeenLastCalledWith(allCommand.join("\n"));
-    expect(store.noticeMessage).toBe("Commands copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Commands copied. It clears in 90 seconds.");
     expect(api.copyField).not.toHaveBeenCalled();
   });
 

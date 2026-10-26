@@ -142,7 +142,7 @@ describe("share link dialog", () => {
     await wrapper.find('[data-testid="copy-share-link"]').trigger("click");
     await flushPromises();
     expect(api.copyText).toHaveBeenCalledWith(createdURL);
-    expect(store.noticeMessage).toBe("Link copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Link copied. It clears in 90 seconds.");
     wrapper.unmount();
   });
 
