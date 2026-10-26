@@ -7,7 +7,6 @@ struct ItemListView: View {
     @State private var searchText = ""
     @State private var newItemCategory: String?
     @State private var isSharingShown = false
-    @State private var isPersonalVaultNoteShown = false
     @State private var vaultActions: VaultActions?
     @State private var deletionActions: VaultActions?
     @State private var isRenameShown = false
@@ -91,14 +90,10 @@ struct ItemListView: View {
                     }
                     .accessibilityIdentifier("vault-members")
                 }
-            } else if vault != nil {
+            } else if isShared {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
-                        if isShared {
-                            isSharingShown = true
-                        } else {
-                            isPersonalVaultNoteShown = true
-                        }
+                        isSharingShown = true
                     } label: {
                         Label("Share", systemImage: "person.crop.circle.badge.plus")
                     }
@@ -197,11 +192,6 @@ struct ItemListView: View {
                 VaultSharingView(vaultID: vaultID)
                     .environmentObject(model)
             }
-        }
-        .alert("Personal vaults are private", isPresented: $isPersonalVaultNoteShown) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text("Only you can open the items in your Personal vault. To share items with other people, create a shared vault with + on the Vaults screen and share that.")
         }
         .onAppear { model.reportActivity() }
     }

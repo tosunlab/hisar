@@ -39,8 +39,8 @@ final class SharingUITests: HisarUITestCase {
         _ = signUp(inviteLink: inviteLink, email: email, name: "iOS Sharing")
 
         app.buttons["vault-Personal"].tap()
-        app.buttons["share-vault"].tap()
-        app.alerts["Personal vaults are private"].buttons["OK"].tap()
+        waitFor(app.buttons["add-item"])
+        XCTAssertFalse(app.buttons["share-vault"].exists, "a Personal vault offers Share")
         goBack()
 
         choose("new-vault", from: "new-menu")
