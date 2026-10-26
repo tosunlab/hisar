@@ -54,6 +54,8 @@ class OrganizationUITests : HisarUITestCase() {
 
         tap("vault-Deploy")
         waitFor("item-Release signing", 30_000)
+        tap("vault-actions")
+        waitFor("vault-members")
         assertFalse("only owners get Share", exists(hasTestTag("share-vault")))
         tap("vault-members")
         waitFor("vault-team-Platform", 30_000)
@@ -129,7 +131,7 @@ class OrganizationUITests : HisarUITestCase() {
         tap("editor-save")
         waitFor("item-Pager", 30_000)
 
-        tap("share-vault")
+        choose("share-vault", "vault-actions")
         waitFor("vault-team-Ops", 30_000)
         assertTrue(readRow("vault-team-Ops"), readRow("vault-team-Ops").contains("Owner"))
         assertTrue("admins give the vault to other teams", exists(hasTestTag("give-vault-to-team")))

@@ -61,7 +61,7 @@ class InvitationMenuUITests : HisarUITestCase() {
         launchApp(buildBackend()).use {
             waitFor("vaults-list")
             tap("vault-Work")
-            tap("share-vault")
+            choose("share-vault", "vault-actions")
             cancelFromMenu("vault-invitation-erin@example.com", "Cancel Invitation", "invitation-menu-vault-sharing")
             waitFor(hasText("Cancel the invitation to erin@example.com?"))
             tap("confirm-cancel-invitation")

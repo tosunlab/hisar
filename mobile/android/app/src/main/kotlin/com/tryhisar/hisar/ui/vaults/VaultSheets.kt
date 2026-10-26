@@ -175,7 +175,7 @@ fun NewVaultScreen(model: AppModel, onCancel: () -> Unit, onCreated: (VaultSumma
             {
                 Text(
                     if (chosen.isSharedVault) {
-                        "A shared vault starts with only you. Share it by email with Share in the vault's toolbar; your Personal vault stays private."
+                        "A shared vault starts with only you. Share it by email from the vault's ⋯ menu; your Personal vault stays private."
                     } else {
                         "${chosen.teamName}'s members get this vault. Manage it in Settings → Organizations."
                     },

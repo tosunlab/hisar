@@ -92,19 +92,14 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         searchField = { SearchField(searchText, { searchText = it }, "Search ${vault.name}", testTag = "vault-search") },
         floatingButton = if (isWritable) ({ NewButton(onClick = { isNewSheetShown = true }, modifier = Modifier.align(Alignment.BottomEnd)) }) else null,
         actions = {
-            if (isShared && vault.role != Member.VAULT_ROLE_OWNER) {
-                ToolbarIconButton(Icons.Outlined.Group, "Members", testTag = "vault-members", onClick = openSharing)
-            } else {
-                ToolbarIconButton(Icons.Outlined.PersonAddAlt, "Share", testTag = "share-vault") {
-                    if (isShared) openSharing() else dialog = VaultDialog.PersonalVaultIsPrivate
-                }
-            }
             Box {
                 ToolbarIconButton(Icons.Outlined.MoreHoriz, "Vault actions", testTag = "vault-actions") { isActionMenuShown = true }
                 VaultActionsMenu(
                     isExpanded = isActionMenuShown,
                     actions = vaultActions,
+                    isMembersOnly = isShared && vault.role != Member.VAULT_ROLE_OWNER,
                     onDismiss = { isActionMenuShown = false },
+                    share = { if (isShared) openSharing() else dialog = VaultDialog.PersonalVaultIsPrivate },
                     rename = { dialog = VaultDialog.Rename(vault.name) },
                     delete = { stack.push(VaultsDestination.DeleteVault(it)) },
                     leave = { dialog = VaultDialog.Leave },
@@ -196,12 +191,17 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     }
 }
 
-/** Every action on the vault; one the user can't take explains why instead. */
+/**
+ * Every action on the vault, Share or Members first; one the user can't take explains why instead. [isMembersOnly] is a
+ * shared vault the user does not own: they see who has it but cannot invite.
+ */
 @Composable
 private fun VaultActionsMenu(
     isExpanded: Boolean,
     actions: VaultActions?,
+    isMembersOnly: Boolean,
     onDismiss: () -> Unit,
+    share: () -> Unit,
     rename: () -> Unit,
     delete: (VaultActions) -> Unit,
     leave: () -> Unit,
@@ -212,6 +212,11 @@ private fun VaultActionsMenu(
         action()
     }
     HisarMenu(isExpanded, onDismiss) {
+        if (isMembersOnly) {
+            HisarMenuItem("Members", "vault-members", icon = Icons.Outlined.Group, onClick = { choose(share) })
+        } else {
+            HisarMenuItem("Share…", "share-vault", icon = Icons.Outlined.PersonAddAlt, onClick = { choose(share) })
+        }
         if (actions == null) {
             HisarMenuItem("Loading…", "vault-actions-loading", onClick = {}, enabled = false)
             return@HisarMenu

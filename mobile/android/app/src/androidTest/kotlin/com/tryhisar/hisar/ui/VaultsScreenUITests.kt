@@ -194,7 +194,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor(hasText("Your Personal vault can't be deleted."))
             saveScreenshot("vault-blocked")
             tap("blocked-reason-ok")
-            tap("share-vault")
+            choose("share-vault", "vault-actions")
             waitFor(hasText("Personal vaults are private"))
             tap("personal-vault-note-ok")
         }
