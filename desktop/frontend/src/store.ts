@@ -124,6 +124,8 @@ export const store = reactive({
   sshAgentStatus: null as SSHAgentStatus | null,
   sshAgentErrorMessage: "",
   isSharingOpen: false,
+  // isCreatingVault shows the new-vault form under the vault list.
+  isCreatingVault: false,
   allVaultMember: [] as VaultMember[],
   allPerson: [] as Person[],
   shareInvitations: { received: [], sent: [], completionError: "" } as ShareInvitations,
@@ -236,6 +238,7 @@ function clearAllVaultData(): void {
   store.isTouchIDOfferShown = false;
   store.isSettingsOpen = false;
   store.isSharingOpen = false;
+  store.isCreatingVault = false;
   store.allVaultMember = [];
   store.allPerson = [];
   store.shareInvitations = { received: [], sent: [], completionError: "" };
@@ -1096,7 +1099,7 @@ async function openPendingRecovery(): Promise<void> {
 
 const mainWindowActions: Record<MainWindowAction, () => Promise<void>> = {
   import: openImport,
-  sharing: openSharing,
+  sharing: shareSelectedVault,
   recovery: openPendingRecovery,
 };
 
@@ -1478,6 +1481,16 @@ export async function openSharing(): Promise<void> {
   store.allVaultMember = [];
   store.isSharingOpen = true;
   await loadSharing();
+}
+
+// shareSelectedVault opens the selected vault's sharing panel. A personal vault is never shared, so the new-vault form
+// opens instead, for a vault to share.
+async function shareSelectedVault(): Promise<void> {
+  if ((getSelectedVault()?.type ?? "personal") === "personal") {
+    store.isCreatingVault = true;
+    return;
+  }
+  await openSharing();
 }
 
 export function closeSharing(): void {

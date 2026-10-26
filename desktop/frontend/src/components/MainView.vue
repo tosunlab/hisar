@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   clearError,
   copyItemField,
@@ -115,7 +115,6 @@ interface VaultGroup {
   allVault: VaultSummary[];
 }
 
-const isCreatingVault = ref(false);
 const newVaultName = ref("");
 // newVaultWhere is "" for the user's own vault, or the key of the team that gets the new organization vault.
 const newVaultWhere = ref("");
@@ -340,10 +339,11 @@ function openVaultMenuBelow(event: MouseEvent): void {
   vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
 }
 
-async function startCreatingVault(): Promise<void> {
+// prepareNewVaultForm clears the form and loads the teams for Where whenever the new-vault form opens, from the New vault
+// button or from Settings → People.
+async function prepareNewVaultForm(): Promise<void> {
   newVaultWhere.value = "";
   newVaultErrorMessage.value = "";
-  isCreatingVault.value = true;
   isLoadingTeams.value = true;
   const load = ++newVaultTeamLoad;
   await loadAllOrganizationQuietly();
@@ -351,6 +351,12 @@ async function startCreatingVault(): Promise<void> {
     isLoadingTeams.value = false;
   }
 }
+
+watch(
+  () => store.isCreatingVault,
+  (isCreating) => isCreating && prepareNewVaultForm(),
+  { immediate: true },
+);
 
 async function submitNewVault(): Promise<void> {
   if (!canSubmitNewVault.value) {
@@ -360,7 +366,7 @@ async function submitNewVault(): Promise<void> {
   const isCreated = team ? await createOrganizationVault(team.organizationID, team.teamID, newVaultName.value) : await createVault(newVaultName.value);
   if (isCreated) {
     newVaultName.value = "";
-    isCreatingVault.value = false;
+    store.isCreatingVault = false;
   }
   newVaultErrorMessage.value = isCreated ? "" : takeErrorMessage();
 }
@@ -491,7 +497,7 @@ onBeforeUnmount(() => {
             <span class="vault-count">{{ vault.readIssues?.length ? `${vault.itemCount} + ${vault.readIssues.length} unreadable` : vault.itemCount }}</span>
           </button>
         </div>
-        <form v-if="isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
+        <form v-if="store.isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
           <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
           <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
             <span>Where</span>
@@ -505,11 +511,11 @@ onBeforeUnmount(() => {
           </p>
           <p v-if="newVaultErrorMessage" class="error new-vault-error" role="alert" data-testid="new-vault-error">{{ newVaultErrorMessage }}</p>
           <div class="row">
-            <button type="button" class="ghost" @click="isCreatingVault = false">Cancel</button>
+            <button type="button" class="ghost" @click="store.isCreatingVault = false">Cancel</button>
             <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
           </div>
         </form>
-        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="startCreatingVault"><AppIcon name="plus" /> New vault</button>
+        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
       </nav>
 
       <nav v-if="allTag.length > 0" aria-label="Tags" class="tags-nav" data-testid="tag-list">

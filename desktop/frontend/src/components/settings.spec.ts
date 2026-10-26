@@ -55,6 +55,7 @@ beforeEach(() => {
     allVault: [],
     selectedVaultID: "",
     isSharingOpen: false,
+    isCreatingVault: false,
     allPerson: [],
     allDevice: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
@@ -179,7 +180,7 @@ describe("People empty state", () => {
     const settings = await mountSettings();
     await settings.get('[data-testid="settings-section-people"]').trigger("click");
     expect(settings.get('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
-    expect(settings.get('[data-testid="people-share-vault"]').attributes("disabled")).toBeDefined();
+    expect(settings.get('[data-testid="people-share-vault"]').attributes("disabled")).toBeUndefined();
   });
 
   it("opens the selected vault's Share panel and closes Settings", async () => {
@@ -193,6 +194,20 @@ describe("People empty state", () => {
     expect(wrapper.find('[data-testid="settings-search"]').exists()).toBe(false);
     expect(wrapper.get('[data-testid="vault-sharing-panel"]').text()).toContain("Share “Team”");
     expect(api.listAllVaultMember).toHaveBeenCalledWith("team");
+  });
+
+  it("opens the new-vault form when the selected vault is personal, which is never shared", async () => {
+    store.allVault = [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 }];
+    store.selectedVaultID = "personal";
+    window.localStorage.setItem("hisar.settings.selectedSection", "people");
+    wrapper = mount(MainView);
+    await flushPromises();
+    await wrapper.get('[data-testid="people-share-vault"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-search"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-sharing-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="new-vault-form"]').exists()).toBe(true);
+    expect(api.listAllOrganization).toHaveBeenCalled();
   });
 });
 

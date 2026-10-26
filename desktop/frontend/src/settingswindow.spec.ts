@@ -109,6 +109,14 @@ describe("Settings window", () => {
     expect(store.isImportOpen).toBe(false);
   });
 
+  it("hands People's Share vault to the main window, which knows the selected vault", async () => {
+    const settings = await openSettingsWindow("people");
+    await settings.find('[data-testid="people-share-vault"]').trigger("click");
+    await flushPromises();
+    expect(api.openInMainWindow).toHaveBeenCalledWith("sharing");
+    expect(store.isSharingOpen).toBe(false);
+  });
+
   it("hands the pending recovery of a Secret Key replacement to the main window", async () => {
     api.replaceSecretKey.mockResolvedValue({
       status: createStatus("unlocked"),

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import type { SentShareInvitation } from "../api";
-import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, invitePerson, openSharing, store } from "../store";
+import { acceptShareInvitation, cancelShareInvitation, declineShareInvitation, invitePerson, openFromSettings, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 import { describePerson, formatRole, formatTimeAgo } from "../util";
 import AppIcon from "./AppIcon.vue";
@@ -19,11 +19,6 @@ async function submitInvite(): Promise<void> {
     inviteEmail.value = "";
     isInviting.value = false;
   }
-}
-
-async function shareSelectedVault(): Promise<void> {
-  store.isSettingsOpen = false;
-  await openSharing();
 }
 
 async function confirmCancel(invitation: SentShareInvitation): Promise<void> {
@@ -97,7 +92,7 @@ function describeInviter(name: string, email: string): string {
       <div v-else-if="isAlone" class="settings-group">
         <div class="setting">
           <p class="muted setting-text" data-testid="people-empty-hint">Nobody yet. Share a vault to see the people you share with here.</p>
-          <button data-testid="people-share-vault" :disabled="store.isBusy || !store.selectedVaultID" @click="shareSelectedVault">Share vault…</button>
+          <button data-testid="people-share-vault" :disabled="store.isBusy" @click="openFromSettings('sharing')">Share vault…</button>
         </div>
       </div>
       <div v-else class="settings-group">
