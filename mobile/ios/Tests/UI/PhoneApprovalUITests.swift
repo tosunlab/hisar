@@ -37,8 +37,8 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "Raycast wants to search Hisar and copy or paste passwords and one-time codes")
         XCTAssertEqual(app.staticTexts["phone-approval-row-App"].label, "App, Raycast")
         XCTAssertEqual(app.staticTexts["phone-approval-row-Lasts"].label, "Lasts, Until Hisar locks on Alper's MacBook Pro")
-        XCTAssertFalse(app.staticTexts["phone-approval-row-Program"].exists)
-        XCTAssertFalse(app.staticTexts["phone-approval-row-Terminal"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["phone-approval-row-Program"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["phone-approval-row-Terminal"].exists)
         XCTAssertFalse(app.switches["phone-approval-remember"].exists, "a launcher's approval always lasts until Hisar locks")
         let note = app.descendants(matching: .any)["phone-approval-note"].label
         XCTAssertEqual(note, "Approving lets Raycast use Hisar until it locks on your Mac; it does not unlock Hisar there.")
@@ -69,7 +69,7 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertEqual(app.staticTexts["phone-approval-summary"].label, "omp in Tern (via hisar) wants to use 2 secrets")
         XCTAssertEqual(app.descendants(matching: .any)["phone-approval-row-Project"].label, "Project, ~/src/acme-web")
         XCTAssertEqual(app.descendants(matching: .any)["phone-approval-row-Command"].label, "Command, npm run db:migrate")
-        XCTAssertFalse(app.staticTexts["phone-approval-row-Repository"].exists, "the agent runs in its project's root")
+        XCTAssertFalse(app.descendants(matching: .any)["phone-approval-row-Repository"].exists, "the agent runs in its project's root")
         let secrets = app.staticTexts["phone-approval-row-Secrets"].label
         XCTAssertTrue(secrets.contains("Agents › Staging Postgres › connection string") && secrets.contains("Agents › Stripe › secret key"), secrets)
         saveScreenshot("phone-approval-agent")
