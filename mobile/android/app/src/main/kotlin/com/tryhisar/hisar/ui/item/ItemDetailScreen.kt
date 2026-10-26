@@ -103,7 +103,6 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     val isWritable = vault?.let(VaultLogic::isWritable) == true
     val scrollState = rememberScrollState()
     var headerHeight by remember { mutableIntStateOf(0) }
-    // The header shows the title, so the bar shows it only once the header has scrolled away, as a list's large title.
     val isTitleInBar by remember { derivedStateOf { headerHeight > 0 && scrollState.value >= headerHeight } }
     Column(
         Modifier

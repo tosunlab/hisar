@@ -84,10 +84,7 @@ import java.time.format.FormatStyle
 /** A value of a type kept in named fields; its label is also the field name copying and references use. */
 private class NamedRow(val label: String, val value: String, val isConcealed: Boolean = false, val warning: String = "")
 
-/**
- * The sections of one item, in the iPhone app's order: header, category, other fields, websites, apps, passkeys, notes.
- * [onHeaderHeightChange] gets the header's height, which the bar's title waits for to scroll away.
- */
+/** The sections of one item, in the iPhone app's order: header, category, other fields, websites, apps, passkeys, notes. */
 @Composable
 internal fun ItemDetailContent(
     model: AppModel,
