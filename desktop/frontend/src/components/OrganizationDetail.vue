@@ -24,11 +24,11 @@ const props = defineProps<{ organization: Organization }>();
 const allVaultRole: VaultRole[] = ["owner", "editor", "reader"];
 
 type OrganizationSegment = "members" | "teams" | "invitations";
-const allSegment: { id: OrganizationSegment; label: string }[] = [
+const allSegment = computed<{ id: OrganizationSegment; label: string }[]>(() => [
   { id: "members", label: "Members" },
   { id: "teams", label: "Teams" },
-  { id: "invitations", label: "Invitations" },
-];
+  ...(props.organization.isAdmin ? [{ id: "invitations" as const, label: "Invitations" }] : []),
+]);
 const activeSegment = ref<OrganizationSegment>("members");
 const expandedAccountID = ref("");
 const actionMenu = ref<{ label: string; x: number; y: number; allAction: (ContextMenuAction | null)[]; trigger: HTMLButtonElement } | null>(null);
@@ -110,9 +110,10 @@ function selectSegment(segment: OrganizationSegment): void {
 }
 
 function moveSegment(event: KeyboardEvent): void {
-  const index = allSegment.findIndex((segment) => segment.id === activeSegment.value);
-  const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? allSegment.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + allSegment.length) % allSegment.length;
-  selectSegment(allSegment[nextIndex]!.id);
+  const segments = allSegment.value;
+  const index = segments.findIndex((segment) => segment.id === activeSegment.value);
+  const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? segments.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + segments.length) % segments.length;
+  selectSegment(segments[nextIndex]!.id);
   (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`[data-testid="organization-segment-${activeSegment.value}"]`)?.focus();
 }
 
@@ -222,7 +223,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
       </div>
     </section>
 
-    <section v-show="activeSegment === 'invitations'" id="organization-panel-invitations" role="tabpanel" aria-labelledby="organization-tab-invitations" tabindex="0">
+    <section v-if="organization.isAdmin" v-show="activeSegment === 'invitations'" id="organization-panel-invitations" role="tabpanel" aria-labelledby="organization-tab-invitations" tabindex="0">
 
     <div v-if="organization.isAdmin" class="settings-block" data-testid="organization-invite">
       <p class="section-label">Invite by email</p>

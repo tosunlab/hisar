@@ -256,9 +256,9 @@ describe("Organization screen", () => {
     for (const testID of ["rename-organization", "delete-organization", "new-team", "organization-team-menu-platform", "remove-team-member-platform-BOB222", "take-back-platform-deploy"]) {
       expect(member.find(`[data-testid="${testID}"]`).exists(), testID).toBe(false);
     }
-    await member.find('[data-testid="organization-segment-invitations"]').trigger("click");
+    expect(member.find('[data-testid="organization-segment-invitations"]').exists()).toBe(false);
     expect(member.find('[data-testid="organization-invite"]').exists()).toBe(false);
-    expect(member.find('[data-testid="organization-no-invitations"]').isVisible()).toBe(true);
+    expect(member.find('[data-testid="organization-no-invitations"]').exists()).toBe(false);
     member.unmount();
   });
 
@@ -295,6 +295,18 @@ describe("Organization screen", () => {
     expect(settings.find('[data-testid="organization-segment-members"]').attributes("aria-selected")).toBe("true");
     await settings.find('[data-testid="organization-segment-members"]').trigger("keydown", { key: "ArrowLeft" });
     expect(settings.find('[data-testid="organization-segment-invitations"]').attributes("aria-selected")).toBe("true");
+    settings.unmount();
+  });
+
+  it("only offers Members and Teams to a non-admin, including keyboard navigation", async () => {
+    api.getOrganization.mockResolvedValue(createOrganizationDetail({ role: "member", isAdmin: false }));
+    const settings = await openOrganizationInSettings();
+    expect(settings.find('[data-testid="organization-segment-invitations"]').exists()).toBe(false);
+    expect(settings.find('[data-testid="organization-no-invitations"]').exists()).toBe(false);
+    await settings.find('[data-testid="organization-segment-members"]').trigger("keydown", { key: "End" });
+    expect(settings.find('[data-testid="organization-segment-teams"]').attributes("aria-selected")).toBe("true");
+    await settings.find('[data-testid="organization-segment-teams"]').trigger("keydown", { key: "ArrowRight" });
+    expect(settings.find('[data-testid="organization-segment-members"]').attributes("aria-selected")).toBe("true");
     settings.unmount();
   });
 
