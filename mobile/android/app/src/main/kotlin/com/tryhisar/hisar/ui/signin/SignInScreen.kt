@@ -128,7 +128,7 @@ fun SignInScreen(model: AppModel) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 LogoMark(size = 56.dp)
                 Text(
-                    if (mode == SignInMode.SIGN_IN) "Sign in to use Hisar on this device." else "Enter the invite code you received, or paste the invite link.",
+                    if (mode == SignInMode.SIGN_IN) "Sign in to use Hisar on this device." else "Create your account from the invite you received.",
                     style = HisarType.subheadline,
                     color = HisarTheme.colors.secondaryLabel,
                 )
