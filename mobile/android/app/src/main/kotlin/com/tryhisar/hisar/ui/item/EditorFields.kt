@@ -46,8 +46,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.SelectableDates
 import androidx.compose.material3.SwipeToDismissBox
 import androidx.compose.material3.SwipeToDismissBoxValue
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberSwipeToDismissBoxState
@@ -301,34 +299,6 @@ fun RevealButton(isRevealed: Boolean, name: String, onToggle: () -> Unit) {
         contentDescription = if (isRevealed) "Hide $name" else "Reveal $name",
         onClick = onToggle,
     )
-}
-
-/** A Form row whose label leads and whose control trails, as a SwiftUI Toggle. */
-@Composable
-fun ToggleRow(label: String, isOn: Boolean, onChange: (Boolean) -> Unit, testTag: String, textStyle: TextStyle = HisarType.body, color: Color = HisarTheme.colors.label) {
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 44.dp)
-            .clickable(role = Role.Switch) { onChange(!isOn) }
-            .testTag(testTag)
-            .padding(horizontal = RowInset, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(label, style = textStyle, color = color, modifier = Modifier.weight(1f))
-        Switch(
-            checked = isOn,
-            onCheckedChange = null,
-            colors = SwitchDefaults.colors(
-                checkedTrackColor = Color(0xFF34C759),
-                checkedThumbColor = Color.White,
-                checkedBorderColor = Color.Transparent,
-                uncheckedTrackColor = HisarTheme.colors.fill,
-                uncheckedThumbColor = Color.White,
-                uncheckedBorderColor = Color.Transparent,
-            ),
-        )
-    }
 }
 
 /** A choice from a menu on one row, as a Form Picker: the label leads, the chosen option trails with up-down chevrons. */

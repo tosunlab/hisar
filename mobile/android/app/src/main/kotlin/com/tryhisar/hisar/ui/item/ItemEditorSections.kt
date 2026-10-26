@@ -31,6 +31,7 @@ import com.tryhisar.hisar.model.ItemField
 import com.tryhisar.hisar.model.ItemServer
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.RowDivider
+import com.tryhisar.hisar.ui.settings.ToggleRow
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 
@@ -361,10 +362,7 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
                             field.value, { value -> update(index) { it.copy(value = value) } }, "Value", "editor-field-$index-value",
                             kind = if (field.concealed) FieldKind.SECRET else FieldKind.TEXT, isSecret = field.concealed,
                         )
-                        ToggleRow(
-                            "Secret", field.concealed, { isOn -> update(index) { it.copy(concealed = isOn) } }, testTag = "editor-field-$index-secret",
-                            textStyle = HisarType.footnote, color = HisarTheme.colors.secondaryLabel,
-                        )
+                        ToggleRow("Secret", field.concealed, { isOn -> update(index) { it.copy(concealed = isOn) } }, testTag = "editor-field-$index-secret")
                     }
                     RemoveRowButton("Remove field", "editor-field-$index-remove", remove)
                 }
