@@ -137,7 +137,7 @@ Design: [Design](../design.md) §4.4 (vault keys and rotation), §5.1 (invites) 
 - **Removing someone** re-encrypts the vault: the owner's device generates a new vault key, re-encrypts every item and wraps the new key only for the remaining members (`session.RemoveVaultMember`). Copies the removed person already downloaded stay readable to them.
 - **Key pinning**: the first time this device shares with someone, it pins their signing key in `desktop.json` (`pins`), like the CLI (`localstate.State.CheckMemberPin`). Sharing, changing a role or re-encrypting the vault stops if a pinned key changes. Each person has a security code (`crypt.FormatKeyFingerprint`: the first 8 bytes of SHA-256 of their Ed25519 signing key, as 4 groups of 4 hex digits); expand a member in the sharing panel or open Settings → People to see it, and compare it over a channel you trust.
 - **Settings → People** lists the people you share a vault with and their security codes, and the share invitations you sent and received. Anyone can **Invite** someone to Hisar by email. The app shows no account roles; the admin role only matters to the operator's `hisar-server` command.
-- **Settings → Devices** lists the devices signed in to your account. **Revoke** signs another device out; to sign out this Mac, use **Sign out** in Settings → Account.
+- **Settings → Devices** lists the devices signed in to your account. **Sign out…** asks you to confirm **Sign out device** for another device. To sign out this Mac, use **Sign out** in Settings → Account.
 
 ## Signing in again: the Emergency Kit
 
