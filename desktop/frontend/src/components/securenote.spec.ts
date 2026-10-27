@@ -48,6 +48,31 @@ beforeEach(() => {
 });
 
 describe("Creating a secure note", () => {
+  it("reveals duplicate-named rows independently without changing saved Secret policy", async () => {
+    store.selectedItem = createSecureNoteItem({ fields: [
+      { name: "Recovery code", value: "first", concealed: true },
+      { name: "Recovery code", value: "second", concealed: true },
+    ] });
+    store.editorMode = "edit";
+    api.saveItem.mockImplementation(async (_vault, item) => item);
+    const wrapper = mount(ItemEditor);
+    await wrapper.find('[data-testid="editor-field-0-reveal"]').trigger("click");
+    expect(wrapper.find('input[name="fieldValue0"]').attributes("type")).toBe("text");
+    expect(wrapper.find('input[name="fieldValue1"]').attributes("type")).toBe("password");
+    expect(wrapper.find('[data-testid="editor-field-0-reveal"]').attributes("aria-label")).toBe("Hide Recovery code");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.saveItem.mock.calls[0][1].fields.map((field: { concealed: boolean }) => field.concealed)).toEqual([true, true]);
+    wrapper.unmount();
+    store.editorMode = "edit";
+    const reopened = mount(ItemEditor);
+    await reopened.findAll('.concealed input')[0].setValue(false);
+    await reopened.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.saveItem.mock.calls[1][1].fields.map((field: { concealed: boolean }) => field.concealed)).toEqual([false, true]);
+    reopened.unmount();
+  });
+
   it("opens from the + menu with only a title, notes and fields", async () => {
     const wrapper = mount(MainView, { attachTo: document.body });
     await wrapper.find('button[aria-label="New item"]').trigger("click");

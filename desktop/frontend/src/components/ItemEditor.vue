@@ -139,6 +139,12 @@ onBeforeUnmount(() => {
   store.editorDraft = null;
 });
 const isPasswordVisible = ref(false);
+const revealedCustomFields = ref(new Set<number>());
+
+function toggleCustomField(index: number): void {
+  if (revealedCustomFields.value.has(index)) revealedCustomFields.value.delete(index);
+  else revealedCustomFields.value.add(index);
+}
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isIconPickerOpen = ref(false);
 // websiteIconURL is the website whose icon Automatic shows, from the URLs as typed.
@@ -254,6 +260,7 @@ function addField(): void {
 
 function removeField(index: number): void {
   draft.fields.splice(index, 1);
+  revealedCustomFields.value = new Set([...revealedCustomFields.value].filter((row) => row !== index).map((row) => row > index ? row - 1 : row));
 }
 
 const tagText = ref("");
@@ -681,10 +688,16 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
         <input
           v-model="field.value"
           :name="`fieldValue${index}`"
-          :type="field.concealed ? 'password' : 'text'"
+          :type="field.concealed && !revealedCustomFields.has(index) ? 'password' : 'text'"
           placeholder="Value"
-          aria-label="Field value"
+          :aria-label="field.name ? `${field.name} value` : 'Field value'"
         />
+        <button v-if="field.concealed" type="button" class="ghost icon-button"
+          :aria-label="`${revealedCustomFields.has(index) ? 'Hide' : 'Show'} ${field.name || 'value'}`"
+          :title="revealedCustomFields.has(index) ? 'Hide value' : 'Show value'"
+          :data-testid="`editor-field-${index}-reveal`" @click="toggleCustomField(index)">
+          <AppIcon :name="revealedCustomFields.has(index) ? 'eyeOff' : 'eye'" />
+        </button>
         <label class="concealed" :title="'Hide this value until revealed'">
           <input v-model="field.concealed" type="checkbox" /> <span>Secret</span>
         </label>

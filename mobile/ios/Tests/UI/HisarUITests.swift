@@ -73,6 +73,15 @@ final class HisarUITests: HisarUITestCase {
         type("Recovery codes", into: app.textFields["editor-title"])
         let notesField = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
         type("4821-9930", into: notesField)
+        for index in 0...1 {
+            app.buttons["Add field"].tap()
+            type("Recovery code", into: app.textFields["editor-field-\(index)-name"])
+            type("code-\(index)", into: app.textFields["editor-field-\(index)-value"])
+            app.switches["editor-field-\(index)-secret"].tap()
+        }
+        app.buttons["editor-field-0-reveal"].tap()
+        XCTAssertTrue(app.textFields["editor-field-0-value"].exists)
+        XCTAssertTrue(app.secureTextFields["editor-field-1-value"].exists)
         saveScreenshot("add-secure-note")
         app.buttons["editor-save"].tap()
         let notesRow = app.buttons["secure-note-notes"]
@@ -92,6 +101,16 @@ final class HisarUITests: HisarUITestCase {
         notesRow.press(forDuration: 1)
         copyNotesReference.tap()
         waitFor(app.staticTexts["Secret reference copied."])
+        app.buttons["edit-item"].tap()
+        XCTAssertTrue(app.secureTextFields["editor-field-0-value"].exists)
+        XCTAssertTrue(app.secureTextFields["editor-field-1-value"].exists)
+        app.switches["editor-field-0-secret"].tap()
+        app.buttons["editor-save"].tap()
+        XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30))
+        app.buttons["edit-item"].tap()
+        XCTAssertTrue(app.textFields["editor-field-0-value"].exists)
+        XCTAssertTrue(app.secureTextFields["editor-field-1-value"].exists)
+        app.buttons["editor-cancel"].tap()
         goBack()
 
         choose("New credit card", from: "new-menu", under: "new-more")

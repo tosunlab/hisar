@@ -18,6 +18,7 @@ struct ItemEditorView: View {
     @State private var loadedItem = ItemDetail()
     @State private var isDiscardConfirmationShown = false
     @State private var isPasswordRevealed = false
+    @State private var revealedCustomFields = Set<Int>()
     @State private var isGeneratorShown = false
     @State private var isIconPickerShown = false
     @State private var isDeleteConfirmationShown = false
@@ -839,26 +840,40 @@ struct ItemEditorView: View {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
+                        .accessibilityIdentifier("editor-field-\(index)-name")
                     HStack {
-                        if draft.allField[index].concealed {
+                        if draft.allField[index].concealed && !revealedCustomFields.contains(index) {
                             SecureField("Value", text: $draft.allField[index].value)
+                                .accessibilityLabel(draft.allField[index].name.isEmpty ? "Value" : draft.allField[index].name)
+                                .accessibilityIdentifier("editor-field-\(index)-value")
                         } else {
                             TextField("Value", text: $draft.allField[index].value)
+                                .accessibilityLabel(draft.allField[index].name.isEmpty ? "Value" : draft.allField[index].name)
+                                .accessibilityIdentifier("editor-field-\(index)-value")
                         }
-                        Button {
-                            draft.allField[index].concealed.toggle()
-                        } label: {
-                            Image(systemName: draft.allField[index].concealed ? "eye" : "eye.slash")
-                                .iconButtonHitArea()
+                        if draft.allField[index].concealed {
+                            Button {
+                                if revealedCustomFields.contains(index) { revealedCustomFields.remove(index) }
+                                else { revealedCustomFields.insert(index) }
+                            } label: {
+                                Image(systemName: revealedCustomFields.contains(index) ? "eye.slash" : "eye")
+                                    .iconButtonHitArea()
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityLabel("\(revealedCustomFields.contains(index) ? "Hide" : "Show") \(draft.allField[index].name.isEmpty ? "value" : draft.allField[index].name)")
+                            .accessibilityIdentifier("editor-field-\(index)-reveal")
                         }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.themeSecondary)
-                        .accessibilityLabel("Secret")
-                        .accessibilityAddTraits(draft.allField[index].concealed ? .isSelected : [])
                     }
+                    Toggle("Secret", isOn: $draft.allField[index].concealed)
+                        .accessibilityLabel("Secret \(draft.allField[index].name)")
+                        .accessibilityIdentifier("editor-field-\(index)-secret")
                 }
             }
-            .onDelete { draft.allField.remove(atOffsets: $0) }
+            .onDelete { offsets in
+                draft.allField.remove(atOffsets: offsets)
+                revealedCustomFields = Set(revealedCustomFields.filter { !offsets.contains($0) }.map { row in row - offsets.filter { $0 < row }.count })
+            }
             Button {
                 draft.allField.append(ItemField(name: "", value: "", concealed: false))
             } label: {
