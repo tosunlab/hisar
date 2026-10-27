@@ -215,9 +215,9 @@ struct ItemEditorView: View {
                 }
             }
             .confirmationDialog("Delete “\(draft.title)”?", isPresented: $isDeleteConfirmationShown, titleVisibility: .visible) {
-                Button("Delete", role: .destructive, action: delete)
+                Button("Delete item", role: .destructive, action: delete)
             } message: {
-                Text("It is deleted on every device that can see this vault.")
+                Text(VaultSummary.itemDeletionMessage(model.findVault(vaultID: vaultID)))
             }
             .confirmationDialog("Discard changes?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
                 Button("Discard", role: .destructive, action: close)

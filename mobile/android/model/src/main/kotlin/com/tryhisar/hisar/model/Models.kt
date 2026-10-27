@@ -137,6 +137,13 @@ data class VaultSummary(
         const val TYPE_PERSONAL = "personal"
         const val TYPE_SHARED = "shared"
         const val TYPE_ORGANIZATION = "organization"
+
+        fun itemDeletionMessage(vault: VaultSummary?): String =
+            if (vault?.type == TYPE_PERSONAL) {
+                "It is removed from all your devices. It can't be undone."
+            } else {
+                "It is removed from ${vault?.name?.ifEmpty { null } ?: "this vault"} for everyone with access to the vault. It can't be undone."
+            }
     }
 }
 

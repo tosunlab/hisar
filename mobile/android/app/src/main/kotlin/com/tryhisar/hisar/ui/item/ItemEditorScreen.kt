@@ -35,6 +35,7 @@ import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.EditorRequest
 import com.tryhisar.hisar.app.ItemEditorDraft
 import com.tryhisar.hisar.model.CardDescription
+import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.theme.HisarTheme
@@ -225,8 +226,8 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
     if (isDeleteConfirmationShown && currentDraft != null) {
         DestructiveConfirmation(
             title = "Delete “${currentDraft.item.title}”?",
-            message = "It is deleted on every device that can see this vault.",
-            action = "Delete",
+            message = VaultSummary.itemDeletionMessage(unlockedData.allVault.firstOrNull { it.id == vaultID }),
+            action = "Delete item",
             onConfirm = ::delete,
             onDismiss = { isDeleteConfirmationShown = false },
             testTag = "editor-delete-confirmation",

@@ -403,6 +403,17 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(identityStore.allIdentity.contains { $0.host == "www.netflix.com" })
     }
 
+    func testItemDeletionNamesTheVaultAndHasNoUndo() {
+        XCTAssertEqual(VaultSummary.itemDeletionMessage(VaultSummary(id: "p", name: "Personal", type: "personal", role: "owner", itemCount: 0)),
+                       "It is removed from all your devices. It can't be undone.")
+        for type in ["shared", "organization"] {
+            XCTAssertEqual(VaultSummary.itemDeletionMessage(VaultSummary(id: "s", name: "Production", type: type, role: "editor", itemCount: 0)),
+                           "It is removed from Production for everyone with access to the vault. It can't be undone.")
+        }
+        XCTAssertEqual(VaultSummary.itemDeletionMessage(nil),
+                       "It is removed from this vault for everyone with access to the vault. It can't be undone.")
+    }
+
     func testSaveSecureNoteKeepsItsCategoryAndIsNotALogin() async {
         let model = await createUnlockedModel()
         let draft = ItemDetail(category: ItemDetail.categorySecureNote, title: "Recovery codes", notes: "one\ntwo")

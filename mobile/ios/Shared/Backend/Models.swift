@@ -135,6 +135,14 @@ struct VaultSummary: Codable, Identifiable, Hashable {
 
     var isOrganization: Bool { type == Self.typeOrganization }
 
+    static func itemDeletionMessage(_ vault: VaultSummary?) -> String {
+        if vault?.type == typePersonal {
+            return "It is removed from all your devices. It can't be undone."
+        }
+        let name = vault.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "this vault"
+        return "It is removed from \(name) for everyone with access to the vault. It can't be undone."
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, name, type, role, itemCount
         case readIssues, isPersonalExtra
