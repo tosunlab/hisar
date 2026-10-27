@@ -299,7 +299,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                     </button>
                   </template>
                 </div>
-                <ShareRecipientConfirmation :invitation="invitation" />
+                <div v-if="invitation.requiresConfirmation" class="invitation-action">
+                  <ShareRecipientConfirmation :invitation="invitation" />
+                </div>
               </li>
             </ul>
           </template>
@@ -420,6 +422,10 @@ h2 {
   align-items: center;
   gap: 10px;
   padding: 10px 12px;
+}
+
+.invitation-action {
+  margin: 0 12px 10px 54px;
 }
 
 .member-text {
