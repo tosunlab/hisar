@@ -186,6 +186,7 @@ const selectedVault = computed(() => store.allVault.find((vault) => vault.id ===
 const canShareVault = computed(() => selectedVault.value !== undefined && selectedVault.value.type !== "personal");
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
 const canCreate = computed(() => canEdit.value && !isReferenceScope.value);
+const readerDescription = computed(() => selectedVault.value?.role === "reader" ? `You can view items in ${selectedVault.value.name}. You cannot add or change items.` : "");
 // allVaultGroup is the sidebar's vaults: the user's own and shared vaults, then a group per organization by name.
 const allVaultGroup = computed(() => {
   const groupByID = new Map<string, VaultGroup>();
@@ -690,6 +691,7 @@ onBeforeUnmount(() => {
         <div>
           <h2>{{ selectedVault?.name ?? "" }}</h2>
           <span class="muted">{{ healthyItemCount }} {{ healthyItemCount === 1 ? "item" : "items" }}<template v-if="unreadableItemCount"> · {{ unreadableItemCount }} unreadable</template></span>
+          <span v-if="readerDescription" class="reader-badge" aria-describedby="reader-access">Reader</span>
         </div>
         <div class="new-item">
           <button
@@ -719,11 +721,13 @@ onBeforeUnmount(() => {
           >
             <AppIcon name="more" />
           </button>
+          <span :tabindex="readerDescription ? 0 : undefined" :role="readerDescription ? 'group' : undefined" :aria-label="readerDescription ? 'New item unavailable' : undefined" :aria-describedby="readerDescription ? 'reader-access' : undefined">
           <button
             ref="newItemTrigger"
             class="primary icon-button"
             :disabled="!canEdit"
-            :title="`New item (${shortcutModifier}N for a login)`"
+            :title="readerDescription || `New item (${shortcutModifier}N for a login)`"
+            :aria-describedby="readerDescription ? 'reader-access' : undefined"
             aria-label="New item"
             aria-haspopup="menu"
             :aria-expanded="isNewItemMenuOpen"
@@ -734,6 +738,7 @@ onBeforeUnmount(() => {
           >
             <AppIcon name="plus" />
           </button>
+          </span>
           <div v-if="isNewItemMenuOpen" ref="newItemMenuPanel" class="card new-item-menu" role="menu" aria-label="New item">
             <button class="ghost" role="menuitem" data-testid="new-login" @click="chooseNewItem(startCreatingItem)">
               <AppIcon name="globe" /> Login <kbd>{{ shortcutModifier }}N</kbd>
@@ -772,6 +777,7 @@ onBeforeUnmount(() => {
           </div>
         </div>
       </div>
+      <p v-if="readerDescription && !isReferenceScope" id="reader-access" class="reader-notice">{{ readerDescription }}</p>
       <div class="search">
         <AppIcon name="search" />
         <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" :placeholder="store.isAllItemsSelected ? 'Search all vaults' : 'Search'" :aria-label="store.isAllItemsSelected ? 'Search all vaults' : 'Search items'" @keydown.down.prevent="enterList" />
@@ -880,7 +886,7 @@ onBeforeUnmount(() => {
           <h3>{{ store.isAllItemsSelected ? "All items" : store.isFavoritesSelected ? "Favorites" : selectedVault ? selectedVault.name : "Hisar" }}</h3>
           <p class="muted">Select an item to see its details.</p>
           <dl class="shortcut-list">
-            <div><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>
+            <div v-if="canCreate"><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}F</kbd></dt><dd>Search</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}C</kbd></dt><dd>Copy username</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}{{ shiftModifier }}C</kbd></dt><dd>Copy password</dd></div>
@@ -1246,6 +1252,19 @@ onBeforeUnmount(() => {
   margin: 4px 0;
   border: none;
   border-top: 1px solid var(--color-border);
+}
+
+.reader-badge {
+  margin-left: 6px;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: var(--color-selected);
+  font-size: var(--font-size-11);
+}
+.reader-notice {
+  margin: 0 14px 10px;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-12);
 }
 
 .type-filter {

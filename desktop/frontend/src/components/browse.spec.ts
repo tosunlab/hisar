@@ -123,3 +123,35 @@ describe("Repeat search", () => {
     expect(store.selectedItem?.id).toBe("one");
   });
 });
+
+describe("Reader access", () => {
+  it("explains disabled creation accessibly and keeps useful shortcut guidance", async () => {
+    store.allVault[0] = { ...store.allVault[0], name: "Work", type: "shared", role: "reader" };
+    const wrapper = mount(MainView, { attachTo: document.body });
+    const description = "You can view items in Work. You cannot add or change items.";
+    expect(wrapper.get(".reader-badge").text()).toBe("Reader");
+    expect(wrapper.get("#reader-access").text()).toBe(description);
+    const control = wrapper.get('[aria-label="New item"]');
+    expect(control.attributes("disabled")).toBeDefined();
+    expect(control.attributes("aria-describedby")).toBe("reader-access");
+    expect(control.attributes("title")).toBe(description);
+    const keyboardExplanation = wrapper.get('[aria-label="New item unavailable"]');
+    (keyboardExplanation.element as HTMLElement).focus();
+    expect(document.activeElement).toBe(keyboardExplanation.element);
+    expect(keyboardExplanation.attributes("aria-describedby")).toBe("reader-access");
+    expect(wrapper.get(".shortcut-list").text()).not.toContain("New item");
+    expect(wrapper.get(".shortcut-list").text()).toContain("Copy username");
+    expect(wrapper.get(".shortcut-list").text()).toContain("Search");
+    store.allVault[0].role = "owner";
+    await flushPromises();
+    expect(wrapper.find(".reader-badge").exists()).toBe(false);
+    expect(wrapper.get(".shortcut-list").text()).toContain("New item");
+    expect(control.attributes("disabled")).toBeUndefined();
+    store.isFavoritesSelected = true;
+    store.allFavorite = [];
+    await flushPromises();
+    expect(wrapper.get(".shortcut-list").text()).not.toContain("New item");
+    expect(wrapper.get(".shortcut-list").text()).toContain("Search");
+    expect(wrapper.get(".shortcut-list").text()).toContain("Copy password");
+  });
+});
