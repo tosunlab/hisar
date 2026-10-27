@@ -5,6 +5,7 @@ import type { ApprovalEvent, Status as SSHAgentStatus } from "../bindings/github
 import { BrowserBridge, InviteLinkService, Service, UpdateService } from "../bindings/github.com/tryhisar/hisar/core/app";
 import type { BrowserInstallation } from "../bindings/github.com/tryhisar/hisar/core/browserprotocol";
 import { Service as CommandLineService } from "../bindings/github.com/tryhisar/hisar/desktop/commandline";
+import type { MasterPasswordFeedback, PasswordStrength } from "../bindings/github.com/tryhisar/hisar/core/item";
 import type {
   Installation as CommandLineInstallation,
   LauncherApp,
@@ -229,7 +230,7 @@ function normalizeFavoriteItem(boundFavorite: BoundFavoriteItem): FavoriteItem {
   return { ...boundFavorite, item: normalizeItem(boundFavorite.item) };
 }
 
-export type { BrowserInstallation, BrowserPairingRequest, CommandLineInstallation, LauncherApp, PairedBrowser };
+export type { BrowserInstallation, BrowserPairingRequest, CommandLineInstallation, LauncherApp, MasterPasswordFeedback, PairedBrowser, PasswordStrength };
 
 export interface CommandLineStatus extends Omit<BoundCommandLineStatus, "allInstallation"> {
   allInstallation: CommandLineInstallation[];
@@ -383,6 +384,7 @@ const wailsApi = {
   deletePasskey: async (vaultID: string, itemID: string, credentialID: string): Promise<ItemDetail> =>
     normalizeItem(await Service.DeletePasskey(vaultID, itemID, credentialID)),
   generatePassword: (config: PasswordConfig): Promise<string> => Service.GeneratePassword(config),
+  ratePassword: (password: string): Promise<PasswordStrength> => Service.RatePassword(password),
   generateSSHKey: async (vaultID: string, title: string, keyType: SSHKeyType): Promise<ItemDetail> =>
     normalizeItem(await Service.GenerateSSHKey(vaultID, title, keyType)),
   importSSHKey: async (vaultID: string, title: string, privateKeyText: string, passphrase: string): Promise<ItemDetail> =>
@@ -492,6 +494,7 @@ const wailsApi = {
   savePendingRecoveryEmergencyKit: (operationID: string, password: string): Promise<string> => Service.SavePendingRecoveryEmergencyKit(operationID, password),
   acknowledgePendingRecovery: (operationID: string, password: string): Promise<void> => Service.AcknowledgePendingRecovery(operationID, password),
   discardPreparedRecovery: (operationID: string, password: string): Promise<void> => Service.DiscardPreparedRecovery(operationID, password),
+  checkMasterPassword: (password: string): Promise<MasterPasswordFeedback> => Service.CheckMasterPassword(password),
   changeMasterPassword: (currentPassword: string, newPassword: string): Promise<CredentialChangeResult> =>
     Service.ChangeMasterPassword(currentPassword, newPassword),
   replaceSecretKey: (password: string): Promise<CredentialChangeResult> => Service.ReplaceSecretKey(password),

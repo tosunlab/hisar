@@ -368,6 +368,11 @@ func (hisar *Hisar) GeneratePassword(length int, isDigitIncluded, isSymbolInclud
 	return hisar.service.GeneratePassword(app.PasswordConfig{Length: length, Digits: isDigitIncluded, Symbols: isSymbolIncluded})
 }
 
+// RatePassword returns item.PasswordStrength ({"level", "label", "bits"}) as JSON; level is "" for an empty password.
+func (hisar *Hisar) RatePassword(password string) (string, error) {
+	return encodeJSON(hisar.service.RatePassword(password), nil)
+}
+
 // ListAllLoginForService returns the logins matching an AutoFill service identifier (a URL or a bare domain), as JSON.
 func (hisar *Hisar) ListAllLoginForService(serviceIdentifier string) (string, error) {
 	if err := app.ReloadExactHostMatch(hisar.service); err != nil {

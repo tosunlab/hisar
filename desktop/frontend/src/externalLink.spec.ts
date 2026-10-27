@@ -2,7 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 import { mount } from "@vue/test-utils";
 
 const openURL = vi.hoisted(() => vi.fn().mockResolvedValue(undefined));
-vi.mock("./api", () => ({ api: { openURL } }));
+vi.mock("./api", () => ({
+  api: {
+    openURL,
+    ratePassword: vi.fn().mockResolvedValue({ level: "", label: "", bits: 0 }),
+    checkMasterPassword: vi.fn().mockResolvedValue({ level: "", label: "", bits: 0, message: "", isBlocking: false }),
+  },
+}));
 
 const { openExternalLink } = await import("./externalLink");
 const SignInView = (await import("./components/SignInView.vue")).default;
