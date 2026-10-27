@@ -15,6 +15,7 @@ struct UnlockPanel: View {
     var signOut: (() -> Void)?
 
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var promptedLockCount = -1
     @State private var password = ""
     @FocusState private var isPasswordFocused: Bool
@@ -27,9 +28,13 @@ struct UnlockPanel: View {
                         .padding(.bottom, 6)
                     Text("Hisar is locked")
                         .font(.title2.weight(.bold))
-                    Text(email)
+                    Text(verbatim: email)
                         .font(.subheadline)
                         .foregroundStyle(.themeSecondary)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 1 : nil)
+                        .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.6 : 1)
+                        .truncationMode(.middle)
+                        .accessibilityLabel(Text(verbatim: email))
                         .accessibilityIdentifier("lock-email")
                     if !requestDescription.isEmpty {
                         Text(requestDescription)

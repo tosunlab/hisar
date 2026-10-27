@@ -42,6 +42,20 @@ class IosTestParityTest {
     private val notApplicable = run {
         val identityStore = "Android AutoFill asks Hisar for logins at fill time; it has no credential identity store to keep up to date (D3)"
         mapOf(
+            "testCredentialErrorsStayBesideSubmission" to
+                "Checks the iOS Form error position with its keyboard; Android uses a separate Compose form",
+            "testSignInModesScaleAtAccessibilitySizes" to
+                "Checks the iOS Dynamic Type replacement for its unscaled segmented control; Android has scaled Compose mode buttons",
+            "testCameraAuthorizationChoosesActionableScannerState" to
+                "Covers AVFoundation camera authorization and the iOS app Settings route",
+            "testNewAccountKitRetryKeepsTheKeyAndUsesAFreshDirectory" to
+                "Covers the iPhone initial Emergency Kit retry and its temporary PDF directories",
+            "testDeferredSignupRequiresProtectedUnambiguousDelivery" to
+                "The focused deferred-signup presentation is currently iPhone-specific",
+            "testDeferredSignupUsesOnePasswordWithoutSwitchingAccounts" to
+                "The focused deferred-signup presentation is currently iPhone-specific",
+            "testDeferredSignupFinishLaterClearsDeliveryButKeepsTheRecord" to
+                "The focused deferred-signup presentation is currently iPhone-specific",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

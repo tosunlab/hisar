@@ -35,6 +35,9 @@ the browser: `java.net.IDN` is IDNA2003, which would turn `faß.de` into the dif
 server validation and invite app links share this URI parsing, and invite links keep the original server origin when
 they prefill Create account.
 
+Full-screen setup, biometric onboarding, recovery and credential import hide the underlying screen from accessibility.
+Their touch barrier consumes unused pointer events while preserving the tabs' navigation state.
+
 ### Build and test
 
 You need Go, JDK 21 (the Gradle daemon asks for it in `android/gradle/gradle-daemon-jvm.properties`), and the Android

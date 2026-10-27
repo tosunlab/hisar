@@ -28,6 +28,15 @@ Saving stores the item in the chosen vault. Canceling or swiping down with unsav
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 
+At accessibility text sizes, the lock screen keeps the account email on one line, shrinking it or truncating its middle.
+VoiceOver reads the full address.
+Sign-in and create-account failures appear immediately above their submit button, without clearing the entered fields.
+At accessibility text sizes, sign-in modes use stacked buttons and a wrapping heading instead of a segmented control.
+The Emergency Kit scanner explains denied or restricted camera access. **Open Settings** is available for denied access.
+Returning from Settings rechecks permission before starting the camera.
+If creating the first Emergency Kit fails, its section offers **Try again** and keeps the Secret Key and Copy available.
+Retrying uses a fresh temporary folder. Only a completed non-copy handoff enables the explicit saved confirmation.
+
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
 An absent plan version never enables the delete button.
@@ -36,11 +45,13 @@ An absent plan version never enables the delete button.
 `ListPendingRecovery` supplies account metadata, not the new Secret Key. The user chooses a record and enters its
 master password to resume setup or prepare an Emergency Kit. The kit and Secret Key remain visible until the user
 closes recovery, changes accounts, or locks the app. Closing removes the temporary PDF but keeps the protected journal.
-Only **I saved the new Emergency Kit** calls `AcknowledgePendingRecovery`. Without the OS keychain, setup stops before
+Only an explicit saved confirmation calls `AcknowledgePendingRecovery`. Without the OS keychain, setup stops before
 the remote change until the user saves and confirms the new kit. After a restart, the user supplies the saved kit's
 Secret Key through `ResumePendingRecoveryWithSecretKey`. Metadata-only manual-unlock records remain visible for
 future sign-ins. `DiscardPreparedRecovery` removes only a setup for which no remote change was sent.
 The Android root screen and `PendingRecoveryModel` use the same protocol and test names.
+Choosing a protected sign-up that only needs its kit opens **Save your Secret Key**. Enter its master password once,
+save or print the kit, then confirm **I saved my Emergency Kit**. This does not switch the signed-in account.
 
 ## iPhone Duo
 

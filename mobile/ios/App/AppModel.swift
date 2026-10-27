@@ -356,8 +356,14 @@ final class AppModel: ObservableObject {
     }
 
     func exportNewAccountEmergencyKit() async -> EmergencyKitExport? {
+        let epoch = lifecycleEpoch
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
-        return await perform(isBusyShown: false) { try $0.exportNewAccountEmergencyKit(directory: directory) }
+        let result = await perform(isBusyShown: false) { try $0.exportNewAccountEmergencyKit(directory: directory) }
+        guard let result, epoch == lifecycleEpoch else {
+            try? FileManager.default.removeItem(at: directory)
+            return nil
+        }
+        return result
     }
 
     // "I saved my Emergency Kit": ends the sign-up's pending recovery, then offers Face ID.

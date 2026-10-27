@@ -24,6 +24,9 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.boundsInWindow
@@ -87,6 +90,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val navigationInset = with(density) { WindowInsets.navigationBars.exclude(WindowInsets.ime).getBottom(this).toDp() }
         val noticeInset = (with(density) { noticeLayout.clearance.toDp() } - navigationInset).coerceAtLeast(0.dp)
         val showsTabs = screen == Screen.Unlocked && !isSheetShown && newAccountStep == null && !isRecoveryShown && credentialImportSheet == null
+        val coversBaseScreen = newAccountStep != null || isRecoveryShown || (screen == Screen.Unlocked && credentialImportSheet != null)
 
         LaunchedEffect(copyCount) {
             if (copyCount > 0) view.performConfirmHaptic()
@@ -113,37 +117,50 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                 },
             ) { padding ->
                 Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
-                    when (val current = screen) {
-                        Screen.Starting -> StartingScreen()
-                        is Screen.Failed -> StartupFailureScreen(current.message)
-                        is Screen.UpdateRequired -> UpdateRequiredScreen(current.requirement, isCheckingMinimumVersion) {
-                            scope.launch { model.checkMinimumVersion() }
+                    Box(if (coversBaseScreen) Modifier.clearAndSetSemantics {} else Modifier) {
+                        when (val current = screen) {
+                            Screen.Starting -> StartingScreen()
+                            is Screen.Failed -> StartupFailureScreen(current.message)
+                            is Screen.UpdateRequired -> UpdateRequiredScreen(current.requirement, isCheckingMinimumVersion) {
+                                scope.launch { model.checkMinimumVersion() }
+                            }
+                            Screen.SignedOut -> SignInScreen(model)
+                            Screen.Locked -> LockScreen(model)
+                            Screen.Unlocked -> MainTabs(model)
                         }
-                        Screen.SignedOut -> SignInScreen(model)
-                        Screen.Locked -> LockScreen(model)
-                        Screen.Unlocked -> MainTabs(model)
                     }
 
-                    when (val step = newAccountStep) {
-                        is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(step.secretKey, status.email, status.server, copySecret, model.signIn::finishNewSecretKey)
-                        NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
-                        null -> Unit
+                    if (coversBaseScreen) {
+                        Box(
+                            Modifier.fillMaxSize().testTag("full-screen-cover").pointerInput(Unit) {
+                                awaitPointerEventScope {
+                                    while (true) {
+                                        val event = awaitPointerEvent(PointerEventPass.Final)
+                                        event.changes.forEach { it.consume() }
+                                    }
+                                }
+                            },
+                        ) {
+                            when (val step = newAccountStep) {
+                                is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(step.secretKey, status.email, status.server, copySecret, model.signIn::finishNewSecretKey)
+                                NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
+                                null -> Unit
+                            }
+                            credentialImportSheet?.let { sheet ->
+                                if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) CredentialImportScreen(model, sheet)
+                            }
+                            if (isRecoveryShown) PendingRecoveryScreen(model)
+                        }
                     }
-
-                    credentialImportSheet?.let { sheet ->
-                        if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) CredentialImportScreen(model, sheet)
-                    }
-
                     presentedApproval?.let { approval ->
                         if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) PhoneApprovalSheet(model, approval)
                     }
 
-                    if (pendingRecovery.isNotEmpty() && !isRecoveryShown) {
+                    if (pendingRecovery.isNotEmpty() && !coversBaseScreen) {
                         Box(Modifier.align(Alignment.TopCenter).background(HisarTheme.colors.systemBackground).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp)) {
                             PlainButton("Finish account recovery", model.pendingRecovery::open, testTag = "pending-recovery-open")
                         }
                     }
-                    if (isRecoveryShown) PendingRecoveryScreen(model)
                 }
             }
             }

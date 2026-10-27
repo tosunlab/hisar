@@ -10,6 +10,7 @@ struct SignInView: View {
     static let defaultServer = "https://eu.tryhisar.com"
 
     @EnvironmentObject private var model: AppModel
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @State private var mode: Mode = .signIn
     @State private var server = SignInView.defaultServer
     @State private var isServerShown = false
@@ -40,19 +41,52 @@ struct SignInView: View {
         inviteLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var heading: String {
+        mode == .signIn ? "Welcome back" : "Create account"
+    }
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
                     VStack(alignment: .leading, spacing: 14) {
                         LogoMark(size: 56)
-                        Picker("Mode", selection: $mode) {
-                            ForEach(Mode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
+                        if dynamicTypeSize.isAccessibilitySize {
+                            Text(heading)
+                                .font(.largeTitle.bold())
+                                .fixedSize(horizontal: false, vertical: true)
+                                .accessibilityAddTraits(.isHeader)
+                                .accessibilityIdentifier("sign-in-heading")
+                            VStack(spacing: 8) {
+                                ForEach(Mode.allCases) { option in
+                                    Button {
+                                        mode = option
+                                    } label: {
+                                        HStack {
+                                            Text(option.rawValue)
+                                                .multilineTextAlignment(.leading)
+                                            Spacer()
+                                            if mode == option {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                    }
+                                    .buttonStyle(.bordered)
+                                    .accessibilityAddTraits(mode == option ? .isSelected : [])
+                                }
                             }
+                            .accessibilityElement(children: .contain)
+                            .accessibilityIdentifier("sign-in-mode")
+                        } else {
+                            Picker("Mode", selection: $mode) {
+                                ForEach(Mode.allCases) { mode in
+                                    Text(mode.rawValue).tag(mode)
+                                }
+                            }
+                            .pickerStyle(.segmented)
+                            .accessibilityIdentifier("sign-in-mode")
                         }
-                        .pickerStyle(.segmented)
-                        .accessibilityIdentifier("sign-in-mode")
                     }
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
@@ -68,17 +102,15 @@ struct SignInView: View {
                         .accessibilityIdentifier("dismiss-signed-out-reason")
                     }
                 }
-                if let errorMessage = model.errorMessage {
-                    Section {
-                        ErrorBanner(message: errorMessage)
-                    }
-                }
                 if mode == .signIn {
                     signInSections
                 } else {
                     createAccountSections
                 }
                 Section {
+                    if let errorMessage = model.errorMessage {
+                        ErrorBanner(message: errorMessage)
+                    }
                     Button(action: submit) {
                         Group {
                             if model.isBusy {
@@ -103,7 +135,8 @@ struct SignInView: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .applyThemedListBackground()
-            .navigationTitle(mode == .signIn ? "Welcome back" : "Create account")
+            .navigationTitle(dynamicTypeSize.isAccessibilitySize ? "Hisar" : heading)
+            .navigationBarTitleDisplayMode(dynamicTypeSize.isAccessibilitySize ? .inline : .large)
         }
         .onChange(of: mode) { _, _ in
             password = ""

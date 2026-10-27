@@ -135,6 +135,9 @@ func ResumePendingFactor(ctx context.Context, client *apiclient.Client, email st
 			}
 			return unlocked, secretKey, loginErr
 		}
+		if pending.PriorSecretKey == "" {
+			return nil, secretKey, errors.New("enter the previous Secret Key to resume this interrupted replacement")
+		}
 		oldKey, err := crypt.ParseSecretKey(pending.PriorSecretKey)
 		if err != nil {
 			return nil, secretKey, err

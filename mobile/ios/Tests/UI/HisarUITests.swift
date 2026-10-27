@@ -2,6 +2,59 @@ import UIKit
 import XCTest
 
 final class HisarUITests: HisarUITestCase {
+    func testSignInModesScaleAtAccessibilitySizes() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        waitFor(signInModeControl)
+        XCTAssertFalse(app.segmentedControls["sign-in-mode"].exists)
+        let heading = app.staticTexts["sign-in-heading"]
+        XCTAssertEqual(heading.label, "Welcome back")
+        XCTAssertTrue(signInModeControl.buttons["Sign in"].isSelected)
+        selectSignInMode("Create account")
+        scrollTo(heading)
+        XCTAssertEqual(heading.label, "Create account")
+        XCTAssertTrue(signInModeControl.buttons["Create account"].isSelected)
+        XCTAssertTrue(app.navigationBars["Hisar"].exists)
+        saveScreenshot("sign-in-accessibility")
+    }
+
+    func testCredentialErrorsStayBesideSubmission() {
+        app.launch()
+        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        type("error@example.com", into: app.textFields["sign-up-email"])
+        type("Error Test", into: app.textFields["sign-up-name"])
+        type("tiny", into: app.secureTextFields["sign-up-password"])
+        type("tiny", into: app.secureTextFields["sign-up-repeated-password"])
+        scrollTo(app.buttons["sign-in-submit"])
+        app.buttons["sign-in-submit"].tap()
+        let error = app.staticTexts["error-message"]
+        waitForHittable(error)
+        XCTAssertLessThan(error.frame.maxY, app.buttons["sign-in-submit"].frame.maxY)
+        for _ in 0..<8 {
+            if app.textFields["sign-up-name"].isHittable { break }
+            app.collectionViews.firstMatch.swipeDown()
+        }
+        XCTAssertEqual(app.textFields["sign-up-name"].value as? String, "Error Test")
+
+        for _ in 0..<8 {
+            if app.segmentedControls["sign-in-mode"].isHittable { break }
+            app.collectionViews.firstMatch.swipeDown()
+        }
+        app.segmentedControls["sign-in-mode"].buttons["Sign in"].tap()
+        type("error@example.com", into: app.textFields["sign-in-email"])
+        type("not-a-secret-key", into: app.textFields["sign-in-secret-key"])
+        type("wrong", into: app.secureTextFields["sign-in-password"])
+        app.secureTextFields["sign-in-password"].typeText("\n")
+        waitForHittable(error)
+        XCTAssertLessThan(error.frame.maxY, app.buttons["sign-in-submit"].frame.maxY)
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        for _ in 0..<8 {
+            if app.textFields["sign-in-email"].isHittable { break }
+            app.collectionViews.firstMatch.swipeDown()
+        }
+        XCTAssertEqual(app.textFields["sign-in-email"].value as? String, "error@example.com")
+    }
+
     func testAccountItemLockAndSignInFlow() throws {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_INVITE_LINK")
         let email = "ios-ui@example.com"
