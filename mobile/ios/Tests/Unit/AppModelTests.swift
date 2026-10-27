@@ -55,17 +55,33 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "Incorrect email, master password or Secret Key")
     }
 
-    func testSignUpShowsNewSecretKey() async {
+    func testSignUpShowsNewSecretKey() async throws {
         let model = await createModel()
         let isSignedUp = await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
         XCTAssertTrue(isSignedUp)
         XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
         XCTAssertEqual(model.screen, .unlocked)
+        XCTAssertFalse(model.isPendingRecoveryShown, "the Secret Key screen stands in for the recovery screen")
+        let isFinishedWithoutKit = await model.finishNewSecretKey()
+        XCTAssertFalse(isFinishedWithoutKit)
+        XCTAssertEqual(model.errorMessage, "Save the Emergency Kit before acknowledging delivery")
+        let possibleExport = await model.exportNewAccountEmergencyKit()
+        let export = try XCTUnwrap(possibleExport)
+        XCTAssertEqual(export.secretKey, FakeBackend.secretKey)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: export.emergencyKitPath))
+        XCTAssertFalse(backend.allCallName.contains("exportEmergencyKit"), "no master password asked again")
+        let isFinished = await model.finishNewSecretKey()
+        XCTAssertTrue(isFinished)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertTrue(backend.allPendingRecovery.isEmpty, "the sign-up record is acknowledged")
+        XCTAssertFalse(backend.allCallName.contains("acknowledgePendingRecovery"), "no master password asked again")
+        model.removeEmergencyKit(export)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: export.emergencyKitPath))
         model.dismissNewSecretKey()
         XCTAssertNil(model.newSecretKey)
     }
 
-    func testSignUpWithoutInviteAsksTheServerAndShowsNewSecretKey() async {
+    func testSignUpWithoutInviteAsksTheServerAndShowsNewSecretKey() async throws {
         let model = await createModel()
         let isSignedUp = await model.signUpWithoutInvite(server: " https://hisar.example.com ", email: " bob@example.com ", name: "Bob", password: FakeBackend.password)
         XCTAssertTrue(isSignedUp)
@@ -77,6 +93,14 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
         XCTAssertEqual(model.screen, .unlocked)
         XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isPendingRecoveryShown)
+        let possibleExport = await model.exportNewAccountEmergencyKit()
+        let export = try XCTUnwrap(possibleExport)
+        XCTAssertEqual(export.secretKey, FakeBackend.secretKey)
+        let isFinished = await model.finishNewSecretKey()
+        XCTAssertTrue(isFinished)
+        XCTAssertTrue(backend.allPendingRecovery.isEmpty)
+        model.removeEmergencyKit(export)
     }
 
     func testSignUpWithoutInviteOnAClosedServerShowsTheServersSentence() async {
@@ -92,6 +116,11 @@ final class AppModelTests: XCTestCase {
     func testLockHidesTheNewSecretKey() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        await model.postponeNewSecretKey()
+        XCTAssertNil(model.newSecretKey)
+        XCTAssertFalse(model.isPendingRecoveryShown, "Finish later leaves the record for the banner, not the screen")
+        XCTAssertEqual(model.allPendingRecovery.map(\.operationId), ["signup-1"])
+        await waitForCall("forgetNewAccountSecretKey")
         model.lock()
         XCTAssertEqual(model.screen, .locked)
         XCTAssertNil(model.newSecretKey)
@@ -100,7 +129,8 @@ final class AppModelTests: XCTestCase {
     func testAutoLockHidesTheBiometricOffer() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        model.finishNewSecretKey()
+        _ = await model.exportNewAccountEmergencyKit()
+        await model.finishNewSecretKey()
         XCTAssertTrue(model.isBiometricOfferShown)
         _ = backend.lock()
         model.handleLockedEvent()
@@ -118,7 +148,8 @@ final class AppModelTests: XCTestCase {
     func testSecretKeyScreenOffersFaceIDAndTurnsItOnInOneTap() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        model.finishNewSecretKey()
+        _ = await model.exportNewAccountEmergencyKit()
+        await model.finishNewSecretKey()
         XCTAssertTrue(model.isBiometricOfferShown)
         XCTAssertNotNil(model.newSecretKey, "the cover stays up for the offer")
         let isTurnedOn = await model.turnOnBiometricUnlockFromOffer()
@@ -133,7 +164,8 @@ final class AppModelTests: XCTestCase {
     func testFaceIDOfferFailureStaysOnTheOffer() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        model.finishNewSecretKey()
+        _ = await model.exportNewAccountEmergencyKit()
+        await model.finishNewSecretKey()
         backend.isBiometricSucceeding = false
         let isTurnedOn = await model.turnOnBiometricUnlockFromOffer()
         XCTAssertFalse(isTurnedOn)
@@ -149,7 +181,8 @@ final class AppModelTests: XCTestCase {
         backend.isBiometricAvailable = false
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
-        model.finishNewSecretKey()
+        _ = await model.exportNewAccountEmergencyKit()
+        await model.finishNewSecretKey()
         XCTAssertFalse(model.isBiometricOfferShown)
         XCTAssertNil(model.newSecretKey)
         await waitForCall("forgetNewAccountSecretKey")

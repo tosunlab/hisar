@@ -111,6 +111,60 @@ func ExportNewSecretKeyEmergencyKitToDirectory(s *Service, replacement Credentia
 	return s.saveEmergencyKitToDirectory(kit, directory, epoch)
 }
 
+// newAccountRecovery is the pending sign-up operation of the account whose Secret Key onboarding retains in memory. That
+// key is the proof, as the retained account unlock key is for the Face ID offer, so onboarding asks no password again;
+// lock, sign-out, an account switch and the end of onboarding drop it.
+func (s *Service) newAccountRecovery() (*PendingRecoverySummary, emergencykit.Kit, error) {
+	s.mutex.Lock()
+	kit, err := s.buildNewAccountEmergencyKit()
+	operationID, origin := s.state.RecoveryOperationID, s.state.Server
+	accountID := ""
+	if err == nil {
+		accountID = s.newAccountSecretKey.AccountID
+	}
+	s.mutex.Unlock()
+	if err != nil {
+		return nil, emergencykit.Kit{}, err
+	}
+	entry, _, err := s.loadPendingRecoveryRecord(operationID)
+	if err != nil {
+		return nil, emergencykit.Kit{}, err
+	}
+	if entry.Kind != "signup" || entry.Origin != origin || entry.AccountID != accountID || entry.Phase == "outcome-unknown" {
+		return nil, emergencykit.Kit{}, errors.New("this account's setup needs finishing from the account recovery screen")
+	}
+	return entry, kit, nil
+}
+
+// ExportNewAccountEmergencyKitToDirectory saves the kit of the account just created on this device and records it as
+// saved in its pending sign-up operation, without the master password. A function rather than a method so the desktop
+// UI, which saves it through SaveNewAccountEmergencyKit, can't call it.
+func ExportNewAccountEmergencyKitToDirectory(s *Service, directory string) (EmergencyKitFile, error) {
+	entry, kit, err := s.newAccountRecovery()
+	if err != nil {
+		return EmergencyKitFile{}, err
+	}
+	if err := os.MkdirAll(directory, 0o700); err != nil {
+		return EmergencyKitFile{}, fmt.Errorf("could not save the Emergency Kit: %w", err)
+	}
+	path := filepath.Join(directory, emergencyKitFileName)
+	if err := s.savePendingEmergencyKit(entry, kit, path); err != nil {
+		return EmergencyKitFile{}, err
+	}
+	return EmergencyKitFile{SecretKey: kit.SecretKey, Path: path}, nil
+}
+
+// AcknowledgeNewAccountRecovery ends the pending sign-up operation of the account just created once its kit was saved,
+// as AcknowledgePendingRecovery does with the master password. A function rather than a method so the desktop UI, which
+// acknowledges delivery with the password, can't call it.
+func AcknowledgeNewAccountRecovery(s *Service) error {
+	entry, _, err := s.newAccountRecovery()
+	if err != nil {
+		return err
+	}
+	return s.acknowledgeRecovery(entry)
+}
+
 func (s *Service) saveEmergencyKitToDirectory(kit emergencykit.Kit, directory string, epoch uint64) (EmergencyKitFile, error) {
 	document, err := emergencykit.Generate(kit)
 	if err != nil {

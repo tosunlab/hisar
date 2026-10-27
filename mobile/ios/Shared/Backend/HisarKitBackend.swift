@@ -99,6 +99,14 @@ final class HisarKitBackend: VaultBackend {
         try decode(VaultStatus.self, from: callReturningText { hisar.enableNewAccountBiometricUnlock($0) })
     }
 
+    func exportNewAccountEmergencyKit(directory: URL) throws -> EmergencyKitExport {
+        try decode(EmergencyKitExport.self, from: callReturningText { hisar.exportNewAccountEmergencyKit(directory.path, error: $0) })
+    }
+
+    func acknowledgeNewAccountRecovery() throws {
+        try callReturningNothing { try hisar.acknowledgeNewAccountRecovery() }
+    }
+
     func forgetNewAccountSecretKey() {
         hisar.forgetNewAccountSecretKey()
     }

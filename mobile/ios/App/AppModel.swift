@@ -312,7 +312,8 @@ final class AppModel: ObservableObject {
     }
 
     private func finishSignUp(_ result: SignUpResult) async -> Bool {
-        if !result.pendingOperationId.isEmpty {
+        let isWaitingForKit = result.setupState == "delivery-pending" && !result.secretKey.isEmpty && result.problems.isEmpty
+        if !result.pendingOperationId.isEmpty && !isWaitingForKit {
             refreshStatus()
             // The backend's first sync can report its change before this status arrives, when it is ignored.
             if status.isUnlocked { await refreshAll() }
@@ -327,13 +328,29 @@ final class AppModel: ObservableObject {
         return true
     }
 
-    func finishNewSecretKey() {
+    func exportNewAccountEmergencyKit() async -> EmergencyKitExport? {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
+        return await perform(isBusyShown: false) { try $0.exportNewAccountEmergencyKit(directory: directory) }
+    }
+
+    // "I saved my Emergency Kit": ends the sign-up's pending recovery, then offers Face ID.
+    @discardableResult
+    func finishNewSecretKey() async -> Bool {
+        guard await perform({ try $0.acknowledgeNewAccountRecovery() }) != nil else { return false }
+        await refreshPendingRecovery()
         if status.biometricAvailable && !status.biometricEnabled {
-            clearError()
             isBiometricOfferShown = true
         } else {
             dismissNewSecretKey()
         }
+        return true
+    }
+
+    // "Finish later": the sign-up's record stays for the recovery banner and screen, and the retained Secret Key is dropped.
+    func postponeNewSecretKey() async {
+        await refreshPendingRecovery()
+        closePendingRecovery()
+        dismissNewSecretKey()
     }
 
     func dismissNewSecretKey() {
