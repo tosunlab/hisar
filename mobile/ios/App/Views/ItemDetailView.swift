@@ -73,7 +73,7 @@ struct ItemDetailView: View {
             titleVisibility: .visible,
             presenting: passkeyToDelete
         ) { passkey in
-            Button("Delete Passkey", role: .destructive) {
+            Button("Delete passkey", role: .destructive) {
                 Task { await deletePasskey(passkey) }
             }
             .accessibilityIdentifier("confirm-delete-passkey")
@@ -164,7 +164,7 @@ struct ItemDetailView: View {
                 Section("Other fields") {
                     ForEach(Array(item.allField.enumerated()), id: \.offset) { _, field in
                         SecretFieldRow(
-                            label: field.name, value: field.value, isConcealed: field.concealed,
+                            label: field.name, isCustomField: true, value: field.value, isConcealed: field.concealed,
                             isRevealed: allRevealedFieldName.contains(field.name),
                             toggleReveal: { toggleReveal(fieldName: field.name) },
                             copy: { copy(fieldName: field.name, label: field.name) },
@@ -176,22 +176,35 @@ struct ItemDetailView: View {
             if !item.allURL.isEmpty {
                 Section(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites") {
                     ForEach(Array(item.allURL.enumerated()), id: \.offset) { _, url in
-                        if let openableURL = VaultLogic.convertToOpenableURL(url) {
-                            Link(destination: openableURL) {
-                                Label(url, systemImage: "safari")
+                        HStack(spacing: 0) {
+                            CopyFieldButton(label: "website", value: url, copy: { model.copyText(url, label: "Website") }) {
+                                Text(url)
                                     .lineLimit(1)
                             }
-                            .contextMenu {
-                                Button {
-                                    model.copyText(url, label: "Website")
-                                } label: {
-                                    Label("Copy", systemImage: "doc.on.doc")
+                            if let openableURL = VaultLogic.convertToOpenableURL(url) {
+                                Link(destination: openableURL) {
+                                    Image(systemName: "safari")
+                                        .iconButtonHitArea()
+                                        .padding(.trailing, 20)
+                                        .frame(maxHeight: .infinity)
+                                        .contentShape(.rect)
                                 }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel("Open website")
+                                .accessibilityIdentifier("open-website")
+                            }
+                        }
+                        .fixedSize(horizontal: false, vertical: true)
+                        .listRowInsets(EdgeInsets())
+                        .contextMenu {
+                            Button {
+                                model.copyText(url, label: "Website")
+                            } label: {
+                                Label("Copy", systemImage: "doc.on.doc")
+                            }
+                            if let openableURL = VaultLogic.convertToOpenableURL(url) {
                                 ShareLink(item: openableURL)
                             }
-                            .accessibilityIdentifier("open-website")
-                        } else {
-                            Text(url)
                         }
                     }
                 }
@@ -216,20 +229,21 @@ struct ItemDetailView: View {
             }
             if !item.notes.isEmpty && !item.isSecureNote {
                 Section {
-                    Text(item.notes)
-                        .textSelection(.enabled)
-                        .contextMenu {
-                            Button {
-                                copy(fieldName: "notes", label: "Notes")
-                            } label: {
-                                Label("Copy", systemImage: "doc.on.doc")
-                            }
-                            Button {
-                                copyReference(fieldName: "notes")
-                            } label: {
-                                Label("Copy Secret Reference", systemImage: "terminal")
-                            }
+                    CopyFieldButton(label: "notes", value: item.notes, copy: { copy(fieldName: "notes", label: "Notes") }) {
+                        Text(item.notes)
+                    }
+                    .contextMenu {
+                        Button {
+                            copy(fieldName: "notes", label: "Notes")
+                        } label: {
+                            Label("Copy", systemImage: "doc.on.doc")
                         }
+                        Button {
+                            copyReference(fieldName: "notes")
+                        } label: {
+                            Label("Copy secret reference", systemImage: "terminal")
+                        }
+                    }
                 } header: {
                     Text("Notes")
                 }
@@ -257,7 +271,7 @@ struct ItemDetailView: View {
                     .foregroundStyle(.primary)
                     .accessibilityIdentifier("copy-secret-reference")
                 } footer: {
-                    Text("A hisar:// reference to the \(referenceField), for hisar run and hisar read. Touch and hold a field for its own reference.")
+                    Text("For hisar run and hisar read on your Mac.")
                 }
             }
         }
@@ -278,18 +292,12 @@ struct ItemDetailView: View {
                     )
                 }
                 if !server.port.isEmpty {
-                    VStack(alignment: .leading, spacing: 4) {
-                        SecretFieldRow(
-                            label: ServerFieldName.port, value: server.port, isConcealed: false, isRevealed: true, toggleReveal: nil,
-                            copy: { copy(fieldName: ServerFieldName.port, label: ServerFieldName.port) },
-                            copyReference: { copyReference(fieldName: ServerFieldName.port) }
-                        )
-                        if !server.portWarning.isEmpty {
-                            Text(server.portWarning)
-                                .font(.footnote)
-                                .foregroundStyle(.orange)
-                        }
-                    }
+                    SecretFieldRow(
+                        label: ServerFieldName.port, value: server.port, isConcealed: false, isRevealed: true, toggleReveal: nil,
+                        copy: { copy(fieldName: ServerFieldName.port, label: ServerFieldName.port) },
+                        copyReference: { copyReference(fieldName: ServerFieldName.port) },
+                        warning: server.portWarning
+                    )
                 }
                 if !server.sshKeyID.isEmpty {
                     if server.sshKeyTitle.isEmpty {
@@ -357,8 +365,6 @@ struct ItemDetailView: View {
         return item.password.isEmpty ? nil : "password"
     }
 
-    /// The line under the title: the category, or a card's, identity's, API credential's, address's or software license's
-    /// summary.
     /// A database's engine, by its name, host, port, name and options, each with copy and copy reference.
     private func buildDatabaseSection(database: ItemDatabase) -> some View {
         buildNamedSection(title: "Database", emptyText: "This database has no details yet.", allRow: [
@@ -380,18 +386,19 @@ struct ItemDetailView: View {
                 copy: { copy(fieldName: DatabaseFieldName.connectionString, label: "Connection string") },
                 copyReference: { copyReference(fieldName: DatabaseFieldName.connectionString) }
             )
-            .accessibilityIdentifier("database-connection-string")
         } footer: {
             Text("Built from the fields above, so it always has the current password.")
         }
     }
 
+    /// The line under the title: the category, or a card's, identity's, address's, software license's, server's or
+    /// database's summary. An API credential's summary repeats its Service and Host rows, so it shows the category.
     private func describeCategory(item: ItemDetail) -> String {
         if item.isSSHKey { return "SSH key" }
         if item.isSecureNote { return "Secure note" }
         if item.isCreditCard { return (item.card ?? ItemCard()).summary }
         if item.isIdentity { return (item.identity ?? ItemIdentity()).summary }
-        if item.isAPICredential { return (item.apiCredential ?? ItemAPICredential()).summary }
+        if item.isAPICredential { return "API credential" }
         if item.isAddress { return (item.address ?? ItemAddress()).summary }
         if item.isSoftwareLicense { return (item.softwareLicense ?? ItemSoftwareLicense()).summary }
         if item.isServer { return (item.server ?? ItemServer()).summary(username: item.username) }
@@ -483,21 +490,14 @@ struct ItemDetailView: View {
                     .foregroundStyle(.themeSecondary)
             }
             ForEach(allShownRow, id: \.label) { row in
-                VStack(alignment: .leading, spacing: 4) {
-                    SecretFieldRow(
-                        label: row.label, value: row.value, isConcealed: row.isConcealed,
-                        isRevealed: !row.isConcealed || allRevealedFieldName.contains(row.label),
-                        toggleReveal: row.isConcealed ? { toggleReveal(fieldName: row.label) } : nil,
-                        copy: { copy(fieldName: row.label, label: row.label) },
-                        copyReference: { copyReference(fieldName: row.label) }
-                    )
-                    if !row.warning.isEmpty {
-                        Text(row.warning)
-                            .font(.footnote)
-                            .foregroundStyle(.orange)
-                            .accessibilityIdentifier("card-warning-\(row.label)")
-                    }
-                }
+                SecretFieldRow(
+                    label: row.label, value: row.value, isConcealed: row.isConcealed,
+                    isRevealed: !row.isConcealed || allRevealedFieldName.contains(row.label),
+                    toggleReveal: row.isConcealed ? { toggleReveal(fieldName: row.label) } : nil,
+                    copy: { copy(fieldName: row.label, label: row.label) },
+                    copyReference: { copyReference(fieldName: row.label) },
+                    warning: row.warning
+                )
             }
         } header: {
             Text(title)
@@ -511,15 +511,21 @@ struct ItemDetailView: View {
                 Text("This note is empty.")
                     .foregroundStyle(.themeSecondary)
             } else {
-                Text(item.notes)
-                    .textSelection(.enabled)
-                    .accessibilityIdentifier("secure-note-notes")
-                Button {
-                    copy(fieldName: "notes", label: "Notes")
-                } label: {
-                    Label("Copy notes", systemImage: "doc.on.doc")
+                CopyFieldButton(label: "notes", value: item.notes, identifier: "secure-note-notes", copy: { copy(fieldName: "notes", label: "Notes") }) {
+                    Text(item.notes)
                 }
-                .accessibilityIdentifier("copy-notes")
+                .contextMenu {
+                    Button {
+                        copy(fieldName: "notes", label: "Notes")
+                    } label: {
+                        Label("Copy", systemImage: "doc.on.doc")
+                    }
+                    Button {
+                        copyReference(fieldName: "notes")
+                    } label: {
+                        Label("Copy secret reference", systemImage: "terminal")
+                    }
+                }
             }
         } header: {
             Text("Note")
@@ -590,6 +596,7 @@ struct ItemDetailView: View {
                     passkeyToDelete = passkey
                 } label: {
                     Image(systemName: "trash")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.red)
@@ -630,52 +637,64 @@ struct ItemDetailView: View {
 
 struct SecretFieldRow: View {
     var label: String
+    var isCustomField = false
     var value: String
     var isConcealed: Bool
     var isRevealed: Bool
     var toggleReveal: (() -> Void)?
     var copy: () -> Void
     var copyReference: () -> Void
+    var warning = ""
 
     private var isHidden: Bool { isConcealed && !isRevealed }
 
+    private var actionLabel: String {
+        let firstWord = label.prefix { !$0.isWhitespace }
+        if isCustomField || (firstWord.count > 1 && firstWord == firstWord.uppercased()) { return label }
+        return label.prefix(1).lowercased() + label.dropFirst()
+    }
+
     var body: some View {
-        HStack(spacing: 12) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text(label)
-                    .font(.footnote)
-                    .foregroundStyle(.themeSecondary)
-                Text(isHidden ? String(repeating: "•", count: 12) : value)
-                    .font(isConcealed ? .body.monospaced() : .body)
-                    .lineLimit(isConcealed ? 3 : 5)
-                    .textSelection(.enabled)
-                    .accessibilityLabel(isHidden ? "Hidden" : value)
-                    .accessibilityIdentifier("\(label.lowercased())-value")
+        HStack(spacing: 0) {
+            CopyFieldButton(label: actionLabel, value: isHidden ? "Hidden" : value, copy: copy) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(label)
+                        .font(.footnote)
+                        .foregroundStyle(.themeSecondary)
+                    Text(isHidden ? String(repeating: "•", count: 12) : value)
+                        .font(isConcealed ? .body.monospaced() : .body)
+                        .lineLimit(isConcealed ? 3 : 5)
+                    if !warning.isEmpty {
+                        Text(warning)
+                            .font(.footnote)
+                            .foregroundStyle(.orange)
+                            .accessibilityIdentifier("card-warning-\(label)")
+                    }
+                }
             }
-            Spacer(minLength: 0)
             if let toggleReveal {
                 Button(action: toggleReveal) {
                     Image(systemName: isRevealed ? "eye.slash" : "eye")
                         .contentTransition(.symbolEffect(.replace))
+                        .iconButtonHitArea()
+                        .frame(maxHeight: .infinity)
+                        .contentShape(.rect)
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel(isRevealed ? "Hide \(label)" : "Reveal \(label)")
+                .accessibilityLabel(isRevealed ? "Hide \(actionLabel)" : "Reveal \(actionLabel)")
                 .accessibilityIdentifier("reveal-\(label.lowercased())")
             }
-            Button(action: copy) {
-                Image(systemName: "doc.on.doc")
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel("Copy \(label)")
-            .accessibilityIdentifier("copy-\(label.lowercased())")
+            CopyIconButton(copy: copy)
         }
+        .fixedSize(horizontal: false, vertical: true)
+        .listRowInsets(EdgeInsets())
         .foregroundStyle(.primary)
         .contextMenu {
             Button(action: copy) {
-                Label("Copy \(label)", systemImage: "doc.on.doc")
+                Label("Copy", systemImage: "doc.on.doc")
             }
             Button(action: copyReference) {
-                Label("Copy Secret Reference", systemImage: "terminal")
+                Label("Copy secret reference", systemImage: "terminal")
             }
             if let toggleReveal {
                 Button(action: toggleReveal) {
@@ -683,5 +702,54 @@ struct SecretFieldRow: View {
                 }
             }
         }
+    }
+}
+
+/// A field row's label and value, which copy the field on a tap. Assistive technology reads them as the button
+/// "Copy <label>" with the value, or "Hidden" for a secret that is not revealed.
+struct CopyFieldButton<Content: View>: View {
+    var label: String
+    var value: String
+    var identifier: String?
+    var copy: () -> Void
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        Button(action: copy) {
+            content
+                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 8)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .listRowInsets(EdgeInsets())
+        .accessibilityLabel("Copy \(label)")
+        .accessibilityValue(value)
+        .accessibilityIdentifier(identifier ?? "copy-\(label.lowercased())")
+    }
+}
+
+/// The copy icon at the end of a field row. The row's CopyFieldButton already copies for assistive technology.
+struct CopyIconButton: View {
+    var copy: () -> Void
+
+    var body: some View {
+        Button(action: copy) {
+            Image(systemName: "doc.on.doc")
+                .iconButtonHitArea()
+                .padding(.trailing, 20)
+                .frame(maxHeight: .infinity)
+                .contentShape(.rect)
+        }
+        .buttonStyle(.borderless)
+        .accessibilityHidden(true)
+    }
+}
+
+extension View {
+    /// An icon-only button's 44-point hit area, on its label: a borderless button takes taps only on its label.
+    func iconButtonHitArea() -> some View {
+        frame(minWidth: 44, minHeight: 44).contentShape(.rect)
     }
 }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { createApiMock, createItem, createStatus } from "../testing";
+import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 const lockedListener = vi.hoisted(() => ({ current: undefined as undefined | (() => void) }));
@@ -124,12 +124,15 @@ describe("SignInView", () => {
     const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
     const wrapper = mount(SignInView);
     expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
+    expect(wrapper.find("h1").exists()).toBe(false);
     expect(wrapper.text()).toContain("Made for the terminal");
     expect(wrapper.text()).toContain("The hisar command-line tool reads passwords and one-time codes, and uses SSH keys through the agent");
     expect(wrapper.text()).toContain("Private keys never leave Hisar.");
     expect(wrapper.text()).not.toContain("!");
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
     expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
+    expect(wrapper.get("h1").text()).toBe("Create your account");
+    expect(wrapper.get(".subtitle").text()).toBe("Enter the invite code you received, or paste the whole invite link. Some servers let anyone sign up without one.");
     expect(wrapper.text()).toContain("Safe even if the server is breached");
   });
 
@@ -140,13 +143,18 @@ describe("SignInView", () => {
     expect(wrapper.text()).not.toMatch(/recover|admin/i);
   });
 
-  it("says at account creation that a forgotten master password can't be recovered", async () => {
+  it("saves the recovery warning for the Secret Key screen", async () => {
     const wrapper = mount(SignInView);
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
-    expect(wrapper.find('[data-testid="create-account-note"]').text()).toBe(
-      "Your master password never leaves this Mac. A forgotten master password can't be recovered by anyone, including Hisar.",
-    );
-    expect(wrapper.text()).not.toMatch(/admin/i);
+    expect(wrapper.text()).toContain("Your master password and a Secret Key you get next. Neither is ever sent to the server.");
+    expect(wrapper.text()).not.toMatch(/can't be recovered|Nobody can reset/);
+    expect(wrapper.find('[data-testid="create-account-note"]').exists()).toBe(false);
+    wrapper.unmount();
+    store.pendingSecretKey = "H1-ABC123-SECRET";
+    const secretKey = mount(SecretKeyView);
+    expect(secretKey.findAll('[data-testid="master-password-warning"]')).toHaveLength(1);
+    expect(secretKey.get('[data-testid="master-password-warning"]').text()).toBe("A forgotten master password can't be recovered by anyone, including Hisar.");
+    secretKey.unmount();
   });
 
   it("hides the server behind a disclosure and signs in to the hosted server by default", async () => {
@@ -439,20 +447,35 @@ describe("ItemDetailPanel", () => {
     expect(api.copyField).toHaveBeenCalledWith("personal", "item-1", "password");
   });
 
-  it("asks for confirmation before deleting", async () => {
+  it("deletes from the ⋯ menu through the one confirmation dialog", async () => {
     api.deleteItem.mockResolvedValue(undefined);
-    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
-    await wrapper.find('button[aria-label="Delete item"]').trigger("click");
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
+    expect(wrapper.find('button[aria-label="Delete item"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="item-actions"]').trigger("click");
+    expect(wrapper.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Duplicate", "Delete…"]);
+    await wrapper.find('[data-testid="context-menu-delete"]').trigger("click");
     expect(api.deleteItem).not.toHaveBeenCalled();
-    await wrapper.find('[data-testid="confirm-delete"]').trigger("click");
+    expect(wrapper.find('[data-testid="confirm-delete-dialog"]').text()).toContain("Delete “GitHub”?");
+    await wrapper.find('[data-testid="confirm-delete-item"]').trigger("click");
     await flushPromises();
     expect(api.deleteItem).toHaveBeenCalledWith("personal", "item-1");
+    wrapper.unmount();
   });
 
-  it("hides edit and delete for read-only vaults", () => {
+  it("offers Move to… in the ⋯ menu when another vault takes items", async () => {
+    store.allVault = [allTestVault[0], { id: "work", name: "Work", type: "shared", role: "editor", itemCount: 0 }];
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" }, attachTo: document.body });
+    await wrapper.find('[data-testid="item-actions"]').trigger("click");
+    expect(wrapper.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Duplicate", "Move to…", "Delete…"]);
+    await wrapper.find('[data-testid="context-menu-move"]').trigger("click");
+    expect(wrapper.find('[data-testid="move-item-dialog"]').exists()).toBe(true);
+    wrapper.unmount();
+  });
+
+  it("hides edit and the ⋯ menu for read-only vaults", () => {
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: false, vaultName: "Work", vaultType: "shared" } });
     expect(wrapper.findAll("button").map((button) => button.text())).not.toContain("Edit");
-    expect(wrapper.find('button[aria-label="Delete item"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="item-actions"]').exists()).toBe(false);
   });
 });
 

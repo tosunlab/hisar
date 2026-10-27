@@ -9,6 +9,8 @@ struct ItemDestination: Hashable {
     var itemID: String
 }
 
+struct TagsDestination: Hashable {}
+
 struct TagDestination: Hashable {
     var tag: String
 }
@@ -73,19 +75,124 @@ enum ItemCategoryDestination: String, Hashable, CaseIterable {
     }
 }
 
+/// The item types the + menus create, in the Mac's order; the raw value names their buttons' identifiers.
+enum NewItemType: String, CaseIterable, Identifiable {
+    case login
+    case secureNote = "secure-note"
+    case creditCard = "credit-card"
+    case identity
+    case apiCredential = "api-credential"
+    case address
+    case softwareLicense = "software-license"
+    case server
+    case database
+
+    /// Where a + menu is: Vaults, which creates in the Personal vault ("New login"), or a vault ("Login").
+    enum Placement {
+        case vaults
+        case vault
+    }
+
+    /// The types on the menu itself; the others are under More….
+    static let allOnMenu: [NewItemType] = [.login, .secureNote]
+    static let allUnderMore: [NewItemType] = allCases.filter { !allOnMenu.contains($0) }
+
+    var id: Self { self }
+
+    var category: String {
+        switch self {
+        case .login: ItemDetail.categoryLogin
+        case .secureNote: ItemDetail.categorySecureNote
+        case .creditCard: ItemDetail.categoryCreditCard
+        case .identity: ItemDetail.categoryIdentity
+        case .apiCredential: ItemDetail.categoryAPICredential
+        case .address: ItemDetail.categoryAddress
+        case .softwareLicense: ItemDetail.categorySoftwareLicense
+        case .server: ItemDetail.categoryServer
+        case .database: ItemDetail.categoryDatabase
+        }
+    }
+
+    /// The type's name within a sentence.
+    private var name: String {
+        switch self {
+        case .login: "login"
+        case .secureNote: "secure note"
+        case .creditCard: "credit card"
+        case .identity: "identity"
+        case .apiCredential: "API credential"
+        case .address: "address"
+        case .softwareLicense: "software license"
+        case .server: "server"
+        case .database: "database"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .login: "person.badge.key"
+        case .secureNote: "note.text"
+        case .creditCard: "creditcard"
+        case .identity: "person.text.rectangle"
+        case .apiCredential: "curlybraces.square"
+        case .address: "mappin.and.ellipse"
+        case .softwareLicense: "checkmark.seal"
+        case .server: "server.rack"
+        case .database: "cylinder.split.1x2"
+        }
+    }
+
+    func title(in placement: Placement) -> String {
+        switch placement {
+        case .vaults: "New \(name)"
+        case .vault: name.prefix(1).uppercased() + name.dropFirst()
+        }
+    }
+
+    func identifier(in placement: Placement) -> String {
+        switch placement {
+        case .vaults: "new-\(rawValue)"
+        case .vault: "add-\(rawValue)"
+        }
+    }
+}
+
+struct NewItemButton: View {
+    var type: NewItemType
+    var placement: NewItemType.Placement
+    var choose: (NewItemType) -> Void
+
+    var body: some View {
+        Button {
+            choose(type)
+        } label: {
+            Label(type.title(in: placement), systemImage: type.systemImage)
+        }
+        .accessibilityIdentifier(type.identifier(in: placement))
+    }
+}
+
+struct NewItemMoreMenu: View {
+    var placement: NewItemType.Placement
+    var choose: (NewItemType) -> Void
+
+    var body: some View {
+        Menu {
+            ForEach(NewItemType.allUnderMore) { type in
+                NewItemButton(type: type, placement: placement, choose: choose)
+            }
+        } label: {
+            Label("More…", systemImage: "ellipsis")
+        }
+        .accessibilityIdentifier(placement == .vaults ? "new-more" : "add-more")
+    }
+}
+
 struct VaultsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var navigationPath = NavigationPath()
     @State private var isNewVaultShown = false
-    @State private var isNewLoginShown = false
-    @State private var isNewSecureNoteShown = false
-    @State private var isNewCreditCardShown = false
-    @State private var isNewIdentityShown = false
-    @State private var isNewAPICredentialShown = false
-    @State private var isNewAddressShown = false
-    @State private var isNewSoftwareLicenseShown = false
-    @State private var isNewServerShown = false
-    @State private var isNewDatabaseShown = false
+    @State private var newItemType: NewItemType?
     @State private var refusal: Refusal?
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
@@ -108,41 +215,39 @@ struct VaultsView: View {
                 )
                 RemovedVaultNoticeSection(allNotice: model.allRemovedVaultNotice) { model.dismissRemovedVaultNotice($0) }
                 keyWarningSection
-                receivedInvitationSection
-                organizationInvitationSection
+                invitationSection
                 favoriteSection
                 let grouping = OrganizationLogic.groupVaults(model.allVault, allOrganization: model.allOrganization, allWaiting: model.waitingVaultKeys.allWaiting)
                 vaultSection(grouping.allOtherVault)
                 ForEach(grouping.allGroup) { group in
                     organizationVaultSection(group)
                 }
-                if !model.allVault.isEmpty {
+                let allItemReference = model.listAllItemReference()
+                let allCategoryCount = ItemCategoryDestination.allCases
+                    .map { category in (category: category, count: allItemReference.filter { category.includes($0.item) }.count) }
+                    .filter { $0.count > 0 }
+                if !allCategoryCount.isEmpty {
                     Section {
-                        ForEach(ItemCategoryDestination.allCases, id: \.self) { category in
-                            NavigationLink(value: category) {
-                                Label(category.title, systemImage: category.systemImage)
-                                    .badge(model.listAllItemReference().filter { category.includes($0.item) }.count)
+                        ForEach(allCategoryCount, id: \.category) { categoryCount in
+                            NavigationLink(value: categoryCount.category) {
+                                Label(categoryCount.category.title, systemImage: categoryCount.category.systemImage)
+                                    .badge(categoryCount.count)
                             }
-                            .accessibilityIdentifier("category-\(category.rawValue)")
+                            .accessibilityIdentifier("category-\(categoryCount.category.rawValue)")
                         }
                     } header: {
                         Text("By type")
                             .foregroundStyle(.themeSecondary)
                     }
                 }
-                let allTag = VaultLogic.listAllTag(model.listAllItemReference())
+                let allTag = VaultLogic.listAllTag(allItemReference)
                 if !allTag.isEmpty {
                     Section {
-                        ForEach(allTag) { tag in
-                            NavigationLink(value: TagDestination(tag: tag.name)) {
-                                Label(tag.name, systemImage: "tag")
-                                    .badge(tag.itemCount)
-                            }
-                            .accessibilityIdentifier("tag-\(tag.name)")
+                        NavigationLink(value: TagsDestination()) {
+                            Label("Tags", systemImage: "tag")
+                                .badge(allTag.count)
                         }
-                    } header: {
-                        Text("Tags")
-                            .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("open-tags")
                     }
                 }
             }
@@ -162,69 +267,13 @@ struct VaultsView: View {
                 ToolbarSpacer(.fixed, placement: .topBarTrailing)
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
-                        Button {
-                            isNewLoginShown = true
-                        } label: {
-                            Label("New login", systemImage: "person.badge.key")
+                        ForEach(NewItemType.allOnMenu) { type in
+                            NewItemButton(type: type, placement: .vaults) { newItemType = $0 }
                         }
                         .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-login")
-                        Button {
-                            isNewSecureNoteShown = true
-                        } label: {
-                            Label("New secure note", systemImage: "note.text")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-secure-note")
-                        Button {
-                            isNewCreditCardShown = true
-                        } label: {
-                            Label("New credit card", systemImage: "creditcard")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-credit-card")
-                        Button {
-                            isNewIdentityShown = true
-                        } label: {
-                            Label("New identity", systemImage: "person.text.rectangle")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-identity")
-                        Button {
-                            isNewAPICredentialShown = true
-                        } label: {
-                            Label("New API credential", systemImage: "curlybraces.square")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-api-credential")
-                        Button {
-                            isNewAddressShown = true
-                        } label: {
-                            Label("New address", systemImage: "mappin.and.ellipse")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-address")
-                        Button {
-                            isNewSoftwareLicenseShown = true
-                        } label: {
-                            Label("New software license", systemImage: "checkmark.seal")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-software-license")
-                        Button {
-                            isNewServerShown = true
-                        } label: {
-                            Label("New server", systemImage: "server.rack")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-server")
-                        Button {
-                            isNewDatabaseShown = true
-                        } label: {
-                            Label("New database", systemImage: "cylinder.split.1x2")
-                        }
-                        .disabled(personalVault == nil)
-                        .accessibilityIdentifier("new-database")
+                        NewItemMoreMenu(placement: .vaults) { newItemType = $0 }
+                            .disabled(personalVault == nil)
+                        Divider()
                         Button {
                             isNewVaultShown = true
                         } label: {
@@ -242,6 +291,9 @@ struct VaultsView: View {
             }
             .navigationDestination(for: ItemCategoryDestination.self) { category in
                 ItemCategoryListView(category: category)
+            }
+            .navigationDestination(for: TagsDestination.self) { _ in
+                TagListView()
             }
             .navigationDestination(for: TagDestination.self) { destination in
                 ItemTagListView(tag: destination.tag)
@@ -262,89 +314,9 @@ struct VaultsView: View {
             }
             .environmentObject(model)
         }
-        .sheet(isPresented: $isNewLoginShown) {
+        .sheet(item: $newItemType) { type in
             if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil) { savedItem, vaultID in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewAddressShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAddress) { savedItem, vaultID in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewDatabaseShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryDatabase) { savedItem, vaultID in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewServerShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryServer) { savedItem, vaultID in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewSoftwareLicenseShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySoftwareLicense) { savedItem, vaultID in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewAPICredentialShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryAPICredential) { savedItem, vaultID in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewIdentityShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryIdentity) { savedItem, vaultID in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewCreditCardShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categoryCreditCard) { savedItem, vaultID in
-                    if let savedItem {
-                        navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
-                    }
-                }
-                .environmentObject(model)
-            }
-        }
-        .sheet(isPresented: $isNewSecureNoteShown) {
-            if let personalVault {
-                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: ItemDetail.categorySecureNote) { savedItem, vaultID in
+                ItemEditorView(vaultID: personalVault.id, originalItem: nil, newCategory: type.category) { savedItem, vaultID in
                     if let savedItem {
                         navigationPath.append(ItemDestination(vaultID: vaultID, itemID: savedItem.id))
                     }
@@ -355,8 +327,8 @@ struct VaultsView: View {
     }
 
     @ViewBuilder
-    private var receivedInvitationSection: some View {
-        if !model.allReceivedInvitation.isEmpty || !model.allWaitingInvitation.isEmpty {
+    private var invitationSection: some View {
+        if !model.allReceivedInvitation.isEmpty || !model.allWaitingInvitation.isEmpty || !model.allOrganizationInvitation.isEmpty {
             Section {
                 ForEach(model.allReceivedInvitation) { invitation in
                     ReceivedInvitationRow(invitation: invitation, identifierPrefix: "banner-") {
@@ -379,66 +351,6 @@ struct VaultsView: View {
                         .foregroundStyle(.themeSecondary)
                         .accessibilityIdentifier("waiting-\(invitation.id)")
                 }
-            } header: {
-                Text("Shared with you")
-                    .foregroundStyle(.themeSecondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var favoriteSection: some View {
-        if !model.allVault.isEmpty {
-            let allFavorite = model.listAllFavoriteReference()
-            Section {
-                if allFavorite.isEmpty {
-                    Label("Star an item to keep it here, on all your devices. Only you see your favorites.", systemImage: "star")
-                        .font(.subheadline)
-                        .foregroundStyle(.themeSecondary)
-                        .accessibilityIdentifier("favorites-empty")
-                }
-                ForEach(allFavorite) { reference in
-                    NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
-                        ItemRow(item: reference.item, vaultName: reference.vaultName)
-                    }
-                    .swipeActions(edge: .trailing) {
-                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item)
-                    }
-                    .accessibilityIdentifier("favorite-\(reference.item.title)")
-                }
-            } header: {
-                Text("Favorites")
-                    .foregroundStyle(.themeSecondary)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var keyWarningSection: some View {
-        let allWarning = OrganizationLogic.describeKeyWarnings(model.waitingVaultKeys)
-        if !allWarning.isEmpty {
-            Section {
-                ForEach(allWarning, id: \.self) { warning in
-                    Label {
-                        Text(warning)
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.themeWarning)
-                    }
-                    .font(.subheadline)
-                    .accessibilityElement(children: .combine)
-                    .accessibilityIdentifier("vault-key-warning")
-                }
-            } footer: {
-                Text("Hisar gives vault keys only to the keys it pinned for each person. Compare security codes in Settings → Organizations.")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var organizationInvitationSection: some View {
-        if !model.allOrganizationInvitation.isEmpty {
-            Section {
                 ForEach(model.allOrganizationInvitation) { invitation in
                     OrganizationInvitationRow(invitation: invitation, identifierPrefix: "banner-") {
                         Task {
@@ -461,6 +373,50 @@ struct VaultsView: View {
             } header: {
                 Text("Invitations for you")
                     .foregroundStyle(.themeSecondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var favoriteSection: some View {
+        let allFavorite = model.listAllFavoriteReference()
+        if !allFavorite.isEmpty {
+            Section {
+                ForEach(allFavorite) { reference in
+                    NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
+                        ItemRow(item: reference.item, vaultName: reference.vaultName)
+                    }
+                    .swipeActions(edge: .trailing) {
+                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item)
+                    }
+                    .accessibilityIdentifier("favorite-\(reference.item.title)")
+                }
+            } header: {
+                Text("Favorites")
+                    .foregroundStyle(.themeSecondary)
+                    .accessibilityIdentifier("favorites-header")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var keyWarningSection: some View {
+        let allWarning = OrganizationLogic.describeKeyWarnings(model.waitingVaultKeys)
+        if !allWarning.isEmpty {
+            Section {
+                ForEach(allWarning, id: \.self) { warning in
+                    Label {
+                        Text(warning)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.themeWarning)
+                    }
+                    .font(.subheadline)
+                    .accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("vault-key-warning")
+                }
+            } footer: {
+                Text("Hisar gives vault keys only to the keys it pinned for each person. Compare security codes in Settings → Organizations.")
             }
         }
     }
@@ -512,6 +468,26 @@ struct VaultsView: View {
                 .foregroundStyle(.themeSecondary)
                 .accessibilityIdentifier("organization-section-\(group.name)")
         }
+    }
+}
+
+struct TagListView: View {
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        let allTag = VaultLogic.listAllTag(model.listAllItemReference())
+        List {
+            ForEach(allTag) { tag in
+                NavigationLink(value: TagDestination(tag: tag.name)) {
+                    Label(tag.name, systemImage: "tag")
+                        .badge(tag.itemCount)
+                }
+                .accessibilityIdentifier("tag-\(tag.name)")
+            }
+        }
+        .applyThemedListStyle()
+        .refreshable { await model.refreshAll() }
+        .navigationTitle("Tags")
     }
 }
 

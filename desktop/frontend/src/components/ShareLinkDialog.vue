@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import type { ShareLink } from "../api";
 import { closeShareLinkDialog, copyText, createShareLink, store } from "../store";
-import { allShareLinkExpiry, describeShareLinkContent, formatDateTime, formatViewLimit } from "../util";
+import { allShareLinkExpiry, capitalizeFirstLetter, describeShareLinkContent, formatDateTime, formatViewLimit } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const minimumPassphraseLength = 8;
@@ -66,10 +66,6 @@ async function copyCreatedLink(): Promise<void> {
   if (createdShareLink.value) {
     await copyText(createdShareLink.value.url, "Link");
   }
-}
-
-function capitalizeFirstLetter(label: string): string {
-  return label.charAt(0).toUpperCase() + label.slice(1);
 }
 
 function selectLinkText(event: Event): void {
@@ -137,7 +133,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
             <span class="check-label">{{ capitalizeFirstLetter(field.label) }}</span>
             <AppIcon v-if="field.isConcealed" name="lock" :size="12" class="muted" />
           </label>
-          <p class="muted hint">SSH private keys, passkeys and one-time password secrets are never shared.</p>
+          <p class="muted hint">SSH private keys, passkeys and one-time code secrets are never shared.</p>
         </fieldset>
 
         <div class="option-grid">
@@ -235,15 +231,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 h2 {
   margin: 0;
   overflow: hidden;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .panel-heading p {
   margin: 3px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .field-list {
@@ -256,7 +252,7 @@ h2 {
 
 legend {
   padding: 0 4px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 500;
   color: var(--color-text-secondary);
 }
@@ -271,7 +267,7 @@ legend {
 
 .check-row .check-label {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text);
 }
 
@@ -289,18 +285,18 @@ input[type="number"] {
 small {
   display: block;
   margin-top: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .hint {
   margin: 0 0 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .link-input {
   flex: 1;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .summary {
@@ -313,7 +309,7 @@ small {
   border-radius: var(--radius);
   background: var(--color-surface);
   list-style: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 

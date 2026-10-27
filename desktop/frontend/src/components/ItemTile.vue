@@ -54,7 +54,7 @@ const glyph = computed(() => presetGlyph.value ?? (imageSource.value ? undefined
     :style="{
       width: `${tileSize}px`,
       height: `${tileSize}px`,
-      fontSize: `${Math.round(tileSize * 0.38)}px`,
+      fontSize: tileSize > 32 ? 'var(--font-size-22)' : tileSize < 32 ? 'var(--font-size-11)' : 'var(--font-size-12)',
       ...(glyph || imageSource ? {} : getTileColor(title)),
     }"
     :data-icon="glyph"

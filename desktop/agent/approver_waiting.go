@@ -126,7 +126,8 @@ func (approver *Approver) waitForApproval(ctx context.Context, pending *pendingA
 		}
 	}
 	timeoutAt := pending.receivedAt.Add(timeout)
-	pending.event.TimeoutAt = timeoutAt.UTC().Format(time.RFC3339)
+	pending.event.TimeoutAt = timeoutAt.UTC().Format("2006-01-02T15:04:05.000Z07:00")
+	pending.event.TimeoutMilliseconds = timeout.Milliseconds()
 	timer := time.NewTimer(max(timeoutAt.Sub(approver.config.Now()), 0))
 	defer timer.Stop()
 	approver.mutex.Lock()
@@ -300,17 +301,35 @@ func (approver *Approver) findPending(requestID string) *pendingApproval {
 func (approver *Approver) finishApproval(pending *pendingApproval) {
 	approver.mutex.Lock()
 	approver.pendingRequests = slices.DeleteFunc(approver.pendingRequests, func(candidate *pendingApproval) bool { return candidate == pending })
-	isLastPending := len(approver.pendingRequests) == 0
 	pending.isFinished = true
 	isTouchIDWaiting := pending.isAuthenticating && approver.config.CancelBiometric != nil
 	isCancellingFirst := approver.markTouchIDCancelled(pending)
+	if pending.timedOutAfter > 0 {
+		approver.expiredNotices++
+	}
 	approver.mutex.Unlock()
 	if isTouchIDWaiting {
 		go approver.cancelTouchIDUntilEnded(pending, isCancellingFirst)
 	}
-	approver.emit(ApprovalClosedEventName, pending.event.RequestID)
-	if isLastPending && approver.config.HideApprovalWindow != nil {
-		approver.presenter.present(approver.config.HideApprovalWindow)
+	closeNotice := func() {
+		approver.presenter.present(func() {
+			approver.mutex.Lock()
+			if pending.timedOutAfter > 0 {
+				approver.expiredNotices--
+			}
+			isLastNotice := len(approver.pendingRequests) == 0 && approver.expiredNotices == 0
+			approver.mutex.Unlock()
+			approver.config.Emit(ApprovalClosedEventName, pending.event.RequestID)
+			if isLastNotice && approver.config.HideApprovalWindow != nil {
+				approver.config.HideApprovalWindow()
+			}
+		})
+	}
+	if pending.timedOutAfter > 0 {
+		// The request is already denied; only its notice stays visible.
+		time.AfterFunc(3*time.Second, closeNotice)
+	} else {
+		closeNotice()
 	}
 }
 

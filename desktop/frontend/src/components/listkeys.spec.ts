@@ -70,7 +70,7 @@ describe("Keyboard navigation in the item list", () => {
     store.selectedItem = github;
     const wrapper = mountView();
     const list = wrapper.find('[role="listbox"]');
-    expect(list.attributes("aria-label")).toBe("Items");
+    expect(list.attributes("aria-label")).toBe("Personal");
     const allRow = list.findAll('[role="option"]');
     expect(allRow.map((row) => row.attributes("aria-selected"))).toEqual(["false", "true"]);
   });
@@ -143,7 +143,7 @@ describe("Copy shortcuts", () => {
     pressKey({ key: "C", metaKey: true, shiftKey: true });
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledWith("personal", "github", "password");
-    expect(store.noticeMessage).toBe("Password copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Password copied. It clears in 90 seconds.");
   });
 
   it("⌘C copies the username while the list has the focus, and leaves text fields alone", async () => {

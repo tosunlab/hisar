@@ -26,5 +26,26 @@ data class ChosenIcon(
 
         /** The icon color IDs of core/item; "" is the neutral tile. */
         val allColor = listOf("red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink", "gray")
+
+        /** A photo keeps its pixels; an automatic icon becomes the category's preset so its chosen color is visible. */
+        fun applyColor(icon: ChosenIcon?, color: String, category: String): ChosenIcon? = when {
+            icon?.image != null -> icon
+            icon != null && icon.preset.isNotEmpty() -> icon.copy(color = color)
+            color.isEmpty() -> icon
+            else -> ChosenIcon(
+                preset = when (category) {
+                    ItemDetail.CATEGORY_CREDIT_CARD -> "card"
+                    ItemDetail.CATEGORY_SERVER -> "server"
+                    ItemDetail.CATEGORY_DATABASE -> "database"
+                    ItemDetail.CATEGORY_SSH_KEY -> "terminal"
+                    ItemDetail.CATEGORY_IDENTITY -> "work"
+                    ItemDetail.CATEGORY_ADDRESS -> "home"
+                    ItemDetail.CATEGORY_API_CREDENTIAL -> "code"
+                    ItemDetail.CATEGORY_SECURE_NOTE -> "lock"
+                    else -> "key"
+                },
+                color = color,
+            )
+        }
     }
 }

@@ -82,7 +82,6 @@ fun ApprovalsTab(model: AppModel) {
                     rowKey = { it.requestID },
                     header = if (allApproval.size == 1) "1 request waiting" else "${allApproval.size} requests waiting",
                     headerTestTag = "approvals-header",
-                    footer = "Tap a request to see what it asks for. Approving answers that one request; it never unlocks Hisar on your Mac.",
                 ) { approval ->
                     SwipeActionRow(
                         actionLabel = "Deny",
@@ -113,7 +112,7 @@ fun ApprovalsTab(model: AppModel) {
                     actions = {
                         Box(Modifier.widthIn(max = 320.dp)) {
                             GlassButton(
-                                "Allow Approving Mac Requests",
+                                "Turn on Mac approvals",
                                 { scope.launch { model.settings.setMacApprovalAllowed(true) } },
                                 testTag = "approvals-allow",
                             )

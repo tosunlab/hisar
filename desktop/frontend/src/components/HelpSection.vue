@@ -49,7 +49,6 @@ onMounted(() => {
         <div class="setting">
           <div class="setting-text">
             <strong>Server</strong>
-            <p class="muted">The server does not report its version.</p>
           </div>
           <span class="selectable value" data-testid="help-server">{{ store.status.server || "not signed in" }}</span>
         </div>
@@ -80,7 +79,7 @@ onMounted(() => {
 
 .value {
   color: var(--color-text-muted);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   text-align: right;
 }
 </style>

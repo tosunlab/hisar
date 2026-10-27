@@ -1,4 +1,5 @@
 import { collectAllDeepElement, containsAcrossShadow, getParentAcrossShadow, isInputElement, isVisible } from "./dom";
+import { isSearchField } from "./search-field";
 
 export type ScopeKind = "login" | "sign-up" | "change-password" | "username-only";
 
@@ -24,11 +25,12 @@ export function isPasswordField(element: Element): element is HTMLInputElement {
   );
 }
 
+// isTextField is a field that can take a username. A search box never does, whatever the form it is in.
 export function isTextField(element: Element): element is HTMLInputElement {
   if (!isInputElement(element)) return false;
   const type = (element.getAttribute("type") ?? "").toLowerCase();
   if (!allTextType.has(type)) return false;
-  if (element.disabled) return false;
+  if (element.disabled || isSearchField(element)) return false;
   return isVisible(element);
 }
 
@@ -154,7 +156,7 @@ export function findAllLoginScope(document: Document): LoginScope[] {
     const allTextField = collectAllDeepElement(form, isTextField);
     if (allTextField.length === 0 || allTextField.length > 2) continue;
     const usernameField = allTextField.find(isStrongUsernameField);
-    if (usernameField) allScope.push({ root: form, kind: "username-only", allPasswordField: [], usernameField });
+    if (usernameField && isSignInStep(form, usernameField)) allScope.push({ root: form, kind: "username-only", allPasswordField: [], usernameField });
   }
   // A username field outside any form, as on the first step of many sign-ins, counts even beside a form that also asks for
   // an email address, such as a newsletter's.
@@ -163,9 +165,52 @@ export function findAllLoginScope(document: Document): LoginScope[] {
   );
   for (const field of allLooseField) {
     if (allScope.some((scope) => containsAcrossShadow(scope.root, field))) continue;
-    allScope.push({ root: findFormlessScope(field), kind: "username-only", allPasswordField: [], usernameField: field });
+    const root = findFormlessScope(field);
+    if (isSignInStep(root, field)) allScope.push({ root, kind: "username-only", allPasswordField: [], usernameField: field });
   }
   return allScope;
+}
+
+const signInTextPattern = /\b(log|sign)\s*-?\s*(in|on)\b|welcome back|anmelden|connexion|se connecter|iniciar sesi[oó]n|\bentrar\b|giri[sş] yap|oturum a[cç]|войти/i;
+const continueTextPattern = /^(continue|next|weiter|suivant|devam|ileri|siguiente|continuar)\b/i;
+const signInPathPattern = /log[-_]?in|sign[-_]?in|auth|session|sso|oauth|identifier/i;
+// The hints that name a field a username rather than any email: an email box under a "Continue" button is as often a
+// guest checkout's.
+const usernameOnlyHintPattern = /user|login|identifier|\bident|account|benutzer|usuario|kullan|nutzer/i;
+
+// collectText is the text of root with a space between its nodes, so a heading and the label after it stay two words.
+function collectText(root: Element): string {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const allText: string[] = [];
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const text = node.textContent?.trim();
+    if (text) allText.push(text);
+  }
+  return allText.join(" ");
+}
+
+function isInsideFooter(element: Element): boolean {
+  for (let current: Element | null = element; current; current = getParentAcrossShadow(current)) {
+    if (current.tagName === "FOOTER" || current.getAttribute("role") === "contentinfo") return true;
+  }
+  return false;
+}
+
+// isSignInStep tells the first step of a sign-in, which asks for the email alone, from the other forms that ask for an
+// email alone: a newsletter box in the footer, a sign-up call to action, a guest checkout. The field is a username by its
+// autocomplete attribute, or the page is a sign-in page by its path, or the form says sign in, or a button says continue
+// beside a field named a username.
+function isSignInStep(root: Element, field: HTMLInputElement): boolean {
+  if (getAutocompleteTokens(field).includes("username")) return true;
+  if (isInsideFooter(field)) return false;
+  if (signInPathPattern.test(field.ownerDocument.location?.pathname ?? "")) return true;
+  if (root.tagName !== "BODY" && signInTextPattern.test(collectText(root))) return true;
+  const allAction = collectAllDeepElement(root, (element): element is Element => isSubmitLikeElement(element) || element.tagName === "A");
+  return allAction.some((action) => {
+    const label = getActionLabel(action);
+    if (label.length >= 60) return false;
+    return signInTextPattern.test(label) || (continueTextPattern.test(label) && usernameOnlyHintPattern.test(getFieldHints(field)));
+  });
 }
 
 export function findScopeForElement(document: Document, element: Element): LoginScope | undefined {
@@ -180,11 +225,16 @@ export function isSubmitLikeButton(element: Element): boolean {
   }
   if (isInputElement(element) && (element.type === "submit" || element.type === "image")) return true;
   if (!isSubmitLikeElement(element) && element.tagName !== "A") return false;
-  const label = [element.textContent, element.getAttribute("aria-label"), (element as HTMLInputElement).value, element.id]
+  const label = getActionLabel(element);
+  return label.length > 0 && label.length < 60 && submitTextPattern.test(label);
+}
+
+// getActionLabel is what a button or link says, in its text, its accessible name, its value or its id.
+function getActionLabel(element: Element): string {
+  return [element.textContent, element.getAttribute("aria-label"), (element as HTMLInputElement).value, element.id]
     .filter((text): text is string => Boolean(text))
     .join(" ")
     .trim();
-  return label.length > 0 && label.length < 60 && submitTextPattern.test(label);
 }
 
 export interface CapturedLogin {

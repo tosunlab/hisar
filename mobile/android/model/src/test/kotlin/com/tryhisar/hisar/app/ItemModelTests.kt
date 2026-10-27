@@ -53,7 +53,7 @@ class ItemModelTests {
         val summary = model.findSummary("personal", login.id)
         assertEquals(ItemDetail.CATEGORY_SECURE_NOTE, summary?.category)
         assertEquals(false, summary?.canConvertToSecureNote)
-        assertEquals("Converted to a secure note.", model.notice.value)
+        assertEquals("Converted to a secure note.", model.notice.value?.message)
     }
 
     @Test
@@ -86,7 +86,7 @@ class ItemModelTests {
         assertEquals(emptyList(), afterDelete?.allPasskey)
         assertEquals(emptyList(), model.unlockedData.value.allPasskey)
         assertEquals(emptyList(), model.findSummary("personal", "github")?.allPasskey)
-        assertEquals("Passkey deleted.", model.notice.value)
+        assertEquals("Passkey deleted.", model.notice.value?.message)
 
         val failedDelete = model.item.deletePasskey("personal", "github", "unknown")
         assertNull(failedDelete)
@@ -103,7 +103,7 @@ class ItemModelTests {
         assertNull(model.item.loadOneTimeCode("personal", "bank"))
         model.copyField("personal", "github", "one-time code", "One-time code")
         assertEquals(listOf("github.one-time code"), harness.backend.allCopiedField)
-        assertEquals("One-time code copied. It clears in about 2 minutes.", model.notice.value)
+        assertEquals("One-time code copied. It clears in about 2 minutes.", model.notice.value?.message)
 
         val draft = ItemDetail(
             title = "Mastodon",
@@ -133,6 +133,6 @@ class ItemModelTests {
         val updated = model.item.removeAndroidApp("personal", "bank", bankApp)
         assertEquals(listOf(otherApp), updated?.allAndroidApp)
         assertEquals(listOf(otherApp), model.item.loadItem("personal", "bank")?.allAndroidApp)
-        assertEquals("Android app removed.", model.notice.value)
+        assertEquals("Android app removed.", model.notice.value?.message)
     }
 }

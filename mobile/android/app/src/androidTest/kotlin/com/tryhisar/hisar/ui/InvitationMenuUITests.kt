@@ -45,6 +45,7 @@ class InvitationMenuUITests : HisarUITestCase() {
     }
 
     private fun touchAndHold(tag: String) {
+        dismissNotice()
         waitFor(tag)
         composeRule.onNodeWithTag(tag).performScrollTo().performTouchInput { longClick() }
     }
@@ -61,8 +62,8 @@ class InvitationMenuUITests : HisarUITestCase() {
         launchApp(buildBackend()).use {
             waitFor("vaults-list")
             tap("vault-Work")
-            tap("share-vault")
-            cancelFromMenu("vault-invitation-erin@example.com", "Cancel Invitation", "invitation-menu-vault-sharing")
+            choose("share-vault", "vault-actions")
+            cancelFromMenu("vault-invitation-erin@example.com", "Cancel invitation", "invitation-menu-vault-sharing")
             waitFor(hasText("Cancel the invitation to erin@example.com?"))
             tap("confirm-cancel-invitation")
             composeRule.waitUntil("the cancelled invitation leaves the vault's Invited list", 10_000) {
@@ -72,7 +73,7 @@ class InvitationMenuUITests : HisarUITestCase() {
             goBack()
 
             openSettings("open-people")
-            cancelFromMenu("sent-invitation-gina@example.com", "Cancel Invitation", "invitation-menu-people")
+            cancelFromMenu("sent-invitation-gina@example.com", "Cancel invitation", "invitation-menu-people")
             waitFor(hasText("Cancel the invitation to gina@example.com?"))
             tap("confirm-cancel-invitation")
             waitFor(hasText("Invitation to gina@example.com cancelled.", substring = true) and hasAnyAncestor(hasTestTag("notice")), 10_000)

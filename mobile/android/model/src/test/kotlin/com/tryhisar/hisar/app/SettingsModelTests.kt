@@ -66,7 +66,7 @@ class SettingsModelTests {
         val isMacSignedOut = model.settings.revokeDevice(harness.backend.allDevice[1])
         assertTrue(isMacSignedOut)
         assertEquals(listOf("this"), harness.backend.allDevice.map { it.id })
-        assertEquals("MacBook Pro is signed out.", model.notice.value)
+        assertEquals("MacBook Pro is signed out.", model.notice.value?.message)
         val isThisPhoneSignedOut = model.settings.revokeDevice(harness.backend.allDevice[0])
         assertFalse(isThisPhoneSignedOut, "this device signs out from Settings instead")
     }

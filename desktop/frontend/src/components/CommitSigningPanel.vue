@@ -31,10 +31,7 @@ async function copyAllCommand(): Promise<void> {
     <div class="row host-row">
       <div class="host-text">
         <strong>Use this key for Git</strong>
-        <p class="muted">
-          Add to GitHub or GitLab copies the public key and opens the page to paste it. On GitHub, add it as a Signing Key for commit signing (and as an
-          Authentication Key for SSH); on GitLab, choose Authentication &amp; Signing.
-        </p>
+        <p class="muted">Copies the public key and opens the page to paste it; on GitHub add it as a Signing Key too.</p>
       </div>
     </div>
     <div class="row actions">
@@ -84,7 +81,7 @@ async function copyAllCommand(): Promise<void> {
 
 .host-text p {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .actions {
@@ -101,7 +98,7 @@ async function copyAllCommand(): Promise<void> {
 
 .signing-steps > p {
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .command-list {
@@ -132,12 +129,12 @@ async function copyAllCommand(): Promise<void> {
 }
 
 .command-description {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-secondary);
 }
 
 .command-text code {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;

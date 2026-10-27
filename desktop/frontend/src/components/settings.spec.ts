@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createApiMock, createDevice, createPerson, createReceivedShareInvitation, createSSHAgentStatus, createStatus, createUpdateStatus } from "../testing";
+import MainView from "./MainView.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -52,6 +53,9 @@ beforeEach(() => {
     isBusy: false,
     isSettingsOpen: true,
     allVault: [],
+    selectedVaultID: "",
+    isSharingOpen: false,
+    isCreatingVault: false,
     allPerson: [],
     allDevice: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
@@ -69,12 +73,17 @@ afterEach(() => {
 describe("Settings sidebar", () => {
   it("lists the sections in order and opens on General", async () => {
     const settings = await mountSettings();
-    expect(readAllSectionLabel(settings)).toEqual(["General", "Security", "SSH & Git", "Developer tools", "Browser", "People", "Organizations", "Devices", "Export", "Account", "Help"]);
+    expect(readAllSectionLabel(settings)).toEqual(["General", "Security", "SSH & Git", "Developer tools", "Browser", "People", "Organizations", "Devices", "Import & Export", "Account", "Help"]);
     expect(settings.find("#settings-title").text()).toBe("General");
     expect(findPage(settings, "general").isVisible()).toBe(true);
     expect(findPage(settings, "security").isVisible()).toBe(false);
     expect(findPage(settings, "general").text()).toContain("Open Hisar at login");
-    expect(findPage(settings, "general").text()).toContain("Import a Hisar export or another password manager");
+    expect(findPage(settings, "general").text()).not.toContain("Import a Hisar export or another password manager");
+    await settings.find('[data-testid="settings-section-export"]').trigger("click");
+    expect(settings.find("#settings-title").text()).toBe("Import & Export");
+    const transferPage = findPage(settings, "export");
+    expect(transferPage.text()).toContain("Import a Hisar export or another password manager");
+    expect(transferPage.findAll("section").map((section) => section.attributes("data-testid"))).toEqual(["import-section", "export-section"]);
   });
 
   it("shows the chosen section and keeps every section's rows where they belong", async () => {
@@ -85,6 +94,11 @@ describe("Settings sidebar", () => {
     expect(findPage(settings, "general").isVisible()).toBe(false);
     expect(findPage(settings, "ssh").text()).toContain("Compact SSH approvals");
     expect(findPage(settings, "ssh").find('[data-testid="commit-signing"]').text()).toContain("Remember commit signing");
+    expect(findPage(settings, "ssh").find('[data-testid="commit-signing"] .muted').text()).toBe(
+      "Lets the signing dialog offer “Don’t ask again” for one app, repository and key. Tags always ask.",
+    );
+    expect(findPage(settings, "ssh").text()).not.toContain("gpg.format");
+    expect(findPage(settings, "ssh").text()).not.toContain("has its own setting below");
     expect((findPage(settings, "ssh").find('[data-testid="signing-remember"]').element as HTMLSelectElement).value).toBe("0");
     expect(findPage(settings, "developer").find('[data-testid="command-line-section"]').exists()).toBe(true);
     expect(findPage(settings, "developer").find('[data-testid="coding-agents-section"]').exists()).toBe(true);
@@ -158,6 +172,46 @@ describe("Settings sidebar", () => {
   });
 });
 
+describe("People empty state", () => {
+  it.each([
+    { name: "no people", allPerson: [] },
+    { name: "only you", allPerson: [createPerson()] },
+  ])("offers the same sharing action with $name", async ({ allPerson }) => {
+    api.listAllPerson.mockResolvedValue(allPerson);
+    const settings = await mountSettings();
+    await settings.get('[data-testid="settings-section-people"]').trigger("click");
+    expect(settings.get('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
+    expect(settings.get('[data-testid="people-share-vault"]').attributes("disabled")).toBeUndefined();
+  });
+
+  it("opens the selected vault's Share panel and closes Settings", async () => {
+    store.allVault = [{ id: "team", name: "Team", type: "shared", role: "owner", itemCount: 0 }];
+    store.selectedVaultID = "team";
+    window.localStorage.setItem("hisar.settings.selectedSection", "people");
+    wrapper = mount(MainView);
+    await flushPromises();
+    await wrapper.get('[data-testid="people-share-vault"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-search"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="vault-sharing-panel"]').text()).toContain("Share “Team”");
+    expect(api.listAllVaultMember).toHaveBeenCalledWith("team");
+  });
+
+  it("opens the new-vault form when the selected vault is personal, which is never shared", async () => {
+    store.allVault = [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 }];
+    store.selectedVaultID = "personal";
+    window.localStorage.setItem("hisar.settings.selectedSection", "people");
+    wrapper = mount(MainView);
+    await flushPromises();
+    await wrapper.get('[data-testid="people-share-vault"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-search"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-sharing-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="new-vault-form"]').exists()).toBe(true);
+    expect(api.listAllOrganization).toHaveBeenCalled();
+  });
+});
+
 describe("Settings search", () => {
   it("keeps only the sections and rows that match", async () => {
     const settings = await mountSettings();
@@ -168,6 +222,14 @@ describe("Settings search", () => {
     expect(security.find('[data-testid="enable-touch-id"]').isVisible()).toBe(true);
     expect(security.find('[data-testid="auto-lock"]').isVisible()).toBe(false);
     expect(security.find('[data-testid="save-emergency-kit"]').isVisible()).toBe(false);
+  });
+
+  it("finds the read-only clipboard policy separately from auto-lock", async () => {
+    const settings = await mountSettings();
+    await search(settings, "clipboard");
+    expect(readAllSectionLabel(settings)).toEqual(["Security"]);
+    expect(settings.get('[data-testid="clipboard-clearing"]').isVisible()).toBe(true);
+    expect(settings.get('[data-testid="auto-lock"]').isVisible()).toBe(false);
   });
 
   it("matches keywords and section names", async () => {
@@ -204,7 +266,7 @@ describe("Settings search", () => {
     expect(readSelectedSection(settings)).toBe("settings-section-general");
     expect(findPage(settings, "general").find('[data-testid="updates-section"]').isVisible()).toBe(true);
     expect(findPage(settings, "general").find('[data-testid="open-at-login-section"]').isVisible()).toBe(false);
-    expect(findPage(settings, "general").find('[data-testid="import-section"]').isVisible()).toBe(false);
+    expect(findPage(settings, "export").find('[data-testid="import-section"]').isVisible()).toBe(false);
   });
 
   it("leaves out invitation rows that do not exist", async () => {
@@ -225,7 +287,8 @@ describe("Settings search", () => {
     expect(readAllSectionLabel(settings)).toHaveLength(11);
     expect(settings.find('[data-testid="settings-no-results"]').exists()).toBe(false);
     expect(findPage(settings, "general").isVisible()).toBe(true);
-    expect(findPage(settings, "general").find('[data-testid="import-section"]').isVisible()).toBe(true);
+    await settings.find('[data-testid="settings-section-export"]').trigger("click");
+    expect(findPage(settings, "export").find('[data-testid="import-section"]').isVisible()).toBe(true);
   });
 
   it("focuses the search with Command-F and clears it with Escape before closing", async () => {
@@ -283,6 +346,7 @@ describe("Settings help", () => {
     expect(help.find('[data-testid="help-app-version"]').text()).toBe("0.2.1 (2001)");
     expect(help.find('[data-testid="help-operating-system"]').text()).toBe("macOS 26.0.1");
     expect(help.find('[data-testid="help-server"]').text()).toBe("https://eu.tryhisar.com");
+    expect(help.text()).not.toContain("The server does not report its version.");
     expect(help.find('[data-testid="help-device-id"]').text()).toBe("device-mac");
     await help.find('[data-testid="copy-diagnostics"]').trigger("click");
     await flushPromises();

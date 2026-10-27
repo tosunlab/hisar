@@ -28,7 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,7 +50,7 @@ import com.tryhisar.hisar.app.EditorRequest
 import com.tryhisar.hisar.model.ItemAndroidApp
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ItemPasskey
-import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.ui.components.ContentUnavailable
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.PushedTopBar
@@ -98,22 +100,25 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     }
 
     val shownItem = item
-    val isWritable = vault != null && (vault.type == VaultSummary.TYPE_PERSONAL || vault.role != "reader")
+    val isWritable = vault?.let(VaultLogic::isWritable) == true
+    val scrollState = rememberScrollState()
+    var headerHeight by remember { mutableIntStateOf(0) }
+    val isTitleInBar by remember { derivedStateOf { headerHeight > 0 && scrollState.value >= headerHeight } }
     Column(
         Modifier
             .fillMaxSize()
             .background(HisarTheme.colors.groupedBackground),
     ) {
         PushedTopBar(
-            title = shownItem?.title.orEmpty(),
+            title = if (isTitleInBar) shownItem?.title.orEmpty() else "",
             onBack = onBack,
             actions = {
                 if (shownItem != null) {
                     ItemToolbar(
-                        isFavorite = shownItem.isFavorite,
+                        isFavorite = summary?.isFavorite ?: shownItem.isFavorite,
                         toggleFavorite = {
                             scope.launch {
-                                val isFavorite = !shownItem.isFavorite
+                                val isFavorite = !(summary?.isFavorite ?: shownItem.isFavorite)
                                 if (model.favorites.setItemFavorite(vaultID, shownItem.id, isFavorite)) item = item?.copy(isFavorite = isFavorite)
                             }
                         },
@@ -137,7 +142,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                 Column(
                     Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollState)
                         .padding(horizontal = ScreenMargin),
                 ) {
                     val actions = ItemFieldActions(
@@ -151,6 +156,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                         vaultID = vaultID,
                         vaultName = vault?.name.orEmpty(),
                         item = shownItem,
+                        onHeaderHeightChange = { headerHeight = it },
                         isWritable = isWritable,
                         actions = actions,
                         openSSHKey = { openedSSHKeyID = it },
@@ -181,7 +187,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
             title = { Text("Delete this passkey?") },
             text = { Text("You can no longer sign in to ${passkey.relyingPartyID} as ${passkey.userName} with it.") },
             confirmButton = {
-                PlainButton("Delete Passkey", {
+                PlainButton("Delete passkey", {
                     passkeyToDelete = null
                     scope.launch { model.item.deletePasskey(vaultID, itemID, passkey.credentialID)?.let { item = it } }
                 }, testTag = "confirm-delete-passkey", color = HisarTheme.colors.destructive)
@@ -195,7 +201,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
             title = { Text("Remove this app?") },
             text = { Text("AutoFill no longer offers this login in ${androidApp.packageName}.") },
             confirmButton = {
-                PlainButton("Remove App", {
+                PlainButton("Remove app", {
                     androidAppToRemove = null
                     scope.launch { model.item.removeAndroidApp(vaultID, itemID, androidApp)?.let { item = it } }
                 }, testTag = "confirm-remove-android-app", color = HisarTheme.colors.destructive)

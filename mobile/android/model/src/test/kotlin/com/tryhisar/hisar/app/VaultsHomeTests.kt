@@ -12,8 +12,10 @@ import com.tryhisar.hisar.model.ShareInvitations
 import com.tryhisar.hisar.model.Team
 import com.tryhisar.hisar.model.TeamMember
 import com.tryhisar.hisar.model.TeamVault
+import com.tryhisar.hisar.model.ReadIssue
 import com.tryhisar.hisar.model.VaultLocation
 import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.WaitingShareInvitation
 import com.tryhisar.hisar.model.WaitingVaultKey
 import com.tryhisar.hisar.model.WaitingVaultKeys
@@ -168,6 +170,23 @@ class VaultsHomeTests {
         assertEquals("Waiting for the owners of 2 vaults in Globex to give you their keys", grouping.allGroup[1].waitingMessage)
         assertEquals(listOf("audit", "deploy"), grouping.allGroup[2].allVault.map { it.id })
         assertEquals("Waiting for an owner of a vault in Northwind to give you its key", grouping.allGroup[2].waitingMessage, "a vault that arrived no longer waits")
+    }
+
+    @Test
+    fun testNewItemsGoIntoTheVaultShownElseThePersonalVault() {
+        val personal = VaultSummary("personal", "Personal", VaultSummary.TYPE_PERSONAL, Member.VAULT_ROLE_OWNER, 0)
+        val family = VaultSummary("family", "Family", VaultSummary.TYPE_SHARED, Member.VAULT_ROLE_EDITOR, 0)
+        val audit = VaultSummary("audit", "Audit", VaultSummary.TYPE_ORGANIZATION, Member.VAULT_ROLE_READER, 0, organizationID = "northwind")
+        val locked = VaultSummary("locked", "Locked", VaultSummary.TYPE_SHARED, Member.VAULT_ROLE_OWNER, 0, readIssues = listOf(ReadIssue(vaultId = "locked", kind = "vault-key")))
+        val allVault = listOf(audit, locked, family, personal)
+
+        assertEquals(listOf("family", "personal"), allVault.filter(VaultLogic::isWritable).map { it.id })
+        assertEquals("personal", VaultLogic.chooseNewItemVault(allVault, currentVaultID = null)?.id, "from the Vaults screen")
+        assertEquals("family", VaultLogic.chooseNewItemVault(allVault, currentVaultID = "family")?.id)
+        assertEquals("personal", VaultLogic.chooseNewItemVault(allVault, currentVaultID = "audit")?.id, "a reader's vault takes no new items")
+        assertEquals("personal", VaultLogic.chooseNewItemVault(allVault, currentVaultID = "locked")?.id, "nor one whose key did not open")
+        assertEquals("family", VaultLogic.chooseNewItemVault(listOf(audit, family), currentVaultID = null)?.id)
+        assertNull(VaultLogic.chooseNewItemVault(listOf(audit), currentVaultID = null))
     }
 
     @Test

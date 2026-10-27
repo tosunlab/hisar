@@ -23,6 +23,11 @@ Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerVi
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
 
+New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
+Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
+Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
+Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
+
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
 An absent plan version never enables the delete button.
@@ -60,18 +65,24 @@ After editing `project.yml` (adding files is enough, sources are folders), run `
 the project; CI fails if the committed project differs.
 
 What the UI tests cover: create an account from an invite and read the new Secret Key, add a login, Favorites (the star in an item,
-the swipe actions and the Favorites section at the top of Vaults), item detail
-(reveal, copy), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
-password with the Emergency Kit share), sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
+the swipe actions and the Favorites section at the top of Vaults), creating every item type through the + menu and its More… submenu, item detail
+(tap a field anywhere to copy, including a concealed field, reveal independently with the eye, and long-press for
+Copy or Copy secret reference from the field's context menu, independently of the page's secret-reference button), editing with the password generator, search, lock and unlock with the master password, Settings (the empty Approvals tab, auto-lock, devices, the Secret Key behind the master
+password with the Emergency Kit share), turning Mac approvals off in Settings and back on from Approvals, sign out and sign in with the Secret Key, creating a shared vault and seeing its members, inviting someone from Settings → People, the privacy cover, Face ID (the test enrolls a face in the simulator and posts the
 simulator's "matching face" notification), the AutoFill screens, and passkeys: register a passkey into a login, sign in
 with it, check the attestation and the ES256 signature with CryptoKit, then see and delete it in the item.
 
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or
-`cli`, `forwarded`, `signing`, `launcher`, `launcher-share`), plus `-HisarApprovalPreviewPassword` to act as if Face ID
-were unavailable, and `-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
+`cli`, `forwarded`, `signing`, `launcher`, `launcher-share`). Add `-HisarApprovalPreviewTouchID` for Touch ID button
+copy and its symbol, or `-HisarApprovalPreviewPassword` for the master password fallback.
+`-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
 whole flow between a desktop backend and a HisarKit backend in `make test-end-to-end`.
+
+The waiting-request card has a remember switch when the Mac allows remembering. Approve sends the switch's value.
+The sheet puts the request summary first, shows app warnings separately from details, and names the iPhone's biometric
+check on its Approve button.
 
 **AutoFill in the simulator.** A simulator build without a development team ("Sign to Run Locally") is registered
 (`pluginkit` lists the extension), but iOS 26.4 does not list it in Settings → General → AutoFill & Passwords, and

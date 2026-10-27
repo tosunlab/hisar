@@ -45,7 +45,7 @@ class OrganizationUITests : HisarUITestCase() {
 
         tap("vault-Audit")
         waitFor("item-Audit log", 30_000)
-        assertFalse("readers cannot add items", exists(hasTestTag("add-item")))
+        assertFalse("readers cannot add items", exists(hasTestTag("new-menu")))
         tap("item-Audit log")
         waitFor("favorite-item")
         assertFalse("readers cannot edit", exists(hasTestTag("edit-item")))
@@ -54,6 +54,8 @@ class OrganizationUITests : HisarUITestCase() {
 
         tap("vault-Deploy")
         waitFor("item-Release signing", 30_000)
+        tap("vault-actions")
+        waitFor("vault-members")
         assertFalse("only owners get Share", exists(hasTestTag("share-vault")))
         tap("vault-members")
         waitFor("vault-team-Platform", 30_000)
@@ -67,7 +69,7 @@ class OrganizationUITests : HisarUITestCase() {
         waitFor(hasText("Can't do that"))
         tap("blocked-reason-ok")
 
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type("Remove me", "editor-title")
         type("member", "editor-username")
         tap("editor-save")
@@ -123,13 +125,13 @@ class OrganizationUITests : HisarUITestCase() {
         waitFor("vault-search")
         waitFor(hasText("Runbooks"))
 
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type("Pager", "editor-title")
         type("pager-oncall", "editor-username")
         tap("editor-save")
         waitFor("item-Pager", 30_000)
 
-        tap("share-vault")
+        choose("share-vault", "vault-actions")
         waitFor("vault-team-Ops", 30_000)
         assertTrue(readRow("vault-team-Ops"), readRow("vault-team-Ops").contains("Owner"))
         assertTrue("admins give the vault to other teams", exists(hasTestTag("give-vault-to-team")))

@@ -213,7 +213,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
             tap("phone-approval-close")
         }
         assertEquals("Waiting for your approval", readText("pending-approval-header"))
-        waitFor(hasText("Also allows Terminal for 1 hour. Tap the request to approve it once. It never unlocks Hisar on your Mac."))
+        waitFor(hasText("Also allows Terminal for 1 hour."))
         val card = readText(cardSummary)
         assertTrue(card, "UI Test Mac · expires in" in card && "Terminal wants to push to git.tryhisar.com" in card && "with “hisar gitlab”" in card)
         waitFor(hasTestTag("tab-approvals") and hasText("1", substring = false))

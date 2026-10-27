@@ -414,6 +414,24 @@ defineExpose({ pressKey });
         <p class="muted">Hisar offers to save the login after you sign in.</p>
       </div>
     </template>
+    <template v-else-if="menuState?.view === 'locked'">
+      <button
+        type="button"
+        class="item"
+        :class="{ selected: selectedIndex === 0 }"
+        :disabled="isWaiting"
+        data-testid="inline-unlock"
+        @click="chooseAction({ kind: 'unlock' }, $event)"
+      >
+        <span class="avatar key" aria-hidden="true">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="5" y="11" width="14" height="10" rx="2" /><path d="M8 11V7a4 4 0 0 1 8 0v4M12 15v2" /></svg>
+        </span>
+        <span class="text">
+          <span class="title">{{ isWaiting ? "Waiting for Hisar…" : "Unlock Hisar" }}</span>
+          <span class="subtitle">{{ isWaiting ? "Unlock in the Hisar app to fill" : `Fill on ${menuState.host}` }}</span>
+        </span>
+      </button>
+    </template>
     <template v-else-if="menuState">
       <div class="message">
         <p class="title" data-testid="inline-status">
@@ -423,9 +441,7 @@ defineExpose({ pressKey });
                 ? "Update the Hisar extension"
                 : "Hisar needs an update"
               : menuState.view === "not-paired"
-              ? "This browser is not paired with Hisar"
-              : menuState.view === "locked"
-                ? "Hisar is locked"
+                ? "This browser is not paired with Hisar"
                 : menuState.view === "signed-out"
                   ? "Sign in to Hisar on this computer"
                   : "Hisar is not running"
@@ -445,11 +461,7 @@ defineExpose({ pressKey });
           menuState.view === "update-required"
             ? "Show details…"
             : menuState.view === "not-paired"
-            ? "Pair with Hisar"
-            : menuState.view === "locked"
-              ? isWaiting
-                ? "Waiting for Hisar…"
-                : "Unlock Hisar"
+              ? "Pair with Hisar"
               : isWaiting
                 ? "Opening Hisar…"
                 : "Open Hisar"

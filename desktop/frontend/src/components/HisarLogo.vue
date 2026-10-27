@@ -29,7 +29,7 @@ defineProps<{ size?: number; showWordmark?: boolean }>();
 }
 
 .wordmark {
-  font-size: 17px;
+  font-size: var(--font-size-17);
   font-weight: 700;
   letter-spacing: -0.01em;
 }

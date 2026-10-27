@@ -107,7 +107,6 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(approval.allDetailRow.map(\.label), ["App", "Lasts"])
         XCTAssertEqual(approval.allDetailRow.map(\.value), ["Raycast", "Until Hisar locks on MacBook Pro"])
         XCTAssertEqual(approval.detailLine, "Until Hisar locks on MacBook Pro", "the card says how long approving lasts, as there is no command")
-        XCTAssertEqual(approval.approvalNote, "Approving lets Raycast use Hisar until it locks on your Mac; it does not unlock Hisar there.")
         XCTAssertFalse(approval.isRememberable)
     }
 

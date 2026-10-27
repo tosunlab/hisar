@@ -59,6 +59,8 @@ starts `hisar-server` on port 18084 (`ANDROID_UI_TEST_PORT`), the SMTP sink, the
 `adb reverse`. The test orchestrator clears the app's data before each test. `ANDROID_UI_TESTS` picks tests by class or
 test name (`ANDROID_UI_TESTS=HarnessServerTests,testAccountItemLockAndSignInFlow`), and `ANDROID_UI_TESTS=smoke` runs the
 short list that the API 29 and 34 emulators get. Set `HISAR_UI_TEST_SCREENSHOT_DIRECTORY` to save each test's screenshots.
+Instrumented taps and swipes scroll rows clear of both the floating tab bar and **New**, which can cover a row that is
+still inside the list's visible bounds.
 On an emulator, the biometric tests enroll fingerprints through the emulator console, with the token in
 `~/.emulator_console_auth_token`.
 
@@ -92,6 +94,13 @@ Focus the username or password to fill the login without changing the code field
 On Android 14 and later, Credential Manager's password sheet also offers **Search Hisar** for logins that do not match
 the requesting app or site. For an unlinked app, choose **Only this time** or **Always use for this app** before filling.
 When the sheet has no matching credentials, Hisar returns your search choice to the sheet for you to confirm.
+
+Copy and action notices use Material snackbars above the tab bar. Favorite changes offer **Undo** until the
+snackbar is dismissed. TalkBack announces each notice. Swipe it away or use its dismiss button to close it without undoing the action.
+If a snackbar covers another field or row, dismiss it before tapping that row. Notices stay clear of pinned primary actions.
+
+Touch and hold an Android app linked to a login, then choose **Copy certificate** to copy its full signing-certificate
+SHA-256. The copy uses uppercase hex bytes separated by colons, as `apksigner` and Digital Asset Links show it.
 
 ### Account passwords and exports
 

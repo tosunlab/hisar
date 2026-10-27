@@ -22,7 +22,7 @@ func getLockMenuLabel(state string) string {
 	case app.StateLocked:
 		return "Unlock…"
 	}
-	return "Sign In…"
+	return "Sign in…"
 }
 
 // createMenuBarItem keeps Hisar reachable while its window is closed: open, lock or unlock, and quit. Quit Hisar

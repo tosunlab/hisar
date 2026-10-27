@@ -6,6 +6,7 @@ struct PhoneApprovalPreviewView: View {
     static let argument = "-HisarApprovalPreview"
     static let passwordArgument = "-HisarApprovalPreviewPassword"
     static let previewPassword = "preview master password"
+    static let touchIDArgument = "-HisarApprovalPreviewTouchID"
 
     static func readApproval() -> PhoneApproval? {
         let allArgument = ProcessInfo.processInfo.arguments
@@ -62,6 +63,10 @@ struct PhoneApprovalPreviewView: View {
 
     var approval: PhoneApproval
 
+    private var biometryName: String {
+        ProcessInfo.processInfo.arguments.contains(Self.touchIDArgument) ? "Touch ID" : "Face ID"
+    }
+
     @State private var isSheetShown = true
     @State private var isBusy = false
     @State private var isPasswordRequired = false
@@ -83,6 +88,8 @@ struct PhoneApprovalPreviewView: View {
                 isBusy: isBusy,
                 isPasswordRequired: isPasswordRequired,
                 errorMessage: errorMessage,
+                biometryName: biometryName,
+                biometrySystemImage: biometryName == "Touch ID" ? "touchid" : "faceid",
                 approve: { await approve(isRemembered: $0) },
                 approveWithPassword: { await approveWithPassword($0, isRemembered: $1) },
                 deny: { finish("Denied \(approval.requestID)") }
@@ -95,7 +102,7 @@ struct PhoneApprovalPreviewView: View {
             isPasswordRequired = true
             return
         }
-        finish("Approved \(approval.requestID) with Face ID\(isRemembered ? ", remembered" : "")")
+        finish("Approved \(approval.requestID) with \(biometryName)\(isRemembered ? ", remembered" : "")")
     }
 
     private func approveWithPassword(_ password: String, isRemembered: Bool) async {

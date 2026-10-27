@@ -186,6 +186,6 @@ describe("Importing credit cards", () => {
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-credit-card"]');
     expect(count.text()).toContain("1");
-    expect(count.text()).toContain("Credit card");
+    expect(count.text()).toContain("credit card");
   });
 });
