@@ -222,6 +222,7 @@ private fun RecoveryDeletionDialog(review: RecoveryDeletionReview, isBusy: Boole
                         placeholder = "Type ${review.confirmation} to confirm",
                         testTag = "delete-unreadable-input",
                         keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.None, autoCorrectEnabled = false),
+                        label = "Vault name or ID",
                     )
                 }
             }
