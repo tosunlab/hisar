@@ -154,13 +154,14 @@ onBeforeUnmount(() => {
           </label>
           <label>
             <span>Views</span>
+            <input v-if="isUnlimitedViews" type="text" value="Unlimited" disabled name="shareViews" data-testid="share-views" />
             <input
+              v-else
               v-model.number="viewCount"
               type="number"
               name="shareViews"
               min="1"
               :max="maximumViewCount"
-              :disabled="isUnlimitedViews"
               data-testid="share-views"
             />
           </label>

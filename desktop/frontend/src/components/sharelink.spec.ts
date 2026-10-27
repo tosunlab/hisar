@@ -175,8 +175,13 @@ describe("share link dialog", () => {
   it("sends 0 views for unlimited and no passphrase when it is not required", async () => {
     api.createShareLink.mockResolvedValue(createShareLink({ url: createdURL, maxViews: 0 }));
     const wrapper = await openItemDialog();
+    await wrapper.find('[data-testid="share-views"]').setValue(37);
     await wrapper.find('[data-testid="share-unlimited-views"]').setValue(true);
     expect((wrapper.find('[data-testid="share-views"]').element as HTMLInputElement).disabled).toBe(true);
+    expect((wrapper.find('[data-testid="share-views"]').element as HTMLInputElement).value).toBe("Unlimited");
+    await wrapper.find('[data-testid="share-unlimited-views"]').setValue(false);
+    expect((wrapper.find('[data-testid="share-views"]').element as HTMLInputElement).value).toBe("37");
+    await wrapper.find('[data-testid="share-unlimited-views"]').setValue(true);
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     expect(api.createShareLink).toHaveBeenCalledWith(expect.objectContaining({ fieldKeys: ["username", "password"], maxViews: 0, passphrase: "", expiresInSeconds: 604800 }));
