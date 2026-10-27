@@ -260,6 +260,15 @@ struct AccountView: View {
                     Label("Import a Hisar export…", systemImage: "square.and.arrow.down.on.square")
                 }
                 .accessibilityIdentifier("open-hisar-export-import")
+                DisclosureGroup {
+                    Text("Start the export in the other password manager and choose Hisar. Hisar will open so you can review the items and choose their vaults.")
+                        .accessibilityIdentifier("other-app-import-guidance")
+                    Text("For example, in 1Password, open Settings → Export → Hisar. Keep the source app until you have reviewed the imported items in Hisar.")
+                        .accessibilityIdentifier("other-app-import-example")
+                } label: {
+                    Label("Import from another app", systemImage: "arrow.down.app")
+                }
+                .accessibilityIdentifier("other-app-import-disclosure")
             } footer: {
                 Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON. You can import a Hisar export back into your vaults.")
             }
