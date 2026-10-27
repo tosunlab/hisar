@@ -167,6 +167,11 @@ struct ItemField: Codable, Hashable {
     var name: String
     var value: String
     var concealed: Bool
+
+    /// Hisar keeps a field only by its name, so the backend refuses a value without one rather than drop it.
+    var isNameMissing: Bool {
+        name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !value.isEmpty
+    }
 }
 
 struct ItemDetail: Codable, Identifiable, Hashable {

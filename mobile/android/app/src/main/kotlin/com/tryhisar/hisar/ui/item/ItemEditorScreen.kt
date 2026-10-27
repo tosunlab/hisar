@@ -24,6 +24,7 @@ import androidx.compose.runtime.retain.retain
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
@@ -61,6 +62,8 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
     var isIconPickerShown by remember { mutableStateOf(false) }
     var isDeleteConfirmationShown by remember { mutableStateOf(false) }
     var isDiscardConfirmationShown by remember { mutableStateOf(false) }
+    val allFieldNameFocus = remember { mutableMapOf<Int, FocusRequester>() }
+    val fieldNameFocus: (Int) -> FocusRequester = { index -> allFieldNameFocus.getOrPut(index) { FocusRequester() } }
 
     LaunchedEffect(request) {
         model.itemEditor.clearError()
@@ -81,6 +84,11 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
 
     fun save() {
         val current = draft?.withTagsAdded() ?: return
+        current.unnamedFieldIndex?.let { index ->
+            draft = current.copy(isUnnamedFieldShown = true)
+            fieldNameFocus(index).requestFocus()
+            return
+        }
         draft = current
         scope.launch {
             val savedItem = model.itemEditor.saveItem(vaultID, current.buildItem()) ?: return@launch
@@ -148,28 +156,28 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                         "editor-notes", kind = FieldKind.NOTES, minLines = 8, maxLines = 30,
                     )
                 }
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isCreditCard -> {
                 CardDescriptionEffect(model, currentDraft) { description -> draft = draft?.withCardDescription(description) }
                 CardSections(currentDraft, onChange, revealed, onRevealedChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isIdentity -> {
                 IdentitySections(currentDraft, onChange, revealed, onRevealedChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isAPICredential -> {
                 APICredentialSection(currentDraft, onChange, revealed, onRevealedChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isAddress -> {
                 AddressSection("Address", currentDraft, onChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             item.isSoftwareLicense -> {
                 SoftwareLicenseSection(currentDraft, onChange, revealed, onRevealedChange)
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
             !item.isSSHKey -> {
                 if (item.isServer) {
@@ -178,7 +186,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                 }
                 if (item.isDatabase) DatabaseSection(currentDraft, onChange)
                 LoginSections(currentDraft, onChange, revealed, onRevealedChange, onGeneratePassword = { isGeneratorShown = true })
-                OtherFieldsSection(currentDraft, onChange)
+                OtherFieldsSection(currentDraft, onChange, fieldNameFocus)
             }
         }
         if (!item.isSecureNote) {

@@ -295,6 +295,14 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertNil(LoginMatch.parseRecordIdentifier("nothing"))
         XCTAssertNil(LoginMatch.parseRecordIdentifier("/item"))
     }
+
+    func testAFieldValueNeedsAName() {
+        XCTAssertTrue(ItemField(name: "", value: "recovery-code-1", concealed: true).isNameMissing)
+        XCTAssertTrue(ItemField(name: " \t\n", value: "recovery-code-1", concealed: false).isNameMissing)
+        XCTAssertFalse(ItemField(name: "", value: "", concealed: false).isNameMissing, "an empty row is left out, not refused")
+        XCTAssertFalse(ItemField(name: "Recovery code", value: "recovery-code-1", concealed: true).isNameMissing)
+        XCTAssertFalse(ItemField(name: "PIN", value: "", concealed: false).isNameMissing)
+    }
 }
 
 final class ModelDecodingTests: XCTestCase {
