@@ -331,9 +331,13 @@ struct OrganizationView: View {
         .applyThemedListStyle()
         .refreshable { await load() }
         .navigationTitle(name)
-        .navigationDestination(for: Member.self) { member in
-            OrganizationMemberView(organizationID: organizationID, organizationName: name, member: member, isAdmin: isAdmin) {
-                await load()
+        .navigationDestination(for: SharingMemberRoute.self) { route in
+            if let member = organization?.allMember.first(where: { $0.accountID == route.accountID }) {
+                OrganizationMemberView(organizationID: organizationID, organizationName: name, member: member, isAdmin: isAdmin) {
+                    await load()
+                }
+            } else {
+                SharingMemberUnavailableView()
             }
         }
         .toolbar {
@@ -523,7 +527,7 @@ struct OrganizationView: View {
         Section {
             ForEach(organization.allMember) { member in
                 let allAction = OrganizationLogic.listAllMemberAction(organization: organization, member: member)
-                NavigationLink(value: member) {
+                NavigationLink(value: SharingMemberRoute(accountID: member.accountID)) {
                     MemberRow(member: member, roleText: OrganizationRole.describe(member.role))
                 }
                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -755,18 +759,9 @@ struct OrganizationMemberView: View {
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State private var role: String
+    private var role: String { member.role }
     @State private var isRemoveConfirmationShown = false
     @State private var refusal: Refusal?
-
-    init(organizationID: String, organizationName: String, member: Member, isAdmin: Bool, reload: @escaping () async -> Void) {
-        self.organizationID = organizationID
-        self.organizationName = organizationName
-        self.member = member
-        self.isAdmin = isAdmin
-        self.reload = reload
-        _role = State(initialValue: member.role)
-    }
 
     static func describeRemoval(memberName: String, organizationName: String) -> String {
         "\(memberName) loses the vaults they have through \(organizationName)'s teams."
@@ -850,6 +845,7 @@ struct OrganizationMemberView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(member.name)
         .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await reload() }
         .confirmationDialog("Remove \(member.name) from \(organizationName)?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
             Button("Remove from \(organizationName)", role: .destructive) {
                 Task {
@@ -871,10 +867,10 @@ struct OrganizationMemberView: View {
     private func setRole(_ newRole: String) {
         Task {
             if await model.setOrganizationMemberRole(organizationID: organizationID, accountID: member.accountID, role: newRole) {
-                role = newRole
                 await reload()
             } else {
                 refusal = model.takeRefusal(title: newRole == OrganizationRole.admin ? "Make admin" : "Make member")
+                await reload()
             }
         }
     }

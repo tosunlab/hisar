@@ -65,9 +65,13 @@ struct VaultSharingView: View {
             .refreshable { await load() }
             .navigationTitle(isOwner ? "Share “\(vaultName)”" : "Members")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: Member.self) { member in
-                VaultMemberView(vaultID: vaultID, vaultName: vaultName, member: member, isOwner: isOwner) {
-                    await load()
+            .navigationDestination(for: SharingMemberRoute.self) { route in
+                if let member = sharing?.allMember.first(where: { $0.accountID == route.accountID }) {
+                    VaultMemberView(vaultID: vaultID, vaultName: vaultName, member: member, isOwner: isOwner) {
+                        await load()
+                    }
+                } else {
+                    SharingMemberUnavailableView()
                 }
             }
             .toolbar {
@@ -164,7 +168,7 @@ struct VaultSharingView: View {
         Section {
             if let sharing {
                 ForEach(sharing.allMember) { member in
-                    NavigationLink(value: member) {
+                    NavigationLink(value: SharingMemberRoute(accountID: member.accountID)) {
                         MemberRow(member: member, roleText: describeVaultRole(member.role))
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -248,19 +252,10 @@ struct VaultMemberView: View {
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedRole: String
-    @State private var savedRole: String
+    @State private var pendingRole: String?
     @State private var isRemoveConfirmationShown = false
 
-    init(vaultID: String, vaultName: String, member: Member, isOwner: Bool, reload: @escaping () async -> Void) {
-        self.vaultID = vaultID
-        self.vaultName = vaultName
-        self.member = member
-        self.isOwner = isOwner
-        self.reload = reload
-        _selectedRole = State(initialValue: member.role)
-        _savedRole = State(initialValue: member.role)
-    }
+    private var selectedRole: String { pendingRole ?? member.role }
 
     private var isManageable: Bool { isOwner && !member.isCurrentUser }
 
@@ -320,7 +315,7 @@ struct VaultMemberView: View {
             }
             Section {
                 if isManageable {
-                    Picker("Role", selection: $selectedRole) {
+                    Picker("Role", selection: Binding(get: { selectedRole }, set: chooseRole)) {
                         ForEach(Member.allVaultRole, id: \.self) { role in
                             Text(describeVaultRole(role)).tag(role)
                         }
@@ -328,7 +323,7 @@ struct VaultMemberView: View {
                     .disabled(model.isBusy)
                     .accessibilityIdentifier("member-role")
                 } else {
-                    LabeledContent("Role", value: describeVaultRole(savedRole))
+                    LabeledContent("Role", value: describeVaultRole(member.role))
                 }
             } footer: {
                 Text(describeVaultRoleAbility(selectedRole))
@@ -346,17 +341,7 @@ struct VaultMemberView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(member.name)
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: selectedRole) { _, newRole in
-            guard newRole != savedRole else { return }
-            Task {
-                if await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole) {
-                    savedRole = newRole
-                    await reload()
-                } else {
-                    selectedRole = savedRole
-                }
-            }
-        }
+        .refreshable { await reload() }
         .confirmationDialog("Remove \(member.name.isEmpty ? member.email : member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 Task {
@@ -369,6 +354,18 @@ struct VaultMemberView: View {
             .accessibilityIdentifier("confirm-remove-member")
         } message: {
             Text(describeVaultMemberRemoval(member: member, vaultName: vaultName))
+        }
+    }
+
+    private func chooseRole(_ newRole: String) {
+        guard newRole != member.role, pendingRole == nil else { return }
+        pendingRole = newRole
+        Task {
+            _ = await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole)
+            let error = model.errorMessage
+            await reload()
+            if let error { model.errorMessage = error }
+            pendingRole = nil
         }
     }
 }
@@ -434,4 +431,21 @@ func describeSecurityCode(_ member: Member) -> String {
     }
     let name = member.name.isEmpty ? member.email : member.name
     return "Ask \(name) for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code."
+}
+
+struct SharingMemberRoute: Hashable {
+    var accountID: String
+}
+
+struct SharingMemberUnavailableView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ProgressView()
+            .task {
+                model.showNotice("This person is no longer a member.")
+                dismiss()
+            }
+    }
 }

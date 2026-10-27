@@ -306,7 +306,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     var dialog by remember { mutableStateOf<OrganizationDialog?>(null) }
     var rowMenu by remember { mutableStateOf<RowMenu?>(null) }
     var teamGivenVault by remember { mutableStateOf<Team?>(null) }
-    var openMember by rememberSaveable(stateSaver = memberSaver) { mutableStateOf<Member?>(null) }
+    var openMemberID by rememberSaveable { mutableStateOf<String?>(null) }
 
     val name = organization?.name ?: data.allOrganization.firstOrNull { it.id == organizationID }?.name ?: "Organization"
     val isAdmin = organization?.isAdmin ?: false
@@ -315,7 +315,13 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
 
     suspend fun load() {
         when (val loaded = model.organizations.loadOrganizationScreen(organizationID)) {
-            is OrganizationLoad.Loaded -> organization = loaded.organization
+            is OrganizationLoad.Loaded -> {
+                organization = loaded.organization
+                if (openMemberID != null && loaded.organization.allMember.none { it.accountID == openMemberID }) {
+                    openMemberID = null
+                    model.showNotice("This person is no longer a member.")
+                }
+            }
             OrganizationLoad.Gone -> onBack()
             OrganizationLoad.Failed -> refusal = model.takeRefusal(name)
         }
@@ -340,12 +346,12 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
         scope.launch { change(title, operation) }
     }
 
-    LaunchedEffect(remoteChangeCount, openMember) { load() }
+    LaunchedEffect(remoteChangeCount) { load() }
 
-    val shownMember = openMember
+    val shownMember = organization?.allMember?.firstOrNull { it.accountID == openMemberID }
     if (shownMember != null) {
-        BackHandler { openMember = null }
-        OrganizationMemberScreen(model, organizationID, name, shownMember, isAdmin, onBack = { openMember = null }, reload = { load() })
+        BackHandler { openMemberID = null }
+        OrganizationMemberScreen(model, organizationID, name, shownMember, isAdmin, onBack = { openMemberID = null }, reload = { load() })
         return
     }
 
@@ -452,7 +458,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                         member,
                         OrganizationRole.describe(member.role),
                         testTag = "organization-member-${member.email}",
-                        onClick = { openMember = member },
+                        onClick = { openMemberID = member.accountID },
                         onLongClick = if (allAction.isEmpty()) null else ({ rowMenu = RowMenu.OfMember(member.accountID) }),
                     ) {
                         HisarMenu(rowMenu == RowMenu.OfMember(member.accountID), onDismiss = { rowMenu = null }) {
@@ -821,7 +827,7 @@ private fun OrganizationMemberScreen(
 ) {
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var role by rememberSaveable(member.accountID) { mutableStateOf(member.role) }
+    val role = member.role
     var isRemoveConfirmationShown by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<Refusal?>(null) }
     val isAdminRole = role == OrganizationRole.ADMIN
@@ -829,10 +835,10 @@ private fun OrganizationMemberScreen(
     fun setRole(newRole: String) {
         scope.launch {
             if (model.organizations.setOrganizationMemberRole(organizationID, member.accountID, newRole)) {
-                role = newRole
                 reload()
             } else {
                 refusal = model.takeRefusal(if (newRole == OrganizationRole.ADMIN) "Make admin" else "Make member")
+                reload()
             }
         }
     }
