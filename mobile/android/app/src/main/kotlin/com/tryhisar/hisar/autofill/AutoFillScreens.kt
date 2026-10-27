@@ -45,6 +45,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -166,8 +168,9 @@ private fun AutoFillListView(model: AutoFillModel) {
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val requestKind by model.requestKind.collectAsStateWithLifecycle()
     val isOtherLoginLoaded by model.isOtherLoginLoaded.collectAsStateWithLifecycle()
+    val matchingLookup by model.matchingLookup.collectAsStateWithLifecycle()
     val loginToLink by model.loginToLink.collectAsStateWithLifecycle()
-    model.allMatchingLogin.collectAsStateWithLifecycle().value
+    val allMatchingLogin by model.allMatchingLogin.collectAsStateWithLifecycle()
     model.allOtherLogin.collectAsStateWithLifecycle().value
     model.allMatchingPasskey.collectAsStateWithLifecycle().value
     val passkeyAssertionRequest by model.passkeyAssertionRequest.collectAsStateWithLifecycle()
@@ -195,10 +198,38 @@ private fun AutoFillListView(model: AutoFillModel) {
             val noun = if (requestKind == RequestKind.ONE_TIME_CODE) "One-time codes" else "Logins"
             val allMatching = model.allVisibleMatchingLogin
             FormSection(header = if (serviceName.isEmpty()) "Matching ${noun.lowercase()}" else "$noun for $serviceName") {
-                if (allMatching.isEmpty()) {
-                    FormRow { Text(emptyMessage(requestKind, searchText.isEmpty()), style = HisarType.body, color = HisarTheme.colors.secondaryLabel) }
+                FormRow {
+                    Row(
+                        Modifier.semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (matchingLookup == AutoFillModel.MatchingLookup.Loading) {
+                            CircularProgressIndicator(Modifier.size(22.dp), color = HisarTheme.colors.secondaryLabel)
+                        }
+                        Text(
+                            when (val lookup = matchingLookup) {
+                                AutoFillModel.MatchingLookup.Loading -> if (requestKind == RequestKind.ONE_TIME_CODE) "Looking for one-time codes…" else "Looking for logins…"
+                                is AutoFillModel.MatchingLookup.Failed -> lookup.message
+                                AutoFillModel.MatchingLookup.Loaded -> {
+                                    val count = allMatchingLogin.count { requestKind != RequestKind.ONE_TIME_CODE || it.hasOneTimePassword }
+                                    val label = if (count == 1) noun.lowercase().removeSuffix("s") else noun.lowercase()
+                                    "$count $label found."
+                                }
+                            },
+                            style = HisarType.body, color = HisarTheme.colors.secondaryLabel,
+                        )
+                    }
                 }
-                LoginRows(allMatching, select)
+                if (matchingLookup is AutoFillModel.MatchingLookup.Failed) {
+                    PlainButton("Retry", { scope.launch { model.loadAllMatchingLogin() } }, testTag = "autofill-retry-matching")
+                }
+                if (matchingLookup == AutoFillModel.MatchingLookup.Loaded) {
+                    if (allMatching.isEmpty()) {
+                        FormRow { Text(emptyMessage(requestKind, searchText.isEmpty()), style = HisarType.body, color = HisarTheme.colors.secondaryLabel) }
+                    }
+                    LoginRows(allMatching, select)
+                }
             }
             if (searchText.isNotEmpty()) {
                 val allOther = model.allVisibleOtherLogin

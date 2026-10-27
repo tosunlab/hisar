@@ -80,10 +80,17 @@ class AutoFillModel(
         data object UpdateRequired : Screen
     }
 
+    sealed interface MatchingLookup {
+        data object Loading : MatchingLookup
+        data object Loaded : MatchingLookup
+        data class Failed(val message: String) : MatchingLookup
+    }
+
     private val mutableScreen = MutableStateFlow<Screen>(Screen.Starting)
     private val mutableStatus = MutableStateFlow(VaultStatus.signedOut)
     private val mutableIsBusy = MutableStateFlow(false)
     private val mutableAllMatchingLogin = MutableStateFlow<List<LoginMatch>>(emptyList())
+    private val mutableMatchingLookup = MutableStateFlow<MatchingLookup>(MatchingLookup.Loading)
     private val mutableAllOtherLogin = MutableStateFlow<List<LoginMatch>>(emptyList())
     private val mutableIsOtherLoginLoaded = MutableStateFlow(false)
     private val mutableSearchText = MutableStateFlow("")
@@ -102,6 +109,7 @@ class AutoFillModel(
     val isBusy: StateFlow<Boolean> = mutableIsBusy.asStateFlow()
     val errorMessage = MutableStateFlow<String?>(null)
     val allMatchingLogin: StateFlow<List<LoginMatch>> = mutableAllMatchingLogin.asStateFlow()
+    val matchingLookup: StateFlow<MatchingLookup> = mutableMatchingLookup.asStateFlow()
     val allOtherLogin: StateFlow<List<LoginMatch>> = mutableAllOtherLogin.asStateFlow()
     val isOtherLoginLoaded: StateFlow<Boolean> = mutableIsOtherLoginLoaded.asStateFlow()
     val searchText: StateFlow<String> = mutableSearchText.asStateFlow()
@@ -283,6 +291,7 @@ class AutoFillModel(
     // What only an unlocked Hisar shows; the unlock loads it again for the request.
     private fun forgetUnlockedData() {
         mutableAllMatchingLogin.value = emptyList()
+        mutableMatchingLookup.value = MatchingLookup.Loading
         mutableAllOtherLogin.value = emptyList()
         mutableIsOtherLoginLoaded.value = false
         mutableSearchText.value = ""
@@ -295,6 +304,7 @@ class AutoFillModel(
 
     private fun resetRequest(target: FillTarget, kind: RequestKind) {
         endPasskeyCeremony()
+        forgetUnlockedData()
         pendingRequest = null
         pendingPasskeyCredentialID = null
         isUnlockOnly = false
@@ -559,9 +569,19 @@ class AutoFillModel(
 
     suspend fun loadAllMatchingLogin() {
         val target = mutableTarget.value ?: return
-        val allMatch = performWithinUnlock { matcher(it).listAllMatch(target) } ?: return
+        val epoch = requestEpoch
+        val lockCount = mutableLockCount.value
+        mutableMatchingLookup.value = MatchingLookup.Loading
+        val allMatch = performWithinUnlock { matcher(it).listAllMatch(target) }
+        if (epoch != requestEpoch || lockCount != mutableLockCount.value) return
+        if (allMatch == null) {
+            mutableMatchingLookup.value = MatchingLookup.Failed(errorMessage.value ?: "Could not look for logins. Try again.")
+            errorMessage.value = null
+            return
+        }
         sourceByLoginID = allMatch.associate { it.login.id to it.source }
         mutableAllMatchingLogin.value = allMatch.map { it.login }
+        mutableMatchingLookup.value = MatchingLookup.Loaded
     }
 
     suspend fun loadAllOtherLogin() {

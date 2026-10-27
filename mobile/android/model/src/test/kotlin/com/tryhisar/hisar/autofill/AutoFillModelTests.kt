@@ -14,6 +14,7 @@ import com.tryhisar.hisar.model.PasskeyRegistrationRequest
 import com.tryhisar.hisar.model.ThemeAppearanceName
 import com.tryhisar.hisar.model.ThemeColorName
 import com.tryhisar.hisar.model.VaultStatus
+import com.tryhisar.hisar.model.VaultBackend
 import com.tryhisar.hisar.model.VaultTheme
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -52,10 +53,10 @@ class AutoFillModelTests {
     private val bankApp = AndroidApp("com.example.bank", "AB:".repeat(31) + "AB")
     private val bankAppTarget = FillTarget.App(bankApp, "Example Bank")
 
-    private fun TestScope.createModel(completeSelection: ((LoginMatch) -> Unit)? = null) = AutoFillModel(
+    private fun TestScope.createModel(source: VaultBackend = backend, completeSelection: ((LoginMatch) -> Unit)? = null) = AutoFillModel(
         scope = backgroundScope,
         ioDispatcher = StandardTestDispatcher(testScheduler),
-        createBackend = { backend.also { it.verifyPasskey = { reason -> allDeviceOwnerReason += reason; isDeviceOwnerConfirming } } },
+        createBackend = { backend.verifyPasskey = { reason -> allDeviceOwnerReason += reason; isDeviceOwnerConfirming }; source },
         events = events,
         verifier = { app, _ ->
             allVerifiedApp += app
@@ -103,6 +104,48 @@ class AutoFillModelTests {
         assertTrue(isUnlocked)
         assertEquals(AutoFillModel.Screen.List, model.screen.value)
         assertEquals(listOf("GitHub"), model.allMatchingLogin.value.map { it.title }, "the same login matched twice is listed once")
+    }
+
+    @Test
+    fun testMatchingLookupStaysPendingUntilTheBackendAnswers() = runTest {
+        backend.seedSignedIn()
+        lateinit var model: AutoFillModel
+        val source = object : VaultBackend by backend {
+            override fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch> {
+                assertEquals(AutoFillModel.Screen.List, model.screen.value)
+                assertEquals(AutoFillModel.MatchingLookup.Loading, model.matchingLookup.value)
+                assertTrue(model.allMatchingLogin.value.isEmpty())
+                return backend.listAllLoginForService(serviceIdentifier)
+            }
+        }
+        model = createModel(source = source)
+        model.prepareCredentialList(websites("github.com"))
+        assertEquals(AutoFillModel.MatchingLookup.Loaded, model.matchingLookup.value)
+        assertEquals(listOf("GitHub"), model.allMatchingLogin.value.map { it.title })
+        backend.lock()
+        events.emit(BackendEvent.Locked)
+        advanceUntilIdle()
+        assertEquals(AutoFillModel.MatchingLookup.Loading, model.matchingLookup.value)
+        assertTrue(model.allMatchingLogin.value.isEmpty())
+    }
+
+    @Test
+    fun testMatchingLookupFailureIsNotAnEmptyAnswer() = runTest {
+        backend.seedSignedIn()
+        var isFailing = true
+        val source = object : VaultBackend by backend {
+            override fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch> {
+                if (isFailing) error("Lookup unavailable")
+                return emptyList()
+            }
+        }
+        val model = createModel(source = source)
+        model.prepareCredentialList(websites("github.com"))
+        assertTrue(model.matchingLookup.value is AutoFillModel.MatchingLookup.Failed)
+        isFailing = false
+        model.loadAllMatchingLogin()
+        assertEquals(AutoFillModel.MatchingLookup.Loaded, model.matchingLookup.value)
+        assertTrue(model.allMatchingLogin.value.isEmpty())
     }
 
     @Test
