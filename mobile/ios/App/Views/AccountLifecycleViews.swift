@@ -398,6 +398,11 @@ struct PendingRecoveryView: View {
         isDiscardConfirmationShown = false
     }
 
+    private func handleOutcome(_ succeeded: Bool, isFinal: Bool = false) {
+        if succeeded && isFinal { clearCredentials() }
+        else if !succeeded && model.lastErrorCode == BackendError.pendingRecoveryPassword { password = "" }
+    }
+
     private var selected: PendingRecovery? {
         model.allPendingRecovery.first { $0.operationId == selectedID }
     }
@@ -411,9 +416,11 @@ struct PendingRecoveryView: View {
                 Section("Choose an account") {
                     ForEach(model.allPendingRecovery) { recovery in
                         Button {
-                            clearCredentials()
-                            model.clearPendingRecoveryExport()
-                            selectedID = recovery.operationId
+                            if selectedID != recovery.operationId {
+                                clearCredentials()
+                                model.clearPendingRecoveryExport()
+                                selectedID = recovery.operationId
+                            }
                         } label: {
                             HStack {
                                 VStack(alignment: .leading) {
@@ -458,17 +465,16 @@ struct PendingRecoveryView: View {
                             let enteredPassword = password
                             let enteredKey = secretKey
                             let enteredPriorKey = priorSecretKey
-                            clearCredentials()
                             Task {
-                                await model.resumePendingRecovery(operationID: recovery.operationId, password: enteredPassword, secretKey: enteredKey, priorSecretKey: enteredPriorKey)
+                                let succeeded = await model.resumePendingRecovery(operationID: recovery.operationId, password: enteredPassword, secretKey: enteredKey, priorSecretKey: enteredPriorKey)
+                                handleOutcome(succeeded)
                             }
                         }
                         .disabled(password.isEmpty || model.isBusy || recovery.phase == "awaiting-kit")
                         .accessibilityIdentifier("pending-recovery-resume")
                         Button("Prepare Emergency Kit") {
                             let enteredPassword = password
-                            clearCredentials()
-                            Task { await model.exportPendingRecoveryKit(operationID: recovery.operationId, password: enteredPassword) }
+                            Task { handleOutcome(await model.exportPendingRecoveryKit(operationID: recovery.operationId, password: enteredPassword)) }
                         }
                         .disabled(password.isEmpty || model.isBusy || recovery.phase == "outcome-unknown")
                         .accessibilityIdentifier("pending-recovery-export")
@@ -484,8 +490,9 @@ struct PendingRecoveryView: View {
                         }
                         Button("I saved my Emergency Kit") {
                             let enteredPassword = password
-                            clearCredentials()
-                            Task { await model.acknowledgePendingRecovery(operationID: recovery.operationId, password: enteredPassword) }
+                            Task {
+                                handleOutcome(await model.acknowledgePendingRecovery(operationID: recovery.operationId, password: enteredPassword), isFinal: recovery.phase == "delivery-pending")
+                            }
                         }
                         .disabled(password.isEmpty || model.isBusy || !recovery.kitSaved || (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit"))
                         .accessibilityIdentifier("pending-recovery-acknowledge")
@@ -508,7 +515,7 @@ struct PendingRecoveryView: View {
                 }
                 if let message = model.errorMessage { Section { ErrorBanner(message: message) } }
                 Section {
-                    Button("Finish later") { model.closePendingRecovery() }
+                    Button("Finish later") { clearCredentials(); model.closePendingRecovery() }
                         .accessibilityIdentifier("pending-recovery-later")
                 }
             }
@@ -519,15 +526,17 @@ struct PendingRecoveryView: View {
             Button("Cancel this setup", role: .destructive) {
                 guard let recovery = selected else { return }
                 let enteredPassword = password
-                clearCredentials()
-                Task { await model.discardPreparedRecovery(operationID: recovery.operationId, password: enteredPassword) }
+                Task { handleOutcome(await model.discardPreparedRecovery(operationID: recovery.operationId, password: enteredPassword), isFinal: true) }
             }
             .accessibilityIdentifier("pending-recovery-discard-confirm")
         } message: {
             Text("No server change has been sent. This removes only the local prepared setup so you can start again.")
         }
-        .onChange(of: model.status.state) { _, _ in clearCredentials() }
+        .onChange(of: model.status.state) { _, state in
+            if state == VaultStatus.stateLocked || state == VaultStatus.stateSignedOut { clearCredentials() }
+        }
         .onChange(of: model.status.email) { _, _ in clearCredentials() }
+        .onChange(of: model.status.server) { _, _ in clearCredentials() }
         .onDisappear {
             clearCredentials()
             model.clearPendingRecoveryExport()

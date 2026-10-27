@@ -298,15 +298,14 @@ class HisarUITestCase: XCTestCase {
             app.launch()
             waitFor(account, timeout: 60)
             account.tap()
+            type(password, into: passwordField)
         }
-        type(password, into: passwordField)
         scrollTo(app.buttons["pending-recovery-acknowledge"])
         app.buttons["pending-recovery-acknowledge"].tap()
         if isPrecommit {
             let prepared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Your Emergency Kit is confirmed saved. Continue to send this change."), object: phase)
             wait(for: [prepared], timeout: 60)
             type(secretKey, into: app.secureTextFields["pending-recovery-input-secret-key"])
-            type(password, into: passwordField)
             scrollTo(app.buttons["pending-recovery-resume"])
             app.buttons["pending-recovery-resume"].tap()
             let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Your account is ready. Save and confirm your Emergency Kit to finish."), object: phase)

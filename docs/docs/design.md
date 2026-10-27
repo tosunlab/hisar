@@ -640,6 +640,10 @@ The native page is **Finish account setup**. A record names whether account crea
 finishing, followed by its email and server host. Kind-by-phase sentences describe what happened and what remains;
 internal phase identifiers are never visible or spoken. **Continue** warns about an account switch only when it replaces
 a different open account. **Cancel this setup** is available only before a remote finish may have been sent.
+Entered recovery factors stay only in view memory through preparation, saving and confirmation for the same selected
+record. Metadata refreshes do not clear them. Final acknowledgement, successful cancellation, closing the view, choosing
+another record, lock, sign-out or an account change clears them. Only a coded password rejection clears the password after
+a failed action; the entered Secret Keys stay. Every backend call still verifies the factors and enforces kit lifetimes.
 
 **Admin recovery was removed.** Earlier versions let one admin hold a recovery keyset that every recoverable vault key was wrapped to, and recover other users' accounts with one-time links. Migration `00004_remove_recovery` deletes all of it: the tables `recovery_keyset`, `vault_recovery`, `recovery_tokens` and `account_recovery` and the column `vaults.recovery_opt_out`. Its down migration recreates only the empty structure; the deleted keyset, wrappings and pending recoveries cannot come back. The recovery endpoints are gone and answer 404. Older clients keep working: a 404 for the recovery keyset means "recovery is not set up" to them, so they stop wrapping vault keys to it.
 

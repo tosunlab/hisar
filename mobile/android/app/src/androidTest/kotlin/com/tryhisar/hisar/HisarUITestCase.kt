@@ -252,13 +252,12 @@ abstract class HisarUITestCase {
             waitFor(hasTestTag(kit.recordTag) and hasText(email, substring = true), ACCOUNT_KEY_TIMEOUT)
             tap(kit.recordTag)
             check(readText("pending-recovery-phase") == kit.phase) { "the prepared recovery changed across process restart" }
+            type(password, "pending-recovery-password")
         }
-        type(password, "pending-recovery-password")
         tapWhenEnabled("pending-recovery-acknowledge")
         if (kit.phase == "Save and confirm your new Emergency Kit before Hisar sends this change.") {
             waitFor(hasTestTag("pending-recovery-phase") and hasText("Your Emergency Kit is confirmed saved. Continue to send this change."), ACCOUNT_KEY_TIMEOUT)
             type(kit.secretKey, "pending-recovery-input-secret-key")
-            type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-resume")
             waitFor(hasTestTag("pending-recovery-phase") and hasText("Your account is ready. Save and confirm your Emergency Kit to finish."), ACCOUNT_KEY_TIMEOUT)
             type(password, "pending-recovery-password")

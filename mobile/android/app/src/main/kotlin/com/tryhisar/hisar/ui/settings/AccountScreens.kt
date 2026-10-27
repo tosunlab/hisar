@@ -565,14 +565,24 @@ fun PendingRecoveryScreen(model: AppModel) {
     var priorSecretKey by remember { mutableStateOf("") }
     var isDiscardConfirmationShown by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(status.state, status.email, status.server) {
+    fun clearFactors() {
         password = ""
         secretKey = ""
         priorSecretKey = ""
         isDiscardConfirmationShown = false
     }
-    BackHandler { model.pendingRecovery.close() }
-    SettingsScreen("Finish account setup", model.pendingRecovery::close, isTitleInline = true) {
+    fun handleOutcome(succeeded: Boolean, isFinal: Boolean = false) {
+        if (succeeded && isFinal) clearFactors()
+        else if (!succeeded && model.pendingRecovery.isPasswordRejected) password = ""
+    }
+    fun close() { clearFactors(); model.pendingRecovery.close() }
+    LaunchedEffect(status.email, status.server) { clearFactors() }
+    LaunchedEffect(status.state) {
+        if (status.state == com.tryhisar.hisar.model.VaultStatus.STATE_LOCKED || status.state == com.tryhisar.hisar.model.VaultStatus.STATE_SIGNED_OUT) clearFactors()
+    }
+    DisposableEffect(Unit) { onDispose { clearFactors() } }
+    BackHandler { close() }
+    SettingsScreen("Finish account setup", ::close, isTitleInline = true) {
         FormSection {
             FormRow {
                 Text("Save and confirm your Emergency Kit to finish this setup.")
@@ -583,11 +593,11 @@ fun PendingRecoveryScreen(model: AppModel) {
                 FormButtonRow(
                     "${PendingRecoveryCopy.heading(recovery.kind)}\n${recovery.email} · ${PendingRecoveryCopy.host(recovery.origin)} ›",
                     {
-                        password = ""
-                        secretKey = ""
-                        priorSecretKey = ""
-                        model.pendingRecovery.clearExport()
-                        selectedID = recovery.operationId
+                        if (selectedID != recovery.operationId) {
+                            clearFactors()
+                            model.pendingRecovery.clearExport()
+                            selectedID = recovery.operationId
+                        }
                     },
                     testTag = "pending-recovery-${recovery.operationId}",
                 )
@@ -631,10 +641,7 @@ fun PendingRecoveryScreen(model: AppModel) {
                         val entered = password
                         val enteredKey = secretKey
                         val enteredPriorKey = priorSecretKey
-                        password = ""
-                        secretKey = ""
-                        priorSecretKey = ""
-                        scope.launch { model.pendingRecovery.resume(recovery.operationId, entered, enteredKey, enteredPriorKey) }
+                        scope.launch { handleOutcome(model.pendingRecovery.resume(recovery.operationId, entered, enteredKey, enteredPriorKey)) }
                     },
                     testTag = "pending-recovery-resume",
                     enabled = password.isNotEmpty() && !isBusy && recovery.phase != "awaiting-kit",
@@ -643,10 +650,7 @@ fun PendingRecoveryScreen(model: AppModel) {
                     "Prepare Emergency Kit",
                     {
                         val entered = password
-                        password = ""
-                        secretKey = ""
-                        priorSecretKey = ""
-                        scope.launch { model.pendingRecovery.exportKit(recovery.operationId, entered) }
+                        scope.launch { handleOutcome(model.pendingRecovery.exportKit(recovery.operationId, entered)) }
                     },
                     testTag = "pending-recovery-export",
                     enabled = password.isNotEmpty() && !isBusy && recovery.phase != "outcome-unknown",
@@ -659,10 +663,7 @@ fun PendingRecoveryScreen(model: AppModel) {
                     "I saved my Emergency Kit",
                     {
                         val entered = password
-                        password = ""
-                        secretKey = ""
-                        priorSecretKey = ""
-                        scope.launch { model.pendingRecovery.acknowledge(recovery.operationId, entered) }
+                        scope.launch { handleOutcome(model.pendingRecovery.acknowledge(recovery.operationId, entered), isFinal = recovery.phase == "delivery-pending") }
                     },
                     testTag = "pending-recovery-acknowledge",
                     enabled = password.isNotEmpty() && !isBusy && recovery.kitSaved &&
@@ -685,7 +686,7 @@ fun PendingRecoveryScreen(model: AppModel) {
         }
         error?.let { FormSection { ErrorBanner(it) } }
         ClearSection {
-            ProminentButton("Finish later", model.pendingRecovery::close, testTag = "pending-recovery-later")
+            ProminentButton("Finish later", ::close, testTag = "pending-recovery-later")
         }
     }
     if (isDiscardConfirmationShown) {
@@ -697,11 +698,8 @@ fun PendingRecoveryScreen(model: AppModel) {
                 confirmTestTag = "pending-recovery-discard-confirm",
                 onConfirm = {
                     val entered = password
-                    password = ""
-                    secretKey = ""
-                    priorSecretKey = ""
                     isDiscardConfirmationShown = false
-                    scope.launch { model.pendingRecovery.discard(recovery.operationId, entered) }
+                    scope.launch { handleOutcome(model.pendingRecovery.discard(recovery.operationId, entered), isFinal = true) }
                 },
                 onDismiss = { isDiscardConfirmationShown = false },
             )

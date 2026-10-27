@@ -188,7 +188,7 @@ func (s *Service) loadPendingRecovery(operationID string, password []byte) (*Pen
 	}
 	plaintext, err := crypt.OpenPendingFactor(password, envelope, operationID, entry.Origin, entry.AccountID)
 	if err != nil {
-		return nil, session.PendingFactor{}, errors.New("the password could not open this pending recovery operation")
+		return nil, session.PendingFactor{}, errors.New("pending-recovery-password: the master password could not open this setup")
 	}
 	defer clear(plaintext)
 	var pending session.PendingFactor

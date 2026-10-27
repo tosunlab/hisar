@@ -20,6 +20,12 @@ function clearFactors(): void {
   secretKey.value = "";
   priorSecretKey.value = "";
 }
+watch(selectedID, () => { clearFactors(); store.recoveryFactor = null; });
+watch(() => [store.status.email, store.status.server], clearFactors);
+watch(() => store.status.state, state => {
+  if (state === "locked" || state === "signed-out") clearFactors();
+});
+watch(() => store.isRecoveryOpen, open => { if (!open) clearFactors(); });
 onUnmounted(() => { clearFactors(); store.recoveryFactor = null; });
 watch(() => store.recoveryEpoch, () => {
   clearFactors();
@@ -32,20 +38,22 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
   const enteredPassword = password.value;
   const enteredKey = secretKey.value;
   const enteredPriorKey = priorSecretKey.value;
-  clearFactors();
+  let succeeded = false;
   if (action === "resume") {
-    await resumePendingRecovery(operation.operationId, enteredPassword, enteredKey, enteredPriorKey);
+    succeeded = await resumePendingRecovery(operation.operationId, enteredPassword, enteredKey, enteredPriorKey);
   } else if (action === "save") {
     if (await savePendingRecoveryKit(operation.operationId, enteredPassword)) {
       savedOperationID.value = operation.operationId;
       isSavedConfirmed.value[operation.operationId] = false;
     }
   } else if (action === "discard") {
-    await discardPreparedRecovery(operation.operationId, enteredPassword);
+    if (await discardPreparedRecovery(operation.operationId, enteredPassword)) clearFactors();
   } else if (isSavedConfirmed.value[operation.operationId] && (savedOperationID.value === operation.operationId || operation.kitSaved)) {
-    await acknowledgePendingRecovery(operation.operationId, enteredPassword);
-    isSavedConfirmed.value[operation.operationId] = false;
+    succeeded = await acknowledgePendingRecovery(operation.operationId, enteredPassword);
+    if (succeeded && operation.phase === "delivery-pending") clearFactors();
+    if (succeeded) isSavedConfirmed.value[operation.operationId] = false;
   }
+  if (store.recoveryPasswordRejected) password.value = "";
 }
 </script>
 

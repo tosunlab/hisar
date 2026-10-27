@@ -20,6 +20,20 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
     val export = mutableExport.asStateFlow()
     private var epoch = 0L
     private var exportGeneration = 0L
+    var isPasswordRejected = false
+        private set
+
+    private suspend fun <Value> perform(operation: (com.tryhisar.hisar.model.VaultBackend) -> Value): Value? {
+        isPasswordRejected = false
+        return context.perform {
+            try {
+                operation(it)
+            } catch (error: com.tryhisar.hisar.model.BackendError) {
+                isPasswordRejected = error.code == com.tryhisar.hisar.model.BackendError.PENDING_RECOVERY_PASSWORD
+                throw error
+            }
+        }
+    }
 
     init {
         context.addStatusListener { previous, current ->
@@ -64,7 +78,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
 
     suspend fun resume(operationID: String, password: String, secretKey: String = "", priorSecretKey: String = ""): Boolean = context.runInModel {
         val startedEpoch = epoch
-        val result = context.perform {
+        val result = perform {
             if (secretKey.isEmpty()) it.resumePendingRecovery(operationID, password)
             else it.resumePendingRecoveryWithSecretKey(operationID, password, VaultLogic.formatSecretKey(secretKey), VaultLogic.formatSecretKey(priorSecretKey))
         }
@@ -82,7 +96,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
     }
 
     suspend fun discard(operationID: String, password: String): Boolean = context.runInModel {
-        context.perform { it.discardPreparedRecovery(operationID, password) } ?: return@runInModel false
+        perform { it.discardPreparedRecovery(operationID, password) } ?: return@runInModel false
         clearExport()
         refresh()
         true
@@ -97,7 +111,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         // finishes; perform then throws once it returns. Whatever is not published here is deleted, the file with it.
         var isPublished = false
         try {
-            val result = context.perform { it.exportPendingRecoveryEmergencyKit(operationID, password, directory) }
+            val result = perform { it.exportPendingRecoveryEmergencyKit(operationID, password, directory) }
             if (result == null || startedEpoch != epoch || generation != exportGeneration) {
                 // A lock, sign-out or account switch hides the Secret Key; a newer export, another record or closing the
                 // screen is the user's own choice and needs no word.
@@ -118,7 +132,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
     suspend fun acknowledge(operationID: String, password: String): Boolean = context.runInModel {
         val startedEpoch = epoch
         val recovery = mutableAllRecovery.value.firstOrNull { it.operationId == operationID }
-        context.perform { it.acknowledgePendingRecovery(operationID, password) } ?: return@runInModel false
+        perform { it.acknowledgePendingRecovery(operationID, password) } ?: return@runInModel false
         if (startedEpoch != epoch) return@runInModel false
         clearExport()
         refresh()

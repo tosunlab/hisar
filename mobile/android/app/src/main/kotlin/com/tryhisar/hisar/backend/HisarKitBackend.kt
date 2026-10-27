@@ -529,9 +529,9 @@ class HisarKitBackend(
         /** Go's sentences start in lower case and already say "biometric" on Android. */
         fun convertError(error: Throwable): BackendError {
             val raw = error.message.orEmpty().ifEmpty { "Something went wrong." }
-            val prefix = BackendError.PASSKEY_VERIFICATION_FAILED + ": "
-            val code = BackendError.PASSKEY_VERIFICATION_FAILED.takeIf { raw.startsWith(prefix) }
-            val message = if (code != null) raw.removePrefix(prefix) else raw
+            val code = listOf(BackendError.PASSKEY_VERIFICATION_FAILED, BackendError.PENDING_RECOVERY_PASSWORD)
+                .firstOrNull { raw.startsWith("$it: ") }
+            val message = if (code != null) raw.removePrefix("$code: ") else raw
             return BackendError(message.replaceFirstChar { it.uppercaseChar() }, code)
         }
 

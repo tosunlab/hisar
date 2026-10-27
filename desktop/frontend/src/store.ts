@@ -132,6 +132,7 @@ export const store = reactive({
   pendingRecovery: [] as PendingRecoverySummary[],
   isRecoveryOpen: false,
   recoveryEpoch: 0,
+  recoveryPasswordRejected: false,
   recoveryFactor: null as { operationId: string; secretKey: string } | null,
   pendingInvite: "",
   errorMessage: "",
@@ -234,10 +235,14 @@ function describeCopy(label: string): string {
 async function runAction<Result>(action: () => Promise<Result>): Promise<Result | undefined> {
   store.isBusy = true;
   store.errorMessage = "";
+  store.recoveryPasswordRejected = false;
   try {
     return await action();
   } catch (error) {
-    store.errorMessage = getErrorMessage(error);
+    const message = getErrorMessage(error);
+    const passwordErrorPrefix = "pending-recovery-password: ";
+    store.recoveryPasswordRejected = message.startsWith(passwordErrorPrefix);
+    store.errorMessage = store.recoveryPasswordRejected ? message.slice(passwordErrorPrefix.length) : message;
     if (store.errorMessage === "Hisar is locked") {
       clearLockedVaultData();
       store.status = { ...store.status, state: "locked" };
@@ -395,9 +400,13 @@ export async function acknowledgePendingRecovery(operationID: string, password: 
   return result === true;
 }
 
-export async function discardPreparedRecovery(operationID: string, password: string): Promise<void> {
-  await runAction(() => api.discardPreparedRecovery(operationID, password));
-  await loadPendingRecovery();
+export async function discardPreparedRecovery(operationID: string, password: string): Promise<boolean> {
+  const result = await runAction(async () => {
+    await api.discardPreparedRecovery(operationID, password);
+    return true;
+  });
+  if (result) await loadPendingRecovery();
+  return result === true;
 }
 
 export function showUpdateRequired(requirement: UpdateRequirement): void {
