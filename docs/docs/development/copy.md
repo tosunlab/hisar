@@ -100,6 +100,18 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | that passphrase doesn't open this export | wrong password, decryption failed |
 | `.env` import: "Store N values in Personal › shop", "Kept as they are: PORT", "Run a command with them: hisar run --env-file .env -- \<command>" | migrate, vault-ify |
 
+### Read recovery
+
+The apps explain read failures with this table. Item and vault IDs appear only under **Details**.
+
+| Read issue kind | Explanation |
+|---|---|
+| `vault-name` | Vault name could not be opened. Its readable items remain available. |
+| `vault-key` | Vault key could not be opened. Items in this vault cannot be displayed. |
+| `item` | Item could not be opened. It remains saved. |
+
+The summary counts known unreadable items and affected vaults with singular or plural nouns, for example "1 known unreadable item in 1 affected vault." A failed vault key does not establish an item count. Its summary adds "Items behind unopened vault keys are not counted." Show **Retry reads** once above the issue list.
+
 ## Developer tools
 
 | Use | Not |

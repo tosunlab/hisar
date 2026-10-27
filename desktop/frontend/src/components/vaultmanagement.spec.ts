@@ -233,12 +233,31 @@ describe("removed vault notice", () => {
 });
 
 describe("unreadable recovery", () => {
+  it("explains each failure scope with known counts and only allowed actions", () => {
+    store.allVault = [
+      { ...personalVault, readIssues: [
+        { vaultId: "personal", itemId: "one", kind: "item", canRename: false, canDelete: true },
+        { vaultId: "personal", itemId: "two", kind: "item", canRename: false, canDelete: false },
+        { vaultId: "personal", kind: "vault-name", canRename: true, canDelete: false },
+      ] },
+      { ...createWorkVault(), readIssues: [{ vaultId: "work", kind: "vault-key", canRename: false, canDelete: false }] },
+    ];
+    const wrapper = mount(ReadIssuesPanel);
+    expect(wrapper.text()).toContain("2 known unreadable items in 2 affected vaults.");
+    expect(wrapper.text()).toContain("Items behind unopened vault keys are not counted.");
+    expect(wrapper.text()).toContain("Vault name could not be opened. Its readable items remain available.");
+    expect(wrapper.text()).toContain("Vault key could not be opened. Items in this vault cannot be displayed.");
+    expect(wrapper.text()).toContain("Item could not be opened. It remains saved.");
+    expect(wrapper.findAll("button").filter((button) => button.text() === "Retry reads")).toHaveLength(1);
+    expect(wrapper.findAll("button").filter((button) => button.text() === "Delete unreadable data…")).toHaveLength(1);
+    expect(wrapper.findAll("button").filter((button) => button.text() === "Repair name")).toHaveLength(1);
+  });
   it("keeps healthy data visible and deletes only the reviewed unreadable revision", async () => {
     store.allVault = [{ ...personalVault, readIssues: [{ vaultId: "personal", itemId: "bad", revision: "bad-r1", kind: "item", canRename: false, canDelete: true }] }];
     store.allItem = [createItem({ id: "healthy", title: "Still available" })];
     api.deleteUnreadableItem.mockResolvedValue(undefined);
     const wrapper = mount(ReadIssuesPanel);
-    expect(wrapper.text()).toContain("1 unreadable vault or item records");
+    expect(wrapper.text()).toContain("1 known unreadable item in 1 affected vault.");
     expect(store.allItem[0].id).toBe("healthy");
     await wrapper.findAll("button").find((button) => button.text() === "Delete unreadable data…")!.trigger("click");
     expect(api.deleteUnreadableItem).not.toHaveBeenCalled();
@@ -260,7 +279,7 @@ describe("unreadable recovery", () => {
     const personal = store.allVault.find((vault) => vault.id === "personal");
     expect(personal?.itemCount).toBe(1);
     expect(personal?.readIssues).toEqual([issue]);
-    expect(wrapper.find('[data-testid="read-issues"]').text()).toContain("1 unreadable vault or item records");
+    expect(wrapper.find('[data-testid="read-issues"]').text()).toContain("1 known unreadable item in 1 affected vault.");
     expect(wrapper.findAll("button.item").map((button) => button.text()).join()).not.toContain("Unreadable item late-bad");
     wrapper.unmount();
   });

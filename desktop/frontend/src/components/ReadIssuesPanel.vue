@@ -7,6 +7,18 @@ const issues = computed(() => store.allVault.flatMap((vault) => (vault.readIssue
 const error = ref("");
 const pending = ref<(typeof issues.value)[number] | null>(null);
 const repairName = ref("");
+const explanationByKind: Record<string, string> = {
+  "vault-name": "Vault name could not be opened. Its readable items remain available.",
+  "vault-key": "Vault key could not be opened. Items in this vault cannot be displayed.",
+  item: "Item could not be opened. It remains saved.",
+};
+const summary = computed(() => {
+  const itemCount = new Set(issues.value.filter(({ issue }) => issue.kind === "item" && issue.itemId).map(({ issue }) => `${issue.vaultId}/${issue.itemId}`)).size;
+  const vaultCount = new Set(issues.value.map(({ issue }) => issue.vaultId)).size;
+  const vaults = `${vaultCount} affected ${vaultCount === 1 ? "vault" : "vaults"}`;
+  const counts = itemCount > 0 ? `${itemCount} known unreadable ${itemCount === 1 ? "item" : "items"} in ${vaults}.` : `${vaults}.`;
+  return issues.value.some(({ issue }) => issue.kind === "vault-key") ? `${counts} Items behind unopened vault keys are not counted.` : counts;
+});
 
 // Each action names the revision on screen; the app refuses it once the record changed, and the retry shows the new one.
 async function remove(): Promise<void> {
@@ -38,12 +50,13 @@ async function rename(vaultID: string, revision: string): Promise<void> {
 <template>
   <section v-if="issues.length" class="read-issues" role="alert" data-testid="read-issues">
     <details>
-      <summary>{{ issues.length }} unreadable vault or item records. Healthy items remain available.</summary>
-      <p>Retry before repairing. An unreadable record is not an empty vault or proof that an item was deleted.</p>
+      <summary>{{ summary }}</summary>
+      <p>Retry before repairing. Unreadable data is not an empty vault or proof that an item was deleted.</p>
       <button @click="retryReads">Retry reads</button>
       <ul>
         <li v-for="entry in issues" :key="`${entry.issue.vaultId}/${entry.issue.itemId}/${entry.issue.kind}`">
-          {{ entry.vault.name }}. {{ entry.issue.kind }}. {{ entry.issue.itemId || entry.issue.vaultId }}
+          {{ entry.vault.name }}. {{ explanationByKind[entry.issue.kind] ?? "Saved data could not be opened. It remains saved." }}
+          <details><summary>Details</summary>{{ entry.issue.itemId || entry.issue.vaultId }}</details>
           <template v-if="entry.issue.canRename">
             <input v-model="repairName" aria-label="Repaired vault name" placeholder="New vault name" />
             <button :disabled="!repairName.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair name</button>

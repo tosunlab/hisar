@@ -37,11 +37,14 @@ struct ItemListView: View {
             }
             if let vault, !vault.readIssues.isEmpty {
                 Section {
-                    Text("\(vault.readIssues.count) records could not be opened. Healthy items remain available.")
+                    Text(ReadIssueSummary(issues: vault.readIssues).text)
                     Button("Retry reads") { Task { await model.refreshAll() } }
                     ForEach(vault.readIssues) { issue in
                         VStack(alignment: .leading) {
-                            Text("\(issue.kind). \(issue.itemId ?? issue.vaultId)")
+                            Text(issue.explanation)
+                            DisclosureGroup("Details") {
+                                Text(issue.itemId ?? issue.vaultId).font(.footnote).textSelection(.enabled)
+                            }
                             if issue.canRename {
                                 Button("Repair vault name") { newName = ""; issueToRepair = issue; isRenameShown = true }
                             }

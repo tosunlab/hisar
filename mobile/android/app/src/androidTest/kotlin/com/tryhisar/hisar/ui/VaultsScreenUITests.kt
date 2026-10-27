@@ -6,6 +6,7 @@ import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -27,6 +28,7 @@ import com.tryhisar.hisar.model.ShareInvitations
 import com.tryhisar.hisar.model.Team
 import com.tryhisar.hisar.model.TeamMember
 import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.ReadIssue
 import com.tryhisar.hisar.model.WaitingShareInvitation
 import com.tryhisar.hisar.model.WaitingVaultKey
 import com.tryhisar.hisar.model.WaitingVaultKeys
@@ -78,6 +80,27 @@ class VaultsScreenUITests : HisarUITestCase() {
     }
 
     private fun waitForNotice(text: String) = waitFor(hasText(text, substring = true) and hasAnyAncestor(hasTestTag("notice")), 10_000)
+
+    @Test
+    fun testRecoveryShowsFailureScopesAndOneRetry() {
+        val backend = buildBackend()
+        val index = backend.allVault.indexOfFirst { it.id == "work" }
+        backend.allVault[index] = backend.allVault[index].copy(readIssues = listOf(
+            ReadIssue("work", itemId = "bad", kind = "item", canDelete = true),
+            ReadIssue("work", kind = "vault-name", canRename = true),
+        ))
+        backend.allItemByVaultID.getValue("work") += ItemDetail(id = "bad", readIssue = backend.allVault[index].readIssues.first())
+        launchApp(backend).use {
+            tap("vault-Work")
+            waitFor(hasText("1 known unreadable item in 1 affected vault."))
+            assertEquals(1, composeRule.onAllNodesWithTag("retry-unreadable-work").fetchSemanticsNodes().size)
+            assertTrue(exists(hasText("Vault name could not be opened. Its readable items remain available.")))
+            assertTrue(exists(hasText("Item could not be opened. It remains saved.")))
+            assertTrue(exists(hasTestTag("item-AWS")))
+            assertTrue(exists(hasTestTag("repair-vault-name")))
+            assertTrue(exists(hasTestTag("delete-unreadable-bad")))
+        }
+    }
 
     @Test
     fun testVaultsHomeShowsTheIPhonesSections() {

@@ -2,6 +2,7 @@ package com.tryhisar.hisar.app
 
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ReadIssue
+import com.tryhisar.hisar.model.ReadIssueSummary
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.model.backendJson
 import kotlin.test.Test
@@ -11,6 +12,20 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 
 class ReadIssueTests {
+    @Test
+    fun testRecoveryCountsOnlyKnownItemsAndAffectedVaults() {
+        val item = ReadIssue(vaultId = "personal", itemId = "bad", kind = "item", canDelete = true)
+        val name = ReadIssue(vaultId = "personal", kind = "vault-name", canRename = true)
+        val key = ReadIssue(vaultId = "work", kind = "vault-key")
+        assertEquals("1 known unreadable item in 1 affected vault.", ReadIssueSummary(listOf(item)).text)
+        assertEquals(1, ReadIssueSummary(listOf(item, item, name, key)).knownItemCount)
+        assertEquals(2, ReadIssueSummary(listOf(item, name, key)).affectedVaultCount)
+        assertEquals("1 affected vault. Items behind unopened vault keys are not counted.", ReadIssueSummary(listOf(key)).text)
+        assertEquals("Vault name could not be opened. Its readable items remain available.", name.explanation)
+        assertEquals("Vault key could not be opened. Items in this vault cannot be displayed.", key.explanation)
+        assertEquals("Item could not be opened. It remains saved.", item.explanation)
+    }
+
     @Test
     fun testUnreadableRecordsRemainExplicitBesideHealthyItems() {
         val vault = backendJson.decodeFromString<VaultSummary>("""{"id":"v","name":"Private","type":"personal","role":"owner","itemCount":1,"readIssues":[{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}]}""")

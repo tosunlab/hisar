@@ -152,6 +152,19 @@ final class VaultManagementTests: XCTestCase {
         XCTAssertTrue(withPassword.path.hasSuffix(".json"))
         model.removeExport(withPassword)
     }
+
+    func testRecoveryCountsOnlyKnownItemsAndAffectedVaults() {
+        let item = ReadIssue(vaultId: "personal", itemId: "bad", kind: "item", canRename: false, canDelete: true)
+        let name = ReadIssue(vaultId: "personal", kind: "vault-name", canRename: true, canDelete: false)
+        let key = ReadIssue(vaultId: "work", kind: "vault-key", canRename: false, canDelete: false)
+        XCTAssertEqual(ReadIssueSummary(issues: [item]).text, "1 known unreadable item in 1 affected vault.")
+        XCTAssertEqual(ReadIssueSummary(issues: [item, item, name, key]).knownItemCount, 1)
+        XCTAssertEqual(ReadIssueSummary(issues: [item, name, key]).affectedVaultCount, 2)
+        XCTAssertEqual(ReadIssueSummary(issues: [key]).text, "1 affected vault. Items behind unopened vault keys are not counted.")
+        XCTAssertEqual(name.explanation, "Vault name could not be opened. Its readable items remain available.")
+        XCTAssertEqual(key.explanation, "Vault key could not be opened. Items in this vault cannot be displayed.")
+        XCTAssertEqual(item.explanation, "Item could not be opened. It remains saved.")
+    }
     func testUnreadableRecordsRemainExplicitBesideHealthyItems() throws {
         let vault = try JSONDecoder().decode(VaultSummary.self, from: Data(#"{"id":"v","name":"Private","type":"personal","role":"owner","itemCount":1,"readIssues":[{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}]}"#.utf8))
         let items = try JSONDecoder().decode([ItemDetail].self, from: Data(#"[{"id":"healthy","title":"Still available"},{"id":"bad","revision":"r1","title":"Unreadable item bad","readIssue":{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}}]"#.utf8))

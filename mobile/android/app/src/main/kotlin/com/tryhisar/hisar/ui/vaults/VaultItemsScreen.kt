@@ -37,6 +37,7 @@ import com.tryhisar.hisar.model.VaultActions
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.model.ReadIssue
+import com.tryhisar.hisar.model.ReadIssueSummary
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ToolbarIconButton
@@ -111,10 +112,18 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     ) {
         if (status.isOffline) cardSection("offline", listOf(Unit), rowKey = { "offline" }) { OfflineNote() }
         if (vault.readIssues.isNotEmpty()) {
+            cardSection("read-summary", listOf(Unit), rowKey = { "summary" }) {
+                Column {
+                    Text(ReadIssueSummary(vault.readIssues).text, color = HisarTheme.colors.warning)
+                    PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-unreadable-$vaultID")
+                }
+            }
             cardSection("read-issues", vault.readIssues, rowKey = { "${it.vaultId}/${it.itemId}/${it.kind}" }) { issue ->
                 Column {
-                    Text("${vault.readIssues.size} unreadable records. ${issue.kind}. ${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.warning)
-                    PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-unreadable-$vaultID")
+                    Text(issue.explanation, color = HisarTheme.colors.warning)
+                    var showDetails by remember { mutableStateOf(false) }
+                    PlainButton("Details", { showDetails = !showDetails }, testTag = "read-issue-details-${issue.itemId.ifEmpty { issue.vaultId }}")
+                    if (showDetails) Text(issue.itemId.ifEmpty { issue.vaultId })
                     if (issue.canRename) PlainButton("Repair vault name", { dialog = VaultDialog.RepairName(issue) }, testTag = "repair-vault-name")
                     if (issue.canDelete) PlainButton("Delete unreadable data…", { issueToDelete = issue }, testTag = "delete-unreadable-${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.destructive)
                 }

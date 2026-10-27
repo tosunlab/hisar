@@ -24,6 +24,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.model.ItemCategory
 import com.tryhisar.hisar.model.ItemDetail
+import com.tryhisar.hisar.model.ReadIssueSummary
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.ui.theme.HisarTheme
@@ -40,7 +41,7 @@ fun VaultRow(vault: VaultSummary, itemCount: Int, onClick: () -> Unit) {
         else -> "Shared · $role" to Icons.Outlined.Group
     }
     NavigationRow(testTag = "vault-${vault.name}", onClick = onClick, badge = itemCount, leading = { RowSymbol(icon) }) {
-        TitleAndSubtitle(vault.name, if (vault.readIssues.isNotEmpty()) "${vault.readIssues.size} unreadable records. Retry or repair." else if (vault.isPersonalExtra) "Legacy Personal vault. Recover items before deleting." else subtitle)
+        TitleAndSubtitle(vault.name, if (vault.readIssues.isNotEmpty()) "${ReadIssueSummary(vault.readIssues).text} Retry or repair." else if (vault.isPersonalExtra) "Legacy Personal vault. Recover items before deleting." else subtitle)
     }
 }
 

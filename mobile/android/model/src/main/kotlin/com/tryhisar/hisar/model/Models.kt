@@ -117,7 +117,25 @@ object VaultStatusSerializer : JsonTransformingSerializer<VaultStatus>(VaultStat
 }
 
 @Serializable
-data class ReadIssue(val vaultId: String, val itemId: String = "", val revision: String = "", val kind: String, val canRename: Boolean = false, val canDelete: Boolean = false)
+data class ReadIssue(val vaultId: String, val itemId: String = "", val revision: String = "", val kind: String, val canRename: Boolean = false, val canDelete: Boolean = false) {
+    val explanation: String get() = when (kind) {
+        "vault-name" -> "Vault name could not be opened. Its readable items remain available."
+        "vault-key" -> "Vault key could not be opened. Items in this vault cannot be displayed."
+        "item" -> "Item could not be opened. It remains saved."
+        else -> "Saved data could not be opened. It remains saved."
+    }
+}
+
+data class ReadIssueSummary(val issues: List<ReadIssue>) {
+    val affectedVaultCount: Int get() = issues.map { it.vaultId }.distinct().size
+    val knownItemCount: Int get() = issues.filter { it.kind == "item" && it.itemId.isNotEmpty() }.map { it.vaultId to it.itemId }.distinct().size
+    val text: String get() {
+        val vaults = "$affectedVaultCount affected ${if (affectedVaultCount == 1) "vault" else "vaults"}"
+        val items = "$knownItemCount known unreadable ${if (knownItemCount == 1) "item" else "items"}"
+        val counts = if (knownItemCount > 0) "$items in $vaults." else "$vaults."
+        return if (issues.any { it.kind == "vault-key" }) "$counts Items behind unopened vault keys are not counted." else counts
+    }
+}
 
 @Serializable
 data class VaultSummary(
