@@ -14,6 +14,10 @@ struct ChangeMasterPasswordView: View {
         AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: repeatedPassword, feedback: newPasswordFeedback)
     }
 
+    private var newPasswordProblem: String? {
+        AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: newPassword, feedback: newPasswordFeedback)
+    }
+
     private var canSubmit: Bool {
         AccountLifecycleLogic.canChangePassword(
             currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: repeatedPassword,
@@ -36,11 +40,11 @@ struct ChangeMasterPasswordView: View {
                 SecureField("New master password", text: $newPassword, prompt: Text("At least 10 characters"))
                     .textContentType(.newPassword)
                     .accessibilityIdentifier("change-password-new")
-                    .validationError(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: newPassword))
+                    .validationError(newPasswordProblem)
                 SecureField("Repeat new master password", text: $repeatedPassword)
                     .textContentType(.newPassword)
                     .accessibilityIdentifier("change-password-repeated")
-                    .validationError(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: newPassword) == nil ? problem : nil)
+                    .validationError(newPasswordProblem == nil ? problem : nil)
             } header: {
                 Text("New master password")
             } footer: {
