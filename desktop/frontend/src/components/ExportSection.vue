@@ -14,6 +14,8 @@ const passphrase = ref("");
 const repeatedPassphrase = ref("");
 const masterPassword = ref("");
 const resultMessage = ref("");
+const authentication = ref<"biometric" | "password">("biometric");
+const isPasswordNeeded = computed(() => authentication.value === "password" || !exportOptions.value.isBiometricAvailable);
 
 const passphraseProblem = computed(() => {
   if (format.value !== "encrypted") {
@@ -32,7 +34,7 @@ const canExport = computed(() => {
   if (store.isBusy) {
     return false;
   }
-  if (!exportOptions.value.isBiometricAvailable && masterPassword.value === "") {
+  if (isPasswordNeeded.value && masterPassword.value === "") {
     return false;
   }
   if (format.value === "plain") {
@@ -49,10 +51,15 @@ async function submitExport(): Promise<void> {
   const result = await exportAllData({
     format: format.value,
     passphrase: format.value === "encrypted" ? passphrase.value : "",
-    password: exportOptions.value.isBiometricAvailable ? "" : masterPassword.value,
+    password: isPasswordNeeded.value ? masterPassword.value : "",
   });
   masterPassword.value = "";
   if (!result) {
+    try {
+      exportOptions.value = await api.getExportOptions();
+    } catch {
+      authentication.value = "password";
+    }
     return;
   }
   passphrase.value = "";
@@ -121,7 +128,7 @@ onMounted(async () => {
       </div>
       <div class="settings-group-detail export-actions">
         <input
-          v-if="!exportOptions.isBiometricAvailable"
+          v-if="isPasswordNeeded"
           v-model="masterPassword"
           name="exportMasterPassword"
           type="password"
@@ -131,7 +138,10 @@ onMounted(async () => {
           data-testid="export-master-password"
         />
         <button class="primary" type="submit" :disabled="!canExport" data-testid="export-submit">
-          {{ exportOptions.isBiometricAvailable ? "Export with Touch ID…" : "Export…" }}
+          {{ isPasswordNeeded ? "Export…" : "Export with Touch ID…" }}
+        </button>
+        <button v-if="exportOptions.isBiometricAvailable" class="link" type="button" :disabled="store.isBusy" data-testid="export-switch-authentication" @click="authentication = isPasswordNeeded ? 'biometric' : 'password'">
+          {{ isPasswordNeeded ? "Use Touch ID instead" : "or use your master password" }}
         </button>
       </div>
     </form>
@@ -194,6 +204,7 @@ onMounted(async () => {
 
 .export-actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 8px;
   padding-top: 10px;
@@ -209,6 +220,11 @@ onMounted(async () => {
   white-space: nowrap;
 }
 
+
+.export-actions .link {
+  flex-basis: 100%;
+  text-align: right;
+}
 .result {
   display: flex;
   gap: 8px;

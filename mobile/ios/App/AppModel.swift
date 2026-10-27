@@ -56,6 +56,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
     @Published private(set) var isWebsiteIconsEnabled = true
+    @Published private(set) var isAutoFillEnabled = false
     /// Website icons by domain for this unlock; nil while one loads or when the website has none.
     @Published private(set) var websiteIconByDomain: [String: Data] = [:]
     /// The domains asked during this unlock, finished or not, so a website without an icon is asked once.
@@ -101,6 +102,7 @@ final class AppModel: ObservableObject {
     private var allPasskey: [StoredPasskey] = []
     private let credentialIdentityStore: CredentialIdentityUpdating
     private let getCurrentDate: () -> Date
+    private let checkAutoFillEnabled: @MainActor () async -> Bool
     private let receiveExportedCredentials: @MainActor (UUID) async throws -> Data
     private var enteredBackgroundAt: Date?
     private var noticeTask: Task<Void, Never>?
@@ -129,13 +131,15 @@ final class AppModel: ObservableObject {
         credentialIdentityStore: CredentialIdentityUpdating, getCurrentDate: @escaping () -> Date = Date.init,
         receiveExportedCredentials: @escaping @MainActor (UUID) async throws -> Data = { try await AppModel.importExportedCredentials(token: $0) },
         notificationCenter: NotificationScheduling = SystemNotificationCenter(),
-        registerForRemoteNotifications: @escaping @MainActor () -> Void = { UIApplication.shared.registerForRemoteNotifications() }
+        registerForRemoteNotifications: @escaping @MainActor () -> Void = { UIApplication.shared.registerForRemoteNotifications() },
+        checkAutoFillEnabled: @escaping @MainActor () async -> Bool = { await AutoFillSettings.checkIsEnabled() }
     ) {
         self.credentialIdentityStore = credentialIdentityStore
         self.getCurrentDate = getCurrentDate
         self.receiveExportedCredentials = receiveExportedCredentials
         self.notificationCenter = notificationCenter
         self.registerForRemoteNotifications = registerForRemoteNotifications
+        self.checkAutoFillEnabled = checkAutoFillEnabled
     }
 
     func beginStartupRetry() -> Bool {
@@ -499,6 +503,14 @@ final class AppModel: ObservableObject {
         selectedTab = kind == .approval ? .approvals : .settings
         if kind == .approval { Task { await refreshPendingApproval() } }
         if kind == .security { requestedSettingsDestination = .devices }
+    }
+
+    func refreshExternalSetupStatus() async {
+        let enabled = await checkAutoFillEnabled()
+        let becameEnabled = !isAutoFillEnabled && enabled
+        isAutoFillEnabled = enabled
+        await notifications.refresh()
+        if becameEnabled && status.isUnlocked { await refreshAll() }
     }
 
     func handleWillEnterForeground() {

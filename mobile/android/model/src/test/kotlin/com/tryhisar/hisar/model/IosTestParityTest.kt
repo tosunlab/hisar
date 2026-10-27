@@ -56,6 +56,10 @@ class IosTestParityTest {
                 "The focused deferred-signup presentation is currently iPhone-specific",
             "testDeferredSignupFinishLaterClearsDeliveryButKeepsTheRecord" to
                 "The focused deferred-signup presentation is currently iPhone-specific",
+            "testForegroundRefreshUpdatesAutoFillWithoutRequestingPermission" to
+                "iOS Settings exposes the credential identity store's enabled state; Android uses its own AutoFill service status.",
+            "testForegroundRefreshRegistersOnlyNewlyAllowedNotifications" to
+                "Only iOS registers an APNs token when notification authorization changes; Android receives its UnifiedPush endpoint separately.",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

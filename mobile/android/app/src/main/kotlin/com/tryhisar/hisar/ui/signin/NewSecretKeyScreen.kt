@@ -69,7 +69,7 @@ fun NewSecretKeyScreen(secretKey: String, email: String, server: String, copySec
     ) {
         ClearSection {
             Text(
-                "Your account is ready. To sign in on another device you need two secrets: your master password and this Secret Key. Hisar keeps the Secret Key on this device; nobody else has a copy.",
+                "Your account is ready. To sign in on another device you need two secrets: your master password and this Secret Key. Hisar keeps a copy on this device. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.",
                 style = HisarType.body,
                 color = HisarTheme.colors.label,
                 modifier = Modifier.padding(horizontal = 4.dp),

@@ -78,7 +78,7 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
         else -> ""
     }
 
-    BackHandler { credentialImport.closeCredentialImport() }
+    BackHandler { if (!isDone) credentialImport.closeCredentialImport() }
     // The tabs stay composed under the screen, so it comes back to them as they were; taps must not reach them.
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures() }) {
         SettingsScreen(
@@ -115,7 +115,7 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
                     is CredentialImportSheet.Previewing -> PreviewSections(
                         model, sheet.preview, isSkippingDuplicate, { isSkippingDuplicate = it }, errorMessage, isBusy || isImporting,
                     ) { model.scope.launch { credentialImport.startCredentialImport(isSkippingDuplicate) } }
-                    is CredentialImportSheet.Importing -> ProgressSections(sheet.progress, errorMessage, isImporting) {
+                    is CredentialImportSheet.Importing -> ProgressSections(sheet.progress, sheet.preview, errorMessage, isImporting) {
                         model.scope.launch { credentialImport.continueCredentialImport() }
                     }
                     is CredentialImportSheet.Stopped -> StoppedSections(sheet)
@@ -263,7 +263,7 @@ private fun PreviewSections(
     }
     if (preview.allSkipped.isNotEmpty()) {
         val count = preview.allSkipped.size
-        SkippedSection(preview.allSkipped, if (count == 1) "1 item can't be imported" else "$count items can't be imported", "credential-import-skipped")
+        SkippedSection(preview.allSkipped, ImportSkippedEntry.heading(count), "credential-import-skipped", ImportSkippedEntry.EXPLANATION)
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
@@ -313,7 +313,7 @@ private fun describeExportOrigin(exportedFrom: String, exportedAt: String): Stri
 }
 
 @Composable
-private fun ProgressSections(progress: ImportProgress, errorMessage: String?, isImporting: Boolean, retry: () -> Unit) {
+private fun ProgressSections(progress: ImportProgress, preview: ImportPreview?, errorMessage: String?, isImporting: Boolean, retry: () -> Unit) {
     if (progress.isDone) {
         FormSection {
             FormRow(Modifier.testTag("credential-import-finished")) {
@@ -322,6 +322,32 @@ private fun ProgressSections(progress: ImportProgress, errorMessage: String?, is
                     Text("Imported ${VaultLogic.describeItemCount(progress.savedCount)} into ${progress.vaultName}.", style = HisarType.body, color = HisarTheme.colors.label)
                 }
             }
+        }
+        if (preview != null) {
+            val origin = describeExportOrigin(preview.exportedFrom, preview.exportedAt)
+            if (origin != null || preview.notice.isNotEmpty()) {
+                FormSection(modifier = Modifier.testTag("credential-import-result-provenance")) {
+                    origin?.let { Text(it) }
+                    if (preview.notice.isNotEmpty()) Text(preview.notice, color = HisarTheme.colors.warning)
+                }
+            }
+        }
+        val entries = progress.allSkipped.ifEmpty { preview?.allSkipped.orEmpty() }
+        if (entries.isNotEmpty()) {
+            SkippedSection(entries, ImportSkippedEntry.heading(entries.size), "credential-import-result-skipped",
+                "Some entries below are fields or credentials from items that were imported.")
+        }
+        if (preview?.allDuplicate?.isNotEmpty() == true) {
+            FormSection(header = "Reviewed duplicate matches", modifier = Modifier.testTag("credential-import-result-reviewed-duplicates")) {
+                preview.allDuplicate.forEach { EntryRow(it.title, it.detail.ifEmpty { it.username }) }
+            }
+        }
+        if (progress.allDuplicateOutcomes.isNotEmpty()) {
+            SkippedSection(progress.allDuplicateOutcomes, "Duplicate outcomes · ${progress.allDuplicateOutcomes.size}", "credential-import-result-duplicates")
+        }
+        FormSection(modifier = Modifier.testTag("credential-import-keep-source")) {
+            Text("Keep the other app or source file until you have checked these entries.")
+            if (progress.leftBehindCount > 0) Text("${progress.leftBehindCount} omission or save-failure entries need review.")
         }
     } else {
         FormSection {
@@ -385,8 +411,8 @@ private fun StoppedSections(report: CredentialImportSheet.Stopped) {
 }
 
 @Composable
-private fun SkippedSection(allEntry: List<ImportSkippedEntry>, header: String, testTag: String) {
-    FormSection(header = header, modifier = Modifier.testTag(testTag)) {
+private fun SkippedSection(allEntry: List<ImportSkippedEntry>, header: String, testTag: String, footer: String = "") {
+    FormSection(header = header, footer = if (footer.isEmpty()) null else ({ Text(footer) }), modifier = Modifier.testTag(testTag)) {
         allEntry.forEachIndexed { index, entry ->
             if (index > 0) RowDivider()
             EntryRow(entry.title.ifEmpty { "Untitled" }, entry.reason)

@@ -55,6 +55,30 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertEqual(app.textFields["sign-in-email"].value as? String, "error@example.com")
     }
 
+    func testImportCompletionReportShowsRemainingEntries() {
+        app.launchArguments = ["-HisarUITest", "-HisarVaultManagementPreview", "importReport"]
+        app.launch()
+        waitFor(app.staticTexts["credential-import-finished"])
+        for text in [
+            "This is a cached partial export.",
+            "Unsupported extension data.",
+            "Different recovery code remains only in the source.",
+            "alice · github.com · different password",
+            "Added 1 new passkey to the existing login in Hisar.",
+            "Identical duplicate already present in Hisar.",
+            "Included the duplicate as another item.",
+            "Save refused.",
+            "Keep the other app or source file until you have checked these entries.",
+        ] {
+            let entry = app.staticTexts[text]
+            for _ in 0..<8 where !entry.isHittable { app.swipeUp() }
+            XCTAssertTrue(entry.exists, text)
+        }
+        saveScreenshot("import-completion-report")
+        app.buttons["credential-import-done"].tap()
+        XCTAssertTrue(app.staticTexts["credential-import-finished"].waitForNonExistence(timeout: 5))
+    }
+
     func testAccountItemLockAndSignInFlow() throws {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_INVITE_LINK")
         let email = "ios-ui@example.com"

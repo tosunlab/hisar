@@ -227,6 +227,40 @@ describe("Import panel", () => {
     expect(wrapper.get('[data-testid="import-failed"] .entry-list span').text()).toBe(failure);
   });
 
+  it("retains the full completion report until Done, including late omissions and duplicate outcomes", async () => {
+    const parserEntry = { title: "GitHub", reason: "Unsupported passkey extension data was left in the source." };
+    const lateEntry = { title: "GitHub", reason: "The skipped duplicate has a different recovery code that remains only in the source." };
+    const wrapper = await openPreview({
+      allSkipped: [parserEntry], notice: "This export is a cached partial copy.", exportedFrom: "alice@example.com", exportedAt: "2026-10-20T12:00:00Z",
+    });
+    const duplicateOutcomes = [
+      { title: "GitHub", reason: "Added 1 new passkey to the existing login in Hisar." },
+      { title: "Slack", reason: "Identical duplicate already present in Hisar." },
+      { title: "Docker", reason: "Included the duplicate as another item." },
+    ];
+    api.startImport.mockResolvedValue(createImportProgress({
+      isDone: true, savedCount: 2, allSkipped: [parserEntry, lateEntry], allDuplicateOutcomes: duplicateOutcomes,
+      allFailed: [{ title: "Figma", reason: "The destination is no longer writable." }], leftBehindCount: 3, isSourceKept: true,
+    }));
+    await wrapper.get('[data-testid="start-import"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="import-result-skipped"]').text()).toContain(parserEntry.reason);
+    expect(wrapper.get('[data-testid="import-result-skipped"]').text()).toContain(lateEntry.reason);
+    for (const outcome of duplicateOutcomes) expect(wrapper.get('[data-testid="import-result-duplicates"]').text()).toContain(outcome.reason);
+    expect(wrapper.get('[data-testid="import-failed"]').text()).toContain("The destination is no longer writable.");
+    expect(wrapper.get('[data-testid="import-result-reviewed-duplicates"]').text()).toContain("alice · github.com");
+    expect(wrapper.get('[data-testid="import-result-notice"]').text()).toContain("cached partial copy");
+    expect(wrapper.get('[data-testid="import-result-exported-from"]').text()).toContain("alice@example.com");
+    expect(wrapper.find('[data-testid="delete-import-file-offer"]').exists()).toBe(false);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await wrapper.get(".overlay").trigger("click");
+    expect(store.store.importStep).toBe("done");
+    expect(store.store.importPreview).not.toBeNull();
+    await findButton(wrapper, "Done").trigger("click");
+    expect(store.store.importPreview).toBeNull();
+    expect(store.store.importProgress).toBeNull();
+  });
+
   it("offers editable vaults and starts with Personal even when a shared vault is selected", async () => {
     store.store.selectedVaultID = "work";
     await store.openImport();
@@ -398,7 +432,7 @@ describe("Import panel", () => {
     api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 11, isDone: true }));
     await wrapper.find('[data-testid="start-import"]').trigger("click");
     await flushPromises();
-    await findButton(wrapper, "Keep file").trigger("click");
+    await findButton(wrapper, "Done, keep file").trigger("click");
     expect(api.deleteImportFile).not.toHaveBeenCalled();
     expect(api.cancelImport).toHaveBeenCalled();
     expect(store.store.isImportOpen).toBe(false);

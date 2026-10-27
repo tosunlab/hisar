@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	"github.com/tryhisar/hisar/core/importer"
 )
 
 func TestImportRetentionUsesContentAndIgnoresExactRepeats(t *testing.T) {
@@ -48,6 +50,18 @@ func TestImportRetentionUsesContentAndIgnoresExactRepeats(t *testing.T) {
 			if counts.LeftBehindCount != want {
 				t.Errorf("left behind = %d, want %d", counts.LeftBehindCount, want)
 			}
+			if kind != "in-file repeat" {
+				if len(progress.DuplicateOutcomes) != 1 || progress.DuplicateOutcomes[0].Title != "GitHub" {
+					t.Fatalf("duplicate report = %+v", progress.DuplicateOutcomes)
+				}
+				if want > 0 {
+					if len(progress.Skipped) != 1 || !strings.Contains(progress.Skipped[0].Reason, "only in the source") {
+						t.Errorf("late omission report = %+v", progress.Skipped)
+					}
+				} else if !strings.Contains(progress.DuplicateOutcomes[0].Reason, "Identical duplicate") {
+					t.Errorf("identical duplicate report = %+v", progress.DuplicateOutcomes)
+				}
+			}
 			err := test.service.DeleteImportFile()
 			if want > 0 {
 				if err == nil {
@@ -65,5 +79,52 @@ func TestImportRetentionUsesContentAndIgnoresExactRepeats(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestImportReportIncludesDuplicatesChosenForInclusion(t *testing.T) {
+	test := createUnlockedTestService(t)
+	if _, err := test.service.SaveItem(test.personalID, ItemDetail{Title: "GitHub", Username: "alice", URLs: []string{"https://github.com"}, Password: "password"}); err != nil {
+		t.Fatal(err)
+	}
+	path := writeImportFile(t, "source.csv", "name,url,username,password\nGitHub,https://github.com,alice,password\n")
+	setImportPath(test.service, path)
+	if _, err := test.service.ChooseImportFile(test.personalID, "csv"); err != nil {
+		t.Fatal(err)
+	}
+	started, err := test.service.StartImport(test.personalID, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(started.DuplicateOutcomes) != 0 {
+		t.Fatal("a queued duplicate was reported as saved")
+	}
+	progress, _ := runImportToEnd(t, test.service)
+	if progress.SavedCount != 1 || len(progress.DuplicateOutcomes) != 1 ||
+		!strings.Contains(progress.DuplicateOutcomes[0].Reason, "Included the duplicate") {
+		t.Fatalf("included duplicate report = %+v", progress)
+	}
+}
+
+func TestImportProgressRetainsOmissionAndFailureReasons(t *testing.T) {
+	service := &Service{serviceState: &serviceState{pendingImport: &pendingImport{
+		sourceName: "Passwords", savedCount: 1, isSourceKept: true,
+		skipped:           []importer.SkippedEntry{{Title: "GitHub", Reason: "Unsupported extension data from a retained login."}},
+		failed:            []ImportSkippedEntry{{Title: "Figma", Reason: "The destination refused this save."}},
+		duplicateOutcomes: []ImportSkippedEntry{{Title: "Slack", Reason: "Identical duplicate already present in Hisar."}},
+	}}}
+	progress := service.buildImportProgress()
+	if !progress.IsDone || !progress.IsSourceKept || progress.LeftBehindCount != 2 ||
+		len(progress.Skipped) != 1 || progress.Skipped[0].Reason != "Unsupported extension data from a retained login." ||
+		len(progress.Failed) != 1 || progress.Failed[0].Reason != "The destination refused this save." ||
+		len(progress.DuplicateOutcomes) != 1 {
+		t.Fatalf("completion report = %+v", progress)
+	}
+	progress.Skipped[0].Reason = "changed"
+	progress.Failed[0].Reason = "changed"
+	progress.DuplicateOutcomes[0].Reason = "changed"
+	again := service.buildImportProgress()
+	if again.Skipped[0].Reason == "changed" || again.Failed[0].Reason == "changed" || again.DuplicateOutcomes[0].Reason == "changed" {
+		t.Fatal("editing a returned report changed the retained report")
 	}
 }

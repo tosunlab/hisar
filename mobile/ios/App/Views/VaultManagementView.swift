@@ -27,6 +27,10 @@ enum VaultDeletionLogic {
 enum ExportLogic {
     static let plainWarning = "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done."
 
+    static func isPasswordRequested(_ error: String?) -> Bool {
+        error?.localizedCaseInsensitiveContains("master password") == true
+    }
+
     // checkInput returns what is missing before an export can start, or nil.
     static func checkInput(format: ExportFormat, passphrase: String, repeatedPassphrase: String, minPassphraseLength: Int) -> String? {
         guard format == .encrypted else { return nil }
@@ -266,6 +270,10 @@ struct RemovedVaultNoticeSection: View {
     }
 }
 
+enum ExportAuthentication {
+    case biometric, password
+}
+
 struct ExportDataForm: View {
     var options: ExportOptions
     var isBusy: Bool
@@ -277,11 +285,12 @@ struct ExportDataForm: View {
     @State private var passphrase = ""
     @State private var repeatedPassphrase = ""
     @State private var password = ""
+    @State private var authentication = ExportAuthentication.biometric
 
     private var inputProblem: String? {
         ExportLogic.checkInput(format: format, passphrase: passphrase, repeatedPassphrase: repeatedPassphrase, minPassphraseLength: options.minPassphraseLength)
     }
-    private var isPasswordNeeded: Bool { !options.isBiometricAvailable }
+    private var isPasswordNeeded: Bool { authentication == .password || !options.isBiometricAvailable }
     private var canExport: Bool { inputProblem == nil && !isBusy && (!isPasswordNeeded || !password.isEmpty) }
 
     var body: some View {
@@ -364,7 +373,9 @@ struct ExportDataForm: View {
                 }
                 Section {
                     Button {
-                        export(format, passphrase, password)
+                        let entered = isPasswordNeeded ? password : ""
+                        password = ""
+                        export(format, passphrase, entered)
                     } label: {
                         Group {
                             if isBusy {
@@ -383,8 +394,21 @@ struct ExportDataForm: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                     .accessibilityIdentifier("export-start")
+                    if options.isBiometricAvailable {
+                        Button(isPasswordNeeded ? "Use \(SettingsView.biometryName) instead" : "Use master password instead") {
+                            authentication = isPasswordNeeded ? .biometric : .password
+                        }
+                        .disabled(isBusy)
+                        .accessibilityIdentifier("export-switch-authentication")
                 }
             }
+        }
+    }
+        .onChange(of: errorMessage) { _, error in
+            if ExportLogic.isPasswordRequested(error) { authentication = .password }
+        }
+        .onChange(of: isBusy) { _, busy in
+            if !busy && ExportLogic.isPasswordRequested(errorMessage) { authentication = .password }
         }
     }
 }
@@ -400,6 +424,11 @@ struct ExportDataView: View {
             ExportDataForm(options: options, isBusy: model.isBusy, errorMessage: model.errorMessage, result: result) { format, passphrase, password in
                 Task {
                     result = await model.exportAllData(format: format, passphrase: passphrase, password: password)
+                    if result == nil {
+                        let error = model.errorMessage
+                        if let refreshed = await model.loadExportOptions() { options = refreshed }
+                        model.errorMessage = error
+                    }
                 }
             }
             .navigationTitle("Export data")

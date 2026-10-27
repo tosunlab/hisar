@@ -25,6 +25,27 @@ final class SettingsModelTests: XCTestCase {
         )
     }
 
+    func testForegroundRefreshUpdatesAutoFillWithoutRequestingPermission() async {
+        var isEnabled = false
+        let identityStore = FakeCredentialIdentityStore()
+        backend.seedSignedIn()
+        let model = AppModel(credentialIdentityStore: identityStore, checkAutoFillEnabled: { isEnabled })
+        await model.start { self.backend }?.value
+        await model.refreshExternalSetupStatus()
+        XCTAssertFalse(model.isAutoFillEnabled)
+        let before = identityStore.replaceCount
+        isEnabled = true
+        await model.refreshExternalSetupStatus()
+        XCTAssertTrue(model.isAutoFillEnabled)
+        XCTAssertGreaterThan(identityStore.replaceCount, before, "newly enabled AutoFill receives this device's identities")
+        let enabledCount = identityStore.replaceCount
+        await model.refreshExternalSetupStatus()
+        XCTAssertEqual(identityStore.replaceCount, enabledCount)
+        isEnabled = false
+        await model.refreshExternalSetupStatus()
+        XCTAssertFalse(model.isAutoFillEnabled)
+    }
+
     func testAutoLockSettingChangesTheBackgroundLock() async {
         let model = await createUnlockedModel()
         XCTAssertEqual(model.autoLockInterval, 300, "5 minutes until the user picks another delay")

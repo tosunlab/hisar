@@ -25,6 +25,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Secret Key | secret key, account key |
 | Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
 | Secret Key (phone section header); Your Secret Key (Mac block) · Copy Secret Key · "Copied · clears in 90 seconds" (iPhone), "Copied · clears in about 2 minutes" (Android) | An unlabelled key; copying the key as proof that the Emergency Kit was saved |
+| "Hisar keeps a copy on this Mac / this iPhone / this device. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults." | nobody else has a copy |
 | Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock |
 | Explain enabled biometric unlock that needs the master password separately from unavailable hardware. Keep the offline explanation visible too. | Treat every not-ready state as biometric unlock being turned off |
 | Sign in, Sign out, Create account | Log in, Register |

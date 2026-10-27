@@ -284,6 +284,8 @@ export interface ImportProgress {
     "leftBehindCount": number;
     "isDone": boolean;
     "allFailed": ImportSkippedEntry[] | null;
+    "allSkipped": ImportSkippedEntry[] | null;
+    "allDuplicateOutcomes": ImportSkippedEntry[] | null;
 
     /**
      * IsSourceKept: the file is not offered for deletion, see ImportPreview.

@@ -91,13 +91,14 @@ final class PushNotificationsModel: ObservableObject {
 
     /// startAtLaunch asks APNs for this launch's token when the user allowed notifications before.
     func startAtLaunch() async {
-        authorization = await center.getAuthorization()
-        if authorization == .allowed { registerForRemoteNotifications() }
         await refresh()
     }
 
     func refresh() async {
-        authorization = await center.getAuthorization()
+        let current = await center.getAuthorization()
+        let becameAllowed = authorization != .allowed && current == .allowed
+        authorization = current
+        if becameAllowed { registerForRemoteNotifications() }
         guard let backend = getBackend() else { return }
         if let settings = try? await runInBackground({ try backend.getPushSettings() }) {
             self.settings = settings
@@ -107,9 +108,7 @@ final class PushNotificationsModel: ObservableObject {
     /// turnOn asks iOS for permission, the first time with its own prompt, and then for the APNs token.
     func turnOn() async {
         do {
-            if try await center.requestAuthorization() {
-                registerForRemoteNotifications()
-            }
+            _ = try await center.requestAuthorization()
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

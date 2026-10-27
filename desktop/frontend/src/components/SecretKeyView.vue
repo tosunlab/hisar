@@ -16,8 +16,8 @@ const hasSaved = ref(false);
         <HisarLogo :size="32" />
         <h1>Save your Secret Key</h1>
         <p class="subtitle">
-          You need it, together with your master password, to sign in on a new device. Save your Emergency Kit: it holds this Secret Key, and
-          nobody else has a copy.
+          You need it, together with your master password, to sign in on a new device. Save your Emergency Kit. It holds this Secret Key.
+          Hisar keeps a copy on this Mac. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.
         </p>
         <p class="master-password-warning" data-testid="master-password-warning">
           <AppIcon name="warning" />

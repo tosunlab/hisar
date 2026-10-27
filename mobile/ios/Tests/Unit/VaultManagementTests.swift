@@ -24,6 +24,13 @@ final class VaultManagementTests: XCTestCase {
         await model.start { self.backend }?.value
         return model
     }
+    func testExportNativeFallbackRequestsTheMasterPassword() {
+        XCTAssertTrue(ExportLogic.isPasswordRequested("Enter your master password."))
+        XCTAssertTrue(ExportLogic.isPasswordRequested("Face ID is locked. Unlock with your master password."))
+        XCTAssertFalse(ExportLogic.isPasswordRequested("Face ID was cancelled."))
+        XCTAssertFalse(ExportLogic.isPasswordRequested(nil))
+    }
+
 
     func testVaultActionsFollowTheRole() async {
         let model = await createUnlockedModel()
