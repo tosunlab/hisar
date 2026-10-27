@@ -13,7 +13,8 @@ const firefoxReleasesURL = "https://github.com/tosunlab/hisar/releases?q=%22Hisa
 
 const removingInstanceID = ref("");
 
-const allRegisteredBrowser = computed(() => store.browserStatus?.allInstallation ?? []);
+const allRegisteredBrowser = computed(() => (store.browserStatus?.allInstallation ?? []).filter((installation) => installation.isInstalled));
+const allFailedBrowser = computed(() => (store.browserStatus?.allInstallation ?? []).filter((installation) => !installation.isInstalled));
 const allPairedBrowser = computed(() => store.browserStatus?.allPairedBrowser ?? []);
 
 async function confirmRemove(instanceID: string): Promise<void> {
@@ -41,12 +42,22 @@ onMounted(loadBrowserStatus);
             <div v-if="allRegisteredBrowser.length > 0" class="registered-browsers" data-testid="registered-browsers">
               <span class="muted">Ready in</span>
               <ul class="browser-list">
-                <li v-for="installation in allRegisteredBrowser" :key="installation.name" class="tag" :class="installation.isInstalled ? 'success' : 'warning'" :title="installation.errorMessage">
+                <li v-for="installation in allRegisteredBrowser" :key="installation.name" class="tag success">
                   {{ installation.name }}
                 </li>
               </ul>
             </div>
-            <p v-else class="muted" data-testid="registered-browsers">No supported browser found. Hisar is ready for one as soon as you install it.</p>
+            <p v-else-if="allFailedBrowser.length === 0" class="muted" data-testid="registered-browsers">No supported browser found. Hisar is ready for one as soon as you install it.</p>
+            <div v-for="installation in allFailedBrowser" :key="installation.name" class="registration-failure" data-testid="browser-registration-failure">
+              <p class="warning-text"><AppIcon name="warning" :size="14" /> <strong>{{ installation.name }} registration failed</strong></p>
+              <p data-testid="browser-registration-error">{{ installation.errorMessage }}</p>
+              <label>
+                <span>Manifest location</span>
+                <input class="manifest-path monospace" type="text" readonly :value="installation.manifestPath" :aria-label="`${installation.name} manifest location`" data-testid="browser-manifest-path" />
+              </label>
+              <p v-if="/permission|denied|not permitted|read-only/i.test(installation.errorMessage)" class="muted">Check that Hisar can write to this location.</p>
+              <p class="muted">Quit Hisar Completely from the menu bar, then reopen it to retry registration.</p>
+            </div>
           </div>
         </div>
         <p v-if="allPairedBrowser.length === 0" v-show="isRowVisible('paired-browsers')" class="setting muted pairing-hint" data-testid="no-paired-browser">
@@ -112,5 +123,25 @@ onMounted(loadBrowserStatus);
 
 .pairing-hint {
   font-size: var(--font-size-12);
+}
+
+.registration-failure {
+  margin-top: 12px;
+}
+
+.registration-failure p {
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.registration-failure .warning-text {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+}
+
+.manifest-path {
+  width: 100%;
+  user-select: text;
 }
 </style>
