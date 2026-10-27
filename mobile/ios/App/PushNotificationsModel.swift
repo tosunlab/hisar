@@ -97,7 +97,10 @@ final class PushNotificationsModel: ObservableObject {
     }
 
     func refresh() async {
-        authorization = await center.getAuthorization()
+        let current = await center.getAuthorization()
+        let becameAllowed = authorization != .allowed && current == .allowed
+        authorization = current
+        if becameAllowed { registerForRemoteNotifications() }
         guard let backend = getBackend() else { return }
         if let settings = try? await runInBackground({ try backend.getPushSettings() }) {
             self.settings = settings

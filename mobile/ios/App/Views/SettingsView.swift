@@ -26,7 +26,6 @@ struct SettingsView: View {
     /// The screens pushed below the selected section, of several value types (organizations and their members push their own).
     @State private var detailPath = NavigationPath()
     @State private var isSignOutConfirmationShown = false
-    @State private var isAutoFillEnabled = false
 
     static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
     static let biometrySystemImage = biometryName == "Touch ID" ? "touchid" : "faceid"
@@ -85,7 +84,7 @@ struct SettingsView: View {
                     }
                     .accessibilityIdentifier("open-mac-approvals")
                     NavigationLink(value: SettingsDestination.notifications) {
-                        Label("Notifications", systemImage: "bell.badge")
+                        NotificationSettingsLabel(notifications: model.notifications)
                     }
                     .accessibilityIdentifier("open-notifications")
                 }
@@ -118,7 +117,7 @@ struct SettingsView: View {
                 Section {
                     NavigationLink(value: SettingsDestination.autoFill) {
                         LabeledContent {
-                            Text(isAutoFillEnabled ? "On" : "Off")
+                            Text(model.isAutoFillEnabled ? "On" : "Off")
                         } label: {
                             Label("AutoFill", systemImage: "key.viewfinder")
                         }
@@ -155,7 +154,7 @@ struct SettingsView: View {
                 Text("You will need your Secret Key and master password to sign in again.")
             }
             .task {
-                isAutoFillEnabled = await AutoFillSettings.checkIsEnabled()
+                await model.refreshExternalSetupStatus()
                 await model.refreshReceivedInvitationCount()
             }
             .onReceive(model.$requestedSettingsDestination) { destination in
@@ -200,7 +199,7 @@ struct SettingsView: View {
         case .people: PeopleView()
         case .organizations: OrganizationsView()
         case .devices: DevicesView()
-        case .autoFill: AutoFillSettingsView(isEnabled: $isAutoFillEnabled)
+        case .autoFill: AutoFillSettingsView()
         case .passwordGenerator: StandalonePasswordGeneratorView()
         case .help: HelpView()
         case .about: AboutView()
@@ -732,8 +731,19 @@ struct NotificationSettingsView: View {
     }
 }
 
+private struct NotificationSettingsLabel: View {
+    @ObservedObject var notifications: PushNotificationsModel
+
+    var body: some View {
+        LabeledContent {
+            Text(notifications.authorization == .allowed ? "On" : "Off")
+        } label: {
+            Label("Notifications", systemImage: "bell.badge")
+        }
+    }
+}
+
 struct AutoFillSettingsView: View {
-    @Binding var isEnabled: Bool
     @EnvironmentObject private var model: AppModel
 
     private static let isAutoFillIncluded = HisarConfiguration.current.isAppGroupAvailable
@@ -744,15 +754,13 @@ struct AutoFillSettingsView: View {
                 if !Self.isAutoFillIncluded {
                     Label("Not available in this build", systemImage: "key.viewfinder")
                         .foregroundStyle(.themeSecondary)
-                } else if isEnabled {
+                } else if model.isAutoFillEnabled {
                     Label("Hisar fills passwords, passkeys and one-time codes in apps and Safari", systemImage: "checkmark.circle")
                 } else {
                     Button {
                         Task {
-                            isEnabled = await AutoFillSettings.requestToTurnOn()
-                            if isEnabled {
-                                await model.refreshAll()
-                            }
+                            _ = await AutoFillSettings.requestToTurnOn()
+                            await model.refreshExternalSetupStatus()
                         }
                     } label: {
                         Label("Turn on Hisar AutoFill", systemImage: "key.viewfinder")
@@ -776,7 +784,7 @@ struct AutoFillSettingsView: View {
         }
         .applyThemedListStyle()
         .navigationTitle("AutoFill")
-        .task { isEnabled = await AutoFillSettings.checkIsEnabled() }
+        .task { await model.refreshExternalSetupStatus() }
     }
 }
 

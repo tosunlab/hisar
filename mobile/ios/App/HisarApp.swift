@@ -81,6 +81,7 @@ struct HisarApp: App {
                 hasEnteredBackground = true
                 model.handleDidEnterBackground()
             case .active:
+                Task { await model.refreshExternalSetupStatus() }
                 if hasEnteredBackground {
                     hasEnteredBackground = false
                     model.handleWillEnterForeground()
