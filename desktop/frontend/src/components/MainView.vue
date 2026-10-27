@@ -397,6 +397,21 @@ function chooseNewItem(create: () => void): void {
   create();
 }
 
+const allNewItemAction: (ContextMenuAction | null)[] = [
+  { id: "login", label: "Login", icon: "globe", shortcut: `${shortcutModifier}N`, run: () => chooseNewItem(startCreatingItem) },
+  { id: "secure-note", label: "Secure note", icon: "note", run: () => chooseNewItem(startCreatingSecureNote) },
+  { id: "credit-card", label: "Credit card", icon: "card", run: () => chooseNewItem(startCreatingCard) },
+  { id: "identity", label: "Identity", icon: "identity", run: () => chooseNewItem(startCreatingIdentity) },
+  { id: "api-credential", label: "API credential", icon: "apiKey", run: () => chooseNewItem(startCreatingAPICredential) },
+  { id: "address", label: "Address", icon: "address", run: () => chooseNewItem(startCreatingAddress) },
+  { id: "software-license", label: "Software license", icon: "license", run: () => chooseNewItem(startCreatingSoftwareLicense) },
+  { id: "server", label: "Server", icon: "server", run: () => chooseNewItem(startCreatingServer) },
+  { id: "database", label: "Database", icon: "database", run: () => chooseNewItem(startCreatingDatabase) },
+  { id: "ssh-key", label: "SSH key", icon: "key", run: () => chooseNewItem(startCreatingSSHKey) },
+  null,
+  { id: "import", label: "Import…", icon: "import", run: () => chooseNewItem(openImport) },
+];
+
 function closeNewItemMenu(event: Event): void {
   if (!isNewItemMenuOpen.value) {
     return;
@@ -712,42 +727,18 @@ onBeforeUnmount(() => {
           >
             <AppIcon name="plus" />
           </button>
-          <div v-if="isNewItemMenuOpen" class="card new-item-menu" role="menu" aria-label="New item">
-            <button class="ghost" role="menuitem" data-testid="new-login" @click="chooseNewItem(startCreatingItem)">
-              <AppIcon name="globe" /> Login <kbd>{{ shortcutModifier }}N</kbd>
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-secure-note" @click="chooseNewItem(startCreatingSecureNote)">
-              <AppIcon name="note" /> Secure note
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-credit-card" @click="chooseNewItem(startCreatingCard)">
-              <AppIcon name="card" /> Credit card
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-identity" @click="chooseNewItem(startCreatingIdentity)">
-              <AppIcon name="identity" /> Identity
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-api-credential" @click="chooseNewItem(startCreatingAPICredential)">
-              <AppIcon name="apiKey" /> API credential
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-address" @click="chooseNewItem(startCreatingAddress)">
-              <AppIcon name="address" /> Address
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-software-license" @click="chooseNewItem(startCreatingSoftwareLicense)">
-              <AppIcon name="license" /> Software license
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-server" @click="chooseNewItem(startCreatingServer)">
-              <AppIcon name="server" /> Server
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-database" @click="chooseNewItem(startCreatingDatabase)">
-              <AppIcon name="database" /> Database
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
-              <AppIcon name="key" /> SSH key
-            </button>
-            <hr class="new-item-separator" />
-            <button class="ghost" role="menuitem" data-testid="new-import" @click="chooseNewItem(openImport)">
-              <AppIcon name="import" /> Import…
-            </button>
-          </div>
+          <ContextMenu
+            v-if="isNewItemMenuOpen"
+            class="new-item-menu"
+            label="New item"
+            :x="0"
+            :y="0"
+            :anchor="newItemMenu"
+            :all-action="allNewItemAction"
+            test-id="new-item-menu"
+            action-test-id-prefix="new"
+            @close="isNewItemMenuOpen = false"
+          />
         </div>
       </div>
       <div class="search">
@@ -1171,36 +1162,6 @@ onBeforeUnmount(() => {
   cursor: default;
 }
 
-.new-item-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  min-width: 168px;
-  padding: 4px;
-  background: var(--color-surface-raised);
-  box-shadow: 0 12px 32px var(--color-shadow);
-}
-
-.new-item-menu button {
-  justify-content: flex-start;
-  gap: 10px;
-  padding: 7px 8px;
-  color: var(--color-text);
-}
-
-.new-item-menu kbd {
-  margin-left: auto;
-}
-
-.new-item-separator {
-  width: 100%;
-  margin: 4px 0;
-  border: none;
-  border-top: 1px solid var(--color-border);
-}
 
 .search {
   position: relative;
