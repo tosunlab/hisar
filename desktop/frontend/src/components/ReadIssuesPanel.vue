@@ -1,12 +1,18 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { api, getErrorMessage } from "../api";
 import { retryReads, store } from "../store";
 
 const issues = computed(() => store.allVault.flatMap((vault) => (vault.readIssues ?? []).map((issue) => ({ vault, issue }))));
 const error = ref("");
 const pending = ref<(typeof issues.value)[number] | null>(null);
-const repairName = ref("");
+const repairNames = ref<Record<string, string>>({});
+watch(issues, (entries) => {
+  const current = new Set(entries.filter(({ issue }) => issue.canRename).map(({ issue }) => `${issue.vaultId}/${issue.revision ?? ""}`));
+  for (const key of Object.keys(repairNames.value)) {
+    if (!current.has(key)) delete repairNames.value[key];
+  }
+});
 
 // Each action names the revision on screen; the app refuses it once the record changed, and the retry shows the new one.
 async function remove(): Promise<void> {
@@ -26,8 +32,9 @@ async function remove(): Promise<void> {
 async function rename(vaultID: string, revision: string): Promise<void> {
   error.value = "";
   try {
-    await api.repairVaultName(vaultID, revision, repairName.value);
-    repairName.value = "";
+    const key = `${vaultID}/${revision}`;
+    await api.repairVaultName(vaultID, revision, repairNames.value[key] ?? "");
+    delete repairNames.value[key];
   } catch (cause) {
     error.value = getErrorMessage(cause);
   }
@@ -42,11 +49,11 @@ async function rename(vaultID: string, revision: string): Promise<void> {
       <p>Retry before repairing. An unreadable record is not an empty vault or proof that an item was deleted.</p>
       <button @click="retryReads">Retry reads</button>
       <ul>
-        <li v-for="entry in issues" :key="`${entry.issue.vaultId}/${entry.issue.itemId}/${entry.issue.kind}`">
+        <li v-for="entry in issues" :key="`${entry.issue.vaultId}/${entry.issue.itemId}/${entry.issue.kind}/${entry.issue.revision}`">
           {{ entry.vault.name }}. {{ entry.issue.kind }}. {{ entry.issue.itemId || entry.issue.vaultId }}
           <template v-if="entry.issue.canRename">
-            <input v-model="repairName" aria-label="Repaired vault name" placeholder="New vault name" />
-            <button :disabled="!repairName.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair name</button>
+            <input v-model="repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]" :aria-label="`New name for ${entry.issue.vaultId}`" placeholder="New vault name" />
+            <button :disabled="!repairNames[`${entry.issue.vaultId}/${entry.issue.revision ?? ''}`]?.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair name</button>
           </template>
           <button v-if="entry.issue.canDelete" @click="pending = entry">Delete unreadable data…</button>
         </li>
