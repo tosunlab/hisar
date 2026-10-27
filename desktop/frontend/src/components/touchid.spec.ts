@@ -41,6 +41,25 @@ beforeEach(() => {
 });
 
 describe("UnlockView with Touch ID", () => {
+  it("focuses Cancel in sign-out confirmation and restores the link on Escape", async () => {
+    const wrapper = mount(UnlockView, { attachTo: document.body });
+    const link = wrapper.get(".sign-out > button");
+    await link.trigger("click");
+    await flushPromises();
+    const cancel = wrapper.get(".confirm button.ghost");
+    expect(document.activeElement).toBe(cancel.element);
+    await cancel.trigger("keydown", { key: "Escape" });
+    await flushPromises();
+    expect(wrapper.find(".confirm").exists()).toBe(false);
+    expect(document.activeElement).toBe(wrapper.get(".sign-out > button").element);
+    await wrapper.get(".sign-out > button").trigger("click");
+    await flushPromises();
+    await wrapper.get(".confirm button.ghost").trigger("click");
+    await flushPromises();
+    expect(document.activeElement).toBe(wrapper.get(".sign-out > button").element);
+    wrapper.unmount();
+  });
+
   it("starts Touch ID right away and places the prompt in the slot", async () => {
     store.status = createLockedStatus(true);
     const pending = createPendingPromise<ReturnType<typeof createStatus>>();
