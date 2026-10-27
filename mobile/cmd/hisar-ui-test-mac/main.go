@@ -33,7 +33,7 @@ type scriptedRequest struct {
 var scriptedRequests = []scriptedRequest{
 	{"SSH request", approval.Description{
 		Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22",
-		CommandLine: "git push origin main", KeyName: "hisar gitlab", RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true,
+		CommandLine: "git push origin main", KeyName: "hisar gitlab", RememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", IsRememberedByDefault: true,
 	}},
 	{"Command-line request", approval.Description{
 		Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar",

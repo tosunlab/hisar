@@ -41,7 +41,7 @@ class PhoneApprovalTests {
     )
 
     private fun createRememberingApproval(requestID: String = "0123456789abcdef0123456789abcdef", isRememberedByDefault: Boolean = true) =
-        createApproval(requestID).copy(rememberLabel = "Also allows Terminal for 1 hour", isRememberedByDefault = isRememberedByDefault)
+        createApproval(requestID).copy(rememberLabel = "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", isRememberedByDefault = isRememberedByDefault)
 
     // A launch with the app in the foreground: unlocking lists the open requests at once.
     private suspend fun TestScope.createUnlockedModel(harness: AppModelHarness, allApproval: List<PhoneApproval>): AppModel {
@@ -236,7 +236,7 @@ class PhoneApprovalTests {
               "kind":"ssh","appName":"iTerm2","purpose":"sign a commit","repositoryPath":"~/src/core",
               "rememberLabel":"Also allows iTerm2 to sign commits in ~/src/core for 10 minutes"},
              {"requestId":"fedcba9876543210fedcba9876543210","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
-              "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com","rememberLabel":"Also allows Terminal for 1 hour","isRememberedByDefault":true},
+              "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com","rememberLabel":"Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.","isRememberedByDefault":true},
              {"requestId":"00112233445566778899aabbccddeeff","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
               "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com"}]
             """,

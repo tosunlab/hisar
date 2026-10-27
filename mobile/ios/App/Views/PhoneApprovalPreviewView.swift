@@ -56,7 +56,7 @@ struct PhoneApprovalPreviewView: View {
             return PhoneApproval(
                 requestID: "preview-ssh", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindSSH,
                 appName: "Terminal", purpose: "push to git.tryhisar.com", host: "git.tryhisar.com:22", commandLine: "git push origin main",
-                repositoryPath: "~/Documents/hisar/core", keyName: "hisar gitlab", rememberLabel: "Also allows Terminal for 1 hour", isRememberedByDefault: true
+                repositoryPath: "~/Documents/hisar/core", keyName: "hisar gitlab", rememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", isRememberedByDefault: true
             )
         }
     }

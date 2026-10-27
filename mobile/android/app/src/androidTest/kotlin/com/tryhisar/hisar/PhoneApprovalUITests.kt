@@ -213,7 +213,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         }
         assertEquals("Waiting for your approval", readText("pending-approval-header"))
         waitFor(hasText("It never unlocks Hisar on your Mac."))
-        waitFor(hasTestTagPrefix("pending-approval-remember-") and hasText("Also allows Terminal for 1 hour"))
+        waitFor(hasTestTagPrefix("pending-approval-remember-") and hasText("Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks."))
         val card = readText(cardSummary)
         assertTrue(card, "UI Test Mac · expires in" in card && "Terminal wants to push to git.tryhisar.com" in card && "with “hisar gitlab”" in card)
         waitFor(hasTestTag("tab-approvals") and hasText("1", substring = false))
@@ -344,7 +344,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
                 else -> PhoneApproval(
                     requestID = "preview-ssh", requesterDeviceName = mac, expiresAt = expiresAt, kind = PhoneApproval.KIND_SSH,
                     appName = "Terminal", purpose = "push to git.tryhisar.com", host = "git.tryhisar.com:22", commandLine = "git push origin main",
-                    repositoryPath = "~/Documents/hisar/core", keyName = "hisar gitlab", rememberLabel = "Also allows Terminal for 1 hour", isRememberedByDefault = true,
+                    repositoryPath = "~/Documents/hisar/core", keyName = "hisar gitlab", rememberLabel = "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", isRememberedByDefault = true,
                 )
             }
         }

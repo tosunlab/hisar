@@ -194,8 +194,13 @@ const allSecretName = computed(() => approval.value?.allSecretName ?? []);
 const rememberLabel = computed(
   () =>
     approval.value?.rememberLabel ||
-    `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} ${approval.value?.rememberPeriod || "for 1 hour"}`,
+    `Approve SSH requests from ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} with this key ${approval.value?.rememberPeriod === "until Hisar locks" ? "until Hisar locks" : `for up to ${(approval.value?.rememberPeriod || "for 1 hour").replace(/^for /, "")}`}`,
 );
+const rememberNote = computed(() => {
+  const current = approval.value;
+  if (current?.kind !== "ssh-key" || current.agentName || isSigning.value || current.isForwarded) return "";
+  return current.rememberPeriod === "until Hisar locks" ? "Any host." : "Any host. Ends when Hisar locks.";
+});
 
 // commandLineCoverage is who approving a command-line request approves, and for how long, by ApprovalEvent.coverage.
 const commandLineCoverage = computed(() => {
@@ -575,7 +580,7 @@ onBeforeUnmount(() => {
               :checked="approvalStore.isRemembered"
               @change="setRemembered(approval.requestID, ($event.target as HTMLInputElement).checked)"
             />
-            {{ rememberLabel }}
+            <span>{{ rememberLabel }}<small v-if="rememberNote" class="muted" data-testid="approval-remember-note"> {{ rememberNote }}</small></span>
           </label>
 
           <div v-if="allGrantDuration.length > 0" class="grant-duration" data-testid="approval-grant-duration">

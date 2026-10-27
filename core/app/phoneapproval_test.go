@@ -293,7 +293,7 @@ func TestPhoneApprovalApprovedAndDenied(t *testing.T) {
 
 func TestPhoneApprovalCarriesTheRememberChoice(t *testing.T) {
 	test := createPhoneApprovalTest(t)
-	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", KeyName: "hisar gitlab", RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true}
+	description := approval.Description{Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", KeyName: "hisar gitlab", RememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", IsRememberedByDefault: true}
 	cases := []struct {
 		name             string
 		answer           func(stored fakeApproval, request approval.Request) []byte

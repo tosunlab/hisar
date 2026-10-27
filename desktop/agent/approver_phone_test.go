@@ -128,7 +128,7 @@ func TestPhoneApprovesTheDialog(t *testing.T) {
 	want := approval.Description{
 		Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22",
 		CommandLine: "git push origin main", RepositoryPath: "~/src/core", KeyName: "Laptop",
-		RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true,
+		RememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", IsRememberedByDefault: true,
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)
