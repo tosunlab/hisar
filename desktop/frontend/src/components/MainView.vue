@@ -522,6 +522,7 @@ function handleShortcut(event: KeyboardEvent): void {
   if (key === "f") {
     event.preventDefault();
     searchInput.value?.focus();
+    searchInput.value?.select();
   } else if (key === "n" && canCreate.value) {
     event.preventDefault();
     startCreatingItem();

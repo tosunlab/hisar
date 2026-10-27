@@ -103,3 +103,23 @@ describe("Persistent sidebar controls", () => {
     expect(wrapper.get(".account-text").element.closest(".sidebar-navigation")).toBeNull();
   });
 });
+
+describe("Repeat search", () => {
+  it("selects the existing query on Command+F and retains ArrowDown entry", async () => {
+    store.searchQuery = "previous";
+    const wrapper = mount(MainView, { attachTo: document.body });
+    const search = wrapper.get('input[name="search"]');
+    const input = search.element as HTMLInputElement;
+    (wrapper.get('[aria-label="New item"]').element as HTMLElement).focus();
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "f", metaKey: true, bubbles: true }));
+    expect(document.activeElement).toBe(input);
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 8]);
+    input.value = input.value.slice(0, input.selectionStart ?? 0) + "One" + input.value.slice(input.selectionEnd ?? 0);
+    await search.trigger("input");
+    expect(store.searchQuery).toBe("One");
+    await search.trigger("keydown", { key: "ArrowDown" });
+    await flushPromises();
+    expect(document.activeElement).toBe(wrapper.get('[role="option"]').element);
+    expect(store.selectedItem?.id).toBe("one");
+  });
+});
