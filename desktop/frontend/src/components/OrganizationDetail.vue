@@ -221,6 +221,26 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
           </div>
         </div>
       </div>
+
+      <div class="settings-block" data-testid="organization-membership">
+        <p class="section-label">Your membership</p>
+        <div class="settings-group">
+          <div class="setting">
+            <div class="setting-text">
+              <strong>Leave {{ organization.name }}</strong>
+              <p class="muted">You lose the vaults you have through {{ organization.name }}'s teams.</p>
+            </div>
+            <button class="danger" data-testid="leave-organization" @click="dialog = { kind: 'leave' }">Leave {{ organization.name }}…</button>
+          </div>
+          <div v-if="organization.isAdmin" class="setting">
+            <div class="setting-text">
+              <strong>Delete organization</strong>
+              <p class="muted">Its teams and pending invitations are deleted with it.</p>
+            </div>
+            <button class="danger" data-testid="delete-organization" @click="dialog = { kind: 'delete-organization' }">Delete organization…</button>
+          </div>
+        </div>
+      </div>
     </section>
 
     <section v-if="organization.isAdmin" v-show="activeSegment === 'invitations'" id="organization-panel-invitations" role="tabpanel" aria-labelledby="organization-tab-invitations" tabindex="0">
@@ -384,26 +404,6 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
       </div>
     </div>
     </section>
-
-    <div v-show="activeSegment === 'members'" class="settings-block" data-testid="organization-membership">
-      <p class="section-label">Your membership</p>
-      <div class="settings-group">
-        <div class="setting">
-          <div class="setting-text">
-            <strong>Leave {{ organization.name }}</strong>
-            <p class="muted">You lose the vaults you have through {{ organization.name }}'s teams.</p>
-          </div>
-          <button class="danger" data-testid="leave-organization" @click="dialog = { kind: 'leave' }">Leave {{ organization.name }}…</button>
-        </div>
-        <div v-if="organization.isAdmin" class="setting">
-          <div class="setting-text">
-            <strong>Delete organization</strong>
-            <p class="muted">Its teams and pending invitations are deleted with it.</p>
-          </div>
-          <button class="danger" data-testid="delete-organization" @click="dialog = { kind: 'delete-organization' }">Delete organization…</button>
-        </div>
-      </div>
-    </div>
 
     <OrganizationDialog v-if="dialog" :organization="organization" :request="dialog" @close="dialog = null" />
     <ContextMenu v-if="actionMenu" :label="actionMenu.label" :x="actionMenu.x" :y="actionMenu.y" :all-action="actionMenu.allAction" @close="closeActionMenu" @keydown.esc.stop.prevent="closeActionMenu" />

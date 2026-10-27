@@ -161,11 +161,16 @@ struct PersonView: View {
                         .frame(maxWidth: .infinity)
                         .textSelection(.enabled)
                         .accessibilityIdentifier("person-security-code")
+                    if person.isCurrentUser {
+                        ShareLink(item: "My Hisar security code: \(person.securityCode)") {
+                            Label("Share my security code", systemImage: "square.and.arrow.up")
+                        }
+                    }
                 } header: {
                     Text("Security code")
                 } footer: {
                     Text(person.isCurrentUser
-                         ? "Others see this code for you. When they compare it with you, they know vaults they share reach you and nobody else."
+                         ? "This is your security code. Read it to someone who is checking the code they see for you."
                          : "Compare it with \(person.name) once, in person or over a channel you trust. If it matches what their Hisar shows, vaults you share reach them and nobody else.")
                 }
             }

@@ -154,6 +154,11 @@ enum OrganizationLogic {
         )
     }
 
+    static func listAllTeamMember(organization: Organization, team: Team) -> [Member] {
+        let allTeamMemberID = Set(team.allMember.map(\.accountID))
+        return organization.allMember.filter { allTeamMemberID.contains($0.accountID) }
+    }
+
     /// The organization's members an admin can add to the team; nobody for anyone else.
     static func listAllAddableMember(organization: Organization, team: Team) -> [Member] {
         guard organization.isAdmin else { return [] }
