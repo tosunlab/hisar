@@ -15,6 +15,8 @@ import {
   takeVaultFromTeam,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
+import { vaultRoleChangeMessage, vaultRoleChangeTitle } from "../organizationAccess";
+import OrganizationDialog, { type OrganizationDialogRequest } from "./OrganizationDialog.vue";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
@@ -26,6 +28,8 @@ const removingAccountID = ref("");
 const newMemberEmail = ref("");
 const newMemberRole = ref<VaultRole>("editor");
 const cancellingInvitationID = ref("");
+const roleChange = ref<{ member: VaultMember; role: VaultRole } | null>(null);
+const organizationDialog = ref<OrganizationDialogRequest | null>(null);
 
 const vault = computed(() => getSelectedVault());
 const isOwner = computed(() => vault.value?.role === "owner");
@@ -69,8 +73,13 @@ async function submitGiveToTeam(): Promise<void> {
 
 async function changeTeamRole(team: Team, teamVault: TeamVault, event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement;
-  if (organization.value && select.value !== teamVault.role && !(await giveVaultToTeam(organization.value, team, teamVault.vaultId, select.value as VaultRole))) {
-    select.value = teamVault.role;
+  const role = select.value as VaultRole;
+  select.value = teamVault.role;
+  if (!organization.value || role === teamVault.role) return;
+  if (role === "owner" || teamVault.role === "owner") {
+    organizationDialog.value = { kind: "change-team-role", team, teamVault, role };
+  } else {
+    await giveVaultToTeam(organization.value, team, teamVault.vaultId, role);
   }
 }
 
@@ -96,9 +105,20 @@ async function confirmCancel(invitation: SentShareInvitation): Promise<void> {
 }
 
 async function changeRole(member: VaultMember, event: Event): Promise<void> {
-  const role = (event.target as HTMLSelectElement).value as VaultRole;
-  if (role !== member.role) {
+  const select = event.target as HTMLSelectElement;
+  const role = select.value as VaultRole;
+  select.value = member.role;
+  if (role === member.role) return;
+  if (role === "owner" || member.role === "owner") {
+    roleChange.value = { member, role };
+  } else {
     await changeVaultMemberRole(member, role);
+  }
+}
+
+async function confirmRoleChange(): Promise<void> {
+  if (roleChange.value && await changeVaultMemberRole(roleChange.value.member, roleChange.value.role)) {
+    roleChange.value = null;
   }
 }
 
@@ -245,6 +265,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
               <span v-else class="role-label" :class="{ aligned: isOwner }">{{ formatRole(member.role) }}</span>
             </div>
 
+            <div v-if="roleChange?.member.accountId === member.accountId" class="member-detail confirm" data-testid="role-confirmation">
+              <div>
+                <strong>{{ vaultRoleChangeTitle(getDisplayName(member), vault?.name ?? "", roleChange.role) }}</strong>
+                <p>{{ roleChange.role === "owner" ? vaultRoleChangeMessage(roleChange.role) : "They lose the ability to share, rename and delete this vault, change roles and remove owners." }}</p>
+              </div>
+              <button class="ghost" :disabled="store.isBusy" @click="roleChange = null">Cancel</button>
+              <button class="danger-solid" :disabled="store.isBusy" data-testid="confirm-role-change" @click="confirmRoleChange">{{ roleChange.role === "owner" ? "Make owner" : "Change role" }}</button>
+            </div>
+
             <div v-if="removingAccountID === member.accountId" class="member-detail confirm" data-testid="remove-confirmation">
               <AppIcon name="refresh" class="detail-icon" />
               <p>
@@ -330,6 +359,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         </p>
       </template>
     </div>
+    <OrganizationDialog v-if="organization && organizationDialog" :organization="organization" :request="organizationDialog" @close="organizationDialog = null" />
   </div>
 </template>
 

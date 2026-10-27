@@ -36,6 +36,14 @@ data class OrganizationVaultSharing(
 
 enum class OrganizationMemberAction { MAKE_ADMIN, MAKE_MEMBER, REMOVE }
 
+sealed interface OrganizationAccessChange {
+    data class RemoveTeam(val teamID: String) : OrganizationAccessChange
+    data class RemoveTeamMember(val teamID: String, val accountID: String) : OrganizationAccessChange
+    data class RemoveMember(val accountID: String) : OrganizationAccessChange
+    data class TakeVault(val teamID: String, val vaultID: String) : OrganizationAccessChange
+    data class TeamRole(val teamID: String, val vaultID: String, val role: String) : OrganizationAccessChange
+}
+
 /** What the organization screen does after loading the organization. */
 sealed interface OrganizationLoad {
     data class Loaded(val organization: Organization) : OrganizationLoad
@@ -155,6 +163,40 @@ object OrganizationLogic {
         if (!organization.isAdmin) return emptyList()
         val roleAction = if (member.role == OrganizationRole.ADMIN) OrganizationMemberAction.MAKE_MEMBER else OrganizationMemberAction.MAKE_ADMIN
         return if (member.isCurrentUser) listOf(roleAction) else listOf(roleAction, OrganizationMemberAction.REMOVE)
+    }
+
+    fun accessConsequences(organization: Organization, change: OrganizationAccessChange): List<String> {
+        val after = organization.allTeam.filter { change !is OrganizationAccessChange.RemoveTeam || it.id != change.teamID }.map { team ->
+            team.copy(
+                allMember = team.allMember.filter { member ->
+                    !((change is OrganizationAccessChange.RemoveMember && member.accountID == change.accountID) ||
+                        (change is OrganizationAccessChange.RemoveTeamMember && team.id == change.teamID && member.accountID == change.accountID))
+                },
+                allVault = team.allVault.filter { !(change is OrganizationAccessChange.TakeVault && team.id == change.teamID && it.vaultID == change.vaultID) }.map { vault ->
+                    if (change is OrganizationAccessChange.TeamRole && team.id == change.teamID && vault.vaultID == change.vaultID) vault.copy(role = change.role) else vault
+                },
+            )
+        }
+        val rank = mapOf("reader" to 1, "editor" to 2, "owner" to 3)
+        fun strongest(teams: List<Team>, accountID: String, vaultID: String): String =
+            teams.filter { team -> team.allMember.any { it.accountID == accountID } }.flatMap { it.allVault }
+                .filter { it.vaultID == vaultID }.maxByOrNull { rank[it.role] ?: 0 }?.role.orEmpty()
+        val vaultByID = organization.allTeam.flatMap { it.allVault }.sortedBy { it.canOpen }.associateBy { it.vaultID }
+        val memberByID = organization.allTeam.flatMap { it.allMember }.associateBy { it.accountID }
+        val lines = vaultByID.toSortedMap().mapNotNull { (vaultID, vault) ->
+            val effects = memberByID.toSortedMap().mapNotNull { (accountID, member) ->
+                val beforeRole = strongest(organization.allTeam, accountID, vaultID)
+                val afterRole = strongest(after, accountID, vaultID)
+                val name = member.name.ifEmpty { member.email }
+                when {
+                    beforeRole == afterRole -> null
+                    afterRole.isEmpty() -> if (member.isCurrentUser) "You lose access too." else "$name loses access."
+                    else -> "${if (member.isCurrentUser) "Your role" else "$name's role"} changes from ${VaultLogic.describeVaultRole(beforeRole)} to ${VaultLogic.describeVaultRole(afterRole)}."
+                }
+            }
+            if (effects.isEmpty()) null else "${if (vault.canOpen) vault.name else "A vault you can't open ($vaultID)"}: ${effects.joinToString(" ")}"
+        }
+        return lines.ifEmpty { listOf("Everyone keeps their vault access through other teams.") }
     }
 
     fun describeMemberCount(count: Int): String = if (count == 1) "1 member" else "$count members"

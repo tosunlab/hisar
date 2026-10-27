@@ -466,6 +466,8 @@ Admin settings saves lock the saving admin account before the settings row, matc
 
 Sharing is person to person: the owner of a shared vault types an email address and a role. Nobody can list the accounts on the server, and the server answers every share the same way, so sharing cannot be used to find out who has an account.
 
+Changing a person or team's vault role to or from Owner requires confirmation before submission. The confirmation names the person or team, the vault and the management rights gained or lost. Team previews compare each person's strongest role through every team; Cancel keeps the saved role and server refusals do not claim success.
+
 1. **Invite (owner).** An unlocked owner signs an immutable invitation and sends `POST /vaults/{id}/signed-share-invitations {email, role, intent}`. Personal vaults cannot be shared. Organization vaults use their teams (§5.11). The response remains `202 {"message": "Invitation sent"}` whether the email has an account.
    - `crypt.ShareIntent` binds version 1, the canonical intended server origin, a random invitation UUID, vault ID, inviter account, normalized email, role, key generation, access revision, issue time, expiration, recipient account and recipient key hash, and optional parent hash. `hisar/v1/share-intent` uses the existing length-prefixed context encoding. Integers are decimal strings. The recipient hash covers both the verified signing and KEM public keys under `hisar/v1/share-recipient`.
    - A known contact can be bound after signed-key verification and the client's pin check (§5.6). An unknown email has no recipient binding yet. Its initial signature authorizes an invitation, not delivery to a future account.

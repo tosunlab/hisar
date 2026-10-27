@@ -1707,7 +1707,9 @@ export async function changeVaultMemberRole(member: VaultMember, role: VaultRole
     await api.changeVaultMemberRole(vaultID, member.accountId, role);
     return true;
   });
+  const refusal = store.errorMessage;
   await loadSharing();
+  if (!changed) store.errorMessage = refusal;
   if (changed) {
     showNotice(`${getFirstName(member)} is now ${role === "owner" ? "an owner" : `a ${role}`}`);
   }

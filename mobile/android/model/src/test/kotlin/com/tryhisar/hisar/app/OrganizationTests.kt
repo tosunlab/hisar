@@ -3,6 +3,7 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.DeletionOrganization
 import com.tryhisar.hisar.model.Member
+import com.tryhisar.hisar.model.OrganizationAccessChange
 import com.tryhisar.hisar.model.Organization
 import com.tryhisar.hisar.model.OrganizationInvitation
 import com.tryhisar.hisar.model.OrganizationLoad
@@ -49,6 +50,19 @@ class OrganizationTests {
             allMember = listOf(carol, alice.copy(role = role), bob), allTeam = listOf(audit, platform),
             allInvitation = if (isAdmin) listOf(SentOrganizationInvitation("invitation-1", "dave@example.com", OrganizationRole.MEMBER, "", "")) else emptyList(),
         )
+    }
+
+    @Test
+    fun testTeamRoleChangeKeepsTheStrongestOtherGrant() {
+        val original = buildAcme(isAdmin = true)
+        val audit = original.allTeam[0]
+        val organization = original.copy(allTeam = listOf(audit.copy(
+            allMember = audit.allMember + TeamMember("bob-id", "Bob", "bob@example.com"),
+            allVault = audit.allVault.map { if (it.vaultID == "deploy") it.copy(role = "owner") else it },
+        ), original.allTeam[1]))
+        val lines = OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.TeamRole("audit", "deploy", "reader"))
+        assertTrue(lines.joinToString().contains("Bob's role changes from Owner to Editor."))
+        assertFalse(lines.joinToString().contains("Alice"))
     }
 
     @Test

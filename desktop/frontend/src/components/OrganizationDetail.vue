@@ -144,8 +144,13 @@ async function submitAddMember(team: Team): Promise<void> {
 
 async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement;
-  if (select.value !== teamVault.role && !(await giveVaultToTeam(props.organization, team, teamVault.vaultId, select.value as VaultRole))) {
-    select.value = teamVault.role;
+  const role = select.value as VaultRole;
+  select.value = teamVault.role;
+  if (role === teamVault.role) return;
+  if (role === "owner" || teamVault.role === "owner") {
+    dialog.value = { kind: "change-team-role", team, teamVault, role };
+  } else {
+    await giveVaultToTeam(props.organization, team, teamVault.vaultId, role);
   }
 }
 </script>

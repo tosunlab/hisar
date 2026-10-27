@@ -15,13 +15,15 @@ import {
   store,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
+import { describeOrganizationAccessChange, vaultRoleChangeMessage, vaultRoleChangeTitle } from "../organizationAccess";
 import AccountDialog from "./AccountDialog.vue";
 import type { IconName } from "./AppIcon.vue";
 
 export type OrganizationDialogRequest =
   | { kind: "rename-organization" | "delete-organization" | "leave" | "new-team" }
   | { kind: "remove-member"; member: OrganizationMember }
-  | { kind: "rename-team" | "delete-team" | "give-vault"; team: Team };
+  | { kind: "rename-team" | "delete-team" | "give-vault"; team: Team }
+  | { kind: "change-team-role"; team: Team; teamVault: TeamVault; role: VaultRole };
 
 interface DialogText {
   title: string;
@@ -59,6 +61,8 @@ const text = computed<DialogText>(() => {
   const organizationName = props.organization.name;
   const request = props.request;
   switch (request.kind) {
+    case "change-team-role":
+      return { title: vaultRoleChangeTitle(request.team.name, describeTeamVault(request.teamVault), request.role), subtitle: vaultRoleChangeMessage(request.role), icon: "users", isDanger: true, confirmLabel: request.role === "owner" ? "Make owner" : "Change role" };
     case "rename-organization":
       return { title: `Rename “${organizationName}”`, subtitle: `Everyone in ${organizationName} sees the new name.`, icon: "edit", isDanger: false, confirmLabel: "Save" };
     case "delete-organization":
@@ -108,6 +112,9 @@ const text = computed<DialogText>(() => {
 // allLostVaultLine names what goes: the vaults the teams in question have, unopened ones counted together.
 const allLostVaultLine = computed(() => {
   const request = props.request;
+  if (request.kind === "change-team-role") {
+    return describeOrganizationAccessChange(props.organization, { kind: "team-role", teamID: request.team.id, vaultID: request.teamVault.vaultId, role: request.role });
+  }
   let allTeam: Team[] = [];
   if (request.kind === "leave") {
     allTeam = props.organization.teams.filter((team) => team.members.some((member) => member.isCurrentUser));
@@ -139,6 +146,8 @@ const canSubmit = computed(() => {
 async function runRequest(): Promise<boolean> {
   const request = props.request;
   switch (request.kind) {
+    case "change-team-role":
+      return giveVaultToTeam(props.organization, request.team, request.teamVault.vaultId, request.role);
     case "rename-organization":
       return renameOrganization(props.organization, name.value.trim());
     case "delete-organization":

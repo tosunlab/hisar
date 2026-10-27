@@ -12,6 +12,7 @@ struct VaultSharingView: View {
     @State private var isSending = false
     @State private var invitationToCancel: SentShareInvitation?
     @State private var memberToRemove: Member?
+    @State private var roleChange: VaultRoleChange?
     @FocusState private var isEmailFocused: Bool
     @State private var presentationDetent = PresentationDetent.large
 
@@ -109,6 +110,15 @@ struct VaultSharingView: View {
                 }
             } message: {
                 Text(removalExplanation)
+            }
+            .confirmationDialog(roleChange?.title(vaultName: vaultName) ?? "", isPresented: Binding(get: { roleChange != nil }, set: { if !$0 { roleChange = nil } }), titleVisibility: .visible) {
+                Button(roleChange?.role == Member.vaultRoleOwner ? "Make owner" : "Change role", role: .destructive) {
+                    if let change = roleChange { submitRole(of: change.member, to: change.role) }
+                }
+                .accessibilityIdentifier("confirm-role-change")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(roleChange?.message ?? "")
             }
             .task { await load() }
             .onChange(of: model.remoteChangeCount) { _, _ in
@@ -214,6 +224,14 @@ struct VaultSharingView: View {
 
     private func changeRole(of member: Member, to newRole: String) {
         guard newRole != member.role else { return }
+        if newRole == Member.vaultRoleOwner || member.role == Member.vaultRoleOwner {
+            roleChange = VaultRoleChange(member: member, role: newRole)
+        } else {
+            submitRole(of: member, to: newRole)
+        }
+    }
+
+    private func submitRole(of member: Member, to newRole: String) {
         Task {
             if await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole) {
                 await load()
@@ -255,6 +273,7 @@ struct VaultMemberView: View {
     @State private var selectedRole: String
     @State private var savedRole: String
     @State private var isRemoveConfirmationShown = false
+    @State private var roleChange: VaultRoleChange?
 
     init(vaultID: String, vaultName: String, member: Member, isOwner: Bool, reload: @escaping () async -> Void) {
         self.vaultID = vaultID
@@ -354,14 +373,21 @@ struct VaultMemberView: View {
         .navigationBarTitleDisplayMode(.inline)
         .onChange(of: selectedRole) { _, newRole in
             guard newRole != savedRole else { return }
-            Task {
-                if await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole) {
-                    savedRole = newRole
-                    await reload()
-                } else {
-                    selectedRole = savedRole
-                }
+            selectedRole = savedRole
+            if newRole == Member.vaultRoleOwner || savedRole == Member.vaultRoleOwner {
+                roleChange = VaultRoleChange(member: member, role: newRole)
+            } else {
+                submitRole(newRole)
             }
+        }
+        .confirmationDialog(roleChange?.title(vaultName: vaultName) ?? "", isPresented: Binding(get: { roleChange != nil }, set: { if !$0 { roleChange = nil } }), titleVisibility: .visible) {
+            Button(roleChange?.role == Member.vaultRoleOwner ? "Make owner" : "Change role", role: .destructive) {
+                if let change = roleChange { submitRole(change.role) }
+            }
+            .accessibilityIdentifier("confirm-role-change")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(roleChange?.message ?? "")
         }
         .confirmationDialog("Remove \(member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
@@ -376,6 +402,31 @@ struct VaultMemberView: View {
         } message: {
             Text("Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them.")
         }
+    }
+
+    private func submitRole(_ newRole: String) {
+        Task {
+            if await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole) {
+                savedRole = newRole
+                selectedRole = newRole
+                await reload()
+            }
+        }
+    }
+}
+
+struct VaultRoleChange {
+    var member: Member
+    var role: String
+
+    func title(vaultName: String) -> String {
+        role == Member.vaultRoleOwner ? "Make \(member.name) an owner of \(vaultName)?" : "Change \(member.name)'s role from Owner to \(describeVaultRole(role))?"
+    }
+
+    var message: String {
+        role == Member.vaultRoleOwner
+            ? "Owners can share, rename and delete this vault, change roles and remove other owners, including you."
+            : "They lose the ability to share, rename and delete this vault, change roles and remove owners."
     }
 }
 

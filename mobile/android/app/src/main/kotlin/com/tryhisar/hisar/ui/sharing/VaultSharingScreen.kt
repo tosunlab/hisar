@@ -64,6 +64,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
     var invitationToCancel by remember { mutableStateOf<SentShareInvitation?>(null) }
     var memberToRemove by remember { mutableStateOf<Member?>(null) }
     var memberWithMenu by remember { mutableStateOf<Member?>(null) }
+    var roleChange by remember { mutableStateOf<Pair<Member, String>?>(null) }
     var openMember by rememberSaveable(stateSaver = memberSaver) { mutableStateOf(null) }
 
     val vault = data.findVault(vaultID)
@@ -106,7 +107,11 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
 
     fun changeRole(member: Member, newRole: String) {
         if (newRole == member.role) return
-        scope.launch { if (model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)) load() }
+        if (newRole == Member.VAULT_ROLE_OWNER || member.role == Member.VAULT_ROLE_OWNER) {
+            roleChange = member to newRole
+        } else {
+            scope.launch { if (model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)) load() }
+        }
     }
 
     RefreshablePage(
@@ -243,6 +248,11 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
             dismissLabel = "Keep invitation",
         )
     }
+    roleChange?.let { (member, newRole) ->
+        VaultRoleConfirmation(member, vaultName, newRole,
+            onConfirm = { scope.launch { if (model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)) load() } },
+            onDismiss = { roleChange = null })
+    }
     memberToRemove?.let { member ->
         ConfirmationDialog(
             title = "Remove ${member.name} from “$vaultName”?",
@@ -272,18 +282,25 @@ private fun VaultMemberScreen(
     var selectedRole by rememberSaveable(member.accountID) { mutableStateOf(member.role) }
     var savedRole by rememberSaveable(member.accountID) { mutableStateOf(member.role) }
     var isRemoveConfirmationShown by remember { mutableStateOf(false) }
+    var pendingRole by remember { mutableStateOf<String?>(null) }
     val isManageable = isOwner && !member.isCurrentUser
 
-    fun chooseRole(newRole: String) {
-        selectedRole = newRole
-        if (newRole == savedRole) return
+    fun submitRole(newRole: String) {
         scope.launch {
             if (model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)) {
                 savedRole = newRole
+                selectedRole = newRole
                 reload()
-            } else {
-                selectedRole = savedRole
             }
+        }
+    }
+
+    fun chooseRole(newRole: String) {
+        if (newRole == savedRole) return
+        if (newRole == Member.VAULT_ROLE_OWNER || savedRole == Member.VAULT_ROLE_OWNER) {
+            pendingRole = newRole
+        } else {
+            submitRole(newRole)
         }
     }
 
@@ -321,6 +338,11 @@ private fun VaultMemberScreen(
         }
     }
 
+    pendingRole?.let { newRole ->
+        VaultRoleConfirmation(member, vaultName, newRole,
+            onConfirm = { submitRole(newRole) }, onDismiss = { pendingRole = null })
+    }
+
     if (isRemoveConfirmationShown) {
         ConfirmationDialog(
             title = "Remove ${member.name} from “$vaultName”?",
@@ -338,4 +360,16 @@ private fun VaultMemberScreen(
             onDismiss = { isRemoveConfirmationShown = false },
         )
     }
+}
+
+@Composable
+private fun VaultRoleConfirmation(member: Member, vaultName: String, role: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val isOwner = role == Member.VAULT_ROLE_OWNER
+    ConfirmationDialog(
+        title = if (isOwner) "Make ${member.name} an owner of $vaultName?" else "Change ${member.name}'s role from Owner to ${VaultLogic.describeVaultRole(role)}?",
+        message = if (isOwner) "Owners can share, rename and delete this vault, change roles and remove other owners, including you."
+            else "They lose the ability to share, rename and delete this vault, change roles and remove owners.",
+        confirmLabel = if (isOwner) "Make owner" else "Change role",
+        confirmTestTag = "confirm-role-change", onConfirm = onConfirm, onDismiss = onDismiss,
+    )
 }

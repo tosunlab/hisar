@@ -154,6 +154,31 @@ describe("Vault sharing panel", () => {
     wrapper.unmount();
   });
 
+  it("stages Owner changes, cancels without a request and keeps a refusal visible", async () => {
+    const wrapper = await openSharingPanel();
+    const select = wrapper.find('[data-testid="role-select-BOB222"]');
+    await select.setValue("owner");
+    expect(api.changeVaultMemberRole).not.toHaveBeenCalled();
+    expect((select.element as HTMLSelectElement).value).toBe("editor");
+    expect(wrapper.find('[data-testid="role-confirmation"]').text()).toContain("rename and delete this vault");
+    await wrapper.find('[data-testid="role-confirmation"] .ghost').trigger("click");
+    expect(wrapper.find('[data-testid="role-confirmation"]').exists()).toBe(false);
+    expect(api.changeVaultMemberRole).not.toHaveBeenCalled();
+    await select.setValue("owner");
+    api.changeVaultMemberRole.mockRejectedValueOnce(new Error("Sharing stopped"));
+    await wrapper.find('[data-testid="confirm-role-change"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="role-confirmation"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain("Sharing stopped");
+    expect((select.element as HTMLSelectElement).value).toBe("editor");
+    api.changeVaultMemberRole.mockResolvedValue(undefined);
+    await wrapper.find('[data-testid="confirm-role-change"]').trigger("click");
+    await flushPromises();
+    expect(api.changeVaultMemberRole).toHaveBeenLastCalledWith("family", "BOB222", "owner");
+    expect(wrapper.find('[data-testid="role-confirmation"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("changes a member's role", async () => {
     api.changeVaultMemberRole.mockResolvedValue(undefined);
     const wrapper = await openSharingPanel();

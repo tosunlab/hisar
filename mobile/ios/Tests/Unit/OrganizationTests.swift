@@ -40,6 +40,15 @@ final class OrganizationTests: XCTestCase {
         return model
     }
 
+    func testTeamRoleChangeKeepsTheStrongestOtherGrant() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        organization.allTeam[0].allVault[0].role = "owner"
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .teamRole(teamID: "audit", vaultID: "deploy", role: "reader"))
+        XCTAssertTrue(lines.joined().contains("Bob's role changes from Owner to Editor."))
+        XCTAssertFalse(lines.joined().contains("Alice"))
+    }
+
     func testDecodesWhatCoreSends() throws {
         let organizationJSON = """
         {"id":"acme","name":"Acme","role":"member","isAdmin":false,
