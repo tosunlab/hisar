@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { useModalFocus } from "../modalFocus";
 import { cancelBrowserPairing, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 
@@ -15,6 +16,8 @@ const secondsLeft = computed(() => {
   return Number.isNaN(expiresAt) ? 0 : Math.max(0, Math.round((expiresAt - now.value) / 1000));
 });
 const timeLeft = computed(() => `${Math.floor(secondsLeft.value / 60)}:${String(secondsLeft.value % 60).padStart(2, "0")}`);
+const panel = ref<HTMLElement | null>(null);
+useModalFocus(panel, cancelBrowserPairing);
 
 onMounted(() => {
   clockTimer = setInterval(() => {
@@ -29,10 +32,10 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 
 <template>
   <div v-if="store.browserPairing" class="overlay">
-    <div class="card pairing" role="alertdialog" aria-modal="true" aria-labelledby="pairing-title" data-testid="browser-pairing">
+    <div ref="panel" class="card pairing" role="alertdialog" aria-modal="true" aria-labelledby="pairing-title" aria-describedby="pairing-description" tabindex="-1" data-testid="browser-pairing">
       <span class="pairing-icon"><AppIcon name="globe" :size="22" /></span>
       <h2 id="pairing-title">Pair {{ store.browserPairing.browser }} with Hisar?</h2>
-      <p class="muted">
+      <p id="pairing-description" class="muted">
         Lets the Hisar extension browse your vaults, reveal and copy supported item fields, fill logins, cards, identities and addresses, and save new items while Hisar is
         unlocked.
       </p>

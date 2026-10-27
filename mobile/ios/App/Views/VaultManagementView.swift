@@ -390,9 +390,11 @@ struct ExportDataForm: View {
                         SecureField("Export passphrase", text: $passphrase)
                             .textContentType(.newPassword)
                             .accessibilityIdentifier("export-passphrase")
+                            .validationError(passphrase.count < options.minPassphraseLength && !passphrase.isEmpty ? inputProblem : nil)
                         SecureField("Repeat export passphrase", text: $repeatedPassphrase)
                             .textContentType(.newPassword)
                             .accessibilityIdentifier("export-passphrase-repeat")
+                            .validationError(passphrase.count >= options.minPassphraseLength ? inputProblem : nil)
                     } footer: {
                         Text("At least \(options.minPassphraseLength) characters. You need it to import the file; Hisar can't recover it.")
                     }

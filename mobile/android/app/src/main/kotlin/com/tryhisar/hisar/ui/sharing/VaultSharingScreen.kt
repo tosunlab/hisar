@@ -133,6 +133,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                         imeAction = ImeAction.Send,
                     ),
                     keyboardActions = KeyboardActions(onSend = { send() }),
+                    label = "Email",
                 )
                 RowDivider()
                 PickerRow("Role", role, Member.allVaultRole, VaultLogic::describeVaultRole, { role = it }, testTag = "share-role")

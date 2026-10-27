@@ -242,7 +242,7 @@ fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: Str
                 Icon(Icons.Outlined.Search, contentDescription = null, tint = colors.secondaryLabel, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(6.dp))
                 Box(Modifier.weight(1f)) {
-                    if (value.isEmpty()) Text(placeholder, style = HisarType.body, color = colors.secondaryLabel, maxLines = 1)
+                    if (value.isEmpty()) Text(placeholder, style = HisarType.body, color = colors.placeholder, maxLines = 1)
                     innerTextField()
                 }
                 if (value.isNotEmpty()) {

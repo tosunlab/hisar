@@ -142,7 +142,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                             .padding(3.dp),
                     )
                 }
-                EditorField(item.title, { value -> model.itemEditor.updateDraft(currentDraft.withItem { it.copy(title = value) }) }, "Title", "editor-title")
+                EditorField(item.title, { value -> model.itemEditor.updateDraft(currentDraft.withItem { it.copy(title = value) }) }, "Title", "editor-title", label = "Title")
             }
             if (currentDraft.isNew) {
                 val writableVaults = unlockedData.allVault.filter(CredentialImportModel::isWritableVault)
@@ -155,6 +155,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                     EditorField(
                         item.notes, { value -> model.itemEditor.updateDraft(currentDraft.withItem { it.copy(notes = value) }) }, "Recovery codes, door codes, account details…",
                         "editor-notes", kind = FieldKind.NOTES, minLines = 8, maxLines = 30,
+                        label = "Notes",
                     )
                 }
                 OtherFieldsSection(currentDraft, onChange)
@@ -192,7 +193,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
         }
         if (!item.isSecureNote) {
             FormSection(header = "Notes") {
-                EditorField(item.notes, { value -> model.itemEditor.updateDraft(currentDraft.withItem { it.copy(notes = value) }) }, "Recovery codes, door codes, anything else", "editor-notes", kind = FieldKind.NOTES, minLines = 3, maxLines = 10)
+                EditorField(item.notes, { value -> model.itemEditor.updateDraft(currentDraft.withItem { it.copy(notes = value) }) }, "Recovery codes, door codes, anything else", "editor-notes", kind = FieldKind.NOTES, minLines = 3, maxLines = 10, label = "Notes")
             }
         }
         TagSection(currentDraft, onChange)

@@ -255,6 +255,7 @@ fun SecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                     isSecure = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { reveal() }),
+                    label = "Master password",
                 )
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
@@ -288,6 +289,7 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
     var repeatedPassword by remember { mutableStateOf("") }
     var isConfirmationShown by remember { mutableStateOf(false) }
     val problem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, repeatedPassword)
+    val newPasswordProblem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, newPassword)
     val canSubmit = AccountLifecycleLogic.canChangePassword(currentPassword, newPassword, repeatedPassword) && !isBusy
     LaunchedEffect(Unit) { model.errorMessage.value = null }
 
@@ -296,7 +298,7 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
             WarningRow(Icons.Outlined.Devices, AccountLifecycleLogic.PASSWORD_CHANGE_WARNING, "change-password-warning")
         }
         FormSection(header = "Current master password") {
-            FormTextField(currentPassword, { currentPassword = it }, placeholder = "Current master password", testTag = "change-password-current", isSecure = true)
+            FormTextField(currentPassword, { currentPassword = it }, placeholder = "Current master password", testTag = "change-password-current", isSecure = true, label = "Current master password")
         }
         FormSection(
             header = "New master password",
@@ -305,9 +307,9 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
                 Text("A forgotten master password can't be recovered by anyone, including Hisar.")
             },
         ) {
-            FormTextField(newPassword, { newPassword = it }, placeholder = "At least 10 characters", testTag = "change-password-new", isSecure = true)
+            FormTextField(newPassword, { newPassword = it }, placeholder = "At least 10 characters", testTag = "change-password-new", isSecure = true, label = "New master password", errorMessage = newPasswordProblem)
             RowDivider()
-            FormTextField(repeatedPassword, { repeatedPassword = it }, placeholder = "Repeat new master password", testTag = "change-password-repeated", isSecure = true)
+            FormTextField(repeatedPassword, { repeatedPassword = it }, placeholder = "Repeat new master password", testTag = "change-password-repeated", isSecure = true, label = "Repeat new master password", errorMessage = problem.takeIf { newPasswordProblem == null })
         }
         errorMessage?.let { FormSection { ErrorBanner(it) } }
         ClearSection {
@@ -389,7 +391,7 @@ fun ReplaceSecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                 WarningRow(Icons.Outlined.FindReplace, AccountLifecycleLogic.SECRET_KEY_REPLACEMENT_WARNING, "replace-secret-key-warning")
             }
             FormSection(header = "Master password") {
-                FormTextField(password, { password = it }, placeholder = "Master password", testTag = "replace-secret-key-password", isSecure = true)
+                FormTextField(password, { password = it }, placeholder = "Master password", testTag = "replace-secret-key-password", isSecure = true, label = "Master password")
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
             ClearSection {
@@ -460,11 +462,12 @@ fun DeleteAccountScreen(model: AppModel, onBack: () -> Unit) {
             header = "Confirm",
             footer = { Text("Enter your master password and type ${status.email} to confirm. Hisar checks your master password without sending it to the server.") },
         ) {
-            FormTextField(password, { password = it }, placeholder = "Master password", testTag = "delete-account-password", isSecure = true)
+            FormTextField(password, { password = it }, placeholder = "Master password", testTag = "delete-account-password", isSecure = true, label = "Master password")
             RowDivider()
             FormTextField(
                 typedEmail, { typedEmail = it }, placeholder = status.email, testTag = "delete-account-email",
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email, autoCorrectEnabled = false),
+                label = "Email",
             )
         }
         errorMessage?.let { FormSection { ErrorBanner(it) } }
@@ -618,17 +621,20 @@ fun PendingRecoveryScreen(model: AppModel) {
                     FormTextField(
                         secretKey, { secretKey = it }, placeholder = "Secret Key from saved Emergency Kit",
                         testTag = "pending-recovery-input-secret-key", isSecure = true,
+                        label = "Secret Key",
                     )
                     if (recovery.kind != "signup") {
                         FormTextField(
                             priorSecretKey, { priorSecretKey = it }, placeholder = "Previous Secret Key, if requested",
                             testTag = "pending-recovery-input-prior-secret-key", isSecure = true,
+                            label = "Previous Secret Key",
                         )
                     }
                 }
                 FormTextField(
                     password, { password = it }, placeholder = "Master password for this recovery",
                     testTag = "pending-recovery-password", isSecure = true,
+                    label = "Master password",
                 )
                 FormButtonRow(
                     if (recovery.phase == "manual-unlock") "Sign in with saved Emergency Kit" else "Resume account setup",

@@ -12,6 +12,7 @@
       "selected": "#e8eaed",
       "border": "#e3e5e8",
       "borderStrong": "#d3d6db",
+      "controlBorder": "#858b94",
       "borderHover": "#c3c7cd",
       "text": "#16181b",
       "textSecondary": "#474d55",
@@ -66,6 +67,7 @@
       "iosSecondaryLabel": "#6c6c70",
       "iosTint": "#1d2025",
       "iosOnTint": "#ffffff",
+      "androidPlaceholder": "#606065",
       "iosWarning": "#8f5b00"
     },
     "dark": {
@@ -78,6 +80,7 @@
       "selected": "#262a30",
       "border": "#23262b",
       "borderStrong": "#30343a",
+      "controlBorder": "#626b78",
       "borderHover": "#3b4047",
       "text": "#e8eaed",
       "textSecondary": "#b4b9c0",
@@ -132,6 +135,7 @@
       "iosSecondaryLabel": "#98989f",
       "iosTint": "#eceef1",
       "iosOnTint": "#0b0c0e",
+      "androidPlaceholder": "#a0a0a7",
       "iosWarning": "#d9a33c"
     }
   },

@@ -23,7 +23,6 @@ final class AppModelTests: XCTestCase {
         return await createModel()
     }
 
-
     func testCustomFieldNameWarningsPreserveDuplicateValues() {
         let fields = [
             ItemField(name: "Recovery code", value: "first", concealed: true),
@@ -34,6 +33,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(ItemField.nameWarning(fields, index: 1), "Secret references need a unique name.")
         XCTAssertEqual(ItemField.nameWarning(fields, index: 2), "A secret reference with this name reaches the built-in field.")
         XCTAssertEqual(fields.map(\.value), ["first", "second", "custom"])
+    }
+
+    func testErrorPresentationAnnouncesChangedMessagesOnce() {
+        var state = ErrorAnnouncementState()
+        let background = UUID()
+        let active = UUID()
+        XCTAssertEqual(state.present(background, "Wrong password."), "Wrong password.")
+        XCTAssertNil(state.present(active, "Wrong password."))
+        XCTAssertNil(state.present(background, "Network unavailable."))
+        XCTAssertEqual(state.present(active, "Network unavailable."), "Network unavailable.")
+        XCTAssertNil(state.present(active, "Network unavailable."))
+        state.remove(active)
+        XCTAssertNil(state.present(background, "Network unavailable."))
+        state.remove(background)
+        XCTAssertEqual(state.present(active, "Network unavailable."), "Network unavailable.")
     }
     func testStartsSignedOut() async {
         let model = await createModel()

@@ -291,7 +291,7 @@ private fun RenameVaultDialog(initialName: String, onDismiss: () -> Unit, onRena
                 Text("Everyone who shares the vault sees the new name.")
                 Spacer(Modifier.height(12.dp))
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
-                    FormTextField(name, { name = it }, placeholder = "Vault name", testTag = "rename-vault-name")
+                    FormTextField(name, { name = it }, placeholder = "Vault name", testTag = "rename-vault-name", label = "Vault name")
                 }
             }
         },

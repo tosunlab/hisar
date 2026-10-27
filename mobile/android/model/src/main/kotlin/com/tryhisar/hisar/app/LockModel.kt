@@ -20,6 +20,7 @@ class LockModel(private val context: ModelContext) {
     }
 
     suspend fun unlock(password: String): Boolean = context.runInModel {
+        context.errorMessage.value = null
         val newStatus = context.perform { it.unlock(password) } ?: return@runInModel false
         context.applyStatus(newStatus)
         context.refreshAll()

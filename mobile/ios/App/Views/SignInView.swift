@@ -240,6 +240,7 @@ struct SignInView: View {
             SecureField("Repeat master password", text: $repeatedPassword)
                 .textContentType(.newPassword)
                 .accessibilityIdentifier("sign-up-repeated-password")
+                .validationError(isPasswordMismatch ? "The passwords do not match." : nil)
         } header: {
             Text("Master password")
         } footer: {
