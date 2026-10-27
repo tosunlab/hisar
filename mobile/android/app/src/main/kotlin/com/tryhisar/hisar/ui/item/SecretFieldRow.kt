@@ -43,6 +43,8 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -137,6 +139,7 @@ internal fun SecretFieldRow(
     copyReference: () -> Unit,
     warning: String = "",
     actionLabel: String = label,
+    copyErrorMessage: String? = null,
 ) {
     val isHidden = isConcealed && !isRevealed
     val tagName = label.lowercase()
@@ -206,11 +209,20 @@ internal fun SecretFieldRow(
             onDismissRequest = { isFullValueShown = false },
             title = { Text(label, modifier = Modifier.semantics { heading() }) },
             text = {
-                Text(
-                    value,
-                    style = HisarType.bodyMonospaced,
-                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()).testTag("full-value-text"),
-                )
+                Column {
+                    Text(
+                        value,
+                        style = HisarType.bodyMonospaced,
+                        modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()).testTag("full-value-text"),
+                    )
+                    copyErrorMessage?.let { message ->
+                        Text(
+                            message,
+                            color = HisarTheme.colors.destructive,
+                            modifier = Modifier.testTag("full-value-error").semantics { liveRegion = LiveRegionMode.Assertive },
+                        )
+                    }
+                }
             },
             confirmButton = {
                 TextButton(onClick = { isFullValueShown = false }, modifier = Modifier.testTag("full-value-close")) { Text("Close") }

@@ -224,6 +224,7 @@ private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String
         copy = { actions.copy(fieldName, label) },
         copyReference = { actions.copyReference(fieldName) },
         warning = warning,
+        copyErrorMessage = actions.errorMessage,
         actionLabel = if (isCustom || label.take(2).all(Char::isUpperCase)) label else label.replaceFirstChar { it.lowercase() },
     )
 }

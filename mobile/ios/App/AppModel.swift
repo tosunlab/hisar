@@ -278,7 +278,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func perform<Value>(isBusyShown: Bool = true, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
+    private func perform<Value>(isBusyShown: Bool = true, onFailure: ((String) -> Void)? = nil, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
         guard let backend else { return nil }
         if isBusyShown { isBusy = true }
         defer { if isBusyShown { isBusy = false } }
@@ -287,7 +287,9 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             return value
         } catch {
-            errorMessage = describeError(error)
+            let message = describeError(error)
+            errorMessage = message
+            onFailure?(message)
             return nil
         }
     }
@@ -639,8 +641,8 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
-    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) async -> Bool {
-        guard await perform(isBusyShown: false, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
+    func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool, onFailure: ((String) -> Void)? = nil) async -> Bool {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.setItemFavorite(vaultID: vaultID, itemID: itemID, isFavorite: isFavorite) }) != nil else { return false }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].isFavorite = isFavorite
         }
@@ -1284,8 +1286,8 @@ final class AppModel: ObservableObject {
         return try? await runInBackground { try backend.describeCard(number: number, expiry: expiry) }
     }
 
-    func convertToSecureNote(vaultID: String, itemID: String) async -> ItemDetail? {
-        guard let convertedItem = await perform({ try $0.convertToSecureNote(vaultID: vaultID, itemID: itemID) }) else { return nil }
+    func convertToSecureNote(vaultID: String, itemID: String, onFailure: ((String) -> Void)? = nil) async -> ItemDetail? {
+        guard let convertedItem = await perform(onFailure: onFailure, { try $0.convertToSecureNote(vaultID: vaultID, itemID: itemID) }) else { return nil }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].category = convertedItem.category
             allItemByVaultID[vaultID]?[index].revision = convertedItem.revision
@@ -1295,8 +1297,8 @@ final class AppModel: ObservableObject {
         return convertedItem
     }
 
-    func deletePasskey(vaultID: String, itemID: String, credentialID: String) async -> ItemDetail? {
-        guard let updatedItem = await perform({ try $0.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: credentialID) }) else { return nil }
+    func deletePasskey(vaultID: String, itemID: String, credentialID: String, onFailure: ((String) -> Void)? = nil) async -> ItemDetail? {
+        guard let updatedItem = await perform(onFailure: onFailure, { try $0.deletePasskey(vaultID: vaultID, itemID: itemID, credentialID: credentialID) }) else { return nil }
         if let index = allItemByVaultID[vaultID]?.firstIndex(where: { $0.id == itemID }) {
             allItemByVaultID[vaultID]?[index].allPasskey = updatedItem.allPasskey
         }
@@ -1311,14 +1313,14 @@ final class AppModel: ObservableObject {
         return try? await runInBackground { try backend.getOneTimeCode(vaultID: vaultID, itemID: itemID) }
     }
 
-    func copyField(vaultID: String, itemID: String, fieldName: String, label: String) async {
-        guard await perform(isBusyShown: false, { try $0.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+    func copyField(vaultID: String, itemID: String, fieldName: String, label: String, onFailure: ((String) -> Void)? = nil) async {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.copyField(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
         copyCount += 1
         showNotice("\(label) copied. It clears in 90 seconds.")
     }
 
-    func copySecretReference(vaultID: String, itemID: String, fieldName: String) async {
-        guard await perform(isBusyShown: false, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+    func copySecretReference(vaultID: String, itemID: String, fieldName: String, onFailure: ((String) -> Void)? = nil) async {
+        guard await perform(isBusyShown: false, onFailure: onFailure, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
         copyCount += 1
         showNotice("Secret reference copied.")
     }

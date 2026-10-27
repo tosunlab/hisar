@@ -122,6 +122,7 @@
 		9C438376F2EE0D0B6481F189 /* LogoMark.swift in Sources */ = {isa = PBXBuildFile; fileRef = A238D14B92DA27E1CCAE99DA /* LogoMark.swift */; };
 		9F882321D31A78F3C1903304 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
 		A0E84C2ACA3FABF84806641B /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1346D0E3E68C5BDA1B3344E9 /* BackendFactory.swift */; };
+		A11EF0BD7B06CD93A790E752 /* ItemActionFailureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C39EAFEFB0A3E73CCA130932 /* ItemActionFailureTests.swift */; };
 		A1965D590E1A381C0813289A /* AccountLifecycleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601EF17B716B840E1BB373D8 /* AccountLifecycleLogic.swift */; };
 		A4D79E48A346ADB339EDAF08 /* VaultBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3573A4BEA82AFBD320C27A14 /* VaultBackend.swift */; };
 		A53ECFFE1EB70418DBB8B0DA /* PhoneApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A128DD342FC95DBB54C289C6 /* PhoneApproval.swift */; };
@@ -324,6 +325,7 @@
 		B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneTimeCodeUITests.swift; sourceTree = "<group>"; };
 		BADDC2475A604991BB81DEE6 /* Hisar.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Hisar.xcconfig; sourceTree = "<group>"; };
 		BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BiometricKeychain.swift; sourceTree = "<group>"; };
+		C39EAFEFB0A3E73CCA130932 /* ItemActionFailureTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ItemActionFailureTests.swift; sourceTree = "<group>"; };
 		CA215E0ABDBB6E239127F971 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmergencyKitScanner.swift; sourceTree = "<group>"; };
 		D2035F9DF60C25E43AE30712 /* PhoneApprovalUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneApprovalUITests.swift; sourceTree = "<group>"; };
@@ -563,6 +565,7 @@
 				7B2774C869B2E88A54905C78 /* FakeBackend.swift */,
 				D4E0374FBF44BF5778ED2846 /* FavoritesTests.swift */,
 				518AEE21C89822E79631F0C9 /* IconPhotoPreparationTests.swift */,
+				C39EAFEFB0A3E73CCA130932 /* ItemActionFailureTests.swift */,
 				583B03B9AF903A2AFD45D820 /* ItemIconTests.swift */,
 				4BA436DB6EF0A7095AE9DFCE /* OrganizationTests.swift */,
 				26730576FD34B49781786827 /* PasskeyTests.swift */,
@@ -875,6 +878,7 @@
 				BDD67F160CD76BD42407E230 /* FakeBackend.swift in Sources */,
 				3322F7AF5EC4923637DF5F93 /* FavoritesTests.swift in Sources */,
 				256EA6CE9797CF4CC9B57D91 /* IconPhotoPreparationTests.swift in Sources */,
+				A11EF0BD7B06CD93A790E752 /* ItemActionFailureTests.swift in Sources */,
 				3E22B7C06A9CE05131DA05E4 /* ItemIconTests.swift in Sources */,
 				7D7F5244A288FE09E3811E48 /* OrganizationTests.swift in Sources */,
 				7C37DDDE1C919F61B2B5D932 /* PasskeyTests.swift in Sources */,

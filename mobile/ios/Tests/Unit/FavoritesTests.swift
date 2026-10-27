@@ -46,10 +46,16 @@ final class FavoritesTests: XCTestCase {
     func testAFailedStarKeepsTheListAndShowsTheError() async {
         let model = await createUnlockedModel()
         backend.favoriteErrorMessage = "cannot reach the Hisar server; changes can be saved once you are back online"
-        let isStarred = await model.setItemFavorite(vaultID: "personal", itemID: "github", isFavorite: true)
+        var presentedError: String?
+        let isStarred = await model.setItemFavorite(vaultID: "personal", itemID: "github", isFavorite: true, onFailure: { presentedError = $0 })
         XCTAssertFalse(isStarred)
         XCTAssertTrue(model.listAllFavoriteReference().isEmpty)
         XCTAssertEqual(model.errorMessage, "cannot reach the Hisar server; changes can be saved once you are back online")
+        XCTAssertEqual(presentedError, model.errorMessage)
+        XCTAssertNil(model.noticeMessage)
+        _ = await model.loadItem(vaultID: "personal", itemID: "github")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(presentedError, "cannot reach the Hisar server; changes can be saved once you are back online")
     }
 
     func testADeletedFavoriteLeavesTheList() async {
