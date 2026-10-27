@@ -41,6 +41,29 @@ const addingTeamID = ref("");
 const newTeamMemberID = ref("");
 
 const allOrganizationVault = computed(() => listAllOrganizationVault(props.organization));
+const selfAccessChanges = computed(() => {
+  const team = props.organization.teams.find((candidate) => candidate.id === addingTeamID.value);
+  const member = props.organization.members.find((candidate) => candidate.accountId === newTeamMemberID.value);
+  if (!team || !member?.isCurrentUser) {
+    return [];
+  }
+  const rank = (role: string) => ["reader", "editor", "owner"].indexOf(role);
+  const currentRoles = new Map<string, string>();
+  for (const currentTeam of props.organization.teams) {
+    if (!currentTeam.members.some((candidate) => candidate.accountId === member.accountId)) {
+      continue;
+    }
+    for (const vault of currentTeam.vaults) {
+      if (rank(vault.role) > rank(currentRoles.get(vault.vaultId) ?? "")) {
+        currentRoles.set(vault.vaultId, vault.role);
+      }
+    }
+  }
+  return team.vaults.flatMap((vault) => {
+    const previousRole = currentRoles.get(vault.vaultId);
+    return rank(vault.role) > rank(previousRole ?? "") ? [{ vault, previousRole }] : [];
+  });
+});
 
 function listAllMemberToAdd(team: Team): OrganizationMember[] {
   return props.organization.members.filter((member) => !team.members.some((teamMember) => teamMember.accountId === member.accountId));
@@ -132,11 +155,11 @@ async function confirmCancel(invitation: SentOrganizationInvitation): Promise<vo
 
 function startAddingMember(team: Team): void {
   addingTeamID.value = team.id;
-  newTeamMemberID.value = listAllMemberToAdd(team)[0]?.accountId ?? "";
+  newTeamMemberID.value = "";
 }
 
 async function submitAddMember(team: Team): Promise<void> {
-  const member = props.organization.members.find((candidate) => candidate.accountId === newTeamMemberID.value);
+  const member = listAllMemberToAdd(team).find((candidate) => candidate.accountId === newTeamMemberID.value);
   if (member && (await addTeamMember(props.organization, team, member))) {
     addingTeamID.value = "";
   }
@@ -342,13 +365,23 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
         </div>
         <form v-if="addingTeamID === team.id" class="settings-group-form team-add" data-testid="team-add-member-form" @submit.prevent="submitAddMember(team)">
           <select v-model="newTeamMemberID" aria-label="Member to add" data-testid="team-add-member-select">
+            <option value="" disabled>Choose a member</option>
             <option v-for="member in listAllMemberToAdd(team)" :key="member.accountId" :value="member.accountId">
-              {{ member.name ? `${member.name} (${member.email})` : member.email }}
+              {{ member.name ? `${member.name} (${member.email})` : member.email }}{{ member.isCurrentUser ? " (you)" : "" }}
             </option>
           </select>
           <button type="button" class="ghost" @click="addingTeamID = ''">Cancel</button>
           <button class="primary" type="submit" data-testid="team-add-member-confirm" :disabled="store.isBusy || !newTeamMemberID">Add</button>
         </form>
+        <div v-if="addingTeamID === team.id && selfAccessChanges.length" class="muted" data-testid="team-self-access">
+          <p>Joining {{ team.name }} changes your access:</p>
+          <ul>
+            <li v-for="change in selfAccessChanges" :key="change.vault.vaultId">
+              {{ describeTeamVault(change.vault) }}{{ change.previousRole ? ` increases from ${formatRole(change.previousRole)} to ${formatRole(change.vault.role)}.` : ` becomes available as ${formatRole(change.vault.role)}.` }}
+            </li>
+          </ul>
+          <p v-if="selfAccessChanges.some((change) => !change.previousRole)">An owner's Hisar must deliver keys for newly available vaults before you can open them.</p>
+        </div>
 
         <p class="team-label">Vaults</p>
         <p v-if="team.vaults.length === 0" class="muted team-empty">No vaults yet</p>

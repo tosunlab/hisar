@@ -277,6 +277,10 @@ describe("Organization screen", () => {
     await settings.find('[data-testid="organization-team-menu-ops"]').trigger("click");
     expect(settings.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Rename…", "Add member", "Give a vault…", "Delete team…"]);
     await settings.find('[data-testid="context-menu-add-team-member"]').trigger("click");
+    expect((settings.get('[data-testid="team-add-member-select"]').element as HTMLSelectElement).value).toBe("");
+    expect(settings.get('[data-testid="team-add-member-select"] option[value=""]').text()).toBe("Choose a member");
+    expect(settings.get('[data-testid="team-add-member-confirm"]').attributes("disabled")).toBeDefined();
+    expect(settings.get('[data-testid="team-add-member-select"] option[value="ALICE1"]').text()).toContain("(you)");
     await settings.find('[data-testid="team-add-member-select"]').setValue("BOB222");
     await settings.find('[data-testid="team-add-member-form"]').trigger("submit");
     await flushPromises();
@@ -289,6 +293,32 @@ describe("Organization screen", () => {
     await settings.find('[data-testid="organization-dialog-give-vault"] form').trigger("submit");
     await flushPromises();
     expect(api.giveVaultToTeam).toHaveBeenCalledWith("acme", "ops", "deploy", "reader");
+    settings.unmount();
+  });
+
+  it("previews only new self entitlements and increased effective roles across overlapping teams", async () => {
+    api.getOrganization.mockResolvedValue(createOrganizationDetail({
+      teams: [
+        createOrganizationTeam({ vaults: [{ vaultId: "deploy", name: "Deploy keys", canOpen: true, role: "owner" }, { vaultId: "docs", name: "Docs", canOpen: true, role: "reader" }] }),
+        createOrganizationTeam({ id: "ops", name: "Ops", members: [], vaults: [
+          { vaultId: "deploy", name: "Deploy keys", canOpen: true, role: "reader" },
+          { vaultId: "docs", name: "Docs", canOpen: true, role: "editor" },
+          { vaultId: "unopened", name: "", canOpen: false, role: "owner" },
+        ] }),
+      ],
+    }));
+    const settings = await openOrganizationInSettings();
+    await settings.get('[data-testid="organization-segment-teams"]').trigger("click");
+    await settings.get('[data-testid="organization-team-menu-ops"]').trigger("click");
+    await settings.get('[data-testid="context-menu-add-team-member"]').trigger("click");
+    expect(settings.find('[data-testid="team-self-access"]').exists()).toBe(false);
+    await settings.get('[data-testid="team-add-member-select"]').setValue("ALICE1");
+    const preview = settings.get('[data-testid="team-self-access"]');
+    expect(preview.text()).toContain("A vault you can't open becomes available as Owner.");
+    expect(preview.text()).toContain("Docs increases from Reader to Editor.");
+    expect(preview.text()).not.toContain("Deploy keys");
+    expect(preview.text()).toContain("An owner's Hisar must deliver keys");
+    expect(api.addTeamMember).not.toHaveBeenCalled();
     settings.unmount();
   });
 

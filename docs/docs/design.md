@@ -572,6 +572,7 @@ Source deletion cascades to grants, wrapped keys, items, tombstones, history and
 ### 5.11 Organizations, teams and organization vaults
 
 An organization is a group of accounts, for example a company, that shares vaults through teams instead of person by person. Its admins manage who is in it, its teams and which teams get which vaults; they never get a vault key by being admins. An admin who adds themselves to a team gets its vaults from an owner's app like any other member, which every member sees in the team and the audit log records. Owners' apps deliver keys to whoever the server says is in a team (§2.2), verifying and pinning each recipient's keys as for a share. There is no admin recovery (§6) and no billing, SSO or policy.
+On the Mac, **Add member** starts with **Choose a member** and requires an explicit selection. The current account is marked **(you)**. Selecting yourself previews only newly available vaults and increases over your strongest existing team role. An owner's Hisar must still deliver keys for newly available vaults.
 
 **Model.**
 
