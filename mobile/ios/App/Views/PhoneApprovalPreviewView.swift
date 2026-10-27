@@ -72,6 +72,7 @@ struct PhoneApprovalPreviewView: View {
     @State private var isPasswordRequired = false
     @State private var errorMessage: String?
     @State private var resultMessage: String?
+    @State private var chosenRemember: Bool?
 
     var body: some View {
         VStack(spacing: 16) {
@@ -88,6 +89,7 @@ struct PhoneApprovalPreviewView: View {
                 isBusy: isBusy,
                 isPasswordRequired: isPasswordRequired,
                 errorMessage: errorMessage,
+                isRemembered: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }),
                 biometryName: biometryName,
                 biometrySystemImage: biometryName == "Touch ID" ? "touchid" : "faceid",
                 approve: { await approve(isRemembered: $0) },
@@ -148,6 +150,7 @@ struct PendingApprovalPreviewView: View {
     @State private var resultMessage: String?
     @State private var selectedTab = Self.readThemeArgument().tab
     @State private var theme = Self.readThemeArgument().theme
+    @State private var rememberChoices: [String: Bool] = [:]
 
     var body: some View {
         TabView(selection: $selectedTab) {
@@ -157,6 +160,7 @@ struct PendingApprovalPreviewView: View {
                         PendingApprovalCardSection(
                             allApproval: allApproval,
                             isBusy: false,
+                            rememberChoice: rememberChoice,
                             review: { presentedApproval = $0 },
                             approve: { finish($0, message: "Approved \($0.requestID) with Face ID\($1 ? ", remembered" : "")") },
                             deny: { finish($0, message: "Denied \($0.requestID)") },
@@ -209,11 +213,16 @@ struct PendingApprovalPreviewView: View {
                 isBusy: false,
                 isPasswordRequired: false,
                 errorMessage: nil,
+                isRemembered: rememberChoice(approval),
                 approve: { finish(approval, message: "Approved \(approval.requestID) with Face ID\($0 ? ", remembered" : "")") },
                 approveWithPassword: { _, _ in },
                 deny: { finish(approval, message: "Denied \(approval.requestID)") }
             )
         }
+    }
+
+    private func rememberChoice(_ approval: PhoneApproval) -> Binding<Bool> {
+        Binding(get: { approval.resolveRememberChoice(rememberChoices[approval.requestID]) }, set: { rememberChoices[approval.requestID] = $0 })
     }
 
     @ViewBuilder

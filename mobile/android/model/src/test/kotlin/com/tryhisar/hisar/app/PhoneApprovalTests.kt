@@ -303,6 +303,24 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testCardRememberChoiceSurvivesPasswordFallback() = runTest {
+        val harness = AppModelHarness(this)
+        val approval = createRememberingApproval("once")
+        val model = createUnlockedModel(harness, listOf(approval))
+        val approvals = model.approvals
+        approvals.setRememberChoice(approval, false)
+        harness.backend.isBiometricAvailable = false
+        approvals.approve(approval)
+        assertTrue(approvals.isApprovalPasswordRequired.value)
+        assertFalse(approvals.rememberChoice(approval))
+        approvals.approvePendingApproval(password = "wrong")
+        assertFalse(approvals.rememberChoice(approval))
+        approvals.approvePendingApproval(password = FakeBackend.PASSWORD)
+        assertEquals(listOf("approve once"), harness.backend.allApprovalAnswer)
+        assertTrue(approvals.rememberChoices.value.isEmpty())
+    }
+
+    @Test
     fun testOldRequestsApproveOnce() = runTest {
         val harness = AppModelHarness(this)
         val model = createUnlockedModel(harness, listOf(createApproval("old")))

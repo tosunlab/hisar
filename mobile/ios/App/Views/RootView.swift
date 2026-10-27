@@ -58,6 +58,7 @@ struct RootView: View {
                 isBusy: model.isAnsweringApproval,
                 isPasswordRequired: model.isApprovalPasswordRequired,
                 errorMessage: model.approvalErrorMessage,
+                isRemembered: Binding(get: { model.rememberChoice(for: approval) }, set: { model.setRememberChoice($0, for: approval) }),
                 approve: { await model.approvePendingApproval(isRemembered: $0) },
                 approveWithPassword: { await model.approvePendingApproval(password: $0, isRemembered: $1) },
                 deny: { await model.denyPendingApproval() }

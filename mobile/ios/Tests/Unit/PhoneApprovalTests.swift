@@ -229,6 +229,21 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered 0123456789abcdef0123456789abcdef"])
     }
 
+    func testCardRememberChoiceSurvivesPasswordFallback() async {
+        let approval = createRememberingApproval(requestID: "once")
+        let model = await createUnlockedModel(allApproval: [approval])
+        model.setRememberChoice(false, for: approval)
+        backend.isBiometricAvailable = false
+        await model.approve(approval)
+        XCTAssertTrue(model.isApprovalPasswordRequired)
+        XCTAssertFalse(model.rememberChoice(for: approval))
+        await model.approvePendingApproval(password: "wrong")
+        XCTAssertFalse(model.rememberChoice(for: approval))
+        await model.approvePendingApproval(password: FakeBackend.password)
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve once"])
+        XCTAssertTrue(model.approvalRememberChoices.isEmpty)
+    }
+
     func testOldRequestsApproveOnce() async {
         let model = await createUnlockedModel(allApproval: [createApproval(requestID: "old")])
         model.reviewApproval(model.allPendingApproval[0])
