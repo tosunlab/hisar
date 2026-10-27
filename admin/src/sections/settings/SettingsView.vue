@@ -13,11 +13,12 @@ import {
   settingGroups,
   toFormValue,
   type AdminSettings,
+  type FormValues,
   type SettingGroup,
 } from "./settings";
 
 const settings = ref<AdminSettings | null>(null);
-const form = reactive<Record<string, string | number>>({});
+const form = reactive<FormValues>({});
 const loadError = ref("");
 const savingGroupId = ref("");
 const saveErrors = reactive<Record<string, string>>({});
@@ -102,6 +103,14 @@ async function submitTestEmail(): Promise<void> {
                 <span>{{ label }}</span>
               </label>
             </fieldset>
+            <label v-else-if="field.kind === 'checkbox'" class="choice checkbox">
+              <input v-model="form[field.name]" :name="field.name" type="checkbox" :disabled="settings[field.name].source === 'environment'" />
+              <span class="checkbox-text">
+                <span>{{ field.label }}</span>
+                <span v-if="settings[field.name].source === 'environment'" class="hint locked">Set by {{ settings[field.name].environmentVariable }}</span>
+                <span v-else-if="field.hint" class="hint">{{ field.hint }}</span>
+              </span>
+            </label>
             <label v-else class="field">
               <span>{{ field.label }}</span>
               <input
@@ -237,6 +246,23 @@ legend {
 
 .choice input {
   width: auto;
+}
+
+.checkbox {
+  align-items: flex-start;
+}
+
+.checkbox input {
+  margin-top: 3px;
+}
+
+.checkbox-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.checkbox-text .hint {
+  margin-top: 2px;
 }
 
 .actions {

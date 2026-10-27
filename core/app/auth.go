@@ -45,7 +45,7 @@ func (s *Service) openSession(unlockedSession *session.Session) {
 	}
 }
 
-const defaultServer = "https://api.tryhisar.com"
+const defaultServer = "https://eu.tryhisar.com"
 
 func resolveServer(server string) (string, error) {
 	server = strings.TrimSpace(server)
@@ -56,7 +56,7 @@ func resolveServer(server string) (string, error) {
 	}
 	parsedURL, err := url.ParseRequestURI(server)
 	if err != nil || (parsedURL.Scheme != "https" && parsedURL.Scheme != "http") || parsedURL.Host == "" {
-		return "", errors.New("enter the server address, e.g. api.tryhisar.com")
+		return "", errors.New("enter the server address, e.g. eu.tryhisar.com")
 	}
 	return server, nil
 }
@@ -145,14 +145,30 @@ func parseInvite(invite string) (server, token string, err error) {
 	return defaultServer, invite, nil
 }
 
+// SignUp creates an account with an invite: a code for the default server, or a pasted invite link, which names its
+// own server.
 func (s *Service) SignUp(invite, email, name, password string) (SignUpResult, error) {
-	s.mutex.Lock()
-	epoch := s.sessionEpoch
-	s.mutex.Unlock()
 	server, token, err := parseInvite(invite)
 	if err != nil {
 		return SignUpResult{}, err
 	}
+	return s.signUp(server, token, email, name, password)
+}
+
+// SignUpWithoutInvite creates an account on a server whose admin opened registration. The server answers
+// apitypes.RegistrationClosedMessage when it did not.
+func (s *Service) SignUpWithoutInvite(server, email, name, password string) (SignUpResult, error) {
+	server, err := resolveServer(server)
+	if err != nil {
+		return SignUpResult{}, err
+	}
+	return s.signUp(server, "", email, name, password)
+}
+
+func (s *Service) signUp(server, token, email, name, password string) (SignUpResult, error) {
+	s.mutex.Lock()
+	epoch := s.sessionEpoch
+	s.mutex.Unlock()
 	if len(password) < 10 {
 		return SignUpResult{}, errors.New("use a master password with at least 10 characters")
 	}

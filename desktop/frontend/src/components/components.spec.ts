@@ -160,16 +160,16 @@ describe("SignInView", () => {
     await wrapper.find('input[name="password"]').setValue("master password");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
-    expect(api.signIn).toHaveBeenCalledWith("api.tryhisar.com", "alice@example.com", "H1-KEY", "master password");
+    expect(api.signIn).toHaveBeenCalledWith("eu.tryhisar.com", "alice@example.com", "H1-KEY", "master password");
   });
 
   it("shows the server field after choosing a different server", async () => {
-    store.status = { ...store.status, server: "https://api.tryhisar.com/" };
+    store.status = { ...store.status, server: "https://eu.tryhisar.com/" };
     const wrapper = mount(SignInView);
     const disclosure = wrapper.find('[data-testid="use-different-server"]');
     expect(disclosure.text()).toBe("Use a different server…");
     await disclosure.trigger("click");
-    expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("api.tryhisar.com");
+    expect((wrapper.find('input[name="server"]').element as HTMLInputElement).value).toBe("eu.tryhisar.com");
     expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
   });
 
@@ -203,7 +203,7 @@ describe("SignInView", () => {
     api.signIn.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
     const wrapper = mount(SignInView);
-    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to api.tryhisar.com.");
+    expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to eu.tryhisar.com.");
     store.status = { ...createStatus("signed-out"), server: "http://127.0.0.1:8080", email: "" };
     await flushPromises();
     expect(wrapper.find('[data-testid="sign-in-server"]').text()).toBe("Signs in to http://127.0.0.1:8080.");
@@ -275,6 +275,58 @@ describe("SignInView", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     expect(api.signUp).toHaveBeenCalledWith("abc123", "alice@example.com", "Alice", "orange cactus harbor lantern");
+    expect(api.signUpWithoutInvite).not.toHaveBeenCalled();
+  });
+
+  it("creates the account without an invite on the chosen server", async () => {
+    api.signUpWithoutInvite.mockResolvedValue({ secretKey: "H1-NEW", status: createStatus("unlocked") });
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    expect(wrapper.find('input[name="inviteCode"]').attributes("required")).toBeUndefined();
+    expect(wrapper.find('[data-testid="invite-hint"]').text()).toBe("Leave it empty if the server lets anyone sign up.");
+    expect(wrapper.find('[data-testid="create-account-server"]').text()).toBe("Creates the account on hisar.test.");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="use-different-server"]').trigger("click");
+    expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
+    await wrapper.find('input[name="server"]').setValue("hisar.example.org");
+    await wrapper.find('input[name="name"]').setValue("Alice");
+    await wrapper.find('input[name="email"]').setValue("alice@example.com");
+    await wrapper.find('input[name="password"]').setValue("orange cactus harbor lantern");
+    await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lantern");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.signUpWithoutInvite).toHaveBeenCalledWith("hisar.example.org", "alice@example.com", "Alice", "orange cactus harbor lantern");
+    expect(api.signUp).not.toHaveBeenCalled();
+  });
+
+  it("lets the invite link name the server instead of the server field", async () => {
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await wrapper.find('[data-testid="use-different-server"]').trigger("click");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(true);
+    await wrapper.find('input[name="inviteCode"]').setValue("https://hisar.example.com/invite/abc_DEF-123");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="create-account-server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="invite-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="invite-server"]').text()).toBe("Server: hisar.example.com");
+    await wrapper.find('input[name="inviteCode"]').setValue("");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="invite-hint"]').exists()).toBe(true);
+  });
+
+  it("shows the server's answer when sign-ups are not open", async () => {
+    api.signUpWithoutInvite.mockRejectedValue(new Error("Sign-ups are not open on this server. Ask an admin for an invitation."));
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await wrapper.find('input[name="name"]').setValue("Alice");
+    await wrapper.find('input[name="email"]').setValue("alice@example.com");
+    await wrapper.find('input[name="password"]').setValue("orange cactus harbor lantern");
+    await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lantern");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.signUpWithoutInvite).toHaveBeenCalledWith("hisar.test", "alice@example.com", "Alice", "orange cactus harbor lantern");
+    expect(wrapper.find('[role="alert"]').text()).toBe("Sign-ups are not open on this server. Ask an admin for an invitation.");
+    expect(store.status.state).toBe("signed-out");
   });
 });
 

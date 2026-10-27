@@ -38,6 +38,8 @@ func convertError(err error) error {
 		return errors.New("the server returned older data than this device has seen; contact Hisar support")
 	case errors.Is(err, session.ErrKeyMismatch):
 		return errors.New("the server returned keys that do not match your account; contact Hisar support")
+	case errors.Is(err, apiclient.ErrSignUpClosed):
+		return err
 	case apiclient.IsStatus(err, http.StatusForbidden):
 		return errors.New("you do not have permission to do that")
 	case apiclient.IsStatus(err, http.StatusTooManyRequests):

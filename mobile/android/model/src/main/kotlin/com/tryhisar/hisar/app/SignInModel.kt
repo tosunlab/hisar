@@ -2,6 +2,7 @@ package com.tryhisar.hisar.app
 
 import com.tryhisar.hisar.model.InviteLink
 import com.tryhisar.hisar.model.SignInLink
+import com.tryhisar.hisar.model.SignUpResult
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.trimmingWhitespacesAndNewlines
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -69,18 +70,38 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
             return@runInModel false
         }
         val result = context.perform { it.signUp(trimmedInviteLink, trimmedEmail, trimmedName, password) } ?: return@runInModel false
+        finishSignUp(result)
+    }
+
+    /**
+     * Creates an account on a server whose admin opened registration, with no invite; the backend answers with its own
+     * sentence when sign-ups are closed.
+     */
+    suspend fun signUpWithoutInvite(server: String, email: String, name: String, password: String): Boolean = context.runInModel {
+        val trimmedServer = server.trimmingWhitespacesAndNewlines()
+        val trimmedEmail = email.trimmingWhitespacesAndNewlines()
+        val trimmedName = name.trimmingWhitespacesAndNewlines()
+        if (isRefusedAsPlainHttp(trimmedServer)) {
+            context.errorMessage.value = PLAIN_HTTP_SERVER_REFUSAL
+            return@runInModel false
+        }
+        val result = context.perform { it.signUpWithoutInvite(trimmedServer, trimmedEmail, trimmedName, password) } ?: return@runInModel false
+        finishSignUp(result)
+    }
+
+    private suspend fun finishSignUp(result: SignUpResult): Boolean {
         if (result.pendingOperationId.isNotEmpty()) {
             context.refreshStatus()
             // The backend's first sync can report its change before this status arrives, when it is ignored.
             if (context.status.value.isUnlocked) context.refreshAll()
             context.refreshPendingRecovery()
             context.errorMessage.value = result.problems.takeIf { it.isNotEmpty() }?.joinToString("\n")
-            return@runInModel true
+            return true
         }
         mutableNewAccountStep.value = NewAccountStep.SaveSecretKey(result.secretKey)
         context.applyStatus(result.status)
         context.refreshAll()
-        true
+        return true
     }
 
     /** "I saved my Secret Key": offers biometric unlock when the device has it and it is off, else closes the cover. */
@@ -148,7 +169,7 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
     private fun isRefusedAsPlainHttp(address: String): Boolean = !isPlainHttpAllowed && address.startsWith("http://", ignoreCase = true)
 
     companion object {
-        const val DEFAULT_SERVER = "https://api.tryhisar.com"
+        const val DEFAULT_SERVER = "https://eu.tryhisar.com"
         const val PLAIN_HTTP_SERVER_REFUSAL = "This server's address starts with http://, so the connection would not be encrypted. Hisar signs in only over https://."
         const val PLAIN_HTTP_INVITE_REFUSAL = "This invite link starts with http://, so the connection would not be encrypted. Hisar creates accounts only over https://."
 

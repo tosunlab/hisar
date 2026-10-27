@@ -12,7 +12,7 @@ export type AdminSettings = Record<string, AdminSetting>;
 export interface SettingField {
   name: string;
   label: string;
-  kind: "text" | "number" | "password" | "invitePolicy";
+  kind: "text" | "number" | "password" | "checkbox" | "invitePolicy";
   placeholder?: string;
   hint?: string;
 }
@@ -24,8 +24,8 @@ export interface SettingGroup {
   fields: readonly SettingField[];
 }
 
-// FormValues holds what the inputs show; number inputs give numbers, the others text.
-export type FormValues = Record<string, string | number>;
+// FormValues holds what the inputs show; number inputs give numbers, checkboxes booleans, the others text.
+export type FormValues = Record<string, string | number | boolean>;
 
 export const settingGroups: readonly SettingGroup[] = [
   {
@@ -43,8 +43,17 @@ export const settingGroups: readonly SettingGroup[] = [
   {
     id: "sign-up",
     title: "Sign-up",
-    description: "Who can invite people to the Hisar server from the apps. Sharing with someone who has no account waits until they get one.",
-    fields: [{ name: "invitePolicy", label: "Who can invite people", kind: "invitePolicy" }],
+    description:
+      "Whether anyone may sign up, and who can invite people to the Hisar server from the apps. Sharing with someone who has no account waits until they get one.",
+    fields: [
+      {
+        name: "openRegistration",
+        label: "Anyone can sign up",
+        kind: "checkbox",
+        hint: "Anyone who knows the server's address can create an account without an invitation. Off, sign-up needs an invite.",
+      },
+      { name: "invitePolicy", label: "Who can invite people", kind: "invitePolicy" },
+    ],
   },
   {
     id: "app-versions",
@@ -88,9 +97,12 @@ export function isSecretSet(setting: AdminSetting): boolean {
 export const invitePolicyLabels: Readonly<Record<string, string>> = { anyone: "Anyone with an account", admins: "Admins only" };
 
 // toFormValue is what an input shows for a setting; a password input starts empty and keeps the saved password.
-export function toFormValue(field: SettingField, setting: AdminSetting): string | number {
+export function toFormValue(field: SettingField, setting: AdminSetting): string | number | boolean {
   if (field.kind === "password") {
     return "";
+  }
+  if (field.kind === "checkbox") {
+    return setting.value === true;
   }
   return field.kind === "number" ? Number(setting.value) : String(setting.value ?? "");
 }
@@ -101,6 +113,13 @@ export function listChanges(group: SettingGroup, settings: AdminSettings, form: 
   for (const field of group.fields) {
     const setting = settings[field.name];
     if (!setting || setting.source === "environment") {
+      continue;
+    }
+    if (field.kind === "checkbox") {
+      const isChecked = form[field.name] === true;
+      if (isChecked !== toFormValue(field, setting)) {
+        changes[field.name] = isChecked;
+      }
       continue;
     }
     const text = String(form[field.name] ?? "");

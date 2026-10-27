@@ -71,12 +71,23 @@ class PushNotificationTests {
         model.showNotification(PushKind.APPROVAL)
         assertEquals(Tab.APPROVALS, model.selectedTab.value)
         assertNull(model.notifications.openedKind.value)
+        model.notifications.open("marketing")
+        assertNull(model.notifications.openedKind.value, "an unknown kind opens nothing")
+    }
+
+    @Test
+    fun testATappedSecurityAlertOpensDevices() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModel(harness)
+        model.selectedTab.value = Tab.VAULTS
         model.notifications.open("security")
         model.showNotification(PushKind.SECURITY)
         assertEquals(Tab.SETTINGS, model.selectedTab.value)
-        model.notifications.openedKind.value = null
-        model.notifications.open("marketing")
-        assertNull(model.notifications.openedKind.value, "an unknown kind opens nothing")
+        assertEquals(SettingsDestination.DEVICES, model.requestedSettings.value, "Devices shows the device that just signed in")
+        model.requestedSettings.value = null
+        model.notifications.open("sharing")
+        model.showNotification(PushKind.SHARING)
+        assertNull(model.requestedSettings.value, "an invitation opens Settings itself")
     }
 
     @Test

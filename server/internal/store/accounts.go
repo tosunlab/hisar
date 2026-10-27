@@ -176,14 +176,7 @@ func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Acc
 			return ErrNotFound
 		}
 		account.Role = role
-		_, err = transaction.Exec(ctx,
-			`INSERT INTO accounts (id, email, name, role, argon2_params, salt, opaque_record, enc_keyset, kem_pub, sign_pub, kem_sig)
-			 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-			account.ID, account.Email, account.Name, account.Role, account.Argon2Params, account.Salt, account.OpaqueRecord, account.EncKeyset, account.KEMPub, account.SignPub, account.KEMSig)
-		if isUniqueViolation(err) {
-			return ErrExists
-		}
-		if err != nil {
+		if err := insertAccount(ctx, transaction, account); err != nil {
 			return err
 		}
 		if _, err := transaction.Exec(ctx, `UPDATE invites SET used_at = now() WHERE token_hash = $1`, tokenHash); err != nil {
@@ -191,6 +184,28 @@ func (s *Store) RedeemInvite(ctx context.Context, tokenHash []byte, account *Acc
 		}
 		return insertDeviceSession(ctx, transaction, device, session)
 	})
+}
+
+// CreateAccount creates an account that signed up without an invite, with account.Role, its first device and a
+// session. It fails with ErrExists when the ID or email is taken.
+func (s *Store) CreateAccount(ctx context.Context, account *Account, device *Device, session *Session) error {
+	return s.runInTransaction(ctx, func(transaction pgx.Tx) error {
+		if err := insertAccount(ctx, transaction, account); err != nil {
+			return err
+		}
+		return insertDeviceSession(ctx, transaction, device, session)
+	})
+}
+
+func insertAccount(ctx context.Context, transaction pgx.Tx, account *Account) error {
+	_, err := transaction.Exec(ctx,
+		`INSERT INTO accounts (id, email, name, role, argon2_params, salt, opaque_record, enc_keyset, kem_pub, sign_pub, kem_sig)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
+		account.ID, account.Email, account.Name, account.Role, account.Argon2Params, account.Salt, account.OpaqueRecord, account.EncKeyset, account.KEMPub, account.SignPub, account.KEMSig)
+	if isUniqueViolation(err) {
+		return ErrExists
+	}
+	return err
 }
 
 // CreateDeviceSession signs a device in with a login proven against the OPAQUE record whose hash is provenRecordHash. It

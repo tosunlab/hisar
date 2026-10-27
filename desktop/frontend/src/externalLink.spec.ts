@@ -18,9 +18,9 @@ function clickLink(html: string): MouseEvent {
 describe("openExternalLink", () => {
   it("opens http(s) links with target _blank in the default browser", () => {
     openURL.mockClear();
-    const event = clickLink('<a href="https://api.tryhisar.com/terms" target="_blank"><span>Terms</span></a>');
+    const event = clickLink('<a href="https://eu.tryhisar.com/terms" target="_blank"><span>Terms</span></a>');
     expect(event.defaultPrevented).toBe(true);
-    expect(openURL).toHaveBeenCalledWith("https://api.tryhisar.com/terms");
+    expect(openURL).toHaveBeenCalledWith("https://eu.tryhisar.com/terms");
   });
 
   it("leaves other links and schemes alone", () => {
@@ -36,11 +36,11 @@ describe("openExternalLink", () => {
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
     const legalLinks = wrapper.find('[data-testid="legal-links"]');
     expect(legalLinks.text()).toBe("By creating an account you agree to the Terms and Privacy Policy.");
-    expect(legalLinks.findAll("a").map((link) => link.attributes("href"))).toEqual(["https://api.tryhisar.com/terms", "https://api.tryhisar.com/privacy"]);
+    expect(legalLinks.findAll("a").map((link) => link.attributes("href"))).toEqual(["https://eu.tryhisar.com/terms", "https://eu.tryhisar.com/privacy"]);
     document.addEventListener("click", openExternalLink);
     await legalLinks.findAll("a")[1].trigger("click");
     document.removeEventListener("click", openExternalLink);
-    expect(openURL).toHaveBeenCalledWith("https://api.tryhisar.com/privacy");
+    expect(openURL).toHaveBeenCalledWith("https://eu.tryhisar.com/privacy");
     wrapper.unmount();
   });
 });

@@ -10,7 +10,9 @@ import (
 	"time"
 	"unicode/utf8"
 
+	"github.com/tryhisar/hisar/core/apitypes"
 	"github.com/tryhisar/hisar/core/crypt"
+	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
 )
 
@@ -245,6 +247,20 @@ func (exported Item) ConvertToItem() item.Item {
 	vaultItem := item.Item{Overview: exported.Overview, Details: exported.Details}
 	item.UpdatePasskeyOverview(&vaultItem)
 	return vaultItem
+}
+
+// SourceGroups returns one import group per exported vault, keyed by the vault's stable ID, so a restore can map each
+// vault on its own and never by its name.
+func (document *Document) SourceGroups() []importer.SourceGroup {
+	groups := make([]importer.SourceGroup, 0, len(document.Vaults))
+	for _, exported := range document.Vaults {
+		group := importer.SourceGroup{ID: exported.ID, Name: exported.Name, IsPrivate: exported.Type == apitypes.VaultPersonal}
+		for _, entry := range exported.Items {
+			group.Items = append(group.Items, entry.ConvertToItem())
+		}
+		groups = append(groups, group)
+	}
+	return groups
 }
 
 func (document *Document) CountItem() int {
