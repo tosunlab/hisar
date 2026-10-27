@@ -1863,7 +1863,7 @@ async function changeOrganization(title: string, change: () => Promise<unknown>,
 
 export async function createOrganization(name: string): Promise<boolean> {
   let created: OrganizationSummary | undefined;
-  const isCreated = await changeOrganization("Create organization", async () => (created = await api.createOrganization(name)), "");
+  const isCreated = await changeOrganization(`Couldn't create ${name.trim() || "the organization"}`, async () => (created = await api.createOrganization(name)), "");
   if (created) {
     await openOrganization(created.id);
   }
@@ -1871,29 +1871,29 @@ export async function createOrganization(name: string): Promise<boolean> {
 }
 
 export async function renameOrganization(organization: Organization, name: string): Promise<boolean> {
-  return changeOrganization("Rename organization", () => api.renameOrganization(organization.id, name), `Renamed the organization to ${name.trim()}`);
+  return changeOrganization(`Couldn't rename ${organization.name}`, () => api.renameOrganization(organization.id, name), `Renamed the organization to ${name.trim()}`);
 }
 
 export async function deleteOrganization(organization: Organization): Promise<boolean> {
-  return changeOrganization("Delete organization", () => api.deleteOrganization(organization.id), `Deleted ${organization.name}.`);
+  return changeOrganization(`Couldn't delete ${organization.name}`, () => api.deleteOrganization(organization.id), `Deleted ${organization.name}.`);
 }
 
 export async function leaveOrganization(organization: Organization): Promise<boolean> {
-  return changeOrganization(`Leave ${organization.name}`, () => api.leaveOrganization(organization.id), `You left ${organization.name}.`, true);
+  return changeOrganization(`Couldn't leave ${organization.name}`, () => api.leaveOrganization(organization.id), `You left ${organization.name}.`, true);
 }
 
 // inviteToOrganization: the server answers the same whether or not the email has an account.
 export async function inviteToOrganization(organization: Organization, email: string, role: OrganizationRole): Promise<boolean> {
-  return changeOrganization("Send invitation", () => api.inviteToOrganization(organization.id, email, role), `Invitation sent to ${email.trim().toLowerCase()}`);
+  return changeOrganization(`Couldn't invite ${email.trim()} to ${organization.name}`, () => api.inviteToOrganization(organization.id, email, role), `Invitation sent to ${email.trim().toLowerCase()}`);
 }
 
 export async function cancelOrganizationInvitation(organization: Organization, invitation: SentOrganizationInvitation): Promise<boolean> {
-  return changeOrganization("Cancel invitation", () => api.cancelOrganizationInvitation(organization.id, invitation.id), `Invitation to ${invitation.email} cancelled`);
+  return changeOrganization(`Couldn't cancel the invitation to ${invitation.email} for ${organization.name}`, () => api.cancelOrganizationInvitation(organization.id, invitation.id), `Invitation to ${invitation.email} cancelled`);
 }
 
 export async function setOrganizationMemberRole(organization: Organization, member: OrganizationMember, role: OrganizationRole): Promise<boolean> {
   return changeOrganization(
-    role === "admin" ? "Make admin" : "Make member",
+    `Couldn't make ${getFirstName(member)} ${formatRoleWithArticle(role)} of ${organization.name}`,
     () => api.setOrganizationMemberRole(organization.id, member.accountId, role),
     `${getFirstName(member)} is now ${formatRoleWithArticle(role)}`,
   );
@@ -1901,7 +1901,7 @@ export async function setOrganizationMemberRole(organization: Organization, memb
 
 export async function removeOrganizationMember(organization: Organization, member: OrganizationMember): Promise<boolean> {
   return changeOrganization(
-    `Remove from ${organization.name}`,
+    `Couldn't remove ${getFirstName(member)} from ${organization.name}`,
     () => api.removeOrganizationMember(organization.id, member.accountId),
     `Removed ${getFirstName(member)} from ${organization.name}`,
     true,
@@ -1909,30 +1909,31 @@ export async function removeOrganizationMember(organization: Organization, membe
 }
 
 export async function createTeam(organization: Organization, name: string): Promise<boolean> {
-  return changeOrganization("New team", () => api.createTeam(organization.id, name), "");
+  return changeOrganization(`Couldn't create ${name.trim() || "the team"} in ${organization.name}`, () => api.createTeam(organization.id, name), "");
 }
 
 export async function renameTeam(organization: Organization, team: Team, name: string): Promise<boolean> {
-  return changeOrganization("Rename team", () => api.renameTeam(organization.id, team.id, name), `Renamed the team to ${name.trim()}`);
+  return changeOrganization(`Couldn't rename ${team.name} in ${organization.name}`, () => api.renameTeam(organization.id, team.id, name), `Renamed the team to ${name.trim()}`);
 }
 
 export async function deleteTeam(organization: Organization, team: Team): Promise<boolean> {
-  return changeOrganization("Delete team", () => api.deleteTeam(organization.id, team.id), `Deleted ${team.name}.`, true);
+  return changeOrganization(`Couldn't delete ${team.name} from ${organization.name}`, () => api.deleteTeam(organization.id, team.id), `Deleted ${team.name}.`, true);
 }
 
 export async function addTeamMember(organization: Organization, team: Team, member: OrganizationMember): Promise<boolean> {
-  return changeOrganization("Add member", () => api.addTeamMember(organization.id, team.id, member.accountId), `Added ${getFirstName(member)} to ${team.name}`, true);
+  return changeOrganization(`Couldn't add ${getFirstName(member)} to ${team.name}`, () => api.addTeamMember(organization.id, team.id, member.accountId), `Added ${getFirstName(member)} to ${team.name}`, true);
 }
 
 export async function removeTeamMember(organization: Organization, team: Team, member: TeamMember): Promise<boolean> {
-  return changeOrganization("Remove", () => api.removeTeamMember(organization.id, team.id, member.accountId), `Removed ${getFirstName(member)} from ${team.name}`, true);
+  return changeOrganization(`Couldn't remove ${getFirstName(member)} from ${team.name}`, () => api.removeTeamMember(organization.id, team.id, member.accountId), `Removed ${getFirstName(member)} from ${team.name}`, true);
 }
 
 // giveVaultToTeam gives an organization vault to a team, or changes the role the team has it with.
 export async function giveVaultToTeam(organization: Organization, team: Team, vaultID: string, role: VaultRole): Promise<boolean> {
   const isChange = team.vaults.some((teamVault) => teamVault.vaultId === vaultID);
+  const vaultName = store.allVault.find((vault) => vault.id === vaultID)?.name || "the vault";
   return changeOrganization(
-    isChange ? "Change role" : "Give",
+    isChange ? `Couldn't change ${team.name}'s role for ${vaultName}` : `Couldn't give ${vaultName} to ${team.name}`,
     () => api.giveVaultToTeam(organization.id, team.id, vaultID, role),
     isChange ? `${team.name} is now ${formatRoleWithArticle(role)} of the vault` : `Gave the vault to ${team.name}`,
     true,
@@ -1941,7 +1942,7 @@ export async function giveVaultToTeam(organization: Organization, team: Team, va
 
 export async function takeVaultFromTeam(organization: Organization, team: Team, teamVault: TeamVault): Promise<boolean> {
   return changeOrganization(
-    "Take back",
+    `Couldn't take ${teamVault.canOpen ? teamVault.name : "the vault"} back from ${team.name}`,
     () => api.takeVaultFromTeam(organization.id, team.id, teamVault.vaultId),
     `Took ${teamVault.canOpen ? teamVault.name : "the vault"} back from ${team.name}`,
     true,
