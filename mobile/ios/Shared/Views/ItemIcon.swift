@@ -6,12 +6,13 @@ struct ItemIcon: View {
     var item: ItemDetail
     var size: CGFloat = 32
     var websiteIcon: Data?
+    var maxSize: CGFloat = .infinity
 
     @ScaledMetric(relativeTo: .body) private var scale: CGFloat = 1
 
     var body: some View {
         let initial = item.title.first.map { String($0).uppercased() } ?? "?"
-        let scaledSize = size * scale
+        let scaledSize = min(size * scale, maxSize)
         let shape = RoundedRectangle(cornerRadius: scaledSize * 0.25, style: .continuous)
         ZStack {
             if let image = displayedImage {

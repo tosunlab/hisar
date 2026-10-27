@@ -136,6 +136,9 @@ const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) 
 const unreadableItemCount = computed(() => store.allItem.filter((item) => item.readIssue).length);
 const healthyItemCount = computed(() => store.allItem.length - unreadableItemCount.value);
 const allVisibleFavorite = computed(() => filterAllFavorite(store.allFavorite, store.searchQuery));
+const listEntryIndex = computed(() => Math.max(0, store.isFavoritesSelected
+  ? allVisibleFavorite.value.findIndex(isSelectedFavorite)
+  : allVisibleItem.value.findIndex((item) => item.id === store.selectedItem?.id)));
 const allTag = computed(() => listAllTag(store.allItem));
 // inbox gathers what does not need the sidebar's room: invitations to answer, shares waiting on someone's Hisar, and
 // organization vault keys on their way. actionCount is what waits for the user, as on Settings' badges; the row opens
@@ -424,7 +427,10 @@ function focusRow(index: number): void {
     return;
   }
   rows[index].focus();
-  if (rows[index].getAttribute("aria-selected") !== "true") {
+}
+
+function selectFocusedRow(index: number): void {
+  if (listRows()[index]?.getAttribute("aria-selected") !== "true") {
     void selectRow(index);
   }
 }
@@ -464,9 +470,15 @@ function handleListKey(event: KeyboardEvent): void {
 }
 
 function copySelectedField(fieldName: "username" | "password", label: string): void {
-  const selected = store.selectedItem;
-  if (selected && store.editorMode === "view" && selected[fieldName]) {
-    void copyItemField(store.selectedVaultID, selected.id, fieldName, label);
+  if (store.editorMode !== "view") {
+    return;
+  }
+  const index = listRows().indexOf(document.activeElement as HTMLElement);
+  const favorite = store.isFavoritesSelected ? allVisibleFavorite.value[index] : undefined;
+  const selected = index >= 0 ? favorite?.item ?? allVisibleItem.value[index] : store.selectedItem;
+  const vaultID = favorite?.vaultId ?? store.selectedVaultID;
+  if (selected && (index >= 0 || selected[fieldName])) {
+    void copyItemField(vaultID, selected.id, fieldName, label);
   }
 }
 
@@ -771,12 +783,14 @@ onBeforeUnmount(() => {
           </template>
         </div>
         <ul v-else ref="itemList" role="listbox" aria-label="Favorites" data-testid="favorites-list" @keydown="handleListKey">
-          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="presentation">
+          <li v-for="(favorite, index) in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="presentation">
             <button
               class="item"
               :class="{ selected: isSelectedFavorite(favorite) }"
               role="option"
               :aria-selected="isSelectedFavorite(favorite)"
+              :tabindex="index === listEntryIndex ? 0 : -1"
+              @focus="selectFocusedRow(index)"
               @click="selectFavoriteItem(favorite)"
               @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
@@ -803,12 +817,14 @@ onBeforeUnmount(() => {
         <button v-if="!store.searchQuery && !store.selectedTag && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
       <ul v-else ref="itemList" role="listbox" :aria-label="selectedVault?.name ?? 'Items'" @keydown="handleListKey">
-        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id" role="presentation">
+        <li v-for="(vaultItem, index) in allVisibleItem" :key="vaultItem.id" role="presentation">
           <button
             class="item"
             :class="{ selected: store.selectedItem?.id === vaultItem.id }"
             role="option"
             :aria-selected="store.selectedItem?.id === vaultItem.id"
+            :tabindex="index === listEntryIndex ? 0 : -1"
+            @focus="selectFocusedRow(index)"
             @click="selectItem(vaultItem.id)"
             @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
           >

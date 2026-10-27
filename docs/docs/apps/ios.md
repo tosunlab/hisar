@@ -23,6 +23,10 @@ Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerVi
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
 
+At accessibility text sizes, browsing rows wrap the full title and username, put the vault name on its own line,
+and cap the decorative tile at 44 points. Ordinary text sizes keep the compact row. Android browsing rows also wrap
+titles and subtitles at large font scales without reducing the selected text size.
+
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.

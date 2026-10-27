@@ -55,5 +55,22 @@ final class FavoritesUITests: HisarUITestCase {
         unfavoriteAction.tap()
         XCTAssertTrue(gitHubFavorite.waitForNonExistence(timeout: 10))
         XCTAssertTrue(app.buttons["favorite-AWS Console"].exists)
+
+        let title = "Adobe Creative Cloud personal account"
+        let email = "alex.morgan+personal@example.com"
+        addLogin(title: title, username: email, password: "large-type-password", website: "https://adobe.com")
+        app.terminate()
+        app.launchArguments = ["-HisarUITest", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        type(Self.masterPassword, into: app.secureTextFields["unlock-password"])
+        app.buttons["unlock-submit"].tap()
+        waitForHittable(app.buttons["vault-Personal"])
+        app.buttons["vault-Personal"].tap()
+        let row = app.buttons["item-\(title)"]
+        scrollTo(row)
+        XCTAssertTrue(row.label.contains(title))
+        XCTAssertTrue(row.label.contains(email))
+        XCTAssertGreaterThan(row.frame.height, 150, "the title and email wrap at the largest accessibility text size")
+        saveScreenshot("largest-text-item-row")
     }
 }

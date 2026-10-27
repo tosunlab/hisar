@@ -73,6 +73,44 @@ describe("Keyboard navigation in the item list", () => {
     expect(list.attributes("aria-label")).toBe("Personal");
     const allRow = list.findAll('[role="option"]');
     expect(allRow.map((row) => row.attributes("aria-selected"))).toEqual(["false", "true"]);
+    expect(allRow.map((row) => row.attributes("tabindex"))).toEqual(["-1", "0"]);
+  });
+
+  it("makes the first item the only Tab entry when no item is selected and selects it on focus", async () => {
+    const wrapper = mountView();
+    const rows = wrapper.findAll('[role="option"]');
+    expect(rows.map((row) => row.attributes("tabindex"))).toEqual(["0", "-1"]);
+    (rows[0].element as HTMLElement).focus();
+    await flushPromises();
+    expect(store.selectedItem?.id).toBe("bank");
+    expect(rows[0].attributes("aria-selected")).toBe("true");
+    await rows[0].trigger("keydown", { key: "ArrowDown" });
+    await flushPromises();
+    expect(rows.map((row) => row.attributes("tabindex"))).toEqual(["-1", "0"]);
+    const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+    rows[1].element.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+  });
+
+  it("keeps one Tab entry in Favorites and copies the focused favorite from its own vault", async () => {
+    store.isFavoritesSelected = true;
+    store.allFavorite = [
+      createFavoriteItem({ item: bank }),
+      createFavoriteItem({ vaultId: "work", vaultName: "Work", item: github }),
+    ];
+    store.selectedVaultID = "work";
+    store.selectedItem = github;
+    const wrapper = mountView();
+    const rows = wrapper.findAll('[role="option"]');
+    expect(rows.map((row) => row.attributes("tabindex"))).toEqual(["-1", "0"]);
+    (rows[1].element as HTMLElement).focus();
+    pressKey({ key: "c", metaKey: true });
+    await flushPromises();
+    expect(api.copyField).toHaveBeenCalledWith("work", "github", "username");
+    await rows[1].trigger("keydown", { key: "ArrowUp" });
+    await flushPromises();
+    expect(store.selectedItem?.id).toBe("bank");
+    expect(rows.map((row) => row.attributes("tabindex"))).toEqual(["0", "-1"]);
   });
 
   it("↓ from the search field enters the list at the first item", async () => {
@@ -157,6 +195,19 @@ describe("Copy shortcuts", () => {
     pressKey({ key: "c", metaKey: true });
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledTimes(1);
+  });
+
+  it("copies the focused row even before its detail selection finishes loading", async () => {
+    store.selectedItem = github;
+    api.getItem.mockReturnValue(new Promise(() => undefined));
+    const wrapper = mountView();
+    (wrapper.find('[role="option"]').element as HTMLElement).focus();
+    pressKey({ key: "c", metaKey: true });
+    pressKey({ key: "C", metaKey: true, shiftKey: true });
+    await flushPromises();
+    expect(api.copyField).toHaveBeenCalledWith("personal", "bank", "username");
+    expect(api.copyField).toHaveBeenCalledWith("personal", "bank", "password");
+    expect(api.copyField).not.toHaveBeenCalledWith("personal", "github", expect.anything());
   });
 
   it("does nothing while an item is being edited", async () => {
