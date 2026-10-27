@@ -180,7 +180,7 @@ describe("People empty state", () => {
     api.listAllPerson.mockResolvedValue(allPerson);
     const settings = await mountSettings();
     await settings.get('[data-testid="settings-section-people"]').trigger("click");
-    expect(settings.get('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
+    expect(settings.get('[data-testid="people-empty-hint"]').text()).toBe("Nobody else yet. Share a vault to see the people you share with here.");
     expect(settings.get('[data-testid="people-share-vault"]').attributes("disabled")).toBeUndefined();
   });
 
