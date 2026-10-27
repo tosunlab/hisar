@@ -113,6 +113,7 @@ fun HisarTheme(theme: VaultTheme = VaultTheme.standard, content: @Composable () 
         surfaceContainerHigh = colors.cellBackground,
         surfaceContainerHighest = colors.cellBackground,
         onSurfaceVariant = colors.secondaryLabel,
+        outline = colors.secondaryLabel,
         outlineVariant = colors.separator,
         error = colors.destructive,
     )

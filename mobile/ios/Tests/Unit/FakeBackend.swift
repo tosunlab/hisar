@@ -78,6 +78,10 @@ class FakeBackend: VaultBackend {
     var pendingRecoverySecretKey = FakeBackend.secretKey
     var isPendingRecoveryFactorAvailable = true
     var pendingSignUpResult: SignUpResult?
+    /// The server signUpWithoutInvite was last asked to create an account on; nil until it is called.
+    var signUpWithoutInviteServer: String?
+    /// While set, signUpWithoutInvite fails with this sentence: the server's admin has not opened registration.
+    var signUpWithoutInviteErrorMessage: String?
     var pendingCredentialChangeResult: CredentialChangeResult?
     /// The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence.
     var allOrganization: [Organization] = []
@@ -96,6 +100,13 @@ class FakeBackend: VaultBackend {
     var allImportedCredentialData: [Data] = []
     /// While set, the next continueImport fails with this sentence and saves nothing.
     var continueImportErrorMessage: String?
+    /// What prepareHisarExportImport returns; the default is an encrypted export that waits for its passphrase.
+    var hisarExportPreview = FakeBackend.encryptedHisarExportPreview()
+    /// What openImportFile returns once hisarExportPassphrase opens the waiting export.
+    var openedHisarExportPreview = FakeBackend.plainHisarExportPreview()
+    /// The passphrase that opens the waiting encrypted export.
+    var hisarExportPassphrase = "orange cactus harbor"
+    private var isHisarExportWaiting = false
     private let approvalLock = NSLock()
 
     func withApprovalLock<Value>(_ operation: () throws -> Value) rethrows -> Value {
@@ -321,6 +332,19 @@ class FakeBackend: VaultBackend {
         return SignUpResult(status: status, secretKey: Self.secretKey)
     }
 
+    func signUpWithoutInvite(server: String, email: String, name: String, password: String) throws -> SignUpResult {
+        record("signUpWithoutInvite")
+        signUpWithoutInviteServer = server
+        if let signUpWithoutInviteErrorMessage { throw BackendError(message: signUpWithoutInviteErrorMessage) }
+        if let pendingSignUpResult { return pendingSignUpResult }
+        seedSignedIn()
+        allItemByVaultID = ["personal": [], "family": []]
+        status.server = server
+        status.email = email
+        status.name = name
+        return SignUpResult(status: status, secretKey: Self.secretKey)
+    }
+
     func unlock(password: String) throws -> VaultStatus {
         record("unlock")
         guard password == Self.password else { throw BackendError(message: "Incorrect email, master password or Secret Key") }
@@ -421,7 +445,7 @@ class FakeBackend: VaultBackend {
         var savedItem = item
         let oneTimePassword = item.oneTimePassword.trimmingCharacters(in: .whitespacesAndNewlines)
         guard oneTimePassword.isEmpty || oneTimePassword.hasPrefix("otpauth://totp/") || oneTimePassword.replacingOccurrences(of: " ", with: "").allSatisfy({ "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".contains($0.uppercased()) }) else {
-            throw BackendError(message: "The one-time password is not a valid secret or otpauth:// link")
+            throw BackendError(message: "The one-time code is not a valid secret or otpauth:// link")
         }
         savedItem.oneTimePassword = oneTimePassword.isEmpty ? "" : (oneTimePassword.hasPrefix("otpauth://") ? oneTimePassword : "otpauth://totp/?secret=\(oneTimePassword.uppercased().replacingOccurrences(of: " ", with: ""))")
         savedItem.hasOneTimePassword = !oneTimePassword.isEmpty
@@ -873,6 +897,45 @@ extension FakeBackend {
         }
         allImportedCredentialData.append(credentialData)
         return try buildImportPreview()
+    }
+
+    /// The default encrypted Hisar export: only the file name and format, and it waits for its passphrase.
+    static func encryptedHisarExportPreview() -> ImportPreview {
+        var preview = ImportPreview(fileName: "Vault export.hisar", vaultID: "", vaultName: "")
+        preview.format = ImportPreview.formatHisarEncryptedExport
+        preview.formatName = "Hisar encrypted export"
+        preview.isPassphraseRequired = true
+        preview.isSourceKept = true
+        return preview
+    }
+
+    /// A plain Hisar export preview: one group per exported vault, previewed at once.
+    static func plainHisarExportPreview() -> ImportPreview {
+        var preview = ImportPreview(fileName: "Vault export.json", vaultID: "personal", vaultName: "Personal", itemCount: 3, loginCount: 3)
+        preview.format = ImportPreview.formatHisarExport
+        preview.formatName = "Hisar export"
+        preview.exportedFrom = "owner@example.com"
+        preview.exportedAt = "2026-01-02T03:04:05Z"
+        preview.groups = [ImportSourceGroup(id: "personal", name: "Personal", isPrivate: false, itemCount: 3, vaultID: "personal", vaultName: "Personal", members: [])]
+        return preview
+    }
+
+    /// prepareHisarExportImport returns the configured preview. An encrypted export then waits for openImportFile.
+    func prepareHisarExportImport(vaultID: String, fileName: String, content: Data) throws -> ImportPreview {
+        record("prepareHisarExportImport")
+        try requireUnlocked()
+        isHisarExportWaiting = hisarExportPreview.isPassphraseRequired
+        return hisarExportPreview
+    }
+
+    /// openImportFile opens the waiting export only for hisarExportPassphrase; any other keeps it waiting.
+    func openImportFile(passphrase: String) throws -> ImportPreview {
+        record("openImportFile")
+        try requireUnlocked()
+        guard isHisarExportWaiting else { throw BackendError(message: "There is no import to continue") }
+        guard passphrase == hisarExportPassphrase else { throw BackendError(message: "that passphrase doesn't open this export") }
+        isHisarExportWaiting = false
+        return openedHisarExportPreview
     }
 
     func previewImport(vaultID: String) throws -> ImportPreview {

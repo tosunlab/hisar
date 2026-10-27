@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -11,9 +12,11 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextClearance
 import androidx.compose.ui.test.performTextInput
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.Lifecycle
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import com.tryhisar.hisar.AppViewModel
 import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.FakeBackend
@@ -38,7 +41,7 @@ class RootScreenUITests {
             assertFalse(composeRule.isTagShown("sign-in-server"))
             composeRule.tap("sign-in-use-different-server")
             composeRule.waitForTag("sign-in-server")
-            composeRule.assertFieldText("sign-in-server", "https://api.tryhisar.com")
+            composeRule.assertFieldText("sign-in-server", "https://eu.tryhisar.com")
         }
     }
 
@@ -59,7 +62,7 @@ class RootScreenUITests {
     @Test
     fun testSignUpShowsTheSecretKeyThenOffersBiometricsThenTheVaults() {
         val backend = FakeBackend()
-        launchApp(backend).use {
+        launchApp(backend).use { scenario ->
             composeRule.waitForTag("sign-in-mode")
             composeRule.onNode(hasText("Create account") and hasAnyAncestor(hasTestTag("sign-in-mode"))).performClick()
             composeRule.waitForTag("sign-up-invite-link")
@@ -78,6 +81,11 @@ class RootScreenUITests {
             composeRule.tap("copy-new-secret-key")
             val application = ApplicationProvider.getApplicationContext<HisarTestApplication>()
             composeRule.waitUntil { application.allCopiedSecret == listOf(FakeBackend.SECRET_KEY) }
+            scenario.onActivity { ViewModelProvider(it)[AppViewModel::class.java].model.showNotice("Secret Key copied.") }
+            composeRule.waitForTag("notice")
+            val notice = composeRule.onNodeWithTag("notice").fetchSemanticsNode().boundsInRoot
+            val done = composeRule.onNodeWithTag("new-secret-key-done").fetchSemanticsNode().boundsInRoot
+            assertTrue("the notice clears the form's primary action", notice.bottom <= done.top)
             composeRule.onNodeWithTag("new-secret-key-done").performClick()
 
             composeRule.waitForTag("biometric-offer-not-now")
@@ -95,6 +103,7 @@ class RootScreenUITests {
             composeRule.waitForTag("lock-now")
             composeRule.onNodeWithTag("lock-now").performClick()
             composeRule.waitForTag("unlock-password")
+            composeRule.onNodeWithTag("unlock-password").assertIsFocused()
             composeRule.onNodeWithTag("lock-email").assertTextEquals("alice@example.com")
             composeRule.type("unlock-password", "wrong")
             composeRule.tap("unlock-submit")

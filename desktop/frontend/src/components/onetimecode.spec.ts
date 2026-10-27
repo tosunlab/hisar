@@ -75,7 +75,7 @@ describe("OneTimeCodeField", () => {
     api.getOneTimeCode.mockRejectedValue(new Error("one-time password not found"));
     const wrapper = mount(OneTimeCodeField, { props: { vaultID: "personal", itemID: "github" } });
     await flushPromises();
-    expect(wrapper.text()).toContain("could not be read");
+    expect(wrapper.text()).toContain("The one-time code could not be read.");
     wrapper.unmount();
   });
 });

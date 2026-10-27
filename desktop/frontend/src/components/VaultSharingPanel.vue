@@ -14,7 +14,7 @@ import {
   store,
   takeVaultFromTeam,
 } from "../store";
-import { formatRole } from "../util";
+import { formatRole, vaultRoleDescription } from "../util";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
@@ -126,7 +126,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <div class="sharing-heading">
           <h2 id="sharing-title">Share “{{ vault?.name }}”</h2>
           <p v-if="organizationID" class="muted" data-testid="sharing-organization">Shared through teams in {{ organizationName }}</p>
-          <p v-else class="muted">{{ memberCountText }} · Everyone here can open the items in this vault</p>
+          <p v-else class="muted" data-testid="sharing-member-count">{{ memberCountText }}</p>
         </div>
         <button class="ghost icon-button" aria-label="Close sharing" @click="closeSharing"><AppIcon name="close" /></button>
       </header>
@@ -149,6 +149,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                   class="role-select"
                   :value="teamVault.role"
                   :aria-label="`Role for ${team.name}`"
+                  :title="vaultRoleDescription"
                   :disabled="store.isBusy"
                   :data-testid="`vault-team-role-${team.id}`"
                   @change="changeTeamRole(team, teamVault, $event)"
@@ -175,13 +176,12 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
               <select v-model="givingTeamID" class="team-select" aria-label="Team" data-testid="give-to-team-team">
                 <option v-for="team in allTeamWithoutVault" :key="team.id" :value="team.id">{{ team.name }}</option>
               </select>
-              <select v-model="givingRole" class="role-select" aria-label="Role for the team" data-testid="give-to-team-role">
+              <select v-model="givingRole" class="role-select" aria-label="Role for the team" :title="vaultRoleDescription" data-testid="give-to-team-role">
                 <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
               </select>
               <button type="button" class="ghost" @click="isGivingToTeam = false">Cancel</button>
               <button class="primary" type="submit" data-testid="give-to-team-confirm" :disabled="!givingTeamID || store.isBusy">Give</button>
             </div>
-            <p class="muted hint">Editors can add and change items, readers can only view them, and owners can also rename and delete the vault.</p>
           </form>
           <button v-else-if="allTeamWithoutVault.length > 0" data-testid="give-to-team" @click="startGivingToTeam">
             <AppIcon name="plus" :size="14" />Give to a team…
@@ -224,6 +224,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                   class="role-select"
                   :value="member.role"
                   :aria-label="`Role for ${getDisplayName(member)}`"
+                  :title="vaultRoleDescription"
                   :disabled="store.isBusy"
                   :data-testid="`role-select-${member.accountId}`"
                   @change="changeRole(member, $event)"
@@ -315,16 +316,12 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                 autocomplete="off"
                 data-testid="new-member-email"
               />
-              <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" data-testid="new-member-role">
+              <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" :title="vaultRoleDescription" data-testid="new-member-role">
                 <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
               </select>
               <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Share</button>
             </div>
-            <p class="muted hint">
-              Shares this vault. They get an email and accept in Hisar; without an account, the email lets them create one first. Your Hisar then
-              shares the vault key with them.
-            </p>
-            <p class="muted hint">Editors can add and change items, readers can only view them, and owners also manage who has access.</p>
+            <p class="muted hint">They get an email and accept in Hisar; without an account they create one first.</p>
           </form>
         </template>
         <p v-else class="read-only-note" data-testid="sharing-read-only">
@@ -385,20 +382,20 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
 h2 {
   margin: 0;
   overflow: hidden;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .sharing-heading p {
   margin: 1px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .loading {
   margin: 0 0 12px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .member-list {
@@ -448,7 +445,7 @@ h2 {
 }
 
 .member-email {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
@@ -475,12 +472,12 @@ h2 {
   width: 96px;
   padding-top: 5px;
   padding-bottom: 5px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .role-label {
   width: 96px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
   text-align: right;
 }
@@ -504,7 +501,7 @@ h2 {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-panel);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .member-detail p {
@@ -538,7 +535,7 @@ h2 {
 }
 
 .security-code {
-  font-size: 16px;
+  font-size: var(--font-size-17);
   font-weight: 600;
   letter-spacing: 0.12em;
   color: var(--color-text);
@@ -575,7 +572,7 @@ h2 {
 
 .hint {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .hint + .hint {
@@ -590,7 +587,7 @@ h2 {
   padding: 10px 12px;
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -610,7 +607,7 @@ h2 {
 .take-back-button {
   flex: none;
   padding: 5px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .team-select {

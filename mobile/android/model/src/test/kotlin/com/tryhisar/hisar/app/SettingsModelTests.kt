@@ -66,7 +66,7 @@ class SettingsModelTests {
         val isMacSignedOut = model.settings.revokeDevice(harness.backend.allDevice[1])
         assertTrue(isMacSignedOut)
         assertEquals(listOf("this"), harness.backend.allDevice.map { it.id })
-        assertEquals("MacBook Pro is signed out.", model.notice.value)
+        assertEquals("MacBook Pro is signed out.", model.notice.value?.message)
         val isThisPhoneSignedOut = model.settings.revokeDevice(harness.backend.allDevice[0])
         assertFalse(isThisPhoneSignedOut, "this device signs out from Settings instead")
     }
@@ -172,8 +172,8 @@ class SettingsModelTests {
 
     @Test
     fun testDiagnosticsHoldVersionsServerAndDeviceOnly() {
-        val diagnostics = HelpLogic.buildDiagnostics("1.2 (34)", "16", "Pixel 9", "https://api.tryhisar.com", "device-1")
-        assertEquals("Hisar 1.2 (34)\nAndroid 16 on Pixel 9\nServer https://api.tryhisar.com\nDevice ID device-1", diagnostics)
+        val diagnostics = HelpLogic.buildDiagnostics("1.2 (34)", "16", "Pixel 9", "https://eu.tryhisar.com", "device-1")
+        assertEquals("Hisar 1.2 (34)\nAndroid 16 on Pixel 9\nServer https://eu.tryhisar.com\nDevice ID device-1", diagnostics)
         assertEquals(
             "Hisar 1.2 (34)\nAndroid 16 on Pixel 9\nServer not signed in",
             HelpLogic.buildDiagnostics("1.2 (34)", "16", "Pixel 9", "", null),

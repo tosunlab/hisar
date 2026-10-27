@@ -74,14 +74,14 @@ onMounted(async () => {
 <template>
   <section v-show="isRowVisible('export')" class="settings-block" data-testid="export-section">
     <p class="section-label">Export your data</p>
-    <p class="muted intro">Export every vault you can open, including shared vaults: logins, notes, one-time code secrets, SSH keys and other fields. Export works any time.</p>
+    <p class="muted intro">Export every vault you can open, including shared vaults: logins, notes, one-time code secrets, SSH keys and other fields.</p>
     <p class="muted intro">Offline exports are cached copies. Changes since completed syncs may be absent. Unreadable records and vaults without a completed sync are reported as omissions in the result and file.</p>
     <form class="settings-group" @submit.prevent="submitExport">
       <label class="setting choice">
         <input v-model="format" type="radio" name="exportFormat" value="encrypted" data-testid="export-format-encrypted" />
         <span class="setting-text">
           <strong>Encrypted export (recommended)</strong>
-          <p class="muted">Protected by an export passphrase you choose. Hisar can open it again with <code>hisar import</code>.</p>
+          <p class="muted">Protected by an export passphrase you choose. Hisar can import it again on any of your devices.</p>
         </span>
       </label>
       <div v-if="format === 'encrypted'" class="settings-group-detail passphrase-fields">
@@ -144,7 +144,7 @@ onMounted(async () => {
 <style scoped>
 .intro {
   margin: 0 2px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -171,7 +171,7 @@ onMounted(async () => {
 
 .problem {
   color: var(--color-danger-text);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .warning-box {
@@ -182,7 +182,7 @@ onMounted(async () => {
   border-radius: var(--radius);
   background: var(--color-warning-background);
   color: var(--color-warning-text);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -213,7 +213,7 @@ onMounted(async () => {
   display: flex;
   gap: 8px;
   margin: 10px 2px 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
   user-select: text;
   -webkit-user-select: text;

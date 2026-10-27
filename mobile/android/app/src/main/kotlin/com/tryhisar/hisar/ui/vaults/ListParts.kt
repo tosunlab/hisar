@@ -217,7 +217,7 @@ fun OfflineNote() {
 
 /** The search field under a list's large title, as SwiftUI's searchable. */
 @Composable
-fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: String, testTag: String) {
+fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: String, testTag: String, modifier: Modifier = Modifier) {
     val colors = HisarTheme.colors
     BasicTextField(
         value = value,
@@ -225,7 +225,7 @@ fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: Str
         singleLine = true,
         textStyle = HisarType.body.copy(color = colors.label),
         cursorBrush = SolidColor(colors.tint),
-        modifier = Modifier
+        modifier = modifier
             .padding(horizontal = ScreenMargin)
             .fillMaxWidth()
             .testTag(testTag),

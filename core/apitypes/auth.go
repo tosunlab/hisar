@@ -12,6 +12,11 @@ type PreloginResponse struct {
 	Argon2 crypt.Argon2Params `json:"argon2"`
 }
 
+// RegistrationClosedMessage is the answer, 403, to a sign-up without an invite on a server whose admin has not opened
+// registration.
+const RegistrationClosedMessage = "Sign-ups are not open on this server. Ask an admin for an invitation."
+
+// RegisterStartRequest starts a sign-up. Invite is the invite token, or empty on a server with open registration.
 type RegisterStartRequest struct {
 	Invite    string `json:"invite"`
 	Email     string `json:"email"`

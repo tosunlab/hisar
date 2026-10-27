@@ -16,7 +16,6 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.outlined.HelpOutline
 import androidx.compose.material.icons.outlined.AutoFixHigh
 import androidx.compose.material.icons.outlined.Business
-import androidx.compose.material.icons.outlined.Description
 import androidx.compose.material.icons.outlined.Devices
 import androidx.compose.material.icons.outlined.Group
 import androidx.compose.material.icons.outlined.Info
@@ -48,6 +47,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.currentStateAsState
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.autofill.AutoFillSettingsSections
 import com.tryhisar.hisar.autofill.isAutoFillEnabled
 import com.tryhisar.hisar.model.VaultLogic
@@ -64,27 +64,6 @@ import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
 
-/** The screens the Settings tab pushes, the iPhone app's SettingsDestination. */
-enum class SettingsDestination {
-    ACCOUNT,
-    SECRET_KEY,
-    SECURITY,
-    APPEARANCE,
-    MAC_APPROVALS,
-    NOTIFICATIONS,
-    AUTOFILL,
-    PASSWORD_GENERATOR,
-    PEOPLE,
-    ORGANIZATIONS,
-    DEVICES,
-    HELP,
-    ABOUT,
-    CHANGE_MASTER_PASSWORD,
-    REPLACE_SECRET_KEY,
-    DELETE_ACCOUNT,
-    EXPORT_DATA,
-}
-
 private val stackSaver = Saver<List<SettingsDestination>, ArrayList<String>>(
     save = { stack -> ArrayList(stack.map { it.name }) },
     restore = { names -> names.map(SettingsDestination::valueOf) },
@@ -96,12 +75,12 @@ fun SettingsTab(model: AppModel) {
     var stack by rememberSaveable(stateSaver = stackSaver) { mutableStateOf(emptyList<SettingsDestination>()) }
     val push: (SettingsDestination) -> Unit = { stack = stack + it }
     val pop: () -> Unit = { stack = stack.dropLast(1) }
-    val isAutoFillSettingsRequested by model.isAutoFillSettingsRequested.collectAsStateWithLifecycle()
-    LaunchedEffect(isAutoFillSettingsRequested) {
-        if (!isAutoFillSettingsRequested) return@LaunchedEffect
-        model.isAutoFillSettingsRequested.value = false
+    val requestedSettings by model.requestedSettings.collectAsStateWithLifecycle()
+    LaunchedEffect(requestedSettings) {
+        val destination = requestedSettings ?: return@LaunchedEffect
+        model.requestedSettings.value = null
         // The new Secret Key is shown only once, so its screen stays until Done.
-        if (stack.lastOrNull() != SettingsDestination.REPLACE_SECRET_KEY) stack = listOf(SettingsDestination.AUTOFILL)
+        if (stack.lastOrNull() != SettingsDestination.REPLACE_SECRET_KEY) stack = listOf(destination)
     }
 
     NavigationTransition(
@@ -162,8 +141,6 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
             )
             RowDivider()
             NavigationRow("Notifications", "open-notifications", { push(SettingsDestination.NOTIFICATIONS) }, Icons.Outlined.Notifications)
-            RowDivider()
-            NavigationRow("Secret Key and Emergency Kit", "open-secret-key", { push(SettingsDestination.SECRET_KEY) }, Icons.Outlined.Description)
         }
         FormSection {
             NavigationRow(
@@ -196,7 +173,8 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
             NavigationRow("Help", "open-help", { push(SettingsDestination.HELP) }, Icons.AutoMirrored.Outlined.HelpOutline)
             RowDivider()
             NavigationRow("About Hisar", "open-about", { push(SettingsDestination.ABOUT) }, Icons.Outlined.Info, value = appVersionText(context))
-            RowDivider()
+        }
+        FormSection {
             DestructiveRow("Sign out", { isSignOutConfirmationShown = true }, testTag = "sign-out")
         }
     }

@@ -310,6 +310,33 @@ func TestInvitePolicyAllowsInvite(t *testing.T) {
 	}
 }
 
+func TestOpenRegistration(t *testing.T) {
+	if Defaults().OpenRegistration {
+		t.Error("registration is open by default")
+	}
+	for text, expected := range map[string]bool{"true": true, "1": true, "false": false, " TRUE ": true} {
+		effective, sources, err := Resolve(Defaults(), []byte(`{"openRegistration":true}`), readEnvironment(map[string]string{"HISAR_OPEN_REGISTRATION": text}))
+		if err != nil || effective.OpenRegistration != expected || sources["openRegistration"] != SourceEnvironment {
+			t.Errorf("HISAR_OPEN_REGISTRATION=%q: %v %v %v", text, effective.OpenRegistration, sources["openRegistration"], err)
+		}
+	}
+	if _, _, err := Resolve(Defaults(), nil, readEnvironment(map[string]string{"HISAR_OPEN_REGISTRATION": "yes"})); err == nil || !strings.Contains(err.Error(), "HISAR_OPEN_REGISTRATION") {
+		t.Errorf("HISAR_OPEN_REGISTRATION=yes accepted: %v", err)
+	}
+	updated, err := Apply(nil, map[string]json.RawMessage{"openRegistration": json.RawMessage(`true`)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if effective, sources, err := Resolve(Defaults(), updated, nil); err != nil || !effective.OpenRegistration || sources["openRegistration"] != SourceDatabase {
+		t.Errorf("stored open registration: %+v %v %v", effective, sources, err)
+	}
+	for _, value := range []string{`"true"`, `1`, `null`} {
+		if _, err := Apply(nil, map[string]json.RawMessage{"openRegistration": json.RawMessage(value)}); err == nil || !strings.Contains(err.Error(), "true or false") {
+			t.Errorf("openRegistration = %s: %v", value, err)
+		}
+	}
+}
+
 func TestPushRelayDefaultsToHisarsAndTurnsOff(t *testing.T) {
 	effective, _, err := Resolve(Defaults(), nil, readEnvironment(nil))
 	if err != nil || effective.Push.GetRelayURL() != DefaultPushRelayURL {

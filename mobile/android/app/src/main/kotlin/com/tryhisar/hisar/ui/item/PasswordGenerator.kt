@@ -57,6 +57,7 @@ import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.LargeTitle
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.ToolbarIconButton
+import com.tryhisar.hisar.ui.settings.ToggleRow
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 

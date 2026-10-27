@@ -90,6 +90,8 @@ describe("Favorites in the sidebar", () => {
     expect(api.getItem).toHaveBeenCalledWith("work", "vpn");
     expect(store.selectedVaultID).toBe("work");
     expect(store.isFavoritesSelected).toBe(true);
+    const list = wrapper.get('[data-testid="favorites-list"][role="listbox"]');
+    expect(list.findAll('[role="option"]').map((item) => item.attributes("aria-selected"))).toEqual(["false", "true"]);
     expect(wrapper.find(".item-detail .badge").text()).toContain("Work");
     expect(wrapper.find(".item-detail").text()).not.toContain("Edit");
   });
@@ -175,6 +177,25 @@ describe("starring an item", () => {
     window.dispatchEvent(new KeyboardEvent("keydown", { key: "d", metaKey: true }));
     await flushPromises();
     expect(api.setItemFavorite).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("leaves ⌘D, ⌘N and ⌘F to the panel in front, but still locks with ⌘L", async () => {
+    store.selectedItem = { ...github };
+    store.isShareLinksOpen = true;
+    const wrapper = mount(MainView, { attachTo: document.body });
+    for (const key of ["d", "n", "f", ","]) {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key, metaKey: true }));
+    }
+    await flushPromises();
+    expect(api.setItemFavorite).not.toHaveBeenCalled();
+    expect(store.editorMode).toBe("view");
+    expect(store.isSettingsOpen).toBe(false);
+    expect(document.activeElement).not.toBe(wrapper.find('input[name="search"]').element);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "l", metaKey: true }));
+    await flushPromises();
+    expect(api.lock).toHaveBeenCalled();
+    store.isShareLinksOpen = false;
     wrapper.unmount();
   });
 

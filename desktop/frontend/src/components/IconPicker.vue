@@ -200,7 +200,7 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
   display: flex;
   flex-direction: column;
   min-width: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .automatic .muted {
@@ -214,7 +214,7 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
   flex: none;
   gap: 6px;
   align-items: center;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .section-label {

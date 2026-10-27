@@ -109,7 +109,7 @@ label.last {
 .use-as-street {
   margin-top: 4px;
   padding-left: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 </style>

@@ -86,6 +86,7 @@ fun GroupedForm(
             Column(
                 Modifier
                     .fillMaxWidth()
+                    .noticeClearance()
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(horizontal = 20.dp)
                     .padding(top = 8.dp, bottom = 8.dp),

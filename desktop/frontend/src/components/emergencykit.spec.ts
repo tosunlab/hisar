@@ -35,6 +35,7 @@ describe("Emergency Kit after sign up", () => {
   it("saves the PDF and tells the user where", async () => {
     api.saveNewAccountEmergencyKit.mockResolvedValue("/Users/alper/Documents/Hisar Emergency Kit.pdf");
     const wrapper = mount(SecretKeyView);
+    expect(wrapper.get('[data-testid="save-emergency-kit"]').text()).toBe("Save Emergency Kit…");
     await wrapper.find('[data-testid="save-emergency-kit"]').trigger("click");
     await flushPromises();
     expect(api.saveNewAccountEmergencyKit).toHaveBeenCalled();
@@ -63,8 +64,11 @@ describe("Emergency Kit from Settings", () => {
   it("asks for the master password before saving", async () => {
     api.saveEmergencyKit.mockResolvedValue("/tmp/Hisar Emergency Kit.pdf");
     const wrapper = mount(SettingsPanel);
+    expect(wrapper.get('[data-testid="save-emergency-kit"]').text()).toBe("Save Emergency Kit…");
     await wrapper.find('[data-testid="save-emergency-kit"]').trigger("click");
     expect(api.saveEmergencyKit).not.toHaveBeenCalled();
+    const emergencyKitForm = wrapper.get('input[name="emergencyKitPassword"]').element.closest("form")!;
+    expect(emergencyKitForm.querySelector('button[type="submit"]')?.textContent).toBe("Save Emergency Kit…");
     await wrapper.find('input[name="emergencyKitPassword"]').setValue("master password");
     await (wrapper.find('input[name="emergencyKitPassword"]').element as HTMLInputElement).form!.dispatchEvent(new Event("submit"));
     await flushPromises();

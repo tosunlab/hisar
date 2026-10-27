@@ -13,7 +13,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|---|
 | End-to-end encrypted password, SSH key and secrets manager for developers. | self-hosted, family password manager | App descriptions, Info.plist, Linux `.desktop`, store listing, share link page |
 | Passwords, SSH keys and secrets for developers, end-to-end encrypted. | Two taglines, exclamation marks | The one tagline: Mac sign-in, iPhone About |
-| `api.tryhisar.com` | `tryhisar.com` (serves no page yet), `hisar.example.com` as a suggestion | Default server, links, privacy policy URL (`https://api.tryhisar.com/privacy`) |
+| `eu.tryhisar.com` | `tryhisar.com` (serves no page yet), `hisar.example.com` as a suggestion | Default server, links, privacy policy URL (`https://eu.tryhisar.com/privacy`) |
 | Use a different server… | A required Server field | Sign in, Mac, iPhone and Android |
 | the Hisar server | your Hisar server, your family's server | Explanations |
 
@@ -30,7 +30,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
 | "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
-| "Export your items first in Settings → Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
+| "Export your items first in Settings → Import & Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
 
 ## People and sharing
 
@@ -41,7 +41,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
-| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. |
+| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
 
 ## Organizations
@@ -50,9 +50,10 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|
 | organization, team | A group of accounts, and a group inside it. Not company, workspace, group. |
 | Admin, Member | Organization roles. Admins manage members, teams and which teams have which vaults; being an admin gives no vault. |
+| Members, Teams, Invitations | The segments of the Mac's organization page. |
 | organization vault | A vault that belongs to an organization and reaches people through its teams. |
 | Create organization…, New team…, Invite by email, Send invitation, Give a vault…, Give to a team…, Take back, Add member, Remove, Make admin, Make member | Actions (Settings → Organizations, the organization screen, an organization vault's sharing panel). |
-| "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation (Settings → Organizations and the banner above the vaults). |
+| "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation in Settings → Organizations. The Mac's Inbox row leads there; the phones also show it above the vaults. |
 | Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; each confirmation names what goes: "Bob loses the vaults they have through Acme's teams." · "Its members lose the vaults they have only through Platform." · "Leave Acme?" / "You lose the vaults you have through Acme's teams." · "Delete Acme?" / "Its teams and pending invitations are deleted with it." · "Everyone in Acme sees the new name." |
 | "You joined Acme. Its vaults appear once an admin adds you to a team." | After accepting an organization invitation. |
 | "Platform's members get this vault. Manage it in Settings → Organizations." | The new-vault Where footer for a team. |
@@ -60,7 +61,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | "Hisar couldn't give every vault key: …" · "Hisar couldn't re-encrypt every vault that needs a new key: …" | Warnings above the vaults when a key delivery or a rotation failed. |
 | Shared through teams in Acme · Ask an admin of Acme to change who has this vault. | An organization vault's sharing panel. |
 | A vault you can't open | An organization's vault this device has no key for. |
-| Waiting for an owner of a vault in Acme to give you its key · Waiting for the owners of N vaults in Acme to give you their keys | One line per organization above the vaults: a vault a team gives you that no owner's Hisar has delivered yet. |
+| Waiting for an owner of a vault in Acme to give you its key · Waiting for the owners of N vaults in Acme to give you their keys | One line per organization in Settings → Organizations on the Mac, above the vaults on the phones. A team gives you a vault that no owner's Hisar has delivered yet. |
 | Acme is deleted with your account · Ada becomes an admin of Acme · You leave Acme | Account deletion. |
 
 ## Items
@@ -71,12 +72,16 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | item, login, SSH key | entry, record |
 | one-time code | TOTP, 2FA code, verification code |
 | Other fields (custom fields below username and password) | Fields, Custom fields, Extra fields |
+| One-time code setup key (Mac editor field) | One-time password |
+| Discard changes to “X”? · Keep editing · Discard (Esc on a changed Mac draft) | Losing an unsaved draft without asking |
+| Item actions (the ⋯ button in the Mac's item header) | Unlabelled ⋯ |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
 | secret reference | secret URI, reference link |
+| "\<Field> copied. It clears in 90 seconds." (Mac and iPhone copy notices) | "\<Field> copied, clears in 90 seconds" |
 | Favorites (the list at the top of the sidebar and of Vaults), favorite, star (the icon) | Starred, Pinned, Bookmarks |
 | Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
 | Added to Favorites · Removed from Favorites (notices; the iPhone ends them with a period) · `Added "GitHub" (Personal) to Favorites.` (`hisar favorite`) | Starred!, Pinned |
-| "No favorites yet" · "Star an item with ★ or ⌘D to keep it here, across all your vaults and devices. Only you see your favorites." (Mac) · "Star an item to keep it here, on all your devices. Only you see your favorites." (iPhone) · "No favorites yet. Add one with: hisar favorite \<item> [-v vault]" (CLI) | Shared favorites, favorites for the vault |
+| "No favorites yet" · "Star an item with ★ or ⌘D to keep it here, across all your vaults and devices. Only you see your favorites." (Mac) · "Star an item to keep it here, on all your devices. Only you see your favorites." (Android) · "No favorites yet. Add one with: hisar favorite \<item> [-v vault]" (CLI) | Shared favorites, favorites for the vault |
 
 ## Vaults and your data
 
@@ -88,7 +93,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there. | Cannot delete default vault |
 | “Work” is no longer available: it was deleted, or you no longer have access to it. | Vault removed by admin |
 | Moved N items to Personal and deleted Work. · Deleted Work. · You left Work. | — |
-| Export (Settings section on the Mac), Export data… (iPhone and Android, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
+| Import & Export (Settings section on the Mac), Export data… (iPhone and Android, Settings → Account), `hisar export` | Backup, Download my data, Takeout |
 | encrypted export, export passphrase ("at least 10 characters"; Hisar can't recover it) | export password, backup key, master password (for the export's own passphrase) |
 | Plain JSON, with the warning "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done." | unencrypted backup, raw export |
 | Export with Touch ID… / Export with Face ID / Export with biometrics (Android) · Exported N items from M vaults to \<path>. | — |
@@ -103,6 +108,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | SSH agent, Use Hisar for SSH | key agent |
 | Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
 | Approve, Deny | Allow, Reject |
+| "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
 
 ## Invites and updates
@@ -111,7 +117,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|---|
 | "Ada invited you to Hisar"; Download for Mac; Open in Hisar; invite code | sign-up token, registration link | Invite page and invite email |
 | This invite isn't valid | expired, already used, not found (never say which) | Invite page for any code that does not work |
-| Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. (This device has 0.1.0. on Android) | Your app is outdated, unsupported version | Mac, iPhone and Android blocking screen |
+| Update required (screen title); This server needs Hisar 0.2.0 or later. This Mac has 0.1.0. (This computer has 0.1.0. on Linux; This device has 0.1.0. on Android) | Your app is outdated, unsupported version | Mac, Linux, iPhone and Android blocking screen |
 | Update now (Mac, Sparkle); Install the latest Hisar (iPhone and Android, until the stores have Hisar); Check again | Upgrade | Blocking screen buttons |
 | Hisar needs an update | update required error, 426 | What the SSH agent, the command-line tool, coding agents and the extension are told |
 | Update the Hisar extension | | Extension popup when the extension itself is too old |
@@ -177,9 +183,9 @@ The Android app uses the iPhone's copy with these changes. Shared sentences from
 |---|---|---|
 | this device ("Sign out of Hisar on this device?", "…while Hisar is open and unlocked on this device.") | this iPhone | Everywhere |
 | biometrics, biometric unlock ("Unlock with biometrics", "Approve with biometrics", "Biometric unlock is on", "Biometrics are not available, so Hisar checks your master password instead.") | Face ID, Touch ID, fingerprint | Lock screen, the offer after the new Secret Key, Settings → Security, the approval sheet, export |
-| "\<Field> copied. It clears in about 2 minutes." · "Hisar locks after this long without activity. Copied values are cleared after about 2 minutes." · "One-time code copied. It clears in about 2 minutes." | "It clears in 90 seconds.", "…cleared after 90 seconds." (the iPhone's copy) | Copy notices, Settings → Security footer, AutoFill. Android's clear alarm is inexact: measured on emulators, it lands 90 to about 160 seconds after the copy ([Design](../design.md) §9.3), so the copy never promises 90 seconds |
-| Approve requests on my smart device (the Mac's setting, which the phones' Mac approvals footers quote; see Developer tools) | Approve requests on my iPhone | Mac Settings → SSH & Git; Settings → Mac approvals on the phones |
-| Save Emergency Kit · Print Emergency Kit · Share Emergency Kit · Save Export · Share Export · Emergency Kit saved · Export saved | Save or Print Emergency Kit, Save or Share Export | Settings; Android saves through the system's file creator, prints through its print dialog and shares through its share sheet |
+| "\<Field> copied. It clears in about 2 minutes." · "Hisar locks after this long without activity. Copied values are cleared after about 2 minutes." · "One-time code copied. It clears in about 2 minutes." | "It clears in 90 seconds.", "…cleared after 90 seconds." (the Mac's and iPhone's copy) | Copy notices, Settings → Security footer, AutoFill. Android's clear alarm is inexact: measured on emulators, it lands 90 to about 160 seconds after the copy ([Design](../design.md) §9.3), so the copy never promises 90 seconds |
+| Approve requests on my smart device (the Mac's setting; see Developer tools) | Approve requests on my iPhone | Mac Settings → SSH & Git |
+| Save Emergency Kit · Print Emergency Kit · Share Emergency Kit · Save export · Share export · Emergency Kit saved · Open · Export saved | Save or print Emergency Kit, Save or share export | Settings; Android saves through the system's file creator, offers Open for a saved Emergency Kit, prints through its print dialog and shares through its share sheet |
 | Open Settings (Settings → AutoFill before API 34, which opens the Settings app) | Open AutoFill & Passwords | Settings → AutoFill |
 | Allow screenshots · "Off, screenshots, screen recordings and the app switcher show nothing of Hisar." | Block screenshots, Secure mode | Settings → Security (Android only) |
 | Unlock Hisar · Sign in to Hisar · Search Hisar · "Fill a login for \<site>" · Always use for this app, Only this time · Turn on Hisar AutoFill | Unlock vault, Log in, Remember this app | AutoFill suggestions, the AutoFill screen, Settings → AutoFill |
@@ -189,6 +195,6 @@ The Android app uses the iPhone's copy with these changes. Shared sentences from
 
 - Plain sentences: no exclamation marks, no comma splices, and only claims the code keeps ("private keys never leave Hisar"; the command-line tool reads passwords and one-time codes but never private keys).
 - Developer features lead; sharing with other people is described as person-to-person, never as family sharing.
-- Sentence case for buttons, labels and menu items ("Copy one-time code"), title case only for product names (Secret Key, Emergency Kit, Touch ID).
+- Sentence case for buttons, labels and menu items ("Copy one-time code"), title case only for product names (Secret Key, Emergency Kit, Touch ID). Generated action labels preserve user-authored custom field names and acronyms.
 - An ellipsis (…) on an action that opens more input; "…" while busy ("Signing in…").
 - Settings paths in prose: Settings, Security (in a sentence) or Settings → Security (in docs).

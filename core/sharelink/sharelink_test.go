@@ -151,19 +151,19 @@ func TestSealLimits(t *testing.T) {
 
 func TestLinkURL(t *testing.T) {
 	linkKey := bytes.Repeat([]byte{0xfb}, crypt.ShareLinkKeySize)
-	link := BuildURL("https://api.tryhisar.com/", "AbCdEfGhIjKlMnOpQrStUv", linkKey)
-	if link != "https://api.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s" {
+	link := BuildURL("https://eu.tryhisar.com/", "AbCdEfGhIjKlMnOpQrStUv", linkKey)
+	if link != "https://eu.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s" {
 		t.Fatalf("link %s", link)
 	}
 	serverURL, id, parsedKey, err := ParseURL(link)
-	if err != nil || serverURL != "https://api.tryhisar.com" || id != "AbCdEfGhIjKlMnOpQrStUv" || !bytes.Equal(parsedKey, linkKey) {
+	if err != nil || serverURL != "https://eu.tryhisar.com" || id != "AbCdEfGhIjKlMnOpQrStUv" || !bytes.Equal(parsedKey, linkKey) {
 		t.Fatalf("parsed %s %s %x %v", serverURL, id, parsedKey, err)
 	}
 	for _, broken := range []string{
-		"https://api.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv",
-		"https://api.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv#short",
-		"https://api.tryhisar.com/invite/abc#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s",
-		"ftp://api.tryhisar.com/s/abc#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s",
+		"https://eu.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv",
+		"https://eu.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv#short",
+		"https://eu.tryhisar.com/invite/abc#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s",
+		"ftp://eu.tryhisar.com/s/abc#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s",
 	} {
 		if _, _, _, err := ParseURL(broken); !errors.Is(err, ErrBadLink) {
 			t.Errorf("%s: %v", broken, err)

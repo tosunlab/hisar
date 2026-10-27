@@ -46,7 +46,7 @@ describe("OpenAtLoginSection", () => {
     await flushPromises();
     expect(api.setOpenAtLogin).toHaveBeenCalledWith(false);
     expect(getSwitch(wrapper).checked).toBe(false);
-    expect(wrapper.find('[data-testid="login-item-state"]').text()).toContain("Off.");
+    expect(wrapper.find('[data-testid="login-item-state"]').text()).toBe("Off.");
     expect(wrapper.find('[data-testid="add-login-item"]').exists()).toBe(false);
 
     api.setOpenAtLogin.mockResolvedValue(createLoginItemStatus());

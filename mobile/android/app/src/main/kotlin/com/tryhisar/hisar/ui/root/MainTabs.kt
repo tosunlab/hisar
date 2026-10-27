@@ -31,21 +31,15 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.Dp
@@ -64,7 +58,7 @@ import com.tryhisar.hisar.ui.vaults.VaultsTab
 val FloatingTabBarHeight = 84.dp
 
 /** The tab bar as drawn, with the system navigation bar under it; null until it is measured. */
-private val LocalMeasuredTabBarHeight = compositionLocalOf<Dp?> { null }
+internal val LocalMeasuredTabBarHeight = compositionLocalOf<Dp?> { null }
 
 /**
  * What the floating tab bar covers at the bottom of each tab, which lists leave free under their last row: the bar as
@@ -81,39 +75,30 @@ val TabBarHeight: Dp
  * floating tab bar. Back on another tab returns to Vaults, as on Android's other top-level destinations.
  */
 @Composable
-fun MainTabs(model: AppModel, approvalBadgeCount: Int = 0) {
+fun MainTabs(model: AppModel) {
     val selectedTab by model.selectedTab.collectAsStateWithLifecycle()
-    val isSheetShown by model.navigation.isSheetShown.collectAsStateWithLifecycle()
     val stateHolder = rememberSaveableStateHolder()
-    val density = LocalDensity.current
-    var measuredTabBarHeight by remember { mutableStateOf<Dp?>(null) }
     LaunchedEffect(selectedTab) { model.reportActivity() }
     // A notification tapped while Hisar was locked opens its screen once the tabs show, after unlocking.
     val openedKind by model.notifications.openedKind.collectAsStateWithLifecycle()
     LaunchedEffect(openedKind) { openedKind?.let(model::showNotification) }
     BackHandler(enabled = selectedTab != Tab.VAULTS) { model.selectedTab.value = Tab.VAULTS }
     Box(Modifier.fillMaxSize().background(HisarTheme.colors.groupedBackground)) {
-        CompositionLocalProvider(LocalMeasuredTabBarHeight provides measuredTabBarHeight) {
-            stateHolder.SaveableStateProvider(selectedTab) {
-                when (selectedTab) {
-                    Tab.VAULTS -> VaultsTab(model)
-                    Tab.APPROVALS -> ApprovalsTab(model)
-                    Tab.SETTINGS -> SettingsTab(model)
-                    Tab.SEARCH -> SearchTab(model)
-                }
+        stateHolder.SaveableStateProvider(selectedTab) {
+            when (selectedTab) {
+                Tab.VAULTS -> VaultsTab(model)
+                Tab.APPROVALS -> ApprovalsTab(model)
+                Tab.SETTINGS -> SettingsTab(model)
+                Tab.SEARCH -> SearchTab(model)
             }
         }
-        if (!isSheetShown) {
-            TabBar(
-                selectedTab,
-                approvalBadgeCount,
-                onSelect = { model.selectedTab.value = it },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .onSizeChanged { measuredTabBarHeight = with(density) { it.height.toDp() } },
-            )
-        }
     }
+}
+
+@Composable
+fun MainTabBar(model: AppModel, approvalBadgeCount: Int) {
+    val selectedTab by model.selectedTab.collectAsStateWithLifecycle()
+    TabBar(selectedTab, approvalBadgeCount, onSelect = { model.selectedTab.value = it }, modifier = Modifier)
 }
 
 private class TabItem(val tab: Tab, val title: String, val icon: ImageVector, val testTag: String)

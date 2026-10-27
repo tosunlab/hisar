@@ -24,3 +24,24 @@ enum class Tab {
     SETTINGS,
     SEARCH,
 }
+
+/** The screens the Settings tab pushes, the iPhone app's SettingsDestination. */
+enum class SettingsDestination {
+    ACCOUNT,
+    SECRET_KEY,
+    SECURITY,
+    APPEARANCE,
+    MAC_APPROVALS,
+    NOTIFICATIONS,
+    AUTOFILL,
+    PASSWORD_GENERATOR,
+    PEOPLE,
+    ORGANIZATIONS,
+    DEVICES,
+    HELP,
+    ABOUT,
+    CHANGE_MASTER_PASSWORD,
+    REPLACE_SECRET_KEY,
+    DELETE_ACCOUNT,
+    EXPORT_DATA,
+}

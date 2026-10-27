@@ -128,10 +128,6 @@ const allOrganizationDialogSelector: Record<string, string> = {
   "delete-organization": '[data-testid="delete-organization"]',
   leave: '[data-testid="leave-organization"]',
   "new-team": '[data-testid="new-team"]',
-  "rename-team": '[data-testid^="rename-team-"]',
-  "delete-team": '[data-testid^="delete-team-"]',
-  "give-vault": '[data-testid^="give-vault-"]',
-  "remove-member": '[data-testid^="remove-organization-member-"]',
 };
 
 // applyOrganizationParameter: &organization=<id> opens it in Settings → Organizations; &organizationDialog=<kind> opens one
@@ -144,12 +140,29 @@ async function applyOrganizationParameter(parameter: URLSearchParams): Promise<v
   }
   await waitForUnlocked();
   await openOrganization(organizationID);
-  const dialogSelector = allOrganizationDialogSelector[parameter.get("organizationDialog") ?? ""];
-  if (dialogSelector) {
-    await clickElement(dialogSelector);
+  const dialogKind = parameter.get("organizationDialog") ?? "";
+  if (["new-team", "rename-team", "delete-team", "give-vault"].includes(dialogKind) || parameter.get("addTeamMember") === "1") {
+    await clickElement('[data-testid="organization-segment-teams"]');
+  }
+  if (["rename-team", "delete-team", "give-vault"].includes(dialogKind)) {
+    await clickElement('[data-testid^="organization-team-menu-"]');
+    await clickElement(`[data-testid="context-menu-${dialogKind}"]`);
+  } else if (dialogKind === "remove-member") {
+    const organization = store.organizationByID[organizationID];
+    const member = organization?.members.find((candidate) => !candidate.isCurrentUser);
+    if (member) {
+      await clickElement(`[data-testid="organization-member-menu-${member.accountId}"]`);
+      await clickElement('[data-testid="context-menu-remove-organization-member"]');
+    }
+  } else {
+    const dialogSelector = allOrganizationDialogSelector[dialogKind];
+    if (dialogSelector) {
+      await clickElement(dialogSelector);
+    }
   }
   if (parameter.get("addTeamMember") === "1") {
-    await clickElement('[data-testid^="add-team-member-"]');
+    await clickElement('[data-testid^="organization-team-menu-"]');
+    await clickElement('[data-testid="context-menu-add-team-member"]');
   }
 }
 

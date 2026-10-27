@@ -305,7 +305,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         /** The summary of the request on the Vaults card, whose tag ends in the request's ID. */
         val cardSummary = SemanticsMatcher("the card's request") { node ->
             val tag = node.config.getOrNull(SemanticsProperties.TestTag).orEmpty()
-            tag.startsWith("pending-approval-") && listOf("approve-", "deny-", "header", "more").none { tag.startsWith("pending-approval-$it") }
+            tag.startsWith("pending-approval-") && listOf("approve-", "deny-", "remember-", "header", "more").none { tag.startsWith("pending-approval-$it") }
         }
 
         /** The iPhone's approval previews, from a Mac named Alper's MacBook Pro. */

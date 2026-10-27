@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 
 final class HisarUITests: HisarUITestCase {
@@ -7,28 +8,64 @@ final class HisarUITests: HisarUITestCase {
         app.launch()
 
         let secretKey = signUp(inviteLink: inviteLink, email: email, name: "iOS UI")
+        XCTAssertFalse(app.buttons["open-tags"].exists, "Vaults shows Tags before any item is tagged")
         saveScreenshot("vaults")
 
         addLogin(title: "GitHub", username: "octo-alice", password: "ui-test-password-1", website: "github.com")
         saveScreenshot("items")
         app.buttons["item-GitHub"].tap()
-        waitFor(app.staticTexts["password-value"])
-        XCTAssertNotEqual(app.staticTexts["password-value"].label, "ui-test-password-1")
+        let passwordNotice = app.staticTexts["Password copied. It clears in 90 seconds."]
+        let passwordRow = app.buttons["copy-password"]
+        waitFor(passwordRow)
+        XCTAssertEqual(passwordRow.value as? String, "Hidden")
+        XCTAssertEqual(passwordRow.label, "Copy password")
+        XCTAssertEqual(app.buttons["reveal-password"].label, "Reveal password")
+        let passwordCell = app.cells.containing(.button, identifier: "copy-password").firstMatch
+        waitFor(passwordCell)
+        for point in [CGVector(dx: 0.01, dy: 0.05), CGVector(dx: 0.99, dy: 0.95)] {
+            passwordCell.coordinate(withNormalizedOffset: point).tap()
+            waitFor(passwordNotice)
+            XCTAssertEqual(passwordRow.value as? String, "Hidden")
+            XCTAssertTrue(passwordNotice.waitForNonExistence(timeout: 10))
+        }
         app.buttons["reveal-password"].tap()
-        XCTAssertEqual(app.staticTexts["password-value"].label, "ui-test-password-1")
+        XCTAssertEqual(passwordRow.value as? String, "ui-test-password-1")
+        XCTAssertFalse(passwordNotice.waitForExistence(timeout: 2), "revealing must not copy")
         saveScreenshot("item-detail")
-        app.buttons["copy-password"].tap()
+        app.descendants(matching: .any)["open-website"].firstMatch.tap()
+        let safari = XCUIApplication(bundleIdentifier: "com.apple.mobilesafari")
+        XCTAssertTrue(safari.wait(for: .runningForeground, timeout: 10))
+        app.activate()
+        waitFor(passwordRow)
+        XCTAssertFalse(app.staticTexts["Website copied. It clears in 90 seconds."].waitForExistence(timeout: 2), "opening a website must not copy")
 
         app.buttons["edit-item"].tap()
         app.buttons["editor-generate-password"].tap()
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
+        type("dev, work", into: app.textFields["editor-new-tag"])
         app.buttons["editor-save"].tap()
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
-        XCTAssertNotEqual(app.staticTexts["password-value"].label, "ui-test-password-1", "the generated password replaced the old one")
+        XCTAssertNotEqual(passwordRow.value as? String, "ui-test-password-1", "the generated password replaced the old one")
 
         app.buttons["copy-secret-reference"].tap()
+        goBack()
+        goBack()
+        let tagsRow = app.buttons["open-tags"]
+        waitFor(tagsRow)
+        XCTAssertEqual(app.buttons.matching(identifier: "open-tags").count, 1)
+        XCTAssertFalse(app.buttons["tag-dev"].exists, "Vaults lists individual tags instead of one Tags row")
+        XCTAssertFalse(app.buttons["tag-work"].exists, "Vaults lists individual tags instead of one Tags row")
+        tagsRow.tap()
+        waitFor(app.buttons["tag-dev"])
+        XCTAssertTrue(app.buttons["tag-work"].exists)
+        saveScreenshot("tags")
+        app.buttons["tag-work"].tap()
+        waitFor(app.buttons["item-GitHub"])
+        app.buttons["item-GitHub"].tap()
+        waitFor(app.buttons["copy-password"])
+        goBack()
         goBack()
         goBack()
 
@@ -38,12 +75,26 @@ final class HisarUITests: HisarUITestCase {
         type("4821-9930", into: notesField)
         saveScreenshot("add-secure-note")
         app.buttons["editor-save"].tap()
-        waitFor(app.staticTexts["secure-note-notes"])
-        XCTAssertEqual(app.staticTexts["secure-note-notes"].label, "4821-9930")
+        let notesRow = app.buttons["secure-note-notes"]
+        waitFor(notesRow)
+        XCTAssertEqual(notesRow.value as? String, "4821-9930")
         saveScreenshot("secure-note")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "label == %@", "Copy notes")).count, 1)
+        notesRow.press(forDuration: 1)
+        let copyNotesReference = app.buttons.matching(NSPredicate(
+            format: "label == %@ AND identifier != %@", "Copy secret reference", "copy-secret-reference"
+        )).firstMatch
+        let copyNotes = app.buttons["Copy"].firstMatch
+        waitFor(copyNotes)
+        waitFor(copyNotesReference)
+        copyNotes.tap()
+        waitFor(app.staticTexts["Notes copied. It clears in 90 seconds."])
+        notesRow.press(forDuration: 1)
+        copyNotesReference.tap()
+        waitFor(app.staticTexts["Secret reference copied."])
         goBack()
 
-        choose("new-credit-card", from: "new-menu")
+        choose("New credit card", from: "new-menu", under: "new-more")
         type("Visa", into: app.textFields["editor-title"])
         type("4111111111111111", into: app.secureTextFields["editor-card-number"], normalizedBy: CardInput.formatNumber)
         type("1229", into: app.textFields["editor-card-expiry"], normalizedBy: CardInput.formatExpiry)
@@ -51,11 +102,11 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("add-credit-card")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Visa •••• 1111")).firstMatch)
-        XCTAssertFalse(app.staticTexts["123"].exists, "the security code is shown before it is revealed")
+        XCTAssertEqual(app.buttons["copy-security code"].value as? String, "Hidden", "the security code is shown before it is revealed")
         saveScreenshot("credit-card")
         goBack()
 
-        choose("new-identity", from: "new-menu")
+        choose("New identity", from: "new-menu", under: "new-more")
         type("Passport", into: app.textFields["editor-title"])
         type("Alice", into: app.textFields["editor-identity-first-name"])
         type("Example", into: app.textFields["editor-identity-last-name"])
@@ -64,14 +115,15 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["editor-save"].tap()
         let identitySummary = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Alice Example")).firstMatch
         waitFor(identitySummary)
-        XCTAssertFalse(app.staticTexts["U1234567"].exists, "the passport number is shown before it is revealed")
-        XCTAssertFalse(app.staticTexts["Driver's license number"].exists, "a document number nobody typed was saved")
+        let passportRow = app.buttons["copy-passport number"]
+        XCTAssertEqual(passportRow.value as? String, "Hidden", "the passport number is shown before it is revealed")
+        XCTAssertFalse(app.buttons["copy-driver's license number"].exists, "a document number nobody typed was saved")
         saveScreenshot("identity")
         app.buttons["reveal-passport number"].tap()
-        waitFor(app.staticTexts["U1234567"], timeout: 5)
+        XCTAssertEqual(passportRow.value as? String, "U1234567")
         goBack()
 
-        choose("new-api-credential", from: "new-menu")
+        choose("New API credential", from: "new-menu", under: "new-more")
         type("Billing key", into: app.textFields["editor-title"])
         type("Stripe", into: app.textFields["editor-api-credential-service"])
         type("key_1", into: app.textFields["editor-api-credential-key-id"])
@@ -79,15 +131,17 @@ final class HisarUITests: HisarUITestCase {
         type("api.stripe.com", into: app.textFields["editor-api-credential-host"])
         saveScreenshot("add-api-credential")
         app.buttons["editor-save"].tap()
-        let credentialSummary = app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Stripe · api.stripe.com")).firstMatch
-        waitFor(credentialSummary)
-        XCTAssertFalse(app.staticTexts["sk_live_from_the_phone"].exists, "the secret is shown before it is revealed")
+        waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Personal · API credential")).firstMatch)
+        XCTAssertEqual(app.buttons["copy-service"].value as? String, "Stripe")
+        XCTAssertEqual(app.buttons["copy-host"].value as? String, "api.stripe.com")
+        let secretRow = app.buttons["copy-secret"]
+        XCTAssertEqual(secretRow.value as? String, "Hidden", "the secret is shown before it is revealed")
         saveScreenshot("api-credential")
         app.buttons["reveal-secret"].tap()
-        waitFor(app.staticTexts["sk_live_from_the_phone"], timeout: 5)
+        XCTAssertEqual(secretRow.value as? String, "sk_live_from_the_phone")
         goBack()
 
-        choose("new-address", from: "new-menu")
+        choose("New address", from: "new-menu", under: "new-more")
         type("Home", into: app.textFields["editor-title"])
         // A street may take several lines, so it is a text view rather than a text field.
         type("1 Main St", into: app.descendants(matching: .any)["editor-address-street"].firstMatch)
@@ -96,11 +150,11 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("add-address")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Springfield, US")).firstMatch)
-        XCTAssertTrue(app.staticTexts["1 Main St"].exists, "the street is not shown")
+        XCTAssertEqual(app.buttons["copy-street"].value as? String, "1 Main St", "the street is not shown")
         saveScreenshot("address")
         goBack()
 
-        choose("new-software-license", from: "new-menu")
+        choose("New software license", from: "new-menu", under: "new-more")
         type("Sketch", into: app.textFields["editor-title"])
         type("Sketch", into: app.textFields["editor-license-product"])
         type("100", into: app.textFields["editor-license-version"])
@@ -109,11 +163,11 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("add-software-license")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "Version 100 · Alice Example")).firstMatch)
-        XCTAssertFalse(app.staticTexts["LICENSE-FROM-THE-PHONE"].exists, "the license key is shown before it is revealed")
+        XCTAssertEqual(app.buttons["copy-license key"].value as? String, "Hidden", "the license key is shown before it is revealed")
         saveScreenshot("software-license")
         goBack()
 
-        choose("new-server", from: "new-menu")
+        choose("New server", from: "new-menu", under: "new-more")
         type("Build server", into: app.textFields["editor-title"])
         type("build.example.com", into: app.textFields["editor-server-host"])
         type("2222", into: app.textFields["editor-server-port"])
@@ -122,11 +176,11 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("add-server")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "build.example.com:2222 · deploy")).firstMatch)
-        XCTAssertFalse(app.staticTexts["server-password-from-the-phone"].exists, "the password is shown before it is revealed")
+        XCTAssertEqual(app.buttons["copy-password"].value as? String, "Hidden", "the password is shown before it is revealed")
         saveScreenshot("server")
         goBack()
 
-        choose("new-database", from: "new-menu")
+        choose("New database", from: "new-menu", under: "new-more")
         type("Prod db", into: app.textFields["editor-title"])
         // The placeholders are db.example.com, 5432 and app, which the fields' values could not be told apart from.
         type("pg.example.com", into: app.textFields["editor-database-host"])
@@ -138,8 +192,9 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("add-database")
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "PostgreSQL · pg.example.com:6432/billing")).firstMatch)
-        waitFor(app.descendants(matching: .any)["database-connection-string"].firstMatch)
-        XCTAssertFalse(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "database-password-from-the-phone")).firstMatch.exists, "the connection string is shown before it is revealed")
+        let connectionStringRow = app.buttons["copy-connection string"]
+        waitFor(connectionStringRow)
+        XCTAssertEqual(connectionStringRow.value as? String, "Hidden", "the connection string is shown before it is revealed")
         saveScreenshot("database")
         goBack()
         openTab("Search")
@@ -194,8 +249,15 @@ final class HisarUITests: HisarUITestCase {
             app.swipeUp()
         }
         app.buttons["open-help"].tap()
+        XCTAssertFalse(app.staticTexts["App version"].exists)
         app.buttons["copy-diagnostics"].tap()
         saveScreenshot("settings-help")
+        goBack()
+        let about = app.buttons["open-about"]
+        scrollTo(about)
+        XCTAssertEqual(about.label, "About Hisar")
+        about.tap()
+        waitFor(app.staticTexts["Version"])
         goBack()
 
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {
@@ -226,11 +288,17 @@ final class HisarUITests: HisarUITestCase {
         app.launch()
         let useDifferentServerButton = app.descendants(matching: .any)["sign-in-use-different-server"].firstMatch
         waitFor(useDifferentServerButton)
+        XCTAssertFalse(app.staticTexts["Sign in to use Hisar on this iPhone."].exists)
         XCTAssertFalse(app.textFields["sign-in-server"].exists)
         useDifferentServerButton.tap()
         let serverField = app.textFields["sign-in-server"]
         waitFor(serverField)
-        XCTAssertEqual(serverField.value as? String, "https://api.tryhisar.com")
+        XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
+        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        XCTAssertFalse(app.staticTexts["Enter the invite code you received, or sign up on a server that lets anyone join."].exists)
+        XCTAssertTrue(app.textFields["sign-up-invite-link"].exists)
+        XCTAssertTrue(app.staticTexts["Leave it empty if the server lets anyone sign up."].exists)
+        XCTAssertTrue(app.textFields["sign-up-server"].exists)
     }
 
     func testPrivacyCoverHidesContentInTheBackground() throws {

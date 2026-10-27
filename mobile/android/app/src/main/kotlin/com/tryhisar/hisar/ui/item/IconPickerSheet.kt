@@ -29,6 +29,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +38,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
@@ -75,7 +77,7 @@ private const val COLUMN_COUNT = 6
 fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon?) -> Unit, onDismiss: () -> Unit) {
     val icon = item.icon
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
-    var color by remember { mutableStateOf(icon?.color.orEmpty()) }
+    val color = icon?.color.orEmpty()
     var isPreparing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -101,7 +103,7 @@ fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon
         onDismissRequest = onDismiss,
         sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
         containerColor = HisarTheme.colors.groupedBackground,
-        dragHandle = null,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
     ) {
         Box(
             Modifier
@@ -181,29 +183,32 @@ fun IconPickerSheet(model: AppModel, item: ItemDetail, onIconChange: (ChosenIcon
                     }
                 }
             }
-            FormSection(header = "Color") {
+            val isPhoto = icon?.image != null
+            FormSection(header = "Color", footer = if (isPhoto) ({ Text("Choose an icon to color it.") }) else null) {
                 Row(
                     Modifier
                         .horizontalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .alpha(if (isPhoto) 0.4f else 1f),
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
                     for (hue in listOf("") + ChosenIcon.allColor) {
-                        val isChosen = color == hue
+                        val isChosen = !isPhoto && color == hue
                         Box(
                             Modifier
-                                .size(28.dp)
-                                .background(ItemIconStyle.getColor(hue, HisarTheme.colors.isDark) ?: HisarTheme.colors.fill, CircleShape)
-                                .border(2.5.dp, if (isChosen) HisarTheme.colors.tint else Color.Transparent, CircleShape)
-                                .clickable(role = Role.Button) {
-                                    color = hue
-                                    if (icon != null && icon.image == null && icon.preset.isNotEmpty()) onIconChange(ChosenIcon(preset = icon.preset, color = hue))
+                                .size(48.dp)
+                                .clickable(enabled = !isPhoto, role = Role.Button) {
+                                    val colored = ChosenIcon.applyColor(icon, hue, item.category)
+                                    if (colored != icon) onIconChange(colored)
                                 }
                                 .semantics {
                                     contentDescription = if (hue.isEmpty()) "No color" else hue.replaceFirstChar { it.uppercase() }
                                     selected = isChosen
                                 }
-                                .testTag("icon-color-${hue.ifEmpty { "none" }}"),
+                                .testTag("icon-color-${hue.ifEmpty { "none" }}")
+                                .padding(10.dp)
+                                .background(ItemIconStyle.getColor(hue, HisarTheme.colors.isDark) ?: HisarTheme.colors.fill, CircleShape)
+                                .border(2.5.dp, if (isChosen) HisarTheme.colors.tint else Color.Transparent, CircleShape),
                         )
                     }
                 }

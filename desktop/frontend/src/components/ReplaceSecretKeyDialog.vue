@@ -48,7 +48,7 @@ async function close(): Promise<void> {
 <template>
   <AccountDialog
     title="Replace Secret Key"
-    :subtitle="result ? 'Save the new Emergency Kit now. It is the only copy outside your signed-in devices.' : 'Your master password stays the same.'"
+    :subtitle="result ? 'Save the new Emergency Kit now. It is the only copy outside your signed-in devices.' : 'Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit.'"
     icon="key"
     :is-closable="!store.isBusy && (!result || isDoneEnabled)"
     data-testid="replace-secret-key-dialog"
@@ -80,12 +80,8 @@ async function close(): Promise<void> {
 
     <form v-else novalidate @submit.prevent="submitReplacement">
       <ul class="consequences warning" data-testid="replace-secret-key-consequences">
-        <li>
-          Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit.
-          Your old Emergency Kit stops working.
-        </li>
-        <li>Your master password stays the same. Vaults, items and the people you share with are not affected.</li>
-        <li>Replace it when your Secret Key or Emergency Kit may have been seen by someone else.</li>
+        <li>Your old Emergency Kit stops working.</li>
+        <li>Your master password stays the same.</li>
       </ul>
       <label>
         <span>Master password</span>
@@ -118,7 +114,7 @@ async function close(): Promise<void> {
 }
 
 .key-part {
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
 }
 

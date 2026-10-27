@@ -18,6 +18,8 @@ declare module "@wailsio/runtime" {
             "agent-sessions-changed": string;
             "invite-link": string;
             "locked": string;
+            "open-from-settings": string;
+            "open-settings-window": void;
             "show-item": app$0.ItemLocation;
             "show-settings": string;
             "ssh-approval": agent$0.ApprovalEvent;
@@ -25,6 +27,7 @@ declare module "@wailsio/runtime" {
             "theme-changed": app$0.Theme;
             "unlocked": string;
             "update-required": app$0.UpdateRequirement;
+            "website-icons-changed": boolean;
         }
     }
 }

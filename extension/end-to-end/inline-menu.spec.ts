@@ -202,9 +202,10 @@ test("asks to unlock when Hisar is locked and lists logins once unlocked", async
   await page.goto(`${harness.site.origin}/login`);
   await page.locator("#username").focus();
   const menu = await waitForMenu(page);
-  await expect(menu.getByTestId("inline-status")).toHaveText("Hisar is locked");
+  await expect(menu.getByTestId("inline-unlock")).toContainText("Unlock Hisar");
+  await expect(menu.getByTestId("inline-status")).toHaveCount(0);
   await waitForClickGuard(page);
-  await menu.getByTestId("inline-action").click();
+  await menu.getByTestId("inline-unlock").click();
   await expect(menu.getByTestId("inline-login")).toHaveCount(1, { timeout: 10_000 });
   await page.close();
 });

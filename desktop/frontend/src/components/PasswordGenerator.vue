@@ -76,7 +76,7 @@ watch([length, includeDigits, includeSymbols], generatePassword);
 .generated {
   flex: 1;
   margin: 0;
-  font-size: 15px;
+  font-size: var(--font-size-15);
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;
@@ -117,7 +117,7 @@ watch([length, includeDigits, includeSymbols], generatePassword);
 
 .toggle span {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 400;
   color: var(--color-text-secondary);
 }

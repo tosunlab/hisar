@@ -12,7 +12,10 @@ import (
 	"github.com/tryhisar/hisar/core/item"
 )
 
-func (s *Service) prepareImportGroups(groups []importer.SourceGroup) (ImportPreview, error) {
+// prepareImportGroups starts every group in the Personal vault. restoredTypes, for a Hisar export, has the type of the
+// exported vault behind each group ID: a writable vault with that same ID and type is the group's destination instead,
+// so a restore puts each vault back where it was. A name never chooses a destination.
+func (s *Service) prepareImportGroups(groups []importer.SourceGroup, restoredTypes map[string]string) (ImportPreview, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := s.loadVaults(ctx); err != nil {
@@ -28,7 +31,13 @@ func (s *Service) prepareImportGroups(groups []importer.SourceGroup) (ImportPrev
 		return ImportPreview{}, errors.New("a Personal vault is required to import safely")
 	}
 	for _, group := range groups {
-		s.pendingImport.groups = append(s.pendingImport.groups, importDestination{source: group, vaultID: personalID})
+		vaultID := personalID
+		if restoredType, isRestored := restoredTypes[group.ID]; isRestored {
+			if vault, found := s.vaultsByID[group.ID]; found && vault.Type == restoredType && apitypes.CanWriteItems(vault.Role) {
+				vaultID = vault.ID
+			}
+		}
+		s.pendingImport.groups = append(s.pendingImport.groups, importDestination{source: group, vaultID: vaultID})
 	}
 	return s.buildImportPreview(personalID)
 }
@@ -40,8 +49,8 @@ func (s *Service) MapImportGroup(groupID, vaultID string) (ImportPreview, error)
 	if err := s.requireUnlocked(); err != nil {
 		return ImportPreview{}, err
 	}
-	if s.pendingImport == nil || s.pendingImport.isStarted {
-		return ImportPreview{}, ErrNoPendingImport
+	if err := s.requireReviewableImport(); err != nil {
+		return ImportPreview{}, err
 	}
 	for index := range s.pendingImport.groups {
 		if s.pendingImport.groups[index].source.ID == groupID {
@@ -130,7 +139,7 @@ func (s *Service) buildImportPreview(vaultID string) (ImportPreview, error) {
 func (s *Service) startImportGroups(vaultID string, skipping bool) (ImportProgress, error) {
 	pending := s.pendingImport
 	if len(pending.groups) == 0 {
-		if _, err := s.prepareImportGroups((&importer.Result{Items: pending.items}).SourceGroups()); err != nil {
+		if _, err := s.prepareImportGroups((&importer.Result{Items: pending.items}).SourceGroups(), nil); err != nil {
 			return ImportProgress{}, err
 		}
 	}

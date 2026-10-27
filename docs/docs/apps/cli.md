@@ -16,7 +16,7 @@ Details: [Desktop app](./desktop.md#command-line-tool).
 **Keep the app running.** SSH clients, `git` and commit signing reach Hisar through `~/.hisar/agent.sock`, and they cannot start the
 app themselves: while Hisar is not running they fail at once with "Connection refused" or "Permission denied (publickey)". So the app
 opens at login (Settings → General → **Open Hisar at login**, on by default) and keeps running in the menu bar when you close its window;
-⌘Q or **Quit Hisar** in the menu bar quits it. `hisar` itself starts the app when it is installed but not running, waits up to 10 seconds
+⌘Q closes the window too, and only **Quit Hisar Completely** in the menu bar quits it. `hisar` itself starts the app when it is installed but not running, waits up to 10 seconds
 for it, and otherwise says "Hisar isn't running. Open the Hisar app and try again."; `HISAR_NO_LAUNCH=1` turns that off for scripts and CI.
 
 **Anywhere else** (Linux, Windows, servers, or without the app), download the standalone `hisar` from the published GitHub Release of a `cli-<version>` tag

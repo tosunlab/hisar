@@ -81,7 +81,7 @@ test("captures the inline icon and menu states", async () => {
 
     harness.updateState((state) => (state.state = "locked"));
     const locked = await openMenu("/login", "#username");
-    await expect(locked.menu.getByTestId("inline-action")).toHaveText("Unlock Hisar");
+    await expect(locked.menu.getByTestId("inline-unlock")).toContainText("Unlock Hisar");
     await capture(locked.page, "locked");
     await locked.page.close();
 

@@ -20,8 +20,6 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -55,13 +53,12 @@ class AppModel(
     private val mutableIsBusy = MutableStateFlow(false)
     private val mutableIsRefreshing = MutableStateFlow(false)
     private val mutableIsCheckingMinimumVersion = MutableStateFlow(false)
-    private val mutableNotice = MutableStateFlow<String?>(null)
+    private val mutableNotice = MutableStateFlow<Notice?>(null)
     private val mutableLockCount = MutableStateFlow(0)
     private val mutableCopyCount = MutableStateFlow(0)
     private val mutableRemoteChangeCount = MutableStateFlow(0)
     private val allStatusListener = mutableListOf<(VaultStatus, VaultStatus) -> Unit>()
     private var enteredBackgroundAt: Instant? = null
-    private var noticeJob: Job? = null
     private var isRefreshRequestedAgain = false
     private var startedRefreshCount = 0L
     private var shownRefresh = 0L
@@ -78,13 +75,16 @@ class AppModel(
     override val isWebsiteIconsEnabled = MutableStateFlow(true)
     val isRefreshing: StateFlow<Boolean> = mutableIsRefreshing.asStateFlow()
     val isCheckingMinimumVersion: StateFlow<Boolean> = mutableIsCheckingMinimumVersion.asStateFlow()
-    val notice: StateFlow<String?> = mutableNotice.asStateFlow()
+    val notice: StateFlow<Notice?> = mutableNotice.asStateFlow()
 
     /** An editor some other surface asks the app to open, such as AutoFill's save prompt; the Vaults tab shows it. */
     val requestedEditor = MutableStateFlow<EditorRequest?>(null)
 
-    /** Set when the system's Autofill service screen opens Hisar's settings; the Settings tab then shows AutoFill. */
-    val isAutoFillSettingsRequested = MutableStateFlow(false)
+    /**
+     * A Settings screen something outside the tab asks it to show: AutoFill for the system's Autofill service screen,
+     * Devices for a tapped security alert. The Settings tab shows it and clears it.
+     */
+    val requestedSettings = MutableStateFlow<SettingsDestination?>(null)
 
     /** Grows with every lock; the lock screen offers biometrics once per value. */
     val lockCount: StateFlow<Int> = mutableLockCount.asStateFlow()
@@ -183,6 +183,7 @@ class AppModel(
             else -> Screen.SignedOut
         }
         if (previous.isUnlocked && !newStatus.isUnlocked) {
+            mutableNotice.value = null
             mutableUnlockedData.value = UnlockedData()
             mutableLockCount.update { it + 1 }
             selectedTab.value = Tab.VAULTS
@@ -222,13 +223,18 @@ class AppModel(
         }
     }
 
-    override fun showNotice(message: String) {
-        mutableNotice.value = message
-        noticeJob?.cancel()
-        noticeJob = scope.launch {
-            delay(NOTICE_DURATION_MILLISECONDS)
-            mutableNotice.value = null
-        }
+    override fun showNotice(message: String, action: Notice.Action?) {
+        mutableNotice.value = Notice(message, action)
+    }
+
+    fun dismissNotice(notice: Notice) {
+        if (mutableNotice.value === notice) mutableNotice.value = null
+    }
+
+    suspend fun performNoticeAction(notice: Notice) {
+        if (mutableNotice.value !== notice) return
+        mutableNotice.value = null
+        notice.action?.perform()
     }
 
     override suspend fun refreshStatus() {
@@ -256,13 +262,14 @@ class AppModel(
     }
 
     /**
-     * Opens what a tapped notification is about, once Hisar is unlocked: the Approvals tab for an approval, Settings for
-     * a security alert or a sharing invitation.
+     * Opens what a tapped notification is about, once Hisar is unlocked: the Approvals tab for an approval, Settings →
+     * Devices for a security alert, where a device that just signed in shows, and Settings for a sharing invitation.
      */
     fun showNotification(kind: PushKind) {
         if (!status.value.isUnlocked) return
         notifications.openedKind.value = null
         selectedTab.value = if (kind == PushKind.APPROVAL) Tab.APPROVALS else Tab.SETTINGS
+        if (kind == PushKind.SECURITY) requestedSettings.value = SettingsDestination.DEVICES
     }
 
     suspend fun handleWillEnterForeground() {
@@ -391,8 +398,6 @@ class AppModel(
     }
 
     companion object {
-        const val NOTICE_DURATION_MILLISECONDS = 2_500L
-
         /** Android clears a copy with an inexact alarm, which lands between 90 seconds and about 2.5 minutes. */
         private const val CLEARING_NOTICE = "It clears in about 2 minutes."
 

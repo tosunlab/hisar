@@ -14,6 +14,8 @@ interface VaultBackend {
     fun checkMinimumVersion(): VaultStatus
     fun signIn(server: String, email: String, secretKey: String, password: String): VaultStatus
     fun signUp(inviteLink: String, email: String, name: String, password: String): SignUpResult
+    /** signUpWithoutInvite is signUp on a server whose admin opened registration: the server's address instead of an invite. */
+    fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult
     fun unlock(password: String): VaultStatus
     fun unlockWithBiometric(): VaultStatus
     fun enableBiometricUnlock(password: String): VaultStatus
@@ -72,6 +74,19 @@ interface VaultBackend {
      * keeps the items, in memory only, until the import starts or is cancelled.
      */
     fun prepareCredentialExchangeImport(vaultID: String, credentialData: ByteArray): ImportPreview
+
+    /**
+     * Reads a Hisar export (a `.hisar`, or a plain `.json`) the file picker opened, keeping it in memory until the import
+     * starts or is cancelled. An encrypted export comes back with [ImportPreview.isPassphraseRequired]; [openImportFile]
+     * then opens it. A file that is not a Hisar export fails with "this is not a Hisar export".
+     */
+    fun prepareHisarExportImport(vaultID: String, fileName: String, content: ByteArray): ImportPreview
+
+    /**
+     * Opens the encrypted Hisar export [prepareHisarExportImport] read with its export passphrase and returns the full
+     * preview. A wrong passphrase fails and leaves the export waiting for the right one.
+     */
+    fun openImportFile(passphrase: String): ImportPreview
 
     /** Shows the prepared import again for another vault, with that vault's duplicates. */
     fun previewImport(vaultID: String): ImportPreview

@@ -64,9 +64,8 @@ describe("CodingAgentsSection", () => {
     const wrapper = mount(CodingAgentsSection);
     await flushPromises();
     expect(api.listAllAgentVaultID).toHaveBeenCalledTimes(1);
-    expect(wrapper.find('[data-testid="coding-agents-explanation"]').text()).toBe(
-      "Agents can find items in these vaults and use their secrets after you approve; other vaults stay invisible to them.",
-    );
+    expect(wrapper.find('[data-testid="coding-agents-explanation"]').exists()).toBe(false);
+    expect(wrapper.text()).toContain("Agents pass references to commands after you approve access here. Commands receive real secrets; masking only reduces accidental disclosure.");
     expect(getSwitch(wrapper, "personal").checked).toBe(false);
     expect(getSwitch(wrapper, "work").checked).toBe(false);
     expect(wrapper.find('[data-testid="agent-vault-personal"]').text()).toContain("12 items · Invisible to agents");

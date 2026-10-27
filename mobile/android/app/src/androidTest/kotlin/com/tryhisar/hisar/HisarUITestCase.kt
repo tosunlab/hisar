@@ -26,6 +26,8 @@ import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.printToString
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
@@ -84,7 +86,14 @@ abstract class HisarUITestCase {
         composeRule.waitUntil("$tag goes", timeoutMillis) { !exists(hasTestTag(tag)) }
     }
 
-    fun exists(matcher: SemanticsMatcher): Boolean = composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty()
+    fun dismissNotice() {
+        if (!exists(hasTestTag("notice"))) return
+        composeRule.onNode(hasTestTag("notice")).performTouchInput { swipeLeft() }
+        waitForGone("notice")
+    }
+
+    fun exists(matcher: SemanticsMatcher): Boolean = composeRule.onAllNodes(matcher).fetchSemanticsNodes().isNotEmpty() ||
+        composeRule.onAllNodes(matcher, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty()
 
     fun tap(tag: String) {
         scrollTo(tag)
@@ -100,7 +109,9 @@ abstract class HisarUITestCase {
 
     fun readText(tag: String): String {
         waitFor(tag)
-        return composeRule.onNode(hasTestTag(tag)).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
+        val node = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().singleOrNull()
+            ?: composeRule.onNode(hasTestTag(tag), useUnmergedTree = true).fetchSemanticsNode()
+        return node.config[SemanticsProperties.Text].joinToString("")
     }
 
     fun goBack() {
@@ -127,7 +138,7 @@ abstract class HisarUITestCase {
 
     fun choose(item: String, menu: String) {
         tap(menu)
-        waitFor(item)
+        scrollTo(item)
         composeRule.onNode(hasTestTag(item)).performClick()
         composeRule.waitUntil("the $menu menu closes after choosing $item", 10_000) { !exists(hasTestTag(item)) }
     }
@@ -141,7 +152,7 @@ abstract class HisarUITestCase {
         composeRule.waitUntil("$tag appears", 30_000) { exists(node) || isScrolledInto(node) }
         if (exists(node and hasAnyAncestor(hasScrollAction()))) {
             composeRule.onNode(node).performScrollTo()
-            scrollClearOfTabBar(node)
+            scrollClearOfFloatingControls(node)
         }
     }
 
@@ -156,18 +167,22 @@ abstract class HisarUITestCase {
     }
 
     /**
-     * performScrollTo stops with the node at the list's bottom edge, which lies under the floating tab bar, where a tap
-     * lands on the bar. As XCUITest makes an element hittable, the list scrolls on until the node clears the bar.
+     * performScrollTo stops at the scroll viewport's edge, beneath the floating tab bar and New button. Scroll farther
+     * so taps and swipes reach the row instead of those controls.
      */
-    private fun scrollClearOfTabBar(node: SemanticsMatcher) {
+    private fun scrollClearOfFloatingControls(node: SemanticsMatcher) {
         val tabBar = hasTestTag("tab-vaults")
         if (!exists(tabBar)) return
-        val barTop = composeRule.onNode(tabBar).fetchSemanticsNode().boundsInRoot.top
+        var controlTop = composeRule.onNode(tabBar).fetchSemanticsNode().boundsInRoot.top
+        val newButton = hasTestTag("new-menu")
+        if (exists(newButton)) {
+            controlTop = minOf(controlTop, composeRule.onNode(newButton).fetchSemanticsNode().boundsInRoot.top)
+        }
         val nodeBottom = composeRule.onNode(node).fetchSemanticsNode().boundsInRoot.bottom
-        val overlap = nodeBottom - barTop
+        val overlap = nodeBottom - controlTop
         if (overlap > 0) {
             composeRule.onAllNodes(hasScrollAction() and hasAnyDescendant(node)).onLast()
-                .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(0f, overlap + TAB_BAR_CLEARANCE) }
+                .performSemanticsAction(SemanticsActions.ScrollBy) { scrollBy -> scrollBy(0f, overlap + FLOATING_CONTROL_CLEARANCE) }
         }
     }
 
@@ -192,7 +207,7 @@ abstract class HisarUITestCase {
         type(name, "sign-up-name")
         type(MASTER_PASSWORD, "sign-up-password")
         type(MASTER_PASSWORD, "sign-up-repeated-password")
-        scrollTo("create-account-note")
+        scrollTo("sign-in-submit")
         saveScreenshot("create-account")
         tap("sign-in-submit")
         val secretKey = finishPendingRecovery(email, MASTER_PASSWORD)
@@ -270,7 +285,7 @@ abstract class HisarUITestCase {
 
     fun addLogin(title: String, username: String, password: String, website: String, oneTimePassword: String = "") {
         tap("vault-Personal")
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type(title, "editor-title")
         type(username, "editor-username")
         type(password, "editor-password")
@@ -296,7 +311,7 @@ abstract class HisarUITestCase {
          */
         const val ACCOUNT_KEY_TIMEOUT = 130_000L
 
-        /** How far above the tab bar, in pixels, a tapped node ends up. */
-        private const val TAB_BAR_CLEARANCE = 48f
+        /** How far above floating controls, in pixels, a tapped node ends up. */
+        private const val FLOATING_CONTROL_CLEARANCE = 48f
     }
 }

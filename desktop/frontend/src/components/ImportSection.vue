@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { openImport } from "../store";
+import { openFromSettings } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 
 const isRowVisible = useSettingsRowVisibility();
@@ -11,10 +11,10 @@ const isRowVisible = useSettingsRowVisibility();
     <div class="settings-group">
       <div class="setting">
         <div class="setting-text">
-          <strong>Import from another password manager</strong>
-          <p class="muted">1Password (.1pux or CSV), Bitwarden (JSON or CSV), LastPass (CSV), or a CSV export from Chrome, Firefox, Safari or Edge.</p>
+          <strong>Import a Hisar export or another password manager</strong>
+          <p class="muted">A Hisar export (.hisar or .json), 1Password (.1pux or CSV), Bitwarden (JSON or CSV), LastPass (CSV), or a CSV export from Chrome, Firefox, Safari or Edge.</p>
         </div>
-        <button data-testid="open-import" @click="openImport">Import…</button>
+        <button data-testid="open-import" @click="openFromSettings('import')">Import…</button>
       </div>
     </div>
   </section>

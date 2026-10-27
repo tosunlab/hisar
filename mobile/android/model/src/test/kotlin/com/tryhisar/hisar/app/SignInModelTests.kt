@@ -39,6 +39,32 @@ class SignInModelTests {
     }
 
     @Test
+    fun testSignUpWithoutInviteAsksTheServerAndShowsNewSecretKey() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startModel()
+        val isSignedUp = model.signIn.signUpWithoutInvite(" https://hisar.example.com ", "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        assertTrue(isSignedUp)
+        assertEquals("https://hisar.example.com", harness.backend.signUpWithoutInviteServer)
+        assertFalse("signUp" in harness.backend.allCallName, "no invite was used")
+        assertEquals(NewAccountStep.SaveSecretKey(FakeBackend.SECRET_KEY), model.signIn.newAccountStep.value)
+        assertEquals(Screen.Unlocked, model.screen.value)
+        assertEquals("https://hisar.example.com", model.status.value.server)
+        assertEquals("bob@example.com", model.status.value.email)
+        assertNull(model.errorMessage.value)
+    }
+
+    @Test
+    fun testSignUpWithoutInviteOnAClosedServerShowsTheServersSentence() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startModel()
+        harness.backend.signUpWithoutInviteErrorMessage = "Sign-ups are not open on this server. Ask an admin for an invitation."
+        assertFalse(model.signIn.signUpWithoutInvite("https://hisar.example.com", "bob@example.com", "Bob", FakeBackend.PASSWORD))
+        assertEquals("Sign-ups are not open on this server. Ask an admin for an invitation.", model.errorMessage.value)
+        assertEquals(Screen.SignedOut, model.screen.value)
+        assertNull(model.signIn.newAccountStep.value)
+    }
+
+    @Test
     fun testLockHidesTheNewSecretKey() = runTest {
         val model = AppModelHarness(this).startModel()
         model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
@@ -72,7 +98,7 @@ class SignInModelTests {
         assertTrue(isTurnedOn)
         assertTrue(model.status.value.biometricEnabled)
         assertNull(model.signIn.newAccountStep.value)
-        assertEquals("Biometric unlock is on", model.notice.value)
+        assertEquals("Biometric unlock is on", model.notice.value?.message)
         assertFalse("enableBiometricUnlock" in harness.backend.allCallName, "no master password asked again")
         runCurrent()
         assertTrue("forgetNewAccountSecretKey" in harness.backend.allCallName)
@@ -111,9 +137,9 @@ class SignInModelTests {
     @Test
     fun testSignInServerDefaultsToTheHostedService() {
         assertTrue(SignInModel.isDefaultServer(""))
-        assertTrue(SignInModel.isDefaultServer("https://api.tryhisar.com/"))
+        assertTrue(SignInModel.isDefaultServer("https://eu.tryhisar.com/"))
         assertFalse(SignInModel.isDefaultServer("http://127.0.0.1:18080"))
-        assertEquals("api.tryhisar.com", SignInModel.describeServer(SignInModel.DEFAULT_SERVER))
+        assertEquals("eu.tryhisar.com", SignInModel.describeServer(SignInModel.DEFAULT_SERVER))
     }
 
     @Test
@@ -123,7 +149,7 @@ class SignInModelTests {
 
     @Test
     fun testDescribeServerShowsTheHost() {
-        assertEquals("api.tryhisar.com", VaultLogic.describeServer("https://api.tryhisar.com"))
+        assertEquals("eu.tryhisar.com", VaultLogic.describeServer("https://eu.tryhisar.com"))
         assertEquals("127.0.0.1:18080", VaultLogic.describeServer("http://127.0.0.1:18080"))
         assertEquals("https://faß.de:8443", VaultLogic.describeServer("https://faß.de:8443"))
     }
@@ -187,7 +213,7 @@ class SignInModelTests {
     fun testInviteLinkFromInvitePage() {
         val expectedByLink = mapOf(
             "hisar://invite/abc_DEF-123" to "abc_DEF-123",
-            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Fapi.tryhisar.com " to "abc_DEF-123",
+            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Feu.tryhisar.com " to "abc_DEF-123",
             "HISAR://INVITE/abc?server=https%3A%2F%2Fhisar.example.com" to "https://hisar.example.com/invite/abc",
             "hisar://invite/abc?server=http%3A%2F%2F127.0.0.1%3A19400" to "http://127.0.0.1:19400/invite/abc",
             "hisar://invite/abc?server=hisar.example.com" to "https://hisar.example.com/invite/abc",
@@ -197,7 +223,7 @@ class SignInModelTests {
             assertEquals(InviteLink(expected), InviteLink.parse(link), link)
         }
         val allInvalid = listOf(
-            "", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://api.tryhisar.com/invite/abc",
+            "", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://eu.tryhisar.com/invite/abc",
             "hisar://invite/a%20b", "hisar://invite/abc?server=ftp%3A%2F%2Fx",
         )
         for (link in allInvalid) {
@@ -269,8 +295,13 @@ class SignInModelTests {
         }
         assertFalse(model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD))
         assertEquals(SignInModel.PLAIN_HTTP_INVITE_REFUSAL, model.errorMessage.value)
+        assertFalse(model.signIn.signUpWithoutInvite("http://127.0.0.1:18080", "bob@example.com", "Bob", FakeBackend.PASSWORD))
+        assertEquals(SignInModel.PLAIN_HTTP_SERVER_REFUSAL, model.errorMessage.value)
         assertEquals(Screen.SignedOut, model.screen.value)
-        assertFalse("signIn" in harness.backend.allCallName || "signUp" in harness.backend.allCallName, "the backend never saw an http:// address")
+        assertFalse(
+            harness.backend.allCallName.any { it in setOf("signIn", "signUp", "signUpWithoutInvite") },
+            "the backend never saw an http:// address",
+        )
 
         assertTrue(model.signIn.signUp("https://hisar.example.com/invite/abc", "bob@example.com", "Bob", FakeBackend.PASSWORD))
         assertEquals(Screen.Unlocked, model.screen.value)
@@ -289,6 +320,8 @@ class SignInModelTests {
     fun testDebugBuildSignsInAndSignsUpOverPlainHttp() = runTest {
         val model = AppModelHarness(this, isPlainHttpAllowed = true).startModel()
         assertTrue(model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD))
+        val openServerModel = AppModelHarness(this, isPlainHttpAllowed = true).startModel()
+        assertTrue(openServerModel.signIn.signUpWithoutInvite("http://127.0.0.1:18080", "bob@example.com", "Bob", FakeBackend.PASSWORD))
         val otherModel = AppModelHarness(this, isPlainHttpAllowed = true).startModel()
         assertTrue(otherModel.signIn.signIn("http://127.0.0.1:18080", "alice@example.com", FakeBackend.SECRET_KEY, FakeBackend.PASSWORD))
         assertNull(otherModel.errorMessage.value)
