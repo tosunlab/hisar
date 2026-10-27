@@ -116,6 +116,8 @@ interface VaultBackend {
     fun getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String): OneTimeCode
     fun copyField(vaultID: String, itemID: String, fieldName: String)
     fun generatePassword(length: Int, isDigitIncluded: Boolean, isSymbolIncluded: Boolean): String
+    fun ratePassword(password: String): PasswordStrength
+    fun checkMasterPassword(password: String): MasterPasswordFeedback
     fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch>
     fun getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String): LoginCredential
 
