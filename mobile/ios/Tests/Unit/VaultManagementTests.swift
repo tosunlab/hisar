@@ -152,6 +152,27 @@ final class VaultManagementTests: XCTestCase {
         XCTAssertTrue(withPassword.path.hasSuffix(".json"))
         model.removeExport(withPassword)
     }
+
+    func testClosingExportKeepsSavedAndReceivedCopies() async throws {
+        let model = await createUnlockedModel()
+        let copies = FileManager.default.temporaryDirectory.appendingPathComponent("UserCopies-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: copies, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: copies) }
+        for format in [ExportFormat.encrypted, .plain] {
+            let exported = await model.exportAllData(format: format, passphrase: "a long passphrase", password: FakeBackend.password)
+            let result = try XCTUnwrap(exported)
+            let source = URL(fileURLWithPath: result.path)
+            let expected = try Data(contentsOf: source)
+            let saved = copies.appendingPathComponent("saved-\(source.lastPathComponent)")
+            let received = copies.appendingPathComponent("received-\(source.lastPathComponent)")
+            try FileManager.default.copyItem(at: source, to: saved)
+            try FileManager.default.copyItem(at: source, to: received)
+            model.removeExport(result)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: source.deletingLastPathComponent().path))
+            XCTAssertEqual(try Data(contentsOf: saved), expected)
+            XCTAssertEqual(try Data(contentsOf: received), expected)
+        }
+    }
     func testUnreadableRecordsRemainExplicitBesideHealthyItems() throws {
         let vault = try JSONDecoder().decode(VaultSummary.self, from: Data(#"{"id":"v","name":"Private","type":"personal","role":"owner","itemCount":1,"readIssues":[{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}]}"#.utf8))
         let items = try JSONDecoder().decode([ItemDetail].self, from: Data(#"[{"id":"healthy","title":"Still available"},{"id":"bad","revision":"r1","title":"Unreadable item bad","readIssue":{"vaultId":"v","itemId":"bad","revision":"r1","kind":"item","canDelete":true,"canRename":false}}]"#.utf8))

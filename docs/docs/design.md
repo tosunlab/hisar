@@ -2080,6 +2080,8 @@ aad       = "hisar/v1/export"
 
 **Android.** Settings → Account → **Export data…**: a pushed screen with the same format picker, passphrase fields and warning, and **Export with biometrics** (**Export** with the master password field when biometrics are unavailable). **Save export** hands the file to the system's file creator and **Share export** to the share sheet, as the iPhone's **Save or share export** does; the app deletes its own copies when the screen closes.
 
+Both phone results say, "Hisar deletes its temporary copy when you close this screen. Copies you save or share are not deleted." The Plain JSON result keeps its unencrypted-secrets warning and reminds the user to delete saved or received plaintext files when finished. Closing removes only Hisar's temporary export folder and Android's temporary FileProvider copies, not documents saved through the system picker or files another app received.
+
 **CLI.** `hisar export [-o file] [--format encrypted|plain] [-y]` writes `hisar-export-<date>.hisar` (or `.json`) in the current directory unless `-o` names another file, and never replaces one. In a terminal it asks for the format, then the passphrase twice; a script pipes the passphrase on one line, and a plain export needs `-y`. Through the app the app writes the file after its approval dialog (§9.4), which asks every time; standalone the command asks for the master password like the others.
 
 Both CLI export writers and the CLI Emergency Kit writer sync and close the new file before reporting success. They share the same finalizer. A write, sync or close error removes the failed output.

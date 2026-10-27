@@ -47,4 +47,25 @@ class ExportDataTests {
         assertTrue(withPassword.path.endsWith(".json"))
         model.settings.removeExport(withPassword)
     }
+
+    @Test
+    fun testClosingExportKeepsSavedAndReceivedCopies() = runTest {
+        val model = AppModelHarness(this).startUnlockedModel()
+        val copies = java.nio.file.Files.createTempDirectory("UserCopies-").toFile()
+        try {
+            for (format in listOf(ExportFormat.ENCRYPTED, ExportFormat.PLAIN)) {
+                val result = assertNotNull(model.settings.exportAllData(format, "a long passphrase", FakeBackend.PASSWORD))
+                val source = File(result.path)
+                val expected = source.readText()
+                val saved = source.copyTo(File(copies, "saved-${source.name}"))
+                val received = source.copyTo(File(copies, "received-${source.name}"))
+                model.settings.removeExport(result)
+                assertFalse(source.parentFile.exists())
+                assertEquals(expected, saved.readText())
+                assertEquals(expected, received.readText())
+            }
+        } finally {
+            copies.deleteRecursively()
+        }
+    }
 }

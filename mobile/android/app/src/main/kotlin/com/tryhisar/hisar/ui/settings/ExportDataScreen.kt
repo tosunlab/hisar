@@ -45,7 +45,7 @@ import kotlinx.coroutines.launch
 
 /**
  * Settings → Account → Export data, the iPhone's sheet: an encrypted or plain export of every vault, which the user then
- * saves through the system's file creator or sends to another app. Closing the screen deletes the file from this device.
+ * saves through the system's file creator or sends to another app. Closing deletes only Hisar's temporary copies.
  */
 @Composable
 fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
@@ -89,11 +89,20 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                 header = "Export ready",
                 footer = {
                     Text(
-                        "${if (exported.vaultCount == 1) "1 vault" else "${exported.vaultCount} vaults"}, ${if (exported.itemCount == 1) "1 item" else "${exported.itemCount} items"}. The file is removed from this device when you close this screen.",
+                        "${if (exported.vaultCount == 1) "1 vault" else "${exported.vaultCount} vaults"}, ${if (exported.itemCount == 1) "1 item" else "${exported.itemCount} items"}.",
                     )
+                    Text("Hisar deletes its temporary copy when you close this screen. Copies you save or share are not deleted.")
                 },
             ) {
                 if (exported.warning.isNotEmpty()) Text(exported.warning, color = HisarTheme.colors.warning, modifier = Modifier.testTag("export-provenance"))
+                if (file.extension == "json") {
+                    FormRow(Modifier.testTag("export-plain-warning")) {
+                        Text(ExportLogic.PLAIN_WARNING, style = HisarType.subheadline, color = HisarTheme.colors.label)
+                    }
+                    FormRow {
+                        Text("Delete saved or received Plain JSON files when you are finished.", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                    }
+                }
                 FormButtonRow("Save export", { save(file) }, testTag = "save-export", icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
                 RowDivider()
                 FormButtonRow("Share export", { share(file) }, testTag = "share-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
