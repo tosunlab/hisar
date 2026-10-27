@@ -246,6 +246,7 @@ The Hisar extension (`extension/`) fills and saves logins through the desktop ap
 Hisar is an SSH agent for the SSH keys in your vaults (design: [Design](../design.md) §9.6).
 
 1. Add a key: **+** → **SSH key**, then **Generate** (Ed25519, or RSA 4096 for old servers) or **Import** (paste an OpenSSH or PEM private key; a passphrase is only needed to import, the key is stored without it).
+   Generate and Import use the same discard confirmation and memory-only lock restoration as the item editor, including the key type, pasted private key and optional import passphrase. Saving, discarding or signing out clears the draft.
 2. Copy the public key from the key's page (**Copy public key**) into GitHub or the server's `~/.ssh/authorized_keys`.
 3. Settings → SSH & Git → **Use Hisar for SSH**. This backs up `~/.ssh/config` to `~/.ssh/config.hisar-backup-<timestamp>` and adds at the top:
 

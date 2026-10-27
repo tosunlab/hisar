@@ -63,6 +63,14 @@ import { forgetWebsiteIcons } from "./websiteicons";
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
 export type ImportStep = "choose" | "passphrase" | "preview" | "saving" | "done";
 
+export interface SSHCreationDraft {
+  mode: "generate" | "import";
+  title: string;
+  keyType: SSHKeyType;
+  privateKeyText: string;
+  passphrase: string;
+}
+
 // EditorDraft is what the item editor holds so far: kept across a lock, and compared with the item it started from.
 export interface EditorDraft {
   mode: EditorMode;
@@ -71,6 +79,7 @@ export interface EditorDraft {
   item: ItemDetail;
   urlText: string;
   isDirty: boolean;
+  sshKey?: SSHCreationDraft;
 }
 
 export interface DiscardDraftPrompt {
@@ -323,6 +332,7 @@ async function applyStatus(status: Status): Promise<void> {
     clearLockedVaultData();
     if (status.state === "signed-out") {
       draftKeptForUnlock = null;
+      draftToRestore = null;
       settingsSectionAfterUnlock = "";
     }
   } else {

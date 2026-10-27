@@ -172,6 +172,10 @@ describe("SSHKeyForm", () => {
     expect(submitButton().text()).toBe("Import key");
     expect(submitButton().attributes("disabled")).toBeDefined();
     await findButton(wrapper, "Cancel").trigger("click");
+    expect(store.editorMode).toBe("create-ssh-key");
+    expect(store.discardDraftPrompt).not.toBeNull();
+    store.discardDraftPrompt?.answer(true);
+    await flushPromises();
     expect(store.editorMode).toBe("view");
   });
 });
