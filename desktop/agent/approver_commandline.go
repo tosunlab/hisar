@@ -3,6 +3,7 @@ package agent
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/tryhisar/hisar/core/approval"
@@ -81,7 +82,7 @@ func (approver *Approver) buildCommandLinePhoneDescription(event ApprovalEvent) 
 		Kind:         approval.KindCommandLine,
 		AppName:      appName,
 		AppIcon:      approver.getPhoneAppIcon(event),
-		AppWarning:   event.AppWarning,
+		AppWarning:   strings.TrimSpace(event.AppWarning + " " + event.Warning),
 		Purpose:      "use Hisar",
 		CommandLine:  event.ClientPath,
 		TerminalName: event.TerminalName,
