@@ -32,6 +32,8 @@ type PeerResolver interface {
 // agentSessionState is what the agent keeps for a live session until it ends, besides the approvals remembered for it.
 type agentSessionState struct {
 	isNoKeyNotified bool
+	live            *agentharness.LiveSession
+	isMissingKey    bool
 }
 
 type agentSessionContextKey struct{}
@@ -59,6 +61,44 @@ func (s *Server) SetNoAgentKeyNotifier(notify func(session agentharness.Session)
 	s.notifyNoAgentKey = notify
 }
 
+type MissingAgentKey struct {
+	SessionID uint64 `json:"sessionID"`
+	AgentName string `json:"agentName"`
+}
+
+func (s *Server) SetMissingAgentKeyListener(changed func()) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.missingAgentKeysChanged = changed
+}
+
+// ListMissingAgentKeys keeps notices until the session ends or its vaults offer a key again.
+func (s *Server) ListMissingAgentKeys() []MissingAgentKey {
+	s.mutex.Lock()
+	var liveSessions []*agentharness.LiveSession
+	for _, state := range s.agentSessions {
+		if state.isMissingKey && state.live.Context().Err() == nil {
+			liveSessions = append(liveSessions, state.live)
+		}
+	}
+	s.mutex.Unlock()
+	for _, live := range liveSessions {
+		ctx := context.WithValue(live.Context(), agentSessionContextKey{}, live.Session)
+		if keys, err := s.keySource.ListKeys(ctx); err == nil && len(keys) > 0 {
+			s.updateAgentKeyState(live, false)
+		}
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	result := make([]MissingAgentKey, 0, len(liveSessions))
+	for _, live := range liveSessions {
+		if state := s.agentSessions[live.ID]; state != nil && state.isMissingKey && live.Context().Err() == nil {
+			result = append(result, MissingAgentKey{SessionID: live.ID, AgentName: live.Session.Harness.Name})
+		}
+	}
+	return result
+}
+
 // joinAgentSession keeps a live session from the first connection the agent sees from it until it ends, when its
 // harness exits or Settings revokes it, then forgets the approvals remembered for it.
 func (s *Server) joinAgentSession(live *agentharness.LiveSession) {
@@ -67,23 +107,39 @@ func (s *Server) joinAgentSession(live *agentharness.LiveSession) {
 	if s.agentSessions[live.ID] != nil || live.Context().Err() != nil {
 		return
 	}
-	s.agentSessions[live.ID] = &agentSessionState{}
+	s.agentSessions[live.ID] = &agentSessionState{live: live}
 	context.AfterFunc(live.Context(), func() {
 		s.mutex.Lock()
-		defer s.mutex.Unlock()
+		state := s.agentSessions[live.ID]
 		delete(s.agentSessions, live.ID)
 		maps.DeleteFunc(s.approvedAt, func(cacheKey approvalCacheKey, _ time.Time) bool { return cacheKey.agentSession == live.ID })
+		changed := s.missingAgentKeysChanged
+		s.mutex.Unlock()
+		if state != nil && state.isMissingKey && changed != nil {
+			changed()
+		}
 	})
 }
 
-func (s *Server) notifyNoAgentKeyOnce(live *agentharness.LiveSession) {
+func (s *Server) updateAgentKeyState(live *agentharness.LiveSession, isMissing bool) {
 	s.mutex.Lock()
-	state, notify := s.agentSessions[live.ID], s.notifyNoAgentKey
-	if state == nil || state.isNoKeyNotified || notify == nil {
+	state := s.agentSessions[live.ID]
+	if state == nil || live.Context().Err() != nil {
 		s.mutex.Unlock()
 		return
 	}
-	state.isNoKeyNotified = true
+	isChanged := state.isMissingKey != isMissing
+	state.isMissingKey = isMissing
+	notify, changed := s.notifyNoAgentKey, s.missingAgentKeysChanged
+	shouldNotify := isMissing && !state.isNoKeyNotified && notify != nil
+	if shouldNotify {
+		state.isNoKeyNotified = true
+	}
 	s.mutex.Unlock()
-	notify(live.Session)
+	if isChanged && changed != nil {
+		changed()
+	}
+	if shouldNotify {
+		notify(live.Session)
+	}
 }

@@ -1931,6 +1931,7 @@ export const previewApi = {
     return resolveAfterDelay(undefined);
   },
   listAllPendingSSHApproval: () => resolveAfterDelay(listAllPreviewApproval()),
+  listMissingAgentKeys: () => resolveAfterDelay(previewParameter.has("missingAgentKey") ? [{ sessionID: 1, agentName: "omp" }] : []),
   respondApprovalWithPassword: (requestID: string, password: string) => {
     if (password !== "correct horse battery") {
       setTimeout(() => import("./approval").then(({ failApproval }) => failApproval(requestID, "Incorrect master password.")), 400);

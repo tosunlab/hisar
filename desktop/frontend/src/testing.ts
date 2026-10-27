@@ -792,6 +792,7 @@ export function createApiMock() {
     removeSSHConfig: vi.fn(),
     respondSSHApproval: vi.fn().mockResolvedValue(undefined),
     listAllPendingSSHApproval: vi.fn().mockResolvedValue([]),
+    listMissingAgentKeys: vi.fn().mockResolvedValue([]),
     respondApprovalWithPassword: vi.fn().mockResolvedValue(undefined),
     getCommandLineStatus: vi.fn().mockResolvedValue(createCommandLineStatus()),
     installCommandLineTool: vi.fn(),
