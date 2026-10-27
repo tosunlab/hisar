@@ -180,6 +180,9 @@ func (bridge *CommandLineBridge) PerformAgentSignIn(ctx context.Context, target 
 	signInContext, cancel := context.WithCancel(ctx)
 	defer cancel()
 	s.mutex.Lock()
+	if target.LockedGrantGeneration != 0 {
+		authorization = authorization.BindLockedGrantGeneration(&s.lockedGrantGeneration, target.LockedGrantGeneration)
+	}
 	if err := s.requireAgentAuthorization(authorization); err != nil {
 		s.mutex.Unlock()
 		return cliprotocol.AgentSignInResult{}, err
@@ -190,10 +193,19 @@ func (bridge *CommandLineBridge) PerformAgentSignIn(ctx context.Context, target 
 	result, err := signer.Run(signInContext, target.Destination, func(loadContext context.Context) (signin.Login, error) {
 		s.mutex.Lock()
 		defer s.mutex.Unlock()
+		if target.LockedGrantGeneration != 0 {
+			if loadContext.Err() != nil {
+				return signin.Login{}, loadContext.Err()
+			}
+			if err := s.requireAgentAuthorization(authorization); err != nil {
+				return signin.Login{}, err
+			}
+			return s.readLockedAgentSignInLogin(target, login)
+		}
 		return s.readAgentSignInLogin(loadContext, authorization, target.Destination.Origin, login)
 	})
 	described := describeAgentSignIn(target.Destination, login, result)
-	if !s.isSessionEpoch(*s.requestEpoch) {
+	if !s.isSessionEpoch(*s.requestEpoch) || !authorization.IsCurrent() {
 		return described, errCommandLineSessionEnded
 	}
 	if err != nil {
