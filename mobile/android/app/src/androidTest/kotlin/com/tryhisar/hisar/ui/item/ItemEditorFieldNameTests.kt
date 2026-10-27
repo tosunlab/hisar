@@ -36,7 +36,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 
-/** Save in the item editor stops on a custom field with a value but no name, which Hisar would otherwise drop. */
 @RunWith(AndroidJUnit4::class)
 class ItemEditorFieldNameTests {
     @get:Rule
