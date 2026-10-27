@@ -34,6 +34,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: allTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [deployKey, laptopKey, createItem({ id: "login-1", title: "GitHub" })],
     selectedItem: null,
     editorMode: "view",

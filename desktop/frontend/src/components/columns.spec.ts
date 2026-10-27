@@ -36,6 +36,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: [personalVault],
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [],
     selectedItem: null,
     isFavoritesSelected: false,

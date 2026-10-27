@@ -42,6 +42,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: [personalVault, workVault],
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [bank, github],
     selectedItem: null,
     allFavorite: [createFavoriteItem({ item: github })],
@@ -116,6 +117,7 @@ describe("Keyboard navigation in the item list", () => {
   it("Return in a read-only vault only shows the item", async () => {
     store.allItem = [github];
     store.selectedVaultID = "work";
+    store.listVaultID = "work";
     const wrapper = mountView();
     const row = wrapper.find('[role="option"]');
     (row.element as HTMLElement).focus();

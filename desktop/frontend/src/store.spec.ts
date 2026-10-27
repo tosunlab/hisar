@@ -36,6 +36,7 @@ function resetStore(): void {
     status: createStatus("signed-out"),
     allVault: [],
     selectedVaultID: "",
+    listVaultID: "",
     allItem: [],
     selectedItem: null,
     editorMode: "view",
@@ -235,6 +236,7 @@ describe("store", () => {
 
   it("clears the tag filter when a vault is selected or the last tagged item is deleted", async () => {
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     store.allItem = [createItem({ id: "1", tags: ["work"] }), createItem({ id: "2", title: "Bank" })];
     store.selectedTag = "work";
     api.deleteItem.mockResolvedValue(undefined);
@@ -272,6 +274,7 @@ describe("store", () => {
 
   it("saves an item, reloads the list and shows it", async () => {
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     store.editorMode = "create";
     const saved = createItem({ id: "new", title: "New" });
     api.saveItem.mockResolvedValue(saved);
@@ -285,6 +288,7 @@ describe("store", () => {
 
   it("deletes an item", async () => {
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     store.allItem = [createItem({ id: "1" }), createItem({ id: "2" })];
     store.selectedItem = store.allItem[0];
     api.deleteItem.mockResolvedValue(undefined);
@@ -381,6 +385,7 @@ describe("vault item counts", () => {
   it("updates the selected vault's count after saving and deleting", async () => {
     store.allVault = [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 1 }];
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     store.allItem = [createItem({ id: "1" })];
     api.saveItem.mockResolvedValue(createItem({ id: "2" }));
     api.listAllItem.mockResolvedValue([createItem({ id: "1" }), createItem({ id: "2" })]);
@@ -401,7 +406,7 @@ describe("sharing, people and devices", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();
-    Object.assign(store, { status: createStatus("unlocked"), selectedVaultID: "family", isSharingOpen: false, allVaultMember: [], allPerson: [], allDevice: [] });
+    Object.assign(store, { status: createStatus("unlocked"), selectedVaultID: "family", listVaultID: "family", isSharingOpen: false, allVaultMember: [], allPerson: [], allDevice: [] });
     api.listAllVaultMember.mockResolvedValue([createVaultMember(), bob]);
     api.listAllPerson.mockResolvedValue([createPerson(), createPerson({ ...testBob, role: "member", isCurrentUser: false })]);
     api.listAllShareInvitation.mockResolvedValue({ received: [fromCarol], sent: [sentToDave], completionError: "" });

@@ -17,13 +17,13 @@ vi.mock("../api", async () => {
 
 vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
 
-const { store, loadAllVault, syncInBackground } = await import("../store");
+const { store, loadAllVault, syncInBackground, selectFavorites, selectFavoriteItem, startEditingItem, setItemFavorite, deleteItem } = await import("../store");
 const MainView = (await import("./MainView.vue")).default;
 const api = apiMock.current;
 
 const personalVault: VaultSummary = { id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 2 };
 const workVault: VaultSummary = { id: "work", name: "Work", type: "shared", role: "reader", itemCount: 1 };
-const github = createItem({ id: "github", title: "GitHub", isFavorite: true });
+const github = createItem({ id: "github", title: "GitHub", tags: ["development"], isFavorite: true });
 const bank = createItem({ id: "bank", title: "Bank", username: "alice.bank" });
 const vpn = createItem({ id: "vpn", title: "Office VPN", username: "alper", isFavorite: true });
 const githubFavorite = createFavoriteItem({ item: github });
@@ -32,13 +32,17 @@ const vpnFavorite = createFavoriteItem({ vaultId: "work", vaultName: "Work", vau
 function resetStore(): void {
   Object.assign(store, {
     status: createStatus("unlocked"),
-    allVault: [personalVault, workVault],
+    allVault: [{ ...personalVault }, { ...workVault }],
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [bank, github],
     selectedItem: null,
     allFavorite: [githubFavorite, vpnFavorite],
     isFavoritesSelected: false,
     editorMode: "view",
+    editorDraft: null,
+    discardDraftPrompt: null,
+    selectedTag: "",
     searchQuery: "",
     errorMessage: "",
     noticeMessage: "",
@@ -96,6 +100,69 @@ describe("Favorites in the sidebar", () => {
     expect(wrapper.find(".item-detail").text()).not.toContain("Edit");
   });
 
+  it("returns from a cross-vault favorite to the loaded vault's tag, count, permissions and row actions", async () => {
+    api.getItem.mockImplementation(async (vaultID, itemID) => vaultID === "work" ? { ...vpn, password: "vpn-password" } : { ...github, id: itemID });
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.get('[data-testid="open-favorites"]').trigger("click");
+    await flushPromises();
+    await wrapper.findAll('[data-testid="favorites-list"] .item')[1].trigger("click");
+    await flushPromises();
+    expect(store.listVaultID).toBe("personal");
+    expect(store.selectedVaultID).toBe("work");
+    expect(api.listAllItem).not.toHaveBeenCalled();
+    expect(wrapper.get(".item-detail").text()).not.toContain("Edit");
+    await wrapper.get('[data-testid="tag-development"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get(".list-title h2").text()).toBe("Personal");
+    expect(wrapper.get(".list-title").text()).toContain("2 items");
+    expect(wrapper.get('button[aria-label="New item"]').attributes("disabled")).toBeUndefined();
+    expect(wrapper.findAll(".list .item-title").map((node) => node.text())).toEqual(["GitHub"]);
+    await wrapper.get(".list .item").trigger("contextmenu");
+    await flushPromises();
+    await wrapper.get('[data-testid="context-menu-favorite"]').trigger("click");
+    await flushPromises();
+    expect(api.setItemFavorite).toHaveBeenCalledWith("personal", "github", false);
+    expect(store.allVault.find((vault) => vault.id === "work")?.itemCount).toBe(1);
+    wrapper.unmount();
+  });
+
+  it("guards the draft before a tag leaves a writable cross-vault favorite", async () => {
+    store.allVault = [personalVault, { ...workVault, role: "owner" }];
+    api.getItem.mockResolvedValue(vpn);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.get('[data-testid="open-favorites"]').trigger("click");
+    await flushPromises();
+    await wrapper.findAll('[data-testid="favorites-list"] .item')[1].trigger("click");
+    await flushPromises();
+    startEditingItem();
+    await flushPromises();
+    await wrapper.get('input[name="title"]').setValue("VPN draft");
+    await wrapper.get('[data-testid="tag-development"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="discard-draft-dialog"]').exists()).toBe(true);
+    expect(store.isFavoritesSelected).toBe(true);
+    expect(store.listVaultID).toBe("personal");
+    expect(store.selectedVaultID).toBe("work");
+    await wrapper.get('[data-testid="discard-draft"]').trigger("click");
+    await flushPromises();
+    expect(store.isFavoritesSelected).toBe(false);
+    expect(store.selectedVaultID).toBe("personal");
+    expect(wrapper.get(".list-title h2").text()).toBe("Personal");
+    wrapper.unmount();
+  });
+
+  it("does not mutate a loaded item with the same ID as a favorite in another vault", async () => {
+    const other = createFavoriteItem({ ...vpnFavorite, item: { ...vpn, id: "github" } });
+    api.getItem.mockResolvedValue(other.item);
+    await selectFavorites();
+    await selectFavoriteItem(other);
+    await setItemFavorite("work", "github", false);
+    expect(store.allItem.find((item) => item.id === "github")?.isFavorite).toBe(true);
+    await deleteItem("github", "work");
+    expect(store.allItem.map((item) => item.id)).toEqual(["bank", "github"]);
+    expect(store.allVault.find((vault) => vault.id === "personal")?.itemCount).toBe(2);
+  });
+
   it("filters favorites with the search field", async () => {
     const wrapper = mount(MainView);
     await wrapper.find('[data-testid="open-favorites"]').trigger("click");
@@ -151,6 +218,7 @@ describe("starring an item", () => {
 
   it("lets a reader star an item they can't edit", async () => {
     store.selectedVaultID = "work";
+    store.listVaultID = "work";
     store.allItem = [vpn];
     store.selectedItem = { ...vpn, isFavorite: false };
     const wrapper = mount(MainView);
@@ -224,6 +292,18 @@ describe("starring an item", () => {
 });
 
 describe("Favorites stay current", () => {
+  it("closes a cross-vault detail when that vault disappears without losing the loaded list", async () => {
+    api.getItem.mockResolvedValue(vpn);
+    await selectFavorites();
+    await selectFavoriteItem(vpnFavorite);
+    api.listAllVault.mockResolvedValue([{ ...personalVault }]);
+    api.listAllFavoriteItem.mockResolvedValue([githubFavorite]);
+    await syncInBackground();
+    expect(store.listVaultID).toBe("personal");
+    expect(store.selectedItem).toBeNull();
+    expect(store.allItem.map((item) => item.id)).toEqual(["bank", "github"]);
+  });
+
   it("reloads on unlock and in the background sync, as after another device starred an item", async () => {
     await loadAllVault();
     expect(api.listAllFavoriteItem).toHaveBeenCalledTimes(1);

@@ -160,10 +160,12 @@ const emptyListMessage = computed(() => {
   return store.allVault.some((vault) => vault.readIssues?.length) ? "No readable matches. Some records could not be opened." : store.selectedTag ? `No items are tagged ${store.selectedTag}.` : "This vault is empty.";
 });
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
+const listVault = computed(() => store.allVault.find((vault) => vault.id === store.listVaultID));
+const canEditList = computed(() => listVault.value !== undefined && listVault.value.role !== "reader");
 // canShareVault: shared and organization vaults have a sharing panel, personal vaults the Private badge.
-const canShareVault = computed(() => selectedVault.value !== undefined && selectedVault.value.type !== "personal");
+const canShareVault = computed(() => listVault.value !== undefined && listVault.value.type !== "personal");
 const canEdit = computed(() => selectedVault.value !== undefined && selectedVault.value.role !== "reader");
-const canCreate = computed(() => canEdit.value && !store.isFavoritesSelected);
+const canCreate = computed(() => canEditList.value && !store.isFavoritesSelected);
 // allVaultGroup is the sidebar's vaults: the user's own and shared vaults, then a group per organization by name.
 const allVaultGroup = computed(() => {
   const groupByID = new Map<string, VaultGroup>();
@@ -355,7 +357,7 @@ function openVaultMenuAtPointer(vaultID: string, event: MouseEvent): void {
 
 function openVaultMenuBelow(event: MouseEvent): void {
   const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
+  vaultMenu.value = { vaultID: store.listVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
 }
 
 // prepareNewVaultForm clears the form and loads the teams for Where whenever the new-vault form opens, from the New vault
@@ -473,7 +475,7 @@ function copySelectedField(fieldName: "username" | "password", label: string): v
 // moveVaultSelection steps through the sidebar's rows: Favorites, then the vaults as listed.
 function moveVaultSelection(step: number): void {
   const allVaultID = ["", ...allVaultGroup.value.flatMap((group) => group.allVault.map((vault) => vault.id))];
-  const current = store.isFavoritesSelected ? 0 : allVaultID.indexOf(store.selectedVaultID);
+  const current = store.isFavoritesSelected ? 0 : allVaultID.indexOf(store.listVaultID);
   const next = Math.min(allVaultID.length - 1, Math.max(0, current + step));
   if (next !== current) {
     void (next === 0 ? selectFavorites() : selectVault(allVaultID[next]));
@@ -584,8 +586,8 @@ onBeforeUnmount(() => {
             v-for="vault in group.allVault"
             :key="vault.id"
             class="vault"
-            :class="{ selected: !store.isFavoritesSelected && vault.id === store.selectedVaultID }"
-            :aria-current="!store.isFavoritesSelected && vault.id === store.selectedVaultID ? 'true' : undefined"
+            :class="{ selected: !store.isFavoritesSelected && vault.id === store.listVaultID }"
+            :aria-current="!store.isFavoritesSelected && vault.id === store.listVaultID ? 'true' : undefined"
             :data-testid="`vault-${vault.id}`"
             @click="selectVault(vault.id)"
             @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
@@ -671,7 +673,7 @@ onBeforeUnmount(() => {
       </div>
       <div v-else class="title-bar list-title">
         <div>
-          <h2>{{ selectedVault?.name ?? "" }}</h2>
+          <h2>{{ listVault?.name ?? "" }}</h2>
           <span class="muted">{{ healthyItemCount }} {{ healthyItemCount === 1 ? "item" : "items" }}<template v-if="unreadableItemCount"> · {{ unreadableItemCount }} unreadable</template></span>
         </div>
         <div ref="newItemMenu" class="new-item">
@@ -684,11 +686,11 @@ onBeforeUnmount(() => {
           >
             <AppIcon name="users" :size="14" /> Share
           </button>
-          <span v-else-if="selectedVault" class="private-badge" :title="personalVaultNotice" data-testid="personal-vault-private">
+          <span v-else-if="listVault" class="private-badge" :title="personalVaultNotice" data-testid="personal-vault-private">
             <AppIcon name="lock" :size="13" /> Private
           </span>
           <button
-            v-if="selectedVault"
+            v-if="listVault"
             class="ghost icon-button"
             title="Vault actions"
             aria-label="Vault actions"
@@ -701,7 +703,7 @@ onBeforeUnmount(() => {
           </button>
           <button
             class="primary icon-button"
-            :disabled="!canEdit"
+            :disabled="!canEditList"
             :title="`New item (${shortcutModifier}N for a login)`"
             aria-label="New item"
             aria-haspopup="menu"
@@ -800,9 +802,9 @@ onBeforeUnmount(() => {
       <div v-else-if="allVisibleItem.length === 0" class="list-empty">
         <AppIcon :name="store.searchQuery ? 'search' : store.selectedTag ? 'tag' : 'key'" :size="26" />
         <p>{{ emptyListMessage }}</p>
-        <button v-if="!store.searchQuery && !store.selectedTag && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
+        <button v-if="!store.searchQuery && !store.selectedTag && canEditList" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
-      <ul v-else ref="itemList" role="listbox" :aria-label="selectedVault?.name ?? 'Items'" @keydown="handleListKey">
+      <ul v-else ref="itemList" role="listbox" :aria-label="listVault?.name ?? 'Items'" @keydown="handleListKey">
         <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id" role="presentation">
           <button
             class="item"
@@ -810,7 +812,7 @@ onBeforeUnmount(() => {
             role="option"
             :aria-selected="store.selectedItem?.id === vaultItem.id"
             @click="selectItem(vaultItem.id)"
-            @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
+            @contextmenu.prevent="openItemMenu(store.listVaultID, vaultItem, $event)"
           >
             <ItemTile :title="vaultItem.title" :icon="getItemIcon(vaultItem.category)" :item-icon="vaultItem.icon" :websiteURL="getWebsiteIconURL(vaultItem)" />
             <span class="item-text">
@@ -837,7 +839,7 @@ onBeforeUnmount(() => {
         <ItemDetailPanel v-else-if="store.selectedItem" :can-edit="canEdit" :vault-name="selectedVault?.name ?? ''" :vault-type="selectedVault?.type ?? ''" />
         <div v-else class="detail-empty">
           <span class="detail-empty-icon"><AppIcon name="vault" :size="28" /></span>
-          <h3>{{ store.isFavoritesSelected ? "Favorites" : selectedVault ? selectedVault.name : "Hisar" }}</h3>
+          <h3>{{ store.isFavoritesSelected ? "Favorites" : listVault ? listVault.name : "Hisar" }}</h3>
           <p class="muted">Select an item to see its details.</p>
           <dl class="shortcut-list">
             <div><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>

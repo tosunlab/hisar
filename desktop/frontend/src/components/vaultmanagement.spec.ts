@@ -33,6 +33,7 @@ function resetStore(workRole = "owner"): void {
     status: createStatus("unlocked"),
     allVault: [personalVault, createWorkVault(workRole)],
     selectedVaultID: "work",
+    listVaultID: "work",
     allItem: [createItem()],
     selectedItem: null,
     editorMode: "view",
@@ -99,6 +100,7 @@ describe("vault menu", () => {
 
   it("explains that the Personal vault can't be deleted", async () => {
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     const reason = "Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there.";
     api.getVaultActions.mockResolvedValue(createVaultActions({ vault: personalVault, canDelete: false, deleteBlockedReason: reason, canLeave: false, targetVaults: [] }));
     const wrapper = mount(MainView, { attachTo: document.body });

@@ -54,6 +54,7 @@ beforeEach(() => {
     status: createStatus("signed-out"),
     allVault: [],
     selectedVaultID: "",
+    listVaultID: "",
     allItem: [],
     selectedItem: null,
     isFavoritesSelected: false,

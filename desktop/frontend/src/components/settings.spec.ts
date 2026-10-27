@@ -54,6 +54,7 @@ beforeEach(() => {
     isSettingsOpen: true,
     allVault: [],
     selectedVaultID: "",
+    listVaultID: "",
     isSharingOpen: false,
     isCreatingVault: false,
     allPerson: [],
@@ -187,6 +188,7 @@ describe("People empty state", () => {
   it("opens the selected vault's Share panel and closes Settings", async () => {
     store.allVault = [{ id: "team", name: "Team", type: "shared", role: "owner", itemCount: 0 }];
     store.selectedVaultID = "team";
+    store.listVaultID = "team";
     window.localStorage.setItem("hisar.settings.selectedSection", "people");
     wrapper = mount(MainView);
     await flushPromises();
@@ -200,6 +202,7 @@ describe("People empty state", () => {
   it("opens the new-vault form when the selected vault is personal, which is never shared", async () => {
     store.allVault = [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 }];
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     window.localStorage.setItem("hisar.settings.selectedSection", "people");
     wrapper = mount(MainView);
     await flushPromises();

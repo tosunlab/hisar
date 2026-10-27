@@ -45,6 +45,7 @@ function resetStore(allItem: ItemDetail[] = [github, bank]): void {
     status: createStatus("unlocked"),
     allVault: [personalVault, workVault, teamVault].map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem,
     selectedItem: null,
     allFavorite: [],
@@ -133,6 +134,7 @@ describe("The item list's context menu", () => {
 
   it("leaves out Edit and Delete in a vault the user can only read", async () => {
     store.selectedVaultID = "work";
+    store.listVaultID = "work";
     const wrapper = mount(MainView, { attachTo: document.body });
     const allLabel = await openItemMenu(wrapper, "GitHub");
     for (const label of ["Edit", "Duplicate", "Move to…", "Delete…"]) {

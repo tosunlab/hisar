@@ -40,6 +40,7 @@ function resetStore(): void {
     status: createStatus("signed-out"),
     allVault: [],
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [],
     selectedItem: null,
     editorMode: "view",
