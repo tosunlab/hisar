@@ -352,6 +352,7 @@ final class AppModel: ObservableObject {
         newSecretKey = result.secretKey
         applyStatus(result.status)
         await refreshAll()
+        await refreshPendingRecovery(isPresenting: false)
         return true
     }
 
@@ -401,6 +402,7 @@ final class AppModel: ObservableObject {
         guard let newStatus = await perform({ try $0.unlock(password: password) }) else { return false }
         applyStatus(newStatus)
         await refreshAll()
+        await refreshPendingRecovery(isPresenting: false)
         return true
     }
 
@@ -412,6 +414,7 @@ final class AppModel: ObservableObject {
         }
         applyStatus(newStatus)
         await refreshAll()
+        await refreshPendingRecovery(isPresenting: false)
         return true
     }
 
@@ -1443,7 +1446,8 @@ final class AppModel: ObservableObject {
         applyStatus(backend.dismissSignedOutReason())
     }
 
-    func refreshPendingRecovery() async {
+    // isPresenting false reloads the records for the recovery bar without covering the screen, as for a clean sign-up.
+    func refreshPendingRecovery(isPresenting: Bool = true) async {
         guard let backend else { return }
         let records: [PendingRecovery]
         do {
@@ -1455,7 +1459,7 @@ final class AppModel: ObservableObject {
         let hadNone = allPendingRecovery.isEmpty
         allPendingRecovery = records
         if records.isEmpty { closePendingRecovery() }
-        else if hadNone { isPendingRecoveryShown = true }
+        else if hadNone && isPresenting { isPendingRecoveryShown = true }
     }
 
     func clearPendingRecoveryExport() {

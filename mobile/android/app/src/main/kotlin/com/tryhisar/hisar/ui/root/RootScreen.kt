@@ -125,7 +125,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                     }
 
                     when (val step = newAccountStep) {
-                        is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(step.secretKey, status.email, status.server, copySecret, model.signIn::finishNewSecretKey)
+                        is NewAccountStep.SaveSecretKey -> NewSecretKeyScreen(model, step.secretKey, copySecret)
                         NewAccountStep.BiometricOffer -> BiometricOfferScreen(model)
                         null -> Unit
                     }
@@ -138,7 +138,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                         if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) PhoneApprovalSheet(model, approval)
                     }
 
-                    if (pendingRecovery.isNotEmpty() && !isRecoveryShown) {
+                    if (pendingRecovery.isNotEmpty() && !isRecoveryShown && newAccountStep == null) {
                         Box(Modifier.align(Alignment.TopCenter).background(HisarTheme.colors.systemBackground).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp)) {
                             PlainButton("Finish account recovery", model.pendingRecovery::open, testTag = "pending-recovery-open")
                         }

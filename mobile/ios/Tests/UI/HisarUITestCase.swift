@@ -259,10 +259,16 @@ class HisarUITestCase: XCTestCase {
         let key = app.staticTexts["new-secret-key"]
         waitFor(key, timeout: 60)
         let secretKey = key.label
-        // The kit is prepared in the background; the confirm button needs it and a copy or a share.
+        // The kit is prepared in the background; the confirm button needs a completed save, print or share of it.
         waitFor(app.buttons["new-secret-key-share-kit"], timeout: 60)
         saveScreenshot("new-secret-key")
         app.buttons["new-secret-key-copy"].tap()
+        XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a copied Secret Key alone confirmed the kit")
+        app.buttons["new-secret-key-share-kit"].tap()
+        closeShareSheet()
+        XCTAssertFalse(app.buttons["new-secret-key-done"].isEnabled, "a cancelled share sheet confirmed the kit")
+        handOffEmergencyKit(shareIdentifier: "new-secret-key-share-kit")
+        waitForHittable(app.buttons["new-secret-key-done"])
         app.buttons["new-secret-key-done"].tap()
         let notNowButton = app.buttons["biometric-offer-not-now"]
         if isBiometricOfferExpected {
@@ -275,6 +281,48 @@ class HisarUITestCase: XCTestCase {
         // The vaults exist under the Secret Key screen and the Face ID offer; they take a tap only once both have closed.
         waitForHittable(app.buttons["vault-Personal"])
         return secretKey
+    }
+
+    /** Saves the Emergency Kit to Files from the share button [shareIdentifier], a completed handoff of the kit. */
+    func handOffEmergencyKit(shareIdentifier: String) {
+        let share = app.buttons[shareIdentifier]
+        waitFor(share, timeout: 60)
+        scrollTo(share)
+        share.tap()
+        let saveToFiles = app.descendants(matching: .any)["Save to Files"].firstMatch
+        waitFor(saveToFiles, timeout: 10)
+        saveToFiles.tap()
+        let save = app.navigationBars.buttons["Save"].firstMatch
+        waitFor(save, timeout: 10)
+        save.tap()
+        let replace = app.buttons["Replace"].firstMatch
+        if replace.waitForExistence(timeout: 2) { replace.tap() }
+        waitForDisappearance(saveToFiles)
+    }
+
+    /** Closes the share sheet without choosing anything. */
+    func closeShareSheet() {
+        let close = app.navigationBars.buttons["Close"].firstMatch
+        if close.waitForExistence(timeout: 10) {
+            close.tap()
+        } else {
+            app.swipeDown(velocity: .fast)
+        }
+        waitForDisappearance(app.descendants(matching: .any)["Save to Files"].firstMatch)
+    }
+
+    func waitForDisappearance(_ element: XCUIElement) {
+        wait(for: [XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO"), object: element)], timeout: 10)
+    }
+
+    /** Acknowledging needs a handoff of the kit shown now; a restart or a resume clears it, so it is prepared again. */
+    func handOffPendingRecoveryKit(password: String) {
+        if !app.buttons["pending-recovery-share-kit"].exists {
+            type(password, into: app.secureTextFields["pending-recovery-password"])
+            scrollTo(app.buttons["pending-recovery-export"])
+            app.buttons["pending-recovery-export"].tap()
+        }
+        handOffEmergencyKit(shareIdentifier: "pending-recovery-share-kit")
     }
 
     @discardableResult
@@ -299,6 +347,7 @@ class HisarUITestCase: XCTestCase {
             waitFor(account, timeout: 60)
             account.tap()
         }
+        handOffPendingRecoveryKit(password: password)
         type(password, into: passwordField)
         scrollTo(app.buttons["pending-recovery-acknowledge"])
         app.buttons["pending-recovery-acknowledge"].tap()
@@ -311,6 +360,7 @@ class HisarUITestCase: XCTestCase {
             app.buttons["pending-recovery-resume"].tap()
             let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'delivery-pending'"), object: phase)
             wait(for: [committed], timeout: 60)
+            handOffPendingRecoveryKit(password: password)
             type(password, into: passwordField)
             scrollTo(app.buttons["pending-recovery-acknowledge"])
             app.buttons["pending-recovery-acknowledge"].tap()

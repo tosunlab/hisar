@@ -138,6 +138,21 @@ final class AppModelTests: XCTestCase {
         XCTAssertFalse(model.isBiometricOfferShown)
     }
 
+    func testLockOnTheSecretKeyScreenLeavesTheKitReminderAfterUnlock() async {
+        let model = await createModel()
+        await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        XCTAssertEqual(model.allPendingRecovery.map(\.operationId), ["signup-1"], "the sign-up's record is loaded for the reminder")
+        XCTAssertFalse(model.isPendingRecoveryShown, "the record does not cover Save your Secret Key")
+        _ = backend.lock()
+        model.handleLockedEvent()
+        XCTAssertNil(model.newSecretKey)
+        XCTAssertEqual(model.screen, .locked)
+        let isUnlocked = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(isUnlocked)
+        XCTAssertEqual(model.allPendingRecovery.map(\.operationId), ["signup-1"], "the Finish account recovery bar has its record")
+        XCTAssertFalse(model.isPendingRecoveryShown)
+    }
+
     private func waitForCall(_ name: String) async {
         for _ in 0..<100 where !backend.allCallName.contains(name) {
             try? await Task.sleep(nanoseconds: 10_000_000)

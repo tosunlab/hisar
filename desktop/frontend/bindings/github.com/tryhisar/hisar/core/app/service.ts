@@ -32,6 +32,15 @@ export function AcceptShareInvitation(invitationID: string): $CancellablePromise
     return $Call.ByID(3210650703, invitationID);
 }
 
+/**
+ * AcknowledgeNewAccountRecovery ends the pending sign-up operation of the account just created once its kit was saved,
+ * as AcknowledgePendingRecovery does with the master password. Only the retained new Secret Key proves it, so it fails
+ * for any other pending operation, after a lock and once onboarding ended.
+ */
+export function AcknowledgeNewAccountRecovery(): $CancellablePromise<void> {
+    return $Call.ByID(1945039949);
+}
+
 export function AcknowledgePendingRecovery(operationID: string, password: string): $CancellablePromise<void> {
     return $Call.ByID(2476632049, operationID, password);
 }
@@ -727,6 +736,7 @@ export function SaveItem(vaultID: string, detail: $models.ItemDetail): $Cancella
 
 /**
  * SaveNewAccountEmergencyKit saves the kit right after sign up or replacing the Secret Key; it returns the saved path, or "" when cancelled.
+ * After a sign-up it also records the kit as saved in the sign-up's pending operation, which AcknowledgeNewAccountRecovery requires.
  */
 export function SaveNewAccountEmergencyKit(): $CancellablePromise<string> {
     return $Call.ByID(3118509742);
