@@ -22,10 +22,11 @@ enum SettingsDestination: Hashable {
 
 struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var selection: SettingsDestination?
+    /// The screens pushed below the selected section, of several value types (organizations and their members push their own).
+    @State private var detailPath = NavigationPath()
     @State private var isSignOutConfirmationShown = false
     @State private var isAutoFillEnabled = false
-    /// The Settings screens pushed, of several value types (organizations and their members push their own).
-    @State private var path = NavigationPath()
 
     static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
     static let biometrySystemImage = biometryName == "Touch ID" ? "touchid" : "faceid"
@@ -42,8 +43,8 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack(path: $path) {
-            List {
+        NavigationSplitView {
+            List(selection: $selection) {
                 Section {
                     NavigationLink(value: SettingsDestination.account) {
                         HStack(spacing: 14) {
@@ -146,26 +147,6 @@ struct SettingsView: View {
             }
             .applyThemedListStyle()
             .navigationTitle("Settings")
-            .navigationDestination(for: SettingsDestination.self) { destination in
-                switch destination {
-                case .account: AccountView()
-                case .secretKey: SecretKeyView()
-                case .security: SecurityView()
-                case .appearance: AppearanceView()
-                case .macApprovals: MacApprovalsView()
-                case .notifications: NotificationSettingsView(notifications: model.notifications)
-                case .people: PeopleView()
-                case .organizations: OrganizationsView()
-                case .devices: DevicesView()
-                case .autoFill: AutoFillSettingsView(isEnabled: $isAutoFillEnabled)
-                case .passwordGenerator: StandalonePasswordGeneratorView()
-                case .help: HelpView()
-                case .about: AboutView()
-                case .changeMasterPassword: ChangeMasterPasswordView()
-                case .replaceSecretKey: ReplaceSecretKeyView()
-                case .deleteAccount: DeleteAccountView()
-                }
-            }
             .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
                 Button("Sign out", role: .destructive) {
                     Task { await model.signOut() }
@@ -180,9 +161,52 @@ struct SettingsView: View {
             .onReceive(model.$requestedSettingsDestination) { destination in
                 guard let destination else { return }
                 model.requestedSettingsDestination = nil
-                // The new Secret Key is shown only once, so its screen stays until Done.
-                if !model.isNewSecretKeyShown { path = NavigationPath([destination]) }
+                // The new Secret Key is shown only once, so its screen stays until Done. The section opens over whatever
+                // was pushed below the one selected before, also when it is the same section.
+                if !model.isNewSecretKeyShown {
+                    detailPath = NavigationPath()
+                    selection = destination
+                }
             }
+        } detail: {
+            // Beside the list on the open iPhone Duo, pushed over it on any other iPhone. Screens below a section (Account →
+            // Change master password) push within the detail column.
+            NavigationStack(path: $detailPath) {
+                Group {
+                    if let selection {
+                        buildDestination(selection)
+                    } else {
+                        ContentUnavailableView("Settings", systemImage: "gearshape", description: Text("Choose a section."))
+                    }
+                }
+                .navigationDestination(for: SettingsDestination.self) { destination in
+                    buildDestination(destination)
+                }
+            }
+        }
+        .navigationSplitViewStyle(.balanced)
+        .onChange(of: selection) { _, _ in detailPath = NavigationPath() }
+    }
+
+    @ViewBuilder
+    private func buildDestination(_ destination: SettingsDestination) -> some View {
+        switch destination {
+        case .account: AccountView()
+        case .secretKey: SecretKeyView()
+        case .security: SecurityView()
+        case .appearance: AppearanceView()
+        case .macApprovals: MacApprovalsView()
+        case .notifications: NotificationSettingsView(notifications: model.notifications)
+        case .people: PeopleView()
+        case .organizations: OrganizationsView()
+        case .devices: DevicesView()
+        case .autoFill: AutoFillSettingsView(isEnabled: $isAutoFillEnabled)
+        case .passwordGenerator: StandalonePasswordGeneratorView()
+        case .help: HelpView()
+        case .about: AboutView()
+        case .changeMasterPassword: ChangeMasterPasswordView()
+        case .replaceSecretKey: ReplaceSecretKeyView()
+        case .deleteAccount: DeleteAccountView()
         }
     }
 }
