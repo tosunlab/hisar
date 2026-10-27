@@ -685,6 +685,13 @@ export function ResumePendingRecoveryWithSecretKey(operationID: string, password
 }
 
 /**
+ * RevealSecretKey verifies the current master password without writing an Emergency Kit.
+ */
+export function RevealSecretKey(password: string): $CancellablePromise<$models.RevealedSecretKey> {
+    return $Call.ByID(3347932335, password);
+}
+
+/**
  * RevokeAgentGrant ends one grant (ID from ListAgentGrants): its agent asks again next time. It returns the grants left.
  */
 export function RevokeAgentGrant(id: string): $CancellablePromise<$models.AgentGrant[] | null> {

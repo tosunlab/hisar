@@ -630,6 +630,11 @@ Recovery is only through the Emergency Kit (§4.1). With the email, server and S
 - **Forgotten master password:** it cannot be recovered by anyone, including Hisar. The server never sees it, and nothing the server or a device stores opens the keyset without it, so the data only that account can open is lost; shared vaults stay with their other members. The apps say so plainly when the account is created and on the Secret Key / Emergency Kit screen.
 - Losing the Emergency Kit and every signed-in device loses the account as well.
 
+On the Mac, Settings → Security → Recovery also offers **Show Secret Key…**. It verifies the current master password
+through the same account-unlock derivation as saving the kit, then returns the key and a sign-in QR code without writing
+a PDF. Verification and delivery are bound to the same unlocked session. Leaving Recovery, locking, or changing accounts
+clears the displayed key, QR code and pending response. **Copy Secret Key** uses the backend clipboard and its 90-second clearing.
+
 **Interrupted setup is distinct from forgotten-password recovery.** The operation journal (§5.2) reconciles a particular already-prepared signup or factor replacement; it cannot recover a forgotten password or bypass the independent Secret Key. Native default recovery needs the OS-wrapped operation key and password. Without that OS protection, restart needs the explicitly user-saved Emergency Kit as well as the password because no factor is persisted in the journal. The CLI exposes `hisar account pending list|resume|kit|acknowledge|discard`; discard is restricted to prepared operations for which no finish may have been sent.
 
 **Admin recovery was removed.** Earlier versions let one admin hold a recovery keyset that every recoverable vault key was wrapped to, and recover other users' accounts with one-time links. Migration `00004_remove_recovery` deletes all of it: the tables `recovery_keyset`, `vault_recovery`, `recovery_tokens` and `account_recovery` and the column `vaults.recovery_opt_out`. Its down migration recreates only the empty structure; the deleted keyset, wrappings and pending recoveries cannot come back. The recovery endpoints are gone and answer 404. Older clients keep working: a 404 for the recovery keyset means "recovery is not set up" to them, so they stop wrapping vault keys to it.

@@ -204,7 +204,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             <UpdatesSection />
           </div>
           <div v-show="displayedSection?.id === 'security'" data-testid="settings-page-security">
-            <SecuritySection />
+            <SecuritySection :is-active="displayedSection?.id === 'security'" />
           </div>
           <div v-show="displayedSection?.id === 'ssh'" data-testid="settings-page-ssh">
             <SSHAgentSection />

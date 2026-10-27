@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
@@ -11,6 +12,8 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/emergencykit"
 	"github.com/tryhisar/hisar/core/session"
+
+	"github.com/skip2/go-qrcode"
 )
 
 const emergencyKitFileName = "Hisar Emergency Kit.pdf"
@@ -66,6 +69,35 @@ func (s *Service) SaveEmergencyKit(password string) (string, error) {
 		return "", err
 	}
 	return s.writeEmergencyKit(kit, epoch)
+}
+
+type RevealedSecretKey struct {
+	SecretKey string `json:"secretKey"`
+	QRPayload string `json:"qrPayload"`
+	QRCode    string `json:"qrCode"`
+}
+
+// RevealSecretKey verifies the current master password without writing an Emergency Kit.
+func (s *Service) RevealSecretKey(password string) (RevealedSecretKey, error) {
+	secretKey, epoch, err := s.loadVerifiedSecretKey(password)
+	if err != nil {
+		return RevealedSecretKey{}, err
+	}
+	kit, err := s.buildVerifiedEmergencyKit(secretKey, epoch)
+	if err != nil {
+		return RevealedSecretKey{}, err
+	}
+	payload := emergencykit.BuildQRPayload(kit)
+	png, err := qrcode.Encode(payload, qrcode.Medium, 320)
+	if err != nil {
+		return RevealedSecretKey{}, err
+	}
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	if err := s.requireSessionEpoch(epoch); err != nil {
+		return RevealedSecretKey{}, err
+	}
+	return RevealedSecretKey{SecretKey: kit.SecretKey, QRPayload: payload, QRCode: base64.StdEncoding.EncodeToString(png)}, nil
 }
 
 // EmergencyKitFile is the kit saved for platforms that share the PDF themselves instead of choosing a save path; the

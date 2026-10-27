@@ -821,6 +821,7 @@ export function createApiMock() {
     hasNativeTouchIDView: false,
     saveNewAccountEmergencyKit: vi.fn(),
     saveEmergencyKit: vi.fn(),
+    revealSecretKey: vi.fn(),
     changeMasterPassword: vi.fn(),
     replaceSecretKey: vi.fn(),
     previewAccountDeletion: vi.fn(),

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
+import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createApiMock, createStatus } from "../testing";
+import SecuritySection from "./SecuritySection.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -86,5 +87,61 @@ describe("Emergency Kit from Settings", () => {
     await flushPromises();
     expect(store.errorMessage).toContain("incorrect");
     expect(wrapper.find('input[name="emergencyKitPassword"]').exists()).toBe(true);
+  });
+});
+
+describe("Secret Key from Recovery", () => {
+  const revealed = { secretKey: "H1-ABC123-SECRET", qrPayload: "HISARKIT1 payload", qrCode: "png" };
+
+  async function submit(wrapper: VueWrapper): Promise<void> {
+    await wrapper.get('[data-testid="show-secret-key"]').trigger("click");
+    await wrapper.get('input[name="revealSecretKeyPassword"]').setValue("master password");
+    await wrapper.get('[data-testid="reveal-secret-key-form"]').trigger("submit");
+  }
+
+  it("verifies before showing a key and QR, and copies through the backend", async () => {
+    api.revealSecretKey.mockResolvedValue(revealed);
+    api.copyText.mockResolvedValue(undefined);
+    const wrapper = mount(SecuritySection);
+    expect(wrapper.find('[data-testid="revealed-secret-key"]').exists()).toBe(false);
+    await submit(wrapper);
+    await flushPromises();
+    expect(api.revealSecretKey).toHaveBeenCalledWith("master password");
+    expect(api.saveEmergencyKit).not.toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="secret-key-qr"]').attributes("src")).toBe("data:image/png;base64,png");
+    await wrapper.get('[data-testid="copy-secret-key"]').trigger("click");
+    await flushPromises();
+    expect(api.copyText).toHaveBeenCalledWith(revealed.secretKey);
+    expect(store.noticeMessage).toBe("Secret Key copied. It clears in 90 seconds.");
+    wrapper.unmount();
+  });
+
+  it.each(["leave", "lock", "account", "unmount"])("discards a pending key after %s", async (boundary) => {
+    const { promise, resolve } = Promise.withResolvers<typeof revealed>();
+    api.revealSecretKey.mockReturnValue(promise);
+    const wrapper = mount(SecuritySection);
+    await submit(wrapper);
+    if (boundary === "leave") await wrapper.setProps({ isActive: false });
+    if (boundary === "lock") store.status.state = "locked";
+    if (boundary === "account") store.status.email = "other@example.com";
+    if (boundary === "unmount") wrapper.unmount();
+    resolve(revealed);
+    await flushPromises();
+    if (boundary !== "unmount") {
+      expect(wrapper.find('[data-testid="revealed-secret-key"]').exists()).toBe(false);
+      expect(wrapper.find('input[name="revealSecretKeyPassword"]').exists()).toBe(false);
+      wrapper.unmount();
+    }
+  });
+
+  it("hides a revealed key when leaving Recovery", async () => {
+    api.revealSecretKey.mockResolvedValue(revealed);
+    const wrapper = mount(SecuritySection);
+    await submit(wrapper);
+    await flushPromises();
+    await wrapper.setProps({ isActive: false });
+    await wrapper.setProps({ isActive: true });
+    expect(wrapper.find('[data-testid="revealed-secret-key"]').exists()).toBe(false);
+    wrapper.unmount();
   });
 });

@@ -145,7 +145,7 @@ Design: [Design](../design.md) §4.4 (vault keys and rotation), §5.1 (invites) 
 
 Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
 
-- **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
+- **Lost Secret Key**: it is on the Emergency Kit. In Settings → Security → Recovery, **Show Secret Key…** asks for the master password, then shows the key with **Copy Secret Key** and a QR code to scan with Hisar on your phone. It writes no PDF. **Save Emergency Kit…** saves a kit after the same verification. Leaving Recovery or locking hides the key and QR code.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 
 ## Secure notes

@@ -63,6 +63,7 @@ export type {
     ReceivedShareInvitation,
     RememberedAgentSecret,
     RemovedVaultNotice,
+    RevealedSecretKey,
     SentOrganizationInvitation,
     SentShareInvitation,
     ShareAwaitingUnlock,
