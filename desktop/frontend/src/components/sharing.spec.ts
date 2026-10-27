@@ -113,6 +113,22 @@ describe("Vault sharing panel", () => {
     wrapper.unmount();
   });
 
+  it("announces a changed key before the security code is expanded", async () => {
+    api.listAllVaultMember.mockResolvedValue([createVaultMember(), createVaultMember({ ...testBob, isKeyChanged: true })]);
+    const wrapper = await openSharingPanel();
+    const member = wrapper.get('[data-testid="vault-member-BOB222"]');
+    const warning = member.get("#member-key-warning-BOB222");
+    expect(warning.text()).toBe("Key changed. Hisar stopped sharing with them.");
+    const toggle = member.get('[data-testid="security-code-toggle-BOB222"]');
+    expect(toggle.attributes("aria-describedby")).toBe(warning.attributes("id"));
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+    expect(member.find('[data-testid="security-code-detail"]').exists()).toBe(false);
+    await toggle.trigger("click");
+    expect(member.findAll("#member-key-warning-BOB222")).toHaveLength(1);
+    expect(member.text()).not.toContain("until you compare");
+    wrapper.unmount();
+  });
+
   it("invites someone to the vault by email without listing other accounts", async () => {
     api.shareVault.mockResolvedValue(undefined);
     const wrapper = await openSharingPanel();

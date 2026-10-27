@@ -204,15 +204,18 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                 <span class="member-name">
                   <span class="name-text">{{ getDisplayName(member) }}</span>
                   <span v-if="member.isCurrentUser" class="tag accent">you</span>
-                  <span v-if="member.isKeyChanged" class="warning-text" title="Key changed"><AppIcon name="warning" :size="13" /></span>
                 </span>
                 <span class="member-email">{{ member.email }}</span>
+                <span v-if="member.isKeyChanged" :id="`member-key-warning-${member.accountId}`" class="warning-text">
+                  <AppIcon name="warning" :size="13" /> Key changed. Hisar stopped sharing with them.
+                </span>
               </div>
               <button
                 class="ghost code-toggle"
                 :class="{ expanded: expandedAccountID === member.accountId }"
                 :aria-expanded="expandedAccountID === member.accountId"
                 :aria-label="`Security code for ${getDisplayName(member)}`"
+                :aria-describedby="member.isKeyChanged ? `member-key-warning-${member.accountId}` : undefined"
                 title="Security code"
                 :data-testid="`security-code-toggle-${member.accountId}`"
                 @click="toggleSecurityCode(member.accountId)"
@@ -261,9 +264,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                 <span class="security-code monospace" data-testid="security-code">{{ member.securityCode }}</span>
                 <p v-if="member.isCurrentUser" class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
                 <p v-else class="muted">Compare this code with {{ getFirstName(member) }} in person or over a channel you trust, to be sure the server isn't intercepting.</p>
-                <p v-if="member.isKeyChanged" class="warning-text">
-                  {{ getFirstName(member) }}'s key changed since you last shared with them. Hisar refuses to share until you compare security codes again.
-                </p>
               </div>
             </div>
           </li>
