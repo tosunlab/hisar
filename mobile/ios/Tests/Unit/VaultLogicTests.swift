@@ -1,10 +1,25 @@
 import CoreImage
 import XCTest
+import SwiftUI
 @testable import Hisar
 
 final class VaultLogicTests: XCTestCase {
     private func makeReference(_ title: String, username: String = "", allURL: [String] = [], category: String = "login", vaultName: String = "Personal") -> VaultItemReference {
         VaultItemReference(vaultID: vaultName.lowercased(), vaultName: vaultName, item: ItemDetail(id: title.lowercased(), category: category, title: title, username: username, allURL: allURL))
+    }
+
+    @MainActor
+    func testCrossVaultRowsReserveSourceLine() {
+        let item = ItemDetail(id: "database", title: "Production", username: String(repeating: "long-host.", count: 20))
+        let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore())
+        for size in [DynamicTypeSize.large, .accessibility3] {
+            let ordinary = UIHostingController(rootView: ItemRow(item: item).environmentObject(model).dynamicTypeSize(size))
+            let personal = UIHostingController(rootView: ItemRow(item: item, vaultName: "Personal").environmentObject(model).dynamicTypeSize(size))
+            let shared = UIHostingController(rootView: ItemRow(item: item, vaultName: "Organization production credentials").environmentObject(model).dynamicTypeSize(size))
+            let proposed = CGSize(width: 280, height: 1000)
+            XCTAssertGreaterThan(personal.sizeThatFits(in: proposed).height, ordinary.sizeThatFits(in: proposed).height)
+            XCTAssertGreaterThanOrEqual(shared.sizeThatFits(in: proposed).height, personal.sizeThatFits(in: proposed).height)
+        }
     }
 
     func testFilterMatchesEveryWordAcrossFields() {

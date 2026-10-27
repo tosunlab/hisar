@@ -84,8 +84,8 @@ object VaultLogic {
     fun sortAllItem(allItem: List<VaultItemReference>): List<VaultItemReference> =
         allItem.sortedWith(compareBy<VaultItemReference, String>(String.CASE_INSENSITIVE_ORDER) { it.item.title }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.item.username })
 
-    /** The line under an item's title in lists; lists that span vaults name the vault too. */
-    fun describeRow(item: ItemDetail, vaultName: String? = null): String {
+    /** The category-specific summary under an item's title. */
+    fun describeRow(item: ItemDetail): String {
         val detail = when {
             item.isSSHKey -> item.keyType.ifEmpty { "SSH key" }
             item.isSecureNote -> "Secure note"
@@ -98,8 +98,7 @@ object VaultLogic {
             item.isDatabase -> (item.database ?: ItemDatabase()).summary
             else -> item.username
         }
-        if (vaultName == null) return detail
-        return if (detail.isEmpty()) vaultName else "$detail · $vaultName"
+        return detail
     }
 
     fun describeVaultRole(role: String): String = when (role) {

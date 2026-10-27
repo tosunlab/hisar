@@ -1,5 +1,6 @@
 package com.tryhisar.hisar.ui.vaults
 
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBox
 import androidx.compose.material.icons.outlined.Badge
@@ -47,7 +48,10 @@ fun VaultRow(vault: VaultSummary, itemCount: Int, onClick: () -> Unit) {
 @Composable
 fun ItemRow(model: AppModel, item: ItemDetail, testTag: String, onClick: () -> Unit, vaultName: String? = null) {
     NavigationRow(testTag = testTag, onClick = onClick, leading = { AppItemIcon(model, item) }) {
-        TitleAndSubtitle(item.title, VaultLogic.describeRow(item, vaultName))
+        Column {
+            TitleAndSubtitle(item.title, VaultLogic.describeRow(item))
+            if (vaultName != null) Text(vaultName, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+        }
     }
 }
 

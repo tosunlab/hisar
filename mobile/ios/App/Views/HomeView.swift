@@ -603,6 +603,12 @@ struct ItemRow: View {
                         .foregroundStyle(.themeSecondary)
                         .lineLimit(1)
                 }
+                if let vaultName {
+                    Text(vaultName)
+                        .font(.footnote)
+                        .foregroundStyle(.themeSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
         }
         .accessibilityElement(children: .combine)
@@ -632,7 +638,6 @@ struct ItemRow: View {
         } else {
             detail = item.username
         }
-        guard let vaultName else { return detail }
-        return detail.isEmpty ? vaultName : "\(detail) · \(vaultName)"
+        return detail
     }
 }
