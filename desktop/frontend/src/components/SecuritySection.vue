@@ -12,6 +12,8 @@ const allAutoLockOption = [
   { seconds: 300, label: "5 minutes" },
   { seconds: 600, label: "10 minutes" },
   { seconds: 3600, label: "1 hour" },
+  { seconds: 43200, label: "12 hours" },
+  { seconds: 86400, label: "24 hours" },
 ];
 const isRowVisible = useSettingsRowVisibility();
 const isEnablingTouchID = ref(false);
@@ -91,7 +93,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
         <div v-show="isRowVisible('auto-lock')" class="setting">
           <div class="setting-text">
             <strong>Auto-lock</strong>
-            <p v-if="isMacPlatform()" class="muted">Hisar locks after this long without keyboard, mouse or trackpad input on this Mac, and when the screen locks.</p>
+            <p v-if="isMacPlatform()" class="muted">Hisar locks after this long without keyboard, mouse or trackpad input on this Mac; sleep counts toward this time.</p>
             <p v-else class="muted">Hisar locks once this computer has had no keyboard or mouse input for this long; on a desktop that does not report it, once Hisar itself has not been used for this long.</p>
           </div>
           <select

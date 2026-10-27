@@ -171,6 +171,7 @@ export const store = reactive({
   allAgentHost: [] as AgentHost[],
   allAgentGrant: [] as AgentGrant[],
   agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false } as AgentSignIn,
+  alwaysAgentAccessWhileLocked: { isAvailable: false, isEnabled: false },
   agentErrorMessage: "",
   isImportOpen: false,
   importStep: "choose" as ImportStep,
@@ -2316,6 +2317,27 @@ export async function loadAgentSignIn(): Promise<void> {
     store.agentSignIn = await api.getAgentSignIn();
   } catch (error) {
     store.agentErrorMessage = getErrorMessage(error);
+  }
+}
+
+export async function loadAlwaysAgentAccessWhileLocked(): Promise<void> {
+  try {
+    store.alwaysAgentAccessWhileLocked = await api.getAlwaysAgentAccessWhileLocked();
+  } catch (error) {
+    store.agentErrorMessage = getErrorMessage(error);
+  }
+}
+
+export async function setAlwaysAgentAccessWhileLocked(isEnabled: boolean): Promise<void> {
+  store.isBusy = true;
+  try {
+    store.alwaysAgentAccessWhileLocked = await api.setAlwaysAgentAccessWhileLocked(isEnabled);
+    store.agentErrorMessage = "";
+  } catch (error) {
+    await loadAlwaysAgentAccessWhileLocked();
+    store.agentErrorMessage = getErrorMessage(error);
+  } finally {
+    store.isBusy = false;
   }
 }
 
