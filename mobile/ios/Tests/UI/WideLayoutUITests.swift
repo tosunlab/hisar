@@ -13,6 +13,25 @@ final class WideLayoutUITests: HisarUITestCase {
         let isWide = app.windows.firstMatch.frame.width >= 500
         let layout = isWide ? "wide" : "compact"
 
+        choose("new-vault", from: "new-menu")
+        type("Other vault", into: app.textFields["new-vault-name"])
+        let createVault = app.buttons["new-vault-create"]
+        XCTAssertTrue(createVault.wait(for: \.isEnabled, toEqual: true, timeout: 30))
+        createVault.tap()
+        waitFor(app.navigationBars["Other vault"])
+        if !isWide {
+            goBack()
+        }
+        choose("new-login", from: "new-menu")
+        type("Chosen vault item", into: app.textFields["editor-title"])
+        app.buttons["editor-vault"].tap()
+        app.buttons["Other vault"].tap()
+        app.buttons["editor-save"].tap()
+        waitFor(app.navigationBars["Chosen vault item"])
+        if !isWide {
+            goBack()
+        }
+
         addLogin(title: "GitHub", username: "octocat", password: "wide-layout-password", website: "https://github.com")
         XCTAssertEqual(app.buttons["vault-Personal"].isHittable, isWide, "the vault list beside the Personal vault's items, \(layout)")
         waitForHittable(app.buttons["item-GitHub"])

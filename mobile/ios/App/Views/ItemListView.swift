@@ -181,7 +181,7 @@ struct ItemListView: View {
             Text("You lose access to its items on all your devices. An owner can invite you again.")
         }
         .sheet(isPresented: Binding(get: { newItemCategory != nil }, set: { if !$0 { newItemCategory = nil } })) {
-            ItemEditorView(vaultID: vaultID, originalItem: nil, newCategory: newItemCategory ?? ItemDetail.categoryLogin) { _ in }
+            ItemEditorView(vaultID: vaultID, originalItem: nil, newCategory: newItemCategory ?? ItemDetail.categoryLogin) { _, _ in }
                 .environmentObject(model)
         }
         .sheet(isPresented: $isSharingShown) {

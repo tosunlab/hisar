@@ -158,7 +158,7 @@ struct PendingApprovalPreviewView: View {
                             allApproval: allApproval,
                             isBusy: false,
                             review: { presentedApproval = $0 },
-                            approve: { finish($0, message: "Approved \($0.requestID) with Face ID") },
+                            approve: { finish($0, message: "Approved \($0.requestID) with Face ID\($1 ? ", remembered" : "")") },
                             deny: { finish($0, message: "Denied \($0.requestID)") },
                             showAll: { selectedTab = .approvals }
                         )

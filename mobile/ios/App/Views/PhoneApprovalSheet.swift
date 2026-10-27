@@ -44,40 +44,32 @@ struct PhoneApprovalSheet: View {
                         Text("\(biometryName) is not available, so Hisar checks your master password instead.")
                     }
                 }
-                if approval.isRememberable {
-                    Section {
-                        Toggle(approval.rememberLabel, isOn: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }))
-                            .disabled(isBusy)
-                            .accessibilityIdentifier("phone-approval-remember")
-                    } footer: {
-                        Text("Off allows only this request.")
-                    }
-                }
                 if approval.isForwarded {
                     Section {
-                        Label {
-                            Text("Forwarded from another computer: this request comes from \(approval.forwardedFromHost.isEmpty ? "a remote host" : approval.forwardedFromHost) through agent forwarding, not from your Mac. Approving allows it once.")
-                        } icon: {
-                            Image(systemName: "exclamationmark.triangle.fill")
-                                .foregroundStyle(.red)
-                        }
-                        .font(.subheadline)
-                        .accessibilityElement(children: .combine)
+                        notice(
+                            "Forwarded from another computer: this request comes from \(approval.forwardedFromHost.isEmpty ? "a remote host" : approval.forwardedFromHost) through agent forwarding, not from your Mac. Approving allows it once.",
+                            style: AnyShapeStyle(.red)
+                        )
                         .accessibilityIdentifier("phone-approval-forwarded")
+                    }
+                }
+                if !approval.appWarning.isEmpty {
+                    Section {
+                        notice(approval.appWarning, style: AnyShapeStyle(.themeWarning))
+                            .accessibilityIdentifier("phone-approval-warning")
                     }
                 }
                 Section {
                     ForEach(approval.allDetailRow) { row in
                         if row.isMonospaced {
-                            VStack(alignment: .leading, spacing: 3) {
+                            VStack(alignment: .leading, spacing: 4) {
                                 Text(row.label)
-                                    .font(.caption)
-                                    .foregroundStyle(.themeSecondary)
                                 Text(row.value)
                                     .font(.system(.subheadline, design: .monospaced))
+                                    .foregroundStyle(.primary)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
                                     .textSelection(.enabled)
                             }
-                            .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityElement(children: .combine)
                             .accessibilityIdentifier("phone-approval-row-\(row.label)")
                         } else {
@@ -92,14 +84,21 @@ struct PhoneApprovalSheet: View {
                         }
                     }
                 } footer: {
-                    Text(approval.lifetime.isEmpty
-                         ? "Approving lets this one request continue; it does not unlock Hisar on your Mac."
-                         : "Approving lets \(approval.appName) use Hisar until it locks on your Mac; it does not unlock Hisar there.")
-                        .accessibilityIdentifier("phone-approval-note")
+                    if !approval.isRememberable {
+                        approvalNote
+                    }
+                }
+                if approval.isRememberable {
+                    Section {
+                        Toggle(approval.rememberLabel, isOn: Binding(get: { approval.resolveRememberChoice(chosenRemember) }, set: { chosenRemember = $0 }))
+                            .disabled(isBusy)
+                            .accessibilityIdentifier("phone-approval-remember")
+                    } footer: {
+                        approvalNote
+                    }
                 }
             }
             .listStyle(.insetGrouped)
-            .navigationTitle("Mac request")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -128,42 +127,57 @@ struct PhoneApprovalSheet: View {
         }
     }
 
+    // The summary is the title: what the Mac is about to do is the question the user answers.
     private var header: some View {
-        VStack(spacing: 10) {
+        HStack(alignment: .top, spacing: 12) {
             if !approval.isForwarded, let appIcon = approval.appIcon.flatMap(UIImage.init(data:)) {
                 Image(uiImage: appIcon)
                     .resizable()
                     .interpolation(.high)
-                    .frame(width: 64, height: 64)
-                    .frame(width: 72, height: 72)
+                    .frame(width: 40, height: 40)
+                    .frame(width: 44, height: 44)
                     .accessibilityIdentifier("phone-approval-app-icon")
                     .accessibilityHidden(true)
             } else {
                 Image(systemName: approval.isForwarded ? "globe" : approval.systemImage)
-                    .font(.largeTitle)
+                    .font(.title2)
                     .foregroundStyle(approval.isForwarded ? AnyShapeStyle(.red) : AnyShapeStyle(.themeWarning))
-                    .frame(width: 72, height: 72)
-                    .background(.fill.tertiary, in: .rect(cornerRadius: 18, style: .continuous))
+                    .frame(width: 44, height: 44)
+                    .background(.fill.tertiary, in: .rect(cornerRadius: 12, style: .continuous))
                     .accessibilityHidden(true)
             }
-            Text(approval.title)
-                .font(.title2.weight(.bold))
-                .multilineTextAlignment(.center)
-                .accessibilityIdentifier("phone-approval-title")
-            Text(approval.summary)
-                .font(.body)
-                .foregroundStyle(.themeSecondary)
-                .multilineTextAlignment(.center)
-                .accessibilityIdentifier("phone-approval-summary")
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(approval.formatTimeLeft(at: context.date))
-                    .font(.footnote.weight(.semibold))
-                    .foregroundStyle(.themeWarning)
-                    .monospacedDigit()
-                    .accessibilityIdentifier("phone-approval-expiry")
+            VStack(alignment: .leading, spacing: 4) {
+                Text(approval.summary)
+                    .font(.title3.weight(.bold))
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("phone-approval-summary")
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text("\(Text("\(approval.macName) · ").foregroundStyle(.themeSecondary))\(Text(approval.formatTimeLeft(at: context.date)).foregroundStyle(.themeWarning))")
+                        .font(.subheadline.weight(.medium))
+                        .monospacedDigit()
+                        .accessibilityIdentifier("phone-approval-expiry")
+                }
             }
+            Spacer(minLength: 0)
         }
-        .frame(maxWidth: .infinity)
+        .padding(.vertical, 4)
+    }
+
+    private var approvalNote: some View {
+        Text(approval.approvalNote)
+            .accessibilityIdentifier("phone-approval-note")
+    }
+
+    private func notice(_ text: String, style: AnyShapeStyle) -> some View {
+        Label {
+            Text(text)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        } icon: {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .foregroundStyle(style)
+        }
+        .font(.subheadline)
+        .accessibilityElement(children: .combine)
     }
 
     private var actions: some View {

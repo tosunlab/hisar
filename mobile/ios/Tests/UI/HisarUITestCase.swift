@@ -166,7 +166,9 @@ class HisarUITestCase: XCTestCase {
             }
             guard list.exists else { break }
             let start = list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-            start.press(forDuration: 0.05, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)))
+            start.press(
+                forDuration: 0.05, thenDragTo: list.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)),
+                withVelocity: .slow, thenHoldForDuration: 0.1)
         }
         waitFor(element, file: file, line: line)
     }
