@@ -1,6 +1,8 @@
 package com.tryhisar.hisar.app
 
 import com.tryhisar.hisar.model.FakeBackend
+import com.tryhisar.hisar.model.ImportPreview
+import com.tryhisar.hisar.model.ImportSourceGroup
 import com.tryhisar.hisar.model.VaultStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -16,6 +18,18 @@ import kotlinx.coroutines.test.runTest
 class CredentialImportTests {
     /** What the other app exported; FakeBackend reads it as the titles of the logins to import. */
     private val allExportedTitle = listOf("GitHub", "Docker", "Slack", "Figma")
+
+    @Test
+    fun testHisarExportPreviewExplainsOriginalVaultDestinations() {
+        for (format in listOf("hisar-export", "hisar-encrypted-export")) {
+            val preview = ImportPreview(format = format, groups = List(7) { ImportSourceGroup() })
+            assertTrue(preview.isHisarExport)
+            assertEquals("This export has 7 vaults. Each goes to the vault it came from, or your Personal vault, unless you choose another.", preview.groupDestinationExplanation)
+        }
+        val preview = ImportPreview(groups = List(2) { ImportSourceGroup() })
+        assertFalse(preview.isHisarExport)
+        assertEquals("The other app kept these items in 2 groups. Each goes to your Personal vault unless you choose another vault for it.", preview.groupDestinationExplanation)
+    }
 
     /** Stands in for the system's credential transfer: it answers with [result], after [answer] completes when set. */
     private inner class FakeReceiver(var result: CredentialExchangeResult? = null, val beforeAnswer: () -> Unit = {}) : CredentialExchangeReceiver {

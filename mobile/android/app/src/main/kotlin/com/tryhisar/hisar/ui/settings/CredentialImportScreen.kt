@@ -141,7 +141,7 @@ private fun PreviewSections(
         modifier = Modifier.testTag("credential-import-vault"),
     ) {
         if (isGrouped) {
-            Text("The other app kept these items in ${preview.groups.size} groups. Each goes to your Personal vault unless you choose another vault for it.")
+            Text(preview.groupDestinationExplanation)
         } else {
             allVault.forEachIndexed { index, vault ->
                 if (index > 0) RowDivider()

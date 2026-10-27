@@ -108,6 +108,9 @@ The new master password and encrypted-export passphrase forms count extended gra
 ten-character minimum, like the iPhone app. Combining marks, flags and joined emoji each stay with their character.
 This validation does not normalize the password or change the shared Go checks.
 
+A Hisar export restores each source vault to its original writable vault when available, or to Personal.
+Review each destination and its current members before importing.
+
 Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
 does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
 
