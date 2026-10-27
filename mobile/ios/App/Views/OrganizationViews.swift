@@ -636,7 +636,7 @@ struct OrganizationView: View {
             if organization.isAdmin {
                 Menu {
                     ForEach(allAddableMember) { member in
-                        Button(member.isCurrentUser ? "\(member.name) (you)" : member.name) { addToTeam(member, team: team) }
+                        Button(OrganizationLogic.describeMemberChoice(member)) { addToTeam(member, team: team) }
                             .accessibilityIdentifier("team-\(team.name)-add-\(member.email)")
                     }
                 } label: {

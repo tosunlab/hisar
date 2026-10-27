@@ -339,10 +339,16 @@ fun HisarMenuItem(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     isDestructive: Boolean = false,
+    detail: String? = null,
 ) {
     val color = if (isDestructive) HisarTheme.colors.destructive else HisarTheme.colors.label
     DropdownMenuItem(
-        text = { Text(text, style = HisarType.body) },
+        text = {
+            Column {
+                Text(text, style = HisarType.body)
+                if (detail != null) Text(detail, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+            }
+        },
         onClick = onClick,
         enabled = enabled,
         leadingIcon = icon?.let { { Icon(it, contentDescription = null) } },

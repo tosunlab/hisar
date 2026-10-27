@@ -36,6 +36,8 @@ data class OrganizationVaultSharing(
 
 enum class OrganizationMemberAction { MAKE_ADMIN, MAKE_MEMBER, REMOVE }
 
+data class MemberChoice(val title: String, val detail: String?)
+
 /** What the organization screen does after loading the organization. */
 sealed interface OrganizationLoad {
     data class Loaded(val organization: Organization) : OrganizationLoad
@@ -114,6 +116,14 @@ object OrganizationLogic {
             allTeamAccess = allTeamWithVault.map { team -> TeamAccess(team, team.allVault.first { it.vaultID == vaultID }.role) },
             canChangeTeams = organization.isAdmin,
             allTeamWithoutVault = if (organization.isAdmin) allTeamWithoutVault else emptyList(),
+        )
+    }
+
+    fun describeMemberChoice(member: Member): MemberChoice {
+        val name = member.name.ifEmpty { member.email }
+        return MemberChoice(
+            title = if (member.isCurrentUser) "$name (you)" else name,
+            detail = member.email.takeIf { member.name.isNotEmpty() && member.name != member.email },
         )
     }
 

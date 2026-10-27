@@ -735,7 +735,8 @@ private fun TeamSection(
                     )
                     HisarMenu(rowMenu == RowMenu.AddMember(team.id), onDismiss = { onMenu(null) }) {
                         for (member in allAddableMember) {
-                            HisarMenuItem(describeMemberName(member), "team-${team.name}-add-${member.email}", onClick = {
+                            val choice = OrganizationLogic.describeMemberChoice(member)
+                            HisarMenuItem(choice.title, "team-${team.name}-add-${member.email}", detail = choice.detail, onClick = {
                                 onMenu(null)
                                 onAddMember(member)
                             })

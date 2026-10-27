@@ -154,6 +154,11 @@ enum OrganizationLogic {
         )
     }
 
+    static func describeMemberChoice(_ member: Member) -> String {
+        let name = member.name.isEmpty || member.name == member.email ? member.email : "\(member.name) (\(member.email))"
+        return member.isCurrentUser ? "\(name) (you)" : name
+    }
+
     /// The organization's members an admin can add to the team; nobody for anyone else.
     static func listAllAddableMember(organization: Organization, team: Team) -> [Member] {
         guard organization.isAdmin else { return [] }
