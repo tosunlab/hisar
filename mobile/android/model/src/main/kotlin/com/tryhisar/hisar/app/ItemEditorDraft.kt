@@ -29,7 +29,6 @@ data class ItemEditorDraft(
     val cardDescription: CardDescription = CardDescription(),
     /** The brand of the number last checked: the type follows it until the user picks a different one. */
     val numberBrand: String = "",
-    /** Save found a field with a value but no name, so every such field says so until it has one. */
     val isUnnamedFieldShown: Boolean = false,
     private val openedItem: ItemDetail = item,
 ) {
@@ -51,7 +50,6 @@ data class ItemEditorDraft(
 
     val canSave: Boolean get() = item.title.trimmingWhitespaces().isNotEmpty()
 
-    /** The first field with a value but no name, which the backend refuses: Save stops on it instead. */
     val unnamedFieldIndex: Int? get() = item.allField.indexOfFirst { it.isNameMissing }.takeIf { it >= 0 }
 
     /** Something was typed since the editor opened, so leaving without saving loses it. */

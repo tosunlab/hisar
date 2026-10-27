@@ -33,7 +33,6 @@ struct ItemEditorView: View {
     @State private var isOldAddressShown = false
     /// The brand of the number last checked: the type follows it until the user picks a different one.
     @State private var numberBrand = ""
-    /// Save found a field with a value but no name, so every such field says so until it has one.
     @State private var isUnnamedFieldShown = false
     @FocusState private var focusedFieldNameIndex: Int?
 
@@ -910,8 +909,7 @@ struct ItemEditorView: View {
         "field-\(index)"
     }
 
-    /// A field with a value but no name stops the save, since the backend refuses it: its row scrolls into view, then its name
-    /// takes focus once the List has created the row.
+    /// List creates offscreen rows lazily, so focus follows the scroll on the next main-loop turn.
     private func save(scrollingWith proxy: ScrollViewProxy) {
         addTags()
         if let unnamedIndex = draft.allField.firstIndex(where: \.isNameMissing) {

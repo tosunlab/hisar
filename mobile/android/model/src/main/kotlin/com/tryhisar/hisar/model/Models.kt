@@ -142,7 +142,6 @@ data class VaultSummary(
 
 @Serializable
 data class ItemField(val name: String, val value: String, val concealed: Boolean) {
-    /** Hisar keeps a field only by its name, so the backend refuses a value without one rather than drop it. */
     val isNameMissing: Boolean get() = name.isBlank() && value.isNotEmpty()
 }
 

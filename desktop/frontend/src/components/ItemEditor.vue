@@ -285,7 +285,6 @@ function handleTagKey(event: KeyboardEvent): void {
   }
 }
 
-// Hisar keeps a field only by its name, so a value without one would be dropped; the backend refuses it too.
 const hasTriedSaving = ref(false);
 
 function isMissingName(field: ItemField): boolean {

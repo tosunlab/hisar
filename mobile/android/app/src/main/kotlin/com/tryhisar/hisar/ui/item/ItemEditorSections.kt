@@ -347,10 +347,7 @@ fun SoftwareLicenseSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -
     }
 }
 
-/**
- * Custom fields: each with its name, its value, hidden when secret, and the Secret switch; its button or a swipe removes one.
- * [nameFocus] gives the name of the field at an index, which Save focuses when the field has a value but no name.
- */
+/** Custom fields: each with its name, its value, hidden when secret, and the Secret switch; its button or a swipe removes one. */
 @Composable
 fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, nameFocus: (Int) -> FocusRequester) {
     val allField = draft.item.allField
