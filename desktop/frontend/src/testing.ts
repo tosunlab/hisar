@@ -858,6 +858,7 @@ export function createApiMock() {
     setOpenAtLogin: vi.fn(),
     openLoginItemSettings: vi.fn().mockResolvedValue(undefined),
     listAllImportFormat: vi.fn().mockResolvedValue([]),
+    openEmergencyKit: vi.fn().mockResolvedValue(null),
     chooseImportFile: vi.fn(),
     openImportFile: vi.fn(),
     previewImport: vi.fn(),

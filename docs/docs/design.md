@@ -329,6 +329,8 @@ A lost registration answer is reconciled using the staged factor and exact encry
 
 The account form rates the master password with the same strength meter as the item editor (Weak, Fair, Good, Strong). It refuses fewer than 10 characters and passwords estimated below 28 bits (common words and patterns such as `password1234`), with "This password is too easy to guess. Add a few more words or characters."; a Weak password above that is allowed with a hint, because the Secret Key also protects the account. The server only checks the length.
 
+On the phones, a mismatched confirmation is reported after the user leaves an edited Repeat master password field or attempts to submit. Once triggered, validation updates as the confirmation changes. Account creation still requires equal passwords.
+
 The admin dashboard's setup page (§5.1) runs the same steps in its Web Worker as the "Admin dashboard" device. Its form refuses fewer than 10 characters and a repeated password that does not match; it has no strength meter.
 
 ### 5.3 Login on a new device
@@ -337,6 +339,12 @@ The admin dashboard's setup page (§5.1) runs the same steps in its Web Worker a
 2. Client fetches salt and params, derives `authKey`, runs OPAQUE login and gets a session. A server answers an unknown email with a fake salt and record, so signing in to the wrong server fails like a wrong password; the error names the server asked ("incorrect email, master password or Secret Key for eu.tryhisar.com; check that this is your account's server"). OPAQUE identities: client = account ID, server = the constant `"hisar"` (`core/pake`; `bytemare/opaque` v0.18.0 cannot decode key material with an empty identity). The server's OPAQUE key material and an HMAC key live in `hisar-secrets.json`, created on first start.
 3. Client downloads `encKeyset` and decrypts it with AUK.
 4. The device registers (name, platform, public device key). The account's phones get a security notification (§9.12), and the device shows in every device's list.
+
+The desktop sign-in form focuses its first empty account field on opening, in email, Secret Key and master password order. Revealing Server moves focus to that field.
+
+The phone scanners validate the decoded text before closing. An invalid code leaves the scanner open and paused with an announced error and **Try again**. Only that action rearms scanning; a valid current or legacy kit fills the account fields without opening a decoded URL.
+
+On the Mac, **Open Emergency Kit…** chooses a local PDF through the native open panel. CoreGraphics renders at most four pages, each bounded to 3072 pixels per side, from a regular file no larger than 16 MB. Vision decodes QR codes locally and `desktop/kitreader` applies the current and legacy kit validation rules. Only server, email and Secret Key fill the form. The master password is cleared and sign-in remains explicit. Cancellation changes nothing. A PDF with no valid kit gives an error without its path or decoded contents. Nothing is uploaded, logged or opened as a URL. Linux keeps manual entry without this action.
 
 #### Origin-bound authentication
 

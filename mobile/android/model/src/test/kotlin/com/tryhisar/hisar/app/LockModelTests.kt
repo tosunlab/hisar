@@ -110,8 +110,8 @@ class LockModelTests {
         model.lock.refreshShareAwaitingUnlock()
         assertEquals(
             listOf(
-                "Ada accepted your invitation to a vault — unlock to finish sharing",
-                "bo@example.com accepted your invitation to a vault — unlock to finish sharing",
+                "Ada accepted your invitation to a vault. Unlock to finish sharing.",
+                "bo@example.com accepted your invitation to a vault. Unlock to finish sharing.",
             ),
             model.lock.allShareAwaitingUnlock.value.map { it.message },
         )

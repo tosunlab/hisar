@@ -19,11 +19,12 @@ struct SignInView: View {
     @State private var inviteLink = ""
     @State private var name = ""
     @State private var repeatedPassword = ""
+    @FocusState private var isRepeatPasswordFocused: Bool
+    @State private var hasValidatedRepeatedPassword = false
     @State private var isScannerShown = false
-    @State private var scannerMessage: String?
 
     private var isPasswordMismatch: Bool {
-        mode == .createAccount && !repeatedPassword.isEmpty && password != repeatedPassword
+        mode == .createAccount && hasValidatedRepeatedPassword && password != repeatedPassword
     }
 
     private var canSubmit: Bool {
@@ -97,7 +98,7 @@ struct SignInView: View {
                     .listRowInsets(EdgeInsets())
                 } footer: {
                     if mode == .signIn {
-                        Text("Lost your Secret Key? It's on your Emergency Kit.")
+                        Text("Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.")
                             .padding(.top, 8)
                             .accessibilityIdentifier("secret-key-note")
                     }
@@ -110,7 +111,13 @@ struct SignInView: View {
         .onChange(of: mode) { _, _ in
             password = ""
             repeatedPassword = ""
+            hasValidatedRepeatedPassword = false
             model.clearError()
+        }
+        .onChange(of: isRepeatPasswordFocused) { _, isFocused in
+            if !isFocused && !repeatedPassword.isEmpty {
+                hasValidatedRepeatedPassword = true
+            }
         }
         .onAppear {
             if !model.status.server.isEmpty { applyServer(model.status.server) }
@@ -120,21 +127,12 @@ struct SignInView: View {
         .onChange(of: model.pendingSignInLink) { _, _ in applyPendingSignInLink() }
         .onChange(of: model.pendingInviteLink) { _, _ in applyPendingInviteLink() }
         .sheet(isPresented: $isScannerShown) {
-            EmergencyKitScannerSheet { scannedText in
-                isScannerShown = false
-                if let link = SignInLink.parse(scannedText) {
+            EmergencyKitScannerSheet { link in
                     model.pendingSignInLink = link
-                } else {
-                    scannerMessage = "This QR code is not from a Hisar Emergency Kit."
+                isScannerShown = false
                 }
             }
         }
-        .alert("Scan Emergency Kit", isPresented: Binding(get: { scannerMessage != nil }, set: { if !$0 { scannerMessage = nil } })) {
-            Button("OK", role: .cancel) {}
-        } message: {
-            Text(scannerMessage ?? "")
-        }
-    }
 
     @ViewBuilder
     private var signInSections: some View {
@@ -250,6 +248,7 @@ struct SignInView: View {
                 .accessibilityIdentifier("sign-up-password")
             SecureField("Repeat master password", text: $repeatedPassword)
                 .textContentType(.newPassword)
+                .focused($isRepeatPasswordFocused)
                 .accessibilityIdentifier("sign-up-repeated-password")
         } header: {
             Text("Master password")
@@ -296,6 +295,7 @@ struct SignInView: View {
     }
 
     private func submit() {
+        if mode == .createAccount { hasValidatedRepeatedPassword = true }
         guard canSubmit, !model.isBusy else { return }
         Task {
             switch mode {

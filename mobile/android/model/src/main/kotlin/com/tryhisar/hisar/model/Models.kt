@@ -976,7 +976,7 @@ data class ShareAwaitingUnlock(
     val id: String get() = invitationID
     val recipientDisplayName: String
         get() = if (recipientName.isEmpty() || recipientName == recipientEmail) recipientEmail else recipientName
-    val message: String get() = "$recipientDisplayName accepted your invitation to a vault — unlock to finish sharing"
+    val message: String get() = "$recipientDisplayName accepted your invitation to a vault. Unlock to finish sharing."
 }
 
 /** A short "since" for banners: "just now", "5 min ago", "2 h ago", "yesterday", "3 days ago". */
