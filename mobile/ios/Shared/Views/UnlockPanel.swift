@@ -4,6 +4,8 @@ struct UnlockPanel: View {
     var email: String
     var requestDescription: String = ""
     var isBiometricReady: Bool
+    var isBiometricEnabled: Bool
+    var isBiometricAvailable: Bool
     var lockCount: Int
     var biometryName: String
     var isBusy: Bool
@@ -69,6 +71,12 @@ struct UnlockPanel: View {
                     .onSubmit(submit)
                     .accessibilityIdentifier("unlock-password")
             } footer: {
+                if isBiometricEnabled && !isBiometricReady {
+                    Text(isBiometricAvailable
+                         ? "Enter your master password to use \(biometryName) again. Hisar requires it at least every 14 days."
+                         : "\(biometryName) isn't available right now. Enter your master password.")
+                        .accessibilityIdentifier("biometric-password-reason")
+                }
                 if isOffline {
                     Label("Offline. You can still unlock with the copy on this iPhone.", systemImage: "wifi.slash")
                 }

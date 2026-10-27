@@ -26,10 +26,13 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
 | Secret Key (phone section header); Your Secret Key (Mac block) · Copy Secret Key · "Copied · clears in 90 seconds" (iPhone), "Copied · clears in about 2 minutes" (Android) | An unlabelled key; copying the key as proof that the Emergency Kit was saved |
 | Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock |
+| Explain enabled biometric unlock that needs the master password separately from unavailable hardware. Keep the offline explanation visible too. | Treat every not-ready state as biometric unlock being turned off |
 | Sign in, Sign out, Create account | Log in, Register |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |
 | "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
 | "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
+| The master password is incorrect. | incorrect email, master password or Secret Key (on the password-only lock screen) |
+| Hisar can't reach \<server>. Check your internet connection and the server address. | changes can be saved once you are back online (before signing in or creating an account) |
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
 | "Export your items first in Settings → Import & Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
 

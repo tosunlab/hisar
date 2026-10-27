@@ -257,6 +257,28 @@ final class AccountLifecycleTests: XCTestCase {
         ]
     }
 
+    func testPendingRecoverySelectsOneAndPreservesExplicitSelection() async throws {
+        seedPendingRecovery(phase: "delivery-pending")
+        let model = AppModel(credentialIdentityStore: identityStore)
+        await model.start { self.backend }?.value
+        XCTAssertEqual(model.selectedPendingRecoveryID, "pending-1")
+        var other = backend.allPendingRecovery[0]
+        other.operationId = "pending-2"
+        backend.allPendingRecovery.append(other)
+        await model.refreshPendingRecovery()
+        XCTAssertEqual(model.selectedPendingRecoveryID, "pending-1")
+        await model.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)
+        let path = try XCTUnwrap(model.pendingRecoveryExport?.path)
+        model.openPendingRecovery(operationID: "pending-2")
+        XCTAssertEqual(model.selectedPendingRecoveryID, "pending-2")
+        XCTAssertNil(model.pendingRecoveryExport)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+        await model.refreshPendingRecovery()
+        XCTAssertEqual(model.selectedPendingRecoveryID, "pending-2")
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertFalse(backend.allCallName.contains("resumePendingRecovery"))
+    }
+
     func testPendingRecoverySurvivesModelRestartWithoutSigningIn() async throws {
         seedPendingRecovery()
         let first = AppModel(credentialIdentityStore: identityStore)

@@ -362,7 +362,7 @@ open class FakeBackend : VaultBackend {
 
     override fun unlock(password: String): VaultStatus {
         record("unlock")
-        if (password != PASSWORD) throw BackendError("Incorrect email, master password or Secret Key")
+        if (password != PASSWORD) throw BackendError("The master password is incorrect.")
         status = status.copy(state = VaultStatus.STATE_UNLOCKED, biometricReady = status.biometricReady || status.biometricEnabled)
         return status
     }

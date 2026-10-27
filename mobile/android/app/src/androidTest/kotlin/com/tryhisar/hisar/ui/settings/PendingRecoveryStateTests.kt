@@ -8,7 +8,6 @@ import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.StateRestorationTester
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
-import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.FakeTextClipboard
@@ -60,7 +59,9 @@ class PendingRecoveryStateTests {
                 Box(Modifier.fillMaxSize().exposeTestTags()) { PendingRecoveryScreen(model) }
             }
         }
-        composeRule.onNodeWithTag("pending-recovery-pending-1").performClick()
+        composeRule.onNodeWithTag("pending-recovery-pending-1").assertDoesNotExist()
+        composeRule.onNodeWithTag("pending-recovery-phase").assertExists()
+        composeRule.onNodeWithTag("pending-recovery-acknowledge").assertDoesNotExist()
         composeRule.type("pending-recovery-password", FakeBackend.PASSWORD)
         composeRule.tap("pending-recovery-export")
         composeRule.waitUntil(30_000) { model.pendingRecovery.export.value != null }

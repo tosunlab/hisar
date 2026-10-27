@@ -932,6 +932,20 @@ struct PendingRecovery: Codable, Equatable, Identifiable {
     var manualUnlock: Bool = false
     var keychainProtected: Bool = false
     var id: String { operationId }
+    var reminderLabel: String {
+        if phase == "manual-unlock" { return "Sign in with your saved Emergency Kit." }
+        if phase == "awaiting-kit" || phase == "delivery-pending" {
+            return kind == "signup"
+                ? "Save your Emergency Kit to finish setting up \(email)."
+                : "Save your new Emergency Kit to finish replacing your Secret Key."
+        }
+        return "Finish setting up \(email)."
+    }
+    var reminderHint: String {
+        if phase == "manual-unlock" { return "Opens sign-in with your saved Emergency Kit" }
+        if phase == "awaiting-kit" || phase == "delivery-pending" { return "Opens the Emergency Kit step" }
+        return "Opens the unfinished account setup"
+    }
 }
 
 struct PendingRecoveryExport: Codable, Equatable {

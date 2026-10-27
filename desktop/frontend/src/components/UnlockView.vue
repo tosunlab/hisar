@@ -5,6 +5,7 @@ import { loadShareAwaitingUnlockQuietly, signOut, store, unlock, unlockWithBiome
 import { describePerson } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
 
 const password = ref("");
 const isConfirmingSignOut = ref(false);
@@ -95,6 +96,7 @@ onBeforeUnmount(() => {
           <h1>Hisar is locked</h1>
           <p class="muted" data-testid="locked-account">{{ store.status.email }} · {{ store.status.server.replace(/^https?:\/\//, "") }}</p>
         </div>
+        <PendingRecoveryReminder />
         <ul v-if="store.allShareAwaitingUnlock.length > 0" class="awaiting-list" data-testid="share-awaiting-unlock">
           <li v-for="awaiting in store.allShareAwaitingUnlock" :key="awaiting.invitationId" class="awaiting" role="status">
             <AppIcon name="users" :size="15" />
@@ -131,6 +133,9 @@ onBeforeUnmount(() => {
               </span>
             </button>
           </label>
+          <p v-if="store.status.biometricEnabled && !store.status.biometricReady && !store.status.biometricSetupError" class="muted" data-testid="biometric-password-reason">
+            {{ store.status.biometricAvailable ? "Enter your master password to use Touch ID again. Hisar requires it after starting and at least every 14 days." : "Touch ID isn't available right now. Enter your master password." }}
+          </p>
           <button class="primary" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Unlocking…" : "Unlock" }}</button>
         </form>
         <p class="muted status" aria-live="polite" data-testid="unlock-status">

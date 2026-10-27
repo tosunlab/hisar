@@ -133,6 +133,8 @@ private fun AutoFillLockView(model: AutoFillModel) {
     UnlockPanel(
         email = status.email,
         isBiometricReady = status.biometricReady,
+        isBiometricEnabled = status.biometricEnabled,
+        isBiometricAvailable = status.biometricAvailable,
         isBusy = isBusy,
         lockCount = lockCount,
         isResumed = isResumed,

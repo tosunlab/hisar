@@ -43,9 +43,19 @@ struct RootView: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            if !model.allPendingRecovery.isEmpty {
-                Button("Finish account recovery") { model.isPendingRecoveryShown = true }
+            if !model.allPendingRecovery.isEmpty && !model.isPendingRecoveryShown && model.newSecretKey == nil {
+                Button { model.openPendingRecovery() } label: {
+                    HStack {
+                        Image(systemName: "exclamationmark.triangle")
+                        Text(model.allPendingRecovery.count == 1
+                             ? model.allPendingRecovery[0].reminderLabel
+                             : "\(model.allPendingRecovery.count) account setups need attention")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        Image(systemName: "chevron.right")
+                    }
+                }
                     .accessibilityIdentifier("pending-recovery-open")
+                    .accessibilityHint(model.allPendingRecovery.count == 1 ? model.allPendingRecovery[0].reminderHint : "Opens the account setup chooser")
                     .padding()
                     .frame(maxWidth: .infinity)
                     .background(.regularMaterial)

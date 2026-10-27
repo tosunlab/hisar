@@ -172,6 +172,29 @@ func TestBiometricUnlockPreparesTheKeyFirst(t *testing.T) {
 	checkCalls("unlock after a new enrollment", "prepare load "+accountID)
 }
 
+func TestBiometricResetKeepsDiagnosticsOutOfUserMessage(t *testing.T) {
+	for _, changedPassword := range []bool{false, true} {
+		fixture := createUnlockedTestService(t)
+		prepareTestApprovalUnlock(t, fixture, "master password")
+		cause := errors.New("OSStatus or Keystore diagnostic")
+		if changedPassword {
+			cause = session.ErrBadCredentials
+		}
+		service := fixture.service
+		err := service.resetBiometricAfterFailure(fixture.accountID, service.state.BiometricUnlock, cause)
+		if !errors.Is(err, cause) {
+			t.Fatalf("diagnostic cause lost: %v", err)
+		}
+		want := "Touch ID unlock was turned off. Unlock with your master password, then turn it on again in Settings, Security."
+		if changedPassword {
+			want = "Your master password changed. " + want
+		}
+		if err.Error() != want || service.GetStatus().BiometricEnabled {
+			t.Fatalf("reset: %v %+v", err, service.GetStatus())
+		}
+	}
+}
+
 // preparePausingBiometric holds a Touch ID unlock between preparing its key read and its own prompt.
 type preparePausingBiometric struct {
 	*perUseBiometric

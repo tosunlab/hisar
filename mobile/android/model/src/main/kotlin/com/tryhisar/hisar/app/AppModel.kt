@@ -261,9 +261,9 @@ class AppModel(
         attempt { it.getStatus() }?.let(::applyStatus)
     }
 
-    override suspend fun refreshPendingRecovery() {
-        pendingRecovery.refresh()
-        if (pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
+    override suspend fun refreshPendingRecovery(isOpening: Boolean, operationID: String?) {
+        pendingRecovery.refresh(isOpening, operationID)
+        if (isOpening && pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
     }
 
     suspend fun lock() {

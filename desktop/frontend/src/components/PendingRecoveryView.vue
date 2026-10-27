@@ -13,15 +13,30 @@ const isSavedConfirmed = ref<Record<string, boolean>>({});
 function factorsFor(operation: PendingRecoverySummary): RecoveryFactors {
   return factorsByOperation.value[operation.operationId] ??= { password: "", secretKey: "", priorSecretKey: "", needsPriorSecretKey: false };
 }
-const selectedID = ref(store.pendingRecovery[0]?.operationId ?? "");
-const selected = computed(() => store.pendingRecovery.find(operation => operation.operationId === selectedID.value));
-watch(() => store.pendingRecovery.map(operation => operation.operationId), ids => {
-  if (!ids.includes(selectedID.value)) selectedID.value = ids[0] ?? "";
+const selectedID = ref("");
+const selected = computed(() => store.pendingRecovery.find((operation) => operation.operationId === selectedID.value));
+const nextAction = computed(() => {
+  const operation = selected.value;
+  if (!operation) return null;
+  if (operation.phase === "manual-unlock") return { kind: "resume" as const, label: "Sign in with saved Emergency Kit" };
+  if (["prepared", "needs-finishing", "outcome-unknown"].includes(operation.phase)) return { kind: "resume" as const, label: "Continue" };
+  if (operation.kitSaved || savedOperationID.value === operation.operationId) return { kind: "acknowledge" as const, label: "Confirm saved" };
+  return { kind: "save" as const, label: "Save Emergency Kit…" };
 });
+watch(() => store.pendingRecovery, (records) => {
+  if (!records.some((operation) => operation.operationId === selectedID.value)) {
+    selectedID.value = store.recoveryFactor?.operationId ?? (records.length === 1 ? records[0].operationId : "");
+  }
+}, { immediate: true });
 function clearFactors(): void {
   factorsByOperation.value = {};
 }
-watch(selectedID, () => { clearFactors(); store.recoveryFactor = null; });
+watch(selectedID, (id) => {
+  clearFactors();
+  savedOperationID.value = "";
+  isSavedConfirmed.value = {};
+  if (store.recoveryFactor && store.recoveryFactor.operationId !== id) store.recoveryFactor = null;
+});
 watch(() => [store.status.email, store.status.server], clearFactors);
 watch(() => store.status.state, state => {
   if (state === "locked" || state === "signed-out") clearFactors();
@@ -84,17 +99,14 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
         <p v-if="store.status.state !== 'signed-out' && (store.status.email !== operation.email || store.status.server !== operation.origin)" class="hint">Continuing signs this device in to {{ operation.email }} on {{ recoveryHost(operation.origin) }}.</p>
         <p v-if="!operation.keychainProtected" class="hint">This device does not persist the new Secret Key. After a restart, enter the Secret Key from your saved kit to resume. If you closed the app before saving an uncommitted kit, discard that setup and start again.</p>
         <p v-for="problem in operation.problems" :key="problem" class="error">{{ problem }}</p>
-        <label><span>Master password for this operation</span><input v-model="factorsFor(operation).password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /><span class="hint">Enter your master password to continue.</span></label>
+        <label><span>Master password for this operation</span><input v-model="factorsFor(operation).password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /></label>
         <label v-if="operation.manualUnlock || !operation.keychainProtected"><span>Secret Key from the saved Emergency Kit</span><input v-model="factorsFor(operation).secretKey" name="pendingRecoverySecretKey" type="text" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
         <label v-if="operation.kind === 'replacement' && factorsFor(operation).needsPriorSecretKey"><span>Previous Secret Key</span><input v-model="factorsFor(operation).priorSecretKey" name="pendingRecoveryPriorSecretKey" type="text" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
-        <div class="row">
-          <button :disabled="store.isBusy || !factorsFor(operation).password || operation.phase === 'awaiting-kit'" @click="run(operation, 'resume')">{{ operation.phase === 'manual-unlock' ? 'Sign in with saved Emergency Kit' : 'Continue' }}</button>
-          <button :disabled="store.isBusy || !factorsFor(operation).password || operation.phase === 'outcome-unknown'" @click="run(operation, 'save')">Save Emergency Kit…</button>
-        </div>
-        <template v-if="savedOperationID === operation.operationId || operation.kitSaved">
+        <template v-if="nextAction?.kind === 'acknowledge'">
           <label class="check-row"><input v-model="isSavedConfirmed[operation.operationId]" name="pendingRecoveryKitSaved" type="checkbox" /><span>I saved the Emergency Kit somewhere safe</span></label>
-          <button class="primary" :disabled="store.isBusy || !factorsFor(operation).password || !isSavedConfirmed[operation.operationId] || (operation.phase !== 'delivery-pending' && operation.phase !== 'awaiting-kit')" @click="run(operation, 'acknowledge')">Confirm saved</button>
         </template>
+        <p v-if="!factorsFor(operation).password" class="hint">Enter your master password to continue.</p>
+        <button v-if="nextAction" class="primary" :disabled="store.isBusy || !factorsFor(operation).password || (nextAction.kind === 'acknowledge' && !isSavedConfirmed[operation.operationId])" @click="run(operation, nextAction.kind)">{{ nextAction.label }}</button>
         <template v-if="operation.phase === 'awaiting-kit' || operation.phase === 'prepared'">
           <button class="ghost" :disabled="store.isBusy || !factorsFor(operation).password" @click="run(operation, 'discard')">Cancel this setup</button>
           <p class="hint">This removes only this uncommitted setup. No server change has been sent.</p>
@@ -108,7 +120,7 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
 
 <style scoped>
 .recovery { display: grid; place-items: center; height: 100%; overflow: auto; padding: 24px; background: var(--color-page); }
-.recovery-card { display: flex; flex-direction: column; gap: 14px; width: min(620px, 100%); }
+.recovery-card { display: flex; flex-direction: column; gap: 14px; width: min(620px, 100%); padding: 28px; border: 1px solid var(--color-border); border-radius: var(--radius); background: var(--color-surface); box-shadow: 0 8px 28px var(--color-shadow); }
 h1 { font-size: var(--font-size-22); }
 h2 { font-size: var(--font-size-15); }
 p { margin: 0; }

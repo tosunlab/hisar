@@ -46,7 +46,7 @@ describe("Pending recovery", () => {
     const wrapper = mount(PendingRecoveryView);
     const password = wrapper.find('input[name="pendingRecoveryPassword"]');
     await password.setValue("password");
-    expect(wrapper.findAll("button").find((button) => button.text() === "Continue")!.attributes("disabled")).toBeDefined();
+    expect(wrapper.findAll("button").some((button) => button.text() === "Continue")).toBe(false);
     await wrapper.findAll("button").find((button) => button.text() === "Save Emergency Kit…")!.trigger("click");
     await flushPromises();
     await wrapper.find('input[name="pendingRecoveryKitSaved"]').setValue(true);

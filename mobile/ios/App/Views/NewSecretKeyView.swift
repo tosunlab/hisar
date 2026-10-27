@@ -149,7 +149,7 @@ struct BiometricOfferView: View {
                         Image(systemName: SettingsView.biometrySystemImage)
                             .font(.system(size: 56))
                             .foregroundStyle(.tint)
-                        Text("Unlock Hisar with \(SettingsView.biometryName) instead of typing your master password. Hisar still asks for the master password at least every 14 days.")
+                        Text(SettingsView.biometryConsent)
                             .multilineTextAlignment(.center)
                             .accessibilityIdentifier("biometric-offer-text")
                     }

@@ -19,6 +19,14 @@ var (
 	ErrBiometricCancelled    = errors.New("biometric authentication was cancelled")
 )
 
+type biometricResetError struct {
+	message string
+	cause   error
+}
+
+func (err *biometricResetError) Error() string { return err.message }
+func (err *biometricResetError) Unwrap() error { return err.cause }
+
 func buildBiometricContext(accountID string) []byte {
 	return []byte("hisar/v1/biometric-unlock:" + accountID)
 }
@@ -295,7 +303,7 @@ func (s *Service) unlockWithBiometric(authenticate func() error) (Status, error)
 		return s.GetStatus(), nil
 	}
 	if errors.Is(err, session.ErrBadCredentials) {
-		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, errors.New("your master password changed"))
+		return Status{}, s.resetBiometricAfterFailure(accountID, sealedUnlockKey, session.ErrBadCredentials)
 	}
 	if err != nil {
 		return Status{}, convertError(err)
@@ -319,7 +327,11 @@ func (s *Service) resetBiometricAfterFailure(accountID string, sealedUnlockKey [
 	}
 	s.forgetBiometricUnlock()
 	s.state.Save()
-	return fmt.Errorf("%v; %s unlock was turned off, unlock with your master password and turn it on again", cause, s.config.BiometricName)
+	message := fmt.Sprintf("%s unlock was turned off. Unlock with your master password, then turn it on again in Settings, Security.", s.config.BiometricName)
+	if errors.Is(cause, session.ErrBadCredentials) {
+		message = "Your master password changed. " + message
+	}
+	return &biometricResetError{message: message, cause: cause}
 }
 
 // SetBiometricKeyPreparer is for apps that create the preparer after the service (hisarkit); it must run right after

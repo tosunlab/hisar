@@ -75,6 +75,7 @@ import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.LabeledRow
+import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ProminentButton
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.theme.HisarTheme
@@ -164,10 +165,11 @@ private fun SecretKeyRow(secretKey: String, testTag: String) {
 
 /** Saving, printing and sending an Emergency Kit PDF to another app, the things the iPhone's share sheet offers for it. */
 @Composable
-private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String) {
+internal fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String, onHandoff: () -> Unit = {}, isSaveProminent: Boolean = false) {
     val context = LocalContext.current
     val save = rememberFileSaver("application/pdf") { savedURI ->
         if (savedURI != null) {
+            onHandoff()
             model.showNotice("Emergency Kit saved", com.tryhisar.hisar.app.Notice.Action("Open") {
                 try {
                     context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(savedURI, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
@@ -177,10 +179,21 @@ private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String,
             })
         } else model.errorMessage.value = SAVE_FAILED_MESSAGE
     }
-    val share = rememberFileSharer("application/pdf") { model.errorMessage.value = SHARE_FAILED_MESSAGE }
+    val share = rememberFileSharer("application/pdf", onFailure = { model.errorMessage.value = SHARE_FAILED_MESSAGE }, onShared = onHandoff)
+    if (isSaveProminent) {
+        FormRow { ProminentButton("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag) }
+    } else {
     FormButtonRow("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag, icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
+    }
     RowDivider()
-    FormButtonRow("Print Emergency Kit", { printPdf(context, File(path), "Hisar Emergency Kit") }, testTag = printTestTag, icon = Icons.Outlined.Print, color = HisarTheme.colors.tint)
+    FormButtonRow(
+        "Print Emergency Kit",
+        {
+            printPdf(context, File(path), "Hisar Emergency Kit")
+            onHandoff()
+        },
+        testTag = printTestTag, icon = Icons.Outlined.Print, color = HisarTheme.colors.tint,
+    )
     RowDivider()
     FormButtonRow("Share Emergency Kit", { share(File(path)) }, testTag = shareTestTag, icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
 }
@@ -568,11 +581,12 @@ fun PendingRecoveryScreen(model: AppModel) {
     val export by model.pendingRecovery.export.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val error by model.errorMessage.collectAsStateWithLifecycle()
-    var selectedID by rememberSaveable { mutableStateOf<String?>(null) }
+    val selectedID by model.pendingRecovery.selectedOperationID.collectAsStateWithLifecycle()
     var password by remember { mutableStateOf("") }
     var secretKey by remember { mutableStateOf("") }
     var priorSecretKey by remember { mutableStateOf("") }
     var isDiscardConfirmationShown by remember { mutableStateOf(false) }
+    var isKitHandedOff by remember(selectedID, export) { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     fun clearFactors() {
         password = ""
@@ -585,7 +599,7 @@ fun PendingRecoveryScreen(model: AppModel) {
         else if (!succeeded && model.pendingRecovery.isPasswordRejected) password = ""
     }
     fun close() { clearFactors(); model.pendingRecovery.close() }
-    LaunchedEffect(status.email, status.server) { clearFactors() }
+    LaunchedEffect(status.email, status.server, selectedID) { clearFactors() }
     LaunchedEffect(status.state) {
         if (status.state == com.tryhisar.hisar.model.VaultStatus.STATE_LOCKED || status.state == com.tryhisar.hisar.model.VaultStatus.STATE_SIGNED_OUT) clearFactors()
     }
@@ -597,19 +611,15 @@ fun PendingRecoveryScreen(model: AppModel) {
                 Text("Save and confirm your Emergency Kit to finish this setup.")
             }
         }
-        FormSection(header = "Choose an account") {
-            records.forEach { recovery ->
-                FormButtonRow(
-                    "${PendingRecoveryCopy.heading(recovery.kind)}\n${recovery.email} · ${PendingRecoveryCopy.host(recovery.origin)} ›",
-                    {
-                        if (selectedID != recovery.operationId) {
-                            clearFactors()
-                            model.pendingRecovery.clearExport()
-                            selectedID = recovery.operationId
-                        }
-                    },
-                    testTag = "pending-recovery-${recovery.operationId}",
-                )
+        if (records.size > 1) {
+            FormSection(header = "Choose an account") {
+                records.forEach { recovery ->
+                    NavigationRow(
+                        "${PendingRecoveryCopy.heading(recovery.kind)}\n${recovery.email} · ${PendingRecoveryCopy.host(recovery.origin)}",
+                        "pending-recovery-${recovery.operationId}",
+                        { model.pendingRecovery.select(recovery.operationId) },
+                    )
+                }
             }
         }
         records.firstOrNull { it.operationId == selectedID }?.let { recovery ->
@@ -640,30 +650,33 @@ fun PendingRecoveryScreen(model: AppModel) {
                     password, { password = it }, placeholder = "Master password",
                     testTag = "pending-recovery-password", isSecure = true,
                 )
-                FormRow { Text("Enter your master password to continue.") }
+                if (password.isEmpty()) FormRow { Text("Enter your master password to continue.") }
                 if (status.state != com.tryhisar.hisar.model.VaultStatus.STATE_SIGNED_OUT && (status.email != recovery.email || status.server != recovery.origin)) {
                     FormRow { Text("Continuing signs this device in to ${recovery.email} on ${PendingRecoveryCopy.host(recovery.origin)}.") }
                 }
-                FormButtonRow(
-                    if (recovery.phase == "manual-unlock") "Sign in with saved Emergency Kit" else "Continue",
-                    {
-                        val entered = password
-                        val enteredKey = secretKey
-                        val enteredPriorKey = priorSecretKey
-                        scope.launch { handleOutcome(model.pendingRecovery.resume(recovery.operationId, entered, enteredKey, enteredPriorKey)) }
-                    },
-                    testTag = "pending-recovery-resume",
-                    enabled = password.isNotEmpty() && !isBusy && recovery.phase != "awaiting-kit",
-                )
-                FormButtonRow(
-                    "Prepare Emergency Kit",
-                    {
-                        val entered = password
-                        scope.launch { handleOutcome(model.pendingRecovery.exportKit(recovery.operationId, entered)) }
-                    },
-                    testTag = "pending-recovery-export",
-                    enabled = password.isNotEmpty() && !isBusy && recovery.phase != "outcome-unknown",
-                )
+                if (recovery.phase in listOf("manual-unlock", "prepared", "needs-finishing", "outcome-unknown")) {
+                    FormRow { ProminentButton(
+                        if (recovery.phase == "manual-unlock") "Sign in with saved Emergency Kit" else "Continue",
+                        {
+                            val entered = password
+                            val enteredKey = secretKey
+                            val enteredPriorKey = priorSecretKey
+                            scope.launch { handleOutcome(model.pendingRecovery.resume(recovery.operationId, entered, enteredKey, enteredPriorKey)) }
+                        },
+                        testTag = "pending-recovery-resume",
+                        enabled = password.isNotEmpty() && !isBusy,
+                    ) }
+                } else if (export == null) {
+                    FormRow { ProminentButton(
+                        "Prepare Emergency Kit",
+                        {
+                            val entered = password
+                            scope.launch { handleOutcome(model.pendingRecovery.exportKit(recovery.operationId, entered)) }
+                        },
+                        testTag = "pending-recovery-export",
+                        enabled = password.isNotEmpty() && !isBusy,
+                    ) }
+                }
             }
             export?.let {
                 FormSection(header = "Secret Key") {
@@ -671,20 +684,27 @@ fun PendingRecoveryScreen(model: AppModel) {
                     CopySecretKeyRow(model, it.secretKey, "pending-recovery-copy-secret-key")
                 }
                 FormSection(header = "Emergency Kit") {
-                    EmergencyKitRows(model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit")
+                    EmergencyKitRows(
+                        model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit",
+                        onHandoff = { isKitHandedOff = true }, isSaveProminent = !isKitHandedOff,
+                    )
+                    if (!isKitHandedOff) {
+                        FormRow { Text("Save, print or share the Emergency Kit first.", Modifier.testTag("pending-recovery-handoff-hint")) }
+                    }
                 }
             }
             FormSection {
-                FormButtonRow(
-                    "I saved my Emergency Kit",
-                    {
-                        val entered = password
-                        scope.launch { handleOutcome(model.pendingRecovery.acknowledge(recovery.operationId, entered), isFinal = recovery.phase == "delivery-pending") }
-                    },
-                    testTag = "pending-recovery-acknowledge",
-                    enabled = password.isNotEmpty() && !isBusy && recovery.kitSaved &&
-                        (recovery.phase == "delivery-pending" || recovery.phase == "awaiting-kit"),
-                )
+                if (isKitHandedOff && recovery.phase in listOf("delivery-pending", "awaiting-kit")) {
+                    FormRow { ProminentButton(
+                        "I saved my Emergency Kit",
+                        {
+                            val entered = password
+                            scope.launch { handleOutcome(model.pendingRecovery.acknowledge(recovery.operationId, entered), isFinal = recovery.phase == "delivery-pending") }
+                        },
+                        testTag = "pending-recovery-acknowledge",
+                        enabled = password.isNotEmpty() && !isBusy && recovery.kitSaved,
+                    ) }
+                }
                 if (recovery.phase == "awaiting-kit" || recovery.phase == "prepared") {
                     FormButtonRow(
                         "Cancel this setup", { isDiscardConfirmationShown = true }, testTag = "pending-recovery-discard",
@@ -702,7 +722,7 @@ fun PendingRecoveryScreen(model: AppModel) {
         }
         error?.let { FormSection { ErrorBanner(it) } }
         ClearSection {
-            ProminentButton("Finish later", ::close, testTag = "pending-recovery-later")
+            PlainButton("Finish later", ::close, testTag = "pending-recovery-later")
         }
     }
     if (isDiscardConfirmationShown) {

@@ -94,7 +94,7 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
             context.refreshStatus()
             // The backend's first sync can report its change before this status arrives, when it is ignored.
             if (context.status.value.isUnlocked) context.refreshAll()
-            context.refreshPendingRecovery()
+            context.refreshPendingRecovery(operationID = result.pendingOperationId)
             context.errorMessage.value = result.problems.takeIf { it.isNotEmpty() }?.joinToString("\n")
             return true
         }

@@ -63,6 +63,8 @@ private struct AutoFillLockView: View {
             email: model.status.email,
             requestDescription: model.serviceName.isEmpty ? "" : requestDescription,
             isBiometricReady: model.status.biometricReady,
+            isBiometricEnabled: model.status.biometricEnabled,
+            isBiometricAvailable: model.status.biometricAvailable,
             lockCount: model.lockCount,
             biometryName: Self.biometryName,
             isBusy: model.isBusy,

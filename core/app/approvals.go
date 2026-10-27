@@ -180,7 +180,7 @@ func (unlocker *ApprovalUnlocker) VerifyPassword(password string) error {
 
 func (unlocker *ApprovalUnlocker) UnlockWithPassword(password string) error {
 	_, err := unlocker.service.Unlock(password)
-	if err != nil && err.Error() == convertError(session.ErrBadCredentials).Error() {
+	if errors.Is(err, errUnlockPassword) {
 		return errIncorrectMasterPassword
 	}
 	if err != nil {

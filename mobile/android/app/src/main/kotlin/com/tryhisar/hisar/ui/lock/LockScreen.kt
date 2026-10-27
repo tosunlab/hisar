@@ -77,6 +77,8 @@ fun LockScreen(model: AppModel) {
     UnlockPanel(
         email = status.email,
         isBiometricReady = status.biometricReady,
+        isBiometricEnabled = status.biometricEnabled,
+        isBiometricAvailable = status.biometricAvailable,
         isBusy = isBusy,
         lockCount = lockCount,
         isResumed = isResumed,
@@ -110,6 +112,8 @@ fun LockScreen(model: AppModel) {
 fun UnlockPanel(
     email: String,
     isBiometricReady: Boolean,
+    isBiometricEnabled: Boolean,
+    isBiometricAvailable: Boolean,
     isBusy: Boolean,
     errorMessage: String?,
     submitPassword: suspend (String) -> Boolean,
@@ -207,13 +211,22 @@ fun UnlockPanel(
         }
         errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
         FormSection(
-            footer = if (!isOffline) null else ({
+            footer = {
+                if (isBiometricEnabled && !isBiometricReady) {
+                    Text(
+                        if (isBiometricAvailable) "Enter your master password to use biometric unlock again. Hisar asks for it at least every 14 days."
+                        else "Biometrics aren't available right now. Unlock with your master password.",
+                        modifier = Modifier.testTag("biometric-password-reason"),
+                    )
+                }
+                if (isOffline) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Outlined.WifiOff, contentDescription = null, modifier = Modifier.size(14.dp))
                     Spacer(Modifier.size(6.dp))
                     Text("Offline. You can still unlock with the copy on this device.")
                 }
-            }),
+                }
+            },
         ) {
             FormTextField(
                 password, { password = it }, placeholder = "Master password", testTag = "unlock-password", isSecure = true,

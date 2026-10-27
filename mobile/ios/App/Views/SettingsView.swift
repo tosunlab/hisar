@@ -30,6 +30,12 @@ struct SettingsView: View {
 
     static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
     static let biometrySystemImage = biometryName == "Touch ID" ? "touchid" : "faceid"
+    static let biometryConsent: String = {
+        let scope = biometryName == "Touch ID"
+            ? "Any fingerprint set up on this iPhone can unlock Hisar."
+            : "Anyone enrolled in Face ID on this iPhone, including an alternate appearance, can unlock Hisar."
+        return "Unlock Hisar with \(biometryName) instead of typing your master password. \(scope) Hisar still asks for your master password at least every 14 days. Changing \(biometryName) turns off \(biometryName) unlock until you turn it on again with your master password. You can change this later in Settings, Security."
+    }()
 
     private var initials: String {
         let source = model.status.name.isEmpty ? model.status.email : model.status.name
@@ -402,7 +408,7 @@ struct SecurityView: View {
                 .accessibilityIdentifier("biometric-toggle")
             } footer: {
                 Text(model.status.biometricAvailable
-                     ? "Turning on \(SettingsView.biometryName) needs your master password. Hisar still asks for the master password at least every 14 days."
+                     ? SettingsView.biometryConsent
                      : "\(SettingsView.biometryName) is not set up on this iPhone.")
             }
             if let errorMessage = model.errorMessage {
@@ -450,7 +456,7 @@ struct SecurityView: View {
                 Task { await model.setBiometricUnlock(isEnabled: true, password: password) }
             }
         } message: {
-            Text("Enter your master password to unlock with \(SettingsView.biometryName).")
+            Text(SettingsView.biometryConsent + "\n\nEnter your master password to continue.")
         }
     }
 

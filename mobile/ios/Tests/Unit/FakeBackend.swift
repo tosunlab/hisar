@@ -356,7 +356,7 @@ class FakeBackend: VaultBackend {
 
     func unlock(password: String) throws -> VaultStatus {
         record("unlock")
-        guard password == Self.password else { throw BackendError(message: "Incorrect email, master password or Secret Key") }
+        guard password == Self.password else { throw BackendError(message: "The master password is incorrect.") }
         status.state = VaultStatus.stateUnlocked
         if status.biometricEnabled { status.biometricReady = true }
         return status

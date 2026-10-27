@@ -306,24 +306,47 @@ class HisarUITestCase: XCTestCase {
         return secretKey
     }
 
+    func handOffEmergencyKit(shareIdentifier: String) {
+        let share = app.buttons[shareIdentifier]
+        scrollTo(share)
+        share.tap()
+        let saveToFiles = app.buttons["Save to Files"]
+        waitForHittable(saveToFiles)
+        saveToFiles.tap()
+        let save = app.navigationBars.buttons["Save"]
+        waitForHittable(save)
+        save.tap()
+        if app.buttons["Replace"].waitForExistence(timeout: 2) {
+            app.buttons["Replace"].tap()
+        }
+        waitForHittable(share)
+    }
+
     @discardableResult
     func finishPendingRecovery(email: String, password: String, restartAfterPreparingKit: Bool = false) -> String {
         let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pending-recovery-' AND label CONTAINS %@", email)).firstMatch
-        waitFor(account, timeout: 60)
-        account.tap()
-        if app.navigationBars["Save your Secret Key"].waitForExistence(timeout: 2) {
-            let passwordField = app.secureTextFields["pending-recovery-password"]
+        let phase = app.staticTexts["pending-recovery-phase"]
+        let deferredTitle = app.navigationBars["Save your Secret Key"]
+        // One record opens on its own; several need the account chosen first.
+        func openRecord() {
+            if !deferredTitle.waitForExistence(timeout: 2) && !phase.exists {
+                waitFor(account, timeout: 60)
+                account.tap()
+            }
+        }
+        openRecord()
+        let passwordField = app.secureTextFields["pending-recovery-password"]
+        let key = app.staticTexts["pending-recovery-secret-key"]
+        if deferredTitle.waitForExistence(timeout: 2) {
             type(password, into: passwordField)
             app.buttons["pending-recovery-export"].tap()
-            let key = app.staticTexts["pending-recovery-secret-key"]
             waitFor(key, timeout: 60)
             let secretKey = key.label
             if restartAfterPreparingKit {
                 app.launchArguments.removeAll { $0 == "-HisarResetState" }
                 app.terminate()
                 app.launch()
-                waitFor(account, timeout: 60)
-                account.tap()
+                openRecord()
                 type(password, into: passwordField)
                 app.buttons["pending-recovery-export"].tap()
                 waitFor(key, timeout: 60)
@@ -334,13 +357,10 @@ class HisarUITestCase: XCTestCase {
             XCTAssertTrue(app.buttons["pending-recovery-acknowledge"].waitForNonExistence(timeout: 60))
             return secretKey
         }
-        let phase = app.staticTexts["pending-recovery-phase"]
         let isPrecommit = phase.label == "Save and confirm your new Emergency Kit before Hisar sends this change."
-        let passwordField = app.secureTextFields["pending-recovery-password"]
         type(password, into: passwordField)
         scrollTo(app.buttons["pending-recovery-export"])
         app.buttons["pending-recovery-export"].tap()
-        let key = app.staticTexts["pending-recovery-secret-key"]
         waitFor(key, timeout: 60)
         let secretKey = key.label
         saveScreenshot("pending-recovery-kit")
@@ -348,10 +368,16 @@ class HisarUITestCase: XCTestCase {
             app.launchArguments.removeAll { $0 == "-HisarResetState" }
             app.terminate()
             app.launch()
-            waitFor(account, timeout: 60)
-            account.tap()
-        type(password, into: passwordField)
+            openRecord()
+            type(password, into: passwordField)
+            let prepare = app.buttons["pending-recovery-export"]
+            if prepare.exists {
+                scrollTo(prepare)
+                prepare.tap()
+                waitFor(key, timeout: 60)
+            }
         }
+        handOffEmergencyKit(shareIdentifier: "pending-recovery-share-kit")
         scrollTo(app.buttons["pending-recovery-acknowledge"])
         app.buttons["pending-recovery-acknowledge"].tap()
         if isPrecommit {
@@ -363,6 +389,10 @@ class HisarUITestCase: XCTestCase {
             let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Your account is ready. Save and confirm your Emergency Kit to finish."), object: phase)
             wait(for: [committed], timeout: 60)
             type(password, into: passwordField)
+            scrollTo(app.buttons["pending-recovery-export"])
+            app.buttons["pending-recovery-export"].tap()
+            waitFor(key, timeout: 60)
+            handOffEmergencyKit(shareIdentifier: "pending-recovery-share-kit")
             scrollTo(app.buttons["pending-recovery-acknowledge"])
             app.buttons["pending-recovery-acknowledge"].tap()
         }

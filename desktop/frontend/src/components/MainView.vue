@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
 import {
   clearError,
   copyItemField,
@@ -649,6 +650,11 @@ onBeforeUnmount(() => {
           <p class="muted">Showing the copy saved on this device. Changes can be saved once Hisar reconnects.</p>
         </div>
       </div>
+      <PendingRecoveryReminder />
+      <button v-if="store.biometricResetReminder" class="vault" data-testid="restore-touch-id" @click="openSettings('security')">
+        <AppIcon name="fingerprint" />
+        <span class="vault-name">Turn on Touch ID…</span>
+      </button>
       <div class="account">
         <span class="avatar">{{ getInitials(store.status.name || store.status.email) }}</span>
         <div class="account-text">

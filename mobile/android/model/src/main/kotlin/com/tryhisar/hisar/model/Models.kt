@@ -690,6 +690,22 @@ data class PendingRecovery(
     val keychainProtected: Boolean = false,
 )
 
+val PendingRecovery.reminderLabel: String
+    get() = when {
+        phase == "manual-unlock" -> "Sign in with your saved Emergency Kit."
+        phase == "awaiting-kit" || phase == "delivery-pending" ->
+            if (kind == "signup") "Save your Emergency Kit to finish setting up $email."
+            else "Save your new Emergency Kit to finish replacing your Secret Key."
+        else -> "Finish setting up $email."
+    }
+
+val PendingRecovery.reminderHint: String
+    get() = when (phase) {
+        "manual-unlock" -> "Opens sign-in with your saved Emergency Kit"
+        "awaiting-kit", "delivery-pending" -> "Opens the Emergency Kit step"
+        else -> "Opens the unfinished account setup"
+    }
+
 @Serializable
 data class PendingRecoveryExport(val secretKey: String, val path: String)
 
