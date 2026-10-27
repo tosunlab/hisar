@@ -28,6 +28,10 @@ Saving stores the item in the chosen vault. Canceling or swiping down with unsav
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 
+An organization vault's **Members** sheet lists its teams with member counts and each team's role for that vault.
+Open a team to see its members' names and emails, then open a person to compare their security code.
+The person's Admin or Member role belongs to the organization, not the vault.
+
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
 An absent plan version never enables the delete button.

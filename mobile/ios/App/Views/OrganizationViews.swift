@@ -990,22 +990,34 @@ struct OrganizationVaultSharingView: View {
                 if let sharing {
                     Section {
                         ForEach(sharing.allTeamAccess) { access in
-                            HStack {
-                                Label {
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(access.team.name)
-                                        Text(access.team.allMember.isEmpty ? "No members yet" : access.team.allMember.map(\.displayName).joined(separator: ", "))
+                            NavigationLink {
+                                if let organization {
+                                    teamMemberList(access, organization: organization)
+                                }
+                            } label: {
+                                HStack {
+                                    Label {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(access.team.name)
+                                            Group {
+                                                if access.team.allMember.count == 1 {
+                                                    Text("1 member")
+                                                } else {
+                                                    Text("\(access.team.allMember.count) members")
+                                                }
+                                            }
                                             .font(.footnote)
                                             .foregroundStyle(.themeSecondary)
+                                        }
+                                    } icon: {
+                                        Image(systemName: "person.3")
+                                            .foregroundStyle(.themeSecondary)
                                     }
-                                } icon: {
-                                    Image(systemName: "person.3")
+                                    Spacer()
+                                    Text("Vault role: \(describeVaultRole(access.role))")
+                                        .font(.subheadline)
                                         .foregroundStyle(.themeSecondary)
                                 }
-                                Spacer()
-                                Text(describeVaultRole(access.role))
-                                    .font(.subheadline)
-                                    .foregroundStyle(.themeSecondary)
                             }
                             .accessibilityElement(children: .combine)
                             .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -1080,6 +1092,37 @@ struct OrganizationVaultSharingView: View {
         }
         .presentationDetents([.medium, .large], selection: $presentationDetent)
         .interactiveDismissDisabled(model.isBusy)
+    }
+
+    private func teamMemberList(_ access: TeamAccess, organization: Organization) -> some View {
+        List {
+            Section {
+                LabeledContent("Role for this vault", value: describeVaultRole(access.role))
+            }
+            Section {
+                ForEach(OrganizationLogic.listAllTeamMember(organization: organization, team: access.team)) { member in
+                    NavigationLink {
+                        OrganizationMemberView(
+                            organizationID: organization.id,
+                            organizationName: organization.name,
+                            member: member,
+                            isAdmin: organization.isAdmin
+                        ) {
+                            await load()
+                        }
+                    } label: {
+                        MemberRow(member: member, roleText: OrganizationRole.describe(member.role))
+                    }
+                    .accessibilityIdentifier("organization-member-\(member.email)")
+                }
+            } footer: {
+                Text("Compare security codes with people once, in person or over a channel you trust. Tap a person to see theirs.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle(access.team.name)
+        .navigationBarTitleDisplayMode(.inline)
+        .refreshable { await load() }
     }
 
     private func load() async {
