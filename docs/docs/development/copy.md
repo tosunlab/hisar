@@ -172,8 +172,10 @@ The web page at `/admin` where admins of the Hisar server manage it. The apps ne
 | Use | Not |
 |---|---|
 | Help (Settings section on the Mac, row on the iPhone) | About & support, Feedback |
-| Contact support, `support@tryhisar.com` | — |
-| Copy diagnostics: app version and build, OS version, server URL, this device's ID | Anything secret, item names, other people's emails |
+| Contact support, `support@tryhisar.com` · Copy address | — |
+| Copy diagnostics: app version and build, OS version and device model, server URL, this device's ID. Diagnostics are optional and are not attached when opening a support message. | Anything secret, item names, other people's emails |
+
+On the iPhone, **Contact support** opens a mailto message. **Copy address** remains available when no mail app can open it.
 
 ## Android
 
