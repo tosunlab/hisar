@@ -1039,6 +1039,18 @@ struct ItemPasskey: Codable, Hashable, Identifiable {
     var userDisplayName: String
     var createdAt: String
 
+    func deletionMessage(vault: VaultSummary?) -> String {
+        let account = userName.isEmpty ? userDisplayName : userName
+        let consequence: String
+        if vault?.type == VaultSummary.typePersonal {
+            consequence = "It is removed from all your devices. Make sure you can sign in another way first."
+        } else {
+            let name = vault.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "this vault"
+            consequence = "It is removed from \(name) for everyone with access. Make sure they can sign in another way first."
+        }
+        return "You can no longer sign in to \(relyingPartyID) as \(account) with it. \(consequence)"
+    }
+
     enum CodingKeys: String, CodingKey {
         case userName, userDisplayName, createdAt
         case credentialID = "credentialId"

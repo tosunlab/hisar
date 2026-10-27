@@ -772,6 +772,16 @@ data class ItemPasskey(
 ) {
     val id: String get() = credentialID
     val createdDate: Instant? get() = parseTimestamp(createdAt)
+
+    fun deletionMessage(vault: VaultSummary?): String {
+        val account = userName.ifEmpty { userDisplayName }
+        val consequence = if (vault?.type == VaultSummary.TYPE_PERSONAL) {
+            "It is removed from all your devices. Make sure you can sign in another way first."
+        } else {
+            "It is removed from ${vault?.name?.ifEmpty { null } ?: "this vault"} for everyone with access. Make sure they can sign in another way first."
+        }
+        return "You can no longer sign in to $relyingPartyID as $account with it. $consequence"
+    }
 }
 
 /** An Android app a login fills into: its package name and the SHA-256 of its signing certificate, in colon hex. */

@@ -1,31 +1,57 @@
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { nextTick, ref } from "vue";
 import type { ItemPasskey } from "../api";
 import { deletePasskey, store } from "../store";
 import AppIcon from "./AppIcon.vue";
+import AccountDialog from "./AccountDialog.vue";
 
-const props = defineProps<{ passkeys: ItemPasskey[]; canDelete: boolean }>();
+const props = defineProps<{ passkeys: ItemPasskey[]; canDelete: boolean; vaultName: string; vaultType: string }>();
+const selectedPasskey = ref<ItemPasskey | null>(null);
+const errorMessage = ref("");
+const cancelButton = ref<HTMLButtonElement | null>(null);
+let deleteTrigger: HTMLElement | null = null;
 
-const confirmingCredentialID = ref("");
+async function requestDelete(passkey: ItemPasskey, event: Event): Promise<void> {
+  deleteTrigger = event.currentTarget as HTMLElement;
+  errorMessage.value = "";
+  selectedPasskey.value = passkey;
+  await nextTick();
+  cancelButton.value?.focus();
+}
 
-watch(
-  () => props.passkeys,
-  () => (confirmingCredentialID.value = ""),
-);
+async function cancelDelete(): Promise<void> {
+  selectedPasskey.value = null;
+  await nextTick();
+  deleteTrigger?.focus();
+}
+
+function description(passkey: ItemPasskey): string {
+  const account = passkey.userName || passkey.userDisplayName;
+  const consequence = props.vaultType === "personal"
+    ? "It is removed from all your devices. Make sure you can sign in another way first."
+    : `It is removed from ${props.vaultName || "this vault"} for everyone with access. Make sure they can sign in another way first.`;
+  return `You can no longer sign in to ${passkey.relyingPartyId} as ${account} with it. ${consequence}`;
+}
 
 function formatCreatedAt(timestamp: string): string {
   const date = new Date(timestamp);
   return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 }
 
-async function confirmDelete(credentialID: string): Promise<void> {
-  await deletePasskey(credentialID);
-  confirmingCredentialID.value = "";
+async function confirmDelete(): Promise<void> {
+  if (!selectedPasskey.value) return;
+  if (!(await deletePasskey(selectedPasskey.value.credentialId))) {
+    errorMessage.value = store.errorMessage || "The passkey could not be deleted.";
+    return;
+  }
+  selectedPasskey.value = null;
+  await nextTick();
+  (document.querySelector<HTMLElement>('[data-testid="passkey-section"]') ?? document.querySelector<HTMLElement>('[data-testid="item-heading"]'))?.focus();
 }
 </script>
 
 <template>
-  <section class="card passkey-card" data-testid="passkey-section">
+  <section class="card passkey-card" tabindex="-1" aria-label="Passkeys" data-testid="passkey-section">
     <p class="section-label">Passkeys</p>
     <div v-for="passkey in passkeys" :key="passkey.credentialId" class="passkey" data-testid="passkey-row">
       <span class="passkey-icon" aria-hidden="true"><AppIcon name="passkey" :size="16" /></span>
@@ -37,18 +63,13 @@ async function confirmDelete(credentialID: string): Promise<void> {
         </span>
       </span>
       <template v-if="canDelete">
-        <span v-if="confirmingCredentialID === passkey.credentialId" class="confirm" role="alertdialog">
-          <button type="button" class="ghost" @click="confirmingCredentialID = ''">Cancel</button>
-          <button type="button" class="danger-solid" data-testid="confirm-delete-passkey" :disabled="store.isBusy" @click="confirmDelete(passkey.credentialId)">Delete passkey</button>
-        </span>
         <button
-          v-else
           type="button"
           class="ghost icon-button"
           :aria-label="`Delete passkey for ${passkey.relyingPartyId}`"
           title="Delete passkey"
           data-testid="delete-passkey"
-          @click="confirmingCredentialID = passkey.credentialId"
+          @click="requestDelete(passkey, $event)"
         >
           <AppIcon name="trash" />
         </button>
@@ -56,6 +77,14 @@ async function confirmDelete(credentialID: string): Promise<void> {
     </div>
     <p class="muted passkey-hint">Hisar signs in with passkeys through the browser extension while Hisar is unlocked.</p>
   </section>
+  <AccountDialog v-if="selectedPasskey" :title="`Delete the passkey for ${selectedPasskey.relyingPartyId}?`"
+    :subtitle="description(selectedPasskey)" icon="passkey" is-danger :is-closable="!store.isBusy" @close="cancelDelete">
+    <p v-if="errorMessage" class="error" role="alert">{{ errorMessage }}</p>
+    <div class="row actions">
+      <button ref="cancelButton" type="button" class="ghost" :disabled="store.isBusy" @click="cancelDelete">Cancel</button>
+      <button type="button" class="danger-solid" data-testid="confirm-delete-passkey" :disabled="store.isBusy" @click="confirmDelete">Delete passkey</button>
+    </div>
+  </AccountDialog>
 </template>
 
 <style scoped>
@@ -104,10 +133,6 @@ async function confirmDelete(credentialID: string): Promise<void> {
   font-size: var(--font-size-12);
 }
 
-.confirm {
-  display: flex;
-  gap: 6px;
-}
 
 .passkey-hint {
   margin: 10px 0 0;

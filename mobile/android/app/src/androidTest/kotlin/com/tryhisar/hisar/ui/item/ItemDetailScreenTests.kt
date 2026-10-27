@@ -110,7 +110,7 @@ class ItemDetailScreenTests {
         composeRule.waitForTag("passkey-github.com")
         composeRule.tap("delete-passkey-github.com")
         composeRule.waitForTag("confirm-delete-passkey")
-        assertTrue(composeRule.onAllNodes(hasText("You can no longer sign in to github.com as alice with it.")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodes(hasText("You can no longer sign in to github.com as alice with it. It is removed from all your devices. Make sure you can sign in another way first.")).fetchSemanticsNodes().isNotEmpty())
         composeRule.onNodeWithTag("confirm-delete-passkey").performClick()
         composeRule.waitForTagToGo("passkey-github.com")
         assertEquals(emptyList<Any>(), backend.getItem("personal", "github").allPasskey)

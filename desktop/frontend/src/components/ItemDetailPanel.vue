@@ -310,7 +310,7 @@ function maskSecret(secret: string): string {
         :websiteURL="getWebsiteIconURL(store.selectedItem)"
       />
       <div class="heading">
-        <h2>{{ store.selectedItem.title }}</h2>
+        <h2 tabindex="-1" data-testid="item-heading">{{ store.selectedItem.title }}</h2>
         <div class="meta">
           <span class="badge" data-testid="item-vault"><AppIcon :name="vaultType === 'personal' ? 'user' : 'users'" :size="12" /> {{ vaultName }}</span>
           <span v-if="vaultType === 'shared'" class="badge" data-testid="item-shared">Shared</span>
@@ -701,7 +701,7 @@ function maskSecret(secret: string): string {
       </p>
     </section>
 
-    <PasskeyList v-if="(store.selectedItem.passkeys ?? []).length > 0" :passkeys="store.selectedItem.passkeys ?? []" :can-delete="canEdit" />
+    <PasskeyList v-if="(store.selectedItem.passkeys ?? []).length > 0" :passkeys="store.selectedItem.passkeys ?? []" :can-delete="canEdit" :vault-name="vaultName" :vault-type="vaultType" />
 
     <section v-if="store.selectedItem.notes && !isSecureNote" class="card notes-card copy-block" data-field-menu-row v-bind="bindFieldRow('notes', 'Notes')">
       <div class="block-copy-target" v-bind="bindCopyTarget()">

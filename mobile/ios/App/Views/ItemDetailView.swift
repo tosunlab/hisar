@@ -78,7 +78,7 @@ struct ItemDetailView: View {
             }
             .accessibilityIdentifier("confirm-delete-passkey")
         } message: { passkey in
-            Text("You can no longer sign in to \(passkey.relyingPartyID) as \(passkey.userName) with it.")
+            Text(passkey.deletionMessage(vault: vault))
         }
         .task { await loadItem() }
         .onDisappear {

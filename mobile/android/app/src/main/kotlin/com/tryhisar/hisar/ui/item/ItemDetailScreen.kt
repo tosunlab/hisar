@@ -185,7 +185,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
         AlertDialog(
             onDismissRequest = { passkeyToDelete = null },
             title = { Text("Delete this passkey?") },
-            text = { Text("You can no longer sign in to ${passkey.relyingPartyID} as ${passkey.userName} with it.") },
+            text = { Text(passkey.deletionMessage(vault)) },
             confirmButton = {
                 PlainButton("Delete passkey", {
                     passkeyToDelete = null

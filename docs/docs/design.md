@@ -1901,6 +1901,7 @@ The desktop checks the RP ID against the origin on each request, applies `allowC
 
 - `core/app/passkey.go` finds, creates and signs. These are unexported methods or plain functions, so nothing bound to the UI returns a private key. `ItemDetail.passkeys` carries `{credentialId, relyingPartyId, userName, userDisplayName, createdAt}`.
 - The item view lists the passkeys (site, user name, created) with Delete (`DeletePasskey(vaultID, itemID, credentialId)`, after a confirmation). The editor shows them read-only and the backend keeps them.
+  All apps identify the account in the confirmation with "You can no longer sign in to \<relying party> as \<user name, or display name when empty> with it." Personal adds "It is removed from all your devices. Make sure you can sign in another way first." Shared and organization vaults add "It is removed from \<vault> for everyone with access. Make sure they can sign in another way first." This deletes the synced saved credential, not the website account or independently retained copies. Mac uses the shared named modal lifecycle, initially focuses Cancel, keeps failures in the dialog and restores focus to the trigger on cancellation or the remaining passkey section or item heading after deletion.
 - `hisar get` prints `passkey: <rpId> (<user name>)` per passkey, never the key.
 
 **iOS (AutoFill credential provider)**
