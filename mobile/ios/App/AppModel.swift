@@ -278,7 +278,7 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func perform<Value>(isBusyShown: Bool = true, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
+    private func perform<Value>(isBusyShown: Bool = true, ignoredErrorCodes: Set<String> = [], _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
         guard let backend else { return nil }
         if isBusyShown { isBusy = true }
         defer { if isBusyShown { isBusy = false } }
@@ -287,7 +287,11 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             return value
         } catch {
-            errorMessage = describeError(error)
+            if let code = (error as? BackendError)?.code, ignoredErrorCodes.contains(code) {
+                errorMessage = nil
+            } else {
+                errorMessage = describeError(error)
+            }
             return nil
         }
     }
@@ -406,7 +410,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func unlockWithBiometric() async -> Bool {
-        guard status.biometricReady, let newStatus = await perform({ try $0.unlockWithBiometric() }) else {
+        guard status.biometricReady, let newStatus = await perform(ignoredErrorCodes: [BackendError.biometricCancelled, BackendError.biometricNeedsPassword], { try $0.unlockWithBiometric() }) else {
             refreshStatus()
             return false
         }

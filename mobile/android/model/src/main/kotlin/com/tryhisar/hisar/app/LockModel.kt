@@ -27,7 +27,16 @@ class LockModel(private val context: ModelContext) {
     }
 
     suspend fun unlockWithBiometric(): Boolean = context.runInModel {
-        val newStatus = if (context.status.value.biometricReady) context.perform { it.unlockWithBiometric() } else null
+        val newStatus = if (context.status.value.biometricReady) context.perform {
+            try {
+                it.unlockWithBiometric()
+            } catch (error: Exception) {
+                val kind = ApprovalsModel.classifyApprovalError(error.message.orEmpty())
+                if (kind == ApprovalsModel.ErrorKind.CANCELLED ||
+                    (kind == ApprovalsModel.ErrorKind.NEEDS_PASSWORD && error.message == "Enter your master password.")
+                ) null else throw error
+            }
+        } else null
         if (newStatus == null) {
             context.refreshStatus()
             return@runInModel false

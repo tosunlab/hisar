@@ -147,6 +147,8 @@ struct BackendError: LocalizedError, Equatable {
     var message: String
     var code: String? = nil
     static let passkeyVerificationFailed = "passkey-verification-failed"
+    static let biometricCancelled = "biometric-cancelled"
+    static let biometricNeedsPassword = "biometric-needs-password"
     var errorDescription: String? { message }
 }
 
