@@ -96,7 +96,7 @@ export interface VaultDialog {
 }
 
 export interface ItemReference extends FavoriteItem {
-  vaultRole: VaultRole;
+  vaultRole: VaultSummary["role"];
 }
 
 // OrganizationAlert: title names the refused action, message is the server's sentence.
@@ -128,6 +128,7 @@ export const store = reactive({
   allItemReference: [] as ItemReference[],
   isAllItemsSelected: false,
   allItemsError: "",
+  isLoadingAllItems: false,
   editorMode: "view" as EditorMode,
   editorDraft: null as EditorDraft | null,
   discardDraftPrompt: null as DiscardDraftPrompt | null,
@@ -292,6 +293,7 @@ function clearAllVaultData(): void {
   store.allItemReference = [];
   store.isAllItemsSelected = false;
   store.allItemsError = "";
+  store.isLoadingAllItems = false;
   store.editorMode = "view";
   store.editorDraft = null;
   store.discardDraftPrompt?.answer(false);
@@ -1113,12 +1115,15 @@ export function selectAllItems(): Promise<void> {
   });
 }
 
+let allItemsLoadVersion = 0;
 async function loadAllItemReferences(): Promise<void> {
   const generation = sessionGeneration;
+  const version = ++allItemsLoadVersion;
+  store.isLoadingAllItems = true;
   store.allItemsError = "";
   try {
     const acquisitions = await Promise.all(store.allVault.map(async (vault) => ({ vault, items: await api.listAllItem(vault.id) })));
-    if (generation !== sessionGeneration || !store.isAllItemsSelected) return;
+    if (generation !== sessionGeneration || version !== allItemsLoadVersion || !store.isAllItemsSelected) return;
     const references: ItemReference[] = [];
     for (const { vault, items } of acquisitions) {
       vault.readIssues = [...(vault.readIssues ?? []).filter((issue) => !issue.itemId), ...items.flatMap((item) => item.readIssue ? [item.readIssue] : [])];
@@ -1129,7 +1134,9 @@ async function loadAllItemReferences(): Promise<void> {
     }
     store.allItemReference = references.sort((a, b) => a.item.title.localeCompare(b.item.title, undefined, { sensitivity: "base" }));
   } catch (cause) {
-    if (generation === sessionGeneration && store.isAllItemsSelected) store.allItemsError = `Some vaults could not be loaded. ${getErrorMessage(cause)}`;
+    if (generation === sessionGeneration && version === allItemsLoadVersion && store.isAllItemsSelected) store.allItemsError = `Some vaults could not be loaded. ${getErrorMessage(cause)}`;
+  } finally {
+    if (generation === sessionGeneration && version === allItemsLoadVersion) store.isLoadingAllItems = false;
   }
 }
 

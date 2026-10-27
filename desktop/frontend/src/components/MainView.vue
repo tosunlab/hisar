@@ -182,6 +182,12 @@ const emptyListMessage = computed(() => {
   }
   return store.allVault.some((vault) => vault.readIssues?.length) ? "No readable matches. Some records could not be opened." : store.selectedTag ? `No items are tagged ${store.selectedTag}.` : "This vault is empty.";
 });
+const allItemsEmptyMessage = computed(() => {
+  if (store.isLoadingAllItems) return "Loading items from your vaults…";
+  if (store.allItemsError) return "Search is incomplete. Retry loading your vaults.";
+  if (store.allVault.some((vault) => vault.readIssues?.length)) return "No readable matches. Some records could not be opened.";
+  return store.searchQuery || store.selectedTag || selectedCategory.value ? "No items match your search." : "No items in your vaults.";
+});
 const selectedVault = computed(() => store.allVault.find((vault) => vault.id === store.selectedVaultID));
 // canShareVault: shared and organization vaults have a sharing panel, personal vaults the Private badge.
 const canShareVault = computed(() => selectedVault.value !== undefined && selectedVault.value.type !== "personal");
@@ -224,7 +230,7 @@ const canSubmitNewVault = computed(
 );
 // itemMenu is the right-click menu of a list item. detail arrives after the menu opens: list summaries carry no password
 // or fields, so the copy actions appear once it has loaded. favorite is set when the item was right-clicked in Favorites.
-const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; favorite?: FavoriteItem; detail: ItemDetail | null; x: number; y: number } | null>(null);
+const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; favorite?: FavoriteItem; detail: ItemDetail | null; x: number; y: number; invoker: HTMLElement } | null>(null);
 const itemToDelete = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
 const itemToMove = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
 // isOverlayOpen: a panel or dialog covers the main window, so its shortcuts and list keys stay out of the way.
@@ -245,7 +251,7 @@ const isOverlayOpen = computed(
 );
 
 async function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent, favorite?: FavoriteItem): Promise<void> {
-  itemMenu.value = { vaultID, vaultItem, favorite, detail: null, x: event.clientX, y: event.clientY };
+  itemMenu.value = { vaultID, vaultItem, favorite, detail: null, x: event.clientX, y: event.clientY, invoker: event.currentTarget as HTMLElement };
   try {
     const detail = await api.getItem(vaultID, vaultItem.id);
     if (itemMenu.value?.vaultID === vaultID && itemMenu.value.vaultItem.id === vaultItem.id) {
@@ -270,7 +276,7 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
     value ? { id, label: `Copy ${label.toLowerCase()}`, icon: "copy", run: () => copyItemField(vaultID, vaultItem.id, fieldName, label) } : null;
   const link = vaultItem.urls[0];
   const firstGroup = [
-    { id: "open", label: "Open", icon: "external" as const, run: open },
+    { id: "open", label: "Open", icon: "external" as const, opensDestination: true, run: open },
     copy("copy-username", "Username", "username", detail.username),
     copy("copy-password", "Password", "password", detail.password),
     copy("copy-one-time-code", "One-time code", "one-time code", detail.hasOneTimePassword),
@@ -290,6 +296,7 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
           id: "share-link",
           label: "Share link…",
           icon: "link",
+          opensDestination: true,
           run: async () => {
             await open();
             if (store.selectedItem?.id === vaultItem.id) {
@@ -317,6 +324,7 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
           id: "edit",
           label: "Edit",
           icon: "edit" as const,
+          opensDestination: true,
           run: async () => {
             await open();
             if (store.selectedItem?.id === vaultItem.id) {
@@ -324,9 +332,9 @@ function buildItemMenuActions(): (ContextMenuAction | null)[] {
             }
           },
         },
-        vaultItem.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate" as const, run: () => duplicateItem(vaultID, vaultItem.id) } : null,
-        hasMoveTarget ? { id: "move", label: "Move to…", icon: "move" as const, run: () => (itemToMove.value = target) } : null,
-        { id: "delete", label: "Delete…", icon: "trash" as const, isDanger: true, run: () => (itemToDelete.value = target) },
+        vaultItem.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate" as const, opensDestination: true, run: () => duplicateItem(vaultID, vaultItem.id) } : null,
+        hasMoveTarget ? { id: "move", label: "Move to…", icon: "move" as const, opensDestination: true, run: () => (itemToMove.value = target) } : null,
+        { id: "delete", label: "Delete…", icon: "trash" as const, isDanger: true, opensDestination: true, run: () => (itemToDelete.value = target) },
       ]
     : [];
   return [firstGroup, favoriteGroup, editGroup]
@@ -370,16 +378,16 @@ function getItemSubtitle(vaultItem: ItemDetail): string {
 function isSelectedFavorite(favorite: FavoriteItem): boolean {
   return store.selectedItem?.id === favorite.item.id && store.selectedVaultID === favorite.vaultId;
 }
-const vaultMenu = ref<{ vaultID: string; x: number; y: number } | null>(null);
+const vaultMenu = ref<{ vaultID: string; x: number; y: number; invoker: HTMLElement } | null>(null);
 const vaultMenuVault = computed(() => store.allVault.find((vault) => vault.id === vaultMenu.value?.vaultID));
 
 function openVaultMenuAtPointer(vaultID: string, event: MouseEvent): void {
-  vaultMenu.value = { vaultID, x: event.clientX, y: event.clientY };
+  vaultMenu.value = { vaultID, x: event.clientX, y: event.clientY, invoker: event.currentTarget as HTMLElement };
 }
 
 function openVaultMenuBelow(event: MouseEvent | KeyboardEvent): void {
   const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
-  vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
+  vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6, invoker: event.currentTarget as HTMLElement };
 }
 
 // prepareNewVaultForm clears the form and loads the teams for Where whenever the new-vault form opens, from the New vault
@@ -680,7 +688,7 @@ onBeforeUnmount(() => {
     </aside>
     <ColumnResizer v-model="columnWidths.sidebar" column="sidebar" label="Sidebar width" @commit="saveColumnWidths(columnWidths)" />
 
-    <section class="list">
+    <section class="list" :aria-busy="store.isAllItemsSelected && store.isLoadingAllItems">
       <ReadIssuesPanel />
       <div v-if="isReferenceScope" class="title-bar list-title">
         <div>
@@ -786,14 +794,14 @@ onBeforeUnmount(() => {
       </div>
       <label class="type-filter">
         <span>Type</span>
-        <AppIcon :name="selectedCategory ? getItemIcon(selectedCategory) : 'vault'" :size="14" />
+        <AppIcon :name="selectedCategory ? getItemIcon(selectedCategory) ?? 'globe' : 'vault'" :size="14" />
         <select v-model="selectedCategory" aria-label="Type">
           <option value="">All types ({{ scopeItems.length }})</option>
           <option v-for="category in categoryCounts" :key="category.id" :value="category.id">{{ category.label }} ({{ category.count }})</option>
         </select>
       </label>
       <div v-if="selectedCategory" class="tag-filter" data-testid="type-filter">
-        <AppIcon :name="getItemIcon(selectedCategory)" :size="13" /><span>{{ selectedCategoryName }}</span>
+        <AppIcon :name="getItemIcon(selectedCategory) ?? 'globe'" :size="13" /><span>{{ selectedCategoryName }}</span>
         <button class="ghost icon-button" aria-label="Clear type filter" @click="selectedCategory = ''"><AppIcon name="close" :size="13" /></button>
       </div>
       <div v-if="store.selectedTag && !store.isFavoritesSelected" class="tag-filter" data-testid="tag-filter">
@@ -807,7 +815,7 @@ onBeforeUnmount(() => {
         <div v-if="allVisibleFavorite.length === 0" class="list-empty" data-testid="favorites-empty">
           <AppIcon :name="store.searchQuery ? 'search' : 'star'" :size="26" />
           <template v-if="store.isAllItemsSelected">
-            <p>{{ store.allItemsError ? "Search is incomplete. Retry loading your vaults." : store.allVault.some((vault) => vault.readIssues?.length) ? "No readable matches. Some records could not be opened." : store.searchQuery || store.selectedTag ? "No items match your search." : "No items in your vaults." }}</p>
+            <p>{{ allItemsEmptyMessage }}</p>
           </template>
           <template v-else-if="store.searchQuery">
             <p>No favorites match your search.</p>
@@ -902,7 +910,7 @@ onBeforeUnmount(() => {
     <ImportPanel v-if="store.isImportOpen" />
     <SharedLinksPanel v-if="store.isShareLinksOpen" />
     <VaultDialog v-if="store.vaultDialog" :key="`${store.vaultDialog.mode}-${store.vaultDialog.actions.vault.id}`" :dialog="store.vaultDialog" />
-    <VaultMenu v-if="vaultMenu && vaultMenuVault" :vault="vaultMenuVault" :x="vaultMenu.x" :y="vaultMenu.y" @close="vaultMenu = null" />
+    <VaultMenu v-if="vaultMenu && vaultMenuVault" :vault="vaultMenuVault" :x="vaultMenu.x" :y="vaultMenu.y" :invoker="vaultMenu.invoker" @close="vaultMenu = null" />
     <ContextMenu
       v-if="itemMenu"
       :key="`${itemMenu.vaultID}/${itemMenu.vaultItem.id}`"
@@ -910,6 +918,7 @@ onBeforeUnmount(() => {
       :x="itemMenu.x"
       :y="itemMenu.y"
       :all-action="allItemMenuAction"
+      :invoker="itemMenu.invoker"
       @close="itemMenu = null"
     />
     <MoveItemDialog v-if="itemToMove" :vault-i-d="itemToMove.vaultID" :item-i-d="itemToMove.itemID" :title="itemToMove.title" @close="itemToMove = null" />

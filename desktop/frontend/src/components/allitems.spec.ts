@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
-import { createApiMock, createItem, createStatus } from "../testing";
+import { createItem, createStatus } from "../testing";
 import { api } from "../api";
 import { filterAllItem, selectAllItems, selectVault, store } from "../store";
 import MainView from "./MainView.vue";

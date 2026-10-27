@@ -61,8 +61,7 @@ describe("Favorites in the sidebar", () => {
   it("sits above the vaults with a count", () => {
     const wrapper = mount(MainView);
     const allNav = wrapper.findAll("nav");
-    expect(allNav[0].attributes("aria-label")).toBe("Favorites");
-    expect(allNav[1].attributes("aria-label")).toBe("Vaults");
+    expect(allNav.slice(0, 3).map((nav) => nav.attributes("aria-label"))).toEqual(["All items", "Favorites", "Vaults"]);
     expect(wrapper.find('[data-testid="favorites-count"]').text()).toBe("2");
   });
 

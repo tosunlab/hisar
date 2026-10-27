@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from "vue";
 import AppIcon, { type IconName } from "./AppIcon.vue";
-import { useMenu } from "../menu";
+import { useMenu, type MenuCloseReason } from "../menu";
 
 // ContextMenuAction is one item of a right-click menu; null in allAction draws a separator.
 export interface ContextMenuAction {
@@ -10,18 +10,20 @@ export interface ContextMenuAction {
   icon: IconName;
   isDanger?: boolean;
   disabled?: boolean;
+  opensDestination?: boolean;
   run: () => void;
 }
 
-const props = defineProps<{ label: string; x: number; y: number; allAction: (ContextMenuAction | null)[] }>();
-const emit = defineEmits<{ close: [] }>();
+const props = defineProps<{ label: string; x: number; y: number; allAction: (ContextMenuAction | null)[]; invoker?: HTMLElement | null }>();
+const emit = defineEmits<{ close: [reason: MenuCloseReason] }>();
 const menu = ref<HTMLElement | null>(null);
 // position keeps the menu inside the window: it opens at the pointer and moves back when it would pass an edge.
 const position = ref({ left: props.x, top: props.y });
-useMenu(menu, () => emit("close"));
+const initialInvoker = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+const dismiss = useMenu(menu, (reason) => emit("close", reason), () => props.invoker ?? initialInvoker);
 
-function choose(action: ContextMenuAction): void {
-  emit("close");
+function choose(action: ContextMenuAction, event: MouseEvent): void {
+  dismiss(!action.opensDestination && event.detail === 0 ? "action" : "destination");
   action.run();
 }
 
@@ -72,7 +74,7 @@ onMounted(() => {
         :disabled="action.disabled"
         tabindex="-1"
         :data-testid="`context-menu-${action.id}`"
-        @click="choose(action)"
+        @click="choose(action, $event)"
       >
         <AppIcon :name="action.icon" />
         {{ action.label }}

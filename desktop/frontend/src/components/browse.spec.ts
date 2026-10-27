@@ -58,6 +58,7 @@ describe("Browse menu keyboard navigation", () => {
       { id: "two", label: "Two", icon: "copy", disabled: true, run: vi.fn() },
       { id: "three", label: "Three", icon: "copy", run: vi.fn() },
     ] } });
+    await flushPromises();
     await wrapper.get('[data-testid="context-menu-one"]').trigger("keydown", { key: "ArrowDown" });
     expect(document.activeElement).toBe(wrapper.get('[data-testid="context-menu-three"]').element);
   });
@@ -177,6 +178,7 @@ describe("Platform command modifiers", () => {
       expect(document.activeElement === view.get('input[name="search"]').element).toBe(accepted);
       view.unmount();
       const settings = mount(SettingsPanel, { attachTo: document.body });
+      await flushPromises();
       other.focus();
       const settingsFind = new KeyboardEvent("keydown", { key: "f", [modifier]: true, bubbles: true, cancelable: true });
       other.dispatchEvent(settingsFind);
@@ -193,7 +195,7 @@ describe("Platform command modifiers", () => {
       expect(api.saveItem).toHaveBeenCalledTimes(accepted ? 1 : 0);
       editor.unmount();
       store.isSettingsOpen = true;
-      store.vaultDialog = { mode: "blocked", blockedReason: "Dialog open" } as typeof store.vaultDialog;
+      store.vaultDialog = { mode: "blocked", blockedReason: "Dialog open", actions: { vault: store.allVault[0] } } as typeof store.vaultDialog;
       api.lock.mockResolvedValue(createStatus("locked"));
       const lockedView = mount(MainView, { attachTo: document.body, global: { stubs: { VaultDialog: true } } });
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "l", [modifier]: true, bubbles: true, cancelable: true }));
@@ -203,4 +205,58 @@ describe("Platform command modifiers", () => {
       other.remove();
     });
   }
+});
+
+describe("Browse menu focus restoration", () => {
+  it("returns Escape focus to keyboard triggers and pointer-invoked rows", async () => {
+    const wrapper = mount(MainView, { attachTo: document.body });
+    const trigger = wrapper.get('[data-testid="vault-actions"]');
+    await trigger.trigger("keydown", { key: "Enter" });
+    await flushPromises();
+    await wrapper.get('[role="menuitem"]').trigger("keydown", { key: "Escape" });
+    expect(document.activeElement).toBe(trigger.element);
+    const row = wrapper.get('[role="option"]');
+    (wrapper.get('input[name="search"]').element as HTMLElement).focus();
+    await row.trigger("contextmenu");
+    await flushPromises();
+    await wrapper.get('[role="menuitem"]').trigger("keydown", { key: "Escape" });
+    expect(document.activeElement).toBe(row.element);
+    await row.trigger("contextmenu");
+    await flushPromises();
+    await wrapper.get('[data-testid="context-menu-copy-username"]').trigger("click");
+    expect(document.activeElement).toBe(row.element);
+    expect(api.copyField).toHaveBeenCalledWith("personal", "one", "username");
+  });
+  it("does not restore a disconnected invoker", async () => {
+    const wrapper = mount(MainView, { attachTo: document.body });
+    const row = wrapper.get('[role="option"]');
+    await row.trigger("contextmenu");
+    await flushPromises();
+    store.allItem = [];
+    await flushPromises();
+    const focus = vi.spyOn(row.element as HTMLElement, "focus");
+    await wrapper.get('[role="menuitem"]').trigger("keydown", { key: "Escape" });
+    expect(focus).not.toHaveBeenCalled();
+  });
+  it("preserves outside pointer destinations and dialog action focus", async () => {
+    const invoker = document.createElement("button");
+    const destination = document.createElement("input");
+    document.body.append(invoker, destination);
+    const focus = vi.spyOn(invoker, "focus");
+    const wrapper = mount(ContextMenu, { attachTo: document.body, props: { label: "Actions", x: 0, y: 0, invoker, allAction: [
+      { id: "dialog", label: "Open dialog", icon: "edit", opensDestination: true, run: () => destination.focus() },
+    ] } });
+    await flushPromises();
+    await wrapper.get('[role="menuitem"]').trigger("click");
+    expect(document.activeElement).toBe(destination);
+    expect(focus).not.toHaveBeenCalled();
+    destination.dispatchEvent(new Event("pointerdown", { bubbles: true }));
+    destination.focus();
+    await flushPromises();
+    expect(wrapper.emitted("close")?.at(-1)).toEqual(["outside"]);
+    expect(document.activeElement).toBe(destination);
+    expect(focus).not.toHaveBeenCalled();
+    invoker.remove();
+    destination.remove();
+  });
 });

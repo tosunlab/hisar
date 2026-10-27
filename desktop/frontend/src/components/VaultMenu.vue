@@ -5,13 +5,13 @@ import { openVaultDialog, type VaultDialogMode } from "../store";
 import AppIcon from "./AppIcon.vue";
 import { useMenu } from "../menu";
 
-const props = defineProps<{ vault: VaultSummary; x: number; y: number }>();
+const props = defineProps<{ vault: VaultSummary; x: number; y: number; invoker?: HTMLElement | null }>();
 const emit = defineEmits<{ close: [] }>();
 const menu = ref<HTMLElement | null>(null);
-useMenu(menu, () => emit("close"));
+const dismiss = useMenu(menu, () => emit("close"), () => props.invoker ?? null);
 
 function choose(mode: Exclude<VaultDialogMode, "blocked">): void {
-  emit("close");
+  dismiss("destination");
   openVaultDialog(props.vault.id, mode);
 }
 

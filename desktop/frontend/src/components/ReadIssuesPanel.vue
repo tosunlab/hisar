@@ -12,7 +12,7 @@ watch(issues, (entries) => {
   for (const key of Object.keys(repairNames.value)) {
     if (!current.has(key)) delete repairNames.value[key];
   }
-});
+}, { deep: true });
 
 // Each action names the revision on screen; the app refuses it once the record changed, and the retry shows the new one.
 async function remove(): Promise<void> {

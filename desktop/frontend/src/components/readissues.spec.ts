@@ -31,5 +31,8 @@ describe("Vault name recovery drafts", () => {
     await flushPromises();
     expect((wrapper.findAll("input")[0].element as HTMLInputElement).value).toBe("");
     expect(repairs()[0].attributes("disabled")).toBeDefined();
+    vaults[0].readIssues[0].revision = "r1";
+    await flushPromises();
+    expect((wrapper.findAll("input")[0].element as HTMLInputElement).value).toBe("");
   });
 });
