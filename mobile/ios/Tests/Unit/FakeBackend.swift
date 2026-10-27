@@ -1440,6 +1440,9 @@ extension FakeBackend {
     }
 }
 
+/// Main-actor isolated: AppModel calls it from several tasks at once (a status change and sign-out both clear it),
+/// and the tests read its state on the main actor.
+@MainActor
 final class FakeCredentialIdentityStore: CredentialIdentityUpdating {
     var allIdentity: [CredentialIdentityRecord] = []
     var replaceCount = 0
