@@ -40,7 +40,7 @@ const isExpanded = ref(false);
   padding: 6px 8px;
   border: none;
   background: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.4;
   color: var(--color-text-secondary);
   text-align: left;

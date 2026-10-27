@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
   convertToSecureNote,
   copyField,
+  copySecretReference,
   copyText,
   duplicateItem,
   getAllShareLinkForItem,
@@ -66,9 +67,8 @@ defineProps<{ canEdit: boolean; vaultName: string; vaultType: string }>();
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const isPasswordRevealed = ref(false);
 const allRevealedFieldName = ref<string[]>([]);
-// itemMenu is the header's ⋯ menu, opened below its button; dialog is the Move or Delete dialog one of its actions opens.
+// itemMenu is the header's ⋯ menu, opened below its button.
 const itemMenu = ref<{ x: number; y: number; trigger: HTMLButtonElement } | null>(null);
-const dialog = ref<"move" | "delete" | null>(null);
 const isSSHKey = computed(() => store.selectedItem?.category === sshKeyCategory);
 const isSecureNote = computed(() => store.selectedItem?.category === secureNoteCategory);
 const isCreditCard = computed(() => store.selectedItem?.category === creditCardCategory);
@@ -204,10 +204,12 @@ watch(
     isConnectionStringRevealed.value = false;
     allRevealedFieldName.value = [];
     itemMenu.value = null;
-    dialog.value = null;
+    store.itemDetailDialog = null;
     fieldMenu.value = null;
   },
 );
+
+onBeforeUnmount(() => { store.itemDetailDialog = null; });
 
 function toggleFieldReveal(fieldName: string): void {
   allRevealedFieldName.value = allRevealedFieldName.value.includes(fieldName)
@@ -226,8 +228,8 @@ function buildItemMenuActions(): ContextMenuAction[] {
   const hasMoveTarget = store.allVault.some((vault) => vault.id !== vaultID && vault.role !== "reader");
   const allAction: (ContextMenuAction | null)[] = [
     item.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate", run: () => duplicateItem(vaultID, item.id) } : null,
-    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", run: () => (dialog.value = "move") } : null,
-    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, run: () => (dialog.value = "delete") },
+    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", run: () => (store.itemDetailDialog = "move") } : null,
+    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, run: () => (store.itemDetailDialog = "delete") },
   ];
   return allAction.filter((action): action is ContextMenuAction => action !== null);
 }
@@ -282,6 +284,13 @@ function openFieldMenu(event: MouseEvent): void {
     const label = button.getAttribute("aria-label") ?? "";
     return { id: label.toLowerCase().replace(/[^a-z0-9]+/g, "-"), label, icon: chooseFieldMenuIcon(label), run: () => button.click() };
   });
+  // Only secrets show a secret reference button; any other field offers its reference here.
+  const referenceField = row.dataset.referenceField;
+  const referenceLabel = `Copy secret reference for ${referenceField}`;
+  if (referenceField && !allAction.some((action) => action.label === referenceLabel)) {
+    const id = referenceLabel.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+    allAction.push({ id, label: referenceLabel, icon: "terminal", run: () => copySecretReference(referenceField) });
+  }
   const label = row.querySelector(".field-label, .section-label")?.textContent?.trim() || "Field";
   fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction };
 }
@@ -305,7 +314,7 @@ function maskSecret(secret: string): string {
         <h2>{{ store.selectedItem.title }}</h2>
         <div class="meta">
           <span class="badge" data-testid="item-vault"><AppIcon :name="vaultType === 'personal' ? 'user' : 'users'" :size="12" /> {{ vaultName }}</span>
-          <span v-if="vaultType === 'shared'" class="badge" data-testid="item-shared">shared</span>
+          <span v-if="vaultType === 'shared'" class="badge" data-testid="item-shared">Shared</span>
           <span v-if="isSSHKey" class="muted">SSH key</span>
           <span v-else-if="isSecureNote" class="muted">Secure note</span>
           <span v-else-if="isCreditCard" class="muted" data-testid="card-summary">{{ formatCardSummary(store.selectedItem.card) }}</span>
@@ -381,7 +390,6 @@ function maskSecret(secret: string): string {
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy fingerprint" title="Copy" @click="copyField('fingerprint', 'Fingerprint')"><AppIcon name="copy" /></button>
-            <SecretReferenceButton field-name="fingerprint" label="fingerprint" />
           </span>
         </div>
         <div class="field">
@@ -434,7 +442,7 @@ function maskSecret(secret: string): string {
             <AppIcon name="external" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton :field-name="row.name" :label="row.name" />
+          <SecretReferenceButton v-if="row.concealed" :field-name="row.name" :label="row.name" />
         </span>
       </div>
       <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
@@ -454,7 +462,7 @@ function maskSecret(secret: string): string {
             <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton :field-name="field.name" :label="field.name" />
+          <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
         </span>
       </div>
       <p v-if="allNamedRow.length === 0 && store.selectedItem.fields.length === 0" class="muted no-fields">
@@ -497,7 +505,7 @@ function maskSecret(secret: string): string {
               <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
             </button>
             <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
-            <SecretReferenceButton :field-name="field.name" :label="field.name" />
+            <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
           </span>
         </div>
       </section>
@@ -512,7 +520,6 @@ function maskSecret(secret: string): string {
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Host" title="Copy" @click="copyField(serverFieldName.host, serverFieldName.host)"><AppIcon name="copy" /></button>
-            <SecretReferenceButton :field-name="serverFieldName.host" :label="serverFieldName.host" />
           </span>
         </div>
         <div v-if="server.port" class="field" v-bind="bindFieldRow(serverFieldName.port, serverFieldName.port)">
@@ -525,7 +532,6 @@ function maskSecret(secret: string): string {
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Port" title="Copy" @click="copyField(serverFieldName.port, serverFieldName.port)"><AppIcon name="copy" /></button>
-            <SecretReferenceButton :field-name="serverFieldName.port" :label="serverFieldName.port" />
           </span>
         </div>
         <div v-if="server.sshKeyId" class="field" data-testid="server-ssh-key">
@@ -553,7 +559,6 @@ function maskSecret(secret: string): string {
         </div>
         <span class="field-actions">
           <button class="ghost icon-button" :aria-label="`Copy ${row.name}`" title="Copy" @click="copyField(row.name, row.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton :field-name="row.name" :label="row.name" />
         </span>
       </div>
 
@@ -564,7 +569,6 @@ function maskSecret(secret: string): string {
         </div>
         <span class="field-actions">
           <button class="ghost icon-button" aria-label="Copy username" title="Copy" @click="copyField('username', 'Username')"><AppIcon name="copy" /></button>
-          <SecretReferenceButton field-name="username" label="username" />
         </span>
       </div>
 
@@ -600,7 +604,6 @@ function maskSecret(secret: string): string {
           </div>
           <span class="field-actions">
             <button class="ghost icon-button" aria-label="Copy Options" title="Copy" @click="copyField(databaseFieldName.options, databaseFieldName.options)"><AppIcon name="copy" /></button>
-            <SecretReferenceButton :field-name="databaseFieldName.options" :label="databaseFieldName.options" />
           </span>
         </div>
         <div
@@ -675,7 +678,7 @@ function maskSecret(secret: string): string {
             <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
           </button>
           <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton :field-name="field.name" :label="field.name" />
+          <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
         </span>
       </div>
 
@@ -730,8 +733,8 @@ function maskSecret(secret: string): string {
       :all-action="buildItemMenuActions()"
       @close="closeItemMenu"
     />
-    <MoveItemDialog v-if="dialog === 'move'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="dialog = null" />
-    <ConfirmDeleteDialog v-if="dialog === 'delete'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="dialog = null" />
+    <MoveItemDialog v-if="store.itemDetailDialog === 'move'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="store.itemDetailDialog = null" />
+    <ConfirmDeleteDialog v-if="store.itemDetailDialog === 'delete'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="store.itemDetailDialog = null" />
   </article>
 </template>
 
@@ -755,8 +758,8 @@ header {
 h2 {
   margin: 0 0 6px;
   overflow: hidden;
-  font-size: 20px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
   letter-spacing: -0.01em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -767,7 +770,7 @@ h2 {
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .badge {
@@ -792,7 +795,7 @@ h2 {
   padding: 1px 8px;
   border-radius: 10px;
   background: var(--color-surface);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -901,7 +904,7 @@ h2 {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   user-select: text;
@@ -909,7 +912,7 @@ h2 {
 }
 
 .field-label {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
@@ -923,7 +926,7 @@ h2 {
 .android-app-certificate {
   display: block;
   margin-top: 2px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .secret {
@@ -979,7 +982,7 @@ h2 {
   display: block;
   margin-top: 2px;
   color: var(--color-warning);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .multiline-value {
@@ -991,7 +994,7 @@ h2 {
   align-items: center;
   gap: 8px;
   margin: 12px 2px 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .share-links-card {

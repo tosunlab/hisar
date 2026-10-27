@@ -86,7 +86,7 @@ describe("A click on a field row copies it", () => {
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledTimes(1);
     expect(api.copyField).toHaveBeenCalledWith("personal", "github", "password");
-    expect(store.noticeMessage).toBe("Password copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Password copied. It clears in 90 seconds.");
     expect(wrapper.find('[data-testid="password-value"]').text()).not.toContain("hunter2hunter2");
   });
 
@@ -113,7 +113,7 @@ describe("A click on a field row copies it", () => {
     await allRow[1].trigger("click");
     await flushPromises();
     expect(api.copyText).toHaveBeenCalledWith("https://gist.github.com");
-    expect(store.noticeMessage).toBe("Website copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Website copied. It clears in 90 seconds.");
   });
 
   it("copies a secure note's notes from anywhere on the note", async () => {

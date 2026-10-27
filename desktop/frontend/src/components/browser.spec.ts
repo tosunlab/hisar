@@ -120,6 +120,8 @@ describe("BrowserExtensionSection", () => {
     api.removePairedBrowser.mockResolvedValue({ ...pairedStatus, allPairedBrowser: [] });
     const wrapper = mount(BrowserExtensionSection);
     await flushPromises();
+    expect(wrapper.get(".setting strong").text()).toBe("Browser extension");
+    expect(wrapper.text()).toContain("Works in Chrome, Firefox, Brave, Edge, Arc, Dia, Vivaldi and Opera.");
     expect(wrapper.find('[data-testid="registered-browsers"]').text()).toContain("Google Chrome");
     expect(wrapper.find(".tag.warning").attributes("title")).toBe("permission denied");
     expect(wrapper.findAll('[data-testid="paired-browser"]')).toHaveLength(1);

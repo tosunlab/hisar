@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
   clearError,
   copyItemField,
@@ -13,6 +13,7 @@ import {
   listAllTag,
   loadAllOrganizationQuietly,
   lock,
+  lockOnShortcut,
   openImport,
   openItemShareLinkDialog,
   openShareLinks,
@@ -114,7 +115,6 @@ interface VaultGroup {
   allVault: VaultSummary[];
 }
 
-const isCreatingVault = ref(false);
 const newVaultName = ref("");
 // newVaultWhere is "" for the user's own vault, or the key of the team that gets the new organization vault.
 const newVaultWhere = ref("");
@@ -339,10 +339,11 @@ function openVaultMenuBelow(event: MouseEvent): void {
   vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
 }
 
-async function startCreatingVault(): Promise<void> {
+// prepareNewVaultForm clears the form and loads the teams for Where whenever the new-vault form opens, from the New vault
+// button or from Settings → People.
+async function prepareNewVaultForm(): Promise<void> {
   newVaultWhere.value = "";
   newVaultErrorMessage.value = "";
-  isCreatingVault.value = true;
   isLoadingTeams.value = true;
   const load = ++newVaultTeamLoad;
   await loadAllOrganizationQuietly();
@@ -350,6 +351,12 @@ async function startCreatingVault(): Promise<void> {
     isLoadingTeams.value = false;
   }
 }
+
+watch(
+  () => store.isCreatingVault,
+  (isCreating) => isCreating && prepareNewVaultForm(),
+  { immediate: true },
+);
 
 async function submitNewVault(): Promise<void> {
   if (!canSubmitNewVault.value) {
@@ -359,7 +366,7 @@ async function submitNewVault(): Promise<void> {
   const isCreated = team ? await createOrganizationVault(team.organizationID, team.teamID, newVaultName.value) : await createVault(newVaultName.value);
   if (isCreated) {
     newVaultName.value = "";
-    isCreatingVault.value = false;
+    store.isCreatingVault = false;
   }
   newVaultErrorMessage.value = isCreated ? "" : takeErrorMessage();
 }
@@ -378,12 +385,31 @@ function closeNewItemMenu(event: Event): void {
   }
 }
 
+// isOverlayOpen: a panel or dialog covers the main window, so shortcuts must not act on the vault behind it.
+const isOverlayOpen = computed(
+  () =>
+    store.isSettingsOpen ||
+    store.isSharingOpen ||
+    store.isImportOpen ||
+    store.isShareLinksOpen ||
+    store.shareLinkDialog !== null ||
+    store.vaultDialog !== null ||
+    store.browserPairing !== null ||
+    store.itemDetailDialog !== null ||
+    store.isDiscardConfirmShown ||
+    itemToDelete.value !== null ||
+    itemToMove.value !== null,
+);
+
 function handleShortcut(event: KeyboardEvent): void {
   if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
     return;
   }
   const key = event.key.toLowerCase();
-  if (key === "f" && store.isSettingsOpen) {
+  if (lockOnShortcut(event)) {
+    return;
+  }
+  if (isOverlayOpen.value) {
     return;
   }
   if (key === "f") {
@@ -392,15 +418,12 @@ function handleShortcut(event: KeyboardEvent): void {
   } else if (key === "n" && canCreate.value) {
     event.preventDefault();
     startCreatingItem();
-  } else if (key === "d" && store.selectedItem && store.editorMode === "view" && !store.isSettingsOpen) {
+  } else if (key === "d" && store.selectedItem && store.editorMode === "view") {
     event.preventDefault();
     toggleSelectedItemFavorite();
-  } else if (key === "l") {
-    event.preventDefault();
-    lock();
   } else if (key === ",") {
     event.preventDefault();
-    store.isSettingsOpen = true;
+    openSettings();
   }
 }
 
@@ -476,7 +499,7 @@ onBeforeUnmount(() => {
             <span class="vault-count">{{ vault.readIssues?.length ? `${vault.itemCount} + ${vault.readIssues.length} unreadable` : vault.itemCount }}</span>
           </button>
         </div>
-        <form v-if="isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
+        <form v-if="store.isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
           <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
           <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
             <span>Where</span>
@@ -490,11 +513,11 @@ onBeforeUnmount(() => {
           </p>
           <p v-if="newVaultErrorMessage" class="error new-vault-error" role="alert" data-testid="new-vault-error">{{ newVaultErrorMessage }}</p>
           <div class="row">
-            <button type="button" class="ghost" @click="isCreatingVault = false">Cancel</button>
+            <button type="button" class="ghost" @click="store.isCreatingVault = false">Cancel</button>
             <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
           </div>
         </form>
-        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="startCreatingVault"><AppIcon name="plus" /> New vault</button>
+        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
       </nav>
 
       <nav v-if="allTag.length > 0" aria-label="Tags" class="tags-nav" data-testid="tag-list">
@@ -536,7 +559,7 @@ onBeforeUnmount(() => {
           <strong>{{ store.status.name || store.status.email }}</strong>
           <span class="muted">{{ store.status.email }}</span>
         </div>
-        <button class="ghost icon-button" :title="`Settings (${shortcutModifier},)`" aria-label="Settings" @click="store.isSettingsOpen = true"><AppIcon name="settings" /></button>
+        <button class="ghost icon-button" :title="`Settings (${shortcutModifier},)`" aria-label="Settings" @click="openSettings()"><AppIcon name="settings" /></button>
         <button class="ghost icon-button" :title="`Lock (${shortcutModifier}L)`" aria-label="Lock" @click="lock"><AppIcon name="lock" /></button>
       </div>
     </aside>
@@ -811,7 +834,7 @@ onBeforeUnmount(() => {
   padding: 0 6px;
   border-radius: 10px;
   background: var(--color-surface-raised);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-muted);
 }
 
@@ -841,7 +864,7 @@ onBeforeUnmount(() => {
   padding: 3px 4px 3px 10px;
   border: 1px solid var(--color-border-strong);
   border-radius: 14px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -871,8 +894,8 @@ onBeforeUnmount(() => {
   border-radius: 9px;
   background: var(--color-primary);
   color: var(--color-primary-text);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--font-size-11);
+  font-weight: 600;
   line-height: 18px;
   text-align: center;
 }
@@ -893,7 +916,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border-radius: 8px;
   background: var(--color-surface-raised);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -917,14 +940,14 @@ onBeforeUnmount(() => {
 
 .new-vault-note {
   margin: 0 2px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   line-height: 1.4;
 }
 
 .new-vault-error {
   margin: 0 0 8px;
   padding: 6px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .new-vault .row {
@@ -947,13 +970,13 @@ onBeforeUnmount(() => {
 }
 
 .offline strong {
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text);
 }
 
 .offline p {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.4;
 }
 
@@ -974,7 +997,7 @@ onBeforeUnmount(() => {
   flex: none;
   border-radius: 50%;
   background: var(--color-selected);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 600;
 }
 
@@ -993,7 +1016,7 @@ onBeforeUnmount(() => {
 }
 
 .account-text span {
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .list {
@@ -1015,12 +1038,12 @@ onBeforeUnmount(() => {
 
 .list-title h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
 }
 
 .list-title .muted {
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .new-item {
@@ -1035,7 +1058,7 @@ onBeforeUnmount(() => {
 .private-badge {
   gap: 5px;
   padding: 5px 9px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .private-badge {
@@ -1147,7 +1170,7 @@ onBeforeUnmount(() => {
 
 .item-subtitle {
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1214,7 +1237,7 @@ onBeforeUnmount(() => {
 
 .detail-empty h3 {
   margin: 16px 0 4px;
-  font-size: 16px;
+  font-size: var(--font-size-15);
 }
 
 .detail-empty p {

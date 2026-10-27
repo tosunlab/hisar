@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, provide, ref, watch } from "vue";
-import { countPendingInvitations, loadSettingsData, loadSSHAgentStatus, store } from "../store";
+import { countPendingInvitations, isSettingsWindow, loadSettingsData, loadSSHAgentStatus, store } from "../store";
 import {
   allSettingsSection,
   findAllMatchingRowID,
@@ -138,8 +138,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
 </script>
 
 <template>
-  <div class="overlay" @click.self="closeSettings">
-    <div class="card settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+  <div class="overlay" :class="{ window: isSettingsWindow }" @click.self="closeSettings">
+    <div class="card settings" :role="isSettingsWindow ? undefined : 'dialog'" :aria-modal="isSettingsWindow ? undefined : 'true'" aria-labelledby="settings-title">
       <nav class="settings-sidebar" aria-label="Settings sections">
         <div class="settings-search">
           <AppIcon name="search" :size="14" />
@@ -187,7 +187,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
           <button v-if="displayedSection?.id === 'people' && !isInvitingPerson" v-show="isRowVisible('invite')" data-testid="start-invite" @click="startInvitingPerson">
             <AppIcon name="plus" :size="14" />Invite to Hisar
           </button>
-          <button class="ghost icon-button" aria-label="Close settings" @click="closeSettings"><AppIcon name="close" /></button>
+          <button v-if="!isSettingsWindow" class="ghost icon-button" aria-label="Close settings" @click="closeSettings"><AppIcon name="close" /></button>
         </header>
 
         <div ref="sectionContent" class="settings-content">
@@ -260,6 +260,20 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
   overflow: hidden;
   background: var(--color-panel);
   box-shadow: 0 24px 64px var(--color-shadow);
+}
+
+/* In its own window (macOS), Settings fills the window, which has its own title bar and close button. */
+.overlay.window {
+  padding: 0;
+  background: var(--color-panel);
+}
+
+.overlay.window .settings {
+  width: 100%;
+  height: 100%;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
 }
 
 .settings-sidebar {
@@ -353,15 +367,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
   border-radius: 9px;
   background: var(--color-primary);
   color: var(--color-primary-text);
-  font-size: 11px;
-  font-weight: 650;
+  font-size: var(--font-size-11);
+  font-weight: 600;
   line-height: 18px;
   text-align: center;
 }
 
 .no-section {
   margin: 4px 9px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .settings-main {
@@ -384,8 +398,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
   flex: 1;
   min-width: 0;
   margin: 0;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
 }
 
 .settings-header button {

@@ -64,19 +64,25 @@ struct PasswordGeneratorView: View {
                 .accessibilityIdentifier("generator-copy")
             }
             Section("Options") {
-                LabeledContent {
-                    Stepper(value: $length, in: 8...64, step: 1) {
-                        Text("\(Int(length))")
-                            .monospacedDigit()
+                HStack(spacing: 12) {
+                    Text("Length")
+                        .accessibilityHidden(true)
+                    Slider(value: $length, in: 8...64, step: 1) {
+                        Text("Length")
                     }
-                    .fixedSize()
-                } label: {
-                    Text("Length")
+                    // A slider reads its value as a percentage by default; the length is a number of characters.
+                    .accessibilityValue("\(Int(length))")
+                    .accessibilityIdentifier("generator-length")
+                    // Two digits' width, so the slider keeps its length when the value drops below 10.
+                    Text(verbatim: "00")
+                        .monospacedDigit()
+                        .hidden()
+                        .overlay(alignment: .trailing) {
+                            Text("\(Int(length))")
+                                .monospacedDigit()
+                        }
+                        .accessibilityHidden(true)
                 }
-                Slider(value: $length, in: 8...64, step: 1) {
-                    Text("Length")
-                }
-                .accessibilityIdentifier("generator-length")
                 Toggle("Digits", isOn: $isDigitIncluded)
                 Toggle("Symbols", isOn: $isSymbolIncluded)
             }

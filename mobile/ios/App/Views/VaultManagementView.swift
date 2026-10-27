@@ -217,7 +217,7 @@ struct VaultDeletionSheet: View {
                     }
                 }
             }
-            .navigationTitle("Delete “\(actions.vault.name)”")
+            .navigationTitle("Delete “\(actions.vault.name)”?")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

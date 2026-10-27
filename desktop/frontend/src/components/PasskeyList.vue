@@ -101,7 +101,7 @@ async function confirmDelete(credentialID: string): Promise<void> {
 }
 
 .passkey-meta {
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .confirm {
@@ -111,6 +111,6 @@ async function confirmDelete(credentialID: string): Promise<void> {
 
 .passkey-hint {
   margin: 10px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 </style>

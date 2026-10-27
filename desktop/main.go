@@ -86,9 +86,10 @@ func main() {
 				approver.ClearRememberedSignings()
 			}
 		},
-		OnRemoteChange:     notifier.NotifyRemoteChange,
-		OnShareLinksChange: notifier.NotifyShareLinksChange,
-		OnThemeChange:      notifier.NotifyThemeChange,
+		OnRemoteChange:       notifier.NotifyRemoteChange,
+		OnShareLinksChange:   notifier.NotifyShareLinksChange,
+		OnThemeChange:        notifier.NotifyThemeChange,
+		OnWebsiteIconsChange: notifier.NotifyWebsiteIconsChange,
 		OnUpdateRequired: func(requirement app.UpdateRequirement) {
 			if showUpdateRequired != nil {
 				showUpdateRequired(requirement)
@@ -119,6 +120,7 @@ func main() {
 
 	var wailsApp *application.App
 	var window *application.WebviewWindow
+	settingsWindowService := &SettingsWindowService{isUnlocked: func() bool { return vaultService.GetStatus().State == app.StateUnlocked }}
 	// The browser bridge calls this from its own goroutines; AppKit aborts unless window calls run on the main thread.
 	showWindow := func() {
 		application.InvokeAsync(func() {
@@ -129,7 +131,9 @@ func main() {
 			window.Focus()
 		})
 	}
+	// Settings closes with the main window: Hisar then runs in the background, without a Dock icon.
 	hideWindow := func() {
+		settingsWindowService.Hide()
 		window.Hide()
 		background.SetDockIconVisible(false)
 	}
@@ -297,6 +301,7 @@ func main() {
 			application.NewService(loginItemService),
 			application.NewService(inviteLinkService),
 			application.NewService(harnessService),
+			application.NewService(settingsWindowService),
 		},
 		OnShutdown: func() {
 			app.ClearCopiedText(vaultService)
@@ -319,25 +324,32 @@ func main() {
 			DisableQuitOnLastWindowClosed: true,
 		},
 	})
-	fallbackClipboard.app, notifier.app = wailsApp, wailsApp
+	fallbackClipboard.app, notifier.app, settingsWindowService.app = wailsApp, wailsApp, wailsApp
 	// Register after NewCommandLineBridge sets the account, which notifies listeners.
 	commandLineApprovals.WatchAgentSessions(func() { wailsApp.Event.Emit(eventAgentSessionsChanged, "") })
 
 	window = wailsApp.Window.NewWithOptions(mainWindowOptions())
+	// A dialog opens over the window that asked for it: the main window, or Settings when it has its own window.
+	getDialogWindow := func() application.Window {
+		if current := wailsApp.Window.Current(); current != nil {
+			return current
+		}
+		return window
+	}
 	fileSaver.chooseSavePath = func(defaultFileName string) (string, error) {
 		return wailsApp.Dialog.SaveFile().
 			SetFilename(defaultFileName).
 			AddFilter("PDF document", "*.pdf").
 			CanCreateDirectories(true).
-			AttachToWindow(window).
+			AttachToWindow(getDialogWindow()).
 			PromptForSingleSelection()
 	}
 	// No file type filter: exports often have other extensions, and the importer detects the format from the content.
 	fileOpener.chooseOpenPath = func() (string, error) {
 		return wailsApp.Dialog.OpenFile().
-			SetTitle("Import passwords").
+			SetTitle("Import items").
 			CanChooseFiles(true).
-			AttachToWindow(window).
+			AttachToWindow(getDialogWindow()).
 			PromptForSingleSelection()
 	}
 	touchID.SetWindowProvider(window.NativeWindow)
@@ -391,6 +403,15 @@ func main() {
 		approver.DenyAll()
 		approvalWindow.Hide()
 	})
+	if runtime.GOOS == "darwin" {
+		settingsWindow := wailsApp.Window.NewWithOptions(settingsWindowOptions())
+		settingsWindowService.window, settingsWindowService.showMainWindow = settingsWindow, showWindow
+		settingsWindow.RegisterHook(events.Common.WindowClosing, func(event *application.WindowEvent) {
+			event.Cancel()
+			settingsWindowService.Hide()
+		})
+		app.AddStatusListener(vaultService, func() { settingsWindowService.followStatus(vaultService.GetStatus().State) })
+	}
 
 	go func() {
 		defer close(agentStopped)

@@ -413,11 +413,6 @@ struct MemberRow: View {
                 Text(member.email)
                     .font(.caption)
                     .foregroundStyle(.themeSecondary)
-                if !member.securityCode.isEmpty {
-                    Text("Security code \(member.securityCode)")
-                        .font(.caption2.monospaced())
-                        .foregroundStyle(.themeSecondary)
-                }
                 if member.isKeyChanged {
                     Label("Their key changed since you last shared with them. Check the security code with them before sharing again.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)

@@ -149,6 +149,7 @@ describe("Replace Secret Key", () => {
     expect(wrapper.find('[data-testid="new-secret-key"]').attributes("aria-label")).toBe(newSecretKey);
     expect(wrapper.find('[data-testid="replace-secret-key-done"]').text()).toContain("1 other device was signed out.");
     expect(wrapper.find('[data-testid="replace-secret-key-close"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.get('[data-testid="save-new-emergency-kit"]').text()).toBe("Save Emergency Kit…");
     await wrapper.find('[data-testid="save-new-emergency-kit"]').trigger("click");
     await flushPromises();
     expect(api.saveNewAccountEmergencyKit).toHaveBeenCalled();

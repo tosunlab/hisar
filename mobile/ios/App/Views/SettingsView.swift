@@ -138,11 +138,7 @@ struct SettingsView: View {
                     }
                     .accessibilityIdentifier("open-help")
                     NavigationLink(value: SettingsDestination.about) {
-                        LabeledContent {
-                            Text(AboutView.versionText)
-                        } label: {
-                            Label("About Hisar", systemImage: "info.circle")
-                        }
+                        Label("About Hisar", systemImage: "info.circle")
                     }
                     .accessibilityIdentifier("open-about")
                     Button("Sign out", role: .destructive) {
@@ -743,9 +739,9 @@ struct AutoFillSettingsView: View {
                     .accessibilityIdentifier("turn-on-autofill")
                 }
             } footer: {
-                Text(Self.isAutoFillIncluded
-                     ? "You can also turn it on in the Settings app: General, AutoFill & Passwords."
-                     : "This build is signed with a free Apple ID, which cannot include the AutoFill extension.")
+                if !Self.isAutoFillIncluded {
+                    Text("This build is signed with a free Apple ID, which cannot include the AutoFill extension.")
+                }
             }
             if Self.isAutoFillIncluded {
                 Section {
@@ -848,8 +844,6 @@ struct HelpView: View {
                 Text("The app and iOS versions, the server and this device's ID. Never your items, keys or master password.")
             }
             Section {
-                LabeledContent("App version", value: AboutView.versionText)
-                    .accessibilityIdentifier("help-app-version")
                 LabeledContent("Server", value: VaultLogic.describeServer(model.status.server))
                     .textSelection(.enabled)
             }

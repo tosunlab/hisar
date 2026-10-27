@@ -46,12 +46,13 @@ describe("UnlockView with Touch ID", () => {
     const pending = createPendingPromise<ReturnType<typeof createStatus>>();
     api.unlockWithBiometric.mockReturnValue(pending.promise);
     const wrapper = mount(UnlockView, { attachTo: document.body });
+    const statusRegion = wrapper.get('[data-testid="unlock-status"]').element;
     await flushPromises();
     expect(wrapper.find('[data-testid="touch-id-slot"]').exists()).toBe(true);
     expect(api.setTouchIDPromptFrame).toHaveBeenCalled();
     expect(api.unlockWithBiometric).toHaveBeenCalledTimes(1);
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
-    expect(wrapper.find('[data-testid="unlock-status"]').text()).toContain("Touch ID is waiting");
+    expect(wrapper.find('[data-testid="unlock-status"]').text()).toBe("Touch ID is waiting. Or type your master password.");
 
     api.getStatus.mockResolvedValue(createStatus("unlocked"));
     api.listAllVault.mockResolvedValue([]);
@@ -59,6 +60,8 @@ describe("UnlockView with Touch ID", () => {
     await flushPromises();
     expect(store.status.state).toBe("unlocked");
     expect(api.clearTouchIDPromptFrame).toHaveBeenCalled();
+    expect(wrapper.get('[data-testid="unlock-status"]').element).toBe(statusRegion);
+    expect(wrapper.get('[data-testid="unlock-status"]').text()).toBe("");
     wrapper.unmount();
   });
 
@@ -90,6 +93,7 @@ describe("UnlockView with Touch ID", () => {
     expect(store.errorMessage).toContain("turned off");
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="use-touch-id"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="unlock-status"]').text()).toBe("");
     wrapper.unmount();
   });
 
@@ -99,6 +103,9 @@ describe("UnlockView with Touch ID", () => {
     expect(api.unlockWithBiometric).not.toHaveBeenCalled();
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="use-touch-id"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="unlock-status"]').text()).toBe("");
+    expect(wrapper.get('[data-testid="unlock-status"]').attributes("aria-live")).toBe("polite");
+    wrapper.unmount();
   });
 
   it("explains pending keychain setup without removing the password fallback", async () => {

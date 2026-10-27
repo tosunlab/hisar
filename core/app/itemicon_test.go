@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -260,6 +261,8 @@ func TestGetWebsiteIconSharesAFetchAndFollowsTheSetting(t *testing.T) {
 	if !service.IsWebsiteIconsEnabled() {
 		t.Fatal("website icons are off by default")
 	}
+	var heardSettings []bool
+	service.config.OnWebsiteIconsChange = func(isEnabled bool) { heardSettings = append(heardSettings, isEnabled) }
 	if err := service.SetWebsiteIconsEnabled(false); err != nil {
 		t.Fatal(err)
 	}
@@ -271,6 +274,9 @@ func TestGetWebsiteIconSharesAFetchAndFollowsTheSetting(t *testing.T) {
 	}
 	if got, _ := service.GetWebsiteIcon("https://github.com"); !bytes.Equal(got, icon) || fetcher.calls.Load() != 2 {
 		t.Errorf("turning icons off kept the cache: %d fetches", fetcher.calls.Load())
+	}
+	if !slices.Equal(heardSettings, []bool{false, true}) {
+		t.Errorf("the windows heard the setting change as %v", heardSettings)
 	}
 }
 

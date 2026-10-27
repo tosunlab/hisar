@@ -81,7 +81,7 @@ async function copyAllCommand(): Promise<void> {
 
 .host-text p {
   margin: 4px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .actions {
@@ -98,7 +98,7 @@ async function copyAllCommand(): Promise<void> {
 
 .signing-steps > p {
   margin: 0 0 10px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .command-list {
@@ -129,12 +129,12 @@ async function copyAllCommand(): Promise<void> {
 }
 
 .command-description {
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-secondary);
 }
 
 .command-text code {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   overflow-wrap: anywhere;
   user-select: text;
   -webkit-user-select: text;

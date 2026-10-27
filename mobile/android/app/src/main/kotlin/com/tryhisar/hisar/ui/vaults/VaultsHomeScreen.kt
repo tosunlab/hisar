@@ -55,7 +55,6 @@ import com.tryhisar.hisar.app.Refusal
 import com.tryhisar.hisar.app.UnlockedData
 import com.tryhisar.hisar.app.VaultsDestination
 import com.tryhisar.hisar.app.takeRefusal
-import com.tryhisar.hisar.model.ItemCategory
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.OrganizationInvitation
 import com.tryhisar.hisar.model.OrganizationLogic
@@ -225,15 +224,14 @@ fun VaultsHomeScreen(model: AppModel) {
                 for (group in grouping.allGroup) {
                     organizationVaultSection(data, group) { stack.push(VaultsDestination.Vault(it.id)) }
                 }
-                if (data.allVault.isNotEmpty()) {
-                    cardSection("by-type", ItemCategory.entries, rowKey = { it.id }, header = "By type", dividerStart = { SymbolRowTextStart }) { category ->
-                        NavigationRow(
-                            testTag = "category-${category.id}",
-                            onClick = { stack.push(VaultsDestination.Category(category)) },
-                            badge = allItem.count { category.includes(it.item) },
-                            leading = { RowSymbol(category.icon) },
-                        ) { Text(category.title, style = HisarType.body, color = HisarTheme.colors.label) }
-                    }
+                cardSection("by-type", VaultLogic.listAllCategory(allItem), rowKey = { it.category.id }, header = "By type", dividerStart = { SymbolRowTextStart }) { summary ->
+                    val category = summary.category
+                    NavigationRow(
+                        testTag = "category-${category.id}",
+                        onClick = { stack.push(VaultsDestination.Category(category)) },
+                        badge = summary.itemCount,
+                        leading = { RowSymbol(category.icon) },
+                    ) { Text(category.title, style = HisarType.body, color = HisarTheme.colors.label) }
                 }
                 cardSection("tags", VaultLogic.listAllTag(allItem), rowKey = { it.name }, header = "Tags", dividerStart = { SymbolRowTextStart }) { tag ->
                     NavigationRow(

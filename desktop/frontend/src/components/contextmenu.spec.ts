@@ -96,7 +96,7 @@ describe("The item list's context menu", () => {
     await wrapper.find('[data-testid="context-menu-copy-password"]').trigger("click");
     await flushPromises();
     expect(api.copyField).toHaveBeenCalledWith("personal", "github", "password");
-    expect(store.noticeMessage).toBe("Password copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Password copied. It clears in 90 seconds.");
     expect(store.selectedItem).toBeNull();
     expect(wrapper.find('[data-testid="context-menu"]').exists()).toBe(false);
     wrapper.unmount();
@@ -304,6 +304,31 @@ describe("The item list's context menu", () => {
     expect(parseFloat(style.left)).toBe(window.innerWidth - 220 - 8);
     expect(parseFloat(style.top)).toBe(window.innerHeight - 300 - 8);
     vi.restoreAllMocks();
+    wrapper.unmount();
+  });
+});
+
+describe("Shortcuts while an item dialog is open", () => {
+  it.each([
+    ["header", "move"],
+    ["header", "delete"],
+    ["list", "move"],
+    ["list", "delete"],
+  ])("does not create an item behind the %s %s dialog", async (origin, action) => {
+    store.selectedItem = githubDetail;
+    const wrapper = mount(MainView, { attachTo: document.body });
+    if (origin === "header") {
+      await wrapper.get('[data-testid="item-actions"]').trigger("click");
+    } else {
+      await openItemMenu(wrapper, "GitHub");
+    }
+    await wrapper.get(`[data-testid="context-menu-${action}"]`).trigger("click");
+    const dialog = wrapper.get(action === "move" ? '[data-testid="move-item-dialog"]' : '[data-testid="confirm-delete-dialog"]');
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "n", metaKey: true, bubbles: true, cancelable: true }));
+    await flushPromises();
+    expect(store.editorMode).toBe("view");
+    expect(store.selectedItem?.id).toBe("github");
+    expect(dialog.isVisible()).toBe(true);
     wrapper.unmount();
   });
 });

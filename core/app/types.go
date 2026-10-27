@@ -518,6 +518,9 @@ type Config struct {
 	IsEventStreamDisabled bool
 	// OnThemeChange runs after SetTheme saved a new theme, outside the service mutex; every window applies it.
 	OnThemeChange func(theme Theme)
+	// OnWebsiteIconsChange runs after SetWebsiteIconsEnabled saved the setting, outside the service mutex; every window
+	// applies it.
+	OnWebsiteIconsChange func(isEnabled bool)
 	// FileSaver asks where to save a file; it returns "" when the user cancels.
 	FileSaver FileSaver
 	// FileOpener asks which file to open; it returns "" when the user cancels.

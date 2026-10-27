@@ -302,7 +302,7 @@ struct DeleteAccountView: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .tint(.red)
                 .controlSize(.large)
                 .disabled(!canSubmit)

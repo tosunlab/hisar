@@ -21,9 +21,10 @@ export function bindCopyRow(copy: () => unknown): Record<string, unknown> {
   };
 }
 
-// bindFieldRow is bindCopyRow for a field the backend copies by name, as the row's copy button does.
+// bindFieldRow is bindCopyRow for a field the backend copies by name, as the row's copy button does. The same name is the
+// field's secret reference, which the row's right-click menu offers when the row shows no button for it.
 export function bindFieldRow(fieldName: string, label: string): Record<string, unknown> {
-  return bindCopyRow(() => copyField(fieldName, label));
+  return { ...bindCopyRow(() => copyField(fieldName, label)), "data-reference-field": fieldName };
 }
 
 function isRowClick(event: MouseEvent): boolean {

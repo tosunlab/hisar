@@ -493,6 +493,7 @@ onBeforeUnmount(() => {
               </h1>
               <p id="approval-subtitle" class="subtitle" :title="approval.fingerprint">{{ subtitle }}</p>
               <p v-if="Number.isFinite(timeoutAt)" class="expiry" :class="{ 'is-warning': secondsLeft < 10 }" data-testid="approval-expiry">{{ expiryText }}</p>
+              <p v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</p>
               <p v-if="approval.projectName" class="agent-line" data-testid="approval-project">
                 <AppIcon name="folder" :size="12" /> <span class="agent-line-text" :title="approval.projectPath">{{ approval.projectName }}</span>
               </p>
@@ -627,7 +628,6 @@ onBeforeUnmount(() => {
               <div class="touch-id-text">
                 <span>{{ touchIDLabel }}</span>
                 <button class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
-                <span v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</span>
               </div>
             </div>
             <div v-else-if="!isPasswordShown" class="touch-id manual">
@@ -641,9 +641,7 @@ onBeforeUnmount(() => {
                 {{ approvalStore.failureMessage && !isForwarded ? "Try again" : approveButtonLabel }}
               </button>
               <button v-if="canChoosePassword" class="link" data-testid="use-password" @click="usePassword">or use your master password</button>
-              <span v-if="phoneNote" class="phone-note" data-testid="approval-phone">{{ phoneNote }}</span>
             </div>
-            <span v-else-if="phoneNote" class="phone-note footer-spacer" data-testid="approval-phone">{{ phoneNote }}</span>
             <span v-else class="footer-spacer"></span>
             <span v-if="approvalStore.allApproval.length > 1" class="muted waiting">{{ approvalStore.allApproval.length - 1 }} more waiting</span>
             <button ref="denyButton" :class="{ primary: isForwarded }" data-testid="deny-approval" @click="deny">Deny</button>
@@ -659,7 +657,7 @@ onBeforeUnmount(() => {
 .expiry {
   margin: 6px 0 0;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .expiry.is-warning {
@@ -711,7 +709,7 @@ onBeforeUnmount(() => {
   border-radius: var(--radius);
   background: var(--color-danger-background);
   color: var(--color-danger-text);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -809,15 +807,15 @@ onBeforeUnmount(() => {
   border-radius: 999px;
   background: var(--color-warning-background);
   color: var(--color-warning);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 600;
   letter-spacing: 0.01em;
 }
 
 h1 {
   margin: 0;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
   line-height: 1.3;
   overflow-wrap: anywhere;
 }
@@ -825,7 +823,7 @@ h1 {
 .subtitle {
   margin: 4px 0 0;
   color: var(--color-text-secondary);
-  font-size: 13px;
+  font-size: var(--font-size-13);
   overflow-wrap: anywhere;
 }
 
@@ -849,7 +847,7 @@ h1 {
   max-width: 100%;
   margin: 6px 0 0;
   color: var(--color-text-secondary);
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .agent-line .icon {
@@ -868,7 +866,7 @@ h1 {
   align-items: flex-start;
   gap: 3px;
   margin: 8px 0 0;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-muted);
 }
 
@@ -900,7 +898,7 @@ h1 {
   border-radius: var(--radius);
   background: var(--color-danger-background);
   color: var(--color-danger-text);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -928,7 +926,7 @@ h1 {
 .detail-line {
   overflow: hidden;
   font-family: "SF Mono", ui-monospace, Menlo, monospace;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.5;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -955,7 +953,7 @@ h1 {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-background);
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 
 .launcher-allowance ul {
@@ -982,7 +980,7 @@ h1 {
 
 .launcher-allowance p {
   margin: 8px 0 0 22px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .secret-list {
@@ -991,7 +989,7 @@ h1 {
 
 .secret-heading {
   margin: 0 0 6px 2px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -1012,7 +1010,7 @@ h1 {
   align-items: center;
   gap: 7px;
   overflow: hidden;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -1027,7 +1025,7 @@ h1 {
   border-radius: var(--radius);
   background: var(--color-warning-background);
   color: var(--color-warning);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -1045,7 +1043,7 @@ h1 {
   align-items: center;
   gap: 9px;
   margin: 20px 0 0 2px;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 400;
   color: var(--color-text);
 }
@@ -1061,7 +1059,7 @@ h1 {
   align-items: center;
   gap: 6px;
   margin: 12px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -1074,7 +1072,7 @@ h1 {
   flex-direction: column;
   gap: 6px;
   margin: 20px 0 0 2px;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text);
 }
 
@@ -1094,7 +1092,7 @@ h1 {
 
 .grant-duration p {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .login-choice {
@@ -1108,7 +1106,7 @@ h1 {
   align-items: center;
   gap: 9px;
   margin: 0 0 0 2px;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 400;
   color: var(--color-text);
 }
@@ -1128,7 +1126,7 @@ h1 {
 
 .sign-in-note {
   margin: 8px 0 0 2px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .password-row {
@@ -1143,7 +1141,7 @@ h1 {
 
 .note {
   margin: 12px 0 0;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .footer-bar {
@@ -1173,12 +1171,12 @@ h1 {
   flex-direction: column;
   align-items: flex-start;
   gap: 1px;
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 
 .touch-id-text .link,
 .touch-id.manual .link {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
@@ -1202,12 +1200,16 @@ h1 {
 }
 
 .phone-note {
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
 }
 
+.request-text > .phone-note {
+  margin: 6px 0 0;
+}
+
 .waiting {
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .compact-card {
@@ -1233,12 +1235,12 @@ h1 {
 }
 
 .compact-title {
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 
 .compact-subtitle {
   margin-top: 1px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -1254,18 +1256,18 @@ h1 {
   align-items: center;
   gap: 8px;
   margin-right: auto;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
 .compact-actions .link {
   margin-right: auto;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .compact-deny {
   padding: 4px 12px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .no-request {

@@ -114,7 +114,7 @@ async function close(): Promise<void> {
 }
 
 .key-part {
-  font-size: 15px;
+  font-size: var(--font-size-15);
   font-weight: 600;
 }
 

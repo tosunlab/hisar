@@ -180,6 +180,25 @@ describe("starring an item", () => {
     wrapper.unmount();
   });
 
+  it("leaves ⌘D, ⌘N and ⌘F to the panel in front, but still locks with ⌘L", async () => {
+    store.selectedItem = { ...github };
+    store.isShareLinksOpen = true;
+    const wrapper = mount(MainView, { attachTo: document.body });
+    for (const key of ["d", "n", "f", ","]) {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key, metaKey: true }));
+    }
+    await flushPromises();
+    expect(api.setItemFavorite).not.toHaveBeenCalled();
+    expect(store.editorMode).toBe("view");
+    expect(store.isSettingsOpen).toBe(false);
+    expect(document.activeElement).not.toBe(wrapper.find('input[name="search"]').element);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "l", metaKey: true }));
+    await flushPromises();
+    expect(api.lock).toHaveBeenCalled();
+    store.isShareLinksOpen = false;
+    wrapper.unmount();
+  });
+
   it("stars from the item's context menu", async () => {
     const wrapper = mount(MainView, { attachTo: document.body });
     await wrapper.findAll(".list ul .item")[0].trigger("contextmenu");

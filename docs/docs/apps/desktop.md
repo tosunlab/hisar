@@ -99,6 +99,8 @@ cd desktop/frontend && npm run preview:ui
 
 The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
 
+On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `windows.go`, `SettingsWindowService`, `src/SettingsWindow.vue`); its page reloads whenever it closes, and it closes when Hisar locks or signs out. `SettingsWindowService` keeps the section Settings was asked to open at until the page takes it, so Settings asked for while Hisar is locked opens after the unlock. The window shows settings only: it never loads items or removed-vault notices. Import, a vault's sharing panel and the pending recovery after replacing the Secret Key open in the main window, which owns them; the website icon setting reaches every window as an event. On Linux and in the preview, Settings is an overlay in the main window; the preview shows the Settings window at `?window=settings&settingsSection=<section>`.
+
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
 ## Right-click menus
@@ -106,7 +108,7 @@ The app keeps its session in `~/Library/Application Support/hisar/desktop.json` 
 Design: [Design](../design.md) §9.1 (desktop: item menu).
 
 - **An item in the list** (a vault's or Favorites): **Open**; **Copy** for its username, password, one-time code and main value (card number, license key, API secret, connection string, public key), each once the item's details have loaded; **Open website** (**Open admin console** for a server); **Add to Favorites** or **Remove from Favorites**; **Share link…**; and, in a vault the user can edit, **Edit**, **Duplicate** ("GitHub copy", without passkeys), **Move to…** (another vault the user can edit; the item keeps its ID) and **Delete…**, which asks first. Arrow keys move through the menu and Escape closes it.
-- **A field row in the detail panel** offers the row's own buttons by name, such as **Reveal password**, **Copy password** and **Copy secret reference for password**, or **Open website**. With text selected in the row, the system's menu appears instead, with its Copy.
+- **A field row in the detail panel** offers the row's actions by name, such as **Reveal password**, **Copy password** and **Copy secret reference for password**, or **Open website**. Fields without an inline secret-reference button still offer their reference in this menu. With text selected in the row, the system's menu appears instead, with its Copy.
 
 Click a field's label, value or row padding to copy it. You can also focus the field and press Enter or Space.
 Screen readers announce the copy action, field label and displayed value. Secret values stay masked until revealed.
@@ -196,7 +198,7 @@ Design: [Design](../design.md) §4.5 (categories).
 Design: [Design](../design.md) §4.5 (categories) and §9.2 (browser extension).
 
 - **+** → **Server** opens an editor for the host and port (warning about a port that is not 1–65535), the username, password and one-time password, the admin console URL and an SSH key from the same vault; then notes and custom fields. A host typed as `ssh://host:2222` or `host:2222` is split into host and port.
-- The view lists the host and port with **Copy** and a secret reference, the login fields as for a login, the admin console with **Open in browser**, and the linked SSH key, which opens; a key that was deleted shows as missing. The item list shows the host, port and username, and search matches the host and port, alone or as `host:port`.
+- The view lists the host and port with **Copy** and a secret reference in each field's right-click menu, the login fields as for a login, the admin console with **Open in browser**, and the linked SSH key, which opens; a key that was deleted shows as missing. The item list shows the host, port and username, and search matches the host and port, alone or as `host:port`.
 - The browser extension offers a server's username and password on its admin console, as it does a login's.
 - 1Password Servers import as servers. The admin console becomes the website only when it has no username or password of its own; otherwise the console URL and credentials stay custom fields, so the browser never fills the server's password on the console. Hosting details stay custom fields.
 - Preview: `&vault=team&item=build-server`, `&editor=server`.

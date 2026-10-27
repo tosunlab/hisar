@@ -133,7 +133,9 @@ describe("Viewing a database", () => {
     expect(api.copyField).toHaveBeenCalledWith("personal", "db-1", "connection string");
     await wrapper.find('button[aria-label="Copy secret reference for connection string"]').trigger("click");
     expect(api.copySecretReference).toHaveBeenCalledWith("personal", "db-1", "connection string");
-    await wrapper.find('button[aria-label="Copy secret reference for Host"]').trigger("click");
+    expect(wrapper.find('button[aria-label="Copy secret reference for Host"]').exists()).toBe(false);
+    await wrapper.find('[data-reference-field="Host"] [data-copy-target]').trigger("contextmenu");
+    await wrapper.find('[data-testid="context-menu-copy-secret-reference-for-host"]').trigger("click");
     expect(api.copySecretReference).toHaveBeenCalledWith("personal", "db-1", "Host");
     expect(wrapper.text()).not.toContain("Website");
   });

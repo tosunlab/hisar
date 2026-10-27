@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import { createApiMock, createDevice, createPerson, createReceivedShareInvitation, createSSHAgentStatus, createStatus, createUpdateStatus } from "../testing";
+import MainView from "./MainView.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -52,6 +53,9 @@ beforeEach(() => {
     isBusy: false,
     isSettingsOpen: true,
     allVault: [],
+    selectedVaultID: "",
+    isSharingOpen: false,
+    isCreatingVault: false,
     allPerson: [],
     allDevice: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
@@ -165,6 +169,46 @@ describe("Settings sidebar", () => {
     await settings.find('[data-testid="settings-section-devices"]').trigger("click");
     await settings.find('[data-testid="settings-section-people"]').trigger("click");
     expect(settings.find('[data-testid="invite-form"]').exists()).toBe(false);
+  });
+});
+
+describe("People empty state", () => {
+  it.each([
+    { name: "no people", allPerson: [] },
+    { name: "only you", allPerson: [createPerson()] },
+  ])("offers the same sharing action with $name", async ({ allPerson }) => {
+    api.listAllPerson.mockResolvedValue(allPerson);
+    const settings = await mountSettings();
+    await settings.get('[data-testid="settings-section-people"]').trigger("click");
+    expect(settings.get('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
+    expect(settings.get('[data-testid="people-share-vault"]').attributes("disabled")).toBeUndefined();
+  });
+
+  it("opens the selected vault's Share panel and closes Settings", async () => {
+    store.allVault = [{ id: "team", name: "Team", type: "shared", role: "owner", itemCount: 0 }];
+    store.selectedVaultID = "team";
+    window.localStorage.setItem("hisar.settings.selectedSection", "people");
+    wrapper = mount(MainView);
+    await flushPromises();
+    await wrapper.get('[data-testid="people-share-vault"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-search"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="vault-sharing-panel"]').text()).toContain("Share “Team”");
+    expect(api.listAllVaultMember).toHaveBeenCalledWith("team");
+  });
+
+  it("opens the new-vault form when the selected vault is personal, which is never shared", async () => {
+    store.allVault = [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 0 }];
+    store.selectedVaultID = "personal";
+    window.localStorage.setItem("hisar.settings.selectedSection", "people");
+    wrapper = mount(MainView);
+    await flushPromises();
+    await wrapper.get('[data-testid="people-share-vault"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="settings-search"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-sharing-panel"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="new-vault-form"]').exists()).toBe(true);
+    expect(api.listAllOrganization).toHaveBeenCalled();
   });
 });
 
@@ -302,6 +346,7 @@ describe("Settings help", () => {
     expect(help.find('[data-testid="help-app-version"]').text()).toBe("0.2.1 (2001)");
     expect(help.find('[data-testid="help-operating-system"]').text()).toBe("macOS 26.0.1");
     expect(help.find('[data-testid="help-server"]').text()).toBe("https://eu.tryhisar.com");
+    expect(help.text()).not.toContain("The server does not report its version.");
     expect(help.find('[data-testid="help-device-id"]').text()).toBe("device-mac");
     await help.find('[data-testid="copy-diagnostics"]').trigger("click");
     await flushPromises();

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
+import MainView from "./MainView.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -77,6 +78,21 @@ describe("Editor keyboard shortcuts", () => {
     await wrapper.find('[data-testid="discard-changes"]').trigger("click");
     expect(store.editorMode).toBe("view");
     expect(api.saveItem).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps the edited draft when ⌘N is pressed with the discard dialog open", async () => {
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.get('input[name="username"]').setValue("alice@work.example");
+    pressKey(wrapper.get('input[name="username"]').element, "Escape");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="discard-changes-dialog"]').isVisible()).toBe(true);
+    pressKey(wrapper.get('[data-testid="keep-editing"]').element, "n", { metaKey: true });
+    await flushPromises();
+    expect(store.editorMode).toBe("edit");
+    expect(wrapper.get('[data-testid="discard-changes-dialog"]').isVisible()).toBe(true);
+    await wrapper.get('[data-testid="keep-editing"]').trigger("click");
+    expect((wrapper.get('input[name="username"]').element as HTMLInputElement).value).toBe("alice@work.example");
     wrapper.unmount();
   });
 

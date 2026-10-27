@@ -28,7 +28,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -99,13 +101,16 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
 
     val shownItem = item
     val isWritable = vault?.let(VaultLogic::isWritable) == true
+    val scrollState = rememberScrollState()
+    var headerHeight by remember { mutableIntStateOf(0) }
+    val isTitleInBar by remember { derivedStateOf { headerHeight > 0 && scrollState.value >= headerHeight } }
     Column(
         Modifier
             .fillMaxSize()
             .background(HisarTheme.colors.groupedBackground),
     ) {
         PushedTopBar(
-            title = shownItem?.title.orEmpty(),
+            title = if (isTitleInBar) shownItem?.title.orEmpty() else "",
             onBack = onBack,
             actions = {
                 if (shownItem != null) {
@@ -137,7 +142,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                 Column(
                     Modifier
                         .fillMaxSize()
-                        .verticalScroll(rememberScrollState())
+                        .verticalScroll(scrollState)
                         .padding(horizontal = ScreenMargin),
                 ) {
                     val actions = ItemFieldActions(
@@ -151,6 +156,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                         vaultID = vaultID,
                         vaultName = vault?.name.orEmpty(),
                         item = shownItem,
+                        onHeaderHeightChange = { headerHeight = it },
                         isWritable = isWritable,
                         actions = actions,
                         openSSHKey = { openedSSHKeyID = it },

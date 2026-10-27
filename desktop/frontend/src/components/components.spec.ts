@@ -124,12 +124,15 @@ describe("SignInView", () => {
     const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
     const wrapper = mount(SignInView);
     expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
+    expect(wrapper.find("h1").exists()).toBe(false);
     expect(wrapper.text()).toContain("Made for the terminal");
     expect(wrapper.text()).toContain("The hisar command-line tool reads passwords and one-time codes, and uses SSH keys through the agent");
     expect(wrapper.text()).toContain("Private keys never leave Hisar.");
     expect(wrapper.text()).not.toContain("!");
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
     expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
+    expect(wrapper.get("h1").text()).toBe("Create your account");
+    expect(wrapper.get(".subtitle").text()).toBe("Hisar is invite-only: paste the code or link you received.");
     expect(wrapper.text()).toContain("Safe even if the server is breached");
   });
 

@@ -70,6 +70,7 @@ final class SharingUITests: HisarUITestCase {
         let partnerRow = findElement("vault-member-\(partnerEmail)")
         waitFor(partnerRow, timeout: 90)
         XCTAssertTrue(partnerRow.label.contains("Reader"), partnerRow.label)
+        XCTAssertFalse(partnerRow.label.contains("Security code"), partnerRow.label)
         let unknownInvitation = findElement("vault-invitation-\(unknownEmail)")
         saveLightAndDarkScreenshot("sharing-members")
 
@@ -92,6 +93,7 @@ final class SharingUITests: HisarUITestCase {
         XCTAssertTrue(unknownInvitation.waitForNonExistence(timeout: 30), "the cancelled invitation disappears")
 
         partnerRow.tap()
+        waitFor(app.staticTexts["member-security-code"])
         saveLightAndDarkScreenshot("sharing-member")
         chooseRole("Editor", in: app.buttons["member-role"])
         app.navigationBars["iOS Partner"].buttons.element(boundBy: 0).tap()
@@ -105,6 +107,9 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["confirm-remove-member"].firstMatch.tap()
         XCTAssertTrue(findElement("vault-member-\(partnerEmail)").waitForNonExistence(timeout: 60), "the removed person leaves the members")
         app.buttons["vault-sharing-done"].tap()
+        choose("delete-vault", from: "vault-actions")
+        waitFor(app.navigationBars["Delete “Deploy keys”?"])
+        app.buttons["delete-vault-cancel"].tap()
 
         goBack()
         openSettings("open-people")

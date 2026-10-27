@@ -37,6 +37,7 @@ import {
   type ImportProgress,
   type ItemDetail,
   type ItemLocation,
+  type MainWindowAction,
   type SSHAgentStatus,
   type SSHKeyType,
   type Status,
@@ -123,6 +124,8 @@ export const store = reactive({
   sshAgentStatus: null as SSHAgentStatus | null,
   sshAgentErrorMessage: "",
   isSharingOpen: false,
+  // isCreatingVault shows the new-vault form under the vault list.
+  isCreatingVault: false,
   allVaultMember: [] as VaultMember[],
   allPerson: [] as Person[],
   shareInvitations: { received: [], sent: [], completionError: "" } as ShareInvitations,
@@ -150,6 +153,8 @@ export const store = reactive({
   isShareLinksOpen: false,
   shareLinkDialog: null as ShareLinkDialog | null,
   vaultDialog: null as VaultDialog | null,
+  itemDetailDialog: null as "move" | "delete" | null,
+  isDiscardConfirmShown: false,
   allRemovedVaultNotice: [] as RemovedVaultNotice[],
   organizations: { organizations: [], invitations: [] } as Organizations,
   // organizationByID holds the organizations this window opened: in Settings, an organization vault's sharing panel and Where.
@@ -202,6 +207,11 @@ function showCopyFailure(): void {
   }
 }
 
+// describeCopy is the notice after a copy, the iPhone's sentence.
+function describeCopy(label: string): string {
+  return `${label} copied. It clears in 90 seconds.`;
+}
+
 // runAction serializes UI actions and turns failures into a visible error message.
 async function runAction<Result>(action: () => Promise<Result>): Promise<Result | undefined> {
   store.isBusy = true;
@@ -230,6 +240,7 @@ function clearAllVaultData(): void {
   store.isTouchIDOfferShown = false;
   store.isSettingsOpen = false;
   store.isSharingOpen = false;
+  store.isCreatingVault = false;
   store.allVaultMember = [];
   store.allPerson = [];
   store.shareInvitations = { received: [], sent: [], completionError: "" };
@@ -239,6 +250,8 @@ function clearAllVaultData(): void {
   store.isShareLinksOpen = false;
   store.shareLinkDialog = null;
   store.vaultDialog = null;
+  store.itemDetailDialog = null;
+  store.isDiscardConfirmShown = false;
   store.allRemovedVaultNotice = [];
   store.organizations = { organizations: [], invitations: [] };
   store.organizationByID = {};
@@ -554,6 +567,17 @@ export async function lock(): Promise<void> {
   }
 }
 
+// lockOnShortcut locks Hisar on ⌘L in any window, over every panel and dialog: it is the shortcut that protects the vault.
+// It reports whether the key was that shortcut.
+export function lockOnShortcut(event: KeyboardEvent): boolean {
+  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "l") {
+    return false;
+  }
+  event.preventDefault();
+  lock();
+  return true;
+}
+
 // The backend also sends "locked" when the server signed this device out, so the screen follows the status it reports.
 export async function handleLocked(): Promise<void> {
   clearLockedVaultData();
@@ -599,6 +623,12 @@ export async function replaceSecretKey(password: string): Promise<CredentialChan
   }
   if (result) {
     if (result.pendingOperationId) {
+      // Pending recovery covers the main window, which owns it: the Settings window hands it there and closes, so its
+      // dialog never shows this change as finished.
+      if (isSettingsWindow) {
+        await openFromSettings("recovery");
+        return undefined;
+      }
       await loadPendingRecovery();
       if (generation !== sessionGeneration) return undefined;
       store.recoveryFactor = result.secretKey ? { operationId: result.pendingOperationId, secretKey: result.secretKey } : null;
@@ -829,6 +859,27 @@ export async function syncInBackground(): Promise<void> {
   }
 }
 
+// loadSettingsWindow loads what the macOS Settings window shows besides its sections' own data: the status, the vaults
+// Coding agents lists, invitations and organizations. It never loads items, removed-vault notices or pending recovery:
+// the main window owns them, and a removed-vault notice comes only once.
+export async function loadSettingsWindow(): Promise<void> {
+  try {
+    const status = await api.getStatus();
+    store.status = status;
+    if (status.state !== "unlocked") {
+      return;
+    }
+    const allVault = await api.listAllVault();
+    if (store.status.state === "unlocked") {
+      store.allVault = allVault;
+    }
+  } catch {
+    return;
+  }
+  await loadShareInvitationsQuietly();
+  await refreshOrganizationsQuietly();
+}
+
 export async function selectVault(vaultID: string): Promise<void> {
   await loadVaultItems(vaultID, ++navigationVersion);
 }
@@ -1023,16 +1074,66 @@ async function loadSelectedItem(itemID: string, version: number): Promise<void> 
   }
 }
 
-// openSettings follows the app's request to show a Settings section; Settings already open closes first, so it opens
-// at that section.
-export async function openSettings(sectionID: string): Promise<void> {
-  if (!isSettingsSectionID(sectionID)) {
+// isSettingsWindow is true in the macOS Settings window, which runs this code with a store of its own.
+export const isSettingsWindow = new URLSearchParams(window.location.search).get("window") === "settings";
+
+// openSettings opens Settings at sectionID, or at its last section when sectionID is "": in its own window on macOS, as an
+// overlay in the main window elsewhere. The window opens after the unlock when Hisar is locked; an overlay already open
+// closes first, so it opens at that section.
+export async function openSettings(sectionID = ""): Promise<void> {
+  if (sectionID !== "" && !isSettingsSectionID(sectionID)) {
     return;
   }
-  saveSelectedSectionID(sectionID);
+  if (sectionID !== "") {
+    saveSelectedSectionID(sectionID);
+  }
+  if (await api.showSettingsWindow(sectionID).catch(() => false)) {
+    return;
+  }
   store.isSettingsOpen = false;
   await nextTick();
   store.isSettingsOpen = true;
+}
+
+// openPendingRecovery shows the recovery a Secret Key replacement left, such as one made in the Settings window.
+async function openPendingRecovery(): Promise<void> {
+  await loadPendingRecovery();
+  store.isRecoveryOpen = store.pendingRecovery.length > 0;
+}
+
+const mainWindowActions: Record<MainWindowAction, () => Promise<void>> = {
+  import: openImport,
+  sharing: shareSelectedVault,
+  recovery: openPendingRecovery,
+};
+
+export function isMainWindowAction(action: unknown): action is MainWindowAction {
+  return typeof action === "string" && Object.hasOwn(mainWindowActions, action);
+}
+
+// openFromSettings runs a Settings action that leads to the main window: Import, the sharing panel of the vault selected
+// there, or pending recovery. The macOS Settings window closes and hands the action to the main window, whose App
+// listens for it.
+export async function openFromSettings(action: MainWindowAction): Promise<void> {
+  if (isSettingsWindow) {
+    await api.openInMainWindow(action);
+    return;
+  }
+  store.isSettingsOpen = false;
+  await mainWindowActions[action]();
+}
+
+const activityReportInterval = 30_000;
+let lastActivityReport = 0;
+
+// reportActivity tells the backend that the user works in a window, at most every 30 s, so auto-lock waits.
+export function reportActivity(): void {
+  const now = Date.now();
+  if (store.status.state !== "unlocked" || now - lastActivityReport < activityReportInterval) {
+    return;
+  }
+  lastActivityReport = now;
+  api.reportActivity().catch(() => undefined);
 }
 
 // showItem follows a launcher's Open in Hisar: the item in its vault, in its editor when asked and the vault allows it.
@@ -1321,7 +1422,7 @@ export async function copyItemField(vaultID: string, itemID: string, fieldName: 
     return true;
   });
   if (copied) {
-    showNotice(`${label} copied, clears in 90 seconds`);
+    showNotice(describeCopy(label));
   } else {
     showCopyFailure();
   }
@@ -1384,6 +1485,16 @@ export async function openSharing(): Promise<void> {
   store.allVaultMember = [];
   store.isSharingOpen = true;
   await loadSharing();
+}
+
+// shareSelectedVault opens the selected vault's sharing panel. A personal vault is never shared, so the new-vault form
+// opens instead, for a vault to share.
+async function shareSelectedVault(): Promise<void> {
+  if ((getSelectedVault()?.type ?? "personal") === "personal") {
+    store.isCreatingVault = true;
+    return;
+  }
+  await openSharing();
 }
 
 export function closeSharing(): void {
@@ -2105,7 +2216,7 @@ export async function copyText(text: string, label: string): Promise<void> {
     return true;
   });
   if (copied) {
-    showNotice(`${label} copied, clears in 90 seconds`);
+    showNotice(describeCopy(label));
   } else {
     showCopyFailure();
   }
@@ -2339,7 +2450,7 @@ export async function copyShareLink(shareLink: ShareLink): Promise<void> {
     return true;
   });
   if (copied) {
-    showNotice("Link copied, clears in 90 seconds");
+    showNotice(describeCopy("Link"));
   } else {
     showCopyFailure();
   }

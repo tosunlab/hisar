@@ -219,7 +219,7 @@ select {
 label .hint {
   display: block;
   margin: 6px 0 0;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 400;
   color: var(--color-text-muted);
 }
