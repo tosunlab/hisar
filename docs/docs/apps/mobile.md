@@ -13,6 +13,15 @@ The iPhone and Android apps on top of the gomobile-bound `core`. See [Design](..
 - `android/`: the Android app, below.
 - `cmd/hisar-ui-test-mac`: plays the user's Mac in the Android phone approval UI test.
 
+## If Hisar cannot start
+
+The failure screen keeps the current error selectable. **Try again** retries startup with the same configuration and no
+state or keychain reset. Only one attempt runs at a time, and the initialized backend is reused. **Copy details** copies
+the displayed error for support. If the problem continues, email support@tryhisar.com.
+
+On Android, do not clear Hisar's storage unless you have your Emergency Kit. Clearing storage removes the phone's saved
+Secret Key and offline vault copy.
+
 ## Android
 
 Kotlin and Jetpack Compose on top of `HisarKit.aar`, built with the Gradle wrapper in `android/`. Android 10 (API 29)

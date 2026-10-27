@@ -28,10 +28,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .signedOut)
     }
 
-    func testStartFailureShowsMessage() {
+    func testStartFailureShowsMessage() async {
         let model = AppModel(credentialIdentityStore: identityStore)
         model.start { throw BackendError(message: "Disk full") }
         XCTAssertEqual(model.screen, .failed("Disk full"))
+        XCTAssertTrue(model.beginStartupRetry())
+        XCTAssertEqual(model.screen, .starting)
+        XCTAssertFalse(model.beginStartupRetry())
+        await model.start { backend }?.value
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertFalse(model.beginStartupRetry())
+        var createdAgain = false
+        model.start { createdAgain = true; return backend }
+        XCTAssertFalse(createdAgain)
     }
 
     func testSignInLoadsVaultsAndItems() async {

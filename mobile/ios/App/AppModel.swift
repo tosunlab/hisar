@@ -134,10 +134,17 @@ final class AppModel: ObservableObject {
         self.registerForRemoteNotifications = registerForRemoteNotifications
     }
 
+    func beginStartupRetry() -> Bool {
+        guard case .failed = screen, backend == nil else { return false }
+        screen = .starting
+        return true
+    }
+
     /// Returns the work start() begins, the first refresh and the version check, or nil when the backend failed. The app
     /// lets it run; a test awaits it, so its own changes come after the first lists.
     @discardableResult
     func start(createBackend: () throws -> VaultBackend) -> Task<Void, Never>? {
+        guard backend == nil else { return nil }
         do {
             let backend = try createBackend()
             self.backend = backend

@@ -41,7 +41,7 @@ class MainActivity : FragmentActivity() {
         // Once the user allowed notifications, each launch registers with the UnifiedPush distributor again, which then
         // gives HisarPushService its endpoint.
         if (viewModel.model.notifications.isPermissionGranted.value) startPush()
-        setContent { RootScreen(viewModel.model, viewModel::copySecret) }
+        setContent { RootScreen(viewModel.model, viewModel::copySecret, viewModel::retryStartup, viewModel::copyStartupDetails) }
     }
 
     override fun onNewIntent(intent: Intent) {

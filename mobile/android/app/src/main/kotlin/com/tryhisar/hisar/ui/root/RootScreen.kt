@@ -62,7 +62,7 @@ import kotlinx.coroutines.launch
  * notices, and the privacy cover while the app is not in front.
  */
 @Composable
-fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
+fun RootScreen(model: AppModel, copySecret: (String) -> Boolean, retryStartup: () -> Unit, copyStartupDetails: (String) -> Unit) {
     val theme by model.theme.collectAsStateWithLifecycle()
     HisarTheme(theme) {
         val screen by model.screen.collectAsStateWithLifecycle()
@@ -115,7 +115,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                 Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
                     when (val current = screen) {
                         Screen.Starting -> StartingScreen()
-                        is Screen.Failed -> StartupFailureScreen(current.message)
+                        is Screen.Failed -> StartupFailureScreen(current.message, retryStartup, copyStartupDetails)
                         is Screen.UpdateRequired -> UpdateRequiredScreen(current.requirement, isCheckingMinimumVersion) {
                             scope.launch { model.checkMinimumVersion() }
                         }
