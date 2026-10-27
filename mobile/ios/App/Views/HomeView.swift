@@ -590,18 +590,28 @@ struct ItemRow: View {
     var item: ItemDetail
     var vaultName: String?
 
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
     var body: some View {
-        HStack(spacing: 12) {
-            AppItemIcon(item: item)
+        HStack(alignment: dynamicTypeSize.isAccessibilitySize ? .top : .center, spacing: 12) {
+            AppItemIcon(item: item, maxSize: 44)
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.title)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    .fixedSize(horizontal: false, vertical: true)
                 let subtitle = buildSubtitle()
                 if !subtitle.isEmpty {
                     Text(subtitle)
                         .font(.footnote)
                         .foregroundStyle(.themeSecondary)
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if dynamicTypeSize.isAccessibilitySize, let vaultName {
+                    Text(vaultName)
+                        .font(.footnote)
+                        .foregroundStyle(.themeSecondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -632,7 +642,7 @@ struct ItemRow: View {
         } else {
             detail = item.username
         }
-        guard let vaultName else { return detail }
+        guard let vaultName, !dynamicTypeSize.isAccessibilitySize else { return detail }
         return detail.isEmpty ? vaultName : "\(detail) · \(vaultName)"
     }
 }

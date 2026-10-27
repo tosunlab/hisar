@@ -4,6 +4,11 @@ import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.semantics.SemanticsActions
+import androidx.compose.ui.text.TextLayoutResult
+import androidx.test.platform.app.InstrumentationRegistry
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTextInput
@@ -152,6 +157,44 @@ class VaultsScreenUITests : HisarUITestCase() {
             saveScreenshot("vaults-tag")
             goBack()
             waitFor("vaults-list")
+        }
+    }
+
+    @Test
+    fun testLargeTextRowsKeepSimilarAccountIdentifiersReadable() {
+        val automation = InstrumentationRegistry.getInstrumentation().uiAutomation
+        fun shell(command: String): String = automation.executeShellCommand(command).use {
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(it).bufferedReader().readText().trim()
+        }
+        val originalScale = shell("settings get system font_scale")
+        val title = "Adobe Creative Cloud personal account"
+        val email = "alex.morgan+personal@example.com"
+        val backend = buildBackend().apply {
+            allItemByVaultID.getValue("personal") += listOf(
+                ItemDetail(id = "adobe-personal", revision = "r1", title = title, username = email),
+                ItemDetail(id = "adobe-work", revision = "r1", title = "Adobe Creative Cloud work account", username = "alex.morgan+work@example.com"),
+            )
+            allFavoriteRecordID.add("personal/adobe-personal")
+        }
+        try {
+            shell("settings put system font_scale 2.0")
+            launchApp(backend).use {
+                waitFor("vaults-list")
+                tap("vault-Personal")
+                scrollTo("item-$title")
+                for (text in listOf(title, email)) {
+                    val results = mutableListOf<TextLayoutResult>()
+                    composeRule.onNodeWithText(text, useUnmergedTree = true)
+                        .performSemanticsAction(SemanticsActions.GetTextLayoutResult) { it(results) }
+                    assertTrue("$text wraps without truncation", results.single().lineCount > 1 && !results.single().hasVisualOverflow)
+                }
+                saveScreenshot("largest-text-item-row")
+                goBack()
+                scrollTo("favorite-$title")
+                assertTrue(exists(hasTestTag("favorite-$title") and hasText(email, substring = true)))
+            }
+        } finally {
+            shell("settings put system font_scale ${originalScale.takeUnless { it == "null" } ?: "1.0"}")
         }
     }
 

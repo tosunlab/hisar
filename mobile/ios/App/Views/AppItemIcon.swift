@@ -4,12 +4,13 @@ import SwiftUI
 struct AppItemIcon: View {
     var item: ItemDetail
     var size: CGFloat = 32
+    var maxSize: CGFloat = .infinity
 
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         let websiteURL = item.websiteIconURL
-        ItemIcon(item: item, size: size, websiteIcon: websiteURL.flatMap { model.getWebsiteIcon(url: $0) })
+        ItemIcon(item: item, size: size, websiteIcon: websiteURL.flatMap { model.getWebsiteIcon(url: $0) }, maxSize: maxSize)
             .task(id: websiteURL) {
                 if let websiteURL {
                     model.loadWebsiteIcon(url: websiteURL)

@@ -157,7 +157,7 @@ fun NavigationRow(
             .testTag(testTag)
             .padding(horizontal = RowInset, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(if (LocalDensity.current.fontScale >= 1.5f) 8.dp else 12.dp),
     ) {
         if (leading != null) leading()
         Box(Modifier.weight(1f)) { content() }
@@ -175,10 +175,11 @@ fun RowSymbol(icon: ImageVector, tint: Color = HisarTheme.colors.label) {
 /** A title with an optional footnote under it. */
 @Composable
 fun TitleAndSubtitle(title: String, subtitle: String) {
+    val maxLines = if (LocalDensity.current.fontScale >= 1.5f) Int.MAX_VALUE else 1
     Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-        Text(title, style = HisarType.body, color = HisarTheme.colors.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(title, style = HisarType.body, color = HisarTheme.colors.label, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
         if (subtitle.isNotEmpty()) {
-            Text(subtitle, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel, maxLines = maxLines, overflow = TextOverflow.Ellipsis)
         }
     }
 }
