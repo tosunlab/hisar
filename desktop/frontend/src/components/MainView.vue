@@ -78,6 +78,7 @@ import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
 import ConfirmDeleteDialog from "./ConfirmDeleteDialog.vue";
+import DiscardChangesDialog from "./DiscardChangesDialog.vue";
 import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import MoveItemDialog from "./MoveItemDialog.vue";
 import ImportPanel from "./ImportPanel.vue";
@@ -128,6 +129,8 @@ const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
+const shiftModifier = isMacPlatform() ? "⇧" : "Shift+";
+const itemList = ref<HTMLElement | null>(null);
 
 const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag));
 const unreadableItemCount = computed(() => store.allItem.filter((item) => item.readIssue).length);
@@ -200,6 +203,22 @@ const canSubmitNewVault = computed(
 const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; favorite?: FavoriteItem; detail: ItemDetail | null; x: number; y: number } | null>(null);
 const itemToDelete = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
 const itemToMove = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
+// isOverlayOpen: a panel or dialog covers the main window, so its shortcuts and list keys stay out of the way.
+const isOverlayOpen = computed(
+  () =>
+    store.isSettingsOpen ||
+    store.isSharingOpen ||
+    store.isImportOpen ||
+    store.isShareLinksOpen ||
+    store.shareLinkDialog !== null ||
+    store.vaultDialog !== null ||
+    store.browserPairing !== null ||
+    store.itemDetailDialog !== null ||
+    store.discardDraftPrompt !== null ||
+    store.organizationAlert !== null ||
+    itemToDelete.value !== null ||
+    itemToMove.value !== null,
+);
 
 async function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent, favorite?: FavoriteItem): Promise<void> {
   itemMenu.value = { vaultID, vaultItem, favorite, detail: null, x: event.clientX, y: event.clientY };
@@ -385,24 +404,91 @@ function closeNewItemMenu(event: Event): void {
   }
 }
 
-// isOverlayOpen: a panel or dialog covers the main window, so shortcuts must not act on the vault behind it.
-const isOverlayOpen = computed(
-  () =>
-    store.isSettingsOpen ||
-    store.isSharingOpen ||
-    store.isImportOpen ||
-    store.isShareLinksOpen ||
-    store.shareLinkDialog !== null ||
-    store.vaultDialog !== null ||
-    store.browserPairing !== null ||
-    store.itemDetailDialog !== null ||
-    store.isDiscardConfirmShown ||
-    itemToDelete.value !== null ||
-    itemToMove.value !== null,
-);
+// listRows are the rows of the list on screen, in the order of allVisibleItem or allVisibleFavorite.
+function listRows(): HTMLElement[] {
+  return [...(itemList.value?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
+}
+
+function selectRow(index: number): Promise<void> {
+  return store.isFavoritesSelected ? selectFavoriteItem(allVisibleFavorite.value[index]) : selectItem(allVisibleItem.value[index].id);
+}
+
+// focusRow moves the keyboard focus and the selection to the row; the search field is the row above the first.
+function focusRow(index: number): void {
+  const rows = listRows();
+  if (index < 0) {
+    searchInput.value?.focus();
+    return;
+  }
+  if (index >= rows.length) {
+    return;
+  }
+  rows[index].focus();
+  if (rows[index].getAttribute("aria-selected") !== "true") {
+    void selectRow(index);
+  }
+}
+
+function enterList(): void {
+  focusRow(Math.max(0, listRows().findIndex((row) => row.getAttribute("aria-selected") === "true")));
+}
+
+async function openRowInEditor(index: number): Promise<void> {
+  const item = store.isFavoritesSelected ? allVisibleFavorite.value[index]?.item : allVisibleItem.value[index];
+  if (!item) {
+    return;
+  }
+  await selectRow(index);
+  if (store.selectedItem?.id === item.id && store.editorMode === "view" && canEdit.value) {
+    startEditingItem();
+  }
+}
+
+function handleListKey(event: KeyboardEvent): void {
+  if (event.metaKey || event.ctrlKey || event.altKey) {
+    return;
+  }
+  const rows = listRows();
+  const current = rows.indexOf(document.activeElement as HTMLElement);
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const from = current >= 0 ? current : rows.findIndex((row) => row.getAttribute("aria-selected") === "true");
+    const next = event.key === "ArrowDown" ? Math.min(from + 1, rows.length - 1) : from - 1;
+    if (next !== current) {
+      focusRow(next);
+    }
+  } else if (event.key === "Enter" && current >= 0) {
+    event.preventDefault();
+    void openRowInEditor(current);
+  }
+}
+
+function copySelectedField(fieldName: "username" | "password", label: string): void {
+  const selected = store.selectedItem;
+  if (selected && store.editorMode === "view" && selected[fieldName]) {
+    void copyItemField(store.selectedVaultID, selected.id, fieldName, label);
+  }
+}
+
+// moveVaultSelection steps through the sidebar's rows: Favorites, then the vaults as listed.
+function moveVaultSelection(step: number): void {
+  const allVaultID = ["", ...allVaultGroup.value.flatMap((group) => group.allVault.map((vault) => vault.id))];
+  const current = store.isFavoritesSelected ? 0 : allVaultID.indexOf(store.selectedVaultID);
+  const next = Math.min(allVaultID.length - 1, Math.max(0, current + step));
+  if (next !== current) {
+    void (next === 0 ? selectFavorites() : selectVault(allVaultID[next]));
+  }
+}
 
 function handleShortcut(event: KeyboardEvent): void {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
+  if (event.altKey && !event.metaKey && !event.ctrlKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    if (store.editorMode === "view" && !isOverlayOpen.value) {
+      event.preventDefault();
+      moveVaultSelection(event.key === "ArrowDown" ? 1 : -1);
+    }
+    return;
+  }
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) {
     return;
   }
   const key = event.key.toLowerCase();
@@ -412,12 +498,22 @@ function handleShortcut(event: KeyboardEvent): void {
   if (isOverlayOpen.value) {
     return;
   }
+  if (event.shiftKey) {
+    if (key === "c") {
+      event.preventDefault();
+      copySelectedField("password", "Password");
+    }
+    return;
+  }
   if (key === "f") {
     event.preventDefault();
     searchInput.value?.focus();
   } else if (key === "n" && canCreate.value) {
     event.preventDefault();
     startCreatingItem();
+  } else if (key === "c" && itemList.value?.contains(document.activeElement)) {
+    event.preventDefault();
+    copySelectedField("username", "Username");
   } else if (key === "d" && store.selectedItem && store.editorMode === "view") {
     event.preventDefault();
     toggleSelectedItemFavorite();
@@ -654,7 +750,7 @@ onBeforeUnmount(() => {
       </div>
       <div class="search">
         <AppIcon name="search" />
-        <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" placeholder="Search" aria-label="Search items" />
+        <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" placeholder="Search" aria-label="Search items" @keydown.down.prevent="enterList" />
         <kbd>{{ shortcutModifier }}F</kbd>
       </div>
       <div v-if="store.selectedTag && !store.isFavoritesSelected" class="tag-filter" data-testid="tag-filter">
@@ -674,12 +770,13 @@ onBeforeUnmount(() => {
             <p class="muted">Star an item with <AppIcon name="star" :size="12" /> or {{ shortcutModifier }}D to keep it here, across all your vaults and devices. Only you see your favorites.</p>
           </template>
         </div>
-        <ul v-else aria-label="Favorites" data-testid="favorites-list">
-          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`">
+        <ul v-else ref="itemList" role="listbox" aria-label="Favorites" data-testid="favorites-list" @keydown="handleListKey">
+          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="presentation">
             <button
               class="item"
               :class="{ selected: isSelectedFavorite(favorite) }"
-              :aria-current="isSelectedFavorite(favorite) ? 'true' : undefined"
+              role="option"
+              :aria-selected="isSelectedFavorite(favorite)"
               @click="selectFavoriteItem(favorite)"
               @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
@@ -705,12 +802,13 @@ onBeforeUnmount(() => {
         <p>{{ emptyListMessage }}</p>
         <button v-if="!store.searchQuery && !store.selectedTag && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
-      <ul v-else :aria-label="selectedVault?.name ?? 'Items'">
-        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id">
+      <ul v-else ref="itemList" role="listbox" :aria-label="selectedVault?.name ?? 'Items'" @keydown="handleListKey">
+        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id" role="presentation">
           <button
             class="item"
             :class="{ selected: store.selectedItem?.id === vaultItem.id }"
-            :aria-current="store.selectedItem?.id === vaultItem.id ? 'true' : undefined"
+            role="option"
+            :aria-selected="store.selectedItem?.id === vaultItem.id"
             @click="selectItem(vaultItem.id)"
             @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
           >
@@ -744,6 +842,8 @@ onBeforeUnmount(() => {
           <dl class="shortcut-list">
             <div><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}F</kbd></dt><dd>Search</dd></div>
+            <div><dt><kbd>{{ shortcutModifier }}C</kbd></dt><dd>Copy username</dd></div>
+            <div><dt><kbd>{{ shortcutModifier }}{{ shiftModifier }}C</kbd></dt><dd>Copy password</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}D</kbd></dt><dd>Add to Favorites</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}L</kbd></dt><dd>Lock Hisar</dd></div>
           </dl>
@@ -767,6 +867,7 @@ onBeforeUnmount(() => {
     />
     <MoveItemDialog v-if="itemToMove" :vault-i-d="itemToMove.vaultID" :item-i-d="itemToMove.itemID" :title="itemToMove.title" @close="itemToMove = null" />
     <ConfirmDeleteDialog v-if="itemToDelete" :vault-i-d="itemToDelete.vaultID" :item-i-d="itemToDelete.itemID" :title="itemToDelete.title" @close="itemToDelete = null" />
+    <DiscardChangesDialog v-if="store.discardDraftPrompt" :prompt="store.discardDraftPrompt" />
     <ShareLinkDialog v-if="store.shareLinkDialog" :key="`${store.shareLinkDialog.mode}-${store.shareLinkDialog.itemID}`" />
     <OrganizationAlert />
   </div>

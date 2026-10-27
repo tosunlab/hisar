@@ -288,11 +288,17 @@ final class HisarUITests: HisarUITestCase {
         app.launch()
         let useDifferentServerButton = app.descendants(matching: .any)["sign-in-use-different-server"].firstMatch
         waitFor(useDifferentServerButton)
+        XCTAssertFalse(app.staticTexts["Sign in to use Hisar on this iPhone."].exists)
         XCTAssertFalse(app.textFields["sign-in-server"].exists)
         useDifferentServerButton.tap()
         let serverField = app.textFields["sign-in-server"]
         waitFor(serverField)
         XCTAssertEqual(serverField.value as? String, "https://eu.tryhisar.com")
+        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        XCTAssertFalse(app.staticTexts["Enter the invite code you received, or sign up on a server that lets anyone join."].exists)
+        XCTAssertTrue(app.textFields["sign-up-invite-link"].exists)
+        XCTAssertTrue(app.staticTexts["Leave it empty if the server lets anyone sign up."].exists)
+        XCTAssertTrue(app.textFields["sign-up-server"].exists)
     }
 
     func testPrivacyCoverHidesContentInTheBackground() throws {

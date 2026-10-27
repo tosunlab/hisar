@@ -90,8 +90,8 @@ describe("Favorites in the sidebar", () => {
     expect(api.getItem).toHaveBeenCalledWith("work", "vpn");
     expect(store.selectedVaultID).toBe("work");
     expect(store.isFavoritesSelected).toBe(true);
-    expect(wrapper.findAll('[data-testid="favorites-list"] button.item').map((item) => item.attributes("aria-current"))).toEqual([undefined, "true"]);
-    expect(wrapper.find('[role="listbox"], [role="option"]').exists()).toBe(false);
+    const list = wrapper.get('[data-testid="favorites-list"][role="listbox"]');
+    expect(list.findAll('[role="option"]').map((item) => item.attributes("aria-selected"))).toEqual(["false", "true"]);
     expect(wrapper.find(".item-detail .badge").text()).toContain("Work");
     expect(wrapper.find(".item-detail").text()).not.toContain("Edit");
   });

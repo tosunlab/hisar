@@ -395,6 +395,9 @@ func main() {
 		}()
 	})
 	createMenuBarItem(wailsApp, vaultService, showWindow)
+	if runtime.GOOS == "darwin" {
+		wailsApp.Menu.SetApplicationMenu(createApplicationMenu(hideWindow))
+	}
 
 	approvalWindow = wailsApp.Window.NewWithOptions(approvalWindowOptions())
 	// Closing the approval window denies what it shows; the window is reused for the next request.

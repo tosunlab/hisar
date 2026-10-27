@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
-import MainView from "./MainView.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -41,6 +40,8 @@ beforeEach(() => {
     allItem: [],
     selectedItem: createItem({ password: "hunter2hunter2" }),
     editorMode: "edit",
+    editorDraft: null,
+    discardDraftPrompt: null,
     errorMessage: "",
     noticeMessage: "",
     isBusy: false,
@@ -58,41 +59,6 @@ describe("Editor keyboard shortcuts", () => {
     await flushPromises();
     expect(store.editorMode).toBe("view");
     expect(api.saveItem).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("asks before Esc drops a change, and keeps editing until Discard", async () => {
-    const wrapper = mountEditor();
-    await wrapper.find('input[name="username"]').setValue("alice@work.example");
-    pressKey(wrapper.find('input[name="username"]').element, "Escape");
-    await flushPromises();
-    expect(store.editorMode).toBe("edit");
-    expect(wrapper.find('[data-testid="discard-changes-dialog"]').text()).toContain("Discard changes to “GitHub”?");
-
-    await wrapper.find('[data-testid="keep-editing"]').trigger("click");
-    expect(wrapper.find('[data-testid="discard-changes-dialog"]').exists()).toBe(false);
-    expect((wrapper.find('input[name="username"]').element as HTMLInputElement).value).toBe("alice@work.example");
-
-    pressKey(wrapper.find('input[name="username"]').element, "Escape");
-    await flushPromises();
-    await wrapper.find('[data-testid="discard-changes"]').trigger("click");
-    expect(store.editorMode).toBe("view");
-    expect(api.saveItem).not.toHaveBeenCalled();
-    wrapper.unmount();
-  });
-
-  it("keeps the edited draft when ⌘N is pressed with the discard dialog open", async () => {
-    const wrapper = mount(MainView, { attachTo: document.body });
-    await wrapper.get('input[name="username"]').setValue("alice@work.example");
-    pressKey(wrapper.get('input[name="username"]').element, "Escape");
-    await flushPromises();
-    expect(wrapper.get('[data-testid="discard-changes-dialog"]').isVisible()).toBe(true);
-    pressKey(wrapper.get('[data-testid="keep-editing"]').element, "n", { metaKey: true });
-    await flushPromises();
-    expect(store.editorMode).toBe("edit");
-    expect(wrapper.get('[data-testid="discard-changes-dialog"]').isVisible()).toBe(true);
-    await wrapper.get('[data-testid="keep-editing"]').trigger("click");
-    expect((wrapper.get('input[name="username"]').element as HTMLInputElement).value).toBe("alice@work.example");
     wrapper.unmount();
   });
 

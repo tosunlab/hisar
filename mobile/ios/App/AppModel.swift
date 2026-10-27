@@ -297,6 +297,21 @@ final class AppModel: ObservableObject {
         let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
         let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let result = await perform({ try $0.signUp(inviteLink: inviteLink, email: email, name: name, password: password) }) else { return false }
+        return await finishSignUp(result)
+    }
+
+    /// signUpWithoutInvite creates an account on a server whose admin opened registration; the server refuses with its
+    /// own sentence when sign-ups are closed.
+    @discardableResult
+    func signUpWithoutInvite(server: String, email: String, name: String, password: String) async -> Bool {
+        let server = server.trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let result = await perform({ try $0.signUpWithoutInvite(server: server, email: email, name: name, password: password) }) else { return false }
+        return await finishSignUp(result)
+    }
+
+    private func finishSignUp(_ result: SignUpResult) async -> Bool {
         if !result.pendingOperationId.isEmpty {
             refreshStatus()
             // The backend's first sync can report its change before this status arrives, when it is ignored.

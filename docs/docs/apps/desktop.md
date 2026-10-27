@@ -103,6 +103,14 @@ On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `w
 
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
+The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the same draft guard as Cancel, ⌘N,
+and navigation to another item, vault, Favorites, or a tag from Favorites. If the draft changed, the shared dialog
+offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
+⌘S and ⌘↩ save after the form passes validation.
+
+Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
+The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
+
 ## Right-click menus
 
 Design: [Design](../design.md) §9.1 (desktop: item menu).
@@ -260,8 +268,8 @@ fail at once. So the app keeps itself available (design: [Design](../design.md) 
 - Settings → General → **Open Hisar at login** (on by default; registered once on the first launch, never again after you turn it off).
   macOS uses `SMAppService` and Settings shows what System Settings → General → Login Items says, with **Open Login Items** when macOS
   wants your approval; Linux writes `~/.config/autostart/com.tryhisar.hisar.desktop`. At login Hisar opens locked and without a window.
-- Closing the window keeps Hisar running in the menu bar (Open Hisar, Lock or Unlock…, Quit Hisar); the Dock icon shows only while the
-  window is open. ⌘Q or **Quit Hisar** quits.
+- Closing the window, or ⌘Q, keeps Hisar running in the menu bar (Open Hisar, Lock or Unlock…, Quit Hisar Completely); the Dock icon
+  shows only while the window is open. **Quit Hisar Completely** quits.
 - `HISAR_DESKTOP_STATE` also separates the single-instance lock, so a development copy with its own state runs next to the installed app.
 
 ## Command-line tool

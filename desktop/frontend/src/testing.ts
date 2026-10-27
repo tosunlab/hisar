@@ -704,6 +704,7 @@ export function createApiMock() {
     setTheme: vi.fn((appearance: string, color: string) => Promise.resolve({ appearance, color })),
     signIn: vi.fn(),
     signUp: vi.fn(),
+    signUpWithoutInvite: vi.fn(),
     unlock: vi.fn(),
     lock: vi.fn(),
     signOut: vi.fn(),

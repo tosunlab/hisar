@@ -132,7 +132,7 @@ describe("SignInView", () => {
     await wrapper.findAll('[role="tab"]')[1].trigger("click");
     expect(wrapper.find('[data-testid="brand-title"]').text()).toBe(tagline);
     expect(wrapper.get("h1").text()).toBe("Create your account");
-    expect(wrapper.get(".subtitle").text()).toBe("Hisar is invite-only: paste the code or link you received.");
+    expect(wrapper.get(".subtitle").text()).toBe("Enter the invite code you received, or paste the whole invite link. Some servers let anyone sign up without one.");
     expect(wrapper.text()).toContain("Safe even if the server is breached");
   });
 
@@ -283,6 +283,58 @@ describe("SignInView", () => {
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     expect(api.signUp).toHaveBeenCalledWith("abc123", "alice@example.com", "Alice", "orange cactus harbor lantern");
+    expect(api.signUpWithoutInvite).not.toHaveBeenCalled();
+  });
+
+  it("creates the account without an invite on the chosen server", async () => {
+    api.signUpWithoutInvite.mockResolvedValue({ secretKey: "H1-NEW", status: createStatus("unlocked") });
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    expect(wrapper.find('input[name="inviteCode"]').attributes("required")).toBeUndefined();
+    expect(wrapper.find('[data-testid="invite-hint"]').text()).toBe("Leave it empty if the server lets anyone sign up.");
+    expect(wrapper.find('[data-testid="create-account-server"]').text()).toBe("Creates the account on hisar.test.");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
+    await wrapper.find('[data-testid="use-different-server"]').trigger("click");
+    expect(wrapper.find('[data-testid="use-different-server"]').exists()).toBe(false);
+    await wrapper.find('input[name="server"]').setValue("hisar.example.org");
+    await wrapper.find('input[name="name"]').setValue("Alice");
+    await wrapper.find('input[name="email"]').setValue("alice@example.com");
+    await wrapper.find('input[name="password"]').setValue("orange cactus harbor lantern");
+    await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lantern");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.signUpWithoutInvite).toHaveBeenCalledWith("hisar.example.org", "alice@example.com", "Alice", "orange cactus harbor lantern");
+    expect(api.signUp).not.toHaveBeenCalled();
+  });
+
+  it("lets the invite link name the server instead of the server field", async () => {
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await wrapper.find('[data-testid="use-different-server"]').trigger("click");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(true);
+    await wrapper.find('input[name="inviteCode"]').setValue("https://hisar.example.com/invite/abc_DEF-123");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="create-account-server"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="invite-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="invite-server"]').text()).toBe("Server: hisar.example.com");
+    await wrapper.find('input[name="inviteCode"]').setValue("");
+    expect(wrapper.find('input[name="server"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="invite-hint"]').exists()).toBe(true);
+  });
+
+  it("shows the server's answer when sign-ups are not open", async () => {
+    api.signUpWithoutInvite.mockRejectedValue(new Error("Sign-ups are not open on this server. Ask an admin for an invitation."));
+    const wrapper = mount(SignInView);
+    await wrapper.findAll('[role="tab"]')[1].trigger("click");
+    await wrapper.find('input[name="name"]').setValue("Alice");
+    await wrapper.find('input[name="email"]').setValue("alice@example.com");
+    await wrapper.find('input[name="password"]').setValue("orange cactus harbor lantern");
+    await wrapper.find('input[name="repeatedPassword"]').setValue("orange cactus harbor lantern");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    expect(api.signUpWithoutInvite).toHaveBeenCalledWith("hisar.test", "alice@example.com", "Alice", "orange cactus harbor lantern");
+    expect(wrapper.find('[role="alert"]').text()).toBe("Sign-ups are not open on this server. Ask an admin for an invitation.");
+    expect(store.status.state).toBe("signed-out");
   });
 });
 

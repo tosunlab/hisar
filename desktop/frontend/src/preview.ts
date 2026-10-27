@@ -1528,6 +1528,10 @@ export const previewApi = {
     previewState = "unlocked";
     return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
   },
+  signUpWithoutInvite: (): Promise<SignUpResult> => {
+    previewState = "unlocked";
+    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
+  },
   unlock: () => {
     previewState = "unlocked";
     return resolveAfterDelay(previewStatus());

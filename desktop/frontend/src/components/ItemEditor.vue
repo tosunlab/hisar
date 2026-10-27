@@ -36,8 +36,7 @@ import {
   softwareLicenseCategory,
   sshKeyCategory,
 } from "../util";
-import { cancelEditing, saveItem, store } from "../store";
-import AccountDialog from "./AccountDialog.vue";
+import { cancelEditing, saveItem, store, takeRestoredDraft } from "../store";
 import AddressFields from "./AddressFields.vue";
 import AppIcon from "./AppIcon.vue";
 import IconPicker from "./IconPicker.vue";
@@ -100,8 +99,44 @@ function createDraft(): ItemDetail {
   return empty;
 }
 
-const draft = reactive<ItemDetail>(createDraft());
-const urlText = ref(draft.urls.join("\n"));
+// serializeItem sorts the keys, so a draft compares equal to the item it came from whatever order its fields were set in.
+function serializeItem(item: ItemDetail): string {
+  return JSON.stringify(item, (_key, value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([first], [second]) => first.localeCompare(second))) : value,
+  );
+}
+
+function parseURLText(): string[] {
+  return urlText.value
+    .split("\n")
+    .map((link) => link.trim())
+    .filter((link) => link !== "");
+}
+
+// A draft the lock kept for this editor continues where it stopped; any other editor starts from the item.
+const keptDraft = takeRestoredDraft();
+const savedItem = createDraft();
+const savedItemJSON = serializeItem(savedItem);
+const draft = reactive<ItemDetail>(keptDraft ? (JSON.parse(JSON.stringify(keptDraft.item)) as ItemDetail) : savedItem);
+const urlText = ref(keptDraft ? keptDraft.urlText : draft.urls.join("\n"));
+watch(
+  [draft, urlText],
+  () => {
+    const item = JSON.parse(JSON.stringify({ ...draft, urls: parseURLText() })) as ItemDetail;
+    store.editorDraft = {
+      mode: store.editorMode,
+      vaultID: store.selectedVaultID,
+      itemID: store.selectedItem?.id ?? "",
+      item,
+      urlText: urlText.value,
+      isDirty: serializeItem(item) !== savedItemJSON,
+    };
+  },
+  { deep: true, immediate: true },
+);
+onBeforeUnmount(() => {
+  store.editorDraft = null;
+});
 const isPasswordVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isIconPickerOpen = ref(false);
@@ -251,36 +286,17 @@ function handleTagKey(event: KeyboardEvent): void {
 
 async function submitItem(): Promise<void> {
   addTag();
-  draft.urls = urlText.value
-    .split("\n")
-    .map((link) => link.trim())
-    .filter((link) => link !== "");
+  draft.urls = parseURLText();
   await saveItem({ ...draft });
 }
 
 const form = ref<HTMLFormElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
-// savedDraft is what the editor opened with, so Esc can tell whether leaving drops anything.
-const savedDraft = serializeDraft();
-
-function serializeDraft(): string {
-  return JSON.stringify([draft, urlText.value, tagText.value.trim()]);
-}
-
-// cancelOnEscape leaves the editor at once when nothing changed, and otherwise asks first: a stray Esc must not drop edits.
-function cancelOnEscape(): void {
-  if (serializeDraft() === savedDraft) {
-    cancelEditing();
-  } else {
-    store.isDiscardConfirmShown = true;
-  }
-}
-
 // handleShortcut binds Esc to Cancel and ⌘S or ⌘↩ to Save while the editor, or nothing, has focus. requestSubmit runs the
 // form's checks, such as the required title, before submitItem.
 function handleShortcut(event: KeyboardEvent): void {
   const target = event.target;
-  if (store.isDiscardConfirmShown || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
+  if (store.discardDraftPrompt || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
     return;
   }
   const isCommand = event.metaKey || event.ctrlKey;
@@ -291,15 +307,12 @@ function handleShortcut(event: KeyboardEvent): void {
     }
   } else if (event.key === "Escape" && !isCommand && !event.defaultPrevented) {
     event.preventDefault();
-    cancelOnEscape();
+    void cancelEditing();
   }
 }
 
 onMounted(() => window.addEventListener("keydown", handleShortcut));
-onBeforeUnmount(() => {
-  window.removeEventListener("keydown", handleShortcut);
-  store.isDiscardConfirmShown = false;
-});
+onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
 </script>
 
 <template>
@@ -730,20 +743,6 @@ onBeforeUnmount(() => {
         {{ isCreating ? "Add item" : "Save" }} <kbd>{{ shortcutModifier }}S</kbd>
       </button>
     </div>
-    <AccountDialog
-      v-if="store.isDiscardConfirmShown"
-      :title="draft.title.trim() ? `Discard changes to “${draft.title.trim()}”?` : 'Discard this new item?'"
-      subtitle="What you changed here is not saved."
-      icon="edit"
-      is-danger
-      data-testid="discard-changes-dialog"
-      @close="store.isDiscardConfirmShown = false"
-    >
-      <div class="row actions">
-        <button type="button" class="ghost" autofocus data-testid="keep-editing" @click="store.isDiscardConfirmShown = false">Keep editing</button>
-        <button type="button" class="danger-solid" data-testid="discard-changes" @click="cancelEditing">Discard</button>
-      </div>
-    </AccountDialog>
   </form>
 </template>
 

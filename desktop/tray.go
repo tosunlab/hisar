@@ -25,7 +25,8 @@ func getLockMenuLabel(state string) string {
 	return "Sign in…"
 }
 
-// createMenuBarItem keeps Hisar reachable while its window is closed: open, lock or unlock, and quit.
+// createMenuBarItem keeps Hisar reachable while its window is closed: open, lock or unlock, and quit. Quit Hisar
+// Completely is the one way to quit Hisar; ⌘Q only closes the window (createApplicationMenu).
 func createMenuBarItem(wailsApp *application.App, vaultService *app.Service, showMainWindow func()) {
 	tray := wailsApp.SystemTray.New()
 	if runtime.GOOS == "darwin" {
@@ -46,7 +47,7 @@ func createMenuBarItem(wailsApp *application.App, vaultService *app.Service, sho
 		wailsApp.Event.Emit(eventLocked, "menu-bar")
 	})
 	menu.AddSeparator()
-	menu.Add("Quit Hisar").OnClick(func(*application.Context) { wailsApp.Quit() })
+	menu.Add("Quit Hisar Completely").OnClick(func(*application.Context) { wailsApp.Quit() })
 	tray.SetMenu(menu)
 	app.AddStatusListener(vaultService, func() {
 		label := getLockMenuLabel(vaultService.GetStatus().State)

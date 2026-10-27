@@ -79,6 +79,10 @@ open class FakeBackend : VaultBackend {
     var pendingRecoverySecretKey = SECRET_KEY
     var isPendingRecoveryFactorAvailable = true
     var pendingSignUpResult: SignUpResult? = null
+    /** The server signUpWithoutInvite was last asked to create an account on; null until it is called. */
+    var signUpWithoutInviteServer: String? = null
+    /** While set, signUpWithoutInvite fails with this sentence: the server's admin has not opened registration. */
+    var signUpWithoutInviteErrorMessage: String? = null
     var pendingCredentialChangeResult: CredentialChangeResult? = null
     /** The organizations the user is in, as GetOrganization answers for each; a refusal is the server's next sentence. */
     var allOrganization: MutableList<Organization> = mutableListOf()
@@ -341,6 +345,17 @@ open class FakeBackend : VaultBackend {
         seedSignedIn()
         allItemByVaultID = mutableMapOf("personal" to mutableListOf(), "family" to mutableListOf())
         status = status.copy(email = email, name = name)
+        return SignUpResult(status, SECRET_KEY)
+    }
+
+    override fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult {
+        record("signUpWithoutInvite")
+        signUpWithoutInviteServer = server
+        signUpWithoutInviteErrorMessage?.let { throw BackendError(it) }
+        pendingSignUpResult?.let { return it }
+        seedSignedIn()
+        allItemByVaultID = mutableMapOf("personal" to mutableListOf(), "family" to mutableListOf())
+        status = status.copy(server = server, email = email, name = name)
         return SignUpResult(status, SECRET_KEY)
     }
 

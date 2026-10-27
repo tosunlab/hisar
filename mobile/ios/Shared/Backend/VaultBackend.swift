@@ -5,6 +5,8 @@ protocol VaultBackend: AnyObject {
     func checkMinimumVersion() -> VaultStatus
     func signIn(server: String, email: String, secretKey: String, password: String) throws -> VaultStatus
     func signUp(inviteLink: String, email: String, name: String, password: String) throws -> SignUpResult
+    /// signUpWithoutInvite is signUp on a server whose admin opened registration: the server's address instead of an invite.
+    func signUpWithoutInvite(server: String, email: String, name: String, password: String) throws -> SignUpResult
     func unlock(password: String) throws -> VaultStatus
     func unlockWithBiometric() throws -> VaultStatus
     func enableBiometricUnlock(password: String) throws -> VaultStatus

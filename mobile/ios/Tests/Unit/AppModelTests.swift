@@ -65,6 +65,30 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.newSecretKey)
     }
 
+    func testSignUpWithoutInviteAsksTheServerAndShowsNewSecretKey() async {
+        let model = await createModel()
+        let isSignedUp = await model.signUpWithoutInvite(server: " https://hisar.example.com ", email: " bob@example.com ", name: "Bob", password: FakeBackend.password)
+        XCTAssertTrue(isSignedUp)
+        XCTAssertTrue(backend.allCallName.contains("signUpWithoutInvite"))
+        XCTAssertFalse(backend.allCallName.contains("signUp"), "no invite, so the invite sign-up is not used")
+        XCTAssertEqual(backend.signUpWithoutInviteServer, "https://hisar.example.com")
+        XCTAssertEqual(model.status.server, "https://hisar.example.com")
+        XCTAssertEqual(model.status.email, "bob@example.com")
+        XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
+        XCTAssertEqual(model.screen, .unlocked)
+        XCTAssertNil(model.errorMessage)
+    }
+
+    func testSignUpWithoutInviteOnAClosedServerShowsTheServersSentence() async {
+        backend.signUpWithoutInviteErrorMessage = "Sign-ups are not open on this server. Ask an admin for an invitation."
+        let model = await createModel()
+        let isSignedUp = await model.signUpWithoutInvite(server: "https://hisar.example.com", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        XCTAssertFalse(isSignedUp)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertNil(model.newSecretKey)
+        XCTAssertEqual(model.errorMessage, "Sign-ups are not open on this server. Ask an admin for an invitation.")
+    }
+
     func testLockHidesTheNewSecretKey() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
