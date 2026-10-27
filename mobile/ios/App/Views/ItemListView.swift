@@ -325,7 +325,7 @@ struct SearchView: View {
                 if model.status.isOffline { Section { OfflineNote() } }
                 CrossVaultReadWarning()
                 if searchText.isEmpty {
-                    ContentUnavailableView("Search Hisar", systemImage: "magnifyingglass", description: Text("Find logins, SSH keys and notes in every vault."))
+                    ContentUnavailableView("Search Hisar", systemImage: "magnifyingglass", description: Text("Find items in every vault."))
                 } else if allMatch.isEmpty {
                     if model.readIssueSummary.issues.isEmpty {
                         ContentUnavailableView.search(text: searchText)
@@ -341,7 +341,7 @@ struct SearchView: View {
             }
             .applyThemedListStyle()
             .navigationTitle("Search")
-            .searchable(text: $searchText, prompt: "Logins, keys and notes")
+            .searchable(text: $searchText, prompt: "Search all items")
         } detail: {
             // A server's SSH key link pushes within the detail column.
             NavigationStack(path: $detailPath) {

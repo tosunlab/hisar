@@ -324,6 +324,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             waitFor("vaults-list")
             tap("tab-search")
             waitFor("search-empty")
+            assertTrue(exists(hasText("Search all items")))
             composeRule.waitUntil("the empty search takes the focus", 5_000) { exists(hasTestTag("search-field") and isFocused()) }
             saveScreenshot("search-empty")
             type("alice", "search-field")
@@ -331,6 +332,8 @@ class VaultsScreenUITests : HisarUITestCase() {
             assertTrue(exists(hasTestTag("item-Bank")))
             assertEquals(false, exists(hasTestTag("search-empty")))
             saveScreenshot("search-results")
+            composeRule.onNodeWithTag("search-field").performTextReplacement("Visa")
+            waitFor("item-Visa")
             composeRule.onNodeWithTag("search-field").performTextReplacement("zzz")
             waitFor("no-results")
             saveScreenshot("search-no-results")

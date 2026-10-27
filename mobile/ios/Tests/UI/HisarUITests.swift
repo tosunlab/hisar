@@ -204,6 +204,8 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("database")
         goBack()
         openTab("Search")
+        XCTAssertEqual(app.searchFields.firstMatch.placeholderValue, "Search all items")
+        waitFor(app.staticTexts["Find items in every vault."])
         type("git", into: app.searchFields.firstMatch)
         waitFor(app.buttons["item-GitHub"])
         saveScreenshot("search")

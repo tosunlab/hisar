@@ -73,7 +73,7 @@ private fun SearchScreen(model: AppModel) {
                             searchText = it
                             model.reportActivity()
                         },
-                        "Logins, keys and notes",
+                        "Search all items",
                         testTag = "search-field",
                         modifier = Modifier.focusRequester(focusRequester),
                     )
