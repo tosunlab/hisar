@@ -16,9 +16,17 @@ import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.FakeTextClipboard
+import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.platform.waitUntil
 import com.tryhisar.hisar.ui.theme.HisarTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import org.junit.After
+import org.junit.Before
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -35,16 +43,24 @@ class AutoFillSettingsUITests {
     val composeRule = createAndroidComposeRule<ComponentActivity>()
 
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
+    private val scope = MainScope()
+    private val model = AppModel(scope, Dispatchers.IO, FakeTextClipboard())
+
+    @Before
+    fun startModel() = runBlocking(Dispatchers.Main) {
+        model.start { FakeBackend().apply { seedSignedIn() } }
+    }
 
     @After
     fun turnOffHisarAutoFill() {
         shell("settings delete secure autofill_service")
+        scope.cancel()
     }
 
     @Test
     fun testSettingsShowsTheServiceState() {
         shell("settings delete secure autofill_service")
-        composeRule.setContent { HisarTheme { Column { AutoFillSettingsSections() } } }
+        composeRule.setContent { HisarTheme { Column { AutoFillSettingsSections(model) } } }
         waitForTag("turn-on-autofill")
         assertTrue(composeRule.onAllNodes(hasText("You can also turn it on", substring = true)).fetchSemanticsNodes().isNotEmpty())
         val device = UiDevice.getInstance(instrumentation)
@@ -66,7 +82,7 @@ class AutoFillSettingsUITests {
         shell("settings put secure autofill_service ${instrumentation.targetContext.packageName}/${HisarAutofillService::class.java.name}")
         val autofillManager = composeRule.activity.getSystemService(AutofillManager::class.java)
         waitUntil(10_000, "the system makes Hisar the autofill service") { autofillManager.hasEnabledAutofillServices() }
-        composeRule.setContent { HisarTheme { Column { AutoFillSettingsSections() } } }
+        composeRule.setContent { HisarTheme { Column { AutoFillSettingsSections(model) } } }
         waitForTag("autofill-is-on")
         composeRule.onNodeWithTag("open-autofill-settings").performClick()
         val device = UiDevice.getInstance(instrumentation)

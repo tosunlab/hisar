@@ -56,6 +56,7 @@ open class FakeBackend : VaultBackend {
     /** While set, listing the devices fails with this sentence. */
     var listAllDeviceErrorMessage: String? = null
     var isMacApprovalAllowedValue = true
+    var isExactHostMatchValue = false
     var isWebsiteIconsEnabledValue = true
     /** The Web Push endpoint the app registered; null before it has one and after it removed it. */
     var webPushEndpoint: String? = null
@@ -1199,6 +1200,13 @@ open class FakeBackend : VaultBackend {
     override fun setMacApprovalAllowed(isAllowed: Boolean) {
         record("setMacApprovalAllowed")
         isMacApprovalAllowedValue = isAllowed
+    }
+
+    override fun isExactHostMatch(): Boolean = isExactHostMatchValue
+
+    override fun setExactHostMatch(isExact: Boolean) {
+        record("setExactHostMatch")
+        isExactHostMatchValue = isExact
     }
 
     override fun prepareItemIcon(image: ByteString): ByteString {

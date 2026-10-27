@@ -125,6 +125,8 @@ protocol VaultBackend: AnyObject {
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) throws -> String
     func isMacApprovalAllowed() -> Bool
     func setMacApprovalAllowed(_ isAllowed: Bool) throws
+    func isExactHostMatch() -> Bool
+    func setExactHostMatch(_ isExact: Bool) throws
     func getTheme() -> VaultTheme
     func setTheme(_ theme: VaultTheme) throws -> VaultTheme
     /// prepareItemIcon turns a photo into the PNG an item's icon keeps.

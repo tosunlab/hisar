@@ -482,6 +482,10 @@ class HisarKitBackend(
 
     override fun setMacApprovalAllowed(isAllowed: Boolean) = call { setMacApprovalAllowed(isAllowed) }
 
+    override fun isExactHostMatch(): Boolean = call { isExactHostMatch() }
+
+    override fun setExactHostMatch(isExact: Boolean) = call { setExactHostMatch(isExact) }
+
     override fun getTheme(): VaultTheme = try {
         decode(VaultTheme.serializer(), call { getTheme() })
     } catch (_: BackendError) {

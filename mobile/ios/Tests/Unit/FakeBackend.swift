@@ -54,6 +54,7 @@ class FakeBackend: VaultBackend {
     var allApprovalAnswer: [String] = []
     var allDevice: [Device] = []
     var isMacApprovalAllowedValue = true
+    var isExactHostMatchValue = false
     var isWebsiteIconsEnabledValue = true
     var allPushToken: [String] = []
     var allPushPayloadKey: [String] = []
@@ -1174,6 +1175,13 @@ extension FakeBackend {
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         record("setMacApprovalAllowed")
         isMacApprovalAllowedValue = isAllowed
+    }
+
+    func isExactHostMatch() -> Bool { isExactHostMatchValue }
+
+    func setExactHostMatch(_ isExact: Bool) throws {
+        record("setExactHostMatch")
+        isExactHostMatchValue = isExact
     }
 
     func prepareItemIcon(_ image: Data) throws -> Data {

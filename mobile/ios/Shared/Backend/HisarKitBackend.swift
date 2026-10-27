@@ -558,6 +558,12 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.setMacApprovalAllowed(isAllowed) }
     }
 
+    func isExactHostMatch() -> Bool { hisar.isExactHostMatch() }
+
+    func setExactHostMatch(_ isExact: Bool) throws {
+        try callReturningNothing { try hisar.setExactHostMatch(isExact) }
+    }
+
     func prepareItemIcon(_ image: Data) throws -> Data {
         let encoded = try callReturningText { hisar.prepareItemIcon(image, error: $0) }
         guard let prepared = Data(base64Encoded: encoded) else {

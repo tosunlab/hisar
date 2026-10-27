@@ -1059,6 +1059,13 @@ The desktop keeps paired browsers (`instanceID`, browser name, SHA-256 of the to
 
 These are the rules in [`IsURLMatch`](https://github.com/tosunlab/hisar/blob/main/core/browserprotocol/match.go). Registrable-domain matching includes sibling hosts even when different people operate them. Exact-host mode still permits a saved `http` URL on an `https` page under the scheme rule above, so it is not exact-origin matching. The extension's manual **All logins** choice is a separate user override, not a matching guarantee.
 
+The exact-host preference is local to each device. On iPhone and Android it is in Settings → AutoFill. Website password
+and one-time-code requests reload this preference from the shared state before matching or filling, so an already-running
+iOS AutoFill extension uses a change on its next request. It does not affect native Android app-certificate matching,
+passkey relying-party checks, or the user's explicit choice of another login.
+Password and biometric unlock also reload this preference before they can save state, so an extension with an older
+in-memory setting cannot overwrite a stricter choice made in the app.
+
 **Android app links** (`core/item/androidapp.go`, `core/app/androidapps.go`). A login or server can be linked to Android apps, so Android AutoFill offers it inside those apps. A link is the app's package name **and** the SHA-256 of its signing certificate, since a sideloaded app can take any package name. It is stored among the item's URLs as `androidapp://<package>?sha256=<64 lower-case hex>`: every app that predates links keeps the URL when it edits the login, and none fills it into a page, because only `http` and `https` URLs match pages. `ItemDetail.URLs` holds only the websites and `ItemDetail.AndroidApps` the links (the certificate as upper-case colon hex, as `apksigner` shows it); `SaveItem` keeps the stored links when the editor sends none, and `AddAndroidApp` ("Always use for this app") and `RemoveAndroidApp` change them. An `androidapp://` URL without a valid certificate, such as a Bitwarden import, stays a website and never matches an app. `ListLoginsForAndroidApp` offers only logins linked to exactly that package and certificate; Hisar never guesses a site from a package name. Android's Digital Asset Links check reads `ListLoginWebsites` (each https-reachable host of the logins' websites and its registrable domain), fetches that host's `assetlinks.json`, and fills an app the site vouches for through the URL matching above. The Mac and iPhone show links read-only in the item.
 
 **Extension behaviour.**

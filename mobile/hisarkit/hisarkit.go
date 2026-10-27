@@ -202,11 +202,17 @@ func (hisar *Hisar) SignUpWithoutInvite(server, email, name, password string) (s
 
 func (hisar *Hisar) Unlock(password string) (string, error) {
 	defer releaseMemory()
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(hisar.service.Unlock(password))
 }
 
 func (hisar *Hisar) UnlockWithBiometric() (string, error) {
 	defer releaseMemory()
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(hisar.service.UnlockWithBiometric())
 }
 
@@ -364,16 +370,25 @@ func (hisar *Hisar) GeneratePassword(length int, isDigitIncluded, isSymbolInclud
 
 // ListAllLoginForService returns the logins matching an AutoFill service identifier (a URL or a bare domain), as JSON.
 func (hisar *Hisar) ListAllLoginForService(serviceIdentifier string) (string, error) {
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(app.ListLoginsForURL(hisar.service, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
 // GetLoginForService returns {"username", "password", "hasOneTimePassword"} as JSON after checking the login matches the service again.
 func (hisar *Hisar) GetLoginForService(vaultID, itemID, serviceIdentifier string) (string, error) {
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(app.GetLoginForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 
 // GetOneTimeCodeForService returns app.OneTimeCode as JSON after checking the login matches the service, as GetLoginForService does.
 func (hisar *Hisar) GetOneTimeCodeForService(vaultID, itemID, serviceIdentifier string) (string, error) {
+	if err := app.ReloadExactHostMatch(hisar.service); err != nil {
+		return "", err
+	}
 	return encodeJSON(app.GetOneTimeCodeForURL(hisar.service, vaultID, itemID, convertServiceIdentifierToURL(serviceIdentifier)))
 }
 

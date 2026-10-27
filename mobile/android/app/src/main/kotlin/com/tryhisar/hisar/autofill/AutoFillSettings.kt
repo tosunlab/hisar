@@ -22,9 +22,11 @@ import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,11 +35,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LifecycleEventEffect
+import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.ui.components.FormButtonRow
 import com.tryhisar.hisar.ui.components.FormRow
 import com.tryhisar.hisar.ui.components.FormSection
+import com.tryhisar.hisar.ui.settings.ToggleRow
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
+import kotlinx.coroutines.launch
 
 /** Whether Hisar is the device's autofill service, for the "AutoFill" row of Settings. */
 fun isAutoFillEnabled(context: Context): Boolean =
@@ -48,10 +53,13 @@ fun isAutoFillEnabled(context: Context): Boolean =
  * of service, and Chrome's own switch, which Chrome needs before it asks any service but Google's.
  */
 @Composable
-fun ColumnScope.AutoFillSettingsSections() {
+fun ColumnScope.AutoFillSettingsSections(model: AppModel) {
     val context = LocalContext.current
     var isEnabled by remember { mutableStateOf(isAutoFillEnabled(context)) }
     val chromeSettingsIntent = remember { findChromeAutofillSettings(context) }
+    val scope = rememberCoroutineScope()
+    var isExactHostMatch by remember { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(model) { isExactHostMatch = model.settings.isExactHostMatch() }
     val turnOn = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         isEnabled = isAutoFillEnabled(context)
     }
@@ -80,6 +88,20 @@ fun ColumnScope.AutoFillSettingsSections() {
                 testTag = "turn-on-autofill",
                 icon = Icons.Outlined.Key,
                 color = HisarTheme.colors.tint,
+            )
+        }
+    }
+    isExactHostMatch?.let { isExact ->
+        FormSection(
+            footer = { Text("Off: a login for google.com also fills on accounts.google.com. On: only on the host saved in the item.") },
+        ) {
+            ToggleRow(
+                "Only fill on the exact host",
+                isOn = isExact,
+                onChange = { newValue ->
+                    scope.launch { if (model.settings.setExactHostMatch(newValue)) isExactHostMatch = newValue }
+                },
+                testTag = "exact-host-match",
             )
         }
     }

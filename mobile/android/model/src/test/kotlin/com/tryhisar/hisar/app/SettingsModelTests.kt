@@ -142,6 +142,17 @@ class SettingsModelTests {
     }
 
     @Test
+    fun testExactHostPreferenceStartsFromTheBackendAndIsSaved() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isExactHostMatchValue = true
+        val model = harness.startUnlockedModel()
+        assertEquals(true, model.settings.isExactHostMatch())
+        assertTrue(model.settings.setExactHostMatch(false))
+        assertEquals(false, model.settings.isExactHostMatch())
+        assertFalse(harness.backend.isExactHostMatchValue)
+    }
+
+    @Test
     fun testApproveFromTheCardWithoutOpeningTheSheet() = runTest {
         val harness = AppModelHarness(this)
         harness.backend.allPendingApproval = mutableListOf(createApproval(harness, "first"), createApproval(harness, "second"))

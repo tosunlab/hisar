@@ -52,6 +52,7 @@ final class AppModel: ObservableObject {
     private(set) var isNewSecretKeyShown = false
     @Published private(set) var copyCount = 0
     @Published private(set) var isMacApprovalAllowed = true
+    @Published private(set) var isExactHostMatch = false
     @Published private(set) var isWebsiteIconsEnabled = true
     /// Website icons by domain for this unlock; nil while one loads or when the website has none.
     @Published private(set) var websiteIconByDomain: [String: Data] = [:]
@@ -142,6 +143,7 @@ final class AppModel: ObservableObject {
             let backend = try createBackend()
             self.backend = backend
             isMacApprovalAllowed = backend.isMacApprovalAllowed()
+            isExactHostMatch = backend.isExactHostMatch()
             isWebsiteIconsEnabled = backend.isWebsiteIconsEnabled()
             theme = backend.getTheme()
             applyStatus(backend.getStatus())
@@ -1607,6 +1609,12 @@ final class AppModel: ObservableObject {
     }
 
     @discardableResult
+    func setExactHostMatch(_ isExact: Bool) async -> Bool {
+        guard await perform(isBusyShown: false, { try $0.setExactHostMatch(isExact) }) != nil else { return false }
+        isExactHostMatch = isExact
+        return true
+    }
+
     func setMacApprovalAllowed(_ isAllowed: Bool) async -> Bool {
         guard await perform(isBusyShown: false, { try $0.setMacApprovalAllowed(isAllowed) }) != nil else { return false }
         isMacApprovalAllowed = isAllowed

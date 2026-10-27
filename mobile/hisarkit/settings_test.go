@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/tryhisar/hisar/core/app"
+	"github.com/tryhisar/hisar/core/app/apptest"
 )
 
 func TestSettingsWhileSignedOut(t *testing.T) {
@@ -110,6 +113,68 @@ func TestThemeIsKeptAcrossLaunchesAndSignOut(t *testing.T) {
 	}
 	if current := decodeJSON[theme](t)(autoFill.GetTheme(), nil); current != (theme{Appearance: "light", Color: "blue"}) {
 		t.Errorf("theme read by a second instance on the same state = %+v", current)
+	}
+}
+
+func TestExactHostMatchAppliesToWebsitePasswordsAndCodes(t *testing.T) {
+	fixture := apptest.NewUnlocked(t)
+	hisar := &Hisar{service: fixture.Service}
+	saved, err := fixture.Service.SaveItem(fixture.PersonalVaultID, app.ItemDetail{
+		Title: "Example", Username: "alice", Password: "secret",
+		URLs: []string{"https://example.com"}, OneTimePassword: "JBSWY3DPEHPK3PXP",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, isExact := range []bool{false, true, false} {
+		if err := hisar.SetExactHostMatch(isExact); err != nil {
+			t.Fatal(err)
+		}
+		for _, host := range []string{"example.com", "accounts.example.com"} {
+			matches := decodeJSON[[]struct{}](t)(hisar.ListAllLoginForService(host))
+			wantMatch := !isExact || host == "example.com"
+			if (len(matches) == 1) != wantMatch {
+				t.Errorf("exact=%v host=%s matches=%d", isExact, host, len(matches))
+			}
+			_, passwordErr := hisar.GetLoginForService(fixture.PersonalVaultID, saved.ID, host)
+			_, codeErr := hisar.GetOneTimeCodeForService(fixture.PersonalVaultID, saved.ID, host)
+			if (passwordErr == nil) != wantMatch || (codeErr == nil) != wantMatch {
+				t.Errorf("exact=%v host=%s password=%v code=%v", isExact, host, passwordErr, codeErr)
+			}
+		}
+	}
+}
+
+func TestAutoFillReloadsExactHostPreferenceOnNextRequest(t *testing.T) {
+	directory := t.TempDir()
+	store := createMemorySecretKeyStore()
+	phone, err := New(directory, "iPhone", store, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	extension, err := New(directory, "AutoFill", store, nil, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, request := range []struct {
+		name string
+		run  func()
+	}{
+		{"list", func() { extension.ListAllLoginForService("example.com") }},
+		{"password unlock", func() { extension.Unlock("password") }},
+		{"biometric unlock", func() { extension.UnlockWithBiometric() }},
+		{"fill", func() { extension.GetLoginForService("vault", "item", "example.com") }},
+		{"code", func() { extension.GetOneTimeCodeForService("vault", "item", "example.com") }},
+	} {
+		for _, isExact := range []bool{true, false} {
+			if err := phone.SetExactHostMatch(isExact); err != nil {
+				t.Fatal(err)
+			}
+			request.run()
+			if extension.IsExactHostMatch() != isExact {
+				t.Errorf("%s did not read the newly saved preference %v", request.name, isExact)
+			}
+		}
 	}
 }
 

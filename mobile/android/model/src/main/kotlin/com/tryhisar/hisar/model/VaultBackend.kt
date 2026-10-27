@@ -170,6 +170,8 @@ interface VaultBackend {
     fun copySecretReference(vaultID: String, itemID: String, fieldName: String): String
     fun isMacApprovalAllowed(): Boolean
     fun setMacApprovalAllowed(isAllowed: Boolean)
+    fun isExactHostMatch(): Boolean
+    fun setExactHostMatch(isExact: Boolean)
     fun getTheme(): VaultTheme
     fun setTheme(theme: VaultTheme): VaultTheme
 
