@@ -495,4 +495,18 @@ describe("PasswordGenerator", () => {
     await wrapper.findAll("button").find((button) => button.text() === "Use password")!.trigger("click");
     expect(wrapper.emitted("use")?.[0]).toEqual(["second-password"]);
   });
+
+  it.each([8, 64])("generates at the supported length endpoint %i", async (length) => {
+    api.generatePassword.mockResolvedValue("generated-password");
+    const wrapper = mount(PasswordGenerator);
+    await flushPromises();
+    expect(api.generatePassword).toHaveBeenLastCalledWith({ length: 24, digits: true, symbols: true });
+    const slider = wrapper.find('input[name="length"]');
+    expect(slider.attributes("min")).toBe("8");
+    expect(slider.attributes("max")).toBe("64");
+    await slider.setValue(length);
+    await flushPromises();
+    expect(api.generatePassword).toHaveBeenLastCalledWith({ length, digits: true, symbols: true });
+    wrapper.unmount();
+  });
 });

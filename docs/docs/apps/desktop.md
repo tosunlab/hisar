@@ -108,6 +108,8 @@ and navigation to another item, vault, Favorites, or a tag from Favorites. If th
 offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
 ⌘S and ⌘↩ save after the form passes validation.
 
+The item editor's password generator supports 8 to 64 characters. It starts at 24 characters with digits and symbols enabled.
+
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
 

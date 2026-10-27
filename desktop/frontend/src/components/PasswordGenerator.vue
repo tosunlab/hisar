@@ -42,7 +42,7 @@ watch([length, includeDigits, includeSymbols], generatePassword);
     <div class="options">
       <label class="length">
         <span>Length</span>
-        <input v-model.number="length" name="length" type="range" min="12" max="64" />
+        <input v-model.number="length" name="length" type="range" min="8" max="64" />
         <span class="length-value">{{ length }}</span>
       </label>
       <label class="toggle"><input v-model="includeDigits" name="digits" type="checkbox" /> <span>Digits</span></label>
