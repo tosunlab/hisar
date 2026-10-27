@@ -343,7 +343,7 @@ An Approve button alone would let an agent that controls the screen approve itse
   A screenshot or recording can capture a one-time code while the page retains it. Browsers normally mask secure password
   fields with dots, but a page script or show-password control can reveal the value. Captures and page-script copies have no
   Hisar-enforced deletion limit.
-- Preview: `?window=ssh-approval&approval=sign-in` (add `&logins=2` for a choice, `&agentLocked=1` for a locked Hisar, `&noTouchID=1`
+- Preview: `?window=ssh-approval&approval=sign-in` (add `&logins=2` for a choice, or `&logins=12` for a list that scrolls, `&agentLocked=1` for a locked Hisar, `&noTouchID=1`
   for the master password, `&phone=1`), `&approval=agent-run` and `&approval=omp` for the menu, and
   `&settings=1&settingsSection=developer&agentSessions=1&agentSignIn=on` (or `=noAccess`) for Settings.
 

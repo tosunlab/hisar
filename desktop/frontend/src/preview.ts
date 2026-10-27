@@ -1125,12 +1125,17 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
 }
 
 // createPreviewSignInApproval: &approval=sign-in (Hermes signs in to tosunlab.com in Google Chrome with one login), &logins=2 (the user
-// picks one), &agentLocked=1 (Hisar unlocks first, before it lists logins), &noTouchID=1 (the master password approves).
+// picks one; any larger number lists that many), &agentLocked=1 (Hisar unlocks first, before it lists logins), &noTouchID=1 (the master
+// password approves).
 function createPreviewSignInApproval(): ApprovalEvent {
   const isLocked = previewParameter.get("agentLocked") === "1";
   const allLogin = [{ vaultName: "Agents", title: "Tosun Lab", username: "user@example.com" }];
-  if (previewParameter.get("logins") === "2") {
+  const loginCount = Number(previewParameter.get("logins") ?? "1");
+  if (loginCount >= 2) {
     allLogin.push({ vaultName: "Agents", title: "Tosun Lab admin", username: "ops@example.com" });
+  }
+  for (let index = 3; index <= loginCount; index++) {
+    allLogin.push({ vaultName: "Agents", title: `Tosun Lab ${index}`, username: `user${index}@example.com` });
   }
   return {
     ...createPreviewHarnessApproval("run"),
