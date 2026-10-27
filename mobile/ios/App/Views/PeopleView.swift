@@ -104,6 +104,9 @@ struct PeopleView: View {
                     }
                 }
             }
+            Button("Keep invitation", role: .cancel) {}
+        } message: {
+            Text("Their invitation link stops working. You can invite them again later.")
         }
         .sheet(isPresented: $isInviteShown) {
             InvitePersonView()
