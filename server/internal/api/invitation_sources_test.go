@@ -3,6 +3,8 @@ package api
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/tryhisar/hisar/core/apiclient"
@@ -60,5 +62,33 @@ func TestCancelledMembershipSignupCapability(t *testing.T) {
 				t.Fatalf("unlinked same-email same-issuer invitation was revoked: %v", err)
 			}
 		})
+	}
+}
+
+// Open in Hisar on the page of a link an organization or a share invitation sent names that invitation and its address,
+// so an app already signed in to it shows the invitation; any other invite's link does not.
+func TestInvitePageNamesTheInvitationItWasSentFor(t *testing.T) {
+	baseURL, server, _ := setupServer(t)
+	ctx := context.Background()
+	owner := signUpTestAccount(t, ctx, server, baseURL, "owner@example.com", apitypes.RoleAdmin)
+	recorder := attachMailRecorder(server)
+	organization := requireValue[*apitypes.OrganizationSummary](t)(owner.Client.CreateOrganization(ctx, &apitypes.CreateOrganizationRequest{Name: "Acme"}))
+	if _, err := owner.Client.InviteToOrganization(ctx, organization.ID, &apitypes.OrganizationInvitationRequest{Email: "member@example.com", Role: apitypes.OrganizationRoleMember}); err != nil {
+		t.Fatal(err)
+	}
+	vault := requireValue[*session.Vault](t)(owner.CreateVault(ctx, "Shared", apitypes.VaultShared))
+	if err := owner.InviteToVault(ctx, vault, "reader@example.com", apitypes.VaultReader); err != nil {
+		t.Fatal(err)
+	}
+	independent := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "plain@example.com", apitypes.RoleMember, &owner.AccountID))
+	origin := url.QueryEscape(baseURL)
+	for token, want := range map[string]string{
+		findInviteToken(t, server, recorder, "member@example.com"): "?email=member%40example.com&amp;invitation=organization&amp;server=" + origin + `"`,
+		findInviteToken(t, server, recorder, "reader@example.com"): "?email=reader%40example.com&amp;invitation=share&amp;server=" + origin + `"`,
+		independent.Token: "?server=" + origin + `"`,
+	} {
+		if _, body := fetchInvitePage(t, baseURL, token); !strings.Contains(body, `href="hisar://invite/`+token+want) {
+			t.Errorf("Open in Hisar for %s lacks %s", token, want)
+		}
 	}
 }

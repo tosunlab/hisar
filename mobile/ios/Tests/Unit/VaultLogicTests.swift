@@ -254,16 +254,21 @@ final class VaultLogicTests: XCTestCase {
     }
 
     func testInviteLinkFromInvitePage() {
-        let expectedByLink = [
-            "hisar://invite/abc_DEF-123": "abc_DEF-123",
-            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Feu.tryhisar.com ": "abc_DEF-123",
-            "HISAR://INVITE/abc?server=https%3A%2F%2Fhisar.example.com": "https://hisar.example.com/invite/abc",
-            "hisar://invite/abc?server=http%3A%2F%2F127.0.0.1%3A19400": "http://127.0.0.1:19400/invite/abc",
-            "hisar://invite/abc?server=hisar.example.com": "https://hisar.example.com/invite/abc",
-            "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com%2F&other=yes": "https://hisar.example.com/invite/abc",
+        let expectedByLink: [String: InviteLink] = [
+            "hisar://invite/abc_DEF-123": InviteLink(invite: "abc_DEF-123"),
+            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Feu.tryhisar.com ": InviteLink(invite: "abc_DEF-123"),
+            "HISAR://INVITE/abc?server=https%3A%2F%2Fhisar.example.com": InviteLink(invite: "https://hisar.example.com/invite/abc", server: "https://hisar.example.com"),
+            "hisar://invite/abc?server=http%3A%2F%2F127.0.0.1%3A19400": InviteLink(invite: "http://127.0.0.1:19400/invite/abc", server: "http://127.0.0.1:19400"),
+            "hisar://invite/abc?server=hisar.example.com": InviteLink(invite: "https://hisar.example.com/invite/abc", server: "https://hisar.example.com"),
+            "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com%2F&other=yes": InviteLink(invite: "https://hisar.example.com/invite/abc", server: "https://hisar.example.com"),
+            // An organization invitation carries the kind and the normalized address.
+            "hisar://invite/abc?invitation=organization&email=Alice%40Example.com": InviteLink(invite: "abc", invitation: "organization", email: "alice@example.com"),
+            "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com&invitation=share&email=%20Bob%40Example.com%20": InviteLink(invite: "https://hisar.example.com/invite/abc", server: "https://hisar.example.com", invitation: "share", email: "bob@example.com"),
+            // An unknown invitation is a plain invite, as in an older app.
+            "hisar://invite/abc?invitation=team&email=alice%40example.com": InviteLink(invite: "abc"),
         ]
         for (link, expected) in expectedByLink {
-            XCTAssertEqual(InviteLink.parse(link), InviteLink(invite: expected), link)
+            XCTAssertEqual(InviteLink.parse(link), expected, link)
         }
         for link in ["", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://eu.tryhisar.com/invite/abc", "hisar://invite/a%20b", "hisar://invite/abc?server=ftp%3A%2F%2Fx"] {
             XCTAssertNil(InviteLink.parse(link), link)

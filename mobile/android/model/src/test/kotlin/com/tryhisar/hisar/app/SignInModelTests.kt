@@ -212,15 +212,21 @@ class SignInModelTests {
     @Test
     fun testInviteLinkFromInvitePage() {
         val expectedByLink = mapOf(
-            "hisar://invite/abc_DEF-123" to "abc_DEF-123",
-            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Feu.tryhisar.com " to "abc_DEF-123",
-            "HISAR://INVITE/abc?server=https%3A%2F%2Fhisar.example.com" to "https://hisar.example.com/invite/abc",
-            "hisar://invite/abc?server=http%3A%2F%2F127.0.0.1%3A19400" to "http://127.0.0.1:19400/invite/abc",
-            "hisar://invite/abc?server=hisar.example.com" to "https://hisar.example.com/invite/abc",
-            "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com%2F&other=yes" to "https://hisar.example.com/invite/abc",
+            "hisar://invite/abc_DEF-123" to InviteLink("abc_DEF-123"),
+            " hisar://invite/abc_DEF-123?server=https%3A%2F%2Feu.tryhisar.com " to InviteLink("abc_DEF-123"),
+            "HISAR://INVITE/abc?server=https%3A%2F%2Fhisar.example.com" to InviteLink("https://hisar.example.com/invite/abc", "https://hisar.example.com"),
+            "hisar://invite/abc?server=http%3A%2F%2F127.0.0.1%3A19400" to InviteLink("http://127.0.0.1:19400/invite/abc", "http://127.0.0.1:19400"),
+            "hisar://invite/abc?server=hisar.example.com" to InviteLink("https://hisar.example.com/invite/abc", "https://hisar.example.com"),
+            "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com%2F&other=yes" to InviteLink("https://hisar.example.com/invite/abc", "https://hisar.example.com"),
+            // An organization or vault share invitation carries the kind and the address it is for; the email is lower-cased.
+            "hisar://invite/abc?invitation=organization&email=Alice%40Example.com" to InviteLink("abc", invitation = "organization", email = "alice@example.com"),
+            "hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com&invitation=share&email=bob%40example.com" to
+                InviteLink("https://hisar.example.com/invite/abc", "https://hisar.example.com", "share", "bob@example.com"),
+            // An unknown invitation is a plain invite, as in an older app, so its email is dropped too.
+            "hisar://invite/abc?invitation=team&email=carol%40example.com" to InviteLink("abc"),
         )
         for ((link, expected) in expectedByLink) {
-            assertEquals(InviteLink(expected), InviteLink.parse(link), link)
+            assertEquals(expected, InviteLink.parse(link), link)
         }
         val allInvalid = listOf(
             "", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://eu.tryhisar.com/invite/abc",
@@ -235,7 +241,7 @@ class SignInModelTests {
     @Test
     fun testInviteLinkPreservesInternationalServerOrigin() {
         val link = InviteLink.parse("hisar://invite/abc?server=https%3A%2F%2F%E4%BE%8B%E3%81%88.test%3A8443")
-        assertEquals(InviteLink("https://例え.test:8443/invite/abc"), link)
+        assertEquals(InviteLink("https://例え.test:8443/invite/abc", "https://例え.test:8443"), link)
         assertEquals("https://例え.test:8443/invite/abc", VaultLogic.convertToOpenableURL(link!!.invite)?.toString())
         val expectedByServer = mapOf(
             "例え.test" to "https://例え.test/invite/abc",
@@ -248,7 +254,7 @@ class SignInModelTests {
         )
         fun appLink(server: String) = "hisar://invite/abc?server=" + java.net.URLEncoder.encode(server, Charsets.UTF_8).replace("+", "%20")
         for ((server, expected) in expectedByServer) {
-            assertEquals(InviteLink(expected), InviteLink.parse(appLink(server)), server)
+            assertEquals(InviteLink(expected, expected.removeSuffix("/invite/abc")), InviteLink.parse(appLink(server)), server)
         }
         for (invalid in listOf("https://例え..test", "https://-例え.test", "https://例え-.test", "https://\u200D.test", "https://例え.test:port", "https://例え.test:８０", "https://例え.test/%zz", "ftp://例え.test")) {
             assertNull(InviteLink.parse(appLink(invalid)), invalid)
@@ -335,6 +341,57 @@ class SignInModelTests {
         assertNull(model.signIn.pendingInviteLink.value)
         assertEquals("You're signed in as alice@example.com. Sign out to create an account with this invite.", model.signIn.inviteLinkMessage.value)
         assertEquals(Screen.Unlocked, model.screen.value)
+    }
+
+    @Test
+    fun testAnOrganizationInviteLinkOpensItsInvitationInSettings() = runTest {
+        val model = AppModelHarness(this).startUnlockedModel()
+        model.signIn.openInviteLink(InviteLink("abc", "http://127.0.0.1:18080", "organization", "alice@example.com"))
+        assertNull(model.signIn.inviteLinkMessage.value)
+        assertNull(model.signIn.pendingInviteLink.value)
+        assertEquals(Tab.SETTINGS, model.selectedTab.value)
+        assertEquals(SettingsDestination.ORGANIZATIONS, model.requestedSettings.value)
+
+        model.requestedSettings.value = null
+        model.selectedTab.value = Tab.VAULTS
+        model.signIn.openInviteLink(InviteLink("abc", "http://127.0.0.1:18080", "share", "alice@example.com"))
+        assertEquals(Tab.SETTINGS, model.selectedTab.value)
+        assertEquals(SettingsDestination.PEOPLE, model.requestedSettings.value)
+    }
+
+    @Test
+    fun testAnInviteLinkForAnotherAccountSaysWhoItIsFor() = runTest {
+        val model = AppModelHarness(this).startUnlockedModel()
+        model.signIn.openInviteLink(InviteLink("abc", "http://127.0.0.1:18080", "organization", "carol@example.com"))
+        assertEquals(
+            "This invitation is for carol@example.com on http://127.0.0.1:18080. You're signed in as alice@example.com.",
+            model.signIn.inviteLinkMessage.value,
+        )
+        assertEquals(Tab.VAULTS, model.selectedTab.value)
+        assertNull(model.requestedSettings.value)
+
+        model.signIn.inviteLinkMessage.value = null
+        model.signIn.openInviteLink(InviteLink("abc", "https://other.example.com", "share", "alice@example.com"))
+        assertEquals(
+            "This invitation is for alice@example.com on other.example.com. You're signed in as alice@example.com.",
+            model.signIn.inviteLinkMessage.value,
+        )
+        assertNull(model.requestedSettings.value)
+    }
+
+    @Test
+    fun testAnInvitationLinkOpensAfterTheUnlock() = runTest {
+        val model = AppModelHarness(this).startUnlockedModel()
+        model.lock()
+        assertEquals(Screen.Locked, model.screen.value)
+        model.signIn.openInviteLink(InviteLink("abc", "http://127.0.0.1:18080", "organization", "alice@example.com"))
+        assertEquals("Unlock Hisar to see the invitation.", model.notice.value?.message)
+        assertNull(model.requestedSettings.value)
+        assertEquals(Tab.VAULTS, model.selectedTab.value)
+
+        assertTrue(model.lock.unlock(FakeBackend.PASSWORD))
+        assertEquals(Tab.SETTINGS, model.selectedTab.value)
+        assertEquals(SettingsDestination.ORGANIZATIONS, model.requestedSettings.value)
     }
 
     @Test

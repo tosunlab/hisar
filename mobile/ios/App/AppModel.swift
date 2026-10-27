@@ -45,6 +45,9 @@ final class AppModel: ObservableObject {
     /// requestedSettingsDestination is a Settings screen something outside the tab asks it to show, Devices for a tapped
     /// security alert; the Settings tab shows it and clears it.
     @Published var requestedSettingsDestination: SettingsDestination?
+    /// settingsAfterUnlock is the Settings screen an invitation link opened while Hisar was locked; the next unlock
+    /// shows it, and a sign-out drops it.
+    private var settingsAfterUnlock: SettingsDestination?
     /// isNewSecretKeyShown is true while Settings shows a replaced Secret Key, which shows only once.
     private(set) var isNewSecretKeyShown = false
     @Published private(set) var copyCount = 0
@@ -177,11 +180,29 @@ final class AppModel: ObservableObject {
     }
 
     func openInviteLink(_ link: InviteLink) {
-        if status.isSignedIn {
+        if !status.isSignedIn {
+            pendingInviteLink = link
+            return
+        }
+        guard let invitation = link.invitation else {
             inviteLinkMessage = "You're signed in as \(status.email). Sign out to create an account with this invite."
             return
         }
-        pendingInviteLink = link
+        // Both servers went through resolveServer, so they compare as written, the host's case aside.
+        if link.email != status.email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            || link.server.lowercased() != status.server.lowercased() {
+            let serverLabel = link.server.hasPrefix("https://") ? String(link.server.dropFirst("https://".count)) : link.server
+            inviteLinkMessage = "This invitation is for \(link.email) on \(serverLabel). You're signed in as \(status.email)."
+            return
+        }
+        let destination: SettingsDestination = invitation == InviteLink.invitationOrganization ? .organizations : .people
+        if status.isUnlocked {
+            selectedTab = .settings
+            requestedSettingsDestination = destination
+            return
+        }
+        settingsAfterUnlock = destination
+        inviteLinkMessage = "Unlock Hisar to see the invitation."
     }
 
     private func applyStatus(_ newStatus: VaultStatus) {
@@ -193,6 +214,7 @@ final class AppModel: ObservableObject {
         }
         status = newStatus
         if wasSignedIn && !newStatus.isSignedIn {
+            settingsAfterUnlock = nil
             Task { await credentialIdentityStore.removeAllIdentity() }
         }
         switch newStatus.state {
@@ -225,6 +247,11 @@ final class AppModel: ObservableObject {
         }
         if newStatus.state != VaultStatus.stateLocked {
             allShareAwaitingUnlock = []
+        }
+        if !wasUnlocked && newStatus.isUnlocked, let destination = settingsAfterUnlock {
+            settingsAfterUnlock = nil
+            selectedTab = .settings
+            requestedSettingsDestination = destination
         }
         if !wasUnlocked && newStatus.isUnlocked && isInForeground && newStatus.updateRequired == nil {
             startApprovalPolling()

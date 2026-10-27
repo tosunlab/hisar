@@ -1,7 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { createApiMock, createStatus, createUpdateStatus } from "../testing";
-import type { UpdateRequirement } from "../api";
+import type { InviteLink, UpdateRequirement } from "../api";
+import { loadSelectedSectionID } from "../settingsSections";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 const allListener = vi.hoisted(() => ({ current: new Map<string, (event: { data: unknown }) => void>() }));
@@ -25,7 +26,7 @@ vi.mock("@wailsio/runtime", () => ({
   },
 }));
 
-const { store } = await import("../store");
+const { store, unlock } = await import("../store");
 const App = (await import("../App.vue")).default;
 const api = apiMock.current;
 
@@ -45,6 +46,7 @@ function resetStore(): void {
     errorMessage: "",
     noticeMessage: "",
     isBusy: false,
+    isSettingsOpen: false,
   });
 }
 
@@ -52,7 +54,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   allListener.current.clear();
   resetStore();
-  api.takePendingInvite.mockResolvedValue("");
+  api.takePendingInvite.mockResolvedValue(null);
   api.getUpdateStatus.mockResolvedValue(createUpdateStatus());
 });
 
@@ -114,10 +116,15 @@ describe("Update required", () => {
   });
 });
 
+// inviteLink is what core makes of a hisar://invite link; invitation and email come with an organization's or a share's.
+function inviteLink(invite: string, extra: Partial<InviteLink> = {}): InviteLink {
+  return { invite, server: "https://hisar.test", invitation: "", email: "", ...extra };
+}
+
 describe("Invite links", () => {
   it("opens Create account with the invite from a hisar:// link the app was launched with", async () => {
     api.getStatus.mockResolvedValue(createStatus("signed-out"));
-    api.takePendingInvite.mockResolvedValue("https://hisar.example.com/invite/abc_DEF-123");
+    api.takePendingInvite.mockResolvedValue(inviteLink("https://hisar.example.com/invite/abc_DEF-123", { server: "https://hisar.example.com" }));
     const wrapper = mount(App);
     await flushPromises();
     expect(wrapper.find("h1").text()).toBe("Create your account");
@@ -130,7 +137,7 @@ describe("Invite links", () => {
     api.signUp.mockResolvedValue({ status: createStatus("unlocked"), secretKey: "H1-TEST" });
     const wrapper = mount(App);
     await flushPromises();
-    allListener.current.get("invite-link")?.({ data: "xyz789" });
+    allListener.current.get("invite-link")?.({ data: inviteLink("xyz789", { server: "https://eu.tryhisar.com" }) });
     await flushPromises();
     expect((wrapper.find('input[name="inviteCode"]').element as HTMLInputElement).value).toBe("xyz789");
     expect(wrapper.find('[data-testid="invite-server"]').exists()).toBe(false);
@@ -145,10 +152,49 @@ describe("Invite links", () => {
 
   it("says to sign out first when someone is signed in", async () => {
     api.getStatus.mockResolvedValue(createStatus("locked"));
-    api.takePendingInvite.mockResolvedValue("abc");
+    api.takePendingInvite.mockResolvedValue(inviteLink("abc"));
     mount(App);
     await flushPromises();
     expect(store.pendingInvite).toBe("");
     expect(store.noticeMessage).toBe("You're signed in as alice@example.com. Sign out to create an account with this invite.");
+  });
+
+  it("shows an organization invitation in Settings to the account it is for", async () => {
+    api.getStatus.mockResolvedValue(createStatus("unlocked"));
+    mount(App);
+    await flushPromises();
+    allListener.current.get("invite-link")?.({ data: inviteLink("abc", { invitation: "organization", email: "alice@example.com" }) });
+    await flushPromises();
+    expect(store.isSettingsOpen).toBe(true);
+    expect(loadSelectedSectionID()).toBe("organizations");
+    expect(store.pendingInvite).toBe("");
+  });
+
+  it("shows a share invitation in Settings → People after the unlock", async () => {
+    api.getStatus.mockResolvedValue(createStatus("locked"));
+    api.takePendingInvite.mockResolvedValue(inviteLink("abc", { invitation: "share", email: "alice@example.com" }));
+    api.unlock.mockResolvedValue(createStatus("unlocked"));
+    mount(App);
+    await flushPromises();
+    expect(store.isSettingsOpen).toBe(false);
+    expect(store.noticeMessage).toBe("Unlock Hisar to see the invitation.");
+    await unlock("master password");
+    await flushPromises();
+    expect(store.isSettingsOpen).toBe(true);
+    expect(loadSelectedSectionID()).toBe("people");
+  });
+
+  it("names who an invitation is for when another account is signed in", async () => {
+    api.getStatus.mockResolvedValue(createStatus("unlocked"));
+    mount(App);
+    await flushPromises();
+    allListener.current.get("invite-link")?.({ data: inviteLink("abc", { invitation: "organization", email: "bob@example.com" }) });
+    await flushPromises();
+    expect(store.isSettingsOpen).toBe(false);
+    expect(store.noticeMessage).toBe("This invitation is for bob@example.com on hisar.test. You're signed in as alice@example.com.");
+    allListener.current.get("invite-link")?.({ data: inviteLink("abc", { invitation: "organization", email: "alice@example.com", server: "https://other.example.com" }) });
+    await flushPromises();
+    expect(store.isSettingsOpen).toBe(false);
+    expect(store.noticeMessage).toBe("This invitation is for alice@example.com on other.example.com. You're signed in as alice@example.com.");
   });
 });

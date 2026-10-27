@@ -837,7 +837,7 @@ export function createApiMock() {
     setExactHostMatch: vi.fn(),
     cancelBrowserPairing: vi.fn().mockResolvedValue(undefined),
     checkMinimumVersion: vi.fn(),
-    takePendingInvite: vi.fn().mockResolvedValue(""),
+    takePendingInvite: vi.fn().mockResolvedValue(null),
     getUpdateStatus: vi.fn().mockResolvedValue(createUpdateStatus()),
     checkForUpdates: vi.fn(),
     setAutomaticUpdateCheck: vi.fn(),

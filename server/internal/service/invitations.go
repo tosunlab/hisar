@@ -100,11 +100,13 @@ func (s *Service) CreateOperatorInvite(ctx context.Context, email, role string, 
 	return &apitypes.InviteResponse{Token: token, URL: s.buildInviteLink(token)}, nil
 }
 
-// PendingInvite is an unused invite as the invite page shows it.
+// PendingInvite is an unused invite as the invite page shows it. Source is "organization" or "share" when an
+// organization or a vault share invitation sent it, so Open in Hisar can show that invitation to a signed-in account.
 type PendingInvite struct {
 	Email     string
 	ExpiresOn string
 	Link      string
+	Source    string
 	// InviterName and InviterDescription are empty for an operator's invite.
 	InviterName        string
 	InviterDescription string
@@ -119,7 +121,7 @@ func (s *Service) GetPendingInvite(ctx context.Context, token string) (*PendingI
 	if err != nil {
 		return nil, err
 	}
-	pending := &PendingInvite{Email: invite.Email, ExpiresOn: FormatExpiry(invite.ExpiresAt), Link: s.buildInviteLink(token)}
+	pending := &PendingInvite{Email: invite.Email, ExpiresOn: FormatExpiry(invite.ExpiresAt), Link: s.buildInviteLink(token), Source: invite.Source}
 	if invite.InviterEmail != "" {
 		inviter := &store.Account{Name: invite.InviterName, Email: invite.InviterEmail}
 		pending.InviterName, pending.InviterDescription = getInviterName(inviter), describeInviter(inviter)
