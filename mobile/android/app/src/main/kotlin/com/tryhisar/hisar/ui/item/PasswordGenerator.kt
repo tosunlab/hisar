@@ -31,6 +31,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -199,7 +200,9 @@ private fun ColumnScope.PasswordGeneratorForm(model: AppModel, password: String,
 @Composable
 private fun Stepper(onDecrement: () -> Unit, onIncrement: () -> Unit, canDecrement: Boolean, canIncrement: Boolean) {
     Row(
-        Modifier.background(HisarTheme.colors.fill, CircleShape),
+        Modifier
+            .height(32.dp)
+            .background(HisarTheme.colors.fill, CircleShape),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center,
     ) {
@@ -213,6 +216,7 @@ private fun Stepper(onDecrement: () -> Unit, onIncrement: () -> Unit, canDecreme
 private fun StepperHalf(icon: ImageVector, description: String, onClick: () -> Unit, enabled: Boolean) {
     Box(
         Modifier
+            .minimumInteractiveComponentSize()
             .size(width = 46.dp, height = 32.dp)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .semantics { contentDescription = description },

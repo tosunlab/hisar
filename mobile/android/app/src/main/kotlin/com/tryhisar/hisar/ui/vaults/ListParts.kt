@@ -39,6 +39,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MenuDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -232,7 +233,7 @@ fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: Str
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .height(40.dp)
+                    .heightIn(min = 40.dp)
                     .background(colors.fill, RoundedCornerShape(20.dp))
                     .padding(horizontal = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -244,14 +245,18 @@ fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: Str
                     innerTextField()
                 }
                 if (value.isNotEmpty()) {
-                    Icon(
-                        Icons.Filled.Cancel,
-                        contentDescription = "Clear",
-                        tint = colors.secondaryLabel,
-                        modifier = Modifier
-                            .size(18.dp)
-                            .clickable(role = Role.Button) { onValueChange("") },
-                    )
+                    // The 48 dp touch target reaches past the field without making it taller.
+                    Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                        Box(
+                            Modifier
+                                .minimumInteractiveComponentSize()
+                                .size(24.dp)
+                                .clickable(role = Role.Button) { onValueChange("") },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(Icons.Filled.Cancel, contentDescription = "Clear", tint = colors.secondaryLabel, modifier = Modifier.size(18.dp))
+                        }
+                    }
                 }
             }
         },

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -47,7 +48,7 @@ fun PushedTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScop
         modifier = Modifier
             .fillMaxWidth()
             .windowInsetsPadding(WindowInsets.statusBars)
-            .height(52.dp)
+            .heightIn(min = 52.dp)
             .padding(horizontal = ScreenMargin),
     ) { measurables, constraints ->
         val looseConstraints = constraints.copy(minWidth = 0, minHeight = 0)
@@ -55,10 +56,12 @@ fun PushedTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScop
         val actionRow = measurables[1].measure(looseConstraints)
         val side = maxOf(back.width, actionRow.width) + TitleGap.roundToPx()
         val titleText = measurables[2].measure(looseConstraints.copy(maxWidth = (constraints.maxWidth - 2 * side).coerceAtLeast(0)))
-        layout(constraints.maxWidth, constraints.maxHeight) {
-            back.placeRelative(0, (constraints.maxHeight - back.height) / 2)
-            actionRow.placeRelative(constraints.maxWidth - actionRow.width, (constraints.maxHeight - actionRow.height) / 2)
-            titleText.placeRelative((constraints.maxWidth - titleText.width) / 2, (constraints.maxHeight - titleText.height) / 2)
+        // The bar is at least its minimum and grows with a large-font title or button.
+        val height = maxOf(constraints.minHeight, back.height, actionRow.height, titleText.height)
+        layout(constraints.maxWidth, height) {
+            back.placeRelative(0, (height - back.height) / 2)
+            actionRow.placeRelative(constraints.maxWidth - actionRow.width, (height - actionRow.height) / 2)
+            titleText.placeRelative((constraints.maxWidth - titleText.width) / 2, (height - titleText.height) / 2)
         }
     }
 }

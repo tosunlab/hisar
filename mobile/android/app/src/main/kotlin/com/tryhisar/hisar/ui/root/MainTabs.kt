@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -30,6 +32,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.Alignment
@@ -51,15 +54,21 @@ import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.VaultsTab
 
-/** The floating tab bar's own height, above the system navigation bar. */
+/** The floating tab bar's own height above the system navigation bar at the default font size; its labels grow with the font. */
 val FloatingTabBarHeight = 84.dp
 
+/** The tab bar as drawn, with the system navigation bar under it; null until it is measured. */
+internal val LocalMeasuredTabBarHeight = compositionLocalOf<Dp?> { null }
+
 /**
- * What the floating tab bar covers at the bottom of each tab, which lists leave free under their last row: the bar and
- * the system navigation bar under it, tall with three-button navigation.
+ * What the floating tab bar covers at the bottom of each tab, which lists leave free under their last row: the bar as
+ * drawn, at least [FloatingTabBarHeight], and the system navigation bar under it, tall with three-button navigation.
  */
 val TabBarHeight: Dp
-    @Composable get() = FloatingTabBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    @Composable get() {
+        val minimum = FloatingTabBarHeight + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+        return LocalMeasuredTabBarHeight.current?.coerceAtLeast(minimum) ?: minimum
+    }
 
 /**
  * The unlocked app: four tabs, each keeping its own screens and scroll while another is shown, under the iPhone app's
@@ -114,7 +123,8 @@ private fun TabBar(selectedTab: Tab, approvalBadgeCount: Int, onSelect: (Tab) ->
         Row(
             Modifier
                 .weight(1f)
-                .height(62.dp)
+                .heightIn(min = 62.dp)
+                .height(IntrinsicSize.Min)
                 .shadow(12.dp, CircleShape)
                 .background(colors.cellBackground, CircleShape)
                 .padding(4.dp)

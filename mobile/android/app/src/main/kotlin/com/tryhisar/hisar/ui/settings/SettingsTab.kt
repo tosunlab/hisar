@@ -3,11 +3,6 @@ package com.tryhisar.hisar.ui.settings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
-import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -58,6 +53,7 @@ import com.tryhisar.hisar.autofill.isAutoFillEnabled
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.ui.components.FormSection
+import com.tryhisar.hisar.ui.components.NavigationTransition
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.TabScaffold
 import com.tryhisar.hisar.ui.item.StandalonePasswordGeneratorScreen
@@ -79,7 +75,6 @@ fun SettingsTab(model: AppModel) {
     var stack by rememberSaveable(stateSaver = stackSaver) { mutableStateOf(emptyList<SettingsDestination>()) }
     val push: (SettingsDestination) -> Unit = { stack = stack + it }
     val pop: () -> Unit = { stack = stack.dropLast(1) }
-    BackHandler(enabled = stack.isNotEmpty() && stack.last() != SettingsDestination.REPLACE_SECRET_KEY, onBack = pop)
     val requestedSettings by model.requestedSettings.collectAsStateWithLifecycle()
     LaunchedEffect(requestedSettings) {
         val destination = requestedSettings ?: return@LaunchedEffect
@@ -88,17 +83,11 @@ fun SettingsTab(model: AppModel) {
         if (stack.lastOrNull() != SettingsDestination.REPLACE_SECRET_KEY) stack = listOf(destination)
     }
 
-    AnimatedContent(
-        targetState = stack,
-        transitionSpec = {
-            if (targetState.size >= initialState.size) {
-                slideInHorizontally { it } togetherWith slideOutHorizontally { -it / 3 }
-            } else {
-                slideInHorizontally { -it / 3 } togetherWith slideOutHorizontally { it }
-            }
-        },
+    NavigationTransition(
+        stack,
+        onPop = pop,
+        isBackEnabled = stack.isNotEmpty() && stack.last() != SettingsDestination.REPLACE_SECRET_KEY,
         contentKey = { it.lastOrNull() },
-        label = "settings stack",
     ) { shownStack ->
         when (shownStack.lastOrNull()) {
             null -> SettingsRoot(model, push)

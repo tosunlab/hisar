@@ -19,15 +19,19 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.Dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -79,6 +83,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val scope = rememberCoroutineScope()
         val noticeLayout = remember { NoticeLayout() }
         val density = LocalDensity.current
+        var measuredTabBarHeight by remember { mutableStateOf<Dp?>(null) }
         val navigationInset = with(density) { WindowInsets.navigationBars.exclude(WindowInsets.ime).getBottom(this).toDp() }
         val noticeInset = (with(density) { noticeLayout.clearance.toDp() } - navigationInset).coerceAtLeast(0.dp)
         val showsTabs = screen == Screen.Unlocked && !isSheetShown && newAccountStep == null && !isRecoveryShown && credentialImportSheet == null
@@ -88,7 +93,10 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         }
 
         Box(Modifier.fillMaxSize().exposeTestTags()) {
-            CompositionLocalProvider(LocalNoticeLayout provides noticeLayout) {
+            CompositionLocalProvider(
+                LocalNoticeLayout provides noticeLayout,
+                LocalMeasuredTabBarHeight provides measuredTabBarHeight,
+            ) {
             Scaffold(
                 modifier = Modifier.imePadding().onGloballyPositioned { noticeLayout.windowBottom = it.boundsInWindow().bottom },
                 contentWindowInsets = WindowInsets.navigationBars,
@@ -98,7 +106,9 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                 },
                 bottomBar = {
                     if (showsTabs) {
-                        MainTabBar(model, allPendingApproval.size)
+                        Box(Modifier.onSizeChanged { measuredTabBarHeight = with(density) { it.height.toDp() } }) {
+                            MainTabBar(model, allPendingApproval.size)
+                        }
                     }
                 },
             ) { padding ->

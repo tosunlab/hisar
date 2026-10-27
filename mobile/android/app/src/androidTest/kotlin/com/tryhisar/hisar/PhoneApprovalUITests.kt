@@ -99,7 +99,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
             val secrets = readText("phone-approval-row-Secrets")
             assertTrue(secrets, "username" in secrets && "password" in secrets)
             assertEquals("Expires in 7 days · 1 view", readText("phone-approval-row-Link"))
-            assertEquals("Anyone with the link can read these until it expires or its views run out.", readText("phone-approval-row-Warning"))
+            assertEquals("Anyone with the link can read these until it expires or its views run out.", readText("phone-approval-warning"))
             assertFalse("a share link is approved once", exists(hasTestTag("phone-approval-row-Lasts")))
             val note = readText("phone-approval-encryption-note")
             assertTrue(note, "Approving lets this one request continue" in note)
@@ -213,7 +213,8 @@ class PhoneApprovalUITests : HisarUITestCase() {
             tap("phone-approval-close")
         }
         assertEquals("Waiting for your approval", readText("pending-approval-header"))
-        waitFor(hasText("Also allows Terminal for 1 hour."))
+        waitFor(hasText("It never unlocks Hisar on your Mac."))
+        waitFor(hasTestTagPrefix("pending-approval-remember-") and hasText("Also allows Terminal for 1 hour"))
         val card = readText(cardSummary)
         assertTrue(card, "UI Test Mac · expires in" in card && "Terminal wants to push to git.tryhisar.com" in card && "with “hisar gitlab”" in card)
         waitFor(hasTestTag("tab-approvals") and hasText("1", substring = false))
@@ -304,7 +305,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         /** The summary of the request on the Vaults card, whose tag ends in the request's ID. */
         val cardSummary = SemanticsMatcher("the card's request") { node ->
             val tag = node.config.getOrNull(SemanticsProperties.TestTag).orEmpty()
-            tag.startsWith("pending-approval-") && listOf("approve-", "deny-", "header", "more").none { tag.startsWith("pending-approval-$it") }
+            tag.startsWith("pending-approval-") && listOf("approve-", "deny-", "remember-", "header", "more").none { tag.startsWith("pending-approval-$it") }
         }
 
         /** The iPhone's approval previews, from a Mac named Alper's MacBook Pro. */

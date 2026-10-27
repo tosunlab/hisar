@@ -11,8 +11,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -535,10 +535,11 @@ private fun DestructiveButton(text: String, onClick: () -> Unit, testTag: String
     Box(
         Modifier
             .fillMaxWidth()
-            .height(52.dp)
+            .heightIn(min = 52.dp)
             .background(if (isActive) colors.destructive else colors.secondaryLabel.copy(alpha = 0.55f), CircleShape)
             .clickable(enabled = isActive, role = Role.Button, onClick = onClick)
-            .testTag(testTag),
+            .testTag(testTag)
+            .padding(horizontal = 16.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         if (isBusy) {

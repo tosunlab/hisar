@@ -181,7 +181,7 @@ internal fun SecretFieldRow(
     }
 }
 
-/** A borderless symbol button inside a row, tinted with the theme. */
+/** A borderless symbol button inside a row, tinted with the theme; it answers touches on the 48 dp around it. */
 @Composable
 internal fun FieldIconButton(icon: ImageVector, contentDescription: String, testTag: String, onClick: () -> Unit, tint: Color = HisarTheme.colors.tint) {
     Box(
