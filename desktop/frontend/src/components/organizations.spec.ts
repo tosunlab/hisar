@@ -238,6 +238,14 @@ describe("Organization screen", () => {
     await admin.find('[data-testid="organization-team-menu-platform"]').trigger("click");
     await admin.find('[data-testid="context-menu-delete-team"]').trigger("click");
     expect(admin.find('[data-testid="organization-dialog-delete-team"]').isVisible()).toBe(true);
+    await flushPromises();
+    const confirmation = admin.find('[data-testid="organization-dialog-delete-team"]');
+    const cancel = confirmation.find("button.ghost");
+    expect(document.activeElement).toBe(cancel.element);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true }));
+    expect(confirmation.element.contains(document.activeElement)).toBe(true);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", cancelable: true }));
+    expect(document.activeElement).toBe(cancel.element);
     await admin.find('[data-testid="organization-dialog-delete-team"] button.ghost').trigger("click");
     await admin.find('[data-testid="organization-segment-invitations"]').trigger("click");
     expect(admin.find('[data-testid="organization-invite"]').isVisible()).toBe(true);
