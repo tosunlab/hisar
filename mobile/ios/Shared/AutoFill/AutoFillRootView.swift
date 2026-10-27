@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AutoFillRootView: View {
     @ObservedObject var model: AutoFillModel
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -19,6 +20,9 @@ struct AutoFillRootView: View {
             }
         }
         .applyTheme(model.theme)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.refreshStatus() }
+        }
     }
 
     @ViewBuilder
