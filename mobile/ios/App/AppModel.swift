@@ -1578,15 +1578,12 @@ final class AppModel: ObservableObject {
 
     static let unreadablePhotoMessage = "Hisar can't read this photo. Choose another one."
 
-    /// prepareItemIcon turns a chosen photo into the icon image an item keeps, or shows why it can't. Photos come as the
-    /// library keeps them (HEIC from the camera, TIFF, PNG…), which the backend does not all read, so the phone decodes
-    /// and shrinks the photo first and hands it a PNG or JPEG.
-    func prepareItemIcon(_ photo: Data) async -> Data? {
+    func prepareItemIcon(_ photo: Data) async throws -> Data {
         guard let upload = Self.convertPhotoForIcon(photo) else {
-            errorMessage = Self.unreadablePhotoMessage
-            return nil
+            throw BackendError(message: Self.unreadablePhotoMessage)
         }
-        return await perform { try $0.prepareItemIcon(upload) }
+        guard let backend else { throw BackendError(message: "Hisar is not ready. Try again.") }
+        return try await runInBackground { try backend.prepareItemIcon(upload) }
     }
 
     /// convertPhotoForIcon decodes any image UIKit reads, applies its orientation, scales it down to maxSide and encodes

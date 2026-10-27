@@ -97,6 +97,10 @@ with it, check the attestation and the ES256 signature with CryptoKit, then see 
 `WideLayoutUITests` checks the split views: beside their list on a wide screen, pushed over it on a compact one, so it
 means something on both the iPhone Duo simulator and the compact one CI uses.
 
+The icon picker keeps the last completed icon while a photo is preparing. **Done** stays disabled until it finishes.
+**Cancel preparation**, selecting another icon, or dismissing the sheet cancels the pending photo.
+An older photo or its error cannot replace a newer choice.
+
 **Approving the Mac's requests.** The approval sheet (a Mac's SSH or command-line request, an app such as Raycast
 asking to use Hisar until it locks, or that app creating one share link, approved with Face ID or the master password,
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or

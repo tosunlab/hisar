@@ -110,18 +110,25 @@ final class ItemIconTests: XCTestCase {
 
     func testPreparingAPhotoShowsWhyItWasRefused() async throws {
         let model = await createUnlockedModel()
-        let unreadable = await model.prepareItemIcon(Data([1]))
-        XCTAssertNil(unreadable)
-        XCTAssertEqual(model.errorMessage, AppModel.unreadablePhotoMessage)
+        do {
+            _ = try await model.prepareItemIcon(Data([1]))
+            XCTFail("Unreadable photos must fail")
+        } catch {
+            XCTAssertEqual(describeError(error), AppModel.unreadablePhotoMessage)
+        }
         XCTAssertFalse(backend.allCallName.contains("prepareItemIcon"), "nothing UIKit can't read reaches the backend")
 
         let photo = try XCTUnwrap(encodeTestPhoto(type: .tiff, size: CGSize(width: 100, height: 100)))
-        let refused = await model.prepareItemIcon(photo)
-        XCTAssertNil(refused)
-        XCTAssertEqual(model.errorMessage, "choose a PNG, JPEG, GIF or WebP image")
+        do {
+            _ = try await model.prepareItemIcon(photo)
+            XCTFail("Refused photos must fail")
+        } catch {
+            XCTAssertEqual(describeError(error), "choose a PNG, JPEG, GIF or WebP image")
+        }
         backend.preparedIcon = Data([4, 5])
-        let prepared = await model.prepareItemIcon(photo)
+        let prepared = try await model.prepareItemIcon(photo)
         XCTAssertEqual(prepared, Data([4, 5]))
+        XCTAssertNil(model.errorMessage, "the picker owns preparation errors")
     }
 
     private func waitUntil(_ condition: () -> Bool) async throws {

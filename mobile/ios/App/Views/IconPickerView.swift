@@ -11,7 +11,7 @@ struct IconPickerView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var color: String
     @State private var photo: PhotosPickerItem?
-    @State private var isPreparing = false
+    @StateObject private var preparation = IconPhotoPreparation()
 
     init(icon: Binding<ChosenIcon?>, item: ItemDetail) {
         _icon = icon
@@ -22,16 +22,17 @@ struct IconPickerView: View {
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
 
     var body: some View {
+        let photoLabel = preparation.isPreparing ? "Preparing…" : "Choose photo"
         NavigationStack {
             List {
-                if let errorMessage = model.errorMessage {
+                if let errorMessage = preparation.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
                     }
                 }
                 Section {
                     Button {
-                        model.clearError()
+                        preparation.cancel()
                         icon = nil
                     } label: {
                         HStack(spacing: 12) {
@@ -52,17 +53,23 @@ struct IconPickerView: View {
                     }
                     .accessibilityIdentifier("icon-automatic")
                     PhotosPicker(selection: $photo, matching: .images) {
-                        Label(isPreparing ? "Preparing…" : "Choose photo", systemImage: "photo")
+                        Label(photoLabel, systemImage: "photo")
                     }
-                    .disabled(isPreparing)
                     .accessibilityIdentifier("icon-photo")
+                    if preparation.isPreparing {
+                        Button("Cancel preparation") {
+                            preparation.cancel()
+                            photo = nil
+                        }
+                        .accessibilityIdentifier("icon-cancel-preparation")
+                    }
                 }
                 Section("Icons") {
                     LazyVGrid(columns: columns, spacing: 8) {
                         ForEach(ChosenIcon.allPreset, id: \.self) { preset in
                             let isChosen = icon?.image == nil && icon?.preset == preset
                             Button {
-                                model.clearError()
+                                preparation.cancel()
                                 icon = ChosenIcon(preset: preset, color: color)
                             } label: {
                                 ItemIcon(item: buildPreviewItem(icon: ChosenIcon(preset: preset, color: color)), size: 40)
@@ -97,12 +104,19 @@ struct IconPickerView: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
+                        .disabled(preparation.isPreparing)
                         .accessibilityIdentifier("icon-done")
                 }
             }
+            .onAppear { preparation.activate() }
+            .onDisappear { preparation.dismiss() }
             .onChange(of: photo) { _, newPhoto in
                 guard let newPhoto else { return }
-                Task { await preparePhoto(newPhoto) }
+                preparation.prepare(
+                    load: { try await newPhoto.loadTransferable(type: Data.self) },
+                    convert: { try await model.prepareItemIcon($0) },
+                    apply: { icon = $0 }
+                )
             }
         }
     }
@@ -111,6 +125,7 @@ struct IconPickerView: View {
         Button {
             color = hue
             if let chosen = icon, chosen.image == nil, !chosen.preset.isEmpty {
+                preparation.cancel()
                 icon = ChosenIcon(preset: chosen.preset, color: hue)
             }
         } label: {
@@ -133,18 +148,4 @@ struct IconPickerView: View {
         return preview
     }
 
-    private func preparePhoto(_ newPhoto: PhotosPickerItem) async {
-        isPreparing = true
-        defer {
-            isPreparing = false
-            photo = nil
-        }
-        guard let data = try? await newPhoto.loadTransferable(type: Data.self) else {
-            model.errorMessage = AppModel.unreadablePhotoMessage
-            return
-        }
-        if let image = await model.prepareItemIcon(data) {
-            icon = ChosenIcon(image: image)
-        }
-    }
 }

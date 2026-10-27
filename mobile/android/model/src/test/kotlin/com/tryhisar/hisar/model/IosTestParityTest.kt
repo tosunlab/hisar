@@ -42,6 +42,8 @@ class IosTestParityTest {
     private val notApplicable = run {
         val identityStore = "Android AutoFill asks Hisar for logins at fill time; it has no credential identity store to keep up to date (D3)"
         mapOf(
+            "testIconPhotoPreparationRejectsStaleResults" to
+                "iOS PhotosPicker uses an asynchronous transfer and conversion task; this test covers its generation guard and sheet dismissal",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,
