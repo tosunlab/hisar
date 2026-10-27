@@ -2,6 +2,7 @@ import SwiftUI
 
 struct AutoFillRootView: View {
     @ObservedObject var model: AutoFillModel
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack {
@@ -19,6 +20,9 @@ struct AutoFillRootView: View {
             }
         }
         .applyTheme(model.theme)
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { model.refreshStatus() }
+        }
     }
 
     @ViewBuilder
@@ -129,8 +133,14 @@ private struct AutoFillListView: View {
                             
                     }
                     ForEach(model.allVisibleOtherLogin) { login in
-                        buildLoginRow(login)
+                        buildLoginRow(login, isMatching: false)
                     }
+                }
+            }
+            if model.requestKind == .password {
+                Section {} footer: {
+                    Text("Copied one-time codes clear in 90 seconds.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -139,6 +149,15 @@ private struct AutoFillListView: View {
         // login, and a disabled field drops what is typed meanwhile.
         .disabled(model.isBusy)
         .searchable(text: $model.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all logins")
+        .alert(model.unmatchedFillTitle, isPresented: Binding(
+            get: { model.unmatchedLoginConfirmation != nil },
+            set: { if !$0 { model.dismissUnmatchedLogin() } }
+        ), presenting: model.unmatchedLoginConfirmation) { confirmation in
+            Button("Cancel", role: .cancel) { model.dismissUnmatchedLogin() }
+            Button("Fill once") { Task { await model.fillUnmatchedLogin(confirmation) } }
+        } message: { _ in
+            Text(model.unmatchedFillMessage)
+        }
     }
 
     private var sectionTitle: String {
@@ -179,7 +198,7 @@ private struct AutoFillListView: View {
         .accessibilityIdentifier("autofill-passkey-\(passkey.title)")
     }
 
-    private func buildLoginRow(_ login: LoginMatch) -> some View {
+    private func buildLoginRow(_ login: LoginMatch, isMatching: Bool = true) -> some View {
         Button {
             Task { await model.select(login) }
         } label: {
@@ -191,12 +210,22 @@ private struct AutoFillListView: View {
                     Text(login.username.isEmpty ? login.vaultName : "\(login.username) · \(login.vaultName)")
                         .font(.caption)
                         .foregroundStyle(.themeSecondary)
+                    if !isMatching {
+                        Text("Not saved for this site")
+                            .font(.caption)
+                            .foregroundStyle(.themeSecondary)
+                    }
+                    if model.requestKind == .password, login.hasOneTimePassword {
+                        Text("Also copies a one-time code for the next step")
+                            .font(.caption)
+                            .foregroundStyle(.themeSecondary)
+                    }
                 }
                 Spacer()
                 if login.hasOneTimePassword {
                     Image(systemName: "timer")
                         .foregroundStyle(.themeSecondary)
-                        .accessibilityLabel("Has a one-time code")
+                        .accessibilityLabel(model.requestKind == .password ? "Also copies a one-time code for the next step" : "Has a one-time code")
                 }
             }
             .contentShape(Rectangle())

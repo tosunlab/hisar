@@ -124,7 +124,6 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
     ) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp).height(52.dp)) {
             CloseButton(enabled = !isBusy, onClick = approvals::closeApprovalSheet, modifier = Modifier.align(Alignment.CenterStart))
-            Text("Mac request", style = HisarType.headline, color = HisarTheme.colors.label, modifier = Modifier.align(Alignment.Center))
         }
         Column(
             Modifier
@@ -156,11 +155,6 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
                     )
                 }
             }
-            if (approval.isRememberable) {
-                FormSection(footer = { Text("Off allows only this request.") }) {
-                    ToggleRow(approval.rememberLabel, isRemembered, { chosenRemember = it }, testTag = "phone-approval-remember", enabled = !isBusy)
-                }
-            }
             if (approval.isForwarded) {
                 FormSection {
                     NoticeRow(
@@ -187,6 +181,11 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
                 approval.allDetailRow.forEachIndexed { index, row ->
                     if (index > 0) RowDivider()
                     DetailRow(row)
+                }
+            }
+            if (approval.isRememberable) {
+                FormSection(footer = { Text("Off allows only this request.") }) {
+                    ToggleRow(approval.rememberLabel, isRemembered, { chosenRemember = it }, testTag = "phone-approval-remember", enabled = !isBusy)
                 }
             }
             Spacer(Modifier.height(16.dp))
@@ -226,41 +225,39 @@ private fun Header(approval: PhoneApproval) {
     val appIcon = remember(approval.appIcon) {
         approval.appIcon?.toByteArray()?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }?.asImageBitmap()
     }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(top = 12.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+    Row(
+        Modifier.fillMaxWidth().padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.Top,
     ) {
         if (!approval.isForwarded && appIcon != null) {
-            Box(Modifier.size(72.dp), contentAlignment = Alignment.Center) {
-                Image(appIcon, contentDescription = null, modifier = Modifier.size(64.dp).testTag("phone-approval-app-icon"))
+            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                Image(appIcon, contentDescription = null, modifier = Modifier.size(40.dp).testTag("phone-approval-app-icon"))
             }
         } else {
             Box(
-                Modifier
-                    .size(72.dp)
-                    .background(colors.fill, RoundedCornerShape(18.dp)),
+                Modifier.size(44.dp).background(colors.fill, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
                     if (approval.isForwarded) Icons.Outlined.Public else approval.icon.image,
                     contentDescription = null,
                     tint = if (approval.isForwarded) colors.destructive else colors.warning,
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(24.dp),
                 )
             }
         }
-        Text(approval.title, style = HisarType.title2, color = colors.label, textAlign = TextAlign.Center, modifier = Modifier.testTag("phone-approval-title"))
-        Text(approval.summary, style = HisarType.body, color = colors.secondaryLabel, textAlign = TextAlign.Center, modifier = Modifier.testTag("phone-approval-summary"))
-        Text(
-            approval.formatTimeLeft(now),
-            style = HisarType.footnote.copy(fontFeatureSettings = "tnum"),
-            fontWeight = FontWeight.SemiBold,
-            color = colors.warning,
-            modifier = Modifier.testTag("phone-approval-expiry"),
-        )
+        Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(approval.summary, style = HisarType.headline.copy(fontSize = 20.sp, lineHeight = 25.sp), fontWeight = FontWeight.Bold, color = colors.label, modifier = Modifier.testTag("phone-approval-summary"))
+            Text(approval.macName, style = HisarType.subheadline, color = colors.secondaryLabel, modifier = Modifier.testTag("phone-approval-mac"))
+            Text(
+                approval.formatTimeLeft(now),
+                style = HisarType.subheadline.copy(fontFeatureSettings = "tnum"),
+                fontWeight = FontWeight.Medium,
+                color = colors.warning,
+                modifier = Modifier.testTag("phone-approval-expiry"),
+            )
+        }
     }
 }
 

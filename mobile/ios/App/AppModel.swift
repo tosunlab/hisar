@@ -38,6 +38,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isCheckingMinimumVersion = false
     @Published private(set) var lockCount = 0
     @Published private(set) var allPendingApproval: [PhoneApproval] = []
+    enum ApprovalListState { case unchecked, loading, loaded, failed }
+    @Published private(set) var approvalListState = ApprovalListState.unchecked
     @Published private(set) var presentedApproval: PhoneApproval?
     @Published private(set) var isAnsweringApproval = false
     @Published private(set) var isApprovalPasswordRequired = false
@@ -1705,6 +1707,7 @@ final class AppModel: ObservableObject {
                 allFinishedApprovalID.insert(approval.requestID)
             }
             allPendingApproval = []
+            approvalListState = .unchecked
             allAnnouncedApproval = []
             shownApprovalList = startedApprovalListCount
             presentedApproval = nil
@@ -1747,11 +1750,21 @@ final class AppModel: ObservableObject {
         guard status.isUnlocked, isInForeground, isMacApprovalAllowed, let backend else { return }
         startedApprovalListCount += 1
         let approvalList = startedApprovalListCount
-        guard let allApproval = try? await runInBackground({ try backend.listAllPendingApproval() }) else { return }
+        if allPendingApproval.isEmpty, approvalListState != .loaded { approvalListState = .loading }
+        let allApproval: [PhoneApproval]
+        do {
+            allApproval = try await runInBackground { try backend.listAllPendingApproval() }
+        } catch {
+            guard status.isUnlocked, approvalList > shownApprovalList else { return }
+            shownApprovalList = approvalList
+            approvalListState = .failed
+            return
+        }
         // Listings run at once and can finish out of order: a poll that started before a request's own listing must not
         // take that request back off the list and close its sheet.
         guard status.isUnlocked, approvalList > shownApprovalList else { return }
         shownApprovalList = approvalList
+        if approvalListState != .loaded { approvalListState = .loaded }
         let now = getCurrentDate()
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
         // Assigning publishes even an equal list, and the poll would then redraw every screen every 15 seconds. A switch
@@ -1859,6 +1872,7 @@ final class AppModel: ObservableObject {
         approvalExpiryTask?.cancel()
         approvalExpiryTask = nil
         allPendingApproval = []
+        approvalListState = .unchecked
         allAnnouncedApproval = []
         // A listing still running started before the clear and must not bring the requests back.
         shownApprovalList = startedApprovalListCount

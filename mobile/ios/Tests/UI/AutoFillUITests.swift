@@ -29,6 +29,10 @@ final class AutoFillUITests: HisarUITestCase {
         type("other", into: app.searchFields.firstMatch)
         saveScreenshot("autofill-search")
         app.buttons["autofill-login-Other site"].tap()
+        let confirmation = app.alerts.firstMatch
+        waitFor(confirmation)
+        XCTAssertTrue(confirmation.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "other.example.org")).firstMatch.exists)
+        confirmation.buttons["Fill once"].tap()
         checkResult("Filled other-user with a password of 16 characters")
     }
 

@@ -25,6 +25,13 @@ final class AutoFillModel: ObservableObject {
         var kind: RequestKind
     }
 
+    struct UnmatchedLoginConfirmation {
+        var login: LoginMatch
+        var allWebsite: [String]
+        var lockGeneration: Int
+        var requestEpoch: UInt64
+    }
+
     struct PasskeyCompletion {
         var completeAssertion: (PasskeyAssertionCredential) -> Void
         var completeRegistration: (PasskeyRegistrationCredential) -> Void
@@ -38,6 +45,7 @@ final class AutoFillModel: ObservableObject {
     @Published private(set) var allMatchingLogin: [LoginMatch] = []
     @Published private(set) var allOtherLogin: [LoginMatch] = []
     @Published private(set) var isOtherLoginLoaded = false
+    @Published private(set) var unmatchedLoginConfirmation: UnmatchedLoginConfirmation?
     @Published var searchText = "" {
         didSet {
             if !searchText.isEmpty { Task { await loadAllOtherLogin() } }
@@ -134,18 +142,23 @@ final class AutoFillModel: ObservableObject {
         }
     }
 
-    private func perform<Value>(_ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
+    private func perform<Value>(deliversCommittedRegistration: Bool = false, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
         guard let backend = prepareBackend() else { return nil }
         let epoch = requestEpoch
+        let generation = lockCount
         isBusy = true
         defer { if epoch == requestEpoch { isBusy = false } }
         do {
             let value = try await runInBackground { try operation(backend) }
             guard epoch == requestEpoch else { return nil }
+            if status.isUnlocked { refreshStatus() }
+            guard deliversCommittedRegistration || generation == lockCount else { return nil }
             errorMessage = nil
             return value
         } catch {
             guard epoch == requestEpoch else { return nil }
+            refreshStatus()
+            guard generation == lockCount else { return nil }
             if (error as? BackendError)?.code == BackendError.passkeyVerificationFailed {
                 cancelRequest(.userCanceled)
                 return nil
@@ -156,7 +169,10 @@ final class AutoFillModel: ObservableObject {
     }
 
     private func applyStatus(_ newStatus: VaultStatus) {
-        if status.isUnlocked && !newStatus.isUnlocked { lockCount += 1 }
+        if status.isUnlocked && !newStatus.isUnlocked {
+            lockCount += 1
+            forgetUnlockedData()
+        }
         status = newStatus
         switch newStatus.state {
         case VaultStatus.stateUnlocked: screen = passkeyRegistrationRequest == nil ? .list : .passkeyRegistration
@@ -168,8 +184,37 @@ final class AutoFillModel: ObservableObject {
         }
     }
 
+    func handleLocked() {
+        lockCount += 1
+        forgetUnlockedData()
+        if let backend {
+            status = backend.getStatus()
+            applyStatus(status)
+        }
+    }
+
+    func refreshStatus() {
+        guard screen != .configuration, let backend else { return }
+        applyStatus(backend.getStatus())
+    }
+
+    private func forgetUnlockedData() {
+        allMatchingLogin = []
+        allOtherLogin = []
+        isOtherLoginLoaded = false
+        unmatchedLoginConfirmation = nil
+        allMatchingPasskey = []
+        searchText = ""
+        serviceIdentifierByLoginID = [:]
+        passkeyRegistrationOptions = nil
+        selectedRegistrationLoginID = nil
+        errorMessage = nil
+        isBusy = false
+    }
+
     private func resetRequest() {
         endPasskeyCeremony()
+        forgetUnlockedData()
         pendingRequest = nil
         pendingPasskeyCredentialID = nil
         passkeyAssertionRequest = nil
@@ -205,35 +250,47 @@ final class AutoFillModel: ObservableObject {
 
     // Without user interaction only an extension process that is still unlocked can answer.
     func provideCredentialWithoutUserInteraction(recordIdentifier: String, serviceIdentifier: String) async -> LoginCredential? {
+        let generation = lockCount
+        let epoch = requestEpoch
         guard let backend, backend.getStatus().isUnlocked, backend.getStatus().updateRequired == nil,
               let reference = LoginMatch.parseRecordIdentifier(recordIdentifier),
               let credential = try? await runInBackground({
                   try backend.getLoginForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier)
               }) else { return nil }
+        guard generation == lockCount, epoch == requestEpoch else { return nil }
         if credential.hasOneTimePassword {
             await copyCode(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier)
         }
+        refreshStatus()
+        guard generation == lockCount, epoch == requestEpoch, status.isUnlocked else { return nil }
         return credential
     }
 
     func provideOneTimeCodeWithoutUserInteraction(recordIdentifier: String, serviceIdentifier: String) async -> String? {
         guard let backend, backend.getStatus().isUnlocked, backend.getStatus().updateRequired == nil,
               let reference = LoginMatch.parseRecordIdentifier(recordIdentifier) else { return nil }
-        return try? await runInBackground {
+        let generation = lockCount
+        let epoch = requestEpoch
+        let code = try? await runInBackground {
             try backend.getOneTimeCodeForService(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier).code
         }
+        refreshStatus()
+        return generation == lockCount && epoch == requestEpoch && status.isUnlocked ? code : nil
     }
 
     // The code goes to the pasteboard after a password fill, for the site's next step; a failure never stops the fill.
     private func copyCode(vaultID: String, itemID: String, serviceIdentifier: String?) async {
         guard let backend else { return }
+        let generation = lockCount
+        let epoch = requestEpoch
         let code = try? await runInBackground { () -> OneTimeCode in
             if let serviceIdentifier {
                 return try backend.getOneTimeCodeForService(vaultID: vaultID, itemID: itemID, serviceIdentifier: serviceIdentifier)
             }
             return try backend.getOneTimeCode(vaultID: vaultID, itemID: itemID)
         }
-        if let code {
+        refreshStatus()
+        if let code, generation == lockCount, epoch == requestEpoch, status.isUnlocked {
             copyOneTimeCode(code.code)
         }
     }
@@ -254,10 +311,14 @@ final class AutoFillModel: ObservableObject {
     // Like passwords, only an extension process that is still unlocked signs without user interaction, and only when the
     // site does not ask for user verification: otherwise iOS shows the extension so the user confirms.
     func providePasskeyWithoutUserInteraction(request: PasskeyAssertionRequest, credentialID: Data) async -> PasskeyAssertionCredential? {
+        let generation = lockCount
+        let epoch = requestEpoch
         guard request.isUserVerificationDiscouraged, let backend, backend.getStatus().isUnlocked, backend.getStatus().updateRequired == nil,
               let result = try? await runInBackground({
                   try backend.assertPasskey(relyingPartyID: request.relyingPartyID, credentialID: credentialID, clientDataHash: request.clientDataHash, userVerification: request.userVerification)
               }) else { return nil }
+        refreshStatus()
+        guard generation == lockCount, epoch == requestEpoch, status.isUnlocked else { return nil }
         return PasskeyAssertionCredential(relyingPartyID: request.relyingPartyID, clientDataHash: request.clientDataHash, result: result)
     }
 
@@ -288,7 +349,7 @@ final class AutoFillModel: ObservableObject {
     func savePasskey() async {
         guard let request = passkeyRegistrationRequest, let options = passkeyRegistrationOptions, !options.isExcluded else { return }
         let login = options.allLogin.first { $0.id == selectedRegistrationLoginID }
-        guard let saved = await perform({ backend -> (result: PasskeyRegistrationResult, allPrevious: [StoredPasskey], allCurrent: [StoredPasskey]) in
+        guard let saved = await perform(deliversCommittedRegistration: true, { backend -> (result: PasskeyRegistrationResult, allPrevious: [StoredPasskey], allCurrent: [StoredPasskey]) in
             let allPrevious = try backend.listAllPasskeyForRelyingParty(relyingPartyID: request.relyingPartyID, allAllowedCredentialID: [])
             let result = try backend.createPasskey(request, vaultID: login?.vaultID ?? "", itemID: login?.itemID ?? "")
             let allCurrent = (try? backend.listAllPasskeyForRelyingParty(relyingPartyID: request.relyingPartyID, allAllowedCredentialID: [])) ?? allPrevious
@@ -352,15 +413,16 @@ final class AutoFillModel: ObservableObject {
 
     func unlockWithBiometric() async {
         guard status.biometricReady, let newStatus = await perform({ try $0.unlockWithBiometric() }) else {
-            if let backend { status = backend.getStatus() }
+            refreshStatus()
             return
         }
         await handleUnlocked(newStatus)
     }
 
     private func handleUnlocked(_ newStatus: VaultStatus) async {
-        applyStatus(newStatus)
-        guard newStatus.isUnlocked else { return }
+        let currentStatus = backend?.getStatus() ?? newStatus
+        applyStatus(currentStatus)
+        guard currentStatus.isUnlocked else { return }
         if passkeyRegistrationRequest != nil {
             await loadPasskeyRegistrationOptions()
         } else if pendingRequest != nil || pendingPasskeyCredentialID != nil {
@@ -371,16 +433,20 @@ final class AutoFillModel: ObservableObject {
     }
 
     private func finishPendingRequest() async {
+        guard status.isUnlocked else { return }
+        let generation = lockCount
+        let epoch = requestEpoch
         if let credentialID = pendingPasskeyCredentialID, let request = passkeyAssertionRequest {
             // The identity iOS offered is gone, deleted or moved since the store was last updated.
-            guard let allFound = await perform({ try $0.listAllPasskeyForRelyingParty(relyingPartyID: request.relyingPartyID, allAllowedCredentialID: [credentialID]) }),
-                  !allFound.isEmpty else {
+            guard let allFound = await perform({ try $0.listAllPasskeyForRelyingParty(relyingPartyID: request.relyingPartyID, allAllowedCredentialID: [credentialID]) }) else { return }
+            guard !allFound.isEmpty else {
                 cancelRequest(.credentialIdentityNotFound)
                 return
             }
             if await assertPasskey(request: request, credentialID: credentialID) {
                 return
             }
+            guard generation == lockCount, epoch == requestEpoch, status.isUnlocked else { return }
             pendingPasskeyCredentialID = nil
             await loadAllMatchingCredential()
             return
@@ -399,19 +465,23 @@ final class AutoFillModel: ObservableObject {
             if credential.hasOneTimePassword {
                 await copyCode(vaultID: reference.vaultID, itemID: reference.itemID, serviceIdentifier: serviceIdentifier)
             }
+            guard generation == lockCount, epoch == requestEpoch, status.isUnlocked else { return }
             completeRequest(credential)
             return
         }
+        guard generation == lockCount, epoch == requestEpoch, status.isUnlocked else { return }
         self.pendingRequest = nil
         await loadAllMatchingLogin()
     }
 
     func loadAllMatchingCredential() async {
         await loadAllMatchingPasskey()
+        guard status.isUnlocked else { return }
         await loadAllMatchingLogin()
     }
 
     func loadAllMatchingPasskey() async {
+        guard status.isUnlocked else { return }
         guard let request = passkeyAssertionRequest else {
             allMatchingPasskey = []
             return
@@ -420,6 +490,7 @@ final class AutoFillModel: ObservableObject {
     }
 
     func loadAllMatchingLogin() async {
+        guard status.isUnlocked else { return }
         let allServiceIdentifier = allServiceIdentifier
         guard let result = await perform({ backend -> [(String, LoginMatch)] in
             var allPair: [(String, LoginMatch)] = []
@@ -455,6 +526,46 @@ final class AutoFillModel: ObservableObject {
     }
 
     func select(_ login: LoginMatch) async {
+        guard status.isUnlocked else { return }
+        if serviceIdentifierByLoginID[login.id] == nil {
+            guard let item = await perform({ try $0.getItem(vaultID: login.vaultID, itemID: login.itemID) }) else { return }
+            unmatchedLoginConfirmation = UnmatchedLoginConfirmation(login: login, allWebsite: item.allURL.filter { VaultLogic.extractHost($0) != nil }, lockGeneration: lockCount, requestEpoch: requestEpoch)
+            return
+        }
+        await fill(login)
+    }
+
+    func dismissUnmatchedLogin() {
+        unmatchedLoginConfirmation = nil
+    }
+
+    func fillUnmatchedLogin(_ selected: UnmatchedLoginConfirmation? = nil) async {
+        guard status.isUnlocked, let confirmation = selected ?? unmatchedLoginConfirmation,
+              confirmation.lockGeneration == lockCount, confirmation.requestEpoch == requestEpoch else { return }
+        unmatchedLoginConfirmation = nil
+        await fill(confirmation.login)
+    }
+
+    var unmatchedFillTitle: String {
+        guard let login = unmatchedLoginConfirmation?.login else { return "" }
+        let account = login.username.isEmpty ? login.title : "\(login.title) (\(login.username))"
+        let subject = requestKind == .oneTimeCode ? "a one-time code for \(account)" : account
+        let host = allServiceIdentifier.lazy.compactMap { VaultLogic.extractHost($0) }.first
+        return host.map { "Fill \(subject) into \($0)?" } ?? "Fill \(subject) without a website?"
+    }
+
+    var unmatchedFillMessage: String {
+        guard let confirmation = unmatchedLoginConfirmation else { return "" }
+        let hasWebsite = allServiceIdentifier.contains { VaultLogic.extractHost($0) != nil }
+        let target = hasWebsite ? "Not saved for this site." : "This request has no website."
+        let websites = confirmation.allWebsite.isEmpty ? "No website saved" : "Saved websites:\n" + confirmation.allWebsite.joined(separator: "\n")
+        return "\(target)\n\(confirmation.login.vaultName)\n\n\(websites)"
+    }
+
+    private func fill(_ login: LoginMatch) async {
+        guard status.isUnlocked else { return }
+        let generation = lockCount
+        let epoch = requestEpoch
         let serviceIdentifier = serviceIdentifierByLoginID[login.id]
         if requestKind == .oneTimeCode {
             let code = await perform { backend -> OneTimeCode in
@@ -481,6 +592,7 @@ final class AutoFillModel: ObservableObject {
         if credential.hasOneTimePassword {
             await copyCode(vaultID: login.vaultID, itemID: login.itemID, serviceIdentifier: serviceIdentifier)
         }
+        guard generation == lockCount, epoch == requestEpoch, status.isUnlocked else { return }
         completeRequest(credential)
     }
 

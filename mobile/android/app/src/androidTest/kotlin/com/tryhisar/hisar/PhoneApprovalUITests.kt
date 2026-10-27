@@ -64,7 +64,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         val backend = createBackend(createApproval("cli"))
         launchApp(backend).use {
             openSheet("preview-cli")
-            assertEquals("Approve on Alper's MacBook Pro?", readText("phone-approval-title"))
+            assertEquals("Alper's MacBook Pro", readText("phone-approval-mac"))
             saveScreenshot("phone-approval-cli")
             tap("phone-approval-deny")
             checkResult(backend, "deny preview-cli", "Denied on your Mac")
@@ -209,7 +209,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         // An event and the poll can list the request together; the sheet's window composes a moment after the card.
         Thread.sleep(2_000)
         if (exists(hasTestTag("phone-approval"))) {
-            assertEquals("Approve on UI Test Mac?", readText("phone-approval-title"))
+            assertEquals("UI Test Mac", readText("phone-approval-mac"))
             tap("phone-approval-close")
         }
         assertEquals("Waiting for your approval", readText("pending-approval-header"))
@@ -240,7 +240,7 @@ class PhoneApprovalUITests : HisarUITestCase() {
         waitForPersonalItem("SSH request: approve, remembered")
 
         waitFor("phone-approval", 120_000)
-        assertEquals("Approve on UI Test Mac?", readText("phone-approval-title"))
+        assertEquals("UI Test Mac", readText("phone-approval-mac"))
         assertEquals("hisar in Terminal wants to use Hisar", readText("phone-approval-summary"))
         assertEquals("/dev/ttys003", readText("phone-approval-row-Terminal"))
         saveScreenshot("phone-approval-real-cli")
