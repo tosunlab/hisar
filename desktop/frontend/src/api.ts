@@ -154,7 +154,7 @@ export type VaultRole = "owner" | "editor" | "reader";
 export type OrganizationRole = "admin" | "member";
 // MainWindowAction is what a Settings action leads to in the main window, which owns the vaults, the sharing panel and
 // pending recovery.
-export type MainWindowAction = "import" | "sharing" | "recovery";
+export type MainWindowAction = "import" | "sharing" | "recovery" | "commit-signing";
 
 // ShareInvitations: waiting lists the shares this user accepted that the owner's app has not finished yet.
 export interface ShareInvitations {

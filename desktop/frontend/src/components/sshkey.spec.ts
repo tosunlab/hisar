@@ -46,6 +46,8 @@ function resetStore(): void {
     noticeMessage: "",
     isBusy: false,
     isSettingsOpen: false,
+    isCommitSigningSetupOpen: false,
+    commitSigningItemID: "",
     sshAgentStatus: null,
     sshAgentErrorMessage: "",
     allPendingApproval: [],
@@ -378,5 +380,38 @@ describe("Settings SSH agent section", () => {
     await wrapper.find('[data-testid="configure-ssh-config"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="ssh-agent-section"] [role="alert"]').text()).toBe("permission denied");
+  });
+
+  it("opens an existing key and expands its signing commands from Settings", async () => {
+    const key = createSSHKeyItem();
+    api.listAllItem.mockResolvedValue([key]);
+    api.getItem.mockResolvedValue(key);
+    store.isSettingsOpen = true;
+    const wrapper = mount(MainView);
+    await wrapper.get('[data-testid="open-commit-signing"]').trigger("click");
+    await flushPromises();
+    expect(store.isSettingsOpen).toBe(false);
+    expect(wrapper.get('[data-testid="signing-choose-key"]').text()).toContain(key.title);
+    await wrapper.get('[data-testid="signing-choose-key"]').trigger("click");
+    await flushPromises();
+    expect(store.selectedItem?.id).toBe(key.id);
+    expect(wrapper.get('[data-testid="commit-signing-steps"]').text()).toContain("Hisar does not change your Git config");
+    expect(store.isCommitSigningSetupOpen).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("offers the existing New SSH key flow when there are no keys", async () => {
+    api.listAllItem.mockResolvedValue([]);
+    store.isSettingsOpen = true;
+    const wrapper = mount(MainView);
+    await wrapper.get('[data-testid="open-commit-signing"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.text()).toContain("You need an SSH key to sign commits.");
+    await wrapper.get('[data-testid="signing-new-ssh-key"]').trigger("click");
+    await flushPromises();
+    expect(store.editorMode).toBe("create-ssh-key");
+    expect(wrapper.find('input[name="keyType"]').exists()).toBe(true);
+    expect(store.isCommitSigningSetupOpen).toBe(false);
+    wrapper.unmount();
   });
 });

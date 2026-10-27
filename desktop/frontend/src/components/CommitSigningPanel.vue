@@ -1,18 +1,21 @@
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, watch } from "vue";
 import { copyField, copyText, openWebsite, store } from "../store";
 import { buildCommitSigningCommandList, gitHubSSHKeyURL, gitLabSSHKeyURL } from "../util";
 import AppIcon from "./AppIcon.vue";
 
 const props = defineProps<{ publicKey: string }>();
 
-const isSigningShown = ref(false);
+const isSigningShown = computed({
+  get: () => !!store.selectedItem && store.commitSigningItemID === store.selectedItem.id,
+  set: (shown: boolean) => { store.commitSigningItemID = shown ? store.selectedItem?.id ?? "" : ""; },
+});
 const allCommand = computed(() => buildCommitSigningCommandList(props.publicKey));
 
 watch(
   () => store.selectedItem?.id,
-  () => {
-    isSigningShown.value = false;
+  (itemID) => {
+    if (itemID !== store.commitSigningItemID) store.commitSigningItemID = "";
   },
 );
 

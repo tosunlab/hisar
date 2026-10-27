@@ -82,6 +82,7 @@ import DiscardChangesDialog from "./DiscardChangesDialog.vue";
 import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import MoveItemDialog from "./MoveItemDialog.vue";
 import ImportPanel from "./ImportPanel.vue";
+import CommitSigningSetupDialog from "./CommitSigningSetupDialog.vue";
 import ItemTile from "./ItemTile.vue";
 import SettingsPanel from "./SettingsPanel.vue";
 import OrganizationAlert from "./OrganizationAlert.vue";
@@ -209,6 +210,7 @@ const isOverlayOpen = computed(
     store.isSettingsOpen ||
     store.isSharingOpen ||
     store.isImportOpen ||
+    store.isCommitSigningSetupOpen ||
     store.isShareLinksOpen ||
     store.shareLinkDialog !== null ||
     store.vaultDialog !== null ||
@@ -853,6 +855,7 @@ onBeforeUnmount(() => {
     <SettingsPanel v-if="store.isSettingsOpen" />
     <VaultSharingPanel v-if="store.isSharingOpen" />
     <ImportPanel v-if="store.isImportOpen" />
+    <CommitSigningSetupDialog v-if="store.isCommitSigningSetupOpen" />
     <SharedLinksPanel v-if="store.isShareLinksOpen" />
     <VaultDialog v-if="store.vaultDialog" :key="`${store.vaultDialog.mode}-${store.vaultDialog.actions.vault.id}`" :dialog="store.vaultDialog" />
     <VaultMenu v-if="vaultMenu && vaultMenuVault" :vault="vaultMenuVault" :x="vaultMenu.x" :y="vaultMenu.y" @close="vaultMenu = null" />
