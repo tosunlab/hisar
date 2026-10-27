@@ -2,7 +2,7 @@ usage: hisar [--standalone] <command> [arguments]
 
 commands:
   status             [--json]                            show whether hisar uses the Hisar app or its own sign-in, and the account; --json prints mode, state and account
-  signup             [-o file] [-y] <invite-link>        create your account from an invite with durable recovery
+  signup             [-o file] [-y] [-server url | <invite-link>] create your account with durable recovery, from an invite or on a server with open registration
   login                                                  sign in on this device
   logout                                                 sign out on this device
   whoami                                                 show the signed-in account

@@ -35,7 +35,7 @@ import {
   softwareLicenseCategory,
   sshKeyCategory,
 } from "../util";
-import { cancelEditing, saveItem, store } from "../store";
+import { cancelEditing, saveItem, store, takeRestoredDraft } from "../store";
 import AddressFields from "./AddressFields.vue";
 import AppIcon from "./AppIcon.vue";
 import IconPicker from "./IconPicker.vue";
@@ -98,8 +98,44 @@ function createDraft(): ItemDetail {
   return empty;
 }
 
-const draft = reactive<ItemDetail>(createDraft());
-const urlText = ref(draft.urls.join("\n"));
+// serializeItem sorts the keys, so a draft compares equal to the item it came from whatever order its fields were set in.
+function serializeItem(item: ItemDetail): string {
+  return JSON.stringify(item, (_key, value: unknown) =>
+    value && typeof value === "object" && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).sort(([first], [second]) => first.localeCompare(second))) : value,
+  );
+}
+
+function parseURLText(): string[] {
+  return urlText.value
+    .split("\n")
+    .map((link) => link.trim())
+    .filter((link) => link !== "");
+}
+
+// A draft the lock kept for this editor continues where it stopped; any other editor starts from the item.
+const keptDraft = takeRestoredDraft();
+const savedItem = createDraft();
+const savedItemJSON = serializeItem(savedItem);
+const draft = reactive<ItemDetail>(keptDraft ? (JSON.parse(JSON.stringify(keptDraft.item)) as ItemDetail) : savedItem);
+const urlText = ref(keptDraft ? keptDraft.urlText : draft.urls.join("\n"));
+watch(
+  [draft, urlText],
+  () => {
+    const item = JSON.parse(JSON.stringify({ ...draft, urls: parseURLText() })) as ItemDetail;
+    store.editorDraft = {
+      mode: store.editorMode,
+      vaultID: store.selectedVaultID,
+      itemID: store.selectedItem?.id ?? "",
+      item,
+      urlText: urlText.value,
+      isDirty: serializeItem(item) !== savedItemJSON,
+    };
+  },
+  { deep: true, immediate: true },
+);
+onBeforeUnmount(() => {
+  store.editorDraft = null;
+});
 const isPasswordVisible = ref(false);
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isIconPickerOpen = ref(false);
@@ -249,10 +285,7 @@ function handleTagKey(event: KeyboardEvent): void {
 
 async function submitItem(): Promise<void> {
   addTag();
-  draft.urls = urlText.value
-    .split("\n")
-    .map((link) => link.trim())
-    .filter((link) => link !== "");
+  draft.urls = parseURLText();
   await saveItem({ ...draft });
 }
 </script>

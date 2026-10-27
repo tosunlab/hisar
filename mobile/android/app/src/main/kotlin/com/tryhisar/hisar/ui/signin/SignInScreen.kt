@@ -53,7 +53,7 @@ enum class SignInMode(val title: String) {
     CREATE_ACCOUNT("Create account"),
 }
 
-/** Signing in on this device, or creating an account from an invite: the iPhone app's SignInView. */
+/** Signing in on this device, or creating an account from an invite or on a server that lets anyone join: the iPhone app's SignInView. */
 @Composable
 fun SignInScreen(model: AppModel) {
     val signIn = model.signIn
@@ -102,9 +102,12 @@ fun SignInScreen(model: AppModel) {
     }
 
     val isPasswordMismatch = mode == SignInMode.CREATE_ACCOUNT && repeatedPassword.isNotEmpty() && password != repeatedPassword
+    // An invite link names its server, so the create-account form asks for one only without an invite.
+    val isSignUpServerAsked = inviteLink.isBlank()
     val canSubmit = when (mode) {
         SignInMode.SIGN_IN -> server.isNotEmpty() && email.isNotEmpty() && secretKey.isNotEmpty() && password.isNotEmpty()
-        SignInMode.CREATE_ACCOUNT -> inviteLink.isNotEmpty() && email.isNotEmpty() && name.isNotEmpty() && password.isNotEmpty() && password == repeatedPassword
+        SignInMode.CREATE_ACCOUNT ->
+            (!isSignUpServerAsked || server.isNotBlank()) && email.isNotEmpty() && name.isNotEmpty() && password.isNotEmpty() && password == repeatedPassword
     }
 
     fun submit() {
@@ -115,9 +118,16 @@ fun SignInScreen(model: AppModel) {
                     password = ""
                     secretKey = ""
                 }
-                SignInMode.CREATE_ACCOUNT -> if (signIn.signUp(inviteLink, email, name, password)) {
-                    password = ""
-                    repeatedPassword = ""
+                SignInMode.CREATE_ACCOUNT -> {
+                    val isSignedUp = if (isSignUpServerAsked) {
+                        signIn.signUpWithoutInvite(server, email, name, password)
+                    } else {
+                        signIn.signUp(inviteLink, email, name, password)
+                    }
+                    if (isSignedUp) {
+                        password = ""
+                        repeatedPassword = ""
+                    }
                 }
             }
         }
@@ -128,7 +138,7 @@ fun SignInScreen(model: AppModel) {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 LogoMark(size = 56.dp)
                 Text(
-                    if (mode == SignInMode.SIGN_IN) "Sign in to use Hisar on this device." else "Enter the invite code you received, or paste the invite link.",
+                    if (mode == SignInMode.SIGN_IN) "Sign in to use Hisar on this device." else "Enter the invite code you received, or sign up on a server that lets anyone join.",
                     style = HisarType.subheadline,
                     color = HisarTheme.colors.secondaryLabel,
                 )
@@ -161,6 +171,9 @@ fun SignInScreen(model: AppModel) {
             )
             SignInMode.CREATE_ACCOUNT -> CreateAccountSections(
                 inviteLink = inviteLink, onInviteLinkChange = { inviteLink = it },
+                server = server, onServerChange = { server = it },
+                isServerAsked = isSignUpServerAsked,
+                isServerShown = isServerShown, showServer = { isServerShown = true },
                 email = email, onEmailChange = { email = it },
                 name = name, onNameChange = { name = it },
                 password = password, onPasswordChange = { password = it },
@@ -254,6 +267,11 @@ private fun SignInSections(
 private fun CreateAccountSections(
     inviteLink: String,
     onInviteLinkChange: (String) -> Unit,
+    server: String,
+    onServerChange: (String) -> Unit,
+    isServerAsked: Boolean,
+    isServerShown: Boolean,
+    showServer: () -> Unit,
     email: String,
     onEmailChange: (String) -> Unit,
     name: String,
@@ -264,11 +282,26 @@ private fun CreateAccountSections(
     onRepeatedPasswordChange: (String) -> Unit,
     isPasswordMismatch: Boolean,
 ) {
-    FormSection(header = "Invite") {
+    FormSection(header = "Invite", footer = { Text("Leave it empty if the server lets anyone sign up.") }) {
         FormTextField(
-            inviteLink, onInviteLinkChange, placeholder = "Invite code or link", testTag = "sign-up-invite-link",
+            inviteLink, onInviteLinkChange, placeholder = "Invite code or link (optional)", testTag = "sign-up-invite-link",
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
         )
+    }
+    if (isServerAsked) {
+        FormSection(
+            header = "Server",
+            footer = if (isServerShown) null else ({ Text("Creates your account on ${SignInModel.describeServer(server)}.") }),
+        ) {
+            if (isServerShown) {
+                FormTextField(
+                    server, onServerChange, placeholder = SignInModel.DEFAULT_SERVER, testTag = "sign-up-server",
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
+                )
+            } else {
+                FormButtonRow("Use a different server…", showServer, testTag = "sign-up-use-different-server")
+            }
+        }
     }
     FormSection(header = "You") {
         FormTextField(

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { clearError, dismissSignedOutReason, signIn, signUp, store } from "../store";
+import { clearError, dismissSignedOutReason, signIn, signUp, signUpWithoutInvite, store } from "../store";
 import { getMasterPasswordFeedback, getThisDeviceName, isMacPlatform } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -45,7 +45,10 @@ const passwordMismatch = computed(
 const passwordFeedback = computed(() => getMasterPasswordFeedback(mode.value === "sign-in" ? "" : password.value));
 const allHeading: Record<Mode, { title: string; subtitle: string }> = {
   "sign-in": { title: "Welcome back", subtitle: `Sign in to Hisar on ${getThisDeviceName()}.` },
-  "create-account": { title: "Create your account", subtitle: "Enter the invite code you received. Pasting the whole invite link works too." },
+  "create-account": {
+    title: "Create your account",
+    subtitle: "Enter the invite code you received, or paste the whole invite link. Some servers let anyone sign up without one.",
+  },
 };
 
 type Feature = { icon: IconName; title: string; text: string };
@@ -98,6 +101,9 @@ function getInvite(): string {
   return pastedInviteLink.value.endsWith(`/invite/${inviteCode.value}`) ? pastedInviteLink.value : inviteCode.value;
 }
 
+// Without an invite the account is created on the chosen server, which must have opened registration.
+const hasInvite = computed(() => inviteCode.value.trim() !== "");
+
 // An invite opened through hisar://invite/… arrives as the bare code, or as the invite link on another server.
 watch(
   () => store.pendingInvite,
@@ -132,7 +138,9 @@ async function submitCreateAccount(): Promise<void> {
   if (password.value !== repeatedPassword.value || passwordFeedback.value.isBlocking) {
     return;
   }
-  const succeeded = await signUp(getInvite(), email.value, name.value, password.value);
+  const succeeded = hasInvite.value
+    ? await signUp(getInvite(), email.value, name.value, password.value)
+    : await signUpWithoutInvite(server.value, email.value, name.value, password.value);
   if (succeeded) {
     password.value = "";
     repeatedPassword.value = "";
@@ -216,7 +224,7 @@ async function submitCreateAccount(): Promise<void> {
 
         <form v-else @submit.prevent="submitCreateAccount">
           <label>
-            <span>Invite code</span>
+            <span>Invite code or link (optional)</span>
             <span class="input-with-icon">
               <AppIcon name="external" />
               <input
@@ -225,11 +233,15 @@ async function submitCreateAccount(): Promise<void> {
                 placeholder="Invite code or link"
                 autocomplete="off"
                 spellcheck="false"
-                required
                 @input="readInviteCode"
               />
             </span>
             <span v-if="inviteServer" class="muted invite-server" data-testid="invite-server">Server: {{ inviteServer }}</span>
+            <span v-else-if="!hasInvite" class="muted invite-server" data-testid="invite-hint">Leave it empty if the server lets anyone sign up.</span>
+          </label>
+          <label v-if="isServerShown && !hasInvite">
+            <span>Server</span>
+            <span class="input-with-icon"><AppIcon name="globe" /><input v-model="server" name="server" autocomplete="url" required /></span>
           </label>
           <div class="two-columns">
             <label>
@@ -259,6 +271,10 @@ async function submitCreateAccount(): Promise<void> {
             Your master password never leaves this Mac. A forgotten master password can't be recovered by anyone, including Hisar.
           </p>
           <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
+          <p v-if="!isServerShown && !hasInvite" class="hint">
+            <span class="muted" data-testid="create-account-server">Creates the account on {{ server }}.</span>
+            <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
+          </p>
         </form>
       </div>
     </main>
