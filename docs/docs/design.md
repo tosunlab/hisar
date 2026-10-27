@@ -150,6 +150,8 @@ An item has two encrypted parts so lists and search don't decrypt every secret:
 - **overview**: title, category, URLs, tags, icon, subtitle (username).
 - **details**: fields, passwords, notes, TOTP seeds, passkeys, history of field values.
 
+**Custom fields** are found by their name: references, `hisar get -f` and the named fields of the categories below all match on it, so a field without a name could never be read. `SaveItem` leaves out a row whose name and value are both empty and refuses one with a value but no name ("enter a name for each field that has a value") rather than drop the value; the Mac, iPhone and Android editors check the same before saving, keep the draft, and focus the field's name with "Enter a name for this field." beside it. Importers name an unnamed field "Field".
+
 **Categories.** `overview.category` is the item's type, set when the item is created and kept by every edit:
 
 | Category | Holds | Shown as |

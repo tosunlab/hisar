@@ -20,6 +20,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
@@ -345,9 +347,12 @@ fun SoftwareLicenseSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -
     }
 }
 
-/** Custom fields: each with its name, its value, hidden when secret, and the Secret switch; its button or a swipe removes one. */
+/**
+ * Custom fields: each with its name, its value, hidden when secret, and the Secret switch; its button or a swipe removes one.
+ * [nameFocus] gives the name of the field at an index, which Save focuses when the field has a value but no name.
+ */
 @Composable
-fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit) {
+fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit, nameFocus: (Int) -> FocusRequester) {
     val allField = draft.item.allField
     fun update(index: Int, transform: (ItemField) -> ItemField) =
         onChange(draft.withItem { item -> item.copy(allField = item.allField.toMutableList().apply { set(index, transform(get(index))) }) })
@@ -357,7 +362,18 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
             SwipeToDeleteRow(onDelete = remove) {
                 Row(Modifier.padding(vertical = 4.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        EditorField(field.name, { value -> update(index) { it.copy(name = value) } }, "Name", "editor-field-$index-name", textStyle = HisarType.footnote)
+                        EditorField(
+                            field.name, { value -> update(index) { it.copy(name = value) } }, "Name", "editor-field-$index-name",
+                            modifier = Modifier.focusRequester(nameFocus(index)), textStyle = HisarType.footnote,
+                        )
+                        if (draft.isUnnamedFieldShown && field.isNameMissing) {
+                            Text(
+                                "Enter a name for this field.",
+                                color = HisarTheme.colors.destructive,
+                                style = HisarType.footnote,
+                                modifier = Modifier.padding(start = 16.dp, bottom = 4.dp).testTag("editor-field-$index-name-error"),
+                            )
+                        }
                         EditorField(
                             field.value, { value -> update(index) { it.copy(value = value) } }, "Value", "editor-field-$index-value",
                             kind = if (field.concealed) FieldKind.SECRET else FieldKind.TEXT, isSecret = field.concealed,
