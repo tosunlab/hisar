@@ -125,6 +125,7 @@ const isLoadingTeams = ref(false);
 let newVaultTeamLoad = 0;
 // newVaultErrorMessage is why the last Create failed, shown in the form.
 const newVaultErrorMessage = ref("");
+const newVaultTeamsError = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
@@ -196,7 +197,7 @@ const selectedTeamChoice = computed(() => allTeamChoice.value.find((choice) => c
 // canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: the user's own vault or one of the
 // teams. A team that is no longer listed (its organization or the user's place in it changed) never falls back to an own vault.
 const canSubmitNewVault = computed(
-  () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
+  () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && !newVaultTeamsError.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
 );
 // itemMenu is the right-click menu of a list item. detail arrives after the menu opens: list summaries carry no password
 // or fields, so the copy actions appear once it has loaded. favorite is set when the item was right-clicked in Favorites.
@@ -363,10 +364,16 @@ function openVaultMenuBelow(event: MouseEvent): void {
 async function prepareNewVaultForm(): Promise<void> {
   newVaultWhere.value = "";
   newVaultErrorMessage.value = "";
+  await loadNewVaultTeams();
+}
+
+async function loadNewVaultTeams(): Promise<void> {
   isLoadingTeams.value = true;
+  newVaultTeamsError.value = "";
   const load = ++newVaultTeamLoad;
-  await loadAllOrganizationQuietly();
+  const error = await loadAllOrganizationQuietly();
   if (load === newVaultTeamLoad) {
+    newVaultTeamsError.value = error;
     isLoadingTeams.value = false;
   }
 }
@@ -597,9 +604,13 @@ onBeforeUnmount(() => {
         </div>
         <form v-if="store.isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
           <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
-          <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
+          <label class="new-vault-where">
             <span>Where</span>
-            <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where">
+            <span v-if="isLoadingTeams" role="status" data-testid="new-vault-teams-loading"><progress aria-label="Loading teams" /> Loading teams…</span>
+            <span v-else-if="newVaultTeamsError" role="alert" data-testid="new-vault-teams-error">
+              Couldn't load teams. <button type="button" class="ghost" @click="loadNewVaultTeams">Retry</button>
+            </span>
+            <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where" :disabled="isLoadingTeams || !!newVaultTeamsError">
               <option value="">Your own vault (share it later)</option>
               <option v-for="choice in allTeamChoice" :key="choice.key" :value="choice.key">{{ choice.label }}</option>
             </select>

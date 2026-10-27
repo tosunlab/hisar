@@ -498,7 +498,8 @@ describe("Organization vaults in the vault list", () => {
     });
     const wrapper = await openNewVaultForm();
     await wrapper.find('input[name="vaultName"]').setValue("Release");
-    expect(wrapper.find('[data-testid="new-vault-where"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="new-vault-where"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="new-vault-teams-loading"]').text()).toContain("Loading teams");
     expect(isCreateDisabled(wrapper)).toBe(true);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
@@ -523,6 +524,21 @@ describe("Organization vaults in the vault list", () => {
     await flushPromises();
     expect(api.createVault).not.toHaveBeenCalled();
     expect(api.createOrganizationVault).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps the new vault destination unresolved after a team load failure and offers retry", async () => {
+    api.getOrganization.mockRejectedValueOnce(new Error("Offline"));
+    const wrapper = await openNewVaultForm();
+    await wrapper.find('input[name="vaultName"]').setValue("Release");
+    expect(wrapper.find('[data-testid="new-vault-teams-error"]').text()).toContain("Couldn't load teams");
+    expect(isCreateDisabled(wrapper)).toBe(true);
+    await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
+    expect(api.createVault).not.toHaveBeenCalled();
+    await wrapper.find('[data-testid="new-vault-teams-error"] button').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="new-vault-teams-error"]').exists()).toBe(false);
+    expect(isCreateDisabled(wrapper)).toBe(false);
     wrapper.unmount();
   });
 
