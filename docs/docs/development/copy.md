@@ -23,7 +23,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|
 | master password | password (when the master password is meant), passphrase |
 | Secret Key | secret key, account key |
-| Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
+| Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." After replacing the Secret Key: "Save the new one now, and destroy the old one." | "has both places to keep them", sign-in address (use server) |
 | Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock; Use Touch ID (the Mac retry button and tooltip use Unlock with Touch ID) |
 | Sign in, Sign out, Create account; Sign out… then Sign out device (Mac Settings → Devices) | Log in, Register, Revoke (a device session) |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |
