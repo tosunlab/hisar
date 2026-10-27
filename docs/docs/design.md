@@ -895,6 +895,7 @@ All clients use `core/` for crypto, the local store and sync.
 ### 9.1 Desktop — Wails v3 (Go + Vue/TypeScript)
 
 - The Go side owns the unlocked keyset and vault keys (in `memguard` locked buffers). The web UI calls Go methods and receives only the decrypted data it asks for.
+- Search and tag changes clear a view-mode selection excluded from the visible results, including Favorites. Copy shortcuts wait for an explicit visible selection. Pending detail reads recheck the current filter before publishing. Filters preserve an editor draft and reconcile the selection when the editor returns to view mode.
 - Local store: SQLite (`modernc.org/sqlite`, pure Go) holding the server's ciphertext as-is plus sync state. Nothing is stored decrypted on disk.
   - `core/cache` stores the account record (salt, Argon2 params, `encKeyset`, public keys), the vault list as the server returns it (wrapped keys, encrypted names), every live item's encrypted parts, each vault's `seq` and the sealed account preferences record with the favorites (§4.7). The file is `desktop-cache.db` next to `desktop.json`, mode 0600, and is deleted on sign-in, sign-up and sign-out.
   - Remotely fetched accounts replace the cache only after keyset verification. `AttachCache` also compares the fetched credential envelope with the one established by signup, unlock, or a committed credential change and checks public keys against the open keyset. A second account fetch cannot overwrite the last verified offline envelope with a forged one.
