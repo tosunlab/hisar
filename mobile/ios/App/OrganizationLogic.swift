@@ -230,7 +230,8 @@ enum OrganizationLogic {
         var lines: [String] = []
         for vaultID in vaultByID.keys.sorted() {
             guard let vault = vaultByID[vaultID] else { continue }
-            var effects: [String] = []
+            var losses: [String] = []
+            var roleChanges: [String] = []
             for accountID in memberByID.keys.sorted() {
                 guard let member = memberByID[accountID] else { continue }
                 let beforeRole = strongest(organization.allTeam, accountID, vaultID)
@@ -238,19 +239,19 @@ enum OrganizationLogic {
                 guard beforeRole != afterRole else { continue }
                 let name = member.name.isEmpty ? member.email : member.name
                 if afterRole.isEmpty {
-                    effects.append(member.isCurrentUser ? "You lose access too." : "\(name) loses access.")
+                    losses.append(member.isCurrentUser ? "You lose access too." : "\(name) loses access.")
                 } else {
                     let subject = member.isCurrentUser ? "Your role" : "\(name)'s role"
-                    effects.append("\(subject) changes from \(beforeRole.capitalized) to \(afterRole.capitalized).")
+                    roleChanges.append("\(subject) changes from \(beforeRole.capitalized) to \(afterRole.capitalized).")
                 }
             }
-            if !effects.isEmpty {
-                let name = vault.canOpen ? vault.name : "A vault you can't open (\(vaultID))"
-                lines.append("\(name): \(effects.joined(separator: " "))")
-            }
+            let name = vault.canOpen ? vault.name : "A vault you can't open (\(vaultID))"
+            if !losses.isEmpty { lines.append("\(name): \(losses.joined(separator: " "))") }
+            if !roleChanges.isEmpty { lines.append("\(name): \(roleChanges.joined(separator: " "))") }
         }
         if !lines.isEmpty { return lines }
         if case .removeTeamMember = change { return ["They keep their vault access through other teams."] }
+        if case .removeMember = change { return ["They have no vault access through this organization's teams."] }
         return ["Everyone keeps their vault access through other teams."]
     }
 

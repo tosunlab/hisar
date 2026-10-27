@@ -354,7 +354,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     val shownMember = openMember
     if (shownMember != null) {
         BackHandler { openMember = null }
-        OrganizationMemberScreen(model, organizationID, name, shownMember, isAdmin, onBack = { openMember = null }, reload = { load() })
+        organization?.let { OrganizationMemberScreen(model, organizationID, name, shownMember, isAdmin, it, onBack = { openMember = null }, reload = { load() }) }
         return
     }
 
@@ -595,17 +595,19 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
             onDismiss = { dialog = null },
             dismissLabel = "Keep invitation",
         )
-        is OrganizationDialog.RemoveMember -> ConfirmationDialog(
+        is OrganizationDialog.RemoveMember -> OrganizationAccessConfirmation(
             title = "Remove ${current.member.name} from $name?",
             message = describeRemoval(current.member.name, name),
+            consequences = organization?.let { OrganizationLogic.accessConsequences(it, OrganizationAccessChange.RemoveMember(current.member.accountID)) }.orEmpty(),
             confirmLabel = "Remove from $name",
             confirmTestTag = "confirm-remove-organization-member",
             onConfirm = { launchChange("Remove from $name") { model.organizations.removeOrganizationMember(organizationID, current.member.accountID) } },
             onDismiss = { dialog = null },
         )
-        is OrganizationDialog.DeleteTeam -> ConfirmationDialog(
+        is OrganizationDialog.DeleteTeam -> OrganizationAccessConfirmation(
             title = "Delete team ${current.team.name}?",
             message = "Its members lose the vaults they have only through ${current.team.name}.",
+            consequences = organization?.let { OrganizationLogic.accessConsequences(it, OrganizationAccessChange.RemoveTeam(current.team.id)) }.orEmpty(),
             confirmLabel = "Delete team",
             confirmTestTag = "confirm-delete-team",
             onConfirm = { launchChange("Delete team") { model.organizations.deleteTeam(organizationID, current.team.id) } },
@@ -619,9 +621,10 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
             onConfirm = { finishRemoval("Delete organization") { model.organizations.deleteOrganization(organizationID) } },
             onDismiss = { dialog = null },
         )
-        OrganizationDialog.Leave -> ConfirmationDialog(
+        OrganizationDialog.Leave -> OrganizationAccessConfirmation(
             title = "Leave $name?",
             message = "You lose the vaults you have through $name's teams.",
+            consequences = organization?.let { org -> org.allMember.firstOrNull { it.isCurrentUser }?.let { OrganizationLogic.accessConsequences(org, OrganizationAccessChange.RemoveMember(it.accountID)) } }.orEmpty(),
             confirmLabel = "Leave $name",
             confirmTestTag = "confirm-leave-organization",
             onConfirm = { finishRemoval("Leave $name") { model.organizations.leaveOrganization(organizationID) } },
@@ -840,6 +843,7 @@ private fun OrganizationMemberScreen(
     organizationName: String,
     member: Member,
     isAdmin: Boolean,
+    organization: Organization,
     onBack: () -> Unit,
     reload: suspend () -> Unit,
 ) {
@@ -909,9 +913,10 @@ private fun OrganizationMemberScreen(
     }
 
     if (isRemoveConfirmationShown) {
-        ConfirmationDialog(
+        OrganizationAccessConfirmation(
             title = "Remove ${member.name} from $organizationName?",
             message = describeRemoval(member.name, organizationName),
+            consequences = OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.RemoveMember(member.accountID)),
             confirmLabel = "Remove from $organizationName",
             confirmTestTag = "confirm-remove-organization-member",
             onConfirm = {

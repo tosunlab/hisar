@@ -183,19 +183,23 @@ object OrganizationLogic {
                 .filter { it.vaultID == vaultID }.maxByOrNull { rank[it.role] ?: 0 }?.role.orEmpty()
         val vaultByID = organization.allTeam.flatMap { it.allVault }.sortedBy { it.canOpen }.associateBy { it.vaultID }
         val memberByID = organization.allTeam.flatMap { it.allMember }.associateBy { it.accountID }
-        val lines = vaultByID.toSortedMap().mapNotNull { (vaultID, vault) ->
+        val lines = vaultByID.toSortedMap().flatMap { (vaultID, vault) ->
             val effects = memberByID.toSortedMap().mapNotNull { (accountID, member) ->
                 val beforeRole = strongest(organization.allTeam, accountID, vaultID)
                 val afterRole = strongest(after, accountID, vaultID)
                 val name = member.name.ifEmpty { member.email }
                 when {
                     beforeRole == afterRole -> null
-                    afterRole.isEmpty() -> if (member.isCurrentUser) "You lose access too." else "$name loses access."
-                    else -> "${if (member.isCurrentUser) "Your role" else "$name's role"} changes from ${VaultLogic.describeVaultRole(beforeRole)} to ${VaultLogic.describeVaultRole(afterRole)}."
+                    afterRole.isEmpty() -> true to (if (member.isCurrentUser) "You lose access too." else "$name loses access.")
+                    else -> false to "${if (member.isCurrentUser) "Your role" else "$name's role"} changes from ${VaultLogic.describeVaultRole(beforeRole)} to ${VaultLogic.describeVaultRole(afterRole)}."
                 }
             }
-            if (effects.isEmpty()) null else "${if (vault.canOpen) vault.name else "A vault you can't open ($vaultID)"}: ${effects.joinToString(" ")}"
+            val name = if (vault.canOpen) vault.name else "A vault you can't open ($vaultID)"
+            listOf(true, false).mapNotNull { isLoss ->
+                effects.filter { it.first == isLoss }.map { it.second }.takeIf { it.isNotEmpty() }?.let { "$name: ${it.joinToString(" ")}" }
+            }
         }
+        if (lines.isEmpty() && change is OrganizationAccessChange.RemoveMember) return listOf("They have no vault access through this organization's teams.")
         return lines.ifEmpty { listOf(if (change is OrganizationAccessChange.RemoveTeamMember) "They keep their vault access through other teams." else "Everyone keeps their vault access through other teams.") }
     }
 

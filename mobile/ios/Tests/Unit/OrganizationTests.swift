@@ -40,11 +40,23 @@ final class OrganizationTests: XCTestCase {
         return model
     }
 
+    func testDeletingTeamsAndLeavingNameEveryUnopenedVault() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allVault.append(TeamVault(vaultID: "ledger-2", name: "", role: "reader", canOpen: false))
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeam("audit"))
+        XCTAssertEqual(lines, ["Deploy: Carol loses access.", "A vault you can't open (ledger): Carol loses access.", "A vault you can't open (ledger-2): Carol loses access."])
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .removeMember("alice-id")), ["Deploy: You lose access too."])
+        var backup = organization.allTeam[0]
+        backup.id = "backup"
+        organization.allTeam.append(backup)
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .removeTeam("audit")), ["Everyone keeps their vault access through other teams."])
+    }
+
     func testTakingBackVaultKeepsOtherTeamsAndNamesRoleReductions() {
         var organization = Self.buildAcme(isAdmin: true)
         organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
         XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: "platform", vaultID: "deploy")),
-                       ["Deploy: You lose access too. Bob's role changes from Editor to Reader."])
+                       ["Deploy: You lose access too.", "Deploy: Bob's role changes from Editor to Reader."])
         organization.allTeam[0].allVault[0].role = "editor"
         XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: "audit", vaultID: "deploy")),
                        ["Deploy: Carol loses access."])

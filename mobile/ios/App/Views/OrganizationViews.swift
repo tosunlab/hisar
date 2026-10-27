@@ -335,8 +335,10 @@ struct OrganizationView: View {
         .refreshable { await load() }
         .navigationTitle(name)
         .navigationDestination(for: Member.self) { member in
-            OrganizationMemberView(organizationID: organizationID, organizationName: name, member: member, isAdmin: isAdmin) {
-                await load()
+            if let organization {
+                OrganizationMemberView(organizationID: organizationID, organizationName: name, member: member, isAdmin: isAdmin, organization: organization) {
+                    await load()
+                }
             }
         }
         .toolbar {
@@ -422,31 +424,29 @@ struct OrganizationView: View {
             .accessibilityIdentifier("confirm-cancel-organization-invitation")
             Button("Keep invitation", role: .cancel) {}
         }
-        .confirmationDialog(
-            "Remove \(memberToRemove?.name ?? "") from \(name)?",
-            isPresented: Binding(get: { memberToRemove != nil }, set: { if !$0 { memberToRemove = nil } }),
-            titleVisibility: .visible,
-            presenting: memberToRemove
-        ) { member in
-            Button("Remove from \(name)", role: .destructive) {
-                Task { await change("Remove from \(name)") { await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) } }
+        .sheet(item: $memberToRemove) { member in
+            if let organization {
+                OrganizationAccessConfirmation(
+                    title: "Remove \(member.name) from \(name)?",
+                    message: OrganizationMemberView.describeRemoval(memberName: member.name, organizationName: name),
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeMember(member.accountID)),
+                    confirmLabel: "Remove from \(name)", confirmID: "confirm-remove-organization-member", refusal: $refusal, onCancel: { memberToRemove = nil }
+                ) {
+                    if await change("Remove from \(name)", { await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) }) { memberToRemove = nil }
+                }
             }
-            .accessibilityIdentifier("confirm-remove-organization-member")
-        } message: { member in
-            Text(OrganizationMemberView.describeRemoval(memberName: member.name, organizationName: name))
         }
-        .confirmationDialog(
-            "Delete team \(teamToDelete?.name ?? "")?",
-            isPresented: Binding(get: { teamToDelete != nil }, set: { if !$0 { teamToDelete = nil } }),
-            titleVisibility: .visible,
-            presenting: teamToDelete
-        ) { team in
-            Button("Delete team", role: .destructive) {
-                Task { await change("Delete team") { await model.deleteTeam(organizationID: organizationID, teamID: team.id) } }
+        .sheet(item: $teamToDelete) { team in
+            if let organization {
+                OrganizationAccessConfirmation(
+                    title: "Delete team \(team.name)?",
+                    message: "Its members lose the vaults they have only through \(team.name).",
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeTeam(team.id)),
+                    confirmLabel: "Delete team", confirmID: "confirm-delete-team", refusal: $refusal, onCancel: { teamToDelete = nil }
+                ) {
+                    if await change("Delete team", { await model.deleteTeam(organizationID: organizationID, teamID: team.id) }) { teamToDelete = nil }
+                }
             }
-            .accessibilityIdentifier("confirm-delete-team")
-        } message: { team in
-            Text("Its members lose the vaults they have only through \(team.name).")
         }
     }
 
@@ -460,13 +460,17 @@ struct OrganizationView: View {
         } message: {
             Text("Its teams and pending invitations are deleted with it.")
         }
-        .confirmationDialog("Leave \(name)?", isPresented: $isLeaveShown, titleVisibility: .visible) {
-            Button("Leave \(name)", role: .destructive) {
-                Task { await finishRemoval("Leave \(name)") { await model.leaveOrganization(organizationID: organizationID) } }
+        .sheet(isPresented: $isLeaveShown) {
+            if let organization, let member = organization.allMember.first(where: \.isCurrentUser) {
+                OrganizationAccessConfirmation(
+                    title: "Leave \(name)?", message: "You lose the vaults you have through \(name)'s teams.",
+                    consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeMember(member.accountID)),
+                    confirmLabel: "Leave \(name)", confirmID: "confirm-leave-organization", refusal: $refusal, onCancel: { isLeaveShown = false }
+                ) {
+                    if await model.leaveOrganization(organizationID: organizationID) { isLeaveShown = false; dismiss() }
+                    else { refusal = model.takeRefusal(title: "Leave \(name)") }
+                }
             }
-            .accessibilityIdentifier("confirm-leave-organization")
-        } message: {
-            Text("You lose the vaults you have through \(name)'s teams.")
         }
         .sheet(item: $vaultToTakeBack) { takeback in
             if let organization {
@@ -843,6 +847,7 @@ struct OrganizationMemberView: View {
     var member: Member
     var isAdmin: Bool
     var reload: () async -> Void
+    var organization: Organization
     @State private var isRoleConfirmationShown = false
 
     @EnvironmentObject private var model: AppModel
@@ -851,12 +856,13 @@ struct OrganizationMemberView: View {
     @State private var isRemoveConfirmationShown = false
     @State private var refusal: Refusal?
 
-    init(organizationID: String, organizationName: String, member: Member, isAdmin: Bool, reload: @escaping () async -> Void) {
+    init(organizationID: String, organizationName: String, member: Member, isAdmin: Bool, organization: Organization, reload: @escaping () async -> Void) {
         self.organizationID = organizationID
         self.organizationName = organizationName
         self.member = member
         self.isAdmin = isAdmin
         self.reload = reload
+        self.organization = organization
         _role = State(initialValue: member.role)
     }
 
@@ -959,20 +965,21 @@ struct OrganizationMemberView: View {
         } message: {
             Text(organizationRoleChangeMessage(roleMember))
         }
-        .confirmationDialog("Remove \(member.name) from \(organizationName)?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
-            Button("Remove from \(organizationName)", role: .destructive) {
-                Task {
-                    if await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) {
-                        await reload()
-                        dismiss()
-                    } else {
-                        refusal = model.takeRefusal(title: "Remove from \(organizationName)")
-                    }
+        .sheet(isPresented: $isRemoveConfirmationShown) {
+            OrganizationAccessConfirmation(
+                title: "Remove \(member.name) from \(organizationName)?",
+                message: Self.describeRemoval(memberName: member.name, organizationName: organizationName),
+                consequences: OrganizationLogic.accessConsequences(organization: organization, change: .removeMember(member.accountID)),
+                confirmLabel: "Remove from \(organizationName)", confirmID: "confirm-remove-organization-member", refusal: $refusal, onCancel: { isRemoveConfirmationShown = false }
+            ) {
+                if await model.removeOrganizationMember(organizationID: organizationID, accountID: member.accountID) {
+                    await reload()
+                    isRemoveConfirmationShown = false
+                    dismiss()
+                } else {
+                    refusal = model.takeRefusal(title: "Remove from \(organizationName)")
                 }
             }
-            .accessibilityIdentifier("confirm-remove-organization-member")
-        } message: {
-            Text(Self.describeRemoval(memberName: member.name, organizationName: organizationName))
         }
         .refusalAlert($refusal)
     }

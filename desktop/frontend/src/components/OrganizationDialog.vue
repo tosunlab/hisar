@@ -131,7 +131,6 @@ const text = computed<DialogText>(() => {
   return { title: "", subtitle: "", icon: "building", isDanger: false, confirmLabel: "" };
 });
 
-// allLostVaultLine names what goes: the vaults the teams in question have, unopened ones counted together.
 const allLostVaultLine = computed(() => {
   const request = props.request;
   if (request.kind === "take-vault") {
@@ -143,22 +142,17 @@ const allLostVaultLine = computed(() => {
   if (request.kind === "change-team-role") {
     return describeOrganizationAccessChange(props.organization, { kind: "team-role", teamID: request.team.id, vaultID: request.teamVault.vaultId, role: request.role });
   }
-  let allTeam: Team[] = [];
+  if (request.kind === "delete-team") {
+    return describeOrganizationAccessChange(props.organization, { kind: "remove-team", teamID: request.team.id });
+  }
+  if (request.kind === "remove-member") {
+    return describeOrganizationAccessChange(props.organization, { kind: "remove-member", accountID: request.member.accountId });
+  }
   if (request.kind === "leave") {
-    allTeam = props.organization.teams.filter((team) => team.members.some((member) => member.isCurrentUser));
-  } else if (request.kind === "remove-member") {
-    allTeam = props.organization.teams.filter((team) => team.members.some((member) => member.accountId === request.member.accountId));
-  } else if (request.kind === "delete-team") {
-    allTeam = [request.team];
+    const member = props.organization.members.find((member) => member.isCurrentUser);
+    return member ? describeOrganizationAccessChange(props.organization, { kind: "remove-member", accountID: member.accountId }) : [];
   }
-  const vaultByID = new Map<string, TeamVault>(allTeam.flatMap((team) => team.vaults.map((teamVault) => [teamVault.vaultId, teamVault] as const)));
-  const allTeamVault = [...vaultByID.values()];
-  const allLine = allTeamVault.filter((teamVault) => teamVault.canOpen).map(describeTeamVault);
-  const unopenedCount = allTeamVault.length - allLine.length;
-  if (unopenedCount > 0) {
-    allLine.push(unopenedCount === 1 ? "A vault you can't open" : `${unopenedCount} vaults you can't open`);
-  }
-  return allLine;
+  return [];
 });
 
 const canSubmit = computed(() => {

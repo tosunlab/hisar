@@ -26,21 +26,25 @@ export function describeOrganizationAccessChange(organization: Organization, cha
     }
     return role;
   }
-  const vaultByID = new Map(organization.teams.flatMap((team) => team.vaults.map((vault) => [vault.vaultId, vault] as const)));
+  const vaultByID = new Map(organization.teams.flatMap((team) => team.vaults).sort((a, b) => Number(a.canOpen) - Number(b.canOpen)).map((vault) => [vault.vaultId, vault] as const));
   const memberByID = new Map(organization.teams.flatMap((team) => team.members.map((member) => [member.accountId, member] as const)));
   const lines: string[] = [];
   for (const [vaultID, vault] of [...vaultByID].sort(([a], [b]) => a.localeCompare(b))) {
-    const effects: string[] = [];
+    const losses: string[] = [];
+    const roleChanges: string[] = [];
     for (const [accountID, member] of memberByID) {
       const beforeRole = strongest(organization.teams, accountID, vaultID);
       const afterRole = strongest(after, accountID, vaultID);
       if (beforeRole === afterRole) continue;
       const name = member.name || member.email;
-      effects.push(!afterRole ? (member.isCurrentUser ? "You lose access too." : `${name} loses access.`)
-        : `${member.isCurrentUser ? "Your role" : `${name}'s role`} changes from ${formatRole(beforeRole)} to ${formatRole(afterRole)}.`);
+      if (!afterRole) losses.push(member.isCurrentUser ? "You lose access too." : `${name} loses access.`);
+      else roleChanges.push(`${member.isCurrentUser ? "Your role" : `${name}'s role`} changes from ${formatRole(beforeRole)} to ${formatRole(afterRole)}.`);
     }
-    if (effects.length) lines.push(`${vault.canOpen ? vault.name : `A vault you can't open (${vaultID})`}: ${effects.join(" ")}`);
+    const name = vault.canOpen ? vault.name : `A vault you can't open (${vaultID})`;
+    if (losses.length) lines.push(`${name}: ${losses.join(" ")}`);
+    if (roleChanges.length) lines.push(`${name}: ${roleChanges.join(" ")}`);
   }
+  if (!lines.length && change.kind === "remove-member") return ["They have no vault access through this organization's teams."];
   return lines.length ? lines : [change.kind === "remove-team-member" ? "They keep their vault access through other teams." : "Everyone keeps their vault access through other teams."];
 }
 
