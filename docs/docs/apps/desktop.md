@@ -28,6 +28,8 @@ Wails v3 (pinned beta, see `WAILS_VERSION` in the root `Makefile`) with a Vue 3 
 
 Vault actions, item actions, and **New item** menus stay inside an 8-pixel window margin and refit when the window or
 their content changes. Tall menus scroll. **New item** opens above its controls when there is not enough room below.
+Unreadable-record warnings keep their summary above Search. Expanded recovery records scroll in their own bounded
+region, so Search and the healthy item list remain usable even at the minimum window size.
 
 ## Build and run on macOS
 

@@ -235,6 +235,31 @@ describe("removed vault notice", () => {
 });
 
 describe("unreadable recovery", () => {
+  it.each([1, 5])("keeps search and healthy item actions available while %i recovery records are expanded", async (count) => {
+    store.allVault = [{
+      ...personalVault,
+      readIssues: Array.from({ length: count }, (_, index) => ({
+        vaultId: "personal", itemId: count === 1 ? undefined : `bad-${index}`, revision: `r-${index}`,
+        kind: count === 1 ? "vault-name" : "item", canRename: count === 1, canDelete: true,
+      })),
+    }];
+    store.listVaultID = "personal";
+    store.selectedVaultID = "personal";
+    store.allItem = [createItem({ id: "healthy", title: "Still available" })];
+    api.getItem.mockResolvedValue(createItem({ id: "healthy", title: "Still available", password: "healthy-secret" }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.get('[data-testid="read-issues"] summary').trigger("click");
+    await wrapper.get('input[name="search"]').setValue("Still available");
+    expect(wrapper.findAll(".list .item-title").map((row) => row.text())).toEqual(["Still available"]);
+    await wrapper.get(".list .item").trigger("contextmenu");
+    await flushPromises();
+    await wrapper.get('[data-testid="context-menu-copy-password"]').trigger("click");
+    await flushPromises();
+    expect(api.copyField).toHaveBeenCalledWith("personal", "healthy", "password");
+    expect(store.noticeMessage).toBe("Password copied. It clears in 90 seconds.");
+    wrapper.unmount();
+  });
+
   it("keeps healthy data visible and deletes only the reviewed unreadable revision", async () => {
     store.allVault = [{ ...personalVault, readIssues: [{ vaultId: "personal", itemId: "bad", revision: "bad-r1", kind: "item", canRename: false, canDelete: true }] }];
     store.allItem = [createItem({ id: "healthy", title: "Still available" })];

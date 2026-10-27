@@ -39,30 +39,33 @@ async function rename(vaultID: string, revision: string): Promise<void> {
   <section v-if="issues.length" class="read-issues" role="alert" data-testid="read-issues">
     <details>
       <summary>{{ issues.length }} unreadable vault or item records. Healthy items remain available.</summary>
-      <p>Retry before repairing. An unreadable record is not an empty vault or proof that an item was deleted.</p>
-      <button @click="retryReads">Retry reads</button>
-      <ul>
-        <li v-for="entry in issues" :key="`${entry.issue.vaultId}/${entry.issue.itemId}/${entry.issue.kind}`">
-          {{ entry.vault.name }}. {{ entry.issue.kind }}. {{ entry.issue.itemId || entry.issue.vaultId }}
-          <template v-if="entry.issue.canRename">
-            <input v-model="repairName" aria-label="Repaired vault name" placeholder="New vault name" />
-            <button :disabled="!repairName.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair name</button>
-          </template>
-          <button v-if="entry.issue.canDelete" @click="pending = entry">Delete unreadable data…</button>
-        </li>
-      </ul>
+      <div class="read-issues-body" role="region" aria-label="Unreadable records" tabindex="0" data-testid="read-issues-records">
+        <p>Retry before repairing. An unreadable record is not an empty vault or proof that an item was deleted.</p>
+        <button @click="retryReads">Retry reads</button>
+        <ul>
+          <li v-for="entry in issues" :key="`${entry.issue.vaultId}/${entry.issue.itemId}/${entry.issue.kind}`">
+            {{ entry.vault.name }}. {{ entry.issue.kind }}. {{ entry.issue.itemId || entry.issue.vaultId }}
+            <template v-if="entry.issue.canRename">
+              <input v-model="repairName" aria-label="Repaired vault name" placeholder="New vault name" />
+              <button :disabled="!repairName.trim()" @click="rename(entry.issue.vaultId, entry.issue.revision ?? '')">Repair name</button>
+            </template>
+            <button v-if="entry.issue.canDelete" @click="pending = entry">Delete unreadable data…</button>
+          </li>
+        </ul>
+        <div v-if="pending" role="alertdialog" aria-label="Delete unreadable data">
+          <p>Permanently delete {{ pending.issue.itemId ? 'this unreadable item' : 'this vault and every item in it' }} on all devices? This cannot be undone.</p>
+          <button @click="pending = null">Cancel</button>
+          <button @click="remove">Permanently delete</button>
+        </div>
+        <p v-if="error">{{ error }}</p>
+      </div>
     </details>
-    <div v-if="pending" role="alertdialog" aria-label="Delete unreadable data">
-      <p>Permanently delete {{ pending.issue.itemId ? 'this unreadable item' : 'this vault and every item in it' }} on all devices? This cannot be undone.</p>
-      <button @click="pending = null">Cancel</button>
-      <button @click="remove">Permanently delete</button>
-    </div>
-    <p v-if="error">{{ error }}</p>
   </section>
 </template>
 
 <style scoped>
-.read-issues { padding: 8px 12px; color: var(--color-warning-text); background: var(--color-warning-background); font-size: var(--font-size-12); }
+.read-issues { flex: 0 0 auto; padding: 8px 12px; color: var(--color-warning-text); background: var(--color-warning-background); font-size: var(--font-size-12); }
+.read-issues-body { max-height: min(25dvh, 160px); overflow-y: auto; overscroll-behavior: contain; }
 li { margin: 8px 0; overflow-wrap: anywhere; }
 button, input { margin: 4px; }
 </style>
