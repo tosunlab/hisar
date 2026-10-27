@@ -138,6 +138,12 @@ struct OrganizationInvitationRow: View {
     }
 
     var body: some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            row(at: context.date)
+        }
+    }
+
+    private func row(at now: Date) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             Label {
                 VStack(alignment: .leading, spacing: 2) {
@@ -145,6 +151,7 @@ struct OrganizationInvitationRow: View {
                     Text(invitation.invitedByEmail)
                         .font(.footnote)
                         .foregroundStyle(.themeSecondary)
+                    InvitationExpiryText(timestamp: invitation.expiresAt)
                 }
             } icon: {
                 Image(systemName: "building.2.fill")
@@ -163,6 +170,7 @@ struct OrganizationInvitationRow: View {
                 }
                 .applyGlassButtonStyle(isProminent: true)
                 .accessibilityIdentifier("\(identifierPrefix)accept-organization-invitation")
+                .disabled(InvitationLifetime(invitation.expiresAt).isExpired(at: now))
             }
         }
         .padding(.vertical, 4)
@@ -561,6 +569,7 @@ struct OrganizationView: View {
                         Text("Waiting for them to accept")
                             .font(.footnote)
                             .foregroundStyle(.themeSecondary)
+                        InvitationExpiryText(timestamp: invitation.expiresAt)
                     }
                 } icon: {
                     Image(systemName: "envelope")

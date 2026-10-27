@@ -162,6 +162,7 @@ fun OrganizationsScreen(model: AppModel, onBack: () -> Unit) {
                     InvitationRow(
                         text = invitation.message,
                         email = invitation.invitedByEmail,
+                        expiresAt = invitation.expiresAt,
                         icon = Icons.Filled.Business,
                         testTagPrefix = "",
                         testTagName = "organization-invitation",
@@ -501,6 +502,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                             testTag = "organization-invitation-${invitation.email}",
                             onCancel = { dialog = OrganizationDialog.CancelInvitation(invitation) },
                             cancelLabel = "Cancel invitation",
+                            expiresAt = invitation.expiresAt,
                         )
                     }
                 }

@@ -2,7 +2,7 @@
 import { onBeforeUnmount, onMounted } from "vue";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 
-const props = withDefaults(defineProps<{ title: string; subtitle: string; icon: IconName; isDanger?: boolean; isClosable?: boolean }>(), {
+const props = withDefaults(defineProps<{ title: string; subtitle?: string; icon: IconName; isDanger?: boolean; isClosable?: boolean }>(), {
   isDanger: false,
   isClosable: true,
 });
@@ -29,7 +29,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape, true)
         <span class="panel-icon" :class="{ danger: isDanger }"><AppIcon :name="icon" /></span>
         <div class="panel-heading">
           <h2>{{ title }}</h2>
-          <p class="muted">{{ subtitle }}</p>
+          <p v-if="subtitle" class="muted">{{ subtitle }}</p>
         </div>
       </div>
       <slot />

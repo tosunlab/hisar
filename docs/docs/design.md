@@ -488,9 +488,13 @@ Sharing is person to person: the owner of a shared vault types an email address 
    - On the Mac, Settings → People lists each `waiting` entry under **Invitations for you**, with "Waiting for Ada's Hisar to finish sharing" and "Accepted 2 h ago". The sidebar's **Inbox** row leads there. The entry disappears when `vaults-changed` brings the vault.
 4. **Cancel (owner).** `DELETE /share-invitations/{id}` (an owner of the vault) withdraws a pending or accepted invitation.
 
+Pending sent invitations show their remaining lifetime on every app. The phones also show it on received invitations; the exact date is available through accessibility, or a tooltip on the Mac. A row that reaches its deadline says **Expired** and cannot be accepted. The apps do not keep an expired-history list that the API does not return. **Send again** in People and vault sharing signs a fresh invitation using that row's vault, email and role, replaces the previous invitation, and refreshes the list. It is disabled while busy and is not offered for accepted invitations awaiting recipient review. Failures appear at the row that sent again.
+
 `PUT /vaults/{id}/access/{accountID}` cannot add a shared-vault member, even after an invitation was accepted. It changes existing access, while organization key delivery remains subject to team entitlements. New shared-vault access requires exact signed completion. Source cancellation and completion serialize under the vault lock, and completion preserves the invitation-before-account key-share lock order used by account deletion.
 
 **People.** `GET /members` returns the caller and every account that shares at least one vault with them, with signed public keys; it is the member source for sharing, role changes, removal and rotation. There is no list of every account anywhere (API, desktop, iOS, CLI, extension); only the operator's `hisar-server` reads the database directly. The desktop's Settings → People shows those people with their security codes, the invitations the user sent (Cancel) and received (Accept, Decline), and the invite form. The **Inbox** row under Favorites counts received invitations and opens Settings → People or Organizations for the waiting invitation.
+
+Sharing-panel action errors stay in the panel and are cleared when it closes. Invitation failures appear below Invite by email; member and pending-invitation failures appear at the affected row. Each error is announced and dismissible, without a duplicate in the main window.
 
 ### 5.9 Share links
 
@@ -515,6 +519,7 @@ payload       = {version: 1, title, fields: [{kind, label, value, isConcealed}]}
 - PBKDF2 rather than Argon2id: WebCrypto has PBKDF2 built in, while Argon2id would mean shipping a WebAssembly build inside the page. 600 000 iterations is OWASP's current advice for PBKDF2-HMAC-SHA256. The server hands out the salt and the iteration count, so the page and `core/sharelink` refuse fewer than 600 000 or more than 10 000 000 iterations, and a salt that is not 16 bytes.
 - The JSON payload is at most 48 KiB, so the ciphertext stays below the server's 64 KiB.
 - The creator's lists show what each link shares without the server learning it: the creating client also uploads a label, `XChaCha20-Poly1305(K_user, aad = "hisar/v1/share-link-label" || accountID, JSON{title, vaultID, itemID, fieldLabels, isText, linkKey})` (§4.3), which only the creator's devices open. It holds the link key, so **Copy link** works later on any of the creator's devices; the passphrase is never stored.
+- The Mac's global Shared links list names each accessible source vault and offers **Open source item** for item links. It looks up the source by the label's vault and item IDs before closing the panel. A missing or inaccessible source is unavailable, not proof of deletion. Links hold a copy from creation, so editing the source does not update a link. Text shares have no source item.
 
 **Server.**
 

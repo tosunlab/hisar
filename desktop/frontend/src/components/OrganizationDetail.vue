@@ -14,12 +14,15 @@ import {
   takeVaultFromTeam,
 } from "../store";
 import { formatCount, formatRole, vaultRoleDescription } from "../util";
+import { formatDateTime, formatExpiresIn } from "../util";
+import { useInvitationClock } from "../invitationClock";
 import AppIcon from "./AppIcon.vue";
 import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 import OrganizationDialog, { type OrganizationDialogRequest } from "./OrganizationDialog.vue";
 
 const props = defineProps<{ organization: Organization }>();
+const now = useInvitationClock();
 
 const allVaultRole: VaultRole[] = ["owner", "editor", "reader"];
 
@@ -286,7 +289,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
               <span class="title-text">{{ invitation.email }}</span>
               <span class="tag">{{ formatRole(invitation.role) }}</span>
             </strong>
-            <p class="muted">Waiting for them to accept</p>
+            <p class="muted" :title="formatDateTime(invitation.expiresAt)">Waiting for them to accept · {{ formatExpiresIn(invitation.expiresAt, now) }}</p>
           </div>
           <button
             v-if="cancellingInvitationID !== invitation.id"

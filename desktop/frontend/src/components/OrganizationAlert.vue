@@ -7,7 +7,6 @@ import AccountDialog from "./AccountDialog.vue";
   <AccountDialog
     v-if="store.organizationAlert"
     :title="store.organizationAlert.title"
-    subtitle="Hisar couldn't make this change."
     icon="warning"
     data-testid="organization-alert"
     @close="store.organizationAlert = null"

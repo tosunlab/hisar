@@ -43,6 +43,8 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
 | Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
+| Loading members… | The sharing panel omits its member count until members have loaded. |
+| Cancel invitation · Keep invitation | The phones' cancellation confirmation says "Their invitation link stops working. You can invite them again later." |
 
 ## Organizations
 
@@ -61,6 +63,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | "Hisar couldn't give every vault key: …" · "Hisar couldn't re-encrypt every vault that needs a new key: …" | Warnings above the vaults when a key delivery or a rotation failed. |
 | Shared through teams in Acme · Ask an admin of Acme to change who has this vault. | An organization vault's sharing panel. |
 | A vault you can't open | An organization's vault this device has no key for. |
+| Couldn't take Deploy keys back from Ops · Couldn't remove Elif from Ops · Couldn't delete Acme | Organization refusal headings name the failed action and its targets. The body keeps the server's refusal sentence. |
 | Waiting for an owner of a vault in Acme to give you its key · Waiting for the owners of N vaults in Acme to give you their keys | One line per organization in Settings → Organizations on the Mac, above the vaults on the phones. A team gives you a vault that no owner's Hisar has delivered yet. |
 | Acme is deleted with your account · Ada becomes an admin of Acme · You leave Acme | Account deletion. |
 
