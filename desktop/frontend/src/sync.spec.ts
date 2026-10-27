@@ -25,6 +25,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: allTestVault,
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [createItem({ id: "a", title: "Alpha" })],
     selectedItem: createItem({ id: "a", title: "Alpha" }),
     editorMode: "view",
@@ -82,6 +83,7 @@ describe("syncInBackground", () => {
 
   it("selects another vault when the open one was removed", async () => {
     store.selectedVaultID = "gone";
+    store.listVaultID = "gone";
     api.listAllItem.mockResolvedValue([]);
     await syncInBackground();
     expect(store.selectedVaultID).toBe("personal");

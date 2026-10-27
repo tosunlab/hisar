@@ -56,6 +56,9 @@ final class FavoritesTests: XCTestCase {
         _ = await model.loadItem(vaultID: "personal", itemID: "github")
         XCTAssertNil(model.errorMessage)
         XCTAssertEqual(presentedError, "cannot reach the Hisar server; changes can be saved once you are back online")
+        backend.favoriteErrorMessage = nil
+        let retried = await model.setItemFavorite(vaultID: "personal", itemID: "github", isFavorite: true)
+        XCTAssertTrue(retried)
     }
 
     func testADeletedFavoriteLeavesTheList() async {

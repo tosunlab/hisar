@@ -34,6 +34,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: [personalVault, workVault],
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [bank, github],
     selectedItem: github,
     allFavorite: [],

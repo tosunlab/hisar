@@ -15,6 +15,9 @@ struct ItemListView: View {
     @State private var blockedReason: String?
     @State private var issueToDelete: ReadIssue?
     @State private var issueToRepair: ReadIssue?
+    @State private var refusal: Refusal?
+    @State private var refreshFailure: String?
+    @State private var failedRenameName: String?
     @Environment(\.dismiss) private var dismiss
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
@@ -30,6 +33,13 @@ struct ItemListView: View {
     var body: some View {
         let allMatch = VaultLogic.filterAllItem(model.listAllItemReference(vaultID: vaultID), searchText: searchText).filter { $0.item.readIssue == nil }
         List {
+            if let refreshFailure {
+                Section {
+                    ErrorBanner(message: refreshFailure)
+                    Button("Retry") { Task { await refresh() } }
+                        .accessibilityIdentifier("browse-refresh-retry")
+                }
+            }
             if model.status.isOffline {
                 Section {
                     OfflineNote()
@@ -58,14 +68,14 @@ struct ItemListView: View {
                         ItemRow(item: reference.item)
                     }
                     .swipeActions(edge: .leading) {
-                        FavoriteSwipeButton(vaultID: vaultID, item: reference.item)
+                        FavoriteSwipeButton(vaultID: vaultID, item: reference.item) { refusal = $0 }
                     }
                 }
             }
         }
         .applyThemedListStyle()
         .overlay {
-            if allMatch.isEmpty && vault?.readIssues.isEmpty != false {
+            if refreshFailure == nil && allMatch.isEmpty && vault?.readIssues.isEmpty != false {
                 if searchText.isEmpty {
                     ContentUnavailableView {
                         Label("No items yet", systemImage: "tray")
@@ -77,9 +87,10 @@ struct ItemListView: View {
                 }
             }
         }
-        .refreshable { await model.refreshVault(vaultID: vaultID) }
+        .refreshable { await refresh() }
         .navigationTitle(vault?.name ?? "Items")
         .searchable(text: $searchText, prompt: "Search \(vault?.name ?? "items")")
+        .refusalAlert($refusal)
         .toolbar {
             if isShared && !isOwner {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -118,7 +129,7 @@ struct ItemListView: View {
                     VaultActionsMenu(
                         actions: vaultActions,
                         rename: {
-                            newName = vault?.name ?? ""
+                            newName = failedRenameName ?? vault?.name ?? ""
                             issueToRepair = nil
                             isRenameShown = true
                         },
@@ -150,7 +161,15 @@ struct ItemListView: View {
                 if let issue = issueToRepair {
                     Task { await model.repairVaultName(issue, name: enteredName) }
                 } else {
-                    Task { await model.renameVault(vaultID: vaultID, name: enteredName) }
+                    Task {
+                        if await model.renameVault(vaultID: vaultID, name: enteredName, onFailure: { message in
+                            failedRenameName = enteredName
+                            refusal = Refusal(title: "Rename vault", message: message)
+                            model.clearError()
+                        }) {
+                            failedRenameName = nil
+                        }
+                    }
                 }
                 issueToRepair = nil
             }
@@ -198,16 +217,32 @@ struct ItemListView: View {
         }
         .onAppear { model.reportActivity() }
     }
+
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshVault(vaultID: vaultID) { message in
+            refreshFailure = message
+            model.clearError()
+        }
+    }
 }
 
 struct ItemCategoryListView: View {
     var category: ItemCategoryDestination
 
     @EnvironmentObject private var model: AppModel
+    @State private var refreshFailure: String?
 
     var body: some View {
         let allReference = model.listAllItemReference().filter { category.includes($0.item) }
         List {
+            if let refreshFailure {
+                Section {
+                    ErrorBanner(message: refreshFailure)
+                    Button("Retry") { Task { await refresh() } }
+                        .accessibilityIdentifier("browse-refresh-retry")
+                }
+            }
             ForEach(allReference) { reference in
                 NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                     ItemRow(item: reference.item, vaultName: reference.vaultName)
@@ -216,12 +251,20 @@ struct ItemCategoryListView: View {
         }
         .applyThemedListStyle()
         .overlay {
-            if allReference.isEmpty {
+            if refreshFailure == nil && allReference.isEmpty {
                 ContentUnavailableView(category.emptyTitle, systemImage: category.systemImage)
             }
         }
-        .refreshable { await model.refreshAll() }
+        .refreshable { await refresh() }
         .navigationTitle(category.title)
+    }
+
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshAll { message in
+            refreshFailure = message
+            model.clearError()
+        }
     }
 }
 
@@ -229,10 +272,18 @@ struct ItemTagListView: View {
     var tag: String
 
     @EnvironmentObject private var model: AppModel
+    @State private var refreshFailure: String?
 
     var body: some View {
         let allReference = VaultLogic.filterAllItem(model.listAllItemReference(), tag: tag)
         List {
+            if let refreshFailure {
+                Section {
+                    ErrorBanner(message: refreshFailure)
+                    Button("Retry") { Task { await refresh() } }
+                        .accessibilityIdentifier("browse-refresh-retry")
+                }
+            }
             ForEach(allReference) { reference in
                 NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                     ItemRow(item: reference.item, vaultName: reference.vaultName)
@@ -241,12 +292,20 @@ struct ItemTagListView: View {
         }
         .applyThemedListStyle()
         .overlay {
-            if allReference.isEmpty {
+            if refreshFailure == nil && allReference.isEmpty {
                 ContentUnavailableView("No items are tagged \(tag)", systemImage: "tag")
             }
         }
-        .refreshable { await model.refreshAll() }
+        .refreshable { await refresh() }
         .navigationTitle(tag)
+    }
+
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshAll { message in
+            refreshFailure = message
+            model.clearError()
+        }
     }
 }
 

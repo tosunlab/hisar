@@ -36,6 +36,7 @@ function resetStore(): void {
     status: createStatus("unlocked"),
     allVault: allImportTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [],
     selectedItem: null,
     editorMode: "view",

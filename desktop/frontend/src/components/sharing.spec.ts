@@ -46,6 +46,7 @@ function resetStore(familyRole = "owner"): void {
     status: createStatus("unlocked"),
     allVault: createVaultList(familyRole),
     selectedVaultID: "family",
+    listVaultID: "family",
     allItem: [createItem()],
     selectedItem: null,
     editorMode: "view",
@@ -294,6 +295,7 @@ describe("Vault sharing panel", () => {
 
   it("explains that personal vaults are private instead of offering to share", async () => {
     store.selectedVaultID = "personal";
+    store.listVaultID = "personal";
     const wrapper = mount(MainView, { attachTo: document.body });
     expect(wrapper.find('[data-testid="share-vault"]').exists()).toBe(false);
     const privateBadge = wrapper.find('[data-testid="personal-vault-private"]');

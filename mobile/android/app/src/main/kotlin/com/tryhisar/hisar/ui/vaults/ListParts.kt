@@ -28,6 +28,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Cancel
@@ -54,9 +55,11 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -217,18 +220,20 @@ fun OfflineNote() {
 
 /** The search field under a list's large title, as SwiftUI's searchable. */
 @Composable
-fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: String, testTag: String, modifier: Modifier = Modifier) {
+fun SearchField(value: String, onValueChange: (String) -> Unit, placeholder: String, testTag: String, modifier: Modifier = Modifier, label: String = placeholder) {
     val colors = HisarTheme.colors
     BasicTextField(
         value = value,
         onValueChange = onValueChange,
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         textStyle = HisarType.body.copy(color = colors.label),
         cursorBrush = SolidColor(colors.tint),
         modifier = modifier
             .padding(horizontal = ScreenMargin)
             .fillMaxWidth()
-            .testTag(testTag),
+            .testTag(testTag)
+            .semantics { contentDescription = label },
         decorationBox = { innerTextField ->
             Row(
                 Modifier

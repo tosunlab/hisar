@@ -202,6 +202,7 @@ struct VaultsView: View {
     @State private var isNewVaultShown = false
     @State private var newItemType: NewItemType?
     @State private var refusal: Refusal?
+    @State private var refreshFailure: String?
 
     private var personalVault: VaultSummary? { model.allVault.first { $0.type == "personal" } }
 
@@ -214,6 +215,13 @@ struct VaultsView: View {
     var body: some View {
         NavigationSplitView {
             List(selection: $selection) {
+                if let refreshFailure {
+                    Section {
+                        ErrorBanner(message: refreshFailure)
+                        Button("Retry") { Task { await refresh() } }
+                            .accessibilityIdentifier("browse-refresh-retry")
+                    }
+                }
                 if model.status.isOffline {
                     Section {
                         OfflineNote()
@@ -268,7 +276,7 @@ struct VaultsView: View {
                 }
             }
             .applyThemedListStyle()
-            .refreshable { await model.refreshAll() }
+            .refreshable { await refresh() }
             .navigationTitle("Vaults")
             .refusalAlert($refusal)
             .toolbar {
@@ -347,6 +355,14 @@ struct VaultsView: View {
         }
     }
 
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshAll { message in
+            refreshFailure = message
+            model.clearError()
+        }
+    }
+
     @ViewBuilder
     private var invitationSection: some View {
         if !model.allReceivedInvitation.isEmpty || !model.allWaitingInvitation.isEmpty || !model.allOrganizationInvitation.isEmpty {
@@ -356,12 +372,16 @@ struct VaultsView: View {
                         Task {
                             if await model.acceptShareInvitation(invitationID: invitation.id) {
                                 model.showNotice("Accepted. The vault appears once \(invitation.inviterName)'s Hisar finishes sharing.")
+                            } else {
+                                refusal = model.takeRefusal(title: "Accept")
                             }
                         }
                     } decline: {
                         Task {
                             if await model.declineShareInvitation(invitationID: invitation.id) {
                                 model.showNotice("Invitation declined.")
+                            } else {
+                                refusal = model.takeRefusal(title: "Decline")
                             }
                         }
                     }
@@ -408,7 +428,7 @@ struct VaultsView: View {
                         ItemRow(item: reference.item, vaultName: reference.vaultName)
                     }
                     .swipeActions(edge: .trailing) {
-                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item)
+                        FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item) { refusal = $0 }
                     }
                     .accessibilityIdentifier("favorite-\(reference.item.title)")
                 }
@@ -515,22 +535,63 @@ struct VaultsDetailView: View {
 
 struct TagListView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var refreshFailure: String?
 
     var body: some View {
         let allTag = VaultLogic.listAllTag(model.listAllItemReference())
         List {
+            if let refreshFailure {
+                Section {
+                    ErrorBanner(message: refreshFailure)
+                    Button("Retry") { Task { await refresh() } }
+                        .accessibilityIdentifier("browse-refresh-retry")
+                }
+            }
+            TagRows(allTag: allTag)
+        }
+        .applyThemedListStyle()
+        .refreshable { await refresh() }
+        .navigationTitle("Tags")
+    }
+
+    private func refresh() async {
+        refreshFailure = nil
+        await model.refreshAll { message in
+            refreshFailure = message
+            model.clearError()
+        }
+    }
+}
+
+struct TagRows: View {
+    var allTag: [TagSummary]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
             ForEach(allTag) { tag in
                 NavigationLink(value: TagDestination(tag: tag.name)) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "tag")
+                            .font(.system(size: 28))
+                            .frame(width: 32, height: 32, alignment: .top)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(tag.name)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(tag.itemCount == 1 ? "1 item" : "\(tag.itemCount) items")
+                                .font(.subheadline)
+                                .foregroundStyle(.themeSecondary)
+                        }
+                    }
+                } else {
                     Label(tag.name, systemImage: "tag")
                         .badge(tag.itemCount)
                 }
+            }
                 .accessibilityIdentifier("tag-\(tag.name)")
             }
         }
-        .applyThemedListStyle()
-        .refreshable { await model.refreshAll() }
-        .navigationTitle("Tags")
-    }
 }
 
 struct VaultRow: View {
@@ -574,12 +635,18 @@ struct VaultRow: View {
 struct FavoriteSwipeButton: View {
     var vaultID: String
     var item: ItemDetail
+    var onRefusal: (Refusal) -> Void
 
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         Button {
-            Task { await model.setItemFavorite(vaultID: vaultID, itemID: item.id, isFavorite: !item.isFavorite) }
+            Task {
+                await model.setItemFavorite(vaultID: vaultID, itemID: item.id, isFavorite: !item.isFavorite) { message in
+                    onRefusal(Refusal(title: item.isFavorite ? "Remove from Favorites" : "Add to Favorites", message: message))
+                    model.clearError()
+                }
+            }
         } label: {
             Label(item.isFavorite ? "Remove from Favorites" : "Add to Favorites", systemImage: item.isFavorite ? "star.slash" : "star")
         }

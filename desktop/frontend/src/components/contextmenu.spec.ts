@@ -45,6 +45,7 @@ function resetStore(allItem: ItemDetail[] = [github, bank]): void {
     status: createStatus("unlocked"),
     allVault: [personalVault, workVault, teamVault].map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem,
     selectedItem: null,
     allFavorite: [],
@@ -136,6 +137,7 @@ describe("The item list's context menu", () => {
 
   it("leaves out Edit and Delete in a vault the user can only read", async () => {
     store.selectedVaultID = "work";
+    store.listVaultID = "work";
     const wrapper = mount(MainView, { attachTo: document.body });
     const allLabel = await openItemMenu(wrapper, "GitHub");
     for (const label of ["Edit", "Duplicate", "Move to…", "Delete…"]) {
@@ -309,6 +311,66 @@ describe("The item list's context menu", () => {
     expect(parseFloat(style.top)).toBe(window.innerHeight - 300 - 8);
     vi.restoreAllMocks();
     wrapper.unmount();
+  });
+});
+
+describe("Browse menus in a minimum window", () => {
+  it("fits a low vault menu and refits after resizing", async () => {
+    const original = { width: window.innerWidth, height: window.innerHeight };
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: 900 });
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 480 });
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockReturnValue({ width: 220, height: 180, top: 0, left: 0, right: 220, bottom: 180, x: 0, y: 0, toJSON: () => ({}) });
+    const wrapper = mount(MainView, { attachTo: document.body });
+    try {
+      await wrapper.get('[data-testid="vault-personal"]').trigger("contextmenu", { clientX: 890, clientY: 459 });
+      await flushPromises();
+      const menu = wrapper.get('[data-testid="vault-menu"]');
+      expect((menu.element as HTMLElement).style.left).toBe("672px");
+      expect((menu.element as HTMLElement).style.top).toBe("292px");
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: 360 });
+      window.dispatchEvent(new Event("resize"));
+      await flushPromises();
+      expect((menu.element as HTMLElement).style.top).toBe("172px");
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+      expect(document.activeElement).toBe(menu.findAll("button").at(-1)?.element);
+    } finally {
+      wrapper.unmount();
+      Object.defineProperty(window, "innerWidth", { configurable: true, value: original.width });
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: original.height });
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("opens New item above a low trigger and keeps Import keyboard reachable with oversized content", async () => {
+    const originalHeight = window.innerHeight;
+    Object.defineProperty(window, "innerHeight", { configurable: true, value: 480 });
+    let menuHeight = 280;
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(function (this: HTMLElement) {
+      const anchor = this.classList.contains("new-item");
+      return { width: 220, height: anchor ? 40 : menuHeight, top: anchor ? 350 : 0, left: 350, right: 570, bottom: anchor ? 390 : menuHeight, x: 350, y: anchor ? 350 : 0, toJSON: () => ({}) };
+    });
+    store.allVault[0].name = "Personal passwords and private development credentials with a very long vault name";
+    const wrapper = mount(MainView, { attachTo: document.body });
+    try {
+      await wrapper.get('button[aria-label="New item"]').trigger("click");
+      await flushPromises();
+      const menu = wrapper.get('[data-testid="new-item-menu"]');
+      expect((menu.element as HTMLElement).style.top).toBe("64px");
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp" }));
+      expect(document.activeElement).toBe(menu.get('[data-testid="new-import"]').element);
+      menuHeight = 700;
+      window.dispatchEvent(new Event("resize"));
+      await flushPromises();
+      expect((menu.element as HTMLElement).style.top).toBe("8px");
+      await menu.get('[data-testid="new-import"]').trigger("click");
+      await flushPromises();
+      expect(store.isImportOpen).toBe(true);
+    } finally {
+      store.isImportOpen = false;
+      wrapper.unmount();
+      Object.defineProperty(window, "innerHeight", { configurable: true, value: originalHeight });
+      vi.restoreAllMocks();
+    }
   });
 });
 

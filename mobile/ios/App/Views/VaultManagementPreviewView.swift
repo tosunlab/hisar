@@ -11,6 +11,7 @@ struct VaultManagementPreviewView: View {
         case notice
         case export
         case importReport
+        case tags
     }
 
     static func readMode() -> Mode? {
@@ -65,6 +66,18 @@ struct VaultManagementPreviewView: View {
 
     var body: some View {
         NavigationStack {
+            if mode == .tags {
+                List {
+                    TagRows(allTag: [
+                        TagSummary(name: "finance", itemCount: 2),
+                        TagSummary(name: "personal", itemCount: 1),
+                        TagSummary(name: "design-review", itemCount: 3),
+                    ])
+                }
+                .applyThemedListStyle()
+                .navigationTitle("Tags")
+                .navigationDestination(for: TagDestination.self) { ItemTagListView(tag: $0.tag) }
+            } else {
             List {
                 if mode == .notice {
                     RemovedVaultNoticeSection(allNotice: [
@@ -106,6 +119,7 @@ struct VaultManagementPreviewView: View {
                 Text("You lose access to its items on all your devices. An owner can invite you again.")
             }
         }
+        }
         .sheet(isPresented: $isSheetShown) {
             NavigationStack {
                 if mode == .importReport {
@@ -140,6 +154,7 @@ struct VaultManagementPreviewView: View {
             case .delete, .export, .importReport: isSheetShown = true
             case .leave: isLeaveConfirmationShown = true
             case .notice: break
+            case .tags: break
             }
         }
     }

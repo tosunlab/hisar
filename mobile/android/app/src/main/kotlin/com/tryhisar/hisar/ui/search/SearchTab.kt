@@ -71,6 +71,7 @@ private fun SearchScreen(model: AppModel) {
                         },
                         "Logins, keys and notes",
                         testTag = "search-field",
+                        label = "Search all vaults",
                         modifier = Modifier.focusRequester(focusRequester),
                     )
                 }

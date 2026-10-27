@@ -34,6 +34,7 @@ function resetStore(): void {
     status: createStatus("unlocked"),
     allVault: allTestVault,
     selectedVaultID: "personal",
+    listVaultID: "personal",
     allItem: [githubItem],
     selectedItem: githubItem,
     editorMode: "view",

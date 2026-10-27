@@ -81,6 +81,7 @@ function resetStore(allVault: VaultSummary[] = [personalVault, familyVault, depl
     status: createStatus("unlocked"),
     allVault,
     selectedVaultID,
+    listVaultID: selectedVaultID,
     allItem: [createItem()],
     selectedItem: null,
     allFavorite: [],
@@ -659,6 +660,7 @@ describe("Organization vaults in the vault list", () => {
     expect(wrapper.find('[data-testid="item-shared"]').exists()).toBe(false);
 
     store.selectedVaultID = "family";
+    store.listVaultID = "family";
     await nextTick();
     expect(wrapper.find('[data-testid="share-vault"]').exists()).toBe(true);
     expect(wrapper.find('[data-testid="item-shared"]').text()).toBe("Shared");

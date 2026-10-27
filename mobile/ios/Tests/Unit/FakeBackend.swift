@@ -30,6 +30,7 @@ class FakeBackend: VaultBackend {
     var cancelShareInvitationErrorMessage: String?
     var deletePasskeyErrorMessage: String?
     var moveErrorMessage: String?
+    var listItemErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var biometricUnlockError: BackendError?
@@ -469,6 +470,7 @@ class FakeBackend: VaultBackend {
     func listAllItem(vaultID: String) throws -> [ItemDetail] {
         record("listAllItem")
         try requireUnlocked()
+        if let listItemErrorMessage { throw BackendError(message: listItemErrorMessage) }
         return (allItemByVaultID[vaultID] ?? []).map { item in
             var summary = item
             summary.isFavorite = allFavoriteRecordID.contains(LoginMatch.buildRecordIdentifier(vaultID: vaultID, itemID: item.id))

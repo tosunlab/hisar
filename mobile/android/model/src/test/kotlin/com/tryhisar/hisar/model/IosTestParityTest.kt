@@ -64,6 +64,10 @@ class IosTestParityTest {
                 "UIKit-specific regression for iOS automatic hyphenation and selectable UITextView Dynamic Type wrapping; Android does not use UIKit",
             "testIconPhotoPreparationRejectsStaleResults" to
                 "iOS PhotosPicker uses an asynchronous transfer and conversion task; this test covers its generation guard and sheet dismissal",
+            "testTagsKeepNamesAndCountsReadableAtAccessibilitySizes" to
+                "The iPhone adapts its native badge at accessibility Dynamic Type sizes; Android's tag rows use their own Compose layout",
+            "testRefreshFailureKeepsReadableListAndOperationError" to
+                "The iPhone's operation callback retains browse errors independently of AppModel.errorMessage; Android uses area-model refusals",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

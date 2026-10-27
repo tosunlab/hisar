@@ -28,6 +28,7 @@ beforeEach(() => {
     status: createStatus("unlocked"),
     allVault: allTestVault.map((vault) => ({ ...vault })),
     selectedVaultID: "personal",
+    listVaultID: "personal",
     selectedItem: createItem({ id: "github", hasOneTimePassword: true, oneTimePassword: "otpauth://totp/?secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ" }),
     editorMode: "view",
     errorMessage: "",

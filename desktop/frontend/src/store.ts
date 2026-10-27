@@ -116,6 +116,7 @@ export const store = reactive({
     updateRequired: null,
   } as Status,
   allVault: [] as VaultSummary[],
+  listVaultID: "",
   selectedVaultID: "",
   allItem: [] as ItemDetail[],
   selectedItem: null as ItemDetail | null,
@@ -287,6 +288,7 @@ function clearAllVaultData(): void {
   store.organizationAlert = null;
   store.allVault = [];
   store.selectedVaultID = "";
+  store.listVaultID = "";
   store.allItem = [];
   store.selectedItem = null;
   store.isCommitSigningSetupOpen = false;
@@ -768,14 +770,23 @@ export async function dismissSignedOutReason(): Promise<void> {
   }
 }
 
+function clearUnavailableItemVault(): void {
+  if (store.selectedVaultID && !store.allVault.some((vault) => vault.id === store.selectedVaultID)) {
+    store.selectedVaultID = store.listVaultID;
+    store.selectedItem = null;
+    store.editorMode = "view";
+  }
+}
+
 export async function loadAllVault(): Promise<void> {
   const allVault = await runAction(() => api.listAllVault());
   if (!allVault) {
     return;
   }
   store.allVault = allVault;
+  clearUnavailableItemVault();
   await loadRemovedVaultNoticeQuietly();
-  const stillExists = allVault.some((vault) => vault.id === store.selectedVaultID);
+  const stillExists = allVault.some((vault) => vault.id === store.listVaultID);
   if (!stillExists && allVault.length > 0) {
     // Opening the default vault must not supersede a launcher request waiting for this unlock.
     await loadVaultItems(findPersonalVaultID(allVault), navigationVersion);
@@ -973,6 +984,8 @@ export async function syncInBackground(): Promise<void> {
   if (store.status.state !== "unlocked" || store.isBusy || store.editorMode !== "view") {
     return;
   }
+  const version = navigationVersion;
+  const listVaultID = store.listVaultID;
   try {
     const allVault = await api.listAllVault();
     const status = await api.getStatus();
@@ -980,27 +993,31 @@ export async function syncInBackground(): Promise<void> {
       return;
     }
     store.allVault = allVault;
+    clearUnavailableItemVault();
     store.status = status;
     await loadRemovedVaultNoticeQuietly();
     await loadShareInvitationsQuietly();
     await loadAllShareLinkQuietly();
     await loadAllFavoriteQuietly();
     await refreshOrganizationsQuietly();
-    if (!allVault.some((vault) => vault.id === store.selectedVaultID)) {
+    if (!allVault.some((vault) => vault.id === listVaultID)) {
       if (allVault.length > 0) {
         await selectVault(findPersonalVaultID(allVault));
       }
       return;
     }
-    const allItem = sortAllItem(await api.listAllItem(store.selectedVaultID));
-    if (store.editorMode !== "view") {
+    const allItem = sortAllItem(await api.listAllItem(listVaultID));
+    if (store.editorMode !== "view" || version !== navigationVersion || store.listVaultID !== listVaultID) {
       return;
     }
     store.allItem = allItem;
     updateSelectedVaultSummary();
     const selectedItemID = store.selectedItem?.id;
     if (selectedItemID) {
-      store.selectedItem = allItem.some((vaultItem) => vaultItem.id === selectedItemID) ? await api.getItem(store.selectedVaultID, selectedItemID) : null;
+      const vaultID = store.selectedVaultID;
+      const isAvailable = vaultID !== listVaultID || allItem.some((vaultItem) => vaultItem.id === selectedItemID);
+      const detail = isAvailable ? await api.getItem(vaultID, selectedItemID) : null;
+      if (version === navigationVersion && store.editorMode === "view") store.selectedItem = detail;
     }
   } catch {
     return;
@@ -1020,6 +1037,7 @@ export async function loadSettingsWindow(): Promise<void> {
     const allVault = await api.listAllVault();
     if (store.status.state === "unlocked") {
       store.allVault = allVault;
+      clearUnavailableItemVault();
     }
   } catch {
     return;
@@ -1034,13 +1052,15 @@ export function selectVault(vaultID: string): Promise<void> {
 
 async function loadVaultItems(vaultID: string, version: number): Promise<void> {
   store.isFavoritesSelected = false;
+  if (store.listVaultID !== vaultID) store.allItem = [];
+  store.listVaultID = vaultID;
   store.selectedVaultID = vaultID;
   store.selectedItem = null;
   store.editorMode = "view";
   store.searchQuery = "";
   store.selectedTag = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
-  if (version !== navigationVersion || store.selectedVaultID !== vaultID) {
+  if (version !== navigationVersion || store.listVaultID !== vaultID) {
     return;
   }
   store.allItem = allItem ? sortAllItem(allItem) : [];
@@ -1120,10 +1140,10 @@ export async function setItemFavorite(vaultID: string, itemID: string, isFavorit
   if (!isSaved) {
     return;
   }
-  if (store.selectedItem?.id === itemID) {
+  if (vaultID === store.selectedVaultID && store.selectedItem?.id === itemID) {
     store.selectedItem = { ...store.selectedItem, isFavorite };
   }
-  if (vaultID === store.selectedVaultID) {
+  if (vaultID === store.listVaultID) {
     store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, isFavorite } : vaultItem));
   }
   await loadAllFavoriteQuietly();
@@ -1199,19 +1219,20 @@ export function selectTag(tag: string): Promise<void> {
     store.selectedTag = nextTag;
     return Promise.resolve();
   }
-  // The filter narrows the selected vault's list, so choosing a tag from Favorites returns to that list.
+  // Sidebar tags belong to the loaded list, even while another vault's favorite is open.
   return afterDiscardingDraft(() => {
     store.selectedTag = nextTag;
     store.isFavoritesSelected = false;
+    store.selectedVaultID = store.listVaultID;
     store.selectedItem = null;
     store.editorMode = "view";
   });
 }
 
-// updateSelectedVaultSummary makes the selected vault's summary describe store.allItem, its latest acquisition: the
+// updateSelectedVaultSummary makes the loaded list's vault summary describe store.allItem, its latest acquisition: the
 // healthy items it counts and every record that did not open, so a record the list hides is still disclosed.
 function updateSelectedVaultSummary(): void {
-  const vault = store.allVault.find((candidate) => candidate.id === store.selectedVaultID);
+  const vault = store.allVault.find((candidate) => candidate.id === store.listVaultID);
   if (vault) {
     vault.itemCount = store.allItem.filter((vaultItem) => !vaultItem.readIssue).length;
     vault.readIssues = [...(vault.readIssues ?? []).filter((issue) => !issue.itemId), ...store.allItem.flatMap((vaultItem) => (vaultItem.readIssue ? [vaultItem.readIssue] : []))];
@@ -1223,9 +1244,10 @@ export function selectItem(itemID: string): Promise<void> {
 }
 
 async function loadSelectedItem(itemID: string, version: number): Promise<void> {
-  const vaultID = store.selectedVaultID;
+  const vaultID = store.listVaultID;
   const detail = await runAction(() => api.getItem(vaultID, itemID));
-  if (detail && version === navigationVersion && store.selectedVaultID === vaultID) {
+  if (detail && version === navigationVersion && store.listVaultID === vaultID) {
+    store.selectedVaultID = vaultID;
     store.selectedItem = detail;
     store.editorMode = "view";
   }
@@ -1327,6 +1349,7 @@ async function openShownItem(location: ItemLocation): Promise<void> {
 
 function startCreating(mode: EditorMode): Promise<void> {
   return afterDiscardingDraft(() => {
+    store.selectedVaultID = store.listVaultID;
     store.selectedItem = null;
     store.editorMode = mode;
   });
@@ -1373,7 +1396,7 @@ export function startCreatingSSHKey(): Promise<void> {
 }
 
 async function showCreatedItem(created: ItemDetail): Promise<void> {
-  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  const allItem = await runAction(() => api.listAllItem(store.listVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
     updateSelectedVaultSummary();
@@ -1419,7 +1442,7 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
   if (!saved) {
     return false;
   }
-  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  const allItem = await runAction(() => api.listAllItem(store.listVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
     updateSelectedVaultSummary();
@@ -1450,7 +1473,9 @@ export async function convertToSecureNote(): Promise<void> {
   if (!converted) {
     return;
   }
+  if (store.selectedVaultID === store.listVaultID) {
   store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === converted.id ? { ...vaultItem, category: converted.category, revision: converted.revision, canConvertToSecureNote: false } : vaultItem));
+  }
   if (store.selectedItem?.id === converted.id) {
     store.selectedItem = converted;
   }
@@ -1469,10 +1494,8 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
   if (!deleted) {
     return false;
   }
+  if (vaultID === store.listVaultID) {
   store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
-  // Opening a favorite makes its vault the selected one but leaves allItem as the vault last listed, so allItem counts the
-  // selected vault only outside Favorites.
-  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
     updateSelectedVaultSummary();
     dropMissingTagFilter();
   } else {
@@ -1482,7 +1505,7 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
     }
   }
   store.allFavorite = store.allFavorite.filter((favorite) => !(favorite.item.id === itemID && favorite.vaultId === vaultID));
-  if (store.selectedItem?.id === itemID) {
+  if (vaultID === store.selectedVaultID && store.selectedItem?.id === itemID) {
     store.selectedItem = null;
     store.editorMode = "view";
   }
@@ -1492,7 +1515,7 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
 
 // reloadSelectedVaultItems lists the vault on screen again, as summaries without secrets.
 async function reloadSelectedVaultItems(): Promise<void> {
-  const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  const allItem = await runAction(() => api.listAllItem(store.listVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
     updateSelectedVaultSummary();
@@ -1502,7 +1525,7 @@ async function reloadSelectedVaultItems(): Promise<void> {
 // retryReads reads every vault and the one on screen again, after a recovery action or when the user retries.
 export async function retryReads(): Promise<void> {
   await loadAllVault();
-  if (!store.isFavoritesSelected && store.allVault.some((vault) => vault.id === store.selectedVaultID)) {
+  if (store.allVault.some((vault) => vault.id === store.listVaultID)) {
     await reloadSelectedVaultItems();
   }
 }
@@ -1513,10 +1536,10 @@ export async function moveItem(vaultID: string, itemID: string, targetVaultID: s
   if (!moved) {
     return false;
   }
-  if (vaultID === store.selectedVaultID) {
+  if (vaultID === store.listVaultID) {
     store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
     dropMissingTagFilter();
-  } else if (targetVaultID === store.selectedVaultID) {
+  } else if (targetVaultID === store.listVaultID) {
     await reloadSelectedVaultItems();
   }
   for (const vault of store.allVault) {
@@ -1526,7 +1549,7 @@ export async function moveItem(vaultID: string, itemID: string, targetVaultID: s
       vault.itemCount += 1;
     }
   }
-  if (store.selectedItem?.id === itemID) {
+  if (vaultID === store.selectedVaultID && store.selectedItem?.id === itemID) {
     store.selectedItem = null;
     store.editorMode = "view";
   }
@@ -1546,7 +1569,8 @@ export async function duplicateItem(vaultID: string, itemID: string): Promise<bo
   if (vault) {
     vault.itemCount += 1;
   }
-  if (vaultID === store.selectedVaultID && !store.isFavoritesSelected) {
+  if (vaultID === store.listVaultID && !store.isFavoritesSelected) {
+    store.selectedVaultID = vaultID;
     await reloadSelectedVaultItems();
     store.selectedItem = copied;
     store.editorMode = "view";
@@ -1562,7 +1586,9 @@ export async function deletePasskey(credentialID: string): Promise<boolean> {
   const itemID = store.selectedItem.id;
   const updated = await runAction(() => api.deletePasskey(store.selectedVaultID, itemID, credentialID));
   if (updated) {
+    if (store.selectedVaultID === store.listVaultID) {
     store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, passkeys: updated.passkeys } : vaultItem));
+    }
     if (store.selectedItem?.id === itemID) {
       store.selectedItem = updated;
     }
@@ -1758,7 +1784,7 @@ export async function removeVaultMember(member: VaultMember): Promise<boolean> {
   }
   await loadSharing();
   const allItem = await runAction(() => api.listAllItem(vaultID));
-  if (allItem && vaultID === store.selectedVaultID) {
+  if (allItem && vaultID === store.listVaultID) {
     store.allItem = sortAllItem(allItem);
     store.selectedItem = null;
     store.editorMode = "view";
@@ -1879,7 +1905,8 @@ async function reloadAllVaultQuietly(): Promise<void> {
       return;
     }
     store.allVault = allVault;
-    if (allVault.length > 0 && !allVault.some((vault) => vault.id === store.selectedVaultID)) {
+    clearUnavailableItemVault();
+    if (allVault.length > 0 && !allVault.some((vault) => vault.id === store.listVaultID)) {
       await selectVault(findPersonalVaultID(allVault));
     }
   } catch {
@@ -2513,11 +2540,12 @@ async function finishImport(progress: ImportProgress): Promise<void> {
   const allVault = await runAction(() => api.listAllVault());
   if (allVault) {
     store.allVault = allVault;
+    clearUnavailableItemVault();
   }
   // A mixed import reports no single vault; the reviewed groups name every destination.
   const allDestinationID = [progress.vaultId, ...(store.importPreview?.groups ?? []).map((group) => group.vaultId)];
-  if (store.selectedVaultID && allDestinationID.includes(store.selectedVaultID)) {
-    const allItem = await runAction(() => api.listAllItem(store.selectedVaultID));
+  if (store.listVaultID && allDestinationID.includes(store.listVaultID)) {
+    const allItem = await runAction(() => api.listAllItem(store.listVaultID));
     if (allItem) {
       store.allItem = sortAllItem(allItem);
     }
