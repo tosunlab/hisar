@@ -86,18 +86,24 @@ textarea {
   transition: border-color 120ms;
 }
 
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not(:disabled),
+textarea:not(:disabled),
+select:not(:disabled) {
+  border-color: var(--color-control-border);
+}
+
 input::placeholder,
 textarea::placeholder {
   color: var(--color-text-muted);
 }
 
-input:hover,
-textarea:hover {
-  border-color: var(--color-border-strong);
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not(:disabled):hover,
+textarea:not(:disabled):hover {
+  border-color: var(--color-control-border);
 }
 
-input:focus,
-textarea:focus {
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not(:disabled):focus,
+textarea:not(:disabled):focus {
   outline: none;
   border-color: var(--color-focus);
   box-shadow: 0 0 0 3px var(--color-focus-ring);
@@ -118,10 +124,10 @@ select {
 }
 
 select:hover:not(:disabled) {
-  border-color: var(--color-border-strong);
+  border-color: var(--color-control-border);
 }
 
-select:focus {
+select:not(:disabled):focus {
   outline: none;
   border-color: var(--color-focus);
   box-shadow: 0 0 0 3px var(--color-focus-ring);

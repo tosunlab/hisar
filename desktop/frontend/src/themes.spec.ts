@@ -32,6 +32,7 @@ const allRule: ContrastRule[] = [
   { allForeground: ["warning", "warningText"], allBackground: ["warningBackground"], minimum: textMinimum },
   { allForeground: ["danger"], allBackground: ["dangerBackground"], minimum: interfaceMinimum },
   { allForeground: ["focus", "primary"], allBackground: ["background", "sidebar", "panel", "surface"], minimum: interfaceMinimum },
+  { allForeground: ["controlBorder"], allBackground: ["surface", "panel"], minimum: interfaceMinimum },
   ...allTileIndex.map((index) => ({ allForeground: [`tile${index}Text`], allBackground: [`tile${index}`], minimum: textMinimum })),
   { allForeground: ["iosTint", "iosSecondaryLabel", "iosWarning"], allBackground: ["iosGroupedBackground", "iosCellBackground"], minimum: textMinimum },
   { allForeground: ["iosOnTint"], allBackground: ["iosTint"], minimum: textMinimum },
