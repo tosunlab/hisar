@@ -137,6 +137,13 @@ data class VaultSummary(
         const val TYPE_PERSONAL = "personal"
         const val TYPE_SHARED = "shared"
         const val TYPE_ORGANIZATION = "organization"
+
+        fun itemDeletionMessage(vault: VaultSummary?): String =
+            if (vault?.type == TYPE_PERSONAL) {
+                "It is removed from all your devices. It can't be undone."
+            } else {
+                "It is removed from ${vault?.name?.ifEmpty { null } ?: "this vault"} for everyone with access to the vault. It can't be undone."
+            }
     }
 }
 
@@ -781,6 +788,16 @@ data class ItemPasskey(
 ) {
     val id: String get() = credentialID
     val createdDate: Instant? get() = parseTimestamp(createdAt)
+
+    fun deletionMessage(vault: VaultSummary?): String {
+        val account = userName.ifEmpty { userDisplayName }
+        val consequence = if (vault?.type == VaultSummary.TYPE_PERSONAL) {
+            "It is removed from all your devices. Make sure you can sign in another way first."
+        } else {
+            "It is removed from ${vault?.name?.ifEmpty { null } ?: "this vault"} for everyone with access. Make sure they can sign in another way first."
+        }
+        return "You can no longer sign in to $relyingPartyID as $account with it. $consequence"
+    }
 }
 
 /** An Android app a login fills into: its package name and the SHA-256 of its signing certificate, in colon hex. */

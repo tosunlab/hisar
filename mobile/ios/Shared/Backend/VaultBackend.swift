@@ -82,6 +82,7 @@ protocol VaultBackend: AnyObject {
     func getItem(vaultID: String, itemID: String) throws -> ItemDetail
     func saveItem(vaultID: String, item: ItemDetail) throws -> ItemDetail
     func deleteItem(vaultID: String, itemID: String) throws
+    func moveItem(vaultID: String, itemID: String, targetVaultID: String) throws -> ItemDetail
     func listAllFavoriteItem() throws -> [FavoriteItem]
     func setItemFavorite(vaultID: String, itemID: String, isFavorite: Bool) throws
     func convertToSecureNote(vaultID: String, itemID: String) throws -> ItemDetail

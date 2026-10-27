@@ -3,6 +3,8 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.ItemAndroidApp
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.OneTimeCode
+import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.VaultLogic
 
 /**
  * One item as its detail screen shows it: the decrypted item, its one-time code, and the changes made from there. The lists
@@ -15,6 +17,23 @@ class ItemModel(private val context: ModelContext) {
     /** The current code, or null when the item has none or its secret cannot be read. */
     suspend fun loadOneTimeCode(vaultID: String, itemID: String): OneTimeCode? =
         context.attempt { it.getOneTimeCode(vaultID, itemID) }
+
+    fun moveDestinations(vaultID: String): List<VaultSummary> {
+        val data = context.unlockedData.value
+        if (data.findVault(vaultID)?.let(VaultLogic::isWritable) != true) return emptyList()
+        return data.allVault.filter { it.id != vaultID && VaultLogic.isWritable(it) }
+    }
+
+    suspend fun moveItem(vaultID: String, itemID: String, targetVaultID: String): ItemDetail? {
+        if (moveDestinations(vaultID).none { it.id == targetVaultID }) {
+            context.errorMessage.value = "Choose another writable vault."
+            return null
+        }
+        val moved = context.perform { it.moveItem(vaultID, itemID, targetVaultID) } ?: return null
+        context.refreshAll()
+        context.showNotice("Item moved.")
+        return moved
+    }
 
     suspend fun convertToSecureNote(vaultID: String, itemID: String): ItemDetail? {
         val converted = context.perform { it.convertToSecureNote(vaultID, itemID) } ?: return null

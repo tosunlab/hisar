@@ -18,6 +18,7 @@ struct ItemEditorView: View {
     @State private var loadedItem = ItemDetail()
     @State private var isDiscardConfirmationShown = false
     @State private var isPasswordRevealed = false
+    @State private var revealedCustomFields = Set<Int>()
     @State private var isGeneratorShown = false
     @State private var isIconPickerShown = false
     @State private var isDeleteConfirmationShown = false
@@ -33,6 +34,14 @@ struct ItemEditorView: View {
     @State private var isOldAddressShown = false
     /// The brand of the number last checked: the type follows it until the user picks a different one.
     @State private var numberBrand = ""
+    @State private var saveError: String?
+    @State private var saveFailureCount = 0
+    private enum SaveErrorFocus: Hashable { case summary, oneTimeCode }
+    @AccessibilityFocusState private var focusedSaveError: SaveErrorFocus?
+
+    private var oneTimeCodeError: String? {
+        saveError == "The one-time code is not a valid secret or otpauth:// link" ? saveError : nil
+    }
 
     private var isNew: Bool { originalItem == nil }
 
@@ -41,6 +50,7 @@ struct ItemEditorView: View {
     }
 
     private var allWritableVault: [VaultSummary] { model.allVault.filter(AppModel.isWritableVault) }
+    private var destinationGroups: [VaultDestinationGroup] { OrganizationLogic.destinationGroups(allWritableVault, organizations: model.allOrganization) }
 
     private var credentialExpiryWarning: String {
         ItemAPICredential.describeEditedExpiry(draft.apiCredential?.expiry ?? "", saved: originalItem?.apiCredential)
@@ -48,10 +58,13 @@ struct ItemEditorView: View {
 
     var body: some View {
         NavigationStack {
+            ScrollViewReader { proxy in
             Form {
-                if let errorMessage = model.errorMessage {
+                if let errorMessage = saveError ?? model.errorMessage {
                     Section {
                         ErrorBanner(message: errorMessage)
+                            .id("editor-save-error")
+                            .accessibilityFocused($focusedSaveError, equals: .summary)
                     }
                 }
                 Section {
@@ -75,11 +88,21 @@ struct ItemEditorView: View {
                     }
                     if isNew {
                         Picker("Vault", selection: $chosenVaultID) {
-                            ForEach(allWritableVault) { vault in
-                                Text(vault.name).tag(vault.id)
+                            ForEach(destinationGroups) { group in
+                                Section(group.name) {
+                                    ForEach(group.destinations) { destination in
+                                        Text(destination.label).tag(destination.id)
+                                    }
+                                }
                             }
                         }
                         .accessibilityIdentifier("editor-vault")
+                        if let destination = destinationGroups.flatMap(\.destinations).first(where: { $0.id == chosenVaultID }) {
+                            Text(destination.context)
+                                .font(.footnote)
+                                .foregroundStyle(.themeSecondary)
+                                .accessibilityIdentifier("editor-vault-context")
+                        }
                     }
                 }
                 if draft.isSecureNote {
@@ -160,6 +183,14 @@ struct ItemEditorView: View {
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("editor-one-time-password")
+                                .accessibilityHint(oneTimeCodeError ?? "")
+                            if let oneTimeCodeError {
+                                Text(oneTimeCodeError)
+                                    .foregroundStyle(.red)
+                                    .id("editor-one-time-code-error")
+                                    .accessibilityIdentifier("editor-one-time-code-error")
+                                    .accessibilityFocused($focusedSaveError, equals: .oneTimeCode)
+                            }
                         }
                         Section(draft.isServer ? "Admin console" : "Websites") {
                             ForEach(allURLText.indices, id: \.self) { index in
@@ -215,9 +246,9 @@ struct ItemEditorView: View {
                 }
             }
             .confirmationDialog("Delete “\(draft.title)”?", isPresented: $isDeleteConfirmationShown, titleVisibility: .visible) {
-                Button("Delete", role: .destructive, action: delete)
+                Button("Delete item", role: .destructive, action: delete)
             } message: {
-                Text("It is deleted on every device that can see this vault.")
+                Text(VaultSummary.itemDeletionMessage(model.findVault(vaultID: vaultID)))
             }
             .confirmationDialog("Discard changes?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
                 Button("Discard", role: .destructive, action: close)
@@ -237,6 +268,11 @@ struct ItemEditorView: View {
             // resets the picker's color and drops a tap in flight.
             .sheet(isPresented: $isIconPickerShown) {
                 IconPickerView(icon: $draft.icon, item: buildIconPreviewItem())
+            }
+            .onChange(of: saveFailureCount) { _, _ in
+                withAnimation { proxy.scrollTo(oneTimeCodeError == nil ? "editor-save-error" : "editor-one-time-code-error", anchor: .center) }
+                focusedSaveError = oneTimeCodeError == nil ? .summary : .oneTimeCode
+            }
             }
         }
         .interactiveDismissDisabled(model.isBusy || hasChanges)
@@ -828,26 +864,40 @@ struct ItemEditorView: View {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
+                        .accessibilityIdentifier("editor-field-\(index)-name")
                     HStack {
-                        if draft.allField[index].concealed {
+                        if draft.allField[index].concealed && !revealedCustomFields.contains(index) {
                             SecureField("Value", text: $draft.allField[index].value)
+                                .accessibilityLabel(draft.allField[index].name.isEmpty ? "Value" : draft.allField[index].name)
+                                .accessibilityIdentifier("editor-field-\(index)-value")
                         } else {
                             TextField("Value", text: $draft.allField[index].value)
+                                .accessibilityLabel(draft.allField[index].name.isEmpty ? "Value" : draft.allField[index].name)
+                                .accessibilityIdentifier("editor-field-\(index)-value")
                         }
-                        Button {
-                            draft.allField[index].concealed.toggle()
-                        } label: {
-                            Image(systemName: draft.allField[index].concealed ? "eye" : "eye.slash")
-                                .iconButtonHitArea()
+                        if draft.allField[index].concealed {
+                            Button {
+                                if revealedCustomFields.contains(index) { revealedCustomFields.remove(index) }
+                                else { revealedCustomFields.insert(index) }
+                            } label: {
+                                Image(systemName: revealedCustomFields.contains(index) ? "eye.slash" : "eye")
+                                    .iconButtonHitArea()
+                            }
+                            .buttonStyle(.borderless)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityLabel("\(revealedCustomFields.contains(index) ? "Hide" : "Show") \(draft.allField[index].name.isEmpty ? "value" : draft.allField[index].name)")
+                            .accessibilityIdentifier("editor-field-\(index)-reveal")
                         }
-                        .buttonStyle(.borderless)
-                        .foregroundStyle(.themeSecondary)
-                        .accessibilityLabel("Secret")
-                        .accessibilityAddTraits(draft.allField[index].concealed ? .isSelected : [])
                     }
+                    Toggle("Secret", isOn: $draft.allField[index].concealed)
+                        .accessibilityLabel("Secret \(draft.allField[index].name)")
+                        .accessibilityIdentifier("editor-field-\(index)-secret")
                 }
             }
-            .onDelete { draft.allField.remove(atOffsets: $0) }
+            .onDelete { offsets in
+                draft.allField.remove(atOffsets: offsets)
+                revealedCustomFields = Set(revealedCustomFields.filter { !offsets.contains($0) }.map { row in row - offsets.filter { $0 < row }.count })
+            }
             Button {
                 draft.allField.append(ItemField(name: "", value: "", concealed: false))
             } label: {
@@ -903,6 +953,10 @@ struct ItemEditorView: View {
                 loadedItem = buildIconPreviewItem()
                 finish(savedItem, vaultID)
                 dismiss()
+            }
+            else {
+                saveError = model.errorMessage
+                saveFailureCount += 1
             }
         }
     }

@@ -1334,6 +1334,22 @@ final class AppModel: ObservableObject {
         return true
     }
 
+    func moveDestinations(vaultID: String) -> [VaultSummary] {
+        guard let source = findVault(vaultID: vaultID), Self.isWritableVault(source) else { return [] }
+        return allVault.filter { $0.id != vaultID && Self.isWritableVault($0) }
+    }
+
+    func moveItem(vaultID: String, itemID: String, targetVaultID: String) async -> ItemDetail? {
+        guard moveDestinations(vaultID: vaultID).contains(where: { $0.id == targetVaultID }) else {
+            errorMessage = "Choose another writable vault."
+            return nil
+        }
+        guard let moved = await perform({ try $0.moveItem(vaultID: vaultID, itemID: itemID, targetVaultID: targetVaultID) }) else { return nil }
+        await refreshAll()
+        showNotice("Item moved.")
+        return moved
+    }
+
     /// The brand, last four digits and warnings for a card being typed; nil when the backend cannot answer.
     func describeCard(number: String, expiry: String) async -> CardDescription? {
         guard let backend else { return nil }

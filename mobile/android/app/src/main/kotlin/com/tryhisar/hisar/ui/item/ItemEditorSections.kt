@@ -1,6 +1,8 @@
 package com.tryhisar.hisar.ui.item
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -18,6 +20,13 @@ import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -57,8 +66,12 @@ fun LoginSections(
     revealed: RevealedSecrets,
     onRevealedChange: (RevealedSecrets) -> Unit,
     onGeneratePassword: () -> Unit,
+    errorMessage: String? = null,
 ) {
     val item = draft.item
+    val oneTimeCodeError = errorMessage?.takeIf { it == "The one-time code is not a valid secret or otpauth:// link" }
+    val codeRequester = remember { BringIntoViewRequester() }
+    LaunchedEffect(oneTimeCodeError) { if (oneTimeCodeError != null) codeRequester.bringIntoView() }
     FormSection(header = "Login") {
         EditorField(item.username, { value -> onChange(draft.withItem { it.copy(username = value) }) }, "Username or email", "editor-username", kind = FieldKind.PLAIN)
         RowDivider()
@@ -83,9 +96,11 @@ fun LoginSections(
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
                 "Setup key or otpauth:// link",
                 "editor-one-time-password",
+                modifier = Modifier.bringIntoViewRequester(codeRequester).semantics { oneTimeCodeError?.let { error(it) } },
                 kind = FieldKind.SECRET,
                 isMonospaced = true,
             )
+            if (oneTimeCodeError != null) Warning(oneTimeCodeError, "editor-one-time-code-error")
         }
         FormSection(header = if (item.isServer) "Admin console" else "Websites") {
             draft.allURLText.forEachIndexed { index, text ->
@@ -349,11 +364,15 @@ fun SoftwareLicenseSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -
 @Composable
 fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Unit) {
     val allField = draft.item.allField
+    var revealedRows by remember { mutableStateOf(emptySet<Int>()) }
     fun update(index: Int, transform: (ItemField) -> ItemField) =
         onChange(draft.withItem { item -> item.copy(allField = item.allField.toMutableList().apply { set(index, transform(get(index))) }) })
     FormSection(header = "Other fields") {
         allField.forEachIndexed { index, field ->
-            val remove = { onChange(draft.withItem { item -> item.copy(allField = item.allField.filterIndexed { other, _ -> other != index }) }) }
+            val remove = {
+                revealedRows = revealedRows.filter { it != index }.map { if (it > index) it - 1 else it }.toSet()
+                onChange(draft.withItem { item -> item.copy(allField = item.allField.filterIndexed { other, _ -> other != index }) })
+            }
             SwipeToDeleteRow(onDelete = remove) {
                 Row(Modifier.padding(vertical = 4.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
@@ -361,7 +380,14 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
                         EditorField(
                             field.value, { value -> update(index) { it.copy(value = value) } }, "Value", "editor-field-$index-value",
                             kind = if (field.concealed) FieldKind.SECRET else FieldKind.TEXT, isSecret = field.concealed,
-                        )
+                            isRevealed = index in revealedRows,
+                        ) {
+                            if (field.concealed) {
+                                RevealButton(index in revealedRows, field.name.ifEmpty { "value" }) {
+                                    revealedRows = if (index in revealedRows) revealedRows - index else revealedRows + index
+                                }
+                            }
+                        }
                         ToggleRow("Secret", field.concealed, { isOn -> update(index) { it.copy(concealed = isOn) } }, testTag = "editor-field-$index-secret")
                     }
                     RemoveRowButton("Remove field ${field.name.ifEmpty { "${index + 1}" }}", "editor-field-$index-remove", remove)

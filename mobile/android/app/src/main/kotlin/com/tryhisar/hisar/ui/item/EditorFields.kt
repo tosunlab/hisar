@@ -120,6 +120,7 @@ fun InlineTitleForm(
     title: String,
     leading: @Composable RowScope.() -> Unit,
     trailing: @Composable RowScope.() -> Unit,
+    status: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(
@@ -148,6 +149,7 @@ fun InlineTitleForm(
             )
             Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = trailing)
         }
+        status?.invoke()
         Column(
             Modifier
                 .weight(1f)

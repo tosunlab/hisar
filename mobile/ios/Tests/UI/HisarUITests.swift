@@ -121,6 +121,17 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
         type("dev, work", into: app.textFields["editor-new-tag"])
+        app.textFields["editor-one-time-password"].tap()
+        type("not a secret!", into: app.textFields["editor-one-time-password"])
+        let longNotes = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
+        type(String(repeating: "A long draft. ", count: 60), into: longNotes)
+        app.buttons["editor-save"].tap()
+        let codeError = app.staticTexts["editor-one-time-code-error"]
+        waitFor(codeError)
+        XCTAssertTrue(codeError.isHittable)
+        XCTAssertTrue(app.textFields["editor-title"].exists)
+        app.textFields["editor-one-time-password"].tap()
+        app.textFields["editor-one-time-password"].typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 13))
         app.buttons["editor-save"].tap()
         // The item under the editor shows the old password until the save finishes and the editor closes.
         XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30), "the editor did not close after saving")
@@ -150,6 +161,15 @@ final class HisarUITests: HisarUITestCase {
         type("Recovery codes", into: app.textFields["editor-title"])
         let notesField = app.textViews["editor-notes"].exists ? app.textViews["editor-notes"] : app.textFields["editor-notes"]
         type("4821-9930", into: notesField)
+        for index in 0...1 {
+            app.buttons["Add field"].tap()
+            type("Recovery code", into: app.textFields["editor-field-\(index)-name"])
+            type("code-\(index)", into: app.textFields["editor-field-\(index)-value"])
+            app.switches["editor-field-\(index)-secret"].tap()
+        }
+        app.buttons["editor-field-0-reveal"].tap()
+        XCTAssertTrue(app.textFields["editor-field-0-value"].exists)
+        XCTAssertTrue(app.secureTextFields["editor-field-1-value"].exists)
         saveScreenshot("add-secure-note")
         app.buttons["editor-save"].tap()
         let notesRow = app.buttons["secure-note-notes"]
@@ -169,6 +189,16 @@ final class HisarUITests: HisarUITestCase {
         notesRow.press(forDuration: 1)
         copyNotesReference.tap()
         waitFor(app.staticTexts["Secret reference copied."])
+        app.buttons["edit-item"].tap()
+        XCTAssertTrue(app.secureTextFields["editor-field-0-value"].exists)
+        XCTAssertTrue(app.secureTextFields["editor-field-1-value"].exists)
+        app.switches["editor-field-0-secret"].tap()
+        app.buttons["editor-save"].tap()
+        XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30))
+        app.buttons["edit-item"].tap()
+        XCTAssertTrue(app.textFields["editor-field-0-value"].exists)
+        XCTAssertTrue(app.secureTextFields["editor-field-1-value"].exists)
+        app.buttons["editor-cancel"].tap()
         goBack()
 
         choose("New credit card", from: "new-menu", under: "new-more")
@@ -254,6 +284,21 @@ final class HisarUITests: HisarUITestCase {
         app.buttons["editor-save"].tap()
         waitFor(app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", "build.example.com:2222 · deploy")).firstMatch)
         XCTAssertEqual(app.buttons["copy-password"].value as? String, "Hidden", "the password is shown before it is revealed")
+        for port in ["2222", "22"] {
+            if port == "22" {
+                app.buttons["edit-item"].tap()
+                app.textFields["editor-server-port"].tap()
+                app.textFields["editor-server-port"].typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4))
+                type(port, into: app.textFields["editor-server-port"])
+                app.buttons["editor-save"].tap()
+                XCTAssertTrue(app.textFields["editor-title"].waitForNonExistence(timeout: 30))
+            }
+            XCTAssertEqual(app.buttons["copy-host"].value as? String, "build.example.com")
+            XCTAssertEqual(app.buttons["copy-port"].value as? String, port)
+            app.buttons["copy-host"].tap()
+            waitFor(app.staticTexts["Host copied. It clears in 90 seconds."])
+            XCTAssertTrue(app.staticTexts["Host copied. It clears in 90 seconds."].waitForNonExistence(timeout: 10))
+        }
         saveScreenshot("server")
         goBack()
 

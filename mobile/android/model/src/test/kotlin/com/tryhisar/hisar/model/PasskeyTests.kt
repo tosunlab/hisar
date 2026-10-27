@@ -14,6 +14,21 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class PasskeyTests {
     @Test
+    fun testPasskeyDeletionDescribesVaultWideConsequences() {
+        for (userName in listOf("alice", "")) {
+            val passkey = ItemPasskey("key", "github.com", userName, "Alice")
+            val account = userName.ifEmpty { "Alice" }
+            val prefix = "You can no longer sign in to github.com as $account with it. "
+            for (type in listOf("personal", "shared", "organization")) {
+                val vault = VaultSummary(id = "v", name = "Production", type = type)
+                val consequence = if (type == "personal") "It is removed from all your devices. Make sure you can sign in another way first."
+                    else "It is removed from Production for everyone with access. Make sure they can sign in another way first."
+                assertEquals(prefix + consequence, passkey.deletionMessage(vault))
+            }
+        }
+    }
+
+    @Test
     fun testBase64URLRoundTrip() {
         val allValue = listOf(ByteString(), ByteString(0xfb.toByte()), ByteString(0xfb.toByte(), 0xff.toByte()), ByteString(0xfb.toByte(), 0xff.toByte(), 1), ByteString(ByteArray(64) { (it * 4).toByte() }))
         for (value in allValue) {

@@ -179,6 +179,14 @@ export function getItemIcon(category: string): CategoryIcon | undefined {
   return allCategoryIcon[category];
 }
 
+const defaultIconPreset: Record<string, string> = {
+  [creditCardCategory]: "card", [serverCategory]: "server", [databaseCategory]: "database", [sshKeyCategory]: "key",
+};
+
+export function getDefaultIconPreset(category: string): string {
+  return defaultIconPreset[category] ?? "lock";
+}
+
 // The names of a card's custom fields, as core/item stores them; copying and secret references use them.
 export const cardFieldName = {
   cardholder: "Cardholder",

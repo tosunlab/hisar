@@ -89,6 +89,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Discard changes to “X”? · Keep editing · Discard (Esc on a changed Mac draft) | Losing an unsaved draft without asking |
 | Item actions (the ⋯ button in the Mac's item header) | Unlabelled ⋯ |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
+| Delete item · "It is removed from all your devices. It can't be undone." for Personal · "It is removed from \<vault name> for everyone with access to the vault. It can't be undone." for shared and organization vaults | A device-only deletion, or "all your devices" for an unresolved vault |
 | secret reference | secret URI, reference link |
 | "\<Field> copied. It clears in 90 seconds." (Mac and iPhone copy notices) | "\<Field> copied, clears in 90 seconds" |
 | Favorites (the list at the top of the sidebar and of Vaults), favorite, star (the icon) | Starred, Pinned, Bookmarks |

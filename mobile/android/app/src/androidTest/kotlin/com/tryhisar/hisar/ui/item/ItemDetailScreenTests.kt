@@ -64,6 +64,32 @@ class ItemDetailScreenTests {
 
     private fun exists(tag: String) = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
 
+    @Test
+    fun testMoveSheetKeepsItsSelectionAfterFailureAndOpensTheMovedItem() {
+        val host = openHost()
+        host.show("personal", "github")
+        composeRule.waitForTag("move-item")
+        composeRule.tap("move-item")
+        composeRule.waitForTag("move-item-sheet")
+        composeRule.tap("move-item-target-family")
+        assertTrue(composeRule.onAllNodes(hasText("Shared vault / Family")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodes(hasText("Copies they retained independently cannot be revoked.", substring = true)).fetchSemanticsNodes().isNotEmpty())
+        backend.moveErrorMessage = "The server could not be reached."
+        composeRule.tap("move-item-confirm")
+        composeRule.waitUntil(5_000) { host.model.errorMessage.value == "The server could not be reached." }
+        assertTrue(exists("move-item-sheet"))
+        assertTrue(backend.getItem("personal", "github").allPasskey.isNotEmpty())
+        backend.moveErrorMessage = null
+        composeRule.tap("move-item-confirm")
+        composeRule.waitForTagToGo("move-item-sheet")
+        composeRule.waitForTag("edit-item")
+        composeRule.tap("edit-item")
+        composeRule.waitUntil(5_000) { host.allEditorRequest.isNotEmpty() }
+        assertEquals("family", (host.allEditorRequest.last() as com.tryhisar.hisar.app.EditorRequest.Edit).vaultID)
+        assertTrue(backend.getItem("family", "github").allPasskey.isNotEmpty())
+        assertEquals(0, host.backCount)
+    }
+
     private fun dismissNotice() {
         composeRule.waitForTag("notice")
         composeRule.onNodeWithTag("notice").performTouchInput { swipeLeft() }
@@ -86,13 +112,31 @@ class ItemDetailScreenTests {
     }
 
     @Test
+    fun testServerHostMatchesTheCopiedFieldWithDefaultAndCustomPorts() {
+        val host = openHost()
+        for ((port, id) in listOf("22" to "default-server", "2222" to "custom-server")) {
+            backend.allItemByVaultID.getValue("personal") += ItemDetail(
+                id = id, category = ItemDetail.CATEGORY_SERVER, title = id,
+                server = ItemServer(host = "build.example.com", port = port),
+            )
+            host.show("personal", id)
+            composeRule.waitForTag("Host-value")
+            assertTrue(composeRule.onAllNodes(hasText("build.example.com")).fetchSemanticsNodes().isNotEmpty())
+            assertTrue(composeRule.onAllNodes(hasText(port)).fetchSemanticsNodes().isNotEmpty())
+            composeRule.onNodeWithTag("copy-Host").performClick()
+            composeRule.waitUntil(5_000) { backend.allCopiedField.contains("$id.Host") }
+            dismissNotice()
+        }
+    }
+
+    @Test
     fun testDeletingAPasskeyAsksFirstAndRemovesIt() {
         val host = openHost()
         host.show("personal", "github")
         composeRule.waitForTag("passkey-github.com")
         composeRule.tap("delete-passkey-github.com")
         composeRule.waitForTag("confirm-delete-passkey")
-        assertTrue(composeRule.onAllNodes(hasText("You can no longer sign in to github.com as alice with it.")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodes(hasText("You can no longer sign in to github.com as alice with it. It is removed from all your devices. Make sure you can sign in another way first.")).fetchSemanticsNodes().isNotEmpty())
         composeRule.onNodeWithTag("confirm-delete-passkey").performClick()
         composeRule.waitForTagToGo("passkey-github.com")
         assertEquals(emptyList<Any>(), backend.getItem("personal", "github").allPasskey)

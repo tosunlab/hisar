@@ -135,6 +135,14 @@ struct VaultSummary: Codable, Identifiable, Hashable {
 
     var isOrganization: Bool { type == Self.typeOrganization }
 
+    static func itemDeletionMessage(_ vault: VaultSummary?) -> String {
+        if vault?.type == typePersonal {
+            return "It is removed from all your devices. It can't be undone."
+        }
+        let name = vault.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "this vault"
+        return "It is removed from \(name) for everyone with access to the vault. It can't be undone."
+    }
+
     enum CodingKeys: String, CodingKey {
         case id, name, type, role, itemCount
         case readIssues, isPersonalExtra
@@ -375,6 +383,13 @@ struct ChosenIcon: Codable, Hashable {
 
     /// The symbol to draw, or nil for an image or a preset from a newer app, which draws the category's symbol.
     var symbol: String? { image == nil ? Self.symbolByPreset[preset] : nil }
+
+    private static let defaultPreset = ["credit-card": "card", "server": "server", "database": "database", "ssh-key": "key"]
+
+    static func applyingColor(_ color: String, to icon: ChosenIcon?, category: String) -> ChosenIcon? {
+        guard icon?.image == nil else { return icon }
+        return ChosenIcon(preset: icon.flatMap { $0.preset.isEmpty ? nil : $0.preset } ?? defaultPreset[category] ?? "lock", color: color)
+    }
 }
 
 /// The names core/item stores an address's values under; identities and cards keep their address under the same names, and
@@ -1037,6 +1052,18 @@ struct ItemPasskey: Codable, Hashable, Identifiable {
     var userName: String
     var userDisplayName: String
     var createdAt: String
+
+    func deletionMessage(vault: VaultSummary?) -> String {
+        let account = userName.isEmpty ? userDisplayName : userName
+        let consequence: String
+        if vault?.type == VaultSummary.typePersonal {
+            consequence = "It is removed from all your devices. Make sure you can sign in another way first."
+        } else {
+            let name = vault.flatMap { $0.name.isEmpty ? nil : $0.name } ?? "this vault"
+            consequence = "It is removed from \(name) for everyone with access. Make sure they can sign in another way first."
+        }
+        return "You can no longer sign in to \(relyingPartyID) as \(account) with it. \(consequence)"
+    }
 
     enum CodingKeys: String, CodingKey {
         case userName, userDisplayName, createdAt

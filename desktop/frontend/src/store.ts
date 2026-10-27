@@ -1555,9 +1555,9 @@ export async function duplicateItem(vaultID: string, itemID: string): Promise<bo
   return true;
 }
 
-export async function deletePasskey(credentialID: string): Promise<void> {
+export async function deletePasskey(credentialID: string): Promise<boolean> {
   if (!store.selectedItem) {
-    return;
+    return false;
   }
   const itemID = store.selectedItem.id;
   const updated = await runAction(() => api.deletePasskey(store.selectedVaultID, itemID, credentialID));
@@ -1568,6 +1568,7 @@ export async function deletePasskey(credentialID: string): Promise<void> {
     }
     showNotice("Passkey deleted");
   }
+  return !!updated;
 }
 
 export async function copyField(fieldName: string, label: string): Promise<void> {

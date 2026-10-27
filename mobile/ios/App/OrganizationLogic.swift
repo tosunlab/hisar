@@ -76,8 +76,47 @@ enum OrganizationLoad: Equatable {
     case failed
 }
 
+struct VaultDestination: Identifiable, Equatable {
+    var id: String
+    var label: String
+    var context: String
+}
+
+struct VaultDestinationGroup: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var destinations: [VaultDestination]
+}
+
 enum OrganizationLogic {
     static let maxNameLength = 100
+
+    static func destinationGroups(_ vaults: [VaultSummary], organizations: [OrganizationSummary]) -> [VaultDestinationGroup] {
+        func groupID(_ vault: VaultSummary) -> String {
+            vault.isOrganization ? "organization/\(vault.organizationID)" : vault.type
+        }
+        var groups: [VaultDestinationGroup] = []
+        for vault in vaults {
+            let id = groupID(vault)
+            let organization = organizations.first { $0.id == vault.organizationID }
+            var name = vault.isOrganization ? organization?.name ?? "Organization \(vault.organizationID.prefix(8))" : vault.type == "personal" ? "Private vault" : "Shared vault"
+            if let organization, organizations.contains(where: { $0.id != organization.id && $0.name == organization.name }) {
+                name += " (\(organization.id.prefix(8)))"
+            }
+            let collisions = vaults.filter { $0.name == vault.name && groupID($0) == id }
+            var length = 8
+            while collisions.contains(where: { $0.id != vault.id && $0.id.prefix(length) == vault.id.prefix(length) }) { length += 1 }
+            let suffix = collisions.count > 1 ? " (\(vault.id.prefix(length)))" : ""
+            let context = vault.isOrganization ? "Shared through teams in \(name)." : vault.type == "personal" ? "Only you have access to this private vault." : "Everyone with access to this shared vault can see the item."
+            let destination = VaultDestination(id: vault.id, label: "\(name) / \(vault.name)\(suffix)", context: context)
+            if let index = groups.firstIndex(where: { $0.id == id }) {
+                groups[index].destinations.append(destination)
+            } else {
+                groups.append(VaultDestinationGroup(id: id, name: name, destinations: [destination]))
+            }
+        }
+        return groups.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    }
 
     /// Organization and team names are 1 to 100 characters, as apitypes.CleanOrganizationName checks again.
     static func isValidName(_ name: String) -> Bool {

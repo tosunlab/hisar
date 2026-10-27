@@ -111,7 +111,7 @@ describe("Viewing a server", () => {
     api.getItem.mockResolvedValue(deployKey);
     const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
     expect(wrapper.find('[data-testid="server-summary"]').text()).toBe("build.example.com:2222 · deploy");
-    expect(wrapper.find('[data-testid="server-host"]').text()).toBe("build.example.com:2222");
+    expect(wrapper.find('[data-testid="server-host"]').text()).toBe("build.example.com");
     expect(wrapper.find('[data-testid="server-port"]').text()).toBe("2222");
     expect(wrapper.find('[data-testid="password-value"]').text()).not.toContain("server-password");
     expect(wrapper.text()).toContain("Admin console");
@@ -126,6 +126,17 @@ describe("Viewing a server", () => {
     await flushPromises();
     expect(api.getItem).toHaveBeenCalledWith("personal", "key-1");
     expect(store.selectedItem?.id).toBe("key-1");
+  });
+
+  it.each(["22", "2222"])("displays exactly the Host field copied with port %s", async (port) => {
+    store.selectedItem = createServerItem({ server: { ...createServerItem().server!, port } });
+    const wrapper = mount(ItemDetailPanel, { props: { canEdit: true, vaultName: "Personal", vaultType: "personal" } });
+    expect(wrapper.find('[data-testid="server-host"]').text()).toBe("build.example.com");
+    expect(wrapper.find('[data-testid="server-port"]').text()).toBe(port);
+    expect(wrapper.find('[data-testid="server-summary"]').text()).toBe(`build.example.com:${port} · deploy`);
+    await wrapper.find('button[aria-label="Copy Host"]').trigger("click");
+    expect(api.copyField).toHaveBeenCalledWith("personal", "build-1", "Host");
+    wrapper.unmount();
   });
 
   it("says when the linked key is gone", () => {

@@ -353,6 +353,10 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.deleteItem(vaultID, itemID: itemID) }
     }
 
+    func moveItem(vaultID: String, itemID: String, targetVaultID: String) throws -> ItemDetail {
+        try decode(ItemDetail.self, from: callReturningText { hisar.moveItem(vaultID, itemID: itemID, targetVaultID: targetVaultID, error: $0) })
+    }
+
     func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws {
         try callReturningNothing { try hisar.deleteUnreadableItem(vaultID, itemID: itemID, revision: revision) }
     }

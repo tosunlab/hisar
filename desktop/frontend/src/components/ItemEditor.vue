@@ -22,6 +22,7 @@ import {
   databaseCategory,
   describeAPICredentialExpiry,
   describeServerPort,
+  getDefaultIconPreset,
   identityCategory,
   formatCardNumberInput,
   formatExpiryInput,
@@ -138,6 +139,14 @@ onBeforeUnmount(() => {
   store.editorDraft = null;
 });
 const isPasswordVisible = ref(false);
+const revealedCustomFields = ref(new Set<number>());
+const saveError = ref("");
+const oneTimeCodeError = computed(() => saveError.value === "The one-time code is not a valid secret or otpauth:// link" ? saveError.value : "");
+
+function toggleCustomField(index: number): void {
+  if (revealedCustomFields.value.has(index)) revealedCustomFields.value.delete(index);
+  else revealedCustomFields.value.add(index);
+}
 const isGeneratorOpen = ref(store.editorMode === "create");
 const isIconPickerOpen = ref(false);
 // websiteIconURL is the website whose icon Automatic shows, from the URLs as typed.
@@ -253,6 +262,7 @@ function addField(): void {
 
 function removeField(index: number): void {
   draft.fields.splice(index, 1);
+  revealedCustomFields.value = new Set([...revealedCustomFields.value].filter((row) => row !== index).map((row) => row > index ? row - 1 : row));
 }
 
 const tagText = ref("");
@@ -287,7 +297,15 @@ function handleTagKey(event: KeyboardEvent): void {
 async function submitItem(): Promise<void> {
   addTag();
   draft.urls = parseURLText();
-  await saveItem({ ...draft });
+  saveError.value = "";
+  if (!(await saveItem({ ...draft }))) {
+    saveError.value = store.errorMessage;
+    if (oneTimeCodeError.value) {
+      const input = form.value?.querySelector<HTMLInputElement>('input[name="oneTimePassword"]');
+      input?.focus();
+      input?.scrollIntoView?.({ block: "center" });
+    }
+  }
 }
 
 const form = ref<HTMLFormElement | null>(null);
@@ -337,6 +355,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           v-model="draft.icon"
           :title="draft.title"
           :websiteURL="websiteIconURL"
+          :default-preset="getDefaultIconPreset(draft.category)"
           @close="isIconPickerOpen = false"
         />
       </div>
@@ -668,7 +687,10 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           autocomplete="off"
           spellcheck="false"
           placeholder="Setup key or otpauth:// link"
+          :aria-invalid="!!oneTimeCodeError"
+          :aria-describedby="oneTimeCodeError ? 'editor-one-time-code-error' : undefined"
         />
+        <small v-if="oneTimeCodeError" id="editor-one-time-code-error" class="error">{{ oneTimeCodeError }}</small>
       </label>
     </section>
 
@@ -679,10 +701,16 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
         <input
           v-model="field.value"
           :name="`fieldValue${index}`"
-          :type="field.concealed ? 'password' : 'text'"
+          :type="field.concealed && !revealedCustomFields.has(index) ? 'password' : 'text'"
           placeholder="Value"
           :aria-label="`Value for ${field.name.trim() ? field.name : `Field ${index + 1}`}`"
         />
+        <button v-if="field.concealed" type="button" class="ghost icon-button"
+          :aria-label="`${revealedCustomFields.has(index) ? 'Hide' : 'Show'} ${field.name || 'value'}`"
+          :title="revealedCustomFields.has(index) ? 'Hide value' : 'Show value'"
+          :data-testid="`editor-field-${index}-reveal`" @click="toggleCustomField(index)">
+          <AppIcon :name="revealedCustomFields.has(index) ? 'eyeOff' : 'eye'" />
+        </button>
         <label class="concealed" :title="'Hide this value until revealed'">
           <input v-model="field.concealed" type="checkbox" :aria-label="`Keep ${field.name.trim() ? field.name : `Field ${index + 1}`} secret`" /> <span>Secret</span>
         </label>
@@ -736,6 +764,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
     </section>
 
     <div class="row footer">
+      <p v-if="saveError" class="error save-error" role="alert" data-testid="editor-save-error">{{ saveError }}</p>
       <span class="muted"><AppIcon name="shield" :size="12" /> Encrypted on this device before saving</span>
       <div class="spacer"></div>
       <button type="button" class="ghost" data-testid="editor-cancel" @click="cancelEditing">Cancel <kbd>Esc</kbd></button>
@@ -927,12 +956,18 @@ button.active {
 /* Sticky at the bottom of the detail column, whose 32px bottom padding the margin and padding take back. */
 .footer {
   position: sticky;
+  flex-wrap: wrap;
   bottom: -32px;
   z-index: 1;
   margin: 4px 0 -32px;
   padding: 12px 0 32px;
   border-top: 1px solid var(--color-border);
   background: var(--color-background);
+}
+
+.save-error {
+  flex-basis: 100%;
+  margin: 0;
 }
 
 .footer kbd {

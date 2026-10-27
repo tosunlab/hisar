@@ -97,6 +97,12 @@ struct IconPickerView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                    .disabled(icon?.image != nil)
+                    if icon?.image != nil {
+                        Text("Choose a preset icon to color it.")
+                            .font(.footnote)
+                            .foregroundStyle(.themeSecondary)
+                    }
                 }
             }
             .navigationTitle("Icon")
@@ -124,10 +130,8 @@ struct IconPickerView: View {
     private func buildSwatch(_ hue: String) -> some View {
         Button {
             color = hue
-            if let chosen = icon, chosen.image == nil, !chosen.preset.isEmpty {
-                preparation.cancel()
-                icon = ChosenIcon(preset: chosen.preset, color: hue)
-            }
+            if icon?.image == nil { preparation.cancel() }
+            icon = ChosenIcon.applyingColor(hue, to: icon, category: item.category)
         } label: {
             Circle()
                 .fill(ItemIcon.getColor(hue).map { AnyShapeStyle($0) } ?? AnyShapeStyle(.fill.tertiary))

@@ -7,7 +7,7 @@ import ItemTile from "./ItemTile.vue";
 
 // IconPicker chooses an item's icon: Automatic (null), a preset in a color, or an uploaded image. The choice is saved
 // with the item.
-const props = defineProps<{ modelValue: ItemIcon | null | undefined; title: string; websiteURL: string }>();
+const props = defineProps<{ modelValue: ItemIcon | null | undefined; title: string; websiteURL: string; defaultPreset: string }>();
 const emit = defineEmits<{ "update:modelValue": [icon: ItemIcon | null]; close: [] }>();
 
 // Matches itemicon.MaxSourceSize: the backend refuses larger files anyway.
@@ -29,10 +29,9 @@ function choosePreset(preset: string): void {
 }
 
 function chooseColor(chosen: string): void {
+  if (props.modelValue?.image) return;
   color.value = chosen;
-  if (props.modelValue?.preset && !props.modelValue.image) {
-    emit("update:modelValue", { preset: props.modelValue.preset, color: chosen });
-  }
+  emit("update:modelValue", { preset: props.modelValue?.preset || props.defaultPreset, color: chosen });
 }
 
 function chooseAutomatic(): void {
@@ -140,6 +139,7 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
     <p class="section-label">Color</p>
     <div class="color-row" role="group" aria-label="Icon color">
       <button
+        :disabled="!!modelValue?.image"
         type="button"
         class="swatch neutral"
         :aria-pressed="color === ''"
@@ -150,6 +150,7 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
       ></button>
       <button
         v-for="hue in allIconColor"
+        :disabled="!!modelValue?.image"
         :key="hue"
         type="button"
         class="swatch"
@@ -161,6 +162,7 @@ onBeforeUnmount(() => window.removeEventListener("pointerdown", closeOnOutside))
         @click="chooseColor(hue)"
       ></button>
     </div>
+    <p v-if="modelValue?.image" class="muted">Choose a preset icon to color it.</p>
     <p v-if="errorMessage" class="error" role="alert" data-testid="icon-error">{{ errorMessage }}</p>
   </div>
 </template>
