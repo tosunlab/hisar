@@ -197,6 +197,19 @@ class PhoneApprovalUITests : HisarUITestCase() {
         }
     }
 
+    @Test
+    fun testWaitingRequestCardShowsTheAppWarning() {
+        val backend = createBackend(createApproval("launcher-share"))
+        launchApp(backend).use {
+            val warning = "pending-approval-warning-preview-launcher-share"
+            assertEquals("Anyone with the link can read these until it expires or its views run out.", readText(warning))
+            assertTrue("the warning comes before Approve", top(hasTestTag(warning)) < top(hasTestTag("pending-approval-approve-preview-launcher-share")))
+            saveScreenshot("phone-approval-warning-card")
+            tap("pending-approval-approve-preview-launcher-share")
+            checkResult(backend, "approve preview-launcher-share", "Approved on your Mac")
+        }
+    }
+
     // Android only: a real request from a Mac (hisar-ui-test-mac) through the server, answered on this phone.
     @Test
     fun testApproveAndDenyRealRequestsFromTheMac() {

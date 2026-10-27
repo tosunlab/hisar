@@ -154,6 +154,21 @@ final class PhoneApprovalUITests: HisarUITestCase {
         XCTAssertTrue(app.staticTexts["Requests from Hisar on your Mac appear here while this iPhone is unlocked."].exists)
     }
 
+    func testWaitingRequestCardShowsTheAppWarning() {
+        app.launchArguments = ["-HisarUITest", "-HisarApprovalBannerPreview", "launcher-share"]
+        app.launch()
+        let warning = app.descendants(matching: .any)["pending-approval-warning-preview-launcher-share"]
+        waitFor(warning)
+        XCTAssertTrue(warning.label.contains("Anyone with the link can read these until it expires or its views run out."), warning.label)
+        let approve = app.buttons["pending-approval-approve-preview-launcher-share"]
+        XCTAssertLessThan(warning.frame.minY, approve.frame.minY, "the warning comes before Approve")
+        saveScreenshot("phone-approval-warning-card")
+        approve.tap()
+        let result = app.staticTexts["phone-approval-result"]
+        waitFor(result)
+        XCTAssertEqual(result.label, "Approved preview-launcher-share with Face ID")
+    }
+
     private func launchPreview(_ kind: String, sensor: String = "Face ID", requiresPassword: Bool = false) {
         app.launchArguments = ["-HisarUITest", "-HisarApprovalPreview", kind]
         if sensor == "Touch ID" { app.launchArguments.append("-HisarApprovalPreviewTouchID") }

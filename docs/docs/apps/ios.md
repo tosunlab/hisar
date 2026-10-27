@@ -102,12 +102,14 @@ asking to use Hisar until it locks, or that app creating one share link, approve
 or denied) is driven through a debug-only preview with a made-up request: launch with `-HisarApprovalPreview ssh` (or
 `cli`, `forwarded`, `signing`, `launcher`, `launcher-share`). Add `-HisarApprovalPreviewTouchID` for Touch ID button
 copy and its symbol, or `-HisarApprovalPreviewPassword` for the master password fallback.
-`-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
+`-HisarApprovalBannerPreview` shows the tabs with the waiting requests as a card on Vaults and in the Approvals tab;
+followed by a kind (`-HisarApprovalBannerPreview launcher-share`), it shows only that request. The simulator cannot run the Mac side; `TestIntegrationPhoneApproval` in `mobile/hisarkit` runs the
 whole flow between a desktop backend and a HisarKit backend in `make test-end-to-end`.
 
 The waiting-request card has a remember switch when the Mac allows remembering. Approve sends the switch's value.
-The sheet puts the request summary first, shows app warnings separately from details, and names the iPhone's biometric
-check on its Approve button.
+The card shows the app's warning, such as an unsigned app's or a share link's, in full between the request and the
+switch, so approving from the card never skips it. The sheet puts the request summary first, shows app warnings
+separately from details, and names the iPhone's biometric check on its Approve button.
 
 **AutoFill in the simulator.** A simulator build without a development team ("Sign to Run Locally") is registered
 (`pluginkit` lists the extension), but iOS 26.4 does not list it in Settings → General → AutoFill & Passwords, and
