@@ -84,6 +84,29 @@ beforeEach(() => {
 });
 
 describe("Vault sharing panel", () => {
+  it("contains a nested recipient review and returns to the still-open sharing panel", async () => {
+    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [createSentShareInvitation({ id: "reviewed", requiresConfirmation: true, state: "accepted" })], completionError: "" });
+    const wrapper = await openSharingPanel();
+    const review = wrapper.find('[data-testid="review-share-reviewed"]');
+    (review.element as HTMLElement).focus();
+    await review.trigger("click");
+    await flushPromises();
+    const confirmation = wrapper.find('[data-testid="share-recipient-confirmation"]');
+    const all = confirmation.findAll("button").map((button) => button.element);
+    expect(all.map((button) => button.textContent)).toEqual(["Cancel", "Give access"]);
+    expect(document.activeElement).toBe(all[0]);
+    for (const shiftKey of [false, false, true, true]) {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey, cancelable: true }));
+      expect(all).toContain(document.activeElement);
+    }
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"]').exists()).toBe(false);
+    expect(store.isSharingOpen).toBe(true);
+    expect(document.activeElement).toBe(review.element);
+    wrapper.unmount();
+  });
+
   it("lists the members with initials, role and a you tag", async () => {
     const wrapper = await openSharingPanel();
     expect(api.listAllVaultMember).toHaveBeenCalledWith("family");
