@@ -736,6 +736,26 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it.each(["harness", "session", "connection"])("describes the selected grant lifetime for its %s holder", async (scope) => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createHarnessApprovalEvent({ grantHolderScope: scope, allGrantDuration: ["once", "hour", "day", "always"] }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="approval-grant-note"]').exists()).toBe(false);
+    await wrapper.get('select[name="grantDuration"]').setValue("hour");
+    const note = wrapper.get('[data-testid="approval-grant-note"]');
+    expect(note.text()).toContain("Locking pauses access");
+    expect(note.text()).toContain("1 hour");
+    expect(note.text()).toContain("Settings → Developer tools → Coding agents → Allowed without asking");
+    if (scope === "harness") {
+      expect(note.text()).toContain("Saved for omp across sessions and Hisar restarts");
+      await wrapper.get('select[name="grantDuration"]').setValue("always");
+      expect(note.text()).toContain("Until you revoke it or sign out.");
+    } else {
+      expect(note.text()).toContain(scope === "session" ? "when this agent session ends" : "when this connection ends");
+    }
+    wrapper.unmount();
+  });
+
   it("shows where a sign-in goes and the login, and keeps the choice in the menu", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createSignInApprovalEvent());

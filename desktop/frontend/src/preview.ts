@@ -902,7 +902,7 @@ function createPreviewShareLinkFromRequest(request: ShareLinkRequest): ShareLink
   return createPreviewShareLink({ ...common, title: detail.title, vaultID: request.vaultID, itemID: request.itemID, fieldLabels });
 }
 
-const previewNoAgentChoice = { requiresPresence: false, allGrantDuration: [], grantDuration: "", grantScope: "", website: "", browserName: "", allLogin: [], loginIndex: 0 };
+const previewNoAgentChoice = { requiresPresence: false, allGrantDuration: [], grantDuration: "", grantScope: "", grantHolderScope: "", website: "", browserName: "", allLogin: [], loginIndex: 0 };
 
 // createPreviewCommandLineApproval: &approval=cli, plus &cliLocked=1 (Touch ID unlocks) or &cliPassword=1 (master password unlocks),
 // &coverage=app (hisar without a terminal in a signed app) or =connection (in no app Hisar can verify).
@@ -1033,6 +1033,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
     isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
     requiresPresence: true,
+    grantHolderScope: "connection",
   };
   const allGrantDuration = ["once", "hour"];
   if (kind === "run") {
@@ -1087,6 +1088,7 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
     agentName: "omp in Tern",
     harnessName: "omp",
     agentNameSource: kind === "unsigned" ? "process" : "signature",
+    grantHolderScope: "harness",
     projectName: "hisarapp-core",
     projectPath: "~/Chore/hisarapp-core",
     clientName: "hisar",

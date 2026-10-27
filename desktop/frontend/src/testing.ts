@@ -317,6 +317,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     allGrantDuration: [],
     grantDuration: "",
     grantScope: "",
+    grantHolderScope: "",
     website: "",
     browserName: "",
     allLogin: [],
@@ -363,6 +364,7 @@ export function createAgentRunApprovalEvent(overrides: Partial<ApprovalEvent> = 
     allGrantDuration: ["once", "hour"],
     grantDuration: "once",
     grantScope: "A longer choice covers only these secrets.",
+    grantHolderScope: "connection",
     isConnectionApproval: false,
     ...overrides,
   });
@@ -377,6 +379,7 @@ export function createAgentRevealApprovalEvent(overrides: Partial<ApprovalEvent>
     allGrantDuration: ["once", "hour"],
     grantDuration: "once",
     grantScope: "A longer choice covers only reading “Stripe › api key” again, nothing else.",
+    grantHolderScope: "connection",
     isConnectionApproval: false,
     warning: "The value will be visible to Claude Code and can end up in its transcript and logs.",
     ...overrides,
@@ -397,6 +400,7 @@ export function createSignInApprovalEvent(overrides: Partial<ApprovalEvent> = {}
     allGrantDuration: ["once", "hour", "day", "always"],
     grantDuration: "once",
     grantScope: "A longer choice covers only the chosen login at https://tosunlab.com.",
+    grantHolderScope: "harness",
     ...overrides,
   });
 }
@@ -408,6 +412,7 @@ export function createHarnessApprovalEvent(overrides: Partial<ApprovalEvent> = {
     agentName: "omp in Tern",
     harnessName: "omp",
     agentNameSource: "signature",
+    grantHolderScope: "harness",
     projectName: "hisarapp-core",
     projectPath: "~/Chore/hisarapp-core",
     clientName: "hisar",

@@ -189,6 +189,7 @@ func (approver *Approver) buildAgentEvent(requestID string, request clisocket.Ag
 	if len(event.GrantDurations) > 0 {
 		event.GrantDuration = string(clisocket.AgentGrantOnce)
 		event.GrantScope = describeGrantScope(request)
+		event.GrantHolderScope = string(request.GrantHolderScope)
 	}
 	if signIn := request.SignIn; signIn != nil {
 		event.Website, event.BrowserName = signIn.Website, signIn.BrowserName

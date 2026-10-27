@@ -134,9 +134,10 @@ type ApprovalEvent struct {
 	// GrantDurations are how long the user may let the agent keep what it asks for (clisocket.AgentGrantDuration),
 	// "once" first, and GrantDuration the one chosen; none for a connection. GrantScope says what a longer choice
 	// covers: exactly what the request names, such as the one field a reveal reads.
-	GrantDurations []string `json:"allGrantDuration"`
-	GrantDuration  string   `json:"grantDuration"`
-	GrantScope     string   `json:"grantScope"`
+	GrantDurations   []string `json:"allGrantDuration"`
+	GrantDuration    string   `json:"grantDuration"`
+	GrantScope       string   `json:"grantScope"`
+	GrantHolderScope string   `json:"grantHolderScope"`
 	// Website and BrowserName are where an agent sign-in goes, as Hisar observed it; Logins are the logins saved for
 	// Website, and LoginIndex the one chosen.
 	Website     string          `json:"website"`

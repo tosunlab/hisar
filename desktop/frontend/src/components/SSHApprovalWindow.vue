@@ -83,7 +83,21 @@ const isPasswordShown = computed(() => approval.value?.isPasswordUnlock === true
 const isSignIn = computed(() => isAgent.value && approval.value?.purpose === "sign-in");
 const allLogin = computed(() => approval.value?.allLogin ?? []);
 const allGrantDuration = computed(() => (isAgent.value ? (approval.value?.allGrantDuration ?? []) : []));
-const isHarnessGrantOffered = computed(() => allGrantDuration.value.includes("day") && harnessName.value !== "");
+const agentGrantLifetime = computed(() => {
+  if (approvalStore.grantDuration === "once") return "";
+  const duration = approvalStore.grantDuration === "day" ? "1 day" : "1 hour";
+  const revoke = "Revoke in Settings → Developer tools → Coding agents → Allowed without asking, or sign out.";
+  switch (approval.value?.grantHolderScope) {
+    case "harness":
+      return `Saved for ${harnessName.value} across sessions and Hisar restarts. Locking pauses access but does not remove this grant. ${approvalStore.grantDuration === "always" ? "Until you revoke it or sign out." : `Ends in ${duration}.`} ${revoke}`;
+    case "session":
+      return `Ends in ${duration} or when this agent session ends. Locking pauses access. ${revoke}`;
+    case "connection":
+      return `Ends in ${duration} or when this connection ends. Locking pauses access. ${revoke}`;
+    default:
+      return "";
+  }
+});
 const isTouchIDUsed = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
 const isWaitingForTouchID = computed(() => approvalStore.isAuthorizing && isTouchIDUsed.value);
 const canChoosePassword = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
@@ -607,9 +621,7 @@ onBeforeUnmount(() => {
               </select>
             </label>
             <p v-if="approval.grantScope" class="muted" data-testid="approval-grant-scope">{{ approval.grantScope }}</p>
-            <p v-if="isHarnessGrantOffered" class="muted" data-testid="approval-grant-note">
-              Longer choices cover {{ harnessName }} in every session until they expire, you revoke them in Settings → Coding agents, or you sign out.
-            </p>
+            <p v-if="agentGrantLifetime" class="muted" data-testid="approval-grant-note">{{ agentGrantLifetime }}</p>
           </div>
 
           <p v-if="approval.isUnlockRequired" class="unlock-note" data-testid="approval-unlock-note">

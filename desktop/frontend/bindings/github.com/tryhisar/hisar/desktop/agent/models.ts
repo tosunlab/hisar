@@ -100,6 +100,7 @@ export interface ApprovalEvent {
     "allGrantDuration": string[] | null;
     "grantDuration": string;
     "grantScope": string;
+    "grantHolderScope": string;
 
     /**
      * Website and BrowserName are where an agent sign-in goes, as Hisar observed it; Logins are the logins saved for
