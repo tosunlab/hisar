@@ -167,20 +167,10 @@ func (s *Service) loadPendingRecovery(operationID string, password []byte) (*Pen
 	if _, err := uuid.Parse(operationID); err != nil {
 		return nil, session.PendingFactor{}, errors.New("choose a pending recovery operation")
 	}
-	journal, err := s.recoveryJournal()
+	entry, envelope, err := s.loadPendingRecoveryRecord(operationID)
 	if err != nil {
 		return nil, session.PendingFactor{}, err
 	}
-	defer journal.Close()
-	metadata, envelope, err := journal.Load(operationID)
-	if err != nil {
-		return nil, session.PendingFactor{}, err
-	}
-	var entry PendingRecoverySummary
-	if err := json.Unmarshal(metadata, &entry); err != nil {
-		return nil, session.PendingFactor{}, err
-	}
-	entry.metadataSnapshot = metadata
 	if entry.KeychainProtected {
 		store, ok := s.config.SecretKeyStore.(recoveryKeyStore)
 		if !ok {
@@ -217,7 +207,26 @@ func (s *Service) loadPendingRecovery(operationID string, password []byte) (*Pen
 			return nil, session.PendingFactor{}, errors.New("the pending recovery account does not match")
 		}
 	}
-	return &entry, pending, nil
+	return entry, pending, nil
+}
+
+// loadPendingRecoveryRecord reads an operation's summary and its still sealed envelope.
+func (s *Service) loadPendingRecoveryRecord(operationID string) (*PendingRecoverySummary, []byte, error) {
+	journal, err := s.recoveryJournal()
+	if err != nil {
+		return nil, nil, err
+	}
+	defer journal.Close()
+	metadata, envelope, err := journal.Load(operationID)
+	if err != nil {
+		return nil, nil, err
+	}
+	var entry PendingRecoverySummary
+	if err := json.Unmarshal(metadata, &entry); err != nil {
+		return nil, nil, err
+	}
+	entry.metadataSnapshot = metadata
+	return &entry, envelope, nil
 }
 
 func (s *Service) ResumePendingRecovery(operationID, password string) (SignUpResult, error) {
@@ -442,6 +451,10 @@ func (s *Service) AcknowledgePendingRecovery(operationID, password string) error
 	if err != nil {
 		return err
 	}
+	return s.acknowledgeRecovery(entry)
+}
+
+func (s *Service) acknowledgeRecovery(entry *PendingRecoverySummary) error {
 	if entry.Phase == "awaiting-kit" && entry.KitSaved {
 		entry.Phase, entry.Problems = "prepared", []string{"The Emergency Kit was acknowledged. Explicitly resume to finish the remote operation."}
 		return s.updatePendingRecovery(entry)

@@ -54,3 +54,18 @@ func (hisar *Hisar) DiscardPreparedRecovery(operationID, password string) error 
 	defer releaseMemory()
 	return hisar.service.DiscardPreparedRecovery(operationID, password)
 }
+
+// ExportNewAccountEmergencyKit writes the Emergency Kit of the account just created into directory, without the master
+// password, and returns {"secretKey", "emergencyKitPath"} as JSON; the app deletes the file once it is shared.
+func (hisar *Hisar) ExportNewAccountEmergencyKit(directory string) (string, error) {
+	kit, err := app.ExportNewAccountEmergencyKitToDirectory(hisar.service, directory)
+	if err != nil {
+		return "", err
+	}
+	return encodeJSON(emergencyKitResult{SecretKey: kit.SecretKey, EmergencyKitPath: kit.Path}, nil)
+}
+
+// AcknowledgeNewAccountRecovery ends the pending sign-up operation once its kit was saved, for "I saved my Emergency Kit".
+func (hisar *Hisar) AcknowledgeNewAccountRecovery() error {
+	return app.AcknowledgeNewAccountRecovery(hisar.service)
+}

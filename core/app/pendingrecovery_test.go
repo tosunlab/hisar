@@ -254,3 +254,57 @@ func TestFailedEmergencyKitSaveCanBeRetriedOnTheSamePath(t *testing.T) {
 		t.Fatalf("the retried kit was not recorded as saved: %v", err)
 	}
 }
+
+func TestNewAccountEmergencyKitAndAcknowledgementNeedNoPassword(t *testing.T) {
+	serverURL := startRegisteringServer(t, false)
+	service := recoveryTestService(t, filepath.Join(t.TempDir(), "state.json"), createMemorySecretKeyStore())
+	if _, err := ExportNewAccountEmergencyKitToDirectory(service, t.TempDir()); err == nil {
+		t.Fatal("a kit was exported before any account was created")
+	}
+	result, err := service.SignUp(serverURL+"/invite/token", "kit@example.com", "Kit", "kit master password")
+	if err != nil || result.SetupState != "delivery-pending" || len(result.Problems) != 0 {
+		t.Fatalf("sign-up did not wait only for its kit: %+v %v", result, err)
+	}
+	if err := AcknowledgeNewAccountRecovery(service); err == nil {
+		t.Fatal("the sign-up was acknowledged before its kit was saved")
+	}
+	directory := t.TempDir()
+	kit, err := ExportNewAccountEmergencyKitToDirectory(service, directory)
+	if err != nil || kit.SecretKey != result.SecretKey || kit.Path != filepath.Join(directory, "Hisar Emergency Kit.pdf") {
+		t.Fatalf("new account kit: %+v %v", kit, err)
+	}
+	if document, err := os.ReadFile(kit.Path); err != nil || !bytes.HasPrefix(document, []byte("%PDF-")) {
+		t.Fatalf("the saved kit is not a complete PDF: %v", err)
+	}
+	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 || !entries[0].KitSaved {
+		t.Fatalf("the kit was not recorded as saved: %+v %v", entries, err)
+	}
+	if err := AcknowledgeNewAccountRecovery(service); err != nil {
+		t.Fatal(err)
+	}
+	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 0 {
+		t.Fatalf("the sign-up record outlived its acknowledgement: %+v %v", entries, err)
+	}
+	service.ForgetNewAccountSecretKey()
+	if _, err := ExportNewAccountEmergencyKitToDirectory(service, t.TempDir()); !errors.Is(err, ErrNoNewAccountSecretKey) {
+		t.Fatalf("a kit was exported after onboarding ended: %v", err)
+	}
+}
+
+func TestLockDropsTheNewAccountProof(t *testing.T) {
+	serverURL := startRegisteringServer(t, false)
+	service := recoveryTestService(t, filepath.Join(t.TempDir(), "state.json"), createMemorySecretKeyStore())
+	if _, err := service.SignUp(serverURL+"/invite/token", "kit@example.com", "Kit", "kit master password"); err != nil {
+		t.Fatal(err)
+	}
+	service.Lock()
+	if _, err := ExportNewAccountEmergencyKitToDirectory(service, t.TempDir()); err == nil {
+		t.Fatal("a locked app exported the new account's kit")
+	}
+	if err := AcknowledgeNewAccountRecovery(service); err == nil {
+		t.Fatal("a locked app acknowledged the sign-up")
+	}
+	if entries, err := service.ListPendingRecovery(); err != nil || len(entries) != 1 {
+		t.Fatalf("the sign-up record did not survive the lock: %+v %v", entries, err)
+	}
+}

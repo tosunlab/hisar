@@ -11,6 +11,8 @@ protocol VaultBackend: AnyObject {
     func unlockWithBiometric() throws -> VaultStatus
     func enableBiometricUnlock(password: String) throws -> VaultStatus
     func enableNewAccountBiometricUnlock() throws -> VaultStatus
+    func exportNewAccountEmergencyKit(directory: URL) throws -> EmergencyKitExport
+    func acknowledgeNewAccountRecovery() throws
     func forgetNewAccountSecretKey()
     func disableBiometricUnlock() throws -> VaultStatus
     func lock() -> VaultStatus

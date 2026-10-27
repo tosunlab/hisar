@@ -254,7 +254,14 @@ class HisarUITestCase: XCTestCase {
         saveScreenshot("create-account")
         scrollTo(app.buttons["sign-in-submit"])
         app.buttons["sign-in-submit"].tap()
-        let secretKey = finishPendingRecovery(email: email, password: Self.masterPassword)
+        let key = app.staticTexts["new-secret-key"]
+        waitFor(key, timeout: 60)
+        let secretKey = key.label
+        // The kit is prepared in the background; the confirm button needs it and a copy or a share.
+        waitFor(app.buttons["new-secret-key-share-kit"], timeout: 60)
+        saveScreenshot("new-secret-key")
+        app.buttons["new-secret-key-copy"].tap()
+        app.buttons["new-secret-key-done"].tap()
         let notNowButton = app.buttons["biometric-offer-not-now"]
         if isBiometricOfferExpected {
             waitFor(notNowButton, timeout: 10)
