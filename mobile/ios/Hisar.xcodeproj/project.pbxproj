@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		001F842336BE420EB0BF42D7 /* PasswordStrengthMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */; };
 		01A6FE523D8DA1B696665F6B /* OneTimeCodeRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */; };
 		0519427F1A30123623C1514D /* PasswordGeneratorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */; };
 		0738F234B5FC729D53DFCB1F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
@@ -139,6 +140,7 @@
 		B157232134C3DDBFE2774982 /* VaultSharingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5F012F76F1EDB1B44FF1082E /* VaultSharingView.swift */; };
 		B2393CCCFBDE641E9D29319E /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1346D0E3E68C5BDA1B3344E9 /* BackendFactory.swift */; };
 		B2D87CBBB8635681A36D3B76 /* AutoFillRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */; };
+		B38BAFF0A563BDB8AA9235F2 /* PasswordStrengthMeter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */; };
 		B4936FF8BE8C3E0A2812F15E /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F31820CE1E2F645F505502A /* CredentialProviderViewController.swift */; };
 		B4F54B86BD901A64012536E5 /* SharingPushTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A7DA85F127A5EB580839A6B /* SharingPushTests.swift */; };
 		BA22AA3DF1A43D357843EA5E /* FaceIDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5829FBCBCC42B40AFEF68F3 /* FaceIDUITests.swift */; };
@@ -306,6 +308,7 @@
 		8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockPanel.swift; sourceTree = "<group>"; };
 		932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneApprovalPreviewView.swift; sourceTree = "<group>"; };
 		95EF6040E7BF9F0A901826B0 /* PeopleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleView.swift; sourceTree = "<group>"; };
+		9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordStrengthMeter.swift; sourceTree = "<group>"; };
 		9BCEF508D7F707D9913CFF28 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
 		9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillRootView.swift; sourceTree = "<group>"; };
 		A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasswordGeneratorView.swift; sourceTree = "<group>"; };
@@ -532,6 +535,7 @@
 				52CA41C98B20CCCC570ECDA2 /* OneTimeCodeRow.swift */,
 				01A3E7E65ACA85444F2E4830 /* OrganizationViews.swift */,
 				A031DA382226E9A30A8DA85C /* PasswordGeneratorView.swift */,
+				9989C5FE07D2381AD1FC1930 /* PasswordStrengthMeter.swift */,
 				8377C0BA43756107B7C54F28 /* PendingApprovalSection.swift */,
 				95EF6040E7BF9F0A901826B0 /* PeopleView.swift */,
 				932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */,
@@ -917,6 +921,7 @@
 				950D694E8B93B33771BC2C7B /* OrganizationLogic.swift in Sources */,
 				AEE6992F275A07E8FF806E7E /* OrganizationViews.swift in Sources */,
 				28F7374E5C1FBBD30F6B6E54 /* PasswordGeneratorView.swift in Sources */,
+				001F842336BE420EB0BF42D7 /* PasswordStrengthMeter.swift in Sources */,
 				A94B4DF0B3BDD0E2EED6122E /* PasteboardClipboard.swift in Sources */,
 				C84A058AFCD826EC5E00DEDA /* PendingApprovalSection.swift in Sources */,
 				84D53063940044EFA82C21F3 /* PeopleView.swift in Sources */,
@@ -993,6 +998,7 @@
 				E67F2A28F8A2CB7524435DE9 /* OrganizationLogic.swift in Sources */,
 				3AE35B263BFA9835802F1A1B /* OrganizationViews.swift in Sources */,
 				0519427F1A30123623C1514D /* PasswordGeneratorView.swift in Sources */,
+				B38BAFF0A563BDB8AA9235F2 /* PasswordStrengthMeter.swift in Sources */,
 				4023A7B395E9788AB14768F7 /* PasteboardClipboard.swift in Sources */,
 				BE45311F50B1B88BFE65824A /* PendingApprovalSection.swift in Sources */,
 				E8C11A58A19298A04B15CA33 /* PeopleView.swift in Sources */,

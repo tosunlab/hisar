@@ -1635,6 +1635,20 @@ final class AppModel: ObservableObject {
         await perform(isBusyShown: false) { try $0.generatePassword(length: length, isDigitIncluded: isDigitIncluded, isSymbolIncluded: isSymbolIncluded) }
     }
 
+    /// core/item's rating of a password for the strength meter, or the empty rating without a backend.
+    func ratePassword(_ password: String) async -> PasswordStrength {
+        guard let backend, let strength = try? await runInBackground({ try backend.ratePassword(password) }) else { return PasswordStrength() }
+        return strength
+    }
+
+    /// core/item's rule for a new master password; a password it could not rate counts as refused.
+    func checkMasterPassword(_ password: String) async -> MasterPasswordFeedback {
+        guard let backend, let feedback = try? await runInBackground({ try backend.checkMasterPassword(password) }) else {
+            return MasterPasswordFeedback(isBlocking: true)
+        }
+        return feedback
+    }
+
     // Phone approvals: the Mac's open requests, listed while unlocked and in the foreground.
     func handleApprovalEvent(name: String, requestID: String) {
         switch name {

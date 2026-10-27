@@ -27,14 +27,36 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertTrue(condition(), message)
     }
 
+    private let goodFeedback = MasterPasswordFeedback(level: "good", label: "Good", bits: 60, message: "A few random words you can remember make a strong master password.")
+
     func testNewPasswordRules() {
-        XCTAssertNil(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "", repeatedPassword: ""))
-        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "short", repeatedPassword: ""), "Use at least 10 characters.")
-        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "old password", repeatedPassword: ""), "The new master password is the same as the current one.")
-        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master"), "The passwords do not match.")
-        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "", newPassword: "a new master password", repeatedPassword: "a new master password"))
-        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: ""))
-        XCTAssertTrue(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master password"))
+        XCTAssertNil(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "", repeatedPassword: "", feedback: goodFeedback))
+        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "short", repeatedPassword: "", feedback: goodFeedback), "Use at least 10 characters.")
+        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "old password", repeatedPassword: "", feedback: goodFeedback), "The new master password is the same as the current one.")
+        XCTAssertEqual(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master", feedback: goodFeedback), "The passwords do not match.")
+        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "", newPassword: "a new master password", repeatedPassword: "a new master password", feedback: goodFeedback))
+        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "", feedback: goodFeedback))
+        XCTAssertTrue(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "a new master password", repeatedPassword: "a new master password", feedback: goodFeedback))
+    }
+
+    func testWeakMasterPasswordIsRefused() async {
+        let model = await createUnlockedModel()
+        let weakFeedback = await model.checkMasterPassword("password1234")
+        XCTAssertEqual(weakFeedback.strength, PasswordStrength(level: "weak", label: "Weak", bits: 8))
+        XCTAssertEqual(
+            AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: "old password", newPassword: "password1234", repeatedPassword: "password1234", feedback: weakFeedback),
+            "This password is too easy to guess. Add a few more words or characters."
+        )
+        XCTAssertFalse(AccountLifecycleLogic.canChangePassword(currentPassword: "old password", newPassword: "password1234", repeatedPassword: "password1234", feedback: weakFeedback))
+        XCTAssertFalse(AccountLifecycleLogic.isMasterPasswordAccepted("password1234", feedback: weakFeedback))
+
+        let allowedWeakFeedback = MasterPasswordFeedback(
+            level: "weak", label: "Weak", bits: 33, message: "You can use it, but another word or a few more characters make it much harder to guess."
+        )
+        XCTAssertTrue(AccountLifecycleLogic.isMasterPasswordAccepted("orange cactus harbor", feedback: allowedWeakFeedback))
+        XCTAssertEqual(AccountLifecycleLogic.describeMasterPasswordHint(feedback: allowedWeakFeedback), allowedWeakFeedback.message)
+        XCTAssertNil(AccountLifecycleLogic.describeMasterPasswordHint(feedback: goodFeedback))
+        XCTAssertFalse(AccountLifecycleLogic.isMasterPasswordAccepted("orange cactus harbor", feedback: nil), "refused until core has rated it")
     }
 
     func testUnknownSignedOutDeviceCount() {

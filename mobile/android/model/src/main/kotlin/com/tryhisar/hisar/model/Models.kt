@@ -720,6 +720,28 @@ data class LoginMatch(
 @Serializable
 data class LoginCredential(val username: String = "", val password: String = "", val hasOneTimePassword: Boolean = false)
 
+/**
+ * core/item's rating of a password for the strength meter: level is "" for an empty password, else "weak", "fair", "good"
+ * or "strong", and label is the word the meter shows.
+ */
+@Serializable
+data class PasswordStrength(val level: String = "", val label: String = "", val bits: Int = 0)
+
+/**
+ * core/item's rule for a new master password: its rating and the one sentence under it. Create account and Change master
+ * password refuse a password whose feedback is blocking.
+ */
+@Serializable
+data class MasterPasswordFeedback(
+    val level: String = "",
+    val label: String = "",
+    val bits: Int = 0,
+    val message: String = "",
+    val isBlocking: Boolean = false,
+) {
+    val strength: PasswordStrength get() = PasswordStrength(level, label, bits)
+}
+
 @Serializable
 data class OneTimeCode(val code: String, val expiresAt: String, val period: Int) {
     val expiryDate: Instant? get() = parseTimestamp(expiresAt)

@@ -6,18 +6,35 @@ enum AccountLifecycleLogic {
     static let secretKeyReplacementWarning = "Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working."
     static let exportAdvice = "Export your items first in Settings → Account → Export data."
 
-    static func describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String) -> String? {
-        if newPassword.isEmpty { return nil }
-        if newPassword.count < minimumPasswordLength { return "Use at least \(minimumPasswordLength) characters." }
-        if newPassword == currentPassword { return "The new master password is the same as the current one." }
+    /// The sentence that refuses a new master password: fewer than 10 characters, counted as the user sees them, or core's
+    /// rule (`MasterPasswordFeedback`) blocks it. feedback is core's rating of this password, nil while it is on its way.
+    static func describeMasterPasswordProblem(_ password: String, feedback: MasterPasswordFeedback?) -> String? {
+        if password.isEmpty { return nil }
+        if password.count < minimumPasswordLength { return "Use at least \(minimumPasswordLength) characters." }
+        if let feedback, feedback.isBlocking { return feedback.message }
+        return nil
+    }
+
+    /// The hint under a Weak master password that core allows.
+    static func describeMasterPasswordHint(feedback: MasterPasswordFeedback?) -> String? {
+        guard let feedback, !feedback.isBlocking, feedback.level == "weak" else { return nil }
+        return feedback.message
+    }
+
+    static func isMasterPasswordAccepted(_ password: String, feedback: MasterPasswordFeedback?) -> Bool {
+        !password.isEmpty && feedback != nil && describeMasterPasswordProblem(password, feedback: feedback) == nil
+    }
+
+    static func describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String, feedback: MasterPasswordFeedback?) -> String? {
+        if let problem = describeMasterPasswordProblem(newPassword, feedback: feedback) { return problem }
+        if !newPassword.isEmpty && newPassword == currentPassword { return "The new master password is the same as the current one." }
         if !repeatedPassword.isEmpty && repeatedPassword != newPassword { return "The passwords do not match." }
         return nil
     }
 
-    static func canChangePassword(currentPassword: String, newPassword: String, repeatedPassword: String) -> Bool {
-        !currentPassword.isEmpty && newPassword == repeatedPassword
-            && describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: repeatedPassword) == nil
-            && !newPassword.isEmpty
+    static func canChangePassword(currentPassword: String, newPassword: String, repeatedPassword: String, feedback: MasterPasswordFeedback?) -> Bool {
+        !currentPassword.isEmpty && newPassword == repeatedPassword && isMasterPasswordAccepted(newPassword, feedback: feedback)
+            && describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: repeatedPassword, feedback: feedback) == nil
     }
 
     static func isEmailMatching(typedEmail: String, accountEmail: String) -> Bool {
