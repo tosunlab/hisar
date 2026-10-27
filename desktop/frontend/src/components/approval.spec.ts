@@ -637,7 +637,7 @@ describe("SSHApprovalWindow", () => {
     expect(menu.findAll("option").map((option) => option.text())).toEqual(["Only this time", "For 1 hour"]);
     expect((menu.element as HTMLSelectElement).value).toBe("once");
     expect(wrapper.find('[data-testid="approval-grant-note"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice covers only these secrets.");
+    expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.");
     expect(api.respondSSHApproval).toHaveBeenCalledWith("agent-run-1", true, false);
     await menu.setValue("hour");
     expect(api.setSSHApprovalGrantDuration).toHaveBeenCalledWith("agent-run-1", "hour");

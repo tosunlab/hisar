@@ -104,7 +104,8 @@ func TestAgentRunDialogShowsTheCommandAndSecrets(t *testing.T) {
 	event := waitForApprovalEvent(t, emitter)
 	if event.Action != "run a command with 5 secrets" || event.CommandLine != `/usr/local/bin/npm run deploy -- --message 'it'\''s live'` || event.WorkingDirectory != "~/src/app" ||
 		!slices.Equal(event.SecretNames, request.SecretNames[:4]) || event.MoreSecretCount != 1 || event.IsRememberable || event.RememberLabel != "" ||
-		!slices.Equal(event.GrantDurations, []string{"once", "hour"}) || event.GrantDuration != "once" || event.GrantScope != "A longer choice covers only these secrets." {
+		!slices.Equal(event.GrantDurations, []string{"once", "hour"}) || event.GrantDuration != "once" ||
+		event.GrantScope != "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again." {
 		t.Errorf("event = %+v", event)
 	}
 	approver.SetAgentGrantDuration(event.RequestID, "always")
@@ -304,7 +305,8 @@ func TestAgentDialogNamesTheHarnessAndItsHost(t *testing.T) {
 	request.CommandLine, request.SecretNames = []string{"true"}, []string{"Agents › Deploy token › password"}
 	resultChannel := startAgentApproval(approver, request)
 	event := waitForApprovalEvent(t, emitter)
-	if event.AgentName != "omp in Terminal" || event.Action != "use 1 secret" || event.ClientName != "hisar" || event.AppName != "Terminal" {
+	if event.AgentName != "omp in Terminal" || event.Action != "use 1 secret" || event.ClientName != "hisar" || event.AppName != "Terminal" ||
+		event.GrantScope != "A longer choice lets omp in Terminal run any command with this secret, in any folder, without asking again." {
 		t.Errorf("event = %+v", event)
 	}
 	if description := phone.waitForStart(t); description.AppName != "omp in Terminal (via hisar)" || description.Purpose != "use 1 secret" {

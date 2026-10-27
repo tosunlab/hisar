@@ -1045,7 +1045,7 @@ function createPreviewAgentApproval(kind: string): ApprovalEvent {
       allSecretName: ["Work › Postgres staging › password", "Work › Stripe › api key"],
       allGrantDuration,
       grantDuration: "once",
-      grantScope: "A longer choice covers only these secrets.",
+      grantScope: "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.",
       isConnectionApproval: false,
     };
   }
@@ -1120,7 +1120,7 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
     workingDirectory: "~/Chore/hisarapp-core",
     allSecretName: ["Agents › Deploy token › password"],
     allGrantDuration: ["once", "hour", "day", "always"],
-    grantScope: "A longer choice covers only this secret.",
+    grantScope: "A longer choice lets omp in Tern run any command with this secret, in any folder, without asking again.",
   };
 }
 
