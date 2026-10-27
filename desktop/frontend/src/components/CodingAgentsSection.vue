@@ -137,7 +137,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       </label>
       <p v-if="store.allVault.length === 0" class="muted empty-row">No vaults yet.</p>
     </div>
-    <p v-if="store.agentErrorMessage" class="error settings-note" role="alert" data-testid="coding-agents-error">{{ store.agentErrorMessage }}</p>
+    <p v-if="store.agentErrors.vaults" class="error settings-note" role="alert" data-testid="coding-agents-error">{{ store.agentErrors.vaults }}</p>
   </section>
 
   <section v-show="isRowVisible('agent-sign-in')" class="settings-block" data-testid="agent-sign-in-section">
@@ -185,6 +185,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
           : "Only Hisar for Mac signs agents in to websites."
       }}
     </p>
+    <p v-if="store.agentErrors.signIn" class="error settings-note" role="alert" data-testid="agent-sign-in-error">{{ store.agentErrors.signIn }}</p>
   </section>
 
   <section v-show="isRowVisible('agent-grants')" class="settings-block" data-testid="agent-grants-section">
@@ -205,6 +206,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       Otherwise, For 1 hour ends with the session or connection. Each approval ends when it expires, you revoke it here, or you sign out.
       Locking Hisar keeps them.
     </p>
+    <p v-if="store.agentErrors.grants" class="error settings-note" role="alert" data-testid="agent-grants-error">{{ store.agentErrors.grants }}</p>
   </section>
 
   <section v-show="isRowVisible('agent-sessions')" class="settings-block" data-testid="agent-sessions-section">
@@ -245,6 +247,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       <p v-if="store.allAgentSession.length === 0" class="muted empty-row" data-testid="agent-sessions-empty">No coding agent that used Hisar is running.</p>
     </div>
     <p class="muted settings-note">Revoking ends the session’s approval and what you allowed only for that session. What you allowed across sessions stays until it expires, you revoke it above, or you sign out.</p>
+    <p v-if="store.agentErrors.sessions" class="error settings-note" role="alert" data-testid="agent-sessions-error">{{ store.agentErrors.sessions }}</p>
   </section>
 
   <section v-show="isRowVisible('agent-hosts')" class="settings-block" data-testid="agent-hosts-section">
@@ -262,6 +265,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       <p v-if="store.allAgentHost.length === 0" class="muted empty-row" data-testid="agent-hosts-empty">No app has run a coding agent.</p>
     </div>
     <p class="muted settings-note" data-testid="agent-hosts-explanation">Apps that ran a coding agent ask for every command-line request without a terminal.</p>
+    <p v-if="store.agentErrors.hosts" class="error settings-note" role="alert" data-testid="agent-hosts-error">{{ store.agentErrors.hosts }}</p>
   </section>
 </template>
 

@@ -50,7 +50,7 @@ beforeEach(() => {
     allAgentHost: [],
     allAgentGrant: [],
     agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false },
-    agentErrorMessage: "",
+    agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "" },
   });
   api.listAllAgentVaultID.mockResolvedValue([]);
   api.listAllAgentGrant.mockResolvedValue([]);
@@ -180,7 +180,7 @@ describe("CodingAgentsSection sessions and hosts", () => {
     api.revokeAgentSession.mockRejectedValue(new Error("the Hisar app could not revoke it"));
     await wrapper.find('[data-testid="revoke-agent-session-1226"]').trigger("click");
     await flushPromises();
-    expect(wrapper.find('[data-testid="coding-agents-error"]').text()).toBe("the Hisar app could not revoke it");
+    expect(wrapper.find('[data-testid="agent-sessions-error"]').text()).toBe("the Hisar app could not revoke it");
     expect(wrapper.find('[data-testid="agent-session"]').exists()).toBe(true);
   });
 });
