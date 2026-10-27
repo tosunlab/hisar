@@ -96,9 +96,11 @@ struct SignInView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                 } footer: {
-                    Text(mode == .signIn ? "Lost your Secret Key? It's on your Emergency Kit." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
-                        .padding(.top, 8)
-                        .accessibilityIdentifier(mode == .signIn ? "secret-key-note" : "create-account-note")
+                    if mode == .signIn {
+                        Text("Lost your Secret Key? It's on your Emergency Kit.")
+                            .padding(.top, 8)
+                            .accessibilityIdentifier("secret-key-note")
+                    }
                 }
             }
             .scrollDismissesKeyboard(.interactively)
@@ -248,7 +250,8 @@ struct SignInView: View {
                     Text("The passwords do not match.")
                         .foregroundStyle(.red)
                 }
-                Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
+                Text("Choose a master password you can remember. A forgotten master password can't be recovered by anyone, including Hisar.")
+                    .accessibilityIdentifier("create-account-note")
             }
         }
     }
