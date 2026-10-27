@@ -81,17 +81,15 @@ describe("Pending recovery", () => {
     await flushPromises();
     expect(mock.api.acknowledgePendingRecovery).toHaveBeenCalledWith("pending-1", "password");
     expect(model.store.pendingRecovery).toEqual([]);
-    expect((wrapper.get('input[name="pendingRecoveryPassword"]').element as HTMLInputElement).value).toBe("");
+    expect(wrapper.find('input[name="pendingRecoveryPassword"]').exists()).toBe(false);
   });
 
   it("keeps Secret Keys after failure and clears only a rejected master password", async () => {
     const wrapper = mount(PendingRecoveryView);
     const password = wrapper.get('input[name="pendingRecoveryPassword"]');
     const key = wrapper.get('input[name="pendingRecoverySecretKey"]');
-    const prior = wrapper.get('input[name="pendingRecoveryPriorSecretKey"]');
     await password.setValue("password");
     await key.setValue("H1-SAVED");
-    await prior.setValue("H1-PRIOR");
     mock.api.resumePendingRecovery.mockRejectedValue(new Error("Network unavailable"));
     await wrapper.findAll("button").find(button => button.text() === "Continue")!.trigger("click");
     await flushPromises();
@@ -101,12 +99,10 @@ describe("Pending recovery", () => {
     await flushPromises();
     expect((password.element as HTMLInputElement).value).toBe("");
     expect((key.element as HTMLInputElement).value).toBe("H1-SAVED");
-    expect((prior.element as HTMLInputElement).value).toBe("H1-PRIOR");
     expect(wrapper.text()).not.toContain("pending-recovery-password:");
     model.store.status = { ...model.store.status, server: "https://other.example" };
     await flushPromises();
     expect((key.element as HTMLInputElement).value).toBe("");
-    expect((prior.element as HTMLInputElement).value).toBe("");
   });
 
   it("does not unlock when recovery completes after a lock", async () => {

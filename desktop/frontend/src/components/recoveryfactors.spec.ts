@@ -8,7 +8,7 @@ import PendingRecoveryView from "./PendingRecoveryView.vue";
 vi.mock("../store", async () => {
   const { reactive } = await vi.importActual<typeof Vue>("vue");
   return {
-    store: reactive({ pendingRecovery: [], recoveryEpoch: 0, recoveryFactor: null, isBusy: false, errorMessage: "", isRecoveryOpen: true }),
+    store: reactive({ status: { state: "signed-out", email: "", server: "" }, pendingRecovery: [], recoveryEpoch: 0, recoveryFactor: null, isBusy: false, errorMessage: "", isRecoveryOpen: true }),
     resumePendingRecovery: vi.fn(),
     savePendingRecoveryKit: vi.fn(),
     acknowledgePendingRecovery: vi.fn(),
@@ -38,18 +38,22 @@ it.each([{ keychainProtected: false }, { manualUnlock: true }])("shows a readabl
   expect(wrapper.get('input[name="pendingRecoverySecretKey"]').attributes()).toMatchObject({ type: "text", class: "monospace", placeholder: "H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" });
 });
 
-it("keeps factors local to their operation card", async () => {
-  store.pendingRecovery = [recovery(), recovery({ operationId: "replacement", kind: "replacement" })];
+it("keeps factors local to the selected operation", async () => {
+  store.pendingRecovery = [recovery(), recovery({ operationId: "replacement", kind: "replacement", phase: "needs-finishing" })];
   const wrapper = mount(PendingRecoveryView);
-  const cards = wrapper.findAll('[data-testid="pending-operation"]');
-  await cards[1]!.get('input[name="pendingRecoveryPassword"]').setValue("replacement password");
-  expect((cards[0]!.get('input[name="pendingRecoveryPassword"]').element as HTMLInputElement).value).toBe("");
-  await cards[1]!.get("button").trigger("click");
+  const choices = wrapper.findAll('[data-testid="pending-recovery-chooser"] button');
+  await choices[1]!.trigger("click");
+  await wrapper.get('input[name="pendingRecoveryPassword"]').setValue("replacement password");
+  await choices[0]!.trigger("click");
+  expect((wrapper.get('input[name="pendingRecoveryPassword"]').element as HTMLInputElement).value).toBe("");
+  await choices[1]!.trigger("click");
+  await wrapper.get('input[name="pendingRecoveryPassword"]').setValue("replacement password");
+  await wrapper.get("article .primary").trigger("click");
   expect(resumePendingRecovery).toHaveBeenCalledWith("replacement", "replacement password", "", "");
 });
 
 it("asks for the previous key only after an interrupted replacement requests it", async () => {
-  store.pendingRecovery = [recovery({ operationId: "replacement", kind: "replacement" })];
+  store.pendingRecovery = [recovery({ operationId: "replacement", kind: "replacement", phase: "needs-finishing" })];
   vi.mocked(resumePendingRecovery).mockImplementation(async () => {
     store.errorMessage = "enter the previous Secret Key to resume this interrupted replacement";
     return false;
@@ -57,7 +61,7 @@ it("asks for the previous key only after an interrupted replacement requests it"
   const wrapper = mount(PendingRecoveryView);
   expect(wrapper.find('input[name="pendingRecoveryPriorSecretKey"]').exists()).toBe(false);
   await wrapper.get('input[name="pendingRecoveryPassword"]').setValue("master password");
-  await wrapper.get("article button").trigger("click");
+  await wrapper.get("article .primary").trigger("click");
   await flushPromises();
   expect(wrapper.get('input[name="pendingRecoveryPriorSecretKey"]').attributes("type")).toBe("text");
 });

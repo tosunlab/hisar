@@ -83,7 +83,7 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
       <HisarLogo />
       <h1>Finish account setup</h1>
       <p>Save and confirm your Emergency Kit to finish this setup.</p>
-      <div v-if="store.pendingRecovery.length > 1" class="recovery-chooser">
+      <div v-if="store.pendingRecovery.length > 1" class="recovery-chooser" data-testid="pending-recovery-chooser">
         <button v-for="operation in store.pendingRecovery" :key="operation.operationId" @click="selectedID = operation.operationId">
           <strong>{{ recoveryHeading(operation.kind) }}</strong>
           <span>{{ operation.email }} · {{ recoveryHost(operation.origin) }} ›</span>

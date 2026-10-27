@@ -29,10 +29,10 @@ it("selects a single record and puts its password immediately before the next ac
 it("shows Continue for uncertain outcomes and clears factors when a chooser changes operation", async () => {
   store.pendingRecovery = [record("one", "outcome-unknown"), record("two", "manual-unlock")];
   wrapper = mount(PendingRecoveryView);
-  await wrapper.get("select").setValue("one");
+  await wrapper.findAll('[data-testid="pending-recovery-chooser"] button')[0]!.trigger("click");
   expect(wrapper.get("article .primary").text()).toBe("Continue");
   await wrapper.get('input[name="pendingRecoveryPassword"]').setValue("secret");
-  await wrapper.get("select").setValue("two");
+  await wrapper.findAll('[data-testid="pending-recovery-chooser"] button')[1]!.trigger("click");
   expect((wrapper.get('input[name="pendingRecoveryPassword"]').element as HTMLInputElement).value).toBe("");
   expect(wrapper.get("article .primary").text()).toBe("Sign in with saved Emergency Kit");
 });
