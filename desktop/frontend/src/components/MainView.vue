@@ -73,6 +73,7 @@ import {
 } from "../util";
 import { allColumnBound, detailMinWidth, loadColumnWidths, saveColumnWidths } from "../columnWidths";
 import AppIcon from "./AppIcon.vue";
+import NewVaultDialog, { type TeamChoice } from "./NewVaultDialog.vue";
 import ColumnResizer from "./ColumnResizer.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -102,13 +103,6 @@ const layoutStyle = computed(() => ({
   gridTemplateColumns: `minmax(${allColumnBound.sidebar.min}px, ${columnWidths.value.sidebar}px) 0 minmax(${allColumnBound.list.min}px, ${columnWidths.value.list}px) 0 minmax(${detailMinWidth}px, 1fr)`,
 }));
 
-interface TeamChoice {
-  key: string;
-  organizationID: string;
-  teamID: string;
-  teamName: string;
-  label: string;
-}
 
 interface VaultGroup {
   organizationID: string;
@@ -189,7 +183,7 @@ const allTeamChoice = computed<TeamChoice[]>(() =>
         organizationID: organization.id,
         teamID: team.id,
         teamName: team.name,
-        label: `${organization.name} › ${team.name} (team vault)`,
+        label: `${team.name} in ${organization.name}`,
       })),
   ),
 );
@@ -208,6 +202,7 @@ const itemToMove = ref<{ vaultID: string; itemID: string; title: string } | null
 const isOverlayOpen = computed(
   () =>
     store.isSettingsOpen ||
+    store.isCreatingVault ||
     store.isSharingOpen ||
     store.isImportOpen ||
     store.isShareLinksOpen ||
@@ -602,29 +597,7 @@ onBeforeUnmount(() => {
             <span class="vault-count">{{ vault.readIssues?.length ? `${vault.itemCount} + ${vault.readIssues.length} unreadable` : vault.itemCount }}</span>
           </button>
         </div>
-        <form v-if="store.isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
-          <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
-          <label class="new-vault-where">
-            <span>Where</span>
-            <span v-if="isLoadingTeams" role="status" data-testid="new-vault-teams-loading"><progress aria-label="Loading teams" /> Loading teams…</span>
-            <span v-else-if="newVaultTeamsError" role="alert" data-testid="new-vault-teams-error">
-              Couldn't load teams. <button type="button" class="ghost" @click="loadNewVaultTeams">Retry</button>
-            </span>
-            <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where" :disabled="isLoadingTeams || !!newVaultTeamsError">
-              <option value="">Your own vault (share it later)</option>
-              <option v-for="choice in allTeamChoice" :key="choice.key" :value="choice.key">{{ choice.label }}</option>
-            </select>
-          </label>
-          <p v-if="selectedTeamChoice" class="muted new-vault-note" data-testid="new-vault-where-note">
-            {{ selectedTeamChoice.teamName }}'s members get this vault. Manage it in Settings → Organizations.
-          </p>
-          <p v-if="newVaultErrorMessage" class="error new-vault-error" role="alert" data-testid="new-vault-error">{{ newVaultErrorMessage }}</p>
-          <div class="row">
-            <button type="button" class="ghost" @click="store.isCreatingVault = false">Cancel</button>
-            <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
-          </div>
-        </form>
-        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
+        <button class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
       </nav>
 
       <nav v-if="allTag.length > 0" aria-label="Tags" class="tags-nav" data-testid="tag-list">
@@ -861,6 +834,20 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </main>
+    <NewVaultDialog
+      v-if="store.isCreatingVault"
+      v-model:name="newVaultName"
+      v-model:where="newVaultWhere"
+      :all-team-choice="allTeamChoice"
+      :is-loading-teams="isLoadingTeams"
+      :teams-error="newVaultTeamsError"
+      :error-message="newVaultErrorMessage"
+      :can-submit="canSubmitNewVault"
+      :is-busy="store.isBusy"
+      @close="store.isCreatingVault = false"
+      @retry="loadNewVaultTeams"
+      @submit="submitNewVault"
+    />
     <SettingsPanel v-if="store.isSettingsOpen" />
     <VaultSharingPanel v-if="store.isSharingOpen" />
     <ImportPanel v-if="store.isImportOpen" />
@@ -959,9 +946,6 @@ onBeforeUnmount(() => {
   color: var(--color-text-muted);
 }
 
-.new-vault {
-  margin: 6px 0;
-}
 
 .sharing-nav,
 .tags-nav {
@@ -1034,37 +1018,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.new-vault input {
-  margin-bottom: 6px;
-}
-
-.new-vault-where {
-  margin-bottom: 6px;
-}
-
-.new-vault-where span {
-  padding: 0 2px;
-}
-
-.new-vault-where select {
-  width: 100%;
-}
-
-.new-vault-note {
-  margin: 0 2px 8px;
-  font-size: var(--font-size-11);
-  line-height: 1.4;
-}
-
-.new-vault-error {
-  margin: 0 0 8px;
-  padding: 6px 8px;
-  font-size: var(--font-size-12);
-}
-
-.new-vault .row {
-  justify-content: flex-end;
-}
 
 .vault-group + .vault-group {
   margin-top: 14px;

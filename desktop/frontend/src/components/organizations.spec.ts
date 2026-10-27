@@ -69,7 +69,7 @@ async function openNewVaultForm(): Promise<VueWrapper> {
 }
 
 function listAllWhereChoice(wrapper: VueWrapper): string[] {
-  return wrapper.findAll('[data-testid="new-vault-where"] option').map((option) => option.text());
+  return wrapper.findAll('[data-testid="new-vault-where"] .destination-title').map((row) => row.text());
 }
 
 function isCreateDisabled(wrapper: VueWrapper): boolean {
@@ -462,17 +462,37 @@ describe("Organization vaults in the vault list", () => {
     await wrapper.find('[data-testid="new-vault"]').trigger("click");
     await flushPromises();
 
-    const allChoice = wrapper.findAll('[data-testid="new-vault-where"] option').map((option) => option.text());
-    expect(allChoice).toEqual(["Your own vault (share it later)", "Acme › Platform (team vault)"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault", "Platform in Acme"]);
     await wrapper.find('input[name="vaultName"]').setValue("Release");
-    await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
-    expect(wrapper.find('[data-testid="new-vault-where-note"]').text()).toContain("Platform's members get this vault");
+    await wrapper.find('[data-testid="new-vault-where"] input[value="acme/platform"]').setValue();
+    expect(wrapper.find('[data-testid="new-vault-where"]').text()).toContain("Platform's members get this vault");
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
 
     expect(api.createOrganizationVault).toHaveBeenCalledWith("acme", "platform", "Release");
     expect(api.createVault).not.toHaveBeenCalled();
     expect(store.selectedVaultID).toBe("release");
+    wrapper.unmount();
+  });
+
+  it("opens a labelled modal with full destination names and restores focus on Escape", async () => {
+    const longName = "Research platform for a very long organization name";
+    api.getOrganization.mockResolvedValue(createOrganizationDetail({ teams: [createOrganizationTeam({ name: longName })] }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    const opener = wrapper.get('[data-testid="new-vault"]');
+    (opener.element as HTMLElement).focus();
+    await opener.trigger("click");
+    await flushPromises();
+    const dialog = wrapper.get('[data-testid="new-vault-dialog"]');
+    expect(dialog.attributes("role")).toBe("dialog");
+    expect(dialog.get("legend").text()).toBe("Where");
+    expect(dialog.text()).toContain(`${longName} in Acme`);
+    expect(dialog.text()).toContain("Share it later");
+    expect(document.activeElement).toBe(dialog.get('input[name="vaultName"]').element);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="new-vault-dialog"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(opener.element);
     wrapper.unmount();
   });
 
@@ -493,16 +513,15 @@ describe("Organization vaults in the vault list", () => {
     api.getOrganization.mockImplementation((organizationID: string) => Promise.resolve(getOrganizationDetail(organizationID)));
     const wrapper = await openNewVaultForm();
     await wrapper.find('input[name="vaultName"]').setValue("Release");
-    await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
+    await wrapper.find('[data-testid="new-vault-where"] input[value="acme/platform"]').setValue();
     expect(isCreateDisabled(wrapper)).toBe(false);
 
     api.listAllOrganization.mockResolvedValue(listOrganizations({ organizations: [globexSummary] }));
     await syncInBackground();
     await flushPromises();
     const where = wrapper.find('[data-testid="new-vault-where"]');
-    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Globex › Research (team vault)"]);
-    expect((where.element as HTMLSelectElement).selectedIndex).toBe(-1);
-    expect(wrapper.find('[data-testid="new-vault-where-note"]').exists()).toBe(false);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault", "Research in Globex"]);
+    expect(where.findAll('input:checked')).toHaveLength(0);
     expect(isCreateDisabled(wrapper)).toBe(true);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
@@ -510,7 +529,7 @@ describe("Organization vaults in the vault list", () => {
     expect(api.createOrganizationVault).not.toHaveBeenCalled();
 
     api.createVault.mockResolvedValue({ ...familyVault, id: "release", name: "Release" });
-    await where.setValue("");
+    await where.find('input[value=""]').setValue();
     expect(isCreateDisabled(wrapper)).toBe(false);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
@@ -537,9 +556,9 @@ describe("Organization vaults in the vault list", () => {
 
     finishLoading();
     await flushPromises();
-    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Acme › Platform (team vault)", "Globex › Research (team vault)"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault", "Platform in Acme", "Research in Globex"]);
     expect(isCreateDisabled(wrapper)).toBe(false);
-    await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
+    await wrapper.find('[data-testid="new-vault-where"] input[value="acme/platform"]').setValue();
 
     // On another Mac an admin moves Alice from Platform to the new team Ops; Settings and the sharing panel stay closed.
     const platformWithoutAlice = createOrganizationTeam({ members: [{ accountId: testBob.accountId, name: testBob.name, email: testBob.email, isCurrentUser: false }] });
@@ -548,7 +567,7 @@ describe("Organization vaults in the vault list", () => {
     await syncInBackground();
     await flushPromises();
     expect(store.isSettingsOpen || store.isSharingOpen).toBe(false);
-    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Acme › Ops (team vault)", "Globex › Research (team vault)"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault", "Ops in Acme", "Research in Globex"]);
     expect(isCreateDisabled(wrapper)).toBe(true);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();

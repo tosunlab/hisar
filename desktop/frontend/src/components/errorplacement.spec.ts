@@ -50,6 +50,7 @@ beforeEach(() => {
     noticeMessage: "",
     isBusy: false,
     isSettingsOpen: false,
+    isCreatingVault: false,
   });
   api.getStatus.mockResolvedValue(createStatus("unlocked"));
   api.listAllVault.mockResolvedValue(allVault);
