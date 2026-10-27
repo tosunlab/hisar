@@ -136,6 +136,7 @@ private fun ColumnScope.PasswordGeneratorForm(model: AppModel, password: String,
                 )
             }
         }
+        ItemPasswordStrengthMeter(model, password, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         RowDivider()
         EditorButtonRow("Regenerate", Icons.Filled.Refresh, onClick = { generation += 1 }, testTag = "generator-regenerate")
         RowDivider()

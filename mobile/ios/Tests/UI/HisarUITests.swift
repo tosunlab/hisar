@@ -18,6 +18,11 @@ final class HisarUITests: HisarUITestCase {
         let passwordRow = app.buttons["copy-password"]
         waitFor(passwordRow)
         XCTAssertEqual(passwordRow.value as? String, "Hidden")
+        let strength = app.descendants(matching: .any)["password-strength-meter"].firstMatch
+        waitFor(strength)
+        XCTAssertEqual(strength.label, "Password strength")
+        XCTAssertTrue(["Weak", "Fair", "Good", "Strong"].contains(strength.value as? String ?? ""))
+        XCTAssertEqual(passwordRow.value as? String, "Hidden", "rating a password must not reveal it")
         XCTAssertEqual(passwordRow.label, "Copy password")
         XCTAssertEqual(app.buttons["reveal-password"].label, "Reveal password")
         let passwordCell = app.cells.containing(.button, identifier: "copy-password").firstMatch
@@ -40,7 +45,9 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertFalse(app.staticTexts["Website copied. It clears in 90 seconds."].waitForExistence(timeout: 2), "opening a website must not copy")
 
         app.buttons["edit-item"].tap()
+        waitFor(app.descendants(matching: .any)["password-strength-meter"].firstMatch)
         app.buttons["editor-generate-password"].tap()
+        waitFor(app.descendants(matching: .any)["password-strength-meter"].firstMatch)
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
         type("dev, work", into: app.textFields["editor-new-tag"])

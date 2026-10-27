@@ -1113,6 +1113,10 @@ in-memory setting cannot overwrite a stricter choice made in the app.
 - System autofill: the iOS AutoFill Credential Provider extension, a second process that shares the app's state and encrypted cache through the app group; Android's `AutofillService`, which runs in the app's own process on the app's backend.
 - Memory constraint: the iOS AutoFill extension must stay well below the system limit (Argon2 64 MiB).
 
+Both native apps show the shared Go password estimator's four-segment Weak/Fair/Good/Strong meter below nonempty item
+passwords in detail, the editor and the generator. Detail passwords stay masked. The meter exposes one accessibility
+label and value, with decorative segments hidden. Item-password strength is informational, not a save or generation gate.
+
 **iOS (Phase 4, first).** `mobile/hisarkit` wraps the app backend (`core/app`, shared with the Mac app, which has no Wails import and compiles for `ios/arm64`), so the phone gets the same sign-in, offline cache, matching and sharing logic. `make build-ios-framework` runs `gomobile bind -target=ios,iossimulator -iosversion=26.0` and writes `mobile/build/HisarKit.xcframework` (Swift module `HisarKit`, classes prefixed `Hisarkit`).
 
 - gomobile passes only strings, numbers, `[]byte` and interfaces, so lists and items cross as JSON strings with the desktop's types (`vault.Status`, `VaultSummary`, `ItemDetail`, `browser.Login`).

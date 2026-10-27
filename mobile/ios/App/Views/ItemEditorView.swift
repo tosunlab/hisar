@@ -152,6 +152,7 @@ struct ItemEditorView: View {
                             .accessibilityLabel("Generate password")
                             .accessibilityIdentifier("editor-generate-password")
                         }
+                        ItemPasswordStrengthMeter(password: draft.password)
                     }
                     if !draft.isDatabase {
                         Section("One-time code") {

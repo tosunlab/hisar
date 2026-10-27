@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
+import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.ItemEditorDraft
 import com.tryhisar.hisar.model.DatabaseEngine
 import com.tryhisar.hisar.model.ItemAddress
@@ -52,6 +53,7 @@ private fun Warning(text: String, testTag: String) {
 
 @Composable
 fun LoginSections(
+    model: AppModel,
     draft: ItemEditorDraft,
     onChange: (ItemEditorDraft) -> Unit,
     revealed: RevealedSecrets,
@@ -75,6 +77,7 @@ fun LoginSections(
             RevealButton(revealed.isPassword, "password") { onRevealedChange(revealed.copy(isPassword = !revealed.isPassword)) }
             RowIconButton(Icons.Outlined.AutoFixHigh, "Generate password", onClick = onGeneratePassword, testTag = "editor-generate-password")
         }
+        ItemPasswordStrengthMeter(model, item.password, Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
     }
     if (!item.isDatabase) {
         FormSection(header = "One-time password") {

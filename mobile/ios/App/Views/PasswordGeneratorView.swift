@@ -49,6 +49,7 @@ struct PasswordGeneratorView: View {
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .contentTransition(.opacity)
                     .accessibilityIdentifier("generated-password")
+                ItemPasswordStrengthMeter(password: password)
                 Button {
                     Task { await generate() }
                 } label: {

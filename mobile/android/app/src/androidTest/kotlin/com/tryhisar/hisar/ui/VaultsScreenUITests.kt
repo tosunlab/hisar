@@ -179,6 +179,34 @@ class VaultsScreenUITests : HisarUITestCase() {
     }
 
     @Test
+    fun testItemPasswordStrengthDoesNotRevealOrRequireAStrongPassword() {
+        val backend = buildBackend()
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            tap("vault-Personal")
+            tap("item-GitHub")
+            waitFor("item-password-strength")
+            assertFalse(exists(hasText("github-password")))
+            tap("edit-item")
+            waitFor("editor-password")
+            waitFor("item-password-strength")
+            composeRule.onNodeWithTag("editor-password").performTextReplacement("")
+            composeRule.waitUntil(5_000) { !exists(hasTestTag("item-password-strength")) }
+            composeRule.onNodeWithTag("editor-password").performTextReplacement("password1234")
+            waitFor("item-password-strength")
+            assertTrue(exists(hasText("Weak")))
+            tap("editor-generate-password")
+            waitFor("generator-use")
+            waitFor("item-password-strength")
+            tap("generator-close")
+            Espresso.closeSoftKeyboard()
+            tap("editor-save")
+            waitFor("edit-item")
+            assertEquals("password1234", backend.getItem("personal", "github").password)
+        }
+    }
+
+    @Test
     fun testSettingsRowsRemainReachableAfterNotices() {
         launchApp(buildBackend()).use {
             waitFor("vaults-list")

@@ -13,6 +13,10 @@ The iPhone and Android apps on top of the gomobile-bound `core`. See [Design](..
 - `android/`: the Android app, below.
 - `cmd/hisar-ui-test-mac`: plays the user's Mac in the Android phone approval UI test.
 
+On iPhone and Android, item detail, the login editor and the password generator rate a nonempty password as Weak, Fair,
+Good or Strong. The four-segment meter uses the shared Go estimator. It does not reveal a masked password, and its rating
+does not prevent saving an item or using a generated password.
+
 ## Android
 
 Kotlin and Jetpack Compose on top of `HisarKit.aar`, built with the Gradle wrapper in `android/`. Android 10 (API 29)
