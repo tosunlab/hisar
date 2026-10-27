@@ -1,6 +1,16 @@
 package com.tryhisar.hisar.ui.vaults
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.unit.dp
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBox
 import androidx.compose.material.icons.outlined.Badge
@@ -47,10 +57,13 @@ fun VaultRow(vault: VaultSummary, itemCount: Int, onClick: () -> Unit) {
 
 /** An item with its tile and the line under its title; lists that span vaults pass [vaultName]. */
 @Composable
-fun ItemRow(model: AppModel, item: ItemDetail, testTag: String, onClick: () -> Unit, vaultName: String? = null) {
-    NavigationRow(testTag = testTag, onClick = onClick, leading = { AppItemIcon(model, item) }) {
+fun ItemRow(model: AppModel, item: ItemDetail, testTag: String, onClick: () -> Unit, vaultName: String? = null, showsFavorite: Boolean = true) {
+    NavigationRow(testTag = testTag, onClick = onClick, modifier = Modifier.semantics { if (showsFavorite && item.isFavorite) stateDescription = "In Favorites" }, leading = { AppItemIcon(model, item) }) {
         Column {
-            TitleAndSubtitle(item.title, VaultLogic.describeRow(item))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.weight(1f)) { TitleAndSubtitle(item.title, VaultLogic.describeRow(item)) }
+                if (showsFavorite && item.isFavorite) Icon(Icons.Filled.Star, contentDescription = null, modifier = Modifier.size(14.dp), tint = HisarTheme.colors.secondaryLabel)
+            }
             if (vaultName != null) Text(vaultName, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
         }
     }

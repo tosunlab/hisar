@@ -7,6 +7,8 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.performTextInput
 import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.performTouchInput
@@ -140,6 +142,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             saveScreenshot("vault-swipe-star")
             tap("favorite-swipe-GitHub")
             waitForNotice("Added to Favorites.")
+            assertTrue(exists(hasTestTag("item-GitHub") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "In Favorites")))
             type("visa", "vault-search")
             waitFor("item-Visa")
             assertFalse(exists(hasTestTag("item-GitHub")))
@@ -151,6 +154,7 @@ class VaultsScreenUITests : HisarUITestCase() {
 
             dismissNotice()
             scrollTo("favorite-GitHub")
+            assertFalse(exists(hasTestTag("favorite-GitHub") and SemanticsMatcher.expectValue(SemanticsProperties.StateDescription, "In Favorites")))
             scrollTo("favorite-Netflix")
             composeRule.onNodeWithTag("favorite-Netflix").performTouchInput { swipeLeft() }
             tap("unfavorite-Netflix")

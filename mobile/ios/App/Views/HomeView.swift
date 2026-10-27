@@ -403,7 +403,7 @@ struct VaultsView: View {
             Section {
                 ForEach(allFavorite) { reference in
                     NavigationLink(value: VaultsSelection.item(ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id))) {
-                        ItemRow(item: reference.item, vaultName: reference.vaultName)
+                        ItemRow(item: reference.item, vaultName: reference.vaultName, showsFavorite: false)
                     }
                     .swipeActions(edge: .trailing) {
                         FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item)
@@ -589,13 +589,21 @@ struct FavoriteSwipeButton: View {
 struct ItemRow: View {
     var item: ItemDetail
     var vaultName: String?
+    var showsFavorite = true
 
     var body: some View {
         HStack(spacing: 12) {
             AppItemIcon(item: item)
             VStack(alignment: .leading, spacing: 2) {
-                Text(item.title)
-                    .lineLimit(1)
+                HStack {
+                    Text(item.title).lineLimit(1)
+                    if showsFavorite && item.isFavorite {
+                        Image(systemName: "star.fill")
+                            .font(.caption)
+                            .foregroundStyle(.themeSecondary)
+                            .accessibilityHidden(true)
+                    }
+                }
                 let subtitle = buildSubtitle()
                 if !subtitle.isEmpty {
                     Text(subtitle)
@@ -612,6 +620,7 @@ struct ItemRow: View {
             }
         }
         .accessibilityElement(children: .combine)
+        .accessibilityValue(showsFavorite && item.isFavorite ? "In Favorites" : "")
         .accessibilityIdentifier("item-\(item.title)")
     }
 
