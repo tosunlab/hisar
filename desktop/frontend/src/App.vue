@@ -45,7 +45,7 @@ onMounted(() => {
   loadStatus().then(async () => { await takePendingInviteQuietly(); await restoreBrowserPairing(); });
   allRemoveListener = [
     Events.On("update-required", (event) => event.data && showUpdateRequired(event.data)),
-    Events.On("invite-link", (event) => openInviteLink(event.data ?? "")),
+    Events.On("invite-link", (event) => openInviteLink(event.data ?? null)),
     startThemeSync(),
     Events.On("locked", () => handleLocked()),
     Events.On("unlocked", () => handleUnlockedElsewhere()),

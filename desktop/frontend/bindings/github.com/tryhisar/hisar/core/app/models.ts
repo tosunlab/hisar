@@ -307,6 +307,19 @@ export interface ImportSourceGroup {
 }
 
 /**
+ * InviteLink is a hisar://invite link. Invite is what Create account accepts: the invite link on its server, or the
+ * bare code for the default server. Server is that server's origin. Invitation is InviteForOrganization or
+ * InviteForShare when an organization or a vault share invitation sent the link, and Email is then the address it is
+ * for: an app signed in to that account on that server shows the invitation instead.
+ */
+export interface InviteLink {
+    "invite": string;
+    "server": string;
+    "invitation": string;
+    "email": string;
+}
+
+/**
  * ItemAPICredential is an API key; the secret is concealed. ExpiryWarning says when the expiry has passed.
  */
 export interface ItemAPICredential {

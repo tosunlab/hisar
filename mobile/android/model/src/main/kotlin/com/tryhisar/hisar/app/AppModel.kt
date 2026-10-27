@@ -66,6 +66,7 @@ class AppModel(
     private var startedRefreshCount = 0L
     private var shownRefresh = 0L
     private var statusEpoch = 0L
+    private var invitationSettingsAfterUnlock: SettingsDestination? = null
 
     override val status: StateFlow<VaultStatus> = mutableStatus.asStateFlow()
     override val screen: StateFlow<Screen> = mutableScreen.asStateFlow()
@@ -190,6 +191,14 @@ class AppModel(
             mutableLockCount.update { it + 1 }
             selectedTab.value = Tab.VAULTS
         }
+        if (!previous.isUnlocked && newStatus.isUnlocked) {
+            invitationSettingsAfterUnlock?.let {
+                invitationSettingsAfterUnlock = null
+                selectedTab.value = Tab.SETTINGS
+                requestedSettings.value = it
+            }
+        }
+        if (newStatus.state == VaultStatus.STATE_SIGNED_OUT) invitationSettingsAfterUnlock = null
         allStatusListener.forEach { it(previous, newStatus) }
     }
 
@@ -267,6 +276,16 @@ class AppModel(
         notifications.openedKind.value = null
         selectedTab.value = if (kind == PushKind.APPROVAL) Tab.APPROVALS else Tab.SETTINGS
         if (kind == PushKind.SECURITY) requestedSettings.value = SettingsDestination.DEVICES
+    }
+
+    override fun openInvitationSettings(destination: SettingsDestination) {
+        if (status.value.isUnlocked) {
+            selectedTab.value = Tab.SETTINGS
+            requestedSettings.value = destination
+            return
+        }
+        invitationSettingsAfterUnlock = destination
+        showNotice("Unlock Hisar to see the invitation.")
     }
 
     suspend fun handleWillEnterForeground() {

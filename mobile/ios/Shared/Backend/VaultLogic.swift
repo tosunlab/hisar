@@ -51,11 +51,21 @@ struct SignInLink: Equatable {
 
 struct InviteLink: Equatable {
     static let defaultServer = "https://eu.tryhisar.com"
+    // The invitation an invite link was sent for, as the invite page's Open in Hisar names it.
+    static let invitationOrganization = "organization"
+    static let invitationShare = "share"
 
     // What Create account accepts: the bare code for the default server, otherwise the invite link on its server.
     var invite: String
+    // The resolved origin of the server the invite is on.
+    var server = InviteLink.defaultServer
+    // invitationOrganization or invitationShare when an organization or vault share invitation sent the link, else nil:
+    // an app signed in to that account on that server shows the invitation instead of Create account.
+    var invitation: String?
+    // The address the invitation is for, normalized, when invitation is set.
+    var email = ""
 
-    // hisar://invite/<code>?server=<origin> from the invite page's Open in Hisar button.
+    // hisar://invite/<code>?server=<origin>[&invitation=organization|share&email=<address>] from Open in Hisar.
     static func parse(_ text: String) -> InviteLink? {
         guard let components = URLComponents(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
               components.scheme?.lowercased() == "hisar",
@@ -63,11 +73,20 @@ struct InviteLink: Equatable {
         let code = String(components.path.dropFirst())
         guard !code.isEmpty, code.range(of: "^[A-Za-z0-9_-]+$", options: .regularExpression) != nil else { return nil }
         let serverText = components.queryItems?.first { $0.name == "server" }?.value ?? ""
-        if serverText.isEmpty {
-            return InviteLink(invite: code)
+        var server = defaultServer
+        if !serverText.isEmpty {
+            guard let resolved = resolveServer(serverText) else { return nil }
+            server = resolved
         }
-        guard let server = resolveServer(serverText) else { return nil }
-        return InviteLink(invite: server == defaultServer ? code : "\(server)/invite/\(code)")
+        var link = InviteLink(invite: server == defaultServer ? code : "\(server)/invite/\(code)", server: server)
+        // An unknown invitation is a plain invite, as in an older app.
+        let invitation = components.queryItems?.first { $0.name == "invitation" }?.value ?? ""
+        if invitation == invitationOrganization || invitation == invitationShare {
+            let emailText = components.queryItems?.first { $0.name == "email" }?.value ?? ""
+            link.invitation = invitation
+            link.email = emailText.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }
+        return link
     }
 
     private static func resolveServer(_ text: String) -> String? {

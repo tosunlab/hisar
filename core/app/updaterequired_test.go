@@ -237,21 +237,29 @@ func TestParseInviteDeepLink(t *testing.T) {
 		"hisar://invite/abc?server=hisar.example.com":                            "https://hisar.example.com/invite/abc",
 		"hisar://invite/abc?server=https%3A%2F%2Fhisar.example.com%2F&other=yes": "https://hisar.example.com/invite/abc",
 	} {
-		if invite, err := ParseInviteDeepLink(link); err != nil || invite != expected {
-			t.Errorf("ParseInviteDeepLink(%q) = %q, %v; want %q", link, invite, err, expected)
+		if parsed, err := ParseInviteDeepLink(link); err != nil || parsed.Invite != expected || parsed.Invitation != "" {
+			t.Errorf("ParseInviteDeepLink(%q) = %+v, %v; want %q", link, parsed, err, expected)
 		}
 	}
 	for _, link := range []string{"", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://eu.tryhisar.com/invite/abc", "hisar://invite/a%20b", "hisar://invite/abc?server=ftp%3A%2F%2Fx"} {
-		if invite, err := ParseInviteDeepLink(link); err == nil {
-			t.Errorf("ParseInviteDeepLink(%q) = %q", link, invite)
+		if parsed, err := ParseInviteDeepLink(link); err == nil {
+			t.Errorf("ParseInviteDeepLink(%q) = %+v", link, parsed)
 		}
 	}
-	service := NewInviteLinkService()
-	if invite, err := OpenInviteLink(service, "hisar://invite/abc"); err != nil || invite != "abc" {
-		t.Fatalf("OpenInviteLink: %q %v", invite, err)
+	// The link an organization's sign-up email opens names the invitation and its address; an unknown one is a plain invite.
+	organizationLink := "hisar://invite/abc?email=Bob%40Example.com&invitation=organization&server=https%3A%2F%2Fhisar.example.com"
+	if parsed, _ := ParseInviteDeepLink(organizationLink); parsed != (InviteLink{Invite: "https://hisar.example.com/invite/abc", Server: "https://hisar.example.com", Invitation: InviteForOrganization, Email: "bob@example.com"}) {
+		t.Errorf("organization link = %+v", parsed)
 	}
-	if first, second := service.TakePendingInvite(), service.TakePendingInvite(); first != "abc" || second != "" {
-		t.Errorf("TakePendingInvite: %q then %q", first, second)
+	if parsed, _ := ParseInviteDeepLink("hisar://invite/abc?invitation=party&email=bob%40example.com"); parsed != (InviteLink{Invite: "abc", Server: defaultServer}) {
+		t.Errorf("unknown invitation = %+v", parsed)
+	}
+	service := NewInviteLinkService()
+	if parsed, err := OpenInviteLink(service, "hisar://invite/abc"); err != nil || parsed.Invite != "abc" {
+		t.Fatalf("OpenInviteLink: %+v %v", parsed, err)
+	}
+	if first, second := service.TakePendingInvite(), service.TakePendingInvite(); first == nil || first.Invite != "abc" || second != nil {
+		t.Errorf("TakePendingInvite: %+v then %+v", first, second)
 	}
 }
 

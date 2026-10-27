@@ -16,7 +16,7 @@ declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "agent-sessions-changed": string;
-            "invite-link": string;
+            "invite-link": app$0.InviteLink;
             "locked": string;
             "show-item": app$0.ItemLocation;
             "show-settings": string;

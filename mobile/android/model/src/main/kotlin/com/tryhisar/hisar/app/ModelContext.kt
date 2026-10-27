@@ -103,6 +103,9 @@ interface ModelContext {
     /** Shows a floating confirmation for 2.5 seconds. */
     fun showNotice(message: String)
 
+    /** Shows the Settings screen an invitation link points to, now when unlocked or right after the next unlock. */
+    fun openInvitationSettings(destination: SettingsDestination)
+
     /** Called with the previous and the new status each time [applyStatus] publishes one, before anything else reacts. */
     fun addStatusListener(listener: (previous: VaultStatus, current: VaultStatus) -> Unit)
 }

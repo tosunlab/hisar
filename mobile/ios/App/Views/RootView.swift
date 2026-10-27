@@ -23,7 +23,7 @@ struct RootView: View {
                 }
             }
         }
-        .alert("Already signed in", isPresented: Binding(get: { model.inviteLinkMessage != nil }, set: { if !$0 { model.inviteLinkMessage = nil } })) {
+        .alert("Invitation", isPresented: Binding(get: { model.inviteLinkMessage != nil }, set: { if !$0 { model.inviteLinkMessage = nil } })) {
             Button("OK", role: .cancel) {}
         } message: {
             Text(model.inviteLinkMessage ?? "")

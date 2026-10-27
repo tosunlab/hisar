@@ -35,6 +35,7 @@ import {
   type ImportFormat,
   type ImportPreview,
   type ImportProgress,
+  type InviteLink,
   type ItemDetail,
   type ItemLocation,
   type SSHAgentStatus,
@@ -273,10 +274,16 @@ async function applyStatus(status: Status): Promise<void> {
   if (status.state === "unlocked" && !status.updateRequired) {
     await loadAllVault();
     await restoreKeptDraft();
+    if (settingsSectionAfterUnlock) {
+      const sectionID = settingsSectionAfterUnlock;
+      settingsSectionAfterUnlock = "";
+      await openSettings(sectionID);
+    }
   } else if (status.state !== "unlocked") {
     clearLockedVaultData();
     if (status.state === "signed-out") {
       draftKeptForUnlock = null;
+      settingsSectionAfterUnlock = "";
     }
   } else {
     clearAllVaultData();
@@ -379,15 +386,37 @@ export async function updateNow(): Promise<void> {
   }
 }
 
-export function openInviteLink(invite: string): void {
-  if (!invite) {
+// settingsSectionAfterUnlock is the Settings section an invitation link opened while Hisar was locked; the next unlock
+// shows it.
+let settingsSectionAfterUnlock = "";
+
+// openInviteLink follows Open in Hisar on an invite page. Signed out, Create account takes the invite. Signed in to the
+// account an organization or a vault share invitation is for, Settings shows it to accept, after the unlock when
+// Hisar is locked; any other account is told who the invitation is for.
+export function openInviteLink(link: InviteLink | null): void {
+  if (!link?.invite) {
     return;
   }
-  if (store.status.state !== "signed-out") {
+  if (store.status.state === "signed-out") {
+    store.pendingInvite = link.invite;
+    return;
+  }
+  if (!link.invitation) {
     showNotice(`You're signed in as ${store.status.email}. Sign out to create an account with this invite.`);
     return;
   }
-  store.pendingInvite = invite;
+  // Both servers went through core's resolveServer, so they compare as written, the host's case aside.
+  if (link.email !== store.status.email.trim().toLowerCase() || link.server.toLowerCase() !== store.status.server.toLowerCase()) {
+    showNotice(`This invitation is for ${link.email} on ${link.server.replace(/^https:\/\//, "")}. You're signed in as ${store.status.email}.`);
+    return;
+  }
+  const sectionID = link.invitation === "organization" ? "organizations" : "people";
+  if (store.status.state === "unlocked") {
+    void openSettings(sectionID);
+    return;
+  }
+  settingsSectionAfterUnlock = sectionID;
+  showNotice("Unlock Hisar to see the invitation.");
 }
 
 export async function takePendingInviteQuietly(): Promise<void> {

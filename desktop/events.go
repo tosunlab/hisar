@@ -31,7 +31,7 @@ func init() {
 	application.RegisterEvent[string](agent.ApprovalClosedEventName)
 	application.RegisterEvent[app.Theme](eventThemeChanged)
 	application.RegisterEvent[app.UpdateRequirement](eventUpdateRequired)
-	application.RegisterEvent[string](eventInviteLink)
+	application.RegisterEvent[app.InviteLink](eventInviteLink)
 	application.RegisterEvent[app.ItemLocation](eventShowItem)
 	application.RegisterEvent[string](eventAgentSessionsChanged)
 	application.RegisterEvent[string](eventShowSettings)
