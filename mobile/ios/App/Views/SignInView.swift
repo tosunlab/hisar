@@ -156,12 +156,23 @@ struct SignInView: View {
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("sign-in-email")
             if isServerShown {
-                TextField("Server", text: $server, prompt: Text(verbatim: SignInView.defaultServer))
-                    .textContentType(.URL)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .accessibilityIdentifier("sign-in-server")
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Server")
+                        .font(.subheadline)
+                    TextField("Server", text: $server, prompt: Text(verbatim: SignInView.defaultServer))
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("sign-in-server")
+                }
+                if !SignInView.isDefaultServer(server) {
+                    Button("Use eu.tryhisar.com") {
+                        server = Self.defaultServer
+                        isServerShown = false
+                    }
+                    .accessibilityIdentifier("sign-in-use-default-server")
+                }
             } else {
                 Button("Use a different server…") {
                     isServerShown = true
@@ -171,9 +182,7 @@ struct SignInView: View {
         } header: {
             Text("Account")
         } footer: {
-            if !isServerShown {
-                Text(verbatim: "Signs in to \(SignInView.describeServer(server)).")
-            }
+            Text(verbatim: "Signs in to \(SignInView.describeServer(server)).")
         }
         Section("Secret Key and master password") {
             TextField("Secret Key", text: $secretKey, prompt: Text(verbatim: "H1-XXXXXX-XXXXX-…"))
