@@ -66,6 +66,13 @@ func describeServer(server string) string {
 	return strings.TrimSuffix(strings.TrimPrefix(server, "https://"), "/")
 }
 
+func authenticationError(server string, err error) error {
+	if apiclient.IsUnreachable(err) {
+		return fmt.Errorf("Hisar can't reach %s. Check your internet connection and the server address.", describeServer(server))
+	}
+	return convertError(err)
+}
+
 func (s *Service) SignIn(server, email, secretKeyText, password string) (Status, error) {
 	s.mutex.Lock()
 	epoch := s.sessionEpoch
@@ -90,7 +97,7 @@ func (s *Service) SignIn(server, email, secretKeyText, password string) (Status,
 		return Status{}, fmt.Errorf("incorrect email, master password or Secret Key for %s; check that this is your account's server", describeServer(server))
 	}
 	if err != nil {
-		return Status{}, convertError(err)
+		return Status{}, authenticationError(server, err)
 	}
 	// The Secret Key goes into the keychain before anything on this device changes: without it the session could
 	// never be unlocked again.
@@ -184,7 +191,7 @@ func (s *Service) signUp(server, token, email, name, password string) (SignUpRes
 	signedUp, secretKey, accountUnlockKey, err := session.SignUpKeepingAccountUnlockKeyWithRecovery(ctx, s.createClient(server), token, strings.TrimSpace(email), strings.TrimSpace(name), passwordBytes, s.getDeviceInfo(), stage)
 	if signedUp == nil {
 		if pending.OperationID == "" {
-			return SignUpResult{}, convertError(err)
+			return SignUpResult{}, authenticationError(server, err)
 		}
 		if errors.Is(err, session.ErrRecoveryDeliveryRequired) {
 			return SignUpResult{Status: s.GetStatus(), SecretKey: secretKey.Encode(), PendingOperationID: pending.OperationID, SetupState: pending.Phase, Problems: pending.Problems}, nil
@@ -193,7 +200,7 @@ func (s *Service) signUp(server, token, email, name, password string) (SignUpRes
 			if removeErr := s.removePendingRecovery(pending); removeErr != nil {
 				return SignUpResult{}, removeErr
 			}
-			return SignUpResult{}, convertError(err)
+			return SignUpResult{}, authenticationError(server, err)
 		}
 		pending.Problems = []string{"The account's remote setup is not confirmed. Do not register again. Resume this protected recovery operation."}
 		_ = s.updatePendingRecovery(pending)
