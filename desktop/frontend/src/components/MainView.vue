@@ -556,6 +556,7 @@ onBeforeUnmount(() => {
     <aside class="sidebar">
       <div class="title-bar"></div>
       <div class="sidebar-brand"><HisarLogo :size="24" show-wordmark /></div>
+      <div class="sidebar-navigation" data-testid="sidebar-navigation">
       <OrganizationBanner />
       <RemovedVaultBanner />
 
@@ -656,7 +657,7 @@ onBeforeUnmount(() => {
         </button>
       </nav>
 
-      <div class="spacer"></div>
+      </div>
       <div v-if="store.status.isOffline" class="offline" role="status" data-testid="offline-notice">
         <AppIcon name="offline" />
         <div>
@@ -923,6 +924,13 @@ onBeforeUnmount(() => {
   padding: 0 10px 10px;
   border-right: 1px solid var(--color-border);
   background: var(--color-sidebar);
+  min-height: 0;
+  overflow: hidden;
+}
+
+.sidebar-navigation {
+  min-height: 0;
+  flex: 1;
   overflow-y: auto;
 }
 
@@ -1121,6 +1129,7 @@ onBeforeUnmount(() => {
 
 .account {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: 10px;
   padding: 10px 8px;

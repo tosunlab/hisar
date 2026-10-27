@@ -87,3 +87,19 @@ describe("Type filtering", () => {
     expect(filter.findAll("option").map((option) => option.text())).toEqual(["All types (0)"]);
   });
 });
+
+describe("Persistent sidebar controls", () => {
+  it("keeps account actions outside the scrolling vault and tag navigation", async () => {
+    store.allVault = Array.from({ length: 30 }, (_, index) => ({ id: `vault-${index}`, name: `Vault ${index}`, type: "shared", role: "owner", itemCount: 1 }));
+    store.allItem = Array.from({ length: 30 }, (_, index) => createItem({ id: `item-${index}`, tags: [`tag-${index}`] }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    expect(wrapper.get('[data-testid="sidebar-navigation"]').findAll(".vault")).toHaveLength(63);
+    for (const label of ["Settings", "Lock"]) {
+      const control = wrapper.get(`[aria-label="${label}"]`);
+      expect(control.element.closest(".sidebar-navigation")).toBeNull();
+      (control.element as HTMLElement).focus();
+      expect(document.activeElement).toBe(control.element);
+    }
+    expect(wrapper.get(".account-text").element.closest(".sidebar-navigation")).toBeNull();
+  });
+});
