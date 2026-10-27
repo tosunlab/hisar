@@ -63,9 +63,15 @@ final class HisarUITests: HisarUITestCase {
         saveScreenshot("tags")
         app.buttons["tag-work"].tap()
         waitFor(app.buttons["item-GitHub"])
+        let tagSearch = app.searchFields.firstMatch
+        type("git", into: tagSearch)
         app.buttons["item-GitHub"].tap()
         waitFor(app.buttons["copy-password"])
         goBack()
+        XCTAssertEqual(tagSearch.value as? String, "git")
+        tagSearch.tap()
+        tagSearch.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 3) + "absent")
+        XCTAssertTrue(app.buttons["item-GitHub"].waitForNonExistence(timeout: 10))
         goBack()
         goBack()
 

@@ -240,14 +240,22 @@ struct ItemCategoryListView: View {
     var category: ItemCategoryDestination
 
     @EnvironmentObject private var model: AppModel
+    @SceneStorage private var searchText: String
+
+    init(category: ItemCategoryDestination) {
+        self.category = category
+        _searchText = SceneStorage(wrappedValue: "", "category-search-\(category.rawValue)")
+    }
 
     var body: some View {
-        let allReference = model.listAllItemReference().filter { category.includes($0.item) }
+        let allReference = VaultLogic.filterAllItem(model.listAllItemReference().filter { category.includes($0.item) }, searchText: searchText)
         List {
             if model.status.isOffline { Section { OfflineNote() } }
             CrossVaultReadWarning()
             if allReference.isEmpty {
-                if model.readIssueSummary.issues.isEmpty {
+                if !searchText.isEmpty {
+                    if model.readIssueSummary.issues.isEmpty { ContentUnavailableView.search(text: searchText) } else { IncompleteSearchResults() }
+                } else if model.readIssueSummary.issues.isEmpty {
                     ContentUnavailableView(category.emptyTitle, systemImage: category.systemImage)
                 } else {
                     ContentUnavailableView("No readable \(category.title.lowercased())", systemImage: category.systemImage, description: Text("Some saved data could not be searched."))
@@ -262,6 +270,7 @@ struct ItemCategoryListView: View {
         .applyThemedListStyle()
         .refreshable { await model.refreshAll() }
         .navigationTitle(category.title)
+        .searchable(text: $searchText, prompt: "Search \(category.title.lowercased())")
     }
 }
 
@@ -269,14 +278,22 @@ struct ItemTagListView: View {
     var tag: String
 
     @EnvironmentObject private var model: AppModel
+    @SceneStorage private var searchText: String
+
+    init(tag: String) {
+        self.tag = tag
+        _searchText = SceneStorage(wrappedValue: "", "tag-search-\(tag)")
+    }
 
     var body: some View {
-        let allReference = VaultLogic.filterAllItem(model.listAllItemReference(), tag: tag)
+        let allReference = VaultLogic.filterAllItem(VaultLogic.filterAllItem(model.listAllItemReference(), tag: tag), searchText: searchText)
         List {
             if model.status.isOffline { Section { OfflineNote() } }
             CrossVaultReadWarning()
             if allReference.isEmpty {
-                if model.readIssueSummary.issues.isEmpty {
+                if !searchText.isEmpty {
+                    if model.readIssueSummary.issues.isEmpty { ContentUnavailableView.search(text: searchText) } else { IncompleteSearchResults() }
+                } else if model.readIssueSummary.issues.isEmpty {
                     ContentUnavailableView("No items are tagged \(tag)", systemImage: "tag")
                 } else {
                     ContentUnavailableView("No readable items are tagged \(tag)", systemImage: "tag", description: Text("Some saved data could not be searched."))
@@ -291,6 +308,7 @@ struct ItemTagListView: View {
         .applyThemedListStyle()
         .refreshable { await model.refreshAll() }
         .navigationTitle(tag)
+        .searchable(text: $searchText, prompt: "Search items tagged \(tag)")
     }
 }
 

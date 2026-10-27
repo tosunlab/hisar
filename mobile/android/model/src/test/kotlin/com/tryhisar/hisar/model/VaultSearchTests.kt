@@ -36,6 +36,17 @@ class VaultSearchTests {
     }
 
     @Test
+    fun testSearchRefinesCategoryAndTagScopes() {
+        val login = makeReference("Production", username = "alice").withItem { it.copy(allTag = listOf("work")) }
+        val note = makeReference("Production", category = ItemDetail.CATEGORY_SECURE_NOTE).withItem { it.copy(allTag = listOf("work")) }
+        val other = makeReference("Production", username = "bob")
+        val allItem = listOf(login, note, other)
+        assertEquals(listOf("alice"), VaultLogic.filterAllItem(allItem.filter { ItemCategory.LOGINS.includes(it.item) }, "alice").map { it.item.username })
+        assertEquals(listOf("alice"), VaultLogic.filterAllItem(VaultLogic.filterAllItemByTag(allItem, "work"), "alice").map { it.item.username })
+        assertTrue(VaultLogic.filterAllItem(VaultLogic.filterAllItemByTag(allItem, "work"), "bob").isEmpty())
+    }
+
+    @Test
     fun testTagsAreListedWithCountsAndFilterItems() {
         val gitHub = makeReference("GitHub", username = "alice").withItem { it.copy(allTag = listOf("work", "dev")) }
         val bank = makeReference("Bank", vaultName = "Family").withItem { it.copy(allTag = listOf("Finance")) }

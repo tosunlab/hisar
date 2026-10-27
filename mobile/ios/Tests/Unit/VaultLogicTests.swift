@@ -35,6 +35,18 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertTrue(VaultLogic.filterAllItem(allItem, searchText: "nothing").isEmpty)
     }
 
+    func testSearchRefinesCategoryAndTagScopes() {
+        var login = makeReference("Production", username: "alice")
+        login.item.allTag = ["work"]
+        var note = makeReference("Production", category: ItemDetail.categorySecureNote)
+        note.item.allTag = ["work"]
+        let other = makeReference("Production", username: "bob")
+        let allItem = [login, note, other]
+        XCTAssertEqual(VaultLogic.filterAllItem(allItem.filter { ItemCategoryDestination.logins.includes($0.item) }, searchText: "alice").map(\.item.username), ["alice"])
+        XCTAssertEqual(VaultLogic.filterAllItem(VaultLogic.filterAllItem(allItem, tag: "work"), searchText: "alice").map(\.item.username), ["alice"])
+        XCTAssertTrue(VaultLogic.filterAllItem(VaultLogic.filterAllItem(allItem, tag: "work"), searchText: "bob").isEmpty)
+    }
+
     func testTagsAreListedWithCountsAndFilterItems() {
         var gitHub = makeReference("GitHub", username: "alice")
         gitHub.item.allTag = ["work", "dev"]

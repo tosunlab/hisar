@@ -25,6 +25,9 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -149,15 +152,22 @@ fun LazyListScope.crossVaultReadWarning(model: AppModel, stack: NavigationStack,
 fun CategoryItemsScreen(model: AppModel, stack: NavigationStack, category: ItemCategory) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
     val status by model.status.collectAsStateWithLifecycle()
-    val allReference = data.listAllItemReference().filter { category.includes(it.item) }
+    var searchText by rememberSaveable(category.id) { mutableStateOf("") }
+    val prompt = "Search ${category.title.lowercase()}"
+    val allReference = VaultLogic.filterAllItem(data.listAllItemReference().filter { category.includes(it.item) }, searchText)
     PushedListScaffold(
         title = category.title,
         onBack = stack::pop,
         onRefresh = model::refreshAll,
         isEmpty = allReference.isEmpty(),
+        searchField = { SearchField(searchText, { searchText = it }, prompt, "category-search", Modifier.semantics { stateDescription = prompt }) },
         emptyContent = {
-            ContentUnavailable(if (data.readIssueSummary.issues.isEmpty()) category.emptyTitle else "No readable ${category.title.lowercase()}", category.icon) {
-                if (data.readIssueSummary.issues.isNotEmpty()) Text("Some saved data could not be searched.")
+            if (searchText.isNotEmpty()) {
+                NoSearchResults(searchText, data.readIssueSummary.issues.isNotEmpty())
+            } else {
+                ContentUnavailable(if (data.readIssueSummary.issues.isEmpty()) category.emptyTitle else "No readable ${category.title.lowercase()}", category.icon) {
+                    if (data.readIssueSummary.issues.isNotEmpty()) Text("Some saved data could not be searched.")
+                }
             }
         },
     ) {
@@ -172,15 +182,22 @@ fun CategoryItemsScreen(model: AppModel, stack: NavigationStack, category: ItemC
 fun TagItemsScreen(model: AppModel, stack: NavigationStack, tag: String) {
     val data by model.unlockedData.collectAsStateWithLifecycle()
     val status by model.status.collectAsStateWithLifecycle()
-    val allReference = VaultLogic.filterAllItemByTag(data.listAllItemReference(), tag)
+    var searchText by rememberSaveable(tag) { mutableStateOf("") }
+    val prompt = "Search items tagged $tag"
+    val allReference = VaultLogic.filterAllItem(VaultLogic.filterAllItemByTag(data.listAllItemReference(), tag), searchText)
     PushedListScaffold(
         title = tag,
         onBack = stack::pop,
         onRefresh = model::refreshAll,
         isEmpty = allReference.isEmpty(),
+        searchField = { SearchField(searchText, { searchText = it }, prompt, "tag-search", Modifier.semantics { stateDescription = prompt }) },
         emptyContent = {
-            ContentUnavailable(if (data.readIssueSummary.issues.isEmpty()) "No items are tagged $tag" else "No readable items are tagged $tag", Icons.Outlined.Sell) {
-                if (data.readIssueSummary.issues.isNotEmpty()) Text("Some saved data could not be searched.")
+            if (searchText.isNotEmpty()) {
+                NoSearchResults(searchText, data.readIssueSummary.issues.isNotEmpty())
+            } else {
+                ContentUnavailable(if (data.readIssueSummary.issues.isEmpty()) "No items are tagged $tag" else "No readable items are tagged $tag", Icons.Outlined.Sell) {
+                    if (data.readIssueSummary.issues.isNotEmpty()) Text("Some saved data could not be searched.")
+                }
             }
         },
     ) {
