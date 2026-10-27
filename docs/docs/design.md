@@ -1719,6 +1719,7 @@ Every use of a key asks, unless an approval for the same key and app is remember
 | `.env` (CLI) | the file name, or `-format dotenv` | the chosen variables as fields of one item; the file is rewritten to secret references (below) | empty values and existing references |
 
 Migration preserves supported fields, not every source manager's features or metadata. The existing preview's omitted entries include both skipped items and values omitted from otherwise imported items. Each names the source item and the missing data. Attachments and Bitwarden passkeys are not imported. Do not retire the source manager until sign-in methods and recovery material have been checked. Provider associations and unrecognized structured metadata are not yet inventoried and can still be lost.
+The phone previews label that list **Not imported · N**. N counts omission entries, not rejected whole items. Several entries can name fields or credentials omitted from one retained item.
 
 Source access boundaries stay separate through parsing, preview, and storage. `importer.Result.Groups` holds a stable source ID,
 the source label, its private status, and its items. A 1PUX group is one account's vault. A Bitwarden JSON group is one organization

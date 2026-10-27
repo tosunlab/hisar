@@ -1,6 +1,8 @@
 package com.tryhisar.hisar.app
 
 import com.tryhisar.hisar.model.FakeBackend
+import com.tryhisar.hisar.model.ImportPreview
+import com.tryhisar.hisar.model.ImportSkippedEntry
 import com.tryhisar.hisar.model.VaultStatus
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -37,6 +39,22 @@ class CredentialImportTests {
         model.credentialImport.start(receiver)
         runCurrent()
         assertTrue(model.credentialImport.preview != null, "the preview arrives")
+    }
+
+    @Test
+    fun testPreviewCountsOmissionsRatherThanRejectedItems() {
+        val preview = ImportPreview(fileName = "Passwords", vaultID = "personal", vaultName = "Personal", itemCount = 1,
+            loginCount = 1, passkeyCount = 1, allSkipped = listOf(
+                ImportSkippedEntry("GitHub", "Passkey extension data is not supported."),
+                ImportSkippedEntry("GitHub", "Provider associations are not imported."),
+            ))
+        assertEquals(1, preview.itemCount)
+        assertEquals(1, preview.loginCount)
+        assertEquals(1, preview.passkeyCount)
+        assertEquals("Not imported · 2", ImportSkippedEntry.heading(preview.allSkipped.size))
+        assertEquals("Some entries below are fields or credentials from items that will still be imported.", ImportSkippedEntry.EXPLANATION)
+        assertEquals(listOf("GitHub", "GitHub"), preview.allSkipped.map { it.title })
+        assertEquals("Provider associations are not imported.", preview.allSkipped.last().reason)
     }
 
     @Test

@@ -1601,6 +1601,9 @@ enum ExportFormat: String, CaseIterable, Identifiable {
 struct ImportSkippedEntry: Codable, Hashable {
     var title: String
     var reason: String
+
+    static func heading(count: Int) -> String { "Not imported · \(count)" }
+    static let explanation = "Some entries below are fields or credentials from items that will still be imported."
 }
 
 /// ImportDuplicate is an item the chosen vault already has. passkeyCount is how many of its passkeys the existing login

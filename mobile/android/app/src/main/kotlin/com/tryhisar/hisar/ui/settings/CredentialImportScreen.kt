@@ -207,7 +207,7 @@ private fun PreviewSections(
     }
     if (preview.allSkipped.isNotEmpty()) {
         val count = preview.allSkipped.size
-        SkippedSection(preview.allSkipped, if (count == 1) "1 item can't be imported" else "$count items can't be imported", "credential-import-skipped")
+        SkippedSection(preview.allSkipped, ImportSkippedEntry.heading(count), "credential-import-skipped", ImportSkippedEntry.EXPLANATION)
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
@@ -298,8 +298,8 @@ private fun ProgressSections(progress: ImportProgress, errorMessage: String?, is
 }
 
 @Composable
-private fun SkippedSection(allEntry: List<ImportSkippedEntry>, header: String, testTag: String) {
-    FormSection(header = header, modifier = Modifier.testTag(testTag)) {
+private fun SkippedSection(allEntry: List<ImportSkippedEntry>, header: String, testTag: String, footer: String = "") {
+    FormSection(header = header, footer = if (footer.isEmpty()) null else ({ Text(footer) }), modifier = Modifier.testTag(testTag)) {
         allEntry.forEachIndexed { index, entry ->
             if (index > 0) RowDivider()
             EntryRow(entry.title.ifEmpty { "Untitled" }, entry.reason)

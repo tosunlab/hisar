@@ -55,6 +55,21 @@ final class CredentialImportTests: XCTestCase {
         return url
     }
 
+    func testPreviewCountsOmissionsRatherThanRejectedItems() {
+        let preview = ImportPreview(fileName: "Passwords", vaultID: "personal", vaultName: "Personal", itemCount: 1,
+            loginCount: 1, passkeyCount: 1, allSkipped: [
+                ImportSkippedEntry(title: "GitHub", reason: "Passkey extension data is not supported."),
+                ImportSkippedEntry(title: "GitHub", reason: "Provider associations are not imported."),
+            ])
+        XCTAssertEqual(preview.itemCount, 1)
+        XCTAssertEqual(preview.loginCount, 1)
+        XCTAssertEqual(preview.passkeyCount, 1)
+        XCTAssertEqual(ImportSkippedEntry.heading(count: preview.allSkipped.count), "Not imported · 2")
+        XCTAssertEqual(ImportSkippedEntry.explanation, "Some entries below are fields or credentials from items that will still be imported.")
+        XCTAssertEqual(preview.allSkipped.map(\.title), ["GitHub", "GitHub"])
+        XCTAssertEqual(preview.allSkipped.last?.reason, "Provider associations are not imported.")
+    }
+
     func testExportDatesReachTheBackendAsSecondsSince1970() throws {
         let now = Date(timeIntervalSince1970: 1_791_547_200)
         let exporterSeconds = 1_699_200_000.0

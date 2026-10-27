@@ -189,7 +189,7 @@ struct CredentialImportView: View {
             .accessibilityIdentifier("credential-import-duplicates")
         }
         if !preview.allSkipped.isEmpty {
-            skippedSection(preview.allSkipped, header: preview.allSkipped.count == 1 ? "1 item can't be imported" : "\(preview.allSkipped.count) items can't be imported")
+            skippedSection(preview.allSkipped, header: ImportSkippedEntry.heading(count: preview.allSkipped.count), footer: ImportSkippedEntry.explanation)
                 .accessibilityIdentifier("credential-import-skipped")
         }
         if let errorMessage = model.errorMessage {
@@ -258,8 +258,8 @@ struct CredentialImportView: View {
         }
     }
 
-    private func skippedSection(_ allEntry: [ImportSkippedEntry], header: String) -> some View {
-        Section(header) {
+    private func skippedSection(_ allEntry: [ImportSkippedEntry], header: String, footer: String = "") -> some View {
+        Section {
             ForEach(Array(allEntry.enumerated()), id: \.offset) { _, entry in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.title.isEmpty ? "Untitled" : entry.title)
@@ -268,6 +268,10 @@ struct CredentialImportView: View {
                         .foregroundStyle(.themeSecondary)
                 }
             }
+        } header: {
+            Text(header)
+        } footer: {
+            if !footer.isEmpty { Text(footer) }
         }
     }
 }

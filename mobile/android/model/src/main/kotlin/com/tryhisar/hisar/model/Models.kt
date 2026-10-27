@@ -1352,7 +1352,12 @@ data class WaitingVaultKeys(
 
 /** An item an import leaves out or failed to save, with why. */
 @Serializable
-data class ImportSkippedEntry(val title: String = "", val reason: String = "")
+data class ImportSkippedEntry(val title: String = "", val reason: String = "") {
+    companion object {
+        fun heading(count: Int): String = "Not imported · $count"
+        const val EXPLANATION = "Some entries below are fields or credentials from items that will still be imported."
+    }
+}
 
 /**
  * An item the chosen vault already has. passkeyCount is how many of its passkeys the existing login lacks; skipping
