@@ -24,6 +24,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -77,12 +78,14 @@ fun SignInScreen(model: AppModel) {
     var secretKey by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var repeatedPassword by remember { mutableStateOf("") }
+    var hasValidatedRepeatedPassword by remember { mutableStateOf(false) }
 
     fun changeMode(newMode: SignInMode) {
         if (newMode == mode) return
         mode = newMode
         password = ""
         repeatedPassword = ""
+        hasValidatedRepeatedPassword = false
         model.errorMessage.value = null
     }
 
@@ -101,7 +104,7 @@ fun SignInScreen(model: AppModel) {
         inviteLink = link.invite
     }
 
-    val isPasswordMismatch = mode == SignInMode.CREATE_ACCOUNT && repeatedPassword.isNotEmpty() && password != repeatedPassword
+    val isPasswordMismatch = mode == SignInMode.CREATE_ACCOUNT && hasValidatedRepeatedPassword && password != repeatedPassword
     // An invite link names its server, so the create-account form asks for one only without an invite.
     val isSignUpServerAsked = inviteLink.isBlank()
     val canSubmit = when (mode) {
@@ -111,6 +114,7 @@ fun SignInScreen(model: AppModel) {
     }
 
     fun submit() {
+        if (mode == SignInMode.CREATE_ACCOUNT) hasValidatedRepeatedPassword = true
         if (!canSubmit || isBusy) return
         scope.launch {
             when (mode) {
@@ -178,6 +182,7 @@ fun SignInScreen(model: AppModel) {
                 name = name, onNameChange = { name = it },
                 password = password, onPasswordChange = { password = it },
                 repeatedPassword = repeatedPassword, onRepeatedPasswordChange = { repeatedPassword = it },
+                onRepeatedPasswordBlur = { if (repeatedPassword.isNotEmpty()) hasValidatedRepeatedPassword = true },
                 isPasswordMismatch = isPasswordMismatch,
             )
         }
@@ -278,6 +283,7 @@ private fun CreateAccountSections(
     onPasswordChange: (String) -> Unit,
     repeatedPassword: String,
     onRepeatedPasswordChange: (String) -> Unit,
+    onRepeatedPasswordBlur: () -> Unit,
     isPasswordMismatch: Boolean,
 ) {
     FormSection(header = "Invite", footer = { Text("Leave it empty if the server lets anyone sign up.") }) {
@@ -326,6 +332,7 @@ private fun CreateAccountSections(
         RowDivider()
         FormTextField(
             repeatedPassword, onRepeatedPasswordChange, placeholder = "Repeat master password", testTag = "sign-up-repeated-password", isSecure = true,
+            modifier = Modifier.onFocusChanged { if (!it.isFocused) onRepeatedPasswordBlur() },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         )
     }

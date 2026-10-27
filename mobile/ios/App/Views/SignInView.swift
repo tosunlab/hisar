@@ -19,11 +19,13 @@ struct SignInView: View {
     @State private var inviteLink = ""
     @State private var name = ""
     @State private var repeatedPassword = ""
+    @FocusState private var isRepeatPasswordFocused: Bool
+    @State private var hasValidatedRepeatedPassword = false
     @State private var isScannerShown = false
     @State private var scannerMessage: String?
 
     private var isPasswordMismatch: Bool {
-        mode == .createAccount && !repeatedPassword.isEmpty && password != repeatedPassword
+        mode == .createAccount && hasValidatedRepeatedPassword && password != repeatedPassword
     }
 
     private var canSubmit: Bool {
@@ -108,7 +110,13 @@ struct SignInView: View {
         .onChange(of: mode) { _, _ in
             password = ""
             repeatedPassword = ""
+            hasValidatedRepeatedPassword = false
             model.clearError()
+        }
+        .onChange(of: isRepeatPasswordFocused) { _, isFocused in
+            if !isFocused && !repeatedPassword.isEmpty {
+                hasValidatedRepeatedPassword = true
+            }
         }
         .onAppear {
             if !model.status.server.isEmpty { applyServer(model.status.server) }
@@ -239,6 +247,7 @@ struct SignInView: View {
                 .accessibilityIdentifier("sign-up-password")
             SecureField("Repeat master password", text: $repeatedPassword)
                 .textContentType(.newPassword)
+                .focused($isRepeatPasswordFocused)
                 .accessibilityIdentifier("sign-up-repeated-password")
         } header: {
             Text("Master password")
@@ -284,6 +293,7 @@ struct SignInView: View {
     }
 
     private func submit() {
+        if mode == .createAccount { hasValidatedRepeatedPassword = true }
         guard canSubmit, !model.isBusy else { return }
         Task {
             switch mode {

@@ -2,6 +2,22 @@ import UIKit
 import XCTest
 
 final class HisarUITests: HisarUITestCase {
+    func testPasswordMismatchWaitsUntilConfirmationLosesFocus() {
+        app.launch()
+        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        let password = app.secureTextFields["sign-up-password"]
+        let repeated = app.secureTextFields["sign-up-repeated-password"]
+        type("a long master password", into: password)
+        type("a long", into: repeated)
+        XCTAssertFalse(app.staticTexts["The passwords do not match."].exists)
+        XCTAssertFalse(app.buttons["sign-in-submit"].isEnabled)
+        password.tap()
+        waitFor(app.staticTexts["The passwords do not match."])
+        repeated.tap()
+        repeated.typeText(" master password")
+        XCTAssertTrue(app.staticTexts["The passwords do not match."].waitForNonExistence(timeout: 5))
+    }
+
     func testAccountItemLockAndSignInFlow() throws {
         let inviteLink = try readEnvironment("HISAR_UI_TEST_INVITE_LINK")
         let email = "ios-ui@example.com"
