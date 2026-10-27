@@ -33,8 +33,8 @@ class BrowseRowTests {
             CompositionLocalProvider(LocalDensity provides Density(density.density, scale.floatValue)) {
                 HisarTheme {
                     Column {
-                        ItemRow(model, item, "personal", {}, "Personal")
-                        ItemRow(model, item, "shared", {}, "Organization production credentials")
+                        ItemRow(model, item, "personal", {}, "Personal", vaultID = "personal")
+                        ItemRow(model, item, "shared", {}, "Organization production credentials", vaultID = "work")
                     }
                 }
             }

@@ -405,6 +405,7 @@ struct VaultsView: View {
                     NavigationLink(value: VaultsSelection.item(ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id))) {
                         ItemRow(item: reference.item, vaultName: reference.vaultName, showsFavorite: false)
                     }
+                    .itemRowActions(vaultID: reference.vaultID, item: reference.item)
                     .swipeActions(edge: .trailing) {
                         FavoriteSwipeButton(vaultID: reference.vaultID, item: reference.item)
                     }

@@ -111,7 +111,7 @@ fun NoSearchResults(searchText: String, isIncomplete: Boolean = false) {
 /** Items of every vault, each row naming its vault. */
 fun LazyListScope.crossVaultRows(model: AppModel, stack: NavigationStack, allReference: List<VaultItemReference>) {
     cardSection("items", allReference, rowKey = { it.id }, dividerStart = { ItemRowTextStart }) { reference ->
-        ItemRow(model, reference.item, "item-${reference.item.title}", vaultName = reference.vaultName, onClick = {
+        ItemRow(model, reference.item, "item-${reference.item.title}", vaultID = reference.vaultID, vaultName = reference.vaultName, onClick = {
             stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
         })
     }

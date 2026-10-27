@@ -38,6 +38,16 @@ final class FavoritesUITests: HisarUITestCase {
         goBack()
         waitFor(app.buttons["item-GitHub"])
         XCTAssertEqual(app.buttons["item-GitHub"].value as? String, "In Favorites")
+        app.buttons["item-GitHub"].press(forDuration: 1)
+        app.buttons["row-copy-actions"].tap()
+        waitFor(app.buttons["row-copy-password"])
+        XCTAssertFalse(app.buttons["edit-item"].exists)
+        app.buttons["Cancel"].tap()
+        app.buttons["item-GitHub"].press(forDuration: 1)
+        app.buttons["row-copy-actions"].tap()
+        waitFor(app.buttons["row-copy-username"])
+        app.buttons["row-copy-username"].tap()
+        waitFor(app.staticTexts["Username copied. It clears in 90 seconds."])
 
         revealSwipeActions(of: app.buttons["item-AWS Console"], .right)
         let favoriteAction = app.buttons["favorite-swipe-AWS Console"]

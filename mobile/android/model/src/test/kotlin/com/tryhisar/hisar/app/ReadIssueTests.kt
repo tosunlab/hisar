@@ -3,6 +3,7 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ReadIssue
 import com.tryhisar.hisar.model.ReadIssueSummary
+import com.tryhisar.hisar.model.ItemCopyAction
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.model.backendJson
 import kotlin.test.Test
@@ -49,6 +50,23 @@ class ReadIssueTests {
         assertEquals(listOf(issue), personal.readIssues)
         assertEquals(healthyCount, personal.itemCount)
         assertTrue(model.unlockedData.value.listAllItemReference("personal").none { it.item.id == "bad" })
+    }
+
+    @Test
+    fun testQuickCopyUsesSourceIDsAndRefusesLockedOrMissingItems() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val detail = assertNotNull(model.item.loadItem("family", "netflix"))
+        assertTrue(ItemCopyAction.available(detail).any { it.fieldName == "password" })
+        assertTrue(harness.backend.allCopiedField.isEmpty())
+        model.copyField("family", "netflix", "password", "Password")
+        assertEquals(listOf("netflix.password"), harness.backend.allCopiedField)
+        model.copyField("personal", "netflix", "password", "Password")
+        assertEquals(listOf("netflix.password"), harness.backend.allCopiedField)
+        assertNotNull(model.errorMessage.value)
+        model.lock()
+        model.copyField("family", "netflix", "password", "Password")
+        assertEquals(listOf("netflix.password"), harness.backend.allCopiedField)
     }
 
     @Test

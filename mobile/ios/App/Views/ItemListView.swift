@@ -60,6 +60,7 @@ struct ItemListView: View {
                     NavigationLink(value: ItemDestination(vaultID: vaultID, itemID: reference.item.id)) {
                         ItemRow(item: reference.item)
                     }
+                    .itemRowActions(vaultID: vaultID, item: reference.item)
                     .swipeActions(edge: .leading) {
                         FavoriteSwipeButton(vaultID: vaultID, item: reference.item)
                     }
@@ -265,6 +266,7 @@ struct ItemCategoryListView: View {
                 NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                     ItemRow(item: reference.item, vaultName: reference.vaultName)
                 }
+                .itemRowActions(vaultID: reference.vaultID, item: reference.item)
             }
         }
         .applyThemedListStyle()
@@ -303,6 +305,7 @@ struct ItemTagListView: View {
                 NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                     ItemRow(item: reference.item, vaultName: reference.vaultName)
                 }
+                .itemRowActions(vaultID: reference.vaultID, item: reference.item)
             }
         }
         .applyThemedListStyle()
@@ -337,6 +340,7 @@ struct SearchView: View {
                     NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                         ItemRow(item: reference.item, vaultName: reference.vaultName)
                     }
+                    .itemRowActions(vaultID: reference.vaultID, item: reference.item)
                 }
             }
             .applyThemedListStyle()
@@ -360,5 +364,81 @@ struct SearchView: View {
         .navigationSplitViewStyle(.balanced)
         .onChange(of: selection) { _, _ in detailPath = NavigationPath() }
         .onChange(of: searchText) { _, _ in model.reportActivity() }
+    }
+}
+
+extension View {
+    func itemRowActions(vaultID: String, item: ItemDetail) -> some View {
+        modifier(ItemRowActions(vaultID: vaultID, itemID: item.id, title: item.title))
+    }
+}
+
+private struct ItemRowActions: ViewModifier {
+    var vaultID: String
+    var itemID: String
+    var title: String
+    @State private var isCopyShown = false
+
+    func body(content: Content) -> some View {
+        content
+            .contextMenu {
+                Button("Copy…", systemImage: "doc.on.doc") { isCopyShown = true }
+                    .accessibilityIdentifier("row-copy-actions")
+            }
+            .accessibilityAction(named: "Item actions") { isCopyShown = true }
+            .sheet(isPresented: $isCopyShown) {
+                ItemRowCopyChooser(vaultID: vaultID, itemID: itemID, title: title)
+            }
+    }
+}
+
+private struct ItemRowCopyChooser: View {
+    var vaultID: String
+    var itemID: String
+    var title: String
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var actions: [ItemCopyAction]?
+    @State private var error: String?
+    @State private var isCopying = false
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("row-copy-error") }
+                if let actions {
+                    if actions.isEmpty { Text("No copyable fields are available.") }
+                    ForEach(actions) { action in
+                        Button("Copy \(action.label.lowercased())") {
+                            Task {
+                                guard model.status.isUnlocked else { dismiss(); return }
+                                isCopying = true
+                                let before = model.copyCount
+                                await model.copyField(vaultID: vaultID, itemID: itemID, fieldName: action.fieldName, label: action.label)
+                                isCopying = false
+                                if model.copyCount > before { dismiss() } else { error = model.errorMessage ?? "The field could not be copied." }
+                            }
+                        }
+                        .disabled(isCopying)
+                        .accessibilityIdentifier("row-copy-\(action.fieldName)")
+                    }
+                } else if error == nil {
+                    ProgressView("Loading item actions")
+                }
+            }
+            .navigationTitle(title)
+            .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
+            .task {
+                guard let item = await model.loadItem(vaultID: vaultID, itemID: itemID) else {
+                    error = model.errorMessage ?? "This item could not be opened."
+                    return
+                }
+                guard !Task.isCancelled, model.status.isUnlocked else { return }
+                actions = ItemCopyAction.available(for: item)
+            }
+            .onChange(of: model.status.isUnlocked) { _, unlocked in
+                if !unlocked { actions = nil; dismiss() }
+            }
+        }
     }
 }

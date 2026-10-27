@@ -131,7 +131,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         }
         cardSection("items", allMatch, rowKey = { it.id }, dividerStart = { ItemRowTextStart }) { reference ->
             FavoriteSwipeRow(model, vaultID, reference.item, isLeading = true) {
-                ItemRow(model, reference.item, "item-${reference.item.title}", onClick = { stack.push(VaultsDestination.Item(vaultID, reference.item.id)) })
+                ItemRow(model, reference.item, "item-${reference.item.title}", vaultID = vaultID, onClick = { stack.push(VaultsDestination.Item(vaultID, reference.item.id)) })
             }
         }
     }

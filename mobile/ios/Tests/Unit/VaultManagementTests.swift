@@ -189,6 +189,21 @@ final class VaultManagementTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference(vaultID: "personal").contains { $0.item.id == "bad" })
     }
 
+    func testQuickCopyUsesSourceIDsAndRefusesLockedOrMissingItems() async {
+        let model = await createUnlockedModel()
+        let detail = await model.loadItem(vaultID: "work", itemID: "aws")
+        XCTAssertEqual(detail.map { ItemCopyAction.available(for: $0).map(\.fieldName) }, ["password"])
+        XCTAssertTrue(backend.allCopiedField.isEmpty, "opening or canceling the chooser must not copy")
+        await model.copyField(vaultID: "work", itemID: "aws", fieldName: "password", label: "Password")
+        XCTAssertEqual(backend.allCopiedField, ["aws.password"])
+        await model.copyField(vaultID: "personal", itemID: "aws", fieldName: "password", label: "Password")
+        XCTAssertEqual(backend.allCopiedField, ["aws.password"])
+        XCTAssertNotNil(model.errorMessage)
+        model.lock()
+        await model.copyField(vaultID: "work", itemID: "aws", fieldName: "password", label: "Password")
+        XCTAssertEqual(backend.allCopiedField, ["aws.password"])
+    }
+
     func testOfflineDisclosuresFollowOnlineStatus() async {
         backend.isOffline = true
         let model = await createUnlockedModel()

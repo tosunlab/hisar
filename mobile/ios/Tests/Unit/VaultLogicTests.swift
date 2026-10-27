@@ -47,6 +47,21 @@ final class VaultLogicTests: XCTestCase {
         XCTAssertTrue(VaultLogic.filterAllItem(VaultLogic.filterAllItem(allItem, tag: "work"), searchText: "bob").isEmpty)
     }
 
+    func testQuickCopyOffersOnlyAvailableFields() {
+        var login = ItemDetail(id: "login", username: "alice", password: "secret")
+        login.hasOneTimePassword = true
+        XCTAssertEqual(ItemCopyAction.available(for: login).map(\.fieldName), ["username", "password", "one-time code"])
+        var ssh = ItemDetail(id: "key", category: ItemDetail.categorySSHKey)
+        ssh.publicKey = "ssh-ed25519 public"
+        ssh.allField = [ItemField(name: "private key", value: "never copy", concealed: true)]
+        XCTAssertEqual(ItemCopyAction.available(for: ssh).map(\.fieldName), ["public key"])
+        var card = ItemDetail(id: "card", category: ItemDetail.categoryCreditCard)
+        XCTAssertTrue(ItemCopyAction.available(for: card).isEmpty)
+        card.card = ItemCard()
+        card.card?.number = "4111111111111111"
+        XCTAssertEqual(ItemCopyAction.available(for: card).map(\.fieldName), [CardFieldName.number])
+    }
+
     func testTagsAreListedWithCountsAndFilterItems() {
         var gitHub = makeReference("GitHub", username: "alice")
         gitHub.item.allTag = ["work", "dev"]

@@ -47,6 +47,17 @@ class VaultSearchTests {
     }
 
     @Test
+    fun testQuickCopyOffersOnlyAvailableFields() {
+        val login = ItemDetail(id = "login", username = "alice", password = "secret", hasOneTimePassword = true)
+        assertEquals(listOf("username", "password", "one-time code"), ItemCopyAction.available(login).map { it.fieldName })
+        val ssh = ItemDetail(id = "key", category = ItemDetail.CATEGORY_SSH_KEY, publicKey = "ssh-ed25519 public", allField = listOf(ItemField("private key", "never copy", true)))
+        assertEquals(listOf("public key"), ItemCopyAction.available(ssh).map { it.fieldName })
+        val card = ItemDetail(id = "card", category = ItemDetail.CATEGORY_CREDIT_CARD)
+        assertTrue(ItemCopyAction.available(card).isEmpty())
+        assertEquals(listOf(CardFieldName.NUMBER), ItemCopyAction.available(card.copy(card = ItemCard(number = "4111111111111111"))).map { it.fieldName })
+    }
+
+    @Test
     fun testTagsAreListedWithCountsAndFilterItems() {
         val gitHub = makeReference("GitHub", username = "alice").withItem { it.copy(allTag = listOf("work", "dev")) }
         val bank = makeReference("Bank", vaultName = "Family").withItem { it.copy(allTag = listOf("Finance")) }
