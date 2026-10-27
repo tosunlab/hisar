@@ -40,6 +40,8 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Share, Invite by email | Gives someone a vault. The vault's Share panel (Mac) or sheet (iPhone). |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
+| Review recipients | Accepted first shares waiting for the owner's identity review. Shown above received invitations on Vaults on both phones and included in the People badge. |
+| "\<name> accepted your invitation to a vault. Unlock to continue sharing." | Locked notice. Unlocking may still require Review recipient before the vault key is shared. |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
 | Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |

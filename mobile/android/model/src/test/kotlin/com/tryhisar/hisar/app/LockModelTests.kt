@@ -110,8 +110,8 @@ class LockModelTests {
         model.lock.refreshShareAwaitingUnlock()
         assertEquals(
             listOf(
-                "Ada accepted your invitation to a vault — unlock to finish sharing",
-                "bo@example.com accepted your invitation to a vault — unlock to finish sharing",
+                "Ada accepted your invitation to a vault. Unlock to continue sharing.",
+                "bo@example.com accepted your invitation to a vault. Unlock to continue sharing.",
             ),
             model.lock.allShareAwaitingUnlock.value.map { it.message },
         )
@@ -124,7 +124,7 @@ class LockModelTests {
 
         val isUnlocked = model.lock.unlock(FakeBackend.PASSWORD)
         assertTrue(isUnlocked)
-        assertTrue(model.lock.allShareAwaitingUnlock.value.isEmpty(), "unlocking finishes the shares, so the banner goes")
+        assertTrue(model.lock.allShareAwaitingUnlock.value.isEmpty(), "the unlocked reminder replaces the locked notice")
         val callCount = backend.allCallName.count { it == "listAllShareAwaitingUnlock" }
         model.lock.refreshShareAwaitingUnlock()
         assertEquals(callCount, backend.allCallName.count { it == "listAllShareAwaitingUnlock" }, "an unlocked app does not ask")

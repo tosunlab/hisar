@@ -102,7 +102,7 @@ struct SettingsView: View {
                 Section {
                     NavigationLink(value: SettingsDestination.people) {
                         Label("People", systemImage: "person.2")
-                            .badge(model.receivedInvitationCount)
+                            .badge(model.peopleInvitationCount)
                     }
                     .accessibilityIdentifier("open-people")
                     NavigationLink(value: SettingsDestination.organizations) {

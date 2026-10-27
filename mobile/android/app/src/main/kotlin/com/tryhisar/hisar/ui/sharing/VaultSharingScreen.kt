@@ -118,7 +118,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
             FormSection(
                 header = "Invite by email",
                 footer = {
-                    Text("${VaultLogic.describeVaultRoleAbility(role)} They accept in Hisar, or create an account from the email first; your Hisar then shares the vault key with them.")
+                    Text("${VaultLogic.describeVaultRoleAbility(role)} They accept in Hisar, or create an account from the email first. For a new recipient, review their account after they accept before Hisar shares the vault key.")
                 },
             ) {
                 FormTextField(

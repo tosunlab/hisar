@@ -1330,7 +1330,7 @@ struct ShareAwaitingUnlock: Codable, Identifiable, Hashable {
 
     var id: String { invitationID }
     var recipientDisplayName: String { recipientName.isEmpty || recipientName == recipientEmail ? recipientEmail : recipientName }
-    var message: String { "\(recipientDisplayName) accepted your invitation to a vault — unlock to finish sharing" }
+    var message: String { "\(recipientDisplayName) accepted your invitation to a vault. Unlock to continue sharing." }
 
     enum CodingKeys: String, CodingKey {
         case recipientName, recipientEmail, acceptedAt
@@ -1355,6 +1355,10 @@ struct ShareInvitations: Codable, Hashable {
     var allSent: [SentShareInvitation]
     var allWaiting: [WaitingShareInvitation]
     var completionError: String
+
+    var allRequiringReview: [SentShareInvitation] {
+        allSent.filter { $0.state == SentShareInvitation.stateAccepted && $0.requiresConfirmation == true }
+    }
 
     enum CodingKeys: String, CodingKey {
         case allReceived = "received"
