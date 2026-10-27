@@ -23,12 +23,14 @@ import (
 	"golang.org/x/time/rate"
 )
 
-// fakePushRelay records the pushes a server sends and answers 410 for the handles in gone.
+// fakePushRelay records the pushes a server sends and answers 410 for the handles in gone. refusesPayload makes it a
+// relay older than payloads, which rejects the field.
 type fakePushRelay struct {
-	mutex   sync.Mutex
-	allPush []apitypes.RelayPushRequest
-	gone    map[string]bool
-	server  *httptest.Server
+	mutex          sync.Mutex
+	allPush        []apitypes.RelayPushRequest
+	gone           map[string]bool
+	refusesPayload bool
+	server         *httptest.Server
 }
 
 func startFakePushRelay(t *testing.T) *fakePushRelay {
@@ -41,13 +43,16 @@ func startFakePushRelay(t *testing.T) *fakePushRelay {
 		}
 		relay.mutex.Lock()
 		relay.allPush = append(relay.allPush, push)
-		isGone := relay.gone[push.Handle]
+		isGone, isRefused := relay.gone[push.Handle], relay.refusesPayload && push.Payload != ""
 		relay.mutex.Unlock()
-		if isGone {
+		switch {
+		case isRefused:
+			writer.WriteHeader(http.StatusBadRequest)
+		case isGone:
 			writer.WriteHeader(http.StatusGone)
-			return
+		default:
+			writer.WriteHeader(http.StatusNoContent)
 		}
-		writer.WriteHeader(http.StatusNoContent)
 	}))
 	t.Cleanup(relay.server.Close)
 	return relay
@@ -261,4 +266,125 @@ func TestAndroidPhonesGetAWebPushOnlyTheyCanRead(t *testing.T) {
 	if allPlaintext := endpoint.takeAll(server); len(allPlaintext) != 0 {
 		t.Fatalf("the server kept sending to an endpoint that answered 410: %q", allPlaintext)
 	}
+}
+
+// A sharing push says who invited the account to what, encrypted to each phone: an iPhone's payload key for the relay
+// to pass on unread, an Android phone's Web Push subscription. An iPhone without a key, or behind a relay older than
+// payloads, gets the kind alone.
+func TestAnInvitationPushTellsOnlyThePhoneWhoInvitedItToWhat(t *testing.T) {
+	relay := startFakePushRelay(t)
+	environment := map[string]string{"HISAR_PUSH_RELAY_URL": relay.server.URL}
+	baseURL, server, _ := setupServerWithConfig(t, Config{Config: service.Config{PublicURL: "https://hisar.test"}, Environment: func(name string) string { return environment[name] }})
+	endpoint := startFakeWebPushEndpoint(t)
+	server.service.WebPushClient = endpoint.server.Client()
+	ctx := context.Background()
+	ownerInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "alper@example.com", apitypes.RoleAdmin, nil))
+	owner, _, err := session.SignUp(ctx, apiclient.New(baseURL), ownerInvite.Token, "alper@example.com", "Alper Tosun", []byte("alper password"), testDevice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	memberInvite := requireValue[*apitypes.InviteResponse](t)(server.CreateInvite(ctx, "bob@example.com", apitypes.RoleMember, nil))
+	password := []byte("bob password")
+	_, secretKey, err := session.SignUp(ctx, apiclient.New(baseURL), memberInvite.Token, "bob@example.com", "Bob", password, testDevice)
+	if err != nil {
+		t.Fatal(err)
+	}
+	logInPhone := func(name, platform string) *session.Session {
+		phone, err := session.LogIn(ctx, apiclient.New(baseURL), "bob@example.com", password, secretKey, apitypes.DeviceInfo{Name: name, Platform: platform})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return phone
+	}
+	iPhone, oldIPhone, android := logInPhone("iPhone", "ios/mobile"), logInPhone("Old iPhone", "ios/mobile"), logInPhone("Pixel", "android/mobile")
+
+	if config := requireValue[apitypes.PushConfig](t)(iPhone.Client.GetPushConfig(ctx)); !config.AcceptsPayloadKey {
+		t.Fatalf("push config = %+v", config)
+	}
+	payloadKey, _ := ecdh.P256().GenerateKey(rand.Reader)
+	payloadAuth := make([]byte, 16)
+	rand.Read(payloadAuth)
+	key := &apitypes.PushPayloadKey{P256DH: base64.RawURLEncoding.EncodeToString(payloadKey.PublicKey().Bytes()), Auth: base64.RawURLEncoding.EncodeToString(payloadAuth)}
+	sharing := []apitypes.PushKind{apitypes.PushKindSharing}
+	for name, registration := range map[string]apitypes.PushRegistration{
+		"a key with a Web Push subscription": {WebPush: endpoint.subscription(), PayloadKey: key},
+		"a key that is not a point":          {Handle: "iphone-handle", PayloadKey: &apitypes.PushPayloadKey{P256DH: base64.RawURLEncoding.EncodeToString(make([]byte, 65)), Auth: key.Auth}},
+		"a short secret":                     {Handle: "iphone-handle", PayloadKey: &apitypes.PushPayloadKey{P256DH: key.P256DH, Auth: "c2hvcnQ"}},
+	} {
+		registration.AllKind = sharing
+		expectStatus(t, name, iPhone.Client.SetDevicePush(ctx, registration), http.StatusBadRequest)
+	}
+	for phone, registration := range map[*session.Session]apitypes.PushRegistration{
+		iPhone:    {Handle: "iphone-handle", PayloadKey: key, AllKind: sharing},
+		oldIPhone: {Handle: "old-iphone-handle", AllKind: sharing},
+		android:   {WebPush: endpoint.subscription(), AllKind: sharing},
+	} {
+		if err := phone.Client.SetDevicePush(ctx, registration); err != nil {
+			t.Fatal(err)
+		}
+	}
+	relay.takeAll(server)
+	endpoint.takeAll(server)
+
+	inviteToOrganization := func(name string) {
+		organization := requireValue[*apitypes.OrganizationSummary](t)(owner.Client.CreateOrganization(ctx, &apitypes.CreateOrganizationRequest{Name: name}))
+		if _, err := owner.Client.InviteToOrganization(ctx, organization.ID, &apitypes.OrganizationInvitationRequest{Email: "bob@example.com", Role: apitypes.OrganizationRoleMember}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	inviteToOrganization("Acme")
+	want := `{"kind":"sharing","invitation":{"type":"organization","inviterName":"Alper Tosun","inviterEmail":"alper@example.com","organizationName":"Acme","role":"member"}}`
+	allPushByHandle := map[string]apitypes.RelayPushRequest{}
+	for _, push := range relay.takeAll(server) {
+		allPushByHandle[push.Handle] = push
+	}
+	if len(allPushByHandle) != 2 || allPushByHandle["old-iphone-handle"] != (apitypes.RelayPushRequest{Handle: "old-iphone-handle", Kind: apitypes.PushKindSharing}) {
+		t.Fatalf("relay pushes = %+v", allPushByHandle)
+	}
+	if push := allPushByHandle["iphone-handle"]; push.Kind != apitypes.PushKindSharing || string(openRelayPayload(t, payloadKey, payloadAuth, push.Payload)) != want {
+		t.Fatalf("the iPhone's push = %+v", push)
+	}
+	if allPlaintext := endpoint.takeAll(server); len(allPlaintext) != 1 || allPlaintext[0] != want {
+		t.Fatalf("the Android phone's message = %q", allPlaintext)
+	}
+
+	vault := requireValue[*session.Vault](t)(owner.CreateVault(ctx, "Deploy keys", apitypes.VaultShared))
+	if err := owner.InviteToVault(ctx, vault, "bob@example.com", apitypes.VaultReader); err != nil {
+		t.Fatal(err)
+	}
+	for _, push := range relay.takeAll(server) {
+		if push.Handle == "iphone-handle" {
+			if plaintext := string(openRelayPayload(t, payloadKey, payloadAuth, push.Payload)); plaintext != `{"kind":"sharing","invitation":{"type":"vault","inviterName":"Alper Tosun","inviterEmail":"alper@example.com","role":"`+apitypes.VaultReader+`"}}` {
+				t.Fatalf("the iPhone's push for a shared vault says %s", plaintext)
+			}
+		}
+	}
+
+	relay.mutex.Lock()
+	relay.refusesPayload = true
+	relay.mutex.Unlock()
+	inviteToOrganization("Globex")
+	var allToIPhone []apitypes.RelayPushRequest
+	for _, push := range relay.takeAll(server) {
+		if push.Handle == "iphone-handle" {
+			allToIPhone = append(allToIPhone, push)
+		}
+	}
+	if len(allToIPhone) != 2 || allToIPhone[0].Payload == "" || allToIPhone[1] != (apitypes.RelayPushRequest{Handle: "iphone-handle", Kind: apitypes.PushKindSharing}) {
+		t.Fatalf("pushes through a relay that refuses payloads = %+v", allToIPhone)
+	}
+}
+
+// openRelayPayload is what the iPhone's notification service extension does with a push's payload.
+func openRelayPayload(t *testing.T, key *ecdh.PrivateKey, authSecret []byte, payload string) []byte {
+	t.Helper()
+	message, err := base64.RawURLEncoding.DecodeString(payload)
+	if err != nil {
+		t.Fatalf("payload %q: %v", payload, err)
+	}
+	plaintext, err := crypt.DecryptWebPush(key, authSecret, message)
+	if err != nil {
+		t.Fatalf("the phone cannot open the payload: %v", err)
+	}
+	return plaintext
 }

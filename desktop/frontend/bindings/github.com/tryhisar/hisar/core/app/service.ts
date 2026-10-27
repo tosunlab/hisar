@@ -773,6 +773,16 @@ export function SetPushKindEnabled(kind: string, isEnabled: boolean): $Cancellab
 }
 
 /**
+ * SetPushPayloadKey takes the public key (p256dh) and authentication secret (auth), base64url, that an iPhone's
+ * notification service extension opens push details with; the extension keeps the private key. The server then
+ * encrypts who invited the account to what into a sharing push, readable by that extension alone. The iPhone calls it
+ * before SetPushToken at every launch, never on the main thread.
+ */
+export function SetPushPayloadKey(p256dh: string, auth: string): $CancellablePromise<void> {
+    return $Call.ByID(4255485002, p256dh, auth);
+}
+
+/**
  * SetPushToken takes the push service token the phone's OS gave Hisar, and registers it with the push relay and the
  * server for the signed-in account. platform is apitypes.PushPlatform: "apns" or "apns-sandbox". The phones call
  * it at every launch and whenever the OS replaces the token, never on the main thread.

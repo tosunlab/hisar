@@ -19,9 +19,9 @@ class HisarPushService : PushService() {
     override fun onMessage(message: PushMessage, instance: String) {
         // A message the connector could not decrypt was not sent by a Hisar server, which always encrypts.
         if (!message.decrypted) return
-        val kind = PushKind.parseMessage(message.content.decodeToString()) ?: return
-        if (kind == PushKind.APPROVAL && (application as HisarApplication).foregroundActivity.isMainActivityStarted) return
-        HisarNotifications.postPush(this, kind)
+        val notification = PushKind.parseNotification(message.content.decodeToString()) ?: return
+        if (notification.kind == PushKind.APPROVAL && (application as HisarApplication).foregroundActivity.isMainActivityStarted) return
+        HisarNotifications.postPush(this, notification)
     }
 
     override fun onNewEndpoint(endpoint: PushEndpoint, instance: String) {

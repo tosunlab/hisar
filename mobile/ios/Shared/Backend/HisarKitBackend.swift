@@ -583,6 +583,10 @@ final class HisarKitBackend: VaultBackend {
         try callReturningNothing { try hisar.setPushToken(platform, token: token) }
     }
 
+    func setPushPayloadKey(p256dh: String, auth: String) throws {
+        try callReturningNothing { try hisar.setPushPayloadKey(p256dh, auth: auth) }
+    }
+
     func setPushKindEnabled(_ kind: PushKind, isEnabled: Bool) throws {
         try callReturningNothing { try hisar.setPushKindEnabled(kind.rawValue, isEnabled: isEnabled) }
     }

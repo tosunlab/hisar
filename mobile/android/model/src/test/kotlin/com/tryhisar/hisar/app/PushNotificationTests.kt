@@ -52,6 +52,53 @@ class PushNotificationTests {
     }
 
     @Test
+    fun testAnOrganizationInvitationPushNamesTheInviterAndOrganization() {
+        val notification = PushKind.parseNotification(
+            """{"kind":"sharing","invitation":{"type":"organization","inviterName":"Alper Tosun","inviterEmail":"alper@tryhisar.com","organizationName":"Acme","role":"member"}}""",
+        )!!
+        assertEquals(PushKind.SHARING, notification.kind)
+        assertEquals("Alper Tosun (alper@tryhisar.com) invited you to join Acme. Open Hisar to answer it.", notification.detailText())
+        // The inviter's name repeating their email, in any case, collapses to the email alone.
+        val noName = PushKind.parseNotification(
+            """{"kind":"sharing","invitation":{"type":"organization","inviterName":"ALPER@tryhisar.com","inviterEmail":"alper@tryhisar.com","organizationName":"Acme"}}""",
+        )!!
+        assertEquals("alper@tryhisar.com invited you to join Acme. Open Hisar to answer it.", noName.detailText())
+    }
+
+    @Test
+    fun testAVaultInvitationPushNamesTheInviter() {
+        val named = PushKind.parseNotification(
+            """{"kind":"sharing","invitation":{"type":"vault","inviterName":"Alper Tosun","inviterEmail":"alper@tryhisar.com","role":"editor"}}""",
+        )!!
+        assertEquals("Alper Tosun (alper@tryhisar.com) shared a vault with you. Open Hisar to answer it.", named.detailText())
+        // A blank inviter name leaves the email alone.
+        val blankName = PushKind.parseNotification(
+            """{"kind":"sharing","invitation":{"type":"vault","inviterName":"","inviterEmail":"alper@tryhisar.com","role":"editor"}}""",
+        )!!
+        assertEquals("alper@tryhisar.com shared a vault with you. Open Hisar to answer it.", blankName.detailText())
+    }
+
+    @Test
+    fun testAPushWithoutDetailsKeepsTheSentenceForItsKind() {
+        // No invitation at all (an older server, or any non-sharing push).
+        assertNull(PushKind.parseNotification("""{"kind":"approval"}""")!!.detailText())
+        assertNull(PushKind.parseNotification("""{"kind":"sharing"}""")!!.detailText())
+        // An unknown invitation type a later server may send.
+        assertNull(
+            PushKind.parseNotification(
+                """{"kind":"sharing","invitation":{"type":"team","inviterName":"Alper","inviterEmail":"alper@tryhisar.com"}}""",
+            )!!.detailText(),
+        )
+        // An organization without a name, and a blank inviter.
+        assertNull(
+            PushKind.parseNotification(
+                """{"kind":"sharing","invitation":{"type":"organization","inviterName":"Alper","inviterEmail":"alper@tryhisar.com"}}""",
+            )!!.detailText(),
+        )
+        assertNull(PushKind.parseNotification("""{"kind":"sharing","invitation":{"type":"vault"}}""")!!.detailText())
+    }
+
+    @Test
     fun testTurningAKindOffReachesTheBackend() = runTest {
         val harness = AppModelHarness(this)
         val model = createUnlockedModel(harness)

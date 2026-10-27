@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/localstate"
 )
 
@@ -40,6 +42,25 @@ func (s *Service) SetPushToken(platform, token string) error {
 	}
 	s.mutex.Lock()
 	s.pushPlatform, s.pushToken = apitypes.PushPlatform(platform), token
+	s.mutex.Unlock()
+	return s.registerPush()
+}
+
+// SetPushPayloadKey takes the public key (p256dh) and authentication secret (auth), base64url, that an iPhone's
+// notification service extension opens push details with; the extension keeps the private key. The server then
+// encrypts who invited the account to what into a sharing push, readable by that extension alone. The iPhone calls it
+// before SetPushToken at every launch, never on the main thread.
+func (s *Service) SetPushPayloadKey(p256dh, auth string) error {
+	publicKey, publicKeyErr := base64.RawURLEncoding.DecodeString(p256dh)
+	secret, secretErr := base64.RawURLEncoding.DecodeString(auth)
+	if publicKeyErr != nil || secretErr != nil || len(secret) != crypt.WebPushAuthSecretSize {
+		return errors.New("the notification key is invalid")
+	}
+	if _, err := crypt.ParseWebPushPublicKey(publicKey); err != nil {
+		return errors.New("the notification key is invalid")
+	}
+	s.mutex.Lock()
+	s.pushPayloadKey = &apitypes.PushPayloadKey{P256DH: p256dh, Auth: auth}
 	s.mutex.Unlock()
 	return s.registerPush()
 }
@@ -134,7 +155,7 @@ func (s *Service) registerPush() error {
 		return nil
 	}
 	server, sessionToken, accountID := s.state.Server, s.state.Token, s.state.AccountID
-	platform, token, webPush := s.pushPlatform, s.pushToken, s.webPush
+	platform, token, payloadKey, webPush := s.pushPlatform, s.pushToken, s.pushPayloadKey, s.webPush
 	allEnabledKind := s.listEnabledPushKinds()
 	registration := s.state.Push
 	s.mutex.Unlock()
@@ -182,7 +203,10 @@ func (s *Service) registerPush() error {
 		}
 		registration = localstate.PushRegistration{RelayURL: config.RelayURL, TokenHash: tokenHash, Handle: handle}
 	}
-	if err := client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: registration.Handle, AllKind: allKind}); err != nil {
+	if !config.AcceptsPayloadKey {
+		payloadKey = nil
+	}
+	if err := client.SetDevicePush(ctx, apitypes.PushRegistration{Handle: registration.Handle, PayloadKey: payloadKey, AllKind: allKind}); err != nil {
 		return s.recordServerPushError(fmt.Errorf("Hisar could not set up notifications on the server: %w", err))
 	}
 

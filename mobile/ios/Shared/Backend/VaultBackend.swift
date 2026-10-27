@@ -136,6 +136,9 @@ protocol VaultBackend: AnyObject {
     /// setPushToken registers the token APNs gave this launch ("apns" or "apns-sandbox") for the signed-in account; it
     /// reaches the server and the push relay, so it runs in the background.
     func setPushToken(platform: String, token: String) throws
+    /// setPushPayloadKey registers this device's Web Push subscription key, so the server can encrypt a notification's
+    /// details to it; the app calls it each launch before setPushToken. Both values are base64url without padding.
+    func setPushPayloadKey(p256dh: String, auth: String) throws
     func setPushKindEnabled(_ kind: PushKind, isEnabled: Bool) throws
     func getPushSettings() throws -> PushSettings
 }

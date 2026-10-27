@@ -56,6 +56,7 @@ class FakeBackend: VaultBackend {
     var isMacApprovalAllowedValue = true
     var isWebsiteIconsEnabledValue = true
     var allPushToken: [String] = []
+    var allPushPayloadKey: [String] = []
     var pushSettings = PushSettings(isAvailable: false, isServerSending: true, enabledKinds: PushKind.allCases.map(\.rawValue), errorMessage: nil)
     var websiteIconByURL: [String: Data] = [:]
     var preparedIcon: Data?
@@ -1199,6 +1200,11 @@ extension FakeBackend {
         record("setPushToken")
         allPushToken.append("\(platform):\(token)")
         pushSettings.isAvailable = pushSettings.isServerSending
+    }
+
+    func setPushPayloadKey(p256dh: String, auth: String) throws {
+        record("setPushPayloadKey")
+        allPushPayloadKey.append("\(p256dh):\(auth)")
     }
 
     func setPushKindEnabled(_ kind: PushKind, isEnabled: Bool) throws {

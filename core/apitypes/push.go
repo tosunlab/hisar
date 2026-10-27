@@ -2,8 +2,8 @@ package apitypes
 
 import "time"
 
-// PushKind names what a push notification is about. It is all a push carries: the phone shows a sentence for the kind,
-// and the details only once Hisar is open and unlocked.
+// PushKind names what a push notification is about. Apple, Google, the push relay and a UnifiedPush distributor see
+// only the kind: the phone shows a sentence for it, or the PushMessage the server encrypted to the phone.
 type PushKind string
 
 const (
@@ -35,6 +35,29 @@ func (kind PushKind) GetTimeToLive() time.Duration {
 	return 24 * time.Hour
 }
 
+// PushMessage is what a push says, encrypted to the phone (RFC 8291): an Android phone's Web Push message, or an
+// iPhone's RelayPushRequest.Payload, which its notification service extension opens. Invitation is set for a sharing
+// push; an older server sends the kind alone.
+type PushMessage struct {
+	Kind       PushKind        `json:"kind"`
+	Invitation *PushInvitation `json:"invitation,omitempty"`
+}
+
+// PushInvitation names who invited the phone's account to what. A shared vault's name is encrypted, so the server
+// cannot name the vault; an organization's name is not (§2.3).
+type PushInvitation struct {
+	Type             string `json:"type"`
+	InviterName      string `json:"inviterName"`
+	InviterEmail     string `json:"inviterEmail"`
+	OrganizationName string `json:"organizationName,omitempty"`
+	Role             string `json:"role"`
+}
+
+const (
+	PushInvitationOrganization = "organization"
+	PushInvitationVault        = "vault"
+)
+
 // PushPlatform is the push service an iPhone's token belongs to. Android phones use Web Push instead, through the
 // UnifiedPush distributor the user installed.
 type PushPlatform string
@@ -48,10 +71,20 @@ const (
 // PushRegistration is the body of PUT /api/v1/devices/current/push: where this phone gets its pushes, and the kinds it
 // wants. An iPhone sends the push relay's handle, and the server never sees its APNs token; an Android phone sends the
 // Web Push subscription of its UnifiedPush distributor, which the server sends to directly. Exactly one is set.
+// PayloadKey, with a handle only, is the key an iPhone opens a push's details with; only a server whose PushConfig
+// says AcceptsPayloadKey takes it.
 type PushRegistration struct {
-	Handle  string               `json:"handle,omitempty"`
-	WebPush *WebPushSubscription `json:"webPush,omitempty"`
-	AllKind []PushKind           `json:"kinds"`
+	Handle     string               `json:"handle,omitempty"`
+	WebPush    *WebPushSubscription `json:"webPush,omitempty"`
+	PayloadKey *PushPayloadKey      `json:"payloadKey,omitempty"`
+	AllKind    []PushKind           `json:"kinds"`
+}
+
+// PushPayloadKey is an iPhone's public key and authentication secret for push details, as a Web Push subscription's
+// (base64url): the server encrypts a PushMessage to it as it does to an Android phone.
+type PushPayloadKey struct {
+	P256DH string `json:"p256dh"`
+	Auth   string `json:"auth"`
 }
 
 // WebPushSubscription is a Web Push endpoint and the keys its messages are encrypted to (RFC 8291). P256DH, the
@@ -63,9 +96,11 @@ type WebPushSubscription struct {
 }
 
 // PushConfig is GET /api/v1/push/config: the push relay this server sends iPhones' pushes through. An empty URL means
-// the server sends no push notifications, to iPhones or Android phones.
+// the server sends no push notifications, to iPhones or Android phones. AcceptsPayloadKey means PushRegistration may
+// carry a PayloadKey; an older server rejects the field.
 type PushConfig struct {
-	RelayURL string `json:"relayURL"`
+	RelayURL          string `json:"relayURL"`
+	AcceptsPayloadKey bool   `json:"acceptsPayloadKey,omitempty"`
 }
 
 // RelayRegisterRequest is the body of the push relay's POST /v1/register, which the phone sends with its push service
@@ -80,8 +115,14 @@ type RelayRegisterResponse struct {
 }
 
 // RelayPushRequest is the body of the push relay's POST /v1/push, which a Hisar server sends. The relay answers 410
-// Gone when the push service no longer knows the token, and the server then forgets the handle.
+// Gone when the push service no longer knows the token, and the server then forgets the handle. Payload is the
+// PushMessage encrypted to the phone's PushPayloadKey (aes128gcm, base64url): the relay passes it on unread. An older
+// relay rejects the field, and the server then sends the kind alone.
 type RelayPushRequest struct {
-	Handle string   `json:"handle"`
-	Kind   PushKind `json:"kind"`
+	Handle  string   `json:"handle"`
+	Kind    PushKind `json:"kind"`
+	Payload string   `json:"payload,omitempty"`
 }
+
+// MaximumRelayPushPayload bounds RelayPushRequest.Payload, so the APNs payload stays under its 4 KB.
+const MaximumRelayPushPayload = 3072

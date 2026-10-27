@@ -1017,18 +1017,6 @@ struct OneTimeCode: Codable, Equatable {
     }
 }
 
-enum Base64URL {
-    static func encode(_ data: Data) -> String {
-        data.base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
-    }
-
-    static func decode(_ text: String) -> Data? {
-        var base64 = text.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
-        base64 += String(repeating: "=", count: (4 - base64.count % 4) % 4)
-        return Data(base64Encoded: base64)
-    }
-}
-
 struct ItemPasskey: Codable, Hashable, Identifiable {
     var credentialID: String
     var relyingPartyID: String

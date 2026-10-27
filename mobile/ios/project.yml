@@ -97,6 +97,7 @@ targets:
         aps-environment: development
     dependencies:
       - target: HisarAutoFill
+      - target: HisarNotificationService
 
   # For a free Apple ID (personal team): no AutoFill extension, app group or shared keychain group.
   HisarPersonal:
@@ -155,6 +156,39 @@ targets:
               SupportsCredentialExchange: true
               SupportedCredentialExchangeVersions: ["1.0"]
 
+  # The Notification Service Extension decrypts a sharing push's details, encrypted to a key only this phone holds, and
+  # sets the alert body. It imports no HisarKit: only the shared push files and the configuration reader.
+  HisarNotificationService:
+    templates: [IPhoneOnly, TeamSigning]
+    type: app-extension
+    platform: iOS
+    sources:
+      - NotificationService
+      - Shared/Push
+      - path: Shared/Platform/HisarConfiguration.swift
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: $(HISAR_NOTIFICATION_SERVICE_BUNDLE_IDENTIFIER)
+        CODE_SIGN_ENTITLEMENTS: Configuration/HisarNotificationService.entitlements
+        INFOPLIST_FILE: NotificationService/Info.plist
+        APPLICATION_EXTENSION_API_ONLY: true
+    entitlements:
+      path: Configuration/HisarNotificationService.entitlements
+      properties:
+        com.apple.security.application-groups: [$(HISAR_APP_GROUP_IDENTIFIER)]
+        keychain-access-groups: [$(HISAR_KEYCHAIN_ACCESS_GROUP)]
+    info:
+      path: NotificationService/Info.plist
+      properties:
+        CFBundleDisplayName: Hisar
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        HisarAppGroupIdentifier: $(HISAR_APP_GROUP_IDENTIFIER)
+        HisarKeychainAccessGroup: $(HISAR_KEYCHAIN_ACCESS_GROUP)
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.usernotifications.service
+          NSExtensionPrincipalClass: $(PRODUCT_MODULE_NAME).NotificationService
+
   HisarTests:
     templates: [IPhoneOnly]
     type: bundle.unit-test
@@ -189,6 +223,7 @@ schemes:
       targets:
         Hisar: all
         HisarAutoFill: all
+        HisarNotificationService: all
     run:
       config: Debug
     test:

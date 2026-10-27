@@ -105,7 +105,12 @@ func verifyES256(t *testing.T, token string, key *ecdsa.PublicKey) map[string]an
 
 func pushThrough(t *testing.T, relay *Relay, handle string, kind apitypes.PushKind) int {
 	t.Helper()
-	body, _ := json.Marshal(apitypes.RelayPushRequest{Handle: handle, Kind: kind})
+	return sendToRelay(t, relay, apitypes.RelayPushRequest{Handle: handle, Kind: kind})
+}
+
+func sendToRelay(t *testing.T, relay *Relay, push apitypes.RelayPushRequest) int {
+	t.Helper()
+	body, _ := json.Marshal(push)
 	recorder := httptest.NewRecorder()
 	relay.Handler().ServeHTTP(recorder, httptest.NewRequest(http.MethodPost, "/v1/push", bytes.NewReader(body)))
 	return recorder.Code
@@ -153,6 +158,28 @@ func TestAPNsPushCarriesOnlyTheKindAndASignedProviderToken(t *testing.T) {
 	pushThrough(t, relay, sandboxHandle, apitypes.PushKindSecurity)
 	if fake.allRequest[1].URL.Path != "/sandbox/3/device/device-token-2" {
 		t.Fatalf("a development build's push went to %s", fake.allRequest[1].URL.Path)
+	}
+}
+
+// The details a server encrypted to the phone reach APNs as they came, marked for the app's notification service
+// extension; the alert keeps the kind's sentence for when the extension cannot open them.
+func TestAPNsPushPassesTheEncryptedDetailsOnUnread(t *testing.T) {
+	fake := newFakeAPNs(t)
+	key, _ := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	relay := NewRelay(newTestSealer(t), map[apitypes.PushPlatform]Sender{apitypes.PushPlatformAPNs: NewAPNsSender(APNsConfig{Key: key, BaseURL: fake.server.URL})})
+	handle := register(t, relay, apitypes.PushPlatformAPNs, "device-token-1")
+
+	if code := sendToRelay(t, relay, apitypes.RelayPushRequest{Handle: handle, Kind: apitypes.PushKindSharing, Payload: strings.Repeat("A", apitypes.MaximumRelayPushPayload+1)}); code != http.StatusBadRequest {
+		t.Fatalf("a payload over the limit answered %d", code)
+	}
+	if code := sendToRelay(t, relay, apitypes.RelayPushRequest{Handle: handle, Kind: apitypes.PushKindSharing, Payload: "c2VhbGVk"}); code != http.StatusNoContent {
+		t.Fatalf("a push with a payload answered %d", code)
+	}
+	var payload map[string]any
+	json.Unmarshal(fake.allBody[0], &payload)
+	want := `{"aps":{"alert":{"loc-key":"push.sharing"},"mutable-content":1,"sound":"default","thread-id":"sharing"},"kind":"sharing","payload":"c2VhbGVk"}`
+	if got, _ := json.Marshal(payload); string(got) != want {
+		t.Fatalf("payload = %s", got)
 	}
 }
 

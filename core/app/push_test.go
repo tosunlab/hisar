@@ -1,6 +1,9 @@
 package app
 
 import (
+	"crypto/ecdh"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -95,6 +98,41 @@ func TestPushTokenRegistersWithTheRelayOnceAndTheServerWithTheEnabledKinds(t *te
 	}
 	if registration := fixture.apiServer.getPushRegistration(); registration != nil {
 		t.Fatalf("with every kind off the server still has %+v", registration)
+	}
+}
+
+// An iPhone's payload key goes to a server that says it takes one, which an older server would refuse.
+func TestAnIPhoneGivesItsPayloadKeyOnlyToAServerThatTakesIt(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	relay := startFakeRelayForApp(t)
+	fixture.apiServer.pushRelayURL = relay.server.URL
+	key, _ := ecdh.P256().GenerateKey(rand.Reader)
+	p256dh, auth := base64.RawURLEncoding.EncodeToString(key.PublicKey().Bytes()), base64.RawURLEncoding.EncodeToString(make([]byte, 16))
+
+	for _, invalid := range [][2]string{{"not base64!", auth}, {base64.RawURLEncoding.EncodeToString(make([]byte, 65)), auth}, {p256dh, "c2hvcnQ"}} {
+		if err := fixture.service.SetPushPayloadKey(invalid[0], invalid[1]); err == nil {
+			t.Errorf("SetPushPayloadKey(%q, %q) took an invalid key", invalid[0], invalid[1])
+		}
+	}
+	if err := fixture.service.SetPushPayloadKey(p256dh, auth); err != nil {
+		t.Fatal(err)
+	}
+	if err := fixture.service.SetPushToken("apns", "device-token"); err != nil {
+		t.Fatal(err)
+	}
+	if registration := fixture.apiServer.getPushRegistration(); registration == nil || registration.PayloadKey != nil {
+		t.Fatalf("registration with an older server = %+v", registration)
+	}
+
+	fixture.apiServer.mutex.Lock()
+	fixture.apiServer.acceptsPayloadKey = true
+	fixture.apiServer.mutex.Unlock()
+	if err := fixture.service.SetPushToken("apns", "device-token"); err != nil {
+		t.Fatal(err)
+	}
+	want := apitypes.PushPayloadKey{P256DH: p256dh, Auth: auth}
+	if registration := fixture.apiServer.getPushRegistration(); registration.Handle != "handle-1" || registration.PayloadKey == nil || *registration.PayloadKey != want {
+		t.Fatalf("registration = %+v", registration)
 	}
 }
 

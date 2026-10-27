@@ -1019,16 +1019,62 @@ enum class PushKind(val value: String) {
         fun parse(text: String?): PushKind? = entries.firstOrNull { it.value == text }
 
         /** The kind in a Web Push message from a Hisar server, {"kind":"approval"}; null for anything else. */
-        fun parseMessage(text: String): PushKind? = try {
-            parse(backendJson.decodeFromString(WebPushMessage.serializer(), text).kind)
+        fun parseMessage(text: String): PushKind? = parseNotification(text)?.kind
+
+        /**
+         * The kind and optional invitation details in a Web Push message from a Hisar server; null for anything else.
+         * One parser; older servers omit `invitation`, and unknown fields are ignored.
+         */
+        fun parseNotification(text: String): PushNotification? = try {
+            val message = backendJson.decodeFromString(WebPushMessage.serializer(), text)
+            parse(message.kind)?.let { PushNotification(it, message.invitation) }
         } catch (_: IllegalArgumentException) {
             null
         }
     }
 }
 
+/** The details of a sharing push, encrypted to this phone; absent on older servers. */
 @Serializable
-private data class WebPushMessage(val kind: String = "")
+data class PushInvitation(
+    val type: String = "",
+    val inviterName: String = "",
+    val inviterEmail: String = "",
+    val organizationName: String = "",
+    val role: String = "",
+)
+
+/** A decoded push: its kind and, for a sharing push, the invitation that names the inviter. */
+data class PushNotification(val kind: PushKind, val invitation: PushInvitation?) {
+    /**
+     * The sentence that names the inviter and what they invited you to, or null to use the kind's own sentence (for no
+     * invitation, an unknown type, an organization without a name, or a blank inviter). Identical to the iPhone's text.
+     */
+    fun detailText(): String? {
+        val invitation = invitation ?: return null
+        val inviter = inviterText(invitation.inviterName, invitation.inviterEmail)
+        if (inviter.isEmpty()) return null
+        return when (invitation.type) {
+            "organization" -> invitation.organizationName.trim().takeIf { it.isNotEmpty() }
+                ?.let { "$inviter invited you to join $it. Open Hisar to answer it." }
+            "vault" -> "$inviter shared a vault with you. Open Hisar to answer it."
+            else -> null
+        }
+    }
+
+    private fun inviterText(name: String, email: String): String {
+        val trimmedName = name.trim()
+        val trimmedEmail = email.trim()
+        return when {
+            trimmedName.isEmpty() || trimmedName.equals(trimmedEmail, ignoreCase = true) -> trimmedEmail
+            trimmedEmail.isEmpty() -> trimmedName
+            else -> "$trimmedName ($trimmedEmail)"
+        }
+    }
+}
+
+@Serializable
+private data class WebPushMessage(val kind: String = "", val invitation: PushInvitation? = null)
 
 /** HisarKit's app.PushSettings: whether notifications can reach this phone, and the kinds turned on. */
 @Serializable

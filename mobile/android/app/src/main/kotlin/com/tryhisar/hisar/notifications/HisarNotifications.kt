@@ -15,6 +15,7 @@ import com.tryhisar.hisar.MainActivity
 import com.tryhisar.hisar.R
 import com.tryhisar.hisar.app.NotificationPlatform
 import com.tryhisar.hisar.model.PushKind
+import com.tryhisar.hisar.model.PushNotification
 import java.time.Instant
 import org.unifiedpush.android.connector.UnifiedPush
 
@@ -58,28 +59,39 @@ object HisarNotifications {
         return PendingIntent.getActivity(context, kind.ordinal, intent, PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
     }
 
-    private fun post(context: Context, channel: String, id: Int, kind: PushKind, text: String) {
+    private fun post(context: Context, channel: String, id: Int, kind: PushKind, text: String, detailText: String? = null) {
         val manager = NotificationManagerCompat.from(context)
         if (!manager.areNotificationsEnabled()) return
-        val notification = NotificationCompat.Builder(context, channel)
+        val builder = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.ic_notification)
             .setContentTitle(context.getString(R.string.app_name))
-            .setContentText(text)
+            .setContentText(detailText ?: text)
             .setContentIntent(createOpenIntent(context, kind))
             .setAutoCancel(true)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
             .setCategory(if (kind == PushKind.APPROVAL) NotificationCompat.CATEGORY_REMINDER else NotificationCompat.CATEGORY_STATUS)
-            .build()
+        if (detailText != null) {
+            // A lock screen set to hide sensitive content shows the public version, the kind's own sentence.
+            builder.setPublicVersion(
+                NotificationCompat.Builder(context, channel)
+                    .setSmallIcon(R.drawable.ic_notification)
+                    .setContentTitle(context.getString(R.string.app_name))
+                    .setContentText(text)
+                    .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+                    .build(),
+            )
+        }
         try {
-            manager.notify(id, notification)
+            manager.notify(id, builder.build())
         } catch (_: SecurityException) {
             // The user took the permission back between the check and the post.
         }
     }
 
-    /** Posts the notification for a push of [kind]; one per kind, so a newer one replaces the last. */
-    fun postPush(context: Context, kind: PushKind) {
-        post(context, getChannel(kind), kind.ordinal + 1, kind, getText(context, kind))
+    /** Posts the notification for a [notification]; one per kind, so a newer one replaces the last. */
+    fun postPush(context: Context, notification: PushNotification) {
+        val kind = notification.kind
+        post(context, getChannel(kind), kind.ordinal + 1, kind, getText(context, kind), notification.detailText())
     }
 
     fun isDistributorInstalled(context: Context): Boolean = UnifiedPush.getDistributors(context).any { it != context.packageName }

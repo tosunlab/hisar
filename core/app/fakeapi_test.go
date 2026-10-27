@@ -53,9 +53,11 @@ type fakeAPIServer struct {
 	// historyFullMessage, when set, refuses item writes with it as the server's 507 for a vault whose history is full.
 	historyFullMessage string
 	// pushRelayURL is the relay the fake server names in /push/config; isPushUnsupported answers it 404, as an older
-	// server does. pushRegistration is the last PUT /devices/current/push, nil after a DELETE.
+	// server does, and acceptsPayloadKey says it takes an iPhone's payload key. pushRegistration is the last PUT
+	// /devices/current/push, nil after a DELETE.
 	pushRelayURL      string
 	isPushUnsupported bool
+	acceptsPayloadKey bool
 	pushRegistration  *apitypes.PushRegistration
 	// isSessionEnded answers every request 401, as the server does once it ended this device's session.
 	isSessionEnded bool
@@ -290,7 +292,7 @@ func (server *fakeAPIServer) createHandler() http.Handler {
 			writer.WriteHeader(http.StatusNotFound)
 			return
 		}
-		writeJSON(writer, http.StatusOK, apitypes.PushConfig{RelayURL: server.pushRelayURL})
+		writeJSON(writer, http.StatusOK, apitypes.PushConfig{RelayURL: server.pushRelayURL, AcceptsPayloadKey: server.acceptsPayloadKey})
 	})
 	mux.HandleFunc("PUT /api/v1/devices/current/push", func(writer http.ResponseWriter, request *http.Request) {
 		var registration apitypes.PushRegistration
