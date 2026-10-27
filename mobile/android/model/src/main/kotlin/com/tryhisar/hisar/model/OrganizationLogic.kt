@@ -38,6 +38,8 @@ enum class OrganizationMemberAction { MAKE_ADMIN, MAKE_MEMBER, REMOVE }
 
 data class MemberChoice(val title: String, val detail: String?)
 
+data class GivableVault(val vaultID: String, val displayName: String, val canOpen: Boolean)
+
 /** What the organization screen does after loading the organization. */
 sealed interface OrganizationLoad {
     data class Loaded(val organization: Organization) : OrganizationLoad
@@ -138,7 +140,7 @@ object OrganizationLogic {
      * The organization's vaults an admin can give the team: the vaults of its other teams and those of the organization
      * this device has, by name where this device can open them.
      */
-    fun listAllGivableVault(organization: Organization, team: Team, allVault: List<VaultSummary>): List<TeamVault> {
+    fun listAllGivableVault(organization: Organization, team: Team, allVault: List<VaultSummary>): List<GivableVault> {
         if (!organization.isAdmin) return emptyList()
         val vaultByID = linkedMapOf<String, TeamVault>()
         for (vault in allVault) {
@@ -152,12 +154,21 @@ object OrganizationLogic {
             }
         }
         val allTeamVaultID = team.allVault.map { it.vaultID }.toSet()
-        return vaultByID.values.filter { it.vaultID !in allTeamVaultID }.sortedWith(
+        val allGivable = vaultByID.values.filter { it.vaultID !in allTeamVaultID }.sortedWith(
             compareByDescending<TeamVault> { it.canOpen }
                 .thenComparator { first, second ->
                     if (first.canOpen) String.CASE_INSENSITIVE_ORDER.compare(first.name, second.name) else first.vaultID.compareTo(second.vaultID)
                 },
         )
+        val allChoice = allGivable.map { vault ->
+            if (vault.canOpen) return@map GivableVault(vault.vaultID, vault.name, true)
+            val teams = organization.allTeam.filter { other -> other.allVault.any { it.vaultID == vault.vaultID } }.joinToString(", ") { it.name }
+            GivableVault(vault.vaultID, "${TeamVault.UNOPENABLE_NAME} ($teams)", false)
+        }
+        val labelCounts = allChoice.filter { !it.canOpen }.groupingBy { it.displayName }.eachCount()
+        return allChoice.map { choice ->
+            if (!choice.canOpen && labelCounts.getValue(choice.displayName) > 1) choice.copy(displayName = "${choice.displayName} · ${choice.vaultID.take(6)}") else choice
+        }
     }
 
     /** What an admin can do to a member from the organization screen; the user leaves instead of removing themselves. */

@@ -50,7 +50,7 @@ import com.tryhisar.hisar.ui.vaults.SwipeActionRow
 import kotlinx.coroutines.launch
 
 /** What a Give sheet offers: a vault for a team, or a team for a vault. */
-data class GiveVaultChoice(val id: String, val label: String, val teamID: String, val vaultID: String)
+data class GiveVaultChoice(val id: String, val label: String, val teamID: String, val vaultID: String, val canPreselect: Boolean = true)
 
 /**
  * Gives a team an organization vault with a role: from a team (pick the vault) or from the vault's sheet (pick the
@@ -68,7 +68,7 @@ fun GiveVaultSheet(
 ) {
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var choiceID by rememberSaveable { mutableStateOf(allChoice.firstOrNull()?.id.orEmpty()) }
+    var choiceID by rememberSaveable { mutableStateOf(allChoice.firstOrNull()?.takeIf { it.canPreselect }?.id.orEmpty()) }
     var role by rememberSaveable { mutableStateOf(Member.VAULT_ROLE_EDITOR) }
     var refusal by remember { mutableStateOf<Refusal?>(null) }
     val choice = allChoice.firstOrNull { it.id == choiceID }

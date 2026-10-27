@@ -61,7 +61,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Admin · 3 members · Organization · Editor | An organization's row; an organization vault's row (iPhone). |
 | "Hisar couldn't give every vault key: …" · "Hisar couldn't re-encrypt every vault that needs a new key: …" | Warnings above the vaults when a key delivery or a rotation failed. |
 | Shared through teams in Acme · Ask an admin of Acme to change who has this vault. | An organization vault's sharing panel. |
-| A vault you can't open | An organization's vault this device has no key for. |
+| A vault you can't open | An organization's vault this device has no key for. Give a vault choices append the teams that have it, and the first six characters of its ID if the labels still match. An unopened first choice is not selected automatically. |
 | Waiting for an owner of a vault in Acme to give you its key · Waiting for the owners of N vaults in Acme to give you their keys | One line per organization in Settings → Organizations on the Mac, above the vaults on the phones. A team gives you a vault that no owner's Hisar has delivered yet. |
 | Acme is deleted with your account · Ada becomes an admin of Acme · You leave Acme | Account deletion. |
 

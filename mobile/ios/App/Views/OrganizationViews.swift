@@ -462,7 +462,7 @@ struct OrganizationView: View {
                     title: "Give a vault to \(team.name)",
                     choiceTitle: "Vault",
                     allChoice: OrganizationLogic.listAllGivableVault(organization: organization, team: team, allVault: model.allVault).map {
-                        GiveVaultSheet.Choice(id: $0.vaultID, label: $0.displayName, teamID: team.id, vaultID: $0.vaultID)
+                        GiveVaultSheet.Choice(id: $0.vaultID, label: $0.displayName, teamID: team.id, vaultID: $0.vaultID, canPreselect: $0.canOpen)
                     },
                     organizationID: organizationID
                 ) {
@@ -889,6 +889,7 @@ struct GiveVaultSheet: View {
         var label: String
         var teamID: String
         var vaultID: String
+        var canPreselect = true
     }
 
     var title: String
@@ -910,6 +911,7 @@ struct GiveVaultSheet: View {
             Form {
                 Section {
                     Picker(choiceTitle, selection: $choiceID) {
+                        Text("Choose a \(choiceTitle.lowercased())").tag("")
                         ForEach(allChoice) { choice in
                             Text(choice.label).tag(choice.id)
                         }
@@ -948,7 +950,7 @@ struct GiveVaultSheet: View {
         .onAppear {
             model.clearError()
             if choice == nil {
-                choiceID = allChoice.first?.id ?? ""
+                choiceID = allChoice.first.flatMap { $0.canPreselect ? $0.id : nil } ?? ""
             }
         }
     }

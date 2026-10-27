@@ -48,6 +48,12 @@ enum OrganizationMemberAction: Equatable {
     case remove
 }
 
+struct GivableVault: Equatable {
+    var vaultID: String
+    var displayName: String
+    var canOpen: Bool
+}
+
 /// What the organization screen does after loading the organization.
 enum OrganizationLoad: Equatable {
     case loaded(Organization)
@@ -168,7 +174,7 @@ enum OrganizationLogic {
 
     /// The organization's vaults an admin can give the team: the vaults of its other teams and those of the organization
     /// this device has, by name where this device can open them.
-    static func listAllGivableVault(organization: Organization, team: Team, allVault: [VaultSummary]) -> [TeamVault] {
+    static func listAllGivableVault(organization: Organization, team: Team, allVault: [VaultSummary]) -> [GivableVault] {
         guard organization.isAdmin else { return [] }
         var vaultByID: [String: TeamVault] = [:]
         for vault in allVault where vault.isOrganization && vault.organizationID == organization.id {
@@ -180,10 +186,23 @@ enum OrganizationLogic {
             }
         }
         let allTeamVaultID = Set(team.allVault.map(\.vaultID))
-        return vaultByID.values.filter { !allTeamVaultID.contains($0.vaultID) }.sorted { first, second in
+        let allGivable = vaultByID.values.filter { !allTeamVaultID.contains($0.vaultID) }.sorted { first, second in
             if first.canOpen != second.canOpen { return first.canOpen }
             if first.canOpen { return first.name.localizedCaseInsensitiveCompare(second.name) == .orderedAscending }
             return first.vaultID < second.vaultID
+        }
+        let allChoice = allGivable.map { vault in
+            if vault.canOpen { return GivableVault(vaultID: vault.vaultID, displayName: vault.name, canOpen: true) }
+            let teams = organization.allTeam.filter { $0.allVault.contains { $0.vaultID == vault.vaultID } }.map(\.name).joined(separator: ", ")
+            return GivableVault(vaultID: vault.vaultID, displayName: "\(TeamVault.unopenableName) (\(teams))", canOpen: false)
+        }
+        let labelCounts = Dictionary(grouping: allChoice.filter { !$0.canOpen }, by: \.displayName).mapValues(\.count)
+        return allChoice.map { choice in
+            var choice = choice
+            if !choice.canOpen && labelCounts[choice.displayName, default: 0] > 1 {
+                choice.displayName += " · \(choice.vaultID.prefix(6))"
+            }
+            return choice
         }
     }
 

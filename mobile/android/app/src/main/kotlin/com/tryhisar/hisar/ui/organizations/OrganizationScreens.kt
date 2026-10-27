@@ -613,7 +613,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
             title = "Give a vault to ${givenTeam.name}",
             choiceTitle = "Vault",
             allChoice = OrganizationLogic.listAllGivableVault(loaded, givenTeam, data.allVault).map {
-                GiveVaultChoice(id = it.vaultID, label = it.displayName, teamID = givenTeam.id, vaultID = it.vaultID)
+                GiveVaultChoice(id = it.vaultID, label = it.displayName, teamID = givenTeam.id, vaultID = it.vaultID, canPreselect = it.canOpen)
             },
             organizationID = organizationID,
             onFinish = { load() },
@@ -629,7 +629,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
 private fun TeamSection(
     team: Team,
     organization: Organization,
-    allGivableVault: List<TeamVault>,
+    allGivableVault: List<com.tryhisar.hisar.model.GivableVault>,
     rowMenu: RowMenu?,
     onMenu: (RowMenu?) -> Unit,
     onRemoveMember: (TeamMember) -> Unit,
