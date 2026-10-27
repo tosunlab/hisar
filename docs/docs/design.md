@@ -344,6 +344,8 @@ The desktop sign-in form focuses its first empty account field on opening, in em
 
 The phone scanners validate the decoded text before closing. An invalid code leaves the scanner open and paused with an announced error and **Try again**. Only that action rearms scanning; a valid current or legacy kit fills the account fields without opening a decoded URL.
 
+On the Mac, **Open Emergency Kit…** chooses a local PDF through the native open panel. CoreGraphics renders at most four pages, each bounded to 3072 pixels per side, from a regular file no larger than 16 MB. Vision decodes QR codes locally and `desktop/kitreader` applies the current and legacy kit validation rules. Only server, email and Secret Key fill the form. The master password is cleared and sign-in remains explicit. Cancellation changes nothing. A PDF with no valid kit gives an error without its path or decoded contents. Nothing is uploaded, logged or opened as a URL. Linux keeps manual entry without this action.
+
 #### Origin-bound authentication
 
 Login uses `POST /auth/login/v2/start` and `POST /auth/login/v2/finish`. Reauthentication uses `POST /account/reauthenticate/v2`, including credential replacement, account deletion, and admin password checks. The route selects version 2 before KE2. The client builds its context from its configured `apiclient.Client.BaseURL` before KE1. The server builds immutable login and reauthentication configurations at startup from operator-controlled `HISAR_PUBLIC_URL`. Request `Origin`, `Host`, and forwarded host headers never select the authentication origin.

@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { api, getErrorMessage } from "../api";
 import { clearError, dismissSignedOutReason, signIn, signUp, signUpWithoutInvite, store } from "../store";
 import { getMasterPasswordFeedback, getThisDeviceName, isMacPlatform } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
@@ -42,6 +43,26 @@ const serverInput = ref<HTMLInputElement | null>(null);
 const emailInput = ref<HTMLInputElement | null>(null);
 const secretKeyInput = ref<HTMLInputElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
+const isOpeningKit = ref(false);
+
+async function openEmergencyKit(): Promise<void> {
+  clearError();
+  isOpeningKit.value = true;
+  try {
+    const fields = await api.openEmergencyKit();
+    if (!fields) return;
+    server.value = getDisplayServer(fields.server);
+    email.value = fields.email;
+    secretKey.value = fields.secretKey;
+    password.value = "";
+    await nextTick();
+    passwordInput.value?.focus();
+  } catch (error) {
+    store.errorMessage = getErrorMessage(error);
+  } finally {
+    isOpeningKit.value = false;
+  }
+}
 
 onMounted(() => {
   const firstEmpty = [emailInput.value, secretKeyInput.value, passwordInput.value].find((input) => input && !input.value);
@@ -208,6 +229,12 @@ async function submitCreateAccount(): Promise<void> {
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
 
         <form v-if="mode === 'sign-in'" @submit.prevent="submitSignIn">
+          <div v-if="isMacPlatform()" class="kit-import">
+            <button type="button" class="ghost" data-testid="open-emergency-kit" :disabled="store.isBusy || isOpeningKit" @click="openEmergencyKit">
+              {{ isOpeningKit ? "Opening…" : "Open Emergency Kit…" }}
+            </button>
+            <p class="hint muted">The QR code fills in your server, email and Secret Key.</p>
+          </div>
           <label v-if="isServerShown">
             <span>Server</span>
             <span class="input-with-icon"><AppIcon name="globe" /><input ref="serverInput" v-model="server" name="server" autocomplete="url" required /></span>
@@ -227,7 +254,7 @@ async function submitCreateAccount(): Promise<void> {
             <span>Master password</span>
             <span class="input-with-icon"><AppIcon name="lock" /><input ref="passwordInput" v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
           </label>
-          <button class="primary full-width submit" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
+          <button class="primary full-width submit" type="submit" :disabled="store.isBusy || isOpeningKit">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
           <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.</p>
           <p v-if="!isServerShown" class="hint">
             <span class="muted" data-testid="sign-in-server">Signs in to {{ server }}.</span>

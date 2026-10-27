@@ -143,6 +143,8 @@ Design: [Design](../design.md) §4.4 (vault keys and rotation), §5.1 (invites) 
 
 Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret Key) plus the master password is the only way to sign in again; there is no account recovery.
 
+On the Mac, **Open Emergency Kit…** fills in the server, email and Secret Key from the QR code in a kit PDF. Hisar reads it locally and never uploads the PDF. Enter your master password and choose **Sign in**. You can still type or paste the account fields on the Mac and Linux.
+
 - **Lost Secret Key**: it is on the Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings. On the Mac, it is under Security → Emergency Kit.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 

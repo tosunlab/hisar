@@ -14,6 +14,8 @@ import { Service as HarnessService } from "../bindings/github.com/tryhisar/hisar
 import type { Agent as BoundCodingAgent } from "../bindings/github.com/tryhisar/hisar/desktop/harness";
 import { Service as LoginItemService } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
 import type { Status as LoginItemStatus } from "../bindings/github.com/tryhisar/hisar/desktop/loginitem";
+import { Service as EmergencyKitReader } from "../bindings/github.com/tryhisar/hisar/desktop/kitreader";
+import type { AccountFields } from "../bindings/github.com/tryhisar/hisar/desktop/kitreader";
 import type {
   AccountDeletionPreview as BoundAccountDeletionPreview,
   AgentGrant,
@@ -337,6 +339,7 @@ const wailsApi = {
   setAutoLock: (seconds: number): Promise<Status> => Service.SetAutoLock(seconds),
   getTheme: (): Promise<Theme> => Service.GetTheme(),
   setTheme: (appearance: string, color: string): Promise<Theme> => Service.SetTheme(appearance, color),
+  openEmergencyKit: (): Promise<AccountFields | null> => EmergencyKitReader.Open(),
   signIn: (server: string, email: string, secretKey: string, password: string): Promise<Status> =>
     Service.SignIn(server, email, secretKey, password),
   signUp: (invite: string, email: string, name: string, password: string): Promise<SignUpResult> =>
