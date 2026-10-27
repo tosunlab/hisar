@@ -20,6 +20,9 @@ struct DevicesView: View {
                     ErrorBanner(message: errorMessage)
                 }
             }
+            if let message = model.deviceOperationErrorMessage {
+                Section { ErrorBanner(message: message) }
+            }
             if let allDevice = devices.allDevice {
                 let allCurrentDevice = allDevice.filter(\.isCurrent)
                 let allOtherDevice = allDevice.filter { !$0.isCurrent }
@@ -78,9 +81,10 @@ struct DevicesView: View {
             }
             .accessibilityIdentifier("confirm-revoke-device")
         } message: { _ in
-            Text("It loses access to your vaults at once and needs your Secret Key and master password to sign in again.")
+            Text("It is signed out of the Hisar server now. The next time it connects, Hisar removes your account from it. Until then, it can still be unlocked while offline. To sign in again, it needs your Secret Key and master password.")
         }
         .task { await load() }
+        .onAppear { model.deviceOperationErrorMessage = nil }
     }
 
     private func load() async {
@@ -158,6 +162,7 @@ struct DeviceView: View {
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
     @State private var isRevokeConfirmationShown = false
+    @State private var isRevoking = false
 
     var body: some View {
         List {
@@ -172,8 +177,18 @@ struct DeviceView: View {
                 }
             }
             Section {
-                Button("Sign out device", role: .destructive) { isRevokeConfirmationShown = true }
+                if let message = model.deviceOperationErrorMessage {
+                    ErrorBanner(message: message)
+                        .accessibilityIdentifier("device-operation-error")
+                }
+                Button(role: .destructive) { isRevokeConfirmationShown = true } label: {
+                    HStack {
+                        if isRevoking { ProgressView() }
+                        Text(isRevoking ? "Signing out device…" : "Sign out device")
+                    }
                     .frame(maxWidth: .infinity)
+                }
+                .disabled(isRevoking)
                     .accessibilityIdentifier("revoke-device")
             } footer: {
                 Text("Signing out ends the device's session on the server, so it can no longer sync your vaults or answer for your account.")
@@ -182,18 +197,21 @@ struct DeviceView: View {
         .applyThemedListStyle()
         .navigationTitle(device.name)
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear { model.deviceOperationErrorMessage = nil }
         .confirmationDialog("Sign out \(device.name)?", isPresented: $isRevokeConfirmationShown, titleVisibility: .visible) {
             Button("Sign out device", role: .destructive) {
                 Task {
+                    isRevoking = true
                     if await model.revokeDevice(device) {
                         finishRevoke()
                         dismiss()
                     }
+                    isRevoking = false
                 }
             }
             .accessibilityIdentifier("confirm-revoke-device")
         } message: {
-            Text("It loses access to your vaults at once and needs your Secret Key and master password to sign in again.")
+            Text("It is signed out of the Hisar server now. The next time it connects, Hisar removes your account from it. Until then, it can still be unlocked while offline. To sign in again, it needs your Secret Key and master password.")
         }
     }
 }

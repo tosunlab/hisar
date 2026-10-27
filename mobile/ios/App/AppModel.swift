@@ -42,6 +42,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isAnsweringApproval = false
     @Published private(set) var isApprovalPasswordRequired = false
     @Published var approvalErrorMessage: String?
+    @Published var deviceOperationErrorMessage: String?
+    @Published var macApprovalErrorMessage: String?
     @Published var selectedTab: Tab = .vaults
     /// requestedSettingsDestination is a Settings screen something outside the tab asks it to show, Devices for a tapped
     /// security alert; the Settings tab shows it and clears it.
@@ -1370,7 +1372,13 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func revokeDevice(_ device: Device) async -> Bool {
-        guard await perform({ try $0.revokeDevice(deviceID: device.id) }) != nil else { return false }
+        deviceOperationErrorMessage = nil
+        errorMessage = nil
+        guard await perform({ try $0.revokeDevice(deviceID: device.id) }) != nil else {
+            deviceOperationErrorMessage = errorMessage
+            errorMessage = nil
+            return false
+        }
         showNotice("\(device.name) is signed out.")
         return true
     }
@@ -1654,7 +1662,13 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func setMacApprovalAllowed(_ isAllowed: Bool) async -> Bool {
-        guard await perform(isBusyShown: false, { try $0.setMacApprovalAllowed(isAllowed) }) != nil else { return false }
+        macApprovalErrorMessage = nil
+        errorMessage = nil
+        guard await perform(isBusyShown: false, { try $0.setMacApprovalAllowed(isAllowed) }) != nil else {
+            macApprovalErrorMessage = errorMessage
+            errorMessage = nil
+            return false
+        }
         isMacApprovalAllowed = isAllowed
         if isAllowed {
             await refreshPendingApproval()

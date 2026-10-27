@@ -75,6 +75,15 @@ function selectSection(sectionID: SettingsSectionID): void {
   saveSelectedSectionID(sectionID);
 }
 
+async function reviewAgentApprovals(destination: "agent-sessions" | "agent-grants"): Promise<void> {
+  searchQuery.value = "";
+  selectSection("developer");
+  await nextTick();
+  const section = sectionContent.value?.querySelector<HTMLElement>(`#${destination}`);
+  section?.scrollIntoView?.({ block: "start" });
+  section?.focus();
+}
+
 watch(allVisibleSection, (allSection) => {
   if (allSection.length > 0 && !allSection.some((section) => section.id === selectedSectionID.value)) {
     selectSection(allSection[0].id);
@@ -204,14 +213,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
             <UpdatesSection />
           </div>
           <div v-show="displayedSection?.id === 'security'" data-testid="settings-page-security">
-            <SecuritySection />
+            <SecuritySection :active="displayedSection?.id === 'security'" />
           </div>
           <div v-show="displayedSection?.id === 'ssh'" data-testid="settings-page-ssh">
             <SSHAgentSection />
           </div>
           <div v-show="displayedSection?.id === 'developer'" data-testid="settings-page-developer">
             <CommandLineSection />
-            <CodingAgentsSection />
+            <CodingAgentsSection @review-approvals="reviewAgentApprovals" />
           </div>
           <div v-show="displayedSection?.id === 'browser'" data-testid="settings-page-browser">
             <BrowserExtensionSection />

@@ -12,6 +12,7 @@ import com.tryhisar.hisar.model.VaultTheme
 import java.io.File
 import java.util.UUID
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.MutableStateFlow
 
 /**
  * Settings and the account's lifecycle: the theme, Mac approvals, devices, the Emergency Kit, changing the master
@@ -22,6 +23,8 @@ import kotlinx.coroutines.launch
  */
 class SettingsModel(private val context: ModelContext) {
     private val temporaryDirectory = File(System.getProperty("java.io.tmpdir"), HANDOFF_FOLDER_NAME)
+    val deviceOperationErrorMessage = MutableStateFlow<String?>(null)
+    val macApprovalErrorMessage = MutableStateFlow<String?>(null)
 
     private fun createFolder(prefix: String) = File(temporaryDirectory, "$prefix-${UUID.randomUUID()}")
 
@@ -37,7 +40,13 @@ class SettingsModel(private val context: ModelContext) {
     }
 
     suspend fun setMacApprovalAllowed(isAllowed: Boolean): Boolean {
-        context.perform(isBusyShown = false) { it.setMacApprovalAllowed(isAllowed) } ?: return false
+        macApprovalErrorMessage.value = null
+        context.errorMessage.value = null
+        if (context.perform(isBusyShown = false) { it.setMacApprovalAllowed(isAllowed) } == null) {
+            macApprovalErrorMessage.value = context.errorMessage.value
+            context.errorMessage.value = null
+            return false
+        }
         context.isMacApprovalAllowed.value = isAllowed
         return true
     }
@@ -45,7 +54,13 @@ class SettingsModel(private val context: ModelContext) {
     suspend fun loadAllDevice(): List<Device>? = context.perform(isBusyShown = false) { it.listAllDevice() }
 
     suspend fun revokeDevice(device: Device): Boolean = context.runInModel {
-        context.perform { it.revokeDevice(device.id) } ?: return@runInModel false
+        deviceOperationErrorMessage.value = null
+        context.errorMessage.value = null
+        if (context.perform { it.revokeDevice(device.id) } == null) {
+            deviceOperationErrorMessage.value = context.errorMessage.value
+            context.errorMessage.value = null
+            return@runInModel false
+        }
         context.showNotice("${device.name} is signed out.")
         true
     }

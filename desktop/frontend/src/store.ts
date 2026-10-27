@@ -118,6 +118,8 @@ export const store = reactive({
   selectedVaultID: "",
   allItem: [] as ItemDetail[],
   selectedItem: null as ItemDetail | null,
+  isCommitSigningSetupOpen: false,
+  commitSigningItemID: "",
   // allFavorite holds the user's starred items of every vault; isFavoritesSelected shows them in the list instead of a vault.
   allFavorite: [] as FavoriteItem[],
   isFavoritesSelected: false,
@@ -286,6 +288,8 @@ function clearAllVaultData(): void {
   store.selectedVaultID = "";
   store.allItem = [];
   store.selectedItem = null;
+  store.isCommitSigningSetupOpen = false;
+  store.commitSigningItemID = "";
   store.allFavorite = [];
   store.isFavoritesSelected = false;
   store.editorMode = "view";
@@ -1256,6 +1260,7 @@ const mainWindowActions: Record<MainWindowAction, () => Promise<void>> = {
   import: openImport,
   sharing: shareSelectedVault,
   recovery: openPendingRecovery,
+  "commit-signing": async () => { store.isCommitSigningSetupOpen = true; },
 };
 
 export function isMainWindowAction(action: unknown): action is MainWindowAction {

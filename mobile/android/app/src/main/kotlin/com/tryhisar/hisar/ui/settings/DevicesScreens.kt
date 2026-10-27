@@ -68,7 +68,7 @@ private val DeviceIcon.image: ImageVector
         DeviceIcon.EXTENSION -> Icons.Outlined.Extension
     }
 
-private const val REVOKE_MESSAGE = "It loses access to your vaults at once and needs your Secret Key and master password to sign in again."
+private const val REVOKE_MESSAGE = "It is signed out of the Hisar server now. The next time it connects, Hisar removes your account from it. Until then, it can still be unlocked while offline. To sign in again, it needs your Secret Key and master password."
 
 private fun formatDateTime(date: Instant): String =
     DateTimeFormatter.ofLocalizedDateTime(FormatStyle.MEDIUM, FormatStyle.SHORT).withZone(ZoneId.systemDefault()).format(date)
@@ -77,6 +77,7 @@ private fun formatDateTime(date: Instant): String =
 @Composable
 fun DevicesScreen(model: AppModel, onBack: () -> Unit) {
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
+    val operationError by model.settings.deviceOperationErrorMessage.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
     var allDevice by remember { mutableStateOf<List<Device>?>(null) }
     var deviceToRevoke by remember { mutableStateOf<Device?>(null) }
@@ -87,6 +88,7 @@ fun DevicesScreen(model: AppModel, onBack: () -> Unit) {
         allDevice = model.settings.loadAllDevice() ?: allDevice ?: emptyList()
     }
     LaunchedEffect(Unit) { load() }
+    LaunchedEffect(Unit) { model.settings.deviceOperationErrorMessage.value = null }
 
     val opened = openedDevice
     if (opened != null) {
@@ -100,6 +102,7 @@ fun DevicesScreen(model: AppModel, onBack: () -> Unit) {
 
     SettingsScreen("Devices", onBack, onRefresh = { load() }) {
         errorMessage?.let { FormSection { ErrorBanner(it) } }
+        operationError?.let { FormSection { ErrorBanner(it) } }
         val shownDevices = allDevice
         if (shownDevices == null) {
             FormSection {
@@ -225,6 +228,9 @@ private fun DeviceRow(device: Device, onClick: (() -> Unit)?) {
 private fun DeviceScreen(model: AppModel, device: Device, onBack: () -> Unit, finishRevoke: () -> Unit) {
     val scope = rememberCoroutineScope()
     var isRevokeConfirmationShown by remember { mutableStateOf(false) }
+    var isRevoking by remember { mutableStateOf(false) }
+    val operationError by model.settings.deviceOperationErrorMessage.collectAsStateWithLifecycle()
+    LaunchedEffect(device.id) { model.settings.deviceOperationErrorMessage.value = null }
     SettingsScreen(device.name, onBack, isTitleInline = true) {
         FormSection {
             LabeledRow("Name", device.name)
@@ -240,7 +246,8 @@ private fun DeviceScreen(model: AppModel, device: Device, onBack: () -> Unit, fi
             }
         }
         FormSection(footer = { Text("Signing out ends the device's session on the server, so it can no longer sync your vaults or answer for your account.") }) {
-            DestructiveRow("Sign out device", { isRevokeConfirmationShown = true }, testTag = "revoke-device")
+            operationError?.let { ErrorBanner(it) }
+            DestructiveRow(if (isRevoking) "Signing out device…" else "Sign out device", { isRevokeConfirmationShown = true }, testTag = "revoke-device", enabled = !isRevoking)
         }
     }
     if (isRevokeConfirmationShown) {
@@ -249,7 +256,16 @@ private fun DeviceScreen(model: AppModel, device: Device, onBack: () -> Unit, fi
             message = REVOKE_MESSAGE,
             confirmLabel = "Sign out device",
             confirmTestTag = "confirm-revoke-device",
-            onConfirm = { scope.launch { if (model.settings.revokeDevice(device)) finishRevoke() } },
+            onConfirm = {
+                scope.launch {
+                    isRevoking = true
+                    try {
+                        if (model.settings.revokeDevice(device)) finishRevoke()
+                    } finally {
+                        isRevoking = false
+                    }
+                }
+            },
             onDismiss = { isRevokeConfirmationShown = false },
         )
     }

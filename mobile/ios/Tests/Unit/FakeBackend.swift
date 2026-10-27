@@ -64,6 +64,8 @@ class FakeBackend: VaultBackend {
     var preparedIcon: Data?
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
+    var revokeDeviceErrorMessage: String?
+    var macApprovalErrorMessage: String?
     /// The backend signs out on the phone even when it could not confirm everything, then reports that.
     var signOutError: BackendError?
     /// What the backend reports when the account is deleted but this phone's copy could not be removed.
@@ -798,6 +800,7 @@ extension FakeBackend {
     func revokeDevice(deviceID: String) throws {
         record("revokeDevice")
         try requireUnlocked()
+        if let message = revokeDeviceErrorMessage { throw BackendError(message: message) }
         guard let device = allDevice.first(where: { $0.id == deviceID }) else { throw BackendError(message: "this device is already signed out") }
         guard !device.isCurrent else { throw BackendError(message: "sign out this device instead") }
         allDevice.removeAll { $0.id == deviceID }
@@ -1181,6 +1184,7 @@ extension FakeBackend {
 
     func setMacApprovalAllowed(_ isAllowed: Bool) throws {
         record("setMacApprovalAllowed")
+        if let message = macApprovalErrorMessage { throw BackendError(message: message) }
         isMacApprovalAllowedValue = isAllowed
     }
 

@@ -52,7 +52,7 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "ssh-remember", title: "Remember SSH approvals", keywords: "don't ask again hour until locks remember ssh approval duration" },
       { id: "compact-ssh-approvals", title: "Compact SSH approvals", keywords: "approval card notification dialog" },
       { id: "phone-approval", title: "Approve requests on my smart device", keywords: "phone iphone android smart device allow approvals approve requests" },
-      { id: "commit-signing", title: "Remember commit signing", keywords: "git signature sign gpg always asks rebase remember commit tag" },
+      { id: "commit-signing", title: "Set up commit signing and remember approvals", keywords: "git signature sign gpg always asks rebase remember commit tag setup commands ssh key" },
     ],
   },
   {

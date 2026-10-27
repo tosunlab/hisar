@@ -144,6 +144,9 @@ private fun BiometricPasswordAlert(onTurnOn: (String) -> Unit, onDismiss: () -> 
 fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
     val isMacApprovalAllowed by model.isMacApprovalAllowed.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
+    var isSaving by remember { mutableStateOf(false) }
+    val operationError by model.settings.macApprovalErrorMessage.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { model.settings.macApprovalErrorMessage.value = null }
     SettingsScreen("Mac approvals", onBack) {
         FormSection(
             footer = {
@@ -155,10 +158,22 @@ fun MacApprovalsScreen(model: AppModel, onBack: () -> Unit) {
             ToggleRow(
                 "Approve requests from my Mac",
                 isOn = isMacApprovalAllowed,
-                onChange = { scope.launch { model.settings.setMacApprovalAllowed(it) } },
+                onChange = {
+                    scope.launch {
+                        isSaving = true
+                        try {
+                            model.settings.setMacApprovalAllowed(it)
+                        } finally {
+                            isSaving = false
+                        }
+                    }
+                },
                 testTag = "mac-approval-toggle",
                 icon = Icons.Outlined.LaptopMac,
+                enabled = !isSaving,
+                subtitle = if (isSaving) "Saving…" else null,
             )
+            operationError?.let { ErrorBanner(it) }
         }
     }
 }

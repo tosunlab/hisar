@@ -11,6 +11,8 @@ import com.tryhisar.hisar.app.CredentialExchangeReceiver
 import com.tryhisar.hisar.app.CredentialExchangeResult
 import com.tryhisar.hisar.model.BackendEvent
 import com.tryhisar.hisar.model.FakeBackend
+import com.tryhisar.hisar.model.Organization
+import com.tryhisar.hisar.model.VaultSummary
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -51,7 +53,7 @@ class CredentialImportUITests : HisarUITestCase() {
         saveScreenshot("credential-import-preview")
 
         tap("credential-import-vault-family")
-        waitFor(hasText("Import into Family"))
+        waitFor(hasText("Import into Shared vaults › Family"))
         assertFalse("Family has no GitHub", exists(hasTestTag("credential-import-duplicates")))
         tap("credential-import-vault-personal")
         waitFor(hasText("Import into Personal"))
@@ -115,5 +117,29 @@ class CredentialImportUITests : HisarUITestCase() {
         waitFor("credential-import-start")
         assertEquals(listOf("GitHub", "Docker", "Slack", "Figma"), backend.allPendingImportTitle)
         saveScreenshot("credential-import-after-unlock")
+    }
+
+    @Test
+    fun testImportPickerShowsOrganizationAndStableIdentity() {
+        backend.allOrganization = mutableListOf(Organization("acme", "Acme"), Organization("beta", "Beta"))
+        backend.allVault += listOf(
+            VaultSummary("production-a", "Production", "organization", "editor", organizationID = "acme"),
+            VaultSummary("production-b", "Production", "organization", "editor", organizationID = "beta"),
+            VaultSummary("missing", "Production", "organization", "editor", organizationID = "unknown-organization"),
+            VaultSummary("12345678-a", "Duplicate", "organization", "editor", organizationID = "acme"),
+            VaultSummary("12345678-b", "Duplicate", "organization", "editor", organizationID = "acme"),
+        )
+        startImport({ CredentialExchangeResult.Received(exportedTitles.encodeToByteArray()) }) {
+            waitFor("credential-import-start")
+            for ((id, label) in listOf(
+                "production-a" to "Acme › Production", "production-b" to "Beta › Production",
+                "missing" to "unknown-organization › Production",
+                "12345678-a" to "Acme › Duplicate (12345678-a)", "12345678-b" to "Acme › Duplicate (12345678-b)",
+            )) {
+                tap("credential-import-vault-$id")
+                waitFor(hasText("Import into $label"))
+                assertTrue(exists(hasTestTag("credential-import-access")))
+            }
+        }
     }
 }

@@ -1,10 +1,12 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { disableBiometricUnlock, enableBiometricUnlock, saveEmergencyKit, setAutoLock, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 import { isMacPlatform, touchIDConsent } from "../util";
 import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
 import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
+
+const props = withDefaults(defineProps<{ active?: boolean }>(), { active: true });
 
 const allAutoLockOption = [
   { seconds: 30, label: "30 seconds" },
@@ -20,6 +22,23 @@ const isSavingEmergencyKit = ref(false);
 const emergencyKitPassword = ref("");
 const isChangingMasterPassword = ref(false);
 const isReplacingSecretKey = ref(false);
+
+function cancelEnableTouchID(): void {
+  touchIDPassword.value = "";
+  isEnablingTouchID.value = false;
+}
+
+function cancelSaveEmergencyKit(): void {
+  emergencyKitPassword.value = "";
+  isSavingEmergencyKit.value = false;
+}
+
+watch(() => props.active && isRowVisible("touch-id"), (visible) => {
+  if (!visible) cancelEnableTouchID();
+});
+watch(() => props.active && isRowVisible("emergency-kit"), (visible) => {
+  if (!visible) cancelSaveEmergencyKit();
+});
 
 async function submitEnableTouchID(): Promise<void> {
   if (await enableBiometricUnlock(touchIDPassword.value)) {
@@ -85,7 +104,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             autofocus
             required
           />
-          <button type="button" class="ghost" @click="isEnablingTouchID = false">Cancel</button>
+          <button type="button" class="ghost" @click="cancelEnableTouchID">Cancel</button>
           <button class="primary" type="submit" :disabled="store.isBusy">Turn on</button>
         </form>
         <div v-show="isRowVisible('auto-lock')" class="setting">
@@ -154,7 +173,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             autofocus
             required
           />
-          <button type="button" class="ghost" @click="isSavingEmergencyKit = false">Cancel</button>
+          <button type="button" class="ghost" @click="cancelSaveEmergencyKit">Cancel</button>
           <button class="primary" type="submit" :disabled="store.isBusy">Save Emergency Kit…</button>
         </form>
       </div>

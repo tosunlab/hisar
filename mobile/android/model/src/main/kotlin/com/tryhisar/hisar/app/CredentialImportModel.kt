@@ -3,6 +3,8 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.ImportPreview
 import com.tryhisar.hisar.model.ImportProgress
+import com.tryhisar.hisar.model.ImportVaultGroup
+import com.tryhisar.hisar.model.OrganizationLogic
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.VaultSummary
@@ -83,6 +85,8 @@ class CredentialImportModel(private val context: ModelContext) {
     val message = MutableStateFlow<String?>(null)
 
     val isShown: Boolean get() = sheet.value != null
+    var sourceFileName: String? = null
+        private set
     val preview: ImportPreview? get() = (sheet.value as? CredentialImportSheet.Previewing)?.preview
     val progress: ImportProgress? get() = (sheet.value as? CredentialImportSheet.Importing)?.progress
 
@@ -91,6 +95,11 @@ class CredentialImportModel(private val context: ModelContext) {
 
     /** The vaults an import can go to: the personal vault and those the user may edit. */
     val allVault: List<VaultSummary> get() = context.unlockedData.value.allVault.filter(::isWritableVault)
+    val allDestinationGroup: List<ImportVaultGroup>
+        get() = OrganizationLogic.importVaultGroups(allVault, context.unlockedData.value.allOrganization)
+
+    fun destinationLabel(vaultID: String, fallback: String = vaultID): String =
+        allDestinationGroup.asSequence().flatMap { it.allChoice.asSequence() }.firstOrNull { it.id == vaultID }?.label ?: fallback
 
     init {
         context.addStatusListener(::handleStatus)
@@ -104,6 +113,7 @@ class CredentialImportModel(private val context: ModelContext) {
             return
         }
         if (!status.isUnlocked || isShown || mutableIsImporting.value || stoppedReport.value?.isSettling == true) return
+        sourceFileName = null
         context.errorMessage.value = null
         val current = session
         mutableSheet.value = CredentialImportSheet.Receiving
@@ -123,6 +133,7 @@ class CredentialImportModel(private val context: ModelContext) {
             return
         }
         context.errorMessage.value = null
+        sourceFileName = fileName
         val current = session
         mutableSheet.value = CredentialImportSheet.Receiving
         context.scope.launch { prepareHisarExport(current, fileName, content) }
@@ -360,6 +371,7 @@ class CredentialImportModel(private val context: ModelContext) {
         mutableStoppedReport.value = null
         // A previewed, running, or waiting (encrypted, not yet opened) import is dropped in the backend too.
         if (preview != null || progress != null || sheet.value is CredentialImportSheet.EnteringPassphrase || sheet.value is CredentialImportSheet.Stopped) cancelBackendImport()
+        sourceFileName = null
         mutableSheet.value = null
     }
 

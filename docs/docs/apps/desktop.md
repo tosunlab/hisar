@@ -158,6 +158,8 @@ Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret 
 - On the lock screen, **Sign out of this device** focuses **Cancel** in its confirmation. **Escape** cancels and returns focus to the sign-out link.
 - The master password field stays focused while Touch ID waits, so typing can start without a click. Submitting the password cancels the pending Touch ID check.
 
+Canceling Save Emergency Kit or Turn on Touch ID clears the entered master password. Leaving Security or hiding the form with Settings search also closes the form and clears its value.
+
 ## Secure notes
 
 Design: [Design](../design.md) §4.5 (categories).

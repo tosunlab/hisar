@@ -66,6 +66,8 @@ open class FakeBackend : VaultBackend {
     @get:JvmName("themeValue") @set:JvmName("themeValue")
     var theme = VaultTheme.standard
     var isThemeSaveFailing = false
+    var revokeDeviceErrorMessage: String? = null
+    var macApprovalErrorMessage: String? = null
     val allCopiedReference = mutableListOf<String>()
     var allPendingRemovedVault: List<RemovedVaultNotice> = emptyList()
     val allDeletionRequest = mutableListOf<VaultDeletionRequest>()
@@ -829,6 +831,7 @@ open class FakeBackend : VaultBackend {
     override fun revokeDevice(deviceID: String) {
         record("revokeDevice")
         requireUnlocked()
+        revokeDeviceErrorMessage?.let { throw BackendError(it) }
         val device = allDevice.firstOrNull { it.id == deviceID } ?: throw BackendError("this device is already signed out")
         if (device.isCurrent) throw BackendError("sign out this device instead")
         allDevice.removeAll { it.id == deviceID }
@@ -1200,6 +1203,7 @@ open class FakeBackend : VaultBackend {
 
     override fun setMacApprovalAllowed(isAllowed: Boolean) {
         record("setMacApprovalAllowed")
+        macApprovalErrorMessage?.let { throw BackendError(it) }
         isMacApprovalAllowedValue = isAllowed
     }
 

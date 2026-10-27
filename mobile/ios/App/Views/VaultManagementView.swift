@@ -291,6 +291,11 @@ struct ExportDataForm: View {
                     if let warning = result.warning, !warning.isEmpty {
                         Text(warning).foregroundStyle(.themeWarning).accessibilityIdentifier("export-provenance")
                     }
+                    if URL(fileURLWithPath: result.path).pathExtension == "json" {
+                        Label(ExportLogic.plainWarning, systemImage: "exclamationmark.triangle")
+                            .accessibilityIdentifier("export-plain-warning")
+                        Text("Delete saved or received Plain JSON files when you are finished.")
+                    }
                     ShareLink(item: URL(fileURLWithPath: result.path), preview: SharePreview(URL(fileURLWithPath: result.path).lastPathComponent, image: Image(systemName: "doc"))) {
                         Label("Save or share export", systemImage: "square.and.arrow.up")
                     }
@@ -298,7 +303,8 @@ struct ExportDataForm: View {
                 } header: {
                     Text("Export ready")
                 } footer: {
-                    Text("\(result.vaultCount == 1 ? "1 vault" : "\(result.vaultCount) vaults"), \(AppModel.describeItemCount(result.itemCount)). The file is removed from this iPhone when you close this screen.")
+                    Text("\(result.vaultCount == 1 ? "1 vault" : "\(result.vaultCount) vaults"), \(AppModel.describeItemCount(result.itemCount)).")
+                    Text("Hisar deletes its temporary copy when you close this screen. Copies you save or share are not deleted.")
                 }
             } else {
                 Section {

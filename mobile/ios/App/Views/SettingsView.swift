@@ -657,22 +657,34 @@ struct ColorSwatch: View {
 
 struct MacApprovalsView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var isSaving = false
 
     var body: some View {
         List {
             Section {
                 Toggle(isOn: Binding(get: { model.isMacApprovalAllowed }, set: { isAllowed in
-                    Task { await model.setMacApprovalAllowed(isAllowed) }
+                    Task {
+                        isSaving = true
+                        await model.setMacApprovalAllowed(isAllowed)
+                        isSaving = false
+                    }
                 })) {
                     Label("Approve requests from my Mac", systemImage: "laptopcomputer.and.iphone")
                 }
                 .accessibilityIdentifier("mac-approval-toggle")
+                .disabled(isSaving)
+                if isSaving { ProgressView("Saving…") }
+                if let message = model.macApprovalErrorMessage {
+                    ErrorBanner(message: message)
+                        .accessibilityIdentifier("mac-approval-error")
+                }
             } footer: {
                 Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
             }
         }
         .applyThemedListStyle()
         .navigationTitle("Mac approvals")
+        .onAppear { model.macApprovalErrorMessage = nil }
     }
 }
 

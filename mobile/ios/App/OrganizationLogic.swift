@@ -8,6 +8,17 @@ struct OrganizationVaultGroup: Identifiable, Equatable {
     var waitingMessage: String
 }
 
+struct ImportVaultChoice: Identifiable, Equatable {
+    var id: String
+    var label: String
+}
+
+struct ImportVaultGroup: Identifiable, Equatable {
+    var id: String
+    var name: String
+    var allChoice: [ImportVaultChoice]
+}
+
 /// Where a new vault goes: a shared vault, or an organization vault for one of the user's teams.
 struct VaultLocation: Identifiable, Hashable {
     static let sharedVault = VaultLocation(organizationID: "", organizationName: "", teamID: "", teamName: "")
@@ -97,6 +108,44 @@ enum OrganizationLogic {
             )
         }
         return (allOtherVault, allGroup.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending })
+    }
+
+    static func importVaultGroups(_ allVault: [VaultSummary], allOrganization: [OrganizationSummary]) -> [ImportVaultGroup] {
+        let grouped = groupVaults(allVault, allOrganization: allOrganization, allWaiting: [])
+        let personal = grouped.allOtherVault.filter { $0.type == "personal" }
+        let shared = grouped.allOtherVault.filter { !$0.isOrganization && $0.type != "personal" }
+        let missing = Dictionary(grouping: grouped.allOtherVault.filter(\.isOrganization), by: \.organizationID)
+        var groups = [
+            OrganizationVaultGroup(id: "_personal", name: "Personal", allVault: personal, waitingMessage: ""),
+            OrganizationVaultGroup(id: "_shared", name: "Shared vaults", allVault: shared, waitingMessage: ""),
+        ].filter { !$0.allVault.isEmpty }
+        let known = grouped.allGroup.map {
+            OrganizationVaultGroup(id: $0.id, name: $0.name.isEmpty ? $0.id : $0.name, allVault: $0.allVault, waitingMessage: "")
+        }
+        groups += (known + missing.map {
+            OrganizationVaultGroup(id: $0.key, name: $0.key, allVault: $0.value, waitingMessage: "")
+        }).sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        let sameName = Dictionary(grouping: groups, by: { $0.name.lowercased() })
+        return groups.map { group in
+            let peers = sameName[group.name.lowercased()] ?? []
+            let name = peers.count > 1 ? "\(group.name) (\(shortImportID(group.id, among: peers.map(\.id))))" : group.name
+            let sameVaultName = Dictionary(grouping: group.allVault, by: { $0.name.lowercased() })
+            let choices = group.allVault.map { vault in
+                let peers = sameVaultName[vault.name.lowercased()] ?? []
+                let vaultName = peers.count > 1 ? "\(vault.name) (\(shortImportID(vault.id, among: peers.map(\.id))))" : vault.name
+                let label = group.id == "_personal" && name == vaultName ? name : "\(name) › \(vaultName)"
+                return ImportVaultChoice(id: vault.id, label: label)
+            }
+            return ImportVaultGroup(id: group.id, name: name, allChoice: choices)
+        }
+    }
+
+    private static func shortImportID(_ id: String, among allID: [String]) -> String {
+        var length = min(8, id.count)
+        while length < id.count && allID.contains(where: { $0 != id && $0.prefix(length) == id.prefix(length) }) {
+            length += 1
+        }
+        return String(id.prefix(length))
     }
 
     static func describeWaiting(count: Int, organizationName: String) -> String {

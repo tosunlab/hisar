@@ -18,6 +18,8 @@ import { describeAgentSession, formatCount, formatExpiresIn, formatTimeAgo } fro
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import CodingAgentConnections from "./CodingAgentConnections.vue";
 
+const emit = defineEmits<{ reviewApprovals: [destination: "agent-sessions" | "agent-grants"] }>();
+
 const isRowVisible = useSettingsRowVisibility();
 
 const allVaultGroup = computed(() => {
@@ -137,7 +139,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
 <template>
   <section v-show="isRowVisible('coding-agents')" class="settings-block" data-testid="coding-agents-section">
     <p class="section-label">Coding agents</p>
-    <CodingAgentConnections />
+    <CodingAgentConnections @review-approvals="emit('reviewApprovals', $event)" />
     <div class="settings-group">
       <div class="setting">
         <div class="setting-text">
@@ -220,7 +222,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
     <p v-if="store.agentErrors.signIn" class="error settings-note" role="alert" data-testid="agent-sign-in-error">{{ store.agentErrors.signIn }}</p>
   </section>
 
-  <section v-show="isRowVisible('agent-grants')" class="settings-block" data-testid="agent-grants-section">
+  <section id="agent-grants" tabindex="-1" aria-label="Allowed without asking" v-show="isRowVisible('agent-grants')" class="settings-block" data-testid="agent-grants-section">
     <p class="section-label">Allowed without asking</p>
     <div class="settings-group">
       <div v-for="(grant, index) in store.allAgentGrant" :key="grant.id" class="setting" data-testid="agent-grant">
@@ -241,7 +243,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
     <p v-if="store.agentErrors.grants" class="error settings-note" role="alert" data-testid="agent-grants-error">{{ store.agentErrors.grants }}</p>
   </section>
 
-  <section v-show="isRowVisible('agent-sessions')" class="settings-block" data-testid="agent-sessions-section">
+  <section id="agent-sessions" tabindex="-1" aria-label="Running agents" v-show="isRowVisible('agent-sessions')" class="settings-block" data-testid="agent-sessions-section">
     <p class="section-label">Running agents</p>
     <div class="settings-group">
       <div v-for="session in store.allAgentSession" :key="`${session.pid}-${session.startTime}`" class="setting" data-testid="agent-session">

@@ -123,6 +123,38 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertFalse(isThisPhoneSignedOut, "this iPhone signs out from Settings instead")
     }
 
+    func testFailedDeviceSignOutStaysVisibleAndCanBeRetried() async {
+        let device = Device(id: "mac", name: "MacBook", platform: "darwin/desktop")
+        backend.allDevice = [device]
+        let model = await createUnlockedModel()
+        backend.revokeDeviceErrorMessage = "Could not reach the Hisar server."
+        let failed = await model.revokeDevice(device)
+        XCTAssertFalse(failed)
+        XCTAssertEqual(model.deviceOperationErrorMessage, "Could not reach the Hisar server.")
+        XCTAssertEqual(backend.allDevice.map(\.id), ["mac"])
+        XCTAssertNil(model.noticeMessage)
+        backend.revokeDeviceErrorMessage = nil
+        let retried = await model.revokeDevice(device)
+        XCTAssertTrue(retried)
+        XCTAssertNil(model.deviceOperationErrorMessage)
+        XCTAssertEqual(model.noticeMessage, "MacBook is signed out.")
+    }
+
+    func testFailedMacApprovalChangeKeepsTheActualStateAndCanBeRetried() async {
+        let model = await createUnlockedModel()
+        let previous = model.isMacApprovalAllowed
+        backend.macApprovalErrorMessage = "Could not save Mac approvals."
+        let failed = await model.setMacApprovalAllowed(!previous)
+        XCTAssertFalse(failed)
+        XCTAssertEqual(model.isMacApprovalAllowed, previous)
+        XCTAssertEqual(model.macApprovalErrorMessage, "Could not save Mac approvals.")
+        backend.macApprovalErrorMessage = nil
+        let retried = await model.setMacApprovalAllowed(!previous)
+        XCTAssertTrue(retried)
+        XCTAssertNil(model.macApprovalErrorMessage)
+        XCTAssertEqual(model.isMacApprovalAllowed, !previous)
+    }
+
     func testDeviceDescribesItsPlatform() throws {
         let device = try JSONDecoder().decode(Device.self, from: Data(#"{"id":"1","name":"build","platform":"linux/cli","lastSeenAt":"2027-01-15T08:00:00Z","isCurrent":false}"#.utf8))
         XCTAssertEqual(device.platformDescription, "Command line on Linux")

@@ -6,6 +6,9 @@ data class OrganizationVaultGroup(val id: String, val name: String, val allVault
 /** The Vaults screen's vaults: those listed under Vaults, and one group per organization. */
 data class VaultGrouping(val allOtherVault: List<VaultSummary>, val allGroup: List<OrganizationVaultGroup>)
 
+data class ImportVaultChoice(val id: String, val label: String)
+data class ImportVaultGroup(val id: String, val name: String, val allChoice: List<ImportVaultChoice>)
+
 /** Where a new vault goes: a shared vault, or an organization vault for one of the user's teams. */
 data class VaultLocation(val organizationID: String, val organizationName: String, val teamID: String, val teamName: String) {
     val id: String get() = if (teamID.isEmpty()) "shared" else "$organizationID/$teamID"
@@ -78,6 +81,37 @@ object OrganizationLogic {
             )
         }
         return VaultGrouping(allOtherVault, allGroup.sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name }))
+    }
+
+    fun importVaultGroups(allVault: List<VaultSummary>, allOrganization: List<OrganizationSummary>): List<ImportVaultGroup> {
+        val grouped = groupVaults(allVault, allOrganization, emptyList())
+        val personal = grouped.allOtherVault.filter { it.type == VaultSummary.TYPE_PERSONAL }
+        val shared = grouped.allOtherVault.filter { !it.isOrganization && it.type != VaultSummary.TYPE_PERSONAL }
+        val missing = grouped.allOtherVault.filter { it.isOrganization }.groupBy { it.organizationID }.map { (id, vaults) ->
+            OrganizationVaultGroup(id, id, vaults, "")
+        }
+        val groups = listOf(
+            OrganizationVaultGroup("_personal", "Personal", personal, ""),
+            OrganizationVaultGroup("_shared", "Shared vaults", shared, ""),
+        ).filter { it.allVault.isNotEmpty() } + (grouped.allGroup.map { it.copy(name = it.name.ifEmpty { it.id }) } + missing).sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
+        val sameName = groups.groupBy { it.name.lowercase() }
+        return groups.map { group ->
+            val peers = sameName[group.name.lowercase()].orEmpty()
+            val name = if (peers.size > 1) "${group.name} (${shortImportID(group.id, peers.map { it.id })})" else group.name
+            val sameVaultName = group.allVault.groupBy { it.name.lowercase() }
+            val choices = group.allVault.map { vault ->
+                val siblings = sameVaultName[vault.name.lowercase()].orEmpty()
+                val vaultName = if (siblings.size > 1) "${vault.name} (${shortImportID(vault.id, siblings.map { it.id })})" else vault.name
+                ImportVaultChoice(vault.id, if (group.id == "_personal" && name == vaultName) name else "$name › $vaultName")
+            }
+            ImportVaultGroup(group.id, name, choices)
+        }
+    }
+
+    private fun shortImportID(id: String, allID: List<String>): String {
+        var length = minOf(8, id.length)
+        while (length < id.length && allID.any { it != id && it.take(length) == id.take(length) }) length++
+        return id.take(length)
     }
 
     fun describeWaiting(count: Int, organizationName: String): String = when (count) {

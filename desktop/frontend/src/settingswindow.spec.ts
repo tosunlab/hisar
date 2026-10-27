@@ -109,6 +109,14 @@ describe("Settings window", () => {
     expect(store.isImportOpen).toBe(false);
   });
 
+  it("hands commit signing setup to the main window", async () => {
+    const settings = await openSettingsWindow("ssh");
+    await settings.get('[data-testid="open-commit-signing"]').trigger("click");
+    await flushPromises();
+    expect(api.openInMainWindow).toHaveBeenCalledWith("commit-signing");
+    expect(store.isCommitSigningSetupOpen).toBe(false);
+  });
+
   it("hands People's Share vault to the main window, which knows the selected vault", async () => {
     const settings = await openSettingsWindow("people");
     await settings.find('[data-testid="people-share-vault"]').trigger("click");

@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.AlertDialog
@@ -80,7 +82,7 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
     // The tabs stay composed under the screen, so it comes back to them as they were; taps must not reach them.
     Box(Modifier.fillMaxSize().pointerInput(Unit) { detectTapGestures() }) {
         SettingsScreen(
-            if (sourceName.isEmpty()) "Import" else "Import from $sourceName",
+            if (credentialImport.sourceFileName != null) "Import Hisar export" else if (sourceName.isEmpty()) "Import" else "Import from $sourceName",
             onBack = null,
             isTitleInline = true,
             bottomInset = 0.dp,
@@ -96,6 +98,9 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
             },
         ) {
             Column(Modifier.testTag("credential-import")) {
+                credentialImport.sourceFileName?.let { fileName ->
+                    FormSection { ImportFileNameRow(fileName) }
+                }
                 when (sheet) {
                     CredentialImportSheet.Receiving -> FormSection {
                         FormRow(Modifier.testTag("credential-import-receiving")) {
@@ -121,6 +126,18 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
 }
 
 @Composable
+internal fun ImportFileNameRow(fileName: String) {
+    FormRow(Modifier.testTag("credential-import-filename")) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("File name", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+            SelectionContainer {
+                Text(fileName, style = HisarType.body, color = HisarTheme.colors.label)
+            }
+        }
+    }
+}
+
+@Composable
 private fun PreviewSections(
     model: AppModel,
     preview: ImportPreview,
@@ -131,13 +148,9 @@ private fun PreviewSections(
     start: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val allVault = model.credentialImport.allVault
+    val allDestinationGroup = model.credentialImport.allDestinationGroup
     val isGrouped = preview.groups.size > 1
     var groupToMap by remember { mutableStateOf<ImportSourceGroup?>(null) }
-    fun destinationName(vaultID: String, fallback: String): String {
-        val vault = allVault.firstOrNull { it.id == vaultID } ?: return fallback
-        return if (allVault.count { it.name == vault.name } > 1) "${vault.name} · ${vault.id}" else vault.name
-    }
     val exportOrigin = describeExportOrigin(preview.exportedFrom, preview.exportedAt)
     if (exportOrigin != null || preview.notice.isNotEmpty()) {
         FormSection(modifier = Modifier.testTag("hisar-import-origin")) {
@@ -159,23 +172,25 @@ private fun PreviewSections(
         if (isGrouped) {
             FormRow { Text(preview.groupDestinationExplanation) }
         } else {
-            allVault.forEachIndexed { index, vault ->
-                if (index > 0) RowDivider()
-                CheckRow(vault.name, vault.id == preview.vaultID, {
-                    if (!isWorking && vault.id != preview.vaultID) scope.launch { model.credentialImport.previewCredentialImport(vault.id) }
-                }, testTag = "credential-import-vault-${vault.id}")
+            allDestinationGroup.forEach { destination ->
+                Text(destination.name, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                destination.allChoice.forEach { choice ->
+                    CheckRow(choice.label, choice.id == preview.vaultID, {
+                        if (!isWorking && choice.id != preview.vaultID) scope.launch { model.credentialImport.previewCredentialImport(choice.id) }
+                    }, testTag = "credential-import-vault-${choice.id}")
+                }
             }
         }
     }
     preview.groups.forEachIndexed { groupIndex, group ->
         FormSection(header = "Source and destination access", modifier = Modifier.testTag("credential-import-access")) {
-            FormRow { Text("${group.name} to ${group.vaultName}") }
+            FormRow { Text("${group.name} to ${model.credentialImport.destinationLabel(group.vaultID, group.vaultName)}") }
             if (isGrouped) {
                 NavigationRow(
                     "Vault for ${VaultLogic.describeItemCount(group.itemCount)}",
                     "credential-import-group-$groupIndex-destination",
                     { groupToMap = group },
-                    value = destinationName(group.vaultID, group.vaultName),
+                    value = model.credentialImport.destinationLabel(group.vaultID, group.vaultName),
                     enabled = !isWorking,
                 )
             }
@@ -196,11 +211,14 @@ private fun PreviewSections(
             title = { Text("Vault for ${VaultLogic.describeItemCount(group.itemCount)}") },
             text = {
                 Column(Modifier.verticalScroll(rememberScrollState())) {
-                    allVault.forEach { vault ->
-                        CheckRow(destinationName(vault.id, vault.name), vault.id == group.vaultID, {
-                            groupToMap = null
-                            if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
-                        }, testTag = "credential-import-group-vault-${vault.id}")
+                    allDestinationGroup.forEach { destination ->
+                        Text(destination.name, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                        destination.allChoice.forEach { choice ->
+                            CheckRow(choice.label, choice.id == group.vaultID, {
+                                groupToMap = null
+                                if (!isWorking && choice.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, choice.id) }
+                            }, testTag = "credential-import-group-vault-${choice.id}")
+                        }
                     }
                 }
             },
@@ -236,7 +254,7 @@ private fun PreviewSections(
             },
             modifier = Modifier.testTag("credential-import-duplicates"),
         ) {
-            ToggleRow("Skip items already in ${preview.vaultName}", isSkippingDuplicate, setSkippingDuplicate, testTag = "credential-import-skip-duplicates")
+            ToggleRow("Skip items already in ${model.credentialImport.destinationLabel(preview.vaultID, preview.vaultName)}", isSkippingDuplicate, setSkippingDuplicate, testTag = "credential-import-skip-duplicates")
             preview.allDuplicate.forEach { duplicate ->
                 RowDivider()
                 EntryRow(duplicate.title, duplicate.detail.ifEmpty { duplicate.username })
@@ -249,7 +267,7 @@ private fun PreviewSections(
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
-        ProminentButton("Import into ${preview.vaultName}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking)
+        ProminentButton("Import into ${model.credentialImport.destinationLabel(preview.vaultID, preview.vaultName)}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking)
     }
 }
 
