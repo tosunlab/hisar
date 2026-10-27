@@ -83,6 +83,8 @@ object ExportLogic {
     const val PLAIN_WARNING =
         "Plain JSON is not encrypted. Anyone who gets the file can read every password, one-time code secret and SSH private key in it. Delete it when you are done."
 
+    fun isPasswordRequested(error: String?): Boolean = error?.contains("master password", ignoreCase = true) == true
+
     /** What is missing before an export can start, or null. */
     fun checkInput(format: ExportFormat, passphrase: String, repeatedPassphrase: String, minPassphraseLength: Int): String? = when {
         format != ExportFormat.ENCRYPTED -> null

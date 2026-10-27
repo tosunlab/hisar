@@ -43,6 +43,8 @@ import com.tryhisar.hisar.ui.theme.HisarType
 import java.io.File
 import kotlinx.coroutines.launch
 
+private enum class ExportAuthentication { BIOMETRIC, PASSWORD }
+
 /**
  * Settings → Account → Export data, the iPhone's sheet: an encrypted or plain export of every vault, which the user then
  * saves through the system's file creator or sends to another app. Closing the screen deletes the file from this device.
@@ -58,14 +60,18 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
     var passphrase by remember { mutableStateOf("") }
     var repeatedPassphrase by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var authentication by remember { mutableStateOf(ExportAuthentication.BIOMETRIC) }
     val latestResult by rememberUpdatedState(result)
     val inputProblem = ExportLogic.checkInput(format, passphrase, repeatedPassphrase, options.minPassphraseLength)
-    val isPasswordNeeded = !options.isBiometricAvailable
+    val isPasswordNeeded = authentication == ExportAuthentication.PASSWORD || !options.isBiometricAvailable
     val canExport = inputProblem == null && !isBusy && (!isPasswordNeeded || password.isNotEmpty())
 
     LaunchedEffect(Unit) {
         model.errorMessage.value = null
         model.settings.loadExportOptions()?.let { options = it }
+    }
+    LaunchedEffect(errorMessage) {
+        if (ExportLogic.isPasswordRequested(errorMessage)) authentication = ExportAuthentication.PASSWORD
     }
     DisposableEffect(Unit) {
         onDispose { latestResult?.let(model.settings::removeExport) }
@@ -144,13 +150,28 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                     if (isPasswordNeeded) "Export" else "Export with biometrics",
                     {
                         val chosenFormat = format
-                        scope.launch { result = model.settings.exportAllData(chosenFormat, passphrase, password) }
+                        val entered = if (isPasswordNeeded) password else ""
+                        password = ""
+                        scope.launch {
+                            result = model.settings.exportAllData(chosenFormat, passphrase, entered)
+                            if (result == null) {
+                                val error = model.errorMessage.value
+                                if (ExportLogic.isPasswordRequested(error)) authentication = ExportAuthentication.PASSWORD
+                                model.settings.loadExportOptions()?.let { options = it }
+                                model.errorMessage.value = error
+                            }
+                        }
                     },
                     testTag = "export-start",
                     enabled = canExport,
                     isBusy = isBusy,
                     icon = if (isPasswordNeeded) null else Icons.Filled.Fingerprint,
                 )
+                if (options.isBiometricAvailable) {
+                    PlainButton(if (isPasswordNeeded) "Use biometrics instead" else "Use master password instead", {
+                        authentication = if (isPasswordNeeded) ExportAuthentication.BIOMETRIC else ExportAuthentication.PASSWORD
+                    }, testTag = "export-switch-authentication", enabled = !isBusy)
+                }
             }
         }
     }

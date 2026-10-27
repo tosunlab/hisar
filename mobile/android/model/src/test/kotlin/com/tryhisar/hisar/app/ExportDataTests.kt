@@ -15,6 +15,14 @@ import kotlinx.coroutines.test.runTest
 /** Settings → Account → Export data. The iPhone keeps these two in VaultManagementTests. */
 class ExportDataTests {
     @Test
+    fun testExportNativeFallbackRequestsTheMasterPassword() {
+        assertTrue(ExportLogic.isPasswordRequested("Enter your master password."))
+        assertTrue(ExportLogic.isPasswordRequested("Biometrics are locked. Unlock with your master password."))
+        assertFalse(ExportLogic.isPasswordRequested("The biometric check was cancelled."))
+        assertFalse(ExportLogic.isPasswordRequested(null))
+    }
+
+    @Test
     fun testExportInputChecks() {
         assertNull(ExportLogic.checkInput(ExportFormat.PLAIN, "", "", minPassphraseLength = 10))
         assertEquals(

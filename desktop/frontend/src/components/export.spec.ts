@@ -34,6 +34,36 @@ beforeEach(() => {
 });
 
 describe("Export section", () => {
+  it("switches between Touch ID and a master password without dropping export input", async () => {
+    api.exportAllData.mockResolvedValue({ path: "/tmp/export.hisar", vaultCount: 1, itemCount: 1 });
+    const wrapper = await mountExport();
+    await wrapper.get('[data-testid="export-passphrase"]').setValue("orange cactus harbor");
+    await wrapper.get('[data-testid="export-passphrase-repeat"]').setValue("orange cactus harbor");
+    await wrapper.get('[data-testid="export-switch-authentication"]').trigger("click");
+    expect(findSubmit(wrapper).text()).toBe("Export…");
+    expect(findSubmit(wrapper).attributes("disabled")).toBeDefined();
+    await wrapper.get('[data-testid="export-master-password"]').setValue("master password");
+    await wrapper.get('[data-testid="export-switch-authentication"]').trigger("click");
+    expect(findSubmit(wrapper).text()).toBe("Export with Touch ID…");
+    await wrapper.get('[data-testid="export-switch-authentication"]').trigger("click");
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(api.exportAllData).toHaveBeenCalledWith({ format: "encrypted", passphrase: "orange cactus harbor", password: "master password" });
+  });
+
+  it("refreshes biometric availability after failure so lockout exposes the password field", async () => {
+    const wrapper = await mountExport();
+    api.getExportOptions.mockResolvedValue({ isBiometricAvailable: false, minPassphraseLength: 10 });
+    api.exportAllData.mockRejectedValue(new Error("Touch ID is locked"));
+    await wrapper.get('[data-testid="export-format-plain"]').setValue(true);
+    await wrapper.get("form").trigger("submit");
+    await flushPromises();
+    expect(api.getExportOptions).toHaveBeenCalledTimes(2);
+    expect(wrapper.get('[data-testid="export-master-password"]').exists()).toBe(true);
+    expect(findSubmit(wrapper).text()).toBe("Export…");
+    expect(store.errorMessage).toBe("Touch ID is locked");
+  });
+
   it("needs a long enough passphrase, entered twice the same way", async () => {
     const wrapper = await mountExport();
     expect(findSubmit(wrapper).text()).toBe("Export with Touch ID…");
