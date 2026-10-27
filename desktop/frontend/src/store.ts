@@ -1091,10 +1091,12 @@ export function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
   });
 }
 
-export function filterAllFavorite(allFavorite: FavoriteItem[], query: string): FavoriteItem[] {
+export function filterAllFavorite(allFavorite: FavoriteItem[], query: string, tag = "", category = ""): FavoriteItem[] {
   const allVisibleItem = filterAllItem(
     allFavorite.map((favorite) => favorite.item),
     query,
+    tag,
+    category,
   );
   return allFavorite.filter((favorite) => allVisibleItem.includes(favorite.item));
 }
@@ -1163,7 +1165,7 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
 
 // filterAllItem keeps the items matching the search in their title, username, websites, tags, identity, API credential,
 // address, software license, server or database summary, and carrying tag when one is selected.
-export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
+export function filterAllItem(allItem: ItemDetail[], query: string, tag = "", category = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
     const allTag = vaultItem.tags ?? [];
@@ -1186,6 +1188,7 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
     const database = vaultItem.database;
     const databaseText = database ? [database.engineName, formatDatabaseLocation(database), database.host, database.port, database.name] : [];
     return (
+      (category === "" || (vaultItem.category || "login") === category) &&
       (tag === "" || allTag.includes(tag)) &&
       (normalizedQuery === "" ||
         [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText, ...licenseText, ...serverText, ...databaseText].some((text) =>

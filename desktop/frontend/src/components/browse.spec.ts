@@ -59,3 +59,31 @@ describe("Browse menu keyboard navigation", () => {
     expect(document.activeElement).toBe(wrapper.get('[data-testid="context-menu-three"]').element);
   });
 });
+
+describe("Type filtering", () => {
+  it("counts non-empty types, combines search and tags, clears and resets on scope changes", async () => {
+    store.allItem = [
+      createItem({ id: "login", title: "Work login", tags: ["work"] }),
+      createItem({ id: "card", title: "Work card", category: "credit-card", tags: ["work"] }),
+      createItem({ id: "other-card", title: "Personal card", category: "credit-card", tags: ["personal"] }),
+    ];
+    const wrapper = mount(MainView);
+    const filter = wrapper.get('select[aria-label="Type"]');
+    expect(filter.findAll("option").map((option) => option.text())).toEqual(["All types (3)", "Logins (1)", "Credit cards (2)"]);
+    await filter.setValue("credit-card");
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(2);
+    store.searchQuery = "Work";
+    store.selectedTag = "work";
+    await flushPromises();
+    expect(wrapper.findAll('[role="option"]').map((row) => row.find(".item-title").text())).toEqual(["Work card"]);
+    await wrapper.get('[aria-label="Clear type filter"]').trigger("click");
+    expect(wrapper.find('[data-testid="type-filter"]').exists()).toBe(false);
+    expect(wrapper.findAll('[role="option"]')).toHaveLength(2);
+    await filter.setValue("credit-card");
+    store.selectedVaultID = "another";
+    store.allItem = [];
+    await flushPromises();
+    expect((filter.element as HTMLSelectElement).value).toBe("");
+    expect(filter.findAll("option").map((option) => option.text())).toEqual(["All types (0)"]);
+  });
+});

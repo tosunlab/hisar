@@ -135,14 +135,30 @@ useMenu(newItemMenuPanel, () => { isNewItemMenuOpen.value = false; }, () => newI
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const shiftModifier = isMacPlatform() ? "⇧" : "Shift+";
 const itemList = ref<HTMLElement | null>(null);
+const selectedCategory = ref("");
+const allCategory = [
+  { id: "login", label: "Logins" }, { id: secureNoteCategory, label: "Secure notes" },
+  { id: creditCardCategory, label: "Credit cards" }, { id: identityCategory, label: "Identities" },
+  { id: apiCredentialCategory, label: "API credentials" }, { id: addressCategory, label: "Addresses" },
+  { id: softwareLicenseCategory, label: "Software licenses" }, { id: serverCategory, label: "Servers" },
+  { id: databaseCategory, label: "Databases" }, { id: sshKeyCategory, label: "SSH keys" },
+];
 
-const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag));
+const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag, selectedCategory.value));
 const unreadableItemCount = computed(() => store.allItem.filter((item) => item.readIssue).length);
 const healthyItemCount = computed(() => store.allItem.length - unreadableItemCount.value);
 const isReferenceScope = computed(() => store.isFavoritesSelected || store.isAllItemsSelected);
 const scopeReferences = computed(() => store.isAllItemsSelected ? store.allItemReference : store.allFavorite);
-const allVisibleFavorite = computed(() => filterAllFavorite(scopeReferences.value, store.searchQuery).filter((reference) => !store.selectedTag || reference.item.tags?.includes(store.selectedTag)));
+const allVisibleFavorite = computed(() => filterAllFavorite(scopeReferences.value, store.searchQuery, store.selectedTag, selectedCategory.value));
 const allTag = computed(() => listAllTag(store.isAllItemsSelected ? store.allItemReference.map((reference) => reference.item) : store.allItem));
+const scopeItems = computed(() => isReferenceScope.value ? scopeReferences.value.map((reference) => reference.item) : store.allItem.filter((item) => !item.readIssue));
+const categoryCounts = computed(() => {
+  const counts = new Map<string, number>();
+  for (const item of scopeItems.value) counts.set(item.category || "login", (counts.get(item.category || "login") ?? 0) + 1);
+  return allCategory.map((category) => ({ ...category, count: counts.get(category.id) ?? 0 })).filter((category) => category.count > 0);
+});
+const selectedCategoryName = computed(() => allCategory.find((category) => category.id === selectedCategory.value)?.label ?? "");
+watch(() => store.isAllItemsSelected ? "all" : store.isFavoritesSelected ? "favorites" : store.selectedVaultID, () => { selectedCategory.value = ""; });
 // inbox gathers what does not need the sidebar's room: invitations to answer, shares waiting on someone's Hisar, and
 // organization vault keys on their way. actionCount is what waits for the user, as on Settings' badges; the row opens
 // the Settings section where that is answered first.
@@ -759,6 +775,18 @@ onBeforeUnmount(() => {
         <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" :placeholder="store.isAllItemsSelected ? 'Search all vaults' : 'Search'" :aria-label="store.isAllItemsSelected ? 'Search all vaults' : 'Search items'" @keydown.down.prevent="enterList" />
         <kbd>{{ shortcutModifier }}F</kbd>
       </div>
+      <label class="type-filter">
+        <span>Type</span>
+        <AppIcon :name="selectedCategory ? getItemIcon(selectedCategory) : 'vault'" :size="14" />
+        <select v-model="selectedCategory" aria-label="Type">
+          <option value="">All types ({{ scopeItems.length }})</option>
+          <option v-for="category in categoryCounts" :key="category.id" :value="category.id">{{ category.label }} ({{ category.count }})</option>
+        </select>
+      </label>
+      <div v-if="selectedCategory" class="tag-filter" data-testid="type-filter">
+        <AppIcon :name="getItemIcon(selectedCategory)" :size="13" /><span>{{ selectedCategoryName }}</span>
+        <button class="ghost icon-button" aria-label="Clear type filter" @click="selectedCategory = ''"><AppIcon name="close" :size="13" /></button>
+      </div>
       <div v-if="store.selectedTag && !store.isFavoritesSelected" class="tag-filter" data-testid="tag-filter">
         <AppIcon name="tag" :size="13" />
         <span class="tag-filter-name">{{ store.selectedTag }}</span>
@@ -1209,6 +1237,15 @@ onBeforeUnmount(() => {
   border: none;
   border-top: 1px solid var(--color-border);
 }
+
+.type-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 14px 10px;
+  font-size: var(--font-size-12);
+}
+.type-filter select { min-width: 0; flex: 1; }
 
 .search {
   position: relative;
