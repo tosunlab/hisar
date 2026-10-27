@@ -67,15 +67,20 @@ class NavigationStack {
 
 /**
  * The screens the Vaults and Search tabs push. Locking empties both; a vault that goes away takes the Vaults tab back to
- * its root; an editor another surface asks for ([requestedEditor]) opens on the Vaults tab once the app is unlocked.
+ * its root; the editors other surfaces ask for ([requestEditor]) open on the Vaults tab once the app is unlocked, one at
+ * a time in the order they were asked for.
  */
 class VaultsNavigation(
     private val context: ModelContext,
-    private val requestedEditor: MutableStateFlow<EditorRequest?>,
     private val selectedTab: MutableStateFlow<Tab>,
 ) {
     val vaults = NavigationStack()
     val search = NavigationStack()
+
+    private val mutableAllRequestedEditor = MutableStateFlow<List<EditorRequest>>(emptyList())
+
+    /** The editors other surfaces asked for, such as AutoFill's save prompt, that are not yet saved or discarded, oldest first. */
+    val allRequestedEditor: StateFlow<List<EditorRequest>> = mutableAllRequestedEditor.asStateFlow()
 
     /** The selected tab shows a sheet, which covers the tab bar as on the iPhone. */
     val isSheetShown: StateFlow<Boolean> = combine(selectedTab, vaults.path, search.path) { tab, vaultsPath, searchPath ->
@@ -101,26 +106,34 @@ class VaultsNavigation(
             }
         }
         context.scope.launch {
-            combine(requestedEditor, context.status) { request, status -> request.takeIf { status.isUnlocked && status.updateRequired == null } }
+            combine(mutableAllRequestedEditor, context.status) { allRequest, status -> allRequest.firstOrNull()?.takeIf { status.isUnlocked && status.updateRequired == null } }
                 .collect { request -> if (request != null) openRequestedEditor(request) }
         }
     }
 
-    // The request stays in requestedEditor until its editor closes, so a lock while it is open brings it back on unlock.
+    /** Asks for an editor, which opens after the ones asked for before it are saved or discarded. */
+    fun requestEditor(request: EditorRequest) {
+        mutableAllRequestedEditor.update { it + request }
+    }
+
+    // A request stays in the queue until its editor closes, so a lock while it is open brings it back on unlock.
     private fun openRequestedEditor(request: EditorRequest) {
         selectedTab.value = Tab.VAULTS
         if (vaults.path.value.any { it is VaultsDestination.Editor && it.request === request }) return
         vaults.push(VaultsDestination.Editor(request, opensSavedItem = true))
     }
 
-    /** Closes the editor on [stack]; a saved item opens in its place when the editor was opened to show it. */
+    /**
+     * Closes the editor on [stack]; a saved item opens in its place when the editor was opened to show it. A requested
+     * editor leaves the queue only after its screen is gone, so the next one opens on top of what is left.
+     */
     fun finishEditor(stack: NavigationStack, editor: VaultsDestination.Editor, savedItemID: String?) {
-        if (requestedEditor.value === editor.request) requestedEditor.value = null
         if (savedItemID != null && editor.opensSavedItem) {
             stack.replaceTop(VaultsDestination.Item(editor.request.vaultID, savedItemID))
         } else {
             stack.pop()
         }
+        mutableAllRequestedEditor.update { allRequest -> allRequest.filterNot { it === editor.request } }
     }
 }
 
