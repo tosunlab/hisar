@@ -469,7 +469,14 @@ describe("SSHApprovalWindow", () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent(
       "ssh-approval",
-      createCommandLineApprovalEvent({ appName: "Visual Studio Code", appPath: "/Applications/Visual Studio Code.app", terminalName: "", coverage: "app", isUnlockRequired: true }),
+      createCommandLineApprovalEvent({
+        appName: "Visual Studio Code",
+        appPath: "/Applications/Visual Studio Code.app",
+        terminalName: "",
+        coverage: "app",
+        lifetime: "until 10 minutes after the last request from Visual Studio Code, or until Hisar locks",
+        isUnlockRequired: true,
+      }),
     );
     await flushPromises();
     expect(wrapper.find("#approval-title").text()).toBe("hisar in Visual Studio Code wants to use Hisar");
@@ -492,13 +499,16 @@ describe("SSHApprovalWindow", () => {
         appSigner: "",
         terminalName: "",
         coverage: "connection",
+        lifetime: "for this connection only, at most until 10 minutes after its last request or until Hisar locks",
         isUnlockRequired: true,
       }),
     );
     await flushPromises();
     expect(wrapper.find("#approval-title").text()).toBe("hisar in a background process wants to use Hisar");
     expect(wrapper.find('[data-testid="approval-unlock-note"]').text()).toBe("Hisar is locked; unlocking it also approves this connection.");
-    expect(wrapper.find('[data-testid="approval-duration"]').text()).toBe("Lasts for this connection only; Hisar cannot verify the app it comes from.");
+    expect(wrapper.find('[data-testid="approval-duration"]').text()).toBe(
+      "Lasts for this connection only, at most until 10 minutes after its last request or until Hisar locks.",
+    );
     wrapper.unmount();
   });
 

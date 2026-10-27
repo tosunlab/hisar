@@ -31,6 +31,9 @@ final class PhoneApprovalUITests: HisarUITestCase {
     func testDenyCommandLineRequest() {
         launchPreview("cli")
         waitFor(app.staticTexts["phone-approval-summary"])
+        XCTAssertEqual(app.staticTexts["phone-approval-row-Lasts"].label, "Lasts, Until 10 minutes after this terminal’s last command, or until Hisar locks")
+        let note = app.descendants(matching: .any)["phone-approval-note"].label
+        XCTAssertEqual(note, "Approving also lets hisar in Terminal use Hisar without asking until then. It does not unlock Hisar on your Mac.")
         saveScreenshot("phone-approval-cli")
         app.buttons["phone-approval-deny"].tap()
         checkResult("Denied preview-cli")

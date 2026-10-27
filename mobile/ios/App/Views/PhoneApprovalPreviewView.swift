@@ -20,7 +20,8 @@ struct PhoneApprovalPreviewView: View {
         case "cli":
             return PhoneApproval(
                 requestID: "preview-cli", requesterDeviceName: "Alper's MacBook Pro", expiresAt: expiresAt, kind: PhoneApproval.kindCommandLine,
-                appName: "hisar in Terminal", purpose: "use Hisar", commandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", terminalName: "ttys003"
+                appName: "hisar in Terminal", purpose: "use Hisar", commandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", terminalName: "ttys003",
+                commandLineLifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks"
             )
         case "forwarded":
             return PhoneApproval(

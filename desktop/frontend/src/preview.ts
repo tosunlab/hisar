@@ -936,6 +936,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     timeoutMilliseconds: 60_000,
     terminalName: coverage === "terminal-session" ? "ttys003" : "",
     coverage,
+    lifetime: "",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("cliPassword") === "1",
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
@@ -957,6 +958,22 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
   };
 }
 
+// applyPreviewLifetime words a command-line request's lifetime as describeCommandLineLifetime in desktop/agent does,
+// once &app= has named the app.
+function applyPreviewLifetime(event: ApprovalEvent): ApprovalEvent {
+  if (event.kind !== "command-line") {
+    return event;
+  }
+  switch (event.coverage) {
+    case "app":
+      return { ...event, lifetime: `until 10 minutes after the last request from ${event.appName}, or until Hisar locks` };
+    case "connection":
+      return { ...event, lifetime: "for this connection only, at most until 10 minutes after its last request or until Hisar locks" };
+    default:
+      return { ...event, lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks" };
+  }
+}
+
 // createPreviewSSHApproval is "Terminal wants to push to git.tryhisar.com"; the parameters below change it.
 function createPreviewSSHApproval(): ApprovalEvent {
   const isLocked = previewParameter.get("approvalLocked") === "1" || previewParameter.get("approvalPassword") === "1";
@@ -967,6 +984,7 @@ function createPreviewSSHApproval(): ApprovalEvent {
     kind: "ssh-key",
     terminalName: "",
     coverage: "",
+    lifetime: "",
     isUnlockRequired: isLocked,
     isPasswordUnlock: previewParameter.get("approvalPassword") === "1",
     ...createPreviewTerminalRequester(),
@@ -1168,7 +1186,7 @@ function createPreviewSignInApproval(): ApprovalEvent {
 // plus &approvalLocked=1 (Touch ID unlocks), &approvalPassword=1 (master password unlocks), &compact=1, &forwarded=1, &noTouchID=1,
 // &phone=1 (the account's smart device can approve too).
 function listAllPreviewApproval(): ApprovalEvent[] {
-  return listAllPreviewApprovalWithoutApp().map(applyPreviewApp);
+  return listAllPreviewApprovalWithoutApp().map(applyPreviewApp).map(applyPreviewLifetime);
 }
 
 function listAllPreviewApprovalWithoutApp(): ApprovalEvent[] {

@@ -263,6 +263,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     kind: "ssh-key",
     terminalName: "",
     coverage: "",
+    lifetime: "",
     isUnlockRequired: false,
     isPasswordUnlock: false,
     requesterKind: "app",
@@ -482,6 +483,7 @@ export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent>
     isRememberable: false,
     terminalName: "ttys003",
     coverage: "terminal-session",
+    lifetime: "until 10 minutes after this terminal’s last command, or until Hisar locks",
     ...overrides,
   });
 }

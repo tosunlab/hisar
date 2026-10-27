@@ -23,7 +23,8 @@ func TestShareLinkApprovalNamesTheItemAndFields(t *testing.T) {
 		t.Errorf("event = %+v", event)
 	}
 	phoneDescription := approver.buildCommandLinePhoneDescription(event)
-	if phoneDescription.Purpose != event.Action || phoneDescription.CommandLine != event.CommandLine || !slices.Equal(phoneDescription.Secrets, []string{"username", "password"}) {
+	if phoneDescription.Purpose != event.Action || phoneDescription.CommandLine != event.CommandLine || !slices.Equal(phoneDescription.Secrets, []string{"username", "password"}) ||
+		phoneDescription.Lifetime != "until 10 minutes after this terminal’s last command, or until Hisar locks" {
 		t.Errorf("phone description = %+v", phoneDescription)
 	}
 	approver.Respond(event.RequestID, true, false)

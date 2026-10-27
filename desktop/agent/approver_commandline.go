@@ -47,8 +47,22 @@ func (approver *Approver) buildCommandLineEvent(requestID string, request clisoc
 	if requester, isResolved := approver.resolveRequester(request.ClientPID); isResolved {
 		applyRequester(&event, requester)
 	}
+	event.Lifetime = describeCommandLineLifetime(event)
 	approver.setUnlockState(&event)
 	return event
+}
+
+// describeCommandLineLifetime is how long approving a command-line request lets its terminal, app or connection use
+// Hisar without asking: clisocket records the approval for its Coverage, share links and exports included.
+func describeCommandLineLifetime(event ApprovalEvent) string {
+	minutes := int(clisocket.DefaultApprovalLifetime / time.Minute)
+	switch clisocket.ApprovalCoverage(event.Coverage) {
+	case clisocket.CoverageApp:
+		return fmt.Sprintf("until %d minutes after the last request from %s, or until Hisar locks", minutes, describeInlineAppName(event))
+	case clisocket.CoverageConnection:
+		return fmt.Sprintf("for this connection only, at most until %d minutes after its last request or until Hisar locks", minutes)
+	}
+	return fmt.Sprintf("until %d minutes after this terminal’s last command, or until Hisar locks", minutes)
 }
 
 // applyShareLink shows what a share link hands out: the item, its fields, the link's limits, and that anyone with it
@@ -85,6 +99,7 @@ func (approver *Approver) buildCommandLinePhoneDescription(event ApprovalEvent) 
 		Purpose:      "use Hisar",
 		CommandLine:  event.ClientPath,
 		TerminalName: event.TerminalName,
+		Lifetime:     event.Lifetime,
 	}
 	if event.Action != "" {
 		description.Purpose = event.Action
