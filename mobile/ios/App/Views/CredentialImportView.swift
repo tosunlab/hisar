@@ -10,6 +10,23 @@ struct CredentialImportView: View {
     private var preview: ImportPreview? { model.credentialImportPreview }
     private var progress: ImportProgress? { model.credentialImportProgress }
     private var isDone: Bool { progress?.isDone == true }
+    private var allDestinationGroup: [ImportVaultGroup] {
+        OrganizationLogic.importVaultGroups(model.allCredentialImportVault, allOrganization: model.allOrganization)
+    }
+
+    private func destinationLabel(_ vaultID: String, fallback: String) -> String {
+        allDestinationGroup.flatMap(\.allChoice).first { $0.id == vaultID }?.label ?? fallback
+    }
+
+    private var destinationChoices: some View {
+        ForEach(allDestinationGroup) { group in
+            Section(group.name) {
+                ForEach(group.allChoice) { choice in
+                    Text(choice.label).tag(choice.id)
+                }
+            }
+        }
+    }
 
     var body: some View {
         NavigationStack {
@@ -119,9 +136,7 @@ struct CredentialImportView: View {
                 Picker("Vault", selection: Binding(get: { preview.vaultID }, set: { vaultID in
                     Task { await model.previewCredentialImport(vaultID: vaultID) }
                 })) {
-                    ForEach(model.allCredentialImportVault) { vault in
-                        Text(vault.name).tag(vault.id)
-                    }
+                    destinationChoices
                 }
                 .disabled(model.isBusy)
                 .accessibilityIdentifier("credential-import-vault")
@@ -131,14 +146,12 @@ struct CredentialImportView: View {
         }
         ForEach(Array(preview.groups.enumerated()), id: \.element.id) { index, group in
             Section("Source and destination access") {
-                Text("\(group.name) to \(group.vaultName)")
+                Text("\(group.name) to \(destinationLabel(group.vaultID, fallback: group.vaultName))")
                 if isGrouped {
                     Picker("Vault for \(AppModel.describeItemCount(group.itemCount))", selection: Binding(get: { group.vaultID }, set: { vaultID in
                         Task { await model.mapCredentialImportGroup(groupID: group.id, vaultID: vaultID) }
                     })) {
-                        ForEach(model.allCredentialImportVault) { vault in
-                            Text(vault.name).tag(vault.id)
-                        }
+                        destinationChoices
                     }
                     .disabled(model.isBusy)
                     .accessibilityIdentifier("credential-import-group-vault-\(index)")
@@ -164,7 +177,7 @@ struct CredentialImportView: View {
         }
         if !preview.allDuplicate.isEmpty {
             Section {
-                Toggle("Skip items already in \(preview.vaultName)", isOn: $isSkippingDuplicate)
+                Toggle("Skip items already in \(destinationLabel(preview.vaultID, fallback: preview.vaultName))", isOn: $isSkippingDuplicate)
                     .accessibilityIdentifier("credential-import-skip-duplicates")
                 ForEach(Array(preview.allDuplicate.enumerated()), id: \.offset) { _, duplicate in
                     VStack(alignment: .leading, spacing: 2) {
@@ -205,7 +218,7 @@ struct CredentialImportView: View {
                     if model.isImportingCredentials {
                         ProgressView()
                     } else {
-                        Text("Import into \(preview.vaultName)")
+                        Text("Import into \(destinationLabel(preview.vaultID, fallback: preview.vaultName))")
                     }
                 }
                 .frame(maxWidth: .infinity)

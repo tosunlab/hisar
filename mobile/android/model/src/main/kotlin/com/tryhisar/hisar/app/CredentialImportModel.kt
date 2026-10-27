@@ -3,6 +3,8 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.BackendError
 import com.tryhisar.hisar.model.ImportPreview
 import com.tryhisar.hisar.model.ImportProgress
+import com.tryhisar.hisar.model.ImportVaultGroup
+import com.tryhisar.hisar.model.OrganizationLogic
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.model.VaultSummary
@@ -76,6 +78,11 @@ class CredentialImportModel(private val context: ModelContext) {
 
     /** The vaults an import can go to: the personal vault and those the user may edit. */
     val allVault: List<VaultSummary> get() = context.unlockedData.value.allVault.filter(::isWritableVault)
+    val allDestinationGroup: List<ImportVaultGroup>
+        get() = OrganizationLogic.importVaultGroups(allVault, context.unlockedData.value.allOrganization)
+
+    fun destinationLabel(vaultID: String, fallback: String = vaultID): String =
+        allDestinationGroup.asSequence().flatMap { it.allChoice.asSequence() }.firstOrNull { it.id == vaultID }?.label ?: fallback
 
     init {
         context.addStatusListener(::handleStatus)

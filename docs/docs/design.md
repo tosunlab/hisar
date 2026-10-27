@@ -1738,6 +1738,7 @@ Credential Exchange on iPhone and Android uses the same Personal default. With o
 with several, each group has its own vault choice (`MapImportGroup`, HisarKit `mapImportGroup`) and shows its destination's members,
 and one choice is never applied to every group.
 Imports never create sharing grants or auto-create source vaults.
+The phone destination pickers group Personal, person-to-person shared vaults and each organization separately. Choices and selected summaries include the organization and vault name. Missing organization metadata uses its ID, and colliding names include a short stable ID. The same identity is available to accessibility readers. This changes labels only, not destination defaults or the current-member review.
 
 Each import item carries the reviewed destination's scope hash, computed from its vault ID and sorted account-ID/role pairs.
 `PUT /vaults/{vault}/items/{item}/import` requires this scope. The store compares it while holding the same vault row lock that

@@ -124,7 +124,7 @@ private fun PreviewSections(
     start: () -> Unit,
 ) {
     val scope = rememberCoroutineScope()
-    val allVault = model.credentialImport.allVault
+    val allDestinationGroup = model.credentialImport.allDestinationGroup
     val isGrouped = preview.groups.size > 1
     val exportOrigin = describeExportOrigin(preview.exportedFrom, preview.exportedAt)
     if (exportOrigin != null || preview.notice.isNotEmpty()) {
@@ -143,24 +143,28 @@ private fun PreviewSections(
         if (isGrouped) {
             Text("The other app kept these items in ${preview.groups.size} groups. Each goes to your Personal vault unless you choose another vault for it.")
         } else {
-            allVault.forEachIndexed { index, vault ->
-                if (index > 0) RowDivider()
-                CheckRow(vault.name, vault.id == preview.vaultID, {
-                    if (!isWorking && vault.id != preview.vaultID) scope.launch { model.credentialImport.previewCredentialImport(vault.id) }
-                }, testTag = "credential-import-vault-${vault.id}")
+            allDestinationGroup.forEach { destination ->
+                Text(destination.name, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                destination.allChoice.forEach { choice ->
+                    CheckRow(choice.label, choice.id == preview.vaultID, {
+                        if (!isWorking && choice.id != preview.vaultID) scope.launch { model.credentialImport.previewCredentialImport(choice.id) }
+                    }, testTag = "credential-import-vault-${choice.id}")
+                }
             }
         }
     }
     preview.groups.forEachIndexed { groupIndex, group ->
         FormSection(header = "Source and destination access", modifier = Modifier.testTag("credential-import-access")) {
-            Text("${group.name} to ${group.vaultName}")
+            Text("${group.name} to ${model.credentialImport.destinationLabel(group.vaultID, group.vaultName)}")
             if (isGrouped) {
                 Text(VaultLogic.describeItemCount(group.itemCount))
-                allVault.forEach { vault ->
-                    RowDivider()
-                    CheckRow(vault.name, vault.id == group.vaultID, {
-                        if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
-                    }, testTag = "credential-import-group-$groupIndex-vault-${vault.id}")
+                allDestinationGroup.forEach { destination ->
+                    Text(destination.name, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                    destination.allChoice.forEach { choice ->
+                        CheckRow(choice.label, choice.id == group.vaultID, {
+                            if (!isWorking && choice.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, choice.id) }
+                        }, testTag = "credential-import-group-$groupIndex-vault-${choice.id}")
+                    }
                 }
             }
             Text(if (group.isPrivate) "Private or unspecified source" else "Shared source")
@@ -198,7 +202,7 @@ private fun PreviewSections(
             },
             modifier = Modifier.testTag("credential-import-duplicates"),
         ) {
-            ToggleRow("Skip items already in ${preview.vaultName}", isSkippingDuplicate, setSkippingDuplicate, testTag = "credential-import-skip-duplicates")
+            ToggleRow("Skip items already in ${model.credentialImport.destinationLabel(preview.vaultID, preview.vaultName)}", isSkippingDuplicate, setSkippingDuplicate, testTag = "credential-import-skip-duplicates")
             preview.allDuplicate.forEach { duplicate ->
                 RowDivider()
                 EntryRow(duplicate.title, duplicate.detail.ifEmpty { duplicate.username })
@@ -211,7 +215,7 @@ private fun PreviewSections(
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
-        ProminentButton("Import into ${preview.vaultName}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking)
+        ProminentButton("Import into ${model.credentialImport.destinationLabel(preview.vaultID, preview.vaultName)}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking)
     }
 }
 
