@@ -495,4 +495,23 @@ describe("PasswordGenerator", () => {
     await wrapper.findAll("button").find((button) => button.text() === "Use password")!.trigger("click");
     expect(wrapper.emitted("use")?.[0]).toEqual(["second-password"]);
   });
+
+  it("keeps the same options in standalone mode and copies instead of selecting", async () => {
+    api.generatePassword.mockResolvedValue("standalone-password");
+    const wrapper = mount(PasswordGenerator, { props: { presentation: "standalone" } });
+    await flushPromises();
+    await wrapper.get('input[name="length"]').setValue(32);
+    await wrapper.get('input[name="digits"]').setValue(false);
+    await wrapper.get('input[name="symbols"]').setValue(false);
+    await flushPromises();
+    expect(api.generatePassword).toHaveBeenLastCalledWith({ length: 32, digits: false, symbols: false });
+    expect(wrapper.text()).not.toContain("Use password");
+    expect(wrapper.text()).not.toContain("Cancel");
+    await wrapper.findAll("button").find((button) => button.text() === "Copy")!.trigger("click");
+    expect(wrapper.emitted("copy")?.[0]).toEqual(["standalone-password"]);
+    expect(wrapper.emitted("use")).toBeUndefined();
+    await wrapper.findAll("button").find((button) => button.text() === "Close")!.trigger("click");
+    expect(wrapper.emitted("close")).toHaveLength(1);
+    wrapper.unmount();
+  });
 });

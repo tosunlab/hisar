@@ -108,6 +108,11 @@ and navigation to another item, vault, Favorites, or a tag from Favorites. If th
 offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
 ⌘S and ⌘↩ save after the form passes validation.
 
+**Settings → General → Password generator…** generates a password without an item draft.
+Search Settings for "Password generator" to find the same row.
+Set the length, digits and symbols, then use **Regenerate** or **Copy**. Copied passwords clear after 90 seconds.
+The inline generator in an item editor keeps **Cancel** and **Use password**.
+
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
 
