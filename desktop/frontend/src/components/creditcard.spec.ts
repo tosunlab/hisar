@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createApiMock, createCardItem, createItem, createStatus } from "../testing";
+import { allTestVault, createApiMock, createCardItem, createImportPreview, createItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -181,11 +181,11 @@ describe("Viewing a credit card", () => {
 
 describe("Importing credit cards", () => {
   it("counts them in the preview", () => {
-    store.importPreview = { fileName: "export.json", filePath: "/tmp/export.json", format: "bitwarden-json", formatName: "Bitwarden JSON", vaultId: "personal", vaultName: "Personal", itemCount: 2, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, creditCardCount: 1, identityCount: 0, apiCredentialCount: 0, addressCount: 0, softwareLicenseCount: 0, serverCount: 0, databaseCount: 0, passkeyCount: 0, groups: [], allSkipped: [], allDuplicate: [] };
+    store.importPreview = createImportPreview({ fileName: "export.json", filePath: "/tmp/export.json", format: "bitwarden-json", formatName: "Bitwarden JSON", itemCount: 2, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, creditCardCount: 1, allSkipped: [], allDuplicate: [] });
     store.importStep = "preview";
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-credit-card"]');
     expect(count.text()).toContain("1");
-    expect(count.text()).toContain("Credit card");
+    expect(count.text()).toContain("credit card");
   });
 });

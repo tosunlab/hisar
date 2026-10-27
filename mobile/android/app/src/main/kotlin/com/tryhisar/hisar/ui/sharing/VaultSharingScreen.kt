@@ -45,7 +45,7 @@ private const val REMOVAL_EXPLANATION =
     "Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them."
 
 /**
- * A shared vault's sheet from the vault's toolbar: owners invite by email, see who is invited and manage members; others
+ * A shared vault's sheet from the vault's actions menu: owners invite by email, see who is invited and manage members; others
  * see the members. The iPhone's VaultSharingView, with VaultMemberView pushed inside it.
  */
 @Composable
@@ -137,7 +137,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                 RowDivider()
                 PickerRow("Role", role, Member.allVaultRole, VaultLogic::describeVaultRole, { role = it }, testTag = "share-role")
                 RowDivider()
-                SendRow("Send Invitation", ::send, enabled = canSend, isSending = isSending, testTag = "share-vault-submit")
+                SendRow("Send invitation", ::send, enabled = canSend, isSending = isSending, testTag = "share-vault-submit")
                 sentEmail?.let { sent ->
                     RowDivider()
                     SentNote(sent, testTag = "share-sent")
@@ -191,7 +191,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                                             icon = if (choice == member.role) Icons.Filled.Check else null,
                                         )
                                     }
-                                    HisarMenuItem("Remove from Vault", "member-menu-remove", icon = Icons.Outlined.PersonRemove, isDestructive = true, onClick = {
+                                    HisarMenuItem("Remove from vault", "member-menu-remove", icon = Icons.Outlined.PersonRemove, isDestructive = true, onClick = {
                                         memberWithMenu = null
                                         memberToRemove = member
                                     })
@@ -236,11 +236,11 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
         ConfirmationDialog(
             title = "Cancel the invitation to ${invitation.email}?",
             message = "Their invitation link stops working. You can invite them again later.",
-            confirmLabel = "Cancel Invitation",
+            confirmLabel = "Cancel invitation",
             confirmTestTag = "confirm-cancel-invitation",
             onConfirm = { scope.launch { if (model.sharing.cancelShareInvitation(invitation.id)) load() } },
             onDismiss = { invitationToCancel = null },
-            dismissLabel = "Keep Invitation",
+            dismissLabel = "Keep invitation",
         )
     }
     memberToRemove?.let { member ->
@@ -316,7 +316,7 @@ private fun VaultMemberScreen(
         }
         if (isManageable) {
             FormSection {
-                DestructiveButtonRow("Remove from Vault", Icons.Outlined.PersonRemove, { isRemoveConfirmationShown = true }, testTag = "remove-member", enabled = !isBusy)
+                DestructiveButtonRow("Remove from vault", Icons.Outlined.PersonRemove, { isRemoveConfirmationShown = true }, testTag = "remove-member", enabled = !isBusy)
             }
         }
     }

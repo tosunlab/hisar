@@ -79,9 +79,9 @@ internal fun OneTimeCodeRow(model: AppModel, vaultID: String, itemID: String, co
     }
     val allAction = listOf(
         MenuAction("Copy one-time code", Icons.Outlined.ContentCopy, copy),
-        MenuAction("Copy Secret Reference", Icons.Outlined.Terminal, copyReference),
+        MenuAction("Copy secret reference", Icons.Outlined.Terminal, copyReference),
     )
-    MenuRow(allAction) {
+    MenuRow(allAction, onClick = copy.takeIf { oneTimeCode != null }, onClickLabel = "Copy one-time code") {
         Row(
             Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
             verticalAlignment = Alignment.CenterVertically,

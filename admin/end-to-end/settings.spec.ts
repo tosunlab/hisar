@@ -17,7 +17,15 @@ test.beforeAll(async () => {
     method: "PUT",
     headers: { Authorization: `Bearer ${running.fixture.token}`, "Content-Type": "application/json" },
     body: JSON.stringify({
-      settings: { "smtp.username": "", invitePolicy: "anyone", "minimumVersions.cli": "", sessionLifetimeDays: 30, authBurst: 1000, "retention.auditDays": 365 },
+      settings: {
+        "smtp.username": "",
+        openRegistration: false,
+        invitePolicy: "anyone",
+        "minimumVersions.cli": "",
+        sessionLifetimeDays: 30,
+        authBurst: 1000,
+        "retention.auditDays": 365,
+      },
     }),
   });
   expect(reset.status).toBe(200);
@@ -39,6 +47,12 @@ const findGroup = (page: Page, title: string) => page.getByRole("region", { name
 
 function checkVersion(request: APIRequestContext, version: string) {
   return request.get(`${running.fixture.baseURL}/api/v1/version-check`, { headers: { "Hisar-Platform": "linux/cli", "Hisar-Version": version } });
+}
+
+// startSignUpWithoutInvite starts a sign-up with no invite and nothing else, and answers the status and body.
+async function startSignUpWithoutInvite(request: APIRequestContext): Promise<[number, unknown]> {
+  const response = await request.post(`${running.fixture.baseURL}/api/v1/auth/register/start`, { data: { invite: "", email: "newcomer@example.com", accountId: "", request: "" } });
+  return [response.status(), await response.json()];
 }
 
 test("saves Email, sends a test email and asks for the password again after a host change", async ({ page }) => {
@@ -96,9 +110,15 @@ test("saves Email, sends a test email and asks for the password again after a ho
 test("saves Sign-up, App versions and Security, and each applies without a restart", async ({ page, request }) => {
   await openSettings(page);
   const signUp = findGroup(page, "Sign-up");
+  // The server checks open registration before anything else in a sign-up, so an otherwise empty start request tells
+  // whether sign-ups without an invite are refused.
+  expect(await startSignUpWithoutInvite(request)).toEqual([403, { error: "Sign-ups are not open on this server. Ask an admin for an invitation." }]);
+  await expect(signUp.getByLabel("Anyone can sign up")).not.toBeChecked();
+  await signUp.getByLabel("Anyone can sign up").check();
   await signUp.getByLabel("Admins only").check();
   await signUp.getByRole("button", { name: "Save" }).click();
   await expect(signUp.getByText("Saved", { exact: true })).toBeVisible();
+  expect(await startSignUpWithoutInvite(request)).toEqual([400, { error: "invalid account ID" }]);
   const memberInvite = await request.post(`${running.fixture.baseURL}/api/v1/invites`, {
     headers: { Authorization: `Bearer ${running.fixture.members[0].token}` },
     data: { email: "newcomer@example.com" },
@@ -139,6 +159,7 @@ test("keeps every saved value after a restart on the same database", async ({ pa
   await openSettings(page);
   await expect(findGroup(page, "Email").getByLabel("SMTP host")).toHaveValue("127.0.0.1");
   await expect(findGroup(page, "Email").getByLabel("Port")).toHaveValue(savedSinkPort);
+  await expect(findGroup(page, "Sign-up").getByLabel("Anyone can sign up")).toBeChecked();
   await expect(findGroup(page, "Sign-up").getByLabel("Admins only")).toBeChecked();
   await expect(findGroup(page, "App versions").getByLabel("Command-line tool")).toHaveValue("99.0.0");
   await expect(findGroup(page, "Security").getByLabel("Session lifetime")).toHaveValue("1");

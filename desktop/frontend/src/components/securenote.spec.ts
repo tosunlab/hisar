@@ -84,7 +84,7 @@ describe("Creating a secure note", () => {
     const wrapper = mount(ItemEditor);
     expect((wrapper.find('textarea[name="notes"]').element as HTMLTextAreaElement).value).toBe("1. 4821-9930\n2. 1177-0042");
     expect(wrapper.find('input[name="username"]').exists()).toBe(false);
-    expect(wrapper.find("button.primary").text()).toBe("Save");
+    expect(wrapper.find("button.primary").text()).toMatch(/^Save /);
   });
 });
 

@@ -57,16 +57,17 @@ beforeEach(() => {
 });
 
 describe("Copy secret reference", () => {
-  it("sits next to the copy button of every field a reference can name", async () => {
-    const wrapper = mount(ItemDetailPanel, { props: detailProperties });
+  it("sits next to the copy button of secrets only, and in the menu of every other field", async () => {
+    const wrapper = mount(ItemDetailPanel, { props: detailProperties, attachTo: document.body });
     await flushPromises();
     const allLabel = wrapper.findAll('[data-testid="copy-secret-reference"]').map((button) => button.attributes("aria-label"));
-    expect(allLabel).toEqual([
-      "Copy secret reference for username",
-      "Copy secret reference for password",
-      "Copy secret reference for one-time code",
-      "Copy secret reference for API token",
-    ]);
+    expect(allLabel).toEqual(["Copy secret reference for password", "Copy secret reference for one-time code", "Copy secret reference for API token"]);
+    api.copySecretReference.mockResolvedValue("hisar://Personal/GitHub/username");
+    await wrapper.find('[data-reference-field="username"] [data-copy-target]').trigger("contextmenu");
+    expect(wrapper.findAll('[data-testid="context-menu"] button').map((button) => button.text())).toEqual(["Copy username", "Copy secret reference for username"]);
+    await wrapper.find('[data-testid="context-menu-copy-secret-reference-for-username"]').trigger("click");
+    await flushPromises();
+    expect(api.copySecretReference).toHaveBeenCalledWith("personal", "github", "username");
     const passwordButton = wrapper.find('button[aria-label="Copy secret reference for password"]');
     expect(passwordButton.attributes("title")).toBe("Copy secret reference — use it in a terminal with hisar run or hisar read");
     expect(passwordButton.element.closest(".field-actions")?.querySelector('button[aria-label="Copy password"]')).not.toBeNull();
@@ -101,8 +102,9 @@ describe("Copy secret reference", () => {
     await flushPromises();
     await wrapper.find('button[aria-label="Copy secret reference for API token"]').trigger("click");
     await flushPromises();
-    expect(store.errorMessage).toBe('2 fields are labelled "API token"; rename one of them to reference it');
-    expect(store.noticeMessage).toBe("");
+    expect(store.noticeMessage).toBe('2 fields are labelled "API token"; rename one of them to reference it');
+    expect(store.noticeKind).toBe("error");
+    expect(store.errorMessage).toBe("");
     wrapper.unmount();
   });
 
@@ -112,7 +114,7 @@ describe("Copy secret reference", () => {
     const wrapper = mount(ItemDetailPanel, { props: detailProperties });
     await flushPromises();
     const allLabel = wrapper.findAll('[data-testid="copy-secret-reference"]').map((button) => button.attributes("aria-label"));
-    expect(allLabel).toEqual(["Copy secret reference for fingerprint", "Copy secret reference for public key"]);
+    expect(allLabel).toEqual(["Copy secret reference for public key"]);
     expect(wrapper.text()).toContain("Private keyNever leaves Hisar; the SSH agent uses it");
     await wrapper.find('button[aria-label="Copy secret reference for public key"]').trigger("click");
     await flushPromises();

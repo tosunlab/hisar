@@ -10,6 +10,9 @@ data class VaultItemReference(val vaultID: String, val vaultName: String, val it
 /** A tag with how many items carry it. */
 data class TagSummary(val name: String, val itemCount: Int)
 
+/** An item type with how many items are of it. */
+data class CategorySummary(val category: ItemCategory, val itemCount: Int)
+
 /** The item types the Vaults screen lists under By type, in its order; [id] names the row in tests, as on the iPhone. */
 enum class ItemCategory(val id: String, val title: String) {
     LOGINS("logins", "Logins"),
@@ -74,6 +77,10 @@ object VaultLogic {
             .map { (name, count) -> TagSummary(name, count) }
             .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.name })
 
+    /** The item types that have items, with how many, in By type's order. */
+    fun listAllCategory(allItem: List<VaultItemReference>): List<CategorySummary> =
+        ItemCategory.entries.map { category -> CategorySummary(category, allItem.count { category.includes(it.item) }) }.filter { it.itemCount > 0 }
+
     fun sortAllItem(allItem: List<VaultItemReference>): List<VaultItemReference> =
         allItem.sortedWith(compareBy<VaultItemReference, String>(String.CASE_INSENSITIVE_ORDER) { it.item.title }.thenBy(String.CASE_INSENSITIVE_ORDER) { it.item.username })
 
@@ -107,6 +114,18 @@ object VaultLogic {
         Member.VAULT_ROLE_EDITOR -> "Editors open and change items."
         Member.VAULT_ROLE_READER -> "Readers open items but cannot change them."
         else -> ""
+    }
+
+    /** Whether the user may add and change items in [vault]: their Personal vault, or one they edit or own whose key opened. */
+    fun isWritable(vault: VaultSummary): Boolean =
+        vault.readIssues.none { it.kind == "vault-key" } && (vault.type == VaultSummary.TYPE_PERSONAL || vault.role != Member.VAULT_ROLE_READER)
+
+    /** The vault a new item goes into: [currentVaultID] when the user may write there, else the Personal vault, else the first they may write to. */
+    fun chooseNewItemVault(allVault: List<VaultSummary>, currentVaultID: String?): VaultSummary? {
+        val allWritable = allVault.filter(::isWritable)
+        return allWritable.firstOrNull { it.id == currentVaultID }
+            ?: allWritable.firstOrNull { it.type == VaultSummary.TYPE_PERSONAL }
+            ?: allWritable.firstOrNull()
     }
 
     fun describeItemCount(count: Int): String = if (count == 1) "1 item" else "$count items"

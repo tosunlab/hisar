@@ -26,7 +26,7 @@
 
 ---
 
-Hisar keeps your passwords, passkeys, SSH keys, one-time codes and API secrets in vaults that only your devices can read. The server, hosted at `api.tryhisar.com` or [run by you](docs/docs/self-hosting.md), stores encrypted vault payloads alongside plaintext account, sharing and operational metadata: every key is derived on your devices from your master password and a **Secret Key**, so neither a copy of the database nor a network attacker can read your items. A compromised live server has different limits, especially through the admin and share-link pages it serves ([threat model and metadata](docs/docs/design.md#2-threat-model)). The cryptography, the sync protocol and every product decision are written down in [Design](docs/docs/design.md).
+Hisar keeps your passwords, passkeys, SSH keys, one-time codes and API secrets in vaults that only your devices can read. The server, hosted at `eu.tryhisar.com` or [run by you](docs/docs/self-hosting.md), stores encrypted vault payloads alongside plaintext account, sharing and operational metadata: every key is derived on your devices from your master password and a **Secret Key**, so neither a copy of the database nor a network attacker can read your items. A compromised live server has different limits, especially through the admin and share-link pages it serves ([threat model and metadata](docs/docs/design.md#2-threat-model)). The cryptography, the sync protocol and every product decision are written down in [Design](docs/docs/design.md).
 
 Hisar is one Go implementation of the crypto shared by a Mac and Linux app, a browser extension, an iPhone app, an Android app and a command-line tool. It is built for people who live in a terminal: the app is an SSH agent, `hisar run` hands secrets to commands and masks them in their output, and `hisar mcp` lets coding agents pass secrets to commands you approve.
 
@@ -59,7 +59,7 @@ Every download is on [GitHub Releases](https://github.com/tosunlab/hisar/release
 | **Command-line tool** (Windows, servers, without the app) | The standalone `hisar-<version>-<os>-<arch>` archive from a `cli-<version>` release; see [Command-line tool](docs/docs/apps/cli.md). |
 | **Server** | `ghcr.io/tosunlab/hisar-server:<version>` for linux/amd64 and linux/arm64, run with Docker Compose behind your own TLS: [Self-hosting](docs/docs/self-hosting.md). |
 
-Sign-up is invite-only: an existing user invites you by email, or you run your own server and invite yourself from its admin dashboard.
+Sign-up needs an invite unless the server's admin opens registration: an existing user invites you by email, or you run your own server and invite yourself from its admin dashboard, or let anyone sign up under Settings → Sign-up.
 
 ### Desktop app on Linux
 

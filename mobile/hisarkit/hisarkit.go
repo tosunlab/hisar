@@ -194,6 +194,12 @@ func (hisar *Hisar) SignUp(inviteLink, email, name, password string) (string, er
 	return encodeJSON(hisar.service.SignUp(inviteLink, email, name, password))
 }
 
+// SignUpWithoutInvite is SignUp on a server whose admin opened registration: the server's address instead of an invite.
+func (hisar *Hisar) SignUpWithoutInvite(server, email, name, password string) (string, error) {
+	defer releaseMemory()
+	return encodeJSON(hisar.service.SignUpWithoutInvite(server, email, name, password))
+}
+
 func (hisar *Hisar) Unlock(password string) (string, error) {
 	defer releaseMemory()
 	return encodeJSON(hisar.service.Unlock(password))

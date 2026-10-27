@@ -13,6 +13,7 @@ import (
 
 	"github.com/tryhisar/hisar/core/apiclient"
 	"github.com/tryhisar/hisar/core/apitypes"
+	"github.com/tryhisar/hisar/core/export"
 	"github.com/tryhisar/hisar/core/importer"
 	"github.com/tryhisar/hisar/core/item"
 	"github.com/tryhisar/hisar/core/session"
@@ -50,7 +51,11 @@ type ImportDuplicate struct {
 }
 
 // ImportPreview: an empty FileName means the user cancelled the file dialog. A Credential Exchange import has no file:
-// FileName names the app the items came from and FilePath is empty.
+// FileName names the app the items came from and FilePath is empty. An encrypted Hisar export first comes back with only
+// the file and IsPassphraseRequired; OpenImportFile with its passphrase returns the full preview. Notice describes a
+// Hisar export that is a cached or partial copy, and IsSourceKept says the file stays: Hisar never deletes an encrypted
+// export, a backup, nor a copy that may not hold everything. ExportedFrom and ExportedAt name the account and the time
+// of a Hisar export.
 type ImportPreview struct {
 	FileName        string `json:"fileName"`
 	FilePath        string `json:"filePath"`
@@ -79,6 +84,12 @@ type ImportPreview struct {
 	Skipped      []ImportSkippedEntry `json:"allSkipped"`
 	Duplicates   []ImportDuplicate    `json:"allDuplicate"`
 	Groups       []ImportSourceGroup  `json:"groups"`
+	// IsPassphraseRequired: the file is an encrypted Hisar export; OpenImportFile opens it.
+	IsPassphraseRequired bool   `json:"isPassphraseRequired"`
+	Notice               string `json:"notice"`
+	IsSourceKept         bool   `json:"isSourceKept"`
+	ExportedFrom         string `json:"exportedFrom"`
+	ExportedAt           string `json:"exportedAt"`
 }
 
 type ImportProgress struct {
@@ -91,6 +102,8 @@ type ImportProgress struct {
 	LeftBehindCount int                  `json:"leftBehindCount"`
 	IsDone          bool                 `json:"isDone"`
 	Failed          []ImportSkippedEntry `json:"allFailed"`
+	// IsSourceKept: the file is not offered for deletion, see ImportPreview.
+	IsSourceKept bool `json:"isSourceKept"`
 }
 
 // pendingImport holds the parsed export between the preview and saving; locking drops it. A Credential Exchange import
@@ -111,6 +124,12 @@ type pendingImport struct {
 	failed         []ImportSkippedEntry
 	// favoriteItemIDs are saved items the other password manager starred; they become favorites when the import ends.
 	favoriteItemIDs []string
+	// content is an encrypted Hisar export waiting for its passphrase; the fields below describe an opened one.
+	content      []byte
+	notice       string
+	isSourceKept bool
+	exportedFrom string
+	exportedAt   string
 }
 
 type ImportSourceGroup struct {
@@ -140,17 +159,20 @@ func (pending *pendingImport) getName() string {
 	return filepath.Base(pending.filePath)
 }
 
+// ListImportFormats lists Hisar's own export first, then the other password managers' formats.
 func (s *Service) ListImportFormats() []ImportFormat {
-	formats := make([]ImportFormat, 0, len(importer.Formats()))
+	formats := make([]ImportFormat, 0, len(importer.Formats())+1)
+	formats = append(formats, ImportFormat{ID: FormatHisarExport, Name: hisarExportFormatName})
 	for _, format := range importer.Formats() {
 		formats = append(formats, ImportFormat{ID: format.ID, Name: format.Name})
 	}
 	return formats
 }
 
-// ChooseImportFile asks for an export file and reads it; format "" detects it from the file.
+// ChooseImportFile asks for an export file and reads it; format "" detects it from the file, Hisar's own export
+// included.
 func (s *Service) ChooseImportFile(vaultID, format string) (ImportPreview, error) {
-	if !importer.IsKnownFormat(format) {
+	if format != FormatHisarExport && !importer.IsKnownFormat(format) {
 		return ImportPreview{}, errors.New("choose one of the supported import formats")
 	}
 	if err := s.checkEditableVault(vaultID); err != nil {
@@ -167,8 +189,17 @@ func (s *Service) ChooseImportFile(vaultID, format string) (ImportPreview, error
 	if err != nil {
 		return ImportPreview{}, err
 	}
+	defer clear(content)
+	if format == FormatHisarExport || format == importer.FormatAutomatic {
+		hisarFormat, err := export.DetectFormat(content)
+		if err == nil {
+			return s.stageHisarExport(&pendingImport{filePath: path, format: hisarFormat}, content)
+		}
+		if format == FormatHisarExport || !errors.Is(err, export.ErrNotExport) {
+			return ImportPreview{}, err
+		}
+	}
 	result, err := importer.Parse(filepath.Base(path), content, format)
-	clear(content)
 	if err != nil {
 		return ImportPreview{}, err
 	}
@@ -178,8 +209,9 @@ func (s *Service) ChooseImportFile(vaultID, format string) (ImportPreview, error
 	if err := s.requireUnlocked(); err != nil {
 		return ImportPreview{}, err
 	}
+	s.dropPendingImport()
 	s.pendingImport = &pendingImport{filePath: path, format: result.Format, items: result.Items, skipped: result.Skipped}
-	return s.prepareImportGroups(result.SourceGroups())
+	return s.prepareImportGroups(result.SourceGroups(), nil)
 }
 
 // PrepareCredentialExchangeImport reads the Credential Exchange (CXF) JSON another password manager handed over, such
@@ -206,8 +238,9 @@ func PrepareCredentialExchangeImport(s *Service, vaultID string, content []byte)
 	if sourceName == "" {
 		sourceName = importer.GetFormatName(result.Format)
 	}
+	s.dropPendingImport()
 	s.pendingImport = &pendingImport{sourceName: sourceName, format: result.Format, items: result.Items, skipped: result.Skipped}
-	return s.prepareImportGroups(result.SourceGroups())
+	return s.prepareImportGroups(result.SourceGroups(), nil)
 }
 
 // readImportFile reads at most maxImportFileSize bytes: a pipe or a file that grows says nothing true about its size
@@ -255,8 +288,8 @@ func (s *Service) PreviewImport(vaultID string) (ImportPreview, error) {
 	if err := s.requireUnlocked(); err != nil {
 		return ImportPreview{}, err
 	}
-	if s.pendingImport == nil || s.pendingImport.isStarted {
-		return ImportPreview{}, ErrNoPendingImport
+	if err := s.requireReviewableImport(); err != nil {
+		return ImportPreview{}, err
 	}
 	if len(s.pendingImport.groups) > 1 {
 		return ImportPreview{}, errors.New("choose a destination for each source group")
@@ -304,7 +337,7 @@ func (s *Service) buildSingleImportPreview(vaultID string) (ImportPreview, error
 		FileName:             pending.getName(),
 		FilePath:             pending.filePath,
 		Format:               pending.format,
-		FormatName:           importer.GetFormatName(pending.format),
+		FormatName:           getImportFormatName(pending.format),
 		VaultID:              vault.ID,
 		VaultName:            vault.Name,
 		ItemCount:            len(pending.items),
@@ -320,6 +353,10 @@ func (s *Service) buildSingleImportPreview(vaultID string) (ImportPreview, error
 		DatabaseCount:        summary.DatabaseCount,
 		Skipped:              []ImportSkippedEntry{},
 		Duplicates:           []ImportDuplicate{},
+		Notice:               pending.notice,
+		IsSourceKept:         pending.isSourceKept,
+		ExportedFrom:         pending.exportedFrom,
+		ExportedAt:           pending.exportedAt,
 	}
 	for _, vaultItem := range pending.items {
 		preview.PasskeyCount += len(vaultItem.Details.Passkeys)
@@ -379,8 +416,8 @@ func (s *Service) StartImport(vaultID string, isSkippingDuplicate bool) (ImportP
 	if err := s.requireUnlocked(); err != nil {
 		return ImportProgress{}, err
 	}
-	if s.pendingImport == nil || s.pendingImport.isStarted {
-		return ImportProgress{}, ErrNoPendingImport
+	if err := s.requireReviewableImport(); err != nil {
+		return ImportProgress{}, err
 	}
 	return s.startImportGroups(vaultID, isSkippingDuplicate)
 }
@@ -502,6 +539,7 @@ func (s *Service) buildImportProgress() ImportProgress {
 		LeftBehindCount: pending.countLeftBehind(),
 		IsDone:          len(pending.queuedItems) == 0,
 		Failed:          slices.Clone(pending.failed),
+		IsSourceKept:    pending.isSourceKept,
 	}
 	if vault, found := s.vaultsByID[pending.vaultID]; found {
 		progress.VaultName = vault.Name
@@ -514,6 +552,15 @@ func (s *Service) buildImportProgress() ImportProgress {
 func (s *Service) CancelImport() {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
+	s.dropPendingImport()
+}
+
+// dropPendingImport forgets the import and wipes an encrypted export still waiting for its passphrase. It needs the
+// mutex.
+func (s *Service) dropPendingImport() {
+	if s.pendingImport != nil {
+		clear(s.pendingImport.content)
+	}
 	s.pendingImport = nil
 }
 
@@ -531,6 +578,9 @@ func (s *Service) DeleteImportFile() error {
 	}
 	if leftCount := pending.countLeftBehind(); leftCount > 0 {
 		return fmt.Errorf("keep %s: %d of its entries are not in Hisar", pending.getName(), leftCount)
+	}
+	if pending.isSourceKept {
+		return fmt.Errorf("keep %s: Hisar never deletes an encrypted export or a copy that may not hold everything", pending.getName())
 	}
 	if pending.filePath != "" {
 		if err := os.Remove(pending.filePath); err != nil && !errors.Is(err, os.ErrNotExist) {

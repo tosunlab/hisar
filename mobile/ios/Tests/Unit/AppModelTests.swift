@@ -81,6 +81,38 @@ final class AppModelTests: XCTestCase {
         XCTAssertNil(model.newSecretKey)
     }
 
+    func testSignUpWithoutInviteAsksTheServerAndShowsNewSecretKey() async throws {
+        let model = await createModel()
+        let isSignedUp = await model.signUpWithoutInvite(server: " https://hisar.example.com ", email: " bob@example.com ", name: "Bob", password: FakeBackend.password)
+        XCTAssertTrue(isSignedUp)
+        XCTAssertTrue(backend.allCallName.contains("signUpWithoutInvite"))
+        XCTAssertFalse(backend.allCallName.contains("signUp"), "no invite, so the invite sign-up is not used")
+        XCTAssertEqual(backend.signUpWithoutInviteServer, "https://hisar.example.com")
+        XCTAssertEqual(model.status.server, "https://hisar.example.com")
+        XCTAssertEqual(model.status.email, "bob@example.com")
+        XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
+        XCTAssertEqual(model.screen, .unlocked)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertFalse(model.isPendingRecoveryShown)
+        let possibleExport = await model.exportNewAccountEmergencyKit()
+        let export = try XCTUnwrap(possibleExport)
+        XCTAssertEqual(export.secretKey, FakeBackend.secretKey)
+        let isFinished = await model.finishNewSecretKey()
+        XCTAssertTrue(isFinished)
+        XCTAssertTrue(backend.allPendingRecovery.isEmpty)
+        model.removeEmergencyKit(export)
+    }
+
+    func testSignUpWithoutInviteOnAClosedServerShowsTheServersSentence() async {
+        backend.signUpWithoutInviteErrorMessage = "Sign-ups are not open on this server. Ask an admin for an invitation."
+        let model = await createModel()
+        let isSignedUp = await model.signUpWithoutInvite(server: "https://hisar.example.com", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
+        XCTAssertFalse(isSignedUp)
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertNil(model.newSecretKey)
+        XCTAssertEqual(model.errorMessage, "Sign-ups are not open on this server. Ask an admin for an invitation.")
+    }
+
     func testLockHidesTheNewSecretKey() async {
         let model = await createModel()
         await model.signUp(inviteLink: "http://127.0.0.1:18080/invite/abc", email: "bob@example.com", name: "Bob", password: FakeBackend.password)
@@ -158,14 +190,14 @@ final class AppModelTests: XCTestCase {
 
     func testSignInServerDefaultsToTheHostedService() {
         XCTAssertTrue(SignInView.isDefaultServer(""))
-        XCTAssertTrue(SignInView.isDefaultServer("https://api.tryhisar.com/"))
+        XCTAssertTrue(SignInView.isDefaultServer("https://eu.tryhisar.com/"))
         XCTAssertFalse(SignInView.isDefaultServer("http://127.0.0.1:18080"))
-        XCTAssertEqual(SignInView.describeServer(SignInView.defaultServer), "api.tryhisar.com")
+        XCTAssertEqual(SignInView.describeServer(SignInView.defaultServer), "eu.tryhisar.com")
     }
 
     func testDiagnosticsHoldVersionsServerAndDeviceOnly() {
-        let diagnostics = HelpView.buildDiagnostics(appVersion: "1.2 (34)", systemVersion: "26.0", deviceModel: "iPhone", server: "https://api.tryhisar.com", deviceID: "device-1")
-        XCTAssertEqual(diagnostics, "Hisar 1.2 (34)\niOS 26.0 on iPhone\nServer https://api.tryhisar.com\nDevice ID device-1")
+        let diagnostics = HelpView.buildDiagnostics(appVersion: "1.2 (34)", systemVersion: "26.0", deviceModel: "iPhone", server: "https://eu.tryhisar.com", deviceID: "device-1")
+        XCTAssertEqual(diagnostics, "Hisar 1.2 (34)\niOS 26.0 on iPhone\nServer https://eu.tryhisar.com\nDevice ID device-1")
         XCTAssertEqual(HelpView.buildDiagnostics(appVersion: "1.2 (34)", systemVersion: "26.0", deviceModel: "iPhone", server: "", deviceID: nil), "Hisar 1.2 (34)\niOS 26.0 on iPhone\nServer not signed in")
         XCTAssertEqual(HelpView.supportEmail, "support@tryhisar.com")
     }
@@ -333,7 +365,7 @@ final class AppModelTests: XCTestCase {
         let model = await createUnlockedModel()
         let savedItem = await model.saveItem(vaultID: "personal", item: ItemDetail(title: "Broken", oneTimePassword: "not a secret!"))
         XCTAssertNil(savedItem)
-        XCTAssertEqual(model.errorMessage, "The one-time password is not a valid secret or otpauth:// link")
+        XCTAssertEqual(model.errorMessage, "The one-time code is not a valid secret or otpauth:// link")
     }
 
     func testSaveNewItemAddsItWithoutSecretsAndUpdatesIdentities() async {

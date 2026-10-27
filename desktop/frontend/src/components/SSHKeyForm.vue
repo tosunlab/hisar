@@ -102,8 +102,8 @@ header {
   padding: 6px 8px;
   border-color: transparent;
   background: transparent;
-  font-size: 20px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
 }
 
 .title-input:hover {
@@ -172,7 +172,7 @@ header {
 }
 
 .key-type-text .muted {
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 label.last {
@@ -181,7 +181,7 @@ label.last {
 
 .hint {
   margin: 10px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .footer {
@@ -192,6 +192,6 @@ label.last {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 </style>

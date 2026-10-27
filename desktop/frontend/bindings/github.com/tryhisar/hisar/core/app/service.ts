@@ -93,7 +93,8 @@ export function CheckMinimumVersion(): $CancellablePromise<$models.Status> {
 }
 
 /**
- * ChooseImportFile asks for an export file and reads it; format "" detects it from the file.
+ * ChooseImportFile asks for an export file and reads it; format "" detects it from the file, Hisar's own export
+ * included.
  */
 export function ChooseImportFile(vaultID: string, format: string): $CancellablePromise<$models.ImportPreview> {
     return $Call.ByID(3206787215, vaultID, format);
@@ -475,6 +476,9 @@ export function ListFavoriteItems(): $CancellablePromise<$models.FavoriteItem[] 
     return $Call.ByID(3721548911);
 }
 
+/**
+ * ListImportFormats lists Hisar's own export first, then the other password managers' formats.
+ */
 export function ListImportFormats(): $CancellablePromise<$models.ImportFormat[] | null> {
     return $Call.ByID(410989716);
 }
@@ -572,6 +576,14 @@ export function MapImportGroup(groupID: string, vaultID: string): $CancellablePr
  */
 export function MoveItem(vaultID: string, itemID: string, targetVaultID: string): $CancellablePromise<$models.ItemDetail> {
     return $Call.ByID(4162304767, vaultID, itemID, targetVaultID);
+}
+
+/**
+ * OpenImportFile opens the encrypted Hisar export ChooseImportFile or PrepareHisarExportImport read, and previews it.
+ * A wrong passphrase keeps the file waiting, so the user can try again.
+ */
+export function OpenImportFile(passphrase: string): $CancellablePromise<$models.ImportPreview> {
+    return $Call.ByID(2012672138, passphrase);
 }
 
 /**
@@ -815,8 +827,20 @@ export function SignOut(): $CancellablePromise<$models.Status> {
     return $Call.ByID(2100968612);
 }
 
+/**
+ * SignUp creates an account with an invite: a code for the default server, or a pasted invite link, which names its
+ * own server.
+ */
 export function SignUp(invite: string, email: string, name: string, password: string): $CancellablePromise<$models.SignUpResult> {
     return $Call.ByID(995975149, invite, email, name, password);
+}
+
+/**
+ * SignUpWithoutInvite creates an account on a server whose admin opened registration. The server answers
+ * apitypes.RegistrationClosedMessage when it did not.
+ */
+export function SignUpWithoutInvite(server: string, email: string, name: string, password: string): $CancellablePromise<$models.SignUpResult> {
+    return $Call.ByID(4279417622, server, email, name, password);
 }
 
 /**

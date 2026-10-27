@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 
 enum SettingsDestination: Hashable {
     case account
@@ -23,6 +24,8 @@ struct SettingsView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isSignOutConfirmationShown = false
     @State private var isAutoFillEnabled = false
+    /// The Settings screens pushed, of several value types (organizations and their members push their own).
+    @State private var path = NavigationPath()
 
     static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
     static let biometrySystemImage = biometryName == "Touch ID" ? "touchid" : "faceid"
@@ -39,7 +42,7 @@ struct SettingsView: View {
     }
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     NavigationLink(value: SettingsDestination.account) {
@@ -135,11 +138,7 @@ struct SettingsView: View {
                     }
                     .accessibilityIdentifier("open-help")
                     NavigationLink(value: SettingsDestination.about) {
-                        LabeledContent {
-                            Text(AboutView.versionText)
-                        } label: {
-                            Label("About Hisar", systemImage: "info.circle")
-                        }
+                        Label("About Hisar", systemImage: "info.circle")
                     }
                     .accessibilityIdentifier("open-about")
                     Button("Sign out", role: .destructive) {
@@ -182,6 +181,12 @@ struct SettingsView: View {
                 isAutoFillEnabled = await AutoFillSettings.checkIsEnabled()
                 await model.refreshReceivedInvitationCount()
             }
+            .onReceive(model.$requestedSettingsDestination) { destination in
+                guard let destination else { return }
+                model.requestedSettingsDestination = nil
+                // The new Secret Key is shown only once, so its screen stays until Done.
+                if !model.isNewSecretKeyShown { path = NavigationPath([destination]) }
+            }
         }
     }
 }
@@ -189,6 +194,9 @@ struct SettingsView: View {
 struct AccountView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isExportShown = false
+    @State private var isHisarImportShown = false
+
+    private static let hisarExportTypes: [UTType] = [.json, UTType(filenameExtension: "hisar") ?? .data]
 
     var body: some View {
         List {
@@ -213,12 +221,18 @@ struct AccountView: View {
                     Label("Export data…", systemImage: "square.and.arrow.up.on.square")
                 }
                 .accessibilityIdentifier("open-export")
+                Button {
+                    isHisarImportShown = true
+                } label: {
+                    Label("Import a Hisar export…", systemImage: "square.and.arrow.down.on.square")
+                }
+                .accessibilityIdentifier("open-hisar-export-import")
             } footer: {
-                Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON.")
+                Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON. You can import a Hisar export back into your vaults.")
             }
             Section {
                 NavigationLink(value: SettingsDestination.deleteAccount) {
-                    Label("Delete account", systemImage: "person.crop.circle.badge.xmark")
+                    Label("Delete account…", systemImage: "person.crop.circle.badge.xmark")
                         .foregroundStyle(.red)
                 }
                 .disabled(model.status.isOffline)
@@ -232,6 +246,11 @@ struct AccountView: View {
         .sheet(isPresented: $isExportShown) {
             ExportDataView()
                 .environmentObject(model)
+        }
+        .fileImporter(isPresented: $isHisarImportShown, allowedContentTypes: Self.hisarExportTypes) { result in
+            if case .success(let url) = result {
+                Task { await model.importHisarExport(from: url) }
+            }
         }
     }
 }
@@ -263,7 +282,7 @@ struct SecretKeyView: View {
                 }
                 Section {
                     ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                        Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
+                        Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
                     }
                     .accessibilityIdentifier("share-emergency-kit")
                 } header: {
@@ -378,11 +397,11 @@ struct SecurityView: View {
             }
             Section {
                 NavigationLink(value: SettingsDestination.changeMasterPassword) {
-                    Label("Change master password", systemImage: "key")
+                    Label("Change master password…", systemImage: "key")
                 }
                 .accessibilityIdentifier("open-change-master-password")
                 NavigationLink(value: SettingsDestination.replaceSecretKey) {
-                    Label("Replace Secret Key", systemImage: "doc.badge.arrow.up")
+                    Label("Replace Secret Key…", systemImage: "doc.badge.arrow.up")
                 }
                 .accessibilityIdentifier("open-replace-secret-key")
             } footer: {
@@ -611,16 +630,7 @@ struct MacApprovalsView: View {
                 }
                 .accessibilityIdentifier("mac-approval-toggle")
             } footer: {
-                Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, or to let an app like Raycast use Hisar, you can approve or deny the request here, while Hisar is open and unlocked on this iPhone. Turned off, your Mac decides on its own.")
-            }
-            Section {
-                Label("A card at the top of Vaults, with Deny and Approve", systemImage: "rectangle.stack")
-                Label("Every waiting request in the Approvals tab, with a countdown", systemImage: "list.bullet.rectangle")
-                Label("Approve asks for \(SettingsView.biometryName) or your master password", systemImage: SettingsView.biometrySystemImage)
-            } header: {
-                Text("How requests appear")
-            } footer: {
-                Text("Approving answers one request and never unlocks Hisar on your Mac. The Mac sends requests only while “Approve requests on my smart device” is on in its SSH agent settings.")
+                Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
             }
         }
         .applyThemedListStyle()
@@ -695,9 +705,9 @@ struct NotificationSettingsView: View {
 
     private var footer: String {
         if notifications.authorization == .allowed && !notifications.settings.isServerSending {
-            return "Your Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
+            return "The Hisar server does not send notifications. Its admin can turn them on in the dashboard's settings."
         }
-        return "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Hisar's push relay, Apple and your Hisar server see when a notification is sent, but not what it is about."
+        return "A notification only says what kind of thing happened, never what or who it is about. Open and unlock Hisar to see the details. Hisar's push relay, Apple and the Hisar server see when a notification is sent, but not what it is about."
     }
 }
 
@@ -729,9 +739,9 @@ struct AutoFillSettingsView: View {
                     .accessibilityIdentifier("turn-on-autofill")
                 }
             } footer: {
-                Text(Self.isAutoFillIncluded
-                     ? "You can also turn it on in the Settings app: General, AutoFill & Passwords."
-                     : "This build is signed with a free Apple ID, which cannot include the AutoFill extension.")
+                if !Self.isAutoFillIncluded {
+                    Text("This build is signed with a free Apple ID, which cannot include the AutoFill extension.")
+                }
             }
             if Self.isAutoFillIncluded {
                 Section {
@@ -834,8 +844,6 @@ struct HelpView: View {
                 Text("The app and iOS versions, the server and this device's ID. Never your items, keys or master password.")
             }
             Section {
-                LabeledContent("App version", value: AboutView.versionText)
-                    .accessibilityIdentifier("help-app-version")
                 LabeledContent("Server", value: VaultLogic.describeServer(model.status.server))
                     .textSelection(.enabled)
             }

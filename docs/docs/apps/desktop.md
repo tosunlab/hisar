@@ -99,14 +99,28 @@ cd desktop/frontend && npm run preview:ui
 
 The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a build-time flag; `npm run check:bundle` (run in CI) fails if it ever ends up in the production bundle.
 
+On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `windows.go`, `SettingsWindowService`, `src/SettingsWindow.vue`); its page reloads whenever it closes, and it closes when Hisar locks or signs out. `SettingsWindowService` keeps the section Settings was asked to open at until the page takes it, so Settings asked for while Hisar is locked opens after the unlock. The window shows settings only: it never loads items or removed-vault notices. Import, a vault's sharing panel and the pending recovery after replacing the Secret Key open in the main window, which owns them; the website icon setting reaches every window as an event. On Linux and in the preview, Settings is an overlay in the main window; the preview shows the Settings window at `?window=settings&settingsSection=<section>`.
+
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
+
+The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the same draft guard as Cancel, ⌘N,
+and navigation to another item, vault, Favorites, or a tag from Favorites. If the draft changed, the shared dialog
+offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
+⌘S and ⌘↩ save after the form passes validation.
+
+Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
+The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
 
 ## Right-click menus
 
 Design: [Design](../design.md) §9.1 (desktop: item menu).
 
 - **An item in the list** (a vault's or Favorites): **Open**; **Copy** for its username, password, one-time code and main value (card number, license key, API secret, connection string, public key), each once the item's details have loaded; **Open website** (**Open admin console** for a server); **Add to Favorites** or **Remove from Favorites**; **Share link…**; and, in a vault the user can edit, **Edit**, **Duplicate** ("GitHub copy", without passkeys), **Move to…** (another vault the user can edit; the item keeps its ID) and **Delete…**, which asks first. Arrow keys move through the menu and Escape closes it.
-- **A field row in the detail panel** offers the row's own buttons by name, such as **Reveal password**, **Copy password** and **Copy secret reference for password**, or **Open website**. With text selected in the row, the system's menu appears instead, with its Copy.
+- **A field row in the detail panel** offers the row's actions by name, such as **Reveal password**, **Copy password** and **Copy secret reference for password**, or **Open website**. Fields without an inline secret-reference button still offer their reference in this menu. With text selected in the row, the system's menu appears instead, with its Copy.
+
+Click a field's label, value or row padding to copy it. You can also focus the field and press Enter or Space.
+Screen readers announce the copy action, field label and displayed value. Secret values stay masked until revealed.
+In a narrow detail column, the item header's actions move below its title and vault badge.
 
 ## Item icons
 
@@ -192,7 +206,7 @@ Design: [Design](../design.md) §4.5 (categories).
 Design: [Design](../design.md) §4.5 (categories) and §9.2 (browser extension).
 
 - **+** → **Server** opens an editor for the host and port (warning about a port that is not 1–65535), the username, password and one-time password, the admin console URL and an SSH key from the same vault; then notes and custom fields. A host typed as `ssh://host:2222` or `host:2222` is split into host and port.
-- The view lists the host and port with **Copy** and a secret reference, the login fields as for a login, the admin console with **Open in browser**, and the linked SSH key, which opens; a key that was deleted shows as missing. The item list shows the host, port and username, and search matches the host and port, alone or as `host:port`.
+- The view lists the host and port with **Copy** and a secret reference in each field's right-click menu, the login fields as for a login, the admin console with **Open in browser**, and the linked SSH key, which opens; a key that was deleted shows as missing. The item list shows the host, port and username, and search matches the host and port, alone or as `host:port`.
 - The browser extension offers a server's username and password on its admin console, as it does a login's.
 - 1Password Servers import as servers. The admin console becomes the website only when it has no username or password of its own; otherwise the console URL and credentials stay custom fields, so the browser never fills the server's password on the console. Hosting details stay custom fields.
 - Preview: `&vault=team&item=build-server`, `&editor=server`.
@@ -208,7 +222,7 @@ Design: [Design](../design.md) §4.5 (categories) and §9.4.1 (secret references
 
 ## Import from other password managers
 
-Settings → General → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: [Design](../design.md) §9.7).
+Settings → Import & Export → **Import…**, or **+** → **Import…** in a vault. The parsing is `core/importer` (design: [Design](../design.md) §9.7).
 
 1. Choose the format, or let Hisar detect it, then pick the file. Hisar reads 1Password `.1pux` and CSV, unencrypted Bitwarden JSON and CSV, LastPass CSV, and browser CSV exports. The initial destination is Personal, even when you opened Import from a shared vault.
 2. The preview counts logins, secure notes, SSH keys, credit cards, identities, API credentials and addresses, lists what is not imported and why (documents, archived items, passphrase-protected SSH keys), and lists items already in the vault, which are skipped unless you untick the box. A login matches on its title, username and website, a card on its title and last four digits, an identity on its title, name, email and first document number, an API credential on its title and key ID (or host, or secret when it has neither), and an address on its title, street, postal code and country. Nothing is saved before **Import**.
@@ -254,8 +268,8 @@ fail at once. So the app keeps itself available (design: [Design](../design.md) 
 - Settings → General → **Open Hisar at login** (on by default; registered once on the first launch, never again after you turn it off).
   macOS uses `SMAppService` and Settings shows what System Settings → General → Login Items says, with **Open Login Items** when macOS
   wants your approval; Linux writes `~/.config/autostart/com.tryhisar.hisar.desktop`. At login Hisar opens locked and without a window.
-- Closing the window keeps Hisar running in the menu bar (Open Hisar, Lock or Unlock…, Quit Hisar); the Dock icon shows only while the
-  window is open. ⌘Q or **Quit Hisar** quits.
+- Closing the window, or ⌘Q, keeps Hisar running in the menu bar (Open Hisar, Lock or Unlock…, Quit Hisar Completely); the Dock icon
+  shows only while the window is open. **Quit Hisar Completely** quits.
 - `HISAR_DESKTOP_STATE` also separates the single-instance lock, so a development copy with its own state runs next to the installed app.
 
 ## Command-line tool

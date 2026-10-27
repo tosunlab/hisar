@@ -71,6 +71,17 @@ async function openPreview(previewOverrides = {}): Promise<ReturnType<typeof mou
   return wrapper;
 }
 
+// openPassphrase chooses an encrypted Hisar export, which stops on the passphrase step.
+async function openPassphrase(previewOverrides = {}): Promise<ReturnType<typeof mount>> {
+  api.chooseImportFile.mockResolvedValue(createImportPreview({ format: "hisar", formatName: "Hisar encrypted export", isPassphraseRequired: true, isSourceKept: true, allSkipped: [], allDuplicate: [], ...previewOverrides }));
+  await store.openImport();
+  const wrapper = mount(ImportPanel);
+  await flushPromises();
+  await wrapper.find('[data-testid="import-choose"]').trigger("submit");
+  await flushPromises();
+  return wrapper;
+}
+
 beforeEach(() => {
   vi.clearAllMocks();
   resetStore();
@@ -214,7 +225,9 @@ describe("Import panel", () => {
       "LastPass CSV",
       "CSV (Chrome, Firefox, Safari, Edge and others)",
     ]);
-    expect(wrapper.text()).toContain("From 1Password, Bitwarden, LastPass, or a CSV file from your browser");
+    expect(wrapper.text()).toContain("From a Hisar export, 1Password, Bitwarden, LastPass, or a CSV file from your browser");
+    expect(wrapper.get("#import-title").text()).toBe("Import items");
+    expect(wrapper.find(".how-to").text()).toContain("HisarSettings → Export your data on any device.");
     expect(wrapper.find(".how-to").text()).toContain("LastPassAccount options → Advanced → Export, then save the file as CSV.");
     expect(wrapper.find(".how-to").text()).toContain("1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.");
     await wrapper.find('[data-testid="import-format"]').setValue("csv");
@@ -238,6 +251,9 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-count-secure-note"]').text()).toContain("2");
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').text()).toContain("1");
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').text()).toContain("SSH key");
+    expect(wrapper.findAll('[data-testid^="import-count-"]').map((entry) => entry.text())).toEqual(["9 logins", "2 secure notes", "1 SSH key"]);
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("9 logins · 2 secure notes · 1 SSH key");
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("11 items to import into Personal");
     expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("Already in Personal · 1");
     expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("alice · github.com");
     expect(wrapper.find('[data-testid="import-skipped"]').text()).toContain("Bitwarden cards are not supported");
@@ -246,6 +262,7 @@ describe("Import panel", () => {
 
     await wrapper.find('[data-testid="skip-duplicates"]').setValue(false);
     expect(wrapper.find('[data-testid="start-import"]').text()).toBe("Import 12 items");
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("12 items to import into Personal");
     api.startImport.mockResolvedValue(createImportProgress({ totalCount: 12 }));
     api.continueImport.mockReturnValue(new Promise(() => undefined));
     await wrapper.find('[data-testid="start-import"]').trigger("click");
@@ -262,6 +279,14 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="start-import"]').text()).toBe("Import 12 items");
   });
 
+  it("shows a singular headline and omits empty categories", async () => {
+    const wrapper = await openPreview({ itemCount: 1, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, allDuplicate: [] });
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("1 item to import into Personal");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("1 login");
+    expect(wrapper.find('[data-testid="import-count-secure-note"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="import-count-ssh-key"]').exists()).toBe(false);
+  });
+
   it("checks duplicates again when the vault changes", async () => {
     const wrapper = await openPreview();
     api.previewImport.mockResolvedValue(createImportPreview({ vaultId: "work", vaultName: "Work", allDuplicate: [] }));
@@ -269,6 +294,7 @@ describe("Import panel", () => {
     await flushPromises();
     expect(api.previewImport).toHaveBeenCalledWith("work");
     expect(wrapper.find('[data-testid="import-duplicates"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("12 items to import into Work");
   });
 
   it("maps each source group independently and shows the destination members", async () => {
@@ -370,6 +396,59 @@ describe("Import panel", () => {
     await wrapper.find('[data-testid="continue-import"]').trigger("click");
     await flushPromises();
     expect(wrapper.find('[data-testid="import-done"]').exists()).toBe(true);
+  });
+});
+
+describe("Importing a Hisar export", () => {
+  it("asks for the passphrase of an encrypted Hisar export", async () => {
+    const wrapper = await openPassphrase();
+    expect(store.store.importStep).toBe("passphrase");
+    expect(wrapper.find('[data-testid="import-passphrase"]').text()).toContain("Enter the export passphrase");
+    expect(wrapper.find('[data-testid="import-passphrase"]').text()).toContain("This export is encrypted. Enter the passphrase it was exported with.");
+    expect(wrapper.find('[data-testid="import-preview"]').exists()).toBe(false);
+  });
+
+  it("keeps asking with the error and clears the field when the passphrase is wrong", async () => {
+    const wrapper = await openPassphrase();
+    api.openImportFile.mockRejectedValueOnce(new Error("that passphrase doesn't open this export"));
+    await wrapper.find('[data-testid="import-export-passphrase"]').setValue("wrong one");
+    await wrapper.find('[data-testid="import-passphrase"]').trigger("submit");
+    await flushPromises();
+    expect(store.store.importStep).toBe("passphrase");
+    expect(wrapper.find('[role="alert"]').text()).toContain("that passphrase doesn't open this export");
+    expect((wrapper.find('[data-testid="import-export-passphrase"]').element as HTMLInputElement).value).toBe("");
+  });
+
+  it("shows the preview with the notice and the exported-from line when the passphrase opens it", async () => {
+    const wrapper = await openPassphrase();
+    api.openImportFile.mockResolvedValue(createImportPreview({
+      format: "hisar",
+      formatName: "Hisar encrypted export",
+      isSourceKept: true,
+      notice: "Cached copy. Changes since this device's completed syncs may be absent.",
+      exportedFrom: "alice@example.com",
+      exportedAt: "2026-01-02T03:04:05Z",
+      allSkipped: [],
+      allDuplicate: [],
+    }));
+    await wrapper.find('[data-testid="import-export-passphrase"]').setValue("orange cactus harbor");
+    await wrapper.find('[data-testid="import-passphrase"]').trigger("submit");
+    await flushPromises();
+    expect(api.openImportFile).toHaveBeenCalledWith("orange cactus harbor");
+    expect(store.store.importStep).toBe("preview");
+    expect(wrapper.find('[data-testid="import-notice"]').text()).toContain("Cached copy");
+    expect(wrapper.find('[data-testid="import-exported-from"]').text()).toContain("Exported from alice@example.com on");
+  });
+
+  it("keeps the source and offers no deletion after importing a kept export", async () => {
+    const wrapper = await openPreview({ format: "hisar", formatName: "Hisar export", isSourceKept: true, allSkipped: [], allDuplicate: [] });
+    api.startImport.mockResolvedValue(createImportProgress({ isSourceKept: true }));
+    api.continueImport.mockResolvedValue(createImportProgress({ savedCount: 12, totalCount: 12, isDone: true, isSourceKept: true }));
+    await wrapper.find('[data-testid="start-import"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="import-result"]').text()).toBe("Imported 12 items into Personal");
+    expect(wrapper.find('[data-testid="delete-import-file-offer"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="import-source-kept"]').text()).toContain("Hisar keeps this file: it is encrypted, or a copy that may not hold everything.");
   });
 });
 

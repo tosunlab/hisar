@@ -18,9 +18,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.Notes
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.Delete
@@ -39,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
@@ -90,6 +91,7 @@ internal fun ItemDetailContent(
     vaultID: String,
     vaultName: String,
     item: ItemDetail,
+    onHeaderHeightChange: (Int) -> Unit,
     isWritable: Boolean,
     actions: ItemFieldActions,
     openSSHKey: (String) -> Unit,
@@ -98,7 +100,7 @@ internal fun ItemDetailContent(
     convertToSecureNote: () -> Unit,
 ) {
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
-    HeaderSection(model, vaultName, item)
+    HeaderSection(model, vaultName, item, Modifier.onSizeChanged { onHeaderHeightChange(it.height) })
     when {
         item.isSSHKey -> SSHKeySection(item, actions)
         item.isSecureNote -> SecureNoteSection(item, actions)
@@ -118,7 +120,7 @@ internal fun ItemDetailContent(
     if (item.allField.isNotEmpty()) {
         RowsSection(header = "Other fields") {
             item.allField.forEach { field ->
-                row { FieldRow(actions, field.name, field.name, field.value, field.concealed) }
+                row { FieldRow(actions, field.name, field.name, field.value, field.concealed, isCustom = true) }
             }
         }
     }
@@ -128,9 +130,17 @@ internal fun ItemDetailContent(
     if (item.allAndroidApp.isNotEmpty()) {
         RowsSection(
             header = if (item.allAndroidApp.size == 1) "Android app" else "Android apps",
-            footer = "AutoFill offers this login in these apps.",
+            footer = "AutoFill offers this login in these apps. Touch and hold an app to copy its signing certificate.",
         ) {
-            item.allAndroidApp.forEach { androidApp -> row { AndroidAppRow(androidApp, isWritable) { removeAndroidApp(androidApp) } } }
+            item.allAndroidApp.forEach { androidApp ->
+                row {
+                    AndroidAppRow(
+                        androidApp, isWritable,
+                        copyCertificate = { model.copyPlainText(androidApp.certificateSHA256, "Certificate") },
+                        remove = { removeAndroidApp(androidApp) },
+                    )
+                }
+            }
         }
     }
     if (item.allPasskey.isNotEmpty()) {
@@ -148,8 +158,10 @@ internal fun ItemDetailContent(
             MenuRow(
                 listOf(
                     MenuAction("Copy", Icons.Outlined.ContentCopy) { actions.copy("notes", "Notes") },
-                    MenuAction("Copy Secret Reference", Icons.Outlined.Terminal) { actions.copyReference("notes") },
+                    MenuAction("Copy secret reference", Icons.Outlined.Terminal) { actions.copyReference("notes") },
                 ),
+                onClick = { actions.copy("notes", "Notes") },
+                onClickLabel = "Copy notes",
             ) {
                 FormRow { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label) }
             }
@@ -202,7 +214,7 @@ private fun ColumnScope.DividedRows(allRow: List<@Composable () -> Unit>) {
 
 /** A field with copy and copy reference; a concealed one is hidden until revealed. */
 @Composable
-private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String, value: String, isConcealed: Boolean, warning: String = "") {
+private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String, value: String, isConcealed: Boolean, warning: String = "", isCustom: Boolean = false) {
     SecretFieldRow(
         label = label,
         value = value,
@@ -212,12 +224,13 @@ private fun FieldRow(actions: ItemFieldActions, fieldName: String, label: String
         copy = { actions.copy(fieldName, label) },
         copyReference = { actions.copyReference(fieldName) },
         warning = warning,
+        actionLabel = if (isCustom || label.take(2).all(Char::isUpperCase)) label else label.replaceFirstChar { it.lowercase() },
     )
 }
 
 @Composable
-private fun HeaderSection(model: AppModel, vaultName: String, item: ItemDetail) {
-    ClearSection {
+private fun HeaderSection(model: AppModel, vaultName: String, item: ItemDetail, modifier: Modifier) {
+    ClearSection(modifier) {
         Row(
             Modifier.padding(horizontal = 4.dp),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
@@ -298,7 +311,9 @@ private fun SecureNoteSection(item: ItemDetail, actions: ItemFieldActions) {
         if (item.notes.isEmpty()) {
             FormRow { Text("This note is empty.", style = HisarType.body, color = HisarTheme.colors.secondaryLabel) }
         } else {
-            FormRow { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("secure-note-notes")) }
+            MenuRow(emptyList(), onClick = { actions.copy("notes", "Notes") }, onClickLabel = "Copy notes") {
+                FormRow { Text(item.notes, style = HisarType.body, color = HisarTheme.colors.label, modifier = Modifier.testTag("secure-note-notes")) }
+            }
             RowDivider()
             FormButtonRow("Copy notes", onClick = { actions.copy("notes", "Notes") }, testTag = "copy-notes", icon = Icons.Outlined.ContentCopy, color = HisarTheme.colors.tint)
         }
@@ -435,7 +450,10 @@ private fun ConnectionStringSection(connectionString: String, actions: ItemField
     }
 }
 
-/** Each website opens in the browser; touch and hold copies or shares it. A server calls them its admin console. */
+/**
+ * A tap copies a website and its button opens it in the browser; touch and hold copies or shares it. A server calls them
+ * its admin console.
+ */
 @Composable
 private fun WebsiteSection(model: AppModel, item: ItemDetail) {
     val context = LocalContext.current
@@ -448,18 +466,29 @@ private fun WebsiteSection(model: AppModel, item: ItemDetail) {
         item.allURL.forEach { url ->
             row {
                 val openableURL = VaultLogic.convertToOpenableURL(url)?.toString()
-                if (openableURL == null) {
-                    FormRow { Text(url, style = HisarType.body, color = HisarTheme.colors.label) }
-                } else {
-                    MenuRow(
-                        listOf(
-                            MenuAction("Copy", Icons.Outlined.ContentCopy) { model.copyText(url, "Website") },
-                            MenuAction("Share", Icons.Outlined.Share) { shareURL(context, openableURL) },
-                        ),
-                        onClick = { openURL(context, openableURL) },
-                        modifier = Modifier.testTag("open-website"),
+                val copy = { model.copyText(url, "Website") }
+                MenuRow(
+                    listOfNotNull(
+                        MenuAction("Copy", Icons.Outlined.ContentCopy, copy),
+                        openableURL?.let { MenuAction("Share", Icons.Outlined.Share) { shareURL(context, it) } },
+                    ),
+                    onClick = copy,
+                    onClickLabel = "Copy website",
+                    modifier = Modifier.testTag("website-$url"),
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 52.dp)
+                            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        LinkLabel(url, Icons.Outlined.Language)
+                        Icon(Icons.Outlined.Language, contentDescription = null, tint = HisarTheme.colors.secondaryLabel, modifier = Modifier.size(22.dp))
+                        Spacer(Modifier.size(14.dp))
+                        Text(url, style = HisarType.body, color = HisarTheme.colors.label, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                        if (openableURL != null) {
+                            FieldIconButton(Icons.AutoMirrored.Outlined.OpenInNew, "Open website", "open-website-$url", { openURL(context, openableURL) })
+                        }
                     }
                 }
             }
@@ -487,20 +516,16 @@ private fun LinkLabel(title: String, icon: ImageVector) {
     }
 }
 
+/** An app the login fills into; touch and hold copies its signing certificate's SHA-256, which the row leaves out. */
 @Composable
-private fun AndroidAppRow(androidApp: ItemAndroidApp, isWritable: Boolean, remove: () -> Unit) {
-    IconRow(Icons.Outlined.PhoneAndroid, "android-app-${androidApp.packageName}", trailing = {
-        if (isWritable) {
-            FieldIconButton(Icons.Outlined.Delete, "Remove ${androidApp.packageName}", "remove-android-app-${androidApp.packageName}", remove, tint = HisarTheme.colors.destructive)
-        }
-    }) {
-        SelectionContainer { Text(androidApp.packageName, style = HisarType.body, color = HisarTheme.colors.label) }
-        SelectionContainer {
-            Text(
-                "Certificate SHA-256 ${androidApp.certificateSHA256}",
-                style = HisarType.footnote.copy(fontSize = HisarType.footnote.fontSize * 0.92f, fontFamily = HisarType.bodyMonospaced.fontFamily),
-                color = HisarTheme.colors.secondaryLabel,
-            )
+private fun AndroidAppRow(androidApp: ItemAndroidApp, isWritable: Boolean, copyCertificate: () -> Unit, remove: () -> Unit) {
+    MenuRow(listOf(MenuAction("Copy certificate", Icons.Outlined.ContentCopy, copyCertificate))) {
+        IconRow(Icons.Outlined.PhoneAndroid, "android-app-${androidApp.packageName}", trailing = {
+            if (isWritable) {
+                FieldIconButton(Icons.Outlined.Delete, "Remove ${androidApp.packageName}", "remove-android-app-${androidApp.packageName}", remove, tint = HisarTheme.colors.destructive)
+            }
+        }) {
+            Text(androidApp.packageName, style = HisarType.body, color = HisarTheme.colors.label)
         }
     }
 }

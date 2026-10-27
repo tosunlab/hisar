@@ -7,7 +7,7 @@ struct SignInView: View {
         var id: String { rawValue }
     }
 
-    static let defaultServer = "https://api.tryhisar.com"
+    static let defaultServer = "https://eu.tryhisar.com"
 
     @EnvironmentObject private var model: AppModel
     @State private var mode: Mode = .signIn
@@ -31,8 +31,13 @@ struct SignInView: View {
         case .signIn:
             return !server.isEmpty && !email.isEmpty && !secretKey.isEmpty && !password.isEmpty
         case .createAccount:
-            return !inviteLink.isEmpty && !email.isEmpty && !name.isEmpty && !password.isEmpty && password == repeatedPassword
+            return (!isSignUpServerAsked || !server.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty) && !email.isEmpty && !name.isEmpty && !password.isEmpty && password == repeatedPassword
         }
+    }
+
+    /// An invite link names its server, so the create-account form asks for one only without an invite.
+    private var isSignUpServerAsked: Bool {
+        inviteLink.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
     var body: some View {
@@ -41,9 +46,6 @@ struct SignInView: View {
                 Section {
                     VStack(alignment: .leading, spacing: 14) {
                         LogoMark(size: 56)
-                        Text(mode == .signIn ? "Sign in to use Hisar on this iPhone." : "Enter the invite code you received, or paste the invite link.")
-                            .font(.subheadline)
-                            .foregroundStyle(.themeSecondary)
                         Picker("Mode", selection: $mode) {
                             ForEach(Mode.allCases) { mode in
                                 Text(mode.rawValue).tag(mode)
@@ -187,12 +189,39 @@ struct SignInView: View {
 
     @ViewBuilder
     private var createAccountSections: some View {
-        Section("Invite") {
-            TextField("Invite code or link", text: $inviteLink, prompt: Text("Invite code or link"))
+        Section {
+            TextField("Invite code or link (optional)", text: $inviteLink, prompt: Text("Invite code or link (optional)"))
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("sign-up-invite-link")
+        } header: {
+            Text("Invite")
+        } footer: {
+            Text("Leave it empty if the server lets anyone sign up.")
+        }
+        if isSignUpServerAsked {
+            Section {
+                if isServerShown {
+                    TextField("Server", text: $server, prompt: Text(verbatim: SignInView.defaultServer))
+                        .textContentType(.URL)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .accessibilityIdentifier("sign-up-server")
+                } else {
+                    Button("Use a different server…") {
+                        isServerShown = true
+                    }
+                    .accessibilityIdentifier("sign-up-use-different-server")
+                }
+            } header: {
+                Text("Server")
+            } footer: {
+                if !isServerShown {
+                    Text(verbatim: "Creates your account on \(SignInView.describeServer(server)).")
+                }
+            }
         }
         Section("You") {
             TextField("Email", text: $email, prompt: Text(verbatim: "you@example.com"))
@@ -264,7 +293,12 @@ struct SignInView: View {
                     secretKey = ""
                 }
             case .createAccount:
-                if await model.signUp(inviteLink: inviteLink, email: email, name: name, password: password) {
+                let isSignedUp = if isSignUpServerAsked {
+                    await model.signUpWithoutInvite(server: server, email: email, name: name, password: password)
+                } else {
+                    await model.signUp(inviteLink: inviteLink, email: email, name: name, password: password)
+                }
+                if isSignedUp {
                     password = ""
                     repeatedPassword = ""
                 }

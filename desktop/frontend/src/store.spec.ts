@@ -84,6 +84,25 @@ describe("store", () => {
     expect(store.pendingSecretKey).toBe("");
   });
 
+  it("creates an account without an invite on an open server", async () => {
+    api.signUpWithoutInvite.mockResolvedValue({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+    api.listAllVault.mockResolvedValue([allTestVault[0]]);
+    api.listAllItem.mockResolvedValue([]);
+    expect(await storeModule.signUpWithoutInvite("hisar.test", "alice@example.com", "Alice", "long password")).toBe(true);
+    expect(api.signUpWithoutInvite).toHaveBeenCalledWith("hisar.test", "alice@example.com", "Alice", "long password");
+    expect(api.signUp).not.toHaveBeenCalled();
+    expect(store.status.state).toBe("unlocked");
+    expect(store.pendingSecretKey).toBe("H1-SECRET");
+  });
+
+  it("shows the server's answer when sign-ups without an invite are closed", async () => {
+    api.signUpWithoutInvite.mockRejectedValue(new Error("Sign-ups are not open on this server. Ask an admin for an invitation."));
+    expect(await storeModule.signUpWithoutInvite("hisar.test", "alice@example.com", "Alice", "long password")).toBe(false);
+    expect(store.errorMessage).toBe("Sign-ups are not open on this server. Ask an admin for an invitation.");
+    expect(store.status.state).toBe("signed-out");
+    expect(store.isBusy).toBe(false);
+  });
+
   it("delivers a committed key replacement despite a local cache warning", async () => {
     const result = {
       status: createStatus("unlocked"),
@@ -315,6 +334,41 @@ describe("openSettings", () => {
     await storeModule.openSettings("developer");
     expect(store.isSettingsOpen).toBe(true);
     expect(loadSelectedSectionID()).toBe("developer");
+  });
+
+  it("opens the Settings window instead of the overlay where there is one, also while locked", async () => {
+    resetStore();
+    store.isSettingsOpen = false;
+    store.status = createStatus("unlocked");
+    api.showSettingsWindow.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+    await storeModule.openSettings("security");
+    expect(api.showSettingsWindow).toHaveBeenCalledWith("security");
+    expect(store.isSettingsOpen).toBe(false);
+    expect(loadSelectedSectionID()).toBe("security");
+
+    store.status = createStatus("locked");
+    await storeModule.openSettings("developer");
+    expect(api.showSettingsWindow).toHaveBeenLastCalledWith("developer");
+    expect(store.isSettingsOpen).toBe(false);
+  });
+});
+
+describe("openFromSettings", () => {
+  it("opens the pending recovery a Secret Key replacement in the Settings window left", async () => {
+    const replacement: PendingRecoverySummary = {
+      operationId: "replacement", kind: "secret-key", origin: "https://hisar.test", accountId: "account", email: "alice@example.com", name: "Alice",
+      phase: "delivery-pending", kitSaved: false, manualUnlock: false, keychainProtected: true, revision: 1, problems: [],
+    };
+    resetStore();
+    store.status = createStatus("unlocked");
+    store.isSettingsOpen = true;
+    store.pendingRecovery = [{ ...replacement, operationId: "earlier" }];
+    store.isRecoveryOpen = false;
+    api.listPendingRecovery.mockResolvedValueOnce([{ ...replacement, operationId: "earlier" }, replacement]);
+    await storeModule.openFromSettings("recovery");
+    expect(store.isSettingsOpen).toBe(false);
+    expect(store.pendingRecovery.map((operation) => operation.operationId)).toEqual(["earlier", "replacement"]);
+    expect(store.isRecoveryOpen).toBe(true);
   });
 });
 

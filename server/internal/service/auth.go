@@ -19,6 +19,7 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 	"github.com/tryhisar/hisar/core/pake"
 	"github.com/tryhisar/hisar/server/internal/boundedstate"
+	"github.com/tryhisar/hisar/server/internal/settings"
 	"github.com/tryhisar/hisar/server/internal/store"
 )
 
@@ -26,6 +27,7 @@ const maxKeysetSize = 1024
 
 var (
 	errInvalidInvite      = newError(KindForbidden, "invalid invite")
+	errSignUpClosed       = newError(KindForbidden, apitypes.RegistrationClosedMessage)
 	errInvalidLogin       = newError(KindInvalid, "invalid login request")
 	errLoginFailed        = newError(KindUnauthorized, "login failed")
 	errAccountSuspended   = newError(KindForbidden, apitypes.AccountSuspendedMessage)
@@ -93,8 +95,17 @@ func (s *Service) Prelogin(ctx context.Context, email string) (apitypes.Prelogin
 	return apitypes.PreloginResponse{Salt: account.Salt, Argon2: argon2Params}, nil
 }
 
-// checkInvite accepts a usable invite for the email, or a setup invite, which has no email, for any valid email.
+// checkInvite accepts a usable invite for the email, or a setup invite, which has no email, for any valid email. An
+// empty token is a sign-up without an invite, which only a server with open registration accepts, and not before
+// setup has made its first admin: the account would be a member and the server would have no admin.
 func (s *Service) checkInvite(ctx context.Context, token, email string) error {
+	if token == "" {
+		if current := s.currentSettings(); !current.OpenRegistration || current.SetupState == settings.SetupNeedsAdmin {
+			return errSignUpClosed
+		}
+		_, err := parseEmail(email)
+		return err
+	}
 	invite, err := s.store.GetInviteByHash(ctx, hashToken(token))
 	if err != nil {
 		return errInvalidInvite
@@ -166,7 +177,7 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 		KEMSig:       request.PublicKeys.KEMSig,
 	}
 	token, device, newSession := s.newSession(account.ID, request.Device)
-	switch err := s.store.RedeemInvite(ctx, hashToken(request.Invite), account, device, newSession); {
+	switch err := s.createAccount(ctx, request.Invite, account, device, newSession); {
 	case errors.Is(err, store.ErrNotFound):
 		return apitypes.SessionResponse{}, s.registrationRefusal(ctx, request.AccountID, errInvalidInvite)
 	case errors.Is(err, store.ErrExists):
@@ -179,6 +190,16 @@ func (s *Service) RegisterFinish(ctx context.Context, actor Actor, request *apit
 		log.Printf("setup: %v", err)
 	}
 	return apitypes.SessionResponse{Token: token, AccountID: account.ID, DeviceID: device.ID}, nil
+}
+
+// createAccount stores the new account with its first device and session: redeeming the invite, or as a member when
+// the sign-up has no invite, which checkInvite has allowed by then.
+func (s *Service) createAccount(ctx context.Context, invite string, account *store.Account, device *store.Device, newSession *store.Session) error {
+	if invite == "" {
+		account.Role = apitypes.RoleMember
+		return s.store.CreateAccount(ctx, account, device, newSession)
+	}
+	return s.store.RedeemInvite(ctx, hashToken(invite), account, device, newSession)
 }
 
 func (s *Service) registrationRefusal(ctx context.Context, accountID string, refusal error) error {

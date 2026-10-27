@@ -1,4 +1,5 @@
 import CryptoKit
+import UIKit
 import XCTest
 
 final class OneTimeCodeUITests: HisarUITestCase {
@@ -32,7 +33,7 @@ final class OneTimeCodeUITests: HisarUITestCase {
         type("code-password-1", into: app.secureTextFields["editor-password"])
         type("not a setup key!", into: app.textFields["editor-one-time-password"])
         app.buttons["editor-save"].tap()
-        waitFor(app.staticTexts["The one-time password is not a valid secret or otpauth:// link"])
+        waitFor(app.staticTexts["The one-time code is not a valid secret or otpauth:// link"])
         saveScreenshot("otp-editor-invalid")
         let oneTimePasswordField = app.textFields["editor-one-time-password"]
         oneTimePasswordField.tap()
@@ -44,11 +45,23 @@ final class OneTimeCodeUITests: HisarUITestCase {
 
         let startedAt = Date()
         app.buttons["item-Example"].tap()
-        let codeText = app.staticTexts["one-time-code-value"]
-        waitFor(codeText)
-        checkCurrentCode(codeText.label.replacingOccurrences(of: " ", with: ""), startedAt: startedAt)
+        let copyNotice = app.staticTexts["One-time code copied. It clears in 90 seconds."]
+        let codeRow = app.buttons["copy-one-time-code"]
+        waitFor(codeRow)
+        let value = (codeRow.value as? String) ?? ""
+        let shownCode = String(value.split(separator: ",").first ?? "")
+        XCTAssertTrue(value.contains("seconds left"))
+        checkCurrentCode(shownCode.replacingOccurrences(of: " ", with: ""), startedAt: startedAt)
         saveScreenshot("otp-item-detail")
-        app.buttons["copy-one-time-code"].tap()
+        codeRow.tap()
+        waitFor(copyNotice)
+        XCTAssertTrue(copyNotice.waitForNonExistence(timeout: 10))
+        codeRow.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.02)).tap()
+        waitFor(copyNotice)
+        XCTAssertTrue(copyNotice.waitForNonExistence(timeout: 10))
+        let codeCell = app.cells.containing(.button, identifier: "copy-one-time-code").firstMatch
+        codeCell.coordinate(withNormalizedOffset: CGVector(dx: 0.99, dy: 0.95)).tap()
+        waitFor(copyNotice)
         saveScreenshot("otp-copied")
 
         launchAutoFill(argument: "-HisarAutoFillOneTimeCodePreview")

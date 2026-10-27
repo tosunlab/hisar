@@ -27,7 +27,7 @@ const allGitHubField = [
   createShareLinkField({ key: "urls", label: "website", isDefault: false }),
   createShareLinkField({ key: "field:0", label: "Recovery code", isDefault: false, isConcealed: true }),
 ];
-const createdURL = "https://api.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s";
+const createdURL = "https://eu.tryhisar.com/s/AbCdEfGhIjKlMnOpQrStUv#-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_v7-_s";
 
 function resetStore(): void {
   Object.assign(store, {
@@ -142,7 +142,7 @@ describe("share link dialog", () => {
     await wrapper.find('[data-testid="copy-share-link"]').trigger("click");
     await flushPromises();
     expect(api.copyText).toHaveBeenCalledWith(createdURL);
-    expect(store.noticeMessage).toBe("Link copied, clears in 90 seconds");
+    expect(store.noticeMessage).toBe("Link copied. It clears in 90 seconds.");
     wrapper.unmount();
   });
 
@@ -158,11 +158,15 @@ describe("share link dialog", () => {
     wrapper.unmount();
   });
 
-  it("shares a piece of text from the new item menu", async () => {
+  it("shares a piece of text from the Shared links panel, not the new item menu", async () => {
     api.createShareLink.mockResolvedValue(createShareLink({ url: createdURL, title: "Staging database URL", fieldLabels: ["text"], isText: true, itemID: "", vaultID: "" }));
     const wrapper = mount(MainView, { attachTo: document.body });
     await wrapper.find('button[aria-label="New item"]').trigger("click");
-    await wrapper.find('[data-testid="new-share-text"]').trigger("click");
+    expect(wrapper.find('[data-testid="new-import"]').exists()).toBe(true);
+    expect(wrapper.find(".new-item-menu").text()).not.toContain("Share text");
+    await wrapper.find('[data-testid="open-shared-links"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('[data-testid="share-text-from-panel"]').trigger("click");
     expect(wrapper.find('[data-testid="share-link-dialog"]').text()).toContain("Share text");
     await wrapper.find("form").trigger("submit");
     expect(wrapper.find('[data-testid="share-link-validation"]').text()).toBe("Enter the text to share.");
@@ -204,6 +208,21 @@ describe("shared links", () => {
     expect(allRow[0].text()).toContain("2 of 5 views");
     expect(allRow[0].text()).toContain("Passphrase");
     expect(allRow[0].text()).toContain("Expires in 7 days");
+    wrapper.unmount();
+  });
+
+  it("shows a failed link copy as an error notice while the overview stays open", async () => {
+    api.listAllShareLink.mockResolvedValue(allShareLink);
+    api.copyShareLink.mockRejectedValue(new Error("the clipboard is not available"));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.find('[data-testid="open-shared-links"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('button[aria-label="Copy link to AWS Console"]').trigger("click");
+    await flushPromises();
+    expect(store.noticeMessage).toBe("the clipboard is not available");
+    expect(store.noticeKind).toBe("error");
+    expect(store.errorMessage).toBe("");
+    expect(wrapper.find('[data-testid="shared-links-panel"]').exists()).toBe(true);
     wrapper.unmount();
   });
 

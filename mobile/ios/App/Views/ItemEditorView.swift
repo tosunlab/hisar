@@ -116,6 +116,7 @@ struct ItemEditorView: View {
                                 isPasswordRevealed.toggle()
                             } label: {
                                 Image(systemName: isPasswordRevealed ? "eye.slash" : "eye")
+                                    .iconButtonHitArea()
                             }
                             .buttonStyle(.borderless)
                             .foregroundStyle(.themeSecondary)
@@ -124,6 +125,7 @@ struct ItemEditorView: View {
                                 isGeneratorShown = true
                             } label: {
                                 Image(systemName: "wand.and.stars")
+                                    .iconButtonHitArea()
                             }
                             .buttonStyle(.borderless)
                             .foregroundStyle(.themeSecondary)
@@ -132,16 +134,12 @@ struct ItemEditorView: View {
                         }
                     }
                     if !draft.isDatabase {
-                        Section {
+                        Section("One-time code") {
                             TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
                                 .font(.system(.body, design: .monospaced))
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("editor-one-time-password")
-                        } header: {
-                            Text("One-time password")
-                        } footer: {
-                            Text("The setup key or link from the site's two-factor setup. Hisar then shows the current code.")
                         }
                         Section(draft.isServer ? "Admin console" : "Websites") {
                             ForEach(allURLText.indices, id: \.self) { index in
@@ -402,6 +400,7 @@ struct ItemEditorView: View {
                     value.wrappedValue = ""
                 } label: {
                     Image(systemName: "minus.circle")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel("Remove \(title.lowercased())")
@@ -568,6 +567,7 @@ struct ItemEditorView: View {
                     isCredentialSecretRevealed.toggle()
                 } label: {
                     Image(systemName: isCredentialSecretRevealed ? "eye.slash" : "eye")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.themeSecondary)
@@ -758,6 +758,7 @@ struct ItemEditorView: View {
                     isLicenseKeyRevealed.toggle()
                 } label: {
                     Image(systemName: isLicenseKeyRevealed ? "eye.slash" : "eye")
+                        .iconButtonHitArea()
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(.themeSecondary)
@@ -787,15 +788,23 @@ struct ItemEditorView: View {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
-                        .font(.caption)
-                    if draft.allField[index].concealed {
-                        SecureField("Value", text: $draft.allField[index].value)
-                    } else {
-                        TextField("Value", text: $draft.allField[index].value)
-                    }
-                    Toggle("Secret", isOn: $draft.allField[index].concealed)
-                        .font(.caption)
+                    HStack {
+                        if draft.allField[index].concealed {
+                            SecureField("Value", text: $draft.allField[index].value)
+                        } else {
+                            TextField("Value", text: $draft.allField[index].value)
+                        }
+                        Button {
+                            draft.allField[index].concealed.toggle()
+                        } label: {
+                            Image(systemName: draft.allField[index].concealed ? "eye" : "eye.slash")
+                                .iconButtonHitArea()
+                        }
+                        .buttonStyle(.borderless)
                         .foregroundStyle(.themeSecondary)
+                        .accessibilityLabel("Secret")
+                        .accessibilityAddTraits(draft.allField[index].concealed ? .isSelected : [])
+                    }
                 }
             }
             .onDelete { draft.allField.remove(atOffsets: $0) }
@@ -825,7 +834,7 @@ struct ItemEditorView: View {
             Text("Tags")
         } footer: {
             if draft.allTag.isEmpty {
-                Text("Tags group items across vaults; the Vaults screen lists them.")
+                Text("Tags group items across vaults; open Tags on the Vaults screen to browse them.")
             }
         }
     }

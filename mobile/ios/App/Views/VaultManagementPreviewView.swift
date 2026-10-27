@@ -94,7 +94,7 @@ struct VaultManagementPreviewView: View {
                         resultMessage = request.moveToVaultID.isEmpty ? "Deleted with items" : "Moved to \(request.moveToVaultID)"
                         isSheetShown = false
                     }
-                    .navigationTitle("Delete “Work”")
+                    .navigationTitle("Delete “Work”?")
                     .navigationBarTitleDisplayMode(.inline)
                 }
             }

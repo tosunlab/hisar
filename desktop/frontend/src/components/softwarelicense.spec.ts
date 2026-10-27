@@ -177,6 +177,6 @@ describe("Importing software licenses", () => {
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-software-license"]');
     expect(count.text()).toContain("1");
-    expect(count.text()).toContain("Software license");
+    expect(count.text()).toContain("software license");
   });
 });

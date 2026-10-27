@@ -260,4 +260,48 @@ class CredentialImportTests {
         assertFalse(model.credentialImport.isShown)
         assertNull(model.credentialImport.preview)
     }
+
+    @Test
+    fun testImportingAnEncryptedHisarExportAsksForItsPassphrase() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        model.credentialImport.startHisarExport("Alice's export.hisar", "cipher".encodeToByteArray())
+        runCurrent()
+        val sheet = model.credentialImport.sheet.value
+        assertTrue(sheet is CredentialImportSheet.EnteringPassphrase, "an encrypted export asks for its passphrase")
+        assertEquals("Alice's export.hisar", sheet.fileName)
+        assertNull(model.credentialImport.preview, "there is no preview until the export is opened")
+        assertEquals(1, harness.backend.countCall("prepareHisarExportImport"))
+        assertEquals(0, harness.backend.countCall("openImportFile"), "nothing is opened before a passphrase is entered")
+    }
+
+    @Test
+    fun testAWrongExportPassphraseKeepsTheExportWaiting() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        model.credentialImport.startHisarExport("Alice's export.hisar", "cipher".encodeToByteArray())
+        runCurrent()
+        assertTrue(model.credentialImport.sheet.value is CredentialImportSheet.EnteringPassphrase)
+
+        model.credentialImport.openImportFile("the wrong one")
+        assertTrue(model.credentialImport.sheet.value is CredentialImportSheet.EnteringPassphrase, "a wrong passphrase keeps the passphrase step")
+        assertEquals("that passphrase doesn't open this export", model.errorMessage.value)
+        assertNull(model.credentialImport.preview)
+
+        model.credentialImport.openImportFile(FakeBackend.HISAR_EXPORT_PASSPHRASE)
+        assertEquals("personal", model.credentialImport.preview?.vaultID, "the right passphrase opens the export")
+        assertNull(model.errorMessage.value)
+    }
+
+    @Test
+    fun testAPlainHisarExportPreviewsAtOnce() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isHisarExportEncrypted = false
+        val model = harness.startUnlockedModel()
+        model.credentialImport.startHisarExport("Alice's export.json", """["GitHub"]""".encodeToByteArray())
+        runCurrent()
+        assertTrue(model.credentialImport.sheet.value is CredentialImportSheet.Previewing, "a plain export previews at once")
+        assertEquals("personal", model.credentialImport.preview?.vaultID)
+        assertEquals(0, harness.backend.countCall("openImportFile"), "a plain export needs no passphrase")
+    }
 }

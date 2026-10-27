@@ -231,7 +231,7 @@ func TestOtherAppsAreCheckedThroughHisar(t *testing.T) {
 func TestParseInviteDeepLink(t *testing.T) {
 	for link, expected := range map[string]string{
 		"hisar://invite/abc_DEF-123":                                             "abc_DEF-123",
-		" hisar://invite/abc_DEF-123?server=https%3A%2F%2Fapi.tryhisar.com ":     "abc_DEF-123",
+		" hisar://invite/abc_DEF-123?server=https%3A%2F%2Feu.tryhisar.com ":      "abc_DEF-123",
 		"HISAR://INVITE/abc?server=https%3A%2F%2Fhisar.example.com":              "https://hisar.example.com/invite/abc",
 		"hisar://invite/abc?server=http%3A%2F%2F127.0.0.1%3A19400":               "http://127.0.0.1:19400/invite/abc",
 		"hisar://invite/abc?server=hisar.example.com":                            "https://hisar.example.com/invite/abc",
@@ -241,7 +241,7 @@ func TestParseInviteDeepLink(t *testing.T) {
 			t.Errorf("ParseInviteDeepLink(%q) = %q, %v; want %q", link, invite, err, expected)
 		}
 	}
-	for _, link := range []string{"", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://api.tryhisar.com/invite/abc", "hisar://invite/a%20b", "hisar://invite/abc?server=ftp%3A%2F%2Fx"} {
+	for _, link := range []string{"", "hisar://invite/", "hisar://invite/a/b", "hisar://sign-in?server=x", "https://eu.tryhisar.com/invite/abc", "hisar://invite/a%20b", "hisar://invite/abc?server=ftp%3A%2F%2Fx"} {
 		if invite, err := ParseInviteDeepLink(link); err == nil {
 			t.Errorf("ParseInviteDeepLink(%q) = %q", link, invite)
 		}

@@ -170,8 +170,8 @@ func (current *browserRun) connectHermes(runtime *hermesRuntime) error {
 		return err
 	}
 	pid := current.desktop.pid()
-	for _, selector := range []string{"role=AXButton;name=Settings", "role=AXButton;name=Developer tools", "role=AXButton;name=Connect;after=Hermes"} {
-		if err := current.waitAndPress(pid, "window=Hisar;"+selector); err != nil {
+	for _, selector := range []string{"window=Hisar;role=AXButton;name=Settings", "window=Settings;role=AXButton;name=Developer tools", "window=Settings;role=AXButton;name=Connect;after=Hermes"} {
+		if err := current.waitAndPress(pid, selector); err != nil {
 			return err
 		}
 	}
@@ -189,7 +189,7 @@ func (current *browserRun) connectHermes(runtime *hermesRuntime) error {
 	if config.Command != filepath.Join(current.directory, "Helpers", "hisar") || strings.Join(config.Args, " ") != "mcp --no-reveal" || config.Env["HISAR_CLI_SOCKET"] != current.paths.CLISocket {
 		return errors.New("Settings did not connect Hermes to the private CLI and socket")
 	}
-	return current.ax.press(pid, "window=Hisar;role=AXButton;name=Close settings")
+	return current.ax.press(pid, "window=Settings;role=AXButton;name=close button")
 }
 
 type hermesMessage struct {

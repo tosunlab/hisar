@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import {
+  clearError,
   copyItemField,
+  countPendingInvitations,
   createOrganizationVault,
   createVault,
   duplicateItem,
@@ -11,12 +13,13 @@ import {
   listAllTag,
   loadAllOrganizationQuietly,
   lock,
+  lockOnShortcut,
   openImport,
   openItemShareLinkDialog,
   openShareLinks,
   openWebsite,
+  openSettings,
   openSharing,
-  openTextShareLinkDialog,
   selectFavoriteItem,
   selectFavorites,
   selectItem,
@@ -37,6 +40,7 @@ import {
   store,
   syncInBackground,
   syncInterval,
+  takeErrorMessage,
   toggleSelectedItemFavorite,
 } from "../store";
 import { api, type FavoriteItem, type ItemDetail, type VaultSummary } from "../api";
@@ -67,11 +71,14 @@ import {
   softwareLicenseFieldName,
   sshKeyCategory,
 } from "../util";
+import { allColumnBound, detailMinWidth, loadColumnWidths, saveColumnWidths } from "../columnWidths";
 import AppIcon from "./AppIcon.vue";
+import ColumnResizer from "./ColumnResizer.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
 import ItemEditor from "./ItemEditor.vue";
 import ConfirmDeleteDialog from "./ConfirmDeleteDialog.vue";
+import DiscardChangesDialog from "./DiscardChangesDialog.vue";
 import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import MoveItemDialog from "./MoveItemDialog.vue";
 import ImportPanel from "./ImportPanel.vue";
@@ -81,7 +88,6 @@ import OrganizationAlert from "./OrganizationAlert.vue";
 import ReadIssuesPanel from "./ReadIssuesPanel.vue";
 import OrganizationBanner from "./OrganizationBanner.vue";
 import RemovedVaultBanner from "./RemovedVaultBanner.vue";
-import ShareInvitationBanner from "./ShareInvitationBanner.vue";
 import SharedLinksPanel from "./SharedLinksPanel.vue";
 import ShareLinkDialog from "./ShareLinkDialog.vue";
 import SSHKeyForm from "./SSHKeyForm.vue";
@@ -90,6 +96,11 @@ import VaultMenu from "./VaultMenu.vue";
 import VaultSharingPanel from "./VaultSharingPanel.vue";
 
 const personalVaultNotice = "Personal vaults are private. Create a shared vault to share items with other people.";
+
+const columnWidths = ref(loadColumnWidths());
+const layoutStyle = computed(() => ({
+  gridTemplateColumns: `minmax(${allColumnBound.sidebar.min}px, ${columnWidths.value.sidebar}px) 0 minmax(${allColumnBound.list.min}px, ${columnWidths.value.list}px) 0 minmax(${detailMinWidth}px, 1fr)`,
+}));
 
 interface TeamChoice {
   key: string;
@@ -105,24 +116,43 @@ interface VaultGroup {
   allVault: VaultSummary[];
 }
 
-const isCreatingVault = ref(false);
 const newVaultName = ref("");
-// newVaultWhere is "" for a shared vault, or the key of the team that gets the new organization vault.
+// newVaultWhere is "" for the user's own vault, or the key of the team that gets the new organization vault.
 const newVaultWhere = ref("");
 // isLoadingTeams is true while the new-vault form loads the teams for Where; newVaultTeamLoad counts the loads so only the
 // latest one ends it.
 const isLoadingTeams = ref(false);
 let newVaultTeamLoad = 0;
+// newVaultErrorMessage is why the last Create failed, shown in the form.
+const newVaultErrorMessage = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
+const shiftModifier = isMacPlatform() ? "⇧" : "Shift+";
+const itemList = ref<HTMLElement | null>(null);
 
 const allVisibleItem = computed(() => filterAllItem(store.allItem.filter((item) => !item.readIssue), store.searchQuery, store.selectedTag));
 const unreadableItemCount = computed(() => store.allItem.filter((item) => item.readIssue).length);
 const healthyItemCount = computed(() => store.allItem.length - unreadableItemCount.value);
 const allVisibleFavorite = computed(() => filterAllFavorite(store.allFavorite, store.searchQuery));
 const allTag = computed(() => listAllTag(store.allItem));
+// inbox gathers what does not need the sidebar's room: invitations to answer, shares waiting on someone's Hisar, and
+// organization vault keys on their way. actionCount is what waits for the user, as on Settings' badges; the row opens
+// the Settings section where that is answered first.
+const inbox = computed(() => {
+  const allAcceptedSent = store.shareInvitations.sent.filter((invitation) => invitation.state === "accepted");
+  const shareActionCount = countPendingInvitations("people");
+  const shareCount = store.shareInvitations.received.length + allAcceptedSent.length + (store.shareInvitations.waiting?.length ?? 0);
+  const organizationActionCount = countPendingInvitations("organizations");
+  const waitingKeyCount = store.waitingVaultKeys.waiting.filter((waiting) => !store.allVault.some((vault) => vault.id === waiting.vaultId)).length;
+  const isPeopleFirst = shareActionCount > 0 || (organizationActionCount === 0 && shareCount > 0);
+  return {
+    entryCount: shareCount + organizationActionCount + waitingKeyCount,
+    actionCount: shareActionCount + organizationActionCount,
+    sectionID: isPeopleFirst ? "people" : "organizations",
+  };
+});
 const emptyListMessage = computed(() => {
   if (store.searchQuery) {
     return "No items match your search.";
@@ -158,13 +188,13 @@ const allTeamChoice = computed<TeamChoice[]>(() =>
         organizationID: organization.id,
         teamID: team.id,
         teamName: team.name,
-        label: `${organization.name} › ${team.name}`,
+        label: `${organization.name} › ${team.name} (team vault)`,
       })),
   ),
 );
 const selectedTeamChoice = computed(() => allTeamChoice.value.find((choice) => choice.key === newVaultWhere.value));
-// canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: Shared vault or one of the teams.
-// A team that is no longer listed (its organization or the user's place in it changed) never falls back to a shared vault.
+// canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: the user's own vault or one of the
+// teams. A team that is no longer listed (its organization or the user's place in it changed) never falls back to an own vault.
 const canSubmitNewVault = computed(
   () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
 );
@@ -173,6 +203,22 @@ const canSubmitNewVault = computed(
 const itemMenu = ref<{ vaultID: string; vaultItem: ItemDetail; favorite?: FavoriteItem; detail: ItemDetail | null; x: number; y: number } | null>(null);
 const itemToDelete = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
 const itemToMove = ref<{ vaultID: string; itemID: string; title: string } | null>(null);
+// isOverlayOpen: a panel or dialog covers the main window, so its shortcuts and list keys stay out of the way.
+const isOverlayOpen = computed(
+  () =>
+    store.isSettingsOpen ||
+    store.isSharingOpen ||
+    store.isImportOpen ||
+    store.isShareLinksOpen ||
+    store.shareLinkDialog !== null ||
+    store.vaultDialog !== null ||
+    store.browserPairing !== null ||
+    store.itemDetailDialog !== null ||
+    store.discardDraftPrompt !== null ||
+    store.organizationAlert !== null ||
+    itemToDelete.value !== null ||
+    itemToMove.value !== null,
+);
 
 async function openItemMenu(vaultID: string, vaultItem: ItemDetail, event: MouseEvent, favorite?: FavoriteItem): Promise<void> {
   itemMenu.value = { vaultID, vaultItem, favorite, detail: null, x: event.clientX, y: event.clientY };
@@ -312,9 +358,11 @@ function openVaultMenuBelow(event: MouseEvent): void {
   vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
 }
 
-async function startCreatingVault(): Promise<void> {
+// prepareNewVaultForm clears the form and loads the teams for Where whenever the new-vault form opens, from the New vault
+// button or from Settings → People.
+async function prepareNewVaultForm(): Promise<void> {
   newVaultWhere.value = "";
-  isCreatingVault.value = true;
+  newVaultErrorMessage.value = "";
   isLoadingTeams.value = true;
   const load = ++newVaultTeamLoad;
   await loadAllOrganizationQuietly();
@@ -322,6 +370,12 @@ async function startCreatingVault(): Promise<void> {
     isLoadingTeams.value = false;
   }
 }
+
+watch(
+  () => store.isCreatingVault,
+  (isCreating) => isCreating && prepareNewVaultForm(),
+  { immediate: true },
+);
 
 async function submitNewVault(): Promise<void> {
   if (!canSubmitNewVault.value) {
@@ -331,8 +385,9 @@ async function submitNewVault(): Promise<void> {
   const isCreated = team ? await createOrganizationVault(team.organizationID, team.teamID, newVaultName.value) : await createVault(newVaultName.value);
   if (isCreated) {
     newVaultName.value = "";
-    isCreatingVault.value = false;
+    store.isCreatingVault = false;
   }
+  newVaultErrorMessage.value = isCreated ? "" : takeErrorMessage();
 }
 
 function chooseNewItem(create: () => void): void {
@@ -349,12 +404,105 @@ function closeNewItemMenu(event: Event): void {
   }
 }
 
+// listRows are the rows of the list on screen, in the order of allVisibleItem or allVisibleFavorite.
+function listRows(): HTMLElement[] {
+  return [...(itemList.value?.querySelectorAll<HTMLElement>('[role="option"]') ?? [])];
+}
+
+function selectRow(index: number): Promise<void> {
+  return store.isFavoritesSelected ? selectFavoriteItem(allVisibleFavorite.value[index]) : selectItem(allVisibleItem.value[index].id);
+}
+
+// focusRow moves the keyboard focus and the selection to the row; the search field is the row above the first.
+function focusRow(index: number): void {
+  const rows = listRows();
+  if (index < 0) {
+    searchInput.value?.focus();
+    return;
+  }
+  if (index >= rows.length) {
+    return;
+  }
+  rows[index].focus();
+  if (rows[index].getAttribute("aria-selected") !== "true") {
+    void selectRow(index);
+  }
+}
+
+function enterList(): void {
+  focusRow(Math.max(0, listRows().findIndex((row) => row.getAttribute("aria-selected") === "true")));
+}
+
+async function openRowInEditor(index: number): Promise<void> {
+  const item = store.isFavoritesSelected ? allVisibleFavorite.value[index]?.item : allVisibleItem.value[index];
+  if (!item) {
+    return;
+  }
+  await selectRow(index);
+  if (store.selectedItem?.id === item.id && store.editorMode === "view" && canEdit.value) {
+    startEditingItem();
+  }
+}
+
+function handleListKey(event: KeyboardEvent): void {
+  if (event.metaKey || event.ctrlKey || event.altKey) {
+    return;
+  }
+  const rows = listRows();
+  const current = rows.indexOf(document.activeElement as HTMLElement);
+  if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    event.preventDefault();
+    const from = current >= 0 ? current : rows.findIndex((row) => row.getAttribute("aria-selected") === "true");
+    const next = event.key === "ArrowDown" ? Math.min(from + 1, rows.length - 1) : from - 1;
+    if (next !== current) {
+      focusRow(next);
+    }
+  } else if (event.key === "Enter" && current >= 0) {
+    event.preventDefault();
+    void openRowInEditor(current);
+  }
+}
+
+function copySelectedField(fieldName: "username" | "password", label: string): void {
+  const selected = store.selectedItem;
+  if (selected && store.editorMode === "view" && selected[fieldName]) {
+    void copyItemField(store.selectedVaultID, selected.id, fieldName, label);
+  }
+}
+
+// moveVaultSelection steps through the sidebar's rows: Favorites, then the vaults as listed.
+function moveVaultSelection(step: number): void {
+  const allVaultID = ["", ...allVaultGroup.value.flatMap((group) => group.allVault.map((vault) => vault.id))];
+  const current = store.isFavoritesSelected ? 0 : allVaultID.indexOf(store.selectedVaultID);
+  const next = Math.min(allVaultID.length - 1, Math.max(0, current + step));
+  if (next !== current) {
+    void (next === 0 ? selectFavorites() : selectVault(allVaultID[next]));
+  }
+}
+
 function handleShortcut(event: KeyboardEvent): void {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey) {
+  if (event.altKey && !event.metaKey && !event.ctrlKey && (event.key === "ArrowDown" || event.key === "ArrowUp")) {
+    if (store.editorMode === "view" && !isOverlayOpen.value) {
+      event.preventDefault();
+      moveVaultSelection(event.key === "ArrowDown" ? 1 : -1);
+    }
+    return;
+  }
+  if (!(event.metaKey || event.ctrlKey) || event.altKey) {
     return;
   }
   const key = event.key.toLowerCase();
-  if (key === "f" && store.isSettingsOpen) {
+  if (lockOnShortcut(event)) {
+    return;
+  }
+  if (isOverlayOpen.value) {
+    return;
+  }
+  if (event.shiftKey) {
+    if (key === "c") {
+      event.preventDefault();
+      copySelectedField("password", "Password");
+    }
     return;
   }
   if (key === "f") {
@@ -363,15 +511,15 @@ function handleShortcut(event: KeyboardEvent): void {
   } else if (key === "n" && canCreate.value) {
     event.preventDefault();
     startCreatingItem();
-  } else if (key === "d" && store.selectedItem && store.editorMode === "view" && !store.isSettingsOpen) {
+  } else if (key === "c" && itemList.value?.contains(document.activeElement)) {
+    event.preventDefault();
+    copySelectedField("username", "Username");
+  } else if (key === "d" && store.selectedItem && store.editorMode === "view") {
     event.preventDefault();
     toggleSelectedItemFavorite();
-  } else if (key === "l") {
-    event.preventDefault();
-    lock();
   } else if (key === ",") {
     event.preventDefault();
-    store.isSettingsOpen = true;
+    openSettings();
   }
 }
 
@@ -394,19 +542,31 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <div class="layout">
+  <div class="layout" :style="layoutStyle">
     <aside class="sidebar">
       <div class="title-bar"></div>
       <div class="sidebar-brand"><HisarLogo :size="24" show-wordmark /></div>
-      <ShareInvitationBanner />
       <OrganizationBanner />
       <RemovedVaultBanner />
 
       <nav aria-label="Favorites" class="favorites-nav">
-        <button class="vault" :class="{ selected: store.isFavoritesSelected }" data-testid="open-favorites" @click="selectFavorites">
+        <button
+          class="vault"
+          :class="{ selected: store.isFavoritesSelected }"
+          :aria-current="store.isFavoritesSelected ? 'true' : undefined"
+          data-testid="open-favorites"
+          @click="selectFavorites"
+        >
           <AppIcon name="star" />
           <span class="vault-name">Favorites</span>
           <span v-if="store.allFavorite.length > 0" class="vault-count" data-testid="favorites-count">{{ store.allFavorite.length }}</span>
+        </button>
+      </nav>
+      <nav v-if="inbox.entryCount > 0" aria-label="Inbox" class="inbox-nav">
+        <button class="vault" data-testid="open-inbox" @click="openSettings(inbox.sectionID)">
+          <AppIcon name="mail" />
+          <span class="vault-name">Inbox</span>
+          <span v-if="inbox.actionCount > 0" class="inbox-badge" data-testid="inbox-count" :aria-label="`${inbox.actionCount} waiting for you`">{{ inbox.actionCount }}</span>
         </button>
       </nav>
 
@@ -425,6 +585,7 @@ onBeforeUnmount(() => {
             :key="vault.id"
             class="vault"
             :class="{ selected: !store.isFavoritesSelected && vault.id === store.selectedVaultID }"
+            :aria-current="!store.isFavoritesSelected && vault.id === store.selectedVaultID ? 'true' : undefined"
             :data-testid="`vault-${vault.id}`"
             @click="selectVault(vault.id)"
             @contextmenu.prevent="openVaultMenuAtPointer(vault.id, $event)"
@@ -434,24 +595,25 @@ onBeforeUnmount(() => {
             <span class="vault-count">{{ vault.readIssues?.length ? `${vault.itemCount} + ${vault.readIssues.length} unreadable` : vault.itemCount }}</span>
           </button>
         </div>
-        <form v-if="isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
+        <form v-if="store.isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
           <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
           <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
             <span>Where</span>
             <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where">
-              <option value="">Shared vault</option>
+              <option value="">Your own vault (share it later)</option>
               <option v-for="choice in allTeamChoice" :key="choice.key" :value="choice.key">{{ choice.label }}</option>
             </select>
           </label>
           <p v-if="selectedTeamChoice" class="muted new-vault-note" data-testid="new-vault-where-note">
             {{ selectedTeamChoice.teamName }}'s members get this vault. Manage it in Settings → Organizations.
           </p>
+          <p v-if="newVaultErrorMessage" class="error new-vault-error" role="alert" data-testid="new-vault-error">{{ newVaultErrorMessage }}</p>
           <div class="row">
-            <button type="button" class="ghost" @click="isCreatingVault = false">Cancel</button>
+            <button type="button" class="ghost" @click="store.isCreatingVault = false">Cancel</button>
             <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
           </div>
         </form>
-        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="startCreatingVault"><AppIcon name="plus" /> New vault</button>
+        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
       </nav>
 
       <nav v-if="allTag.length > 0" aria-label="Tags" class="tags-nav" data-testid="tag-list">
@@ -493,10 +655,11 @@ onBeforeUnmount(() => {
           <strong>{{ store.status.name || store.status.email }}</strong>
           <span class="muted">{{ store.status.email }}</span>
         </div>
-        <button class="ghost icon-button" :title="`Settings (${shortcutModifier},)`" aria-label="Settings" @click="store.isSettingsOpen = true"><AppIcon name="settings" /></button>
+        <button class="ghost icon-button" :title="`Settings (${shortcutModifier},)`" aria-label="Settings" @click="openSettings()"><AppIcon name="settings" /></button>
         <button class="ghost icon-button" :title="`Lock (${shortcutModifier}L)`" aria-label="Lock" @click="lock"><AppIcon name="lock" /></button>
       </div>
     </aside>
+    <ColumnResizer v-model="columnWidths.sidebar" column="sidebar" label="Sidebar width" @commit="saveColumnWidths(columnWidths)" />
 
     <section class="list">
       <ReadIssuesPanel />
@@ -578,18 +741,16 @@ onBeforeUnmount(() => {
             <button class="ghost" role="menuitem" data-testid="new-ssh-key" @click="chooseNewItem(startCreatingSSHKey)">
               <AppIcon name="key" /> SSH key
             </button>
+            <hr class="new-item-separator" />
             <button class="ghost" role="menuitem" data-testid="new-import" @click="chooseNewItem(openImport)">
               <AppIcon name="import" /> Import…
-            </button>
-            <button class="ghost" role="menuitem" data-testid="new-share-text" @click="chooseNewItem(openTextShareLinkDialog)">
-              <AppIcon name="link" /> Share text…
             </button>
           </div>
         </div>
       </div>
       <div class="search">
         <AppIcon name="search" />
-        <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" placeholder="Search" aria-label="Search items" />
+        <input ref="searchInput" v-model="store.searchQuery" name="search" type="search" placeholder="Search" aria-label="Search items" @keydown.down.prevent="enterList" />
         <kbd>{{ shortcutModifier }}F</kbd>
       </div>
       <div v-if="store.selectedTag && !store.isFavoritesSelected" class="tag-filter" data-testid="tag-filter">
@@ -609,11 +770,13 @@ onBeforeUnmount(() => {
             <p class="muted">Star an item with <AppIcon name="star" :size="12" /> or {{ shortcutModifier }}D to keep it here, across all your vaults and devices. Only you see your favorites.</p>
           </template>
         </div>
-        <ul v-else data-testid="favorites-list">
-          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`">
+        <ul v-else ref="itemList" role="listbox" aria-label="Favorites" data-testid="favorites-list" @keydown="handleListKey">
+          <li v-for="favorite in allVisibleFavorite" :key="`${favorite.vaultId}/${favorite.item.id}`" role="presentation">
             <button
               class="item"
               :class="{ selected: isSelectedFavorite(favorite) }"
+              role="option"
+              :aria-selected="isSelectedFavorite(favorite)"
               @click="selectFavoriteItem(favorite)"
               @contextmenu.prevent="openItemMenu(favorite.vaultId, favorite.item, $event, favorite)"
             >
@@ -639,11 +802,13 @@ onBeforeUnmount(() => {
         <p>{{ emptyListMessage }}</p>
         <button v-if="!store.searchQuery && !store.selectedTag && canEdit" @click="startCreatingItem"><AppIcon name="plus" /> Add the first item</button>
       </div>
-      <ul v-else>
-        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id">
+      <ul v-else ref="itemList" role="listbox" :aria-label="selectedVault?.name ?? 'Items'" @keydown="handleListKey">
+        <li v-for="vaultItem in allVisibleItem" :key="vaultItem.id" role="presentation">
           <button
             class="item"
             :class="{ selected: store.selectedItem?.id === vaultItem.id }"
+            role="option"
+            :aria-selected="store.selectedItem?.id === vaultItem.id"
             @click="selectItem(vaultItem.id)"
             @contextmenu.prevent="openItemMenu(store.selectedVaultID, vaultItem, $event)"
           >
@@ -657,11 +822,15 @@ onBeforeUnmount(() => {
         </li>
       </ul>
     </section>
+    <ColumnResizer v-model="columnWidths.list" column="list" label="Item list width" @commit="saveColumnWidths(columnWidths)" />
 
     <main class="detail">
       <div class="title-bar"></div>
       <div class="detail-content">
-        <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+        <p v-if="store.errorMessage" class="error detail-error" role="alert">
+          <span>{{ store.errorMessage }}</span>
+          <button class="ghost icon-button" aria-label="Dismiss" title="Dismiss" data-testid="dismiss-error" @click="clearError"><AppIcon name="close" :size="13" /></button>
+        </p>
         <p v-if="store.status.biometricSetupError" class="error" role="status" data-testid="biometric-setup-error">{{ store.status.biometricSetupError }}</p>
         <SSHKeyForm v-if="store.editorMode === 'create-ssh-key'" />
         <ItemEditor v-else-if="store.editorMode !== 'view'" :key="store.editorMode + (store.selectedItem?.id ?? '')" />
@@ -673,6 +842,8 @@ onBeforeUnmount(() => {
           <dl class="shortcut-list">
             <div><dt><kbd>{{ shortcutModifier }}N</kbd></dt><dd>New item</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}F</kbd></dt><dd>Search</dd></div>
+            <div><dt><kbd>{{ shortcutModifier }}C</kbd></dt><dd>Copy username</dd></div>
+            <div><dt><kbd>{{ shortcutModifier }}{{ shiftModifier }}C</kbd></dt><dd>Copy password</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}D</kbd></dt><dd>Add to Favorites</dd></div>
             <div><dt><kbd>{{ shortcutModifier }}L</kbd></dt><dd>Lock Hisar</dd></div>
           </dl>
@@ -696,6 +867,7 @@ onBeforeUnmount(() => {
     />
     <MoveItemDialog v-if="itemToMove" :vault-i-d="itemToMove.vaultID" :item-i-d="itemToMove.itemID" :title="itemToMove.title" @close="itemToMove = null" />
     <ConfirmDeleteDialog v-if="itemToDelete" :vault-i-d="itemToDelete.vaultID" :item-i-d="itemToDelete.itemID" :title="itemToDelete.title" @close="itemToDelete = null" />
+    <DiscardChangesDialog v-if="store.discardDraftPrompt" :prompt="store.discardDraftPrompt" />
     <ShareLinkDialog v-if="store.shareLinkDialog" :key="`${store.shareLinkDialog.mode}-${store.shareLinkDialog.itemID}`" />
     <OrganizationAlert />
   </div>
@@ -704,7 +876,6 @@ onBeforeUnmount(() => {
 <style scoped>
 .layout {
   display: grid;
-  grid-template-columns: 228px 300px 1fr;
   height: 100%;
 }
 
@@ -764,7 +935,7 @@ onBeforeUnmount(() => {
   padding: 0 6px;
   border-radius: 10px;
   background: var(--color-surface-raised);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-muted);
 }
 
@@ -794,7 +965,7 @@ onBeforeUnmount(() => {
   padding: 3px 4px 3px 10px;
   border: 1px solid var(--color-border-strong);
   border-radius: 14px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
 }
 
@@ -814,6 +985,22 @@ onBeforeUnmount(() => {
   margin-bottom: 14px;
 }
 
+.inbox-nav {
+  margin: -13px 0 14px;
+}
+
+.inbox-badge {
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  font-size: var(--font-size-11);
+  font-weight: 600;
+  line-height: 18px;
+  text-align: center;
+}
+
 .item-star {
   margin-left: auto;
   color: var(--color-warning);
@@ -830,7 +1017,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   border-radius: 8px;
   background: var(--color-surface-raised);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   color: var(--color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -854,8 +1041,14 @@ onBeforeUnmount(() => {
 
 .new-vault-note {
   margin: 0 2px 8px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   line-height: 1.4;
+}
+
+.new-vault-error {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  font-size: var(--font-size-12);
 }
 
 .new-vault .row {
@@ -878,13 +1071,13 @@ onBeforeUnmount(() => {
 }
 
 .offline strong {
-  font-size: 13px;
+  font-size: var(--font-size-13);
   color: var(--color-text);
 }
 
 .offline p {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.4;
 }
 
@@ -905,7 +1098,7 @@ onBeforeUnmount(() => {
   flex: none;
   border-radius: 50%;
   background: var(--color-selected);
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 600;
 }
 
@@ -924,7 +1117,7 @@ onBeforeUnmount(() => {
 }
 
 .account-text span {
-  font-size: 11px;
+  font-size: var(--font-size-11);
 }
 
 .list {
@@ -946,12 +1139,12 @@ onBeforeUnmount(() => {
 
 .list-title h2 {
   margin: 0;
-  font-size: 16px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
 }
 
 .list-title .muted {
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .new-item {
@@ -966,7 +1159,7 @@ onBeforeUnmount(() => {
 .private-badge {
   gap: 5px;
   padding: 5px 9px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .private-badge {
@@ -998,6 +1191,13 @@ onBeforeUnmount(() => {
 
 .new-item-menu kbd {
   margin-left: auto;
+}
+
+.new-item-separator {
+  width: 100%;
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--color-border);
 }
 
 .search {
@@ -1071,7 +1271,7 @@ onBeforeUnmount(() => {
 
 .item-subtitle {
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-muted);
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1096,12 +1296,24 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  container: detail / inline-size;
 }
 
 .detail-content {
   flex: 1;
   padding: 4px 32px 32px;
   overflow-y: auto;
+}
+
+.detail-error {
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail-error .icon-button {
+  flex: none;
+  margin: -4px -6px -4px 0;
+  color: inherit;
 }
 
 .detail-empty {
@@ -1126,7 +1338,7 @@ onBeforeUnmount(() => {
 
 .detail-empty h3 {
   margin: 16px 0 4px;
-  font-size: 16px;
+  font-size: var(--font-size-15);
 }
 
 .detail-empty p {

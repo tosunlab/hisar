@@ -67,7 +67,7 @@ func TestResetKeepsDevicePreferences(t *testing.T) {
 		"autoLockSeconds": float64(300), "phoneApprovalDisabled": true, "signingRememberSeconds": float64(600),
 		"openAtLoginConfigured": true, "openAtLoginDisabled": true, "appearance": "dark", "color": "blue",
 		// The account's server stays as the one the sign-in form opens on.
-		"lastServer": "https://api.tryhisar.com",
+		"lastServer": "https://eu.tryhisar.com",
 	}
 	if got := readJSONObject(t, path); !reflect.DeepEqual(got, want) {
 		t.Errorf("after Reset\n got: %v\nwant: %v", got, want)

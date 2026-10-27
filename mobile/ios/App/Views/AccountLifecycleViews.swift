@@ -19,15 +19,13 @@ struct ChangeMasterPasswordView: View {
     var body: some View {
         Form {
             Section {
-                Label(AccountLifecycleLogic.passwordChangeWarning, systemImage: "iphone.and.arrow.forward")
-                    .accessibilityIdentifier("change-password-warning")
-            } footer: {
-                Text("Your Secret Key, your Emergency Kit and your items stay the same. Hisar never sends your master password to the server.")
-            }
-            Section("Current master password") {
                 SecureField("Current master password", text: $currentPassword)
                     .textContentType(.password)
                     .accessibilityIdentifier("change-password-current")
+            } header: {
+                Text("Current master password")
+            } footer: {
+                Text("Your Secret Key, your Emergency Kit and your items stay the same. Hisar never sends your master password to the server.")
             }
             Section {
                 SecureField("New master password", text: $newPassword, prompt: Text("At least 10 characters"))
@@ -143,15 +141,13 @@ struct ReplaceSecretKeyView: View {
     @ViewBuilder
     private var confirmationSections: some View {
         Section {
-            Label(AccountLifecycleLogic.secretKeyReplacementWarning, systemImage: "doc.badge.arrow.up")
-                .accessibilityIdentifier("replace-secret-key-warning")
-        } footer: {
-            Text("Replace it if your Secret Key or Emergency Kit may have been seen by someone else. Your master password and your items stay the same.")
-        }
-        Section("Master password") {
             SecureField("Master password", text: $password)
                 .textContentType(.password)
                 .accessibilityIdentifier("replace-secret-key-password")
+        } header: {
+            Text("Master password")
+        } footer: {
+            Text("Replace it if your Secret Key or Emergency Kit may have been seen by someone else. Your master password and your items stay the same.")
         }
         if let errorMessage = model.errorMessage {
             Section {
@@ -210,7 +206,7 @@ struct ReplaceSecretKeyView: View {
         if !result.emergencyKitPath.isEmpty {
             Section {
                 ShareLink(item: URL(fileURLWithPath: result.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                    Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
+                    Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
                 }
                 .accessibilityIdentifier("share-new-emergency-kit")
             } header: {
@@ -306,7 +302,7 @@ struct DeleteAccountView: View {
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.glassProminent)
                 .tint(.red)
                 .controlSize(.large)
                 .disabled(!canSubmit)
@@ -476,7 +472,7 @@ struct PendingRecoveryView: View {
                                 .textSelection(.enabled)
                                 .accessibilityIdentifier("pending-recovery-secret-key")
                             ShareLink(item: URL(fileURLWithPath: export.path), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                                Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
+                                Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
                             }
                             .accessibilityIdentifier("pending-recovery-share-kit")
                         }

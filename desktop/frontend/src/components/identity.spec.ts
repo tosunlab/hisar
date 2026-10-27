@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
-import { allTestVault, createApiMock, createIdentityItem, createItem, createStatus } from "../testing";
+import { allTestVault, createApiMock, createIdentityItem, createImportPreview, createItem, createStatus } from "../testing";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -172,33 +172,23 @@ describe("Viewing an identity", () => {
 
 describe("Importing identities", () => {
   it("counts them in the preview", () => {
-    store.importPreview = {
+    store.importPreview = createImportPreview({
       fileName: "export.json",
       filePath: "/tmp/export.json",
       format: "bitwarden-json",
       formatName: "Bitwarden JSON",
-      vaultId: "personal",
-      vaultName: "Personal",
       itemCount: 3,
       loginCount: 1,
       secureNoteCount: 0,
       sshKeyCount: 0,
-      creditCardCount: 0,
       identityCount: 2,
-      apiCredentialCount: 0,
-      addressCount: 0,
-      softwareLicenseCount: 0,
-      serverCount: 0,
-      databaseCount: 0,
-      passkeyCount: 0,
-      groups: [],
       allSkipped: [],
       allDuplicate: [],
-    };
+    });
     store.importStep = "preview";
     const wrapper = mount(ImportPanel);
     const count = wrapper.find('[data-testid="import-count-identity"]');
     expect(count.text()).toContain("2");
-    expect(count.text()).toContain("Identities");
+    expect(count.text()).toContain("identities");
   });
 });

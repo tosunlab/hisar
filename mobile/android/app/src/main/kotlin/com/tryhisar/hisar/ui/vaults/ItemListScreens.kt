@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
@@ -47,7 +48,7 @@ import kotlinx.coroutines.launch
 
 /**
  * A pushed list with a large title that moves into the bar once scrolled away, an optional search field under it, pull to
- * refresh, and [emptyContent] in place of the rows when there are none.
+ * refresh and [emptyContent] in place of the rows when there are none. [bottomClearance] leaves room for the root's FAB.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -59,6 +60,7 @@ fun PushedListScaffold(
     emptyContent: @Composable () -> Unit,
     actions: @Composable RowScope.() -> Unit = {},
     searchField: (@Composable () -> Unit)? = null,
+    bottomClearance: Dp = 0.dp,
     content: LazyListScope.() -> Unit,
 ) {
     val listState = rememberLazyListState()
@@ -82,7 +84,7 @@ fun PushedListScaffold(
                 item(key = "title") { Box(Modifier.padding(horizontal = ScreenMargin)) { LargeTitle(title, topPadding = 0.dp) } }
                 if (searchField != null) item(key = "search") { searchField() }
                 content()
-                item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp)) }
+                item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp + bottomClearance)) }
             }
             if (isEmpty) Box(Modifier.padding(top = 120.dp, bottom = TabBarHeight)) { emptyContent() }
         }
@@ -92,7 +94,7 @@ fun PushedListScaffold(
 /** The search's empty result, as ContentUnavailableView.search. */
 @Composable
 fun NoSearchResults(searchText: String) {
-    ContentUnavailable("No Results for “$searchText”", Icons.Outlined.Search, Modifier.testTag("no-results")) {
+    ContentUnavailable("No results for “$searchText”", Icons.Outlined.Search, Modifier.testTag("no-results")) {
         Text("Check the spelling or try a new search.", style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center)
     }
 }
@@ -139,7 +141,7 @@ fun TagItemsScreen(model: AppModel, stack: NavigationStack, tag: String) {
 fun NoItemsYet(isWritable: Boolean) {
     ContentUnavailable("No items yet", Icons.Outlined.Inbox, Modifier.testTag("no-items")) {
         Text(
-            if (isWritable) "Tap + to add a login." else "Items appear here once an editor adds them.",
+            if (isWritable) "Tap New to add your first item." else "Items appear here once an editor adds them.",
             style = HisarType.subheadline,
             color = HisarTheme.colors.secondaryLabel,
             textAlign = TextAlign.Center,

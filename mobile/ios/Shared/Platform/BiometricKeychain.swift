@@ -38,7 +38,7 @@ final class BiometricKeychain: NSObject, HisarkitBiometricProtocol {
     // LoadKey hands this evaluated context to the keychain, so the user sees one Face ID prompt.
     func authenticate(_ reason: String?) throws {
         let context = LAContext()
-        context.localizedFallbackTitle = "Use Master Password"
+        context.localizedFallbackTitle = "Use master password"
         context.localizedCancelTitle = "Cancel"
         let localizedReason = formatReason(reason ?? "")
         let semaphore = DispatchSemaphore(value: 0)

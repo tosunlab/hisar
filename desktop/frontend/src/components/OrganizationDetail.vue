@@ -13,14 +13,25 @@ import {
   store,
   takeVaultFromTeam,
 } from "../store";
-import { formatCount, formatRole } from "../util";
+import { formatCount, formatRole, vaultRoleDescription } from "../util";
 import AppIcon from "./AppIcon.vue";
+import ContextMenu, { type ContextMenuAction } from "./ContextMenu.vue";
 import MemberAvatar from "./MemberAvatar.vue";
 import OrganizationDialog, { type OrganizationDialogRequest } from "./OrganizationDialog.vue";
 
 const props = defineProps<{ organization: Organization }>();
 
 const allVaultRole: VaultRole[] = ["owner", "editor", "reader"];
+
+type OrganizationSegment = "members" | "teams" | "invitations";
+const allSegment = computed<{ id: OrganizationSegment; label: string }[]>(() => [
+  { id: "members", label: "Members" },
+  { id: "teams", label: "Teams" },
+  ...(props.organization.isAdmin ? [{ id: "invitations" as const, label: "Invitations" }] : []),
+]);
+const activeSegment = ref<OrganizationSegment>("members");
+const expandedAccountID = ref("");
+const actionMenu = ref<{ label: string; x: number; y: number; allAction: (ContextMenuAction | null)[]; trigger: HTMLButtonElement } | null>(null);
 
 const dialog = ref<OrganizationDialogRequest | null>(null);
 const inviteEmail = ref("");
@@ -37,6 +48,73 @@ function listAllMemberToAdd(team: Team): OrganizationMember[] {
 
 function canGiveVault(team: Team): boolean {
   return allOrganizationVault.value.some((organizationVault) => !team.vaults.some((teamVault) => teamVault.vaultId === organizationVault.vaultId));
+}
+
+function openActionMenu(event: MouseEvent, label: string, allAction: (ContextMenuAction | null)[]): void {
+  const trigger = event.currentTarget as HTMLButtonElement;
+  const bounds = trigger.getBoundingClientRect();
+  actionMenu.value = { label, x: bounds.right - 200, y: bounds.bottom + 4, allAction, trigger };
+}
+
+function closeActionMenu(): void {
+  actionMenu.value?.trigger.focus();
+  actionMenu.value = null;
+}
+
+function openMemberMenu(member: OrganizationMember, event: MouseEvent): void {
+  const allAction: (ContextMenuAction | null)[] = [
+    {
+      id: "organization-security-code",
+      label: expandedAccountID.value === member.accountId ? "Hide security code" : "Show security code",
+      icon: "shield",
+      run: () => { expandedAccountID.value = expandedAccountID.value === member.accountId ? "" : member.accountId; },
+    },
+  ];
+  if (props.organization.isAdmin) {
+    allAction.push(null, {
+      id: "organization-role",
+      label: member.role === "admin" ? "Make member" : "Make admin",
+      icon: "user",
+      run: () => { void setOrganizationMemberRole(props.organization, member, member.role === "admin" ? "member" : "admin"); },
+    });
+    if (!member.isCurrentUser) {
+      allAction.push({
+        id: "remove-organization-member",
+        label: `Remove from ${props.organization.name}…`,
+        icon: "trash",
+        isDanger: true,
+        run: () => { dialog.value = { kind: "remove-member", member }; },
+      });
+    }
+  }
+  openActionMenu(event, `Actions for ${member.name || member.email}`, allAction);
+}
+
+function openTeamMenu(team: Team, event: MouseEvent): void {
+  const allAction: (ContextMenuAction | null)[] = [
+    { id: "rename-team", label: "Rename…", icon: "edit", run: () => { dialog.value = { kind: "rename-team", team }; } },
+  ];
+  if (listAllMemberToAdd(team).length > 0) {
+    allAction.push({ id: "add-team-member", label: "Add member", icon: "user", run: () => startAddingMember(team) });
+  }
+  if (canGiveVault(team)) {
+    allAction.push({ id: "give-vault", label: "Give a vault…", icon: "vault", run: () => { dialog.value = { kind: "give-vault", team }; } });
+  }
+  allAction.push(null, { id: "delete-team", label: "Delete team…", icon: "trash", isDanger: true, run: () => { dialog.value = { kind: "delete-team", team }; } });
+  openActionMenu(event, `Actions for ${team.name}`, allAction);
+}
+
+function selectSegment(segment: OrganizationSegment): void {
+  actionMenu.value = null;
+  activeSegment.value = segment;
+}
+
+function moveSegment(event: KeyboardEvent): void {
+  const segments = allSegment.value;
+  const index = segments.findIndex((segment) => segment.id === activeSegment.value);
+  const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? segments.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + segments.length) % segments.length;
+  selectSegment(segments[nextIndex]!.id);
+  (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`[data-testid="organization-segment-${activeSegment.value}"]`)?.focus();
 }
 
 async function submitInvite(): Promise<void> {
@@ -89,54 +167,63 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
       </button>
     </header>
 
-    <div class="settings-block" data-testid="organization-members">
-      <p class="section-label">Members</p>
-      <div class="settings-group">
-        <div v-for="member in organization.members" :key="member.accountId" class="setting" :data-testid="`organization-member-${member.accountId}`">
-          <MemberAvatar :name="member.name || member.email" />
-          <div class="setting-text">
-            <strong class="title-line">
-              <span class="title-text">{{ member.name || member.email }}</span>
-              <span v-if="member.isCurrentUser" class="tag accent">you</span>
-              <span class="tag" :class="{ success: member.role === 'admin' }">{{ formatRole(member.role) }}</span>
-            </strong>
-            <p class="muted">{{ member.email }}</p>
-            <p v-if="member.isKeyChanged" class="warning-text" data-testid="organization-member-key-changed">
-              Their key changed since you last shared with them. Compare security codes before you share more.
-            </p>
+    <div class="segmented" role="tablist" aria-label="Organization" @keydown.right.prevent="moveSegment" @keydown.left.prevent="moveSegment" @keydown.home.prevent="moveSegment" @keydown.end.prevent="moveSegment">
+      <button
+        v-for="segment in allSegment"
+        :id="`organization-tab-${segment.id}`"
+        :key="segment.id"
+        type="button"
+        role="tab"
+        :aria-selected="activeSegment === segment.id"
+        :aria-controls="`organization-panel-${segment.id}`"
+        :tabindex="activeSegment === segment.id ? 0 : -1"
+        :class="{ active: activeSegment === segment.id }"
+        :data-testid="`organization-segment-${segment.id}`"
+        @click="selectSegment(segment.id)"
+      >{{ segment.label }}</button>
+    </div>
+
+    <section v-show="activeSegment === 'members'" id="organization-panel-members" role="tabpanel" aria-labelledby="organization-tab-members" tabindex="0">
+      <div class="settings-block" data-testid="organization-members">
+        <div class="settings-group">
+          <div v-for="member in organization.members" :key="member.accountId" class="organization-member" :data-testid="`organization-member-${member.accountId}`">
+            <div class="setting">
+              <MemberAvatar :name="member.name || member.email" />
+              <div class="setting-text">
+                <strong class="title-line">
+                  <span class="title-text">{{ member.name || member.email }}</span>
+                  <span v-if="member.isCurrentUser" class="tag accent">you</span>
+                  <span class="tag" :class="{ success: member.role === 'admin' }">{{ formatRole(member.role) }}</span>
+                </strong>
+                <p class="muted">{{ member.email }}</p>
+                <p v-if="member.isKeyChanged" class="warning-text" data-testid="organization-member-key-changed">
+                  Their key changed since you last shared with them. Compare security codes before you share more.
+                </p>
+              </div>
+              <button
+                class="ghost icon-button"
+                aria-haspopup="menu"
+                :aria-expanded="actionMenu?.trigger.dataset.testid === `organization-member-menu-${member.accountId}`"
+                :aria-label="`Actions for ${member.name || member.email}`"
+                :disabled="store.isBusy"
+                :data-testid="`organization-member-menu-${member.accountId}`"
+                @click="openMemberMenu(member, $event)"
+              ><AppIcon name="more" /></button>
+            </div>
+            <div v-if="expandedAccountID === member.accountId" class="code-detail" data-testid="organization-member-security-code-detail">
+              <AppIcon name="shield" :size="14" />
+              <div>
+                <span class="security-code monospace" data-testid="organization-member-security-code">{{ member.securityCode }}</span>
+                <p v-if="member.isCurrentUser" class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
+                <p v-else class="muted">Compare this code with {{ member.name || member.email }} in person or over a channel you trust, to be sure the server isn't intercepting.</p>
+              </div>
+            </div>
           </div>
-          <span
-            class="security-code monospace"
-            data-testid="organization-member-security-code"
-            :title="member.isCurrentUser ? 'Your security code' : 'Compare this code with them over a channel you trust'"
-            :aria-label="`Security code ${member.securityCode}`"
-            >{{ member.securityCode }}</span
-          >
-          <template v-if="organization.isAdmin">
-            <button
-              class="ghost role-button"
-              :disabled="store.isBusy"
-              :data-testid="`toggle-organization-role-${member.accountId}`"
-              @click="setOrganizationMemberRole(organization, member, member.role === 'admin' ? 'member' : 'admin')"
-            >
-              {{ member.role === "admin" ? "Make member" : "Make admin" }}
-            </button>
-            <button
-              v-if="!member.isCurrentUser"
-              class="ghost icon-button remove-button"
-              :aria-label="`Remove from ${organization.name}…`"
-              :title="`Remove from ${organization.name}…`"
-              :data-testid="`remove-organization-member-${member.accountId}`"
-              @click="dialog = { kind: 'remove-member', member }"
-            >
-              <AppIcon name="trash" />
-            </button>
-            <span v-else class="icon-spacer"></span>
-          </template>
         </div>
       </div>
-      <p class="muted settings-note">Compare a security code with that person over a channel you trust.</p>
-    </div>
+    </section>
+
+    <section v-if="organization.isAdmin" v-show="activeSegment === 'invitations'" id="organization-panel-invitations" role="tabpanel" aria-labelledby="organization-tab-invitations" tabindex="0">
 
     <div v-if="organization.isAdmin" class="settings-block" data-testid="organization-invite">
       <p class="section-label">Invite by email</p>
@@ -198,6 +285,10 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
         </div>
       </div>
     </div>
+      <p v-else class="muted empty-note" data-testid="organization-no-invitations">No pending invitations.</p>
+    </section>
+
+    <section v-show="activeSegment === 'teams'" id="organization-panel-teams" role="tabpanel" aria-labelledby="organization-tab-teams" tabindex="0">
 
     <div class="settings-block" data-testid="organization-teams">
       <div class="block-heading">
@@ -216,10 +307,16 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
             <strong class="title-line"><span class="title-text" data-testid="team-name">{{ team.name }}</span></strong>
             <p class="muted">{{ formatCount(team.members.length, "member") }} · {{ formatCount(team.vaults.length, "vault") }}</p>
           </div>
-          <template v-if="organization.isAdmin">
-            <button class="ghost" :data-testid="`rename-team-${team.id}`" @click="dialog = { kind: 'rename-team', team }">Rename…</button>
-            <button class="ghost danger" :data-testid="`delete-team-${team.id}`" @click="dialog = { kind: 'delete-team', team }">Delete team…</button>
-          </template>
+          <button
+            v-if="organization.isAdmin"
+            class="ghost icon-button"
+            aria-haspopup="menu"
+            :aria-expanded="actionMenu?.trigger.dataset.testid === `organization-team-menu-${team.id}`"
+            :aria-label="`Actions for ${team.name}`"
+            :disabled="store.isBusy"
+            :data-testid="`organization-team-menu-${team.id}`"
+            @click="openTeamMenu(team, $event)"
+          ><AppIcon name="more" /></button>
         </div>
 
         <p class="team-label">Members</p>
@@ -265,6 +362,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
               class="role-select"
               :value="teamVault.role"
               :aria-label="`Role of ${team.name} in ${describeTeamVault(teamVault)}`"
+              :title="vaultRoleDescription"
               :disabled="store.isBusy"
               :data-testid="`team-vault-role-${team.id}-${teamVault.vaultId}`"
               @change="changeTeamVaultRole(team, teamVault, $event)"
@@ -283,23 +381,11 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
           <span v-else class="tag">{{ formatRole(teamVault.role) }}</span>
         </div>
 
-        <div v-if="organization.isAdmin" class="team-actions">
-          <button
-            v-if="addingTeamID !== team.id && listAllMemberToAdd(team).length > 0"
-            class="ghost small-button"
-            :data-testid="`add-team-member-${team.id}`"
-            @click="startAddingMember(team)"
-          >
-            <AppIcon name="plus" :size="13" />Add member
-          </button>
-          <button v-if="canGiveVault(team)" class="ghost small-button" :data-testid="`give-vault-${team.id}`" @click="dialog = { kind: 'give-vault', team }">
-            <AppIcon name="plus" :size="13" />Give a vault…
-          </button>
-        </div>
       </div>
     </div>
+    </section>
 
-    <div class="settings-block" data-testid="organization-membership">
+    <div v-show="activeSegment === 'members'" class="settings-block" data-testid="organization-membership">
       <p class="section-label">Your membership</p>
       <div class="settings-group">
         <div class="setting">
@@ -320,6 +406,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
     </div>
 
     <OrganizationDialog v-if="dialog" :organization="organization" :request="dialog" @close="dialog = null" />
+    <ContextMenu v-if="actionMenu" :label="actionMenu.label" :x="actionMenu.x" :y="actionMenu.y" :all-action="actionMenu.allAction" @close="closeActionMenu" @keydown.esc.stop.prevent="closeActionMenu" />
   </div>
 </template>
 
@@ -361,40 +448,70 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .organization-heading h3 {
   margin: 0;
   overflow: hidden;
-  font-size: 15px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .organization-heading p {
   margin: 2px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .security-code {
   flex: none;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   color: var(--color-text-secondary);
   user-select: text;
   -webkit-user-select: text;
 }
 
-.role-button {
-  flex: none;
-  width: 104px;
-  padding: 5px 8px;
-  white-space: nowrap;
-  font-size: 12px;
+.segmented {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: 16px;
+  padding: 3px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface-raised);
 }
 
-.remove-button:hover:not(:disabled) {
-  color: var(--color-danger);
+.segmented button {
+  border: none;
+  background: transparent;
+  color: var(--color-text-muted);
 }
 
-.icon-spacer {
-  width: 30px;
+.segmented button.active {
+  background: var(--color-selected);
+  color: var(--color-text);
+  box-shadow: 0 1px 2px var(--color-shadow);
+}
+
+.organization-member + .organization-member {
+  border-top: 1px solid var(--color-border);
+}
+
+.code-detail {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-raised);
+  color: var(--color-text-muted);
+}
+
+.code-detail > svg {
   flex: none;
+  margin-top: 2px;
+}
+
+.code-detail p {
+  margin: 4px 0 0;
+  font-size: var(--font-size-12);
+  line-height: 1.45;
 }
 
 .invite-form {
@@ -413,7 +530,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
   flex: none;
   padding-top: 5px;
   padding-bottom: 5px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .invite-form .role-select {
@@ -429,7 +546,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .invite-hint {
   margin: 0;
   padding: 8px 14px 10px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 
@@ -447,7 +564,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .small-button {
   gap: 5px;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .team + .team {
@@ -461,7 +578,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .team-label {
   margin: 0;
   padding: 8px 14px 2px;
-  font-size: 11px;
+  font-size: var(--font-size-11);
   font-weight: 600;
   color: var(--color-text-muted);
 }
@@ -469,7 +586,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .team-empty {
   margin: 0;
   padding: 2px 14px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .settings-group > .team-row {
@@ -482,7 +599,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
   flex: none;
   max-width: 40%;
   overflow: hidden;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -495,7 +612,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
 .team-row button {
   flex: none;
   padding: 4px 8px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .vault-icon {
@@ -522,9 +639,4 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
   min-width: 0;
 }
 
-.team-actions {
-  display: flex;
-  gap: 4px;
-  padding: 6px 10px 8px;
-}
 </style>

@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
-import { api } from "./api";
 import { startThemeSync } from "./theme";
+import { startWebsiteIconSync } from "./websiteicons";
 import {
   handleLocked,
   handleUnlockedElsewhere,
+  isMainWindowAction,
   loadAllShareLinkQuietly,
   loadStatus,
+  openFromSettings,
   openInviteLink,
   openSettings,
+  reportActivity,
   restoreBrowserPairing,
   showBrowserPairing,
   showUpdateRequired,
@@ -24,22 +27,11 @@ import SecretKeyView from "./components/SecretKeyView.vue";
 import TouchIDOfferView from "./components/TouchIDOfferView.vue";
 import UnlockView from "./components/UnlockView.vue";
 import MainView from "./components/MainView.vue";
-import AppIcon from "./components/AppIcon.vue";
+import AppNotice from "./components/AppNotice.vue";
 import BrowserPairingModal from "./components/BrowserPairingModal.vue";
 import PendingRecoveryView from "./components/PendingRecoveryView.vue";
 
-const activityReportInterval = 30_000;
-let lastActivityReport = 0;
 let allRemoveListener: (() => void)[] = [];
-
-function reportActivity(): void {
-  const now = Date.now();
-  if (store.status.state !== "unlocked" || now - lastActivityReport < activityReportInterval) {
-    return;
-  }
-  lastActivityReport = now;
-  api.reportActivity().catch(() => undefined);
-}
 
 onMounted(() => {
   loadStatus().then(async () => { await takePendingInviteQuietly(); await restoreBrowserPairing(); });
@@ -47,6 +39,7 @@ onMounted(() => {
     Events.On("update-required", (event) => event.data && showUpdateRequired(event.data)),
     Events.On("invite-link", (event) => openInviteLink(event.data ?? "")),
     startThemeSync(),
+    startWebsiteIconSync(),
     Events.On("locked", () => handleLocked()),
     Events.On("unlocked", () => handleUnlockedElsewhere()),
     Events.On("remote-change", () => syncInBackground()),
@@ -54,6 +47,7 @@ onMounted(() => {
     Events.On("browser-pairing", (event) => showBrowserPairing(event.data ?? null)),
     Events.On("show-item", (event) => showItem(event.data)),
     Events.On("show-settings", (event) => openSettings(event.data ?? "")),
+    Events.On("open-from-settings", (event) => isMainWindowAction(event.data) && openFromSettings(event.data)),
   ];
   window.addEventListener("keydown", reportActivity);
   window.addEventListener("pointerdown", reportActivity);
@@ -78,7 +72,7 @@ onBeforeUnmount(() => {
   <button v-if="!store.isRecoveryOpen && store.pendingRecovery.length > 0" class="recovery-reminder" data-testid="open-pending-recovery" @click="store.isRecoveryOpen = true">
     Account recovery and kit sign-in ({{ store.pendingRecovery.length }})
   </button>
-  <div v-if="store.noticeMessage" class="notice" role="status"><AppIcon name="check" /> {{ store.noticeMessage }}</div>
+  <AppNotice />
 </template>
 
 <style scoped>

@@ -43,6 +43,8 @@ class CredentialImportUITests : HisarUITestCase() {
     @Test
     fun testImportFromAnotherAppPreviewsChoosesAVaultAndImports() = startImport({ CredentialExchangeResult.Received(exportedTitles.encodeToByteArray()) }) {
         waitFor("credential-import-start")
+        assertFalse("the import covers the tab bar", exists(hasTestTag("tab-vaults")))
+        assertFalse("the import covers Search", exists(hasTestTag("tab-search")))
         assertTrue("the counts are listed", exists(hasTestTag("credential-import-counts")))
         assertTrue("GitHub is already in Personal", exists(hasText("1 item is already there")))
         saveScreenshot("credential-import-preview")

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { clearError, dismissSignedOutReason, signIn, signUp, store } from "../store";
+import { clearError, dismissSignedOutReason, signIn, signUp, signUpWithoutInvite, store } from "../store";
 import { getMasterPasswordFeedback, getThisDeviceName, isMacPlatform } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -8,7 +8,7 @@ import StrengthMeter from "./StrengthMeter.vue";
 
 type Mode = "sign-in" | "create-account";
 
-const defaultServer = "api.tryhisar.com";
+const defaultServer = "eu.tryhisar.com";
 const tagline = "Passwords, SSH keys and secrets for developers, end-to-end encrypted.";
 
 function getDisplayServer(serverURL: string): string {
@@ -43,9 +43,9 @@ const passwordMismatch = computed(
   () => mode.value !== "sign-in" && repeatedPassword.value !== "" && password.value !== repeatedPassword.value,
 );
 const passwordFeedback = computed(() => getMasterPasswordFeedback(mode.value === "sign-in" ? "" : password.value));
-const allHeading: Record<Mode, { title: string; subtitle: string }> = {
-  "sign-in": { title: "Welcome back", subtitle: `Sign in to Hisar on ${getThisDeviceName()}.` },
-  "create-account": { title: "Create your account", subtitle: "Enter the invite code you received. Pasting the whole invite link works too." },
+const allSubtitle: Record<Mode, string> = {
+  "sign-in": `Sign in to Hisar on ${getThisDeviceName()}.`,
+  "create-account": "Enter the invite code you received, or paste the whole invite link. Some servers let anyone sign up without one.",
 };
 
 type Feature = { icon: IconName; title: string; text: string };
@@ -71,7 +71,7 @@ const allCreateAccountFeature: Feature[] = [
   {
     icon: "key",
     title: "Two secrets, only yours",
-    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server. Nobody can reset them for you, not even Hisar.",
+    text: "Your master password and a Secret Key you get next. Neither is ever sent to the server.",
   },
   { icon: "note", title: "An Emergency Kit to keep", text: "Print it or store it offline. With it, you can sign in again on any new device." },
 ];
@@ -97,6 +97,9 @@ const inviteServer = computed(() => {
 function getInvite(): string {
   return pastedInviteLink.value.endsWith(`/invite/${inviteCode.value}`) ? pastedInviteLink.value : inviteCode.value;
 }
+
+// Without an invite the account is created on the chosen server, which must have opened registration.
+const hasInvite = computed(() => inviteCode.value.trim() !== "");
 
 // An invite opened through hisar://invite/… arrives as the bare code, or as the invite link on another server.
 watch(
@@ -132,7 +135,9 @@ async function submitCreateAccount(): Promise<void> {
   if (password.value !== repeatedPassword.value || passwordFeedback.value.isBlocking) {
     return;
   }
-  const succeeded = await signUp(getInvite(), email.value, name.value, password.value);
+  const succeeded = hasInvite.value
+    ? await signUp(getInvite(), email.value, name.value, password.value)
+    : await signUpWithoutInvite(server.value, email.value, name.value, password.value);
   if (succeeded) {
     password.value = "";
     repeatedPassword.value = "";
@@ -176,8 +181,8 @@ async function submitCreateAccount(): Promise<void> {
           </button>
         </div>
 
-        <h1>{{ allHeading[mode].title }}</h1>
-        <p class="subtitle">{{ allHeading[mode].subtitle }}</p>
+        <h1 v-if="mode === 'create-account'">Create your account</h1>
+        <p class="subtitle">{{ allSubtitle[mode] }}</p>
 
         <div v-if="store.status.signedOutReason" class="signed-out-notice" role="status" data-testid="signed-out-reason">
           <AppIcon name="shield" />
@@ -216,7 +221,7 @@ async function submitCreateAccount(): Promise<void> {
 
         <form v-else @submit.prevent="submitCreateAccount">
           <label>
-            <span>Invite code</span>
+            <span>Invite code or link (optional)</span>
             <span class="input-with-icon">
               <AppIcon name="external" />
               <input
@@ -225,11 +230,15 @@ async function submitCreateAccount(): Promise<void> {
                 placeholder="Invite code or link"
                 autocomplete="off"
                 spellcheck="false"
-                required
                 @input="readInviteCode"
               />
             </span>
             <span v-if="inviteServer" class="muted invite-server" data-testid="invite-server">Server: {{ inviteServer }}</span>
+            <span v-else-if="!hasInvite" class="muted invite-server" data-testid="invite-hint">Leave it empty if the server lets anyone sign up.</span>
+          </label>
+          <label v-if="isServerShown && !hasInvite">
+            <span>Server</span>
+            <span class="input-with-icon"><AppIcon name="globe" /><input v-model="server" name="server" autocomplete="url" required /></span>
           </label>
           <div class="two-columns">
             <label>
@@ -255,10 +264,11 @@ async function submitCreateAccount(): Promise<void> {
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy || passwordMismatch || passwordFeedback.isBlocking">
             {{ store.isBusy ? "Creating account…" : "Create account" }}
           </button>
-          <p class="hint muted" data-testid="create-account-note">
-            Your master password never leaves this Mac. A forgotten master password can't be recovered by anyone, including Hisar.
+          <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://eu.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://eu.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
+          <p v-if="!isServerShown && !hasInvite" class="hint">
+            <span class="muted" data-testid="create-account-server">Creates the account on {{ server }}.</span>
+            <button type="button" class="link-button" data-testid="use-different-server" @click="isServerShown = true">Use a different server…</button>
           </p>
-          <p class="hint muted" data-testid="legal-links">By creating an account you agree to the <a href="https://api.tryhisar.com/terms" target="_blank">Terms</a> and <a href="https://api.tryhisar.com/privacy" target="_blank">Privacy Policy</a>.</p>
         </form>
       </div>
     </main>
@@ -280,7 +290,7 @@ async function submitCreateAccount(): Promise<void> {
 .signed-out-notice p {
   flex: 1;
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   line-height: 1.45;
 }
 .signed-out-notice button {
@@ -313,8 +323,8 @@ async function submitCreateAccount(): Promise<void> {
 
 .brand h2 {
   margin: 28px 0 32px;
-  font-size: 24px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
   line-height: 1.25;
   letter-spacing: -0.02em;
 }
@@ -369,8 +379,8 @@ async function submitCreateAccount(): Promise<void> {
 
 h1 {
   margin: 24px 0 4px;
-  font-size: 22px;
-  font-weight: 650;
+  font-size: var(--font-size-22);
+  font-weight: 600;
   letter-spacing: -0.01em;
 }
 
@@ -432,7 +442,7 @@ h1 {
 
 .hint {
   margin: 14px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-align: center;
 }
 
@@ -441,7 +451,7 @@ h1 {
   border: none;
   background: none;
   color: var(--color-text-muted);
-  font-size: 12px;
+  font-size: var(--font-size-12);
   text-decoration: underline;
   text-underline-offset: 2px;
 }
@@ -453,14 +463,14 @@ h1 {
 .password-feedback {
   display: block;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 400;
 }
 
 .invite-server {
   display: block;
   margin-top: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 400;
 }
 

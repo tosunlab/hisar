@@ -37,6 +37,7 @@ export interface ApprovalEvent {
     "isCompact": boolean;
     "isTouchIDApproval": boolean;
     "timeoutAt": string;
+    "timeoutMilliseconds": number;
     "terminalName": string;
 
     /**

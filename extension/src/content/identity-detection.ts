@@ -38,8 +38,10 @@ const allHintKind: [IdentityKind, RegExp][] = [
   ["bday", /birth|\bdob\b|bday|geburt|naissance|nacimiento|do[gğ]um[\s_-]*tarih/i],
 ];
 
-// Fields that hold something else with a name, such as a username, a company or a card's holder.
-const excludedHintPattern = /user|login|search|coupon|promo|company|organi[sz]ation|business|card|holder|captcha|password|nick|display|screen|pet|file|domain|url|website/i;
+// Fields that hold something else with a name, such as a username, a company, a card's holder, or the things a web
+// application names: a project, a team, a key.
+const excludedHintPattern =
+  /user|login|search|query|\bfilter|coupon|promo|company|organi[sz]ation|business|card|holder|captcha|password|nick|display|screen|pet|file|domain|url|website|\bsite|project|\brepo\b|repository|\bteam|workspace|\bgroup|folder|product|\bitem|\btag|branch|\bkey|token|\bapp\b|\bserver|\bhost|database|bucket|cluster|channel|\bboard|vault|title|subject|topic/i;
 
 function getAutocompleteTokens(element: HTMLInputElement): string[] {
   return (element.getAttribute("autocomplete") ?? "").toLowerCase().split(/\s+/).filter(Boolean);

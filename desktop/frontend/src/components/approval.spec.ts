@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import {
   createAgentApprovalEvent,
@@ -50,7 +50,64 @@ beforeEach(() => {
   api.listAllPendingSSHApproval.mockResolvedValue([]);
 });
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("SSHApprovalWindow", () => {
+  it.each([false, true])("counts down to the hard deadline and keeps the denial visible, phone %s", async (isPhoneApproval) => {
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00.321Z") });
+    const lifetime = isPhoneApproval ? 95 : 43;
+    const wrapper = mount(SSHApprovalWindow);
+    expect(vi.getTimerCount()).toBe(0);
+    sendEvent("ssh-approval", createApprovalEvent({ isPhoneApproval, timeoutMilliseconds: lifetime * 1000, timeoutAt: new Date(Date.now() + lifetime * 1000).toISOString() }));
+    await flushPromises();
+    const expiry = () => wrapper.get('[data-testid="approval-expiry"]');
+    expect(expiry().text()).toBe(`Expires in ${lifetime} seconds`);
+    expect(expiry().classes()).not.toContain("is-warning");
+    await vi.advanceTimersByTimeAsync((lifetime - 10) * 1000);
+    expect(expiry().text()).toBe("Expires in 10 seconds");
+    expect(expiry().classes()).not.toContain("is-warning");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(expiry().text()).toBe("Expires in 9 seconds");
+    expect(expiry().classes()).toContain("is-warning");
+    await vi.advanceTimersByTimeAsync(8000);
+    expect(expiry().text()).toBe("Expires in 1 second");
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(expiry().text()).toBe(`No answer in ${lifetime} seconds.`);
+    expect(wrapper.get("h1").text()).toBe("Request denied");
+    expect(wrapper.find("button").exists()).toBe(false);
+    const responseCount = api.respondSSHApproval.mock.calls.length;
+    pressKey("Enter");
+    pressKey("Escape");
+    await flushPromises();
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(responseCount);
+    await vi.advanceTimersByTimeAsync(2999);
+    expect(expiry().text()).toBe(`No answer in ${lifetime} seconds.`);
+    sendEvent("ssh-approval-closed", "request-1");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+    wrapper.unmount();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("shows the countdown on compact cards and restores the next request's deadline", async () => {
+    vi.useFakeTimers({ now: new Date("2026-10-26T12:00:00Z") });
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ isCompact: true, timeoutMilliseconds: 2000, timeoutAt: new Date(Date.now() + 2000).toISOString() }));
+    sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", timeoutAt: new Date(Date.now() + 60_000).toISOString() }));
+    await flushPromises();
+    expect(wrapper.get(".compact-card [data-testid='approval-expiry']").text()).toBe("Expires in 2 seconds");
+    await vi.advanceTimersByTimeAsync(2000);
+    expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("No answer in 2 seconds.");
+    sendEvent("ssh-approval-closed", "request-1");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-expiry"]').text()).toBe("Expires in 58 seconds");
+    expect(wrapper.find(".expired-notice").exists()).toBe(false);
+    wrapper.unmount();
+  });
+
   it("takes the saved theme and follows a theme chosen in Settings", async () => {
     api.getTheme.mockResolvedValue({ appearance: "light", color: "purple" });
     const wrapper = mount(SSHApprovalWindow);
@@ -259,7 +316,7 @@ describe("SSHApprovalWindow", () => {
     const denyButton = wrapper.find('[data-testid="deny-approval"]');
     expect(denyButton.classes()).toContain("primary");
     expect(document.activeElement).toBe(denyButton.element);
-    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Allow once");
+    expect(wrapper.find('[data-testid="authorize-approval"]').text()).toBe("Approve once");
     await wrapper.find('[data-testid="authorize-approval"]').trigger("click");
     await flushPromises();
     expect(api.respondSSHApproval).toHaveBeenCalledWith("forwarded-1", true, false);
@@ -282,7 +339,7 @@ describe("SSHApprovalWindow", () => {
     sendEvent("ssh-approval-closed", "request-1");
     sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", isCompact: true, rememberPeriod: "until Hisar locks" }));
     await flushPromises();
-    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to allow until Hisar locks");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to approve until Hisar locks");
     wrapper.unmount();
   });
 
@@ -292,7 +349,7 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-compact-title"]').text()).toBe("Terminal · Push");
     expect(wrapper.find(".compact-subtitle").text()).toBe("git.tryhisar.com with “Laptop key”");
-    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to allow for 1 hour");
+    expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toBe("Touch ID to approve for 1 hour");
     expect(wrapper.find("h1").exists()).toBe(false);
     expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
     expect(api.fitSSHApprovalWindow).toHaveBeenLastCalledWith(true, expect.any(Number));
@@ -310,6 +367,9 @@ describe("SSHApprovalWindow", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
     expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("or approve on your smart device");
+    expect(wrapper.findAll('.request-header [data-testid="approval-phone"]')).toHaveLength(1);
+    expect(wrapper.find('.footer-bar [data-testid="approval-phone"]').exists()).toBe(false);
+    expect(wrapper.get('.touch-id-text [data-testid="use-password"]').text()).toBe("or use your master password");
     sendEvent("ssh-approval-closed", "request-1");
     await flushPromises();
     expect(wrapper.find('[data-testid="ssh-approval"]').exists()).toBe(false);
@@ -339,6 +399,8 @@ describe("SSHApprovalWindow", () => {
     sendEvent("ssh-approval", createApprovalEvent({ isTooLongForPhone: true }));
     await flushPromises();
     expect(wrapper.find('[data-testid="approval-phone"]').text()).toBe("This request is too long to approve on your phone.");
+    expect(wrapper.find('.request-header [data-testid="approval-phone"]').exists()).toBe(true);
+    expect(wrapper.find('.footer-bar [data-testid="approval-phone"]').exists()).toBe(false);
     sendEvent("ssh-approval-closed", "request-1");
     await flushPromises();
 
@@ -570,6 +632,8 @@ describe("SSHApprovalWindow", () => {
     expect(wrapper.findAll('[data-testid="approval-secrets"] li').map((line) => line.text())).toEqual(["Work › Stripe › api key", "Work › Postgres staging › password"]);
     expect(wrapper.find(".remember").exists()).toBe(false);
     const menu = wrapper.find('[data-testid="approval-grant-duration-menu"]');
+    expect(menu.attributes("aria-label")).toBe("How long to approve it");
+    expect(wrapper.get('[data-testid="approval-grant-duration"] label').text()).toContain("Approve for");
     expect(menu.findAll("option").map((option) => option.text())).toEqual(["Only this time", "For 1 hour"]);
     expect((menu.element as HTMLSelectElement).value).toBe("once");
     expect(wrapper.find('[data-testid="approval-grant-note"]').exists()).toBe(false);

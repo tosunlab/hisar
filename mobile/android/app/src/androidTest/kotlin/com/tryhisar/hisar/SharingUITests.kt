@@ -71,7 +71,7 @@ class SharingUITests : HisarUITestCase() {
         signUp(inviteLink, email, "Android Sharing")
 
         tap("vault-Personal")
-        tap("share-vault")
+        choose("share-vault", "vault-actions")
         waitForText("Personal vaults are private")
         tap("personal-vault-note-ok")
         goBack()
@@ -83,7 +83,7 @@ class SharingUITests : HisarUITestCase() {
         waitFor("vault-search")
         waitForText("Deploy keys")
 
-        tap("share-vault")
+        choose("share-vault", "vault-actions")
         type(partnerEmail, "share-email")
         tap("share-role")
         tap("share-role-Reader")
@@ -152,8 +152,9 @@ class SharingUITests : HisarUITestCase() {
         assertTrue(readRow("vault-Infrastructure"), readRow("vault-Infrastructure").contains("Editor"))
         tap("vault-Infrastructure")
         waitFor("item-Staging database", 30_000)
+        tap("vault-actions")
+        waitFor("vault-members")
         assertFalse("only owners share", exists(hasTestTag("share-vault")))
-
         tap("vault-members")
         waitFor("vault-member-$partnerEmail", 30_000)
         assertFalse("editors cannot invite", exists(hasTestTag("share-email")))

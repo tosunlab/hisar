@@ -143,6 +143,9 @@ class HisarKitBackend(
     override fun signUp(inviteLink: String, email: String, name: String, password: String): SignUpResult =
         decode(SignUpResult.serializer(), call { signUp(inviteLink, email, name, password) })
 
+    override fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult =
+        decode(SignUpResult.serializer(), call { signUpWithoutInvite(server, email, name, password) })
+
     override fun unlock(password: String): VaultStatus = decode(VaultStatus.serializer(), call { unlock(password) })
 
     override fun unlockWithBiometric(): VaultStatus = decode(VaultStatus.serializer(), call { unlockWithBiometric() })
@@ -278,6 +281,12 @@ class HisarKitBackend(
 
     override fun prepareCredentialExchangeImport(vaultID: String, credentialData: ByteArray): ImportPreview =
         decode(ImportPreview.serializer(), call { prepareCredentialExchangeImport(vaultID, credentialData) })
+
+    override fun prepareHisarExportImport(vaultID: String, fileName: String, content: ByteArray): ImportPreview =
+        decode(ImportPreview.serializer(), call { prepareHisarExportImport(vaultID, fileName, content) })
+
+    override fun openImportFile(passphrase: String): ImportPreview =
+        decode(ImportPreview.serializer(), call { openImportFile(passphrase) })
 
     override fun previewImport(vaultID: String): ImportPreview = decode(ImportPreview.serializer(), call { previewImport(vaultID) })
 

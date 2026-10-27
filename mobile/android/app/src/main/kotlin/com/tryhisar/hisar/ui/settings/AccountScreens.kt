@@ -1,5 +1,7 @@
 package com.tryhisar.hisar.ui.settings
 
+import android.content.ActivityNotFoundException
+import android.content.Intent
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.LocalActivity
 import androidx.compose.foundation.background
@@ -59,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.HisarApplication
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.AccountLifecycleLogic
 import com.tryhisar.hisar.model.CredentialChangeResult
@@ -84,6 +87,9 @@ private const val SAVE_FAILED_MESSAGE = "Hisar could not save the file there. Ch
 fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: () -> Unit) {
     val status by model.status.collectAsStateWithLifecycle()
     val activity = LocalActivity.current
+    val pickHisarExport = rememberHisarExportPicker(
+        onProblem = { model.credentialImport.message.value = it },
+    ) { fileName, content -> model.credentialImport.startHisarExport(fileName, content) }
     SettingsScreen("Account", onBack) {
         FormSection {
             LabeledRow("Name", status.name)
@@ -118,12 +124,21 @@ fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: 
                 color = HisarTheme.colors.tint,
             )
         }
+        FormSection(footer = { Text("A Hisar export you made from Hisar, encrypted (.hisar) or plain JSON.") }) {
+            FormButtonRow(
+                "Import a Hisar export…",
+                pickHisarExport,
+                testTag = "open-hisar-export-import",
+                icon = Icons.Outlined.Download,
+                color = HisarTheme.colors.tint,
+            )
+        }
         FormSection(footer = { Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON.") }) {
             FormButtonRow("Export data…", { push(SettingsDestination.EXPORT_DATA) }, testTag = "open-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
         }
         FormSection(footer = { Text("Deletes your account and the vaults only you own from the Hisar server. ${AccountLifecycleLogic.EXPORT_ADVICE}") }) {
             NavigationRow(
-                "Delete account", "open-delete-account", { push(SettingsDestination.DELETE_ACCOUNT) }, Icons.Outlined.PersonRemove,
+                "Delete account…", "open-delete-account", { push(SettingsDestination.DELETE_ACCOUNT) }, Icons.Outlined.PersonRemove,
                 color = HisarTheme.colors.destructive,
                 enabled = !status.isOffline,
             )
@@ -149,8 +164,16 @@ private fun SecretKeyRow(secretKey: String, testTag: String) {
 @Composable
 private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String) {
     val context = LocalContext.current
-    val save = rememberFileSaver("application/pdf") { isSaved ->
-        if (isSaved) model.showNotice("Emergency Kit saved") else model.errorMessage.value = SAVE_FAILED_MESSAGE
+    val save = rememberFileSaver("application/pdf") { savedURI ->
+        if (savedURI != null) {
+            model.showNotice("Emergency Kit saved", com.tryhisar.hisar.app.Notice.Action("Open") {
+                try {
+                    context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(savedURI, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
+                } catch (_: ActivityNotFoundException) {
+                    model.errorMessage.value = "No app on this device can open PDF files."
+                }
+            })
+        } else model.errorMessage.value = SAVE_FAILED_MESSAGE
     }
     val share = rememberFileSharer("application/pdf") { model.errorMessage.value = SHARE_FAILED_MESSAGE }
     FormButtonRow("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag, icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)

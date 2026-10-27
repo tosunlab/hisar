@@ -152,6 +152,6 @@ onMounted(loadAgents);
 .empty-row {
   margin: 0;
   padding: 10px 14px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 </style>
