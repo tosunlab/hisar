@@ -68,17 +68,15 @@ struct SignInView: View {
                         .accessibilityIdentifier("dismiss-signed-out-reason")
                     }
                 }
-                if let errorMessage = model.errorMessage {
-                    Section {
-                        ErrorBanner(message: errorMessage)
-                    }
-                }
                 if mode == .signIn {
                     signInSections
                 } else {
                     createAccountSections
                 }
                 Section {
+                    if let errorMessage = model.errorMessage {
+                        ErrorBanner(message: errorMessage)
+                    }
                     Button(action: submit) {
                         Group {
                             if model.isBusy {
