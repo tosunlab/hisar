@@ -31,16 +31,19 @@ final class FaceIDUITests: HisarUITestCase {
     }
 
     // Face ID ignores a match posted before it asks, and its prompt is not an element the test can wait for, so the match
-    // repeats until the app goes on. A step whose control stays disabled while Face ID runs passes its control: enabled
-    // again, without the step done and with an error shown, it means Face ID ended in a failure; the app asks no more, so
-    // the test stops there with the app's message. An error banner alone proves nothing: a background refresh can show one
-    // while Face ID still runs, but then the control is still disabled.
+    // repeats until the app goes on. Like a real one, the simulator's prompt fails when no face matches within a few
+    // seconds, so the matching starts right after the tap; the first use's permission alert is answered in the same
+    // loop rather than waited for first. A step whose control stays disabled while Face ID runs passes its control:
+    // enabled again, without the step done and with an error shown, it means Face ID ended in a failure; the app asks no
+    // more, so the test stops there with the app's message. An error banner alone proves nothing: a background refresh
+    // can show one while Face ID still runs, but then the control is still disabled.
     private func matchFace(until isDone: () -> Bool, failingWhenEnabled control: XCUIElement? = nil, file: StaticString = #filePath, line: UInt = #line) {
         let errorMessage = app.descendants(matching: .any)["error-message"].firstMatch
         let deadline = Date().addingTimeInterval(30)
         repeat {
+            answerFaceIDPermission()
             matchFace()
-            let retry = Date().addingTimeInterval(2)
+            let retry = Date().addingTimeInterval(1)
             while Date() < retry {
                 if isDone() {
                     return
@@ -56,14 +59,10 @@ final class FaceIDUITests: HisarUITestCase {
         XCTFail("Face ID did not let the app go on", file: file, line: line)
     }
 
-    private func allowFaceIDIfAsked() {
-        let allowButton = springboard.alerts.buttons["Allow"].exists ? springboard.alerts.buttons["Allow"] : app.alerts.buttons["Allow"]
-        if allowButton.waitForExistence(timeout: 3) {
-            allowButton.tap()
-        }
-        let okButton = springboard.alerts.buttons["OK"]
-        if okButton.waitForExistence(timeout: 1) {
-            okButton.tap()
+    // answerFaceIDPermission allows Face ID if iOS asks for the first time, without waiting for the alert.
+    private func answerFaceIDPermission() {
+        for button in [springboard.alerts.buttons["Allow"], app.alerts.buttons["Allow"], springboard.alerts.buttons["OK"]] where button.exists {
+            button.tap()
         }
     }
 
@@ -81,7 +80,6 @@ final class FaceIDUITests: HisarUITestCase {
         saveScreenshot("face-id-offer")
         let turnOnButton = app.buttons["biometric-offer-turn-on"]
         turnOnButton.tap()
-        allowFaceIDIfAsked()
         // The vaults are already under the offer, so the offer closing is what shows that Face ID is on.
         matchFace(until: { !turnOnButton.exists }, failingWhenEnabled: turnOnButton)
         waitForHittable(app.buttons["vault-Personal"], timeout: 20)
@@ -101,7 +99,6 @@ final class FaceIDUITests: HisarUITestCase {
         waitFor(passwordField)
         typeText(Self.masterPassword, into: passwordField)
         app.alerts.buttons["Turn on"].tap()
-        allowFaceIDIfAsked()
         matchFace(until: { toggle.value as? String == "1" }, failingWhenEnabled: toggle)
         expectation(for: enabledPredicate, evaluatedWith: toggle)
         waitForExpectations(timeout: 20)
