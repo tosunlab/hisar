@@ -41,6 +41,7 @@ final class SharingUITests: HisarUITestCase {
         app.buttons["vault-Personal"].tap()
         waitFor(app.buttons["add-item"])
         XCTAssertFalse(app.buttons["share-vault"].exists, "a Personal vault offers Share")
+        waitFor(app.staticTexts["Tap + to add your first item."])
         goBack()
 
         choose("new-vault", from: "new-menu")
