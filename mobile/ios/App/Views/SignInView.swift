@@ -245,8 +245,7 @@ struct SignInView: View {
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 if isPasswordMismatch {
-                    Text("The passwords do not match.")
-                        .foregroundStyle(.red)
+                    ErrorBanner(message: "The passwords do not match.")
                 }
                 Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
             }

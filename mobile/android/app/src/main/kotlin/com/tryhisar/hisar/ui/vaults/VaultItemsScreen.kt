@@ -116,7 +116,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
                     Text("${vault.readIssues.size} unreadable records. ${issue.kind}. ${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.warning)
                     PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-unreadable-$vaultID")
                     if (issue.canRename) PlainButton("Repair vault name", { dialog = VaultDialog.RepairName(issue) }, testTag = "repair-vault-name")
-                    if (issue.canDelete) PlainButton("Delete unreadable data…", { issueToDelete = issue }, testTag = "delete-unreadable-${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.destructive)
+                    if (issue.canDelete) PlainButton("Delete unreadable data…", { issueToDelete = issue }, testTag = "delete-unreadable-${issue.itemId.ifEmpty { issue.vaultId }}", color = HisarTheme.colors.destructiveText)
                 }
             }
         }
@@ -142,7 +142,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
             onDismissRequest = { issueToDelete = null },
             title = { Text("Permanently delete unreadable data?") },
             text = { Text(if (issue.itemId.isEmpty()) "This deletes the vault and every item in it on all devices. This cannot be undone." else "This deletes the unreadable item on every device. This cannot be undone.") },
-            confirmButton = { PlainButton("Permanently delete", { issueToDelete = null; scope.launch { model.vaults.deleteUnreadableRecord(issue) } }, testTag = "delete-unreadable-confirm", color = HisarTheme.colors.destructive) },
+            confirmButton = { PlainButton("Permanently delete", { issueToDelete = null; scope.launch { model.vaults.deleteUnreadableRecord(issue) } }, testTag = "delete-unreadable-confirm", color = HisarTheme.colors.destructiveText) },
             dismissButton = { PlainButton("Cancel", { issueToDelete = null }, testTag = "delete-unreadable-cancel") },
         )
     }
@@ -172,7 +172,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
                 PlainButton("Leave vault", {
                     dialog = null
                     scope.launch { model.vaults.leaveVault(vaultID) }
-                }, testTag = "leave-vault-confirm", color = HisarTheme.colors.destructive)
+                }, testTag = "leave-vault-confirm", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { dialog = null }, testTag = "leave-vault-cancel") },
         )

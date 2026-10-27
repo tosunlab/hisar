@@ -190,7 +190,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                 PlainButton("Delete passkey", {
                     passkeyToDelete = null
                     scope.launch { model.item.deletePasskey(vaultID, itemID, passkey.credentialID)?.let { item = it } }
-                }, testTag = "confirm-delete-passkey", color = HisarTheme.colors.destructive)
+                }, testTag = "confirm-delete-passkey", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { passkeyToDelete = null }, testTag = "cancel-delete-passkey") },
         )
@@ -204,7 +204,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                 PlainButton("Remove app", {
                     androidAppToRemove = null
                     scope.launch { model.item.removeAndroidApp(vaultID, itemID, androidApp)?.let { item = it } }
-                }, testTag = "confirm-remove-android-app", color = HisarTheme.colors.destructive)
+                }, testTag = "confirm-remove-android-app", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { androidAppToRemove = null }, testTag = "cancel-remove-android-app") },
         )

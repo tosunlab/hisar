@@ -490,7 +490,7 @@ fun DestructiveConfirmation(title: String, message: String, action: String, onCo
         containerColor = HisarTheme.colors.cellBackground,
         title = { Text(title, style = HisarType.headline, color = HisarTheme.colors.label) },
         text = { Text(message, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel) },
-        confirmButton = { ToolbarTextButton(action, onClick = onConfirm, testTag = "$testTag-confirm", isProminent = true, color = HisarTheme.colors.destructive) },
+        confirmButton = { ToolbarTextButton(action, onClick = onConfirm, testTag = "$testTag-confirm", isProminent = true, color = HisarTheme.colors.destructiveText) },
         dismissButton = { ToolbarTextButton(dismissLabel, onClick = onDismiss, testTag = "$testTag-dismiss") },
         modifier = Modifier.testTag(testTag),
     )

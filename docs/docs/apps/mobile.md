@@ -13,6 +13,10 @@ The iPhone and Android apps on top of the gomobile-bound `core`. See [Design](..
 - `android/`: the Android app, below.
 - `cmd/hisar-ui-test-mac`: plays the user's Mac in the Android phone approval UI test.
 
+Validation and warning text uses opaque, contrast-safe colors in every palette.
+Android destructive text uses the shared `dangerText` role, separate from decorative red icons.
+iPhone blocking password messages use primary text with a red warning symbol.
+
 ## Android
 
 Kotlin and Jetpack Compose on top of `HisarKit.aar`, built with the Gradle wrapper in `android/`. Android 10 (API 29)

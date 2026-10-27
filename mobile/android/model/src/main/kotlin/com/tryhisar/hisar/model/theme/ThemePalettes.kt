@@ -11,6 +11,7 @@ object ThemePalettes {
         groupedBackground = ThemeColor(light = 0xFFF2F2F7, dark = 0xFF000000),
         secondaryLabel = ThemeColor(light = 0xFF6C6C70, dark = 0xFF98989F),
         warning = ThemeColor(light = 0xFF8F5B00, dark = 0xFFD9A33C),
+        destructiveText = ThemeColor(light = 0xFF9F1F25, dark = 0xFFF2B8BB),
     )
 
     val blue = ThemePalette(
@@ -19,6 +20,7 @@ object ThemePalettes {
         groupedBackground = ThemeColor(light = 0xFFEEF2FA, dark = 0xFF05070C),
         secondaryLabel = ThemeColor(light = 0xFF6C6C70, dark = 0xFF98989F),
         warning = ThemeColor(light = 0xFF8F5B00, dark = 0xFFD9A33C),
+        destructiveText = ThemeColor(light = 0xFF9F1F25, dark = 0xFFF2B8BB),
     )
 
     val purple = ThemePalette(
@@ -27,6 +29,7 @@ object ThemePalettes {
         groupedBackground = ThemeColor(light = 0xFFF3F0FA, dark = 0xFF07060C),
         secondaryLabel = ThemeColor(light = 0xFF6C6C70, dark = 0xFF98989F),
         warning = ThemeColor(light = 0xFF8F5B00, dark = 0xFFD9A33C),
+        destructiveText = ThemeColor(light = 0xFF9F1F25, dark = 0xFFF2B8BB),
     )
 
     val green = ThemePalette(
@@ -35,6 +38,7 @@ object ThemePalettes {
         groupedBackground = ThemeColor(light = 0xFFEEF5F1, dark = 0xFF050906),
         secondaryLabel = ThemeColor(light = 0xFF6C6C70, dark = 0xFF98989F),
         warning = ThemeColor(light = 0xFF8F5B00, dark = 0xFFD9A33C),
+        destructiveText = ThemeColor(light = 0xFF9F1F25, dark = 0xFFF2B8BB),
     )
 
     fun find(color: ThemeColorName): ThemePalette = when (color) {

@@ -244,7 +244,7 @@ fun DestructiveRow(text: String, onClick: () -> Unit, testTag: String, enabled: 
             .testTag(testTag),
         contentAlignment = Alignment.Center,
     ) {
-        Text(text, style = HisarType.body, color = if (enabled) HisarTheme.colors.destructive else HisarTheme.colors.secondaryLabel)
+        Text(text, style = HisarType.body, color = if (enabled) HisarTheme.colors.destructiveText else HisarTheme.colors.secondaryLabel)
     }
 }
 
@@ -275,7 +275,7 @@ fun ConfirmationDialog(
                     onConfirm()
                 },
                 testTag = confirmTestTag,
-                color = if (isDestructive) HisarTheme.colors.destructive else HisarTheme.colors.tint,
+                color = if (isDestructive) HisarTheme.colors.destructiveText else HisarTheme.colors.tint,
             )
         },
         dismissButton = { PlainButton(dismissLabel, onDismiss, testTag = "cancel-confirmation") },

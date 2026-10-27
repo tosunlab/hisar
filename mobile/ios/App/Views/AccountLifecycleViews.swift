@@ -39,8 +39,7 @@ struct ChangeMasterPasswordView: View {
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     if let problem {
-                        Text(problem)
-                            .foregroundStyle(.red)
+                        ErrorBanner(message: problem)
                             .accessibilityIdentifier("change-password-problem")
                     }
                     Text("A forgotten master password can't be recovered by anyone, including Hisar.")

@@ -98,7 +98,7 @@ fun LockScreen(model: AppModel) {
                 PlainButton("Sign out", {
                     isSignOutConfirmationShown = false
                     scope.launch { model.lock.signOut() }
-                }, testTag = "confirm-sign-out", color = HisarTheme.colors.destructive)
+                }, testTag = "confirm-sign-out", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { isSignOutConfirmationShown = false }, testTag = "cancel-sign-out") },
         )

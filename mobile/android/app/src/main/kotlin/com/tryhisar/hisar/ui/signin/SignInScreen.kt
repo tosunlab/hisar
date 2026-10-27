@@ -315,7 +315,7 @@ private fun CreateAccountSections(
     FormSection(
         header = "Master password",
         footer = {
-            if (isPasswordMismatch) Text("The passwords do not match.", color = HisarTheme.colors.destructive)
+            if (isPasswordMismatch) Text("The passwords do not match.", color = HisarTheme.colors.destructiveText)
             Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
         },
     ) {

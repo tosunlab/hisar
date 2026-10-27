@@ -131,7 +131,7 @@ private fun PreviewSections(
         FormSection(modifier = Modifier.testTag("hisar-import-origin")) {
             exportOrigin?.let { Text(it, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel) }
             if (preview.notice.isNotEmpty()) {
-                Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("hisar-import-notice"))
+                Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.warning, modifier = Modifier.testTag("hisar-import-notice"))
             }
         }
     }

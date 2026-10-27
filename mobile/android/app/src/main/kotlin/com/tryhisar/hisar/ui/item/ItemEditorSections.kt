@@ -47,7 +47,7 @@ data class RevealedSecrets(
 /** A warning line under a section, in the theme's warning color. */
 @Composable
 private fun Warning(text: String, testTag: String) {
-    Text(text, color = HisarTheme.colors.orange, style = HisarType.footnote, modifier = Modifier.testTag(testTag))
+    Text(text, color = HisarTheme.colors.warning, style = HisarType.footnote, modifier = Modifier.testTag(testTag))
 }
 
 @Composable

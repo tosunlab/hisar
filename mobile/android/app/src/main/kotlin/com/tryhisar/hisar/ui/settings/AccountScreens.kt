@@ -139,7 +139,7 @@ fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: 
         FormSection(footer = { Text("Deletes your account and the vaults only you own from the Hisar server. ${AccountLifecycleLogic.EXPORT_ADVICE}") }) {
             NavigationRow(
                 "Delete account…", "open-delete-account", { push(SettingsDestination.DELETE_ACCOUNT) }, Icons.Outlined.PersonRemove,
-                color = HisarTheme.colors.destructive,
+                color = HisarTheme.colors.destructiveText,
                 enabled = !status.isOffline,
             )
         }
@@ -290,7 +290,7 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
         FormSection(
             header = "New master password",
             footer = {
-                problem?.let { Text(it, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("change-password-problem")) }
+                problem?.let { Text(it, color = HisarTheme.colors.destructiveText, modifier = Modifier.testTag("change-password-problem")) }
                 Text("A forgotten master password can't be recovered by anyone, including Hisar.")
             },
         ) {
@@ -665,7 +665,7 @@ fun PendingRecoveryScreen(model: AppModel) {
                 if (recovery.phase == "awaiting-kit" || recovery.phase == "prepared") {
                     FormButtonRow(
                         "Discard uncommitted setup", { isDiscardConfirmationShown = true }, testTag = "pending-recovery-discard",
-                        color = HisarTheme.colors.destructive, enabled = password.isNotEmpty() && !isBusy,
+                        color = HisarTheme.colors.destructiveText, enabled = password.isNotEmpty() && !isBusy,
                     )
                 }
             }

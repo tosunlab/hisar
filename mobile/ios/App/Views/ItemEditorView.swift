@@ -371,7 +371,7 @@ struct ItemEditorView: View {
             let allWarning = [cardDescription.numberWarning, cardTypeMismatch, cardDescription.expiryWarning].filter { !$0.isEmpty }
             if !allWarning.isEmpty {
                 Text(allWarning.joined(separator: "\n"))
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .accessibilityIdentifier("editor-card-warning")
             }
         }
@@ -624,7 +624,7 @@ struct ItemEditorView: View {
         } footer: {
             if !credentialExpiryWarning.isEmpty {
                 Text(credentialExpiryWarning)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .accessibilityIdentifier("editor-api-credential-warning")
             }
         }
@@ -675,7 +675,7 @@ struct ItemEditorView: View {
         } footer: {
             if !portWarning.isEmpty {
                 Text(portWarning)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .accessibilityIdentifier("editor-server-port-warning")
             }
         }
@@ -750,7 +750,7 @@ struct ItemEditorView: View {
         } footer: {
             if !portWarning.isEmpty {
                 Text(portWarning)
-                    .foregroundStyle(.orange)
+                    .foregroundStyle(.themeWarning)
                     .accessibilityIdentifier("editor-database-port-warning")
             }
             if isOtherEngine {

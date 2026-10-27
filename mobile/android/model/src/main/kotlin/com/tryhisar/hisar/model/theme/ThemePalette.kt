@@ -11,4 +11,5 @@ data class ThemePalette(
     val groupedBackground: ThemeColor,
     val secondaryLabel: ThemeColor,
     val warning: ThemeColor,
+    val destructiveText: ThemeColor,
 )

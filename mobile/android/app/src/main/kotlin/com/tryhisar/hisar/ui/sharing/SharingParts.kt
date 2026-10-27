@@ -399,7 +399,7 @@ fun DestructiveButtonRow(text: String, icon: ImageVector, onClick: () -> Unit, t
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val color = if (enabled) HisarTheme.colors.destructive else HisarTheme.colors.secondaryLabel
+        val color = if (enabled) HisarTheme.colors.destructiveText else HisarTheme.colors.secondaryLabel
         Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(22.dp))
         Spacer(Modifier.size(14.dp))
         Text(text, style = HisarType.body, color = color)
