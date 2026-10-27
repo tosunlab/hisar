@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { allTestVault, createApiMock, createItem, createServerItem, createStatus } from "../testing";
-import { allIconPreset, getWebsiteIconURL } from "../util";
+import { allIconPreset, getDefaultIconPreset, getWebsiteIconURL } from "../util";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -110,6 +110,32 @@ describe("Item tiles", () => {
 });
 
 describe("The icon picker", () => {
+  it("selects and saves the category preset when only a color is chosen", async () => {
+    const wrapper = await openPicker();
+    await wrapper.find('[data-testid="icon-color-green"]').trigger("click");
+    expect(wrapper.find('[data-testid="item-icon-button"] .tile').attributes("data-icon")).toBe("lock");
+    await wrapper.find("form").trigger("submit");
+    await flushPromises();
+    const saved = api.saveItem.mock.calls[0][1];
+    expect(saved.icon).toEqual({ preset: "lock", color: "green" });
+    wrapper.unmount();
+    store.selectedItem = saved;
+    store.editorMode = "edit";
+    const reopened = mount(ItemEditor);
+    expect(reopened.find('[data-testid="item-icon-button"] .tile').attributes("data-icon-color")).toBe("green");
+    reopened.unmount();
+  });
+
+  it("uses supported presets for every category", () => {
+    for (const [category, preset] of Object.entries({
+      login: "lock", "credit-card": "card", server: "server", database: "database", "ssh-key": "key",
+      "secure-note": "lock", identity: "lock", "api-credential": "lock", address: "lock", "software-license": "lock",
+    })) {
+      expect(getDefaultIconPreset(category)).toBe(preset);
+      expect(allIconPreset).toContain(preset);
+    }
+  });
+
   async function openPicker() {
     store.selectedItem = createItem({ id: "bank", title: "Bank", urls: ["https://bank.example.com"] });
     store.editorMode = "edit";
@@ -152,6 +178,8 @@ describe("The icon picker", () => {
     await vi.waitFor(() => expect(api.prepareItemIcon).toHaveBeenCalledWith("AQID"));
     await flushPromises();
     expect(wrapper.find('[data-testid="item-icon-button"] .tile').attributes("data-image")).toBe("chosen");
+    expect(wrapper.find('[data-testid="icon-color-green"]').attributes("disabled")).toBeDefined();
+    expect(wrapper.text()).toContain("Choose a preset icon to color it.");
 
     api.prepareItemIcon.mockRejectedValueOnce(new Error("choose a PNG, JPEG, GIF or WebP image"));
     await input.trigger("change");

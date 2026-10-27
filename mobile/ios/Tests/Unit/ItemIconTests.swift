@@ -34,6 +34,12 @@ final class ItemIconTests: XCTestCase {
             XCTAssertNotNil(ItemIcon.getColor(color), "color \(color)")
         }
         XCTAssertNil(ItemIcon.getColor(""))
+        for (category, preset) in ["login": "lock", "credit-card": "card", "server": "server", "database": "database", "ssh-key": "key",
+                                   "secure-note": "lock", "identity": "lock", "api-credential": "lock", "address": "lock", "software-license": "lock"] {
+            XCTAssertEqual(ChosenIcon.applyingColor("green", to: nil, category: category), ChosenIcon(preset: preset, color: "green"))
+        }
+        let photo = ChosenIcon(image: Data([1, 2, 3]))
+        XCTAssertEqual(ChosenIcon.applyingColor("green", to: photo, category: "login"), photo)
     }
 
     func testIconsRoundTripThroughTheItemJSON() throws {
@@ -43,6 +49,9 @@ final class ItemIconTests: XCTestCase {
         let encoded = try JSONSerialization.jsonObject(with: JSONEncoder().encode(withImage)) as? [String: Any]
         XCTAssertEqual((encoded?["icon"] as? [String: Any])?["image"] as? String, "AQID", "images cross as base64, as Go's []byte")
         XCTAssertNil(try JSONDecoder().decode(ItemDetail.self, from: Data(#"{"title":"Old"}"#.utf8)).icon)
+        let colored = ItemDetail(title: "Login", icon: ChosenIcon.applyingColor("blue", to: nil, category: "login"))
+        let reopened = try JSONDecoder().decode(ItemDetail.self, from: JSONEncoder().encode(colored))
+        XCTAssertEqual(reopened.icon, ChosenIcon(preset: "lock", color: "blue"))
     }
 
     func testOnlyLoginsWithAnHTTPSWebsiteAndNoIconShowAWebsiteIcon() {

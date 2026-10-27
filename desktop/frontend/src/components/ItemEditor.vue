@@ -22,6 +22,7 @@ import {
   databaseCategory,
   describeAPICredentialExpiry,
   describeServerPort,
+  getDefaultIconPreset,
   identityCategory,
   formatCardNumberInput,
   formatExpiryInput,
@@ -337,6 +338,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           v-model="draft.icon"
           :title="draft.title"
           :websiteURL="websiteIconURL"
+          :default-preset="getDefaultIconPreset(draft.category)"
           @close="isIconPickerOpen = false"
         />
       </div>

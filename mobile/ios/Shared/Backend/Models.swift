@@ -383,6 +383,13 @@ struct ChosenIcon: Codable, Hashable {
 
     /// The symbol to draw, or nil for an image or a preset from a newer app, which draws the category's symbol.
     var symbol: String? { image == nil ? Self.symbolByPreset[preset] : nil }
+
+    private static let defaultPreset = ["credit-card": "card", "server": "server", "database": "database", "ssh-key": "key"]
+
+    static func applyingColor(_ color: String, to icon: ChosenIcon?, category: String) -> ChosenIcon? {
+        guard icon?.image == nil else { return icon }
+        return ChosenIcon(preset: icon.flatMap { $0.preset.isEmpty ? nil : $0.preset } ?? defaultPreset[category] ?? "lock", color: color)
+    }
 }
 
 /// The names core/item stores an address's values under; identities and cards keep their address under the same names, and
