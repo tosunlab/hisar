@@ -110,6 +110,8 @@ offers **Keep editing** and **Discard**. Locking keeps the draft in memory and r
 
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
+Appearance and color choices use one Tab stop per group. Arrow keys move and select a choice.
+The account and SSH-key tabs also support Left, Right, Home and End, with one Tab stop per tab group.
 
 ## Right-click menus
 

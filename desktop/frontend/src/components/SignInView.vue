@@ -123,6 +123,14 @@ function switchMode(nextMode: Mode): void {
   clearError();
 }
 
+function moveTab(event: KeyboardEvent): void {
+  const modes: Mode[] = ["sign-in", "create-account"];
+  const index = modes.indexOf(mode.value);
+  const nextIndex = event.key === "Home" ? 0 : event.key === "End" ? modes.length - 1 : (index + (event.key === "ArrowRight" ? 1 : -1) + modes.length) % modes.length;
+  switchMode(modes[nextIndex]!);
+  (event.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(`#account-tab-${mode.value}`)?.focus();
+}
+
 async function submitSignIn(): Promise<void> {
   const succeeded = await signIn(server.value, email.value, secretKey.value, password.value);
   if (succeeded) {
@@ -167,11 +175,15 @@ async function submitCreateAccount(): Promise<void> {
     <main class="form-side">
       <div class="title-bar"></div>
       <div class="form-container">
-        <div class="segmented" role="tablist">
-          <button role="tab" :aria-selected="mode === 'sign-in'" :class="{ active: mode === 'sign-in' }" @click="switchMode('sign-in')">
+        <div class="segmented" role="tablist" aria-label="Account" @keydown.right.prevent="moveTab" @keydown.left.prevent="moveTab" @keydown.home.prevent="moveTab" @keydown.end.prevent="moveTab">
+          <button id="account-tab-sign-in" type="button" role="tab" aria-controls="account-panel-sign-in" :tabindex="mode === 'sign-in' ? 0 : -1" :aria-selected="mode === 'sign-in'" :class="{ active: mode === 'sign-in' }" @click="switchMode('sign-in')">
             Sign in
           </button>
           <button
+            id="account-tab-create-account"
+            type="button"
+            aria-controls="account-panel-create-account"
+            :tabindex="mode === 'create-account' ? 0 : -1"
             role="tab"
             :aria-selected="mode === 'create-account'"
             :class="{ active: mode === 'create-account' }"
@@ -191,7 +203,7 @@ async function submitCreateAccount(): Promise<void> {
         </div>
         <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
 
-        <form v-if="mode === 'sign-in'" @submit.prevent="submitSignIn">
+        <form v-if="mode === 'sign-in'" id="account-panel-sign-in" role="tabpanel" aria-labelledby="account-tab-sign-in" @submit.prevent="submitSignIn">
           <label v-if="isServerShown">
             <span>Server</span>
             <span class="input-with-icon"><AppIcon name="globe" /><input v-model="server" name="server" autocomplete="url" required /></span>
@@ -219,7 +231,7 @@ async function submitCreateAccount(): Promise<void> {
           </p>
         </form>
 
-        <form v-else @submit.prevent="submitCreateAccount">
+        <form v-else id="account-panel-create-account" role="tabpanel" aria-labelledby="account-tab-create-account" @submit.prevent="submitCreateAccount">
           <label>
             <span>Invite code or link (optional)</span>
             <span class="input-with-icon">
