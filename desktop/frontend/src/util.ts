@@ -141,6 +141,10 @@ export function isMacPlatform(): boolean {
   return /Mac/i.test(navigator.platform || navigator.userAgent);
 }
 
+export function isApplicationCommand(event: Pick<KeyboardEvent, "metaKey" | "ctrlKey">): boolean {
+  return isMacPlatform() ? event.metaKey : event.ctrlKey;
+}
+
 // thisDevice is how the UI names the computer it runs on: "this Mac", or "this computer" on Linux.
 export function getThisDeviceName(): string {
   return isMacPlatform() ? "this Mac" : "this computer";

@@ -31,6 +31,7 @@ import {
   getWebsiteIconURL,
   isCalendarDate,
   isMacPlatform,
+  isApplicationCommand,
   isKnownDatabaseEngine,
   secureNoteCategory,
   serverCategory,
@@ -317,13 +318,13 @@ function handleShortcut(event: KeyboardEvent): void {
   if (store.discardDraftPrompt || !(target instanceof Node) || !(target === document.body || form.value?.contains(target))) {
     return;
   }
-  const isCommand = event.metaKey || event.ctrlKey;
+  const isCommand = isApplicationCommand(event);
   if (isCommand && !event.altKey && !event.shiftKey && (event.key.toLowerCase() === "s" || event.key === "Enter")) {
     event.preventDefault();
     if (!store.isBusy) {
       form.value?.requestSubmit();
     }
-  } else if (event.key === "Escape" && !isCommand && !event.defaultPrevented) {
+  } else if (event.key === "Escape" && !event.metaKey && !event.ctrlKey && !event.defaultPrevented) {
     event.preventDefault();
     void cancelEditing();
   }

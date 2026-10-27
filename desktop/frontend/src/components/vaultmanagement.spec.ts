@@ -366,7 +366,7 @@ describe("unreadable recovery", () => {
     api.repairVaultName.mockRejectedValue(new Error("that unreadable record changed; retry and review it again"));
     api.deleteUnreadableVault.mockResolvedValue(undefined);
     const wrapper = mount(ReadIssuesPanel);
-    await wrapper.find('input[aria-label="Repaired vault name"]').setValue("Work");
+    await wrapper.find('input[aria-label="New name for work"]').setValue("Work");
     await wrapper.findAll("button").find((button) => button.text() === "Repair name")!.trigger("click");
     await flushPromises();
     expect(api.repairVaultName).toHaveBeenCalledWith("work", "work-review-1", "Work");

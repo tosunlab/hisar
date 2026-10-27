@@ -77,7 +77,7 @@ describe("Editor keyboard shortcuts", () => {
     store.editorMode = "edit";
     const notesWrapper = mountEditor();
     await notesWrapper.find('textarea[name="notes"]').setValue("Work account");
-    pressKey(notesWrapper.find('textarea[name="notes"]').element, "Enter", { ctrlKey: true });
+    pressKey(notesWrapper.find('textarea[name="notes"]').element, "Enter", { metaKey: true });
     await flushPromises();
     expect(api.saveItem).toHaveBeenCalledTimes(2);
     expect(api.saveItem).toHaveBeenLastCalledWith("personal", expect.objectContaining({ notes: "Work account" }));

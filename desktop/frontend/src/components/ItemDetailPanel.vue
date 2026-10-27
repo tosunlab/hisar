@@ -226,9 +226,9 @@ function buildItemMenuActions(): ContextMenuAction[] {
   const vaultID = store.selectedVaultID;
   const hasMoveTarget = store.allVault.some((vault) => vault.id !== vaultID && vault.role !== "reader");
   const allAction: (ContextMenuAction | null)[] = [
-    item.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate", run: () => duplicateItem(vaultID, item.id) } : null,
-    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", run: () => (store.itemDetailDialog = "move") } : null,
-    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, run: () => (store.itemDetailDialog = "delete") },
+    item.category !== sshKeyCategory ? { id: "duplicate", label: "Duplicate", icon: "duplicate", opensDestination: true, run: () => duplicateItem(vaultID, item.id) } : null,
+    hasMoveTarget ? { id: "move", label: "Move to…", icon: "move", opensDestination: true, run: () => (store.itemDetailDialog = "move") } : null,
+    { id: "delete", label: "Delete…", icon: "trash", isDanger: true, opensDestination: true, run: () => (store.itemDetailDialog = "delete") },
   ];
   return allAction.filter((action): action is ContextMenuAction => action !== null);
 }
@@ -239,15 +239,11 @@ function openItemMenu(event: MouseEvent): void {
   itemMenu.value = { x: Math.max(8, bounds.right - 200), y: bounds.bottom + 6, trigger };
 }
 
-function closeItemMenu(): void {
-  itemMenu.value?.trigger.focus();
-  itemMenu.value = null;
-}
 
 // fieldMenu is the right-click menu of a field row. It offers the row's own buttons, by their labels, so it always matches
 // what the row can do: copy, reveal or hide, copy the secret reference, open. A row is a .field with its .field-actions, or
 // a block marked data-field-menu-row, such as an SSH key's public key or a note, whose buttons sit in data-field-menu-actions.
-const fieldMenu = ref<{ label: string; x: number; y: number; allAction: ContextMenuAction[] } | null>(null);
+const fieldMenu = ref<{ label: string; x: number; y: number; allAction: ContextMenuAction[]; invoker: HTMLElement } | null>(null);
 
 function chooseFieldMenuIcon(label: string): ContextMenuAction["icon"] {
   if (label.startsWith("Copy secret reference")) {
@@ -291,7 +287,8 @@ function openFieldMenu(event: MouseEvent): void {
     allAction.push({ id, label: referenceLabel, icon: "terminal", run: () => copySecretReference(referenceField) });
   }
   const label = row.querySelector(".field-label, .section-label")?.textContent?.trim() || "Field";
-  fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction };
+  row.tabIndex = -1;
+  fieldMenu.value = { label, x: event.clientX, y: event.clientY, allAction, invoker: row };
 }
 
 function maskSecret(secret: string): string {
@@ -723,14 +720,15 @@ function maskSecret(secret: string): string {
       <SharedLinksList :all-share-link="allItemShareLink" :is-title-shown="false" />
     </section>
 
-    <ContextMenu v-if="fieldMenu" :label="fieldMenu.label" :x="fieldMenu.x" :y="fieldMenu.y" :all-action="fieldMenu.allAction" @close="fieldMenu = null" />
+    <ContextMenu v-if="fieldMenu" :label="fieldMenu.label" :x="fieldMenu.x" :y="fieldMenu.y" :all-action="fieldMenu.allAction" :invoker="fieldMenu.invoker" @close="fieldMenu = null" />
     <ContextMenu
       v-if="itemMenu"
       :label="store.selectedItem.title"
       :x="itemMenu.x"
       :y="itemMenu.y"
       :all-action="buildItemMenuActions()"
-      @close="closeItemMenu"
+      :invoker="itemMenu.trigger"
+      @close="itemMenu = null"
     />
     <MoveItemDialog v-if="store.itemDetailDialog === 'move'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="store.itemDetailDialog = null" />
     <ConfirmDeleteDialog v-if="store.itemDetailDialog === 'delete'" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" :title="store.selectedItem.title" @close="store.itemDetailDialog = null" />

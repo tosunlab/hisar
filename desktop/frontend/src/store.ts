@@ -57,7 +57,7 @@ import {
   type WaitingVaultKeys,
 } from "./api";
 import { isSettingsSectionID, saveSelectedSectionID } from "./settingsSections";
-import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress } from "./util";
+import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress, isApplicationCommand } from "./util";
 import { forgetWebsiteIcons } from "./websiteicons";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
@@ -96,6 +96,10 @@ export interface VaultDialog {
   blockedReason: string;
 }
 
+export interface ItemReference extends FavoriteItem {
+  vaultRole: VaultSummary["role"];
+}
+
 // OrganizationAlert: title names the refused action, message is the server's sentence.
 export interface OrganizationAlert {
   title: string;
@@ -125,6 +129,10 @@ export const store = reactive({
   // allFavorite holds the user's starred items of every vault; isFavoritesSelected shows them in the list instead of a vault.
   allFavorite: [] as FavoriteItem[],
   isFavoritesSelected: false,
+  allItemReference: [] as ItemReference[],
+  isAllItemsSelected: false,
+  allItemsError: "",
+  isLoadingAllItems: false,
   editorMode: "view" as EditorMode,
   editorDraft: null as EditorDraft | null,
   discardDraftPrompt: null as DiscardDraftPrompt | null,
@@ -295,6 +303,10 @@ function clearAllVaultData(): void {
   store.commitSigningItemID = "";
   store.allFavorite = [];
   store.isFavoritesSelected = false;
+  store.allItemReference = [];
+  store.isAllItemsSelected = false;
+  store.allItemsError = "";
+  store.isLoadingAllItems = false;
   store.editorMode = "view";
   store.editorDraft = null;
   store.discardDraftPrompt?.answer(false);
@@ -665,7 +677,7 @@ export async function lock(): Promise<void> {
 // lockOnShortcut locks Hisar on ⌘L in any window, over every panel and dialog: it is the shortcut that protects the vault.
 // It reports whether the key was that shortcut.
 export function lockOnShortcut(event: KeyboardEvent): boolean {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "l") {
+  if (!isApplicationCommand(event) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "l") {
     return false;
   }
   event.preventDefault();
@@ -1000,6 +1012,10 @@ export async function syncInBackground(): Promise<void> {
     await loadAllShareLinkQuietly();
     await loadAllFavoriteQuietly();
     await refreshOrganizationsQuietly();
+    if (store.isAllItemsSelected) {
+      await loadAllItemReferences();
+      return;
+    }
     if (!allVault.some((vault) => vault.id === listVaultID)) {
       if (allVault.length > 0) {
         await selectVault(findPersonalVaultID(allVault));
@@ -1052,12 +1068,12 @@ export function selectVault(vaultID: string): Promise<void> {
 
 async function loadVaultItems(vaultID: string, version: number): Promise<void> {
   store.isFavoritesSelected = false;
+  store.isAllItemsSelected = false;
   if (store.listVaultID !== vaultID) store.allItem = [];
   store.listVaultID = vaultID;
   store.selectedVaultID = vaultID;
   store.selectedItem = null;
   store.editorMode = "view";
-  store.searchQuery = "";
   store.selectedTag = "";
   const allItem = await runAction(() => api.listAllItem(vaultID));
   if (version !== navigationVersion || store.listVaultID !== vaultID) {
@@ -1101,9 +1117,10 @@ export function selectFavorites(): Promise<void> {
   return afterDiscardingDraft(async () => {
     navigationVersion++;
     store.isFavoritesSelected = true;
+    store.isAllItemsSelected = false;
+    store.selectedTag = "";
     store.selectedItem = null;
     store.editorMode = "view";
-    store.searchQuery = "";
     const allFavorite = await runAction(() => api.listAllFavoriteItem());
     if (allFavorite) {
       store.allFavorite = allFavorite;
@@ -1123,12 +1140,51 @@ export function selectFavoriteItem(favorite: FavoriteItem): Promise<void> {
   });
 }
 
-export function filterAllFavorite(allFavorite: FavoriteItem[], query: string): FavoriteItem[] {
+export function filterAllFavorite(allFavorite: FavoriteItem[], query: string, tag = "", category = ""): FavoriteItem[] {
   const allVisibleItem = filterAllItem(
     allFavorite.map((favorite) => favorite.item),
     query,
+    tag,
+    category,
   );
   return allFavorite.filter((favorite) => allVisibleItem.includes(favorite.item));
+}
+
+export function selectAllItems(): Promise<void> {
+  return afterDiscardingDraft(async () => {
+    navigationVersion++;
+    store.isAllItemsSelected = true;
+    store.isFavoritesSelected = false;
+    store.selectedItem = null;
+    store.editorMode = "view";
+    store.selectedTag = "";
+    await loadAllItemReferences();
+  });
+}
+
+let allItemsLoadVersion = 0;
+async function loadAllItemReferences(): Promise<void> {
+  const generation = sessionGeneration;
+  const version = ++allItemsLoadVersion;
+  store.isLoadingAllItems = true;
+  store.allItemsError = "";
+  try {
+    const acquisitions = await Promise.all(store.allVault.map(async (vault) => ({ vault, items: await api.listAllItem(vault.id) })));
+    if (generation !== sessionGeneration || version !== allItemsLoadVersion || !store.isAllItemsSelected) return;
+    const references: ItemReference[] = [];
+    for (const { vault, items } of acquisitions) {
+      vault.readIssues = [...(vault.readIssues ?? []).filter((issue) => !issue.itemId), ...items.flatMap((item) => item.readIssue ? [item.readIssue] : [])];
+      vault.itemCount = items.filter((item) => !item.readIssue).length;
+      for (const item of items) {
+        if (!item.readIssue) references.push({ vaultId: vault.id, vaultName: vault.name, vaultType: vault.type, vaultRole: vault.role, item });
+      }
+    }
+    store.allItemReference = references.sort((a, b) => a.item.title.localeCompare(b.item.title, undefined, { sensitivity: "base" }));
+  } catch (cause) {
+    if (generation === sessionGeneration && version === allItemsLoadVersion && store.isAllItemsSelected) store.allItemsError = `Some vaults could not be loaded. ${getErrorMessage(cause)}`;
+  } finally {
+    if (generation === sessionGeneration && version === allItemsLoadVersion) store.isLoadingAllItems = false;
+  }
 }
 
 // setItemFavorite stars or unstars an item of vaultID for this user; the people they share the vault with don't see it.
@@ -1146,6 +1202,7 @@ export async function setItemFavorite(vaultID: string, itemID: string, isFavorit
   if (vaultID === store.listVaultID) {
     store.allItem = store.allItem.map((vaultItem) => (vaultItem.id === itemID ? { ...vaultItem, isFavorite } : vaultItem));
   }
+  store.allItemReference = store.allItemReference.map((reference) => reference.vaultId === vaultID && reference.item.id === itemID ? { ...reference, item: { ...reference.item, isFavorite } } : reference);
   await loadAllFavoriteQuietly();
   showNotice(isFavorite ? "Added to Favorites" : "Removed from Favorites");
 }
@@ -1162,7 +1219,7 @@ export function sortAllItem(allItem: ItemDetail[]): ItemDetail[] {
 
 // filterAllItem keeps the items matching the search in their title, username, websites, tags, identity, API credential,
 // address, software license, server or database summary, and carrying tag when one is selected.
-export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): ItemDetail[] {
+export function filterAllItem(allItem: ItemDetail[], query: string, tag = "", category = ""): ItemDetail[] {
   const normalizedQuery = query.trim().toLowerCase();
   return allItem.filter((vaultItem) => {
     const allTag = vaultItem.tags ?? [];
@@ -1185,6 +1242,7 @@ export function filterAllItem(allItem: ItemDetail[], query: string, tag = ""): I
     const database = vaultItem.database;
     const databaseText = database ? [database.engineName, formatDatabaseLocation(database), database.host, database.port, database.name] : [];
     return (
+      (category === "" || (vaultItem.category || "login") === category) &&
       (tag === "" || allTag.includes(tag)) &&
       (normalizedQuery === "" ||
         [vaultItem.title, vaultItem.username, ...vaultItem.urls, ...allTag, ...identityText, ...credentialText, ...addressText, ...licenseText, ...serverText, ...databaseText].some((text) =>
@@ -1448,6 +1506,7 @@ export async function saveItem(detail: ItemDetail): Promise<boolean> {
     updateSelectedVaultSummary();
     dropMissingTagFilter();
   }
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   store.selectedItem = saved;
   store.editorMode = "view";
   if (saved.isFavorite) {
@@ -1495,7 +1554,7 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
     return false;
   }
   if (vaultID === store.listVaultID) {
-  store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
+    store.allItem = store.allItem.filter((vaultItem) => vaultItem.id !== itemID);
     updateSelectedVaultSummary();
     dropMissingTagFilter();
   } else {
@@ -1505,6 +1564,7 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
     }
   }
   store.allFavorite = store.allFavorite.filter((favorite) => !(favorite.item.id === itemID && favorite.vaultId === vaultID));
+  store.allItemReference = store.allItemReference.filter((reference) => !(reference.item.id === itemID && reference.vaultId === vaultID));
   if (vaultID === store.selectedVaultID && store.selectedItem?.id === itemID) {
     store.selectedItem = null;
     store.editorMode = "view";
@@ -1515,6 +1575,10 @@ export async function deleteItem(itemID: string, vaultID = store.selectedVaultID
 
 // reloadSelectedVaultItems lists the vault on screen again, as summaries without secrets.
 async function reloadSelectedVaultItems(): Promise<void> {
+  if (store.isAllItemsSelected) {
+    await loadAllItemReferences();
+    return;
+  }
   const allItem = await runAction(() => api.listAllItem(store.listVaultID));
   if (allItem) {
     store.allItem = sortAllItem(allItem);
@@ -1525,6 +1589,10 @@ async function reloadSelectedVaultItems(): Promise<void> {
 // retryReads reads every vault and the one on screen again, after a recovery action or when the user retries.
 export async function retryReads(): Promise<void> {
   await loadAllVault();
+  if (store.isAllItemsSelected) {
+    await loadAllItemReferences();
+    return;
+  }
   if (store.allVault.some((vault) => vault.id === store.listVaultID)) {
     await reloadSelectedVaultItems();
   }
@@ -1554,6 +1622,7 @@ export async function moveItem(vaultID: string, itemID: string, targetVaultID: s
     store.editorMode = "view";
   }
   await loadAllFavoriteQuietly();
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   const targetName = store.allVault.find((vault) => vault.id === targetVaultID)?.name ?? "the vault";
   showNotice(`Moved ${moved.title} to ${targetName}`);
   return true;
@@ -1575,6 +1644,7 @@ export async function duplicateItem(vaultID: string, itemID: string): Promise<bo
     store.selectedItem = copied;
     store.editorMode = "view";
   }
+  if (store.isAllItemsSelected) await loadAllItemReferences();
   showNotice(`Duplicated as ${copied.title}`);
   return true;
 }

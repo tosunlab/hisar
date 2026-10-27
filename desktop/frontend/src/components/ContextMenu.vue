@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import AppIcon, { type IconName } from "./AppIcon.vue";
+import { useMenu, type MenuCloseReason } from "../menu";
 
 // ContextMenuAction is one item of a right-click menu; null in allAction draws a separator.
 export interface ContextMenuAction {
@@ -9,46 +10,26 @@ export interface ContextMenuAction {
   icon: IconName;
   isDanger?: boolean;
   shortcut?: string;
+  disabled?: boolean;
+  opensDestination?: boolean;
   run: () => void;
 }
 
-const props = withDefaults(defineProps<{ label: string; x: number; y: number; allAction: (ContextMenuAction | null)[]; anchor?: HTMLElement | null; testId?: string; actionTestIdPrefix?: string }>(), {
-  testId: "context-menu",
-});
-const emit = defineEmits<{ close: [] }>();
+const props = withDefaults(
+  defineProps<{ label: string; x: number; y: number; allAction: (ContextMenuAction | null)[]; anchor?: HTMLElement | null; invoker?: HTMLElement | null; testId?: string; actionTestIdPrefix?: string }>(),
+  { testId: "context-menu" },
+);
+const emit = defineEmits<{ close: [reason: MenuCloseReason] }>();
 const menu = ref<HTMLElement | null>(null);
 // position keeps the menu inside the window: it opens at the pointer and moves back when it would pass an edge.
 const position = ref({ left: props.x, top: props.y });
 let resizeObserver: ResizeObserver | undefined;
+const initialInvoker = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+const dismiss = useMenu(menu, (reason) => emit("close", reason), () => props.invoker ?? initialInvoker);
 
-function choose(action: ContextMenuAction): void {
-  emit("close");
+function choose(action: ContextMenuAction, event: MouseEvent): void {
+  dismiss(!action.opensDestination && event.detail === 0 ? "action" : "destination");
   action.run();
-}
-
-function listButtons(): HTMLButtonElement[] {
-  return [...(menu.value?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
-}
-
-function moveFocus(step: number): void {
-  const allButton = listButtons();
-  const index = allButton.indexOf(document.activeElement as HTMLButtonElement);
-  allButton[(index + step + allButton.length) % allButton.length]?.focus();
-}
-
-function handleKey(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    emit("close");
-  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    event.preventDefault();
-    moveFocus(event.key === "ArrowDown" ? 1 : -1);
-  }
-}
-
-function closeOnOutside(event: Event): void {
-  if (!menu.value?.contains(event.target as Node)) {
-    emit("close");
-  }
 }
 
 function fitInWindow(): void {
@@ -77,8 +58,6 @@ watch(
 );
 
 onMounted(() => {
-  window.addEventListener("pointerdown", closeOnOutside);
-  window.addEventListener("keydown", handleKey);
   window.addEventListener("resize", fitInWindow);
   if (typeof ResizeObserver !== "undefined") {
     resizeObserver = new ResizeObserver(fitInWindow);
@@ -89,11 +68,8 @@ onMounted(() => {
     }
   }
   fitInWindow();
-  listButtons()[0]?.focus();
 });
 onBeforeUnmount(() => {
-  window.removeEventListener("pointerdown", closeOnOutside);
-  window.removeEventListener("keydown", handleKey);
   window.removeEventListener("resize", fitInWindow);
   resizeObserver?.disconnect();
 });
@@ -117,8 +93,10 @@ onBeforeUnmount(() => {
         class="ghost"
         :class="{ danger: action.isDanger }"
         role="menuitem"
+        :disabled="action.disabled"
+        tabindex="-1"
         :data-testid="`${actionTestIdPrefix ?? testId}-${action.id}`"
-        @click="choose(action)"
+        @click="choose(action, $event)"
       >
         <AppIcon :name="action.icon" />
         {{ action.label }}

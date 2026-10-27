@@ -76,10 +76,6 @@ function openActionMenu(event: MouseEvent, label: string, allAction: (ContextMen
   actionMenu.value = { label, x: bounds.right - 200, y: bounds.bottom + 4, allAction, trigger };
 }
 
-function closeActionMenu(): void {
-  actionMenu.value?.trigger.focus();
-  actionMenu.value = null;
-}
 
 function openMemberMenu(member: OrganizationMember, event: MouseEvent): void {
   const allAction: (ContextMenuAction | null)[] = [
@@ -103,6 +99,7 @@ function openMemberMenu(member: OrganizationMember, event: MouseEvent): void {
         label: `Remove from ${props.organization.name}…`,
         icon: "trash",
         isDanger: true,
+        opensDestination: true,
         run: () => { dialog.value = { kind: "remove-member", member }; },
       });
     }
@@ -112,15 +109,15 @@ function openMemberMenu(member: OrganizationMember, event: MouseEvent): void {
 
 function openTeamMenu(team: Team, event: MouseEvent): void {
   const allAction: (ContextMenuAction | null)[] = [
-    { id: "rename-team", label: "Rename…", icon: "edit", run: () => { dialog.value = { kind: "rename-team", team }; } },
+    { id: "rename-team", label: "Rename…", icon: "edit", opensDestination: true, run: () => { dialog.value = { kind: "rename-team", team }; } },
   ];
   if (listAllMemberToAdd(team).length > 0) {
-    allAction.push({ id: "add-team-member", label: "Add member", icon: "user", run: () => startAddingMember(team) });
+    allAction.push({ id: "add-team-member", label: "Add member", icon: "user", opensDestination: true, run: () => startAddingMember(team) });
   }
   if (canGiveVault(team)) {
-    allAction.push({ id: "give-vault", label: "Give a vault…", icon: "vault", run: () => { dialog.value = { kind: "give-vault", team }; } });
+    allAction.push({ id: "give-vault", label: "Give a vault…", icon: "vault", opensDestination: true, run: () => { dialog.value = { kind: "give-vault", team }; } });
   }
-  allAction.push(null, { id: "delete-team", label: "Delete team…", icon: "trash", isDanger: true, run: () => { dialog.value = { kind: "delete-team", team }; } });
+  allAction.push(null, { id: "delete-team", label: "Delete team…", icon: "trash", isDanger: true, opensDestination: true, run: () => { dialog.value = { kind: "delete-team", team }; } });
   openActionMenu(event, `Actions for ${team.name}`, allAction);
 }
 
@@ -450,7 +447,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
     </div>
 
     <OrganizationDialog v-if="dialog" :organization="organization" :request="dialog" @close="dialog = null" />
-    <ContextMenu v-if="actionMenu" :label="actionMenu.label" :x="actionMenu.x" :y="actionMenu.y" :all-action="actionMenu.allAction" @close="closeActionMenu" @keydown.esc.stop.prevent="closeActionMenu" />
+    <ContextMenu v-if="actionMenu" :label="actionMenu.label" :x="actionMenu.x" :y="actionMenu.y" :all-action="actionMenu.allAction" :invoker="actionMenu.trigger" @close="actionMenu = null" />
   </div>
 </template>
 

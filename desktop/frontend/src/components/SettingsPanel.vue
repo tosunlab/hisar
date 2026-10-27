@@ -10,6 +10,7 @@ import {
   type SettingsSection,
   type SettingsSectionID,
 } from "../settingsSections";
+import { isApplicationCommand } from "../util";
 import AccountSection from "./AccountSection.vue";
 import AppIcon from "./AppIcon.vue";
 import AppearanceSection from "./AppearanceSection.vue";
@@ -131,7 +132,7 @@ function handleKeydown(event: KeyboardEvent): void {
       return;
     }
     closeSettings();
-  } else if ((event.metaKey || event.ctrlKey) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
+  } else if (isApplicationCommand(event) && !event.altKey && !event.shiftKey && event.key.toLowerCase() === "f") {
     event.preventDefault();
     searchInput.value?.focus();
     searchInput.value?.select();
