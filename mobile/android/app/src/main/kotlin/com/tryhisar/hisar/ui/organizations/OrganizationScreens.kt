@@ -306,7 +306,8 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     var dialog by remember { mutableStateOf<OrganizationDialog?>(null) }
     var rowMenu by remember { mutableStateOf<RowMenu?>(null) }
     var teamGivenVault by remember { mutableStateOf<Team?>(null) }
-    var openMember by rememberSaveable(stateSaver = memberSaver) { mutableStateOf<Member?>(null) }
+    var openMemberID by rememberSaveable { mutableStateOf<String?>(null) }
+    var roleEdit by remember { mutableStateOf<TeamVaultRoleEdit?>(null) }
 
     val name = organization?.name ?: data.allOrganization.firstOrNull { it.id == organizationID }?.name ?: "Organization"
     val isAdmin = organization?.isAdmin ?: false
@@ -315,7 +316,14 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
 
     suspend fun load() {
         when (val loaded = model.organizations.loadOrganizationScreen(organizationID)) {
-            is OrganizationLoad.Loaded -> organization = loaded.organization
+            is OrganizationLoad.Loaded -> {
+                organization = loaded.organization
+                roleEdit = roleEdit?.refreshed(loaded.organization)
+                if (openMemberID != null && loaded.organization.allMember.none { it.accountID == openMemberID }) {
+                    openMemberID = null
+                    model.showNotice("This person is no longer a member.")
+                }
+            }
             OrganizationLoad.Gone -> onBack()
             OrganizationLoad.Failed -> refusal = model.takeRefusal(name)
         }
@@ -340,12 +348,12 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
         scope.launch { change(title, operation) }
     }
 
-    LaunchedEffect(remoteChangeCount, openMember) { load() }
+    LaunchedEffect(remoteChangeCount) { load() }
 
-    val shownMember = openMember
+    val shownMember = organization?.allMember?.firstOrNull { it.accountID == openMemberID }
     if (shownMember != null) {
-        BackHandler { openMember = null }
-        OrganizationMemberScreen(model, organizationID, name, shownMember, isAdmin, onBack = { openMember = null }, reload = { load() })
+        BackHandler { openMemberID = null }
+        OrganizationMemberScreen(model, organizationID, name, shownMember, isAdmin, onBack = { openMemberID = null }, reload = { load() })
         return
     }
 
@@ -442,7 +450,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
         }
         SectionCard(
             header = OrganizationLogic.describeMemberCount(loaded.allMember.size),
-            footer = { Text("Compare security codes with people once, in person or over a channel you trust. Tap a person to see theirs.") },
+            footer = { Text("Tap a person to see their security code. Ask them for the code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.") },
         ) {
             loaded.allMember.forEachIndexed { index, member ->
                 if (index > 0) SymbolRowDivider()
@@ -452,7 +460,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                         member,
                         OrganizationRole.describe(member.role),
                         testTag = "organization-member-${member.email}",
-                        onClick = { openMember = member },
+                        onClick = { openMemberID = member.accountID },
                         onLongClick = if (allAction.isEmpty()) null else ({ rowMenu = RowMenu.OfMember(member.accountID) }),
                     ) {
                         HisarMenu(rowMenu == RowMenu.OfMember(member.accountID), onDismiss = { rowMenu = null }) {
@@ -515,6 +523,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                 onMenu = { rowMenu = it },
                 onRemoveMember = { removeFromTeam(it, team) },
                 onTakeBack = { takeBack(it, team) },
+                onChangeRole = { vault -> roleEdit = TeamVaultRoleEdit(organizationID, team.id, team.name, vault.vaultID, vault.displayName, vault.role) },
                 onAddMember = { member -> launchChange("Add member") { model.organizations.addTeamMember(organizationID, team.id, member.accountID) } },
                 onGiveVault = { teamGivenVault = team },
                 onRename = { dialog = OrganizationDialog.RenameTeam(team) },
@@ -528,6 +537,11 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
         }
         FormSection {
             DestructiveButtonRow("Leave ${loaded.name}…", Icons.AutoMirrored.Outlined.Logout, { dialog = OrganizationDialog.Leave }, testTag = "leave-organization")
+        }
+    }
+    roleEdit?.let { edit ->
+        organization?.let { current ->
+            ChangeTeamVaultRoleSheet(model, edit, current, onFinish = { load() }, onRefused = { refusal = it }, onDismiss = { roleEdit = null })
         }
     }
 
@@ -636,6 +650,7 @@ private fun TeamSection(
     onTakeBack: (TeamVault) -> Unit,
     onAddMember: (Member) -> Unit,
     onGiveVault: () -> Unit,
+    onChangeRole: (TeamVault) -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -703,9 +718,14 @@ private fun TeamSection(
                         if (vault.canOpen) Icons.Outlined.Lock else Icons.Outlined.NoEncryption,
                         HisarTheme.colors.secondaryLabel,
                         testTag = "team-${team.name}-vault-${vault.displayName}",
+                        onClick = if (isAdmin) ({ onChangeRole(vault) }) else null,
                         onLongClick = if (isAdmin) ({ onMenu(menu) }) else null,
                         menu = {
                             HisarMenu(rowMenu == menu, onDismiss = { onMenu(null) }) {
+                                HisarMenuItem("Change role", "change-role-${vault.displayName}", onClick = {
+                                    onMenu(null)
+                                    onChangeRole(vault)
+                                })
                                 HisarMenuItem("Take back", "take-back-${vault.displayName}", icon = Icons.AutoMirrored.Outlined.Undo, onClick = {
                                     onMenu(null)
                                     onTakeBack(vault)
@@ -821,7 +841,7 @@ private fun OrganizationMemberScreen(
 ) {
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var role by rememberSaveable(member.accountID) { mutableStateOf(member.role) }
+    val role = member.role
     var isRemoveConfirmationShown by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<Refusal?>(null) }
     val isAdminRole = role == OrganizationRole.ADMIN
@@ -829,10 +849,10 @@ private fun OrganizationMemberScreen(
     fun setRole(newRole: String) {
         scope.launch {
             if (model.organizations.setOrganizationMemberRole(organizationID, member.accountID, newRole)) {
-                role = newRole
                 reload()
             } else {
                 refusal = model.takeRefusal(if (newRole == OrganizationRole.ADMIN) "Make admin" else "Make member")
+                reload()
             }
         }
     }
@@ -849,11 +869,7 @@ private fun OrganizationMemberScreen(
         }
         SecurityCodeSection(
             member,
-            footer = if (member.isCurrentUser) {
-                "Others see this code for you. When they compare it with you, they know vaults they give you reach you and nobody else."
-            } else {
-                "Compare it with ${member.name} once, in person or over a channel you trust. If it matches what their Hisar shows, vaults their teams get reach them and nobody else."
-            },
+            footer = com.tryhisar.hisar.ui.sharing.describeSecurityCode(member),
             testTag = "organization-member-security-code",
         )
         FormSection(footer = { Text(if (isAdminRole) ADMIN_ROLE_NOTE else "Members get the vaults of the teams they are in.") }) {

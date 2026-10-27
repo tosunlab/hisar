@@ -247,8 +247,8 @@ useModalFocus(panel, closeSharing);
             <div v-if="removingAccountID === member.accountId" class="member-detail confirm" data-testid="remove-confirmation">
               <AppIcon name="refresh" class="detail-icon" />
               <p>
-                Removing {{ getFirstName(member) }} re-encrypts this vault with a new key.
-                <span class="muted">Copies they already downloaded stay readable to them.</span>
+                {{ getDisplayName(member) }} is removed from “{{ vault?.name }}”, and Hisar encrypts the vault again with a new key for the people who remain.
+                <span class="muted">{{ getDisplayName(member) }} can still read copies their devices already downloaded. Change any password or secret they should no longer know.</span>
               </p>
               <button class="ghost" :disabled="store.isBusy" @click="removingAccountID = ''">Cancel</button>
               <button class="danger-solid" :disabled="store.isBusy" data-testid="confirm-remove-member" @click="confirmRemove(member)">Remove</button>
@@ -258,8 +258,8 @@ useModalFocus(panel, closeSharing);
               <AppIcon name="shield" class="detail-icon" />
               <div>
                 <span class="security-code monospace" data-testid="security-code">{{ member.securityCode }}</span>
-                <p v-if="member.isCurrentUser" class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
-                <p v-else class="muted">Compare this code with {{ getFirstName(member) }} in person or over a channel you trust, to be sure the server isn't intercepting.</p>
+                <p v-if="member.isCurrentUser" class="muted">This is your security code. Read it to someone who is checking the code they see for you.</p>
+                <p v-else class="muted">Ask {{ getDisplayName(member) }} for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code.</p>
               </div>
             </div>
           </li>

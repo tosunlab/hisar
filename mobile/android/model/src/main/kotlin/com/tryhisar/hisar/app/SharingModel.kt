@@ -8,6 +8,18 @@ import com.tryhisar.hisar.model.trimmingWhitespacesAndNewlines
 class SharingModel(private val context: ModelContext, private val vaults: VaultsModel) {
     suspend fun loadAllPerson(): List<Member>? = context.perform(isBusyShown = false) { it.listAllPerson() }
 
+    suspend fun loadPeople(previous: PeopleSnapshot?): PeopleSnapshot? {
+        val actionError = context.errorMessage.value
+        val loaded = context.perform(isBusyShown = false) { backend ->
+            PeopleSnapshot(backend.listAllPerson(), backend.listAllShareInvitation())
+        }
+        if (loaded != null) context.updateUnlockedData {
+            it.copy(allReceivedInvitation = loaded.invitations.allReceived, allWaitingInvitation = loaded.invitations.allWaiting)
+        }
+        if (actionError != null) context.errorMessage.value = actionError
+        return loaded ?: previous
+    }
+
     // The sheet closes after sending, so the call runs in the model's scope.
     suspend fun invitePerson(email: String): Boolean = context.runInModel {
         val trimmedEmail = email.trimmingWhitespacesAndNewlines()
@@ -38,3 +50,5 @@ class SharingModel(private val context: ModelContext, private val vaults: Vaults
         true
     }
 }
+
+data class PeopleSnapshot(val allPerson: List<Member>, val invitations: com.tryhisar.hisar.model.ShareInvitations)

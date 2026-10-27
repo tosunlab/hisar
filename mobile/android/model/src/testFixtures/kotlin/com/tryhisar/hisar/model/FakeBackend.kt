@@ -48,6 +48,8 @@ open class FakeBackend : VaultBackend {
     var allVaultMemberByVaultID: MutableMap<String, MutableList<Member>> = mutableMapOf()
     val allInvitedEmail = mutableListOf<String>()
     var shareInvitations = ShareInvitations()
+    var peopleErrorMessage: String? = null
+    var cancelShareInvitationErrorMessage: String? = null
     var allShareAwaitingUnlock: List<ShareAwaitingUnlock> = emptyList()
     var isShareAwaitingUnlockFailing = false
     val allAnsweredInvitation = mutableListOf<String>()
@@ -194,6 +196,7 @@ open class FakeBackend : VaultBackend {
     override fun listAllPerson(): List<Member> {
         record("listAllPerson")
         requireUnlocked()
+        peopleErrorMessage?.let { throw BackendError(it) }
         val allSharedAccountID = allVaultMemberByVaultID.values.filter { members -> members.any { it.isCurrentUser } }
             .flatMap { members -> members.map { it.accountID } }.toSet()
         return allMember.filter { it.isCurrentUser || it.accountID in allSharedAccountID }
@@ -238,6 +241,7 @@ open class FakeBackend : VaultBackend {
     override fun cancelShareInvitation(invitationID: String) {
         record("cancelShareInvitation")
         requireUnlocked()
+        cancelShareInvitationErrorMessage?.let { throw BackendError(it) }
         if (shareInvitations.allSent.none { it.id == invitationID }) throw BackendError("This invitation no longer exists")
         shareInvitations = shareInvitations.copy(allSent = shareInvitations.allSent.filter { it.id != invitationID })
     }

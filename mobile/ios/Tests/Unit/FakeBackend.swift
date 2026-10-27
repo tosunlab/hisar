@@ -26,6 +26,8 @@ class FakeBackend: VaultBackend {
     /// Starred items as "vaultID/itemID"; the account keeps them apart from the items.
     var allFavoriteRecordID: Set<String> = []
     var favoriteErrorMessage: String?
+    var peopleErrorMessage: String?
+    var cancelShareInvitationErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var biometricUnlockError: BackendError?
@@ -179,6 +181,7 @@ class FakeBackend: VaultBackend {
     func listAllPerson() throws -> [Member] {
         record("listAllPerson")
         try requireUnlocked()
+        if let peopleErrorMessage { throw BackendError(message: peopleErrorMessage) }
         let allSharedAccountID = Set(allVaultMemberByVaultID.values.filter { $0.contains { $0.isCurrentUser } }.flatMap { $0.map(\.accountID) })
         return allMember.filter { $0.isCurrentUser || allSharedAccountID.contains($0.accountID) }
     }
@@ -222,6 +225,7 @@ class FakeBackend: VaultBackend {
     func cancelShareInvitation(invitationID: String) throws {
         record("cancelShareInvitation")
         try requireUnlocked()
+        if let cancelShareInvitationErrorMessage { throw BackendError(message: cancelShareInvitationErrorMessage) }
         guard shareInvitations.allSent.contains(where: { $0.id == invitationID }) else { throw BackendError(message: "This invitation no longer exists") }
         shareInvitations.allSent.removeAll { $0.id == invitationID }
     }

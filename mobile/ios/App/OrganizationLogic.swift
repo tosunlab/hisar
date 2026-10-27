@@ -59,6 +59,14 @@ enum OrganizationMemberAction: Equatable {
     case remove
 }
 
+enum OrganizationAccessChange {
+    case removeTeam(String)
+    case removeTeamMember(teamID: String, accountID: String)
+    case removeMember(String)
+    case takeVault(teamID: String, vaultID: String)
+    case teamRole(teamID: String, vaultID: String, role: String)
+}
+
 /// What the organization screen does after loading the organization.
 enum OrganizationLoad: Equatable {
     case loaded(Organization)
@@ -236,6 +244,64 @@ enum OrganizationLogic {
         guard organization.isAdmin else { return [] }
         let roleAction: OrganizationMemberAction = member.role == OrganizationRole.admin ? .makeMember : .makeAdmin
         return member.isCurrentUser ? [roleAction] : [roleAction, .remove]
+    }
+
+    static func accessConsequences(organization: Organization, change: OrganizationAccessChange) -> [String] {
+        var after = organization.allTeam
+        switch change {
+        case .removeTeam(let teamID):
+            after.removeAll { $0.id == teamID }
+        case .removeTeamMember(let teamID, let accountID):
+            for index in after.indices where after[index].id == teamID {
+                after[index].allMember.removeAll { $0.accountID == accountID }
+            }
+        case .removeMember(let accountID):
+            for index in after.indices { after[index].allMember.removeAll { $0.accountID == accountID } }
+        case .takeVault(let teamID, let vaultID):
+            for index in after.indices where after[index].id == teamID {
+                after[index].allVault.removeAll { $0.vaultID == vaultID }
+            }
+        case .teamRole(let teamID, let vaultID, let role):
+            for index in after.indices where after[index].id == teamID {
+                for vaultIndex in after[index].allVault.indices where after[index].allVault[vaultIndex].vaultID == vaultID {
+                    after[index].allVault[vaultIndex].role = role
+                }
+            }
+        }
+        let rank = ["reader": 1, "editor": 2, "owner": 3]
+        func strongest(_ teams: [Team], _ accountID: String, _ vaultID: String) -> String {
+            teams.filter { $0.allMember.contains { $0.accountID == accountID } }
+                .flatMap(\.allVault).filter { $0.vaultID == vaultID }
+                .map(\.role).max { (rank[$0] ?? 0) < (rank[$1] ?? 0) } ?? ""
+        }
+        let vaultByID = Dictionary(organization.allTeam.flatMap(\.allVault).map { ($0.vaultID, $0) }, uniquingKeysWith: { first, second in first.canOpen ? first : second })
+        let memberByID = Dictionary(organization.allTeam.flatMap(\.allMember).map { ($0.accountID, $0) }, uniquingKeysWith: { first, _ in first })
+        var lines: [String] = []
+        for vaultID in vaultByID.keys.sorted() {
+            guard let vault = vaultByID[vaultID] else { continue }
+            var losses: [String] = []
+            var roleChanges: [String] = []
+            for accountID in memberByID.keys.sorted() {
+                guard let member = memberByID[accountID] else { continue }
+                let beforeRole = strongest(organization.allTeam, accountID, vaultID)
+                let afterRole = strongest(after, accountID, vaultID)
+                guard beforeRole != afterRole else { continue }
+                let name = member.name.isEmpty ? member.email : member.name
+                if afterRole.isEmpty {
+                    losses.append(member.isCurrentUser ? "You lose access too." : "\(name) loses access.")
+                } else {
+                    let subject = member.isCurrentUser ? "Your role" : "\(name)'s role"
+                    roleChanges.append("\(subject) changes from \(beforeRole.capitalized) to \(afterRole.capitalized).")
+                }
+            }
+            let name = vault.canOpen ? vault.name : "A vault you can't open (\(vaultID))"
+            if !losses.isEmpty { lines.append("\(name): \(losses.joined(separator: " "))") }
+            if !roleChanges.isEmpty { lines.append("\(name): \(roleChanges.joined(separator: " "))") }
+        }
+        if !lines.isEmpty { return lines }
+        if case .removeTeamMember = change { return ["They keep their vault access through other teams."] }
+        if case .removeMember = change { return ["They have no vault access through this organization's teams."] }
+        return ["Everyone keeps their vault access through other teams."]
     }
 
     static func describeMemberCount(_ count: Int) -> String {

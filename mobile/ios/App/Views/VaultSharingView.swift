@@ -65,9 +65,13 @@ struct VaultSharingView: View {
             .refreshable { await load() }
             .navigationTitle(isOwner ? "Share “\(vaultName)”" : "Members")
             .navigationBarTitleDisplayMode(.inline)
-            .navigationDestination(for: Member.self) { member in
-                VaultMemberView(vaultID: vaultID, vaultName: vaultName, member: member, isOwner: isOwner) {
-                    await load()
+            .navigationDestination(for: SharingMemberRoute.self) { route in
+                if let member = sharing?.allMember.first(where: { $0.accountID == route.accountID }) {
+                    VaultMemberView(vaultID: vaultID, vaultName: vaultName, member: member, isOwner: isOwner) {
+                        await load()
+                    }
+                } else {
+                    SharingMemberUnavailableView()
                 }
             }
             .toolbar {
@@ -95,7 +99,7 @@ struct VaultSharingView: View {
                 Text("Their invitation link stops working. You can invite them again later.")
             }
             .confirmationDialog(
-                "Remove \(memberToRemove?.name ?? "") from “\(vaultName)”?",
+                "Remove \(memberToRemove.map { $0.name.isEmpty ? $0.email : $0.name } ?? "") from “\(vaultName)”?",
                 isPresented: Binding(get: { memberToRemove != nil }, set: { if !$0 { memberToRemove = nil } }),
                 titleVisibility: .visible
             ) {
@@ -108,7 +112,7 @@ struct VaultSharingView: View {
                     }
                 }
             } message: {
-                Text(removalExplanation)
+                Text(describeVaultMemberRemoval(member: memberToRemove, vaultName: vaultName))
             }
             .task { await load() }
             .onChange(of: model.remoteChangeCount) { _, _ in
@@ -164,7 +168,7 @@ struct VaultSharingView: View {
         Section {
             if let sharing {
                 ForEach(sharing.allMember) { member in
-                    NavigationLink(value: member) {
+                    NavigationLink(value: SharingMemberRoute(accountID: member.accountID)) {
                         MemberRow(member: member, roleText: describeVaultRole(member.role))
                     }
                     .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -194,10 +198,6 @@ struct VaultSharingView: View {
                  ? "Everyone here can open the items in this vault. Tap a person to compare their security code, change their role or remove them."
                  : "Everyone here can open the items in this vault. Only its owners can share it or change who has access.")
         }
-    }
-
-    private var removalExplanation: String {
-        "Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them."
     }
 
     @ViewBuilder
@@ -252,19 +252,10 @@ struct VaultMemberView: View {
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
-    @State private var selectedRole: String
-    @State private var savedRole: String
+    @State private var pendingRole: String?
     @State private var isRemoveConfirmationShown = false
 
-    init(vaultID: String, vaultName: String, member: Member, isOwner: Bool, reload: @escaping () async -> Void) {
-        self.vaultID = vaultID
-        self.vaultName = vaultName
-        self.member = member
-        self.isOwner = isOwner
-        self.reload = reload
-        _selectedRole = State(initialValue: member.role)
-        _savedRole = State(initialValue: member.role)
-    }
+    private var selectedRole: String { pendingRole ?? member.role }
 
     private var isManageable: Bool { isOwner && !member.isCurrentUser }
 
@@ -319,14 +310,12 @@ struct VaultMemberView: View {
                 } header: {
                     Text("Security code")
                 } footer: {
-                    Text(member.isCurrentUser
-                         ? "People you share with compare this code with the one their Hisar shows for you."
-                         : "Compare it with \(member.name) once, in person or over a channel you trust. If it matches what their Hisar shows, this vault reaches them and nobody else.")
+                    Text(describeSecurityCode(member))
                 }
             }
             Section {
                 if isManageable {
-                    Picker("Role", selection: $selectedRole) {
+                    Picker("Role", selection: Binding(get: { selectedRole }, set: chooseRole)) {
                         ForEach(Member.allVaultRole, id: \.self) { role in
                             Text(describeVaultRole(role)).tag(role)
                         }
@@ -334,7 +323,7 @@ struct VaultMemberView: View {
                     .disabled(model.isBusy)
                     .accessibilityIdentifier("member-role")
                 } else {
-                    LabeledContent("Role", value: describeVaultRole(savedRole))
+                    LabeledContent("Role", value: describeVaultRole(member.role))
                 }
             } footer: {
                 Text(describeVaultRoleAbility(selectedRole))
@@ -352,18 +341,8 @@ struct VaultMemberView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(member.name)
         .navigationBarTitleDisplayMode(.inline)
-        .onChange(of: selectedRole) { _, newRole in
-            guard newRole != savedRole else { return }
-            Task {
-                if await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole) {
-                    savedRole = newRole
-                    await reload()
-                } else {
-                    selectedRole = savedRole
-                }
-            }
-        }
-        .confirmationDialog("Remove \(member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
+        .refreshable { await reload() }
+        .confirmationDialog("Remove \(member.name.isEmpty ? member.email : member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 Task {
                     if await model.removeVaultMember(vaultID: vaultID, accountID: member.accountID) {
@@ -374,7 +353,19 @@ struct VaultMemberView: View {
             }
             .accessibilityIdentifier("confirm-remove-member")
         } message: {
-            Text("Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them.")
+            Text(describeVaultMemberRemoval(member: member, vaultName: vaultName))
+        }
+    }
+
+    private func chooseRole(_ newRole: String) {
+        guard newRole != member.role, pendingRole == nil else { return }
+        pendingRole = newRole
+        Task {
+            _ = await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole)
+            let error = model.errorMessage
+            await reload()
+            if let error { model.errorMessage = error }
+            pendingRole = nil
         }
     }
 }
@@ -426,5 +417,35 @@ struct MemberRow: View {
         }
         .padding(.vertical, 4)
         .accessibilityElement(children: .combine)
+    }
+}
+
+func describeVaultMemberRemoval(member: Member?, vaultName: String) -> String {
+    let name = member.map { $0.name.isEmpty ? $0.email : $0.name } ?? ""
+    return "\(name) is removed from “\(vaultName)”, and Hisar encrypts the vault again with a new key for the people who remain. \(name) can still read copies their devices already downloaded. Change any password or secret they should no longer know."
+}
+
+func describeSecurityCode(_ member: Member) -> String {
+    if member.isCurrentUser {
+        return "This is your security code. Read it to someone who is checking the code they see for you."
+    }
+    let name = member.name.isEmpty ? member.email : member.name
+    return "Ask \(name) for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code."
+}
+
+struct SharingMemberRoute: Hashable {
+    var accountID: String
+}
+
+struct SharingMemberUnavailableView: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ProgressView()
+            .task {
+                model.showNotice("This person is no longer a member.")
+                dismiss()
+            }
     }
 }

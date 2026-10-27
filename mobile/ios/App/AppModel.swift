@@ -726,6 +726,21 @@ final class AppModel: ObservableObject {
         await perform(isBusyShown: false) { try $0.listAllPerson() }
     }
 
+    struct PeopleSnapshot {
+        var allPerson: [Member]
+        var invitations: ShareInvitations
+    }
+
+    func loadPeople(previous: PeopleSnapshot?) async -> PeopleSnapshot? {
+        let actionError = errorMessage
+        let loaded = await perform(isBusyShown: false) { backend in
+            PeopleSnapshot(allPerson: try backend.listAllPerson(), invitations: try backend.listAllShareInvitation())
+        }
+        if let loaded { applyShareInvitations(loaded.invitations) }
+        if let actionError { errorMessage = actionError }
+        return loaded ?? previous
+    }
+
     @discardableResult
     func invitePerson(email: String) async -> Bool {
         let email = email.trimmingCharacters(in: .whitespacesAndNewlines)

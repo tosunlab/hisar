@@ -1721,8 +1721,10 @@ export async function confirmShareRecipient(invitation: SentShareInvitation): Pr
     await api.confirmShareRecipient(invitation.id, invitation.reviewToken);
     return true;
   });
+  const confirmationError = store.errorMessage;
   await loadSharing();
   await loadShareInvitationsQuietly();
+  if (!confirmed) store.errorMessage = confirmationError;
   if (confirmed) showNotice(`Shared ${invitation.vaultName} with ${invitation.email}`);
   return confirmed === true;
 }
@@ -1851,7 +1853,7 @@ export async function loadAllOrganizationQuietly(): Promise<string> {
     applyOrganizations(organizations);
     for (const organization of allOrganization) {
       store.organizationByID = { ...store.organizationByID, [organization.id]: organization };
-  }
+    }
     return "";
   } catch (error) {
     return getErrorMessage(error);

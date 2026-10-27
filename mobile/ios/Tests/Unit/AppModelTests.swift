@@ -834,6 +834,27 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(allPerson?.map(\.email), ["alice@example.com", "bob@example.com"])
     }
 
+    func testPeopleReloadKeepsWaitingAndLastSuccessfulData() async {
+        let model = await createUnlockedModel()
+        var people = await model.loadPeople(previous: nil)
+        XCTAssertEqual(people?.allPerson.count, 2)
+        let waiting = WaitingShareInvitation(id: "waiting-1", vaultID: "work", role: Member.vaultRoleReader, invitedByName: "Ada", invitedByEmail: "ada@example.com", acceptedAt: "")
+        backend.shareInvitations = ShareInvitations(allWaiting: [waiting])
+        model.handleRemoteChange()
+        people = await model.loadPeople(previous: people)
+        XCTAssertEqual(people?.invitations.allWaiting, [waiting])
+        model.errorMessage = "Could not decline the invitation."
+        people = await model.loadPeople(previous: people)
+        XCTAssertEqual(model.errorMessage, "Could not decline the invitation.")
+        backend.peopleErrorMessage = "Offline"
+        backend.shareInvitations = ShareInvitations()
+        people = await model.loadPeople(previous: people)
+        XCTAssertEqual(people?.invitations.allWaiting, [waiting])
+        backend.peopleErrorMessage = nil
+        people = await model.loadPeople(previous: people)
+        XCTAssertTrue(people?.invitations.allWaiting.isEmpty == true)
+    }
+
     func testOwnerSendsShareInvitationThenChangesRoleAndRemovesMember() async {
         let model = await createUnlockedModel()
         guard let vault = await model.createVault(name: "Streaming") else { return XCTFail("vault missing") }
@@ -877,6 +898,22 @@ final class AppModelTests: XCTestCase {
         let confirmed = await model.confirmShareRecipient(invitation)
         XCTAssertTrue(confirmed)
         XCTAssertTrue(backend.shareInvitations.allSent.isEmpty)
+    }
+
+    func testMismatchedRecipientCancellationNeverConfirmsAccess() async {
+        let model = await createUnlockedModel()
+        let invitation = SentShareInvitation(id: "accepted", vaultID: "family", vaultName: "Family", email: "new@example.com", role: "reader", state: "accepted", expiresAt: "", requiresConfirmation: true, recipientID: "new-account", securityCode: "3333 4444", reviewToken: "reviewed-identity")
+        backend.shareInvitations = ShareInvitations(allSent: [invitation])
+        backend.cancelShareInvitationErrorMessage = "Offline"
+        let failed = await model.cancelShareInvitation(invitationID: invitation.id)
+        XCTAssertFalse(failed)
+        XCTAssertEqual(backend.shareInvitations.allSent, [invitation])
+        XCTAssertEqual(model.errorMessage, "Offline")
+        backend.cancelShareInvitationErrorMessage = nil
+        let cancelled = await model.cancelShareInvitation(invitationID: invitation.id)
+        XCTAssertTrue(cancelled)
+        XCTAssertTrue(backend.shareInvitations.allSent.isEmpty)
+        XCTAssertFalse(backend.allCallName.contains("confirmShareRecipient"))
     }
 
     func testReceivedShareInvitationsAreAcceptedOrDeclined() async {

@@ -45,9 +45,13 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Share, Invite by email | Gives someone a vault. The vault's Share panel (Mac) or sheet (iPhone). |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
+| Codes don't match | Cancels the reviewed invitation, without confirming its recipient or resetting a key pin. Keep the review open if cancellation fails. On success, "Cancelled the invitation to \<email>." |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
 | Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
+| "Ask \<name> for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code." | Another person's code. Compare the code for one identity, not the codes each person sees for the other. |
+| "This is your security code. Read it to someone who is checking the code they see for you." | Your own code. Comparison is optional and does not prove the server is honest. |
+| "\<name> is removed from \<vault>, and Hisar encrypts the vault again with a new key for the people who remain. \<name> can still read copies their devices already downloaded. Change any password or secret they should no longer know." | Removal confirmations name the person, falling back to email. Both removal entry points use the same wording. Never imply downloaded copies can be revoked or infer pronouns from a name. |
 
 ## Organizations
 
@@ -58,6 +62,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Members, Teams, Invitations | The segments of the Mac's organization page. |
 | organization vault | A vault that belongs to an organization and reaches people through its teams. |
 | Create organization…, New team…, Invite by email, Send invitation, Give a vault…, Give to a team…, Take back, Add member, Remove, Make admin, Make member | Actions (Settings → Organizations, the organization screen, an organization vault's sharing panel). |
+| "Owners view and change items, share, rename and delete the vault. Access is managed through the organization's teams." | Owner ability in team grants. Prefix the Give sheet footer with the selected role's ability, then "Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles." |
 | "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation in Settings → Organizations. The Mac's Inbox row leads there; the phones also show it above the vaults. |
 | Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; each confirmation names what goes: "Bob loses the vaults they have through Acme's teams." · "Its members lose the vaults they have only through Platform." · "Leave Acme?" / "You lose the vaults you have through Acme's teams." · "Delete Acme?" / "Its teams and pending invitations are deleted with it." · "Everyone in Acme sees the new name." |
 | "You joined Acme. Its vaults appear once an admin adds you to a team." | After accepting an organization invitation. |

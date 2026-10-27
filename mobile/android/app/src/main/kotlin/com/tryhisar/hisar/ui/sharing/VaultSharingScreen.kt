@@ -41,8 +41,10 @@ import com.tryhisar.hisar.ui.vaults.PickerRow
 import com.tryhisar.hisar.ui.vaults.SwipeActionRow
 import kotlinx.coroutines.launch
 
-private const val REMOVAL_EXPLANATION =
-    "Hisar encrypts the vault again with a new key that only the remaining members get. Copies they already downloaded stay readable to them."
+private fun describeVaultMemberRemoval(member: Member, vaultName: String): String {
+    val name = member.name.ifEmpty { member.email }
+    return "$name is removed from “$vaultName”, and Hisar encrypts the vault again with a new key for the people who remain. $name can still read copies their devices already downloaded. Change any password or secret they should no longer know."
+}
 
 /**
  * A shared vault's sheet from the vault's actions menu: owners invite by email, see who is invited and manage members; others
@@ -64,7 +66,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
     var invitationToCancel by remember { mutableStateOf<SentShareInvitation?>(null) }
     var memberToRemove by remember { mutableStateOf<Member?>(null) }
     var memberWithMenu by remember { mutableStateOf<Member?>(null) }
-    var openMember by rememberSaveable(stateSaver = memberSaver) { mutableStateOf(null) }
+    var openMemberID by rememberSaveable { mutableStateOf<String?>(null) }
 
     val vault = data.findVault(vaultID)
     val vaultName = sharing?.vault?.name ?: vault?.name ?: "Vault"
@@ -73,16 +75,22 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
     val canSend = "@" in trimmedEmail && !isSending
 
     suspend fun load() {
-        model.sharing.loadVaultSharing(vaultID)?.let { sharing = it }
+        model.sharing.loadVaultSharing(vaultID)?.let { loaded ->
+            sharing = loaded
+            if (openMemberID != null && loaded.allMember.none { it.accountID == openMemberID }) {
+                openMemberID = null
+                model.showNotice("This person is no longer a member.")
+            }
+        }
     }
 
-    LaunchedEffect(remoteChangeCount, openMember) { load() }
+    LaunchedEffect(remoteChangeCount) { load() }
     BackHandler(enabled = isBusy) {}
 
-    val shownMember = openMember
+    val shownMember = sharing?.allMember?.firstOrNull { it.accountID == openMemberID }
     if (shownMember != null) {
-        BackHandler { openMember = null }
-        VaultMemberScreen(model, vaultID, vaultName, shownMember, isOwner, onBack = { openMember = null }, reload = { load() })
+        BackHandler { openMemberID = null }
+        VaultMemberScreen(model, vaultID, vaultName, shownMember, isOwner, onBack = { openMemberID = null }, reload = { load() })
         return
     }
 
@@ -176,7 +184,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                                 member,
                                 VaultLogic.describeVaultRole(member.role),
                                 testTag = "vault-member-${member.email}",
-                                onClick = { openMember = member },
+                                onClick = { openMemberID = member.accountID },
                                 onLongClick = if (isManageable) ({ memberWithMenu = member }) else null,
                             ) {
                                 HisarMenu(memberWithMenu == member, onDismiss = { memberWithMenu = null }) {
@@ -221,9 +229,9 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                             onAction = { invitationToCancel = invitation }, actionColor = HisarTheme.colors.destructive,
                         ) {
                             SentInvitationRow(
-                                invitation, isVaultNameShown = false, testTag = "vault-invitation-${invitation.email}",
+                                model, invitation, isVaultNameShown = false, testTag = "vault-invitation-${invitation.email}",
                                 onCancel = { invitationToCancel = invitation },
-                                onConfirm = { snapshot -> scope.launch { if (model.sharing.confirmShareRecipient(snapshot)) load() } },
+                                onChanged = { load() },
                             )
                         }
                     }
@@ -245,8 +253,8 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
     }
     memberToRemove?.let { member ->
         ConfirmationDialog(
-            title = "Remove ${member.name} from “$vaultName”?",
-            message = REMOVAL_EXPLANATION,
+            title = "Remove ${member.name.ifEmpty { member.email }} from “$vaultName”?",
+            message = describeVaultMemberRemoval(member, vaultName),
             confirmLabel = "Remove",
             confirmTestTag = "confirm-remove-member",
             onConfirm = { scope.launch { if (model.sharing.removeVaultMember(vaultID, member.accountID)) load() } },
@@ -269,21 +277,20 @@ private fun VaultMemberScreen(
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var selectedRole by rememberSaveable(member.accountID) { mutableStateOf(member.role) }
-    var savedRole by rememberSaveable(member.accountID) { mutableStateOf(member.role) }
+    var pendingRole by remember(member.accountID) { mutableStateOf<String?>(null) }
+    val selectedRole = pendingRole ?: member.role
     var isRemoveConfirmationShown by remember { mutableStateOf(false) }
     val isManageable = isOwner && !member.isCurrentUser
 
     fun chooseRole(newRole: String) {
-        selectedRole = newRole
-        if (newRole == savedRole) return
+        if (newRole == member.role || pendingRole != null) return
+        pendingRole = newRole
         scope.launch {
-            if (model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)) {
-                savedRole = newRole
-                reload()
-            } else {
-                selectedRole = savedRole
-            }
+            model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)
+            val error = model.errorMessage.value
+            reload()
+            if (error != null) model.errorMessage.value = error
+            pendingRole = null
         }
     }
 
@@ -300,18 +307,14 @@ private fun VaultMemberScreen(
         }
         SecurityCodeSection(
             member,
-            footer = if (member.isCurrentUser) {
-                "People you share with compare this code with the one their Hisar shows for you."
-            } else {
-                "Compare it with ${member.name} once, in person or over a channel you trust. If it matches what their Hisar shows, this vault reaches them and nobody else."
-            },
+            footer = describeSecurityCode(member),
             testTag = "member-security-code",
         )
         FormSection(footer = { Text(VaultLogic.describeVaultRoleAbility(selectedRole)) }) {
             if (isManageable) {
                 PickerRow("Role", selectedRole, Member.allVaultRole, VaultLogic::describeVaultRole, ::chooseRole, testTag = "member-role", enabled = !isBusy)
             } else {
-                LabeledRow("Role", VaultLogic.describeVaultRole(savedRole))
+                LabeledRow("Role", VaultLogic.describeVaultRole(member.role))
             }
         }
         if (isManageable) {
@@ -323,8 +326,8 @@ private fun VaultMemberScreen(
 
     if (isRemoveConfirmationShown) {
         ConfirmationDialog(
-            title = "Remove ${member.name} from “$vaultName”?",
-            message = REMOVAL_EXPLANATION,
+            title = "Remove ${member.name.ifEmpty { member.email }} from “$vaultName”?",
+            message = describeVaultMemberRemoval(member, vaultName),
             confirmLabel = "Remove",
             confirmTestTag = "confirm-remove-member",
             onConfirm = {

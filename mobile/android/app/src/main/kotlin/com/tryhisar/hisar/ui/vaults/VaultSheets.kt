@@ -222,18 +222,18 @@ fun NewVaultScreen(model: AppModel, onCancel: () -> Unit, onCreated: (VaultSumma
             RowDivider()
             val allLoadedLocation = allLocation
             when {
-                isLoadingTeams -> FormRow {
+                isLoadingTeams -> FormRow(Modifier.testTag("new-vault-teams-loading")) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Where")
                         CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
                         Text("Loading teams…")
                     }
                 }
-                teamsLoadFailed -> FormRow {
+                teamsLoadFailed -> FormRow(Modifier.testTag("new-vault-teams-error")) {
                     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Text("Where")
                         Text("Couldn't load teams", Modifier.weight(1f))
-                        androidx.compose.material3.TextButton(onClick = { scope.launch { loadLocations() } }) { Text("Retry") }
+                        androidx.compose.material3.TextButton(onClick = { scope.launch { loadLocations() } }, modifier = Modifier.testTag("new-vault-teams-retry")) { Text("Retry") }
                     }
                 }
                 allLoadedLocation != null -> PickerRow("Where", location, allLoadedLocation, { it.label }, { locationID = it.id }, testTag = "new-vault-where")

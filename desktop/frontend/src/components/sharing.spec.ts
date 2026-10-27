@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
 import type { VaultSummary } from "../api";
+import ShareRecipientConfirmation from "./ShareRecipientConfirmation.vue";
 import {
   createApiMock,
   createDevice,
@@ -209,7 +210,8 @@ describe("Vault sharing panel", () => {
     const wrapper = await openSharingPanel();
     await wrapper.find('[data-testid="remove-member-BOB222"]').trigger("click");
     const confirmation = wrapper.find('[data-testid="remove-confirmation"]');
-    expect(confirmation.text()).toContain("Removing Bob re-encrypts this vault with a new key");
+    expect(confirmation.text()).toContain(`${testBob.name} is removed from “Family”`);
+    expect(confirmation.text()).toContain(`${testBob.name} can still read copies their devices already downloaded`);
     expect(api.removeVaultMember).not.toHaveBeenCalled();
 
     await confirmation.find("button.ghost").trigger("click");
@@ -243,7 +245,7 @@ describe("Vault sharing panel", () => {
     await toggle.trigger("click");
     const detail = wrapper.find('[data-testid="security-code-detail"]');
     expect(detail.find('[data-testid="security-code"]').text()).toBe("C0FF EE12 3456 789A");
-    expect(detail.text()).toContain("Compare this code with Bob in person or over a channel you trust");
+    expect(detail.text()).toContain(`Ask ${testBob.name} for the security code Hisar shows for their own account (Settings → People, the row marked you)`);
     expect(toggle.attributes("aria-expanded")).toBe("true");
     await toggle.trigger("click");
     expect(wrapper.find('[data-testid="security-code-detail"]').exists()).toBe(false);
@@ -283,6 +285,59 @@ describe("Vault sharing panel", () => {
     await flushPromises();
     expect(store.isSharingOpen).toBe(false);
     expect(wrapper.find('[data-testid="vault-sharing-panel"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+});
+
+describe("Recipient review", () => {
+  const invitation = createSentShareInvitation({ id: "reviewed", state: "accepted", requiresConfirmation: true, recipientId: "NEW123", securityCode: "1111 2222 3333 4444", reviewToken: "exact-reviewed-context", email: "new@example.com", role: "reader" });
+
+  async function review() {
+    const wrapper = mount(ShareRecipientConfirmation, { props: { invitation }, attachTo: document.body });
+    await wrapper.find('[data-testid="review-share-reviewed"]').trigger("click");
+    return wrapper;
+  }
+
+  it("cancels a mismatched invitation without confirming its recipient", async () => {
+    api.cancelShareInvitation.mockResolvedValue(undefined);
+    const wrapper = await review();
+    expect(wrapper.find('[data-testid="review-security-code"]').text()).toBe(invitation.securityCode);
+    await wrapper.find('[data-testid="share-recipient-mismatch"]').trigger("click");
+    await flushPromises();
+    expect(api.cancelShareInvitation).toHaveBeenCalledWith(invitation.id);
+    expect(api.confirmShareRecipient).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"]').exists()).toBe(false);
+    expect(store.noticeMessage).toBe("Cancelled the invitation to new@example.com.");
+    wrapper.unmount();
+  });
+
+  it("keeps a failed mismatch cancellation in the review without granting access", async () => {
+    api.cancelShareInvitation.mockRejectedValueOnce(new Error("Couldn't cancel while offline"));
+    const wrapper = await review();
+    await wrapper.find('[data-testid="share-recipient-mismatch"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"] [role="alert"]').text()).toContain("Couldn't cancel while offline");
+    expect(api.confirmShareRecipient).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("dismisses without changing the invitation", async () => {
+    const wrapper = await review();
+    await wrapper.find(".actions .ghost").trigger("click");
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"]').exists()).toBe(false);
+    expect(api.cancelShareInvitation).not.toHaveBeenCalled();
+    expect(api.confirmShareRecipient).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps a stale-token refusal visible and sends only the displayed token", async () => {
+    api.confirmShareRecipient.mockRejectedValueOnce(new Error("Review this recipient again"));
+    const wrapper = await review();
+    await wrapper.find('[data-testid="confirm-share-recipient"]').trigger("click");
+    await flushPromises();
+    expect(api.confirmShareRecipient).toHaveBeenCalledWith(invitation.id, invitation.reviewToken);
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"] [role="alert"]').text()).toContain("Review this recipient again");
+    expect(api.cancelShareInvitation).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 });
