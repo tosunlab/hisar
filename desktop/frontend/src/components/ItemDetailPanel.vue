@@ -855,6 +855,36 @@ h2 {
   min-width: 0;
 }
 
+@container detail (max-width: 479px) {
+  .field {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-rows: auto auto;
+    row-gap: 4px;
+  }
+
+  .field-copy-target {
+    grid-column: 1;
+    grid-row: 1 / span 2;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: subgrid;
+  }
+
+  .field-label {
+    grid-column: 1 / -1;
+    grid-row: 1;
+  }
+
+  .field-value {
+    grid-column: 1;
+    grid-row: 2;
+  }
+
+  .field-actions {
+    grid-column: 2;
+    grid-row: 2;
+  }
+}
+
 .copy-block {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
