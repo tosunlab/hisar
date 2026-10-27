@@ -183,6 +183,7 @@ fun SignInScreen(model: AppModel) {
                 secretKey = secretKey, onSecretKeyChange = { secretKey = it },
                 password = password, onPasswordChange = { password = it },
                 submit = ::submit,
+                concealWhen = isBusy,
             )
             SignInMode.CREATE_ACCOUNT -> CreateAccountSections(
                 inviteLink = inviteLink, onInviteLinkChange = { inviteLink = it },
@@ -195,6 +196,7 @@ fun SignInScreen(model: AppModel) {
                 repeatedPassword = repeatedPassword, onRepeatedPasswordChange = { repeatedPassword = it },
                 isPasswordMismatch = isPasswordMismatch,
                 passwordFeedback = passwordFeedback,
+                concealWhen = isBusy,
             )
         }
         ClearSection(
@@ -238,6 +240,7 @@ private fun SignInSections(
     password: String,
     onPasswordChange: (String) -> Unit,
     submit: () -> Unit,
+    concealWhen: Boolean,
 ) {
     FormSection(footer = { Text("The QR code fills in your server, email and Secret Key.") }) {
         FormButtonRow("Scan Emergency Kit QR code", scanEmergencyKit, testTag = "scan-emergency-kit", icon = Icons.Outlined.QrCodeScanner, color = HisarTheme.colors.tint)
@@ -271,6 +274,7 @@ private fun SignInSections(
         RowDivider()
         FormTextField(
             password, onPasswordChange, placeholder = "Master password", testTag = "sign-in-password", isSecure = true,
+            revealName = "master password", concealWhen = concealWhen,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
             keyboardActions = KeyboardActions(onGo = { submit() }),
         )
@@ -296,6 +300,7 @@ private fun CreateAccountSections(
     onRepeatedPasswordChange: (String) -> Unit,
     isPasswordMismatch: Boolean,
     passwordFeedback: MasterPasswordFeedback?,
+    concealWhen: Boolean,
 ) {
     FormSection(header = "Invite", footer = { Text("Leave it empty if the server lets anyone sign up.") }) {
         FormTextField(
@@ -333,11 +338,11 @@ private fun CreateAccountSections(
         header = "Master password",
         footer = {
             PasswordStrengthMeter(passwordFeedback?.strength ?: PasswordStrength())
-            if (isPasswordMismatch) Text("The passwords do not match.", color = HisarTheme.colors.destructive)
+            if (isPasswordMismatch) Text("The passwords do not match.", color = HisarTheme.colors.destructiveText)
             val problem = AccountLifecycleLogic.describeMasterPasswordProblem(password, passwordFeedback)
             val hint = AccountLifecycleLogic.describeMasterPasswordHint(passwordFeedback)
             when {
-                problem != null -> Text(problem, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("sign-up-password-problem"))
+                problem != null -> Text(problem, color = HisarTheme.colors.destructiveText, modifier = Modifier.testTag("sign-up-password-problem"))
                 hint != null -> Text(hint)
                 else -> Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
             }
@@ -345,11 +350,13 @@ private fun CreateAccountSections(
     ) {
         FormTextField(
             password, onPasswordChange, placeholder = "At least 10 characters", testTag = "sign-up-password", isSecure = true,
+            revealName = "master password", concealWhen = concealWhen,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Next),
         )
         RowDivider()
         FormTextField(
             repeatedPassword, onRepeatedPasswordChange, placeholder = "Repeat master password", testTag = "sign-up-repeated-password", isSecure = true,
+            revealName = "repeated master password", concealWhen = concealWhen,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
         )
     }

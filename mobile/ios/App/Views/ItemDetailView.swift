@@ -698,7 +698,7 @@ struct SecretFieldRow: View {
                     if !warning.isEmpty {
                         Text(warning)
                             .font(.footnote)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(.themeWarning)
                             .accessibilityIdentifier("card-warning-\(label)")
                     }
                 }

@@ -247,7 +247,7 @@ private fun ItemDetailScreenContent(model: AppModel, vaultID: String, itemID: St
                     performAction("Could not delete the passkey for ${passkey.relyingPartyID}.") {
                         model.item.deletePasskey(vaultID, itemID, passkey.credentialID)?.let { item = it; passkeyToDelete = null }
                     }
-                }, testTag = "confirm-delete-passkey", color = HisarTheme.colors.destructive, enabled = !isBusy)
+                }, testTag = "confirm-delete-passkey", color = HisarTheme.colors.destructiveText, enabled = !isBusy)
             },
             dismissButton = { PlainButton("Cancel", { passkeyToDelete = null; actionFailure = null }, testTag = "cancel-delete-passkey", enabled = !isBusy) },
         )
@@ -261,7 +261,7 @@ private fun ItemDetailScreenContent(model: AppModel, vaultID: String, itemID: St
                 PlainButton("Remove app", {
                     androidAppToRemove = null
                     scope.launch { model.item.removeAndroidApp(vaultID, itemID, androidApp)?.let { item = it } }
-                }, testTag = "confirm-remove-android-app", color = HisarTheme.colors.destructive)
+                }, testTag = "confirm-remove-android-app", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { androidAppToRemove = null }, testTag = "cancel-remove-android-app") },
         )

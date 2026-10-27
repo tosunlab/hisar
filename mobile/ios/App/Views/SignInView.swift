@@ -215,11 +215,12 @@ struct SignInView: View {
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("sign-in-secret-key")
-            SecureField("Master password", text: $password)
+            CredentialField("Master password", text: $password)
                 .textContentType(.password)
                 .submitLabel(.go)
                 .onSubmit(submit)
                 .accessibilityIdentifier("sign-in-password")
+                .concealWhen(model.isBusy)
         }
     }
 
@@ -270,20 +271,25 @@ struct SignInView: View {
                 .accessibilityIdentifier("sign-up-name")
         }
         Section {
-            SecureField("Master password", text: $password, prompt: Text("At least 10 characters"))
+            CredentialField("Master password", text: $password, prompt: "At least 10 characters")
                 .textContentType(.newPassword)
                 .accessibilityIdentifier("sign-up-password")
-            SecureField("Repeat master password", text: $repeatedPassword)
+                .concealWhen(model.isBusy)
+            CredentialField("Repeat master password", text: $repeatedPassword, secretName: "repeated master password")
                 .textContentType(.newPassword)
                 .accessibilityIdentifier("sign-up-repeated-password")
+                .concealWhen(model.isBusy)
         } header: {
             Text("Master password")
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 PasswordStrengthMeter(strength: passwordFeedback?.strength ?? PasswordStrength())
                 if isPasswordMismatch {
-                    Text("The passwords do not match.")
-                        .foregroundStyle(.red)
+                    Label {
+                        Text("The passwords do not match.").foregroundStyle(.primary)
+                    } icon: {
+                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                    }
                 }
                 if let problem = AccountLifecycleLogic.describeMasterPasswordProblem(password, feedback: passwordFeedback) {
                     Text(problem)

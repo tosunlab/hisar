@@ -158,7 +158,7 @@ private fun PreviewSections(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     exportOrigin?.let { Text(it, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel) }
                     if (preview.notice.isNotEmpty()) {
-                        Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("hisar-import-notice"))
+                Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.warning, modifier = Modifier.testTag("hisar-import-notice"))
                     }
                 }
             }
@@ -289,7 +289,7 @@ private fun PassphraseSection(credentialImport: CredentialImportModel, errorMess
         footer = { Text("This export is encrypted. Enter the passphrase it was exported with.") },
         modifier = Modifier.testTag("hisar-import-passphrase"),
     ) {
-        FormTextField(passphrase, { passphrase = it }, "Export passphrase", testTag = "hisar-import-passphrase-field", isSecure = true)
+        FormTextField(passphrase, { passphrase = it }, "Export passphrase", testTag = "hisar-import-passphrase-field", isSecure = true, revealName = "export passphrase", concealWhen = isWorking)
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {

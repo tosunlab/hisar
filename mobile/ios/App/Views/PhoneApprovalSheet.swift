@@ -32,12 +32,13 @@ struct PhoneApprovalSheet: View {
                 }
                 if isPasswordRequired {
                     Section {
-                        SecureField("Master password", text: $password)
+                        CredentialField("Master password", text: $password)
                             .textContentType(.password)
                             .submitLabel(.go)
                             .focused($isPasswordFocused)
                             .onSubmit(submitPassword)
                             .accessibilityIdentifier("phone-approval-password")
+                            .concealWhen(isBusy)
                     } header: {
                         Text("Approve with your master password")
                     } footer: {

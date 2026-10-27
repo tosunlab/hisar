@@ -5,6 +5,7 @@ import type { PendingRecoverySummary } from "../api";
 import HisarLogo from "./HisarLogo.vue";
 import { recoveryHeading, recoveryHost, recoveryStatus } from "../pendingRecoveryCopy";
 import SecretKeyBlock from "./SecretKeyBlock.vue";
+import CredentialField from "./CredentialField.vue";
 
 type RecoveryFactors = { password: string; secretKey: string; priorSecretKey: string; needsPriorSecretKey: boolean };
 const factorsByOperation = ref<Record<string, RecoveryFactors>>({});
@@ -99,7 +100,7 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
         <p v-if="store.status.state !== 'signed-out' && (store.status.email !== operation.email || store.status.server !== operation.origin)" class="hint">Continuing signs this device in to {{ operation.email }} on {{ recoveryHost(operation.origin) }}.</p>
         <p v-if="!operation.keychainProtected" class="hint">This device does not persist the new Secret Key. After a restart, enter the Secret Key from your saved kit to resume. If you closed the app before saving an uncommitted kit, discard that setup and start again.</p>
         <p v-for="problem in operation.problems" :key="problem" class="error">{{ problem }}</p>
-        <label><span>Master password for this operation</span><input v-model="factorsFor(operation).password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /></label>
+        <label><span>Master password for this operation</span><CredentialField><input v-model="factorsFor(operation).password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /></CredentialField></label>
         <label v-if="operation.manualUnlock || !operation.keychainProtected"><span>Secret Key from the saved Emergency Kit</span><input v-model="factorsFor(operation).secretKey" name="pendingRecoverySecretKey" type="text" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
         <label v-if="operation.kind === 'replacement' && factorsFor(operation).needsPriorSecretKey"><span>Previous Secret Key</span><input v-model="factorsFor(operation).priorSecretKey" name="pendingRecoveryPriorSecretKey" type="text" class="monospace" placeholder="H1-XXXXXX-XXXXX-XXXXX-XXXXX-XXXXX-XXXXXX" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
         <template v-if="nextAction?.kind === 'acknowledge'">

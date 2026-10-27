@@ -5,6 +5,7 @@ import { clearError, copyText, finishSecretKeyReplacement, replaceSecretKey, sav
 import { describeSignedOutDevices } from "../util";
 import AccountDialog from "./AccountDialog.vue";
 import AppIcon from "./AppIcon.vue";
+import CredentialField from "./CredentialField.vue";
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -85,7 +86,7 @@ async function close(): Promise<void> {
       </ul>
       <label>
         <span>Master password</span>
-        <input v-model="password" name="replaceSecretKeyPassword" type="password" autocomplete="current-password" autofocus />
+        <CredentialField><input v-model="password" name="replaceSecretKeyPassword" type="password" autocomplete="current-password" autofocus /></CredentialField>
       </label>
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
       <div class="row actions">

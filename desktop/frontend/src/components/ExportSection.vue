@@ -4,6 +4,7 @@ import { api, type ExportOptions } from "../api";
 import { exportAllData, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
 import AppIcon from "./AppIcon.vue";
+import CredentialField from "./CredentialField.vue";
 
 type ExportFormat = "encrypted" | "plain";
 
@@ -92,6 +93,7 @@ onMounted(async () => {
         </span>
       </label>
       <div v-if="format === 'encrypted'" class="settings-group-detail passphrase-fields">
+        <CredentialField secret-name="export passphrase">
         <input
           v-model="passphrase"
           name="exportPassphrase"
@@ -101,6 +103,8 @@ onMounted(async () => {
           :placeholder="`Export passphrase (at least ${exportOptions.minPassphraseLength} characters)`"
           data-testid="export-passphrase"
         />
+        </CredentialField>
+        <CredentialField secret-name="repeated export passphrase">
         <input
           v-model="repeatedPassphrase"
           name="repeatedExportPassphrase"
@@ -110,6 +114,7 @@ onMounted(async () => {
           placeholder="Repeat export passphrase"
           data-testid="export-passphrase-repeat"
         />
+        </CredentialField>
         <p v-if="passphraseProblem" class="problem" data-testid="export-passphrase-problem">{{ passphraseProblem }}</p>
         <p class="muted">Keep the passphrase somewhere safe. Hisar can't recover it, and without it the export can't be opened.</p>
       </div>
@@ -127,8 +132,8 @@ onMounted(async () => {
         </div>
       </div>
       <div class="settings-group-detail export-actions">
+        <CredentialField v-if="isPasswordNeeded">
         <input
-          v-if="isPasswordNeeded"
           v-model="masterPassword"
           name="exportMasterPassword"
           type="password"
@@ -137,6 +142,7 @@ onMounted(async () => {
           placeholder="Master password to export"
           data-testid="export-master-password"
         />
+        </CredentialField>
         <button class="primary" type="submit" :disabled="!canExport" data-testid="export-submit">
           {{ isPasswordNeeded ? "Export…" : "Export with Touch ID…" }}
         </button>

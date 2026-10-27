@@ -151,7 +151,7 @@ fun AccountScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: 
         FormSection(footer = { Text("Deletes your account and the vaults only you own from the Hisar server. ${AccountLifecycleLogic.EXPORT_ADVICE}") }) {
             NavigationRow(
                 "Delete account…", "open-delete-account", { push(SettingsDestination.DELETE_ACCOUNT) }, Icons.Outlined.PersonRemove,
-                color = HisarTheme.colors.destructive,
+                color = HisarTheme.colors.destructiveText,
                 enabled = !status.isOffline,
             )
         }
@@ -275,6 +275,7 @@ fun SecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                     password, { password = it }, placeholder = "Master password", testTag = "secret-key-password",
                     modifier = Modifier.focusRequester(focusRequester),
                     isSecure = true,
+                    revealName = "master password", concealWhen = isBusy,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                     keyboardActions = KeyboardActions(onGo = { reveal() }),
                 )
@@ -328,7 +329,7 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
             WarningRow(Icons.Outlined.Devices, AccountLifecycleLogic.PASSWORD_CHANGE_WARNING, "change-password-warning")
         }
         FormSection(header = "Current master password") {
-            FormTextField(currentPassword, { currentPassword = it }, placeholder = "Current master password", testTag = "change-password-current", isSecure = true)
+            FormTextField(currentPassword, { currentPassword = it }, placeholder = "Current master password", testTag = "change-password-current", isSecure = true, revealName = "current master password", concealWhen = isBusy || isConfirmationShown)
         }
         FormSection(
             header = "New master password",
@@ -336,15 +337,15 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
                 PasswordStrengthMeter(newPasswordFeedback?.strength ?: PasswordStrength())
                 val hint = AccountLifecycleLogic.describeMasterPasswordHint(newPasswordFeedback)
                 when {
-                    problem != null -> Text(problem, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("change-password-problem"))
+                    problem != null -> Text(problem, color = HisarTheme.colors.destructiveText, modifier = Modifier.testTag("change-password-problem"))
                     hint != null -> Text(hint)
                 }
                 Text("A forgotten master password can't be recovered by anyone, including Hisar.")
             },
         ) {
-            FormTextField(newPassword, { newPassword = it }, placeholder = "At least 10 characters", testTag = "change-password-new", isSecure = true)
+            FormTextField(newPassword, { newPassword = it }, placeholder = "At least 10 characters", testTag = "change-password-new", isSecure = true, revealName = "new master password", concealWhen = isBusy || isConfirmationShown)
             RowDivider()
-            FormTextField(repeatedPassword, { repeatedPassword = it }, placeholder = "Repeat new master password", testTag = "change-password-repeated", isSecure = true)
+            FormTextField(repeatedPassword, { repeatedPassword = it }, placeholder = "Repeat new master password", testTag = "change-password-repeated", isSecure = true, revealName = "repeated new master password", concealWhen = isBusy || isConfirmationShown)
         }
         errorMessage?.let { FormSection { ErrorBanner(it) } }
         ClearSection {
@@ -426,7 +427,7 @@ fun ReplaceSecretKeyScreen(model: AppModel, onBack: () -> Unit) {
                 WarningRow(Icons.Outlined.FindReplace, AccountLifecycleLogic.SECRET_KEY_REPLACEMENT_WARNING, "replace-secret-key-warning")
             }
             FormSection(header = "Master password") {
-                FormTextField(password, { password = it }, placeholder = "Master password", testTag = "replace-secret-key-password", isSecure = true)
+                FormTextField(password, { password = it }, placeholder = "Master password", testTag = "replace-secret-key-password", isSecure = true, revealName = "master password", concealWhen = isBusy || isConfirmationShown)
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
             ClearSection {
@@ -497,7 +498,7 @@ fun DeleteAccountScreen(model: AppModel, onBack: () -> Unit) {
             header = "Confirm",
             footer = { Text("Enter your master password and type ${status.email} to confirm. Hisar checks your master password without sending it to the server.") },
         ) {
-            FormTextField(password, { password = it }, placeholder = "Master password", testTag = "delete-account-password", isSecure = true)
+            FormTextField(password, { password = it }, placeholder = "Master password", testTag = "delete-account-password", isSecure = true, revealName = "master password", concealWhen = isBusy || isConfirmationShown)
             RowDivider()
             FormTextField(
                 typedEmail, { typedEmail = it }, placeholder = status.email, testTag = "delete-account-email",
@@ -673,6 +674,7 @@ fun PendingRecoveryScreen(model: AppModel) {
                 FormTextField(
                     password, { password = it }, placeholder = "Master password",
                     testTag = "pending-recovery-password", isSecure = true,
+                    revealName = "master password", concealWhen = isBusy || isDiscardConfirmationShown,
                 )
                 if (password.isEmpty()) FormRow { Text("Enter your master password to continue.") }
                 if (status.state != com.tryhisar.hisar.model.VaultStatus.STATE_SIGNED_OUT && (status.email != recovery.email || status.server != recovery.origin)) {
@@ -732,7 +734,7 @@ fun PendingRecoveryScreen(model: AppModel) {
                 if (recovery.phase == "awaiting-kit" || recovery.phase == "prepared") {
                     FormButtonRow(
                         "Cancel this setup", { isDiscardConfirmationShown = true }, testTag = "pending-recovery-discard",
-                        color = HisarTheme.colors.destructive, enabled = password.isNotEmpty() && !isBusy,
+                        color = HisarTheme.colors.destructiveText, enabled = password.isNotEmpty() && !isBusy,
                     )
                 }
             }

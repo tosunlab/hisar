@@ -341,12 +341,13 @@ struct SecretKeyView: View {
                 }
             } else {
                 Section {
-                    SecureField("Master password", text: $password)
+                    CredentialField("Master password", text: $password)
                         .textContentType(.password)
                         .submitLabel(.go)
                         .focused($isPasswordFocused)
                         .onSubmit(reveal)
                         .accessibilityIdentifier("secret-key-password")
+                        .concealWhen(model.isBusy)
                 } footer: {
                     Text("Enter your master password to see your Secret Key and save your Emergency Kit.")
                 }
@@ -456,17 +457,39 @@ struct SecurityView: View {
         .applyThemedListStyle()
         .navigationTitle("Security")
         .onAppear { model.clearError() }
-        .alert("Turn on \(SettingsView.biometryName)", isPresented: $isBiometricPasswordPromptShown) {
-            SecureField("Master password", text: $biometricPassword)
-                .accessibilityIdentifier("biometric-password")
-            Button("Cancel", role: .cancel) { biometricPassword = "" }
-            Button("Turn on") {
-                let password = biometricPassword
-                biometricPassword = ""
-                Task { await model.setBiometricUnlock(isEnabled: true, password: password) }
+        .sheet(isPresented: $isBiometricPasswordPromptShown, onDismiss: { biometricPassword = "" }) {
+            NavigationStack {
+                Form {
+                    Section {
+                        CredentialField("Master password", text: $biometricPassword)
+                            .textContentType(.password)
+                            .accessibilityIdentifier("biometric-password")
+                            .concealWhen(model.isBusy)
+                    } footer: {
+                        Text(SettingsView.biometryConsent + "\n\nEnter your master password to continue.")
+                    }
+                }
+                .navigationTitle("Turn on \(SettingsView.biometryName)")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button("Cancel", role: .cancel) {
+                            biometricPassword = ""
+                            isBiometricPasswordPromptShown = false
+                        }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button("Turn on") {
+                            let password = biometricPassword
+                            biometricPassword = ""
+                            isBiometricPasswordPromptShown = false
+                            Task { await model.setBiometricUnlock(isEnabled: true, password: password) }
+                        }
+                        .disabled(biometricPassword.isEmpty || model.isBusy)
+                    }
+                }
             }
-        } message: {
-            Text(SettingsView.biometryConsent + "\n\nEnter your master password to continue.")
+            .presentationDetents([.medium])
         }
     }
 

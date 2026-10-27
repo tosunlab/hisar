@@ -200,7 +200,7 @@ internal fun SecretFieldRow(
             }
             if (warning.isNotEmpty()) {
                 Spacer(Modifier.size(4.dp))
-                Text(warning, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("card-warning-$label"))
+                Text(warning, style = HisarType.footnote, color = HisarTheme.colors.warning, modifier = Modifier.testTag("card-warning-$label"))
             }
         }
     }

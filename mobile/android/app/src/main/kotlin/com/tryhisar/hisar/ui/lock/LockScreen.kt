@@ -100,7 +100,7 @@ fun LockScreen(model: AppModel) {
                 PlainButton("Sign out", {
                     isSignOutConfirmationShown = false
                     scope.launch { model.lock.signOut() }
-                }, testTag = "confirm-sign-out", color = HisarTheme.colors.destructive)
+                }, testTag = "confirm-sign-out", color = HisarTheme.colors.destructiveText)
             },
             dismissButton = { PlainButton("Cancel", { isSignOutConfirmationShown = false }, testTag = "cancel-sign-out") },
         )
@@ -230,6 +230,7 @@ fun UnlockPanel(
         ) {
             FormTextField(
                 password, { password = it }, placeholder = "Master password", testTag = "unlock-password", isSecure = true,
+                revealName = "master password", concealWhen = isBusy,
                 modifier = Modifier.focusRequester(focusRequester),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { submit() }),

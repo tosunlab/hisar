@@ -24,29 +24,35 @@ struct ChangeMasterPasswordView: View {
     var body: some View {
         Form {
             Section {
-                SecureField("Current master password", text: $currentPassword)
+                CredentialField("Current master password", text: $currentPassword, secretName: "current master password")
                     .textContentType(.password)
                     .accessibilityIdentifier("change-password-current")
+                    .concealWhen(model.isBusy || isConfirmationShown)
             } header: {
                 Text("Current master password")
             } footer: {
                 Text("Your Secret Key, your Emergency Kit and your items stay the same. Hisar never sends your master password to the server.")
             }
             Section {
-                SecureField("New master password", text: $newPassword, prompt: Text("At least 10 characters"))
+                CredentialField("New master password", text: $newPassword, prompt: "At least 10 characters", secretName: "new master password")
                     .textContentType(.newPassword)
                     .accessibilityIdentifier("change-password-new")
-                SecureField("Repeat new master password", text: $repeatedPassword)
+                    .concealWhen(model.isBusy || isConfirmationShown)
+                CredentialField("Repeat new master password", text: $repeatedPassword, secretName: "repeated new master password")
                     .textContentType(.newPassword)
                     .accessibilityIdentifier("change-password-repeated")
+                    .concealWhen(model.isBusy || isConfirmationShown)
             } header: {
                 Text("New master password")
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     PasswordStrengthMeter(strength: newPasswordFeedback?.strength ?? PasswordStrength())
                     if let problem {
-                        Text(problem)
-                            .foregroundStyle(.red)
+                        Label {
+                            Text(problem).foregroundStyle(.primary)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+                        }
                             .accessibilityIdentifier("change-password-problem")
                     } else if let hint = AccountLifecycleLogic.describeMasterPasswordHint(feedback: newPasswordFeedback) {
                         Text(hint)
@@ -156,9 +162,10 @@ struct ReplaceSecretKeyView: View {
     @ViewBuilder
     private var confirmationSections: some View {
         Section {
-            SecureField("Master password", text: $password)
+            CredentialField("Master password", text: $password)
                 .textContentType(.password)
                 .accessibilityIdentifier("replace-secret-key-password")
+                .concealWhen(model.isBusy || isConfirmationShown)
         } header: {
             Text("Master password")
         } footer: {
@@ -275,9 +282,10 @@ struct DeleteAccountView: View {
                 consequenceSections(preview)
             }
             Section {
-                SecureField("Master password", text: $password)
+                CredentialField("Master password", text: $password)
                     .textContentType(.password)
                     .accessibilityIdentifier("delete-account-password")
+                    .concealWhen(model.isBusy || isConfirmationShown)
                 TextField("Email", text: $typedEmail, prompt: Text(verbatim: model.status.email))
                     .keyboardType(.emailAddress)
                     .textInputAutocapitalization(.never)
@@ -469,9 +477,10 @@ struct PendingRecoveryView: View {
                             }
                         }
                         ForEach(recovery.problems, id: \.self) { Text($0) }
-                        SecureField("Master password", text: $password)
+                        CredentialField("Master password", text: $password)
                             .textContentType(.password)
                             .accessibilityIdentifier("pending-recovery-password")
+                            .concealWhen(model.isBusy || isDiscardConfirmationShown)
                         if password.isEmpty {
                             Text("Enter your master password to continue.")
                                 .font(.footnote)

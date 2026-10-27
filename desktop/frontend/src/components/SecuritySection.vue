@@ -6,6 +6,7 @@ import { useSettingsRowVisibility } from "../settingsSections";
 import { isMacPlatform, touchIDConsent } from "../util";
 import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
 import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
+import CredentialField from "./CredentialField.vue";
 
 const props = withDefaults(defineProps<{ isActive?: boolean }>(), { isActive: true });
 
@@ -131,6 +132,7 @@ onBeforeUnmount(clearSecretKey);
           </button>
         </div>
         <form v-if="isEnablingTouchID" v-show="isRowVisible('touch-id')" class="settings-group-form" @submit.prevent="submitEnableTouchID">
+          <CredentialField>
           <input
             v-model="touchIDPassword"
             name="touchIDPassword"
@@ -141,6 +143,7 @@ onBeforeUnmount(clearSecretKey);
             autofocus
             required
           />
+          </CredentialField>
           <button type="button" class="ghost" @click="cancelEnableTouchID">Cancel</button>
           <button class="primary" type="submit" :disabled="store.isBusy">Turn on</button>
         </form>
@@ -220,6 +223,7 @@ onBeforeUnmount(clearSecretKey);
           </div>
         </div>
         <form v-if="isSavingEmergencyKit" class="settings-group-form" @submit.prevent="submitSaveEmergencyKit">
+          <CredentialField>
           <input
             v-model="emergencyKitPassword"
             name="emergencyKitPassword"
@@ -230,6 +234,7 @@ onBeforeUnmount(clearSecretKey);
             autofocus
             required
           />
+          </CredentialField>
           <button type="button" class="ghost" @click="cancelSaveEmergencyKit">Cancel</button>
           <button class="primary" type="submit" :disabled="store.isBusy">Save Emergency Kit…</button>
         </form>

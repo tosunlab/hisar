@@ -347,7 +347,7 @@ fun HisarMenuItem(
     enabled: Boolean = true,
     isDestructive: Boolean = false,
 ) {
-    val color = if (isDestructive) HisarTheme.colors.destructive else HisarTheme.colors.label
+    val color = if (isDestructive) HisarTheme.colors.destructiveText else HisarTheme.colors.label
     DropdownMenuItem(
         text = { Text(text, style = HisarType.body) },
         onClick = onClick,

@@ -118,6 +118,9 @@ Developer tools keeps vault availability, website sign-in, approval revocation, 
 
 Settings search finds import sources by their displayed names, including **LastPass** and **Hisar export**. Searching for **Hermes** keeps its connection card in **Coding agents** visible as well as **Website sign-in**.
 
+The native **Hisar → Settings…** command uses ⌘, and restores the last Settings section.
+While locked, it brings the unlock window forward and opens Settings after unlock.
+
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
 The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the same draft guard as Cancel, ⌘N,
@@ -131,8 +134,12 @@ Value, secrecy, and removal controls include that name and update when you renam
 
 The item editor's password generator supports 8 to 64 characters. It starts at 24 characters with digits and symbols enabled.
 
+The password generator's Length slider has a keyboard-focus ring. Left and Right change its length.
+
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
+Appearance and color choices use one Tab stop per group. Arrow keys move and select a choice.
+The account and SSH-key tabs also support Left, Right, Home and End, with one Tab stop per tab group.
 
 ## Right-click menus
 
@@ -143,6 +150,7 @@ Design: [Design](../design.md) §9.1 (desktop: item menu).
 
 Click a field's label, value or row padding to copy it. You can also focus the field and press Enter or Space.
 Screen readers announce the copy action, field label and displayed value. Secret values stay masked until revealed.
+Field actions, including one-time-code actions, stay fully visible before hover or keyboard focus.
 In a narrow detail column, the item header's actions move below its title and vault badge.
 Below a 480px detail width, field labels sit above the value and actions.
 One-time codes and their countdown stay on one line, and password strength labels never split.

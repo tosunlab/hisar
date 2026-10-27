@@ -17,6 +17,10 @@ On iPhone and Android, item detail, the login editor and the password generator 
 Good or Strong. The four-segment meter uses the shared Go estimator. It does not reveal a masked password, and its rating
 does not prevent saving an item or using a generated password.
 
+Validation and warning text uses opaque, contrast-safe colors in every palette.
+Android destructive text uses the shared `dangerText` role, separate from decorative red icons.
+iPhone blocking password messages use primary text with a red warning symbol.
+
 Signing out another device ends its server session immediately. An offline device can still unlock its downloaded vaults until it next contacts the server, when Hisar removes the account from that device. Both the device list and device-detail confirmations explain this limit.
 
 Device sign-out and Mac-approval changes keep failures next to the initiating control. A failed change leaves the device or saved approval state unchanged and allows another attempt. A sign-out notice appears only after the server accepts revocation.

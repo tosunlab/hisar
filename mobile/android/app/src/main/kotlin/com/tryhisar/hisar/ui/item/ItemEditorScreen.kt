@@ -207,7 +207,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                         .padding(vertical = 15.dp),
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text("Delete item", style = HisarType.body, color = HisarTheme.colors.destructive, textAlign = TextAlign.Center)
+                    Text("Delete item", style = HisarType.body, color = HisarTheme.colors.destructiveText, textAlign = TextAlign.Center)
                 }
             }
         }

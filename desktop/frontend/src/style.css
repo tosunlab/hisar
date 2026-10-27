@@ -96,7 +96,7 @@ textarea:hover {
   border-color: var(--color-border-strong);
 }
 
-input:focus,
+input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):focus,
 textarea:focus {
   outline: none;
   border-color: var(--color-focus);
@@ -185,6 +185,11 @@ input[type="range"] {
   background: none;
   accent-color: var(--color-primary);
   box-shadow: none;
+}
+
+input[type="range"]:focus-visible {
+  outline: 2px solid var(--color-focus);
+  outline-offset: 2px;
 }
 
 textarea {

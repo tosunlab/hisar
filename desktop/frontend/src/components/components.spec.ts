@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount } from "@vue/test-utils";
 import { allTestVault, createApiMock, createItem, createStatus } from "../testing";
+import globalStyles from "../style.css?raw";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 const lockedListener = vi.hoisted(() => ({ current: undefined as undefined | (() => void) }));
@@ -513,6 +514,21 @@ describe("ItemDetailPanel", () => {
 
 describe("PasswordGenerator", () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it("defines a visible keyboard-focus outline for the native Length slider", async () => {
+    api.generatePassword.mockResolvedValue("generated-password");
+    const style = document.createElement("style");
+    style.textContent = globalStyles;
+    document.head.append(style);
+    const wrapper = mount(PasswordGenerator);
+    await flushPromises();
+    expect(wrapper.get('input[name="length"]').attributes("type")).toBe("range");
+    const rule = [...style.sheet!.cssRules].find((rule) => (rule as CSSStyleRule).selectorText?.replaceAll('"', "") === "input[type=range]:focus-visible") as CSSStyleRule;
+    expect(rule.style.outline).toBe("2px solid var(--color-focus)");
+    expect(rule.style.getPropertyValue("outline-offset")).toBe("2px");
+    wrapper.unmount();
+    style.remove();
+  });
 
   it("generates on open, regenerates on option change and emits the chosen password", async () => {
     api.generatePassword.mockResolvedValueOnce("first-password").mockResolvedValue("second-password");
