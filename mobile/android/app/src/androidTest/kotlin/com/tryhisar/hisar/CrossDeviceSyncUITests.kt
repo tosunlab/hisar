@@ -51,7 +51,7 @@ class CrossDeviceSyncUITests : HisarUITestCase() {
         goBack()
 
         val newPassword = readArgument("HISAR_UI_TEST_CROSS_DEVICE_NEW_PASSWORD")
-        tap("open-security")
+        tap("open-account")
         tap("open-change-master-password")
         type(readArgument("HISAR_UI_TEST_CROSS_DEVICE_PASSWORD"), "change-password-current")
         type(newPassword, "change-password-new")

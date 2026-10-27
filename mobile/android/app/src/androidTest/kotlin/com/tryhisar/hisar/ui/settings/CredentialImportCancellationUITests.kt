@@ -3,6 +3,7 @@ package com.tryhisar.hisar.ui.settings
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.HisarUITestCase
@@ -44,14 +45,21 @@ class CredentialImportCancellationUITests : HisarUITestCase() {
             waitFor(hasText("10 of 35 saved"))
             proxy.awaitHeldSave()
             composeRule.onNode(hasTestTag("credential-import-cancel")).assertIsEnabled()
+            assertTrue(exists(hasText("Stop import")))
+            assertTrue(exists(hasText("Items already saved will stay. The current batch may finish.")))
             tap("credential-import-cancel")
+            waitFor("credential-import-stopped")
+            tap("credential-import-done")
             waitForGone("credential-import")
             waitFor("open-credential-import")
+            proxy.releaseSave()
+            waitFor(hasText("Import stopped. 20 items saved."))
+            composeRule.onNode(hasText("View report")).performClick()
+            waitFor(hasText("20 items saved."))
+            tap("credential-import-done")
 
             application.credentialExchangeReceiver = { CredentialExchangeResult.Received(credentials("Second")) }
             tap("open-credential-import")
-            waitFor("credential-import-receiving")
-            proxy.releaseSave()
             waitFor("credential-import-start")
             val firstItems = backend.listAllItem(vaultID)
             assertEquals("the in-flight batch finishes but no third batch starts", 20, firstItems.size)
@@ -62,9 +70,12 @@ class CredentialImportCancellationUITests : HisarUITestCase() {
             waitFor(hasText("10 of 35 saved"))
             proxy.awaitHeldSave()
             goBack()
+            waitFor("credential-import-stopped")
+            goBack()
             waitForGone("credential-import")
             waitFor("open-credential-import")
             proxy.releaseSave()
+            waitFor(hasText("Import stopped. 20 items saved."))
             val allItems = backend.listAllItem(vaultID)
             assertEquals(40, allItems.size)
             assertEquals((1..20).map { "Second $it" }.toSet(), allItems.filter { it.title.startsWith("Second ") }.map { it.title }.toSet())

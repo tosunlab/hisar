@@ -25,7 +25,9 @@ Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconp
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
-Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
+Account settings group the master password, Secret Key, Emergency Kit, imports, exports, account deletion, and sign out.
+**Sign out** has its own final section below **Delete account** and still asks for confirmation.
+Help and About remain informational destinations on the Settings root.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 
 At accessibility text sizes, the lock screen keeps the account email on one line, shrinking it or truncating its middle.
@@ -36,6 +38,8 @@ The Emergency Kit scanner explains denied or restricted camera access. **Open Se
 Returning from Settings rechecks permission before starting the camera.
 If creating the first Emergency Kit fails, its section offers **Try again** and keeps the Secret Key and Copy available.
 Retrying uses a fresh temporary folder. Only a completed non-copy handoff enables the explicit saved confirmation.
+Devices distinguishes a failed first fetch from a successful empty list and offers **Retry**.
+A failed refresh keeps the last loaded list with a warning that it has not refreshed; pull-to-refresh remains available.
 
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.

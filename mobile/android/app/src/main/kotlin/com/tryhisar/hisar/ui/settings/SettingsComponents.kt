@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -43,7 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -160,9 +164,27 @@ fun NavigationRow(
     ) {
         val textColor = if (enabled) color else HisarTheme.colors.secondaryLabel
         if (icon != null) RowIcon(icon, if (enabled && color == HisarTheme.colors.label) HisarTheme.colors.tint else textColor)
-        Text(text, style = HisarType.body, color = textColor, modifier = Modifier.weight(1f))
-        if (value != null) {
-            Text(value, style = HisarType.body, color = HisarTheme.colors.secondaryLabel, maxLines = 1, modifier = Modifier.padding(start = 8.dp))
+        BoxWithConstraints(Modifier.weight(1f)) {
+            val measurer = rememberTextMeasurer()
+            val density = LocalDensity.current
+            val spacing = with(density) { 8.dp.roundToPx() }
+            val fitsHorizontally = value == null ||
+                measurer.measure(AnnotatedString(text), HisarType.body, softWrap = false).size.width +
+                measurer.measure(AnnotatedString(value), HisarType.body, softWrap = false).size.width +
+                spacing <= constraints.maxWidth
+            if (value == null) {
+                Text(text, style = HisarType.body, color = textColor)
+            } else if (fitsHorizontally) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(text, style = HisarType.body, color = textColor, modifier = Modifier.weight(1f))
+                    Text(value, style = HisarType.body, color = HisarTheme.colors.secondaryLabel)
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(text, style = HisarType.body, color = textColor)
+                    Text(value, style = HisarType.body, color = HisarTheme.colors.secondaryLabel)
+                }
+            }
         }
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,

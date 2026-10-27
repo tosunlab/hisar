@@ -9,8 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
-import androidx.compose.material.icons.outlined.FindReplace
-import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.LaptopMac
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Screenshot
@@ -30,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.ScreenshotSetting
 import com.tryhisar.hisar.app.AppModel
-import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
@@ -41,9 +38,9 @@ import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import kotlinx.coroutines.launch
 
-/** Settings → Security: biometric unlock, auto-lock, screenshots, the two credential changes, and locking now. */
+/** Settings → Security: biometric unlock, auto-lock, screenshots, and locking now. */
 @Composable
-fun SecurityScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack: () -> Unit) {
+fun SecurityScreen(model: AppModel, onBack: () -> Unit) {
     val status by model.status.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
@@ -102,11 +99,6 @@ fun SecurityScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack:
                 testTag = "allow-screenshots-switch",
                 icon = Icons.Outlined.Screenshot,
             )
-        }
-        FormSection(footer = { Text("Both sign out your other devices. They need a connection to the Hisar server.") }) {
-            NavigationRow("Change master password…", "open-change-master-password", { push(SettingsDestination.CHANGE_MASTER_PASSWORD) }, Icons.Outlined.Key)
-            RowDivider()
-            NavigationRow("Replace Secret Key…", "open-replace-secret-key", { push(SettingsDestination.REPLACE_SECRET_KEY) }, Icons.Outlined.FindReplace)
         }
         FormSection {
             FormButtonRow("Lock Hisar now", { scope.launch { model.lock() } }, testTag = "settings-lock-now", icon = Icons.Outlined.Lock, color = HisarTheme.colors.tint)

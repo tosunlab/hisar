@@ -316,11 +316,17 @@ final class HisarUITests: HisarUITestCase {
         waitFor(app.staticTexts["Version"])
         goBack()
 
+        XCTAssertFalse(app.buttons["sign-out"].exists, "Help and About contain no account action")
+        for _ in 0..<5 where !app.buttons["open-account"].isHittable {
+            app.swipeDown()
+        }
+        app.buttons["open-account"].tap()
         for _ in 0..<5 where !app.buttons["sign-out"].isHittable {
             app.swipeUp()
         }
         saveScreenshot("settings")
         app.buttons["sign-out"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "Secret Key", "master password")).firstMatch.waitForExistence(timeout: 5))
         confirm("Sign out", excludingIdentifier: "sign-out")
         waitFor(app.textFields["sign-in-email"])
 

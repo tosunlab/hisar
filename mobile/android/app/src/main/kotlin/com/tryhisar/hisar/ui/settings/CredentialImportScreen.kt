@@ -2,6 +2,8 @@ package com.tryhisar.hisar.ui.settings
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -33,6 +36,7 @@ import com.tryhisar.hisar.app.CredentialImportSheet
 import com.tryhisar.hisar.model.ImportPreview
 import com.tryhisar.hisar.model.ImportProgress
 import com.tryhisar.hisar.model.ImportSkippedEntry
+import com.tryhisar.hisar.model.ImportSourceGroup
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.ui.components.ClearSection
 import com.tryhisar.hisar.ui.components.ErrorBanner
@@ -62,13 +66,13 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
     val isImporting by credentialImport.isImporting.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
     var isSkippingDuplicate by remember { mutableStateOf(true) }
     val isDone = (sheet as? CredentialImportSheet.Importing)?.progress?.isDone == true
     val sourceName = when (sheet) {
         is CredentialImportSheet.EnteringPassphrase -> sheet.fileName
         is CredentialImportSheet.Previewing -> sheet.preview.fileName
         is CredentialImportSheet.Importing -> sheet.progress.fileName
+        is CredentialImportSheet.Stopped -> sheet.preview.fileName
         else -> ""
     }
 
@@ -83,10 +87,12 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
             leading = {
                 val closeTitle = when {
                     isDone -> "Done"
+                    sheet is CredentialImportSheet.Stopped -> "Done"
+                    isImporting || sheet is CredentialImportSheet.Importing -> "Stop import"
                     sheet is CredentialImportSheet.Failed -> "Close"
                     else -> "Cancel"
                 }
-                PlainButton(closeTitle, credentialImport::closeCredentialImport, testTag = if (isDone) "credential-import-done" else "credential-import-cancel")
+                PlainButton(closeTitle, credentialImport::closeCredentialImport, testTag = if (isDone || sheet is CredentialImportSheet.Stopped) "credential-import-done" else "credential-import-cancel")
             },
         ) {
             Column(Modifier.testTag("credential-import")) {
@@ -103,10 +109,11 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
                     is CredentialImportSheet.EnteringPassphrase -> PassphraseSection(credentialImport, errorMessage, isBusy || isImporting)
                     is CredentialImportSheet.Previewing -> PreviewSections(
                         model, sheet.preview, isSkippingDuplicate, { isSkippingDuplicate = it }, errorMessage, isBusy || isImporting,
-                    ) { scope.launch { credentialImport.startCredentialImport(isSkippingDuplicate) } }
+                    ) { model.scope.launch { credentialImport.startCredentialImport(isSkippingDuplicate) } }
                     is CredentialImportSheet.Importing -> ProgressSections(sheet.progress, errorMessage, isImporting) {
-                        scope.launch { credentialImport.continueCredentialImport() }
+                        model.scope.launch { credentialImport.continueCredentialImport() }
                     }
+                    is CredentialImportSheet.Stopped -> StoppedSections(sheet)
                 }
             }
         }
@@ -126,12 +133,21 @@ private fun PreviewSections(
     val scope = rememberCoroutineScope()
     val allVault = model.credentialImport.allVault
     val isGrouped = preview.groups.size > 1
+    var groupToMap by remember { mutableStateOf<ImportSourceGroup?>(null) }
+    fun destinationName(vaultID: String, fallback: String): String {
+        val vault = allVault.firstOrNull { it.id == vaultID } ?: return fallback
+        return if (allVault.count { it.name == vault.name } > 1) "${vault.name} · ${vault.id}" else vault.name
+    }
     val exportOrigin = describeExportOrigin(preview.exportedFrom, preview.exportedAt)
     if (exportOrigin != null || preview.notice.isNotEmpty()) {
         FormSection(modifier = Modifier.testTag("hisar-import-origin")) {
-            exportOrigin?.let { Text(it, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel) }
-            if (preview.notice.isNotEmpty()) {
-                Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("hisar-import-notice"))
+            FormRow {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    exportOrigin?.let { Text(it, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel) }
+                    if (preview.notice.isNotEmpty()) {
+                        Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("hisar-import-notice"))
+                    }
+                }
             }
         }
     }
@@ -141,7 +157,7 @@ private fun PreviewSections(
         modifier = Modifier.testTag("credential-import-vault"),
     ) {
         if (isGrouped) {
-            Text("The other app kept these items in ${preview.groups.size} groups. Each goes to your Personal vault unless you choose another vault for it.")
+            FormRow { Text(preview.groupDestinationExplanation) }
         } else {
             allVault.forEachIndexed { index, vault ->
                 if (index > 0) RowDivider()
@@ -153,22 +169,44 @@ private fun PreviewSections(
     }
     preview.groups.forEachIndexed { groupIndex, group ->
         FormSection(header = "Source and destination access", modifier = Modifier.testTag("credential-import-access")) {
-            Text("${group.name} to ${group.vaultName}")
+            FormRow { Text("${group.name} to ${group.vaultName}") }
             if (isGrouped) {
-                Text(VaultLogic.describeItemCount(group.itemCount))
-                allVault.forEach { vault ->
-                    RowDivider()
-                    CheckRow(vault.name, vault.id == group.vaultID, {
-                        if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
-                    }, testTag = "credential-import-group-$groupIndex-vault-${vault.id}")
+                NavigationRow(
+                    "Vault for ${VaultLogic.describeItemCount(group.itemCount)}",
+                    "credential-import-group-$groupIndex-destination",
+                    { groupToMap = group },
+                    value = destinationName(group.vaultID, group.vaultName),
+                    enabled = !isWorking,
+                )
+            }
+            FormRow(Modifier.testTag("credential-import-group-$groupIndex-access-details")) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(if (group.isPrivate) "Private or unspecified source" else "Shared source")
+                    group.members.forEach { member ->
+                        Text("${member.name.ifEmpty { member.accountID }} <${member.email}> · ${member.role}${if (member.isCurrentUser) " (you)" else ""}")
+                    }
+                    Text("Imported items are readable by the destination's current members. Access can change later.")
                 }
             }
-            Text(if (group.isPrivate) "Private or unspecified source" else "Shared source")
-            group.members.forEach { member ->
-                Text("${member.name.ifEmpty { member.accountID }} <${member.email}> · ${member.role}${if (member.isCurrentUser) " (you)" else ""}")
-            }
-            Text("Imported items are readable by the destination's current members. Access can change later.")
         }
+    }
+    groupToMap?.let { group ->
+        AlertDialog(
+            onDismissRequest = { groupToMap = null },
+            title = { Text("Vault for ${VaultLogic.describeItemCount(group.itemCount)}") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    allVault.forEach { vault ->
+                        CheckRow(destinationName(vault.id, vault.name), vault.id == group.vaultID, {
+                            groupToMap = null
+                            if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
+                        }, testTag = "credential-import-group-vault-${vault.id}")
+                    }
+                }
+            },
+            confirmButton = { PlainButton("Cancel", { groupToMap = null }, testTag = "credential-import-vault-cancel") },
+            containerColor = HisarTheme.colors.cellBackground,
+        )
     }
     val allCountRow = preview.allCountRow
     if (allCountRow.isNotEmpty()) {
@@ -279,6 +317,7 @@ private fun ProgressSections(progress: ImportProgress, errorMessage: String?, is
                             color = HisarTheme.colors.tint,
                         )
                         Text("${progress.savedCount} of ${progress.totalCount} saved", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                        Text("Items already saved will stay. The current batch may finish.", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
                     }
                 }
             }
@@ -294,6 +333,36 @@ private fun ProgressSections(progress: ImportProgress, errorMessage: String?, is
     if (progress.allFailed.isNotEmpty()) {
         val count = progress.allFailed.size
         SkippedSection(progress.allFailed, if (count == 1) "1 item couldn't be saved" else "$count items couldn't be saved", "credential-import-failed")
+    }
+}
+
+@Composable
+private fun StoppedSections(report: CredentialImportSheet.Stopped) {
+    FormSection {
+        FormRow(Modifier.testTag("credential-import-stopped")) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (report.isSettling) "Stopping import…" else "Import stopped", style = HisarType.headline, color = HisarTheme.colors.label)
+                val count = report.progress?.savedCount ?: 0
+                Text(if (report.isSettling || report.isOutcomeUncertain) "At least $count items saved." else "${VaultLogic.describeItemCount(count)} saved.")
+                Text("Items already saved will stay. The current batch may finish.")
+                if (report.isOutcomeUncertain) Text("The last batch's outcome couldn't be confirmed. Check the destination before retrying.")
+                Text("Keep the source and review the entries below before retrying. The saved count does not describe everything left in the source.")
+                if (report.preview.notice.isNotEmpty()) Text(report.preview.notice, color = HisarTheme.colors.orange)
+            }
+        }
+    }
+    val skipped = report.progress?.allSkipped?.ifEmpty { report.preview.allSkipped } ?: report.preview.allSkipped
+    if (skipped.isNotEmpty()) SkippedSection(skipped, "Source entries to review", "credential-import-stopped-skipped")
+    val duplicateOutcomes = report.progress?.allDuplicateOutcomes.orEmpty()
+    if (duplicateOutcomes.isNotEmpty()) {
+        SkippedSection(duplicateOutcomes, "Items already in the destination", "credential-import-stopped-duplicates")
+    } else if (report.preview.allDuplicate.isNotEmpty()) {
+        FormSection(header = "Items already in the destination") {
+            report.preview.allDuplicate.forEach { EntryRow(it.title, "Check this item in the source and destination before retrying.") }
+        }
+    }
+    report.progress?.allFailed?.takeIf { it.isNotEmpty() }?.let {
+        SkippedSection(it, "Items that couldn't be saved", "credential-import-stopped-failed")
     }
 }
 

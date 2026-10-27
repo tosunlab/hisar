@@ -116,12 +116,26 @@ SHA-256. The copy uses uppercase hex bytes separated by colons, as `apksigner` a
 
 ### Account passwords and exports
 
+Change your master password or replace your Secret Key in Settings → Account on either phone.
+Security contains device protection, including biometric unlock and auto-lock.
+
 The new master password and encrypted-export passphrase forms count extended grapheme clusters for their
 ten-character minimum, like the iPhone app. Combining marks, flags and joined emoji each stay with their character.
 This validation does not normalize the password or change the shared Go checks.
 
-Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
-does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
+A Hisar export restores each source vault to its original writable vault when available, or to Personal.
+Review each destination and its current members before importing.
+Each source group has one destination selector. Open it to choose a writable vault; its current members remain visible
+in the source group's access card.
+The import's origin and access explanations use the same card insets as the destination controls.
+
+Credential Exchange imports keep **Stop import** and system Back available while batches are saving.
+Items already saved stay, and the current batch may finish, but no later batch starts.
+A stopped-import report keeps the known saved count and entries to review. If you leave while the batch settles,
+the result notice's **View report** action reopens it. An uncertain batch outcome is not reported as an exact saved total.
+
+On Android, Settings rows put a long value below the setting name when both do not fit beside each other.
+They keep the system text size and grow to show both strings.
 
 ### Password generator
 

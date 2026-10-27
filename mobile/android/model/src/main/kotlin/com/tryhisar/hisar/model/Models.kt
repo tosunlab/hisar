@@ -1432,6 +1432,15 @@ data class ImportPreview(
     /** When the Hisar export was made, RFC 3339 UTC, or empty. */
     val exportedAt: String = "",
 ) {
+    val isHisarExport: Boolean get() = format == "hisar-export" || format == "hisar-encrypted-export"
+
+    val groupDestinationExplanation: String
+        get() = if (isHisarExport) {
+            "This export has ${groups.size} vaults. Each goes to the vault it came from, or your Personal vault, unless you choose another."
+        } else {
+            "The other app kept these items in ${groups.size} groups. Each goes to your Personal vault unless you choose another vault for it."
+        }
+
     /** The preview's non-zero counts, as the import sheet lists them. */
     val allCountRow: List<ImportCountRow>
         get() = listOf(
@@ -1464,6 +1473,9 @@ data class ImportProgress(
     val totalCount: Int = 0,
     val isDone: Boolean = false,
     val allFailed: List<ImportSkippedEntry> = emptyList(),
+    val allSkipped: List<ImportSkippedEntry> = emptyList(),
+    val allDuplicateOutcomes: List<ImportSkippedEntry> = emptyList(),
+    val leftBehindCount: Int = 0,
     /** The source is kept rather than offered for deletion, see [ImportPreview.isSourceKept]. */
     val isSourceKept: Boolean = false,
 )

@@ -29,7 +29,7 @@ class AccountLifecycleUITests : HisarUITestCase() {
                 val oldSecretKey = signUp(readArgument("HISAR_UI_TEST_LIFECYCLE_INVITE_LINK"), email, "Lifecycle")
                 addLogin("Surviving login", "recovery-user", "recovery-password-canary", "https://recovery.example.com")
                 goBack()
-                openSettings("open-security")
+                openSettings("open-account")
                 tap("open-change-master-password")
                 type(MASTER_PASSWORD, "change-password-current")
                 type(NEW_MASTER_PASSWORD, "change-password-new")

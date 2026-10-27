@@ -2,17 +2,25 @@ import SwiftUI
 
 struct DevicesView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var allDevice: [Device]?
+    @StateObject private var devices = DevicesLoadState()
     @State private var deviceToRevoke: Device?
 
     var body: some View {
         List {
-            if let errorMessage = model.errorMessage {
+            if devices.didFail {
+                Section {
+                    ErrorBanner(message: devices.allDevice == nil
+                                ? "Couldn't load your devices."
+                                : "Couldn't refresh your devices. Showing the last loaded list.")
+                    Button("Retry") { Task { await load() } }
+                        .accessibilityIdentifier("retry-devices")
+                }
+            } else if let errorMessage = model.errorMessage {
                 Section {
                     ErrorBanner(message: errorMessage)
                 }
             }
-            if let allDevice {
+            if let allDevice = devices.allDevice {
                 let allCurrentDevice = allDevice.filter(\.isCurrent)
                 let allOtherDevice = allDevice.filter { !$0.isCurrent }
                 if !allCurrentDevice.isEmpty {
@@ -43,7 +51,7 @@ struct DevicesView: View {
                          ? "No other device is signed in to your account."
                          : "Sign out a device you no longer use or don't recognise. It needs your Secret Key and master password to sign in again.")
                 }
-            } else {
+            } else if !devices.didFail {
                 Label {
                     Text("Loading devices…")
                 } icon: {
@@ -76,8 +84,44 @@ struct DevicesView: View {
     }
 
     private func load() async {
+        await devices.load(using: model)
+    }
+}
+
+@MainActor
+final class DevicesLoadState: ObservableObject {
+    enum State {
+        case loading
+        case loaded([Device])
+        case failed(previous: [Device]?)
+    }
+
+    @Published private(set) var state: State = .loading
+    private var isLoading = false
+
+    var allDevice: [Device]? {
+        switch state {
+        case .loading: nil
+        case .loaded(let devices): devices
+        case .failed(let previous): previous
+        }
+    }
+
+    var didFail: Bool {
+        if case .failed = state { return true }
+        return false
+    }
+
+    func load(using model: AppModel) async {
+        guard !isLoading else { return }
+        isLoading = true
+        defer { isLoading = false }
         model.clearError()
-        allDevice = await model.loadAllDevice() ?? allDevice ?? []
+        if let devices = await model.loadAllDevice() {
+            state = .loaded(devices)
+        } else {
+            state = .failed(previous: allDevice)
+        }
     }
 }
 

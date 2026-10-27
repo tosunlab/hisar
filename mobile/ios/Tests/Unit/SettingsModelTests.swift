@@ -94,6 +94,25 @@ final class SettingsModelTests: XCTestCase {
             Device(id: "mac", name: "MacBook Pro", platform: "darwin/desktop", lastSeenAt: "2027-01-14T08:00:00Z"),
         ]
         let model = await createUnlockedModel()
+        let devices = DevicesLoadState()
+        backend.deviceListError = "Offline"
+        await devices.load(using: model)
+        XCTAssertNil(devices.allDevice, "a first failure must not assert that no devices exist")
+        XCTAssertTrue(devices.didFail)
+        backend.deviceListError = nil
+        let seededDevices = backend.allDevice
+        backend.allDevice = []
+        await devices.load(using: model)
+        XCTAssertEqual(devices.allDevice?.count, 0, "an empty successful fetch is loaded data")
+        XCTAssertFalse(devices.didFail)
+        backend.allDevice = seededDevices
+        await devices.load(using: model)
+        XCTAssertEqual(devices.allDevice?.map(\.id), ["this", "mac"], "Retry replaces the failed state")
+        backend.deviceListError = "Offline again"
+        await devices.load(using: model)
+        XCTAssertEqual(devices.allDevice?.map(\.id), ["this", "mac"], "a failed refresh retains the last loaded list")
+        XCTAssertTrue(devices.didFail)
+        backend.deviceListError = nil
         let allDevice = await model.loadAllDevice()
         XCTAssertEqual(allDevice?.map(\.id), ["this", "mac"])
         let isMacSignedOut = await model.revokeDevice(backend.allDevice[1])
