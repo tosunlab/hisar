@@ -209,7 +209,7 @@ fun SignInScreen(model: AppModel) {
                 }
             } else null,
         ) {
-            ProminentButton(mode.title, ::submit, testTag = "sign-in-submit", enabled = canSubmit, isBusy = isBusy)
+            ProminentButton(mode.title, ::submit, testTag = "sign-in-submit", enabled = canSubmit, isBusy = isBusy, busyLabel = if (mode == SignInMode.SIGN_IN) "Signing in…" else "Creating account…")
         }
     }
 

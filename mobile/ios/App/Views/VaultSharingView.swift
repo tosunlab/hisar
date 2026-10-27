@@ -45,11 +45,12 @@ struct VaultSharingView: View {
                         .accessibilityIdentifier("share-completion-error")
                     } footer: {
                         Text("Hisar shares the vault key only with the key it pinned for that person. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 memberSection
                 if isOwner, let allInvitation = sharing?.allInvitation, !allInvitation.isEmpty {
-                    Section("Invited") {
+                    Section {
                         ForEach(allInvitation) { invitation in
                             SentInvitationRow(invitation: invitation, isVaultNameShown: false, identifier: "vault-invitation-\(invitation.email)", onConfirmed: { await load() })
                                 .swipeActions(edge: .trailing, allowsFullSwipe: false) {
@@ -59,6 +60,9 @@ struct VaultSharingView: View {
                                     Button("Cancel invitation", systemImage: "xmark.circle", role: .destructive) { invitationToCancel = invitation }
                                 }
                         }
+                    } header: {
+                        Text("Invited")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
             }
@@ -169,8 +173,10 @@ struct VaultSharingView: View {
             }
         } header: {
             Text("Invite by email")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("\(describeVaultRoleAbility(role)) They accept in Hisar, or create an account from the email first; your Hisar then shares the vault key with them.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -200,13 +206,16 @@ struct VaultSharingView: View {
         } header: {
             if let sharing {
                 Text(sharing.allMember.count == 1 ? "1 member" : "\(sharing.allMember.count) members")
+                    .foregroundStyle(.themeSecondary)
             } else {
                 Text("Members")
+                    .foregroundStyle(.themeSecondary)
             }
         } footer: {
             Text(isOwner
                  ? "Everyone here can open the items in this vault. Tap a person to compare their security code, change their role or remove them."
                  : "Everyone here can open the items in this vault. Only its owners can share it or change who has access.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -328,8 +337,10 @@ struct VaultMemberView: View {
                     }
                 } header: {
                     Text("Security code")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text(describeSecurityCode(member))
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             Section {
@@ -346,6 +357,7 @@ struct VaultMemberView: View {
                 }
             } footer: {
                 Text(describeVaultRoleAbility(selectedRole))
+                    .foregroundStyle(.themeSecondary)
             }
             if isManageable {
                 Section {

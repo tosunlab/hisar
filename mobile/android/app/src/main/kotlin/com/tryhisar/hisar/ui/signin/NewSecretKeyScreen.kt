@@ -131,7 +131,7 @@ fun BiometricOfferScreen(model: AppModel) {
     GroupedForm(
         title = "Unlock with biometrics?",
         bottomBar = {
-            ProminentButton("Turn on biometrics", { scope.launch { model.signIn.turnOnBiometricUnlockFromOffer() } }, testTag = "biometric-offer-turn-on", isBusy = isBusy)
+            ProminentButton("Turn on biometrics", { scope.launch { model.signIn.turnOnBiometricUnlockFromOffer() } }, testTag = "biometric-offer-turn-on", isBusy = isBusy, busyLabel = "Turning on biometrics…")
             Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
                 PlainButton("Not now", model.signIn::dismissNewSecretKey, testTag = "biometric-offer-not-now", enabled = !isBusy)
             }

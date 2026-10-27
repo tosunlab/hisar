@@ -55,8 +55,10 @@ struct NewSecretKeyView: View {
                     }
                 } header: {
                     Text("Emergency Kit")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Keep it away from your devices.")
+                        .foregroundStyle(.themeSecondary)
                 }
                 Section {
                     Label {

@@ -136,8 +136,10 @@ struct VaultDeletionForm: View {
                     }
                 } header: {
                     Text("These people lose access")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("Their Hisar removes the vault on its next sync and tells them it is no longer available.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if itemCount > 0 {
@@ -166,12 +168,16 @@ struct VaultDeletionForm: View {
                     }
                 } header: {
                     Text("Items")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     if isMovePossible && !isDeletingItems {
                         Text("Hisar re-encrypts each item on this iPhone with the other vault's key before it moves. The server never sees them.")
+                            .foregroundStyle(.themeSecondary)
                     } else {
                         Text("Deleted items can't be restored. Export your data first if you may need them.")
+                            .foregroundStyle(.themeSecondary)
                         Text("Share links contain separate copies of item fields. Deleting this vault doesn't revoke them. Review links you created in Shared links on the Mac, or with hisar share-links.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
             } else {
@@ -259,9 +265,10 @@ struct RemovedVaultNoticeSection: View {
                             Image(systemName: "xmark")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(.themeSecondary)
+                                .iconButtonHitArea()
                         }
                         .buttonStyle(.borderless)
-                        .accessibilityLabel("Dismiss")
+                        .accessibilityLabel("Dismiss notice for \(notice.name)")
                         .accessibilityIdentifier("dismiss-removed-vault-\(notice.id)")
                     }
                     .accessibilityIdentifier("removed-vault-\(notice.id)")
@@ -312,9 +319,12 @@ struct ExportDataForm: View {
                     .accessibilityIdentifier("share-export")
                 } header: {
                     Text("Export ready")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("\(result.vaultCount == 1 ? "1 vault" : "\(result.vaultCount) vaults"), \(AppModel.describeItemCount(result.itemCount)).")
+                        .foregroundStyle(.themeSecondary)
                     Text("Hisar deletes its temporary copy when you close this screen. Copies you save or share are not deleted.")
+                        .foregroundStyle(.themeSecondary)
                 }
             } else {
                 Section {
@@ -327,9 +337,12 @@ struct ExportDataForm: View {
                     .accessibilityIdentifier("export-format")
                 } header: {
                     Text("Format")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("Every vault you can open, with logins, notes, one-time code secrets, SSH keys and other fields. hisar import reads both formats.")
+                        .foregroundStyle(.themeSecondary)
                     Text("Offline exports are cached copies. Changes since completed syncs may be absent. The result and file report known omissions.")
+                        .foregroundStyle(.themeSecondary)
                 }
                 if format == .encrypted {
                     Section {
@@ -343,6 +356,7 @@ struct ExportDataForm: View {
                             .concealWhen(isBusy)
                     } footer: {
                         Text("At least \(options.minPassphraseLength) characters. You need it to import the file; Hisar can't recover it.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 } else {
                     Section {

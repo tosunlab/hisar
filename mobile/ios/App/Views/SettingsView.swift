@@ -231,6 +231,7 @@ struct AccountView: View {
                 .accessibilityIdentifier("open-replace-secret-key")
             } footer: {
                 Text("Both sign out your other devices. They need a connection to the Hisar server.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 NavigationLink(value: SettingsDestination.secretKey) {
@@ -239,6 +240,7 @@ struct AccountView: View {
                 .accessibilityIdentifier("open-secret-key")
             } footer: {
                 Text("To sign in on a new device you need your master password and your Secret Key. The Emergency Kit holds your Secret Key and has a space to write your master password.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 Button {
@@ -264,6 +266,7 @@ struct AccountView: View {
                 .accessibilityIdentifier("other-app-import-disclosure")
             } footer: {
                 Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON. You can import a Hisar export back into your vaults.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 NavigationLink(value: SettingsDestination.deleteAccount) {
@@ -274,6 +277,7 @@ struct AccountView: View {
                 .accessibilityIdentifier("open-delete-account")
             } footer: {
                 Text("Deletes your account and the vaults only you own from the Hisar server. \(AccountLifecycleLogic.exportAdvice)")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 Button("Sign out", role: .destructive) {
@@ -326,8 +330,10 @@ struct SecretKeyView: View {
                     .accessibilityIdentifier("copy-secret-key")
                 } header: {
                     Text("Secret Key")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("Hisar keeps a copy on this iPhone. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.")
+                        .foregroundStyle(.themeSecondary)
                 }
                 Section {
                     ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
@@ -336,8 +342,10 @@ struct SecretKeyView: View {
                     .accessibilityIdentifier("share-emergency-kit")
                 } header: {
                     Text("Emergency Kit")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("A PDF with your server, email and Secret Key, and a space to write your master password. Print it or save it somewhere safe, away from your devices.")
+                        .foregroundStyle(.themeSecondary)
                 }
             } else {
                 Section {
@@ -350,6 +358,7 @@ struct SecretKeyView: View {
                         .concealWhen(model.isBusy)
                 } footer: {
                     Text("Enter your master password to see your Secret Key and save your Emergency Kit.")
+                        .foregroundStyle(.themeSecondary)
                 }
                 if let errorMessage = model.errorMessage {
                     Section {
@@ -421,6 +430,7 @@ struct SecurityView: View {
                 Text(model.status.biometricAvailable
                      ? SettingsView.biometryConsent
                      : "\(SettingsView.biometryName) is not set up on this iPhone.")
+                    .foregroundStyle(.themeSecondary)
             }
             if let errorMessage = model.errorMessage {
                 Section {
@@ -442,8 +452,10 @@ struct SecurityView: View {
                 .accessibilityIdentifier("auto-lock-picker")
             } header: {
                 Text("Auto-lock after")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("Hisar locks after this long without activity. Copied values are cleared after 90 seconds.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 Button {
@@ -467,6 +479,7 @@ struct SecurityView: View {
                             .concealWhen(model.isBusy)
                     } footer: {
                         Text(SettingsView.biometryConsent + "\n\nEnter your master password to continue.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 .navigationTitle("Turn on \(SettingsView.biometryName)")
@@ -702,7 +715,9 @@ struct MacApprovalsView: View {
                 }
             } footer: {
                 Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
+                    .foregroundStyle(.themeSecondary)
                 Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         .applyThemedListStyle()
@@ -764,6 +779,7 @@ struct NotificationSettingsView: View {
                 }
             } footer: {
                 Text(footer)
+                    .foregroundStyle(.themeSecondary)
             }
             if let errorMessage = notifications.errorMessage ?? notifications.settings.errorMessage {
                 Section {
@@ -823,6 +839,7 @@ struct AutoFillSettingsView: View {
             } footer: {
                 if !Self.isAutoFillIncluded {
                     Text("This build is signed with a free Apple ID, which cannot include the AutoFill extension.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if Self.isAutoFillIncluded {
@@ -842,6 +859,7 @@ struct AutoFillSettingsView: View {
                 .accessibilityIdentifier("exact-host-match")
             } footer: {
                 Text("Off: a login for google.com also fills on accounts.google.com. On: only on the host saved in the item.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         .applyThemedListStyle()
@@ -948,8 +966,10 @@ struct HelpView: View {
                 .accessibilityIdentifier("copy-support-email")
             } header: {
                 Text("Contact support")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("Write to us about a problem or an idea. Diagnostics are optional. Copy them below if you want to include them in your message.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 Button {
@@ -960,6 +980,7 @@ struct HelpView: View {
                 .accessibilityIdentifier("copy-diagnostics")
             } footer: {
                 Text("The app version and build, iOS version and device model, server and this device's ID. Never your items, keys or master password.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 LabeledContent("Server", value: VaultLogic.describeServer(model.status.server))

@@ -30,8 +30,10 @@ struct ChangeMasterPasswordView: View {
                     .concealWhen(model.isBusy || isConfirmationShown)
             } header: {
                 Text("Current master password")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("Your Secret Key, your Emergency Kit and your items stay the same. Hisar never sends your master password to the server.")
+                    .foregroundStyle(.themeSecondary)
             }
             Section {
                 CredentialField("New master password", text: $newPassword, prompt: "At least 10 characters", secretName: "new master password")
@@ -44,6 +46,7 @@ struct ChangeMasterPasswordView: View {
                     .concealWhen(model.isBusy || isConfirmationShown)
             } header: {
                 Text("New master password")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
                     PasswordStrengthMeter(strength: newPasswordFeedback?.strength ?? PasswordStrength())
@@ -56,8 +59,10 @@ struct ChangeMasterPasswordView: View {
                             .accessibilityIdentifier("change-password-problem")
                     } else if let hint = AccountLifecycleLogic.describeMasterPasswordHint(feedback: newPasswordFeedback) {
                         Text(hint)
+                            .foregroundStyle(.themeSecondary)
                     }
                     Text("A forgotten master password can't be recovered by anyone, including Hisar.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .task(id: newPassword) {
@@ -168,8 +173,10 @@ struct ReplaceSecretKeyView: View {
                 .concealWhen(model.isBusy || isConfirmationShown)
         } header: {
             Text("Master password")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("Replace it if your Secret Key or Emergency Kit may have been seen by someone else. Your master password and your items stay the same.")
+                .foregroundStyle(.themeSecondary)
         }
         if let errorMessage = model.errorMessage {
             Section {
@@ -222,8 +229,10 @@ struct ReplaceSecretKeyView: View {
                 .accessibilityIdentifier("share-new-emergency-kit")
             } header: {
                 Text("New Emergency Kit")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Save the new one now, and destroy the old one.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         Section {
@@ -293,8 +302,10 @@ struct DeleteAccountView: View {
                     .accessibilityIdentifier("delete-account-email")
             } header: {
                 Text("Confirm")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("Enter your master password and type \(model.status.email) to confirm. Hisar checks your master password without sending it to the server.")
+                    .foregroundStyle(.themeSecondary)
             }
             if let errorMessage = model.errorMessage {
                 Section {
@@ -346,31 +357,43 @@ struct DeleteAccountView: View {
     @ViewBuilder
     private func consequenceSections(_ preview: AccountDeletionPreview) -> some View {
         if !preview.allOwnedVault.isEmpty {
-            Section("Vaults that are deleted") {
+            Section {
                 ForEach(preview.allOwnedVault) { vault in
                     LabeledContent(vault.name, value: AccountLifecycleLogic.describeOwnedVault(vault))
                 }
+            } header: {
+                Text("Vaults that are deleted")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         if !preview.allMemberVault.isEmpty {
-            Section("Vaults you leave") {
+            Section {
                 ForEach(preview.allMemberVault) { vault in
                     LabeledContent(vault.name, value: AccountLifecycleLogic.describeMemberVault(vault))
                 }
+            } header: {
+                Text("Vaults you leave")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         if !preview.allOrganization.isEmpty {
-            Section("Organizations") {
+            Section {
                 ForEach(preview.allOrganization) { organization in
                     Text(AccountLifecycleLogic.describeOrganization(organization))
                         .accessibilityIdentifier("deletion-organization-\(organization.name)")
                 }
+            } header: {
+                Text("Organizations")
+                    .foregroundStyle(.themeSecondary)
             }
         }
-        Section("Also") {
+        Section {
             ForEach(AccountLifecycleLogic.describeAllOtherConsequence(preview), id: \.self) { consequence in
                 Text(consequence)
             }
+        } header: {
+            Text("Also")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -435,7 +458,7 @@ struct PendingRecoveryView: View {
                     Text("Save and confirm your Emergency Kit to finish this setup.")
                 }
                 if model.allPendingRecovery.count > 1 {
-                    Section("Choose an account") {
+                    Section {
                         ForEach(model.allPendingRecovery) { recovery in
                             Button {
                                 if selectedID != recovery.operationId {
@@ -455,6 +478,12 @@ struct PendingRecoveryView: View {
                             }
                             .accessibilityIdentifier("pending-recovery-\(recovery.operationId)")
                         }
+                } header: {
+                        Text("Choose an account")
+                            .foregroundStyle(.themeSecondary)
+                    } header: {
+                    Text("Choose an account")
+                        .foregroundStyle(.themeSecondary)
                     }
                 }
                 if let recovery = selected {
@@ -513,8 +542,10 @@ struct PendingRecoveryView: View {
                         }
                     } header: {
                         Text(PendingRecoveryCopy.heading(recovery.kind))
+                            .foregroundStyle(.themeSecondary)
                     } footer: {
                         Text("Preparing a kit does not confirm that you saved it.")
+                            .foregroundStyle(.themeSecondary)
                     }
                     if let export = model.pendingRecoveryExport {
                         SecretKeySection(secretKey: export.secretKey, valueIdentifier: "pending-recovery-secret-key", copyIdentifier: "pending-recovery-copy-secret-key")
@@ -532,6 +563,7 @@ struct PendingRecoveryView: View {
                             }
                         } header: {
                             Text("Emergency Kit")
+                                .foregroundStyle(.themeSecondary)
                         }
                     }
                     Section {

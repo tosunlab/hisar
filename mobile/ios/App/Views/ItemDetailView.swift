@@ -127,16 +127,7 @@ struct ItemDetailView: View {
     private func buildContent(item: ItemDetail) -> some View {
         List {
             Section {
-                HStack(spacing: 14) {
-                    AppItemIcon(item: item, size: 56)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title)
-                            .font(.title2.weight(.bold))
-                        Text("\(vault?.name ?? "") · \(describeCategory(item: item))")
-                            .font(.subheadline)
-                            .foregroundStyle(.themeSecondary)
-                    }
-                }
+                ItemDetailHeader(item: item, subtitle: "\(vault?.name ?? "") · \(describeCategory(item: item))")
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 if !item.allTag.isEmpty {
@@ -187,7 +178,7 @@ struct ItemDetailView: View {
                 }
             }
             if !item.allField.isEmpty {
-                Section("Other fields") {
+                Section {
                     ForEach(Array(item.allField.enumerated()), id: \.offset) { _, field in
                         SecretFieldRow(
                             label: field.name, isCustomField: true, value: field.value, isConcealed: field.concealed,
@@ -197,10 +188,13 @@ struct ItemDetailView: View {
                             copyReference: { copyReference(fieldName: field.name) }
                         )
                     }
+                } header: {
+                    Text("Other fields")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allURL.isEmpty {
-                Section(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites") {
+                Section {
                     ForEach(Array(item.allURL.enumerated()), id: \.offset) { _, url in
                         HStack(spacing: 0) {
                             CopyFieldButton(label: "website", value: url, copy: { model.copyText(url, label: "Website") }) {
@@ -233,6 +227,9 @@ struct ItemDetailView: View {
                             }
                         }
                     }
+                } header: {
+                    Text(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allAndroidApp.isEmpty {
@@ -242,15 +239,20 @@ struct ItemDetailView: View {
                     }
                 } header: {
                     Text(item.allAndroidApp.count == 1 ? "Android app" : "Android apps")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("Linked on an Android phone. AutoFill there offers this login in these apps.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allPasskey.isEmpty {
-                Section("Passkeys") {
+                Section {
                     ForEach(item.allPasskey) { passkey in
                         buildPasskeyRow(passkey)
                     }
+                } header: {
+                    Text("Passkeys")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.notes.isEmpty && !item.isSecureNote {
@@ -272,6 +274,7 @@ struct ItemDetailView: View {
                     }
                 } header: {
                     Text("Notes")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if isWritable && item.canConvertToSecureNote {
@@ -285,6 +288,7 @@ struct ItemDetailView: View {
                     .accessibilityIdentifier("convert-to-secure-note")
                 } footer: {
                     Text("This login has no username, password or website. As a secure note, it opens straight to its notes and fields.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if let referenceField = getReferenceField(item: item) {
@@ -298,6 +302,7 @@ struct ItemDetailView: View {
                     .accessibilityIdentifier("copy-secret-reference")
                 } footer: {
                     Text("For hisar run and hisar read on your Mac.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -309,7 +314,7 @@ struct ItemDetailView: View {
     @ViewBuilder
     private func buildServerSection(server: ItemServer) -> some View {
         if !server.host.isEmpty || !server.port.isEmpty || !server.sshKeyID.isEmpty {
-            Section("Server") {
+            Section {
                 if !server.host.isEmpty {
                     SecretFieldRow(
                         label: ServerFieldName.host, value: server.host, isConcealed: false, isRevealed: true, toggleReveal: nil,
@@ -345,6 +350,9 @@ struct ItemDetailView: View {
                         .accessibilityIdentifier("server-ssh-key")
                     }
                 }
+            } header: {
+                Text("Server")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -415,6 +423,7 @@ struct ItemDetailView: View {
             )
         } footer: {
             Text("Built from the fields above, so it always has the current password.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -528,6 +537,7 @@ struct ItemDetailView: View {
             }
         } header: {
             Text(title)
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -556,6 +566,7 @@ struct ItemDetailView: View {
             }
         } header: {
             Text("Note")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -566,7 +577,7 @@ struct ItemDetailView: View {
 
     @ViewBuilder
     private func buildSSHKeySection(item: ItemDetail) -> some View {
-        Section("SSH key") {
+        Section {
             LabeledContent("Key type", value: item.keyType)
             SecretFieldRow(
                 label: "Fingerprint", value: item.fingerprint, isConcealed: false, isRevealed: true, toggleReveal: nil,
@@ -578,6 +589,9 @@ struct ItemDetailView: View {
                 copy: { copy(fieldName: "public key", label: "Public key") },
                 copyReference: { copyReference(fieldName: "public key") }
             )
+        } header: {
+            Text("SSH key")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -810,22 +824,28 @@ private struct MoveItemSheet: View {
                 Picker("Move to", selection: $targetVaultID) {
                     Text("Choose a vault").tag("")
                     ForEach(groups) { group in
-                        Section(group.name) {
+                        Section {
                             ForEach(group.destinations) { destination in
                                 Text(destination.label).tag(destination.id)
                             }
+                        } header: {
+                            Text(group.name)
+                                .foregroundStyle(.themeSecondary)
                         }
                     }
                 }
                 .accessibilityIdentifier("move-item-target")
                 if let selected {
-                    Section("Who has access") {
+                    Section {
                         Text(selected.context)
                         Text("Everyone with access to the destination gains access to this item. People with source access but no destination access lose it on their next sync. Copies they retained independently cannot be revoked.")
                         Text("hisar:// secret references that use the source vault's name need the new vault name.")
                         if item.isServer, item.server?.sshKeyID.isEmpty == false {
                             Text("The linked SSH key must exist in the destination vault or be selected again after moving.")
                         }
+                    } header: {
+                        Text("Who has access")
+                            .foregroundStyle(.themeSecondary)
                     }
                     .accessibilityIdentifier("move-item-context")
                 }
@@ -850,5 +870,28 @@ private struct MoveItemSheet: View {
             }
         }
         .interactiveDismissDisabled(model.isBusy)
+struct ItemDetailHeader: View {
+    var item: ItemDetail
+    var subtitle: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+            : AnyLayout(HStackLayout(spacing: 14))
+        layout {
+            AppItemIcon(item: item, size: 56, maxSize: 56)
+                .dynamicTypeSize(.large)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.title2.weight(.bold))
+                    .accessibilityIdentifier("item-detail-title")
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.themeSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }

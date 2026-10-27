@@ -6,6 +6,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
@@ -79,7 +80,7 @@ fun SecurityScreen(model: AppModel, onBack: () -> Unit) {
         FormSection(
             header = "Auto-lock after",
             footer = { Text("Hisar locks after this long without activity. Copied values are cleared after about 2 minutes.") },
-            modifier = Modifier.testTag("auto-lock-picker"),
+            modifier = Modifier.testTag("auto-lock-picker").selectableGroup(),
         ) {
             VaultStatus.allAutoLockSeconds.forEachIndexed { index, seconds ->
                 if (index > 0) RowDivider()

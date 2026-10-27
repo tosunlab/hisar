@@ -103,8 +103,10 @@ struct DeferredSecretKeyView: View {
                         .accessibilityIdentifier("pending-recovery-share-kit")
                     } header: {
                         Text("Emergency Kit")
+                            .foregroundStyle(.themeSecondary)
                     } footer: {
                         Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Keep it away from your devices.")
+                            .foregroundStyle(.themeSecondary)
                     }
                     Section {
                         Button("I saved my Emergency Kit") {
@@ -115,6 +117,7 @@ struct DeferredSecretKeyView: View {
                     } footer: {
                         if !delivery.canAcknowledge {
                             Text("Save or print the Emergency Kit to continue.")
+                                .foregroundStyle(.themeSecondary)
                         }
                     }
                 } else if case .preparing = delivery.state {
@@ -133,6 +136,7 @@ struct DeferredSecretKeyView: View {
                         .accessibilityIdentifier("pending-recovery-export")
                     } footer: {
                         Text("Enter the master password you chose for this account to prepare its Emergency Kit. Your current account stays unchanged.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 if let errorMessage = model.errorMessage {

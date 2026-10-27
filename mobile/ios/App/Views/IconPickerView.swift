@@ -19,8 +19,6 @@ struct IconPickerView: View {
         _color = State(initialValue: icon.wrappedValue?.color ?? "")
     }
 
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 8), count: 6)
-
     var body: some View {
         let photoLabel = preparation.isPreparing ? "Preparing…" : "Choose photo"
         NavigationStack {
@@ -64,30 +62,16 @@ struct IconPickerView: View {
                         .accessibilityIdentifier("icon-cancel-preparation")
                     }
                 }
-                Section("Icons") {
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        ForEach(ChosenIcon.allPreset, id: \.self) { preset in
-                            let isChosen = icon?.image == nil && icon?.preset == preset
-                            Button {
-                                preparation.cancel()
-                                icon = ChosenIcon(preset: preset, color: color)
-                            } label: {
-                                ItemIcon(item: buildPreviewItem(icon: ChosenIcon(preset: preset, color: color)), size: 40)
-                                    .padding(3)
-                                    .overlay {
-                                        RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                            .strokeBorder(isChosen ? Color.accentColor : .clear, lineWidth: 2)
-                                    }
-                            }
-                            .buttonStyle(.plain)
-                            .accessibilityLabel(preset.capitalized)
-                            .accessibilityAddTraits(isChosen ? .isSelected : [])
-                            .accessibilityIdentifier("icon-preset-\(preset)")
-                        }
+                Section {
+                    IconPresetGrid(item: item, icon: icon, color: color) { preset in
+                        preparation.cancel()
+                        icon = ChosenIcon(preset: preset, color: color)
                     }
-                    .padding(.vertical, 4)
+                } header: {
+                    Text("Icons")
+                        .foregroundStyle(.themeSecondary)
                 }
-                Section("Color") {
+                Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
                             buildSwatch("")
@@ -103,6 +87,9 @@ struct IconPickerView: View {
                             .font(.footnote)
                             .foregroundStyle(.themeSecondary)
                     }
+                } header: {
+                    Text("Color")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle("Icon")
@@ -139,6 +126,7 @@ struct IconPickerView: View {
                 .overlay {
                     Circle().strokeBorder(color == hue ? Color.accentColor : .clear, lineWidth: 2.5)
                 }
+                .iconButtonHitArea()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(hue.isEmpty ? "No color" : hue.capitalized)
@@ -152,4 +140,44 @@ struct IconPickerView: View {
         return preview
     }
 
+}
+
+struct IconPresetGrid: View {
+    var item: ItemDetail
+    var icon: ChosenIcon?
+    var color: String
+    var onChoose: (String) -> Void
+
+    @ScaledMetric(relativeTo: .body) private var bodyRelativeScale: CGFloat = 1
+
+    var body: some View {
+        let minimum = max(44, 40 * bodyRelativeScale + 6)
+        LazyVGrid(columns: [GridItem(.adaptive(minimum: minimum), spacing: 8)], spacing: 8) {
+            ForEach(ChosenIcon.allPreset, id: \.self) { preset in
+                let isChosen = icon?.image == nil && icon?.preset == preset
+                Button {
+                    onChoose(preset)
+                } label: {
+                    ItemIcon(item: previewItem(preset), size: 40)
+                        .padding(3)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 13, style: .continuous)
+                                .strokeBorder(isChosen ? Color.accentColor : .clear, lineWidth: 2)
+                        }
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(preset.capitalized)
+                .accessibilityAddTraits(isChosen ? .isSelected : [])
+                .accessibilityIdentifier("icon-preset-\(preset)")
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func previewItem(_ preset: String) -> ItemDetail {
+        var preview = item
+        preview.icon = ChosenIcon(preset: preset, color: color)
+        return preview
+    }
 }

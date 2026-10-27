@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
@@ -58,7 +59,7 @@ fun AppearanceScreen(model: AppModel, onBack: () -> Unit) {
     LaunchedEffect(Unit) { model.errorMessage.value = null }
 
     SettingsScreen("Appearance", onBack, isTitleInline = true) {
-        FormSection(header = "Appearance") {
+        FormSection(header = "Appearance", modifier = Modifier.selectableGroup()) {
             ThemeAppearanceName.entries.forEachIndexed { index, appearance ->
                 if (index > 0) RowDivider()
                 CheckRow(
@@ -73,6 +74,7 @@ fun AppearanceScreen(model: AppModel, onBack: () -> Unit) {
         }
         FormSection(
             header = "Color",
+            modifier = Modifier.selectableGroup(),
             footer = { Text("Blue, Purple and Green tint the background and the controls. Hisar on your Mac has its own theme setting.") },
         ) {
             ThemeColorName.entries.forEachIndexed { index, color ->

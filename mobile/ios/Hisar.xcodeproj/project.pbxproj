@@ -173,6 +173,7 @@
 		BF4F3F027E347231B1760F19 /* HisarAutoFill.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EAE5AE06D113B40C2B306DCD /* HisarAutoFill.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C1A0036D14AC1E77377757DC /* IconPhotoPreparation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6CA7BEC1B59C044A8A648DB9 /* IconPhotoPreparation.swift */; };
 		C25CF2A328EDD75B1054EF0B /* SharingPushText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8013EEA324E335AC3F584E9 /* SharingPushText.swift */; };
+		C5E4DBC14CDCD57496B9337F /* EditorPresentationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2605B9089430270A9A0AA8FA /* EditorPresentationTests.swift */; };
 		C84A058AFCD826EC5E00DEDA /* PendingApprovalSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8377C0BA43756107B7C54F28 /* PendingApprovalSection.swift */; };
 		C869199A9D7D7DBC3309E97B /* HisarKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15377A521C283EA5723954C2 /* HisarKit.xcframework */; };
 		C9B332C8EDAC479E1EC33EC5 /* AccountLifecycleLogic.swift in Sources */ = {isa = PBXBuildFile; fileRef = 601EF17B716B840E1BB373D8 /* AccountLifecycleLogic.swift */; };
@@ -284,6 +285,7 @@
 		1F31820CE1E2F645F505502A /* CredentialProviderViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderViewController.swift; sourceTree = "<group>"; };
 		22698CECCF02525330145455 /* AutoFillPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillPreviewView.swift; sourceTree = "<group>"; };
 		2289AA6C11E524DBE81EBD95 /* SettingsModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsModelTests.swift; sourceTree = "<group>"; };
+		2605B9089430270A9A0AA8FA /* EditorPresentationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EditorPresentationTests.swift; sourceTree = "<group>"; };
 		26730576FD34B49781786827 /* PasskeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyTests.swift; sourceTree = "<group>"; };
 		27EDFCA29649DDE3B235B5A9 /* HisarPersonal.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HisarPersonal.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		2A8617274E37CA581A4B2E2D /* SecretKeySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretKeySection.swift; sourceTree = "<group>"; };
@@ -603,6 +605,7 @@
 				5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */,
 				9007BBD736D5DF316E384C66 /* CredentialFieldTests.swift */,
 				485ED95656DCEAE23CB924CE /* CredentialImportTests.swift */,
+				2605B9089430270A9A0AA8FA /* EditorPresentationTests.swift */,
 				7B2774C869B2E88A54905C78 /* FakeBackend.swift */,
 				D4E0374FBF44BF5778ED2846 /* FavoritesTests.swift */,
 				518AEE21C89822E79631F0C9 /* IconPhotoPreparationTests.swift */,
@@ -923,6 +926,7 @@
 				343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */,
 				34D1D3A86C35121640AF66D8 /* CredentialFieldTests.swift in Sources */,
 				5E555F44D126AB82C96B9857 /* CredentialImportTests.swift in Sources */,
+				C5E4DBC14CDCD57496B9337F /* EditorPresentationTests.swift in Sources */,
 				BDD67F160CD76BD42407E230 /* FakeBackend.swift in Sources */,
 				3322F7AF5EC4923637DF5F93 /* FavoritesTests.swift in Sources */,
 				256EA6CE9797CF4CC9B57D91 /* IconPhotoPreparationTests.swift in Sources */,

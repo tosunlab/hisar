@@ -24,6 +24,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -43,7 +45,7 @@ fun PushedTopBar(title: String, onBack: () -> Unit, actions: @Composable RowScop
         content = {
             ToolbarIconButton(Icons.AutoMirrored.Filled.ArrowBackIos, "Back", testTag = "back", onClick = onBack)
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically, content = actions)
-            Text(title, style = HisarType.headline, color = HisarTheme.colors.label, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, style = HisarType.headline, color = HisarTheme.colors.label, textAlign = TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = if (title.isNotBlank()) Modifier.semantics { heading() } else Modifier)
         },
         modifier = Modifier
             .fillMaxWidth()

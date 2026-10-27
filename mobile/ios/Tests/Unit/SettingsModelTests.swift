@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import XCTest
 @testable import Hisar
@@ -90,6 +91,65 @@ final class SettingsModelTests: XCTestCase {
         XCTAssertEqual(allTint, [0x1D2025, 0x2356C4, 0x6A3DCC, 0x1B7348])
         let darkTint = ThemePalette.blue.tint.uiColor.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
         XCTAssertEqual(darkTint, UIColor(hexadecimal: 0x7EA6F8))
+    }
+
+    func testSupportingTextContrastAcrossPalettesAndAppearances() {
+        func luminance(_ color: UIColor, traits: UITraitCollection) -> CGFloat {
+            var red: CGFloat = 0
+            var green: CGFloat = 0
+            var blue: CGFloat = 0
+            var alpha: CGFloat = 0
+            XCTAssertTrue(color.resolvedColor(with: traits).getRed(&red, green: &green, blue: &blue, alpha: &alpha))
+            XCTAssertEqual(alpha, 1)
+            func linear(_ value: CGFloat) -> CGFloat {
+                value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
+            }
+            return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue)
+        }
+        for name in ThemeColorName.allCases {
+            let palette = ThemePalette.find(color: name)
+            for isDark in [false, true] {
+                var environment = EnvironmentValues()
+                environment.themePalette = palette
+                environment.colorScheme = isDark ? .dark : .light
+                let foreground = UIColor(ThemeSecondaryLabelStyle().resolve(in: environment))
+                let traits = UITraitCollection(userInterfaceStyle: isDark ? .dark : .light)
+                let foregroundLuminance = luminance(foreground, traits: traits)
+                for background in [palette.groupedBackground.uiColor, UIColor.systemGroupedBackground, UIColor.secondarySystemGroupedBackground] {
+                    let backgroundLuminance = luminance(background, traits: traits)
+                    let contrast = (max(foregroundLuminance, backgroundLuminance) + 0.05) / (min(foregroundLuminance, backgroundLuminance) + 0.05)
+                    XCTAssertGreaterThanOrEqual(contrast, 4.5, "\(name), \(isDark ? "Dark" : "Light")")
+                }
+            }
+        }
+    }
+
+    func testLightSupportingInstructionsRenderInSignInExportAndAccountChange() async throws {
+        let model = await createUnlockedModel()
+        let scene = try XCTUnwrap(UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first)
+        let views: [(String, AnyView)] = [
+            ("sign-in", AnyView(SignInView())),
+            ("export", AnyView(ExportDataForm(options: ExportOptions(isBiometricAvailable: false, minPassphraseLength: 10), isBusy: false, errorMessage: nil, result: nil) { _, _, _ in })),
+            ("account-change", AnyView(ChangeMasterPasswordView())),
+        ]
+        for (name, view) in views {
+            let root = NavigationStack { view }.environmentObject(model).applyTheme(VaultTheme(appearance: .light, color: .neutral))
+            let host = UIHostingController(rootView: root)
+            let window = UIWindow(windowScene: scene)
+            window.frame = CGRect(x: 0, y: 0, width: 393, height: 852)
+            window.rootViewController = host
+            window.makeKeyAndVisible()
+            host.view.layoutIfNeeded()
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            let image = UIGraphicsImageRenderer(bounds: window.bounds).image { _ in
+                XCTAssertTrue(window.drawHierarchy(in: window.bounds, afterScreenUpdates: true))
+            }
+            let attachment = XCTAttachment(image: image)
+            attachment.name = "light-instructions-\(name)"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            window.isHidden = true
+        }
     }
 
     func testAutoLockRefusesOtherDelays() async {

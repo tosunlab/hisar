@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 import XCTest
@@ -138,6 +139,62 @@ final class ItemIconTests: XCTestCase {
         let prepared = try await model.prepareItemIcon(photo)
         XCTAssertEqual(prepared, Data([4, 5]))
         XCTAssertNil(model.errorMessage, "the picker owns preparation errors")
+    }
+
+    func testDetailHeaderUsesFullWidthAtAccessibilitySizesAndCapsItsIcon() throws {
+        let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore())
+        for width: CGFloat in [320, 393] {
+            for size: DynamicTypeSize in [.large, .xxxLarge, .accessibility5] {
+                let icon = ImageRenderer(content: ItemIcon(item: ItemDetail(title: "Bank"), size: 56, maxSize: 56).environment(\.dynamicTypeSize, size))
+                XCTAssertEqual(try XCTUnwrap(icon.uiImage).size, CGSize(width: 56, height: 56))
+                for title in ["GitHub", "Northwind's production account and recovery credentials"] {
+                    let content = ItemDetailHeader(item: ItemDetail(title: title), subtitle: "Personal · Login")
+                        .environmentObject(model)
+                        .environment(\.dynamicTypeSize, size)
+                        .frame(width: width)
+                    let image = try XCTUnwrap(ImageRenderer(content: content).uiImage)
+                    XCTAssertEqual(image.size.width, width)
+                    if size.isAccessibilitySize {
+                        let text = VStack(alignment: .leading, spacing: 2) {
+                            Text(title).font(.title2.weight(.bold))
+                            Text("Personal · Login").font(.subheadline)
+                        }
+                        .frame(width: width, alignment: .leading)
+                        .environment(\.dynamicTypeSize, size)
+                        let textHeight = try XCTUnwrap(ImageRenderer(content: text).uiImage).size.height
+                        XCTAssertEqual(image.size.height, 56 + 14 + textHeight, accuracy: 1)
+                    }
+                    let attachment = XCTAttachment(image: image)
+                    attachment.name = "detail-\(width)-\(size)-\(title.prefix(8))"
+                    attachment.lifetime = .keepAlways
+                    add(attachment)
+                }
+            }
+        }
+    }
+
+    func testPresetGridFitsScaledTargetsAtBothPhoneWidths() throws {
+        for width: CGFloat in [320, 393] {
+            for size: DynamicTypeSize in [.large, .xxxLarge, .accessibility5] {
+                let tile = ItemIcon(item: ItemDetail(icon: ChosenIcon(preset: "bank")), size: 40)
+                    .environment(\.dynamicTypeSize, size)
+                let tileWidth = max(44, try XCTUnwrap(ImageRenderer(content: tile).uiImage).size.width + 6)
+                let gridWidth = width - 32
+                let columns = floor((gridWidth + 8) / (tileWidth + 8))
+                let rows = ceil(CGFloat(ChosenIcon.allPreset.count) / columns)
+                let grid = IconPresetGrid(item: ItemDetail(), icon: ChosenIcon(preset: "bank"), color: "", onChoose: { _ in })
+                    .frame(width: gridWidth)
+                    .environment(\.dynamicTypeSize, size)
+                let image = try XCTUnwrap(ImageRenderer(content: grid).uiImage)
+                XCTAssertEqual(image.size.width, gridWidth)
+                XCTAssertEqual(image.size.height, rows * tileWidth + (rows - 1) * 8 + 8, accuracy: rows)
+                XCTAssertGreaterThanOrEqual((gridWidth - (columns - 1) * 8) / columns, tileWidth)
+                let attachment = XCTAttachment(image: image)
+                attachment.name = "presets-\(width)-\(size)"
+                attachment.lifetime = .keepAlways
+                add(attachment)
+            }
+        }
     }
 
     private func waitUntil(_ condition: () -> Bool) async throws {

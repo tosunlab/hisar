@@ -459,6 +459,7 @@ struct VaultsView: View {
                 }
             } footer: {
                 Text("Hisar gives vault keys only to the keys it pinned for each person. Compare security codes in Settings → Organizations.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }

@@ -22,13 +22,21 @@ Tests/UI/                XCUITests against a real hisar-server (scripts/test-ios
 Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerView` (Automatic, presets, colors, Choose photo); `ItemIcon`
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
+At accessibility text sizes, item-detail headers stack a capped decorative icon above the full-width title.
+The icon picker's preset grid adapts its column count to the scaled tiles instead of fixing six columns.
+Color swatches, the editor's **Change icon**, and removed-vault dismiss buttons each have at least a 44-point target.
+Dismiss buttons name their vault so VoiceOver distinguishes notices.
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
+Text and secret fields retain visible labels above their values, including populated identity, address, credential,
+license, server and database editors. Labels and inputs stay vertically stacked at larger text sizes.
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, account deletion, and sign out.
 **Sign out** has its own final section below **Delete account** and still asks for confirmation.
 Help and About remain informational destinations on the Settings root.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
+Section headings and explanations use the palette's solid secondary text color, including recovery, export and
+account-change instructions. The color keeps at least 4.5:1 contrast on grouped backgrounds in Light and Dark appearance.
 
 At accessibility text sizes, the lock screen keeps the account email on one line, shrinking it or truncating its middle.
 VoiceOver reads the full address.

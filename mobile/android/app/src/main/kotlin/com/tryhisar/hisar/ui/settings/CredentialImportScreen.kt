@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.AlertDialog
@@ -158,7 +159,7 @@ private fun PreviewSections(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     exportOrigin?.let { Text(it, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel) }
                     if (preview.notice.isNotEmpty()) {
-                Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.warning, modifier = Modifier.testTag("hisar-import-notice"))
+                        Text(preview.notice, style = HisarType.footnote, color = HisarTheme.colors.warning, modifier = Modifier.testTag("hisar-import-notice"))
                     }
                 }
             }
@@ -167,7 +168,7 @@ private fun PreviewSections(
     FormSection(
         header = "Vault",
         footer = { Text("${VaultLogic.describeItemCount(preview.itemCount)} from ${preview.fileName}.") },
-        modifier = Modifier.testTag("credential-import-vault"),
+        modifier = Modifier.testTag("credential-import-vault").then(if (!isGrouped) Modifier.selectableGroup() else Modifier),
     ) {
         if (isGrouped) {
             FormRow { Text(preview.groupDestinationExplanation) }
@@ -210,7 +211,7 @@ private fun PreviewSections(
             onDismissRequest = { groupToMap = null },
             title = { Text("Vault for ${VaultLogic.describeItemCount(group.itemCount)}") },
             text = {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
+                Column(Modifier.verticalScroll(rememberScrollState()).selectableGroup()) {
                     allDestinationGroup.forEach { destination ->
                         Text(destination.name, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
                         destination.allChoice.forEach { choice ->
@@ -267,7 +268,7 @@ private fun PreviewSections(
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
-        ProminentButton("Import into ${model.credentialImport.destinationLabel(preview.vaultID, preview.vaultName)}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking)
+        ProminentButton("Import into ${model.credentialImport.destinationLabel(preview.vaultID, preview.vaultName)}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking, busyLabel = "Importing…")
     }
 }
 
@@ -293,7 +294,7 @@ private fun PassphraseSection(credentialImport: CredentialImportModel, errorMess
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
-        ProminentButton("Open", open, testTag = "hisar-import-open", enabled = passphrase.isNotEmpty() && !isWorking, isBusy = isWorking)
+        ProminentButton("Open", open, testTag = "hisar-import-open", enabled = passphrase.isNotEmpty() && !isWorking, isBusy = isWorking, busyLabel = "Opening…")
     }
 }
 

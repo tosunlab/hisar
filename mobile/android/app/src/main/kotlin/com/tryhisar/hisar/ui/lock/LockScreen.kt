@@ -240,9 +240,9 @@ fun UnlockPanel(
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (isBiometricReady) {
                     ProminentButton("Unlock with biometrics", ::attemptBiometric, testTag = "unlock-biometric", enabled = !isBusy, icon = Icons.Filled.Fingerprint)
-                    GlassButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy)
+                    GlassButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy, busyLabel = "Unlocking…")
                 } else {
-                    ProminentButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy)
+                    ProminentButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy, busyLabel = "Unlocking…")
                 }
                 if (signOut != null) {
                     PlainButton("Sign out", signOut, testTag = "lock-sign-out", color = HisarTheme.colors.secondaryLabel, textStyle = HisarType.footnote)

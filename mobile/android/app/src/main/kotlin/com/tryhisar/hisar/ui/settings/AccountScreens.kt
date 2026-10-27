@@ -282,7 +282,7 @@ fun SecretKeyScreen(model: AppModel, onBack: () -> Unit) {
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
             ClearSection {
-                ProminentButton("Show Secret Key", ::reveal, testTag = "secret-key-reveal", enabled = password.isNotEmpty(), isBusy = isBusy)
+                ProminentButton("Show Secret Key", ::reveal, testTag = "secret-key-reveal", enabled = password.isNotEmpty(), isBusy = isBusy, busyLabel = "Checking master password…")
             }
         }
     }
@@ -349,7 +349,7 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
         }
         errorMessage?.let { FormSection { ErrorBanner(it) } }
         ClearSection {
-            ProminentButton("Change master password", { isConfirmationShown = true }, testTag = "change-password-submit", enabled = canSubmit, isBusy = isBusy)
+            ProminentButton("Change master password", { isConfirmationShown = true }, testTag = "change-password-submit", enabled = canSubmit, isBusy = isBusy, busyLabel = "Changing master password…")
         }
     }
 
@@ -431,7 +431,7 @@ fun ReplaceSecretKeyScreen(model: AppModel, onBack: () -> Unit) {
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
             ClearSection {
-                ProminentButton("Replace Secret Key", { isConfirmationShown = true }, testTag = "replace-secret-key-submit", enabled = password.isNotEmpty(), isBusy = isBusy)
+                ProminentButton("Replace Secret Key", { isConfirmationShown = true }, testTag = "replace-secret-key-submit", enabled = password.isNotEmpty(), isBusy = isBusy, busyLabel = "Replacing Secret Key…")
             }
         }
     }

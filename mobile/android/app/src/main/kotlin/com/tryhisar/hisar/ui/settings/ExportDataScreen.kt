@@ -3,6 +3,7 @@ package com.tryhisar.hisar.ui.settings
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Warning
@@ -118,7 +119,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
             FormSection(
                 header = "Format",
                 footer = { Text("Offline exports are cached copies. Changes since completed syncs may be absent. The result and file report known omissions. hisar import reads both formats.") },
-                modifier = Modifier.testTag("export-format"),
+                modifier = Modifier.testTag("export-format").selectableGroup(),
             ) {
                 CheckRow("Encrypted export (recommended)", format == ExportFormat.ENCRYPTED, { format = ExportFormat.ENCRYPTED }, testTag = "export-format-encrypted")
                 RowDivider()
@@ -174,6 +175,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                     testTag = "export-start",
                     enabled = canExport,
                     isBusy = isBusy,
+                    busyLabel = "Exporting…",
                     icon = if (isPasswordNeeded) null else Icons.Filled.Fingerprint,
                 )
                 if (options.isBiometricAvailable) {

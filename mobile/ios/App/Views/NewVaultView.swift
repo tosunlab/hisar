@@ -41,6 +41,7 @@ struct NewVaultView: View {
                         Text(location.isSharedVault
                              ? "A shared vault starts with only you. Share it by email with Share in the vault's toolbar; your Personal vault stays private."
                              : "\(location.teamName)'s members get this vault. Manage it in Settings → Organizations.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
             }

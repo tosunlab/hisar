@@ -132,6 +132,7 @@ struct SignInView: View {
                     .listRowInsets(EdgeInsets())
                 } footer: {
                     Text(mode == .signIn ? "Lost your Secret Key? It's on your Emergency Kit." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
+                        .foregroundStyle(.themeSecondary)
                         .padding(.top, 8)
                         .accessibilityIdentifier(mode == .signIn ? "secret-key-note" : "create-account-note")
                 }
@@ -180,7 +181,7 @@ struct SignInView: View {
             }
             .accessibilityIdentifier("scan-emergency-kit")
         } footer: {
-            Text("The QR code fills in your server, email and Secret Key.")
+            Text("The QR code fills in your server, email and Secret Key.").foregroundStyle(.themeSecondary)
         }
         Section {
             TextField("Email", text: $email, prompt: Text(verbatim: "you@example.com"))
@@ -204,12 +205,14 @@ struct SignInView: View {
             }
         } header: {
             Text("Account")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if !isServerShown {
                 Text(verbatim: "Signs in to \(SignInView.describeServer(server)).")
+                    .foregroundStyle(.themeSecondary)
             }
         }
-        Section("Secret Key and master password") {
+        Section {
             TextField("Secret Key", text: $secretKey, prompt: Text(verbatim: "H1-XXXXXX-XXXXX-…"))
                 .font(.body.monospaced())
                 .textInputAutocapitalization(.characters)
@@ -221,6 +224,9 @@ struct SignInView: View {
                 .onSubmit(submit)
                 .accessibilityIdentifier("sign-in-password")
                 .concealWhen(model.isBusy)
+        } header: {
+            Text("Secret Key and master password")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -234,8 +240,10 @@ struct SignInView: View {
                 .accessibilityIdentifier("sign-up-invite-link")
         } header: {
             Text("Invite")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("Leave it empty if the server lets anyone sign up.")
+                .foregroundStyle(.themeSecondary)
         }
         if isSignUpServerAsked {
             Section {
@@ -254,13 +262,15 @@ struct SignInView: View {
                 }
             } header: {
                 Text("Server")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 if !isServerShown {
                     Text(verbatim: "Creates your account on \(SignInView.describeServer(server)).")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
-        Section("You") {
+        Section {
             TextField("Email", text: $email, prompt: Text(verbatim: "you@example.com"))
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
@@ -269,6 +279,9 @@ struct SignInView: View {
             TextField("Your name", text: $name)
                 .textContentType(.name)
                 .accessibilityIdentifier("sign-up-name")
+        } header: {
+            Text("You")
+                .foregroundStyle(.themeSecondary)
         }
         Section {
             CredentialField("Master password", text: $password, prompt: "At least 10 characters")
@@ -281,6 +294,7 @@ struct SignInView: View {
                 .concealWhen(model.isBusy)
         } header: {
             Text("Master password")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             VStack(alignment: .leading, spacing: 6) {
                 PasswordStrengthMeter(strength: passwordFeedback?.strength ?? PasswordStrength())
@@ -297,8 +311,10 @@ struct SignInView: View {
                         .accessibilityIdentifier("sign-up-password-problem")
                 } else if let hint = AccountLifecycleLogic.describeMasterPasswordHint(feedback: passwordFeedback) {
                     Text(hint)
+                        .foregroundStyle(.themeSecondary)
                 } else {
                 Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
