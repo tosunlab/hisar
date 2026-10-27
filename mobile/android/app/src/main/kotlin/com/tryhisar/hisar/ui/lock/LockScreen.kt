@@ -24,12 +24,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -52,6 +54,8 @@ import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /** "Hisar is locked": the master password, biometrics when ready, and signing out, as the iPhone app's LockView. */
 @Composable
@@ -64,15 +68,8 @@ fun LockScreen(model: AppModel) {
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val isResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
     val scope = rememberCoroutineScope()
-    var promptedLockCount by rememberSaveable { mutableIntStateOf(-1) }
     var isSignOutConfirmationShown by remember { mutableStateOf(false) }
 
-    // One automatic prompt per lock, and only while the app is in front.
-    LaunchedEffect(isResumed, status.biometricReady, isBusy, lockCount) {
-        if (!isResumed || !status.biometricReady || isBusy || promptedLockCount == lockCount) return@LaunchedEffect
-        promptedLockCount = lockCount
-        model.lock.unlockWithBiometric()
-    }
     LaunchedEffect(isResumed) {
         if (isResumed) model.lock.refreshShareAwaitingUnlock()
     }
@@ -81,11 +78,14 @@ fun LockScreen(model: AppModel) {
         email = status.email,
         isBiometricReady = status.biometricReady,
         isBusy = isBusy,
+        lockCount = lockCount,
+        isResumed = isResumed,
+        isCurrentLock = { model.screen.value == com.tryhisar.hisar.app.Screen.Locked && model.lockCount.value == lockCount },
         errorMessage = errorMessage,
         isOffline = status.isOffline,
         allNotice = allShareAwaitingUnlock.map { it.message },
         submitPassword = { model.lock.unlock(it) },
-        submitBiometric = { scope.launch { model.lock.unlockWithBiometric() } },
+        submitBiometric = { model.lock.unlockWithBiometric() },
         signOut = { isSignOutConfirmationShown = true },
     )
 
@@ -113,7 +113,10 @@ fun UnlockPanel(
     isBusy: Boolean,
     errorMessage: String?,
     submitPassword: suspend (String) -> Boolean,
-    submitBiometric: () -> Unit,
+    submitBiometric: suspend () -> Boolean,
+    lockCount: Int,
+    isResumed: Boolean,
+    isCurrentLock: () -> Boolean,
     requestDescription: String = "",
     isOffline: Boolean = false,
     allNotice: List<String> = emptyList(),
@@ -122,18 +125,52 @@ fun UnlockPanel(
     var password by remember { mutableStateOf("") }
     val focusRequester = remember { FocusRequester() }
     val scope = rememberCoroutineScope()
+    val keyboard = LocalSoftwareKeyboardController.current
+    val currentResumed by rememberUpdatedState(isResumed)
+    val currentLockCount by rememberUpdatedState(lockCount)
+    val currentLock by rememberUpdatedState(isCurrentLock)
+    var promptedLockCount by rememberSaveable { mutableIntStateOf(-1) }
+    var needsPasswordFocus by remember(lockCount) { mutableStateOf(false) }
 
-    LaunchedEffect(isBiometricReady) {
-        if (!isBiometricReady) focusRequester.requestFocus()
+    suspend fun focusPassword() {
+        currentCoroutineContext().ensureActive()
+        if (!currentLock()) return
+        needsPasswordFocus = true
+        if (!currentResumed) return
+        needsPasswordFocus = false
+        focusRequester.requestFocus()
+        keyboard?.show()
+    }
+
+    fun attemptBiometric() {
+        val attemptedLock = lockCount
+        scope.launch {
+            val succeeded = submitBiometric()
+            if (!succeeded && currentLockCount == attemptedLock) focusPassword()
+        }
+    }
+
+    LaunchedEffect(isResumed, isBiometricReady, isBusy, lockCount) {
+        if (!isResumed || !isBiometricReady || isBusy || promptedLockCount == lockCount) return@LaunchedEffect
+        promptedLockCount = lockCount
+        attemptBiometric()
+    }
+
+    LaunchedEffect(isBiometricReady, isResumed) {
+        if (!isBiometricReady) focusPassword()
+    }
+
+    LaunchedEffect(isResumed, lockCount) {
+        if (isResumed && needsPasswordFocus) focusPassword()
     }
 
     fun submit() {
         if (password.isEmpty() || isBusy) return
         val enteredPassword = password
         scope.launch {
-            submitPassword(enteredPassword)
+            val succeeded = submitPassword(enteredPassword)
             password = ""
-            focusRequester.requestFocus()
+            if (!succeeded) focusPassword()
         }
     }
 
@@ -188,7 +225,7 @@ fun UnlockPanel(
         ClearSection {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (isBiometricReady) {
-                    ProminentButton("Unlock with biometrics", submitBiometric, testTag = "unlock-biometric", enabled = !isBusy, icon = Icons.Filled.Fingerprint)
+                    ProminentButton("Unlock with biometrics", ::attemptBiometric, testTag = "unlock-biometric", enabled = !isBusy, icon = Icons.Filled.Fingerprint)
                     GlassButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy)
                 } else {
                     ProminentButton("Unlock", ::submit, testTag = "unlock-submit", enabled = password.isNotEmpty(), isBusy = isBusy)

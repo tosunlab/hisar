@@ -71,6 +71,7 @@ describe("UnlockView with Touch ID", () => {
     expect(api.setTouchIDPromptFrame).toHaveBeenCalled();
     expect(api.unlockWithBiometric).toHaveBeenCalledTimes(1);
     expect(wrapper.find('input[name="password"]').exists()).toBe(true);
+    expect(document.activeElement).toBe(wrapper.get('input[name="password"]').element);
     expect(wrapper.find('[data-testid="unlock-status"]').text()).toBe("Touch ID is waiting. Or type your master password.");
 
     api.getStatus.mockResolvedValue(createStatus("unlocked"));

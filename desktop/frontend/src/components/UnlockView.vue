@@ -69,10 +69,9 @@ onMounted(() => {
   window.addEventListener("focus", loadShareAwaitingUnlockQuietly);
   window.addEventListener("resize", sendPromptFrame);
   layoutObserver?.observe(document.body);
+  passwordInput.value?.focus();
   if (store.status.biometricReady) {
     startTouchID();
-  } else {
-    passwordInput.value?.focus();
   }
 });
 

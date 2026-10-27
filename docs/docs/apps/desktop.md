@@ -146,6 +146,7 @@ Design: [Design](../design.md) §6. The Emergency Kit (email, server and Secret 
 - **Lost Secret Key**: it is on the Emergency Kit. Settings → Security → Emergency Kit saves a new kit after the master password, and the sign-in screen says where to find it.
 - **Forgotten master password**: nobody can recover it, including Hisar. The Create account form and the Secret Key screen after sign up say so.
 - On the lock screen, **Sign out of this device** focuses **Cancel** in its confirmation. **Escape** cancels and returns focus to the sign-out link.
+- The master password field stays focused while Touch ID waits, so typing can start without a click. Submitting the password cancels the pending Touch ID check.
 
 ## Secure notes
 
