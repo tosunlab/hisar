@@ -902,7 +902,7 @@ function createPreviewShareLinkFromRequest(request: ShareLinkRequest): ShareLink
   return createPreviewShareLink({ ...common, title: detail.title, vaultID: request.vaultID, itemID: request.itemID, fieldLabels });
 }
 
-const previewNoAgentChoice = { requiresPresence: false, allGrantDuration: [], grantDuration: "", grantScope: "", grantHolderScope: "", website: "", browserName: "", allLogin: [], loginIndex: 0 };
+const previewNoAgentChoice = { requiresPresence: false, allGrantDuration: [], grantDuration: "", grantScope: "", grantHolderScope: "", harnessProgramPath: "", harnessProgramEntrypoint: "", website: "", browserName: "", allLogin: [], loginIndex: 0 };
 
 // createPreviewCommandLineApproval: &approval=cli, plus &cliLocked=1 (Touch ID unlocks) or &cliPassword=1 (master password unlocks),
 // &coverage=app (hisar without a terminal in a signed app) or =connection (in no app Hisar can verify).
@@ -1089,6 +1089,8 @@ function createPreviewHarnessApproval(kind: string): ApprovalEvent {
     harnessName: "omp",
     agentNameSource: kind === "unsigned" ? "process" : "signature",
     grantHolderScope: "harness",
+    harnessProgramPath: kind === "unsigned" ? "/opt/homebrew/bin/bun" : "",
+    harnessProgramEntrypoint: kind === "unsigned" ? "script:/Users/alice/.bun/bin/omp" : "",
     projectName: "hisarapp-core",
     projectPath: "~/Chore/hisarapp-core",
     clientName: "hisar",

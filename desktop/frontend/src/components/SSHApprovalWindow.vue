@@ -529,10 +529,26 @@ onBeforeUnmount(() => {
               <p v-else-if="isAgentNameGiven" class="agent-line" data-testid="approval-agent-name-given">
                 <AppIcon name="tag" :size="12" /> <span class="agent-line-text">“{{ approval.agentName }}” is the name the agent gave</span>
               </p>
+              <p v-if="isHarnessSigned" class="agent-line" data-testid="approval-agent-verification">{{ harnessName }} verified by signature.</p>
+              <template v-else-if="approval.agentNameSource === 'process'">
+                <p class="agent-line" data-testid="approval-agent-verification">Agent identified by its program name or path, not a verified signature.</p>
+                <details class="agent-program" data-testid="approval-agent-program" @toggle="fitWindow">
+                  <summary>Agent program details</summary>
+                  <template v-if="approval.harnessProgramPath">
+                    <p>Kernel-reported executable</p>
+                    <code>{{ approval.harnessProgramPath }}</code>
+                    <template v-if="approval.harnessProgramEntrypoint">
+                      <p>Script or entry point</p>
+                      <code>{{ approval.harnessProgramEntrypoint }}</code>
+                    </template>
+                  </template>
+                  <p v-else>The matched agent program details are unavailable. The hisar client path does not identify the agent program.</p>
+                </details>
+              </template>
               <p v-if="chainText || appSigner" class="requester-line" data-testid="approval-requester">
                 <span v-if="chainText" class="chain" :title="chainTitle" data-testid="approval-chain">{{ chainText }}</span>
                 <span v-if="appSigner" class="signer" :class="{ 'is-unverified': appWarning }" :title="approval.appPath" data-testid="approval-signer">
-                  <AppIcon :name="appWarning ? 'warning' : 'shield'" :size="11" /> {{ appSigner }}
+                  <AppIcon :name="appWarning ? 'warning' : 'shield'" :size="11" /> {{ isAgent ? "Host app · " : "" }}{{ appSigner }}
                 </span>
               </p>
             </div>
@@ -682,6 +698,15 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+.agent-program {
+  margin-top: 8px;
+  font-size: var(--font-size-12);
+}
+
+.agent-program code {
+  overflow-wrap: anywhere;
+}
+
 .expiry {
   margin: 6px 0 0;
   color: var(--color-text-secondary);

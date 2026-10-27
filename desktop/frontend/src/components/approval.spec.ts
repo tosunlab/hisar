@@ -736,6 +736,23 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it.each([true, false])("discloses the unsigned agent program without substituting the client path, available %s", async (available) => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createHarnessApprovalEvent({
+      agentNameSource: "process",
+      harnessProgramPath: available ? "/opt/homebrew/bin/bun" : "",
+      harnessProgramEntrypoint: available ? "script:/Users/alice/omp/main.ts" : "",
+    }));
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-agent-verification"]').text()).toContain("not a verified signature");
+    expect(wrapper.get('[data-testid="approval-signer"]').text()).toMatch(/^Host app/);
+    const details = wrapper.get('[data-testid="approval-agent-program"]');
+    expect(details.get("summary").text()).toBe("Agent program details");
+    expect(details.text()).not.toContain("/Applications/Hisar.app/Contents/Helpers/hisar");
+    expect(details.text()).toContain(available ? "script:/Users/alice/omp/main.ts" : "details are unavailable");
+    wrapper.unmount();
+  });
+
   it.each(["harness", "session", "connection"])("describes the selected grant lifetime for its %s holder", async (scope) => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createHarnessApprovalEvent({ grantHolderScope: scope, allGrantDuration: ["once", "hour", "day", "always"] }));

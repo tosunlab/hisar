@@ -1542,6 +1542,8 @@ A grant ends at expiry, sign-out or **Revoke** under Settings → Developer tool
 
 The Mac's duration summary uses the holder scope supplied by the command-line socket. It states the selected expiry, whether the grant survives sessions and restarts, that locking pauses access without revoking it, and where to revoke it.
 
+Agent identity disclosure distinguishes a verified harness signature from a match by program name or path. For a path match, the Mac offers the kernel-reported executable and interpreted entry point in a keyboard-accessible disclosure, or says those details are unavailable. The host app's signature is labelled separately and never verifies the agent.
+
 `cleanup-failed` revokes the sign-in grant for that login and origin. While locked, Hisar cannot rewrite one sealed grant without the account key, so it drops all saved grants. A failed removal while unlocked also drops the saved list. It clears the in-memory list and sealed state and attempts both head deletion and state save, even if one fails. A storage failure reaches the agent as a tool error with the cleanup warning. If both durable writes fail, disk state may still contain grants after an app restart. The running app does not reopen them.
 
 A sign-in skips the dialog only while Hisar is unlocked, the harness instance still runs and exactly one candidate has a grant for the origin. Every grant is checked against request authorization. Lock, sign-out, another account, the command-line switch going off or session end invalidates authorization. A stale approval or grant lookup cannot authorize the request.

@@ -73,6 +73,8 @@ export interface ApprovalEvent {
      */
     "harnessName": string;
     "agentNameSource": string;
+    "harnessProgramPath": string;
+    "harnessProgramEntrypoint": string;
     "projectName": string;
     "projectPath": string;
     "workingDirectory": string;

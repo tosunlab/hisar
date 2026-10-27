@@ -117,13 +117,15 @@ type ApprovalEvent struct {
 	// HarnessName is the agent harness the request comes from inside, such as omp, and AgentNameSource says how Hisar
 	// knows AgentName (AgentNameSignature, AgentNameProcess or AgentNameGiven). ProjectName is the folder the harness
 	// works in, the last part of ProjectPath.
-	HarnessName           string `json:"harnessName"`
-	AgentNameSource       string `json:"agentNameSource"`
-	ProjectName           string `json:"projectName"`
-	ProjectPath           string `json:"projectPath"`
-	WorkingDirectory      string `json:"workingDirectory"`
-	RememberLabel         string `json:"rememberLabel"`
-	IsRememberedByDefault bool   `json:"isRememberedByDefault"`
+	HarnessName              string `json:"harnessName"`
+	AgentNameSource          string `json:"agentNameSource"`
+	HarnessProgramPath       string `json:"harnessProgramPath"`
+	HarnessProgramEntrypoint string `json:"harnessProgramEntrypoint"`
+	ProjectName              string `json:"projectName"`
+	ProjectPath              string `json:"projectPath"`
+	WorkingDirectory         string `json:"workingDirectory"`
+	RememberLabel            string `json:"rememberLabel"`
+	IsRememberedByDefault    bool   `json:"isRememberedByDefault"`
 	// RememberPeriod says how long a remembered SSH approval lasts, as the checkbox ends: "for 1 hour" or "until Hisar locks".
 	RememberPeriod       string `json:"rememberPeriod"`
 	IsConnectionApproval bool   `json:"isConnectionApproval"`

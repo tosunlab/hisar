@@ -382,6 +382,7 @@ func TestCheckedNameOnlyForSignedHarness(t *testing.T) {
 	omp := agentharness.Session{Harness: agentharness.Harness{ID: "omp", Name: "omp"}, PID: 1226, StartTime: 100, Directory: "/Users/alice/src/hisarapp-core"}
 	signedOmp, unsignedOmp := omp, omp
 	signedOmp.Program = agentharness.Program{Signature: agentharness.Signature{Identifier: "omp-darwin-arm64", TeamID: "VTLHGQC72S"}}
+	unsignedOmp.Program = agentharness.Program{Path: "/opt/homebrew/bin/bun", Entrypoint: "script:/Users/alice/omp/src/main.ts"}
 	cases := []struct {
 		name           string
 		session        *agentharness.Session
@@ -407,6 +408,9 @@ func TestCheckedNameOnlyForSignedHarness(t *testing.T) {
 		isInsideHarness := testCase.session != nil
 		if isInsideHarness != (event.HarnessName == "omp" && event.ProjectName == "hisarapp-core" && event.ProjectPath == "/Users/alice/src/hisarapp-core") {
 			t.Errorf("%s: harness %q, project %q at %q", testCase.name, event.HarnessName, event.ProjectName, event.ProjectPath)
+		}
+		if testCase.session != nil && (event.HarnessProgramPath != testCase.session.Program.Path || event.HarnessProgramEntrypoint != testCase.session.Program.Entrypoint) {
+			t.Errorf("%s: matched program %q, entrypoint %q", testCase.name, event.HarnessProgramPath, event.HarnessProgramEntrypoint)
 		}
 		approver.DenyAll()
 		waitForAgentResult(t, resultChannel)

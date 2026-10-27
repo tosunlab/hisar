@@ -305,6 +305,8 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     agentName: "",
     harnessName: "",
     agentNameSource: "",
+    harnessProgramPath: "",
+    harnessProgramEntrypoint: "",
     projectName: "",
     projectPath: "",
     workingDirectory: "",
