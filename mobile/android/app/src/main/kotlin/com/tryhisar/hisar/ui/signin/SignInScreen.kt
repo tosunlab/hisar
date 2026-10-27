@@ -185,7 +185,7 @@ fun SignInScreen(model: AppModel) {
             footer = if (mode == SignInMode.SIGN_IN) {
                 {
                     Text(
-                        "Lost your Secret Key? It's on your Emergency Kit.",
+                        "Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.",
                         modifier = Modifier.padding(top = 8.dp).testTag("secret-key-note"),
                     )
                 }

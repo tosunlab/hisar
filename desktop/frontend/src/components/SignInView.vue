@@ -228,7 +228,7 @@ async function submitCreateAccount(): Promise<void> {
             <span class="input-with-icon"><AppIcon name="lock" /><input ref="passwordInput" v-model="password" name="password" type="password" autocomplete="current-password" required /></span>
           </label>
           <button class="primary full-width submit" type="submit" :disabled="store.isBusy">{{ store.isBusy ? "Signing in…" : "Sign in" }}</button>
-          <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It's on your Emergency Kit.</p>
+          <p class="hint muted" data-testid="secret-key-note">Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.</p>
           <p v-if="!isServerShown" class="hint">
             <span class="muted" data-testid="sign-in-server">Signs in to {{ server }}.</span>
             {{ ' ' }}

@@ -96,7 +96,7 @@ struct SignInView: View {
                     .listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets())
                 } footer: {
-                    Text(mode == .signIn ? "Lost your Secret Key? It's on your Emergency Kit." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
+                    Text(mode == .signIn ? "Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings." : "Your master password never leaves this iPhone. A forgotten master password can't be recovered by anyone, including Hisar.")
                         .padding(.top, 8)
                         .accessibilityIdentifier(mode == .signIn ? "secret-key-note" : "create-account-note")
                 }

@@ -153,7 +153,7 @@ describe("SignInView", () => {
 
   it("points to the Emergency Kit for a lost Secret Key and offers no account recovery", () => {
     const wrapper = mount(SignInView);
-    expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It's on your Emergency Kit.");
+    expect(wrapper.find('[data-testid="secret-key-note"]').text()).toBe("Lost your Secret Key? It is on your Emergency Kit. If you can unlock another signed-in device with your master password, save a new Emergency Kit there in Settings.");
     expect(wrapper.findAll('[role="tab"]').map((tab) => tab.text())).toEqual(["Sign in", "Create account"]);
     expect(wrapper.text()).not.toMatch(/recover|admin/i);
   });
