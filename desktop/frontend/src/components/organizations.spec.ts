@@ -93,7 +93,6 @@ function resetStore(allVault: VaultSummary[] = [personalVault, familyVault, depl
     isSettingsOpen: false,
     isCreatingVault: false,
     isSharingOpen: false,
-    isCreatingVault: false,
     allVaultMember: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
     organizations: listOrganizations(),

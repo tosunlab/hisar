@@ -94,7 +94,7 @@ describe("Vault sharing panel", () => {
     await flushPromises();
     const confirmation = wrapper.find('[data-testid="share-recipient-confirmation"]');
     const all = confirmation.findAll("button").map((button) => button.element);
-    expect(all.map((button) => button.textContent)).toEqual(["Cancel", "Give access"]);
+    expect(all.map((button) => button.textContent)).toEqual(["Cancel", "Codes don't match", "Give access"]);
     expect(document.activeElement).toBe(all[0]);
     for (const shiftKey of [false, false, true, true]) {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey, cancelable: true }));
