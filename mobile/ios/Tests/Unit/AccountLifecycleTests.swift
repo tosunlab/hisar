@@ -17,6 +17,26 @@ final class AccountLifecycleTests: XCTestCase {
         await model.start { self.backend }?.value
         return model
     }
+    func testNewAccountKitRetryKeepsTheKeyAndUsesAFreshDirectory() async throws {
+        let model = AppModel(credentialIdentityStore: identityStore)
+        await model.start { self.backend }?.value
+        _ = await model.signUpWithoutInvite(server: "https://hisar.example.com", email: "new@example.com", name: "New", password: FakeBackend.password)
+        backend.newAccountEmergencyKitError = BackendError(message: "Temporary storage is unavailable.")
+        let failed = await model.exportNewAccountEmergencyKit()
+        XCTAssertNil(failed)
+        XCTAssertEqual(model.newSecretKey, FakeBackend.secretKey)
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+        XCTAssertFalse(backend.allPendingRecovery[0].kitSaved)
+        backend.newAccountEmergencyKitError = nil
+        let retried = await model.exportNewAccountEmergencyKit()
+        let export = try XCTUnwrap(retried)
+        defer { model.removeEmergencyKit(export) }
+        XCTAssertNotEqual(backend.allNewAccountEmergencyKitDirectory[0], backend.allNewAccountEmergencyKitDirectory[1])
+        XCTAssertEqual(export.secretKey, FakeBackend.secretKey)
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+    }
+
 
     /// Waits for work the model starts in a Task, such as clearing AutoFill: a fixed sleep is too short on a busy CI runner.
     private func waitUntil(_ condition: () -> Bool, _ message: String) async {

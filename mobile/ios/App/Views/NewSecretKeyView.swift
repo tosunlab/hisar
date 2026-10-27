@@ -4,9 +4,21 @@ struct NewSecretKeyView: View {
     @EnvironmentObject private var model: AppModel
     var secretKey: String
 
+    private enum KitState {
+        case loading
+        case failed(String)
+        case ready(EmergencyKitExport)
+    }
+
     @State private var isCopied = false
-    @State private var export: EmergencyKitExport?
+    @State private var kitState = KitState.loading
     @State private var isKitShared = false
+    @State private var preparationGeneration = 0
+
+    private var export: EmergencyKitExport? {
+        if case .ready(let export) = kitState { return export }
+        return nil
+    }
 
     var body: some View {
         NavigationStack {
@@ -34,18 +46,26 @@ struct NewSecretKeyView: View {
                     Text("Secret Key")
                 }
                 Section {
-                    if let export {
-                        ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                            Label("Save or Print Emergency Kit", systemImage: "square.and.arrow.up")
-                                .frame(maxWidth: .infinity)
-                        }
+                    switch kitState {
+                    case .ready(let export):
+                        EmergencyKitShareButton(
+                            url: URL(fileURLWithPath: export.emergencyKitPath),
+                            label: "Save or print Emergency Kit",
+                            onPresent: model.reportActivity,
+                            onCompleted: { isKitShared = true }
+                        )
                         .applyProminentGlassStyle()
                         .controlSize(.large)
-                        .simultaneousGesture(TapGesture().onEnded { isKitShared = true })
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets())
                         .accessibilityIdentifier("new-secret-key-share-kit")
-                    } else if model.errorMessage == nil {
+                    case .failed(let reason):
+                        ErrorBanner(message: "The Emergency Kit could not be created (\(reason)). Write down the Secret Key above.")
+                        Button("Try again") {
+                            Task { await prepareKit() }
+                        }
+                        .accessibilityIdentifier("new-secret-key-retry-kit")
+                    case .loading:
                         ProgressView()
                             .frame(maxWidth: .infinity)
                             .listRowBackground(Color.clear)
@@ -90,7 +110,7 @@ struct NewSecretKeyView: View {
                     }
                     .applyProminentGlassStyle()
                     .controlSize(.large)
-                    .disabled(export == nil || !(isKitShared || isCopied) || model.isBusy)
+                    .disabled(export == nil || !isKitShared || model.isBusy)
                     .accessibilityIdentifier("new-secret-key-done")
                     Button("Finish later") {
                         Task { await model.postponeNewSecretKey() }
@@ -103,14 +123,34 @@ struct NewSecretKeyView: View {
                 .padding(.bottom, 8)
             }
             .task {
-                export = await model.exportNewAccountEmergencyKit()
+                await prepareKit()
             }
             .onDisappear {
+                preparationGeneration += 1
                 if let export {
                     model.removeEmergencyKit(export)
                 }
-                export = nil
+                kitState = .loading
             }
+        }
+    }
+
+    private func prepareKit() async {
+        preparationGeneration += 1
+        let requestedGeneration = preparationGeneration
+        kitState = .loading
+        isKitShared = false
+        model.clearError()
+        let prepared = await model.exportNewAccountEmergencyKit()
+        guard !Task.isCancelled, requestedGeneration == preparationGeneration else {
+            if let prepared { model.removeEmergencyKit(prepared) }
+            return
+        }
+        if let prepared {
+            kitState = .ready(prepared)
+        } else {
+            kitState = .failed(model.errorMessage ?? "Try again.")
+            model.clearError()
         }
     }
 }

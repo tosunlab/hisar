@@ -80,6 +80,8 @@ class FakeBackend: VaultBackend {
     var isPendingRecoveryFactorAvailable = true
     var pendingSignUpResult: SignUpResult?
     var isNewAccountSecretKeyRetained = false
+    var newAccountEmergencyKitError: BackendError?
+    var allNewAccountEmergencyKitDirectory: [URL] = []
     /// The server signUpWithoutInvite was last asked to create an account on; nil until it is called.
     var signUpWithoutInviteServer: String?
     /// While set, signUpWithoutInvite fails with this sentence: the server's admin has not opened registration.
@@ -387,6 +389,8 @@ class FakeBackend: VaultBackend {
 
     func exportNewAccountEmergencyKit(directory: URL) throws -> EmergencyKitExport {
         record("exportNewAccountEmergencyKit")
+        allNewAccountEmergencyKitDirectory.append(directory)
+        if let newAccountEmergencyKitError { throw newAccountEmergencyKitError }
         try requireUnlocked()
         guard isNewAccountSecretKeyRetained, let index = allPendingRecovery.firstIndex(where: { $0.operationId == "signup-1" }) else {
             throw BackendError(message: "This account's setup needs finishing from the account recovery screen")

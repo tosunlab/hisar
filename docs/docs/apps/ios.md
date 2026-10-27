@@ -34,6 +34,8 @@ Sign-in and create-account failures appear immediately above their submit button
 At accessibility text sizes, sign-in modes use stacked buttons and a wrapping heading instead of a segmented control.
 The Emergency Kit scanner explains denied or restricted camera access. **Open Settings** is available for denied access.
 Returning from Settings rechecks permission before starting the camera.
+If creating the first Emergency Kit fails, its section offers **Try again** and keeps the Secret Key and Copy available.
+Retrying uses a fresh temporary folder. Only a completed non-copy handoff enables the explicit saved confirmation.
 
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.

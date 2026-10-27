@@ -48,6 +48,8 @@ class IosTestParityTest {
                 "Checks the iOS Dynamic Type replacement for its unscaled segmented control; Android has scaled Compose mode buttons",
             "testCameraAuthorizationChoosesActionableScannerState" to
                 "Covers AVFoundation camera authorization and the iOS app Settings route",
+            "testNewAccountKitRetryKeepsTheKeyAndUsesAFreshDirectory" to
+                "Covers the iPhone initial Emergency Kit retry and its temporary PDF directories",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,
