@@ -63,7 +63,7 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "command-line-tool", title: "hisar command-line tool", keywords: "cli install uninstall path terminal" },
       { id: "command-line-integration", title: "Let the command-line tool use Hisar", keywords: "cli terminal approve session" },
       { id: "command-line-launchers", title: "Launchers", keywords: "raycast launcher approved apps revoke" },
-      { id: "coding-agents", title: "Coding agents", keywords: "hisar mcp claude code codex cursor omp tern plugin connect disconnect agent available to agents vaults" },
+      { id: "coding-agents", title: "Coding agents", keywords: "hisar mcp claude code codex hermes cursor omp tern plugin connect disconnect agent available to agents vaults" },
       { id: "agent-sign-in", title: "Website sign-in", keywords: "login website computer use hermes cua accessibility password chrome brave edge" },
       { id: "agent-grants", title: "Allowed without asking", keywords: "coding agent remembered approval grant revoke always hour day" },
       { id: "agent-sessions", title: "Running agents", keywords: "omp coding agent session revoke remembered secrets" },
@@ -112,7 +112,7 @@ export const allSettingsSection: SettingsSection[] = [
     label: "Import & Export",
     icon: "export",
     allRow: [
-      { id: "import", title: "Import from another password manager", keywords: "1password bitwarden csv chrome firefox safari edge export" },
+      { id: "import", title: "Import a Hisar export or another password manager", keywords: "hisar export .hisar json 1password 1pux bitwarden lastpass csv chrome firefox safari edge" },
       { id: "export", title: "Export your data", keywords: "export backup json download data encrypted passphrase plain file" },
     ],
   },

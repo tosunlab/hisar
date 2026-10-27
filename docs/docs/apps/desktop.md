@@ -105,6 +105,8 @@ Developer tools keeps vault availability, website sign-in, approval revocation, 
 
 **Vaults for coding agents** groups organization vaults under their organization, with other vaults under **Vaults**. Switch names include that group. Duplicate vault names inside a group show a stable vault-ID prefix so you can distinguish their availability switches.
 
+Settings search finds import sources by their displayed names, including **LastPass** and **Hisar export**. Searching for **Hermes** keeps its connection card in **Coding agents** visible as well as **Website sign-in**.
+
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
 The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the same draft guard as Cancel, ⌘N,

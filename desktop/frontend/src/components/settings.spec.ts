@@ -217,6 +217,22 @@ describe("People empty state", () => {
 });
 
 describe("Settings search", () => {
+  it.each(["Hisar export", ".hisar", "1Password", "1pux", "Bitwarden", "LastPass", "Chrome", "Firefox", "Safari", "Edge"])("finds the import action for %s", async (source) => {
+    const settings = await mountSettings();
+    await search(settings, source);
+    await settings.get('[data-testid="settings-section-export"]').trigger("click");
+    expect(settings.get('[data-testid="import-section"]').isVisible()).toBe(true);
+    expect(settings.get('[data-testid="open-import"]').isVisible()).toBe(true);
+  });
+
+  it.each(["omp", "Claude Code", "Codex", "Hermes", "Cursor", "Tern"])("keeps coding-agent connections visible for %s", async (name) => {
+    const settings = await mountSettings();
+    await search(settings, name);
+    await settings.get('[data-testid="settings-section-developer"]').trigger("click");
+    expect(settings.get('[data-testid="coding-agents-section"]').isVisible()).toBe(true);
+    expect(settings.get('[data-testid="agent-connections"]').isVisible()).toBe(true);
+  });
+
   it("keeps a failed grant revocation visible when its owning row is filtered", async () => {
     const grant = { id: "grant", scope: "harness", harnessName: "omp", name: "Deploy", kind: "run", website: "", expiresAt: "" };
     api.listAllAgentGrant.mockResolvedValue([grant]);
