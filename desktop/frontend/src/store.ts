@@ -57,7 +57,7 @@ import {
   type WaitingVaultKeys,
 } from "./api";
 import { isSettingsSectionID, saveSelectedSectionID } from "./settingsSections";
-import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress } from "./util";
+import { allAddressKey, describeAgentSession, formatDatabaseLocation, formatFullName, formatRoleWithArticle, formatServerAddress, isApplicationCommand } from "./util";
 import { forgetWebsiteIcons } from "./websiteicons";
 
 export type EditorMode = "view" | "edit" | "create" | "create-secure-note" | "create-credit-card" | "create-identity" | "create-api-credential" | "create-address" | "create-software-license" | "create-server" | "create-database" | "create-ssh-key";
@@ -648,7 +648,7 @@ export async function lock(): Promise<void> {
 // lockOnShortcut locks Hisar on ⌘L in any window, over every panel and dialog: it is the shortcut that protects the vault.
 // It reports whether the key was that shortcut.
 export function lockOnShortcut(event: KeyboardEvent): boolean {
-  if (!(event.metaKey || event.ctrlKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "l") {
+  if (!isApplicationCommand(event) || event.altKey || event.shiftKey || event.key.toLowerCase() !== "l") {
     return false;
   }
   event.preventDefault();

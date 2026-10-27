@@ -65,6 +65,7 @@ import {
   getItemIcon,
   getWebsiteIconURL,
   identityCategory,
+  isApplicationCommand,
   isMacPlatform,
   secureNoteCategory,
   serverCategory,
@@ -503,7 +504,7 @@ function handleShortcut(event: KeyboardEvent): void {
     }
     return;
   }
-  if (!(event.metaKey || event.ctrlKey) || event.altKey) {
+  if (!isApplicationCommand(event) || event.altKey) {
     return;
   }
   const key = event.key.toLowerCase();

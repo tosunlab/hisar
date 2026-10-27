@@ -12,6 +12,8 @@ vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
 const { store } = await import("../store");
 const MainView = (await import("./MainView.vue")).default;
 const ContextMenu = (await import("./ContextMenu.vue")).default;
+const SettingsPanel = (await import("./SettingsPanel.vue")).default;
+const ItemEditor = (await import("./ItemEditor.vue")).default;
 const api = apiMock.current;
 enableAutoUnmount(afterEach);
 
@@ -21,6 +23,7 @@ beforeEach(() => {
     status: createStatus("unlocked"), allVault: [{ id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 1 }],
     selectedVaultID: "personal", allItem: [createItem({ id: "one", title: "One" })], selectedItem: null,
     isFavoritesSelected: false, editorMode: "view", editorDraft: null, discardDraftPrompt: null,
+    isAllItemsSelected: false, allItemReference: [], allItemsError: "",
     searchQuery: "", selectedTag: "", isBusy: false, isSettingsOpen: false, isSharingOpen: false,
     isImportOpen: false, isShareLinksOpen: false, vaultDialog: null, itemDetailDialog: null, shareLinkDialog: null,
   });
@@ -154,4 +157,50 @@ describe("Reader access", () => {
     expect(wrapper.get(".shortcut-list").text()).toContain("Search");
     expect(wrapper.get(".shortcut-list").text()).toContain("Copy password");
   });
+});
+
+describe("Platform command modifiers", () => {
+  afterEach(() => Object.defineProperty(navigator, "platform", { configurable: true, value: "MacIntel" }));
+  for (const [platform, modifier, accepted] of [
+    ["MacIntel", "metaKey", true], ["MacIntel", "ctrlKey", false],
+    ["Linux x86_64", "ctrlKey", true], ["Linux x86_64", "metaKey", false],
+  ] as const) {
+    it(`${platform} ${modifier} ${accepted ? "runs" : "does not claim"} Search, Settings search, Save and Lock`, async () => {
+      Object.defineProperty(navigator, "platform", { configurable: true, value: platform });
+      const view = mount(MainView, { attachTo: document.body });
+      const other = document.createElement("input");
+      document.body.append(other);
+      other.focus();
+      const find = new KeyboardEvent("keydown", { key: "f", [modifier]: true, bubbles: true, cancelable: true });
+      other.dispatchEvent(find);
+      expect(find.defaultPrevented).toBe(accepted);
+      expect(document.activeElement === view.get('input[name="search"]').element).toBe(accepted);
+      view.unmount();
+      const settings = mount(SettingsPanel, { attachTo: document.body });
+      other.focus();
+      const settingsFind = new KeyboardEvent("keydown", { key: "f", [modifier]: true, bubbles: true, cancelable: true });
+      other.dispatchEvent(settingsFind);
+      expect(settingsFind.defaultPrevented).toBe(accepted);
+      expect(document.activeElement === settings.get('[data-testid="settings-search"]').element).toBe(accepted);
+      settings.unmount();
+      store.selectedItem = createItem({ title: "Valid title" });
+      store.editorMode = "edit";
+      api.saveItem.mockResolvedValue(store.selectedItem);
+      api.listAllItem.mockResolvedValue([store.selectedItem]);
+      const editor = mount(ItemEditor, { attachTo: document.body });
+      await editor.get('input[name="title"]').trigger("keydown", { key: "s", [modifier]: true });
+      await flushPromises();
+      expect(api.saveItem).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      editor.unmount();
+      store.isSettingsOpen = true;
+      store.vaultDialog = { mode: "blocked", blockedReason: "Dialog open" } as typeof store.vaultDialog;
+      api.lock.mockResolvedValue(createStatus("locked"));
+      const lockedView = mount(MainView, { attachTo: document.body, global: { stubs: { VaultDialog: true } } });
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "l", [modifier]: true, bubbles: true, cancelable: true }));
+      await flushPromises();
+      expect(api.lock).toHaveBeenCalledTimes(accepted ? 1 : 0);
+      lockedView.unmount();
+      other.remove();
+    });
+  }
 });
