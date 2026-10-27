@@ -112,6 +112,17 @@ class SignInModelTests {
     }
 
     @Test
+    fun testLockOnTheSecretKeyScreenLeavesTheKitReminderAfterUnlock() = runTest {
+        val model = AppModelHarness(this).startModel()
+        model.signIn.signUp(inviteLink, "bob@example.com", "Bob", FakeBackend.PASSWORD)
+        model.lock()
+        assertNull(model.signIn.newAccountStep.value)
+        assertTrue(model.lock.unlock(FakeBackend.PASSWORD))
+        assertEquals(listOf(FakeBackend.NEW_ACCOUNT_OPERATION_ID), model.pendingRecovery.allRecovery.value.map { it.operationId })
+        assertFalse(model.pendingRecovery.isShown.value)
+    }
+
+    @Test
     fun testAutoLockHidesTheBiometricOffer() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startModel()

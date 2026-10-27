@@ -24,6 +24,7 @@ struct NewSecretKeyView: View {
                     Button {
                         _ = PasteboardClipboard().setText(secretKey)
                         isCopied = true
+                        model.reportActivity()
                     } label: {
                         Label(isCopied ? "Copied · clears in 90 seconds" : "Copy Secret Key", systemImage: isCopied ? "checkmark" : "doc.on.doc")
                             .contentTransition(.symbolEffect(.replace))
@@ -35,8 +36,9 @@ struct NewSecretKeyView: View {
                 }
                 Section {
                     if let export {
-                        EmergencyKitShareButton(url: URL(fileURLWithPath: export.emergencyKitPath), label: "Save or Print Emergency Kit") {
+                        EmergencyKitShareButton(url: URL(fileURLWithPath: export.emergencyKitPath), label: "Save or Print Emergency Kit", onPresent: model.reportActivity) {
                             isKitShared = true
+                            model.reportActivity()
                         }
                         .applyProminentGlassStyle()
                         .controlSize(.large)
@@ -71,6 +73,7 @@ struct NewSecretKeyView: View {
                 }
             }
             .applyThemedListStyle()
+            .reportsActivity(to: model)
             .navigationTitle("Save your Secret Key")
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 8) {
@@ -144,6 +147,7 @@ struct BiometricOfferView: View {
                 }
             }
             .applyThemedListStyle()
+            .reportsActivity(to: model)
             .navigationTitle("Unlock with \(SettingsView.biometryName)?")
             .safeAreaInset(edge: .bottom) {
                 VStack(spacing: 8) {
@@ -174,5 +178,17 @@ struct BiometricOfferView: View {
                 .padding(.bottom, 8)
             }
         }
+    }
+}
+
+extension View {
+    // Onboarding screens hold the user for minutes (writing a Secret Key down, printing), so their appearance, taps and
+    // scrolling count as activity for auto-lock; idle time on them still locks.
+    func reportsActivity(to model: AppModel) -> some View {
+        onAppear { model.reportActivity() }
+            .simultaneousGesture(TapGesture().onEnded { model.reportActivity() })
+            .onScrollPhaseChange { _, phase in
+                if phase == .interacting { model.reportActivity() }
+            }
     }
 }
