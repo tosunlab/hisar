@@ -89,8 +89,10 @@ struct CredentialImportView: View {
             .accessibilityIdentifier("credential-import-open")
         } header: {
             Text("Enter the export passphrase")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("This export is encrypted. Enter the passphrase it was exported with.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -128,9 +130,10 @@ struct CredentialImportView: View {
             }
         } footer: {
             Text("\(AppModel.describeItemCount(preview.itemCount)) from \(preview.fileName).")
+                .foregroundStyle(.themeSecondary)
         }
         ForEach(Array(preview.groups.enumerated()), id: \.element.id) { index, group in
-            Section("Source and destination access") {
+            Section {
                 Text("\(group.name) to \(group.vaultName)")
                 if isGrouped {
                     Picker("Vault for \(AppModel.describeItemCount(group.itemCount))", selection: Binding(get: { group.vaultID }, set: { vaultID in
@@ -150,15 +153,21 @@ struct CredentialImportView: View {
                 }
                 Text("Imported items are readable by the destination's current members. Access can change later.")
                     .font(.footnote)
+            } header: {
+                Text("Source and destination access")
+                    .foregroundStyle(.themeSecondary)
             }
             .accessibilityIdentifier("credential-import-access")
         }
         let allCountRow = preview.allCountRow
         if !allCountRow.isEmpty {
-            Section("Items") {
+            Section {
                 ForEach(allCountRow) { row in
                     LabeledContent(row.label, value: "\(row.count)")
                 }
+            } header: {
+                Text("Items")
+                    .foregroundStyle(.themeSecondary)
             }
             .accessibilityIdentifier("credential-import-counts")
         }
@@ -179,11 +188,13 @@ struct CredentialImportView: View {
                 }
             } header: {
                 Text(preview.allDuplicate.count == 1 ? "1 item is already there" : "\(preview.allDuplicate.count) items are already there")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 if preview.duplicatePasskeyCount > 0 {
                     Text(preview.duplicatePasskeyCount == 1
                         ? "The passkey of a skipped login is still added to the login \(preview.vaultName) has."
                         : "Passkeys of skipped logins are still added to the logins \(preview.vaultName) has.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .accessibilityIdentifier("credential-import-duplicates")
@@ -249,6 +260,7 @@ struct CredentialImportView: View {
                     .accessibilityIdentifier("credential-import-retry")
                 } footer: {
                     Text("The import is paused. Items saved so far stay in \(progress.vaultName).")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -259,7 +271,7 @@ struct CredentialImportView: View {
     }
 
     private func skippedSection(_ allEntry: [ImportSkippedEntry], header: String) -> some View {
-        Section(header) {
+        Section {
             ForEach(Array(allEntry.enumerated()), id: \.offset) { _, entry in
                 VStack(alignment: .leading, spacing: 2) {
                     Text(entry.title.isEmpty ? "Untitled" : entry.title)
@@ -268,6 +280,9 @@ struct CredentialImportView: View {
                         .foregroundStyle(.themeSecondary)
                 }
             }
+        } header: {
+            Text(header)
+                .foregroundStyle(.themeSecondary)
         }
     }
 }

@@ -40,8 +40,10 @@ struct PhoneApprovalSheet: View {
                             .accessibilityIdentifier("phone-approval-password")
                     } header: {
                         Text("Approve with your master password")
+                            .foregroundStyle(.themeSecondary)
                     } footer: {
                         Text("\(biometryName) is not available, so Hisar checks your master password instead.")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 if approval.isForwarded {

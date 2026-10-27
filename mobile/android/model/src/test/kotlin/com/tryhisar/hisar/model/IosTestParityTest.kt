@@ -48,6 +48,10 @@ class IosTestParityTest {
                 "SwiftUI adaptive preset grid at iOS Dynamic Type sizes; Android uses its own Compose icon picker",
             "testRemovedVaultDismissTargetNamesItsVaultAndMeetsMinimumSize" to
                 "iPhone's shared 44-point icon hit-area helper; Android uses Material minimum interactive targets",
+            "testSupportingTextContrastAcrossPalettesAndAppearances" to
+                "Resolves SwiftUI themeSecondary against iOS grouped Form and List backgrounds",
+            "testLightSupportingInstructionsRenderInSignInExportAndAccountChange" to
+                "Captures iPhone supporting-text rendering in Light appearance; Android uses Compose",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

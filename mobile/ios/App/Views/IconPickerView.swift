@@ -55,13 +55,16 @@ struct IconPickerView: View {
                     .disabled(isPreparing)
                     .accessibilityIdentifier("icon-photo")
                 }
-                Section("Icons") {
+                Section {
                     IconPresetGrid(item: item, icon: icon, color: color) { preset in
                         model.clearError()
                         icon = ChosenIcon(preset: preset, color: color)
                     }
+                } header: {
+                    Text("Icons")
+                        .foregroundStyle(.themeSecondary)
                 }
-                Section("Color") {
+                Section {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 10) {
                             buildSwatch("")
@@ -71,6 +74,9 @@ struct IconPickerView: View {
                         }
                         .padding(.vertical, 4)
                     }
+                } header: {
+                    Text("Color")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle("Icon")

@@ -45,7 +45,7 @@ struct OrganizationsView: View {
     var body: some View {
         List {
             if !model.allOrganizationInvitation.isEmpty {
-                Section("Invitations for you") {
+                Section {
                     ForEach(model.allOrganizationInvitation) { invitation in
                         OrganizationInvitationRow(invitation: invitation) {
                             Task { await accept(invitation) }
@@ -53,6 +53,9 @@ struct OrganizationsView: View {
                             Task { await decline(invitation) }
                         }
                     }
+                } header: {
+                    Text("Invitations for you")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !model.allOrganization.isEmpty {
@@ -83,6 +86,7 @@ struct OrganizationsView: View {
                 .accessibilityIdentifier("create-organization")
             } footer: {
                 Text("An organization shares vaults through its teams instead of person by person. You become its first admin.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         .applyThemedListStyle()
@@ -195,6 +199,7 @@ struct CreateOrganizationView: View {
                         .accessibilityIdentifier("new-organization-name")
                 } footer: {
                     Text("1 to 100 characters. The Hisar server sees the names of organizations and teams, but never the names of their vaults.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle("Create organization")
@@ -278,6 +283,7 @@ struct OrganizationView: View {
             Text(organization.isAdmin
                  ? "Admins manage members, teams and which teams have which vaults; being an admin gives no vault."
                  : "Members get the vaults of the teams they are in. Admins of \(organization.name) manage its teams.")
+                .foregroundStyle(.themeSecondary)
         }
         if organization.isAdmin {
             inviteSection
@@ -301,6 +307,7 @@ struct OrganizationView: View {
             } footer: {
                 if organization.allTeam.isEmpty {
                     Text("Teams get the organization's vaults. Create one, add members and give it a vault.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -514,8 +521,10 @@ struct OrganizationView: View {
             }
         } header: {
             Text("Invite by email")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("They accept in Hisar, or create an account from the email first. Every address gets the same answer.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -547,13 +556,15 @@ struct OrganizationView: View {
             }
         } header: {
             Text(OrganizationLogic.describeMemberCount(organization.allMember.count))
+                .foregroundStyle(.themeSecondary)
         } footer: {
             Text("Compare security codes with people once, in person or over a channel you trust. Tap a person to see theirs.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
     private func invitedSection(_ organization: Organization) -> some View {
-        Section("Invited") {
+        Section {
             ForEach(organization.allInvitation) { invitation in
                 Label {
                     VStack(alignment: .leading, spacing: 2) {
@@ -575,6 +586,9 @@ struct OrganizationView: View {
                 }
                 .accessibilityIdentifier("organization-invitation-\(invitation.email)")
             }
+        } header: {
+            Text("Invited")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -657,6 +671,7 @@ struct OrganizationView: View {
         } header: {
             HStack {
                 Text("Team \(team.name)")
+                    .foregroundStyle(.themeSecondary)
                 Spacer()
                 if organization.isAdmin {
                     Menu {
@@ -677,6 +692,7 @@ struct OrganizationView: View {
         } footer: {
             if team.allMember.isEmpty && team.allVault.isEmpty {
                 Text("No members or vaults yet.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -817,10 +833,12 @@ struct OrganizationMemberView: View {
                     }
                 } header: {
                     Text("Security code")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text(member.isCurrentUser
                          ? "Others see this code for you. When they compare it with you, they know vaults they give you reach you and nobody else."
                          : "Compare it with \(member.name) once, in person or over a channel you trust. If it matches what their Hisar shows, vaults their teams get reach them and nobody else.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             Section {
@@ -838,6 +856,7 @@ struct OrganizationMemberView: View {
                 Text(role == OrganizationRole.admin
                      ? "Admins manage members, teams and which teams have which vaults; being an admin gives no vault."
                      : "Members get the vaults of the teams they are in.")
+                    .foregroundStyle(.themeSecondary)
             }
             if isAdmin && !member.isCurrentUser {
                 Section {
@@ -923,6 +942,7 @@ struct GiveVaultSheet: View {
                     .accessibilityIdentifier("give-vault-role")
                 } footer: {
                     Text("Everyone in the team gets the vault with this role. Someone in several teams gets the strongest of their roles.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle(title)
@@ -1022,10 +1042,12 @@ struct OrganizationVaultSharingView: View {
                         }
                     } header: {
                         Text("Shared through teams in \(sharing.organizationName)")
+                            .foregroundStyle(.themeSecondary)
                             .accessibilityIdentifier("shared-through-teams")
                     } footer: {
                         if let askAdminNote = sharing.askAdminNote {
                             Text(askAdminNote)
+                                .foregroundStyle(.themeSecondary)
                                 .accessibilityIdentifier("ask-an-admin")
                         }
                     }

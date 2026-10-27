@@ -16,10 +16,13 @@ struct DevicesView: View {
                 let allCurrentDevice = allDevice.filter(\.isCurrent)
                 let allOtherDevice = allDevice.filter { !$0.isCurrent }
                 if !allCurrentDevice.isEmpty {
-                    Section("This iPhone") {
+                    Section {
                         ForEach(allCurrentDevice) { device in
                             DeviceRow(device: device)
                         }
+                    } header: {
+                        Text("This iPhone")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 Section {
@@ -38,10 +41,12 @@ struct DevicesView: View {
                     }
                 } header: {
                     Text("Other devices")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text(allOtherDevice.isEmpty
                          ? "No other device is signed in to your account."
                          : "Sign out a device you no longer use or don't recognise. It needs your Secret Key and master password to sign in again.")
+                        .foregroundStyle(.themeSecondary)
                 }
             } else {
                 Label {
@@ -133,6 +138,7 @@ struct DeviceView: View {
                     .accessibilityIdentifier("revoke-device")
             } footer: {
                 Text("Signing out ends the device's session on the server, so it can no longer sync your vaults or answer for your account.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
         .applyThemedListStyle()

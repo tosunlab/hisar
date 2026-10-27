@@ -152,7 +152,7 @@ struct ItemDetailView: View {
                 }
             }
             if !item.allField.isEmpty {
-                Section("Other fields") {
+                Section {
                     ForEach(Array(item.allField.enumerated()), id: \.offset) { _, field in
                         SecretFieldRow(
                             label: field.name, isCustomField: true, value: field.value, isConcealed: field.concealed,
@@ -162,10 +162,13 @@ struct ItemDetailView: View {
                             copyReference: { copyReference(fieldName: field.name) }
                         )
                     }
+                } header: {
+                    Text("Other fields")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allURL.isEmpty {
-                Section(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites") {
+                Section {
                     ForEach(Array(item.allURL.enumerated()), id: \.offset) { _, url in
                         HStack(spacing: 0) {
                             CopyFieldButton(label: "website", value: url, copy: { model.copyText(url, label: "Website") }) {
@@ -198,6 +201,9 @@ struct ItemDetailView: View {
                             }
                         }
                     }
+                } header: {
+                    Text(item.isServer ? "Admin console" : item.allURL.count == 1 ? "Website" : "Websites")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allAndroidApp.isEmpty {
@@ -207,15 +213,20 @@ struct ItemDetailView: View {
                     }
                 } header: {
                     Text(item.allAndroidApp.count == 1 ? "Android app" : "Android apps")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("Linked on an Android phone. AutoFill there offers this login in these apps.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.allPasskey.isEmpty {
-                Section("Passkeys") {
+                Section {
                     ForEach(item.allPasskey) { passkey in
                         buildPasskeyRow(passkey)
                     }
+                } header: {
+                    Text("Passkeys")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if !item.notes.isEmpty && !item.isSecureNote {
@@ -237,6 +248,7 @@ struct ItemDetailView: View {
                     }
                 } header: {
                     Text("Notes")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if isWritable && item.canConvertToSecureNote {
@@ -250,6 +262,7 @@ struct ItemDetailView: View {
                     .accessibilityIdentifier("convert-to-secure-note")
                 } footer: {
                     Text("This login has no username, password or website. As a secure note, it opens straight to its notes and fields.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             if let referenceField = getReferenceField(item: item) {
@@ -263,6 +276,7 @@ struct ItemDetailView: View {
                     .accessibilityIdentifier("copy-secret-reference")
                 } footer: {
                     Text("For hisar run and hisar read on your Mac.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -274,7 +288,7 @@ struct ItemDetailView: View {
     @ViewBuilder
     private func buildServerSection(server: ItemServer) -> some View {
         if !server.host.isEmpty || !server.port.isEmpty || !server.sshKeyID.isEmpty {
-            Section("Server") {
+            Section {
                 if !server.host.isEmpty {
                     SecretFieldRow(
                         label: ServerFieldName.host, value: server.address, isConcealed: false, isRevealed: true, toggleReveal: nil,
@@ -310,6 +324,9 @@ struct ItemDetailView: View {
                         .accessibilityIdentifier("server-ssh-key")
                     }
                 }
+            } header: {
+                Text("Server")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -379,6 +396,7 @@ struct ItemDetailView: View {
             )
         } footer: {
             Text("Built from the fields above, so it always has the current password.")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -492,6 +510,7 @@ struct ItemDetailView: View {
             }
         } header: {
             Text(title)
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -520,6 +539,7 @@ struct ItemDetailView: View {
             }
         } header: {
             Text("Note")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -530,7 +550,7 @@ struct ItemDetailView: View {
 
     @ViewBuilder
     private func buildSSHKeySection(item: ItemDetail) -> some View {
-        Section("SSH key") {
+        Section {
             LabeledContent("Key type", value: item.keyType)
             SecretFieldRow(
                 label: "Fingerprint", value: item.fingerprint, isConcealed: false, isRevealed: true, toggleReveal: nil,
@@ -542,6 +562,9 @@ struct ItemDetailView: View {
                 copy: { copy(fieldName: "public key", label: "Public key") },
                 copyReference: { copyReference(fieldName: "public key") }
             )
+        } header: {
+            Text("SSH key")
+                .foregroundStyle(.themeSecondary)
         }
     }
 

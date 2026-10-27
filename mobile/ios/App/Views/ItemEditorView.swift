@@ -84,10 +84,13 @@ struct ItemEditorView: View {
                     }
                 }
                 if draft.isSecureNote {
-                    Section("Note") {
+                    Section {
                         TextField("Recovery codes, door codes, account details…", text: $draft.notes, axis: .vertical)
                             .lineLimit(8...30)
                             .accessibilityIdentifier("editor-notes")
+                    } header: {
+                        Text("Note")
+                            .foregroundStyle(.themeSecondary)
                     }
                     buildFieldSection()
                 } else if draft.isCreditCard {
@@ -112,7 +115,7 @@ struct ItemEditorView: View {
                     if draft.isDatabase {
                         buildDatabaseSection()
                     }
-                    Section("Login") {
+                    Section {
                         TextField("Username or email", text: $draft.username)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
@@ -153,16 +156,22 @@ struct ItemEditorView: View {
                             .accessibilityLabel("Generate password")
                             .accessibilityIdentifier("editor-generate-password")
                         }
+                    } header: {
+                        Text("Login")
+                            .foregroundStyle(.themeSecondary)
                     }
                     if !draft.isDatabase {
-                        Section("One-time code") {
+                        Section {
                             TextField("Setup key or otpauth:// link", text: $draft.oneTimePassword)
                                 .font(.system(.body, design: .monospaced))
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("editor-one-time-password")
+                        } header: {
+                            Text("One-time code")
+                                .foregroundStyle(.themeSecondary)
                         }
-                        Section(draft.isServer ? "Admin console" : "Websites") {
+                        Section {
                             ForEach(allURLText.indices, id: \.self) { index in
                                 TextField(draft.isServer ? "Admin console URL" : "Website", text: $allURLText[index], prompt: Text(verbatim: draft.isServer ? "https://console.example.com" : "https://example.com"))
                                     .keyboardType(.URL)
@@ -176,15 +185,21 @@ struct ItemEditorView: View {
                             } label: {
                                 Label("Add website", systemImage: "plus")
                             }
+                        } header: {
+                            Text(draft.isServer ? "Admin console" : "Websites")
+                                .foregroundStyle(.themeSecondary)
                         }
                     }
                     buildFieldSection()
                 }
                 if !draft.isSecureNote {
-                    Section("Notes") {
+                    Section {
                         TextField("Notes", text: $draft.notes, axis: .vertical)
                             .lineLimit(3...10)
                             .accessibilityIdentifier("editor-notes")
+                    } header: {
+                        Text("Notes")
+                            .foregroundStyle(.themeSecondary)
                     }
                 }
                 buildTagSection()
@@ -368,6 +383,7 @@ struct ItemEditorView: View {
             }
         } header: {
             Text("Card")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             let allWarning = [cardDescription.numberWarning, cardTypeMismatch, cardDescription.expiryWarning].filter { !$0.isEmpty }
             if !allWarning.isEmpty {
@@ -472,7 +488,7 @@ struct ItemEditorView: View {
 
     @ViewBuilder
     private func buildIdentitySections() -> some View {
-        Section("Name") {
+        Section {
             TextField("First name", text: bindIdentity(\.firstName))
                 .textContentType(.givenName)
                 .accessibilityIdentifier("editor-identity-first-name")
@@ -482,8 +498,11 @@ struct ItemEditorView: View {
             TextField("Last name", text: bindIdentity(\.lastName))
                 .textContentType(.familyName)
                 .accessibilityIdentifier("editor-identity-last-name")
+        } header: {
+            Text("Name")
+                .foregroundStyle(.themeSecondary)
         }
-        Section("Details") {
+        Section {
             buildDateRow("Birth date", bindIdentity(\.birthDate), identifier: "editor-identity-birth-date", isFutureAllowed: false)
             TextField("Email", text: bindIdentity(\.email))
                 .keyboardType(.emailAddress)
@@ -495,9 +514,12 @@ struct ItemEditorView: View {
                 .keyboardType(.phonePad)
                 .textContentType(.telephoneNumber)
                 .accessibilityIdentifier("editor-identity-phone")
+        } header: {
+            Text("Details")
+                .foregroundStyle(.themeSecondary)
         }
         buildAddressSection("Address", { bindIdentity((\ItemIdentity.postalAddress).appending(path: $0)) }, oldText: bindIdentity(\.address))
-        Section("Documents") {
+        Section {
             buildDocumentField("Passport number", \.passportNumber, identifier: "editor-identity-passport-number")
             buildDocumentField("Driver's license number", \.driversLicenseNumber, identifier: "editor-identity-drivers-license-number")
             buildDocumentField("National ID number", \.nationalIDNumber, identifier: "editor-identity-national-id-number")
@@ -506,6 +528,9 @@ struct ItemEditorView: View {
             } label: {
                 Label(isDocumentNumberRevealed ? "Hide document numbers" : "Show document numbers", systemImage: isDocumentNumberRevealed ? "eye.slash" : "eye")
             }
+        } header: {
+            Text("Documents")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -526,7 +551,7 @@ struct ItemEditorView: View {
     /// button that moves it into the street.
     @ViewBuilder
     private func buildAddressSection(_ title: String, _ bind: @escaping (WritableKeyPath<ItemAddress, String>) -> Binding<String>, oldText: Binding<String>? = nil) -> some View {
-        Section(title) {
+        Section {
             TextField("Street", text: bind(\.street), axis: .vertical)
                 .lineLimit(1...4)
                 .textContentType(.fullStreetAddress)
@@ -565,6 +590,9 @@ struct ItemEditorView: View {
                     .accessibilityIdentifier("editor-use-as-street")
                 }
             }
+        } header: {
+            Text(title)
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -622,6 +650,7 @@ struct ItemEditorView: View {
             buildDateRow("Expiry", bindAPICredential(\.expiry), identifier: "editor-api-credential-expiry", isFutureAllowed: true)
         } header: {
             Text("Credential")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if !credentialExpiryWarning.isEmpty {
                 Text(credentialExpiryWarning)
@@ -673,6 +702,7 @@ struct ItemEditorView: View {
             .accessibilityIdentifier("editor-server-ssh-key")
         } header: {
             Text("Server")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if !portWarning.isEmpty {
                 Text(portWarning)
@@ -748,6 +778,7 @@ struct ItemEditorView: View {
                 .accessibilityIdentifier("editor-database-options")
         } header: {
             Text("Database")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if !portWarning.isEmpty {
                 Text(portWarning)
@@ -756,6 +787,7 @@ struct ItemEditorView: View {
             }
             if isOtherEngine {
                 Text("Hisar builds connection strings only for the engines listed.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }
@@ -774,7 +806,7 @@ struct ItemEditorView: View {
 
     @ViewBuilder
     private func buildSoftwareLicenseSection() -> some View {
-        Section("License") {
+        Section {
             TextField("Product", text: bindSoftwareLicense(\.product))
                 .accessibilityIdentifier("editor-license-product")
             TextField("Version", text: bindSoftwareLicense(\.version))
@@ -821,11 +853,14 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-download-url")
+        } header: {
+            Text("License")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
     private func buildFieldSection() -> some View {
-        Section("Other fields") {
+        Section {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
@@ -854,6 +889,9 @@ struct ItemEditorView: View {
             } label: {
                 Label("Add field", systemImage: "plus")
             }
+        } header: {
+            Text("Other fields")
+                .foregroundStyle(.themeSecondary)
         }
     }
 
@@ -873,9 +911,11 @@ struct ItemEditorView: View {
                 .accessibilityIdentifier("editor-new-tag")
         } header: {
             Text("Tags")
+                .foregroundStyle(.themeSecondary)
         } footer: {
             if draft.allTag.isEmpty {
                 Text("Tags group items across vaults; open Tags on the Vaults screen to browse them.")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }

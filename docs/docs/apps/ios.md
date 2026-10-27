@@ -31,6 +31,8 @@ New items have a **Vault** picker that lists writable vaults and starts with the
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
+Section headings and explanations use the palette's solid secondary text color, including recovery, export and
+account-change instructions. The color keeps at least 4.5:1 contrast on grouped backgrounds in Light and Dark appearance.
 
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.

@@ -44,9 +44,11 @@ struct ApprovalList: View {
                     }
                 } header: {
                     Text(allApproval.count == 1 ? "1 request waiting" : "\(allApproval.count) requests waiting")
+                        .foregroundStyle(.themeSecondary)
                         .accessibilityIdentifier("approvals-header")
                 } footer: {
                     Text("Tap a request to see what it asks for.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }

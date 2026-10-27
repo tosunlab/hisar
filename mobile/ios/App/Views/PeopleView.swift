@@ -15,7 +15,7 @@ struct PeopleView: View {
                 }
             }
             if !shareInvitations.allReceived.isEmpty {
-                Section("Invitations for you") {
+                Section {
                     ForEach(shareInvitations.allReceived) { invitation in
                         ReceivedInvitationRow(invitation: invitation) {
                             Task {
@@ -33,6 +33,9 @@ struct PeopleView: View {
                             }
                         }
                     }
+                } header: {
+                    Text("Invitations for you")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             Section {
@@ -55,8 +58,10 @@ struct PeopleView: View {
                 }
             } header: {
                 Text("People you share vaults with")
+                    .foregroundStyle(.themeSecondary)
             } footer: {
                 Text("People appear here once you share a vault with them. Compare security codes with them once, in person or over a channel you trust.")
+                    .foregroundStyle(.themeSecondary)
             }
             if !shareInvitations.allSent.isEmpty || !shareInvitations.completionError.isEmpty {
                 Section {
@@ -71,6 +76,7 @@ struct PeopleView: View {
                     }
                 } header: {
                     Text("Invitations you sent")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     if !shareInvitations.completionError.isEmpty {
                         Text("Could not finish sharing: \(shareInvitations.completionError)")
@@ -88,6 +94,7 @@ struct PeopleView: View {
                     .accessibilityIdentifier("invite-person")
                 } footer: {
                     Text("Creates a Hisar account: the server emails them a sign-up link. To give them a vault, share it from Share in the vault's toolbar.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -163,10 +170,12 @@ struct PersonView: View {
                         .accessibilityIdentifier("person-security-code")
                 } header: {
                     Text("Security code")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text(person.isCurrentUser
                          ? "Others see this code for you. When they compare it with you, they know vaults they share reach you and nobody else."
                          : "Compare it with \(person.name) once, in person or over a channel you trust. If it matches what their Hisar shows, vaults you share reach them and nobody else.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
         }
@@ -293,8 +302,10 @@ struct InvitePersonView: View {
                         .accessibilityIdentifier("invite-email")
                 } header: {
                     Text("Who")
+                        .foregroundStyle(.themeSecondary)
                 } footer: {
                     Text("The server emails them a sign-up link that works once and expires after 7 days. They sign up with this email address.")
+                        .foregroundStyle(.themeSecondary)
                 }
             }
             .navigationTitle("Invite to Hisar")
