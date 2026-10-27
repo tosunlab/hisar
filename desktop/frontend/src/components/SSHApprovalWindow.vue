@@ -221,8 +221,17 @@ const allSecretName = computed(() => approval.value?.allSecretName ?? []);
 const rememberLabel = computed(
   () =>
     approval.value?.rememberLabel ||
-    `Don’t ask again for ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} ${approval.value?.rememberPeriod || "for 1 hour"}`,
+    `Approve SSH requests from ${isAppRequester.value ? approval.value?.appName : approval.value?.clientName} with this key ${approval.value?.rememberPeriod === "until Hisar locks" ? "until Hisar locks" : `for up to ${(approval.value?.rememberPeriod || "for 1 hour").replace(/^for /, "")}`}`,
 );
+const rememberNote = computed(() => {
+  const current = approval.value;
+  if (current?.kind !== "ssh-key" || current.agentName || isSigning.value || current.isForwarded) return "";
+  return current.rememberPeriod === "until Hisar locks" ? "Any host." : "Any host. Ends when Hisar locks.";
+});
+const commandLineAllowance = computed(() => {
+  const lines = approval.value?.allowance?.split("\n") ?? [];
+  return { permissions: lines.slice(0, -1), note: lines.at(-1) };
+});
 
 // commandLineCoverage is who approving a command-line request approves, and for how long, by ApprovalEvent.coverage.
 const commandLineCoverage = computed(() => {
@@ -572,6 +581,14 @@ onBeforeUnmount(() => {
             >
           </div>
 
+          <div v-if="isCommandLine && commandLineAllowance.permissions.length" class="launcher-allowance" data-testid="approval-command-line-allowance">
+            <ul>
+              <li v-for="permission in commandLineAllowance.permissions" :key="permission"><AppIcon name="check" :size="14" /> {{ permission }}</li>
+            </ul>
+            <p class="muted">{{ commandLineAllowance.note }}</p>
+            <p v-if="durationNote" class="muted note" data-testid="approval-duration">{{ durationNote }}</p>
+          </div>
+
           <div v-if="isLauncher && !isLauncherShare" class="launcher-allowance" data-testid="approval-launcher-note">
             <ul>
               <li v-for="allowance in allLauncherAllowance" :key="allowance.text"><AppIcon :name="allowance.icon" :size="14" /> {{ allowance.text }}</li>
@@ -622,7 +639,7 @@ onBeforeUnmount(() => {
               :checked="approvalStore.isRemembered"
               @change="setRemembered(approval.requestID, ($event.target as HTMLInputElement).checked)"
             />
-            {{ rememberLabel }}
+            <span>{{ rememberLabel }}<small v-if="rememberNote" class="muted" data-testid="approval-remember-note">{{ ` ${rememberNote}` }}</small></span>
           </label>
 
           <div v-if="allGrantDuration.length > 0" class="grant-duration" data-testid="approval-grant-duration">
@@ -662,7 +679,7 @@ onBeforeUnmount(() => {
             <button type="submit" class="primary" data-testid="submit-password" :disabled="approvalStore.isAuthorizing || !password">{{ passwordButtonLabel }}</button>
           </form>
 
-          <p v-if="durationNote" class="muted note" data-testid="approval-duration">{{ durationNote }}</p>
+          <p v-if="durationNote && !isCommandLine" class="muted note" data-testid="approval-duration">{{ durationNote }}</p>
           <p v-if="agentNote" class="muted note" data-testid="approval-agent-note">{{ agentNote }}</p>
 
           <footer class="footer-bar">

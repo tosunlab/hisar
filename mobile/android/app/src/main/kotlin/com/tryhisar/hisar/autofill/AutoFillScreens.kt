@@ -274,8 +274,8 @@ private fun AutoFillListView(model: AutoFillModel) {
 
 private fun emptyMessage(kind: RequestKind, isSearchEmpty: Boolean): String = when (kind) {
     RequestKind.ONE_TIME_CODE ->
-        if (isSearchEmpty) "No login for this site has a one-time password. Search all logins above." else "No matching one-time codes for this site."
-    RequestKind.PASSWORD -> if (isSearchEmpty) "No logins saved for this site. Search all logins above." else "No matching logins for this site."
+        if (isSearchEmpty) "No login for this site has a one-time code. Search all logins to choose one." else "No matching one-time codes for this site."
+    RequestKind.PASSWORD -> if (isSearchEmpty) "No logins saved for this site. Search all logins to choose one." else "No matching logins for this site."
 }
 
 /** The always visible search field of the iPhone list's navigation bar drawer. */

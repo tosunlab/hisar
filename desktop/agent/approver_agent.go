@@ -266,7 +266,7 @@ func (approver *Approver) buildAgentPhoneDescription(event ApprovalEvent, reques
 		Kind:         approval.KindCommandLine,
 		AppName:      requester,
 		AppIcon:      approver.getPhoneAppIcon(event),
-		AppWarning:   event.AppWarning,
+		AppWarning:   strings.TrimSpace(event.AppWarning + " " + event.Warning),
 		Purpose:      event.Action,
 		CommandLine:  event.CommandLine,
 		ProjectPath:  event.ProjectPath,

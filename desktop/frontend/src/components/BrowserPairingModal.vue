@@ -5,6 +5,8 @@ import { cancelBrowserPairing, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 
 const now = ref(Date.now());
+const panel = ref<HTMLElement | null>(null);
+useModalFocus(panel, cancelBrowserPairing, () => document.querySelector<HTMLButtonElement>('[data-testid="open-favorites"]'));
 let clockTimer: ReturnType<typeof setInterval> | undefined;
 
 const allCodeGroup = computed(() => {
@@ -16,8 +18,6 @@ const secondsLeft = computed(() => {
   return Number.isNaN(expiresAt) ? 0 : Math.max(0, Math.round((expiresAt - now.value) / 1000));
 });
 const timeLeft = computed(() => `${Math.floor(secondsLeft.value / 60)}:${String(secondsLeft.value % 60).padStart(2, "0")}`);
-const panel = ref<HTMLElement | null>(null);
-useModalFocus(panel, cancelBrowserPairing);
 
 onMounted(() => {
   clockTimer = setInterval(() => {

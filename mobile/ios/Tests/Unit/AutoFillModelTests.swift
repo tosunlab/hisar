@@ -369,6 +369,19 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertTrue(allCompletedCredential.isEmpty)
     }
 
+    func testLoadsDuplicatePasskeyLabelsWithVaultNames() async {
+        backend.seedSignedIn()
+        var other = FakeBackend.gitHubPasskey
+        other.vaultID = "family"
+        other.credentialID = Base64URL.encode(Data([2, 2, 2]))
+        backend.allPasskey.append(other)
+        let model = createModel()
+        await model.prepareCredentialList(allServiceIdentifier: [], passkeyRequest: PasskeyAssertionRequest(relyingPartyID: "github.com", clientDataHash: clientDataHash))
+        XCTAssertEqual(model.allVisibleMatchingPasskey.map { model.subtitle(for: $0) }, ["alice · Personal", "alice · Family"])
+        await model.selectPasskey(model.allVisibleMatchingPasskey[1])
+        XCTAssertEqual(allAssertion.first?.credentialID, Data([2, 2, 2]))
+    }
+
     func testPasskeyListAppliesAllowedCredentialsAndOtherRelyingParties() async {
         backend.seedSignedIn()
         let model = createModel()

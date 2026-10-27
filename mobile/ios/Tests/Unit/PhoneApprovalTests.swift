@@ -197,9 +197,19 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertEqual(model.allPendingApproval.count, 2)
     }
 
+    func testCommandLineAllowanceIsOptionalAndNotInferredForAgents() throws {
+        let json = """
+        [{"requestId":"cli","kind":"cli","allowance":"Read secrets and one-time codes\\nAdd, change and delete items"},
+         {"requestId":"agent","kind":"cli","appName":"omp"}]
+        """
+        let approvals = try JSONDecoder().decode([PhoneApproval].self, from: Data(json.utf8))
+        XCTAssertEqual(approvals[0].allDetailRow.first { $0.label == "Allows" }?.value, "Read secrets and one-time codes\nAdd, change and delete items")
+        XCTAssertFalse(approvals[1].allDetailRow.contains { $0.label == "Allows" })
+    }
+
     private func createRememberingApproval(requestID: String = "0123456789abcdef0123456789abcdef", isRememberedByDefault: Bool = true) -> PhoneApproval {
         var approval = createApproval(requestID: requestID)
-        approval.rememberLabel = "Also allows Terminal for 1 hour"
+        approval.rememberLabel = "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks."
         approval.isRememberedByDefault = isRememberedByDefault
         return approval
     }
@@ -210,7 +220,7 @@ final class PhoneApprovalTests: XCTestCase {
           "kind":"ssh","appName":"iTerm2","purpose":"sign a commit","repositoryPath":"~/src/core",
           "rememberLabel":"Also allows iTerm2 to sign commits in ~/src/core for 10 minutes"},
          {"requestId":"fedcba9876543210fedcba9876543210","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
-          "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com","rememberLabel":"Also allows Terminal for 1 hour","isRememberedByDefault":true},
+          "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com","rememberLabel":"Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.","isRememberedByDefault":true},
          {"requestId":"00112233445566778899aabbccddeeff","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
           "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com"}]
         """
@@ -247,10 +257,37 @@ final class PhoneApprovalTests: XCTestCase {
     func testSheetSwitchIsSentWithThePasswordApproval() async {
         backend.isBiometricAvailable = false
         let model = await createReviewingModel(allApproval: [createRememberingApproval()])
-        await model.approvePendingApproval(isRemembered: true)
-        XCTAssertTrue(model.isApprovalPasswordRequired)
+        XCTAssertTrue(model.isApprovalPasswordRequired, "the password form opens without a failed biometric attempt")
         await model.approvePendingApproval(password: FakeBackend.password, isRemembered: true)
         XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered 0123456789abcdef0123456789abcdef"])
+    }
+
+    func testCardRememberChoiceSurvivesPasswordFallback() async {
+        let approval = createRememberingApproval(requestID: "once")
+        let model = await createUnlockedModel(allApproval: [approval])
+        model.setRememberChoice(false, for: approval)
+        backend.isBiometricAvailable = false
+        await model.approve(approval)
+        XCTAssertTrue(model.isApprovalPasswordRequired)
+        XCTAssertFalse(model.rememberChoice(for: approval))
+        await model.approvePendingApproval(password: "wrong")
+        XCTAssertFalse(model.rememberChoice(for: approval))
+        await model.approvePendingApproval(password: FakeBackend.password)
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve once"])
+        XCTAssertTrue(model.approvalRememberChoices.isEmpty)
+    }
+
+    func testCardWithoutBiometricsOpensPasswordDirectly() async {
+        backend.isBiometricAvailable = false
+        let approval = createRememberingApproval(requestID: "once")
+        let model = await createUnlockedModel(allApproval: [approval])
+        model.setRememberChoice(false, for: approval)
+        await model.approve(approval)
+        XCTAssertEqual(model.presentedApproval?.requestID, approval.requestID)
+        XCTAssertTrue(model.isApprovalPasswordRequired)
+        XCTAssertFalse(backend.allCallName.contains("approveApproval"))
+        await model.approvePendingApproval(password: FakeBackend.password)
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve once"])
     }
 
     func testOldRequestsApproveOnce() async {
@@ -290,8 +327,8 @@ final class PhoneApprovalTests: XCTestCase {
     }
 
     func testFallsBackToTheMasterPassword() async {
-        backend.isBiometricAvailable = false
         let model = await createReviewingModel(allApproval: [createApproval()])
+        backend.isBiometricAvailable = false
         await model.approvePendingApproval(isRemembered: false)
         XCTAssertTrue(model.isApprovalPasswordRequired)
         XCTAssertNil(model.approvalErrorMessage)

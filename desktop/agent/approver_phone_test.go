@@ -153,7 +153,7 @@ func TestPhoneApprovesTheDialog(t *testing.T) {
 	want := approval.Description{
 		Kind: approval.KindSSH, AppName: "Terminal", Purpose: "push to git.tryhisar.com", Host: "git.tryhisar.com:22",
 		CommandLine: "git push origin main", RepositoryPath: "~/src/core", KeyName: "Laptop",
-		RememberLabel: "Also allows Terminal for 1 hour", IsRememberedByDefault: true,
+		RememberLabel: "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", IsRememberedByDefault: true,
 	}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("phone request = %+v", description)
@@ -324,7 +324,7 @@ func TestPhoneApprovesCommandLine(t *testing.T) {
 	resultChannel := startCommandLineApproval(approver, context.Background())
 	waitForApprovalEvent(t, emitter)
 	description := phone.waitForStart(t)
-	want := approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003"}
+	want := approval.Description{Kind: approval.KindCommandLine, AppName: "hisar in Terminal", Purpose: "use Hisar", CommandLine: "/Applications/Hisar.app/Contents/Helpers/hisar", TerminalName: "ttys003", Allowance: commandLineAllowance}
 	if !reflect.DeepEqual(description, want) {
 		t.Errorf("command-line request on the phone = %+v", description)
 	}

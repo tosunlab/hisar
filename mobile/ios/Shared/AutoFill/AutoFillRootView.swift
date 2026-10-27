@@ -167,9 +167,9 @@ private struct AutoFillListView: View {
 
     private var emptyMessage: String {
         switch (model.requestKind, model.searchText.isEmpty) {
-        case (.oneTimeCode, true): "No login for this site has a one-time code. Search all logins above."
+        case (.oneTimeCode, true): "No login for this site has a one-time code. Search all logins to choose one."
         case (.oneTimeCode, false): "No matching one-time codes for this site."
-        case (.password, true): "No logins saved for this site. Search all logins above."
+        case (.password, true): "No logins saved for this site. Search all logins to choose one."
         case (.password, false): "No matching logins for this site."
         }
     }
@@ -183,7 +183,7 @@ private struct AutoFillListView: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(passkey.title)
                         .foregroundStyle(.primary)
-                    Text(passkey.userName.isEmpty ? passkey.userDisplayName : passkey.userName)
+                    Text(model.subtitle(for: passkey))
                         .font(.caption)
                         .foregroundStyle(.themeSecondary)
                 }
@@ -194,7 +194,7 @@ private struct AutoFillListView: View {
             }
             .contentShape(Rectangle())
         }
-        
+        .accessibilityLabel("\(passkey.title), \(model.subtitle(for: passkey)), Passkey")
         .accessibilityIdentifier("autofill-passkey-\(passkey.title)")
     }
 

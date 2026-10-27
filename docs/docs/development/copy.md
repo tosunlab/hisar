@@ -85,6 +85,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | one-time code | TOTP, 2FA code, verification code |
 | Other fields (custom fields below username and password) | Fields, Custom fields, Extra fields |
 | One-time code setup key (Mac editor field) | One-time password |
+| AutoFill with no matches and an empty search: "No logins saved for this site. Search all logins to choose one." / "No login for this site has a one-time code. Search all logins to choose one." | Search above, one-time password |
 | Discard changes to “X”? · Keep editing · Discard (Esc on a changed Mac draft) | Losing an unsaved draft without asking |
 | Item actions (the ⋯ button in the Mac's item header) | Unlabelled ⋯ |
 | Secret (a field hidden until revealed) | Concealed, Hidden |

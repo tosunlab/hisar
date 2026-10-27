@@ -9,7 +9,7 @@ import (
 	"github.com/tryhisar/hisar/core/crypt"
 )
 
-const testRememberLabel = "Also allows Terminal for 1 hour"
+const testRememberLabel = "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks."
 
 func startRememberingTestFlow(t *testing.T, isRememberedByDefault bool) *testFlow {
 	t.Helper()

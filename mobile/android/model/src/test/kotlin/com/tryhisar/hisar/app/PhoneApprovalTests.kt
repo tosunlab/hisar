@@ -41,7 +41,7 @@ class PhoneApprovalTests {
     )
 
     private fun createRememberingApproval(requestID: String = "0123456789abcdef0123456789abcdef", isRememberedByDefault: Boolean = true) =
-        createApproval(requestID).copy(rememberLabel = "Also allows Terminal for 1 hour", isRememberedByDefault = isRememberedByDefault)
+        createApproval(requestID).copy(rememberLabel = "Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.", isRememberedByDefault = isRememberedByDefault)
 
     // A launch with the app in the foreground: unlocking lists the open requests at once.
     private suspend fun TestScope.createUnlockedModel(harness: AppModelHarness, allApproval: List<PhoneApproval>): AppModel {
@@ -242,6 +242,16 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testCommandLineAllowanceIsOptionalAndNotInferredForAgents() {
+        val approvals = decode(
+            """[{"requestId":"cli","kind":"cli","allowance":"Read secrets and one-time codes\nAdd, change and delete items"},
+               {"requestId":"agent","kind":"cli","appName":"omp"}]""",
+        )
+        assertEquals("Read secrets and one-time codes\nAdd, change and delete items", approvals[0].allDetailRow.first { it.label == "Allows" }.value)
+        assertFalse(approvals[1].allDetailRow.any { it.label == "Allows" })
+    }
+
+    @Test
     fun testDecodesTheRememberSwitch() {
         val allApproval = decode(
             """
@@ -249,7 +259,7 @@ class PhoneApprovalTests {
               "kind":"ssh","appName":"iTerm2","purpose":"sign a commit","repositoryPath":"~/src/core",
               "rememberLabel":"Also allows iTerm2 to sign commits in ~/src/core for 10 minutes"},
              {"requestId":"fedcba9876543210fedcba9876543210","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
-              "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com","rememberLabel":"Also allows Terminal for 1 hour","isRememberedByDefault":true},
+              "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com","rememberLabel":"Approve SSH requests from Terminal with this key for up to 1 hour. Any host. Ends when Hisar locks.","isRememberedByDefault":true},
              {"requestId":"00112233445566778899aabbccddeeff","requesterDeviceName":"MacBook Pro","expiresAt":"2027-01-15T08:01:00.123Z",
               "kind":"ssh","appName":"Terminal","purpose":"push to git.tryhisar.com"}]
             """,
@@ -309,10 +319,43 @@ class PhoneApprovalTests {
         val harness = AppModelHarness(this)
         harness.backend.isBiometricAvailable = false
         val model = createReviewingModel(harness, listOf(createRememberingApproval()))
-        model.approvals.approvePendingApproval(isRemembered = true)
-        assertTrue(model.approvals.isApprovalPasswordRequired.value)
+        assertTrue(model.approvals.isApprovalPasswordRequired.value, "the password form opens without a failed biometric attempt")
         model.approvals.approvePendingApproval(password = FakeBackend.PASSWORD, isRemembered = true)
         assertEquals(listOf("approve remembered 0123456789abcdef0123456789abcdef"), harness.backend.allApprovalAnswer)
+    }
+
+    @Test
+    fun testCardRememberChoiceSurvivesPasswordFallback() = runTest {
+        val harness = AppModelHarness(this)
+        val approval = createRememberingApproval("once")
+        val model = createUnlockedModel(harness, listOf(approval))
+        val approvals = model.approvals
+        approvals.setRememberChoice(approval, false)
+        harness.backend.isBiometricAvailable = false
+        approvals.approve(approval)
+        assertTrue(approvals.isApprovalPasswordRequired.value)
+        assertFalse(approvals.rememberChoice(approval))
+        approvals.approvePendingApproval(password = "wrong")
+        assertFalse(approvals.rememberChoice(approval))
+        approvals.approvePendingApproval(password = FakeBackend.PASSWORD)
+        assertEquals(listOf("approve once"), harness.backend.allApprovalAnswer)
+        assertTrue(approvals.rememberChoices.value.isEmpty())
+    }
+
+    @Test
+    fun testCardWithoutBiometricsOpensPasswordDirectly() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isBiometricAvailable = false
+        val approval = createRememberingApproval("once")
+        val model = createUnlockedModel(harness, listOf(approval))
+        val approvals = model.approvals
+        approvals.setRememberChoice(approval, false)
+        approvals.approve(approval)
+        assertEquals(approval.requestID, approvals.presentedApproval.value?.requestID)
+        assertTrue(approvals.isApprovalPasswordRequired.value)
+        assertFalse(harness.backend.allCallName.contains("approveApproval"))
+        approvals.approvePendingApproval(password = FakeBackend.PASSWORD)
+        assertEquals(listOf("approve once"), harness.backend.allApprovalAnswer)
     }
 
     @Test
@@ -362,9 +405,9 @@ class PhoneApprovalTests {
     @Test
     fun testFallsBackToTheMasterPassword() = runTest {
         val harness = AppModelHarness(this)
-        harness.backend.isBiometricAvailable = false
         val model = createReviewingModel(harness, listOf(createApproval()))
         val approvals = model.approvals
+        harness.backend.isBiometricAvailable = false
         approvals.approvePendingApproval(isRemembered = false)
         assertTrue(approvals.isApprovalPasswordRequired.value)
         assertNull(approvals.approvalErrorMessage.value)

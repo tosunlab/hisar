@@ -130,7 +130,7 @@ describe("SSHApprovalWindow", () => {
     expect(wrapper.find(".subtitle").text()).toBe("with your SSH key “Laptop key”");
     expect(wrapper.find('[data-testid="app-icon"]').attributes("src")).toBe("data:image/png;base64,AA==");
     expect(wrapper.findAll(".detail-line").map((line) => line.text())).toEqual(["git push origin main", "~/src/core · git.tryhisar.com:22"]);
-    expect(wrapper.find(".remember").text()).toBe("Don’t ask again for Terminal for 1 hour");
+    expect(wrapper.find(".remember").text()).toBe("Approve SSH requests from Terminal with this key for up to 1 hour Any host. Ends when Hisar locks.");
     expect((wrapper.find('input[name="isRemembered"]').element as HTMLInputElement).checked).toBe(true);
     expect(wrapper.find('[data-testid="approval-touch-id"]').text()).toContain("Touch ID to approve");
     expect(wrapper.find('[data-testid="use-password"]').text()).toBe("or use your master password");
@@ -397,7 +397,7 @@ describe("SSHApprovalWindow", () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent({ rememberPeriod: "until Hisar locks" }));
     await flushPromises();
-    expect(wrapper.find(".remember").text()).toBe("Don’t ask again for Terminal until Hisar locks");
+    expect(wrapper.find(".remember").text()).toBe("Approve SSH requests from Terminal with this key until Hisar locks Any host.");
     expect(api.respondSSHApproval).toHaveBeenCalledWith("request-1", true, true);
     sendEvent("ssh-approval-closed", "request-1");
     sendEvent("ssh-approval", createApprovalEvent({ requestID: "request-2", isCompact: true, rememberPeriod: "until Hisar locks" }));
@@ -940,7 +940,7 @@ describe("SSHApprovalWindow app attribution", () => {
     expect(wrapper.find("h1").text()).toBe("A background process wants to push to git.tryhisar.com");
     expect(wrapper.find('[data-testid="app-icon"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="approval-signer"]').exists()).toBe(false);
-    expect(wrapper.find(".remember").text()).toBe("Don’t ask again for ssh for 1 hour");
+    expect(wrapper.find(".remember").text()).toBe("Approve SSH requests from ssh with this key for up to 1 hour Any host. Ends when Hisar locks.");
     sendEvent("ssh-approval-closed", "request-1");
     sendEvent("ssh-approval", createCommandLineApprovalEvent({ requesterKind: "ssh-session", appName: "An SSH session from 192.0.2.10", appSigner: "" }));
     await flushPromises();

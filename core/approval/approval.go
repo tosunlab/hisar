@@ -63,9 +63,10 @@ type Description struct {
 	TerminalName      string `json:"terminalName"`
 	// Secrets are the secrets a command-line request reads, as the dialog lists them.
 	Secrets []string `json:"secrets,omitempty"`
-	// AppIcon is the app's small PNG icon; AppWarning is the dialog's warning about the app's code signature.
+	// AppIcon is the app's small PNG icon; AppWarning carries the dialog's app and operation warnings.
 	AppIcon    []byte `json:"appIcon,omitempty"`
 	AppWarning string `json:"appWarning,omitempty"`
+	Allowance  string `json:"allowance,omitempty"`
 	// RememberLabel is set when approving can also be remembered: the sentence for the phone's switch.
 	RememberLabel         string `json:"rememberLabel,omitempty"`
 	IsRememberedByDefault bool   `json:"isRememberedByDefault,omitempty"`

@@ -94,8 +94,8 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
     val isBusyNow by rememberUpdatedState(isBusy)
     val scope = rememberCoroutineScope()
     var password by remember { mutableStateOf("") }
-    var chosenRemember by remember(approval.requestID) { mutableStateOf<Boolean?>(null) }
-    val isRemembered = approval.resolveRememberChoice(chosenRemember)
+    val rememberChoices by approvals.rememberChoices.collectAsStateWithLifecycle()
+    val isRemembered = approval.resolveRememberChoice(rememberChoices[approval.requestID])
     val passwordFocus = remember { FocusRequester() }
     val passwordSection = remember { BringIntoViewRequester() }
     var listHeight by remember { mutableIntStateOf(0) }
@@ -185,7 +185,7 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
             }
             if (approval.isRememberable) {
                 FormSection(footer = { Text("Off allows only this request.") }) {
-                    ToggleRow(approval.rememberLabel, isRemembered, { chosenRemember = it }, testTag = "phone-approval-remember", enabled = !isBusy)
+                    ToggleRow(approval.rememberLabel, isRemembered, { approvals.setRememberChoice(approval, it) }, testTag = "phone-approval-remember", enabled = !isBusy)
                 }
             }
             Spacer(Modifier.height(16.dp))

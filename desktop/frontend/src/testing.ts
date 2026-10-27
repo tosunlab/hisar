@@ -490,6 +490,7 @@ export function createCommandLineApprovalEvent(overrides: Partial<ApprovalEvent>
     isRememberable: false,
     terminalName: "ttys003",
     coverage: "terminal-session",
+    allowance: "Read secrets and one-time codes\nAdd, change and delete items\nManage vaults, sharing, invitations, organizations and devices\nShare links and exports still ask each time.",
     ...overrides,
   });
 }

@@ -1,7 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
-import { flushPromises, mount } from "@vue/test-utils";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { enableAutoUnmount, flushPromises, mount } from "@vue/test-utils";
 import { createApiMock, createBrowserStatus, createStatus } from "../testing";
 import type { BrowserStatus } from "../api";
+
+enableAutoUnmount(afterEach);
+afterEach(() => document.body.replaceChildren());
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
 
@@ -43,6 +46,33 @@ beforeEach(() => {
 });
 
 describe("BrowserPairingModal", () => {
+  it.each(["connected", "removed", "none"])("cancels on Escape and restores focus with a %s opener", async (openerState) => {
+    const wrapper = mount(BrowserPairingModal, { attachTo: document.body });
+    const fallback = document.createElement("button");
+    fallback.dataset.testid = "open-favorites";
+    document.body.append(fallback);
+    const opener = document.createElement("button");
+    if (openerState !== "none") {
+      document.body.append(opener);
+      opener.focus();
+    }
+    store.browserPairing = { browser: "Chrome", code: "482913", expiresAt: new Date(Date.now() + 120_000).toISOString() };
+    await flushPromises();
+    (wrapper.get('[data-testid="cancel-pairing"]').element as HTMLButtonElement).focus();
+    if (openerState === "removed") opener.remove();
+    const shortcut = vi.fn();
+    window.addEventListener("keydown", shortcut);
+    const escape = new KeyboardEvent("keydown", { key: "Escape", bubbles: true, cancelable: true });
+    window.dispatchEvent(escape);
+    await flushPromises();
+    window.removeEventListener("keydown", shortcut);
+    expect(escape.defaultPrevented).toBe(true);
+    expect(shortcut).not.toHaveBeenCalled();
+    expect(api.cancelBrowserPairing).toHaveBeenCalledOnce();
+    expect(store.browserPairing).toBeNull();
+    expect(document.activeElement).toBe(openerState === "connected" ? opener : fallback);
+  });
+
   it("shows the code from the pairing event and cancels it", async () => {
     const wrapper = mount(BrowserPairingModal);
     const pendingPairing = { browser: "Chrome", code: "482913", expiresAt: new Date(Date.now() + 120_000).toISOString() };

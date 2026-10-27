@@ -96,10 +96,9 @@ final class PhoneApprovalUITests: HisarUITestCase {
     func testApproveWithMasterPasswordWhenFaceIDIsUnavailable() {
         for sensor in ["Face ID", "Touch ID"] {
             launchPreview("signing", sensor: sensor, requiresPassword: true)
-            waitFor(app.buttons["phone-approval-approve"])
+            waitFor(app.buttons["phone-approval-approve-password"])
             XCTAssertEqual(app.switches["phone-approval-remember"].value as? String, "0", "commit signing is never remembered by default")
             saveScreenshot("phone-approval-signing")
-            app.buttons["phone-approval-approve"].tap()
             let passwordField = app.secureTextFields["phone-approval-password"]
             type("not the password", into: passwordField)
             XCTAssertTrue(app.staticTexts["\(sensor) is not available, so Hisar checks your master password instead."].exists)

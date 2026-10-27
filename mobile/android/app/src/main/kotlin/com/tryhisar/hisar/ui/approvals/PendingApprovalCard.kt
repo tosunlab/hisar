@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.app.AppModel
@@ -85,8 +86,9 @@ private const val MORE_ROW = "more"
 @Composable
 private fun PendingApprovalCard(model: AppModel, approval: PhoneApproval, isBusy: Boolean) {
     val scope = rememberCoroutineScope()
-    var chosenRemember by remember(approval.requestID) { mutableStateOf<Boolean?>(null) }
-    val isRemembered = approval.resolveRememberChoice(chosenRemember)
+    val status by model.status.collectAsStateWithLifecycle()
+    val rememberChoices by model.approvals.rememberChoices.collectAsStateWithLifecycle()
+    val isRemembered = approval.resolveRememberChoice(rememberChoices[approval.requestID])
     Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         PendingApprovalSummary(
             approval,
@@ -96,7 +98,7 @@ private fun PendingApprovalCard(model: AppModel, approval: PhoneApproval, isBusy
                 .padding(horizontal = 16.dp),
         )
         if (approval.isRememberable) {
-            ToggleRow(approval.rememberLabel, isRemembered, { chosenRemember = it }, testTag = "pending-approval-remember-${approval.requestID}", enabled = !isBusy)
+            ToggleRow(approval.rememberLabel, isRemembered, { model.approvals.setRememberChoice(approval, it) }, testTag = "pending-approval-remember-${approval.requestID}", enabled = !isBusy)
         }
         Row(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Box(Modifier.weight(1f)) {
@@ -108,7 +110,7 @@ private fun PendingApprovalCard(model: AppModel, approval: PhoneApproval, isBusy
                     { scope.launch { model.approvals.approve(approval, isRemembered) } },
                     testTag = "pending-approval-approve-${approval.requestID}",
                     enabled = !isBusy,
-                    icon = Icons.Filled.Fingerprint,
+                    icon = if (status.biometricAvailable) Icons.Filled.Fingerprint else null,
                 )
             }
         }

@@ -43,6 +43,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var presentedApproval: PhoneApproval?
     @Published private(set) var isAnsweringApproval = false
     @Published private(set) var isApprovalPasswordRequired = false
+    @Published private(set) var approvalRememberChoices: [String: Bool] = [:]
     @Published var approvalErrorMessage: String?
     @Published var deviceOperationErrorMessage: String?
     @Published var macApprovalErrorMessage: String?
@@ -1708,6 +1709,7 @@ final class AppModel: ObservableObject {
             }
             allPendingApproval = []
             approvalListState = .unchecked
+            approvalRememberChoices = [:]
             allAnnouncedApproval = []
             shownApprovalList = startedApprovalListCount
             presentedApproval = nil
@@ -1771,6 +1773,7 @@ final class AppModel: ObservableObject {
         // whose tap ends during that redraw ignores the tap.
         if allOpenApproval != allPendingApproval {
             allPendingApproval = allOpenApproval
+            approvalRememberChoices = approvalRememberChoices.filter { requestID, _ in allOpenApproval.contains { $0.requestID == requestID } }
         }
         openAnnouncedApproval(listedIn: approvalList)
         closeSheetOfFinishedApproval()
@@ -1808,7 +1811,7 @@ final class AppModel: ObservableObject {
 
     private func presentApproval(_ approval: PhoneApproval) {
         if presentedApproval?.requestID != approval.requestID {
-            isApprovalPasswordRequired = false
+            isApprovalPasswordRequired = !status.biometricAvailable
             approvalErrorMessage = nil
         }
         presentedApproval = approval
@@ -1824,6 +1827,7 @@ final class AppModel: ObservableObject {
 
     private func removeApproval(requestID: String) {
         allFinishedApprovalID.insert(requestID)
+        approvalRememberChoices.removeValue(forKey: requestID)
         allPendingApproval.removeAll { $0.requestID == requestID }
         allAnnouncedApproval.removeAll { $0.requestID == requestID }
         closeSheetOfFinishedApproval()
@@ -1873,6 +1877,7 @@ final class AppModel: ObservableObject {
         approvalExpiryTask = nil
         allPendingApproval = []
         approvalListState = .unchecked
+        approvalRememberChoices = [:]
         allAnnouncedApproval = []
         // A listing still running started before the clear and must not bring the requests back.
         shownApprovalList = startedApprovalListCount
@@ -1882,15 +1887,23 @@ final class AppModel: ObservableObject {
         approvalErrorMessage = nil
     }
 
-    // isRemembered is the sheet's switch; it counts only for a request that offers remembering.
+    func rememberChoice(for approval: PhoneApproval) -> Bool {
+        approval.resolveRememberChoice(approvalRememberChoices[approval.requestID])
+    }
+
+    func setRememberChoice(_ isRemembered: Bool, for approval: PhoneApproval) {
+        approvalRememberChoices[approval.requestID] = approval.isRememberable && isRemembered
+    }
+
     func approvePendingApproval(isRemembered: Bool) async {
         guard let approval = presentedApproval else { return }
         await approve(approval, isRemembered: isRemembered)
     }
 
-    func approvePendingApproval(password: String, isRemembered: Bool) async {
+    func approvePendingApproval(password: String, isRemembered: Bool? = nil) async {
         guard let approval = presentedApproval else { return }
-        let isApprovalRemembered = approval.isRememberable && isRemembered
+        if let isRemembered { setRememberChoice(isRemembered, for: approval) }
+        let isApprovalRemembered = rememberChoice(for: approval)
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApprovalWithPassword(requestID: requestID, password: password, isRemembered: isApprovalRemembered)
         }
@@ -1901,10 +1914,14 @@ final class AppModel: ObservableObject {
         await deny(approval)
     }
 
-    // Approve asks for Face ID; when the master password is needed instead, the request's sheet opens and asks for it.
-    // Without a choice from the remember switch the request's default applies: remembered when the Mac's checkbox would be.
     func approve(_ approval: PhoneApproval, isRemembered: Bool? = nil) async {
-        let isApprovalRemembered = approval.resolveRememberChoice(isRemembered)
+        if let isRemembered { setRememberChoice(isRemembered, for: approval) }
+        let isApprovalRemembered = rememberChoice(for: approval)
+        if !status.biometricAvailable {
+            presentApproval(approval)
+            isApprovalPasswordRequired = true
+            return
+        }
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApproval(requestID: requestID, isRemembered: isApprovalRemembered)
         }

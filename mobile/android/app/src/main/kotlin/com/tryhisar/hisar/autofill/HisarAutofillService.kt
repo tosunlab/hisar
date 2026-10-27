@@ -17,7 +17,6 @@ import android.view.autofill.AutofillId
 import androidx.core.os.BundleCompat
 import com.tryhisar.hisar.BackendProvider
 import com.tryhisar.hisar.MainActivity
-import com.tryhisar.hisar.model.LoginMatch
 import com.tryhisar.hisar.model.VaultStatus
 import java.util.concurrent.Executors
 
@@ -88,13 +87,13 @@ class HisarAutofillService : AutofillService() {
         val allMatch = LoginMatcher(backend, HttpAssetLinksVerifier).listAllMatch(request.target)
             .filter { request.kind == RequestKind.PASSWORD || it.login.hasOneTimePassword }
         val limit = (datasets.inlineLimit ?: MAXIMUM_SUGGESTIONS).coerceAtMost(MAXIMUM_SUGGESTIONS) - 1
-        val allLogin = allMatch.take(limit).map { match ->
-            request.copy(pick = AutofillRequest.Pick(match.login.id, match.source)) to Suggestion(match.login.title, describe(match.login))
+        val labels = distinguishCredentialLabels(allMatch.map { it.login.credentialLabel() })
+        val allLogin = allMatch.take(limit).mapIndexed { index, match ->
+            request.copy(pick = AutofillRequest.Pick(match.login.id, match.source)) to Suggestion(match.login.title, labels[index].subtitle)
         }
         return allLogin + (request to Suggestion("Search Hisar", "Search all logins"))
     }
 
-    private fun describe(login: LoginMatch): String = login.username.ifEmpty { login.vaultName }
 
     private fun buildClientState(form: LoginForm<AutofillId>, target: FillTarget): Bundle? {
         val password = form.password ?: return null
