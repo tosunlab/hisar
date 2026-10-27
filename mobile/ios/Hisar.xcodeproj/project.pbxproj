@@ -64,6 +64,7 @@
 		4574855F1385C0BD0A1BA703 /* UpdateRequiredView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F297FE1735F4AB352B1A037C /* UpdateRequiredView.swift */; };
 		472BD60EDDFB29C272E4F9DC /* ThemePalettes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */; };
 		481FE0BCCD0D2166F4469760 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
+		4A3DF73EF5D3852B8133F383 /* DeferredSecretKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F80A5E5A164DB83A164B223 /* DeferredSecretKeyView.swift */; };
 		4AA5D5C3D6DAB5608269335B /* AutoFillUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = ED00276374ABADC314F5DF91 /* AutoFillUITests.swift */; };
 		4AC348C1E48603BA2998A584 /* Localizable.strings in Resources */ = {isa = PBXBuildFile; fileRef = 7FEB2D8C212608F4623951C3 /* Localizable.strings */; };
 		4C2B8094565EFE9F42D49B68 /* WideLayoutUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58D8EF29B82716EB114C89A6 /* WideLayoutUITests.swift */; };
@@ -72,6 +73,7 @@
 		5807CCBF70BA02987A3B8671 /* UnlockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */; };
 		5A3A46DF41106F4DFB78C295 /* ItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = 47989259B86D2ABA32773725 /* ItemIcon.swift */; };
 		5BCBA9CA03A03D2BECAA57AB /* CardInput.swift in Sources */ = {isa = PBXBuildFile; fileRef = B337DBEFF36317EB806A13C1 /* CardInput.swift */; };
+		5D67C835F513D2BA9CA76A61 /* SecretKeySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A8617274E37CA581A4B2E2D /* SecretKeySection.swift */; };
 		5E555F44D126AB82C96B9857 /* CredentialImportTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 485ED95656DCEAE23CB924CE /* CredentialImportTests.swift */; };
 		5F2B5FFC40071F1CAA638654 /* EmergencyKitScanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */; };
 		5FAD076390F8BED3236B811C /* AppItemIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5CAE9257D26523B30362ACC /* AppItemIcon.swift */; };
@@ -79,6 +81,7 @@
 		6384BDCCFB9C112662CE3350 /* NewSecretKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE0912D6FEC796C6B4E10A87 /* NewSecretKeyView.swift */; };
 		641117B1BC86ED26F0DAF500 /* AppModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D54C09BE6FCF29F969C4E18 /* AppModelTests.swift */; };
 		65B20284D44C3A292CC1DC36 /* EmergencyKitShareButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F57E9DBE31B0326DADE484F /* EmergencyKitShareButton.swift */; };
+		65C1A4A5415DD37DFA5900BD /* SecretKeySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A8617274E37CA581A4B2E2D /* SecretKeySection.swift */; };
 		65FDAEF0EF071906451A6DBC /* BiometricKeychain.swift in Sources */ = {isa = PBXBuildFile; fileRef = BC328A5FA6A28DF1ACC5DC64 /* BiometricKeychain.swift */; };
 		6610DBC1CEA9F590010FEE67 /* HisarConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1B3B016888438454F145B24 /* HisarConfiguration.swift */; };
 		67B2BB15FFBD0D47BE1D6F36 /* PhoneApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A128DD342FC95DBB54C289C6 /* PhoneApproval.swift */; };
@@ -91,6 +94,7 @@
 		6E067186CA8E3B3F7B57CE1A /* AutoFillModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */; };
 		6E06BB3841ACDFDD3B3F6C76 /* AccountLifecycleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = DE18719EE21D2029B6FDFD85 /* AccountLifecycleTests.swift */; };
 		7140BC4E572564EACC949006 /* VaultManagementPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B033299FD6E753ABEC665FC2 /* VaultManagementPreviewView.swift */; };
+		71E643C16C49C1F50E3FA08D /* SecretKeySection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A8617274E37CA581A4B2E2D /* SecretKeySection.swift */; };
 		7350A151F361786C37515ED8 /* PasskeyUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 647E01C2B3F64259DBAF90B5 /* PasskeyUITests.swift */; };
 		739E3C3C505950494AF65FE2 /* OneTimeCodeUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7689BDDB94FD64917944388 /* OneTimeCodeUITests.swift */; };
 		739F4863584CE3912731463A /* SystemCredentialIdentityStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0FAD214270656E02E761B8B2 /* SystemCredentialIdentityStore.swift */; };
@@ -180,6 +184,7 @@
 		EA403583ED6D74A774246CAD /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104F8941A233F623CBF1EB40 /* ItemDetailView.swift */; };
 		EAD1315A96CEAD8897ECE413 /* NewVaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80117468D27E2887C9AFA79B /* NewVaultView.swift */; };
 		ECBA7372AFB77CBCAF2A5AE4 /* PushPayloadKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */; };
+		EEA8204830041BD8E366CE1F /* DeferredSecretKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F80A5E5A164DB83A164B223 /* DeferredSecretKeyView.swift */; };
 		EF2E5A93BBA6F019569EF8B9 /* VaultManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E051721EA2F755340973BE /* VaultManagementView.swift */; };
 		F0E60FB94814A89C2A03DCB0 /* NewVaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80117468D27E2887C9AFA79B /* NewVaultView.swift */; };
 		F25607D6F2F0D4C5EB519890 /* AccountLifecycleViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BAE818AB33EBE7BEE32E52C /* AccountLifecycleViews.swift */; };
@@ -263,6 +268,7 @@
 		2289AA6C11E524DBE81EBD95 /* SettingsModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsModelTests.swift; sourceTree = "<group>"; };
 		26730576FD34B49781786827 /* PasskeyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PasskeyTests.swift; sourceTree = "<group>"; };
 		27EDFCA29649DDE3B235B5A9 /* HisarPersonal.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = HisarPersonal.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		2A8617274E37CA581A4B2E2D /* SecretKeySection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SecretKeySection.swift; sourceTree = "<group>"; };
 		2EBDE8A6FD6D000957E09DBB /* TypedText.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TypedText.swift; sourceTree = "<group>"; };
 		30A647C9592D0839BD485353 /* HisarTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = HisarTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		31B75B59E329DF165CDA0667 /* HisarApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HisarApp.swift; sourceTree = "<group>"; };
@@ -299,6 +305,7 @@
 		6A0557C083DC71D33D7D838B /* PrivacyShield.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PrivacyShield.swift; sourceTree = "<group>"; };
 		6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemePalettes.swift; sourceTree = "<group>"; };
 		6F57E9DBE31B0326DADE484F /* EmergencyKitShareButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EmergencyKitShareButton.swift; sourceTree = "<group>"; };
+		6F80A5E5A164DB83A164B223 /* DeferredSecretKeyView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeferredSecretKeyView.swift; sourceTree = "<group>"; };
 		749D535C9C6B489F37C5F4C6 /* AuthenticationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AuthenticationServices.framework; path = System/Library/Frameworks/AuthenticationServices.framework; sourceTree = SDKROOT; };
 		7A7DA85F127A5EB580839A6B /* SharingPushTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingPushTests.swift; sourceTree = "<group>"; };
 		7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillModel.swift; sourceTree = "<group>"; };
@@ -498,6 +505,7 @@
 			children = (
 				47989259B86D2ABA32773725 /* ItemIcon.swift */,
 				A238D14B92DA27E1CCAE99DA /* LogoMark.swift */,
+				2A8617274E37CA581A4B2E2D /* SecretKeySection.swift */,
 				F067661397CABF889DA6CF7C /* Theme.swift */,
 				6B69EA63E2A0AF80C7AEF3D7 /* ThemePalettes.swift */,
 				8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */,
@@ -522,6 +530,7 @@
 				D229776194136FF1A6650A2D /* ApprovalsView.swift */,
 				22698CECCF02525330145455 /* AutoFillPreviewView.swift */,
 				0158729B27F998FBB7B0EF3F /* CredentialImportView.swift */,
+				6F80A5E5A164DB83A164B223 /* DeferredSecretKeyView.swift */,
 				B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */,
 				CAFB5B60894F52BB5DA1D9AA /* EmergencyKitScanner.swift */,
 				6F57E9DBE31B0326DADE484F /* EmergencyKitShareButton.swift */,
@@ -850,6 +859,7 @@
 				2FBA7146D16249529857A81C /* PasteboardClipboard.swift in Sources */,
 				A53ECFFE1EB70418DBB8B0DA /* PhoneApproval.swift in Sources */,
 				F561FA6067514C58A1DB06AE /* PushPayloadKeyStore.swift in Sources */,
+				71E643C16C49C1F50E3FA08D /* SecretKeySection.swift in Sources */,
 				C25CF2A328EDD75B1054EF0B /* SharingPushText.swift in Sources */,
 				ACE02F265676FD23578DF04F /* SystemCredentialIdentityStore.swift in Sources */,
 				0738F234B5FC729D53DFCB1F /* Theme.swift in Sources */,
@@ -900,6 +910,7 @@
 				4113E21A404A66886093F774 /* BiometricKeychain.swift in Sources */,
 				5BCBA9CA03A03D2BECAA57AB /* CardInput.swift in Sources */,
 				14694E88C6EF151B9842335E /* CredentialImportView.swift in Sources */,
+				4A3DF73EF5D3852B8133F383 /* DeferredSecretKeyView.swift in Sources */,
 				1C4C0438B2CF7BD2FB18DCC6 /* DevicesView.swift in Sources */,
 				5F2B5FFC40071F1CAA638654 /* EmergencyKitScanner.swift in Sources */,
 				DA0F9D48B212F702C37D31D9 /* EmergencyKitShareButton.swift in Sources */,
@@ -932,6 +943,7 @@
 				448AAFCEB46C192B0288335D /* PushNotificationsModel.swift in Sources */,
 				ECBA7372AFB77CBCAF2A5AE4 /* PushPayloadKeyStore.swift in Sources */,
 				848341F8DAA3EB113A0F4436 /* RootView.swift in Sources */,
+				5D67C835F513D2BA9CA76A61 /* SecretKeySection.swift in Sources */,
 				AF33590B3B67B6BA9B2F0ABC /* SettingsView.swift in Sources */,
 				F51E96AB09998823E5D15348 /* SharingPushText.swift in Sources */,
 				0A578F219707B0B5B090842E /* SignInView.swift in Sources */,
@@ -977,6 +989,7 @@
 				65FDAEF0EF071906451A6DBC /* BiometricKeychain.swift in Sources */,
 				28D1FF534FC2ACBDF58FFC7B /* CardInput.swift in Sources */,
 				E295662EDC797088C52BCE2B /* CredentialImportView.swift in Sources */,
+				EEA8204830041BD8E366CE1F /* DeferredSecretKeyView.swift in Sources */,
 				236F343E99EBEB565B80E597 /* DevicesView.swift in Sources */,
 				92B9F53A4E1B60F74F0F6498 /* EmergencyKitScanner.swift in Sources */,
 				65B20284D44C3A292CC1DC36 /* EmergencyKitShareButton.swift in Sources */,
@@ -1009,6 +1022,7 @@
 				E15765B760EDA1721127E469 /* PushNotificationsModel.swift in Sources */,
 				1F7290AC6F10333AE09BC264 /* PushPayloadKeyStore.swift in Sources */,
 				0D867B76B6AB8BC768789633 /* RootView.swift in Sources */,
+				65C1A4A5415DD37DFA5900BD /* SecretKeySection.swift in Sources */,
 				11F465CF048D4B7EACF71385 /* SettingsView.swift in Sources */,
 				F82E0381927174EE0F8DF321 /* SharingPushText.swift in Sources */,
 				21CB8A2B084894417B395E0D /* SignInView.swift in Sources */,

@@ -386,6 +386,7 @@ struct DeleteAccountView: View {
 struct PendingRecoveryView: View {
     @EnvironmentObject private var model: AppModel
     @State private var selectedID: String?
+    @State private var deferredRecovery: PendingRecovery?
     @State private var password = ""
     @State private var secretKey = ""
     @State private var priorSecretKey = ""
@@ -414,6 +415,9 @@ struct PendingRecoveryView: View {
                             clearCredentials()
                             model.clearPendingRecoveryExport()
                             selectedID = recovery.operationId
+                            if AccountLifecycleLogic.canDeliverDeferredSignUp(recovery) {
+                                deferredRecovery = recovery
+                            }
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(recovery.email)
@@ -508,6 +512,13 @@ struct PendingRecoveryView: View {
             }
             .applyThemedListBackground()
             .navigationTitle("Account recovery")
+        }
+        .fullScreenCover(item: $deferredRecovery) { recovery in
+            DeferredSecretKeyView(recovery: recovery) {
+                deferredRecovery = nil
+                selectedID = nil
+                model.clearError()
+            }
         }
         .confirmationDialog("Discard this uncommitted setup?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
             Button("Discard setup", role: .destructive) {

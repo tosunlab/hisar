@@ -251,6 +251,22 @@ class HisarUITestCase: XCTestCase {
         button.tap()
     }
 
+    func handOffEmergencyKit(shareIdentifier: String) {
+        let share = app.buttons[shareIdentifier]
+        scrollTo(share)
+        share.tap()
+        let saveToFiles = app.buttons["Save to Files"]
+        waitForHittable(saveToFiles)
+        saveToFiles.tap()
+        let save = app.navigationBars.buttons["Save"]
+        waitForHittable(save)
+        save.tap()
+        if app.buttons["Replace"].waitForExistence(timeout: 2) {
+            app.buttons["Replace"].tap()
+        }
+        waitForHittable(share)
+    }
+
     // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.
     @discardableResult
     func signUp(inviteLink: String, email: String, name: String, isBiometricOfferExpected: Bool = false) -> String {
@@ -271,10 +287,11 @@ class HisarUITestCase: XCTestCase {
         let key = app.staticTexts["new-secret-key"]
         waitFor(key, timeout: 60)
         let secretKey = key.label
-        // The kit is prepared in the background; the confirm button needs it and a copy or a share.
+        // The kit is prepared in the background; confirmation requires a completed save or print.
         waitFor(app.buttons["new-secret-key-share-kit"], timeout: 60)
         saveScreenshot("new-secret-key")
         app.buttons["new-secret-key-copy"].tap()
+        handOffEmergencyKit(shareIdentifier: "new-secret-key-share-kit")
         app.buttons["new-secret-key-done"].tap()
         let notNowButton = app.buttons["biometric-offer-not-now"]
         if isBiometricOfferExpected {
@@ -294,6 +311,29 @@ class HisarUITestCase: XCTestCase {
         let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pending-recovery-' AND label CONTAINS %@ AND NOT label CONTAINS 'manual-unlock'", email)).firstMatch
         waitFor(account, timeout: 60)
         account.tap()
+        if app.navigationBars["Save your Secret Key"].waitForExistence(timeout: 2) {
+            let passwordField = app.secureTextFields["pending-recovery-password"]
+            type(password, into: passwordField)
+            app.buttons["pending-recovery-export"].tap()
+            let key = app.staticTexts["pending-recovery-secret-key"]
+            waitFor(key, timeout: 60)
+            let secretKey = key.label
+            if restartAfterPreparingKit {
+                app.launchArguments.removeAll { $0 == "-HisarResetState" }
+                app.terminate()
+                app.launch()
+                waitFor(account, timeout: 60)
+                account.tap()
+                type(password, into: passwordField)
+                app.buttons["pending-recovery-export"].tap()
+                waitFor(key, timeout: 60)
+            }
+            handOffEmergencyKit(shareIdentifier: "pending-recovery-share-kit")
+            scrollTo(app.buttons["pending-recovery-acknowledge"])
+            app.buttons["pending-recovery-acknowledge"].tap()
+            XCTAssertTrue(app.buttons["pending-recovery-acknowledge"].waitForNonExistence(timeout: 60))
+            return secretKey
+        }
         let phase = app.staticTexts["pending-recovery-phase"]
         let isPrecommit = phase.label == "awaiting-kit"
         let passwordField = app.secureTextFields["pending-recovery-password"]

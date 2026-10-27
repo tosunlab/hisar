@@ -50,6 +50,12 @@ class IosTestParityTest {
                 "Covers AVFoundation camera authorization and the iOS app Settings route",
             "testNewAccountKitRetryKeepsTheKeyAndUsesAFreshDirectory" to
                 "Covers the iPhone initial Emergency Kit retry and its temporary PDF directories",
+            "testDeferredSignupRequiresProtectedUnambiguousDelivery" to
+                "The focused deferred-signup presentation is currently iPhone-specific",
+            "testDeferredSignupUsesOnePasswordWithoutSwitchingAccounts" to
+                "The focused deferred-signup presentation is currently iPhone-specific",
+            "testDeferredSignupFinishLaterClearsDeliveryButKeepsTheRecord" to
+                "The focused deferred-signup presentation is currently iPhone-specific",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

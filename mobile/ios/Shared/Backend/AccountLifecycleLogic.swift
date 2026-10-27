@@ -6,6 +6,11 @@ enum AccountLifecycleLogic {
     static let secretKeyReplacementWarning = "Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working."
     static let exportAdvice = "Export your items first in Settings → Account → Export data."
 
+    static func canDeliverDeferredSignUp(_ recovery: PendingRecovery) -> Bool {
+        recovery.kind == "signup" && recovery.phase == "delivery-pending"
+            && recovery.keychainProtected && !recovery.manualUnlock && recovery.problems.isEmpty
+    }
+
     static func describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String) -> String? {
         if newPassword.isEmpty { return nil }
         if newPassword.count < minimumPasswordLength { return "Use at least \(minimumPasswordLength) characters." }

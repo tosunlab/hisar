@@ -17,6 +17,73 @@ final class AccountLifecycleTests: XCTestCase {
         await model.start { self.backend }?.value
         return model
     }
+
+    func testDeferredSignupRequiresProtectedUnambiguousDelivery() {
+        var recovery = PendingRecovery(operationId: "deferred", kind: "signup", origin: "https://pending.example", accountId: "pending-account", email: "pending@example.com", name: "Pending", phase: "delivery-pending", kitSaved: false, problems: [], keychainProtected: true)
+        XCTAssertTrue(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
+        recovery.kind = "replacement"
+        XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
+        recovery.kind = "signup"
+        for phase in ["awaiting-kit", "prepared", "outcome-unknown", "needs-finishing", "manual-unlock"] {
+            recovery.phase = phase
+            XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
+        }
+        recovery.phase = "delivery-pending"
+        recovery.keychainProtected = false
+        XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
+        recovery.keychainProtected = true
+        recovery.manualUnlock = true
+        XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
+        recovery.manualUnlock = false
+        recovery.problems = ["Setup needs finishing."]
+        XCTAssertFalse(AccountLifecycleLogic.canDeliverDeferredSignUp(recovery))
+    }
+
+    func testDeferredSignupUsesOnePasswordWithoutSwitchingAccounts() async throws {
+        let model = await createUnlockedModel()
+        let originalStatus = model.status
+        backend.allPendingRecovery = [
+            PendingRecovery(operationId: "deferred", kind: "signup", origin: "https://pending.example", accountId: "pending-account", email: "pending@example.com", name: "Pending", phase: "delivery-pending", kitSaved: false, problems: [], keychainProtected: true),
+        ]
+        await model.refreshPendingRecovery()
+        let delivery = DeferredSecretKeyDelivery(operationID: "deferred")
+        delivery.password = FakeBackend.password
+        await delivery.prepare(using: model)
+        let export = try XCTUnwrap(delivery.export)
+        XCTAssertEqual(model.status, originalStatus)
+        XCTAssertFalse(delivery.canAcknowledge)
+        await delivery.acknowledge(using: model)
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+        delivery.completedHandoff(path: export.path)
+        await delivery.acknowledge(using: model)
+        XCTAssertTrue(backend.allPendingRecovery.isEmpty)
+        XCTAssertEqual(model.status, originalStatus)
+        XCTAssertNil(delivery.export)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: export.path))
+        XCTAssertFalse(backend.allCallName.contains("exportNewAccountEmergencyKit"))
+        XCTAssertFalse(backend.allCallName.contains("acknowledgeNewAccountRecovery"))
+        XCTAssertFalse(backend.allCallName.contains("resumePendingRecovery"))
+    }
+
+    func testDeferredSignupFinishLaterClearsDeliveryButKeepsTheRecord() async throws {
+        let model = await createUnlockedModel()
+        seedPendingRecovery(phase: "delivery-pending")
+        await model.refreshPendingRecovery()
+        let delivery = DeferredSecretKeyDelivery(operationID: "pending-1")
+        delivery.password = FakeBackend.password
+        await delivery.prepare(using: model)
+        let path = try XCTUnwrap(delivery.export?.path)
+        delivery.completedHandoff(path: path)
+        delivery.clear(using: model)
+        delivery.completedHandoff(path: path)
+        await delivery.acknowledge(using: model)
+        XCTAssertNil(delivery.export)
+        XCTAssertFalse(delivery.canAcknowledge)
+        XCTAssertTrue(delivery.password.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: path))
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+    }
+
     func testNewAccountKitRetryKeepsTheKeyAndUsesAFreshDirectory() async throws {
         let model = AppModel(credentialIdentityStore: identityStore)
         await model.start { self.backend }?.value
