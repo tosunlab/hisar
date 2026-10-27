@@ -237,6 +237,9 @@ func (s *Service) Unlock(password string) (Status, error) {
 		s.endSignedOutSession(token)
 		return s.GetStatus(), nil
 	}
+	if errors.Is(err, session.ErrBadCredentials) {
+		return Status{}, errUnlockPassword
+	}
 	if err != nil {
 		return Status{}, convertError(err)
 	}

@@ -32,6 +32,18 @@ func TestSignedOutService(t *testing.T) {
 	}
 }
 
+func TestUnlockExplainsIncorrectMasterPassword(t *testing.T) {
+	fixture := createUnlockedTestService(t)
+	prepareTestApprovalUnlock(t, fixture, "correct master password")
+	fixture.service.Lock()
+	if _, err := fixture.service.Unlock("wrong password"); err == nil || err.Error() != "The master password is incorrect." {
+		t.Fatalf("wrong password: %v", err)
+	}
+	if fixture.service.GetStatus().State != StateLocked {
+		t.Fatal("a wrong password changed the locked session")
+	}
+}
+
 func TestBiometricNeedsPasswordAfterLaunch(t *testing.T) {
 	statePath := filepath.Join(t.TempDir(), "desktop.json")
 	state, _ := localstate.Load(statePath)
@@ -374,7 +386,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 	if _, err := service.GetItem(personalID, saved.ID); !errors.Is(err, ErrLocked) {
 		t.Errorf("get while locked: %v", err)
 	}
-	if _, err := service.Unlock("wrong password"); err == nil || !strings.Contains(err.Error(), "incorrect") {
+	if _, err := service.Unlock("wrong password"); err == nil || err.Error() != "The master password is incorrect." {
 		t.Errorf("unlock with wrong password: %v", err)
 	}
 	if status, err := service.Unlock(password); err != nil || status.State != StateUnlocked || status.Name != "Desktop User" {
