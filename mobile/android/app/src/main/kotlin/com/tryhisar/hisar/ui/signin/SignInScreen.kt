@@ -137,11 +137,6 @@ fun SignInScreen(model: AppModel) {
         ClearSection {
             Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 LogoMark(size = 56.dp)
-                Text(
-                    if (mode == SignInMode.SIGN_IN) "Sign in to use Hisar on this device." else "Enter the invite code you received, or sign up on a server that lets anyone join.",
-                    style = HisarType.subheadline,
-                    color = HisarTheme.colors.secondaryLabel,
-                )
                 SegmentedControl(SignInMode.entries, mode, { it.title }, ::changeMode, testTag = "sign-in-mode")
             }
         }
