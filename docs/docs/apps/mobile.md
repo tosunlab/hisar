@@ -102,6 +102,9 @@ Copy and action notices use Material snackbars above the tab bar. Favorite chang
 snackbar is dismissed. TalkBack announces each notice. Swipe it away or use its dismiss button to close it without undoing the action.
 If a snackbar covers another field or row, dismiss it before tapping that row. Notices stay clear of pinned primary actions.
 
+The item detail's **Copy secret reference** footer says "For hisar run and hisar read on your Mac."
+Touch and hold a field for that field's **Copy secret reference** action.
+
 Touch and hold an Android app linked to a login, then choose **Copy certificate** to copy its full signing-certificate
 SHA-256. The copy uses uppercase hex bytes separated by colons, as `apksigner` and Digital Asset Links show it.
 
@@ -118,3 +121,5 @@ does not roll back saved items or interrupt the current batch. The current batch
 
 The item editor's generator sheet scrolls its options within the available height, including in landscape.
 Close and Use stay above the scrolling content. The Settings generator remains a separate scrolling screen.
+Both use one labelled length slider, with its current value at the end, for whole-number lengths from 8 through 64.
+TalkBack and keyboard users can adjust the same slider.

@@ -302,6 +302,45 @@ final class PhoneApprovalTests: XCTestCase {
         XCTAssertTrue(model.allPendingApproval.isEmpty)
         await model.refreshPendingApproval()
         XCTAssertTrue(model.allPendingApproval.isEmpty, "finished requests are not shown again")
+        XCTAssertNil(model.noticeMessage, "background expiry and remote resolution are not reviewed expiry")
+    }
+
+    func testReviewedApprovalExpiryAnnouncesAndClearsPassword() async {
+        backend.isBiometricAvailable = false
+        let model = await createReviewingModel(allApproval: [createApproval()])
+        await model.approvePendingApproval(isRemembered: false)
+        XCTAssertTrue(model.isApprovalPasswordRequired)
+        currentDate = currentDate.addingTimeInterval(45)
+        model.removeAllExpiredApproval()
+        XCTAssertNil(model.presentedApproval)
+        XCTAssertFalse(model.isApprovalPasswordRequired)
+        XCTAssertEqual(model.noticeMessage, "This request expired. Start it again on your Mac if you still need it.")
+        model.showNotice("A later notice")
+        await model.refreshPendingApproval()
+        XCTAssertEqual(model.noticeMessage, "A later notice", "refresh must not announce the same expiry again")
+    }
+
+    func testRefreshAnnouncesReviewedApprovalExpiryBeforeTheTimer() async {
+        let model = await createReviewingModel(allApproval: [createApproval()])
+        currentDate = currentDate.addingTimeInterval(45)
+        backend.allPendingApproval = []
+        await model.refreshPendingApproval()
+        XCTAssertNil(model.presentedApproval)
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
+        XCTAssertEqual(model.noticeMessage, "This request expired. Start it again on your Mac if you still need it.")
+        model.showNotice("A later notice")
+        model.removeAllExpiredApproval()
+        XCTAssertEqual(model.noticeMessage, "A later notice", "the timer must not announce the same expiry again")
+    }
+
+    func testEarlyRemoteRemovalIsNotAnnouncedAsExpiry() async {
+        let model = await createReviewingModel(allApproval: [createApproval()])
+        backend.allPendingApproval = []
+        await model.refreshPendingApproval()
+        XCTAssertNil(model.presentedApproval)
+        currentDate = currentDate.addingTimeInterval(45)
+        model.removeAllExpiredApproval()
+        XCTAssertNil(model.noticeMessage)
     }
 
     func testReturningToTheForegroundReconnectsAndLists() async {

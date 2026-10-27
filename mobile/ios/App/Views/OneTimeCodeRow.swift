@@ -7,6 +7,7 @@ struct OneTimeCodeRow: View {
     var copyReference: () -> Void
 
     @EnvironmentObject private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var isMotionReduced
     @State private var oneTimeCode: OneTimeCode?
     @State private var isUnavailable = false
 
@@ -21,7 +22,8 @@ struct OneTimeCodeRow: View {
                                 title
                                 Text(oneTimeCode.formattedCode)
                                     .font(.title2.weight(.semibold).monospacedDigit())
-                                    .contentTransition(.numericText())
+                                    .contentTransition(isMotionReduced ? .identity : .numericText())
+                                    .animation(isMotionReduced ? nil : .default, value: oneTimeCode.code)
                             }
                             Spacer(minLength: 8)
                             CountdownRing(secondsLeft: secondsLeft, period: oneTimeCode.period)
@@ -69,7 +71,7 @@ struct OneTimeCodeRow: View {
                 isUnavailable = true
                 return
             }
-            withAnimation { oneTimeCode = code }
+            oneTimeCode = code
             isUnavailable = false
             let secondsUntilExpiry = max(1, code.expiryDate?.timeIntervalSinceNow ?? 1)
             try? await Task.sleep(nanoseconds: UInt64(secondsUntilExpiry * 1_000_000_000))
@@ -82,6 +84,7 @@ private struct CountdownRing: View {
     var period: Int
 
     @ScaledMetric(relativeTo: .body) private var diameter: CGFloat = 30
+    @Environment(\.accessibilityReduceMotion) private var isMotionReduced
 
     private var remainingFraction: Double {
         period > 0 ? Double(secondsLeft) / Double(period) : 0
@@ -95,7 +98,7 @@ private struct CountdownRing: View {
                 .trim(from: 0, to: remainingFraction)
                 .stroke(secondsLeft <= 5 ? AnyShapeStyle(.themeWarning) : AnyShapeStyle(.tint), style: StrokeStyle(lineWidth: 3, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-                .animation(.linear(duration: 0.9), value: secondsLeft)
+                .animation(isMotionReduced ? nil : .linear(duration: 0.9), value: secondsLeft)
             Text("\(secondsLeft)")
                 .font(.caption2.weight(.semibold).monospacedDigit())
                 .foregroundStyle(.themeSecondary)

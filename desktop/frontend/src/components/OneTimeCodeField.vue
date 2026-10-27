@@ -150,6 +150,12 @@ onBeforeUnmount(() => clearInterval(clockTimer));
   stroke: var(--color-warning);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .ring-progress {
+    transition: none;
+  }
+}
+
 .seconds {
   font-size: var(--font-size-12);
   font-variant-numeric: tabular-nums;
