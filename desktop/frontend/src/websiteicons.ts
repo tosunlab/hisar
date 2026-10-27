@@ -1,4 +1,5 @@
 import { reactive, ref, type Ref } from "vue";
+import { Events } from "@wailsio/runtime";
 import { api, getErrorMessage } from "./api";
 
 // At most this many website icon requests run at once; the backend may be asking the websites.
@@ -74,6 +75,17 @@ export async function loadWebsiteIconSetting(): Promise<void> {
   } catch {
     return;
   }
+}
+
+// startWebsiteIconSync loads the setting and follows changes made in any window, such as the macOS Settings window; it
+// returns the stop function.
+export function startWebsiteIconSync(): () => void {
+  const removeListener = Events.On("website-icons-changed", (event) => {
+    websiteIconState.isEnabled = event.data;
+    forgetWebsiteIcons();
+  });
+  loadWebsiteIconSetting();
+  return removeListener;
 }
 
 // setWebsiteIconsEnabled saves the setting; turning it off also forgets the icons the backend cached.

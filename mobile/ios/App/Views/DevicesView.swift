@@ -32,7 +32,7 @@ struct DevicesView: View {
                             DeviceRow(device: device)
                         }
                         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                            Button("Sign Out", role: .destructive) { deviceToRevoke = device }
+                            Button("Sign out", role: .destructive) { deviceToRevoke = device }
                         }
                         .accessibilityIdentifier("device-\(device.name)")
                     }
@@ -61,7 +61,7 @@ struct DevicesView: View {
             titleVisibility: .visible,
             presenting: deviceToRevoke
         ) { device in
-            Button("Sign Out Device", role: .destructive) {
+            Button("Sign out device", role: .destructive) {
                 Task {
                     if await model.revokeDevice(device) {
                         await load()
@@ -128,7 +128,7 @@ struct DeviceView: View {
                 }
             }
             Section {
-                Button("Sign Out Device", role: .destructive) { isRevokeConfirmationShown = true }
+                Button("Sign out device", role: .destructive) { isRevokeConfirmationShown = true }
                     .frame(maxWidth: .infinity)
                     .accessibilityIdentifier("revoke-device")
             } footer: {
@@ -139,7 +139,7 @@ struct DeviceView: View {
         .navigationTitle(device.name)
         .navigationBarTitleDisplayMode(.inline)
         .confirmationDialog("Sign out \(device.name)?", isPresented: $isRevokeConfirmationShown, titleVisibility: .visible) {
-            Button("Sign Out Device", role: .destructive) {
+            Button("Sign out device", role: .destructive) {
                 Task {
                     if await model.revokeDevice(device) {
                         finishRevoke()

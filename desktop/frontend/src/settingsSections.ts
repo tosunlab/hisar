@@ -28,7 +28,6 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "open-at-login", title: "Open Hisar at login", keywords: "startup login items menu bar launch" },
       { id: "version", title: "Check for updates", keywords: "version update release" },
       { id: "automatic-updates", title: "Automatically check for updates", keywords: "update daily" },
-      { id: "import", title: "Import from another password manager", keywords: "1password bitwarden csv chrome firefox safari edge export" },
     ],
   },
   {
@@ -37,7 +36,8 @@ export const allSettingsSection: SettingsSection[] = [
     icon: "lock",
     allRow: [
       { id: "touch-id", title: "Unlock with Touch ID", keywords: "biometric fingerprint unlock" },
-      { id: "auto-lock", title: "Auto-lock", keywords: "lock idle timeout clipboard minutes" },
+      { id: "auto-lock", title: "Auto-lock", keywords: "lock idle timeout minutes" },
+      { id: "clipboard", title: "Clear copied values after 90 seconds", keywords: "clipboard copy clear" },
       { id: "change-master-password", title: "Change master password", keywords: "password change new rotate" },
       { id: "replace-secret-key", title: "Replace Secret Key", keywords: "secret key rotate new emergency kit leaked compromised" },
       { id: "emergency-kit", title: "Emergency Kit", keywords: "secret key pdf recovery backup new device" },
@@ -109,9 +109,12 @@ export const allSettingsSection: SettingsSection[] = [
   },
   {
     id: "export",
-    label: "Export",
+    label: "Import & Export",
     icon: "export",
-    allRow: [{ id: "export", title: "Export your data", keywords: "export backup json download data encrypted passphrase plain file" }],
+    allRow: [
+      { id: "import", title: "Import from another password manager", keywords: "1password bitwarden csv chrome firefox safari edge export" },
+      { id: "export", title: "Export your data", keywords: "export backup json download data encrypted passphrase plain file" },
+    ],
   },
   {
     id: "account",

@@ -15,10 +15,19 @@ vi.mock("../api", async () => {
   };
 });
 
-vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
+const runtime = vi.hoisted(() => ({ listenerByName: new Map<string, (event: { data: unknown }) => unknown>() }));
+
+vi.mock("@wailsio/runtime", () => ({
+  Events: {
+    On: (name: string, listener: (event: { data: unknown }) => unknown) => {
+      runtime.listenerByName.set(name, listener);
+      return () => runtime.listenerByName.delete(name);
+    },
+  },
+}));
 
 const { store } = await import("../store");
-const { forgetWebsiteIcons, maxWebsiteIconRequests, websiteIconState } = await import("../websiteicons");
+const { forgetWebsiteIcons, maxWebsiteIconRequests, startWebsiteIconSync, websiteIconState } = await import("../websiteicons");
 const ItemTile = (await import("./ItemTile.vue")).default;
 const ItemEditor = (await import("./ItemEditor.vue")).default;
 const AppearanceSection = (await import("./AppearanceSection.vue")).default;
@@ -189,5 +198,23 @@ describe("Show website icons", () => {
     expect(describeTile(tile)).toBe("website");
     tile.unmount();
     wrapper.unmount();
+  });
+
+  it("follows the setting when another window changes it", async () => {
+    api.getWebsiteIcon.mockResolvedValue("V0VCU0lURQ==");
+    const stopSync = startWebsiteIconSync();
+    const tile = mount(ItemTile, { props: { title: "GitHub", websiteURL: "https://github.com" } });
+    await flushPromises();
+    expect(describeTile(tile)).toBe("website");
+
+    await runtime.listenerByName.get("website-icons-changed")?.({ data: false });
+    await flushPromises();
+    expect(describeTile(tile)).toBe("initials G");
+
+    await runtime.listenerByName.get("website-icons-changed")?.({ data: true });
+    await flushPromises();
+    expect(describeTile(tile)).toBe("website");
+    stopSync();
+    tile.unmount();
   });
 });

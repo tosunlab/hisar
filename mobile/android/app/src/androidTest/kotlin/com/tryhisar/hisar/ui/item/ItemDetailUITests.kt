@@ -1,9 +1,11 @@
 package com.tryhisar.hisar.ui.item
 
 import android.content.ClipboardManager
-import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.longClick
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performTouchInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.HisarTestApplication
 import com.tryhisar.hisar.HisarUITestCase
@@ -89,7 +91,7 @@ class ItemDetailUITests : HisarUITestCase() {
         val startedAt = Instant.now().minusSeconds(1)
         waitFor("one-time-code-value")
         composeRule.waitUntil("the current code shows", 10_000) {
-            val shown = composeRule.onNode(hasTestTag("one-time-code-value")).fetchSemanticsNode().config[SemanticsProperties.Text].joinToString("")
+            val shown = readText("one-time-code-value")
             shown.replace(" ", "") in listOf(computeCode(Instant.now().minusSeconds(1)), computeCode(Instant.now()))
         }
         assertTrue(exists(hasTestTag("one-time-code-seconds")))
@@ -97,6 +99,8 @@ class ItemDetailUITests : HisarUITestCase() {
         waitUntil(10_000, "the clipboard holds the code") { clipboardText?.length == 6 }
         assertTrue("${clipboardText} is not the current code", clipboardText in listOf(computeCode(startedAt), computeCode(Instant.now())))
 
+        waitFor(hasText("One-time code copied. It clears in about 2 minutes."))
+        dismissNotice()
         tap("copy-secret-reference")
         waitUntil(10_000, "the clipboard holds the password's reference") { clipboardText == "hisar://Personal/GitHub/password" }
         waitFor(hasText("Secret reference copied."))
@@ -111,14 +115,20 @@ class ItemDetailUITests : HisarUITestCase() {
         val backend = application.backend
         val login = backend.saveItem(personalID, ItemDetail(title = "Bank", username = "alice", password = PASSWORD, allURL = listOf("https://bank.example")))
         backend.addAndroidApp(personalID, login.id, "com.bank.app", "14".repeat(32))
+        val certificate = List(32) { "14" }.joinToString(":")
         val host = openHost()
         host.show(personalID, login.id)
 
         waitFor("android-app-com.bank.app")
         saveScreenshot("item-detail-android-app")
+        assertFalse("the row leaves out the certificate", exists(hasText(certificate, substring = true)))
+        composeRule.onNodeWithTag("android-app-com.bank.app").performTouchInput { longClick() }
+        tap("field-action-Copy certificate")
+        waitForGone("field-action-Copy certificate")
+        waitFor(hasText("Certificate copied"))
+        waitUntil(10_000, "the clipboard holds the certificate") { clipboardText == certificate }
         tap("remove-android-app-com.bank.app")
-        confirm("Remove App", excludingTag = "remove-android-app-com.bank.app")
-        // The notice shows for 2.5 seconds, so it is read while it shows, not after the slower wait for the row.
+        confirm("Remove app", excludingTag = "remove-android-app-com.bank.app")
         waitFor(hasText("Android app removed."))
         composeRule.waitUntil("the app's row goes", 30_000) { !exists(hasTestTag("android-app-com.bank.app")) }
         assertEquals(emptyList<Any>(), backend.getItem(personalID, login.id).allAndroidApp)

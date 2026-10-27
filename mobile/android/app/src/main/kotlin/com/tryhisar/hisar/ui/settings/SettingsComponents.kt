@@ -30,7 +30,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -180,7 +179,7 @@ fun RowScope.RowIcon(icon: ImageVector, tint: Color = HisarTheme.colors.tint) {
     Spacer(Modifier.size(14.dp))
 }
 
-/** A row with a switch, as a Toggle in a Form; the switch takes the theme's tint as SwiftUI's does. */
+/** A row with a switch, as a Toggle in a Form; the switch takes its colors from the theme, whose primary is the tint. */
 @Composable
 fun ToggleRow(
     text: String,
@@ -206,24 +205,7 @@ fun ToggleRow(
             Text(text, style = HisarType.body, color = if (enabled) colors.label else colors.secondaryLabel)
             if (subtitle != null) Text(subtitle, style = HisarType.footnote, color = colors.secondaryLabel)
         }
-        Switch(
-            checked = isOn,
-            onCheckedChange = null,
-            enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = colors.tint,
-                checkedBorderColor = Color.Transparent,
-                uncheckedThumbColor = Color.White,
-                uncheckedTrackColor = colors.fill,
-                uncheckedBorderColor = Color.Transparent,
-                disabledCheckedTrackColor = colors.tint.copy(alpha = 0.4f),
-                disabledCheckedThumbColor = Color.White,
-                disabledUncheckedTrackColor = colors.fill,
-                disabledUncheckedThumbColor = Color.White,
-                disabledUncheckedBorderColor = Color.Transparent,
-            ),
-        )
+        Switch(checked = isOn, onCheckedChange = null, enabled = enabled)
     }
 }
 

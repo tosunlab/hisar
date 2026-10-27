@@ -28,7 +28,7 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
         </div>
         <div class="row actions">
           <button @click="copyText(store.pendingSecretKey, 'Secret Key')"><AppIcon name="copy" /> Copy</button>
-          <button data-testid="save-emergency-kit" @click="saveNewAccountEmergencyKit"><AppIcon name="note" /> Save Emergency Kit (PDF)</button>
+          <button data-testid="save-emergency-kit" @click="saveNewAccountEmergencyKit"><AppIcon name="note" /> Save Emergency Kit…</button>
         </div>
         <label class="row confirmation">
           <input v-model="hasSaved" type="checkbox" name="hasSaved" />
@@ -64,7 +64,7 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
   padding: 4px 6px;
   border-radius: var(--radius-small);
   background: var(--color-surface-raised);
-  font-size: 14px;
+  font-size: var(--font-size-15);
 }
 
 .actions {
@@ -81,7 +81,7 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
   border-radius: var(--radius);
   background: var(--color-surface);
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--font-size-13);
 }
 
 .master-password-warning :deep(.icon) {
@@ -97,7 +97,7 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
 
 .confirmation-text {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   font-weight: 400;
   color: var(--color-text);
 }

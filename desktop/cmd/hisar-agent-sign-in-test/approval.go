@@ -10,7 +10,7 @@ import (
 	"time"
 )
 
-const approvalTitle = "Hisar Access Requested"
+const approvalTitle = "Approve request"
 
 var durations = []string{"Only this time", "For 1 hour", "For 1 day", "Always"}
 

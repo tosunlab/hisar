@@ -226,6 +226,7 @@ describe("Import panel", () => {
       "CSV (Chrome, Firefox, Safari, Edge and others)",
     ]);
     expect(wrapper.text()).toContain("From a Hisar export, 1Password, Bitwarden, LastPass, or a CSV file from your browser");
+    expect(wrapper.get("#import-title").text()).toBe("Import items");
     expect(wrapper.find(".how-to").text()).toContain("HisarSettings → Export your data on any device.");
     expect(wrapper.find(".how-to").text()).toContain("LastPassAccount options → Advanced → Export, then save the file as CSV.");
     expect(wrapper.find(".how-to").text()).toContain("1Password desktop .1pux exports do not include passkeys. Keep 1Password until you have moved your passkeys separately.");
@@ -250,6 +251,9 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-count-secure-note"]').text()).toContain("2");
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').text()).toContain("1");
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').text()).toContain("SSH key");
+    expect(wrapper.findAll('[data-testid^="import-count-"]').map((entry) => entry.text())).toEqual(["9 logins", "2 secure notes", "1 SSH key"]);
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("9 logins · 2 secure notes · 1 SSH key");
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("11 items to import into Personal");
     expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("Already in Personal · 1");
     expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("alice · github.com");
     expect(wrapper.find('[data-testid="import-skipped"]').text()).toContain("Bitwarden cards are not supported");
@@ -258,6 +262,7 @@ describe("Import panel", () => {
 
     await wrapper.find('[data-testid="skip-duplicates"]').setValue(false);
     expect(wrapper.find('[data-testid="start-import"]').text()).toBe("Import 12 items");
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("12 items to import into Personal");
     api.startImport.mockResolvedValue(createImportProgress({ totalCount: 12 }));
     api.continueImport.mockReturnValue(new Promise(() => undefined));
     await wrapper.find('[data-testid="start-import"]').trigger("click");
@@ -274,6 +279,14 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="start-import"]').text()).toBe("Import 12 items");
   });
 
+  it("shows a singular headline and omits empty categories", async () => {
+    const wrapper = await openPreview({ itemCount: 1, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, allDuplicate: [] });
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("1 item to import into Personal");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("1 login");
+    expect(wrapper.find('[data-testid="import-count-secure-note"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="import-count-ssh-key"]').exists()).toBe(false);
+  });
+
   it("checks duplicates again when the vault changes", async () => {
     const wrapper = await openPreview();
     api.previewImport.mockResolvedValue(createImportPreview({ vaultId: "work", vaultName: "Work", allDuplicate: [] }));
@@ -281,6 +294,7 @@ describe("Import panel", () => {
     await flushPromises();
     expect(api.previewImport).toHaveBeenCalledWith("work");
     expect(wrapper.find('[data-testid="import-duplicates"]').exists()).toBe(false);
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("12 items to import into Work");
   });
 
   it("maps each source group independently and shows the destination members", async () => {

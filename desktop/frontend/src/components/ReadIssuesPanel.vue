@@ -62,7 +62,7 @@ async function rename(vaultID: string, revision: string): Promise<void> {
 </template>
 
 <style scoped>
-.read-issues { padding: 8px 12px; color: var(--color-warning-text); background: var(--color-warning-background); font-size: 12px; }
+.read-issues { padding: 8px 12px; color: var(--color-warning-text); background: var(--color-warning-background); font-size: var(--font-size-12); }
 li { margin: 8px 0; overflow-wrap: anywhere; }
 button, input { margin: 4px; }
 </style>

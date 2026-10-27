@@ -387,7 +387,7 @@ func (s *Service) saveItem(vaultID string, detail ItemDetail, importScope string
 	if strings.TrimSpace(detail.OneTimePassword) != "" {
 		normalized, err := totp.Normalize(detail.OneTimePassword)
 		if err != nil {
-			return ItemDetail{}, errors.New("the one-time password is not a valid secret or otpauth:// link")
+			return ItemDetail{}, errors.New("the one-time code is not a valid secret or otpauth:// link")
 		}
 		detail.OneTimePassword = normalized
 	} else {

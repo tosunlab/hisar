@@ -38,11 +38,11 @@ fun launchApp(backend: FakeBackend, link: String? = null): ActivityScenario<Main
 }
 
 fun ComposeTestRule.waitForTag(tag: String, timeoutMillis: Long = 30_000) {
-    waitUntil(timeoutMillis) { onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty() }
+    waitUntil(timeoutMillis) { onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
 }
 
 fun ComposeTestRule.waitForTagToGo(tag: String, timeoutMillis: Long = 30_000) {
-    waitUntil(timeoutMillis) { onAllNodesWithTag(tag).fetchSemanticsNodes().isEmpty() }
+    waitUntil(timeoutMillis) { onAllNodesWithTag(tag, useUnmergedTree = true).fetchSemanticsNodes().isEmpty() }
 }
 
 fun ComposeTestRule.isTagShown(tag: String): Boolean = onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty()

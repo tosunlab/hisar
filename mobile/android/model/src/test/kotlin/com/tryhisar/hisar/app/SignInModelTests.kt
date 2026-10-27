@@ -98,7 +98,7 @@ class SignInModelTests {
         assertTrue(isTurnedOn)
         assertTrue(model.status.value.biometricEnabled)
         assertNull(model.signIn.newAccountStep.value)
-        assertEquals("Biometric unlock is on", model.notice.value)
+        assertEquals("Biometric unlock is on", model.notice.value?.message)
         assertFalse("enableBiometricUnlock" in harness.backend.allCallName, "no master password asked again")
         runCurrent()
         assertTrue("forgetNewAccountSecretKey" in harness.backend.allCallName)

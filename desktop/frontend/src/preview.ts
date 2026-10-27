@@ -284,6 +284,16 @@ function getInitialState(): string {
   return new URLSearchParams(window.location.search).get("state") ?? "unlocked";
 }
 
+let isPreviewSettingsWindowRequested = previewParameter.get("window") === "settings";
+
+function takePreviewSettingsWindowRequest(): string | null {
+  if (!isPreviewSettingsWindowRequested) {
+    return null;
+  }
+  isPreviewSettingsWindowRequested = false;
+  return previewParameter.get("settingsSection") ?? "";
+}
+
 let previewState = getInitialState();
 let previewSignedOutEmail = "alper@tryhisar.com";
 let isPreviewBiometricEnabled = new URLSearchParams(window.location.search).get("touchId") === "1";
@@ -923,6 +933,7 @@ function createPreviewCommandLineApproval(): ApprovalEvent {
     isCompact: false,
     isTouchIDApproval: previewParameter.get("noTouchID") !== "1",
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+    timeoutMilliseconds: 60_000,
     terminalName: coverage === "terminal-session" ? "ttys003" : "",
     coverage,
     isUnlockRequired: isLocked,
@@ -981,6 +992,7 @@ function createPreviewSSHApproval(): ApprovalEvent {
     isPhoneApproval: previewParameter.get("phone") === "1" && !isLocked,
     isTooLongForPhone: previewParameter.get("phone") === "long" && !isLocked,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
+    timeoutMilliseconds: 60_000,
     allSecretName: [],
     moreSecretCount: 0,
     agentName: "",
@@ -2059,6 +2071,12 @@ export const previewApi = {
     return resolveAfterDelay(previewAgentStatus());
   },
   fitSSHApprovalWindow: () => Promise.resolve(),
+  // The preview runs in one browser tab, so Settings stays an overlay there. Its Settings window entry point,
+  // ?window=settings, opens at once at settingsSection (its last section without one), as if Go had asked it to.
+  showSettingsWindow: () => Promise.resolve(false),
+  hideSettingsWindow: () => Promise.resolve(),
+  takeSettingsWindowRequest: () => Promise.resolve(takePreviewSettingsWindowRequest()),
+  openInMainWindow: () => Promise.resolve(),
   setApprovalTouchIDFrame: () => Promise.resolve(),
   clearApprovalTouchIDFrame: () => Promise.resolve(),
   cancelApprovalTouchID: () => Promise.resolve(),

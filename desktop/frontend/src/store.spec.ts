@@ -335,6 +335,41 @@ describe("openSettings", () => {
     expect(store.isSettingsOpen).toBe(true);
     expect(loadSelectedSectionID()).toBe("developer");
   });
+
+  it("opens the Settings window instead of the overlay where there is one, also while locked", async () => {
+    resetStore();
+    store.isSettingsOpen = false;
+    store.status = createStatus("unlocked");
+    api.showSettingsWindow.mockResolvedValueOnce(true).mockResolvedValueOnce(true);
+    await storeModule.openSettings("security");
+    expect(api.showSettingsWindow).toHaveBeenCalledWith("security");
+    expect(store.isSettingsOpen).toBe(false);
+    expect(loadSelectedSectionID()).toBe("security");
+
+    store.status = createStatus("locked");
+    await storeModule.openSettings("developer");
+    expect(api.showSettingsWindow).toHaveBeenLastCalledWith("developer");
+    expect(store.isSettingsOpen).toBe(false);
+  });
+});
+
+describe("openFromSettings", () => {
+  it("opens the pending recovery a Secret Key replacement in the Settings window left", async () => {
+    const replacement: PendingRecoverySummary = {
+      operationId: "replacement", kind: "secret-key", origin: "https://hisar.test", accountId: "account", email: "alice@example.com", name: "Alice",
+      phase: "delivery-pending", kitSaved: false, manualUnlock: false, keychainProtected: true, revision: 1, problems: [],
+    };
+    resetStore();
+    store.status = createStatus("unlocked");
+    store.isSettingsOpen = true;
+    store.pendingRecovery = [{ ...replacement, operationId: "earlier" }];
+    store.isRecoveryOpen = false;
+    api.listPendingRecovery.mockResolvedValueOnce([{ ...replacement, operationId: "earlier" }, replacement]);
+    await storeModule.openFromSettings("recovery");
+    expect(store.isSettingsOpen).toBe(false);
+    expect(store.pendingRecovery.map((operation) => operation.operationId)).toEqual(["earlier", "replacement"]);
+    expect(store.isRecoveryOpen).toBe(true);
+  });
 });
 
 describe("vault item counts", () => {

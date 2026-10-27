@@ -7,6 +7,7 @@ import android.app.PendingIntent
 import android.app.slice.Slice
 import android.content.Context
 import android.content.Intent
+import android.graphics.drawable.Icon
 import android.os.Build
 import android.service.autofill.Dataset
 import android.service.autofill.InlinePresentation
@@ -61,6 +62,7 @@ class Datasets(private val context: Context, private val inlineRequest: InlineSu
         if (!UiVersions.getVersions(spec.style).contains(UiVersions.INLINE_UI_VERSION_1)) return null
         val slice: Slice = InlineSuggestionUi.newContentBuilder(pendingIntent)
             .setTitle(suggestion.title)
+            .setStartIcon(Icon.createWithResource(context, R.drawable.ic_autofill))
             .apply { if (suggestion.subtitle.isNotEmpty()) setSubtitle(suggestion.subtitle) }
             .setContentDescription(listOf(suggestion.title, suggestion.subtitle).filter { it.isNotEmpty() }.joinToString(", "))
             .build().slice

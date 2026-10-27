@@ -217,7 +217,7 @@ struct VaultDeletionSheet: View {
                     }
                 }
             }
-            .navigationTitle("Delete “\(actions.vault.name)”")
+            .navigationTitle("Delete “\(actions.vault.name)”?")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -292,7 +292,7 @@ struct ExportDataForm: View {
                         Text(warning).foregroundStyle(.themeWarning).accessibilityIdentifier("export-provenance")
                     }
                     ShareLink(item: URL(fileURLWithPath: result.path), preview: SharePreview(URL(fileURLWithPath: result.path).lastPathComponent, image: Image(systemName: "doc"))) {
-                        Label("Save or Share Export", systemImage: "square.and.arrow.up")
+                        Label("Save or share export", systemImage: "square.and.arrow.up")
                     }
                     .accessibilityIdentifier("share-export")
                 } header: {

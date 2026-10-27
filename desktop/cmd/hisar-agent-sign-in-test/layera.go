@@ -677,12 +677,13 @@ func (current *browserRun) revokeGrant(name string) (string, error) {
 	if _, err := current.cua.waitForWindow(pid, 20*time.Second, func(title string) bool { return title == "Hisar" }); err != nil {
 		return "", fmt.Errorf("the main window did not open: %w", err)
 	}
-	for _, step := range []string{"Settings", "Developer tools"} {
-		if err := current.waitAndPress(pid, "window=Hisar;role=AXButton;name="+step); err != nil {
-			return "", err
-		}
+	if err := current.waitAndPress(pid, "window=Hisar;role=AXButton;name=Settings"); err != nil {
+		return "", err
 	}
-	tree, err := current.ax.window(pid, "Hisar")
+	if err := current.waitAndPress(pid, "window=Settings;role=AXButton;name=Developer tools"); err != nil {
+		return "", err
+	}
+	tree, err := current.ax.window(pid, "Settings")
 	if err != nil {
 		return "", err
 	}
@@ -696,14 +697,14 @@ func (current *browserRun) revokeGrant(name string) (string, error) {
 	if row == "" || !strings.Contains(text, "Until you revoke it") {
 		return "", fmt.Errorf("Settings lists no grant %q:\n%s", name, text)
 	}
-	if err := current.ax.press(pid, "window=Hisar;role=AXButton;name=Revoke;after="+row); err != nil {
+	if err := current.ax.press(pid, "window=Settings;role=AXButton;name=Revoke;after="+row); err != nil {
 		return "", err
 	}
 	time.Sleep(time.Second)
-	if tree, err := current.ax.window(pid, "Hisar"); err != nil || strings.Contains(tree.text(), row) {
+	if tree, err := current.ax.window(pid, "Settings"); err != nil || strings.Contains(tree.text(), row) {
 		return "", fmt.Errorf("Settings still lists %q after Revoke", row)
 	}
-	current.ax.press(pid, "window=Hisar;role=AXButton;name=Close settings")
+	current.ax.press(pid, "window=Settings;role=AXButton;name=close button")
 	return row, nil
 }
 

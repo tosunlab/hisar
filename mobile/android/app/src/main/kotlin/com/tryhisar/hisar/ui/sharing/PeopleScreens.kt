@@ -149,7 +149,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
         }
         if (loadedPeople != null) {
             FormSection(footer = {
-                Text("Creates a Hisar account: the server emails them a sign-up link. To give them a vault, share it from Share in the vault's toolbar.")
+                Text("Creates a Hisar account: the server emails them a sign-up link. To give them a vault, choose Share in the vault's actions menu.")
             }) {
                 FormButtonRow("Invite to Hisar", { isInviteShown = true }, testTag = "invite-person", icon = Icons.Outlined.PersonAdd, color = HisarTheme.colors.tint)
             }

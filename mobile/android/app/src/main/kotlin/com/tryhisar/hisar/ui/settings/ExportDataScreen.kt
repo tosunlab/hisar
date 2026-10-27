@@ -81,8 +81,8 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
         if (exported != null) {
             val file = File(exported.path)
             val mimeType = if (file.extension == "json") "application/json" else "application/octet-stream"
-            val save = rememberFileSaver(mimeType) { isSaved ->
-                if (isSaved) model.showNotice("Export saved") else model.errorMessage.value = "Hisar could not save the file there. Choose another place."
+            val save = rememberFileSaver(mimeType) { savedURI ->
+                if (savedURI != null) model.showNotice("Export saved") else model.errorMessage.value = "Hisar could not save the file there. Choose another place."
             }
             val share = rememberFileSharer(mimeType) { model.errorMessage.value = SHARE_FAILED_MESSAGE }
             FormSection(
@@ -94,9 +94,9 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                 },
             ) {
                 if (exported.warning.isNotEmpty()) Text(exported.warning, color = HisarTheme.colors.warning, modifier = Modifier.testTag("export-provenance"))
-                FormButtonRow("Save Export", { save(file) }, testTag = "save-export", icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
+                FormButtonRow("Save export", { save(file) }, testTag = "save-export", icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
                 RowDivider()
-                FormButtonRow("Share Export", { share(file) }, testTag = "share-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
+                FormButtonRow("Share export", { share(file) }, testTag = "share-export", icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
             }
             errorMessage?.let { FormSection { ErrorBanner(it) } }
         } else {

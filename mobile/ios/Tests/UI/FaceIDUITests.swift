@@ -109,6 +109,30 @@ final class FaceIDUITests: HisarUITestCase {
         saveScreenshot("settings-face-id")
         app.buttons["settings-lock-now"].tap()
         saveScreenshot("lock-face-id")
+        expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: app.buttons["unlock-biometric"])
+        waitForExpectations(timeout: 10)
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        let unlockPasswordField = app.secureTextFields["unlock-password"]
+        let hasFocus = NSPredicate(format: "hasKeyboardFocus == true")
+        expectation(for: hasFocus, evaluatedWith: unlockPasswordField)
+        waitForExpectations(timeout: 10)
+        // Complete the form's interactive dismissal with a drag through the keyboard's height.
+        let form = app.collectionViews.firstMatch
+        form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.2)).press(
+            forDuration: 0.05, thenDragTo: form.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)),
+            withVelocity: .slow, thenHoldForDuration: 0.1)
+        expectation(for: NSPredicate(format: "hasKeyboardFocus == false"), evaluatedWith: unlockPasswordField)
+        waitForExpectations(timeout: 10)
+        app.buttons["unlock-biometric"].tap()
+        expectation(for: NSPredicate(format: "enabled == false"), evaluatedWith: app.buttons["unlock-biometric"])
+        waitForExpectations(timeout: 10)
+        XCUIDevice.shared.press(.home)
+        app.activate()
+        expectation(for: hasFocus, evaluatedWith: unlockPasswordField)
+        waitForExpectations(timeout: 10)
+        XCTAssertEqual(app.descendants(matching: .any)["error-message"].firstMatch.label, "Face ID was cancelled.")
+        app.buttons["unlock-biometric"].tap()
         matchFace(until: { app.buttons["vault-Personal"].exists })
         waitFor(app.buttons["vault-Personal"], timeout: 15)
         XCTAssertFalse(springboard.otherElements["Face ID"].exists, "one Face ID prompt unlocks: the keychain reuses the evaluated context")

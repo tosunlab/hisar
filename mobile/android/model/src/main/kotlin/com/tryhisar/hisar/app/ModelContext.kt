@@ -100,8 +100,8 @@ interface ModelContext {
 
     suspend fun refreshPendingRecovery()
 
-    /** Shows a floating confirmation for 2.5 seconds. */
-    fun showNotice(message: String)
+    /** Shows a snackbar, with an optional action until it is dismissed. */
+    fun showNotice(message: String, action: Notice.Action? = null)
 
     /** Called with the previous and the new status each time [applyStatus] publishes one, before anything else reacts. */
     fun addStatusListener(listener: (previous: VaultStatus, current: VaultStatus) -> Unit)

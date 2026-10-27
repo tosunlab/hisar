@@ -26,7 +26,7 @@ class FavoritesUITests : HisarUITestCase() {
         saveScreenshot("favorites-empty")
 
         addLogin(title = "GitHub", username = "octocat", password = "favorite-github-password", website = "https://github.com")
-        choose("add-login", "add-item")
+        choose("new-login", "new-menu")
         type("AWS Console", "editor-title")
         type("root", "editor-username")
         type("favorite-aws-password", "editor-password")

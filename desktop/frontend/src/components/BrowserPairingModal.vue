@@ -78,13 +78,13 @@ onBeforeUnmount(() => clearInterval(clockTimer));
 
 h2 {
   margin: 14px 0 6px;
-  font-size: 16px;
+  font-size: var(--font-size-15);
   font-weight: 600;
 }
 
 p {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size-13);
   line-height: 1.5;
 }
 
@@ -97,7 +97,7 @@ p {
   border: 1px solid var(--color-border);
   border-radius: var(--radius);
   background: var(--color-surface);
-  font-size: 30px;
+  font-size: var(--font-size-22);
   letter-spacing: 0.12em;
   user-select: text;
   -webkit-user-select: text;
@@ -105,6 +105,6 @@ p {
 
 .note {
   margin-bottom: 16px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 </style>

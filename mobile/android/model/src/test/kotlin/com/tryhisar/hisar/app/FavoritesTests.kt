@@ -28,7 +28,7 @@ class FavoritesTests {
         val data = model.unlockedData.value
         assertEquals(listOf("GitHub", "Netflix"), data.listAllFavoriteReference().map { it.item.title })
         assertEquals(listOf("Personal", "Family"), data.listAllFavoriteReference().map { it.vaultName })
-        assertEquals("Added to Favorites.", model.notice.value)
+        assertEquals("Added to Favorites.", model.notice.value?.message)
         assertEquals(setOf("family/netflix", "personal/github"), harness.backend.allFavoriteRecordID)
         assertEquals(listOf(false, true), data.listAllItemReference("personal").map { it.item.isFavorite })
     }
@@ -41,7 +41,7 @@ class FavoritesTests {
         assertEquals(listOf("Bank"), model.unlockedData.value.listAllFavoriteReference().map { it.item.title })
         model.favorites.setItemFavorite("personal", "bank", isFavorite = false)
         assertTrue(model.unlockedData.value.listAllFavoriteReference().isEmpty())
-        assertEquals("Removed from Favorites.", model.notice.value)
+        assertEquals("Removed from Favorites.", model.notice.value?.message)
     }
 
     @Test
@@ -91,5 +91,82 @@ class FavoritesTests {
         assertEquals("personal/github", allFavorite.first().id)
         val older = backendJson.decodeFromString<ItemDetail>("""{"id":"bank","title":"Bank"}""")
         assertFalse(older.isFavorite, "an item from an older backend is not a favorite")
+    }
+
+    @Test
+    fun testUndoRestoresFavoriteAndOnlyRunsOnce() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.allFavoriteRecordID = mutableSetOf("personal/bank")
+        val model = harness.startUnlockedModel()
+        model.favorites.setItemFavorite("personal", "bank", isFavorite = false)
+        val notice = requireNotNull(model.notice.value)
+        assertEquals("Undo", notice.action?.label)
+        model.performNoticeAction(notice)
+        assertEquals(listOf("Bank"), model.unlockedData.value.listAllFavoriteReference().map { it.item.title })
+        assertEquals(setOf("personal/bank"), harness.backend.allFavoriteRecordID)
+        assertEquals(null, model.notice.value?.action, "Undo does not start another Undo chain")
+        val callCount = harness.backend.allCallName.count { it == "setItemFavorite" }
+        model.performNoticeAction(notice)
+        assertEquals(callCount, harness.backend.allCallName.count { it == "setItemFavorite" })
+    }
+
+    @Test
+    fun testUndoAddingFavoriteRemovesIt() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        model.favorites.setItemFavorite("personal", "github", isFavorite = true)
+        model.performNoticeAction(requireNotNull(model.notice.value))
+        assertTrue(model.unlockedData.value.listAllFavoriteReference().isEmpty())
+        assertTrue(harness.backend.allFavoriteRecordID.isEmpty())
+    }
+
+    @Test
+    fun testReplacedAndDismissedNoticesCannotUndo() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        model.favorites.setItemFavorite("personal", "github", isFavorite = true)
+        val replaced = requireNotNull(model.notice.value)
+        model.showNotice("Password copied.")
+        val current = requireNotNull(model.notice.value)
+        model.dismissNotice(replaced)
+        assertEquals(current, model.notice.value)
+        model.performNoticeAction(replaced)
+        assertEquals(setOf("personal/github"), harness.backend.allFavoriteRecordID)
+        model.dismissNotice(current)
+        assertEquals(null, model.notice.value)
+    }
+
+    @Test
+    fun testFailedUndoKeepsFavoriteAndShowsError() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        model.favorites.setItemFavorite("personal", "github", isFavorite = true)
+        harness.backend.favoriteErrorMessage = "Could not save the favorite."
+        model.performNoticeAction(requireNotNull(model.notice.value))
+        assertEquals(setOf("personal/github"), harness.backend.allFavoriteRecordID)
+        assertEquals("Could not save the favorite.", model.errorMessage.value)
+    }
+
+    @Test
+    fun testLockingDismissesFavoriteUndo() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        model.favorites.setItemFavorite("personal", "github", isFavorite = true)
+        val notice = requireNotNull(model.notice.value)
+        model.lock()
+        assertEquals(null, model.notice.value)
+        model.performNoticeAction(notice)
+        assertEquals(setOf("personal/github"), harness.backend.allFavoriteRecordID)
+    }
+
+    @Test
+    fun testRepeatedMessagesAreNewNotices() = runTest {
+        val model = AppModelHarness(this).startUnlockedModel()
+        model.showNotice("Password copied.")
+        val previous = requireNotNull(model.notice.value)
+        model.showNotice("Password copied.")
+        assertTrue(previous !== model.notice.value)
+        model.dismissNotice(previous)
+        assertEquals("Password copied.", model.notice.value?.message)
     }
 }

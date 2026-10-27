@@ -56,7 +56,6 @@ private struct MessageView: View {
 
 private struct AutoFillLockView: View {
     @ObservedObject var model: AutoFillModel
-    @State private var promptedLockCount = -1
     private static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
 
     var body: some View {
@@ -64,17 +63,13 @@ private struct AutoFillLockView: View {
             email: model.status.email,
             requestDescription: model.serviceName.isEmpty ? "" : requestDescription,
             isBiometricReady: model.status.biometricReady,
+            lockCount: model.lockCount,
             biometryName: Self.biometryName,
             isBusy: model.isBusy,
             errorMessage: model.errorMessage,
             submitPassword: { await model.unlock(password: $0) },
             submitBiometric: { await model.unlockWithBiometric() }
         )
-        .onAppear {
-            guard model.status.biometricReady, promptedLockCount != model.lockCount else { return }
-            promptedLockCount = model.lockCount
-            Task { await model.unlockWithBiometric() }
-        }
     }
 }
 
@@ -151,7 +146,7 @@ private struct AutoFillListView: View {
 
     private var emptyMessage: String {
         switch (model.requestKind, model.searchText.isEmpty) {
-        case (.oneTimeCode, true): "No login for this site has a one-time password. Search all logins above."
+        case (.oneTimeCode, true): "No login for this site has a one-time code. Search all logins above."
         case (.oneTimeCode, false): "No matching one-time codes for this site."
         case (.password, true): "No logins saved for this site. Search all logins above."
         case (.password, false): "No matching logins for this site."

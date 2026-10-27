@@ -206,8 +206,8 @@ h2 {
   min-width: 0;
   margin: 0;
   overflow: hidden;
-  font-size: 17px;
-  font-weight: 650;
+  font-size: var(--font-size-15);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -221,14 +221,14 @@ h2 {
 .field-label {
   display: block;
   margin-bottom: 6px;
-  font-size: 12px;
+  font-size: var(--font-size-12);
   font-weight: 600;
   color: var(--color-text-secondary);
 }
 
 .hint {
   margin: 6px 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .member-list {
@@ -267,7 +267,7 @@ h2 {
 
 .member-email,
 .role {
-  font-size: 12px;
+  font-size: var(--font-size-12);
 }
 
 .choice-list {
