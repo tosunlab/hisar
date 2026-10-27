@@ -25,7 +25,6 @@ struct SettingsView: View {
     @State private var selection: SettingsDestination?
     /// The screens pushed below the selected section, of several value types (organizations and their members push their own).
     @State private var detailPath = NavigationPath()
-    @State private var isSignOutConfirmationShown = false
     @State private var isAutoFillEnabled = false
 
     static let biometryName = BiometricKeychain(accessGroup: nil).getBiometryName()
@@ -138,22 +137,10 @@ struct SettingsView: View {
                         Label("About Hisar", systemImage: "info.circle")
                     }
                     .accessibilityIdentifier("open-about")
-                    Button("Sign out", role: .destructive) {
-                        isSignOutConfirmationShown = true
-                    }
-                    .frame(maxWidth: .infinity)
-                    .accessibilityIdentifier("sign-out")
                 }
             }
             .applyThemedListStyle()
             .navigationTitle("Settings")
-            .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
-                Button("Sign out", role: .destructive) {
-                    Task { await model.signOut() }
-                }
-            } message: {
-                Text("You will need your Secret Key and master password to sign in again.")
-            }
             .task {
                 isAutoFillEnabled = await AutoFillSettings.checkIsEnabled()
                 await model.refreshReceivedInvitationCount()
@@ -215,6 +202,7 @@ struct AccountView: View {
     @EnvironmentObject private var model: AppModel
     @State private var isExportShown = false
     @State private var isHisarImportShown = false
+    @State private var isSignOutConfirmationShown = false
 
     private static let hisarExportTypes: [UTType] = [.json, UTType(filenameExtension: "hisar") ?? .data]
 
@@ -273,9 +261,23 @@ struct AccountView: View {
             } footer: {
                 Text("Deletes your account and the vaults only you own from the Hisar server. \(AccountLifecycleLogic.exportAdvice)")
             }
+            Section {
+                Button("Sign out", role: .destructive) {
+                    isSignOutConfirmationShown = true
+                }
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("sign-out")
+            }
         }
         .applyThemedListStyle()
         .navigationTitle("Account")
+        .confirmationDialog("Sign out of Hisar on this iPhone?", isPresented: $isSignOutConfirmationShown, titleVisibility: .visible) {
+            Button("Sign out", role: .destructive) {
+                Task { await model.signOut() }
+            }
+        } message: {
+            Text("You will need your Secret Key and master password to sign in again.")
+        }
         .sheet(isPresented: $isExportShown) {
             ExportDataView()
                 .environmentObject(model)

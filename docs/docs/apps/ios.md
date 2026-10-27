@@ -25,7 +25,9 @@ Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconp
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
-Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
+Account settings group the master password, Secret Key, Emergency Kit, imports, exports, account deletion, and sign out.
+**Sign out** has its own final section below **Delete account** and still asks for confirmation.
+Help and About remain informational destinations on the Settings root.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 
 Devices distinguishes a failed first fetch from a successful empty list and offers **Retry**.
