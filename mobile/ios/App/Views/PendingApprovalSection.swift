@@ -4,6 +4,7 @@ import SwiftUI
 struct PendingApprovalCardSection: View {
     var allApproval: [PhoneApproval]
     var isBusy: Bool
+    var isBiometricAvailable = true
     var rememberChoice: (PhoneApproval) -> Binding<Bool>
     var review: (PhoneApproval) -> Void
     var approve: (PhoneApproval, _ isRemembered: Bool) -> Void
@@ -13,7 +14,7 @@ struct PendingApprovalCardSection: View {
     var body: some View {
         if let approval = allApproval.first {
             Section {
-                PendingApprovalCard(approval: approval, isBusy: isBusy, isRemembered: rememberChoice(approval), review: review, approve: approve, deny: deny)
+                PendingApprovalCard(approval: approval, isBusy: isBusy, isBiometricAvailable: isBiometricAvailable, isRemembered: rememberChoice(approval), review: review, approve: approve, deny: deny)
                     .alignmentGuide(.listRowSeparatorLeading) { _ in 0 }
                 if allApproval.count > 1 {
                     Button(action: showAll) {
@@ -34,6 +35,7 @@ struct PendingApprovalCardSection: View {
 struct PendingApprovalCard: View {
     var approval: PhoneApproval
     var isBusy: Bool
+    var isBiometricAvailable = true
     @Binding var isRemembered: Bool
     var review: (PhoneApproval) -> Void
     var approve: (PhoneApproval, _ isRemembered: Bool) -> Void
@@ -69,7 +71,13 @@ struct PendingApprovalCard: View {
                 Button {
                     approve(approval, isRemembered)
                 } label: {
-                    Label("Approve", systemImage: SettingsView.biometrySystemImage)
+                    Group {
+                        if isBiometricAvailable {
+                            Label("Approve", systemImage: SettingsView.biometrySystemImage)
+                        } else {
+                            Text("Approve")
+                        }
+                    }
                         .frame(maxWidth: .infinity)
                 }
                 .applyProminentGlassStyle()

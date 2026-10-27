@@ -222,6 +222,7 @@ struct VaultsView: View {
                 PendingApprovalCardSection(
                     allApproval: model.allPendingApproval,
                     isBusy: model.isAnsweringApproval,
+                    isBiometricAvailable: model.status.biometricAvailable,
                     rememberChoice: { approval in Binding(get: { model.rememberChoice(for: approval) }, set: { model.setRememberChoice($0, for: approval) }) },
                     review: { model.reviewApproval($0) },
                     approve: { approval, isRemembered in Task { await model.approve(approval, isRemembered: isRemembered) } },

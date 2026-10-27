@@ -145,7 +145,6 @@ class PhoneApprovalUITests : HisarUITestCase() {
             openSheet("preview-signing")
             composeRule.onNode(hasTestTag("phone-approval-remember")).assertIsOff()
             saveScreenshot("phone-approval-signing")
-            tap("phone-approval-approve")
             waitFor("phone-approval-password")
             type("not the password", "phone-approval-password")
             tap("phone-approval-approve-password")

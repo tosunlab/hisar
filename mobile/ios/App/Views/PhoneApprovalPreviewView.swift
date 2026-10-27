@@ -69,7 +69,7 @@ struct PhoneApprovalPreviewView: View {
 
     @State private var isSheetShown = true
     @State private var isBusy = false
-    @State private var isPasswordRequired = false
+    @State private var isPasswordRequired = ProcessInfo.processInfo.arguments.contains(PhoneApprovalPreviewView.passwordArgument)
     @State private var errorMessage: String?
     @State private var resultMessage: String?
     @State private var chosenRemember: Bool?

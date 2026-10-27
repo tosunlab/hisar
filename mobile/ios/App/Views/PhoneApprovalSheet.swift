@@ -119,7 +119,7 @@ struct PhoneApprovalSheet: View {
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(isBusy)
         .accessibilityIdentifier("phone-approval")
-        .onChange(of: isPasswordRequired) { _, isRequired in
+        .onChange(of: isPasswordRequired, initial: true) { _, isRequired in
             isPasswordFocused = isRequired
         }
     }

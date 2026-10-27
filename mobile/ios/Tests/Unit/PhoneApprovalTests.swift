@@ -223,8 +223,7 @@ final class PhoneApprovalTests: XCTestCase {
     func testSheetSwitchIsSentWithThePasswordApproval() async {
         backend.isBiometricAvailable = false
         let model = await createReviewingModel(allApproval: [createRememberingApproval()])
-        await model.approvePendingApproval(isRemembered: true)
-        XCTAssertTrue(model.isApprovalPasswordRequired)
+        XCTAssertTrue(model.isApprovalPasswordRequired, "the password form opens without a failed biometric attempt")
         await model.approvePendingApproval(password: FakeBackend.password, isRemembered: true)
         XCTAssertEqual(backend.allApprovalAnswer, ["approve remembered 0123456789abcdef0123456789abcdef"])
     }
@@ -242,6 +241,19 @@ final class PhoneApprovalTests: XCTestCase {
         await model.approvePendingApproval(password: FakeBackend.password)
         XCTAssertEqual(backend.allApprovalAnswer, ["approve once"])
         XCTAssertTrue(model.approvalRememberChoices.isEmpty)
+    }
+
+    func testCardWithoutBiometricsOpensPasswordDirectly() async {
+        backend.isBiometricAvailable = false
+        let approval = createRememberingApproval(requestID: "once")
+        let model = await createUnlockedModel(allApproval: [approval])
+        model.setRememberChoice(false, for: approval)
+        await model.approve(approval)
+        XCTAssertEqual(model.presentedApproval?.requestID, approval.requestID)
+        XCTAssertTrue(model.isApprovalPasswordRequired)
+        XCTAssertFalse(backend.allCallName.contains("approveApproval"))
+        await model.approvePendingApproval(password: FakeBackend.password)
+        XCTAssertEqual(backend.allApprovalAnswer, ["approve once"])
     }
 
     func testOldRequestsApproveOnce() async {
@@ -281,8 +293,8 @@ final class PhoneApprovalTests: XCTestCase {
     }
 
     func testFallsBackToTheMasterPassword() async {
-        backend.isBiometricAvailable = false
         let model = await createReviewingModel(allApproval: [createApproval()])
+        backend.isBiometricAvailable = false
         await model.approvePendingApproval(isRemembered: false)
         XCTAssertTrue(model.isApprovalPasswordRequired)
         XCTAssertNil(model.approvalErrorMessage)

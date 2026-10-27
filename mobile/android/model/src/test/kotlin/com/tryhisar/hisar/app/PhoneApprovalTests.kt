@@ -296,8 +296,7 @@ class PhoneApprovalTests {
         val harness = AppModelHarness(this)
         harness.backend.isBiometricAvailable = false
         val model = createReviewingModel(harness, listOf(createRememberingApproval()))
-        model.approvals.approvePendingApproval(isRemembered = true)
-        assertTrue(model.approvals.isApprovalPasswordRequired.value)
+        assertTrue(model.approvals.isApprovalPasswordRequired.value, "the password form opens without a failed biometric attempt")
         model.approvals.approvePendingApproval(password = FakeBackend.PASSWORD, isRemembered = true)
         assertEquals(listOf("approve remembered 0123456789abcdef0123456789abcdef"), harness.backend.allApprovalAnswer)
     }
@@ -318,6 +317,22 @@ class PhoneApprovalTests {
         approvals.approvePendingApproval(password = FakeBackend.PASSWORD)
         assertEquals(listOf("approve once"), harness.backend.allApprovalAnswer)
         assertTrue(approvals.rememberChoices.value.isEmpty())
+    }
+
+    @Test
+    fun testCardWithoutBiometricsOpensPasswordDirectly() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.isBiometricAvailable = false
+        val approval = createRememberingApproval("once")
+        val model = createUnlockedModel(harness, listOf(approval))
+        val approvals = model.approvals
+        approvals.setRememberChoice(approval, false)
+        approvals.approve(approval)
+        assertEquals(approval.requestID, approvals.presentedApproval.value?.requestID)
+        assertTrue(approvals.isApprovalPasswordRequired.value)
+        assertFalse(harness.backend.allCallName.contains("approveApproval"))
+        approvals.approvePendingApproval(password = FakeBackend.PASSWORD)
+        assertEquals(listOf("approve once"), harness.backend.allApprovalAnswer)
     }
 
     @Test
@@ -367,9 +382,9 @@ class PhoneApprovalTests {
     @Test
     fun testFallsBackToTheMasterPassword() = runTest {
         val harness = AppModelHarness(this)
-        harness.backend.isBiometricAvailable = false
         val model = createReviewingModel(harness, listOf(createApproval()))
         val approvals = model.approvals
+        harness.backend.isBiometricAvailable = false
         approvals.approvePendingApproval(isRemembered = false)
         assertTrue(approvals.isApprovalPasswordRequired.value)
         assertNull(approvals.approvalErrorMessage.value)

@@ -169,6 +169,11 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
     suspend fun approve(approval: PhoneApproval, isRemembered: Boolean? = null) {
         if (isRemembered != null) setRememberChoice(approval, isRemembered)
         val isApprovalRemembered = rememberChoice(approval)
+        if (!context.status.value.biometricAvailable) {
+            present(approval)
+            mutableIsApprovalPasswordRequired.value = true
+            return
+        }
         answer(approval, "Approved on your Mac") { it.approveApproval(approval.requestID, isApprovalRemembered) }
     }
 
@@ -217,7 +222,7 @@ class ApprovalsModel(private val context: ModelContext, private val now: () -> I
 
     private fun present(approval: PhoneApproval) {
         if (mutablePresentedApproval.value?.requestID != approval.requestID) {
-            mutableIsApprovalPasswordRequired.value = false
+            mutableIsApprovalPasswordRequired.value = !context.status.value.biometricAvailable
             mutableApprovalErrorMessage.value = null
         }
         mutablePresentedApproval.value = approval

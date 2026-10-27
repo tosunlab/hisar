@@ -1710,7 +1710,7 @@ final class AppModel: ObservableObject {
 
     private func presentApproval(_ approval: PhoneApproval) {
         if presentedApproval?.requestID != approval.requestID {
-            isApprovalPasswordRequired = false
+            isApprovalPasswordRequired = !status.biometricAvailable
             approvalErrorMessage = nil
         }
         presentedApproval = approval
@@ -1815,6 +1815,11 @@ final class AppModel: ObservableObject {
     func approve(_ approval: PhoneApproval, isRemembered: Bool? = nil) async {
         if let isRemembered { setRememberChoice(isRemembered, for: approval) }
         let isApprovalRemembered = rememberChoice(for: approval)
+        if !status.biometricAvailable {
+            presentApproval(approval)
+            isApprovalPasswordRequired = true
+            return
+        }
         await answerApproval(approval, successMessage: "Approved on your Mac") { backend, requestID in
             try backend.approveApproval(requestID: requestID, isRemembered: isApprovalRemembered)
         }

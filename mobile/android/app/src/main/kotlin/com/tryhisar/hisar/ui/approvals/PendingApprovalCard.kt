@@ -86,6 +86,7 @@ private const val MORE_ROW = "more"
 @Composable
 private fun PendingApprovalCard(model: AppModel, approval: PhoneApproval, isBusy: Boolean) {
     val scope = rememberCoroutineScope()
+    val status by model.status.collectAsStateWithLifecycle()
     val rememberChoices by model.approvals.rememberChoices.collectAsStateWithLifecycle()
     val isRemembered = approval.resolveRememberChoice(rememberChoices[approval.requestID])
     Column(Modifier.padding(vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -109,7 +110,7 @@ private fun PendingApprovalCard(model: AppModel, approval: PhoneApproval, isBusy
                     { scope.launch { model.approvals.approve(approval, isRemembered) } },
                     testTag = "pending-approval-approve-${approval.requestID}",
                     enabled = !isBusy,
-                    icon = Icons.Filled.Fingerprint,
+                    icon = if (status.biometricAvailable) Icons.Filled.Fingerprint else null,
                 )
             }
         }
