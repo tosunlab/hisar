@@ -385,7 +385,7 @@ class SignInModelTests {
         model.lock()
         assertEquals(Screen.Locked, model.screen.value)
         model.signIn.openInviteLink(InviteLink("abc", "http://127.0.0.1:18080", "organization", "alice@example.com"))
-        assertEquals("Unlock Hisar to see the invitation.", model.notice.value)
+        assertEquals("Unlock Hisar to see the invitation.", model.notice.value?.message)
         assertNull(model.requestedSettings.value)
         assertEquals(Tab.VAULTS, model.selectedTab.value)
 
