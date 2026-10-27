@@ -42,6 +42,10 @@ class IosTestParityTest {
     private val notApplicable = run {
         val identityStore = "Android AutoFill asks Hisar for logins at fill time; it has no credential identity store to keep up to date (D3)"
         mapOf(
+            "testDetailHeaderUsesFullWidthAtAccessibilitySizesAndCapsItsIcon" to
+                "SwiftUI Dynamic Type header layout; Android uses its own Compose header and font scaling",
+            "testPresetGridFitsScaledTargetsAtBothPhoneWidths" to
+                "SwiftUI adaptive preset grid at iOS Dynamic Type sizes; Android uses its own Compose icon picker",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

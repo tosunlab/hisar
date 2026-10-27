@@ -22,6 +22,8 @@ Tests/UI/                XCUITests against a real hisar-server (scripts/test-ios
 Item icons ([Design](../design.md) §4.5): the editor's icon opens `IconPickerView` (Automatic, presets, colors, Choose photo); `ItemIcon`
 draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteIcon` loads once per domain through HisarKit.
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
+At accessibility text sizes, item-detail headers stack a capped decorative icon above the full-width title.
+The icon picker's preset grid adapts its column count to the scaled tiles instead of fixing six columns.
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.

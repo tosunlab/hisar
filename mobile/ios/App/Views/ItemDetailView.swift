@@ -101,16 +101,7 @@ struct ItemDetailView: View {
     private func buildContent(item: ItemDetail) -> some View {
         List {
             Section {
-                HStack(spacing: 14) {
-                    AppItemIcon(item: item, size: 56)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(item.title)
-                            .font(.title2.weight(.bold))
-                        Text("\(vault?.name ?? "") · \(describeCategory(item: item))")
-                            .font(.subheadline)
-                            .foregroundStyle(.themeSecondary)
-                    }
-                }
+                ItemDetailHeader(item: item, subtitle: "\(vault?.name ?? "") · \(describeCategory(item: item))")
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 if !item.allTag.isEmpty {
@@ -751,5 +742,31 @@ extension View {
     /// An icon-only button's 44-point hit area, on its label: a borderless button takes taps only on its label.
     func iconButtonHitArea() -> some View {
         frame(minWidth: 44, minHeight: 44).contentShape(.rect)
+    }
+}
+
+struct ItemDetailHeader: View {
+    var item: ItemDetail
+    var subtitle: String
+
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: 14))
+            : AnyLayout(HStackLayout(spacing: 14))
+        layout {
+            AppItemIcon(item: item, size: 56, maxSize: 56)
+                .dynamicTypeSize(.large)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.title)
+                    .font(.title2.weight(.bold))
+                    .accessibilityIdentifier("item-detail-title")
+                Text(subtitle)
+                    .font(.subheadline)
+                    .foregroundStyle(.themeSecondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 }
