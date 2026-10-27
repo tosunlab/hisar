@@ -204,13 +204,14 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
             }
             Box(Modifier.weight(1f)) {
                 if (isPasswordRequired) {
-                    ProminentButton("Approve", ::submitPassword, testTag = "phone-approval-approve-password", enabled = password.isNotEmpty(), isBusy = isBusy)
+                    ProminentButton("Approve", ::submitPassword, testTag = "phone-approval-approve-password", enabled = password.isNotEmpty(), isBusy = isBusy, busyLabel = "Approving…")
                 } else {
                     ProminentButton(
                         "Approve with biometrics",
                         { scope.launch { approvals.approvePendingApproval(isRemembered) } },
                         testTag = "phone-approval-approve",
                         isBusy = isBusy,
+                        busyLabel = "Approving…",
                         icon = Icons.Filled.Fingerprint,
                     )
                 }

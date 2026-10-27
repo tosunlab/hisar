@@ -214,7 +214,7 @@ private fun PreviewSections(
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
-        ProminentButton("Import into ${preview.vaultName}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking)
+        ProminentButton("Import into ${preview.vaultName}", start, testTag = "credential-import-start", enabled = !isWorking && preview.itemCount > 0, isBusy = isWorking, busyLabel = "Importing…")
     }
 }
 
@@ -240,7 +240,7 @@ private fun PassphraseSection(credentialImport: CredentialImportModel, errorMess
     }
     errorMessage?.let { FormSection { ErrorBanner(it) } }
     ClearSection {
-        ProminentButton("Open", open, testTag = "hisar-import-open", enabled = passphrase.isNotEmpty() && !isWorking, isBusy = isWorking)
+        ProminentButton("Open", open, testTag = "hisar-import-open", enabled = passphrase.isNotEmpty() && !isWorking, isBusy = isWorking, busyLabel = "Opening…")
     }
 }
 

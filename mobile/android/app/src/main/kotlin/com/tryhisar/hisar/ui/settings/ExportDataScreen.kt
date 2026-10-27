@@ -150,6 +150,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
                     testTag = "export-start",
                     enabled = canExport,
                     isBusy = isBusy,
+                    busyLabel = "Exporting…",
                     icon = if (isPasswordNeeded) null else Icons.Filled.Fingerprint,
                 )
             }
