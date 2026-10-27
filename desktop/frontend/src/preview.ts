@@ -2153,7 +2153,13 @@ export const previewApi = {
     return resolveAfterDelay({ ...previewBrowserStatus });
   },
   checkMinimumVersion: () => resolveAfterDelay(previewStatus()),
-  takePendingInvite: () => Promise.resolve(previewParameter.get("invite") ?? ""),
+  // &invite=<code> opens Create account with it; &invitation=organization|share and &email= make it the link of an invitation.
+  takePendingInvite: () => {
+    const invite = previewParameter.get("invite");
+    return Promise.resolve(
+      invite ? { invite, server: previewStatus().server, invitation: previewParameter.get("invitation") ?? "", email: previewParameter.get("email") ?? "" } : null,
+    );
+  },
   getUpdateStatus: () => resolveAfterDelay({ ...previewUpdateStatus }),
   checkForUpdates: () => {
     if (!previewUpdateStatus.isSignedIn) {

@@ -1080,4 +1080,45 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.inviteLinkMessage, "You're signed in as alice@example.com. Sign out to create an account with this invite.")
         XCTAssertEqual(model.screen, .unlocked)
     }
+
+    func testAnOrganizationInviteLinkOpensItsInvitationInSettings() async {
+        let model = await createUnlockedModel()
+        let organization = InviteLink(invite: "http://127.0.0.1:18080/invite/abc", server: "http://127.0.0.1:18080", invitation: "organization", email: "alice@example.com")
+        model.openInviteLink(organization)
+        XCTAssertNil(model.inviteLinkMessage)
+        XCTAssertEqual(model.selectedTab, .settings)
+        XCTAssertEqual(model.requestedSettingsDestination, .organizations)
+        model.selectedTab = .vaults
+        model.requestedSettingsDestination = nil
+        model.openInviteLink(InviteLink(invite: "http://127.0.0.1:18080/invite/abc", server: "http://127.0.0.1:18080", invitation: "share", email: "alice@example.com"))
+        XCTAssertEqual(model.selectedTab, .settings)
+        XCTAssertEqual(model.requestedSettingsDestination, .people)
+    }
+
+    func testAnInviteLinkForAnotherAccountSaysWhoItIsFor() async {
+        let model = await createUnlockedModel()
+        model.openInviteLink(InviteLink(invite: "http://127.0.0.1:18080/invite/abc", server: "http://127.0.0.1:18080", invitation: "organization", email: "bob@example.com"))
+        XCTAssertEqual(model.inviteLinkMessage, "This invitation is for bob@example.com on http://127.0.0.1:18080. You're signed in as alice@example.com.")
+        XCTAssertEqual(model.selectedTab, .vaults)
+        XCTAssertNil(model.requestedSettingsDestination)
+        model.inviteLinkMessage = nil
+        model.openInviteLink(InviteLink(invite: "https://other.example.com/invite/abc", server: "https://other.example.com", invitation: "share", email: "alice@example.com"))
+        XCTAssertEqual(model.inviteLinkMessage, "This invitation is for alice@example.com on other.example.com. You're signed in as alice@example.com.")
+        XCTAssertEqual(model.selectedTab, .vaults)
+        XCTAssertNil(model.requestedSettingsDestination)
+    }
+
+    func testAnInvitationLinkOpensAfterTheUnlock() async {
+        backend.seedSignedIn(state: VaultStatus.stateLocked)
+        let model = await createModel()
+        XCTAssertEqual(model.screen, .locked)
+        model.openInviteLink(InviteLink(invite: "http://127.0.0.1:18080/invite/abc", server: "http://127.0.0.1:18080", invitation: "organization", email: "alice@example.com"))
+        XCTAssertEqual(model.inviteLinkMessage, "Unlock Hisar to see the invitation.")
+        XCTAssertNil(model.requestedSettingsDestination)
+        XCTAssertEqual(model.selectedTab, .vaults)
+        let isUnlocked = await model.unlock(password: FakeBackend.password)
+        XCTAssertTrue(isUnlocked)
+        XCTAssertEqual(model.selectedTab, .settings)
+        XCTAssertEqual(model.requestedSettingsDestination, .organizations)
+    }
 }

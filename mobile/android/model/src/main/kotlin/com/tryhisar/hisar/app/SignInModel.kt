@@ -153,13 +153,29 @@ class SignInModel(private val context: ModelContext, private val isPlainHttpAllo
         pendingSignInLink.value = link
     }
 
+    /**
+     * Follows Open in Hisar on an invite page. Signed out, Create account takes the invite. Signed in to the account an
+     * organization or vault share invitation is for, Settings shows it, after the next unlock when Hisar is locked; any
+     * other account is told who the invitation is for.
+     */
     fun openInviteLink(link: InviteLink) {
         val status = context.status.value
-        if (status.isSignedIn) {
+        if (!status.isSignedIn) {
+            pendingInviteLink.value = link
+            return
+        }
+        if (link.invitation == null) {
             inviteLinkMessage.value = "You're signed in as ${status.email}. Sign out to create an account with this invite."
             return
         }
-        pendingInviteLink.value = link
+        // Both servers went through resolveServer, so they compare as written, the host's case aside.
+        if (link.email != status.email.trim().lowercase() || !link.server.equals(status.server, ignoreCase = true)) {
+            inviteLinkMessage.value =
+                "This invitation is for ${link.email} on ${link.server.removePrefix("https://")}. You're signed in as ${status.email}."
+            return
+        }
+        val destination = if (link.invitation == InviteLink.INVITATION_ORGANIZATION) SettingsDestination.ORGANIZATIONS else SettingsDestination.PEOPLE
+        context.openInvitationSettings(destination)
     }
 
     suspend fun dismissSignedOutReason() {

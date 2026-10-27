@@ -91,8 +91,16 @@ func (s *Server) limitInvitePageRate(c fiber.Ctx) error {
 // buildPublicOrigin uses https with the public host; plain http stays only for a loopback host in development.
 func (s *Server) buildPublicOrigin() string { return service.BuildPublicOrigin(s.config.PublicURL) }
 
-func (s *Server) buildInviteDeepLink(token string) string {
-	return inviteDeepLinkURL + url.PathEscape(token) + "?" + url.Values{"server": {s.buildPublicOrigin()}}.Encode()
+// buildInviteDeepLink is Open in Hisar: hisar://invite/<code>?server=<origin>, with the invitation an organization or a
+// vault share sent it for (source) and the address it is for, so an app signed in to that account shows the
+// invitation instead of offering to create an account. Older apps read only the server.
+func (s *Server) buildInviteDeepLink(token, source, email string) string {
+	query := url.Values{"server": {s.buildPublicOrigin()}}
+	if source != "" {
+		query.Set("invitation", source)
+		query.Set("email", email)
+	}
+	return inviteDeepLinkURL + url.PathEscape(token) + "?" + query.Encode()
 }
 
 // sendInvitePage answers unknown, used and expired invites with the same page and status, so it reveals nothing about them.
@@ -111,7 +119,7 @@ func (s *Server) sendInvitePage(c fiber.Ctx) error {
 				ExpiresOn:          invite.ExpiresOn,
 				Token:              token,
 				InviteLink:         invite.Link,
-				DeepLink:           template.URL(s.buildInviteDeepLink(token)),
+				DeepLink:           template.URL(s.buildInviteDeepLink(token, invite.Source, invite.Email)),
 				DownloadURL:        downloadURL,
 				LinuxDownloadURL:   linuxDownloadURL,
 				InviterName:        invite.InviterName,

@@ -50,21 +50,36 @@ data class SignInLink(val server: String, val email: String, val secretKey: Stri
     }
 }
 
-/** What Create account accepts: the bare code for the default server, otherwise the invite link on its server. */
-data class InviteLink(val invite: String) {
+/**
+ * What Create account accepts: [invite] is the bare code for the default server, otherwise the invite link on its
+ * server. [server] is that server's resolved origin. When an organization or vault share invitation sent the link,
+ * [invitation] is [INVITATION_ORGANIZATION] or [INVITATION_SHARE] and [email] is the address it is for: an app signed
+ * in to that account on that server shows the invitation instead of creating one.
+ */
+data class InviteLink(
+    val invite: String,
+    val server: String = DEFAULT_SERVER,
+    val invitation: String? = null,
+    val email: String = "",
+) {
     companion object {
         const val DEFAULT_SERVER = "https://eu.tryhisar.com"
+        const val INVITATION_ORGANIZATION = "organization"
+        const val INVITATION_SHARE = "share"
         private val codePattern = Regex("^[A-Za-z0-9_-]+$")
 
-        /** hisar://invite/<code>?server=<origin>, from the invite page's Open in Hisar button. */
+        /** hisar://invite/<code>?server=<origin>[&invitation=organization|share&email=<address>], from Open in Hisar. */
         fun parse(text: String): InviteLink? {
             val link = parseHisarURI(text, host = "invite") ?: return null
             val code = link.path.orEmpty().removePrefix("/")
             if (!codePattern.matches(code)) return null
             val serverText = link.readQueryValue("server").orEmpty()
-            if (serverText.isEmpty()) return InviteLink(code)
-            val server = resolveServer(serverText) ?: return null
-            return InviteLink(if (server == DEFAULT_SERVER) code else "$server/invite/$code")
+            val server = if (serverText.isEmpty()) DEFAULT_SERVER else resolveServer(serverText) ?: return null
+            val invite = if (server == DEFAULT_SERVER) code else "$server/invite/$code"
+            // An unknown invitation is a plain invite, as in an older app.
+            val invitation = link.readQueryValue("invitation")?.takeIf { it == INVITATION_ORGANIZATION || it == INVITATION_SHARE }
+            val email = if (invitation == null) "" else link.readQueryValue("email").orEmpty().trim().lowercase()
+            return InviteLink(invite = invite, server = server, invitation = invitation, email = email)
         }
 
         private fun resolveServer(text: String): String? {

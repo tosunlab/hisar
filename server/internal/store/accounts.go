@@ -122,21 +122,25 @@ func (s *Store) GetInviteByHash(ctx context.Context, tokenHash []byte) (*Invite,
 	return &invite, nil
 }
 
+// InviteWithInviter is a usable invite as the invite page shows it. Source is "organization" or "share" for a sign-up
+// link an organization or a vault share invitation sent, and empty for any other invite.
 type InviteWithInviter struct {
 	Email        string
 	ExpiresAt    time.Time
 	InviterName  string
 	InviterEmail string
+	Source       string
 }
 
 // GetInviteWithInviter returns a usable invite; unknown, used and expired invites are all ErrNotFound.
 func (s *Store) GetInviteWithInviter(ctx context.Context, tokenHash []byte) (*InviteWithInviter, error) {
 	var invite InviteWithInviter
 	err := s.pool.QueryRow(ctx, `
-		SELECT i.email, i.expires_at, coalesce(a.name, ''), coalesce(a.email, '')
+		SELECT i.email, i.expires_at, coalesce(a.name, ''), coalesce(a.email, ''),
+			CASE WHEN i.organization_invitation_id IS NOT NULL THEN 'organization' WHEN i.share_invitation_id IS NOT NULL THEN 'share' ELSE '' END
 		FROM invites i LEFT JOIN accounts a ON a.id = i.created_by
 		WHERE i.token_hash = $1 AND i.used_at IS NULL AND i.expires_at > now() AND `+isWithinCreatorAuthority,
-		tokenHash).Scan(&invite.Email, &invite.ExpiresAt, &invite.InviterName, &invite.InviterEmail)
+		tokenHash).Scan(&invite.Email, &invite.ExpiresAt, &invite.InviterName, &invite.InviterEmail, &invite.Source)
 	if err != nil {
 		return nil, convertNoRowsToNotFound(err)
 	}

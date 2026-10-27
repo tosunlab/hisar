@@ -172,8 +172,14 @@ func TestInviteDeepLink(t *testing.T) {
 		"http://127.0.0.1:19400/sub": "hisar://invite/abc_DEF-1?server=http%3A%2F%2F127.0.0.1%3A19400",
 	} {
 		server := &Server{config: Config{Config: service.Config{PublicURL: publicURL}}}
-		if deepLink := server.buildInviteDeepLink("abc_DEF-1"); deepLink != expected {
+		if deepLink := server.buildInviteDeepLink("abc_DEF-1", "", "bob@example.com"); deepLink != expected {
 			t.Errorf("%s: %s, want %s", publicURL, deepLink, expected)
 		}
+	}
+	// A sign-up link an organization sent names that and its address, for an app already signed in to it.
+	server := &Server{config: Config{Config: service.Config{PublicURL: "https://eu.tryhisar.com"}}}
+	expected := "hisar://invite/abc_DEF-1?email=bob%40example.com&invitation=organization&server=https%3A%2F%2Feu.tryhisar.com"
+	if deepLink := server.buildInviteDeepLink("abc_DEF-1", "organization", "bob@example.com"); deepLink != expected {
+		t.Errorf("organization invite: %s, want %s", deepLink, expected)
 	}
 }
