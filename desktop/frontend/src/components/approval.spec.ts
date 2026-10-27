@@ -256,6 +256,19 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("leaves Return to the focused grant duration menu", async () => {
+    const wrapper = mount(SSHApprovalWindow, { attachTo: document.body });
+    sendEvent("ssh-approval", createAgentRunApprovalEvent({ isTouchIDApproval: false }));
+    await flushPromises();
+    const menu = wrapper.get('select[name="grantDuration"]').element;
+    const event = new KeyboardEvent("keydown", { key: "Enter", bubbles: true, cancelable: true });
+    const callsBefore = api.respondSSHApproval.mock.calls.length;
+    menu.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(false);
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(callsBefore);
+    wrapper.unmount();
+  });
+
   it("unlocks a locked Hisar with Touch ID", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent({ isUnlockRequired: true, keyTitle: "" }));

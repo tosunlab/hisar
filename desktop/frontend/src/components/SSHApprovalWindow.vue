@@ -380,8 +380,8 @@ function handleKey(event: KeyboardEvent): void {
     deny();
     return;
   }
-  // Focused buttons and the password form answer Return themselves.
-  if (event.key !== "Enter" || event.target instanceof HTMLButtonElement || event.target instanceof HTMLInputElement) {
+  const isInteractive = event.target instanceof Element && event.target.closest("button, input, select, textarea, a[href], summary, [contenteditable]:not([contenteditable='false']), [role='button'], [role='combobox']");
+  if (event.key !== "Enter" || isInteractive) {
     return;
   }
   event.preventDefault();
