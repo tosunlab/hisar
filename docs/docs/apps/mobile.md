@@ -111,6 +111,9 @@ This validation does not normalize the password or change the shared Go checks.
 Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
 does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
 
+On Android, Settings rows put a long value below the setting name when both do not fit beside each other.
+They keep the system text size and grow to show both strings.
+
 ### Password generator
 
 The item editor's generator sheet scrolls its options within the available height, including in landscape.
