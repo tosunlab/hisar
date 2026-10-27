@@ -138,6 +138,25 @@ final class OrganizationTests: XCTestCase {
         XCTAssertEqual(asAdmin.allTeamWithoutVault.map(\.name), ["Platform"], "Give to a team… offers the teams without the vault")
     }
 
+    func testChangeTeamVaultRoleWithoutTakingBackAccess() async {
+        backend.allOrganization = [Self.buildAcme(isAdmin: true)]
+        let model = await createUnlockedModel()
+        let changed = await model.giveVaultToTeam(organizationID: "acme", teamID: "platform", vaultID: "deploy", role: Member.vaultRoleReader)
+        XCTAssertTrue(changed)
+        let loaded = await model.loadOrganization(organizationID: "acme")
+        XCTAssertEqual(loaded?.allTeam.first(where: { $0.id == "platform" })?.allVault.first(where: { $0.vaultID == "deploy" })?.role, Member.vaultRoleReader)
+        XCTAssertFalse(backend.allCallName.contains("takeVaultFromTeam"))
+        XCTAssertFalse(backend.allCallName.contains("removeVaultMember"))
+    }
+
+    func testTeamRoleConsequencesKeepStrongerOtherTeam() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        organization.allTeam[0].allVault[0].role = Member.vaultRoleOwner
+        let effects = OrganizationLogic.accessConsequences(organization: organization, change: .teamRole(teamID: "platform", vaultID: "deploy", role: Member.vaultRoleReader))
+        XCTAssertEqual(effects, ["Deploy: Your role changes from Editor to Reader."])
+    }
+
     func testOnlyAdminsManageMembersAndTeams() {
         let asMember = Self.buildAcme(isAdmin: false)
         let platform = asMember.allTeam[1]

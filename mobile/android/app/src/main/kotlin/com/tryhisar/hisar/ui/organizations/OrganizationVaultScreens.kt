@@ -123,13 +123,17 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
     var isGiveShown by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<Refusal?>(null) }
     var teamWithMenu by remember { mutableStateOf<String?>(null) }
+    var roleEdit by remember { mutableStateOf<TeamVaultRoleEdit?>(null) }
     val vaultName = data.findVault(vaultID)?.name ?: "Vault"
     val sharing = organization?.let { OrganizationLogic.describeVaultSharing(it, vaultID) }
 
     suspend fun load() {
         val loaded = model.organizations.loadOrganization(organizationID)
         when {
-            loaded != null -> organization = loaded
+            loaded != null -> {
+                organization = loaded
+                roleEdit = roleEdit?.refreshed(loaded)
+            }
             organization == null -> refusal = model.takeRefusal("Shared through teams")
             else -> model.errorMessage.value = null
         }
@@ -160,9 +164,14 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
                                 Icons.Outlined.Groups,
                                 HisarTheme.colors.secondaryLabel,
                                 testTag = "vault-team-${team.name}",
+                                onClick = if (sharing.canChangeTeams) ({ roleEdit = TeamVaultRoleEdit(organizationID, team.id, team.name, vaultID, vaultName, access.role) }) else null,
                                 onLongClick = if (sharing.canChangeTeams) ({ teamWithMenu = team.id }) else null,
                                 menu = {
                                     HisarMenu(teamWithMenu == team.id, onDismiss = { teamWithMenu = null }) {
+                                        HisarMenuItem("Change role", "change-role-${team.name}", onClick = {
+                                            teamWithMenu = null
+                                            roleEdit = TeamVaultRoleEdit(organizationID, team.id, team.name, vaultID, vaultName, access.role)
+                                        })
                                         HisarMenuItem("Take back", "take-back-${team.name}", icon = Icons.AutoMirrored.Outlined.Undo, onClick = {
                                             teamWithMenu = null
                                             takeBack(team)
@@ -207,5 +216,77 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
             onDismiss = { isGiveShown = false },
         )
     }
+    roleEdit?.let { edit ->
+        organization?.let { current ->
+            ChangeTeamVaultRoleSheet(model, edit, current, onFinish = { load() }, onRefused = { refusal = it }, onDismiss = { roleEdit = null })
+        }
+    }
     RefusalAlert(refusal) { refusal = null }
+}
+
+data class TeamVaultRoleEdit(val organizationID: String, val teamID: String, val teamName: String, val vaultID: String, val vaultName: String, val role: String) {
+    fun refreshed(organization: Organization): TeamVaultRoleEdit? {
+        if (!organization.isAdmin) return null
+        val team = organization.allTeam.firstOrNull { it.id == teamID } ?: return null
+        val vault = team.allVault.firstOrNull { it.vaultID == vaultID } ?: return null
+        return copy(teamName = team.name, vaultName = vault.displayName, role = vault.role)
+    }
+}
+
+@Composable
+fun ChangeTeamVaultRoleSheet(model: AppModel, edit: TeamVaultRoleEdit, organization: Organization, onFinish: suspend () -> Unit, onRefused: (Refusal?) -> Unit, onDismiss: () -> Unit) {
+    val isBusy by model.isBusy.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var role by rememberSaveable(edit.teamID, edit.vaultID) { mutableStateOf(edit.role) }
+    var isOwnerConfirmationShown by remember { mutableStateOf(false) }
+    var isSubmitting by remember { mutableStateOf(false) }
+
+    LaunchedEffect(edit.role, isSubmitting) {
+        if (!isSubmitting) role = edit.role
+    }
+
+    fun save() {
+        if (isBusy || isSubmitting || role == edit.role) return
+        isSubmitting = true
+        scope.launch {
+            val succeeded = model.organizations.giveVaultToTeam(edit.organizationID, edit.teamID, edit.vaultID, role)
+            if (!succeeded) onRefused(model.takeRefusal("Change role"))
+            onFinish()
+            isSubmitting = false
+            if (succeeded) onDismiss()
+        }
+    }
+
+    FormSheet(
+        isBusy = isBusy || isSubmitting,
+        onDismiss = onDismiss,
+        bar = {
+            ModalSheetBar("Change role", onCancel = onDismiss) {
+                BarCapsuleButton("Save", {
+                    if (role == Member.VAULT_ROLE_OWNER || edit.role == Member.VAULT_ROLE_OWNER) isOwnerConfirmationShown = true else save()
+                }, testTag = "save-team-role", enabled = role != edit.role && !isBusy && !isSubmitting, isBold = true)
+            }
+        },
+    ) {
+        FormSection(footer = { Text("${VaultLogic.describeTeamVaultRoleAbility(role)} Someone in several teams gets the strongest of their roles. Newly entitled members wait for an owner's Hisar to give them their keys.") }) {
+            TitleAndDetail(edit.teamName, edit.vaultName)
+            PickerRow("Role", role, Member.allVaultRole, VaultLogic::describeVaultRole, { role = it }, testTag = "change-team-role", enabled = !isBusy && !isSubmitting)
+        }
+    }
+    if (isOwnerConfirmationShown) {
+        val isPromotion = role == Member.VAULT_ROLE_OWNER
+        com.tryhisar.hisar.ui.settings.ConfirmationDialog(
+            title = if (isPromotion) "Make ${edit.teamName} an owner of “${edit.vaultName}”?" else "Change ${edit.teamName}'s role from Owner to ${VaultLogic.describeVaultRole(role)}?",
+            message = (if (isPromotion) {
+                "Owners view and change items, share, rename and delete the vault. Access is managed through the organization's teams. Someone in several teams gets the strongest of their roles. Newly entitled members wait for an owner's Hisar to give them their keys."
+            } else {
+                "${edit.teamName}'s members lose Owner powers unless another team gives them Owner. Someone in several teams gets the strongest of their roles. Access is managed through the organization's teams."
+            }) + "\n\n" + OrganizationLogic.accessConsequences(organization, com.tryhisar.hisar.model.OrganizationAccessChange.TeamRole(edit.teamID, edit.vaultID, role)).joinToString("\n\n"),
+            confirmLabel = if (isPromotion) "Make owner" else "Change role",
+            confirmTestTag = "confirm-team-role",
+            onConfirm = ::save,
+            onDismiss = { isOwnerConfirmationShown = false },
+            isDestructive = !isPromotion,
+        )
+    }
 }

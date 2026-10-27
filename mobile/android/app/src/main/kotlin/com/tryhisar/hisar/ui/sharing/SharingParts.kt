@@ -5,7 +5,6 @@ import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -47,7 +46,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -423,6 +421,7 @@ fun LabelRow(
     iconTint: Color,
     testTag: String,
     onLongClick: (() -> Unit)? = null,
+    onClick: (() -> Unit)? = null,
     menu: @Composable () -> Unit = {},
     trailing: @Composable RowScope.() -> Unit = {},
     content: @Composable () -> Unit,
@@ -433,7 +432,7 @@ fun LabelRow(
                 .fillMaxWidth()
                 .heightIn(min = 52.dp)
                 .background(HisarTheme.colors.cellBackground)
-                .then(if (onLongClick != null) Modifier.pointerInput(onLongClick) { detectTapGestures(onLongPress = { onLongClick() }) } else Modifier)
+                .then(if (onClick != null || onLongClick != null) Modifier.combinedClickable(onClick = { onClick?.invoke() }, onLongClick = onLongClick) else Modifier)
                 .semantics(mergeDescendants = true) {}
                 .testTag(testTag)
                 .padding(horizontal = 16.dp, vertical = 10.dp),

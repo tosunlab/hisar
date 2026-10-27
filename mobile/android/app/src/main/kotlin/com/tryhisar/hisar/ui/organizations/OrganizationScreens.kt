@@ -307,6 +307,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     var rowMenu by remember { mutableStateOf<RowMenu?>(null) }
     var teamGivenVault by remember { mutableStateOf<Team?>(null) }
     var openMemberID by rememberSaveable { mutableStateOf<String?>(null) }
+    var roleEdit by remember { mutableStateOf<TeamVaultRoleEdit?>(null) }
 
     val name = organization?.name ?: data.allOrganization.firstOrNull { it.id == organizationID }?.name ?: "Organization"
     val isAdmin = organization?.isAdmin ?: false
@@ -317,6 +318,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
         when (val loaded = model.organizations.loadOrganizationScreen(organizationID)) {
             is OrganizationLoad.Loaded -> {
                 organization = loaded.organization
+                roleEdit = roleEdit?.refreshed(loaded.organization)
                 if (openMemberID != null && loaded.organization.allMember.none { it.accountID == openMemberID }) {
                     openMemberID = null
                     model.showNotice("This person is no longer a member.")
@@ -521,6 +523,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                 onMenu = { rowMenu = it },
                 onRemoveMember = { removeFromTeam(it, team) },
                 onTakeBack = { takeBack(it, team) },
+                onChangeRole = { vault -> roleEdit = TeamVaultRoleEdit(organizationID, team.id, team.name, vault.vaultID, vault.displayName, vault.role) },
                 onAddMember = { member -> launchChange("Add member") { model.organizations.addTeamMember(organizationID, team.id, member.accountID) } },
                 onGiveVault = { teamGivenVault = team },
                 onRename = { dialog = OrganizationDialog.RenameTeam(team) },
@@ -534,6 +537,11 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
         }
         FormSection {
             DestructiveButtonRow("Leave ${loaded.name}…", Icons.AutoMirrored.Outlined.Logout, { dialog = OrganizationDialog.Leave }, testTag = "leave-organization")
+        }
+    }
+    roleEdit?.let { edit ->
+        organization?.let { current ->
+            ChangeTeamVaultRoleSheet(model, edit, current, onFinish = { load() }, onRefused = { refusal = it }, onDismiss = { roleEdit = null })
         }
     }
 
@@ -642,6 +650,7 @@ private fun TeamSection(
     onTakeBack: (TeamVault) -> Unit,
     onAddMember: (Member) -> Unit,
     onGiveVault: () -> Unit,
+    onChangeRole: (TeamVault) -> Unit,
     onRename: () -> Unit,
     onDelete: () -> Unit,
 ) {
@@ -709,9 +718,14 @@ private fun TeamSection(
                         if (vault.canOpen) Icons.Outlined.Lock else Icons.Outlined.NoEncryption,
                         HisarTheme.colors.secondaryLabel,
                         testTag = "team-${team.name}-vault-${vault.displayName}",
+                        onClick = if (isAdmin) ({ onChangeRole(vault) }) else null,
                         onLongClick = if (isAdmin) ({ onMenu(menu) }) else null,
                         menu = {
                             HisarMenu(rowMenu == menu, onDismiss = { onMenu(null) }) {
+                                HisarMenuItem("Change role", "change-role-${vault.displayName}", onClick = {
+                                    onMenu(null)
+                                    onChangeRole(vault)
+                                })
                                 HisarMenuItem("Take back", "take-back-${vault.displayName}", icon = Icons.AutoMirrored.Outlined.Undo, onClick = {
                                     onMenu(null)
                                     onTakeBack(vault)

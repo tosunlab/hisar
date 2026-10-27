@@ -111,6 +111,32 @@ class OrganizationTests {
     }
 
     @Test
+    fun testChangeTeamVaultRoleWithoutTakingBackAccess() = runTest {
+        val harness = AppModelHarness(this)
+        harness.backend.allOrganization = mutableListOf(buildAcme(isAdmin = true))
+        val model = harness.startUnlockedModel()
+        assertTrue(model.organizations.giveVaultToTeam("acme", "platform", "deploy", Member.VAULT_ROLE_READER))
+        val loaded = model.organizations.loadOrganization("acme")
+        assertEquals(Member.VAULT_ROLE_READER, loaded?.allTeam?.first { it.id == "platform" }?.allVault?.first { it.vaultID == "deploy" }?.role)
+        assertFalse(harness.backend.allCallName.contains("takeVaultFromTeam"))
+        assertFalse(harness.backend.allCallName.contains("removeVaultMember"))
+    }
+
+    @Test
+    fun testTeamRoleConsequencesKeepStrongerOtherTeam() {
+        val original = buildAcme(isAdmin = true)
+        val audit = original.allTeam[0]
+        val organization = original.copy(allTeam = listOf(
+            audit.copy(allMember = audit.allMember + TeamMember("bob-id", "Bob", "bob@example.com"), allVault = audit.allVault.map {
+                if (it.vaultID == "deploy") it.copy(role = Member.VAULT_ROLE_OWNER) else it
+            }),
+            original.allTeam[1],
+        ))
+        val effects = OrganizationLogic.accessConsequences(organization, com.tryhisar.hisar.model.OrganizationAccessChange.TeamRole("platform", "deploy", Member.VAULT_ROLE_READER))
+        assertEquals(listOf("Deploy: Your role changes from Editor to Reader."), effects)
+    }
+
+    @Test
     fun testOnlyAdminsManageMembersAndTeams() {
         val asMember = buildAcme(isAdmin = false)
         val platform = asMember.allTeam[1]
