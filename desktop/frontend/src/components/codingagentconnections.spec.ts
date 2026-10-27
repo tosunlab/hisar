@@ -4,6 +4,7 @@ import { api as mockedApi } from "../api";
 import { store } from "../store";
 import { createCodingAgent, createStatus } from "../testing";
 import CodingAgentsSection from "./CodingAgentsSection.vue";
+import SettingsPanel from "./SettingsPanel.vue";
 
 // vi.mock runs before the imports above, so its factory loads the mock itself.
 vi.mock("../api", async () => {
@@ -119,11 +120,15 @@ describe("CodingAgentConnections", () => {
     api.listAllCodingAgent.mockResolvedValue([{ ...codex, state: "connected" }]);
     const wrapper = await mountSection();
     api.disconnectCodingAgent.mockResolvedValue(codex);
+    expect(getText(wrapper, "agent-disconnect-explanation-codex")).toContain("It does not revoke running-agent approvals or saved approvals.");
     await wrapper.find('[data-testid="disconnect-agent-codex"]').trigger("click");
     await flushPromises();
     expect(api.disconnectCodingAgent).toHaveBeenCalledWith("codex");
     expect(hasElement(wrapper, "connect-agent-codex")).toBe(true);
     expect(hasElement(wrapper, "agent-restart-hint-codex")).toBe(false);
+    expect(getText(wrapper, "agent-disconnected")).toContain("Disconnected Codex. This removes the connection setup.");
+    expect(api.revokeAgentSession).not.toHaveBeenCalled();
+    expect(api.revokeAgentGrant).not.toHaveBeenCalled();
     wrapper.unmount();
   });
 
@@ -185,4 +190,23 @@ describe("CodingAgentConnections", () => {
     expect(wrapper.text()).not.toContain("claude mcp add");
     wrapper.unmount();
   });
+
+  for (const destination of ["agent-sessions", "agent-grants"]) {
+    it(`reveals and focuses ${destination} after disconnect under a conflicting search`, async () => {
+      api.listAllCodingAgent.mockResolvedValue([{ ...claudeCode, state: "connected" }]);
+      api.disconnectCodingAgent.mockResolvedValue(claudeCode);
+      const wrapper = mount(SettingsPanel, { attachTo: document.body });
+      await flushPromises();
+      await wrapper.get('[data-testid="settings-search"]').setValue("disconnect");
+      expect(wrapper.get(`#${destination}`).isVisible()).toBe(false);
+      await wrapper.get('[data-testid="disconnect-agent-claude-code"]').trigger("click");
+      await flushPromises();
+      expect(wrapper.get('[data-testid="agent-disconnected"]').text()).toContain("Disconnected Claude Code.");
+      await wrapper.get(`[data-testid="agent-disconnected"] a[href="#${destination}"]`).trigger("click");
+      expect((wrapper.get('[data-testid="settings-search"]').element as HTMLInputElement).value).toBe("");
+      expect(wrapper.get(`#${destination}`).isVisible()).toBe(true);
+      expect(document.activeElement).toBe(wrapper.get(`#${destination}`).element);
+      wrapper.unmount();
+    });
+  }
 });

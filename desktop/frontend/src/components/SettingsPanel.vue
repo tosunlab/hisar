@@ -75,6 +75,15 @@ function selectSection(sectionID: SettingsSectionID): void {
   saveSelectedSectionID(sectionID);
 }
 
+async function reviewAgentApprovals(destination: "agent-sessions" | "agent-grants"): Promise<void> {
+  searchQuery.value = "";
+  selectSection("developer");
+  await nextTick();
+  const section = sectionContent.value?.querySelector<HTMLElement>(`#${destination}`);
+  section?.scrollIntoView?.({ block: "start" });
+  section?.focus();
+}
+
 watch(allVisibleSection, (allSection) => {
   if (allSection.length > 0 && !allSection.some((section) => section.id === selectedSectionID.value)) {
     selectSection(allSection[0].id);
@@ -211,7 +220,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleKeydown));
           </div>
           <div v-show="displayedSection?.id === 'developer'" data-testid="settings-page-developer">
             <CommandLineSection />
-            <CodingAgentsSection />
+            <CodingAgentsSection @review-approvals="reviewAgentApprovals" />
           </div>
           <div v-show="displayedSection?.id === 'browser'" data-testid="settings-page-browser">
             <BrowserExtensionSection />
