@@ -220,7 +220,7 @@ fun SecretKeyScreen(model: AppModel, onBack: () -> Unit) {
         if (shown != null) {
             FormSection(
                 header = "Secret Key",
-                footer = { Text("Hisar keeps it on this device; nobody else has a copy. Anyone with it and your master password can open your vaults.") },
+                footer = { Text("Hisar keeps a copy on this device. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.") },
             ) {
                 SecretKeyRow(shown.secretKey, "secret-key-value")
                 RowDivider()

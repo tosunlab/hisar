@@ -24,6 +24,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | master password | password (when the master password is meant), passphrase |
 | Secret Key | secret key, account key |
 | Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
+| "Hisar keeps a copy on this Mac / this iPhone / this device. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults." | nobody else has a copy |
 | Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock |
 | Sign in, Sign out, Create account | Log in, Register |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |

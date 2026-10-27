@@ -311,7 +311,7 @@ struct SecretKeyView: View {
                 } header: {
                     Text("Secret Key")
                 } footer: {
-                    Text("Hisar keeps it on this iPhone; nobody else has a copy. Anyone with it and your master password can open your vaults.")
+                    Text("Hisar keeps a copy on this iPhone. The Hisar server does not have it. Anyone with your Secret Key and master password can open your vaults.")
                 }
                 Section {
                     ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
