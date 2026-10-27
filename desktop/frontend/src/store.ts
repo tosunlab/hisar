@@ -129,6 +129,7 @@ export const store = reactive({
   selectedTag: "",
   pendingSecretKey: "",
   isTouchIDOfferShown: false,
+  biometricResetReminder: null as { server: string; email: string } | null,
   pendingRecovery: [] as PendingRecoverySummary[],
   isRecoveryOpen: false,
   recoveryEpoch: 0,
@@ -310,6 +311,10 @@ function clearLockedVaultData(): void {
 }
 
 async function applyStatus(status: Status): Promise<void> {
+  const reminder = store.biometricResetReminder;
+  if (status.state === "signed-out" || (reminder && (reminder.server !== status.server || reminder.email !== status.email)) || status.biometricEnabled) {
+    store.biometricResetReminder = null;
+  }
   store.status = status;
   if (status.state === "unlocked" && !status.updateRequired) {
     await loadAllVault();
@@ -585,6 +590,8 @@ export function isCancelledTouchID(message: string): boolean {
 // unlockWithBiometric does not use runAction: the prompt can wait long, and cancelling is not an error.
 export async function unlockWithBiometric(): Promise<boolean> {
   const generation = ++sessionGeneration;
+  const account = { server: store.status.server, email: store.status.email };
+  const wasEnabled = store.status.biometricEnabled;
   try {
     const status = await api.unlockWithBiometric();
     if (generation !== sessionGeneration) return false;
@@ -600,6 +607,9 @@ export async function unlockWithBiometric(): Promise<boolean> {
     const status = await api.getStatus().catch(() => undefined);
     if (generation !== sessionGeneration) return false;
     if (status) {
+      if (wasEnabled && !status.biometricEnabled && status.state === "locked" && status.server === account.server && status.email === account.email) {
+        store.biometricResetReminder = account;
+      }
       store.status = status;
     }
     return false;
@@ -612,6 +622,7 @@ export async function enableBiometricUnlock(password: string): Promise<boolean> 
   if (generation !== sessionGeneration) return false;
   if (status) {
     store.status = status;
+    store.biometricResetReminder = null;
     if (!status.biometricSetupError) showNotice("Touch ID unlock is on");
   }
   return status !== undefined;
@@ -664,6 +675,7 @@ export async function handleLocked(): Promise<void> {
 }
 
 export async function signOut(): Promise<void> {
+  store.biometricResetReminder = null;
   clearLockedVaultData();
   const status = await runAction(() => api.signOut());
   // A sign-out that reports an error still ended the session on this device.

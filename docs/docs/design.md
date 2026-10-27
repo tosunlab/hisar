@@ -378,6 +378,7 @@ Password policy and presentation:
 - **In-window prompt**: like 1Password, the lock screen embeds Apple's `LAAuthenticationView` (`LocalAuthenticationEmbeddedUI`, macOS 12+) in Hisar's own window instead of the system dialog. The UI measures a slot on the lock screen and the app places the native view over it; "Use master password" cancels the evaluation (`LAContext.invalidate`).
 - Touch ID also approves SSH agent requests (§9.6). The iPhone unlocks with Face ID the same way, and Android with a strong biometric through `BiometricPrompt` (§9.3).
 - Before enabling biometric unlock, the offer and Settings explain whose enrollment can open Hisar. On the Mac this is any fingerprint for the current macOS account. On the iPhone it includes every enrolled fingerprint or Face ID appearance. Android requires a strong biometric enrolled for the current Android user profile, not a PIN or a weak face recognizer. Changing that enrollment invalidates the key and requires enabling biometric unlock again with the master password.
+- A failed biometric key disables biometric unlock without displaying native keychain or Keystore errors. The error retains its diagnostic cause separately. The Mac keeps a non-secret reminder for that account through the next password unlock, linking to Settings, Security. Sign-out, account switch, or enabling Touch ID clears it. Hisar never re-enrolls automatically.
 
 ### 5.5 Sessions
 

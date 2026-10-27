@@ -41,6 +41,7 @@ function resetStore(): void {
     editorMode: "view",
     searchQuery: "",
     pendingSecretKey: "",
+    biometricResetReminder: null,
     errorMessage: "",
     noticeMessage: "",
     isBusy: false,
@@ -51,6 +52,26 @@ describe("store", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();
+  });
+
+  it("keeps a disabled Touch ID reminder for the same account through password unlock", async () => {
+    store.status = { ...createStatus("locked"), biometricEnabled: true };
+    api.unlockWithBiometric.mockRejectedValue(new Error("Touch ID unlock was turned off."));
+    api.getStatus.mockResolvedValue({ ...store.status, biometricEnabled: false });
+    await storeModule.unlockWithBiometric();
+    expect(store.biometricResetReminder).toEqual({ server: store.status.server, email: store.status.email });
+    api.unlock.mockResolvedValue({ ...store.status, state: "unlocked" });
+    await storeModule.unlock("master password");
+    expect(store.biometricResetReminder).not.toBeNull();
+    await storeModule.signOut();
+    expect(store.biometricResetReminder).toBeNull();
+  });
+
+  it("forgets the Touch ID reminder when a different account signs in", async () => {
+    store.biometricResetReminder = { server: "https://old.test", email: "old@example.com" };
+    api.signIn.mockResolvedValue(createStatus("unlocked"));
+    await storeModule.signIn("https://hisar.test", "alice@example.com", "key", "password");
+    expect(store.biometricResetReminder).toBeNull();
   });
 
   it("signs in, loads vaults and selects the first vault", async () => {

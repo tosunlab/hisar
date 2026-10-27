@@ -465,7 +465,7 @@ func TestIntegrationDesktopFlow(t *testing.T) {
 
 	biometric.keys[accountID] = crypt.GenerateKey()
 	service.Lock()
-	if _, err := service.UnlockWithBiometric(); err == nil || !strings.Contains(err.Error(), "the Touch ID key does not match; Touch ID unlock was turned off") {
+	if _, err := service.UnlockWithBiometric(); err == nil || err.Error() != "Touch ID unlock was turned off. Unlock with your master password, then turn it on again in Settings, Security." {
 		t.Errorf("tampered Touch ID key: %v", err)
 	}
 	if status := service.GetStatus(); status.BiometricEnabled || len(biometric.keys) != 0 {
