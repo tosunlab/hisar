@@ -154,6 +154,9 @@ const subtitle = computed(() => {
   if (current.kind === "launcher") {
     return isLauncherShare.value ? "for this link only" : "until Hisar locks";
   }
+  if (current.kind === "passkey") {
+    return "Confirm it is you to continue in your browser.";
+  }
   return current.keyTitle ? `with your SSH key “${current.keyTitle}”` : "Unlock Hisar to use your SSH keys";
 });
 

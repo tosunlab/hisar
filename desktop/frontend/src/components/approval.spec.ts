@@ -229,6 +229,15 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("describes browser verification without an SSH or unlock instruction", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    sendEvent("ssh-approval", createApprovalEvent({ kind: "passkey", appName: "Your browser", action: "use your passkey for github.com", keyTitle: "", target: "", isRememberable: false }));
+    await flushPromises();
+    expect(wrapper.get("h1").text()).toBe("Your browser wants to use your passkey for github.com");
+    expect(wrapper.get(".subtitle").text()).toBe("Confirm it is you to continue in your browser.");
+    wrapper.unmount();
+  });
+
   it("unlocks a locked Hisar with Touch ID", async () => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createApprovalEvent({ isUnlockRequired: true, keyTitle: "" }));
