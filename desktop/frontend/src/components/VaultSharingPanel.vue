@@ -132,6 +132,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       </header>
 
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+      <p id="sharing-role-legend" class="muted hint">{{ vaultRoleDescription }}</p>
 
       <template v-if="organizationID">
         <p class="section-label">Teams</p>
@@ -149,7 +150,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                   class="role-select"
                   :value="teamVault.role"
                   :aria-label="`Role for ${team.name}`"
-                  :title="vaultRoleDescription"
+                  aria-describedby="sharing-role-legend"
                   :disabled="store.isBusy"
                   :data-testid="`vault-team-role-${team.id}`"
                   @change="changeTeamRole(team, teamVault, $event)"
@@ -176,7 +177,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
               <select v-model="givingTeamID" class="team-select" aria-label="Team" data-testid="give-to-team-team">
                 <option v-for="team in allTeamWithoutVault" :key="team.id" :value="team.id">{{ team.name }}</option>
               </select>
-              <select v-model="givingRole" class="role-select" aria-label="Role for the team" :title="vaultRoleDescription" data-testid="give-to-team-role">
+              <select v-model="givingRole" class="role-select" aria-label="Role for the team" aria-describedby="sharing-role-legend" data-testid="give-to-team-role">
                 <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
               </select>
               <button type="button" class="ghost" @click="isGivingToTeam = false">Cancel</button>
@@ -224,7 +225,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                   class="role-select"
                   :value="member.role"
                   :aria-label="`Role for ${getDisplayName(member)}`"
-                  :title="vaultRoleDescription"
+                  aria-describedby="sharing-role-legend"
                   :disabled="store.isBusy"
                   :data-testid="`role-select-${member.accountId}`"
                   @change="changeRole(member, $event)"
@@ -316,7 +317,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                 autocomplete="off"
                 data-testid="new-member-email"
               />
-              <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" :title="vaultRoleDescription" data-testid="new-member-role">
+              <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" aria-describedby="sharing-role-legend" data-testid="new-member-role">
                 <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
               </select>
               <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Share</button>

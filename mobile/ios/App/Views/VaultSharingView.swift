@@ -390,9 +390,9 @@ func describeVaultRole(_ role: String) -> String {
 
 func describeVaultRoleAbility(_ role: String) -> String {
     switch role {
-    case Member.vaultRoleOwner: return "Owners open and change items, share the vault, change roles and remove people."
-    case Member.vaultRoleEditor: return "Editors open and change items."
-    case Member.vaultRoleReader: return "Readers open items but cannot change them."
+    case Member.vaultRoleOwner: return "Owners view and change items, share, rename and delete the vault, change roles and remove people."
+    case Member.vaultRoleEditor: return "Editors view and change items."
+    case Member.vaultRoleReader: return "Readers view items but can't change them."
     default: return ""
     }
 }

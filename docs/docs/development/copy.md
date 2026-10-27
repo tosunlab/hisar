@@ -41,7 +41,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
-| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
+| Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac shows one visible legend per panel: "Readers view items, editors also change them, owners also share, rename and delete the vault." Phones describe the chosen role: "Readers view items but can't change them.", "Editors view and change items.", or "Owners view and change items, share, rename and delete the vault, change roles and remove people." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
 
 ## Organizations

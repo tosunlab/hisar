@@ -110,9 +110,9 @@ object VaultLogic {
     }
 
     fun describeVaultRoleAbility(role: String): String = when (role) {
-        Member.VAULT_ROLE_OWNER -> "Owners open and change items, share the vault, change roles and remove people."
-        Member.VAULT_ROLE_EDITOR -> "Editors open and change items."
-        Member.VAULT_ROLE_READER -> "Readers open items but cannot change them."
+        Member.VAULT_ROLE_OWNER -> "Owners view and change items, share, rename and delete the vault, change roles and remove people."
+        Member.VAULT_ROLE_EDITOR -> "Editors view and change items."
+        Member.VAULT_ROLE_READER -> "Readers view items but can't change them."
         else -> ""
     }
 

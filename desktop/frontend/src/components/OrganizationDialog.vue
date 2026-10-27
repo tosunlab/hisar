@@ -193,10 +193,11 @@ async function submit(): Promise<void> {
         </label>
         <label>
           <span>Role</span>
-          <select v-model="role" name="organizationDialogRole" :title="vaultRoleDescription" data-testid="organization-dialog-role">
+          <select v-model="role" name="organizationDialogRole" aria-describedby="give-vault-role-legend" data-testid="organization-dialog-role">
             <option v-for="vaultRole in allVaultRole" :key="vaultRole" :value="vaultRole">{{ formatRole(vaultRole) }}</option>
           </select>
         </label>
+        <p id="give-vault-role-legend" class="muted hint">{{ vaultRoleDescription }}</p>
       </template>
       <ul v-if="allLostVaultLine.length > 0" class="consequences warning" data-testid="organization-dialog-vaults">
         <li v-for="line in allLostVaultLine" :key="line">{{ line }}</li>
