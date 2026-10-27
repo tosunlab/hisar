@@ -103,6 +103,8 @@ On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `w
 
 Developer tools keeps vault availability, website sign-in, approval revocation, running-agent revocation, and host-removal errors in the section that owns the action. Settings search keeps each visible action's error visible. A successful action clears only its own section's error.
 
+**Vaults for coding agents** groups organization vaults under their organization, with other vaults under **Vaults**. Switch names include that group. Duplicate vault names inside a group show a stable vault-ID prefix so you can distinguish their availability switches.
+
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
 The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the same draft guard as Cancel, ⌘N,
