@@ -217,6 +217,19 @@ class PhoneApprovalTests {
     }
 
     @Test
+    fun testFailedApprovalListingKeepsKnownRequests() = runTest {
+        val harness = AppModelHarness(this)
+        val model = createUnlockedModel(harness, listOf(createApproval("known")))
+        harness.backend.onListAllPendingApproval = { error("Offline") }
+        model.approvals.refreshPendingApproval()
+        assertEquals(listOf("known"), model.approvals.allPendingApproval.value.map { it.requestID })
+        harness.backend.onListAllPendingApproval = null
+        harness.backend.allPendingApproval.clear()
+        model.approvals.refreshPendingApproval()
+        assertTrue(model.approvals.allPendingApproval.value.isEmpty())
+    }
+
+    @Test
     fun testARequestArrivingInTheForegroundOpensTheSheet() = runTest {
         val harness = AppModelHarness(this)
         val model = createUnlockedModel(harness, listOf(createApproval("listed-at-unlock")))

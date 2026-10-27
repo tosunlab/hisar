@@ -2010,6 +2010,7 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 
 **iPhone** (`mobile/hisarkit`, `mobile/ios`)
 
+- The iPhone Approvals list distinguishes checking, failed and successfully checked results. A failed listing offers Retry without removing known requests or their expiry timers. Only a successful empty listing shows that no requests are waiting.
 - The phone does not need to be open when the Mac asks: the Mac posts the request whenever the account has a phone, and the request waits on the server until the dialog's deadline.
 - While unlocked and in the foreground, the app lists the open requests right at unlock (before the vault sync), on returning to the foreground, on `approval-requested`, and every 15 s as a fallback for a missed event. The first appears as a card at the top of the Vaults tab: "<Mac name> · Expires in …", the request's sentence, the key, and **Deny** and **Approve** (Approve asks for Face ID as in the sheet); the Approvals tab lists them all with their badge count on the tab.
 - Settings → Mac approvals → **Approve requests from my Mac** (on by default; `phoneApprovalDisabled` in the phone's `hisar.json`, kept on sign-out) turns this off for this iPhone: `ListAllPendingApproval` then returns nothing, `ApproveApproval` refuses, and the Mac's dialog decides on its own.

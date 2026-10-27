@@ -48,6 +48,7 @@ class FakeBackend: VaultBackend {
     var isShareAwaitingUnlockFailing = false
     var allAnsweredInvitation: [String] = []
     var allPendingApproval: [PhoneApproval] = []
+    var listAllPendingApprovalErrorMessage: String?
     /// Runs when the open requests have been read and before they are returned: a test can hold an older listing while a
     /// newer one runs.
     var onListAllPendingApproval: (() -> Void)?
@@ -729,6 +730,7 @@ extension FakeBackend {
 extension FakeBackend {
     func listAllPendingApproval() throws -> [PhoneApproval] {
         try requireUnlocked()
+        if let listAllPendingApprovalErrorMessage { throw BackendError(message: listAllPendingApprovalErrorMessage) }
         let allApproval = withApprovalLock { allPendingApproval }
         onListAllPendingApproval?()
         return allApproval

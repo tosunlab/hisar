@@ -8,6 +8,8 @@ struct ApprovalsView: View {
             ApprovalList(
                 allApproval: model.allPendingApproval,
                 isMacApprovalAllowed: model.isMacApprovalAllowed,
+                listState: model.approvalListState,
+                retry: { Task { await model.refreshPendingApproval() } },
                 review: { model.reviewApproval($0) },
                 deny: { approval in Task { await model.deny(approval) } },
                 allowMacApproval: { Task { await model.setMacApprovalAllowed(true) } }
@@ -21,12 +23,21 @@ struct ApprovalsView: View {
 struct ApprovalList: View {
     var allApproval: [PhoneApproval]
     var isMacApprovalAllowed: Bool
+    var listState: AppModel.ApprovalListState
+    var retry: () -> Void
     var review: (PhoneApproval) -> Void
     var deny: (PhoneApproval) -> Void
     var allowMacApproval: () -> Void
 
     var body: some View {
         List {
+            if isMacApprovalAllowed, listState == .failed {
+                Section {
+                    Text("Could not check for Mac requests. Check your connection and try again.")
+                    Button("Retry", action: retry)
+                        .accessibilityIdentifier("approvals-retry")
+                }
+            }
             if !allApproval.isEmpty {
                 Section {
                     ForEach(allApproval) { approval in
@@ -63,7 +74,9 @@ struct ApprovalList: View {
                         .buttonStyle(.glass)
                         .accessibilityIdentifier("approvals-allow")
                 }
-            } else if allApproval.isEmpty {
+            } else if allApproval.isEmpty, listState == .unchecked || listState == .loading {
+                ProgressView("Checking for Mac requests…")
+            } else if allApproval.isEmpty, listState == .loaded {
                 ContentUnavailableView {
                     Label("No requests waiting", systemImage: "laptopcomputer.and.iphone")
                 } description: {

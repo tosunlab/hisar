@@ -185,6 +185,8 @@ struct PendingApprovalPreviewView: View {
                     ApprovalList(
                         allApproval: allApproval,
                         isMacApprovalAllowed: true,
+                        listState: .loaded,
+                        retry: {},
                         review: { presentedApproval = $0 },
                         deny: { finish($0, message: "Denied \($0.requestID)") },
                         allowMacApproval: {}

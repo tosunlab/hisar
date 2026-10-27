@@ -38,6 +38,30 @@ final class PhoneApprovalTests: XCTestCase {
         return model
     }
 
+    func testFailedApprovalListingKeepsKnownRequests() async {
+        backend.seedSignedIn()
+        backend.listAllPendingApprovalErrorMessage = "Offline"
+        let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore(), getCurrentDate: { [unowned self] in currentDate })
+        await model.start { self.backend }?.value
+        await model.refreshPendingApproval()
+        XCTAssertEqual(model.approvalListState, .failed)
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
+        backend.listAllPendingApprovalErrorMessage = nil
+        backend.allPendingApproval = [createApproval()]
+        await model.refreshPendingApproval()
+        XCTAssertEqual(model.approvalListState, .loaded)
+        let known = model.allPendingApproval
+        backend.listAllPendingApprovalErrorMessage = "Offline"
+        await model.refreshPendingApproval()
+        XCTAssertEqual(model.approvalListState, .failed)
+        XCTAssertEqual(model.allPendingApproval, known)
+        backend.listAllPendingApprovalErrorMessage = nil
+        backend.allPendingApproval = []
+        await model.refreshPendingApproval()
+        XCTAssertEqual(model.approvalListState, .loaded)
+        XCTAssertTrue(model.allPendingApproval.isEmpty)
+    }
+
     func testDecodesTheBackendsRequest() throws {
         let json = """
         [{"requestId":"0123456789abcdef0123456789abcdef","requesterDeviceName":"MacBook Pro","createdAt":"2027-01-15T08:00:00.123Z","expiresAt":"2027-01-15T08:01:00.123Z",
