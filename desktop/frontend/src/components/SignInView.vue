@@ -5,6 +5,7 @@ import { getMasterPasswordFeedback, getThisDeviceName, isMacPlatform } from "../
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
 import StrengthMeter from "./StrengthMeter.vue";
+import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
 
 type Mode = "sign-in" | "create-account";
 
@@ -183,6 +184,7 @@ async function submitCreateAccount(): Promise<void> {
 
         <h1 v-if="mode === 'create-account'">Create your account</h1>
         <p class="subtitle">{{ allSubtitle[mode] }}</p>
+        <PendingRecoveryReminder />
 
         <div v-if="store.status.signedOutReason" class="signed-out-notice" role="status" data-testid="signed-out-reason">
           <AppIcon name="shield" />

@@ -1,6 +1,19 @@
 package com.tryhisar.hisar.ui.root
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ChevronRight
+import androidx.compose.material.icons.outlined.WarningAmber
+import androidx.compose.material3.Icon
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import com.tryhisar.hisar.model.reminderLabel
+import com.tryhisar.hisar.model.reminderHint
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.exclude
@@ -87,6 +100,7 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
         val navigationInset = with(density) { WindowInsets.navigationBars.exclude(WindowInsets.ime).getBottom(this).toDp() }
         val noticeInset = (with(density) { noticeLayout.clearance.toDp() } - navigationInset).coerceAtLeast(0.dp)
         val showsTabs = screen == Screen.Unlocked && !isSheetShown && newAccountStep == null && !isRecoveryShown && credentialImportSheet == null
+        val showsRecoveryReminder = pendingRecovery.isNotEmpty() && !isRecoveryShown && newAccountStep == null
 
         LaunchedEffect(copyCount) {
             if (copyCount > 0) view.performConfirmHaptic()
@@ -112,7 +126,24 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                     }
                 },
             ) { padding ->
-                Box(Modifier.fillMaxSize().padding(top = padding.calculateTopPadding())) {
+                Column(Modifier.fillMaxSize().then(if (showsRecoveryReminder) Modifier.windowInsetsPadding(WindowInsets.statusBars) else Modifier)) {
+                    if (showsRecoveryReminder) {
+                        val label = pendingRecovery.singleOrNull()?.reminderLabel ?: "${pendingRecovery.size} account setups need attention"
+                        val hint = pendingRecovery.singleOrNull()?.reminderHint ?: "Opens the account setup chooser"
+                        Row(
+                            Modifier.background(HisarTheme.colors.systemBackground)
+                                .clickable(role = Role.Button, onClickLabel = hint, onClick = model.pendingRecovery::open)
+                                .semantics(mergeDescendants = true) {}
+                                .testTag("pending-recovery-open")
+                                .heightIn(min = 48.dp).padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(Icons.Outlined.WarningAmber, contentDescription = null, modifier = Modifier.size(20.dp))
+                            Text(label, modifier = Modifier.weight(1f).padding(horizontal = 12.dp))
+                            Icon(Icons.Outlined.ChevronRight, contentDescription = null, modifier = Modifier.size(20.dp))
+                        }
+                    }
+                Box(Modifier.weight(1f).padding(top = padding.calculateTopPadding())) {
                     when (val current = screen) {
                         Screen.Starting -> StartingScreen()
                         is Screen.Failed -> StartupFailureScreen(current.message)
@@ -138,12 +169,8 @@ fun RootScreen(model: AppModel, copySecret: (String) -> Boolean) {
                         if (screen == Screen.Unlocked && newAccountStep == null && !isRecoveryShown) PhoneApprovalSheet(model, approval)
                     }
 
-                    if (pendingRecovery.isNotEmpty() && !isRecoveryShown) {
-                        Box(Modifier.align(Alignment.TopCenter).background(HisarTheme.colors.systemBackground).windowInsetsPadding(WindowInsets.statusBars).padding(12.dp)) {
-                            PlainButton("Finish account recovery", model.pendingRecovery::open, testTag = "pending-recovery-open")
-                        }
-                    }
                     if (isRecoveryShown) PendingRecoveryScreen(model)
+                }
                 }
             }
             }

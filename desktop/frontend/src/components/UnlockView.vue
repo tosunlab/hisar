@@ -5,6 +5,7 @@ import { loadShareAwaitingUnlockQuietly, signOut, store, unlock, unlockWithBiome
 import { describePerson } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import PendingRecoveryReminder from "./PendingRecoveryReminder.vue";
 
 const password = ref("");
 const isConfirmingSignOut = ref(false);
@@ -80,6 +81,7 @@ onBeforeUnmount(() => {
           <h1>Hisar is locked</h1>
           <p class="muted" data-testid="locked-account">{{ store.status.email }} · {{ store.status.server.replace(/^https?:\/\//, "") }}</p>
         </div>
+        <PendingRecoveryReminder />
         <ul v-if="store.allShareAwaitingUnlock.length > 0" class="awaiting-list" data-testid="share-awaiting-unlock">
           <li v-for="awaiting in store.allShareAwaitingUnlock" :key="awaiting.invitationId" class="awaiting" role="status">
             <AppIcon name="users" :size="15" />
