@@ -104,7 +104,7 @@ function describeInviter(name: string, email: string): string {
               <span v-if="person.isCurrentUser" class="tag accent">you</span>
             </strong>
             <p class="muted">{{ person.email }}</p>
-            <p v-if="person.isKeyChanged" class="warning-text">Their key changed since you last shared with them. Compare security codes before you share more.</p>
+            <p v-if="person.isKeyChanged" class="warning-text">Key changed. Hisar stopped sharing with them.</p>
           </div>
           <span
             class="security-code monospace"

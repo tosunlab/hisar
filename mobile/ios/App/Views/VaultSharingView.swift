@@ -43,7 +43,7 @@ struct VaultSharingView: View {
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("share-completion-error")
                     } footer: {
-                        Text("Hisar shares the vault key only with the key it pinned for that person. Compare security codes with them before inviting them again.")
+                        Text("Hisar shares the vault key only with the key it pinned for that person. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
                     }
                 }
                 memberSection
@@ -296,7 +296,7 @@ struct VaultMemberView: View {
             if member.isKeyChanged {
                 Section {
                     Label {
-                        Text("\(member.name)'s key changed since you last shared with them. Hisar refuses to share with them until you compare security codes again.")
+                        Text("\(member.name)'s key changed since this iPhone first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.themeWarning)
@@ -414,7 +414,7 @@ struct MemberRow: View {
                     .font(.caption)
                     .foregroundStyle(.themeSecondary)
                 if member.isKeyChanged {
-                    Label("Their key changed since you last shared with them. Check the security code with them before sharing again.", systemImage: "exclamationmark.triangle.fill")
+                    Label("Key changed. Hisar stopped sharing with them.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.themeWarning)
                 }

@@ -197,7 +197,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
                 </strong>
                 <p class="muted">{{ member.email }}</p>
                 <p v-if="member.isKeyChanged" class="warning-text" data-testid="organization-member-key-changed">
-                  Their key changed since you last shared with them. Compare security codes before you share more.
+                  Key changed. Hisar stopped sharing with them.
                 </p>
               </div>
               <button

@@ -146,7 +146,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
         }
         sharing?.completionError?.takeIf { it.isNotEmpty() }?.let { completionError ->
             FormSection(footer = {
-                Text("Hisar shares the vault key only with the key it pinned for that person. Compare security codes with them before inviting them again.")
+                Text("Hisar shares the vault key only with the key it pinned for that person. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
             }) {
                 WarningRow("Could not finish sharing: $completionError", testTag = "share-completion-error")
             }
@@ -293,7 +293,7 @@ private fun VaultMemberScreen(
         if (member.isKeyChanged) {
             FormSection {
                 WarningRow(
-                    "${member.name}'s key changed since you last shared with them. Hisar refuses to share with them until you compare security codes again.",
+                    "${member.name}'s key changed since this device first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.",
                     testTag = "member-key-changed",
                 )
             }

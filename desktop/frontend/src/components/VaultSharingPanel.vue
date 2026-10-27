@@ -262,7 +262,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                 <p v-if="member.isCurrentUser" class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
                 <p v-else class="muted">Compare this code with {{ getFirstName(member) }} in person or over a channel you trust, to be sure the server isn't intercepting.</p>
                 <p v-if="member.isKeyChanged" class="warning-text">
-                  {{ getFirstName(member) }}'s key changed since you last shared with them. Hisar refuses to share until you compare security codes again.
+                  {{ getFirstName(member) }}'s key changed since this Mac first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.
                 </p>
               </div>
             </div>

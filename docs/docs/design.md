@@ -396,6 +396,8 @@ Sharing a vault means wrapping `K_vault` to the recipient's KEM public key, whic
 - Clients pin (trust on first use) every other member's Ed25519 key in their local state when they first share with them, which is when the owner's app completes an accepted share invitation (§5.8; `localstate.State.CheckMemberPin`, used by the CLI and the desktop app). Completing a share, changing a member's role and key rotation stop if a pinned key changes; the desktop app also marks that person in its lists.
 - The UI shows a short security code per person (Settings → People and the vault's sharing panel) that the two people can optionally compare once, in person or over another channel: the first 8 bytes of SHA-256 of their Ed25519 public key as 4 groups of 4 uppercase hex digits, e.g. `3F2A 91C0 7B44 E1D8` (`crypt.FormatKeyFingerprint`).
 
+Changed-key warnings say that Hisar stopped sharing and ask the person to contact the recipient over a trusted channel. Comparing security codes does not restore sharing or replace a pinned key. Changing the master password or Secret Key preserves the account's identity keys and is not a remedy for a changed pin.
+
 ### 5.7 Changing the master password and replacing the Secret Key
 
 Settings → Security on the Mac and the iPhone has **Change master password…** and **Replace Secret Key…**; the CLI has `hisar account change-password` and `hisar account replace-secret-key [-o file]`. Both need the current master password and a connection; the server never sees either secret.

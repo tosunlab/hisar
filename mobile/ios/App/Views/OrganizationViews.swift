@@ -795,7 +795,7 @@ struct OrganizationMemberView: View {
             if member.isKeyChanged {
                 Section {
                     Label {
-                        Text("\(member.name)'s key changed since you last shared with them. Hisar refuses to give them vault keys until you compare security codes again.")
+                        Text("\(member.name)'s key changed since this iPhone first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.themeWarning)

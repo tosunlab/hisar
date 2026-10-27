@@ -183,7 +183,7 @@ private fun PersonScreen(person: Member, onBack: () -> Unit) {
         PersonHeader(person)
         if (person.isKeyChanged) {
             FormSection {
-                WarningRow("Their key changed since you last shared with them. Check the security code with them before sharing again.", testTag = "person-key-changed")
+                WarningRow("Key changed. Hisar stopped sharing with them.", testTag = "person-key-changed")
             }
         }
         SecurityCodeSection(
