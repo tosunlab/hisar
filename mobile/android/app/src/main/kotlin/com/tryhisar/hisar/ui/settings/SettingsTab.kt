@@ -50,6 +50,7 @@ import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.SettingsDestination
 import com.tryhisar.hisar.autofill.AutoFillSettingsSections
 import com.tryhisar.hisar.autofill.isAutoFillEnabled
+import com.tryhisar.hisar.model.AccountLifecycleLogic
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.VaultStatus
 import com.tryhisar.hisar.ui.components.FormSection
@@ -181,8 +182,8 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
 
     if (isSignOutConfirmationShown) {
         ConfirmationDialog(
-            title = "Sign out of Hisar on this device?",
-            message = "You will need your Secret Key and master password to sign in again.",
+            title = AccountLifecycleLogic.SIGN_OUT_TITLE,
+            message = AccountLifecycleLogic.SIGN_OUT_MESSAGE,
             confirmLabel = "Sign out",
             confirmTestTag = "confirm-sign-out",
             onConfirm = { scope.launch { model.lock.signOut() } },

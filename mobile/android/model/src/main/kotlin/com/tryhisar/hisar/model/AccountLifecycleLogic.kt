@@ -19,6 +19,9 @@ object AccountLifecycleLogic {
     const val SECRET_KEY_REPLACEMENT_WARNING =
         "Your other devices will be signed out. Sign in on them with your master password and the new Secret Key from the new Emergency Kit. Your old Emergency Kit stops working."
     const val EXPORT_ADVICE = "Export your items first in Settings → Account → Export data."
+    const val SIGN_OUT_TITLE = "Sign out of Hisar on this device?"
+    const val SIGN_OUT_MESSAGE = "Hisar removes this device's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
+    const val LOCKED_SIGN_OUT_MESSAGE = "$SIGN_OUT_MESSAGE If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account."
 
     fun describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String): String? = when {
         newPassword.isEmpty() -> null

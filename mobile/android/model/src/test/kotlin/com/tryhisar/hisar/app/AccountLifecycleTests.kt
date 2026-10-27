@@ -53,6 +53,19 @@ class AccountLifecycleTests {
     }
 
     @Test
+    fun testSignOutConfirmationExplainsLocalRemoval() {
+        assertEquals("Sign out of Hisar on this device?", AccountLifecycleLogic.SIGN_OUT_TITLE)
+        assertEquals(
+            "Hisar removes this device's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.",
+            AccountLifecycleLogic.SIGN_OUT_MESSAGE,
+        )
+        assertEquals(
+            "${AccountLifecycleLogic.SIGN_OUT_MESSAGE} If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account.",
+            AccountLifecycleLogic.LOCKED_SIGN_OUT_MESSAGE,
+        )
+    }
+
+    @Test
     fun testEmailConfirmationIgnoresCaseAndSpaces() {
         assertTrue(AccountLifecycleLogic.isEmailMatching(" Alice@Example.com ", "alice@example.com"))
         assertFalse(AccountLifecycleLogic.isEmailMatching("bob@example.com", "alice@example.com"))

@@ -42,6 +42,12 @@ final class AccountLifecycleTests: XCTestCase {
         XCTAssertEqual(AccountLifecycleLogic.describeSignedOutDevices(0), "No other devices were signed in.")
     }
 
+    func testSignOutConfirmationExplainsLocalRemoval() {
+        XCTAssertEqual(AccountLifecycleLogic.signOutTitle, "Sign out of Hisar on this iPhone?")
+        XCTAssertEqual(AccountLifecycleLogic.signOutMessage, "Hisar removes this iPhone's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device.")
+        XCTAssertEqual(AccountLifecycleLogic.lockedSignOutMessage, AccountLifecycleLogic.signOutMessage + " If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account, Secret Key and Emergency Kit.")
+    }
+
     func testEmailConfirmationIgnoresCaseAndSpaces() {
         XCTAssertTrue(AccountLifecycleLogic.isEmailMatching(typedEmail: " Alice@Example.com ", accountEmail: "alice@example.com"))
         XCTAssertFalse(AccountLifecycleLogic.isEmailMatching(typedEmail: "bob@example.com", accountEmail: "alice@example.com"))
@@ -86,6 +92,18 @@ final class AccountLifecycleTests: XCTestCase {
         let signup = try JSONDecoder().decode(SignUpResult.self, from: Data(json.utf8))
         XCTAssertEqual(signup.pendingOperationId, "pending-1")
         XCTAssertEqual(signup.problems, result.problems)
+        for phase in ["awaiting-kit", "outcome-unknown", "manual-unlock", "needs-finishing"] {
+            let recovery = CredentialChangeResult(status: .signedOut, secretKey: "H1-NEW-SECRET", pendingOperationId: "pending-1", setupState: phase)
+            XCTAssertFalse(recovery.isWaitingOnlyForKit, phase)
+        }
+        for result in [
+            CredentialChangeResult(status: .signedOut, setupState: "delivery-pending"),
+            CredentialChangeResult(status: .signedOut, secretKey: "H1-NEW-SECRET", localError: "Local finishing failed.", setupState: "delivery-pending"),
+            CredentialChangeResult(status: .signedOut, secretKey: "H1-NEW-SECRET", keychainError: "Keychain failed.", setupState: "delivery-pending"),
+            CredentialChangeResult(status: .signedOut, secretKey: "H1-NEW-SECRET", setupState: "delivery-pending", problems: ["Recovery failed."]),
+        ] {
+            XCTAssertFalse(result.isWaitingOnlyForKit)
+        }
     }
 
     func testSigningOutKeepsTheServerForSigningBackIn() async {
@@ -113,13 +131,36 @@ final class AccountLifecycleTests: XCTestCase {
 
     func testReplaceSecretKeyWritesAndRemovesTheNewEmergencyKit() async throws {
         let model = await createUnlockedModel()
+        seedPendingRecovery(phase: "delivery-pending")
+        backend.allPendingRecovery[0].kind = "replace-secret-key"
+        backend.allPendingRecovery[0].problems = []
+        backend.pendingCredentialChangeResult = CredentialChangeResult(
+            status: backend.status, secretKey: "H1-NEW-SECRET", signedOutDeviceCount: 2,
+            pendingOperationId: "pending-1", setupState: "delivery-pending"
+        )
+        backend.pendingRecoverySecretKey = "H1-NEW-SECRET"
         let replaced = await model.replaceSecretKey(password: FakeBackend.password)
         let result = try XCTUnwrap(replaced)
-        XCTAssertNotEqual(result.secretKey, FakeBackend.secretKey)
-        XCTAssertTrue(FileManager.default.fileExists(atPath: result.emergencyKitPath))
+        XCTAssertTrue(result.isWaitingOnlyForKit)
+        XCTAssertTrue(model.isNewSecretKeyShown)
+        XCTAssertFalse(model.isPendingRecoveryShown)
+        XCTAssertEqual(result.signedOutDeviceCount, 2)
+        XCTAssertTrue(result.emergencyKitPath.isEmpty)
+        let exported = try XCTUnwrap(model.pendingRecoveryExport)
+        XCTAssertEqual(exported.secretKey, result.secretKey)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: exported.path))
+        XCTAssertTrue(backend.allCallName.contains("exportPendingRecoveryEmergencyKit"))
+        XCTAssertFalse(backend.allCallName.contains("exportNewAccountEmergencyKit"))
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
         model.finishSecretKeyReplacement(result)
-        XCTAssertFalse(FileManager.default.fileExists(atPath: result.emergencyKitPath))
-        await waitUntil({ backend.allCallName.contains("forgetNewAccountSecretKey") }, "the new Secret Key was not forgotten")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: exported.path))
+        XCTAssertNil(model.pendingRecoveryExport)
+        XCTAssertEqual(backend.allPendingRecovery.count, 1)
+        await model.exportPendingRecoveryKit(operationID: result.pendingOperationId, password: FakeBackend.password)
+        let acknowledged = await model.acknowledgePendingRecovery(operationID: result.pendingOperationId, password: FakeBackend.password)
+        XCTAssertTrue(acknowledged)
+        XCTAssertTrue(backend.allPendingRecovery.isEmpty)
+        XCTAssertNil(model.pendingRecoveryExport)
     }
 
     func testDeleteAccountCleanupErrorStillSignsOut() async {
@@ -293,6 +334,7 @@ final class AccountLifecycleTests: XCTestCase {
             pendingOperationId: "pending-1", setupState: "needs-finishing", problems: ["The keychain is unavailable."]
         )
         let result = await model.replaceSecretKey(password: FakeBackend.password)
+        XCTAssertFalse(result?.isWaitingOnlyForKit ?? true)
         XCTAssertEqual(result?.pendingOperationId, "pending-1")
         XCTAssertTrue(model.isPendingRecoveryShown)
         XCTAssertEqual(model.errorMessage, "The keychain is unavailable.")

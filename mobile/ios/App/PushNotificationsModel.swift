@@ -40,7 +40,7 @@ struct SystemNotificationCenter: NotificationScheduling {
 
 /// PushNotificationsModel holds Settings → Notifications and what a notification does: asking for permission, giving
 /// Hisar the APNs token, the kinds turned on, the screen a tapped notification opens, and the local reminder of an
-/// approval left waiting. A notification says only what kind of thing happened; Hisar shows the rest once unlocked.
+/// approval left waiting.
 @MainActor
 final class PushNotificationsModel: ObservableObject {
     @Published private(set) var settings = PushSettings.unavailable
@@ -48,6 +48,8 @@ final class PushNotificationsModel: ObservableObject {
     @Published private(set) var errorMessage: String?
     /// openedKind is the kind of the notification the user tapped, until the app has shown its screen.
     @Published var openedKind: PushKind?
+
+    static let privacyExplanation = "Approval requests and security alerts don't name items or people. Sharing invitations show who invited you and, for an organization, its name, even while Hisar is locked. To keep them off the lock screen, set Show Previews for Hisar to When Unlocked or Never in iOS Settings. Hisar's push relay and Apple see only the kind of notification; its details are encrypted for this phone."
 
     static let approvalReminderIdentifier = "approval-reminder"
     /// The reminder waits a moment, so switching apps briefly does not raise it.

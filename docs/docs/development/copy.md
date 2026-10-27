@@ -32,6 +32,22 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Delete account…, Delete account (the confirm button, after typing the email) | Close account, Remove account, Deactivate |
 | "Export your items first in Settings → Import & Export." (Mac), "… in Settings → Account → Export data." (iPhone, Android), "… with `hisar export`" (CLI) | Back up your data |
 
+### Sign-out confirmations
+
+The Account and locked-screen confirmations share this table. The title is "Sign out of Hisar on \<device>?"
+The message is "Hisar removes \<device>'s saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
+
+| Platform | Device | Emergency Kit route |
+|---|---|---|
+| Mac | this Mac | Settings, Security |
+| Linux | this computer | Settings, Security |
+| iPhone | this iPhone | Settings, Account, Secret Key and Emergency Kit |
+| Android | this device | Settings, Account |
+
+The locked-screen confirmation adds "If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in \<route>."
+Keep **Cancel** and destructive **Sign out**. Unlocked Mac Account also offers **Save Emergency Kit…**, which opens the Security kit form without signing out.
+Sign-out removes the active account's local data, not separately protected unfinished-setup recovery records.
+
 ## People and sharing
 
 | Use | Meaning |
@@ -110,6 +126,16 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Approve, Deny | Allow, Reject |
 | "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |
+
+## Notifications
+
+Both phones open their privacy explanation with "Approval requests and security alerts don't name items or people. Sharing invitations show who invited you and, for an organization, its name, even while Hisar is locked."
+
+The iPhone continues with "To keep them off the lock screen, set Show Previews for Hisar to When Unlocked or Never in iOS Settings. Hisar's push relay and Apple see only the kind of notification; its details are encrypted for this phone."
+
+Android continues with "To keep them off the lock screen, hide sensitive notification content in Android's notification settings. Your UnifiedPush app sees only the kind of notification; its details are encrypted for this phone."
+
+The Hisar server knows the invitation details it encrypts. Do not say that sharing identities need a Hisar unlock or that the server cannot see them.
 
 ## Invites and updates
 

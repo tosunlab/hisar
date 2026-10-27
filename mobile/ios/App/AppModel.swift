@@ -339,7 +339,7 @@ final class AppModel: ObservableObject {
     }
 
     private func finishSignUp(_ result: SignUpResult) async -> Bool {
-        let isWaitingForKit = result.setupState == "delivery-pending" && !result.secretKey.isEmpty && result.problems.isEmpty
+        let isWaitingForKit = AccountLifecycleLogic.isWaitingOnlyForKit(setupState: result.setupState, secretKey: result.secretKey, problems: result.problems)
         if !result.pendingOperationId.isEmpty && !isWaitingForKit {
             refreshStatus()
             // The backend's first sync can report its change before this status arrives, when it is ignored.
@@ -1399,8 +1399,24 @@ final class AppModel: ObservableObject {
     }
 
     func replaceSecretKey(password: String) async -> CredentialChangeResult? {
+        let epoch = lifecycleEpoch
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("EmergencyKit-\(UUID().uuidString)", isDirectory: true)
         guard let result = await perform({ try $0.replaceSecretKey(password: password, directory: directory) }) else { return nil }
+        guard epoch == lifecycleEpoch else {
+            removeEmergencyKitFile(path: result.emergencyKitPath)
+            await refreshPendingRecovery()
+            return nil
+        }
+        if !result.pendingOperationId.isEmpty && result.isWaitingOnlyForKit && status.isUnlocked {
+            isNewSecretKeyShown = true
+            applyStatus(result.status)
+            await exportPendingRecoveryKit(operationID: result.pendingOperationId, password: password)
+            guard epoch == lifecycleEpoch else {
+                finishSecretKeyReplacement(result)
+                return nil
+            }
+            return result
+        }
         if !result.pendingOperationId.isEmpty {
             removeEmergencyKitFile(path: result.emergencyKitPath)
             refreshStatus()
@@ -1419,8 +1435,7 @@ final class AppModel: ObservableObject {
     func finishSecretKeyReplacement(_ result: CredentialChangeResult) {
         isNewSecretKeyShown = false
         removeEmergencyKitFile(path: result.emergencyKitPath)
-        guard let backend else { return }
-        Task { try? await runInBackground { backend.forgetNewAccountSecretKey() } }
+        if !result.pendingOperationId.isEmpty { clearPendingRecoveryExport() }
     }
 
     func loadAccountDeletionPreview() async -> AccountDeletionPreview? {
@@ -1459,7 +1474,7 @@ final class AppModel: ObservableObject {
         let hadNone = allPendingRecovery.isEmpty
         allPendingRecovery = records
         if records.isEmpty { closePendingRecovery() }
-        else if hadNone && isPresenting { isPendingRecoveryShown = true }
+        else if hadNone && isPresenting && !isNewSecretKeyShown { isPendingRecoveryShown = true }
     }
 
     func clearPendingRecoveryExport() {
@@ -1519,11 +1534,12 @@ final class AppModel: ObservableObject {
         await refreshPendingRecovery()
     }
 
-    func acknowledgePendingRecovery(operationID: String, password: String) async {
+    @discardableResult
+    func acknowledgePendingRecovery(operationID: String, password: String) async -> Bool {
         let epoch = lifecycleEpoch
         let recovery = allPendingRecovery.first { $0.operationId == operationID }
-        guard await perform({ try $0.acknowledgePendingRecovery(operationID: operationID, password: password) }) != nil else { return }
-        guard epoch == lifecycleEpoch else { return }
+        guard await perform({ try $0.acknowledgePendingRecovery(operationID: operationID, password: password) }) != nil else { return false }
+        guard epoch == lifecycleEpoch else { return false }
         clearPendingRecoveryExport()
         await refreshPendingRecovery()
         if epoch == lifecycleEpoch, recovery?.kind == "signup", recovery?.phase == "delivery-pending",
@@ -1532,6 +1548,7 @@ final class AppModel: ObservableObject {
             newSecretKey = ""
             isBiometricOfferShown = true
         }
+        return !allPendingRecovery.contains { $0.operationId == operationID }
     }
 
     // setTheme shows the theme at once and goes back to the one in use when it cannot be saved.

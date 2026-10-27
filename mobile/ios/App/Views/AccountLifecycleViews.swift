@@ -109,6 +109,7 @@ struct ReplaceSecretKeyView: View {
     @State private var password = ""
     @State private var result: CredentialChangeResult?
     @State private var isConfirmationShown = false
+    @State private var handedOffKitPath: String?
 
     var body: some View {
         Form {
@@ -119,7 +120,7 @@ struct ReplaceSecretKeyView: View {
             }
         }
         .applyThemedListBackground()
-        .navigationTitle("Replace Secret Key")
+        .navigationTitle(result == nil ? "Replace Secret Key" : "Save your new Secret Key")
         .navigationBarTitleDisplayMode(.inline)
         .navigationBarBackButtonHidden(result != nil)
         .onAppear { model.clearError() }
@@ -130,6 +131,9 @@ struct ReplaceSecretKeyView: View {
             result = nil
             password = ""
         }
+        .onChange(of: model.status.state) { _, _ in clearDelivery() }
+        .onChange(of: model.status.email) { _, _ in clearDelivery() }
+        .onChange(of: model.status.server) { _, _ in clearDelivery() }
         .confirmationDialog("Replace your Secret Key?", isPresented: $isConfirmationShown, titleVisibility: .visible) {
             Button("Replace Secret Key", role: .destructive, action: submit)
                 .accessibilityIdentifier("replace-secret-key-confirm")
@@ -193,42 +197,57 @@ struct ReplaceSecretKeyView: View {
         } footer: {
             Text("\(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)) Your old Secret Key and Emergency Kit no longer work.")
         }
-        if !result.keychainError.isEmpty {
-            Section {
-                ErrorBanner(message: result.keychainError)
-            }
+        if let errorMessage = model.errorMessage {
+            Section { ErrorBanner(message: errorMessage) }
         }
-        if !result.localError.isEmpty {
-            Section {
-                ErrorBanner(message: result.localError)
-            }
-        }
-        if !result.emergencyKitPath.isEmpty {
-            Section {
-                ShareLink(item: URL(fileURLWithPath: result.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
-                    Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
+        let kitPath = result.pendingOperationId.isEmpty ? result.emergencyKitPath : model.pendingRecoveryExport?.path ?? ""
+        let isWaitingForHandoff = !result.pendingOperationId.isEmpty && (kitPath.isEmpty || handedOffKitPath != kitPath)
+        Section {
+            if !kitPath.isEmpty {
+                EmergencyKitShareButton(url: URL(fileURLWithPath: kitPath), label: "Save or print Emergency Kit", onPresent: model.reportActivity) {
+                    handedOffKitPath = kitPath
+                    model.reportActivity()
                 }
                 .accessibilityIdentifier("share-new-emergency-kit")
-            } header: {
-                Text("New Emergency Kit")
-            } footer: {
-                Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Save the new one now, and destroy the old one.")
+            } else if !result.pendingOperationId.isEmpty {
+                Button("Prepare Emergency Kit") {
+                    Task { await model.exportPendingRecoveryKit(operationID: result.pendingOperationId, password: password) }
+                }
+                .disabled(model.isBusy)
             }
+        } header: {
+            Text("New Emergency Kit")
+        } footer: {
+            Text("The Emergency Kit holds your Secret Key and has a space to write your master password. Save the new one now, and destroy the old one.")
         }
         Section {
             Button {
-                model.finishSecretKeyReplacement(result)
-                self.result = nil
-                dismiss()
+                Task {
+                    if !result.pendingOperationId.isEmpty {
+                        guard await model.acknowledgePendingRecovery(operationID: result.pendingOperationId, password: password) else { return }
+                    }
+                    clearDelivery()
+                }
             } label: {
-                Text("Done")
+                Text(result.pendingOperationId.isEmpty ? "Done" : "I saved the new Emergency Kit")
                     .frame(maxWidth: .infinity)
             }
             .applyProminentGlassStyle()
             .controlSize(.large)
             .listRowBackground(Color.clear)
             .listRowInsets(EdgeInsets())
+            .disabled(model.isBusy || isWaitingForHandoff)
             .accessibilityIdentifier("replace-secret-key-done")
+        } footer: {
+            if isWaitingForHandoff {
+                Text("Save or print the Emergency Kit to continue.")
+                    .accessibilityIdentifier("replace-secret-key-handoff-hint")
+            }
+        }
+        if !result.pendingOperationId.isEmpty {
+            Section {
+                Button("Finish later", action: clearDelivery)
+            }
         }
     }
 
@@ -236,11 +255,22 @@ struct ReplaceSecretKeyView: View {
         let enteredPassword = password
         Task {
             if let replaced = await model.replaceSecretKey(password: enteredPassword) {
-                password = ""
-                if replaced.pendingOperationId.isEmpty { result = replaced }
-                else { dismiss() }
+                if replaced.pendingOperationId.isEmpty || replaced.isWaitingOnlyForKit {
+                    result = replaced
+                } else {
+                    password = ""
+                    dismiss()
+                }
             }
         }
+    }
+
+    private func clearDelivery() {
+        if let result { model.finishSecretKeyReplacement(result) }
+        result = nil
+        handedOffKitPath = nil
+        password = ""
+        dismiss()
     }
 }
 
