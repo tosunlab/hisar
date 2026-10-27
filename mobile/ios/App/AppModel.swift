@@ -1665,6 +1665,7 @@ final class AppModel: ObservableObject {
         guard status.isUnlocked, approvalList > shownApprovalList else { return }
         shownApprovalList = approvalList
         let now = getCurrentDate()
+        removeAllExpiredApproval()
         let allOpenApproval = allApproval.filter { !allFinishedApprovalID.contains($0.requestID) && !$0.isExpired(at: now) }
         // Assigning publishes even an equal list, and the poll would then redraw every screen every 15 seconds. A switch
         // whose tap ends during that redraw ignores the tap.
@@ -1731,6 +1732,9 @@ final class AppModel: ObservableObject {
     func removeAllExpiredApproval() {
         let now = getCurrentDate()
         for approval in allPendingApproval where approval.isExpired(at: now) {
+            if presentedApproval?.requestID == approval.requestID {
+                showNotice("This request expired. Start it again on your Mac if you still need it.")
+            }
             removeApproval(requestID: approval.requestID)
         }
     }
