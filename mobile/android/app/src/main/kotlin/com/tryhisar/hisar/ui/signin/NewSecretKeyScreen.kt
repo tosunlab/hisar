@@ -1,5 +1,7 @@
 package com.tryhisar.hisar.ui.signin
 
+import com.tryhisar.hisar.ui.components.biometricConsent
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -139,7 +141,7 @@ fun BiometricOfferScreen(model: AppModel) {
             Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(14.dp)) {
                 Icon(Icons.Filled.Fingerprint, contentDescription = null, tint = HisarTheme.colors.tint, modifier = Modifier.size(56.dp))
                 Text(
-                    "Unlock Hisar with biometrics instead of typing your master password. Hisar still asks for the master password at least every 14 days.",
+                    biometricConsent,
                     style = HisarType.body,
                     color = HisarTheme.colors.label,
                     textAlign = TextAlign.Center,

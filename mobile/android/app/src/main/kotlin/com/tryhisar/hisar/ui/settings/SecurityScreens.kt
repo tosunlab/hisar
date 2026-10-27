@@ -1,5 +1,7 @@
 package com.tryhisar.hisar.ui.settings
 
+import com.tryhisar.hisar.ui.components.biometricConsent
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,7 +60,7 @@ fun SecurityScreen(model: AppModel, push: (SettingsDestination) -> Unit, onBack:
             footer = {
                 Text(
                     if (status.biometricAvailable) {
-                        "Turning on biometrics needs your master password. Hisar still asks for the master password at least every 14 days."
+                        biometricConsent
                     } else {
                         "Biometric unlock is not set up on this device."
                     },
@@ -128,7 +130,7 @@ private fun BiometricPasswordAlert(onTurnOn: (String) -> Unit, onDismiss: () -> 
         title = { Text("Turn on biometrics") },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text("Enter your master password to unlock with biometrics.")
+                Text(biometricConsent + "\n\nEnter your master password to continue.")
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
                     FormTextField(password, { password = it }, placeholder = "Master password", testTag = "biometric-password", isSecure = true)
                 }

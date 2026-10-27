@@ -1,5 +1,7 @@
 import type { IconName } from "./components/AppIcon.vue";
 
+export const touchIDConsent = "Touch ID unlocks Hisar after it locks, so you type your master password less often. Any fingerprint set up for your account on this Mac can unlock Hisar. Hisar still asks for your master password when it starts and at least every 14 days. Changing these fingerprints turns off Touch ID unlock until you turn it on again with your master password. You can change this later in Settings, Security.";
+
 // themes.json defines tile0 to tile9 with their text colours for every theme.
 const tileColorCount = 10;
 

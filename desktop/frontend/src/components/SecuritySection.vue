@@ -2,7 +2,7 @@
 import { ref } from "vue";
 import { disableBiometricUnlock, enableBiometricUnlock, saveEmergencyKit, setAutoLock, store } from "../store";
 import { useSettingsRowVisibility } from "../settingsSections";
-import { isMacPlatform } from "../util";
+import { isMacPlatform, touchIDConsent } from "../util";
 import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
 import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
 
@@ -49,7 +49,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
                 store.status.biometricSetupError
                   ? "Touch ID protection is pending. Unlock with your master password until setup is complete."
                   : store.status.biometricAvailable
-                    ? "Touch ID unlocks Hisar after it locks. Your master password is still needed when Hisar starts and at least every 14 days."
+                    ? touchIDConsent
                     : isMacPlatform()
                       ? "Touch ID is not available on this Mac."
                       : "Unlocking with a fingerprint is not available on this computer yet; Hisar unlocks with your master password."
