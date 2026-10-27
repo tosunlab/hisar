@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
@@ -216,7 +217,7 @@ fun CheckRow(text: String, isChosen: Boolean, onClick: () -> Unit, testTag: Stri
         Modifier
             .fillMaxWidth()
             .heightIn(min = RowMinHeight)
-            .clickable(role = Role.RadioButton, onClick = onClick)
+            .selectable(selected = isChosen, role = Role.RadioButton, onClick = onClick)
             .testTag(testTag)
             .padding(horizontal = RowInset, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -229,7 +230,7 @@ fun CheckRow(text: String, isChosen: Boolean, onClick: () -> Unit, testTag: Stri
             Text(text, style = HisarType.body, color = HisarTheme.colors.label)
             if (subtitle != null) Text(subtitle, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
         }
-        if (isChosen) Icon(Icons.Filled.Check, contentDescription = "Chosen", tint = HisarTheme.colors.tint, modifier = Modifier.size(22.dp))
+        if (isChosen) Icon(Icons.Filled.Check, contentDescription = null, tint = HisarTheme.colors.tint, modifier = Modifier.size(22.dp))
     }
 }
 

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material3.CircularProgressIndicator
@@ -138,7 +139,7 @@ private fun PreviewSections(
     FormSection(
         header = "Vault",
         footer = { Text("${VaultLogic.describeItemCount(preview.itemCount)} from ${preview.fileName}.") },
-        modifier = Modifier.testTag("credential-import-vault"),
+        modifier = Modifier.testTag("credential-import-vault").then(if (!isGrouped) Modifier.selectableGroup() else Modifier),
     ) {
         if (isGrouped) {
             Text("The other app kept these items in ${preview.groups.size} groups. Each goes to your Personal vault unless you choose another vault for it.")
@@ -156,11 +157,13 @@ private fun PreviewSections(
             Text("${group.name} to ${group.vaultName}")
             if (isGrouped) {
                 Text(VaultLogic.describeItemCount(group.itemCount))
-                allVault.forEach { vault ->
-                    RowDivider()
-                    CheckRow(vault.name, vault.id == group.vaultID, {
-                        if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
-                    }, testTag = "credential-import-group-$groupIndex-vault-${vault.id}")
+                Column(Modifier.selectableGroup()) {
+                    allVault.forEach { vault ->
+                        RowDivider()
+                        CheckRow(vault.name, vault.id == group.vaultID, {
+                            if (!isWorking && vault.id != group.vaultID) scope.launch { model.credentialImport.mapCredentialImportGroup(group.id, vault.id) }
+                        }, testTag = "credential-import-group-$groupIndex-vault-${vault.id}")
+                    }
                 }
             }
             Text(if (group.isPrivate) "Private or unspecified source" else "Shared source")

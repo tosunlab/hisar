@@ -99,6 +99,9 @@ Copy and action notices use Material snackbars above the tab bar. Favorite chang
 snackbar is dismissed. TalkBack announces each notice. Swipe it away or use its dismiss button to close it without undoing the action.
 If a snackbar covers another field or row, dismiss it before tapping that row. Notices stay clear of pinned primary actions.
 
+Settings choices for appearance, auto-lock, export format and import destinations expose each whole row as one
+radio option. TalkBack reports which option is selected within its choice group.
+
 Touch and hold an Android app linked to a login, then choose **Copy certificate** to copy its full signing-certificate
 SHA-256. The copy uses uppercase hex bytes separated by colons, as `apksigner` and Digital Asset Links show it.
 
