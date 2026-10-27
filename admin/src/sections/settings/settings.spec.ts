@@ -10,6 +10,7 @@ function createSettings(): AdminSettings {
     "smtp.username": { value: "hisar", source: "database", environmentVariable: "HISAR_SMTP_USERNAME" },
     "smtp.password": { value: { set: true }, source: "database", environmentVariable: "HISAR_SMTP_PASSWORD" },
     "smtp.from": { value: "noreply@example.com", source: "database", environmentVariable: "HISAR_SMTP_FROM" },
+    openRegistration: { value: false, source: "default", environmentVariable: "HISAR_OPEN_REGISTRATION" },
     invitePolicy: { value: "anyone", source: "default" },
     "minimumVersions.desktopMacOS": { value: "", source: "default", environmentVariable: "HISAR_MINIMUM_VERSION_DESKTOP_MACOS" },
     "minimumVersions.iOS": { value: "", source: "default", environmentVariable: "HISAR_MINIMUM_VERSION_IOS" },
@@ -59,7 +60,17 @@ describe("listChanges", () => {
     const settings = createSettings();
     const form = { sessionLifetimeDays: "1", authBurst: 10, "retention.historyDays": "2.5", "retention.auditDays": 365, "retention.expiredInvitesDays": 30 };
     expect(listChanges(security, settings, form)).toEqual({ sessionLifetimeDays: 1, "retention.historyDays": "2.5" });
-    expect(listChanges(signUp, settings, { invitePolicy: "admins" })).toEqual({ invitePolicy: "admins" });
+    expect(listChanges(signUp, settings, { openRegistration: false, invitePolicy: "admins" })).toEqual({ invitePolicy: "admins" });
+  });
+
+  it("sends a checkbox as a boolean, and never one the environment sets", () => {
+    const settings = createSettings();
+    expect(listChanges(signUp, settings, { openRegistration: true, invitePolicy: "anyone" })).toEqual({ openRegistration: true });
+    expect(listChanges(signUp, settings, { openRegistration: false, invitePolicy: "anyone" })).toEqual({});
+    settings.openRegistration = { ...settings.openRegistration, value: true, source: "database" };
+    expect(listChanges(signUp, settings, { openRegistration: false, invitePolicy: "anyone" })).toEqual({ openRegistration: false });
+    settings.openRegistration = { ...settings.openRegistration, source: "environment" };
+    expect(listChanges(signUp, settings, { openRegistration: false, invitePolicy: "anyone" })).toEqual({});
   });
 });
 
@@ -155,6 +166,33 @@ describe("SettingsView", () => {
     expect(findGroup("Email").textContent).toContain(passwordAgain);
     await type("smtp.password", "secret");
     expect(findGroup("Email").textContent).not.toContain(passwordAgain);
+  });
+
+  it("saves open registration from its checkbox and locks it when the environment sets it", async () => {
+    await mount(createSettings());
+    const checkbox = findInput("openRegistration");
+    expect(checkbox.type).toBe("checkbox");
+    expect(checkbox.checked).toBe(false);
+    expect(checkbox.disabled).toBe(false);
+    expect(findGroup("Sign-up").textContent).toContain("Anyone can sign up");
+    checkbox.click();
+    await flush();
+    expect(findGroup("Sign-up").textContent).toContain("Unsaved changes");
+    findGroup("Sign-up").querySelector("form")!.dispatchEvent(new Event("submit"));
+    await flush();
+    const [, saveRequest] = fetchMock.mock.calls.at(-1)! as [string, RequestInit];
+    expect(JSON.parse(String(saveRequest.body))).toEqual({ settings: { openRegistration: true } });
+    expect(findInput("openRegistration").checked).toBe(true);
+    expect(findGroup("Sign-up").textContent).toContain("Saved");
+  });
+
+  it("shows open registration the environment sets as a disabled checkbox with its variable", async () => {
+    const settings = createSettings();
+    settings.openRegistration = { ...settings.openRegistration, value: true, source: "environment" };
+    await mount(settings);
+    expect(findInput("openRegistration").checked).toBe(true);
+    expect(findInput("openRegistration").disabled).toBe(true);
+    expect(findGroup("Sign-up").textContent).toContain("Set by HISAR_OPEN_REGISTRATION");
   });
 
   it("says the audit log is kept at least 30 days", async () => {

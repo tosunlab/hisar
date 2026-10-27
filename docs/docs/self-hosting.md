@@ -95,6 +95,10 @@ address; the first invite defaults to the admin role. Open the printed link in t
 CLI (`hisar signup https://<domain>/invite/<token>`). Once that account exists the setup URL stops working, and opening
 `/admin/setup` while signed in as that admin finishes the remaining steps. Neither way needs email setup.
 
+Everyone else needs an invite, unless you turn on **Anyone can sign up** under **Settings → Sign-up**: then anyone who
+knows the server's address creates an account from the apps' sign-up form or `hisar signup -server https://<domain>`,
+as a member.
+
 ## Email (invites and sharing)
 
 Signed-in users invite people and share vaults by email, and the server sends those emails itself
@@ -146,7 +150,8 @@ with its own APNs key) only works with an iPhone app you build and sign yourself
 ## Instance settings
 
 Admins change the server's settings in the admin dashboard under **Settings**, without a restart: **Email** (above),
-**Sign-up** (who can invite people: anyone with an account, or admins only), **App versions** (the minimum app versions
+**Sign-up** (whether anyone who knows the server's address can sign up without an invitation, off by default, and who
+can invite people: anyone with an account, or admins only), **App versions** (the minimum app versions
 of [Design](./design.md) §8.7) and **Security** (session lifetime, auth burst, and how long item history, the audit log and
 expired invitations are kept; the audit log at least 30 days). They are stored in the `instance_settings` table. These
 variables in `.env` override a field and lock it in the dashboard (any of the Email variables locks all of Email);
@@ -156,6 +161,7 @@ variables in `.env` override a field and lock it in the dashboard (any of the Em
 |---|---|
 | Email | `HISAR_SMTP_HOST`, `HISAR_SMTP_PORT`, `HISAR_SMTP_USERNAME`, `HISAR_SMTP_PASSWORD`, `HISAR_SMTP_FROM` |
 | App versions | `HISAR_MINIMUM_VERSION_DESKTOP_MACOS`, `HISAR_MINIMUM_VERSION_IOS`, `HISAR_MINIMUM_VERSION_ANDROID`, `HISAR_MINIMUM_VERSION_CLI`, `HISAR_MINIMUM_VERSION_EXTENSION` |
+| Anyone can sign up | `HISAR_OPEN_REGISTRATION` (`true` or `false`) |
 | Auth burst | `HISAR_AUTH_BURST` |
 
 Run one server process per database: each process reads the settings at start and after its own saves.

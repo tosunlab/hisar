@@ -14,6 +14,8 @@ interface VaultBackend {
     fun checkMinimumVersion(): VaultStatus
     fun signIn(server: String, email: String, secretKey: String, password: String): VaultStatus
     fun signUp(inviteLink: String, email: String, name: String, password: String): SignUpResult
+    /** signUpWithoutInvite is signUp on a server whose admin opened registration: the server's address instead of an invite. */
+    fun signUpWithoutInvite(server: String, email: String, name: String, password: String): SignUpResult
     fun unlock(password: String): VaultStatus
     fun unlockWithBiometric(): VaultStatus
     fun enableBiometricUnlock(password: String): VaultStatus

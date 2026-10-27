@@ -39,6 +39,7 @@ import {
   type ItemLocation,
   type SSHAgentStatus,
   type SSHKeyType,
+  type SignUpResult,
   type Status,
   type UpdateRequirement,
   type UpdateStatus,
@@ -409,9 +410,19 @@ export async function signIn(server: string, email: string, secretKey: string, p
   return status !== undefined;
 }
 
-export async function signUp(invite: string, email: string, name: string, password: string): Promise<boolean> {
+export function signUp(invite: string, email: string, name: string, password: string): Promise<boolean> {
+  return finishSignUp(() => api.signUp(invite, email, name, password));
+}
+
+// signUpWithoutInvite creates an account on a server whose admin opened registration; the server's refusal is a
+// sentence for the user.
+export function signUpWithoutInvite(server: string, email: string, name: string, password: string): Promise<boolean> {
+  return finishSignUp(() => api.signUpWithoutInvite(server, email, name, password));
+}
+
+async function finishSignUp(request: () => Promise<SignUpResult>): Promise<boolean> {
   const generation = ++sessionGeneration;
-  const result = await runAction(() => api.signUp(invite, email, name, password));
+  const result = await runAction(request);
   if (generation !== sessionGeneration) {
     return false;
   }
