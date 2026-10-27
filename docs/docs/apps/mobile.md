@@ -21,6 +21,8 @@ compile for 32-bit targets. The package is `com.tryhisar.hisar`, and `com.tryhis
 
 The floating Android tab bar keeps destination names on one line. At large text sizes it gives longer names more room
 and reduces its outer spacing before limiting label scaling on narrow windows. Lists clear the bar's measured height.
+Global search keeps the accessible name "Search all vaults", and vault search keeps "Search" followed by the vault name,
+including while a query is entered. Both fields offer the keyboard's Search action.
 
 ```
 android/model/     :model, plain JVM: the HisarKit types, VaultBackend, the app model (com.tryhisar.hisar.app),

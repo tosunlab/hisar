@@ -12,6 +12,13 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeLeft
 import androidx.compose.ui.test.swipeRight
 import androidx.test.espresso.Espresso
+import androidx.compose.ui.test.assertContentDescriptionEquals
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.performTextInputSelection
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.input.ImeAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.HisarUITestCase
 import com.tryhisar.hisar.model.FakeBackend
@@ -94,6 +101,9 @@ class VaultsScreenUITests : HisarUITestCase() {
             assertTrue(exists(hasTestTag("waiting-vault-key-Acme")))
             saveScreenshot("vaults-home-vaults")
             scrollTo("tag-work")
+            val lastRow = composeRule.onNodeWithTag("tag-work").fetchSemanticsNode().boundsInRoot
+            val tabBar = composeRule.onNodeWithTag("tab-vaults").fetchSemanticsNode().boundsInRoot
+            assertTrue("the final row clears the measured tab bar", lastRow.bottom <= tabBar.top)
             saveScreenshot("vaults-home-types-and-tags")
 
             tap("dismiss-removed-vault-old")
@@ -103,6 +113,38 @@ class VaultsScreenUITests : HisarUITestCase() {
             tap("banner-accept-invitation")
             waitForNotice("Accepted. The vault appears once Carol's Hisar finishes sharing.")
             assertFalse(exists(hasTestTag("banner-invitation-text")))
+        }
+    }
+
+    @Test
+    fun testSearchFieldsKeepTheirScopeAndSelection() {
+        launchApp(buildBackend()).use {
+            waitFor("vaults-list")
+            tap("vault-Personal")
+            val vaultSearch = composeRule.onNodeWithTag("vault-search")
+            vaultSearch.assertContentDescriptionEquals("Search Personal")
+            vaultSearch.performTextInput("GitHub")
+            vaultSearch.assertContentDescriptionEquals("Search Personal").assertTextEquals("GitHub")
+            vaultSearch.performTextInputSelection(TextRange(1, 4))
+            assertEquals(TextRange(1, 4), vaultSearch.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+            assertEquals(ImeAction.Search, vaultSearch.fetchSemanticsNode().config[SemanticsProperties.ImeAction])
+            vaultSearch.performImeAction()
+            composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Clear")).performClick()
+            assertEquals("", vaultSearch.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+            vaultSearch.assertContentDescriptionEquals("Search Personal")
+            Espresso.closeSoftKeyboard()
+            openTab("Search")
+            val globalSearch = composeRule.onNodeWithTag("search-field")
+            globalSearch.assertContentDescriptionEquals("Search all vaults")
+            globalSearch.performTextInput("Chase Visa")
+            globalSearch.assertContentDescriptionEquals("Search all vaults").assertTextEquals("Chase Visa")
+            globalSearch.performTextInputSelection(TextRange(0, 5))
+            assertEquals(TextRange(0, 5), globalSearch.fetchSemanticsNode().config[SemanticsProperties.TextSelectionRange])
+            assertEquals(ImeAction.Search, globalSearch.fetchSemanticsNode().config[SemanticsProperties.ImeAction])
+            globalSearch.performImeAction()
+            composeRule.onNode(androidx.compose.ui.test.hasContentDescription("Clear")).performClick()
+            assertEquals("", globalSearch.fetchSemanticsNode().config[SemanticsProperties.EditableText].text)
+            globalSearch.assertContentDescriptionEquals("Search all vaults")
         }
     }
 
