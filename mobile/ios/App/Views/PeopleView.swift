@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct PeopleView: View {
     @EnvironmentObject private var model: AppModel
@@ -181,36 +182,87 @@ struct ReceivedInvitationRow: View {
     var identifierPrefix = ""
     var accept: () -> Void
     var decline: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label {
                     Text("\(invitation.inviterName) shared a vault with you as \(describeVaultRole(invitation.role).lowercased())")
-                    Text(invitation.invitedByEmail)
-                        .font(.footnote)
-                        .foregroundStyle(.themeSecondary)
+                } icon: {
+                    Image(systemName: "person.2.fill")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
                 }
-            } icon: {
-                Image(systemName: "person.2.fill")
-                    .foregroundStyle(.tint)
+                InvitationEmailText(email: invitation.invitedByEmail)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("\(identifierPrefix)invitation-text")
-            HStack(spacing: 10) {
-                Button(action: decline) {
-                    Text("Decline").frame(maxWidth: .infinity)
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) {
+                    acceptButton
+                    declineButton
                 }
-                .applyGlassButtonStyle(isProminent: false)
-                .accessibilityIdentifier("\(identifierPrefix)decline-invitation")
-                Button(action: accept) {
-                    Text("Accept").frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 10) {
+                    declineButton
+                    acceptButton
                 }
-                .applyGlassButtonStyle(isProminent: true)
-                .accessibilityIdentifier("\(identifierPrefix)accept-invitation")
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var acceptButton: some View {
+        Button(action: accept) {
+            Text("Accept").frame(maxWidth: .infinity)
+        }
+        .applyGlassButtonStyle(isProminent: true)
+        .accessibilityIdentifier("\(identifierPrefix)accept-invitation")
+    }
+
+    private var declineButton: some View {
+        Button(action: decline) {
+            Text("Decline").frame(maxWidth: .infinity)
+        }
+        .applyGlassButtonStyle(isProminent: false)
+        .accessibilityIdentifier("\(identifierPrefix)decline-invitation")
+    }
+}
+
+struct InvitationEmailText: UIViewRepresentable {
+    var email: String
+    @Environment(\.themePalette) private var palette
+    @ScaledMetric(relativeTo: .footnote) private var fontSize = 13.0
+
+    func makeUIView(context: Context) -> UITextView {
+        let view = UITextView()
+        view.isEditable = false
+        view.isSelectable = true
+        view.isScrollEnabled = false
+        view.backgroundColor = .clear
+        view.textContainerInset = .zero
+        view.textContainer.lineFragmentPadding = 0
+        view.textContainer.lineBreakMode = .byCharWrapping
+        view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return view
+    }
+
+    func updateUIView(_ view: UITextView, context: Context) {
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.lineBreakMode = .byCharWrapping
+        paragraph.hyphenationFactor = 0
+        view.attributedText = NSAttributedString(string: email, attributes: [
+            .font: UIFont.systemFont(ofSize: fontSize),
+            .foregroundColor: palette.secondaryLabel.uiColor,
+            .paragraphStyle: paragraph,
+        ])
+        view.accessibilityLabel = email
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
+        guard let width = proposal.width else { return nil }
+        return uiView.sizeThatFits(CGSize(width: width, height: .greatestFiniteMagnitude))
     }
 }
 

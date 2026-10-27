@@ -132,6 +132,7 @@ struct OrganizationInvitationRow: View {
     var identifierPrefix = ""
     var accept: () -> Void
     var decline: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     static func describeJoined(_ invitation: OrganizationInvitation) -> String {
         "You joined \(invitation.organizationName). Its vaults appear once an admin adds you to a team."
@@ -139,33 +140,47 @@ struct OrganizationInvitationRow: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label {
-                VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 2) {
+                Label {
                     Text(invitation.message)
-                    Text(invitation.invitedByEmail)
-                        .font(.footnote)
-                        .foregroundStyle(.themeSecondary)
+                } icon: {
+                    Image(systemName: "building.2.fill")
+                        .foregroundStyle(.tint)
+                        .accessibilityHidden(true)
                 }
-            } icon: {
-                Image(systemName: "building.2.fill")
-                    .foregroundStyle(.tint)
+                InvitationEmailText(email: invitation.invitedByEmail)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityElement(children: .contain)
             .accessibilityIdentifier("\(identifierPrefix)organization-invitation-text")
-            HStack(spacing: 10) {
-                Button(action: decline) {
-                    Text("Decline").frame(maxWidth: .infinity)
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(spacing: 10) {
+                    acceptButton
+                    declineButton
                 }
-                .applyGlassButtonStyle(isProminent: false)
-                .accessibilityIdentifier("\(identifierPrefix)decline-organization-invitation")
-                Button(action: accept) {
-                    Text("Accept").frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 10) {
+                    declineButton
+                    acceptButton
                 }
-                .applyGlassButtonStyle(isProminent: true)
-                .accessibilityIdentifier("\(identifierPrefix)accept-organization-invitation")
             }
         }
         .padding(.vertical, 4)
+    }
+
+    private var acceptButton: some View {
+        Button(action: accept) {
+            Text("Accept").frame(maxWidth: .infinity)
+        }
+        .applyGlassButtonStyle(isProminent: true)
+        .accessibilityIdentifier("\(identifierPrefix)accept-organization-invitation")
+    }
+
+    private var declineButton: some View {
+        Button(action: decline) {
+            Text("Decline").frame(maxWidth: .infinity)
+        }
+        .applyGlassButtonStyle(isProminent: false)
+        .accessibilityIdentifier("\(identifierPrefix)decline-organization-invitation")
     }
 }
 

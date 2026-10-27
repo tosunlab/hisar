@@ -1,4 +1,6 @@
 import XCTest
+import SwiftUI
+import UIKit
 @testable import Hisar
 
 @MainActor
@@ -38,6 +40,29 @@ final class OrganizationTests: XCTestCase {
         let model = AppModel(credentialIdentityStore: FakeCredentialIdentityStore())
         await model.start { self.backend }?.value
         return model
+    }
+
+    func testInvitationEmailWrapsLiteralCharactersAtAccessibilitySizes() {
+        let email = "a-very-long-local-part@a-very-long-domain.example.com"
+        let host = UIHostingController(rootView: InvitationEmailText(email: email).dynamicTypeSize(.accessibility5))
+        host.view.frame = CGRect(x: 0, y: 0, width: 240, height: 600)
+        host.view.layoutIfNeeded()
+        func findTextView(_ view: UIView) -> UITextView? {
+            if let textView = view as? UITextView { return textView }
+            return view.subviews.compactMap(findTextView).first
+        }
+        guard let textView = findTextView(host.view) else {
+            return XCTFail("The email must remain selectable.")
+        }
+        XCTAssertEqual(textView.text, email)
+        XCTAssertEqual(textView.accessibilityLabel, email)
+        XCTAssertTrue(textView.isSelectable)
+        XCTAssertFalse(textView.isScrollEnabled)
+        XCTAssertEqual(textView.textContainer.lineBreakMode, .byCharWrapping)
+        let paragraph = textView.attributedText.attribute(.paragraphStyle, at: 0, effectiveRange: nil) as? NSParagraphStyle
+        XCTAssertEqual(paragraph?.hyphenationFactor, 0)
+        XCTAssertGreaterThan(textView.font?.pointSize ?? 0, 13)
+        XCTAssertGreaterThan(textView.sizeThatFits(CGSize(width: 240, height: .greatestFiniteMagnitude)).height, textView.font?.lineHeight ?? 0)
     }
 
     func testDecodesWhatCoreSends() throws {
