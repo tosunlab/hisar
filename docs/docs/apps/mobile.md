@@ -117,8 +117,10 @@ Each source group has one destination selector. Open it to choose a writable vau
 in the source group's access card.
 The import's origin and access explanations use the same card insets as the destination controls.
 
-Credential Exchange imports keep Cancel and system Back available while batches are saving. Closing the import
-does not roll back saved items or interrupt the current batch. The current batch can finish, but no later batch starts.
+Credential Exchange imports keep **Stop import** and system Back available while batches are saving.
+Items already saved stay, and the current batch may finish, but no later batch starts.
+A stopped-import report keeps the known saved count and entries to review. If you leave while the batch settles,
+the result notice's **View report** action reopens it. An uncertain batch outcome is not reported as an exact saved total.
 
 On Android, Settings rows put a long value below the setting name when both do not fit beside each other.
 They keep the system text size and grow to show both strings.

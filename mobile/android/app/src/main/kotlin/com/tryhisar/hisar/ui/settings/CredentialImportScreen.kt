@@ -66,13 +66,13 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
     val isImporting by credentialImport.isImporting.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
-    val scope = rememberCoroutineScope()
     var isSkippingDuplicate by remember { mutableStateOf(true) }
     val isDone = (sheet as? CredentialImportSheet.Importing)?.progress?.isDone == true
     val sourceName = when (sheet) {
         is CredentialImportSheet.EnteringPassphrase -> sheet.fileName
         is CredentialImportSheet.Previewing -> sheet.preview.fileName
         is CredentialImportSheet.Importing -> sheet.progress.fileName
+        is CredentialImportSheet.Stopped -> sheet.preview.fileName
         else -> ""
     }
 
@@ -87,10 +87,12 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
             leading = {
                 val closeTitle = when {
                     isDone -> "Done"
+                    sheet is CredentialImportSheet.Stopped -> "Done"
+                    isImporting || sheet is CredentialImportSheet.Importing -> "Stop import"
                     sheet is CredentialImportSheet.Failed -> "Close"
                     else -> "Cancel"
                 }
-                PlainButton(closeTitle, credentialImport::closeCredentialImport, testTag = if (isDone) "credential-import-done" else "credential-import-cancel")
+                PlainButton(closeTitle, credentialImport::closeCredentialImport, testTag = if (isDone || sheet is CredentialImportSheet.Stopped) "credential-import-done" else "credential-import-cancel")
             },
         ) {
             Column(Modifier.testTag("credential-import")) {
@@ -107,10 +109,11 @@ fun CredentialImportScreen(model: AppModel, sheet: CredentialImportSheet) {
                     is CredentialImportSheet.EnteringPassphrase -> PassphraseSection(credentialImport, errorMessage, isBusy || isImporting)
                     is CredentialImportSheet.Previewing -> PreviewSections(
                         model, sheet.preview, isSkippingDuplicate, { isSkippingDuplicate = it }, errorMessage, isBusy || isImporting,
-                    ) { scope.launch { credentialImport.startCredentialImport(isSkippingDuplicate) } }
+                    ) { model.scope.launch { credentialImport.startCredentialImport(isSkippingDuplicate) } }
                     is CredentialImportSheet.Importing -> ProgressSections(sheet.progress, errorMessage, isImporting) {
-                        scope.launch { credentialImport.continueCredentialImport() }
+                        model.scope.launch { credentialImport.continueCredentialImport() }
                     }
+                    is CredentialImportSheet.Stopped -> StoppedSections(sheet)
                 }
             }
         }
@@ -314,6 +317,7 @@ private fun ProgressSections(progress: ImportProgress, errorMessage: String?, is
                             color = HisarTheme.colors.tint,
                         )
                         Text("${progress.savedCount} of ${progress.totalCount} saved", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+                        Text("Items already saved will stay. The current batch may finish.", style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
                     }
                 }
             }
@@ -329,6 +333,36 @@ private fun ProgressSections(progress: ImportProgress, errorMessage: String?, is
     if (progress.allFailed.isNotEmpty()) {
         val count = progress.allFailed.size
         SkippedSection(progress.allFailed, if (count == 1) "1 item couldn't be saved" else "$count items couldn't be saved", "credential-import-failed")
+    }
+}
+
+@Composable
+private fun StoppedSections(report: CredentialImportSheet.Stopped) {
+    FormSection {
+        FormRow(Modifier.testTag("credential-import-stopped")) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(if (report.isSettling) "Stopping import…" else "Import stopped", style = HisarType.headline, color = HisarTheme.colors.label)
+                val count = report.progress?.savedCount ?: 0
+                Text(if (report.isSettling || report.isOutcomeUncertain) "At least $count items saved." else "${VaultLogic.describeItemCount(count)} saved.")
+                Text("Items already saved will stay. The current batch may finish.")
+                if (report.isOutcomeUncertain) Text("The last batch's outcome couldn't be confirmed. Check the destination before retrying.")
+                Text("Keep the source and review the entries below before retrying. The saved count does not describe everything left in the source.")
+                if (report.preview.notice.isNotEmpty()) Text(report.preview.notice, color = HisarTheme.colors.orange)
+            }
+        }
+    }
+    val skipped = report.progress?.allSkipped?.ifEmpty { report.preview.allSkipped } ?: report.preview.allSkipped
+    if (skipped.isNotEmpty()) SkippedSection(skipped, "Source entries to review", "credential-import-stopped-skipped")
+    val duplicateOutcomes = report.progress?.allDuplicateOutcomes.orEmpty()
+    if (duplicateOutcomes.isNotEmpty()) {
+        SkippedSection(duplicateOutcomes, "Items already in the destination", "credential-import-stopped-duplicates")
+    } else if (report.preview.allDuplicate.isNotEmpty()) {
+        FormSection(header = "Items already in the destination") {
+            report.preview.allDuplicate.forEach { EntryRow(it.title, "Check this item in the source and destination before retrying.") }
+        }
+    }
+    report.progress?.allFailed?.takeIf { it.isNotEmpty() }?.let {
+        SkippedSection(it, "Items that couldn't be saved", "credential-import-stopped-failed")
     }
 }
 
