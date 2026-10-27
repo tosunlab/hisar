@@ -37,6 +37,13 @@ object AccountLifecycleLogic {
         return trimmedEmail.isNotEmpty() && trimmedEmail.equals(accountEmail, ignoreCase = true)
     }
 
+    /**
+     * A sign-up that finished and waits only for its Emergency Kit, as the iPhone decides: Save your Secret Key saves and
+     * acknowledges it. Every other pending result opens account recovery.
+     */
+    fun isWaitingOnlyForKit(setupState: String, secretKey: String, problems: List<String>): Boolean =
+        setupState == "delivery-pending" && secretKey.isNotEmpty() && problems.isEmpty()
+
     fun describeSignedOutDevices(count: Int): String = when (count) {
         in Int.MIN_VALUE..-1 -> "Any other devices were signed out; their count could not be recovered."
         0 -> "No other devices were signed in."

@@ -827,6 +827,7 @@ export function createApiMock() {
     deleteAccount: vi.fn(),
     dismissSignedOutReason: vi.fn(),
     forgetNewAccountSecretKey: vi.fn().mockResolvedValue(undefined),
+    acknowledgeNewAccountRecovery: vi.fn().mockResolvedValue(undefined),
     listPendingRecovery: vi.fn().mockResolvedValue([]),
     resumePendingRecovery: vi.fn(),
     savePendingRecoveryEmergencyKit: vi.fn(),

@@ -484,6 +484,7 @@ const wailsApi = {
   saveNewAccountEmergencyKit: (): Promise<string> => Service.SaveNewAccountEmergencyKit(),
   saveEmergencyKit: (password: string): Promise<string> => Service.SaveEmergencyKit(password),
   forgetNewAccountSecretKey: (): Promise<void> => Service.ForgetNewAccountSecretKey(),
+  acknowledgeNewAccountRecovery: (): Promise<void> => Service.AcknowledgeNewAccountRecovery(),
   listPendingRecovery: async (): Promise<PendingRecoverySummary[]> => (await Service.ListPendingRecovery()) ?? [],
   resumePendingRecovery: (operationID: string, password: string, secretKey = "", priorSecretKey = ""): Promise<SignUpResult> => Service.ResumePendingRecoveryWithSecretKey(operationID, password, secretKey, priorSecretKey),
   savePendingRecoveryEmergencyKit: (operationID: string, password: string): Promise<string> => Service.SavePendingRecoveryEmergencyKit(operationID, password),

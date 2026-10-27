@@ -160,12 +160,16 @@ private fun SecretKeyRow(secretKey: String, testTag: String) {
     }
 }
 
-/** Saving, printing and sending an Emergency Kit PDF to another app, the things the iPhone's share sheet offers for it. */
+/**
+ * Saving, printing and sending an Emergency Kit PDF to another app, the things the iPhone's share sheet offers for it.
+ * [onHandoff] runs once the file creator saved it, the print dialog opened or the share sheet opened.
+ */
 @Composable
-private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String) {
+internal fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String, printTestTag: String, shareTestTag: String, onHandoff: () -> Unit = {}) {
     val context = LocalContext.current
     val save = rememberFileSaver("application/pdf") { savedURI ->
         if (savedURI != null) {
+            onHandoff()
             model.showNotice("Emergency Kit saved", com.tryhisar.hisar.app.Notice.Action("Open") {
                 try {
                     context.startActivity(Intent(Intent.ACTION_VIEW).setDataAndType(savedURI, "application/pdf").addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION))
@@ -175,10 +179,17 @@ private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String,
             })
         } else model.errorMessage.value = SAVE_FAILED_MESSAGE
     }
-    val share = rememberFileSharer("application/pdf") { model.errorMessage.value = SHARE_FAILED_MESSAGE }
+    val share = rememberFileSharer("application/pdf", onFailure = { model.errorMessage.value = SHARE_FAILED_MESSAGE }, onShared = onHandoff)
     FormButtonRow("Save Emergency Kit", { save(File(path)) }, testTag = saveTestTag, icon = Icons.Outlined.SaveAlt, color = HisarTheme.colors.tint)
     RowDivider()
-    FormButtonRow("Print Emergency Kit", { printPdf(context, File(path), "Hisar Emergency Kit") }, testTag = printTestTag, icon = Icons.Outlined.Print, color = HisarTheme.colors.tint)
+    FormButtonRow(
+        "Print Emergency Kit",
+        {
+            printPdf(context, File(path), "Hisar Emergency Kit")
+            onHandoff()
+        },
+        testTag = printTestTag, icon = Icons.Outlined.Print, color = HisarTheme.colors.tint,
+    )
     RowDivider()
     FormButtonRow("Share Emergency Kit", { share(File(path)) }, testTag = shareTestTag, icon = Icons.Outlined.IosShare, color = HisarTheme.colors.tint)
 }

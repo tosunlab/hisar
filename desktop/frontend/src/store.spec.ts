@@ -74,18 +74,74 @@ describe("store", () => {
     expect(store.isBusy).toBe(false);
   });
 
-  it("keeps the Secret Key pending after sign up until confirmed", async () => {
-    api.signUp.mockResolvedValue({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+  const cleanSignUp = { status: createStatus("unlocked"), secretKey: "H1-SECRET", pendingOperationId: "signup", setupState: "delivery-pending", problems: [] };
+  const signUpRecord = {
+    operationId: "signup", kind: "signup", origin: "https://hisar.test", accountId: "account", email: "alice@example.com", name: "Alice",
+    phase: "delivery-pending", kitSaved: false, manualUnlock: false, problems: [], keychainProtected: true, revision: 1,
+  };
+
+  it("shows Save your Secret Key, not recovery, after a sign-up that waits only for its kit", async () => {
+    api.signUp.mockResolvedValue(cleanSignUp);
+    api.listPendingRecovery.mockResolvedValue([signUpRecord]);
     api.listAllVault.mockResolvedValue([allTestVault[0]]);
     api.listAllItem.mockResolvedValue([]);
     await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
     expect(store.pendingSecretKey).toBe("H1-SECRET");
-    storeModule.confirmSecretKeySaved();
+    expect(store.isRecoveryOpen).toBe(false);
+    expect(store.pendingRecovery).toHaveLength(1);
+    expect(store.recoveryFactor).toBeNull();
+    api.listPendingRecovery.mockResolvedValue([]);
+    expect(await storeModule.confirmSecretKeySaved()).toBe(true);
+    expect(api.acknowledgeNewAccountRecovery).toHaveBeenCalledTimes(1);
     expect(store.pendingSecretKey).toBe("");
+    expect(store.pendingRecovery).toEqual([]);
+    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
+  });
+
+  it("keeps the Secret Key screen with the error when the sign-up can't be acknowledged", async () => {
+    api.signUp.mockResolvedValue(cleanSignUp);
+    api.listPendingRecovery.mockResolvedValue([signUpRecord]);
+    api.listAllVault.mockResolvedValue([allTestVault[0]]);
+    api.listAllItem.mockResolvedValue([]);
+    await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
+    api.acknowledgeNewAccountRecovery.mockRejectedValueOnce(new Error("finish setup and save the Emergency Kit before acknowledging delivery"));
+    expect(await storeModule.confirmSecretKeySaved()).toBe(false);
+    expect(store.pendingSecretKey).toBe("H1-SECRET");
+    expect(store.isTouchIDOfferShown).toBe(false);
+    expect(store.errorMessage).toBe("finish setup and save the Emergency Kit before acknowledging delivery");
+    expect(api.forgetNewAccountSecretKey).not.toHaveBeenCalled();
+  });
+
+  it("keeps the sign-up's record for the recovery reminder on Finish later, even before the list loaded", async () => {
+    const vaults = Promise.withResolvers<typeof allTestVault>();
+    api.signUp.mockResolvedValue(cleanSignUp);
+    api.listPendingRecovery.mockResolvedValue([signUpRecord]);
+    api.listAllVault.mockReturnValueOnce(vaults.promise);
+    api.listAllItem.mockResolvedValue([]);
+    const signingUp = storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
+    await vi.waitFor(() => expect(store.pendingSecretKey).toBe("H1-SECRET"));
+    await storeModule.postponeSecretKey();
+    vaults.resolve([allTestVault[0]]);
+    await signingUp;
+    expect(store.pendingSecretKey).toBe("");
+    expect(store.isRecoveryOpen).toBe(false);
+    expect(store.pendingRecovery).toHaveLength(1);
+    expect(api.forgetNewAccountSecretKey).toHaveBeenCalled();
+    expect(api.acknowledgeNewAccountRecovery).not.toHaveBeenCalled();
+  });
+
+  it("opens recovery for a sign-up that still needs finishing", async () => {
+    api.signUp.mockResolvedValue({ ...cleanSignUp, problems: ["The account was created, but its Personal vault could not finish. Resume account setup."] });
+    api.listPendingRecovery.mockResolvedValue([signUpRecord]);
+    api.listAllVault.mockResolvedValue([allTestVault[0]]);
+    api.listAllItem.mockResolvedValue([]);
+    await storeModule.signUp("https://hisar.test/invite/x", "alice@example.com", "Alice", "long password");
+    expect(store.pendingSecretKey).toBe("");
+    expect(store.isRecoveryOpen).toBe(true);
   });
 
   it("creates an account without an invite on an open server", async () => {
-    api.signUpWithoutInvite.mockResolvedValue({ status: createStatus("unlocked"), secretKey: "H1-SECRET" });
+    api.signUpWithoutInvite.mockResolvedValue(cleanSignUp);
     api.listAllVault.mockResolvedValue([allTestVault[0]]);
     api.listAllItem.mockResolvedValue([]);
     expect(await storeModule.signUpWithoutInvite("hisar.test", "alice@example.com", "Alice", "long password")).toBe(true);

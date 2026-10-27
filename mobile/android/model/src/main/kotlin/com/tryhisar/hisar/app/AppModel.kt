@@ -100,7 +100,7 @@ class AppModel(
     val signIn = SignInModel(this, isPlainHttpAllowed)
     val lock = LockModel(this)
     val settings = SettingsModel(this)
-    val pendingRecovery = PendingRecoveryModel(this) { signIn.finishNewSecretKey() }
+    val pendingRecovery = PendingRecoveryModel(this) { signIn.offerBiometricUnlock() }
     val credentialImport = CredentialImportModel(this)
     val itemEditor = ItemEditorModel(this)
     val favorites = FavoritesModel(this)
@@ -250,9 +250,9 @@ class AppModel(
         attempt { it.getStatus() }?.let(::applyStatus)
     }
 
-    override suspend fun refreshPendingRecovery() {
-        pendingRecovery.refresh()
-        if (pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
+    override suspend fun refreshPendingRecovery(isOpening: Boolean) {
+        pendingRecovery.refresh(isOpening)
+        if (isOpening && pendingRecovery.allRecovery.value.isNotEmpty()) pendingRecovery.open()
     }
 
     suspend fun lock() {

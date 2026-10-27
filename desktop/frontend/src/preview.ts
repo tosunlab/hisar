@@ -753,6 +753,26 @@ function exportPreviewData(request: ExportRequest): Promise<ExportResult> {
 
 const resolveAfterDelay = <Value>(value: Value): Promise<Value> => new Promise((resolve) => setTimeout(() => resolve(value), 80));
 
+// signUpPreview answers as core does after a clean sign-up: the account is open and its pending record waits for the kit.
+function signUpPreview(): Promise<SignUpResult> {
+  previewState = "unlocked";
+  previewRecovery = [...previewRecovery.filter((entry) => entry.operationId !== "preview-signup"), {
+    operationId: "preview-signup",
+    kind: "signup",
+    origin: "https://eu.tryhisar.com",
+    accountId: "preview-account",
+    email: "alper@tryhisar.com",
+    name: "Alper",
+    phase: "delivery-pending",
+    kitSaved: false,
+    manualUnlock: false,
+    problems: [],
+    keychainProtected: true,
+    revision: 1,
+  }];
+  return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "preview-signup", setupState: "delivery-pending", problems: [] });
+}
+
 function createPreviewTerminalRequester(): Pick<
   ApprovalEvent,
   "requesterKind" | "appName" | "appIconURL" | "appPath" | "appSignature" | "appSigner" | "appWarning" | "allChainProcess"
@@ -1524,14 +1544,8 @@ export const previewApi = {
     previewState = "unlocked";
     return resolveAfterDelay(previewStatus());
   },
-  signUp: (): Promise<SignUpResult> => {
-    previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
-  },
-  signUpWithoutInvite: (): Promise<SignUpResult> => {
-    previewState = "unlocked";
-    return resolveAfterDelay({ status: previewStatus(), secretKey: "H1-GVC2KA-T5XVY-JQZ1G-42CEY-1C23P-V5F89M", pendingOperationId: "", setupState: "", problems: [] });
-  },
+  signUp: signUpPreview,
+  signUpWithoutInvite: signUpPreview,
   unlock: () => {
     previewState = "unlocked";
     return resolveAfterDelay(previewStatus());
@@ -2082,10 +2096,20 @@ export const previewApi = {
   cancelApprovalTouchID: () => Promise.resolve(),
   cancelTouchIDPrompt: () => Promise.resolve(),
   hasNativeTouchIDView: false,
-  saveNewAccountEmergencyKit: () => resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
+  saveNewAccountEmergencyKit: () => {
+    previewRecovery = previewRecovery.map((entry) => entry.operationId === "preview-signup" ? { ...entry, kitSaved: true } : entry);
+    return resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf");
+  },
   saveEmergencyKit: (password: string) =>
     password.length < 4 ? Promise.reject(new Error("incorrect email, master password or Secret Key")) : resolveAfterDelay("/Users/you/Documents/Hisar Emergency Kit.pdf"),
   forgetNewAccountSecretKey: () => Promise.resolve(),
+  acknowledgeNewAccountRecovery: () => {
+    if (!previewRecovery.some((entry) => entry.operationId === "preview-signup" && entry.kitSaved)) {
+      return Promise.reject(new Error("finish setup and save the Emergency Kit before acknowledging delivery"));
+    }
+    previewRecovery = previewRecovery.filter((entry) => entry.operationId !== "preview-signup");
+    return resolveAfterDelay(undefined);
+  },
   listPendingRecovery: () => resolveAfterDelay(previewRecovery.map((entry) => ({ ...entry }))),
   resumePendingRecovery: (_operationID: string, password: string): Promise<SignUpResult> => {
     if (password.length < 4) return Promise.reject(new Error("The password could not open this preview recovery operation."));

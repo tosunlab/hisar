@@ -98,7 +98,8 @@ interface ModelContext {
 
     suspend fun refreshAll()
 
-    suspend fun refreshPendingRecovery()
+    /** Reloads the pending recovery records and, unless [isOpening] is false, shows them when there are any. */
+    suspend fun refreshPendingRecovery(isOpening: Boolean = true)
 
     /** Shows a snackbar, with an optional action until it is dismissed. */
     fun showNotice(message: String, action: Notice.Action? = null)
