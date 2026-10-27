@@ -12,6 +12,7 @@
 		0738F234B5FC729D53DFCB1F /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = F067661397CABF889DA6CF7C /* Theme.swift */; };
 		0A578F219707B0B5B090842E /* SignInView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3A27E1D1B8F40B6BD8851EA2 /* SignInView.swift */; };
 		0B2C04782778BD9D153F4512 /* HisarUITestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36F2BE095F513A43A814C85D /* HisarUITestCase.swift */; };
+		0B9072D7075378F71B05BE47 /* CredentialField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0595FF6B3EA209F796948A /* CredentialField.swift */; };
 		0D867B76B6AB8BC768789633 /* RootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DDEDF97D4D5D844AB4DA42AD /* RootView.swift */; };
 		11F465CF048D4B7EACF71385 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA215E0ABDBB6E239127F971 /* SettingsView.swift */; };
 		14374DD058E143DF2B26B1C3 /* AccountLifecycleViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BAE818AB33EBE7BEE32E52C /* AccountLifecycleViews.swift */; };
@@ -23,6 +24,7 @@
 		1C4C0438B2CF7BD2FB18DCC6 /* DevicesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */; };
 		1C8DFC381A299FC74ABC0696 /* WebPushDecryptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3B7F01A8C316E01D46E510AD /* WebPushDecryptor.swift */; };
 		1E6F174F2382C5574842C6E0 /* UnlockPanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */; };
+		1E8719A831930A6E6EB0DC29 /* CredentialRevealUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2F41C1C5079B764C9809E28 /* CredentialRevealUITests.swift */; };
 		1F28B9CCD36BFB98A0F6A64F /* ItemEditorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 58725D5CFD94EED72E93193F /* ItemEditorView.swift */; };
 		1F7290AC6F10333AE09BC264 /* PushPayloadKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */; };
 		1FC014BDA52438E0C24285E3 /* PhoneApprovalSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D7C541FAC5348577EADDE35 /* PhoneApprovalSheet.swift */; };
@@ -43,6 +45,7 @@
 		32E0A462D6387F2868226186 /* HisarKitBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9A5C76E2318A2B55CC5F849 /* HisarKitBackend.swift */; };
 		3322F7AF5EC4923637DF5F93 /* FavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E0374FBF44BF5778ED2846 /* FavoritesTests.swift */; };
 		343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */; };
+		34D1D3A86C35121640AF66D8 /* CredentialFieldTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9007BBD736D5DF316E384C66 /* CredentialFieldTests.swift */; };
 		36DE9AB043E9FDA932377B5F /* KeychainSecretKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */; };
 		37B8625077147FD073CDEB86 /* PhoneApprovalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DDBE193CE96E78C6788441 /* PhoneApprovalTests.swift */; };
 		385610A06FAE72AFC83F4F07 /* HisarUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13B49F20D7B3678555E885AD /* HisarUITests.swift */; };
@@ -124,6 +127,7 @@
 		A4D79E48A346ADB339EDAF08 /* VaultBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3573A4BEA82AFBD320C27A14 /* VaultBackend.swift */; };
 		A53ECFFE1EB70418DBB8B0DA /* PhoneApproval.swift in Sources */ = {isa = PBXBuildFile; fileRef = A128DD342FC95DBB54C289C6 /* PhoneApproval.swift */; };
 		A5D7635BBA8D6DFA7C8BDE18 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 14136704A8F8FCE442B63B00 /* Assets.xcassets */; };
+		A67BA5DB47E768F6CB4FF507 /* CredentialField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0595FF6B3EA209F796948A /* CredentialField.swift */; };
 		A694859A09422750E798E031 /* PushNotificationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05FD21A08E8BC2D460524C72 /* PushNotificationTests.swift */; };
 		A6B2BE091D645162FA3B2872 /* HisarKit.xcframework in Frameworks */ = {isa = PBXBuildFile; fileRef = 15377A521C283EA5723954C2 /* HisarKit.xcframework */; };
 		A94B4DF0B3BDD0E2EED6122E /* PasteboardClipboard.swift in Sources */ = {isa = PBXBuildFile; fileRef = E496D0D5FF4AB3425759E1B7 /* PasteboardClipboard.swift */; };
@@ -190,6 +194,7 @@
 		F82E0381927174EE0F8DF321 /* SharingPushText.swift in Sources */ = {isa = PBXBuildFile; fileRef = F8013EEA324E335AC3F584E9 /* SharingPushText.swift */; };
 		FACA3B7B115CEC55B066CA73 /* ItemListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 41FBB5DC69E33D5A27FE6041 /* ItemListView.swift */; };
 		FBAAABA2E41B51B57EA5BA70 /* IconPickerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 170839CF56DF8848503FCD67 /* IconPickerView.swift */; };
+		FF193C4AD8D7C943F51F3D23 /* CredentialField.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C0595FF6B3EA209F796948A /* CredentialField.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -300,10 +305,12 @@
 		7A7DA85F127A5EB580839A6B /* SharingPushTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SharingPushTests.swift; sourceTree = "<group>"; };
 		7ACF599EDF05A1F19E55537F /* AutoFillModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AutoFillModel.swift; sourceTree = "<group>"; };
 		7B2774C869B2E88A54905C78 /* FakeBackend.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBackend.swift; sourceTree = "<group>"; };
+		7C0595FF6B3EA209F796948A /* CredentialField.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialField.swift; sourceTree = "<group>"; };
 		80117468D27E2887C9AFA79B /* NewVaultView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NewVaultView.swift; sourceTree = "<group>"; };
 		8377C0BA43756107B7C54F28 /* PendingApprovalSection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingApprovalSection.swift; sourceTree = "<group>"; };
 		83D724DF7FA615B453AF712E /* HisarNotificationService.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = HisarNotificationService.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F56BEC5782A64AB5EE308FF /* UnlockPanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnlockPanel.swift; sourceTree = "<group>"; };
+		9007BBD736D5DF316E384C66 /* CredentialFieldTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialFieldTests.swift; sourceTree = "<group>"; };
 		932FFDDB9DA6FFA0375B3041 /* PhoneApprovalPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PhoneApprovalPreviewView.swift; sourceTree = "<group>"; };
 		95EF6040E7BF9F0A901826B0 /* PeopleView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PeopleView.swift; sourceTree = "<group>"; };
 		9BCEF508D7F707D9913CFF28 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/Localizable.strings; sourceTree = "<group>"; };
@@ -313,6 +320,7 @@
 		A238D14B92DA27E1CCAE99DA /* LogoMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogoMark.swift; sourceTree = "<group>"; };
 		AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecretKeyStore.swift; sourceTree = "<group>"; };
 		B033299FD6E753ABEC665FC2 /* VaultManagementPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultManagementPreviewView.swift; sourceTree = "<group>"; };
+		B2F41C1C5079B764C9809E28 /* CredentialRevealUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialRevealUITests.swift; sourceTree = "<group>"; };
 		B337DBEFF36317EB806A13C1 /* CardInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardInput.swift; sourceTree = "<group>"; };
 		B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesView.swift; sourceTree = "<group>"; };
 		B5CAE9257D26523B30362ACC /* AppItemIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppItemIcon.swift; sourceTree = "<group>"; };
@@ -377,6 +385,7 @@
 			children = (
 				6257A3FFF8FE0BC1B95ACD0D /* AccountLifecycleUITests.swift */,
 				ED00276374ABADC314F5DF91 /* AutoFillUITests.swift */,
+				B2F41C1C5079B764C9809E28 /* CredentialRevealUITests.swift */,
 				D5829FBCBCC42B40AFEF68F3 /* FaceIDUITests.swift */,
 				4FA213E40620F47F0F235DA0 /* FavoritesUITests.swift */,
 				36F2BE095F513A43A814C85D /* HisarUITestCase.swift */,
@@ -493,6 +502,7 @@
 		65AFAEE504A2C0112F4A78DD /* Views */ = {
 			isa = PBXGroup;
 			children = (
+				7C0595FF6B3EA209F796948A /* CredentialField.swift */,
 				47989259B86D2ABA32773725 /* ItemIcon.swift */,
 				A238D14B92DA27E1CCAE99DA /* LogoMark.swift */,
 				F067661397CABF889DA6CF7C /* Theme.swift */,
@@ -554,6 +564,7 @@
 				DE18719EE21D2029B6FDFD85 /* AccountLifecycleTests.swift */,
 				0D54C09BE6FCF29F969C4E18 /* AppModelTests.swift */,
 				5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */,
+				9007BBD736D5DF316E384C66 /* CredentialFieldTests.swift */,
 				485ED95656DCEAE23CB924CE /* CredentialImportTests.swift */,
 				7B2774C869B2E88A54905C78 /* FakeBackend.swift */,
 				D4E0374FBF44BF5778ED2846 /* FavoritesTests.swift */,
@@ -812,6 +823,7 @@
 				891A92F8A53AD982CEF0DB05 /* AccountLifecycleUITests.swift in Sources */,
 				4AA5D5C3D6DAB5608269335B /* AutoFillUITests.swift in Sources */,
 				B092418CD12F1BDB3C327576 /* CardInput.swift in Sources */,
+				1E8719A831930A6E6EB0DC29 /* CredentialRevealUITests.swift in Sources */,
 				BA22AA3DF1A43D357843EA5E /* FaceIDUITests.swift in Sources */,
 				545172F0BC0BA184895F99DD /* FavoritesUITests.swift in Sources */,
 				0B2C04782778BD9D153F4512 /* HisarUITestCase.swift in Sources */,
@@ -836,6 +848,7 @@
 				A0E84C2ACA3FABF84806641B /* BackendFactory.swift in Sources */,
 				90BC5BC6D357C99DE6AB9ACA /* BiometricKeychain.swift in Sources */,
 				DE9235E38A36F494D9CA6524 /* CardInput.swift in Sources */,
+				0B9072D7075378F71B05BE47 /* CredentialField.swift in Sources */,
 				B4936FF8BE8C3E0A2812F15E /* CredentialProviderViewController.swift in Sources */,
 				6610DBC1CEA9F590010FEE67 /* HisarConfiguration.swift in Sources */,
 				2ACD8335D0C90EBFBAAE7ED7 /* HisarKitBackend.swift in Sources */,
@@ -864,6 +877,7 @@
 				6E06BB3841ACDFDD3B3F6C76 /* AccountLifecycleTests.swift in Sources */,
 				641117B1BC86ED26F0DAF500 /* AppModelTests.swift in Sources */,
 				343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */,
+				34D1D3A86C35121640AF66D8 /* CredentialFieldTests.swift in Sources */,
 				5E555F44D126AB82C96B9857 /* CredentialImportTests.swift in Sources */,
 				BDD67F160CD76BD42407E230 /* FakeBackend.swift in Sources */,
 				3322F7AF5EC4923637DF5F93 /* FavoritesTests.swift in Sources */,
@@ -895,6 +909,7 @@
 				B2393CCCFBDE641E9D29319E /* BackendFactory.swift in Sources */,
 				4113E21A404A66886093F774 /* BiometricKeychain.swift in Sources */,
 				5BCBA9CA03A03D2BECAA57AB /* CardInput.swift in Sources */,
+				A67BA5DB47E768F6CB4FF507 /* CredentialField.swift in Sources */,
 				14694E88C6EF151B9842335E /* CredentialImportView.swift in Sources */,
 				1C4C0438B2CF7BD2FB18DCC6 /* DevicesView.swift in Sources */,
 				5F2B5FFC40071F1CAA638654 /* EmergencyKitScanner.swift in Sources */,
@@ -971,6 +986,7 @@
 				BA6171A70EA73110EBB2B069 /* BackendFactory.swift in Sources */,
 				65FDAEF0EF071906451A6DBC /* BiometricKeychain.swift in Sources */,
 				28D1FF534FC2ACBDF58FFC7B /* CardInput.swift in Sources */,
+				FF193C4AD8D7C943F51F3D23 /* CredentialField.swift in Sources */,
 				E295662EDC797088C52BCE2B /* CredentialImportView.swift in Sources */,
 				236F343E99EBEB565B80E597 /* DevicesView.swift in Sources */,
 				92B9F53A4E1B60F74F0F6498 /* EmergencyKitScanner.swift in Sources */,

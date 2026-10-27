@@ -4,6 +4,7 @@ import { changeMasterPassword, clearError, store } from "../store";
 import { describeSignedOutDevices, getMasterPasswordFeedback } from "../util";
 import AccountDialog from "./AccountDialog.vue";
 import StrengthMeter from "./StrengthMeter.vue";
+import CredentialField from "./CredentialField.vue";
 
 const emit = defineEmits<{ close: [] }>();
 
@@ -68,11 +69,11 @@ function close(): void {
       </ul>
       <label>
         <span>Current master password</span>
-        <input v-model="currentPassword" name="currentPassword" type="password" autocomplete="current-password" autofocus />
+        <CredentialField secret-name="current master password"><input v-model="currentPassword" name="currentPassword" type="password" autocomplete="current-password" autofocus /></CredentialField>
       </label>
       <label>
         <span>New master password</span>
-        <input v-model="newPassword" name="newPassword" type="password" autocomplete="new-password" />
+        <CredentialField secret-name="new master password"><input v-model="newPassword" name="newPassword" type="password" autocomplete="new-password" /></CredentialField>
         <StrengthMeter :password="newPassword" />
         <p class="hint" :class="passwordFeedback.isBlocking && newPassword ? 'warning-text' : 'muted'" data-testid="new-password-feedback">
           {{ passwordFeedback.message }}
@@ -80,7 +81,7 @@ function close(): void {
       </label>
       <label>
         <span>Repeat new master password</span>
-        <input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" />
+        <CredentialField secret-name="repeated new master password"><input v-model="repeatedPassword" name="repeatedPassword" type="password" autocomplete="new-password" /></CredentialField>
         <p v-if="isMismatched" class="hint warning-text" data-testid="new-password-mismatch">The passwords don't match.</p>
       </label>
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>

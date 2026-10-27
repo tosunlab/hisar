@@ -892,6 +892,12 @@ The operator can require a minimum version per app, in the admin dashboard under
 
 All clients use `core/` for crypto, the local store and sync.
 
+The desktop, iPhone and Android apps conceal user-entered master passwords and export passphrases by default.
+Each field has an independent, explicitly activated **Show** or **Hide** control named for that credential.
+Revealing changes only its display, preserving the value, selection, input protections and keyboard settings.
+Submission, navigation away and locking conceal the fields again. The iPhone also conceals them when its scene becomes inactive.
+Existing credential-clearing rules still apply. Recovery Secret Key fields keep their existing display behavior and never gain automatic reveal.
+
 ### 9.1 Desktop — Wails v3 (Go + Vue/TypeScript)
 
 - The Go side owns the unlocked keyset and vault keys (in `memguard` locked buffers). The web UI calls Go methods and receives only the decrypted data it asks for.

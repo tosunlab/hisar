@@ -317,12 +317,14 @@ struct ExportDataForm: View {
                 }
                 if format == .encrypted {
                     Section {
-                        SecureField("Export passphrase", text: $passphrase)
+                        CredentialField("Export passphrase", text: $passphrase, secretName: "export passphrase")
                             .textContentType(.newPassword)
                             .accessibilityIdentifier("export-passphrase")
-                        SecureField("Repeat export passphrase", text: $repeatedPassphrase)
+                            .concealWhen(isBusy)
+                        CredentialField("Repeat export passphrase", text: $repeatedPassphrase, secretName: "repeated export passphrase")
                             .textContentType(.newPassword)
                             .accessibilityIdentifier("export-passphrase-repeat")
+                            .concealWhen(isBusy)
                     } footer: {
                         Text("At least \(options.minPassphraseLength) characters. You need it to import the file; Hisar can't recover it.")
                     }
@@ -340,9 +342,10 @@ struct ExportDataForm: View {
                 }
                 if isPasswordNeeded {
                     Section {
-                        SecureField("Master password", text: $password)
+                        CredentialField("Master password", text: $password)
                             .textContentType(.password)
                             .accessibilityIdentifier("export-password")
+                            .concealWhen(isBusy)
                     }
                 }
                 if let errorMessage {

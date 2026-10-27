@@ -57,12 +57,13 @@ struct UnlockPanel: View {
                 }
             }
             Section {
-                SecureField("Master password", text: $password)
+                CredentialField("Master password", text: $password)
                     .textContentType(.password)
                     .submitLabel(.go)
                     .focused($isPasswordFocused)
                     .onSubmit(submit)
                     .accessibilityIdentifier("unlock-password")
+                    .concealWhen(isBusy)
             } footer: {
                 if isOffline {
                     Label("Offline. You can still unlock with the copy on this iPhone.", systemImage: "wifi.slash")

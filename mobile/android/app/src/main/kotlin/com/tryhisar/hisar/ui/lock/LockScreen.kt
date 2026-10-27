@@ -180,6 +180,7 @@ fun UnlockPanel(
         ) {
             FormTextField(
                 password, { password = it }, placeholder = "Master password", testTag = "unlock-password", isSecure = true,
+                revealName = "master password", concealWhen = isBusy,
                 modifier = Modifier.focusRequester(focusRequester),
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { submit() }),

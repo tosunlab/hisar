@@ -5,6 +5,7 @@ import { useSettingsRowVisibility } from "../settingsSections";
 import { isMacPlatform } from "../util";
 import ChangeMasterPasswordDialog from "./ChangeMasterPasswordDialog.vue";
 import ReplaceSecretKeyDialog from "./ReplaceSecretKeyDialog.vue";
+import CredentialField from "./CredentialField.vue";
 
 const allAutoLockOption = [
   { seconds: 30, label: "30 seconds" },
@@ -75,6 +76,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
           </button>
         </div>
         <form v-if="isEnablingTouchID" v-show="isRowVisible('touch-id')" class="settings-group-form" @submit.prevent="submitEnableTouchID">
+          <CredentialField>
           <input
             v-model="touchIDPassword"
             name="touchIDPassword"
@@ -85,6 +87,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             autofocus
             required
           />
+          </CredentialField>
           <button type="button" class="ghost" @click="isEnablingTouchID = false">Cancel</button>
           <button class="primary" type="submit" :disabled="store.isBusy">Turn on</button>
         </form>
@@ -144,6 +147,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
           <button v-if="!isSavingEmergencyKit" data-testid="save-emergency-kit" @click="isSavingEmergencyKit = true">Save Emergency Kit…</button>
         </div>
         <form v-if="isSavingEmergencyKit" class="settings-group-form" @submit.prevent="submitSaveEmergencyKit">
+          <CredentialField>
           <input
             v-model="emergencyKitPassword"
             name="emergencyKitPassword"
@@ -154,6 +158,7 @@ async function submitSaveEmergencyKit(): Promise<void> {
             autofocus
             required
           />
+          </CredentialField>
           <button type="button" class="ghost" @click="isSavingEmergencyKit = false">Cancel</button>
           <button class="primary" type="submit" :disabled="store.isBusy">Save Emergency Kit…</button>
         </form>

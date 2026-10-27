@@ -60,9 +60,10 @@ struct CredentialImportView: View {
     @ViewBuilder
     private func passphraseSection(_ preview: ImportPreview) -> some View {
         Section {
-            SecureField("Export passphrase", text: $exportPassphrase)
+            CredentialField("Export passphrase", text: $exportPassphrase, secretName: "export passphrase")
                 .textContentType(.password)
                 .accessibilityIdentifier("credential-import-passphrase")
+                .concealWhen(model.isBusy)
             if let errorMessage = model.errorMessage {
                 ErrorBanner(message: errorMessage)
             }

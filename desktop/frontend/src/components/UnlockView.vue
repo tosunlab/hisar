@@ -5,6 +5,7 @@ import { loadShareAwaitingUnlockQuietly, signOut, store, unlock, unlockWithBiome
 import { describePerson } from "../util";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import CredentialField from "./CredentialField.vue";
 
 const password = ref("");
 const isConfirmingSignOut = ref(false);
@@ -92,6 +93,7 @@ onBeforeUnmount(() => {
         <form class="unlock-form" @submit.prevent="submitUnlock">
           <label class="password-field">
             <AppIcon name="lock" />
+            <CredentialField>
             <input
               ref="passwordInput"
               v-model="password"
@@ -102,6 +104,7 @@ onBeforeUnmount(() => {
               autocomplete="current-password"
               required
             />
+            </CredentialField>
             <button
               v-if="store.status.biometricReady"
               type="button"

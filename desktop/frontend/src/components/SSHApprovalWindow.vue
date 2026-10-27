@@ -20,6 +20,7 @@ import { startThemeSync } from "../theme";
 import { getThisDeviceName } from "../util";
 import AppIcon, { type IconName } from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import CredentialField from "./CredentialField.vue";
 
 const allCompactAction: Record<string, string> = {
   push: "Push",
@@ -604,6 +605,7 @@ onBeforeUnmount(() => {
           <p v-if="approvalStore.failureMessage" class="failure" role="alert">{{ approvalStore.failureMessage }}</p>
 
           <form v-if="isPasswordShown" class="password-row" @submit.prevent="submitPassword">
+            <CredentialField>
             <input
               ref="passwordInput"
               v-model="password"
@@ -614,6 +616,7 @@ onBeforeUnmount(() => {
               autocomplete="current-password"
               data-testid="approval-password"
             />
+            </CredentialField>
             <button type="submit" class="primary" data-testid="submit-password" :disabled="approvalStore.isAuthorizing || !password">{{ passwordButtonLabel }}</button>
           </form>
 

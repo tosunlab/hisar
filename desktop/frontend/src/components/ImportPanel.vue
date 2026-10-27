@@ -3,6 +3,7 @@ import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { changeImportVault, chooseImportFile, closeImport, continueImport, deleteImportFile, getAllEditableVault, mapImportGroup, openImportFile, startImport, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import { getThisDeviceName } from "../util";
+import CredentialField from "./CredentialField.vue";
 
 const allEditableVault = computed(() => getAllEditableVault());
 
@@ -151,7 +152,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <p class="muted">This export is encrypted. Enter the passphrase it was exported with.</p>
         <label>
           <span>Export passphrase</span>
-          <input v-model="passphrase" type="password" name="exportPassphrase" autocomplete="off" placeholder="Export passphrase" data-testid="import-export-passphrase" autofocus />
+          <CredentialField secret-name="export passphrase"><input v-model="passphrase" type="password" name="exportPassphrase" autocomplete="off" placeholder="Export passphrase" data-testid="import-export-passphrase" autofocus /></CredentialField>
         </label>
         <div class="row actions">
           <button type="button" class="ghost" :disabled="store.isBusy" @click="closeImport">Cancel</button>

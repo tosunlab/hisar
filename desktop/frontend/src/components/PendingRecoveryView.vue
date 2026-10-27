@@ -3,6 +3,7 @@ import { onUnmounted, ref, watch } from "vue";
 import { acknowledgePendingRecovery, discardPreparedRecovery, resumePendingRecovery, savePendingRecoveryKit, store } from "../store";
 import type { PendingRecoverySummary } from "../api";
 import HisarLogo from "./HisarLogo.vue";
+import CredentialField from "./CredentialField.vue";
 
 const password = ref("");
 const secretKey = ref("");
@@ -50,7 +51,7 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
       <h1>Finish saving your account recovery</h1>
       <p>Choose the operation you want to finish. Nothing is resumed automatically.</p>
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
-      <label><span>Master password for this operation</span><input v-model="password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /></label>
+      <label><span>Master password for this operation</span><CredentialField><input v-model="password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /></CredentialField></label>
       <label><span>Secret Key from the saved Emergency Kit, if this app restarted</span><input v-model="secretKey" name="pendingRecoverySecretKey" type="password" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
       <label><span>Previous Secret Key, only if requested for an interrupted replacement</span><input v-model="priorSecretKey" name="pendingRecoveryPriorSecretKey" type="password" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
       <article v-for="operation in store.pendingRecovery" :key="operation.operationId" data-testid="pending-operation">

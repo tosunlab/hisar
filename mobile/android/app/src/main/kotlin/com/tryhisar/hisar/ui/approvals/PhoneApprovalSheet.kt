@@ -151,6 +151,7 @@ fun PhoneApprovalSheet(model: AppModel, approval: PhoneApproval) {
                         testTag = "phone-approval-password",
                         modifier = Modifier.focusRequester(passwordFocus),
                         isSecure = true,
+                        revealName = "master password", concealWhen = isBusy,
                         keyboardOptions = KeyboardOptions(autoCorrectEnabled = false, keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                         keyboardActions = KeyboardActions(onGo = { submitPassword() }),
                     )
