@@ -120,7 +120,7 @@ describe("Vault sharing panel", () => {
     expect(api.listAllPerson).not.toHaveBeenCalled();
     const sendButton = wrapper.find('[data-testid="send-share-invitation"]');
     expect(sendButton.attributes("disabled")).toBeDefined();
-    expect(sendButton.text()).toBe("Share");
+    expect(sendButton.text()).toBe("Send invitation");
     expect(wrapper.find('[data-testid="add-member"]').text()).toContain("Invite by email");
     expect(wrapper.find('[data-testid="add-member"] .hint').text()).toBe("They get an email and accept in Hisar; without an account they create one first.");
 

@@ -319,7 +319,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
               <select v-model="newMemberRole" class="role-select" aria-label="Role for the new member" :title="vaultRoleDescription" data-testid="new-member-role">
                 <option v-for="role in allVaultRole" :key="role" :value="role">{{ formatRole(role) }}</option>
               </select>
-              <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Share</button>
+              <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Send invitation</button>
             </div>
             <p class="muted hint">They get an email and accept in Hisar; without an account they create one first.</p>
           </form>

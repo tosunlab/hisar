@@ -37,7 +37,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Use | Meaning |
 |---|---|
 | Invite to Hisar | Creates a Hisar account: the server emails a sign-up link. Settings → People. Never "+ Invite" alone. |
-| Share, Invite by email | Gives someone a vault. The vault's Share panel (Mac) or sheet (iPhone). |
+| Share, Invite by email, Send invitation | Gives someone a vault. Share opens the panel (Mac) or sheet (iPhone and Android). Send invitation submits the email invitation. |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
