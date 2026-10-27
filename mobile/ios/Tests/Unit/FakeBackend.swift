@@ -38,6 +38,8 @@ class FakeBackend: VaultBackend {
     /// Runs when a refresh lists the passkeys, its last call, after the unlock check: a test can sign out or lock while a
     /// refresh that listed everything is still in flight.
     var onListAllPasskey: (() -> Void)?
+    var preparePasskeyRegistrationError: BackendError?
+    var onPreparePasskeyRegistration: (() -> Void)?
     /// Runs while a pending recovery's Emergency Kit is prepared: a test can lock or sign out meanwhile.
     var onExportPendingRecoveryEmergencyKit: (() -> Void)?
     var allMember: [Member] = []
@@ -651,6 +653,8 @@ extension FakeBackend {
 
     func preparePasskeyRegistration(relyingPartyID: String, allExcludedCredentialID: [Data]) throws -> PasskeyRegistrationOptions {
         record("preparePasskeyRegistration")
+        onPreparePasskeyRegistration?()
+        if let preparePasskeyRegistrationError { throw preparePasskeyRegistrationError }
         let allLogin = try listAllLoginForService(serviceIdentifier: "https://\(relyingPartyID)").filter { login in
             allVault.first { $0.id == login.vaultID }?.role != "reader"
         }

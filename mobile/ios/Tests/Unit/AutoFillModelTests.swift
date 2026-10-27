@@ -443,6 +443,27 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertEqual(model.errorMessage, "the request is not valid")
         XCTAssertEqual(model.screen, .passkeyRegistration)
         XCTAssertTrue(identityStore.allSaved.isEmpty)
+        backend.preparePasskeyRegistrationError = BackendError(message: "Could not load destinations.")
+        await model.prepareInterfaceForPasskeyRegistration(PasskeyRegistrationRequest(relyingPartyID: "github.com", userName: "alice", userHandle: Data([5]), clientDataHash: clientDataHash))
+        XCTAssertEqual(model.registrationDestination, .failed)
+        XCTAssertEqual(model.errorMessage, "Could not load destinations.")
+        XCTAssertFalse(model.isBusy)
+        XCTAssertNil(model.passkeyRegistrationOptions)
+        backend.preparePasskeyRegistrationError = nil
+        await model.loadPasskeyRegistrationOptions()
+        XCTAssertNotNil(model.passkeyRegistrationOptions)
+        XCTAssertEqual(model.selectedRegistrationLoginID, "personal/github")
+        XCTAssertNil(model.errorMessage)
+        XCTAssertEqual(model.passkeyRegistrationRequest?.relyingPartyID, "github.com")
+        for state in [VaultStatus.stateLocked, VaultStatus.stateSignedOut] {
+            backend.seedSignedIn()
+            backend.onPreparePasskeyRegistration = { self.backend.status.state = state }
+            backend.preparePasskeyRegistrationError = BackendError(message: "Session ended.")
+            await model.loadPasskeyRegistrationOptions()
+            XCTAssertEqual(model.screen, state == VaultStatus.stateLocked ? .locked : .signedOut)
+            XCTAssertEqual(model.registrationDestination, .idle)
+            XCTAssertNil(model.errorMessage)
+        }
     }
 
     func testSharedPasskeyDestinationRequiresExplicitSelection() async {
