@@ -1,6 +1,9 @@
 package com.tryhisar.hisar.ui
 
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
+import com.tryhisar.hisar.model.ReadIssue
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
@@ -195,6 +198,42 @@ class VaultsScreenUITests : HisarUITestCase() {
             }
         } finally {
             shell("settings put system font_scale ${originalScale.takeUnless { it == "null" } ?: "1.0"}")
+        }
+    }
+
+    @Test
+    fun testRecoveryDeletionReviewsTheChosenIssueAndRejectsStaleData() {
+        val issue = ReadIssue(vaultId = "work", revision = "review-1", kind = "vault-name", canRename = true, canDelete = true)
+        val itemIssue = ReadIssue(vaultId = "work", itemId = "bad-item", revision = "r1", kind = "item", canDelete = true)
+        val backend = buildBackend().apply {
+            val index = allVault.indexOfFirst { it.id == "work" }
+            allVault[index] = allVault[index].copy(name = "Unreadable vault work", readIssues = listOf(issue, itemIssue))
+            allItemByVaultID.getValue("work") += ItemDetail(id = "bad-item", revision = "r1", title = "Unreadable item bad-item", readIssue = itemIssue)
+        }
+        launchApp(backend).use {
+            waitFor("vaults-list")
+            tap("vault-Unreadable vault work")
+            tap("delete-unreadable-work")
+            waitFor(hasText("Delete “Unreadable vault work”?"))
+            assertTrue(exists(hasText("its 2 items, including the readable ones", substring = true)))
+            assertTrue(exists(hasText("Vault ID: work")))
+            composeRule.onNodeWithTag("delete-unreadable-confirm").assertIsNotEnabled()
+            type("Unreadable vault work", "delete-unreadable-input")
+            composeRule.onNodeWithTag("delete-unreadable-confirm").assertIsNotEnabled()
+            tap("delete-unreadable-cancel")
+            assertTrue(backend.allVault.any { it.id == "work" })
+            tap("delete-unreadable-bad-item")
+            waitFor(hasText("bad-item", substring = true) and hasText("Unreadable vault work", substring = true))
+            composeRule.onNodeWithTag("delete-unreadable-confirm").assertIsEnabled()
+            tap("delete-unreadable-cancel")
+            tap("delete-unreadable-work")
+            type("work", "delete-unreadable-input")
+            val index = backend.allVault.indexOfFirst { it.id == "work" }
+            backend.allVault[index] = backend.allVault[index].copy(readIssues = listOf(issue.copy(revision = "review-2"), itemIssue))
+            tap("delete-unreadable-confirm")
+            waitFor(hasText("The unreadable vault changed"))
+            assertTrue(backend.allVault.any { it.id == "work" })
+            tap("delete-unreadable-cancel")
         }
     }
 

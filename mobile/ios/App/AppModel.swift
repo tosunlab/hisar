@@ -663,7 +663,8 @@ final class AppModel: ObservableObject {
     }
 
     /// Deletes the unreadable record the user reviewed, named by its revision; a changed record is refused.
-    func deleteUnreadableRecord(_ issue: ReadIssue) async {
+    @discardableResult
+    func deleteUnreadableRecord(_ issue: ReadIssue) async -> Bool {
         let deleted: Void? = await perform { backend in
             if let itemID = issue.itemId {
                 try backend.deleteUnreadableItem(vaultID: issue.vaultId, itemID: itemID, revision: issue.revision ?? "")
@@ -671,7 +672,9 @@ final class AppModel: ObservableObject {
                 try backend.deleteUnreadableVault(vaultID: issue.vaultId, revision: issue.revision ?? "")
             }
         }
-        if deleted != nil { await refreshAll() }
+        guard deleted != nil else { return false }
+        await refreshAll()
+        return true
     }
 
     /// Names a vault whose name did not open, only while its record is still the one the user reviewed.
