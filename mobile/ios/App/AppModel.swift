@@ -83,6 +83,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var theme = VaultTheme.standard
     @Published private(set) var allReceivedInvitation: [ReceivedShareInvitation] = []
     @Published private(set) var allWaitingInvitation: [WaitingShareInvitation] = []
+    @Published private(set) var allReviewInvitation: [SentShareInvitation] = []
     @Published private(set) var allShareAwaitingUnlock: [ShareAwaitingUnlock] = []
     @Published private(set) var remoteChangeCount = 0
     @Published private(set) var allRemovedVaultNotice: [RemovedVaultNotice] = []
@@ -156,6 +157,7 @@ final class AppModel: ObservableObject {
     }
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
+    var peopleInvitationCount: Int { receivedInvitationCount + allReviewInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
 
     var autoLockInterval: TimeInterval { TimeInterval(status.autoLockSeconds) }
@@ -306,6 +308,7 @@ final class AppModel: ObservableObject {
             lockCount += 1
             allReceivedInvitation = []
             allWaitingInvitation = []
+            allReviewInvitation = []
             allRemovedVaultNotice = []
             allOrganization = []
             allOrganizationInvitation = []
@@ -333,8 +336,10 @@ final class AppModel: ObservableObject {
     }
 
     private func applyShareInvitations(_ shareInvitations: ShareInvitations) {
+        guard status.isUnlocked else { return }
         allReceivedInvitation = shareInvitations.allReceived
         allWaitingInvitation = shareInvitations.allWaiting
+        allReviewInvitation = shareInvitations.allRequiringReview
     }
 
     private func applyOrganizations(_ organizations: Organizations) {
@@ -804,12 +809,18 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func cancelShareInvitation(invitationID: String) async -> Bool {
-        await perform({ try $0.cancelShareInvitation(invitationID: invitationID) }) != nil
+        guard await perform({ try $0.cancelShareInvitation(invitationID: invitationID) }) != nil else { return false }
+        allReviewInvitation.removeAll { $0.id == invitationID }
+        _ = await loadShareInvitations()
+        return true
     }
 
     @discardableResult
     func confirmShareRecipient(_ invitation: SentShareInvitation) async -> Bool {
-        await perform({ try $0.confirmShareRecipient(invitationID: invitation.id, reviewToken: invitation.reviewToken ?? "") }) != nil
+        guard await perform({ try $0.confirmShareRecipient(invitationID: invitation.id, reviewToken: invitation.reviewToken ?? "") }) != nil else { return false }
+        allReviewInvitation.removeAll { $0.id == invitation.id }
+        _ = await loadShareInvitations()
+        return true
     }
 
     func loadAllVaultMember(vaultID: String) async -> [Member]? {

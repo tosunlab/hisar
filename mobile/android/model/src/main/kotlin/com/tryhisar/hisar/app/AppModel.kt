@@ -106,7 +106,7 @@ class AppModel(
     val vaults = VaultsModel(this)
     val invitations = InvitationsModel(this)
     val navigation = VaultsNavigation(this, selectedTab, itemEditor)
-    val sharing = SharingModel(this, vaults)
+    val sharing = SharingModel(this, vaults, invitations)
     val organizations = OrganizationsModel(this, invitations)
     val approvals = ApprovalsModel(this, now)
     val notifications = NotificationsModel(this, notificationPlatform)
@@ -354,6 +354,7 @@ class AppModel(
                     allPasskey = result.allPasskey ?: data.allPasskey,
                     allReceivedInvitation = result.shareInvitations?.allReceived ?: data.allReceivedInvitation,
                     allWaitingInvitation = result.shareInvitations?.allWaiting ?: data.allWaitingInvitation,
+                    allReviewInvitation = result.shareInvitations?.allRequiringReview ?: data.allReviewInvitation,
                     // Offline both fail; the last organizations keep naming the vault groups.
                     allOrganization = result.organizations?.allOrganization ?: data.allOrganization,
                     allOrganizationInvitation = result.organizations?.allInvitation ?: data.allOrganizationInvitation,

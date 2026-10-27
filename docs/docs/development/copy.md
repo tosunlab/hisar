@@ -56,6 +56,8 @@ Sign-out removes the active account's local data, not separately protected unfin
 | Share, Invite by email | Gives someone a vault. The vault's Share panel (Mac) or sheet (iPhone). |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
+| Review recipients | Accepted first shares waiting for the owner's identity review. Shown above received invitations on Vaults on both phones and included in the People badge. |
+| "\<name> accepted your invitation to a vault. Unlock to continue sharing." | Locked notice. Unlocking may still require Review recipient before the vault key is shared. |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
 | Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
@@ -69,6 +71,7 @@ Sign-out removes the active account's local data, not separately protected unfin
 | Members, Teams, Invitations | The segments of the Mac's organization page. |
 | organization vault | A vault that belongs to an organization and reaches people through its teams. |
 | Create organization…, New team…, Invite by email, Send invitation, Give a vault…, Give to a team…, Take back, Add member, Remove, Make admin, Make member | Actions (Settings → Organizations, the organization screen, an organization vault's sharing panel). |
+| Add member choices show the name and email, or only the email when there is no distinct name. The current account keeps "(you)". | Distinguishes people before granting all the team's vaults. |
 | "Ada invited you to Acme as a member" · Accept · Decline | A received organization invitation in Settings → Organizations. The Mac's Inbox row leads there; the phones also show it above the vaults. |
 | Remove from Acme…, Leave Acme…, Rename organization…, Delete organization…, Rename…, Delete team… | Confirmed actions; each confirmation names what goes: "Bob loses the vaults they have through Acme's teams." · "Its members lose the vaults they have only through Platform." · "Leave Acme?" / "You lose the vaults you have through Acme's teams." · "Delete Acme?" / "Its teams and pending invitations are deleted with it." · "Everyone in Acme sees the new name." |
 | "You joined Acme. Its vaults appear once an admin adds you to a team." | After accepting an organization invitation. |
@@ -76,7 +79,8 @@ Sign-out removes the active account's local data, not separately protected unfin
 | Admin · 3 members · Organization · Editor | An organization's row; an organization vault's row (iPhone). |
 | "Hisar couldn't give every vault key: …" · "Hisar couldn't re-encrypt every vault that needs a new key: …" | Warnings above the vaults when a key delivery or a rotation failed. |
 | Shared through teams in Acme · Ask an admin of Acme to change who has this vault. | An organization vault's sharing panel. |
-| A vault you can't open | An organization's vault this device has no key for. |
+| A vault you can't open | An organization's vault this device has no key for. Give a vault choices append the teams that have it, and the first six characters of its ID if the labels still match. An unopened first choice is not selected automatically. |
+| Give a vault · To: Observers, Acme · Give to a team · Vault: “Deploy” | Android grant sheets keep the full team, organization and fixed vault identity in the scrolling form, separate from Cancel and Give. Sheet headings wrap below the action row. |
 | Waiting for an owner of a vault in Acme to give you its key · Waiting for the owners of N vaults in Acme to give you their keys | One line per organization in Settings → Organizations on the Mac, above the vaults on the phones. A team gives you a vault that no owner's Hisar has delivered yet. |
 | Acme is deleted with your account · Ada becomes an admin of Acme · You leave Acme | Account deletion. |
 

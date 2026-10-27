@@ -229,6 +229,7 @@ struct VaultsView: View {
                 )
                 RemovedVaultNoticeSection(allNotice: model.allRemovedVaultNotice) { model.dismissRemovedVaultNotice($0) }
                 keyWarningSection
+                reviewRecipientSection
                 invitationSection
                 favoriteSection
                 let grouping = OrganizationLogic.groupVaults(model.allVault, allOrganization: model.allOrganization, allWaiting: model.waitingVaultKeys.allWaiting)
@@ -341,6 +342,20 @@ struct VaultsView: View {
                     }
                 }
                 .environmentObject(model)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var reviewRecipientSection: some View {
+        if !model.allReviewInvitation.isEmpty {
+            Section {
+                ForEach(model.allReviewInvitation) { invitation in
+                    SentInvitationRow(invitation: invitation, identifier: "review-invitation-\(invitation.id)")
+                }
+            } header: {
+                Text("Review recipients")
+                    .foregroundStyle(.themeSecondary)
             }
         }
     }

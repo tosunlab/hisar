@@ -441,8 +441,34 @@ describe("Settings people and devices", () => {
     api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
     const wrapper = mount(SettingsPanel);
     await flushPromises();
-    expect(wrapper.find('[data-testid="people-empty-hint"]').text()).toBe("Nobody yet. Share a vault to see the people you share with here.");
+    expect(wrapper.find('[data-testid="people-empty-hint"]').text()).toBe("Nobody else yet. Share a vault to see the people you share with here.");
+    expect(wrapper.find('[data-testid="person-ALICE1"] [data-testid="person-security-code"]').text()).toBe(createPerson().securityCode);
     expect(wrapper.find('[data-testid="sent-invitations"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("shows the device's own code beside an accepted first invitation", async () => {
+    api.listAllPerson.mockResolvedValue([createPerson({ securityCode: "1234 5678 9012 3456" })]);
+    api.listAllShareInvitation.mockResolvedValue({
+      received: [], sent: [], completionError: "",
+      waiting: [{ id: "first", role: "editor", invitedByName: "Bob", invitedByEmail: "bob@example.com", acceptedAt: "" }],
+    });
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    expect(wrapper.find('[data-testid="waiting-invitation-first"] [data-testid="waiting-security-code"]').text()).toBe("1234 5678 9012 3456");
+    expect(wrapper.find('[data-testid="person-ALICE1"] [data-testid="person-security-code"]').text()).toBe("1234 5678 9012 3456");
+    wrapper.unmount();
+  });
+
+  it("does not replace loading people with the nobody-else hint", async () => {
+    api.listAllPerson.mockReturnValue(new Promise(() => {}));
+    const wrapper = mount(SettingsPanel);
+    await flushPromises();
+    store.isBusy = true;
+    await flushPromises();
+    expect(wrapper.find('[data-testid="people-section"]').text()).toContain("Loading people…");
+    expect(wrapper.find('[data-testid="people-empty-hint"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="person-security-code"]').exists()).toBe(false);
     wrapper.unmount();
   });
 

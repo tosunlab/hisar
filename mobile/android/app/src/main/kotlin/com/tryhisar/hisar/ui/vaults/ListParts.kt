@@ -340,10 +340,16 @@ fun HisarMenuItem(
     icon: ImageVector? = null,
     enabled: Boolean = true,
     isDestructive: Boolean = false,
+    detail: String? = null,
 ) {
     val color = if (isDestructive) HisarTheme.colors.destructive else HisarTheme.colors.label
     DropdownMenuItem(
-        text = { Text(text, style = HisarType.body) },
+        text = {
+            Column {
+                Text(text, style = HisarType.body)
+                if (detail != null) Text(detail, style = HisarType.footnote, color = HisarTheme.colors.secondaryLabel)
+            }
+        },
         onClick = onClick,
         enabled = enabled,
         leadingIcon = icon?.let { { Icon(it, contentDescription = null) } },
@@ -391,12 +397,12 @@ fun BarCapsuleButton(text: String, onClick: () -> Unit, testTag: String, enabled
     val colors = HisarTheme.colors
     Box(
         Modifier
-            .height(44.dp)
+            .heightIn(min = 44.dp)
             .shadow(6.dp, CircleShape)
             .background(colors.cellBackground, CircleShape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .testTag(testTag)
-            .padding(horizontal = 18.dp),
+            .padding(horizontal = 18.dp, vertical = 8.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(

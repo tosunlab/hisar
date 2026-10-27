@@ -76,8 +76,19 @@ func (s *Service) ListPeople() ([]Person, error) {
 	if err != nil {
 		return nil, convertError(err)
 	}
-	people := make([]Person, 0, len(protoMembers))
+	people := make([]Person, 0, len(protoMembers)+1)
+	people = append(people, Person{
+		AccountID:     s.unlockedSession.AccountID,
+		Name:          s.unlockedSession.Name,
+		Email:         s.unlockedSession.Email,
+		Role:          s.unlockedSession.Role,
+		SecurityCode:  crypt.FormatKeyFingerprint(s.unlockedSession.Keyset.GetSigningPublicKey()),
+		IsCurrentUser: true,
+	})
 	for _, protoMember := range protoMembers {
+		if protoMember.AccountID == s.unlockedSession.AccountID {
+			continue
+		}
 		people = append(people, Person{
 			AccountID:     protoMember.AccountID,
 			Name:          protoMember.Name,

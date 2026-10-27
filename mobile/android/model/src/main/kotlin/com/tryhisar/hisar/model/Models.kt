@@ -976,7 +976,7 @@ data class ShareAwaitingUnlock(
     val id: String get() = invitationID
     val recipientDisplayName: String
         get() = if (recipientName.isEmpty() || recipientName == recipientEmail) recipientEmail else recipientName
-    val message: String get() = "$recipientDisplayName accepted your invitation to a vault — unlock to finish sharing"
+    val message: String get() = "$recipientDisplayName accepted your invitation to a vault. Unlock to continue sharing."
 }
 
 /** A short "since" for banners: "just now", "5 min ago", "2 h ago", "yesterday", "3 days ago". */
@@ -997,7 +997,10 @@ data class ShareInvitations(
     @SerialName("sent") val allSent: List<SentShareInvitation> = emptyList(),
     @SerialName("waiting") val allWaiting: List<WaitingShareInvitation> = emptyList(),
     val completionError: String = "",
-)
+) {
+    val allRequiringReview: List<SentShareInvitation>
+        get() = allSent.filter { it.state == SentShareInvitation.STATE_ACCEPTED && it.requiresConfirmation }
+}
 
 @Serializable
 data class VaultSharing(

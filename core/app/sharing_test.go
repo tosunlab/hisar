@@ -482,6 +482,24 @@ func TestShareVaultSendsInvitationAndCompletesOnAccept(t *testing.T) {
 	}
 }
 
+func TestOwnSecurityCodeComesFromUnlockedKeyset(t *testing.T) {
+	test := createUnlockedTestService(t)
+	accountID := test.service.unlockedSession.AccountID
+	want := crypt.FormatKeyFingerprint(test.service.unlockedSession.Keyset.GetSigningPublicKey())
+	test.apiServer.replaceMemberKey(t, accountID)
+	people, err := test.service.ListPeople()
+	if err != nil || len(people) != 1 || !people[0].IsCurrentUser || people[0].SecurityCode != want || people[0].IsKeyChanged {
+		t.Fatalf("own code after server key substitution: %+v, %v", people, err)
+	}
+	test.apiServer.mutex.Lock()
+	test.apiServer.members = nil
+	test.apiServer.mutex.Unlock()
+	people, err = test.service.ListPeople()
+	if err != nil || len(people) != 1 || people[0].AccountID != accountID || people[0].SecurityCode != want {
+		t.Fatalf("own code with no server member: %+v, %v", people, err)
+	}
+}
+
 func TestCompletingAShareRefusesAChangedKey(t *testing.T) {
 	test := createUnlockedTestService(t)
 	service := test.service

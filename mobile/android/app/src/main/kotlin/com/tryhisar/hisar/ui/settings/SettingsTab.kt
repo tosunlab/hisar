@@ -152,7 +152,7 @@ private fun SettingsRoot(model: AppModel, push: (SettingsDestination) -> Unit) {
         FormSection {
             NavigationRow(
                 "People", "open-people", { push(SettingsDestination.PEOPLE) }, Icons.Outlined.Group,
-                value = data.allReceivedInvitation.size.takeIf { it > 0 }?.toString(),
+                value = data.peopleInvitationCount.takeIf { it > 0 }?.toString(),
             )
             RowDivider()
             NavigationRow(
