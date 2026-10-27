@@ -31,6 +31,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.testTagsAsResourceId
 import androidx.compose.ui.text.TextStyle
@@ -164,7 +166,7 @@ fun <Option> SegmentedControl(options: List<Option>, selected: Option, label: (O
 /** A red triangle and a sentence at the top of a form, the iPhone app's ErrorBanner. */
 @Composable
 fun ErrorBanner(message: String) {
-    FormRow(Modifier.testTag("error-message")) {
+    FormRow(Modifier.testTag("error-message").semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite }) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Filled.Warning, contentDescription = null, tint = HisarTheme.colors.destructive, modifier = Modifier.size(20.dp))
             Spacer(Modifier.size(12.dp))

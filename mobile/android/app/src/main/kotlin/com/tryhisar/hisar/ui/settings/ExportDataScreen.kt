@@ -60,6 +60,7 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
     var password by remember { mutableStateOf("") }
     val latestResult by rememberUpdatedState(result)
     val inputProblem = ExportLogic.checkInput(format, passphrase, repeatedPassphrase, options.minPassphraseLength)
+    val isPassphraseTooShort = passphrase.codePointCount(0, passphrase.length) < options.minPassphraseLength
     val isPasswordNeeded = !options.isBiometricAvailable
     val canExport = inputProblem == null && !isBusy && (!isPasswordNeeded || password.isNotEmpty())
 
@@ -111,9 +112,9 @@ fun ExportDataScreen(model: AppModel, onClose: () -> Unit) {
             }
             if (format == ExportFormat.ENCRYPTED) {
                 FormSection(footer = { Text("At least ${options.minPassphraseLength} characters. You need it to import the file; Hisar can't recover it.") }) {
-                    FormTextField(passphrase, { passphrase = it }, placeholder = "Export passphrase", testTag = "export-passphrase", isSecure = true, label = "Export passphrase")
+                    FormTextField(passphrase, { passphrase = it }, placeholder = "Export passphrase", testTag = "export-passphrase", isSecure = true, label = "Export passphrase", errorMessage = inputProblem.takeIf { isPassphraseTooShort && passphrase.isNotEmpty() })
                     RowDivider()
-                    FormTextField(repeatedPassphrase, { repeatedPassphrase = it }, placeholder = "Repeat export passphrase", testTag = "export-passphrase-repeat", isSecure = true, label = "Repeat export passphrase")
+                    FormTextField(repeatedPassphrase, { repeatedPassphrase = it }, placeholder = "Repeat export passphrase", testTag = "export-passphrase-repeat", isSecure = true, label = "Repeat export passphrase", errorMessage = inputProblem.takeUnless { isPassphraseTooShort })
                 }
             } else {
                 FormSection {

@@ -278,6 +278,7 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
     var repeatedPassword by remember { mutableStateOf("") }
     var isConfirmationShown by remember { mutableStateOf(false) }
     val problem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, repeatedPassword)
+    val newPasswordProblem = AccountLifecycleLogic.describeNewPasswordProblem(currentPassword, newPassword, newPassword)
     val canSubmit = AccountLifecycleLogic.canChangePassword(currentPassword, newPassword, repeatedPassword) && !isBusy
     LaunchedEffect(Unit) { model.errorMessage.value = null }
 
@@ -295,9 +296,9 @@ fun ChangeMasterPasswordScreen(model: AppModel, onBack: () -> Unit) {
                 Text("A forgotten master password can't be recovered by anyone, including Hisar.")
             },
         ) {
-            FormTextField(newPassword, { newPassword = it }, placeholder = "At least 10 characters", testTag = "change-password-new", isSecure = true, label = "New master password")
+            FormTextField(newPassword, { newPassword = it }, placeholder = "At least 10 characters", testTag = "change-password-new", isSecure = true, label = "New master password", errorMessage = newPasswordProblem)
             RowDivider()
-            FormTextField(repeatedPassword, { repeatedPassword = it }, placeholder = "Repeat new master password", testTag = "change-password-repeated", isSecure = true, label = "Repeat new master password")
+            FormTextField(repeatedPassword, { repeatedPassword = it }, placeholder = "Repeat new master password", testTag = "change-password-repeated", isSecure = true, label = "Repeat new master password", errorMessage = problem.takeIf { newPasswordProblem == null })
         }
         errorMessage?.let { FormSection { ErrorBanner(it) } }
         ClearSection {

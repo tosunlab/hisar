@@ -184,6 +184,8 @@ fun UnlockPanel(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Go),
                 keyboardActions = KeyboardActions(onGo = { submit() }),
                 label = "Master password",
+                errorMessage = errorMessage,
+                announceErrorOnBlur = false,
             )
         }
         ClearSection {

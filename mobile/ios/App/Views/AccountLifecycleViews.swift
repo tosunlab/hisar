@@ -31,9 +31,11 @@ struct ChangeMasterPasswordView: View {
                 SecureField("New master password", text: $newPassword, prompt: Text("At least 10 characters"))
                     .textContentType(.newPassword)
                     .accessibilityIdentifier("change-password-new")
+                    .validationError(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: newPassword))
                 SecureField("Repeat new master password", text: $repeatedPassword)
                     .textContentType(.newPassword)
                     .accessibilityIdentifier("change-password-repeated")
+                    .validationError(AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: newPassword) == nil ? problem : nil)
             } header: {
                 Text("New master password")
             } footer: {

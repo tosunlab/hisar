@@ -39,8 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -182,6 +180,8 @@ fun FormTextField(
     placeholder: String,
     testTag: String,
     label: String,
+    errorMessage: String? = null,
+    announceErrorOnBlur: Boolean = true,
     modifier: Modifier = Modifier,
     isSecure: Boolean = false,
     isSecret: Boolean = isSecure,
@@ -204,7 +204,7 @@ fun FormTextField(
                 .fillMaxWidth()
                 .heightIn(min = RowMinHeight)
                 .secretInput(isSecret)
-                .semantics { stateDescription = label }
+                .then(fieldAccessibility(label, errorMessage, announceErrorOnBlur))
                 .testTag(testTag),
             decorationBox = { innerTextField ->
                 Box(Modifier.padding(horizontal = RowInset, vertical = 14.dp), contentAlignment = Alignment.CenterStart) {

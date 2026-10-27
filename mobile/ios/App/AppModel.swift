@@ -398,6 +398,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func unlock(password: String) async -> Bool {
+        clearError()
         guard let newStatus = await perform({ try $0.unlock(password: password) }) else { return false }
         applyStatus(newStatus)
         await refreshAll()

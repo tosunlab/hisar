@@ -337,6 +337,7 @@ private fun CreateAccountSections(
             repeatedPassword, onRepeatedPasswordChange, placeholder = "Repeat master password", testTag = "sign-up-repeated-password", isSecure = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
             label = "Repeat master password",
+            errorMessage = if (isPasswordMismatch) "The passwords do not match." else null,
         )
     }
 }

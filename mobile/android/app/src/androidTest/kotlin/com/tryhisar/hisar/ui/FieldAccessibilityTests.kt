@@ -1,14 +1,20 @@
 package com.tryhisar.hisar.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.semantics.LiveRegionMode
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.item.EditorField
+import com.tryhisar.hisar.ui.components.ErrorBanner
+import com.tryhisar.hisar.ui.lock.UnlockPanel
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -19,6 +25,57 @@ import org.junit.Test
 class FieldAccessibilityTests {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun testErrorPresentationAnnouncesChangedMessagesOnce() {
+        val message = mutableStateOf("Wrong password.")
+        composeRule.setContent { HisarTheme { ErrorBanner(message.value) } }
+        val banner = composeRule.onNodeWithTag("error-message")
+        assertEquals(LiveRegionMode.Polite, banner.fetchSemanticsNode().config[SemanticsProperties.LiveRegion])
+        assertEquals(listOf(AnnotatedString("Wrong password.")), banner.fetchSemanticsNode().config[SemanticsProperties.Text])
+        composeRule.runOnIdle { message.value = "Network unavailable." }
+        assertEquals(listOf(AnnotatedString("Network unavailable.")), banner.fetchSemanticsNode().config[SemanticsProperties.Text])
+        composeRule.runOnIdle { message.value = "Network unavailable." }
+        assertEquals(listOf(AnnotatedString("Network unavailable.")), banner.fetchSemanticsNode().config[SemanticsProperties.Text])
+    }
+
+    @Test
+    fun testFieldCorrectionsStayAssociatedWithBothSharedHelpers() {
+        val problem = mutableStateOf<String?>("The passwords do not match.")
+        composeRule.setContent {
+            HisarTheme {
+                Column {
+                    FormTextField("different", {}, "Repeat master password", "repeat", label = "Repeat master password", isSecure = true, errorMessage = problem.value)
+                    EditorField("invalid", {}, "Setup key", "setup", label = "Setup key", errorMessage = problem.value)
+                }
+            }
+        }
+        for (tag in listOf("repeat", "setup")) {
+            assertEquals(problem.value, composeRule.onNodeWithTag(tag).fetchSemanticsNode().config[SemanticsProperties.Error])
+        }
+        composeRule.runOnIdle { problem.value = null }
+        for (tag in listOf("repeat", "setup")) {
+            assertNull(composeRule.onNodeWithTag(tag).fetchSemanticsNode().config.getOrNull(SemanticsProperties.Error))
+        }
+    }
+
+    @Test
+    fun testFailedUnlockKeepsItsErrorOnTheClearedFocusedField() {
+        val failure = mutableStateOf<String?>(null)
+        composeRule.setContent {
+            HisarTheme {
+                UnlockPanel(email = "ada@example.com", isBiometricReady = false, isBusy = false, errorMessage = failure.value, submitPassword = { failure.value = "Wrong password."; false }, submitBiometric = {})
+            }
+        }
+        composeRule.onNodeWithTag("unlock-password").performTextInput("wrong")
+        composeRule.onNodeWithTag("unlock-submit").performClick()
+        composeRule.waitForIdle()
+        val field = composeRule.onNodeWithTag("unlock-password").fetchSemanticsNode().config
+        assertEquals(AnnotatedString(""), field[SemanticsProperties.EditableText])
+        assertEquals("Wrong password.", field[SemanticsProperties.Error])
+        assertTrue(field[SemanticsProperties.Focused])
+        assertEquals(LiveRegionMode.Polite, composeRule.onNodeWithTag("error-message").fetchSemanticsNode().config[SemanticsProperties.LiveRegion])
+    }
 
     @Test
     fun testFieldNamesSurviveOrdinaryAndPasswordValues() {

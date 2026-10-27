@@ -67,7 +67,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -80,6 +79,7 @@ import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.model.CalendarDate
 import com.tryhisar.hisar.ui.components.ScreenMargin
 import com.tryhisar.hisar.ui.components.SecretInput
+import com.tryhisar.hisar.ui.components.fieldAccessibility
 import com.tryhisar.hisar.ui.components.secretInput
 import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
@@ -221,6 +221,8 @@ fun EditorField(
     placeholder: String,
     testTag: String,
     label: String,
+    errorMessage: String? = null,
+    announceErrorOnBlur: Boolean = true,
     modifier: Modifier = Modifier,
     kind: FieldKind = FieldKind.TEXT,
     isSecret: Boolean = false,
@@ -259,7 +261,7 @@ fun EditorField(
                     .weight(1f)
                     .padding(vertical = 14.dp)
                     .secretInput(isSecretInput)
-                    .semantics { stateDescription = label }
+                    .then(fieldAccessibility(label, errorMessage, announceErrorOnBlur))
                     .testTag(testTag),
                 decorationBox = { innerTextField ->
                     Box(contentAlignment = Alignment.CenterStart) {
