@@ -736,6 +736,25 @@ describe("SSHApprovalWindow", () => {
     wrapper.unmount();
   });
 
+  it("replaces the phone sending note after failure without restarting Touch ID", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    const event = createAgentRunApprovalEvent({ isPhoneApproval: true, phoneApprovalState: "pending" });
+    sendEvent("ssh-approval", event);
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-phone"]').text()).toBe("Sending to your smart device…");
+    await wrapper.get('select[name="grantDuration"]').setValue("hour");
+    const responseCount = api.respondSSHApproval.mock.calls.length;
+    sendEvent("ssh-approval", { ...event, phoneApprovalState: "failed" });
+    await flushPromises();
+    expect(wrapper.get('[data-testid="approval-phone"]').text()).toBe("Could not send this request to your smart device. Approve or deny on this Mac.");
+    expect(approvalStore.grantDuration).toBe("hour");
+    expect(api.respondSSHApproval).toHaveBeenCalledTimes(responseCount);
+    expect(approvalStore.allApproval).toHaveLength(1);
+    await wrapper.get('[data-testid="deny-approval"]').trigger("click");
+    expect(api.respondSSHApproval).toHaveBeenLastCalledWith(event.requestID, false, false);
+    wrapper.unmount();
+  });
+
   it.each([true, false])("discloses the unsigned agent program without substituting the client path, available %s", async (available) => {
     const wrapper = mount(SSHApprovalWindow);
     sendEvent("ssh-approval", createHarnessApprovalEvent({

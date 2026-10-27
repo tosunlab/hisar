@@ -297,6 +297,7 @@ export function createApprovalEvent(overrides: Partial<ApprovalEvent> = {}): App
     isCompact: false,
     isTouchIDApproval: true,
     isPhoneApproval: false,
+    phoneApprovalState: "",
     isTooLongForPhone: false,
     timeoutAt: new Date(Date.now() + 60_000).toISOString(),
     timeoutMilliseconds: 60_000,

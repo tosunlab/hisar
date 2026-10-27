@@ -102,6 +102,8 @@ const isTouchIDUsed = computed(() => approval.value?.isTouchIDApproval === true 
 const isWaitingForTouchID = computed(() => approvalStore.isAuthorizing && isTouchIDUsed.value);
 const canChoosePassword = computed(() => approval.value?.isTouchIDApproval === true && !isPasswordShown.value);
 const phoneNote = computed(() => {
+  if (approval.value?.phoneApprovalState === "pending") return "Sending to your smart device…";
+  if (approval.value?.phoneApprovalState === "failed") return "Could not send this request to your smart device. Approve or deny on this Mac.";
   if (approval.value?.isPhoneApproval) return "or approve on your smart device";
   return approval.value?.isTooLongForPhone ? "This request is too long to approve on your phone." : "";
 });

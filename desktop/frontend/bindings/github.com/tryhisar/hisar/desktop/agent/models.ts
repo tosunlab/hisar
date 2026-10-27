@@ -48,6 +48,7 @@ export interface ApprovalEvent {
     "isUnlockRequired": boolean;
     "isPasswordUnlock": boolean;
     "isPhoneApproval": boolean;
+    "phoneApprovalState": string;
 
     /**
      * IsTooLongForPhone is set instead of IsPhoneApproval when a phone could answer but the request is too long to send.
