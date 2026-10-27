@@ -68,6 +68,10 @@ struct ApprovalList: View {
                     Label("No requests waiting", systemImage: "laptopcomputer.and.iphone")
                 } description: {
                     Text("Requests from Hisar on your Mac appear here while this iPhone is unlocked.")
+                } actions: {
+                    NavigationLink("Set up Mac approvals") { MacApprovalsView() }
+                        .buttonStyle(.glass)
+                        .accessibilityIdentifier("approvals-setup")
                 }
                 .accessibilityIdentifier("approvals-empty")
             }

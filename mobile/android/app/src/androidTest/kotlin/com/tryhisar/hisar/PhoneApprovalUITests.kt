@@ -194,6 +194,9 @@ class PhoneApprovalUITests : HisarUITestCase() {
             openTab("Approvals")
             waitFor("approvals-empty")
             saveScreenshot("phone-approval-empty")
+            tap("approvals-setup")
+            waitFor("mac-approval-toggle")
+            assertTrue(exists(hasText("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")))
         }
     }
 

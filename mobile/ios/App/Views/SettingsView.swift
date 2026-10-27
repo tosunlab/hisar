@@ -652,6 +652,7 @@ struct MacApprovalsView: View {
                 .accessibilityIdentifier("mac-approval-toggle")
             } footer: {
                 Text("When Hisar on your Mac asks to use an SSH key or the command-line tool, you can approve or deny it here while Hisar is open and unlocked on this iPhone.")
+                Text("On your Mac, turn on Settings → SSH & Git → Approve requests on my smart device.")
             }
         }
         .applyThemedListStyle()

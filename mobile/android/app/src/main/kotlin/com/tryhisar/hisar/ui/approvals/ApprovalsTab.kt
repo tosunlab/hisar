@@ -34,6 +34,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
+import com.tryhisar.hisar.app.SettingsDestination
+import com.tryhisar.hisar.app.Tab
 import com.tryhisar.hisar.ui.components.ContentUnavailable
 import com.tryhisar.hisar.ui.components.GlassButton
 import com.tryhisar.hisar.ui.components.LargeTitle
@@ -126,6 +128,16 @@ fun ApprovalsTab(model: AppModel) {
                     description = {
                         Description(
                             "When Hisar on your Mac asks to use an SSH key or the command-line tool, or to let an app like Raycast use Hisar, the request appears here while Hisar is open and unlocked on this device.",
+                        )
+                    },
+                    actions = {
+                        GlassButton(
+                            "Set up Mac approvals",
+                            {
+                                model.requestedSettings.value = SettingsDestination.MAC_APPROVALS
+                                model.selectedTab.value = Tab.SETTINGS
+                            },
+                            testTag = "approvals-setup",
                         )
                     },
                 )
