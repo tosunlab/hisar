@@ -19,6 +19,9 @@ Kotlin and Jetpack Compose on top of `HisarKit.aar`, built with the Gradle wrapp
 and later, on arm64-v8a and x86_64; 32-bit ARM is out because `github.com/bytemare/ksf`, which OPAQUE uses, does not
 compile for 32-bit targets. The package is `com.tryhisar.hisar`, and `com.tryhisar.hisar.debug` for debug builds.
 
+The floating Android tab bar keeps destination names on one line. At large text sizes it gives longer names more room
+and reduces its outer spacing before limiting label scaling on narrow windows. Lists clear the bar's measured height.
+
 ```
 android/model/     :model, plain JVM: the HisarKit types, VaultBackend, the app model (com.tryhisar.hisar.app),
                    AutoFill's parser and matcher, ThemePalettes.kt; FakeBackend in src/testFixtures
