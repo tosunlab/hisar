@@ -537,6 +537,7 @@ payload       = {version: 1, title, fields: [{kind, label, value, isConcealed}]}
 **Desktop app.**
 
 - The item view has **Share link…** next to Edit (not for SSH keys without notes or fields). Its dialog offers the fields to share as checkboxes (username and password checked by default), **Expires** (1 hour, 1 day, 7 days, 30 days; 7 days by default), **Views** (1–100, 1 by default, or Unlimited) and an optional passphrase. **Create link** shows the link with **Copy** (through the backend, cleared after 90 s) and what it shares.
+- The Mac's optional passphrase is entered twice, with labelled **Show** and **Hide** controls and an inline mismatch warning. Neither entry is saved, and both are cleared when the link is created or the dialog is dismissed.
 - The item view lists that item's live links. **Shared links** in the sidebar, under the vaults, lists all of them. The Shared links panel has **Share text…**. Each link shows its title, what it shares, views used, expiry and whether it needs a passphrase, with **Copy link** and **Revoke**.
 - Lists refresh on `share-links-changed`. Offline, creating and revoking are refused like other changes.
 
