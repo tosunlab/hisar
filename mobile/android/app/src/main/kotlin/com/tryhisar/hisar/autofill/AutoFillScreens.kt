@@ -74,7 +74,7 @@ import kotlinx.coroutines.launch
 
 /** The AutoFill screens, the iPhone extension's AutoFillRootView: a Cancel bar over the message, lock or list. */
 @Composable
-fun AutoFillRoot(model: AutoFillModel) {
+fun AutoFillRoot(model: AutoFillModel, openHisar: () -> Unit) {
     val theme by model.theme.collectAsStateWithLifecycle()
     val screen by model.screen.collectAsStateWithLifecycle()
     HisarTheme(theme) {
@@ -104,9 +104,9 @@ fun AutoFillRoot(model: AutoFillModel) {
                     }
                     is AutoFillModel.Screen.Failed -> MessageView(Icons.Outlined.Warning, "Hisar could not start", current.message)
                     AutoFillModel.Screen.SignedOut ->
-                        MessageView(Icons.Outlined.ManageAccounts, "Sign in first", "Open the Hisar app and sign in, then use AutoFill again.")
+                        MessageView(Icons.Outlined.ManageAccounts, "Sign in first", "Open Hisar and sign in, then return to the original app and use AutoFill again.", openHisar = { openHisar(); model.cancel() })
                     AutoFillModel.Screen.UpdateRequired ->
-                        MessageView(Icons.Outlined.ArrowCircleDown, "Update required", "Hisar needs an update. Open Hisar to update it.")
+                        MessageView(Icons.Outlined.ArrowCircleDown, "Update required", "Open Hisar to update it, then return to the original app and use AutoFill again.", openHisar = { openHisar(); model.cancel() })
                     AutoFillModel.Screen.Locked -> AutoFillLockView(model)
                     AutoFillModel.Screen.List -> AutoFillListView(model)
                     AutoFillModel.Screen.PasskeyRegistration -> PasskeyRegistrationView(model)
@@ -117,8 +117,12 @@ fun AutoFillRoot(model: AutoFillModel) {
 }
 
 @Composable
-private fun MessageView(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, message: String) {
-    ContentUnavailable(title, icon, description = { Text(message, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel) })
+private fun MessageView(icon: androidx.compose.ui.graphics.vector.ImageVector, title: String, message: String, openHisar: (() -> Unit)? = null) {
+    ContentUnavailable(
+        title, icon,
+        description = { Text(message, style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel) },
+        actions = openHisar?.let { open -> { PlainButton("Open Hisar", open, testTag = "autofill-open-hisar") } },
+    )
 }
 
 @Composable

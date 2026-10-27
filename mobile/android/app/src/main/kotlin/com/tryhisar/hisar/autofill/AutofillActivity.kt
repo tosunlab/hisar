@@ -126,7 +126,11 @@ class AutofillActivity : FragmentActivity() {
         followScreenshotSetting()
         lifecycleScope.launch {
             viewModel.isContentShown.first { it }
-            setContent { AutoFillRoot(viewModel.model) }
+            setContent {
+                AutoFillRoot(viewModel.model) {
+                    startActivity(Intent(this@AutofillActivity, com.tryhisar.hisar.MainActivity::class.java))
+                }
+            }
         }
         lifecycleScope.launch {
             when (val result = viewModel.result.filterNotNull().first()) {
