@@ -107,6 +107,7 @@ The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the s
 and navigation to another item, vault, Favorites, or a tag from Favorites. If the draft changed, the shared dialog
 offers **Keep editing** and **Discard**. Locking keeps the draft in memory and restores it after unlock.
 ⌘S and ⌘↩ save after the form passes validation.
+The password generator's Length slider has a keyboard-focus ring. Left and Right change its length.
 
 Item and Favorites lists are listboxes with keyboard navigation and `aria-selected` on each option.
 The item list's accessible name is its vault's name. The selected sidebar vault or Favorites entry has `aria-current="true"`.
