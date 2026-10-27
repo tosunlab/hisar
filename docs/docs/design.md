@@ -484,6 +484,8 @@ Sharing is person to person: the owner of a shared vault types an email address 
 
 **People.** `GET /members` returns the caller and every account that shares at least one vault with them, with signed public keys; it is the member source for sharing, role changes, removal and rotation. There is no list of every account anywhere (API, desktop, iOS, CLI, extension); only the operator's `hisar-server` reads the database directly. The desktop's Settings → People shows those people with their security codes, the invitations the user sent (Cancel) and received (Accept, Decline), and the invite form. The **Inbox** row under Favorites counts received invitations and opens Settings → People or Organizations for the waiting invitation.
 
+Sharing-panel action errors stay in the panel and are cleared when it closes. Invitation failures appear below Invite by email; member and pending-invitation failures appear at the affected row. Each error is announced and dismissible, without a duplicate in the main window.
+
 ### 5.9 Share links
 
 A share link hands one item, or a piece of text, to anyone, including people without a Hisar account: `https://<server>/s/<id>#<key>`. Browsers do not send the fragment in the HTTP request, so the stored ciphertext alone does not reveal the payload. The server-served page does read the fragment and decrypt the payload, which requires trusting that page (§2.2). Links expire and can be limited to a number of views.

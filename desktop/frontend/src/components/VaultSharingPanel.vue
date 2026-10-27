@@ -131,7 +131,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <button class="ghost icon-button" aria-label="Close sharing" @click="closeSharing"><AppIcon name="close" /></button>
       </header>
 
-      <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
+      <p v-if="store.sharingErrors.load" class="error" role="alert">{{ store.sharingErrors.load }} <button class="ghost" aria-label="Dismiss sharing error" @click="delete store.sharingErrors.load">Dismiss</button></p>
 
       <template v-if="organizationID">
         <p class="section-label">Teams</p>
@@ -244,6 +244,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
               </template>
               <span v-else class="role-label" :class="{ aligned: isOwner }">{{ formatRole(member.role) }}</span>
             </div>
+            <p v-if="store.sharingErrors[member.accountId]" class="error" role="alert">{{ store.sharingErrors[member.accountId] }} <button class="ghost" aria-label="Dismiss member error" @click="delete store.sharingErrors[member.accountId]">Dismiss</button></p>
 
             <div v-if="removingAccountID === member.accountId" class="member-detail confirm" data-testid="remove-confirmation">
               <AppIcon name="refresh" class="detail-icon" />
@@ -300,6 +301,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
                   </template>
                 </div>
                 <ShareRecipientConfirmation :invitation="invitation" />
+                <p v-if="store.sharingErrors[invitation.id]" class="error" role="alert">{{ store.sharingErrors[invitation.id] }} <button class="ghost" aria-label="Dismiss invitation error" @click="delete store.sharingErrors[invitation.id]">Dismiss</button></p>
               </li>
             </ul>
           </template>
@@ -321,6 +323,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
               </select>
               <button class="primary" type="submit" data-testid="send-share-invitation" :disabled="!newMemberEmail.trim() || store.isBusy">Share</button>
             </div>
+            <p v-if="store.sharingErrors.invite" class="error" role="alert">{{ store.sharingErrors.invite }} <button class="ghost" aria-label="Dismiss invitation error" @click="delete store.sharingErrors.invite">Dismiss</button></p>
             <p class="muted hint">They get an email and accept in Hisar; without an account they create one first.</p>
           </form>
         </template>

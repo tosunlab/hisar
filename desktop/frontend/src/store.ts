@@ -143,6 +143,7 @@ export const store = reactive({
   sshAgentStatus: null as SSHAgentStatus | null,
   sshAgentErrorMessage: "",
   isSharingOpen: false,
+  sharingErrors: {} as Record<string, string>,
   // isCreatingVault shows the new-vault form under the vault list.
   isCreatingVault: false,
   allVaultMember: [] as VaultMember[],
@@ -231,14 +232,21 @@ function describeCopy(label: string): string {
 }
 
 // runAction serializes UI actions and turns failures into a visible error message.
-async function runAction<Result>(action: () => Promise<Result>): Promise<Result | undefined> {
+async function runAction<Result>(action: () => Promise<Result>, sharingErrorKey = ""): Promise<Result | undefined> {
   store.isBusy = true;
   store.errorMessage = "";
+  const isSharingAction = store.isSharingOpen && sharingErrorKey !== "";
+  if (isSharingAction) delete store.sharingErrors[sharingErrorKey];
   try {
     return await action();
   } catch (error) {
-    store.errorMessage = getErrorMessage(error);
-    if (store.errorMessage === "Hisar is locked") {
+    const message = getErrorMessage(error);
+    if (isSharingAction) {
+      if (store.isSharingOpen) store.sharingErrors[sharingErrorKey] = message;
+    } else {
+      store.errorMessage = message;
+    }
+    if (message === "Hisar is locked") {
       clearLockedVaultData();
       store.status = { ...store.status, state: "locked" };
     }
@@ -258,6 +266,7 @@ function clearAllVaultData(): void {
   store.isTouchIDOfferShown = false;
   store.isSettingsOpen = false;
   store.isSharingOpen = false;
+  store.sharingErrors = {};
   store.isCreatingVault = false;
   store.allVaultMember = [];
   store.allPerson = [];
@@ -1602,13 +1611,13 @@ export async function loadSharing(): Promise<void> {
   const vaultID = store.selectedVaultID;
   const organizationID = getSelectedVault()?.organizationId;
   if (organizationID) {
-    const organization = await runAction(() => api.getOrganization(organizationID));
+    const organization = await runAction(() => api.getOrganization(organizationID), "load");
     if (organization) {
       store.organizationByID = { ...store.organizationByID, [organizationID]: organization };
     }
     return;
   }
-  const result = await runAction(() => Promise.all([api.listAllVaultMember(vaultID), api.listAllShareInvitation()]));
+  const result = await runAction(() => Promise.all([api.listAllVaultMember(vaultID), api.listAllShareInvitation()]), "load");
   if (result && vaultID === store.selectedVaultID) {
     [store.allVaultMember, store.shareInvitations] = result;
   }
@@ -1616,6 +1625,7 @@ export async function loadSharing(): Promise<void> {
 
 export async function openSharing(): Promise<void> {
   store.allVaultMember = [];
+  store.sharingErrors = {};
   store.isSharingOpen = true;
   await loadSharing();
 }
@@ -1633,6 +1643,7 @@ async function shareSelectedVault(): Promise<void> {
 export function closeSharing(): void {
   store.isSharingOpen = false;
   store.errorMessage = "";
+  store.sharingErrors = {};
 }
 
 // shareVault sends a share invitation; the server answers the same whether or not the email has an account.
@@ -1641,7 +1652,7 @@ export async function shareVault(email: string, role: VaultRole): Promise<boolea
   const shared = await runAction(async () => {
     await api.shareVault(vaultID, email, role);
     return true;
-  });
+  }, "invite");
   if (shared) {
     await loadSharing();
     showNotice(`Invitation sent to ${email.trim().toLowerCase()}`);
@@ -1681,7 +1692,7 @@ export async function cancelShareInvitation(invitation: SentShareInvitation): Pr
   const cancelled = await runAction(async () => {
     await api.cancelShareInvitation(invitation.id);
     return true;
-  });
+  }, invitation.id);
   await loadShareInvitationsQuietly();
   if (cancelled) {
     showNotice(`Invitation to ${invitation.email} cancelled`);
@@ -1693,7 +1704,7 @@ export async function confirmShareRecipient(invitation: SentShareInvitation): Pr
   const confirmed = await runAction(async () => {
     await api.confirmShareRecipient(invitation.id, invitation.reviewToken);
     return true;
-  });
+  }, invitation.id);
   await loadSharing();
   await loadShareInvitationsQuietly();
   if (confirmed) showNotice(`Shared ${invitation.vaultName} with ${invitation.email}`);
@@ -1705,7 +1716,7 @@ export async function changeVaultMemberRole(member: VaultMember, role: VaultRole
   const changed = await runAction(async () => {
     await api.changeVaultMemberRole(vaultID, member.accountId, role);
     return true;
-  });
+  }, member.accountId);
   await loadSharing();
   if (changed) {
     showNotice(`${getFirstName(member)} is now ${role === "owner" ? "an owner" : `a ${role}`}`);
@@ -1719,12 +1730,12 @@ export async function removeVaultMember(member: VaultMember): Promise<boolean> {
   const removed = await runAction(async () => {
     await api.removeVaultMember(vaultID, member.accountId);
     return true;
-  });
+  }, member.accountId);
   if (!removed) {
     return false;
   }
   await loadSharing();
-  const allItem = await runAction(() => api.listAllItem(vaultID));
+  const allItem = await runAction(() => api.listAllItem(vaultID), member.accountId);
   if (allItem && vaultID === store.selectedVaultID) {
     store.allItem = sortAllItem(allItem);
     store.selectedItem = null;

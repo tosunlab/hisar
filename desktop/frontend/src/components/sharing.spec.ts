@@ -58,6 +58,7 @@ function resetStore(familyRole = "owner"): void {
     allPerson: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
     allDevice: [],
+    sharingErrors: {},
   });
 }
 
@@ -84,6 +85,34 @@ beforeEach(() => {
 });
 
 describe("Vault sharing panel", () => {
+  it("keeps invitation failures beside the form without an alert behind the panel", async () => {
+    api.shareVault.mockRejectedValueOnce(new Error("The invitation could not be sent."));
+    const wrapper = await openSharingPanel();
+    await wrapper.find('[data-testid="new-member-email"]').setValue("carol@example.com");
+    await wrapper.find('[data-testid="add-member"]').trigger("submit");
+    await flushPromises();
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(1);
+    expect(wrapper.find('[data-testid="add-member"] [role="alert"]').text()).toContain("The invitation could not be sent.");
+    expect(store.errorMessage).toBe("");
+    await wrapper.find('[aria-label="Dismiss invitation error"]').trigger("click");
+    expect(wrapper.findAll('[role="alert"]')).toHaveLength(0);
+    store.sharingErrors.invite = "Another failure";
+    await wrapper.find('[aria-label="Close sharing"]').trigger("click");
+    expect(store.sharingErrors).toEqual({});
+    expect(store.errorMessage).toBe("");
+    wrapper.unmount();
+  });
+
+  it("keeps role failures at the affected member", async () => {
+    api.changeVaultMemberRole.mockRejectedValueOnce(new Error("Cannot change this role."));
+    const wrapper = await openSharingPanel();
+    await wrapper.find('[data-testid="role-select-BOB222"]').setValue("reader");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="vault-member-BOB222"] [role="alert"]').text()).toContain("Cannot change this role.");
+    expect(store.errorMessage).toBe("");
+    wrapper.unmount();
+  });
+
   it("does not report zero members while loading sharing", async () => {
     api.listAllVaultMember.mockReturnValue(new Promise(() => undefined));
     const wrapper = mount(MainView, { attachTo: document.body });
