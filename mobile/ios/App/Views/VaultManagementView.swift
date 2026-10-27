@@ -226,7 +226,7 @@ struct VaultDeletionSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.large])
         .onAppear { model.clearError() }
     }
 }
