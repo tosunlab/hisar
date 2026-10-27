@@ -135,6 +135,12 @@ private struct AutoFillListView: View {
                     }
                 }
             }
+            if model.requestKind == .password {
+                Section {} footer: {
+                    Text("Copied one-time codes clear in 90 seconds.")
+                        .foregroundStyle(.themeSecondary)
+                }
+            }
         }
         .applyThemedListStyle()
         // The rows wait while a login fills or the logins load; the search field never does. Searching starts the load of every
@@ -207,12 +213,17 @@ private struct AutoFillListView: View {
                             .font(.caption)
                             .foregroundStyle(.themeSecondary)
                     }
+                    if model.requestKind == .password, login.hasOneTimePassword {
+                        Text("Also copies a one-time code for the next step")
+                            .font(.caption)
+                            .foregroundStyle(.themeSecondary)
+                    }
                 }
                 Spacer()
                 if login.hasOneTimePassword {
                     Image(systemName: "timer")
                         .foregroundStyle(.themeSecondary)
-                        .accessibilityLabel("Has a one-time code")
+                        .accessibilityLabel(model.requestKind == .password ? "Also copies a one-time code for the next step" : "Has a one-time code")
                 }
             }
             .contentShape(Rectangle())
