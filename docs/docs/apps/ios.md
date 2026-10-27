@@ -31,6 +31,7 @@ Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 At accessibility text sizes, the lock screen keeps the account email on one line, shrinking it or truncating its middle.
 VoiceOver reads the full address.
 Sign-in and create-account failures appear immediately above their submit button, without clearing the entered fields.
+At accessibility text sizes, sign-in modes use stacked buttons and a wrapping heading instead of a segmented control.
 
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.

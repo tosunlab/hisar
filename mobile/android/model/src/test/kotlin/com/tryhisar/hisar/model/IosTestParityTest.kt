@@ -44,6 +44,8 @@ class IosTestParityTest {
         mapOf(
             "testCredentialErrorsStayBesideSubmission" to
                 "Checks the iOS Form error position with its keyboard; Android uses a separate Compose form",
+            "testSignInModesScaleAtAccessibilitySizes" to
+                "Checks the iOS Dynamic Type replacement for its unscaled segmented control; Android has scaled Compose mode buttons",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

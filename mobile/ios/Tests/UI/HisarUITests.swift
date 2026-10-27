@@ -2,6 +2,22 @@ import UIKit
 import XCTest
 
 final class HisarUITests: HisarUITestCase {
+    func testSignInModesScaleAtAccessibilitySizes() {
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        waitFor(signInModeControl)
+        XCTAssertFalse(app.segmentedControls["sign-in-mode"].exists)
+        let heading = app.staticTexts["sign-in-heading"]
+        XCTAssertEqual(heading.label, "Welcome back")
+        XCTAssertTrue(signInModeControl.buttons["Sign in"].isSelected)
+        selectSignInMode("Create account")
+        scrollTo(heading)
+        XCTAssertEqual(heading.label, "Create account")
+        XCTAssertTrue(signInModeControl.buttons["Create account"].isSelected)
+        XCTAssertTrue(app.navigationBars["Hisar"].exists)
+        saveScreenshot("sign-in-accessibility")
+    }
+
     func testCredentialErrorsStayBesideSubmission() {
         app.launch()
         app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()

@@ -239,12 +239,24 @@ class HisarUITestCase: XCTestCase {
         return XCTWaiter().wait(for: [expectation], timeout: timeout) == .completed
     }
 
+    var signInModeControl: XCUIElement {
+        let segmented = app.segmentedControls["sign-in-mode"]
+        return segmented.exists ? segmented : app.otherElements["sign-in-mode"].firstMatch
+    }
+
+    func selectSignInMode(_ title: String) {
+        let button = signInModeControl.buttons[title]
+        waitFor(button)
+        scrollTo(button)
+        button.tap()
+    }
+
     // With isBiometricOfferExpected, it stops at the Face ID offer after the Secret Key; otherwise it declines any offer.
     @discardableResult
     func signUp(inviteLink: String, email: String, name: String, isBiometricOfferExpected: Bool = false) -> String {
-        waitFor(app.segmentedControls["sign-in-mode"])
+        waitFor(signInModeControl)
         saveScreenshot("sign-in")
-        app.segmentedControls["sign-in-mode"].buttons["Create account"].tap()
+        selectSignInMode("Create account")
         type(inviteLink, into: app.textFields["sign-up-invite-link"])
         type(email, into: app.textFields["sign-up-email"])
         type(name, into: app.textFields["sign-up-name"])
