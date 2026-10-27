@@ -4,7 +4,7 @@
     <!-- A notification's text, chosen by its kind: the push carries only the kind, so the lock screen shows no details. -->
     <string name="push_approval">Approval requested. Open Hisar to answer it.</string>
     <string name="push_security">Security alert for your Hisar account. Open Hisar to see it.</string>
-    <string name="push_sharing">Someone shared with you in Hisar. Open Hisar to see it.</string>
+    <string name="push_sharing">You\'re invited to a vault or an organization. Open Hisar to answer it.</string>
     <string name="push_approval_waiting">An approval request is still waiting in Hisar.</string>
     <string name="notification_channel_approvals">Approval requests</string>
     <string name="notification_channel_security">Security alerts</string>
