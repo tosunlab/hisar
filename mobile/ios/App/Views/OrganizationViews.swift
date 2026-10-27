@@ -548,7 +548,7 @@ struct OrganizationView: View {
         } header: {
             Text(OrganizationLogic.describeMemberCount(organization.allMember.count))
         } footer: {
-            Text("Compare security codes with people once, in person or over a channel you trust. Tap a person to see theirs.")
+            Text("Tap a person to see their security code. Ask them for the code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.")
         }
     }
 
@@ -818,9 +818,7 @@ struct OrganizationMemberView: View {
                 } header: {
                     Text("Security code")
                 } footer: {
-                    Text(member.isCurrentUser
-                         ? "Others see this code for you. When they compare it with you, they know vaults they give you reach you and nobody else."
-                         : "Compare it with \(member.name) once, in person or over a channel you trust. If it matches what their Hisar shows, vaults their teams get reach them and nobody else.")
+                    Text(describeSecurityCode(member))
                 }
             }
             Section {

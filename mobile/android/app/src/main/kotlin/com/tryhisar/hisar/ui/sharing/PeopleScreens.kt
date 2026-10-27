@@ -110,7 +110,7 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
         val loadedPeople = allPerson
         FormSection(
             header = "People you share vaults with",
-            footer = { Text("People appear here once you share a vault with them. Compare security codes with them once, in person or over a channel you trust.") },
+            footer = { Text("People appear here once you share a vault with them. To compare codes, ask each person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.") },
         ) {
             if (loadedPeople == null) {
                 LoadingRow("Loading people…")
@@ -188,11 +188,7 @@ private fun PersonScreen(person: Member, onBack: () -> Unit) {
         }
         SecurityCodeSection(
             person,
-            footer = if (person.isCurrentUser) {
-                "Others see this code for you. When they compare it with you, they know vaults they share reach you and nobody else."
-            } else {
-                "Compare it with ${person.name} once, in person or over a channel you trust. If it matches what their Hisar shows, vaults you share reach them and nobody else."
-            },
+            footer = describeSecurityCode(person),
             testTag = "person-security-code",
             isShareable = false,
         )

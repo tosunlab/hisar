@@ -315,9 +315,7 @@ struct VaultMemberView: View {
                 } header: {
                     Text("Security code")
                 } footer: {
-                    Text(member.isCurrentUser
-                         ? "People you share with compare this code with the one their Hisar shows for you."
-                         : "Compare it with \(member.name) once, in person or over a channel you trust. If it matches what their Hisar shows, this vault reaches them and nobody else.")
+                    Text(describeSecurityCode(member))
                 }
             }
             Section {
@@ -428,4 +426,12 @@ struct MemberRow: View {
 func describeVaultMemberRemoval(member: Member?, vaultName: String) -> String {
     let name = member.map { $0.name.isEmpty ? $0.email : $0.name } ?? ""
     return "\(name) is removed from “\(vaultName)”, and Hisar encrypts the vault again with a new key for the people who remain. \(name) can still read copies their devices already downloaded. Change any password or secret they should no longer know."
+}
+
+func describeSecurityCode(_ member: Member) -> String {
+    if member.isCurrentUser {
+        return "This is your security code. Read it to someone who is checking the code they see for you."
+    }
+    let name = member.name.isEmpty ? member.email : member.name
+    return "Ask \(name) for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code."
 }

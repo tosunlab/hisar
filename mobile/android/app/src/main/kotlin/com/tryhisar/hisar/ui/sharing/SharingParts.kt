@@ -219,7 +219,7 @@ fun SentInvitationRow(invitation: SentShareInvitation, isVaultNameShown: Boolean
     reviewed?.let { snapshot ->
         ConfirmationDialog(
             title = "Give this person access?",
-            message = "${snapshot.email}\nVault ${snapshot.vaultName} · ${VaultLogic.describeVaultRole(snapshot.role)}\nAccount ${snapshot.recipientID}\nSecurity code ${snapshot.securityCode}\nCompare this code with the recipient over a channel you trust.",
+            message = "${snapshot.email}\nVault ${snapshot.vaultName} · ${VaultLogic.describeVaultRole(snapshot.role)}\nAccount ${snapshot.recipientID}\nSecurity code ${snapshot.securityCode}\nTo compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code.",
             confirmLabel = "Give access",
             confirmTestTag = "confirm-share-recipient",
             onConfirm = { reviewed = null; onConfirm?.invoke(snapshot) },
@@ -340,6 +340,13 @@ fun PersonHeader(member: Member) {
         }
     }
 }
+
+fun describeSecurityCode(member: Member): String =
+    if (member.isCurrentUser) {
+        "This is your security code. Read it to someone who is checking the code they see for you."
+    } else {
+        "Ask ${member.name.ifEmpty { member.email }} for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code."
+    }
 
 /** A security code in large monospaced type; with [isShareable], Share my security code under the user's own. */
 @Composable

@@ -302,11 +302,7 @@ private fun VaultMemberScreen(
         }
         SecurityCodeSection(
             member,
-            footer = if (member.isCurrentUser) {
-                "People you share with compare this code with the one their Hisar shows for you."
-            } else {
-                "Compare it with ${member.name} once, in person or over a channel you trust. If it matches what their Hisar shows, this vault reaches them and nobody else."
-            },
+            footer = describeSecurityCode(member),
             testTag = "member-security-code",
         )
         FormSection(footer = { Text(VaultLogic.describeVaultRoleAbility(selectedRole)) }) {

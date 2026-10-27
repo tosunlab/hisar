@@ -56,7 +56,7 @@ struct PeopleView: View {
             } header: {
                 Text("People you share vaults with")
             } footer: {
-                Text("People appear here once you share a vault with them. Compare security codes with them once, in person or over a channel you trust.")
+                Text("People appear here once you share a vault with them. To compare codes, ask each person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.")
             }
             if !shareInvitations.allSent.isEmpty || !shareInvitations.completionError.isEmpty {
                 Section {
@@ -164,9 +164,7 @@ struct PersonView: View {
                 } header: {
                     Text("Security code")
                 } footer: {
-                    Text(person.isCurrentUser
-                         ? "Others see this code for you. When they compare it with you, they know vaults they share reach you and nobody else."
-                         : "Compare it with \(person.name) once, in person or over a channel you trust. If it matches what their Hisar shows, vaults you share reach them and nobody else.")
+                    Text(describeSecurityCode(person))
                 }
             }
         }
@@ -259,7 +257,7 @@ struct SentInvitationRow: View {
             .accessibilityIdentifier("confirm-share-recipient")
         } message: {
             if let snapshot = reviewed {
-                Text("\(snapshot.email)\nVault \(snapshot.vaultName) · \(describeVaultRole(snapshot.role))\nAccount \(snapshot.recipientID ?? "")\nSecurity code \(snapshot.securityCode ?? "")\nCompare this code with the recipient over a channel you trust.")
+                Text("\(snapshot.email)\nVault \(snapshot.vaultName) · \(describeVaultRole(snapshot.role))\nAccount \(snapshot.recipientID ?? "")\nSecurity code \(snapshot.securityCode ?? "")\nTo compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code.")
             }
         }
     }

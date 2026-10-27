@@ -205,7 +205,7 @@ describe("Vault sharing panel", () => {
     await toggle.trigger("click");
     const detail = wrapper.find('[data-testid="security-code-detail"]');
     expect(detail.find('[data-testid="security-code"]').text()).toBe("C0FF EE12 3456 789A");
-    expect(detail.text()).toContain("Compare this code with Bob in person or over a channel you trust");
+    expect(detail.text()).toContain("Ask Bob Jansen for the security code Hisar shows for their own account (Settings → People, the row marked you)");
     expect(toggle.attributes("aria-expanded")).toBe("true");
     await toggle.trigger("click");
     expect(wrapper.find('[data-testid="security-code-detail"]').exists()).toBe(false);

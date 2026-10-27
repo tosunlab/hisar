@@ -14,7 +14,7 @@ async function confirm(): Promise<void> {
 
 <template>
   <button v-if="invitation.requiresConfirmation" class="primary" :disabled="store.isBusy" :data-testid="`review-share-${invitation.id}`" @click="reviewed = { ...props.invitation }">Review recipient</button>
-  <AccountDialog v-if="reviewed" title="Give this person access?" subtitle="Compare the security code with the recipient over a channel you trust before confirming." icon="users" :is-closable="!store.isBusy" data-testid="share-recipient-confirmation" @close="reviewed = null">
+  <AccountDialog v-if="reviewed" title="Give this person access?" subtitle="To compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code." icon="users" :is-closable="!store.isBusy" data-testid="share-recipient-confirmation" @close="reviewed = null">
     <p>{{ reviewed.recipientName || reviewed.email }} · {{ reviewed.email }}</p>
     <p>Vault {{ reviewed.vaultName }} · {{ formatRole(reviewed.role) }}</p>
     <p>Account {{ reviewed.recipientId }}</p>

@@ -442,7 +442,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
         }
         SectionCard(
             header = OrganizationLogic.describeMemberCount(loaded.allMember.size),
-            footer = { Text("Compare security codes with people once, in person or over a channel you trust. Tap a person to see theirs.") },
+            footer = { Text("Tap a person to see their security code. Ask them for the code Hisar shows for their own account in Settings → People, the row marked you. It must match the code you see for them.") },
         ) {
             loaded.allMember.forEachIndexed { index, member ->
                 if (index > 0) SymbolRowDivider()
@@ -849,11 +849,7 @@ private fun OrganizationMemberScreen(
         }
         SecurityCodeSection(
             member,
-            footer = if (member.isCurrentUser) {
-                "Others see this code for you. When they compare it with you, they know vaults they give you reach you and nobody else."
-            } else {
-                "Compare it with ${member.name} once, in person or over a channel you trust. If it matches what their Hisar shows, vaults their teams get reach them and nobody else."
-            },
+            footer = com.tryhisar.hisar.ui.sharing.describeSecurityCode(member),
             testTag = "organization-member-security-code",
         )
         FormSection(footer = { Text(if (isAdminRole) ADMIN_ROLE_NOTE else "Members get the vaults of the teams they are in.") }) {

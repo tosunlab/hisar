@@ -214,8 +214,8 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
               <AppIcon name="shield" :size="14" />
               <div>
                 <span class="security-code monospace" data-testid="organization-member-security-code">{{ member.securityCode }}</span>
-                <p v-if="member.isCurrentUser" class="muted">This is your security code. People you share with can compare it with the code they see for you.</p>
-                <p v-else class="muted">Compare this code with {{ member.name || member.email }} in person or over a channel you trust, to be sure the server isn't intercepting.</p>
+                <p v-if="member.isCurrentUser" class="muted">This is your security code. Read it to someone who is checking the code they see for you.</p>
+                <p v-else class="muted">Ask {{ member.name || member.email }} for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code.</p>
               </div>
             </div>
           </div>
