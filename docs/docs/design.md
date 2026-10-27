@@ -507,6 +507,7 @@ payload       = {version: 1, title, fields: [{kind, label, value, isConcealed}]}
 - PBKDF2 rather than Argon2id: WebCrypto has PBKDF2 built in, while Argon2id would mean shipping a WebAssembly build inside the page. 600 000 iterations is OWASP's current advice for PBKDF2-HMAC-SHA256. The server hands out the salt and the iteration count, so the page and `core/sharelink` refuse fewer than 600 000 or more than 10 000 000 iterations, and a salt that is not 16 bytes.
 - The JSON payload is at most 48 KiB, so the ciphertext stays below the server's 64 KiB.
 - The creator's lists show what each link shares without the server learning it: the creating client also uploads a label, `XChaCha20-Poly1305(K_user, aad = "hisar/v1/share-link-label" || accountID, JSON{title, vaultID, itemID, fieldLabels, isText, linkKey})` (§4.3), which only the creator's devices open. It holds the link key, so **Copy link** works later on any of the creator's devices; the passphrase is never stored.
+- The Mac's global Shared links list names each accessible source vault and offers **Open source item** for item links. It looks up the source by the label's vault and item IDs before closing the panel. A missing or inaccessible source is unavailable, not proof of deletion. Links hold a copy from creation, so editing the source does not update a link. Text shares have no source item.
 
 **Server.**
 

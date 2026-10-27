@@ -21,7 +21,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <span class="panel-icon"><AppIcon name="link" :size="18" /></span>
         <div class="panel-heading">
           <h2 id="shared-links-title">Shared links</h2>
-          <p class="muted">Live links to your items and text. Each one stops working when it expires, runs out of views or is revoked.</p>
+          <p class="muted">Each link contains a copy from when it was created. It stops working when it expires, runs out of views or is revoked.</p>
         </div>
         <button class="ghost icon-button" aria-label="Close" @click="closeShareLinks"><AppIcon name="close" /></button>
       </header>

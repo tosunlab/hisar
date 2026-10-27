@@ -2543,6 +2543,30 @@ export function closeShareLinks(): void {
   store.errorMessage = "";
 }
 
+export function openShareLinkSource(shareLink: ShareLink): Promise<void> {
+  return afterDiscardingDraft(async () => {
+    const version = ++navigationVersion;
+    const result = await runAction(() => Promise.all([
+      api.getItem(shareLink.vaultID, shareLink.itemID),
+      api.listAllItem(shareLink.vaultID),
+    ]));
+    if (version !== navigationVersion || store.status.state !== "unlocked") return;
+    if (!result) {
+      store.errorMessage = `Source item unavailable. ${store.errorMessage}`;
+      return;
+    }
+    const [detail, items] = result;
+    store.selectedVaultID = shareLink.vaultID;
+    store.allItem = sortAllItem(items);
+    store.selectedItem = detail;
+    store.isFavoritesSelected = false;
+    store.searchQuery = "";
+    store.selectedTag = "";
+    store.editorMode = "view";
+    closeShareLinks();
+  });
+}
+
 export async function openItemShareLinkDialog(): Promise<void> {
   const selectedItem = store.selectedItem;
   if (!selectedItem) {

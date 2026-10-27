@@ -198,6 +198,40 @@ describe("shared links", () => {
     createShareLink({ id: "link-text", title: "Staging database URL", vaultID: "", itemID: "", fieldLabels: ["text"], isText: true, maxViews: 0, viewCount: 3 }),
   ];
 
+  it("opens a source in its own vault only after lookup succeeds", async () => {
+    api.listAllShareLink.mockResolvedValue(allShareLink);
+    api.getItem.mockResolvedValue(githubItem);
+    api.listAllItem.mockResolvedValue([githubItem]);
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.find('[data-testid="open-shared-links"]').trigger("click");
+    await flushPromises();
+    const panel = wrapper.find('[data-testid="shared-links-panel"]');
+    expect(panel.text()).toContain("Personal · Username, password");
+    expect(panel.text()).toContain("a copy from when it was created");
+    expect(panel.findAll('button[aria-label^="Open source item"]')).toHaveLength(2);
+    store.allItem = [];
+    await panel.find('button[aria-label="Open source item for GitHub"]').trigger("click");
+    await flushPromises();
+    expect(api.getItem).toHaveBeenCalledWith("personal", "item-1");
+    expect(store.selectedItem?.id).toBe("item-1");
+    expect(store.isShareLinksOpen).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("keeps the panel open when the source lookup fails without claiming deletion", async () => {
+    api.listAllShareLink.mockResolvedValue(allShareLink);
+    api.getItem.mockRejectedValueOnce(new Error("access is no longer available"));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.find('[data-testid="open-shared-links"]').trigger("click");
+    await flushPromises();
+    await wrapper.find('button[aria-label="Open source item for GitHub"]').trigger("click");
+    await flushPromises();
+    expect(store.isShareLinksOpen).toBe(true);
+    expect(wrapper.find('[data-testid="shared-links-panel"]').text()).toContain("Source item unavailable");
+    expect(wrapper.text()).not.toContain("Item deleted");
+    wrapper.unmount();
+  });
+
   it("lists only the item's own links in the item view", () => {
     store.allShareLink = allShareLink;
     const wrapper = mount(MainView, { attachTo: document.body });
