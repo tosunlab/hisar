@@ -548,13 +548,9 @@ const wailsApi = {
 export const api: typeof wailsApi = { ...wailsApi };
 
 export function getErrorMessage(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  if (typeof error === "string" && error) {
-    return error;
-  }
-  return "Something went wrong";
+  const message = (error instanceof Error ? error.message : typeof error === "string" ? error : "").trim() || "Something went wrong";
+  const sentence = message[0].toUpperCase() + message.slice(1);
+  return /[.?!]$/.test(sentence) ? sentence : `${sentence}.`;
 }
 
 export function createEmptyAddress(): ItemAddress {

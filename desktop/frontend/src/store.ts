@@ -238,7 +238,8 @@ async function runAction<Result>(action: () => Promise<Result>): Promise<Result 
     return await action();
   } catch (error) {
     store.errorMessage = getErrorMessage(error);
-    if (store.errorMessage === "Hisar is locked") {
+    const rawMessage = error instanceof Error ? error.message : typeof error === "string" ? error : "";
+    if (rawMessage === "Hisar is locked") {
       clearLockedVaultData();
       store.status = { ...store.status, state: "locked" };
     }

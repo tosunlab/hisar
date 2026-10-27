@@ -194,6 +194,7 @@ The Android app uses the iPhone's copy with these changes. Shared sentences from
 ## Style
 
 - Plain sentences: no exclamation marks, no comma splices, and only claims the code keeps ("private keys never leave Hisar"; the command-line tool reads passwords and one-time codes but never private keys).
+- Desktop prose errors capitalize the first character for iPhone parity. They also end in a period unless they already end in a period, question mark or exclamation mark. The final period is a desktop copy-style choice; the iPhone converter only capitalizes.
 - Developer features lead; sharing with other people is described as person-to-person, never as family sharing.
 - Sentence case for buttons, labels and menu items ("Copy one-time code"), title case only for product names (Secret Key, Emergency Kit, Touch ID). Generated action labels preserve user-authored custom field names and acronyms.
 - An ellipsis (…) on an action that opens more input; "…" while busy ("Signing in…").

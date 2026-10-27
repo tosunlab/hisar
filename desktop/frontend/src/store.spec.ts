@@ -1,4 +1,5 @@
 import type { CredentialChangeResult, PendingRecoverySummary, SignUpResult, Status } from "./api";
+import type * as ApiModule from "./api";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   allTestVault,
@@ -19,10 +20,11 @@ const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMo
 
 vi.mock("./api", async () => {
   const { createApiMock: createMock } = await import("./testing");
+  const { getErrorMessage } = await vi.importActual<typeof ApiModule>("./api");
   apiMock.current = createMock();
   return {
     api: apiMock.current,
-    getErrorMessage: (error: unknown) => (error instanceof Error ? error.message : String(error)),
+    getErrorMessage,
     createEmptyItem: () => ({ id: "", revision: "", title: "", username: "", urls: [], password: "", notes: "", fields: [] }),
   };
 });
@@ -69,7 +71,7 @@ describe("store", () => {
   it("shows the error message when sign in fails", async () => {
     api.signIn.mockRejectedValue(new Error("incorrect email, master password or Secret Key"));
     expect(await storeModule.signIn("s", "e", "k", "p")).toBe(false);
-    expect(store.errorMessage).toBe("incorrect email, master password or Secret Key");
+    expect(store.errorMessage).toBe("Incorrect email, master password or Secret Key.");
     expect(store.status.state).toBe("signed-out");
     expect(store.isBusy).toBe(false);
   });
@@ -436,7 +438,7 @@ describe("sharing, people and devices", () => {
 
     api.shareVault.mockRejectedValue(new Error("this person already has access to the vault"));
     expect(await storeModule.shareVault("bob@example.com", "reader")).toBe(false);
-    expect(store.errorMessage).toBe("this person already has access to the vault");
+    expect(store.errorMessage).toBe("This person already has access to the vault.");
   });
 
   it("accepts, declines and cancels share invitations", async () => {
@@ -457,7 +459,7 @@ describe("sharing, people and devices", () => {
 
     api.acceptShareInvitation.mockRejectedValue(new Error("this invitation no longer exists"));
     expect(await storeModule.acceptShareInvitation(fromCarol)).toBe(false);
-    expect(store.errorMessage).toBe("this invitation no longer exists");
+    expect(store.errorMessage).toBe("This invitation no longer exists.");
   });
 
   it("loads invitations with the vaults, quietly, so accepted shares complete", async () => {
@@ -485,7 +487,7 @@ describe("sharing, people and devices", () => {
 
     api.removeVaultMember.mockRejectedValue(new Error("only owners of this vault can share it, change roles or remove members"));
     expect(await storeModule.removeVaultMember(bob)).toBe(false);
-    expect(store.errorMessage).toContain("only owners");
+    expect(store.errorMessage).toContain("Only owners");
   });
 
   it("loads settings data, invites by email and revokes devices", async () => {
@@ -501,7 +503,7 @@ describe("sharing, people and devices", () => {
     expect(store.noticeMessage).toBe("Invitation sent to dan@example.com");
     api.invitePerson.mockRejectedValue(new Error("this server cannot send email yet, so invitations cannot be sent"));
     expect(await storeModule.invitePerson("dan@example.com")).toBe(false);
-    expect(store.errorMessage).toBe("this server cannot send email yet, so invitations cannot be sent");
+    expect(store.errorMessage).toBe("This server cannot send email yet, so invitations cannot be sent.");
 
     api.revokeDevice.mockResolvedValue(undefined);
     api.listAllDevice.mockResolvedValue([createDevice()]);
