@@ -52,6 +52,10 @@ class IosTestParityTest {
                 "Resolves SwiftUI themeSecondary against iOS grouped Form and List backgrounds",
             "testLightSupportingInstructionsRenderInSignInExportAndAccountChange" to
                 "Captures iPhone supporting-text rendering in Light appearance; Android uses Compose",
+            "testPersistentEditorLabelsKeepTheirSpaceWithPopulatedAndEmptyValues" to
+                "SwiftUI persistent visible editor labels; Android field labeling is covered by its Compose semantics tests",
+            "testPopulatedEditorsRenderLabeledIdentityAddressCredentialLicenseServerAndDatabaseFields" to
+                "Captures native SwiftUI populated editors at iOS Dynamic Type sizes; Android uses Compose",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

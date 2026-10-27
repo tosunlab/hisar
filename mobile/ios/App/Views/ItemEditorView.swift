@@ -73,6 +73,7 @@ struct ItemEditorView: View {
                         .accessibilityIdentifier("editor-icon")
                         TextField("Title", text: $draft.title)
                             .accessibilityIdentifier("editor-title")
+                            .editorFieldLabel("Title")
                     }
                     if isNew {
                         Picker("Vault", selection: $chosenVaultID) {
@@ -88,6 +89,7 @@ struct ItemEditorView: View {
                         TextField("Recovery codes, door codes, account details…", text: $draft.notes, axis: .vertical)
                             .lineLimit(8...30)
                             .accessibilityIdentifier("editor-notes")
+                            .editorFieldLabel("Note")
                     } header: {
                         Text("Note")
                             .foregroundStyle(.themeSecondary)
@@ -123,6 +125,7 @@ struct ItemEditorView: View {
                             // editor closes, offers to save them in Apple's Passwords. A one-time code type on both opts out.
                             .textContentType(.oneTimeCode)
                             .accessibilityIdentifier("editor-username")
+                            .editorFieldLabel("Username or email")
                         HStack {
                             Group {
                                 if isPasswordRevealed {
@@ -136,6 +139,7 @@ struct ItemEditorView: View {
                             .autocorrectionDisabled()
                             .textContentType(.oneTimeCode)
                             .accessibilityIdentifier("editor-password")
+                            .editorFieldLabel("Password")
                             Button {
                                 isPasswordRevealed.toggle()
                             } label: {
@@ -167,6 +171,7 @@ struct ItemEditorView: View {
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
                                 .accessibilityIdentifier("editor-one-time-password")
+                                .editorFieldLabel("Setup key or otpauth:// link")
                         } header: {
                             Text("One-time code")
                                 .foregroundStyle(.themeSecondary)
@@ -178,6 +183,7 @@ struct ItemEditorView: View {
                                     .textInputAutocapitalization(.never)
                                     .autocorrectionDisabled()
                                     .accessibilityIdentifier("editor-website-\(index)")
+                                    .editorFieldLabel(draft.isServer ? "Admin console URL" : "Website")
                             }
                             .onDelete { allURLText.remove(atOffsets: $0) }
                             Button {
@@ -197,6 +203,7 @@ struct ItemEditorView: View {
                         TextField("Notes", text: $draft.notes, axis: .vertical)
                             .lineLimit(3...10)
                             .accessibilityIdentifier("editor-notes")
+                            .editorFieldLabel("Notes")
                     } header: {
                         Text("Notes")
                             .foregroundStyle(.themeSecondary)
@@ -355,6 +362,7 @@ struct ItemEditorView: View {
         .textInputAutocapitalization(.never)
         .autocorrectionDisabled()
         .accessibilityIdentifier(identifier)
+        .editorFieldLabel(title)
     }
 
     @ViewBuilder
@@ -363,6 +371,7 @@ struct ItemEditorView: View {
             TextField("Name on the card", text: bindCard(\.cardholder))
                 .textContentType(.name)
                 .accessibilityIdentifier("editor-cardholder")
+                .editorFieldLabel("Name on the card")
             buildCardField("Card number", \.number, identifier: "editor-card-number", isSecret: true)
             Picker("Type", selection: bindCard(\.type)) {
                 Text("Not set").tag("")
@@ -374,6 +383,7 @@ struct ItemEditorView: View {
             TextField("Expiry (MM/YY)", text: bindCard(\.expiry))
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("editor-card-expiry")
+                .editorFieldLabel("Expiry (MM/YY)")
             buildCardField("Security code", \.securityCode, identifier: "editor-card-security-code", isSecret: true)
             buildCardField("PIN", \.pin, identifier: "editor-card-pin", isSecret: true)
             Button {
@@ -465,6 +475,7 @@ struct ItemEditorView: View {
         } else {
             TextField(title, text: value)
                 .accessibilityIdentifier(identifier)
+                .editorFieldLabel(title)
         }
     }
 
@@ -484,6 +495,7 @@ struct ItemEditorView: View {
         .textInputAutocapitalization(.characters)
         .autocorrectionDisabled()
         .accessibilityIdentifier(identifier)
+        .editorFieldLabel(title)
     }
 
     @ViewBuilder
@@ -492,12 +504,15 @@ struct ItemEditorView: View {
             TextField("First name", text: bindIdentity(\.firstName))
                 .textContentType(.givenName)
                 .accessibilityIdentifier("editor-identity-first-name")
+                .editorFieldLabel("First name")
             TextField("Middle name", text: bindIdentity(\.middleName))
                 .textContentType(.middleName)
                 .accessibilityIdentifier("editor-identity-middle-name")
+                .editorFieldLabel("Middle name")
             TextField("Last name", text: bindIdentity(\.lastName))
                 .textContentType(.familyName)
                 .accessibilityIdentifier("editor-identity-last-name")
+                .editorFieldLabel("Last name")
         } header: {
             Text("Name")
                 .foregroundStyle(.themeSecondary)
@@ -510,10 +525,12 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-identity-email")
+                .editorFieldLabel("Email")
             TextField("Phone", text: bindIdentity(\.phone))
                 .keyboardType(.phonePad)
                 .textContentType(.telephoneNumber)
                 .accessibilityIdentifier("editor-identity-phone")
+                .editorFieldLabel("Phone")
         } header: {
             Text("Details")
                 .foregroundStyle(.themeSecondary)
@@ -556,19 +573,24 @@ struct ItemEditorView: View {
                 .lineLimit(1...4)
                 .textContentType(.fullStreetAddress)
                 .accessibilityIdentifier("editor-address-street")
+                .editorFieldLabel("Street")
             TextField("City", text: bind(\.city))
                 .textContentType(.addressCity)
                 .accessibilityIdentifier("editor-address-city")
+                .editorFieldLabel("City")
             TextField("Region", text: bind(\.region), prompt: Text("State or province").foregroundStyle(.themeSecondary))
                 .textContentType(.addressState)
                 .accessibilityIdentifier("editor-address-region")
+                .editorFieldLabel("Region")
             TextField("Postal code", text: bind(\.postalCode))
                 .textContentType(.postalCode)
                 .textInputAutocapitalization(.characters)
                 .accessibilityIdentifier("editor-address-postal-code")
+                .editorFieldLabel("Postal code")
             TextField("Country", text: bind(\.country))
                 .textContentType(.countryName)
                 .accessibilityIdentifier("editor-address-country")
+                .editorFieldLabel("Country")
             if let oldText, isOldAddressShown {
                 VStack(alignment: .leading, spacing: 6) {
                     Text("\(title) (old format)")
@@ -613,11 +635,13 @@ struct ItemEditorView: View {
         Section {
             TextField("Service", text: bindAPICredential(\.service))
                 .accessibilityIdentifier("editor-api-credential-service")
+                .editorFieldLabel("Service")
             TextField("Key ID", text: bindAPICredential(\.keyID))
                 .font(.system(.body, design: .monospaced))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-api-credential-key-id")
+                .editorFieldLabel("Key ID")
             HStack {
                 Group {
                     if isCredentialSecretRevealed {
@@ -632,6 +656,7 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-api-credential-secret")
+                .editorFieldLabel("Secret")
                 Button {
                     isCredentialSecretRevealed.toggle()
                 } label: {
@@ -647,6 +672,7 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-api-credential-host")
+                .editorFieldLabel("Host")
             buildDateRow("Expiry", bindAPICredential(\.expiry), identifier: "editor-api-credential-expiry", isFutureAllowed: true)
         } header: {
             Text("Credential")
@@ -687,9 +713,11 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-server-host")
+                .editorFieldLabel("Host")
             TextField("Port", text: bindServer(\.port), prompt: Text(verbatim: "22"))
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("editor-server-port")
+                .editorFieldLabel("Port")
             Picker("SSH key", selection: bindServer(\.sshKeyID)) {
                 Text("None").tag("")
                 if !sshKeyID.isEmpty && !allVaultSSHKey.contains(where: { $0.id == sshKeyID }) {
@@ -759,23 +787,28 @@ struct ItemEditorView: View {
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .accessibilityIdentifier("editor-database-other-engine")
+                    .editorFieldLabel("Other engine")
             }
             TextField("Host", text: bindDatabase(\.host), prompt: Text(verbatim: "db.example.com"))
                 .keyboardType(.URL)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-database-host")
+                .editorFieldLabel("Host")
             TextField("Port", text: bindDatabase(\.port), prompt: Text(verbatim: "5432"))
                 .keyboardType(.numberPad)
                 .accessibilityIdentifier("editor-database-port")
+                .editorFieldLabel("Port")
             TextField("Database", text: bindDatabase(\.name), prompt: Text(verbatim: "app"))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-database-name")
+                .editorFieldLabel("Database")
             TextField("Options", text: bindDatabase(\.options), prompt: Text(verbatim: "sslmode=require"))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-database-options")
+                .editorFieldLabel("Options")
         } header: {
             Text("Database")
                 .foregroundStyle(.themeSecondary)
@@ -809,10 +842,12 @@ struct ItemEditorView: View {
         Section {
             TextField("Product", text: bindSoftwareLicense(\.product))
                 .accessibilityIdentifier("editor-license-product")
+                .editorFieldLabel("Product")
             TextField("Version", text: bindSoftwareLicense(\.version))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-version")
+                .editorFieldLabel("Version")
             HStack {
                 Group {
                     if isLicenseKeyRevealed {
@@ -827,6 +862,7 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-key")
+                .editorFieldLabel("License key")
                 Button {
                     isLicenseKeyRevealed.toggle()
                 } label: {
@@ -840,12 +876,14 @@ struct ItemEditorView: View {
             TextField("Licensed to", text: bindSoftwareLicense(\.licensedTo))
                 .textContentType(.name)
                 .accessibilityIdentifier("editor-license-licensed-to")
+                .editorFieldLabel("Licensed to")
             TextField("Email", text: bindSoftwareLicense(\.email))
                 .keyboardType(.emailAddress)
                 .textContentType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-email")
+                .editorFieldLabel("Email")
             buildDateRow("Purchase date", bindSoftwareLicense(\.purchaseDate), identifier: "editor-license-purchase-date", isFutureAllowed: false)
             TextField("Download URL", text: bindSoftwareLicense(\.downloadURL), prompt: Text(verbatim: "https://example.com/download"))
                 .keyboardType(.URL)
@@ -853,6 +891,7 @@ struct ItemEditorView: View {
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .accessibilityIdentifier("editor-license-download-url")
+                .editorFieldLabel("Download URL")
         } header: {
             Text("License")
                 .foregroundStyle(.themeSecondary)
@@ -864,11 +903,14 @@ struct ItemEditorView: View {
             ForEach(draft.allField.indices, id: \.self) { index in
                 VStack(alignment: .leading, spacing: 8) {
                     TextField("Name", text: $draft.allField[index].name)
+                        .editorFieldLabel("Name")
                     HStack {
                         if draft.allField[index].concealed {
                             SecureField("Value", text: $draft.allField[index].value)
+                                .editorFieldLabel("Value")
                         } else {
                             TextField("Value", text: $draft.allField[index].value)
+                                .editorFieldLabel("Value")
                         }
                         Button {
                             draft.allField[index].concealed.toggle()
@@ -909,6 +951,7 @@ struct ItemEditorView: View {
                 .submitLabel(.done)
                 .onSubmit(addTags)
                 .accessibilityIdentifier("editor-new-tag")
+                .editorFieldLabel("Add a tag")
         } header: {
             Text("Tags")
                 .foregroundStyle(.themeSecondary)
@@ -957,6 +1000,27 @@ struct ItemEditorView: View {
                 finish(nil, vaultID)
             }
         }
+    }
+}
+
+struct EditorFieldLabel: ViewModifier {
+    var title: String
+
+    func body(content: Content) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.footnote)
+                .foregroundStyle(.themeSecondary)
+                .accessibilityHidden(true)
+            content
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension View {
+    func editorFieldLabel(_ title: String) -> some View {
+        modifier(EditorFieldLabel(title: title))
     }
 }
 

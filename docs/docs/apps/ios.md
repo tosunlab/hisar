@@ -29,6 +29,8 @@ Dismiss buttons name their vault so VoiceOver distinguishes notices.
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.
+Text and secret fields retain visible labels above their values, including populated identity, address, credential,
+license, server and database editors. Labels and inputs stay vertically stacked at larger text sizes.
 Account settings group the master password, Secret Key, Emergency Kit, imports, exports, and account deletion.
 Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 Section headings and explanations use the palette's solid secondary text color, including recovery, export and
