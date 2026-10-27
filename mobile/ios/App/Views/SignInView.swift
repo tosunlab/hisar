@@ -128,11 +128,11 @@ struct SignInView: View {
         .onChange(of: model.pendingInviteLink) { _, _ in applyPendingInviteLink() }
         .sheet(isPresented: $isScannerShown) {
             EmergencyKitScannerSheet { link in
-                    model.pendingSignInLink = link
+                model.pendingSignInLink = link
                 isScannerShown = false
-                }
             }
         }
+    }
 
     @ViewBuilder
     private var signInSections: some View {
