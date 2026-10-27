@@ -3,6 +3,7 @@ import UIKit
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    @Environment(\.accessibilityReduceMotion) private var isMotionReduced
 
     var body: some View {
         ZStack {
@@ -38,7 +39,7 @@ struct RootView: View {
                 NoticeToast(message: noticeMessage)
                     .padding(.bottom, model.screen == .unlocked ? 84 : 24)
                     .allowsHitTesting(false)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .transition(isMotionReduced ? .identity : .move(edge: .bottom).combined(with: .opacity))
             }
         }
         .safeAreaInset(edge: .top) {
@@ -50,7 +51,7 @@ struct RootView: View {
                     .background(.regularMaterial)
             }
         }
-        .animation(.easeOut(duration: 0.2), value: model.noticeMessage)
+        .animation(isMotionReduced ? nil : .easeOut(duration: 0.2), value: model.noticeMessage)
         .sensoryFeedback(.success, trigger: model.copyCount)
         .sheet(item: Binding(get: { model.screen == .unlocked && model.newSecretKey == nil && !model.isPendingRecoveryShown ? model.presentedApproval : nil }, set: { if $0 == nil { model.closeApprovalSheet() } })) { approval in
             PhoneApprovalSheet(
