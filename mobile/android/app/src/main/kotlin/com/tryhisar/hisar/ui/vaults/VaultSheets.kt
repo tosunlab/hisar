@@ -153,15 +153,24 @@ fun NewVaultScreen(model: AppModel, onCancel: () -> Unit, onCreated: (VaultSumma
     var locationID by rememberSaveable { mutableStateOf(VaultLocation.sharedVault.id) }
     // Null until Where is loaded, and while it could not be: the teams are unknown then, so Create waits.
     var allLocation by remember { mutableStateOf<List<VaultLocation>?>(null) }
+    var isLoadingTeams by remember { mutableStateOf(true) }
+    var teamsLoadFailed by remember { mutableStateOf(false) }
     val location = OrganizationLogic.findVaultLocation(locationID, allLocation)
-    val canCreate = name.isNotBlank() && location != null
+    val canCreate = name.isNotBlank() && location != null && !isLoadingTeams && !teamsLoadFailed
 
     LaunchedEffect(Unit) {
         model.errorMessage.value = null
         focusRequester.requestFocus()
     }
-    // A failed reload keeps the choices already loaded; without any, Create stays disabled and the banner says why.
-    LaunchedEffect(remoteChangeCount) { allLocation = model.vaults.loadVaultLocations() ?: allLocation }
+    suspend fun loadLocations() {
+        isLoadingTeams = true
+        teamsLoadFailed = false
+        val loaded = model.vaults.loadVaultLocations()
+        if (loaded != null) allLocation = loaded
+        teamsLoadFailed = loaded == null
+        isLoadingTeams = false
+    }
+    LaunchedEffect(remoteChangeCount) { loadLocations() }
     BackHandler(enabled = isBusy) {}
 
     fun create() {
@@ -210,10 +219,24 @@ fun NewVaultScreen(model: AppModel, onCancel: () -> Unit, onCreated: (VaultSumma
                 keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Words, imeAction = ImeAction.Done),
                 keyboardActions = KeyboardActions(onDone = { create() }),
             )
+            RowDivider()
             val allLoadedLocation = allLocation
-            if (allLoadedLocation != null && (allLoadedLocation.size > 1 || location == null)) {
-                RowDivider()
-                PickerRow("Where", location, allLoadedLocation, { it.label }, { locationID = it.id }, testTag = "new-vault-where")
+            when {
+                isLoadingTeams -> FormRow {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Where")
+                        CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+                        Text("Loading teams…")
+                    }
+                }
+                teamsLoadFailed -> FormRow {
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        Text("Where")
+                        Text("Couldn't load teams", Modifier.weight(1f))
+                        androidx.compose.material3.TextButton(onClick = { scope.launch { loadLocations() } }) { Text("Retry") }
+                    }
+                }
+                allLoadedLocation != null -> PickerRow("Where", location, allLoadedLocation, { it.label }, { locationID = it.id }, testTag = "new-vault-where")
             }
         }
     }

@@ -84,6 +84,29 @@ beforeEach(() => {
 });
 
 describe("Vault sharing panel", () => {
+  it("contains a nested recipient review and returns to the still-open sharing panel", async () => {
+    api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [createSentShareInvitation({ id: "reviewed", requiresConfirmation: true, state: "accepted" })], completionError: "" });
+    const wrapper = await openSharingPanel();
+    const review = wrapper.find('[data-testid="review-share-reviewed"]');
+    (review.element as HTMLElement).focus();
+    await review.trigger("click");
+    await flushPromises();
+    const confirmation = wrapper.find('[data-testid="share-recipient-confirmation"]');
+    const all = confirmation.findAll("button").map((button) => button.element);
+    expect(all.map((button) => button.textContent)).toEqual(["Cancel", "Give access"]);
+    expect(document.activeElement).toBe(all[0]);
+    for (const shiftKey of [false, false, true, true]) {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey, cancelable: true }));
+      expect(all).toContain(document.activeElement);
+    }
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="share-recipient-confirmation"]').exists()).toBe(false);
+    expect(store.isSharingOpen).toBe(true);
+    expect(document.activeElement).toBe(review.element);
+    wrapper.unmount();
+  });
+
   it("lists the members with initials, role and a you tag", async () => {
     const wrapper = await openSharingPanel();
     expect(api.listAllVaultMember).toHaveBeenCalledWith("family");
@@ -110,6 +133,22 @@ describe("Vault sharing panel", () => {
     store.allVaultMember = [store.allVaultMember[0]!];
     await flushPromises();
     expect(panel.find('[data-testid="sharing-member-count"]').text()).toBe("1 member");
+    wrapper.unmount();
+  });
+
+  it("announces a changed key before the security code is expanded", async () => {
+    api.listAllVaultMember.mockResolvedValue([createVaultMember(), createVaultMember({ ...testBob, isKeyChanged: true })]);
+    const wrapper = await openSharingPanel();
+    const member = wrapper.get('[data-testid="vault-member-BOB222"]');
+    const warning = member.get("#member-key-warning-BOB222");
+    expect(warning.text()).toBe("Key changed. Hisar stopped sharing with them.");
+    const toggle = member.get('[data-testid="security-code-toggle-BOB222"]');
+    expect(toggle.attributes("aria-describedby")).toBe(warning.attributes("id"));
+    expect(toggle.attributes("aria-expanded")).toBe("false");
+    expect(member.find('[data-testid="security-code-detail"]').exists()).toBe(false);
+    await toggle.trigger("click");
+    expect(member.findAll("#member-key-warning-BOB222")).toHaveLength(1);
+    expect(member.text()).not.toContain("until you compare");
     wrapper.unmount();
   });
 

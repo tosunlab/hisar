@@ -294,10 +294,11 @@ function normalizeAccountDeletionPreview(boundPreview: BoundAccountDeletionPrevi
 export interface Organizations {
   organizations: OrganizationSummary[];
   invitations: OrganizationInvitation[];
+  isCached?: boolean;
 }
 
 function normalizeOrganizations(boundOrganizations: BoundOrganizations): Organizations {
-  return { organizations: boundOrganizations.organizations ?? [], invitations: boundOrganizations.invitations ?? [] };
+  return { organizations: boundOrganizations.organizations ?? [], invitations: boundOrganizations.invitations ?? [], isCached: boundOrganizations.isCached ?? false };
 }
 
 export interface Team extends Omit<BoundTeam, "members" | "vaults"> {

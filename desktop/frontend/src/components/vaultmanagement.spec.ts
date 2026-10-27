@@ -18,7 +18,7 @@ vi.mock("../api", async () => {
 
 vi.mock("@wailsio/runtime", () => ({ Events: { On: () => () => undefined } }));
 
-const { store, loadAllVault, selectVault, syncInBackground } = await import("../store");
+const { store, loadAllVault, openVaultDialog, selectVault, syncInBackground } = await import("../store");
 const MainView = (await import("./MainView.vue")).default;
 const api = apiMock.current;
 
@@ -95,6 +95,12 @@ describe("vault menu", () => {
     await flushPromises();
     expect(wrapper.find('[data-testid="vault-blocked-reason"]').text()).toBe("Only an owner of this vault can delete it. You can leave it instead.");
     expect(api.deleteVault).not.toHaveBeenCalled();
+    expect(wrapper.get("h2#vault-dialog-title").text()).toBe("You can't delete “Work”");
+    await wrapper.get('[data-testid="vault-blocked-leave"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="vault-dialog-leave"]').text()).toContain("Leave “Work”?");
+    expect(api.leaveVault).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it("explains that the Personal vault can't be deleted", async () => {
@@ -105,6 +111,38 @@ describe("vault menu", () => {
     await chooseFromMenu(wrapper, "delete");
     expect(api.getVaultActions).toHaveBeenCalledWith("personal");
     expect(wrapper.find('[data-testid="vault-dialog-blocked"]').text()).toContain(reason);
+    expect(wrapper.find('[data-testid="vault-blocked-leave"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-blocked-sharing"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it.each(["rename", "delete", "leave"] as const)("retains the refused %s action and the authoritative explanation", async (action) => {
+    const vault = { ...createWorkVault("reader"), type: "organization", organizationId: "acme" };
+    api.getVaultActions.mockResolvedValue(createVaultActions({ vault, canRename: false, canDelete: false, canLeave: false, deleteBlockedReason: "Deletion refused.", leaveBlockedReason: "Access comes through teams." }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await openVaultDialog(vault.id, action);
+    await flushPromises();
+    expect(wrapper.get("#vault-dialog-title").text()).toBe(`You can't ${action} “Work”`);
+    expect(wrapper.find('[data-testid="vault-blocked-leave"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="vault-blocked-sharing"]').exists()).toBe(false);
+    wrapper.unmount();
+  });
+
+  it("opens sharing for the same vault when its sole owner cannot leave", async () => {
+    api.getVaultActions.mockResolvedValue(createVaultActions({ vault: createWorkVault(), canLeave: false, leaveBlockedReason: "Another owner is needed." }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await openVaultDialog("work", "leave");
+    await flushPromises();
+    expect(wrapper.get("#vault-dialog-title").text()).toBe("You can't leave “Work”");
+    expect(document.activeElement?.textContent).toBe("OK");
+    await wrapper.get('[data-testid="vault-blocked-sharing"]').trigger("click");
+    await flushPromises();
+    expect(store.selectedVaultID).toBe("work");
+    expect(store.vaultDialog).toBeNull();
+    expect(store.isSharingOpen).toBe(true);
+    expect(api.leaveVault).not.toHaveBeenCalled();
+    store.isSharingOpen = false;
+    wrapper.unmount();
   });
 });
 

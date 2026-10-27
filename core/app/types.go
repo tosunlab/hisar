@@ -92,6 +92,8 @@ type OrganizationInvitation struct {
 type Organizations struct {
 	Organizations []OrganizationSummary    `json:"organizations"`
 	Invitations   []OrganizationInvitation `json:"invitations"`
+	// IsCached means only saved organization IDs and names are available, not live membership or invitations.
+	IsCached bool `json:"isCached,omitempty"`
 }
 
 // OrganizationMember: SecurityCode and IsKeyChanged as for Person.

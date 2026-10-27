@@ -22,9 +22,10 @@ var schemaStatements = []string{
 	`CREATE TABLE IF NOT EXISTS items (vault_id TEXT NOT NULL, item_id TEXT NOT NULL, data BLOB NOT NULL, PRIMARY KEY (vault_id, item_id))`,
 	`CREATE TABLE IF NOT EXISTS account_preferences (account_id TEXT PRIMARY KEY, data BLOB NOT NULL)`,
 	`CREATE TABLE IF NOT EXISTS website_icons (lookup TEXT PRIMARY KEY, data BLOB NOT NULL)`,
+	`CREATE TABLE IF NOT EXISTS organization_names (account_id TEXT PRIMARY KEY, data BLOB NOT NULL)`,
 }
 
-var dropStatements = []string{`DROP TABLE IF EXISTS accounts`, `DROP TABLE IF EXISTS vaults`, `DROP TABLE IF EXISTS items`, `DROP TABLE IF EXISTS account_preferences`, `DROP TABLE IF EXISTS website_icons`}
+var dropStatements = []string{`DROP TABLE IF EXISTS accounts`, `DROP TABLE IF EXISTS vaults`, `DROP TABLE IF EXISTS items`, `DROP TABLE IF EXISTS account_preferences`, `DROP TABLE IF EXISTS website_icons`, `DROP TABLE IF EXISTS organization_names`}
 
 type Cache struct {
 	database *sql.DB
@@ -100,6 +101,7 @@ func (c *Cache) CheckAccount(accountID string) error {
 	err := c.database.QueryRow(`
 		SELECT NOT EXISTS (SELECT 1 FROM accounts WHERE account_id <> ?)
 			AND NOT EXISTS (SELECT 1 FROM account_preferences WHERE account_id <> ?)
+			AND NOT EXISTS (SELECT 1 FROM organization_names WHERE account_id <> ?)
 			AND (
 				EXISTS (SELECT 1 FROM accounts WHERE account_id = ?)
 				OR NOT (
@@ -108,8 +110,9 @@ func (c *Cache) CheckAccount(accountID string) error {
 					OR EXISTS (SELECT 1 FROM items)
 					OR EXISTS (SELECT 1 FROM account_preferences)
 					OR EXISTS (SELECT 1 FROM website_icons)
+					OR EXISTS (SELECT 1 FROM organization_names)
 				)
-			)`, accountID, accountID, accountID).Scan(&isAllowed)
+			)`, accountID, accountID, accountID, accountID).Scan(&isAllowed)
 	if err != nil {
 		return err
 	}
@@ -175,6 +178,21 @@ func (c *Cache) LoadWebsiteIcon(lookup string) ([]byte, error) {
 func (c *Cache) ClearWebsiteIcons() error {
 	_, err := c.database.Exec(`DELETE FROM website_icons`)
 	return err
+}
+
+// SaveOrganizationNames replaces this account's sealed name-only metadata, never membership or invitations.
+func (c *Cache) SaveOrganizationNames(accountID string, sealed []byte) error {
+	_, err := c.database.Exec(`INSERT INTO organization_names (account_id, data) VALUES (?, ?) ON CONFLICT (account_id) DO UPDATE SET data = excluded.data`, accountID, sealed)
+	return err
+}
+
+func (c *Cache) LoadOrganizationNames(accountID string) ([]byte, error) {
+	var data []byte
+	err := c.database.QueryRow(`SELECT data FROM organization_names WHERE account_id = ?`, accountID).Scan(&data)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	return data, err
 }
 
 // LoadAccountPreferences returns nil when no record is cached.

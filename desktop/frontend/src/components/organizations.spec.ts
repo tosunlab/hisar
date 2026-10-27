@@ -69,7 +69,7 @@ async function openNewVaultForm(): Promise<VueWrapper> {
 }
 
 function listAllWhereChoice(wrapper: VueWrapper): string[] {
-  return wrapper.findAll('[data-testid="new-vault-where"] option').map((option) => option.text());
+  return wrapper.findAll('[data-testid="new-vault-where"] .destination-title').map((row) => row.text());
 }
 
 function isCreateDisabled(wrapper: VueWrapper): boolean {
@@ -91,6 +91,7 @@ function resetStore(allVault: VaultSummary[] = [personalVault, familyVault, depl
     noticeMessage: "",
     isBusy: false,
     isSettingsOpen: false,
+    isCreatingVault: false,
     isSharingOpen: false,
     allVaultMember: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
@@ -238,6 +239,14 @@ describe("Organization screen", () => {
     await admin.find('[data-testid="organization-team-menu-platform"]').trigger("click");
     await admin.find('[data-testid="context-menu-delete-team"]').trigger("click");
     expect(admin.find('[data-testid="organization-dialog-delete-team"]').isVisible()).toBe(true);
+    await flushPromises();
+    const confirmation = admin.find('[data-testid="organization-dialog-delete-team"]');
+    const cancel = confirmation.find("button.ghost");
+    expect(document.activeElement).toBe(cancel.element);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", shiftKey: true, cancelable: true }));
+    expect(confirmation.element.contains(document.activeElement)).toBe(true);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Tab", cancelable: true }));
+    expect(document.activeElement).toBe(cancel.element);
     await admin.find('[data-testid="organization-dialog-delete-team"] button.ghost').trigger("click");
     await admin.find('[data-testid="organization-segment-invitations"]').trigger("click");
     expect(admin.find('[data-testid="organization-invite"]').isVisible()).toBe(true);
@@ -269,6 +278,10 @@ describe("Organization screen", () => {
     await settings.find('[data-testid="organization-team-menu-ops"]').trigger("click");
     expect(settings.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Rename…", "Add member", "Give a vault…", "Delete team…"]);
     await settings.find('[data-testid="context-menu-add-team-member"]').trigger("click");
+    expect((settings.get('[data-testid="team-add-member-select"]').element as HTMLSelectElement).value).toBe("");
+    expect(settings.get('[data-testid="team-add-member-select"] option[value=""]').text()).toBe("Choose a member");
+    expect(settings.get('[data-testid="team-add-member-confirm"]').attributes("disabled")).toBeDefined();
+    expect(settings.get('[data-testid="team-add-member-select"] option[value="ALICE1"]').text()).toContain("(you)");
     await settings.find('[data-testid="team-add-member-select"]').setValue("BOB222");
     await settings.find('[data-testid="team-add-member-form"]').trigger("submit");
     await flushPromises();
@@ -281,6 +294,32 @@ describe("Organization screen", () => {
     await settings.find('[data-testid="organization-dialog-give-vault"] form').trigger("submit");
     await flushPromises();
     expect(api.giveVaultToTeam).toHaveBeenCalledWith("acme", "ops", "deploy", "reader");
+    settings.unmount();
+  });
+
+  it("previews only new self entitlements and increased effective roles across overlapping teams", async () => {
+    api.getOrganization.mockResolvedValue(createOrganizationDetail({
+      teams: [
+        createOrganizationTeam({ vaults: [{ vaultId: "deploy", name: "Deploy keys", canOpen: true, role: "owner" }, { vaultId: "docs", name: "Docs", canOpen: true, role: "reader" }] }),
+        createOrganizationTeam({ id: "ops", name: "Ops", members: [], vaults: [
+          { vaultId: "deploy", name: "Deploy keys", canOpen: true, role: "reader" },
+          { vaultId: "docs", name: "Docs", canOpen: true, role: "editor" },
+          { vaultId: "unopened", name: "", canOpen: false, role: "owner" },
+        ] }),
+      ],
+    }));
+    const settings = await openOrganizationInSettings();
+    await settings.get('[data-testid="organization-segment-teams"]').trigger("click");
+    await settings.get('[data-testid="organization-team-menu-ops"]').trigger("click");
+    await settings.get('[data-testid="context-menu-add-team-member"]').trigger("click");
+    expect(settings.find('[data-testid="team-self-access"]').exists()).toBe(false);
+    await settings.get('[data-testid="team-add-member-select"]').setValue("ALICE1");
+    const preview = settings.get('[data-testid="team-self-access"]');
+    expect(preview.text()).toContain("A vault you can't open becomes available as Owner.");
+    expect(preview.text()).toContain("Docs increases from Reader to Editor.");
+    expect(preview.text()).not.toContain("Deploy keys");
+    expect(preview.text()).toContain("An owner's Hisar must deliver keys");
+    expect(api.addTeamMember).not.toHaveBeenCalled();
     settings.unmount();
   });
 
@@ -361,6 +400,7 @@ describe("Organization screen", () => {
     expect(store.errorMessage).toBe("");
 
     const wrapper = mount(MainView, { attachTo: document.body });
+    await flushPromises();
     expect(wrapper.find('[data-testid="organization-alert-message"]').text()).toBe("The organization still has vaults; delete them first");
     await wrapper.find('[data-testid="organization-alert-ok"]').trigger("click");
     expect(store.organizationAlert).toBeNull();
@@ -404,6 +444,22 @@ describe("Organization vaults in the vault list", () => {
     wrapper.unmount();
   });
 
+  it("uses cached names and stable unknown labels without restoring live team authority", async () => {
+    api.listAllOrganization.mockResolvedValue({ organizations: [{ id: "acme", name: "Saved Acme", role: "", memberCount: 0 }], invitations: [], isCached: true });
+    store.organizationByID = { acme: createOrganizationDetail() };
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await syncInBackground();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="organization-vaults-acme"]').text()).toContain("Saved Acme");
+    expect(wrapper.get('[data-testid="organization-vaults-globex"]').text()).toContain("Organization globex");
+    expect(store.organizationByID).toEqual({});
+    await wrapper.get('[data-testid="new-vault"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="new-vault-teams-error"]').text()).toContain("Couldn't load teams");
+    expect(isCreateDisabled(wrapper)).toBe(true);
+    wrapper.unmount();
+  });
+
   it("keeps a reader's organization vault read-only", async () => {
     resetStore(undefined, "docs");
     store.selectedItem = createItem();
@@ -424,17 +480,37 @@ describe("Organization vaults in the vault list", () => {
     await wrapper.find('[data-testid="new-vault"]').trigger("click");
     await flushPromises();
 
-    const allChoice = wrapper.findAll('[data-testid="new-vault-where"] option').map((option) => option.text());
-    expect(allChoice).toEqual(["Your own vault (share it later)", "Acme › Platform (team vault)"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault", "Platform in Acme"]);
     await wrapper.find('input[name="vaultName"]').setValue("Release");
-    await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
-    expect(wrapper.find('[data-testid="new-vault-where-note"]').text()).toContain("Platform's members get this vault");
+    await wrapper.find('[data-testid="new-vault-where"] input[value="acme/platform"]').setValue();
+    expect(wrapper.find('[data-testid="new-vault-where"]').text()).toContain("Platform's members get this vault");
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
 
     expect(api.createOrganizationVault).toHaveBeenCalledWith("acme", "platform", "Release");
     expect(api.createVault).not.toHaveBeenCalled();
     expect(store.selectedVaultID).toBe("release");
+    wrapper.unmount();
+  });
+
+  it("opens a labelled modal with full destination names and restores focus on Escape", async () => {
+    const longName = "Research platform for a very long organization name";
+    api.getOrganization.mockResolvedValue(createOrganizationDetail({ teams: [createOrganizationTeam({ name: longName })] }));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    const opener = wrapper.get('[data-testid="new-vault"]');
+    (opener.element as HTMLElement).focus();
+    await opener.trigger("click");
+    await flushPromises();
+    const dialog = wrapper.get('[data-testid="new-vault-dialog"]');
+    expect(dialog.attributes("role")).toBe("dialog");
+    expect(dialog.get("legend").text()).toBe("Where");
+    expect(dialog.text()).toContain(`${longName} in Acme`);
+    expect(dialog.text()).toContain("Share it later");
+    expect(document.activeElement).toBe(dialog.get('input[name="vaultName"]').element);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", cancelable: true }));
+    await flushPromises();
+    expect(wrapper.find('[data-testid="new-vault-dialog"]').exists()).toBe(false);
+    expect(document.activeElement).toBe(opener.element);
     wrapper.unmount();
   });
 
@@ -455,16 +531,15 @@ describe("Organization vaults in the vault list", () => {
     api.getOrganization.mockImplementation((organizationID: string) => Promise.resolve(getOrganizationDetail(organizationID)));
     const wrapper = await openNewVaultForm();
     await wrapper.find('input[name="vaultName"]').setValue("Release");
-    await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
+    await wrapper.find('[data-testid="new-vault-where"] input[value="acme/platform"]').setValue();
     expect(isCreateDisabled(wrapper)).toBe(false);
 
     api.listAllOrganization.mockResolvedValue(listOrganizations({ organizations: [globexSummary] }));
     await syncInBackground();
     await flushPromises();
     const where = wrapper.find('[data-testid="new-vault-where"]');
-    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Globex › Research (team vault)"]);
-    expect((where.element as HTMLSelectElement).selectedIndex).toBe(-1);
-    expect(wrapper.find('[data-testid="new-vault-where-note"]').exists()).toBe(false);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault", "Research in Globex"]);
+    expect(where.findAll('input:checked')).toHaveLength(0);
     expect(isCreateDisabled(wrapper)).toBe(true);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
@@ -472,7 +547,7 @@ describe("Organization vaults in the vault list", () => {
     expect(api.createOrganizationVault).not.toHaveBeenCalled();
 
     api.createVault.mockResolvedValue({ ...familyVault, id: "release", name: "Release" });
-    await where.setValue("");
+    await where.find('input[value=""]').setValue();
     expect(isCreateDisabled(wrapper)).toBe(false);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
@@ -490,7 +565,8 @@ describe("Organization vaults in the vault list", () => {
     });
     const wrapper = await openNewVaultForm();
     await wrapper.find('input[name="vaultName"]').setValue("Release");
-    expect(wrapper.find('[data-testid="new-vault-where"]').exists()).toBe(false);
+    expect(wrapper.find('[data-testid="new-vault-where"]').exists()).toBe(true);
+    expect(wrapper.find('[data-testid="new-vault-teams-loading"]').text()).toContain("Loading teams");
     expect(isCreateDisabled(wrapper)).toBe(true);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
@@ -498,9 +574,9 @@ describe("Organization vaults in the vault list", () => {
 
     finishLoading();
     await flushPromises();
-    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Acme › Platform (team vault)", "Globex › Research (team vault)"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault", "Platform in Acme", "Research in Globex"]);
     expect(isCreateDisabled(wrapper)).toBe(false);
-    await wrapper.find('[data-testid="new-vault-where"]').setValue("acme/platform");
+    await wrapper.find('[data-testid="new-vault-where"] input[value="acme/platform"]').setValue();
 
     // On another Mac an admin moves Alice from Platform to the new team Ops; Settings and the sharing panel stay closed.
     const platformWithoutAlice = createOrganizationTeam({ members: [{ accountId: testBob.accountId, name: testBob.name, email: testBob.email, isCurrentUser: false }] });
@@ -509,12 +585,27 @@ describe("Organization vaults in the vault list", () => {
     await syncInBackground();
     await flushPromises();
     expect(store.isSettingsOpen || store.isSharingOpen).toBe(false);
-    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault (share it later)", "Acme › Ops (team vault)", "Globex › Research (team vault)"]);
+    expect(listAllWhereChoice(wrapper)).toEqual(["Your own vault", "Ops in Acme", "Research in Globex"]);
     expect(isCreateDisabled(wrapper)).toBe(true);
     await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
     await flushPromises();
     expect(api.createVault).not.toHaveBeenCalled();
     expect(api.createOrganizationVault).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it("keeps the new vault destination unresolved after a team load failure and offers retry", async () => {
+    api.getOrganization.mockRejectedValueOnce(new Error("Offline"));
+    const wrapper = await openNewVaultForm();
+    await wrapper.find('input[name="vaultName"]').setValue("Release");
+    expect(wrapper.find('[data-testid="new-vault-teams-error"]').text()).toContain("Couldn't load teams");
+    expect(isCreateDisabled(wrapper)).toBe(true);
+    await wrapper.find('[data-testid="new-vault-form"]').trigger("submit");
+    expect(api.createVault).not.toHaveBeenCalled();
+    await wrapper.find('[data-testid="new-vault-teams-error"] button').trigger("click");
+    await flushPromises();
+    expect(wrapper.find('[data-testid="new-vault-teams-error"]').exists()).toBe(false);
+    expect(isCreateDisabled(wrapper)).toBe(false);
     wrapper.unmount();
   });
 

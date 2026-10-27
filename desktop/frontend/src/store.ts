@@ -91,6 +91,7 @@ export type VaultDialogMode = "rename" | "delete" | "leave" | "blocked";
 // VaultDialog: blockedReason explains why the chosen action is not possible, in the "blocked" mode.
 export interface VaultDialog {
   mode: VaultDialogMode;
+  requestedAction: Exclude<VaultDialogMode, "blocked">;
   actions: VaultActions;
   blockedReason: string;
 }
@@ -871,7 +872,7 @@ export async function openVaultDialog(vaultID: string, mode: Exclude<VaultDialog
   } else if (mode === "rename" && !actions.canRename) {
     blockedReason = "Only an owner of this vault can rename it.";
   }
-  store.vaultDialog = { mode: blockedReason ? "blocked" : mode, actions, blockedReason };
+  store.vaultDialog = { mode: blockedReason ? "blocked" : mode, requestedAction: mode, actions, blockedReason };
 }
 
 export function closeVaultDialog(): void {
@@ -1763,10 +1764,15 @@ export async function removeVaultMember(member: VaultMember): Promise<boolean> {
 // Organizations load quietly for the vault list and its banners; Settings → Organizations says why its list could not
 // load, like the SSH agent section. A refused change shows the server's sentence in an alert named after the action.
 
+export function getOrganizationName(organizationID: string): string {
+  return store.organizations.organizations.find((organization) => organization.id === organizationID)?.name
+    || `Organization ${organizationID.slice(0, 8)}`;
+}
+
 function applyOrganizations(organizations: Organizations): void {
   store.organizations = organizations;
   const allOrganizationID = new Set(organizations.organizations.map((organization) => organization.id));
-  store.organizationByID = Object.fromEntries(Object.entries(store.organizationByID).filter(([organizationID]) => allOrganizationID.has(organizationID)));
+  store.organizationByID = organizations.isCached ? {} : Object.fromEntries(Object.entries(store.organizationByID).filter(([organizationID]) => allOrganizationID.has(organizationID)));
   if (!allOrganizationID.has(store.selectedOrganizationID)) {
     store.selectedOrganizationID = "";
   }
@@ -1828,18 +1834,27 @@ export async function loadOrganizations(): Promise<void> {
 }
 
 // loadAllOrganizationQuietly loads every organization with its teams, for the new-vault form's Where.
-export async function loadAllOrganizationQuietly(): Promise<void> {
+export async function loadAllOrganizationQuietly(): Promise<string> {
   try {
     const organizations = await api.listAllOrganization();
     if (store.status.state !== "unlocked") {
-      return;
+      return "Hisar is locked.";
+    }
+    if (organizations.isCached) {
+      applyOrganizations(organizations);
+      return "Connect to the Hisar server to load teams.";
+    }
+    const allOrganization = await Promise.all(organizations.organizations.map((organization) => api.getOrganization(organization.id)));
+    if (store.status.state !== "unlocked") {
+      return "Hisar is locked.";
     }
     applyOrganizations(organizations);
-  } catch {
-    return;
+    for (const organization of allOrganization) {
+      store.organizationByID = { ...store.organizationByID, [organization.id]: organization };
   }
-  for (const organization of store.organizations.organizations) {
-    await loadOrganizationQuietly(organization.id);
+    return "";
+  } catch (error) {
+    return getErrorMessage(error);
   }
 }
 

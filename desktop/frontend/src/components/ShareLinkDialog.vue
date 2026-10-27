@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
+import { computed, onBeforeUnmount, ref } from "vue";
+import { useModalFocus } from "../modalFocus";
 import type { ShareLink } from "../api";
 import { closeShareLinkDialog, copyText, createShareLink, store } from "../store";
 import { allShareLinkExpiry, capitalizeFirstLetter, describeShareLinkContent, formatDateTime, formatViewLimit } from "../util";
@@ -18,6 +19,10 @@ const viewCount = ref(1);
 const isUnlimitedViews = ref(false);
 const isPassphraseRequired = ref(false);
 const passphrase = ref("");
+const repeatedPassphrase = ref("");
+const isPassphraseShown = ref(false);
+const isRepeatedPassphraseShown = ref(false);
+const isPassphraseMismatch = computed(() => isPassphraseRequired.value && repeatedPassphrase.value !== "" && passphrase.value !== repeatedPassphrase.value);
 const validationMessage = ref("");
 const createdShareLink = ref<ShareLink | null>(null);
 
@@ -35,6 +40,9 @@ function validate(): string {
   }
   if (isPassphraseRequired.value && [...passphrase.value].length < minimumPassphraseLength) {
     return `Use a passphrase of at least ${minimumPassphraseLength} characters.`;
+  }
+  if (isPassphraseRequired.value && passphrase.value !== repeatedPassphrase.value) {
+    return "The passphrases don't match.";
   }
   return "";
 }
@@ -57,6 +65,9 @@ async function submitShareLink(): Promise<void> {
   });
   if (created) {
     passphrase.value = "";
+    repeatedPassphrase.value = "";
+    isPassphraseShown.value = false;
+    isRepeatedPassphraseShown.value = false;
     text.value = "";
     createdShareLink.value = created;
   }
@@ -72,24 +83,22 @@ function selectLinkText(event: Event): void {
   (event.target as HTMLInputElement).select();
 }
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    closeShareLinkDialog();
-  }
-}
-
-onMounted(() => window.addEventListener("keydown", closeOnEscape));
-onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
+const panel = ref<HTMLElement | null>(null);
+useModalFocus(panel, closeShareLinkDialog);
+onBeforeUnmount(() => {
+  passphrase.value = "";
+  repeatedPassphrase.value = "";
+});
 </script>
 
 <template>
   <div v-if="dialog" class="overlay" @click.self="closeShareLinkDialog">
-    <div class="card panel" role="dialog" aria-modal="true" aria-labelledby="share-link-title" data-testid="share-link-dialog">
+    <div ref="panel" class="card panel" role="dialog" aria-modal="true" aria-labelledby="share-link-title" aria-describedby="share-link-description" tabindex="-1" data-testid="share-link-dialog">
       <header class="panel-header">
         <span class="panel-icon"><AppIcon name="link" :size="18" /></span>
         <div class="panel-heading">
           <h2 id="share-link-title">{{ heading }}</h2>
-          <p class="muted">Anyone with the link can open it, even without a Hisar account. The payload is encrypted before upload. Opening the web link also means trusting the page served by that server.</p>
+          <p id="share-link-description" class="muted">Anyone with the link can open it, even without a Hisar account. The payload is encrypted before upload. Opening the web link also means trusting the page served by that server.</p>
         </div>
         <button class="ghost icon-button" aria-label="Close" @click="closeShareLinkDialog"><AppIcon name="close" /></button>
       </header>
@@ -145,13 +154,14 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           </label>
           <label>
             <span>Views</span>
+            <input v-if="isUnlimitedViews" type="text" value="Unlimited" disabled name="shareViews" data-testid="share-views" />
             <input
+              v-else
               v-model.number="viewCount"
               type="number"
               name="shareViews"
               min="1"
               :max="maximumViewCount"
-              :disabled="isUnlimitedViews"
               data-testid="share-views"
             />
           </label>
@@ -165,17 +175,26 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
           <input v-model="isPassphraseRequired" type="checkbox" name="sharePassphraseRequired" data-testid="share-passphrase-required" />
           <span class="check-label">Require a passphrase</span>
         </label>
-        <label v-if="isPassphraseRequired">
-          <span>Passphrase</span>
-          <input v-model="passphrase" type="password" name="sharePassphrase" autocomplete="new-password" data-testid="share-passphrase" />
+        <template v-if="isPassphraseRequired">
+          <label for="share-passphrase">Passphrase</label>
+          <div class="row">
+            <input id="share-passphrase" v-model="passphrase" :type="isPassphraseShown ? 'text' : 'password'" name="sharePassphrase" autocomplete="new-password" data-testid="share-passphrase" />
+            <button type="button" class="ghost" :aria-label="isPassphraseShown ? 'Hide passphrase' : 'Show passphrase'" :aria-pressed="isPassphraseShown" aria-controls="share-passphrase" @click="isPassphraseShown = !isPassphraseShown">{{ isPassphraseShown ? "Hide" : "Show" }}</button>
+          </div>
           <small class="muted">At least {{ minimumPassphraseLength }} characters. Send it another way than the link, so a leaked link alone isn't enough.</small>
-        </label>
+          <label for="share-passphrase-repeat">Repeat passphrase</label>
+          <div class="row">
+            <input id="share-passphrase-repeat" v-model="repeatedPassphrase" :type="isRepeatedPassphraseShown ? 'text' : 'password'" name="sharePassphraseRepeat" autocomplete="new-password" :aria-invalid="isPassphraseMismatch" :aria-describedby="isPassphraseMismatch ? 'share-passphrase-mismatch' : undefined" data-testid="share-passphrase-repeat" />
+            <button type="button" class="ghost" :aria-label="isRepeatedPassphraseShown ? 'Hide repeated passphrase' : 'Show repeated passphrase'" :aria-pressed="isRepeatedPassphraseShown" aria-controls="share-passphrase-repeat" @click="isRepeatedPassphraseShown = !isRepeatedPassphraseShown">{{ isRepeatedPassphraseShown ? "Hide" : "Show" }}</button>
+          </div>
+          <p v-if="isPassphraseMismatch" id="share-passphrase-mismatch" class="error" role="alert">The passphrases don't match.</p>
+        </template>
 
         <p v-if="validationMessage" class="error" role="alert" data-testid="share-link-validation">{{ validationMessage }}</p>
 
         <div class="row actions">
           <button type="button" class="ghost" @click="closeShareLinkDialog">Cancel</button>
-          <button class="primary" type="submit" :disabled="store.isBusy" data-testid="create-share-link"><AppIcon name="link" /> Create link</button>
+          <button class="primary" type="submit" :disabled="store.isBusy || isPassphraseMismatch" data-testid="create-share-link"><AppIcon name="link" /> Create link</button>
         </div>
       </form>
     </div>

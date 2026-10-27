@@ -107,6 +107,31 @@ describe("share link dialog", () => {
     wrapper.unmount();
   });
 
+  it("checks both passphrase entries and offers labelled reveal controls", async () => {
+    const wrapper = await openItemDialog();
+    await wrapper.get('[data-testid="share-passphrase-required"]').setValue(true);
+    await wrapper.get('[data-testid="share-passphrase"]').setValue("orange-cactus");
+    await wrapper.get('[data-testid="share-passphrase-repeat"]').setValue("orange-cactuz");
+    expect(wrapper.get("#share-passphrase-mismatch").text()).toBe("The passphrases don't match.");
+    expect(wrapper.get('[data-testid="create-share-link"]').attributes("disabled")).toBeDefined();
+    await wrapper.get("form").trigger("submit");
+    expect(api.createShareLink).not.toHaveBeenCalled();
+    await wrapper.get('button[aria-label="Show passphrase"]').trigger("click");
+    await wrapper.get('button[aria-label="Show repeated passphrase"]').trigger("click");
+    expect(wrapper.get('[data-testid="share-passphrase"]').attributes("type")).toBe("text");
+    expect(wrapper.get('[data-testid="share-passphrase-repeat"]').attributes("type")).toBe("text");
+    await wrapper.get('[data-testid="share-passphrase-repeat"]').setValue("orange-cactus");
+    expect(wrapper.find("#share-passphrase-mismatch").exists()).toBe(false);
+    expect(wrapper.get('[data-testid="create-share-link"]').attributes("disabled")).toBeUndefined();
+    await wrapper.get('button[aria-label="Close"]').trigger("click");
+    await wrapper.get('[data-testid="share-link"]').trigger("click");
+    await flushPromises();
+    await wrapper.get('[data-testid="share-passphrase-required"]').setValue(true);
+    expect((wrapper.get('[data-testid="share-passphrase"]').element as HTMLInputElement).value).toBe("");
+    expect((wrapper.get('[data-testid="share-passphrase-repeat"]').element as HTMLInputElement).value).toBe("");
+    wrapper.unmount();
+  });
+
   it("creates the link with the chosen fields and options, then shows it with Copy", async () => {
     api.createShareLink.mockResolvedValue(
       createShareLink({ id: "AbCdEfGhIjKlMnOpQrStUv", url: createdURL, fieldLabels: ["password", "Recovery code"], maxViews: 3, hasPassphrase: true }),
@@ -119,6 +144,7 @@ describe("share link dialog", () => {
     await wrapper.find('[data-testid="share-views"]').setValue(3);
     await wrapper.find('[data-testid="share-passphrase-required"]').setValue(true);
     await wrapper.find('[data-testid="share-passphrase"]').setValue("orange-cactus-harbor");
+    await wrapper.find('[data-testid="share-passphrase-repeat"]').setValue("orange-cactus-harbor");
     await wrapper.find("form").trigger("submit");
     await flushPromises();
 
@@ -149,8 +175,13 @@ describe("share link dialog", () => {
   it("sends 0 views for unlimited and no passphrase when it is not required", async () => {
     api.createShareLink.mockResolvedValue(createShareLink({ url: createdURL, maxViews: 0 }));
     const wrapper = await openItemDialog();
+    await wrapper.find('[data-testid="share-views"]').setValue(37);
     await wrapper.find('[data-testid="share-unlimited-views"]').setValue(true);
     expect((wrapper.find('[data-testid="share-views"]').element as HTMLInputElement).disabled).toBe(true);
+    expect((wrapper.find('[data-testid="share-views"]').element as HTMLInputElement).value).toBe("Unlimited");
+    await wrapper.find('[data-testid="share-unlimited-views"]').setValue(false);
+    expect((wrapper.find('[data-testid="share-views"]').element as HTMLInputElement).value).toBe("37");
+    await wrapper.find('[data-testid="share-unlimited-views"]').setValue(true);
     await wrapper.find("form").trigger("submit");
     await flushPromises();
     expect(api.createShareLink).toHaveBeenCalledWith(expect.objectContaining({ fieldKeys: ["username", "password"], maxViews: 0, passphrase: "", expiresInSeconds: 604800 }));

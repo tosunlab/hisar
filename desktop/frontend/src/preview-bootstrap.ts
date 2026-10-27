@@ -173,11 +173,7 @@ async function applyNewVaultParameter(parameter: URLSearchParams): Promise<void>
   await typeIntoInput('input[name="vaultName"]', "Release signing");
   const teamKey = parameter.get("newVault") ?? "";
   if (teamKey.includes("/")) {
-    await waitForElement(`[data-testid="new-vault-where"] option[value="${teamKey}"]`);
-    const whereSelect = (await waitForElement('[data-testid="new-vault-where"]')) as HTMLSelectElement;
-    whereSelect.value = teamKey;
-    whereSelect.dispatchEvent(new Event("change"));
-    await nextTick();
+    await clickElement(`[data-testid="new-vault-where"] input[value="${teamKey}"]`);
   }
 }
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { closeVaultDialog, deleteVault, leaveVault, renameVault, store, type VaultDialog } from "../store";
+import { computed, ref } from "vue";
+import { useModalFocus } from "../modalFocus";
+import { closeVaultDialog, deleteVault, leaveVault, openSharing, openVaultDialog, renameVault, selectVault, store, type VaultDialog } from "../store";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -27,8 +28,17 @@ const title = computed(() => {
     case "delete":
       return `Delete “${vault.value.name}”?`;
   }
-  return `“${vault.value.name}”`;
+  return `You can't ${props.dialog.requestedAction} “${vault.value.name}”`;
 });
+const canOpenSharing = computed(() => props.dialog.requestedAction === "leave" && vault.value.type === "shared" && vault.value.role === "owner" && !props.dialog.actions.canLeave);
+const canOfferLeave = computed(() => props.dialog.requestedAction === "delete" && vault.value.type === "shared" && vault.value.role !== "owner" && props.dialog.actions.canLeave);
+
+async function remedyThroughSharing(): Promise<void> {
+  const vaultID = vault.value.id;
+  closeVaultDialog();
+  await selectVault(vaultID);
+  await openSharing();
+}
 
 const canSubmitDeletion = computed(() => {
   if (!hasItems.value) {
@@ -57,19 +67,13 @@ function submitDeletion(): void {
   });
 }
 
-function closeOnEscape(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    closeVaultDialog();
-  }
-}
-
-onMounted(() => window.addEventListener("keydown", closeOnEscape));
-onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
+const panel = ref<HTMLElement | null>(null);
+useModalFocus(panel, closeVaultDialog);
 </script>
 
 <template>
   <div class="overlay" @click.self="closeVaultDialog">
-    <div class="card vault-dialog" role="dialog" aria-modal="true" aria-labelledby="vault-dialog-title" :data-testid="`vault-dialog-${dialog.mode}`">
+    <div ref="panel" class="card vault-dialog" role="dialog" aria-modal="true" aria-labelledby="vault-dialog-title" tabindex="-1" :data-testid="`vault-dialog-${dialog.mode}`">
       <header class="vault-dialog-header">
         <span class="vault-dialog-icon" :class="{ danger: dialog.mode === 'delete' }">
           <AppIcon :name="dialog.mode === 'rename' ? 'edit' : dialog.mode === 'leave' ? 'signOut' : dialog.mode === 'delete' ? 'trash' : 'lock'" :size="18" />
@@ -83,7 +87,9 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       <template v-if="dialog.mode === 'blocked'">
         <p class="body-text" data-testid="vault-blocked-reason">{{ dialog.blockedReason }}</p>
         <div class="actions">
-          <button class="primary" @click="closeVaultDialog">OK</button>
+          <button v-if="canOpenSharing" class="ghost" data-testid="vault-blocked-sharing" @click="remedyThroughSharing">Open sharing…</button>
+          <button v-if="canOfferLeave" class="ghost" data-testid="vault-blocked-leave" @click="openVaultDialog(vault.id, 'leave')">Leave vault…</button>
+          <button class="primary" data-dialog-initial-focus @click="closeVaultDialog">OK</button>
         </div>
       </template>
 
@@ -100,7 +106,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       <template v-else-if="dialog.mode === 'leave'">
         <p class="body-text">You lose access to its {{ itemCountText }} on all your devices. An owner can invite you again.</p>
         <div class="actions">
-          <button class="ghost" @click="closeVaultDialog">Cancel</button>
+          <button class="ghost" data-dialog-initial-focus @click="closeVaultDialog">Cancel</button>
           <button class="danger-solid" data-testid="vault-leave-confirm" :disabled="store.isBusy" @click="leaveVault">Leave vault</button>
         </div>
       </template>
@@ -146,7 +152,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <p v-else class="body-text">The vault is empty.</p>
 
         <div class="actions">
-          <button type="button" class="ghost" @click="closeVaultDialog">Cancel</button>
+          <button type="button" class="ghost" data-dialog-initial-focus @click="closeVaultDialog">Cancel</button>
           <button class="danger-solid" type="submit" data-testid="vault-delete-confirm" :disabled="store.isBusy || !canSubmitDeletion">Delete vault</button>
         </div>
       </form>

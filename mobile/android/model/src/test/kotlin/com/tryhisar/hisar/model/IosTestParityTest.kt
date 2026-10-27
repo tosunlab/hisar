@@ -60,6 +60,8 @@ class IosTestParityTest {
                 "iOS Settings exposes the credential identity store's enabled state; Android uses its own AutoFill service status.",
             "testForegroundRefreshRegistersOnlyNewlyAllowedNotifications" to
                 "Only iOS registers an APNs token when notification authorization changes; Android receives its UnifiedPush endpoint separately.",
+            "testInvitationEmailWrapsLiteralCharactersAtAccessibilitySizes" to
+                "UIKit-specific regression for iOS automatic hyphenation and selectable UITextView Dynamic Type wrapping; Android does not use UIKit",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

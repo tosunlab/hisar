@@ -9,6 +9,7 @@ import {
   createVault,
   duplicateItem,
   hasShareableField,
+  getOrganizationName,
   filterAllFavorite,
   filterAllItem,
   listAllTag,
@@ -74,6 +75,7 @@ import {
 } from "../util";
 import { allColumnBound, detailMinWidth, loadColumnWidths, saveColumnWidths } from "../columnWidths";
 import AppIcon from "./AppIcon.vue";
+import NewVaultDialog, { type TeamChoice } from "./NewVaultDialog.vue";
 import ColumnResizer from "./ColumnResizer.vue";
 import HisarLogo from "./HisarLogo.vue";
 import ItemDetailPanel from "./ItemDetailPanel.vue";
@@ -104,13 +106,6 @@ const layoutStyle = computed(() => ({
   gridTemplateColumns: `minmax(${allColumnBound.sidebar.min}px, ${columnWidths.value.sidebar}px) 0 minmax(${allColumnBound.list.min}px, ${columnWidths.value.list}px) 0 minmax(${detailMinWidth}px, 1fr)`,
 }));
 
-interface TeamChoice {
-  key: string;
-  organizationID: string;
-  teamID: string;
-  teamName: string;
-  label: string;
-}
 
 interface VaultGroup {
   organizationID: string;
@@ -127,6 +122,7 @@ const isLoadingTeams = ref(false);
 let newVaultTeamLoad = 0;
 // newVaultErrorMessage is why the last Create failed, shown in the form.
 const newVaultErrorMessage = ref("");
+const newVaultTeamsError = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
 const newItemMenu = ref<HTMLElement | null>(null);
@@ -173,7 +169,7 @@ const allVaultGroup = computed(() => {
     if (!vault.organizationId) {
       continue;
     }
-    const name = store.organizations.organizations.find((organization) => organization.id === vault.organizationId)?.name ?? "Organization";
+    const name = getOrganizationName(vault.organizationId);
     const group = groupByID.get(vault.organizationId) ?? { organizationID: vault.organizationId, name, allVault: [] };
     group.allVault.push(vault);
     groupByID.set(vault.organizationId, group);
@@ -190,7 +186,7 @@ const allTeamChoice = computed<TeamChoice[]>(() =>
         organizationID: organization.id,
         teamID: team.id,
         teamName: team.name,
-        label: `${organization.name} › ${team.name} (team vault)`,
+        label: `${team.name} in ${organization.name}`,
       })),
   ),
 );
@@ -198,7 +194,7 @@ const selectedTeamChoice = computed(() => allTeamChoice.value.find((choice) => c
 // canSubmitNewVault: Create needs a name, the loaded teams, and a Where the form lists: the user's own vault or one of the
 // teams. A team that is no longer listed (its organization or the user's place in it changed) never falls back to an own vault.
 const canSubmitNewVault = computed(
-  () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
+  () => newVaultName.value.trim() !== "" && !isLoadingTeams.value && !newVaultTeamsError.value && (newVaultWhere.value === "" || selectedTeamChoice.value !== undefined),
 );
 // itemMenu is the right-click menu of a list item. detail arrives after the menu opens: list summaries carry no password
 // or fields, so the copy actions appear once it has loaded. favorite is set when the item was right-clicked in Favorites.
@@ -209,6 +205,7 @@ const itemToMove = ref<{ vaultID: string; itemID: string; title: string } | null
 const isOverlayOpen = computed(
   () =>
     store.isSettingsOpen ||
+    store.isCreatingVault ||
     store.isSharingOpen ||
     store.isImportOpen ||
     store.isCommitSigningSetupOpen ||
@@ -366,10 +363,16 @@ function openVaultMenuBelow(event: MouseEvent): void {
 async function prepareNewVaultForm(): Promise<void> {
   newVaultWhere.value = "";
   newVaultErrorMessage.value = "";
+  await loadNewVaultTeams();
+}
+
+async function loadNewVaultTeams(): Promise<void> {
   isLoadingTeams.value = true;
+  newVaultTeamsError.value = "";
   const load = ++newVaultTeamLoad;
-  await loadAllOrganizationQuietly();
+  const error = await loadAllOrganizationQuietly();
   if (load === newVaultTeamLoad) {
+    newVaultTeamsError.value = error;
     isLoadingTeams.value = false;
   }
 }
@@ -598,25 +601,7 @@ onBeforeUnmount(() => {
             <span class="vault-count">{{ vault.readIssues?.length ? `${vault.itemCount} + ${vault.readIssues.length} unreadable` : vault.itemCount }}</span>
           </button>
         </div>
-        <form v-if="store.isCreatingVault" class="new-vault" data-testid="new-vault-form" @submit.prevent="submitNewVault">
-          <input v-model="newVaultName" name="vaultName" placeholder="Vault name" autofocus />
-          <label v-if="allTeamChoice.length > 0 || newVaultWhere !== ''" class="new-vault-where">
-            <span>Where</span>
-            <select v-model="newVaultWhere" name="vaultWhere" data-testid="new-vault-where">
-              <option value="">Your own vault (share it later)</option>
-              <option v-for="choice in allTeamChoice" :key="choice.key" :value="choice.key">{{ choice.label }}</option>
-            </select>
-          </label>
-          <p v-if="selectedTeamChoice" class="muted new-vault-note" data-testid="new-vault-where-note">
-            {{ selectedTeamChoice.teamName }}'s members get this vault. Manage it in Settings → Organizations.
-          </p>
-          <p v-if="newVaultErrorMessage" class="error new-vault-error" role="alert" data-testid="new-vault-error">{{ newVaultErrorMessage }}</p>
-          <div class="row">
-            <button type="button" class="ghost" @click="store.isCreatingVault = false">Cancel</button>
-            <button class="primary" type="submit" data-testid="create-vault" :disabled="store.isBusy || !canSubmitNewVault">Create</button>
-          </div>
-        </form>
-        <button v-else class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
+        <button class="ghost new-vault-button" data-testid="new-vault" @click="store.isCreatingVault = true"><AppIcon name="plus" /> New vault</button>
       </nav>
 
       <nav v-if="allTag.length > 0" aria-label="Tags" class="tags-nav" data-testid="tag-list">
@@ -858,6 +843,20 @@ onBeforeUnmount(() => {
         </div>
       </div>
     </main>
+    <NewVaultDialog
+      v-if="store.isCreatingVault"
+      v-model:name="newVaultName"
+      v-model:where="newVaultWhere"
+      :all-team-choice="allTeamChoice"
+      :is-loading-teams="isLoadingTeams"
+      :teams-error="newVaultTeamsError"
+      :error-message="newVaultErrorMessage"
+      :can-submit="canSubmitNewVault"
+      :is-busy="store.isBusy"
+      @close="store.isCreatingVault = false"
+      @retry="loadNewVaultTeams"
+      @submit="submitNewVault"
+    />
     <SettingsPanel v-if="store.isSettingsOpen" />
     <VaultSharingPanel v-if="store.isSharingOpen" />
     <ImportPanel v-if="store.isImportOpen" />
@@ -957,9 +956,6 @@ onBeforeUnmount(() => {
   color: var(--color-text-muted);
 }
 
-.new-vault {
-  margin: 6px 0;
-}
 
 .sharing-nav,
 .tags-nav {
@@ -1032,37 +1028,6 @@ onBeforeUnmount(() => {
   white-space: nowrap;
 }
 
-.new-vault input {
-  margin-bottom: 6px;
-}
-
-.new-vault-where {
-  margin-bottom: 6px;
-}
-
-.new-vault-where span {
-  padding: 0 2px;
-}
-
-.new-vault-where select {
-  width: 100%;
-}
-
-.new-vault-note {
-  margin: 0 2px 8px;
-  font-size: var(--font-size-11);
-  line-height: 1.4;
-}
-
-.new-vault-error {
-  margin: 0 0 8px;
-  padding: 6px 8px;
-  font-size: var(--font-size-12);
-}
-
-.new-vault .row {
-  justify-content: flex-end;
-}
 
 .vault-group + .vault-group {
   margin-top: 14px;
