@@ -194,6 +194,27 @@ class AccountLifecycleTests {
     }
 
     @Test
+    fun testPendingRecoverySelectsOneAndPreservesExplicitSelection() = runTest {
+        val harness = AppModelHarness(this)
+        seedPendingRecovery(harness.backend, "delivery-pending")
+        val model = harness.startModel()
+        assertEquals("pending-1", model.pendingRecovery.selectedOperationID.value)
+        harness.backend.allPendingRecovery += harness.backend.allPendingRecovery.first().copy(operationId = "pending-2")
+        model.pendingRecovery.refresh()
+        assertEquals("pending-1", model.pendingRecovery.selectedOperationID.value)
+        assertTrue(model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD))
+        val path = assertNotNull(model.pendingRecovery.export.value).path
+        model.refreshPendingRecovery(operationID = "pending-2")
+        assertEquals("pending-2", model.pendingRecovery.selectedOperationID.value)
+        assertNull(model.pendingRecovery.export.value)
+        assertFalse(File(path).exists())
+        model.pendingRecovery.refresh()
+        assertEquals("pending-2", model.pendingRecovery.selectedOperationID.value)
+        assertEquals(Screen.SignedOut, model.screen.value)
+        assertFalse(harness.backend.allCallName.contains("resumePendingRecovery"))
+    }
+
+    @Test
     fun testPendingRecoverySurvivesModelRestartWithoutSigningIn() = runTest {
         val harness = AppModelHarness(this)
         seedPendingRecovery(harness.backend)

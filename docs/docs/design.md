@@ -329,6 +329,8 @@ A lost registration answer is reconciled using the staged factor and exact encry
 
 Postponed setup keeps a warning row in normal layout, including while locked or signed out. It names the account and next step, or opens an account chooser for several records. Opening the reminder never resumes an operation or switches accounts. The row disappears while setup is open and never covers the Mac account controls or the Android top bar.
 
+Setup selects a single pending record without resuming it. Several records keep an explicit chooser, and a result opens its own operation. Refresh preserves a valid selection; selecting a different operation clears entered factors and any temporary kit. Each phase shows one prominent next action. Preparing a temporary kit alone never promotes delivery acknowledgement above saving, printing, or sharing it.
+
 The account form rates the master password with the same strength meter as the item editor (Weak, Fair, Good, Strong). It refuses fewer than 10 characters and passwords estimated below 28 bits (common words and patterns such as `password1234`), with "This password is too easy to guess. Add a few more words or characters."; a Weak password above that is allowed with a hint, because the Secret Key also protects the account. The server only checks the length.
 
 The admin dashboard's setup page (§5.1) runs the same steps in its Web Worker as the "Admin dashboard" device. Its form refuses fewer than 10 characters and a repeated password that does not match; it has no strength meter.

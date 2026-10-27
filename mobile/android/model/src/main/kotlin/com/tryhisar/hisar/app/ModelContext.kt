@@ -98,7 +98,7 @@ interface ModelContext {
 
     suspend fun refreshAll()
 
-    suspend fun refreshPendingRecovery()
+    suspend fun refreshPendingRecovery(isOpening: Boolean = true, operationID: String? = null)
 
     /** Shows a snackbar, with an optional action until it is dismissed. */
     fun showNotice(message: String, action: Notice.Action? = null)

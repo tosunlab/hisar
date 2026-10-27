@@ -43,7 +43,7 @@ struct RootView: View {
         }
         .safeAreaInset(edge: .top) {
             if !model.allPendingRecovery.isEmpty && !model.isPendingRecoveryShown && model.newSecretKey == nil {
-                Button { model.isPendingRecoveryShown = true } label: {
+                Button { model.openPendingRecovery() } label: {
                     HStack {
                         Image(systemName: "exclamationmark.triangle")
                         Text(model.allPendingRecovery.count == 1

@@ -33,6 +33,9 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.services.storage.TestStorage
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.UiDevice
+import java.util.regex.Pattern
 import org.junit.After
 import org.junit.Rule
 
@@ -225,6 +228,16 @@ abstract class HisarUITestCase {
         return secretKey
     }
 
+    fun handOffEmergencyKit(shareTag: String) {
+        waitFor(shareTag, ACCOUNT_KEY_TIMEOUT)
+        tap(shareTag)
+        val device = UiDevice.getInstance(InstrumentationRegistry.getInstrumentation())
+        val shareSheet = By.pkg(Pattern.compile("android|com\\.android\\.intentresolver"))
+        composeRule.waitUntil("the share sheet opens", 10_000) { device.hasObject(shareSheet) }
+        device.pressBack()
+        composeRule.waitUntil("the share sheet closes", 10_000) { !device.hasObject(shareSheet) }
+    }
+
     data class PendingRecoveryKit(val recordTag: String, val secretKey: String, val phase: String, val processID: Int)
 
     fun preparePendingRecoveryKit(email: String, password: String): PendingRecoveryKit {
@@ -232,10 +245,15 @@ abstract class HisarUITestCase {
             node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("pending-recovery-") == true
         }
         val account = record and hasText(email, substring = true) and !hasText("manual-unlock", substring = true)
-        waitFor(account, ACCOUNT_KEY_TIMEOUT)
-        val row = composeRule.onAllNodes(account).onLast()
-        val recordTag = row.fetchSemanticsNode().config[SemanticsProperties.TestTag]
-        row.performClick()
+        composeRule.waitUntil("recovery details or chooser appears", ACCOUNT_KEY_TIMEOUT) {
+            exists(hasTestTag("pending-recovery-phase")) || exists(account)
+        }
+        val recordTag = if (exists(hasTestTag("pending-recovery-phase"))) "" else {
+            val row = composeRule.onAllNodes(account).onLast()
+            val tag = row.fetchSemanticsNode().config[SemanticsProperties.TestTag]
+            row.performClick()
+            tag
+        }
         val phase = readText("pending-recovery-phase")
         type(password, "pending-recovery-password")
         tapWhenEnabled("pending-recovery-export")
@@ -249,10 +267,18 @@ abstract class HisarUITestCase {
         val kit = preparedKit ?: preparePendingRecoveryKit(email, password)
         if (preparedKit != null) {
             check(Process.myPid() != kit.processID) { "recovery must resume in a different app process" }
-            waitFor(hasTestTag(kit.recordTag) and hasText(email, substring = true), ACCOUNT_KEY_TIMEOUT)
-            tap(kit.recordTag)
+            if (kit.recordTag.isNotEmpty()) {
+                waitFor(hasTestTag(kit.recordTag) and hasText(email, substring = true), ACCOUNT_KEY_TIMEOUT)
+                tap(kit.recordTag)
+            } else waitFor("pending-recovery-phase", ACCOUNT_KEY_TIMEOUT)
             check(readText("pending-recovery-phase") == kit.phase) { "the prepared recovery changed across process restart" }
         }
+        type(password, "pending-recovery-password")
+        if (exists(hasTestTag("pending-recovery-export"))) {
+            tapWhenEnabled("pending-recovery-export")
+            waitFor("pending-recovery-share-kit", ACCOUNT_KEY_TIMEOUT)
+        }
+        handOffEmergencyKit("pending-recovery-share-kit")
         type(password, "pending-recovery-password")
         tapWhenEnabled("pending-recovery-acknowledge")
         if (kit.phase == "awaiting-kit") {
@@ -261,6 +287,10 @@ abstract class HisarUITestCase {
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-resume")
             waitFor(hasTestTag("pending-recovery-phase") and hasText("delivery-pending"), ACCOUNT_KEY_TIMEOUT)
+            type(password, "pending-recovery-password")
+            tapWhenEnabled("pending-recovery-export")
+            waitFor("pending-recovery-share-kit", ACCOUNT_KEY_TIMEOUT)
+            handOffEmergencyKit("pending-recovery-share-kit")
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-acknowledge")
         }

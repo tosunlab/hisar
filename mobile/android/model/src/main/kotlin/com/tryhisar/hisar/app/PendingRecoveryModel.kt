@@ -15,6 +15,8 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
     private val mutableAllRecovery = MutableStateFlow<List<PendingRecovery>>(emptyList())
     private val mutableIsShown = MutableStateFlow(false)
     private val mutableExport = MutableStateFlow<PendingRecoveryExport?>(null)
+    private val mutableSelectedOperationID = MutableStateFlow<String?>(null)
+    val selectedOperationID = mutableSelectedOperationID.asStateFlow()
     val allRecovery = mutableAllRecovery.asStateFlow()
     val isShown = mutableIsShown.asStateFlow()
     val export = mutableExport.asStateFlow()
@@ -30,7 +32,7 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         }
     }
 
-    suspend fun refresh() {
+    suspend fun refresh(isOpening: Boolean = true, operationID: String? = null) {
         val listing = context.attempt {
             try {
                 Result.success(it.listPendingRecovery())
@@ -46,10 +48,23 @@ class PendingRecoveryModel(private val context: ModelContext, private val onSign
         }
         val hadNone = mutableAllRecovery.value.isEmpty()
         mutableAllRecovery.value = records
-        if (records.isEmpty()) close() else if (hadNone) mutableIsShown.value = true
+        val selection = operationID?.takeIf { id -> records.any { it.operationId == id } }
+            ?: mutableSelectedOperationID.value?.takeIf { id -> records.any { it.operationId == id } }
+            ?: records.singleOrNull()?.operationId
+        select(selection)
+        if (records.isEmpty()) close() else if (hadNone && isOpening) mutableIsShown.value = true
     }
 
-    fun open() { mutableIsShown.value = true }
+    fun open() {
+        if (mutableAllRecovery.value.size == 1) select(mutableAllRecovery.value.single().operationId)
+        mutableIsShown.value = true
+    }
+
+    fun select(operationID: String?) {
+        if (mutableSelectedOperationID.value == operationID) return
+        clearExport()
+        mutableSelectedOperationID.value = operationID
+    }
 
     fun clearExport() {
         exportGeneration++

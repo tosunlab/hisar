@@ -59,7 +59,7 @@ class SettingsModel(private val context: ModelContext) {
         val result = context.perform { it.changeMasterPassword(currentPassword, newPassword) } ?: return@runInModel null
         if (result.pendingOperationId.isNotEmpty()) {
             context.refreshStatus()
-            context.refreshPendingRecovery()
+            context.refreshPendingRecovery(operationID = result.pendingOperationId)
             context.errorMessage.value = (result.problems + listOf(result.localError, result.keychainError))
                 .filter { it.isNotEmpty() }.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n")
             return@runInModel result
@@ -75,7 +75,7 @@ class SettingsModel(private val context: ModelContext) {
         if (result.pendingOperationId.isNotEmpty()) {
             removeFolder(result.emergencyKitPath)
             context.refreshStatus()
-            context.refreshPendingRecovery()
+            context.refreshPendingRecovery(operationID = result.pendingOperationId)
             context.errorMessage.value = (result.problems + listOf(result.localError, result.keychainError))
                 .filter { it.isNotEmpty() }.distinct().takeIf { it.isNotEmpty() }?.joinToString("\n")
             return result

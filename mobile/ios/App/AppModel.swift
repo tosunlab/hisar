@@ -84,6 +84,7 @@ final class AppModel: ObservableObject {
     private var shownApprovalList: UInt64 = 0
     @Published private(set) var allPendingRecovery: [PendingRecovery] = []
     @Published var isPendingRecoveryShown = false
+    @Published private(set) var selectedPendingRecoveryID: String?
     @Published private(set) var pendingRecoveryExport: PendingRecoveryExport?
     private var lifecycleEpoch: UInt64 = 0
     private var pendingDeliveryGeneration: UInt64 = 0
@@ -345,7 +346,7 @@ final class AppModel: ObservableObject {
             // The backend's first sync can report its change before this status arrives, when it is ignored.
             if status.isUnlocked { await refreshAll() }
             await refreshPendingRecovery()
-            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            openPendingRecovery(operationID: result.pendingOperationId)
             errorMessage = result.problems.isEmpty ? nil : result.problems.joined(separator: "\n")
             return true
         }
@@ -1383,7 +1384,7 @@ final class AppModel: ObservableObject {
         if !result.pendingOperationId.isEmpty {
             refreshStatus()
             await refreshPendingRecovery()
-            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            openPendingRecovery(operationID: result.pendingOperationId)
             var seen = Set<String>()
             let problems = (result.problems + [result.localError, result.keychainError]).filter { !$0.isEmpty && seen.insert($0).inserted }
             errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
@@ -1402,7 +1403,7 @@ final class AppModel: ObservableObject {
             removeEmergencyKitFile(path: result.emergencyKitPath)
             refreshStatus()
             await refreshPendingRecovery()
-            if !allPendingRecovery.isEmpty { isPendingRecoveryShown = true }
+            openPendingRecovery(operationID: result.pendingOperationId)
             var seen = Set<String>()
             let problems = (result.problems + [result.localError, result.keychainError]).filter { !$0.isEmpty && seen.insert($0).inserted }
             errorMessage = problems.isEmpty ? nil : problems.joined(separator: "\n")
@@ -1454,8 +1455,25 @@ final class AppModel: ObservableObject {
         }
         let hadNone = allPendingRecovery.isEmpty
         allPendingRecovery = records
+        let validSelection = selectedPendingRecoveryID.flatMap { id in records.contains { $0.operationId == id } ? id : nil }
+        selectPendingRecovery(validSelection ?? (records.count == 1 ? records[0].operationId : nil))
         if records.isEmpty { closePendingRecovery() }
         else if hadNone { isPendingRecoveryShown = true }
+    }
+
+    func selectPendingRecovery(_ operationID: String?) {
+        guard selectedPendingRecoveryID != operationID else { return }
+        clearPendingRecoveryExport()
+        selectedPendingRecoveryID = operationID
+    }
+
+    func openPendingRecovery(operationID: String? = nil) {
+        if let operationID, allPendingRecovery.contains(where: { $0.operationId == operationID }) {
+            selectPendingRecovery(operationID)
+        } else if allPendingRecovery.count == 1 {
+            selectPendingRecovery(allPendingRecovery[0].operationId)
+        }
+        isPendingRecoveryShown = !allPendingRecovery.isEmpty
     }
 
     func clearPendingRecoveryExport() {

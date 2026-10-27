@@ -34,8 +34,8 @@ describe("Pending recovery", () => {
     const wrapper = mount(PendingRecoveryView);
     const password = wrapper.find('input[name="pendingRecoveryPassword"]');
     await password.setValue("password");
-    expect(wrapper.findAll("button").find((button) => button.text() === "Verify and resume")!.attributes("disabled")).toBeDefined();
-    await wrapper.findAll("button").find((button) => button.text() === "Save recovery Emergency Kit…")!.trigger("click");
+    expect(wrapper.findAll("button").some((button) => button.text() === "Continue")).toBe(false);
+    await wrapper.findAll("button").find((button) => button.text() === "Save Emergency Kit…")!.trigger("click");
     await flushPromises();
     await wrapper.find('input[name="pendingRecoveryKitSaved"]').setValue(true);
     await password.setValue("password");
@@ -53,7 +53,7 @@ describe("Pending recovery", () => {
     mock.api.savePendingRecoveryEmergencyKit.mockResolvedValue("");
     const wrapper = mount(PendingRecoveryView);
     await wrapper.find('input[name="pendingRecoveryPassword"]').setValue("password");
-    const save = wrapper.findAll("button").find((button) => button.text() === "Save recovery Emergency Kit…")!;
+    const save = wrapper.findAll("button").find((button) => button.text() === "Save Emergency Kit…")!;
     await save.trigger("click");
     await flushPromises();
     expect(wrapper.find('input[name="pendingRecoveryKitSaved"]').exists()).toBe(false);

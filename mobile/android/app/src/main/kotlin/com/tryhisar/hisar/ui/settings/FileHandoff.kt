@@ -77,7 +77,7 @@ const val SHARED_FOLDER_NAME = "shared"
  * iPhone deletes its file. [onFailure] runs when the copy cannot be made.
  */
 @Composable
-fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit {
+fun rememberFileSharer(mimeType: String, onShared: () -> Unit = {}, onFailure: () -> Unit): (File) -> Unit {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val allPublishedFolder = remember { mutableListOf<File>() }
@@ -112,6 +112,7 @@ fun rememberFileSharer(mimeType: String, onFailure: () -> Unit): (File) -> Unit 
                 context.startActivity(Intent.createChooser(intent, null))
                 allPublishedFolder += folder
                 isPublished = true
+                onShared()
             } finally {
                 if (!isPublished) folder.deleteRecursively()
             }
