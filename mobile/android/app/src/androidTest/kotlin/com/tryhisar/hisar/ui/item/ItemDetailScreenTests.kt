@@ -20,6 +20,7 @@ import com.tryhisar.hisar.app.FakeTextClipboard
 import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.ItemDetail
 import com.tryhisar.hisar.model.ItemServer
+import com.tryhisar.hisar.model.ItemField
 import com.tryhisar.hisar.model.VaultSummary
 import com.tryhisar.hisar.ui.tap
 import com.tryhisar.hisar.ui.waitForTag
@@ -68,6 +69,30 @@ class ItemDetailScreenTests {
         composeRule.waitForTag("notice")
         composeRule.onNodeWithTag("notice").performTouchInput { swipeLeft() }
         composeRule.waitForTagToGo("notice")
+    }
+
+    @Test
+    fun testCustomRowsCopyTheirExactValueAndRevealIndependently() {
+        val fields = listOf(
+            ItemField("Recovery code", "first-secret", true),
+            ItemField("Recovery code", "second-secret", true),
+            ItemField("recovery CODE", "case-secret", true),
+            ItemField("Password", "custom-password", true),
+        )
+        backend.allItemByVaultID.getValue("personal") += ItemDetail(id = "duplicates", title = "Duplicates", password = "main-password", allField = fields)
+        openHost().show("personal", "duplicates")
+        composeRule.waitForTag("password-value")
+        for ((index, field) in fields.withIndex()) {
+            val copies = composeRule.onAllNodes(hasTestTag("copy-${field.name.lowercase()}"))
+            val row = if (index == 3) 1 else index
+            copies[row].performScrollTo().performClick()
+            composeRule.waitUntil(5_000) { clipboard.allCopiedSecret.lastOrNull() == field.value }
+            dismissNotice()
+        }
+        composeRule.onAllNodes(hasTestTag("reveal-recovery code"))[1].performScrollTo().performClick()
+        assertTrue(composeRule.onAllNodes(hasText("second-secret")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodes(hasText("first-secret")).fetchSemanticsNodes().isEmpty())
+        assertTrue(composeRule.onAllNodes(hasText("case-secret")).fetchSemanticsNodes().isEmpty())
     }
 
     @Test

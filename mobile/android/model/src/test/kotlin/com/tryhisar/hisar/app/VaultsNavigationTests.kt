@@ -49,11 +49,15 @@ class VaultsNavigationTests {
     }
 
     @Test
-    fun testLockingClosesThePushedScreens() = runTest {
+    fun testLockingClosesOrdinaryScreensWithoutRestoringThem() = runTest {
         val model = AppModelHarness(this).startUnlockedModel()
         model.navigation.vaults.push(VaultsDestination.Vault("personal"))
         model.navigation.search.push(VaultsDestination.Item("personal", "github"))
         model.lock()
+        assertTrue(model.navigation.vaults.path.value.isEmpty())
+        assertTrue(model.navigation.search.path.value.isEmpty())
+        model.lock.unlock(FakeBackend.PASSWORD)
+        runCurrent()
         assertTrue(model.navigation.vaults.path.value.isEmpty())
         assertTrue(model.navigation.search.path.value.isEmpty())
     }

@@ -11,9 +11,84 @@ import com.tryhisar.hisar.model.ItemIdentity
 import com.tryhisar.hisar.model.ItemServer
 import com.tryhisar.hisar.model.ItemSoftwareLicense
 import kotlinx.io.bytestring.ByteString
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+data class ItemEditorSession(
+    val request: EditorRequest,
+    val draft: ItemEditorDraft,
+    val chosenVaultID: String,
+    val sourceVaultID: String = request.vaultID,
+    val needsRestoration: Boolean = false,
+    val recoveryMessage: String? = null,
+)
 
 /** Creating, editing and deleting items, the password generator and icon photos: the editor's half of the app model. */
 class ItemEditorModel(private val context: ModelContext) {
+    private val mutableSession = MutableStateFlow<ItemEditorSession?>(null)
+    val session = mutableSession.asStateFlow()
+
+    init {
+        context.addStatusListener { previous, current ->
+            if (!current.isSignedIn || previous.email != current.email || previous.server != current.server) {
+                discard()
+            } else if (previous.isUnlocked && !current.isUnlocked) {
+                mutableSession.value = mutableSession.value?.copy(needsRestoration = true, recoveryMessage = null)
+            }
+        }
+    }
+
+    suspend fun open(request: EditorRequest) {
+        if (!context.status.value.isUnlocked || mutableSession.value?.request === request) return
+        val account = context.status.value
+        val item = when (request) {
+            is EditorRequest.New -> request.draft
+            is EditorRequest.Edit -> loadItem(request.vaultID, request.itemID) ?: return
+        }
+        if (!context.status.value.isUnlocked || context.status.value.email != account.email || context.status.value.server != account.server) return
+        mutableSession.value = ItemEditorSession(request, ItemEditorDraft.open(item, request is EditorRequest.New), request.vaultID)
+    }
+
+    fun updateDraft(draft: ItemEditorDraft) {
+        if (context.status.value.isUnlocked) mutableSession.value = mutableSession.value?.copy(draft = draft)
+    }
+
+    fun chooseVault(vaultID: String) {
+        mutableSession.value = mutableSession.value?.copy(chosenVaultID = vaultID)
+    }
+
+    fun discard() {
+        mutableSession.value = null
+    }
+
+    fun validateRestoration() {
+        val saved = mutableSession.value ?: return
+        if (!saved.needsRestoration || !context.status.value.isUnlocked) return
+        val data = context.unlockedData.value
+        val source = data.findVault(saved.sourceVaultID)
+        val destination = data.findVault(saved.chosenVaultID)
+        val original = saved.draft.original
+        val current = data.allItemByVaultID[saved.sourceVaultID]?.firstOrNull { it.id == original?.id }
+        val isChanged = source == null || !CredentialImportModel.isWritableVault(source) || destination == null || !CredentialImportModel.isWritableVault(destination) ||
+            (original != null && (current?.revision != original.revision || current.readIssue != null))
+        mutableSession.value = saved.copy(
+            needsRestoration = false,
+            recoveryMessage = if (isChanged) "The original item or your access changed. Your unsaved changes are still here." else null,
+        )
+    }
+
+    fun recoverCopy() {
+        val saved = mutableSession.value ?: return
+        val destination = context.unlockedData.value.allVault.firstOrNull(CredentialImportModel::isWritableVault) ?: return
+        val item = saved.draft.item.copy(id = "", revision = "", allPasskey = emptyList())
+        mutableSession.value = saved.copy(
+            draft = saved.draft.copy(original = null, item = item),
+            chosenVaultID = destination.id,
+            sourceVaultID = destination.id,
+            recoveryMessage = null,
+        )
+    }
+
     /** The item an Edit request opens, with its secrets; null with the reason in the error banner. */
     suspend fun loadItem(vaultID: String, itemID: String): ItemDetail? =
         context.perform(isBusyShown = false) { it.getItem(vaultID, itemID) }
@@ -28,6 +103,7 @@ class ItemEditorModel(private val context: ModelContext) {
             val newAllItem = if (index >= 0) allItem.toMutableList().apply { set(index, summary) } else allItem + summary
             data.copy(allItemByVaultID = data.allItemByVaultID + (vaultID to newAllItem))
         }
+        discard()
         savedItem
     }
 
@@ -41,6 +117,7 @@ class ItemEditorModel(private val context: ModelContext) {
                 allPasskey = data.allPasskey.filterNot { it.vaultID == vaultID && it.itemID == itemID },
             )
         }
+        discard()
         true
     }
 

@@ -10,6 +10,7 @@ import com.tryhisar.hisar.model.ItemIdentity
 import com.tryhisar.hisar.model.ItemServer
 import com.tryhisar.hisar.model.ItemSoftwareLicense
 import com.tryhisar.hisar.model.backendJson
+import com.tryhisar.hisar.model.FakeBackend
 import java.time.Instant
 import java.time.ZoneId
 import kotlin.test.Test
@@ -20,6 +21,7 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -33,6 +35,106 @@ class ItemEditorModelTests {
 
     private fun AppModel.listTitles(include: (ItemDetail) -> Boolean): List<String> =
         unlockedData.value.listAllItemReference().map { it.item }.filter(include).map { it.title }
+
+    @Test
+    fun testItemEditorDraftSurvivesLockAndUnlock() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val request = EditorRequest.New("personal", ItemDetail(title = "Draft", password = "generated-password"))
+        model.itemEditor.open(request)
+        val draft = assertNotNull(model.itemEditor.session.value).draft.copy(allURLText = listOf("https://example.com", ""), newTagText = "pending")
+        model.itemEditor.updateDraft(draft)
+        model.itemEditor.chooseVault("family")
+        model.navigation.search.push(VaultsDestination.Editor(request, opensSavedItem = false))
+        model.handleDidEnterBackground()
+        harness.currentDate += model.autoLockInterval.plusSeconds(1)
+        model.handleWillEnterForeground()
+        assertTrue(model.navigation.search.path.value.isEmpty())
+        model.lock.unlock(FakeBackend.PASSWORD)
+        runCurrent()
+        val restored = assertNotNull(model.itemEditor.session.value)
+        assertEquals(draft, restored.draft)
+        assertEquals("family", restored.chosenVaultID)
+        assertEquals(request, (model.navigation.vaults.path.value.last() as VaultsDestination.Editor).request)
+    }
+
+    @Test
+    fun testItemEditorPermissionChangeKeepsDraftForRecovery() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val request = EditorRequest.New("family", ItemDetail(title = "Draft", password = "keep-this"))
+        model.itemEditor.open(request)
+        model.navigation.vaults.push(VaultsDestination.Editor(request, false))
+        model.lock()
+        harness.backend.allVault = harness.backend.allVault.map { if (it.id == "family") it.copy(role = "reader") else it }.toMutableList()
+        model.lock.unlock(FakeBackend.PASSWORD)
+        runCurrent()
+        assertNotNull(model.itemEditor.session.value?.recoveryMessage)
+        assertEquals("keep-this", model.itemEditor.session.value?.draft?.item?.password)
+        model.itemEditor.recoverCopy()
+        assertNull(model.itemEditor.session.value?.recoveryMessage)
+        assertEquals("personal", model.itemEditor.session.value?.chosenVaultID)
+    }
+
+    @Test
+    fun testItemEditorChangedSourceRequiresRecovery() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val request = EditorRequest.Edit("personal", "github")
+        model.itemEditor.open(request)
+        val draft = assertNotNull(model.itemEditor.session.value).draft.withItem { it.copy(password = "unsaved") }
+        model.itemEditor.updateDraft(draft)
+        model.navigation.vaults.push(VaultsDestination.Editor(request, false))
+        model.lock()
+        harness.backend.allItemByVaultID.getValue("personal").removeAll { it.id == "github" }
+        model.lock.unlock(FakeBackend.PASSWORD)
+        runCurrent()
+        assertNotNull(model.itemEditor.session.value?.recoveryMessage)
+        assertEquals("unsaved", model.itemEditor.session.value?.draft?.item?.password)
+        model.itemEditor.recoverCopy()
+        assertNull(model.itemEditor.session.value?.draft?.original)
+        assertEquals("", model.itemEditor.session.value?.draft?.item?.id)
+    }
+
+    @Test
+    fun testItemEditorClearsOnSaveDiscardSignOutAndAccountSwitch() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val request = EditorRequest.New("personal", ItemDetail(title = "Draft", password = "secret"))
+        model.itemEditor.open(request)
+        model.itemEditor.saveItem("personal", request.draft)
+        assertNull(model.itemEditor.session.value)
+        model.itemEditor.open(request)
+        model.itemEditor.discard()
+        assertNull(model.itemEditor.session.value)
+        model.itemEditor.open(request)
+        model.applyStatus(model.status.value.copy(email = "other@example.com"))
+        assertNull(model.itemEditor.session.value)
+        model.itemEditor.open(request)
+        model.lock()
+        model.lock.signOut()
+        assertNull(model.itemEditor.session.value)
+    }
+
+    @Test
+    fun testAutoFillRequestedDraftKeepsLaterEditsAndItsSaveCallback() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        var savedPassword: String? = null
+        val request = EditorRequest.New("personal", ItemDetail(title = "Autofill", password = "original"), onSaved = { _, item -> savedPassword = item.password })
+        model.navigation.requestEditor(request)
+        runCurrent()
+        model.itemEditor.open(request)
+        val draft = assertNotNull(model.itemEditor.session.value).draft.withItem { it.copy(password = "changed-after-autofill") }
+        model.itemEditor.updateDraft(draft)
+        model.lock()
+        model.lock.unlock(FakeBackend.PASSWORD)
+        runCurrent()
+        assertEquals(draft, model.itemEditor.session.value?.draft)
+        val saved = assertNotNull(model.itemEditor.saveItem("personal", draft.buildItem()))
+        request.onSaved?.invoke("personal", saved)
+        assertEquals("changed-after-autofill", savedPassword)
+    }
 
     @Test
     fun testSaveNewItemAddsItWithoutSecrets() = runTest {

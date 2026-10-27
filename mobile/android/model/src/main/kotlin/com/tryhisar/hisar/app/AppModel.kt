@@ -105,7 +105,7 @@ class AppModel(
     val item = ItemModel(this)
     val vaults = VaultsModel(this)
     val invitations = InvitationsModel(this)
-    val navigation = VaultsNavigation(this, selectedTab)
+    val navigation = VaultsNavigation(this, selectedTab, itemEditor)
     val sharing = SharingModel(this, vaults)
     val organizations = OrganizationsModel(this, invitations)
     val approvals = ApprovalsModel(this, now)

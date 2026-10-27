@@ -385,7 +385,7 @@ class HisarUITestCase: XCTestCase {
         type(password, into: app.secureTextFields["editor-password"])
         type(website, into: app.textFields["editor-website-0"])
         if !oneTimePassword.isEmpty {
-            type(oneTimePassword, into: app.textFields["editor-one-time-password"])
+            type(oneTimePassword, into: app.secureTextFields["editor-one-time-password"])
         }
         saveScreenshot("add-item")
         app.buttons["editor-save"].tap()

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -20,7 +22,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.retain.retain
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -34,6 +35,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.EditorRequest
 import com.tryhisar.hisar.app.ItemEditorDraft
+import com.tryhisar.hisar.app.CredentialImportModel
 import com.tryhisar.hisar.model.CardDescription
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormSection
@@ -46,17 +48,15 @@ import kotlinx.coroutines.launch
 /** The item editor for a new or an existing item; [onDone] gets the saved item's ID, or null when cancelled. */
 @Composable
 fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItemID: String?) -> Unit) {
-    val vaultID = when (request) {
-        is EditorRequest.New -> request.vaultID
-        is EditorRequest.Edit -> request.vaultID
-    }
+    val session by model.itemEditor.session.collectAsStateWithLifecycle()
+    val vaultID = session?.chosenVaultID ?: request.vaultID
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val unlockedData by model.unlockedData.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    // Secrets stay out of the saved instance state, which the system may write to disk; retained, they survive a rotation in memory.
-    var draft by retain(request) { mutableStateOf((request as? EditorRequest.New)?.let { ItemEditorDraft.open(it.draft, isNew = true) }) }
-    var revealed by retain(request) { mutableStateOf(RevealedSecrets()) }
+    val draft = session?.takeIf { it.request === request }?.draft
+    val lockCount by model.lockCount.collectAsStateWithLifecycle()
+    var revealed by remember(request, lockCount) { mutableStateOf(RevealedSecrets()) }
     var isGeneratorShown by remember { mutableStateOf(false) }
     var isIconPickerShown by remember { mutableStateOf(false) }
     var isDeleteConfirmationShown by remember { mutableStateOf(false) }
@@ -64,27 +64,26 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
 
     LaunchedEffect(request) {
         model.itemEditor.clearError()
-        if (request is EditorRequest.Edit && draft == null) {
-            model.itemEditor.loadItem(request.vaultID, request.itemID)?.let { draft = ItemEditorDraft.open(it, isNew = false) }
-        }
+        model.itemEditor.open(request)
     }
 
     fun cancel() {
         model.itemEditor.clearError()
+        model.itemEditor.discard()
         onDone(null)
     }
 
     fun requestClose() {
         if (isBusy) return
-        if (draft?.hasChanges == true) isDiscardConfirmationShown = true else cancel()
+        if (draft?.hasChanges == true || vaultID != request.vaultID) isDiscardConfirmationShown = true else cancel()
     }
 
     fun save() {
         val current = draft?.withTagsAdded() ?: return
-        draft = current
+        model.itemEditor.updateDraft(current)
         scope.launch {
             val savedItem = model.itemEditor.saveItem(vaultID, current.buildItem()) ?: return@launch
-            (request as? EditorRequest.New)?.onSaved?.invoke(savedItem)
+            (request as? EditorRequest.New)?.onSaved?.invoke(vaultID, savedItem)
             onDone(savedItem.id)
         }
     }
@@ -107,14 +106,20 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
             if (isBusy) {
                 ToolbarSpinner()
             } else {
-                GlassTextButton("Save", onClick = ::save, testTag = "editor-save", enabled = currentDraft?.canSave == true, isProminent = true)
+                GlassTextButton("Save", onClick = ::save, testTag = "editor-save", enabled = currentDraft?.canSave == true && session?.recoveryMessage == null, isProminent = true)
             }
         },
     ) {
         errorMessage?.let { message -> FormSection { ErrorBanner(message) } }
+        session?.recoveryMessage?.let { message ->
+            FormSection(footer = { Text(message) }) {
+                EditorButtonRow("Recover a copy", Icons.Outlined.ContentCopy, onClick = { model.itemEditor.recoverCopy() }, testTag = "editor-recover-copy", enabled = unlockedData.allVault.any(CredentialImportModel::isWritableVault))
+                EditorButtonRow("Discard draft", Icons.Outlined.Delete, onClick = ::cancel, testTag = "editor-discard-draft")
+            }
+        }
         if (currentDraft == null) return@InlineTitleForm
         val item = currentDraft.item
-        val onChange: (ItemEditorDraft) -> Unit = { draft = it }
+        val onChange: (ItemEditorDraft) -> Unit = model.itemEditor::updateDraft
         val onRevealedChange: (RevealedSecrets) -> Unit = { revealed = it }
         FormSection {
             Row(Modifier.padding(start = 16.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -137,21 +142,25 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
                             .padding(3.dp),
                     )
                 }
-                EditorField(item.title, { value -> draft = currentDraft.withItem { it.copy(title = value) } }, "Title", "editor-title")
+                EditorField(item.title, { value -> model.itemEditor.updateDraft(currentDraft.withItem { it.copy(title = value) }) }, "Title", "editor-title")
+            }
+            if (currentDraft.isNew) {
+                val writableVaults = unlockedData.allVault.filter(CredentialImportModel::isWritableVault)
+                MenuPickerRow("Vault", writableVaults.map { it.id }, vaultID, { id -> writableVaults.firstOrNull { it.id == id }?.name.orEmpty() }, model.itemEditor::chooseVault, "editor-vault")
             }
         }
         when {
             item.isSecureNote -> {
                 FormSection(header = "Note") {
                     EditorField(
-                        item.notes, { value -> draft = currentDraft.withItem { it.copy(notes = value) } }, "Recovery codes, door codes, account details…",
+                        item.notes, { value -> model.itemEditor.updateDraft(currentDraft.withItem { it.copy(notes = value) }) }, "Recovery codes, door codes, account details…",
                         "editor-notes", kind = FieldKind.NOTES, minLines = 8, maxLines = 30,
                     )
                 }
                 OtherFieldsSection(currentDraft, onChange)
             }
             item.isCreditCard -> {
-                CardDescriptionEffect(model, currentDraft) { description -> draft = draft?.withCardDescription(description) }
+                CardDescriptionEffect(model, currentDraft) { description -> model.itemEditor.session.value?.takeIf { it.request === request }?.draft?.let { model.itemEditor.updateDraft(it.withCardDescription(description)) } }
                 CardSections(currentDraft, onChange, revealed, onRevealedChange)
                 OtherFieldsSection(currentDraft, onChange)
             }
@@ -183,7 +192,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
         }
         if (!item.isSecureNote) {
             FormSection(header = "Notes") {
-                EditorField(item.notes, { value -> draft = currentDraft.withItem { it.copy(notes = value) } }, "Recovery codes, door codes, anything else", "editor-notes", kind = FieldKind.NOTES, minLines = 3, maxLines = 10)
+                EditorField(item.notes, { value -> model.itemEditor.updateDraft(currentDraft.withItem { it.copy(notes = value) }) }, "Recovery codes, door codes, anything else", "editor-notes", kind = FieldKind.NOTES, minLines = 3, maxLines = 10)
             }
         }
         TagSection(currentDraft, onChange)
@@ -207,7 +216,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
         IconPickerSheet(
             model,
             currentDraft.buildItem(),
-            onIconChange = { icon -> draft = draft?.withItem { it.copy(icon = icon) } },
+            onIconChange = { icon -> model.itemEditor.session.value?.takeIf { it.request === request }?.draft?.let { model.itemEditor.updateDraft(it.withItem { it.copy(icon = icon) }) } },
             onDismiss = { isIconPickerShown = false },
         )
     }
@@ -215,7 +224,7 @@ fun ItemEditorScreen(model: AppModel, request: EditorRequest, onDone: (savedItem
         PasswordGeneratorSheet(
             model,
             onUse = { password ->
-                draft = draft?.withItem { it.copy(password = password) }
+                model.itemEditor.session.value?.takeIf { it.request === request }?.draft?.let { model.itemEditor.updateDraft(it.withItem { it.copy(password = password) }) }
                 revealed = revealed.copy(isPassword = true)
                 isGeneratorShown = false
             },

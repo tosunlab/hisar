@@ -38,6 +38,7 @@ import com.tryhisar.hisar.ui.theme.HisarType
 /** Which secrets the editor shows in the clear; each section has its own eye, as on the iPhone. */
 data class RevealedSecrets(
     val isPassword: Boolean = false,
+    val isSetupKey: Boolean = false,
     val isCard: Boolean = false,
     val isDocument: Boolean = false,
     val isCredentialSecret: Boolean = false,
@@ -77,15 +78,19 @@ fun LoginSections(
         }
     }
     if (!item.isDatabase) {
-        FormSection(header = "One-time password") {
+        FormSection(header = "One-time code") {
             EditorField(
                 item.oneTimePassword,
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
                 "Setup key or otpauth:// link",
                 "editor-one-time-password",
                 kind = FieldKind.SECRET,
+                isSecret = true,
+                isRevealed = revealed.isSetupKey,
                 isMonospaced = true,
-            )
+            ) {
+                RevealButton(revealed.isSetupKey, "setup key") { onRevealedChange(revealed.copy(isSetupKey = !revealed.isSetupKey)) }
+            }
         }
         FormSection(header = if (item.isServer) "Admin console" else "Websites") {
             draft.allURLText.forEachIndexed { index, text ->
@@ -358,6 +363,8 @@ fun OtherFieldsSection(draft: ItemEditorDraft, onChange: (ItemEditorDraft) -> Un
                 Row(Modifier.padding(vertical = 4.dp).padding(end = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
                         EditorField(field.name, { value -> update(index) { it.copy(name = value) } }, "Name", "editor-field-$index-name", textStyle = HisarType.footnote)
+                        val nameWarning = draft.fieldNameWarning(index)
+                        if (nameWarning.isNotEmpty()) Warning(nameWarning, "editor-field-$index-name-warning")
                         EditorField(
                             field.value, { value -> update(index) { it.copy(value = value) } }, "Value", "editor-field-$index-value",
                             kind = if (field.concealed) FieldKind.SECRET else FieldKind.TEXT, isSecret = field.concealed,

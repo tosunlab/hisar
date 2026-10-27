@@ -56,7 +56,7 @@ class SavedLoginTests {
         assertEquals(emptyList(), request.draft.allURL)
 
         val saved = harness.backend.saveItem(request.vaultID, request.draft)
-        request.onSaved?.invoke(saved)
+        request.onSaved?.invoke(request.vaultID, saved)
         assertEquals(listOf(ItemAndroidApp(app.packageName, app.certificateSHA256)), harness.backend.getItem("personal", saved.id).allAndroidApp)
     }
 

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCommitSigningCommandList,
   computePasswordStrength,
+  customFieldNameWarning,
   describeSignedOutDevices,
   formatExpiresIn,
   formatShareLinkViews,
@@ -25,6 +26,16 @@ import {
   formatTimeAgo,
   isCalendarDate,
 } from "./util";
+
+describe("custom field reference names", () => {
+  it("warns for duplicate and built-in names without changing their values", () => {
+    const fields = [{ name: "Recovery code", value: "first" }, { name: "recovery CODE", value: "second" }, { name: "Password", value: "custom" }];
+    expect(customFieldNameWarning(fields, 0)).toBe("Secret references need a unique name.");
+    expect(customFieldNameWarning(fields, 1)).toBe("Secret references need a unique name.");
+    expect(customFieldNameWarning(fields, 2)).toBe("A secret reference with this name reaches the built-in field.");
+    expect(fields.map((field) => field.value)).toEqual(["first", "second", "custom"]);
+  });
+});
 
 describe("describeSignedOutDevices", () => {
   it("does not report an unknown count as zero", () => {

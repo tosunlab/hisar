@@ -3,6 +3,29 @@ import Foundation
 import SwiftUI
 import UIKit
 
+struct ItemEditorAccount: Equatable {
+    let server: String
+    let email: String
+
+    init(_ status: VaultStatus) {
+        server = status.server
+        email = status.email
+    }
+}
+
+struct ItemEditorSession {
+    var account: ItemEditorAccount
+    var sourceVaultID: String
+    var originalItem: ItemDetail?
+    var item: ItemDetail
+    var allURLText: [String]
+    var chosenVaultID: String
+    var newTagText = ""
+    var loadedItem: ItemDetail
+    var isOldAddressShown = false
+    var numberBrand = ""
+}
+
 @MainActor
 final class AppModel: ObservableObject {
     enum Screen: Equatable {
@@ -87,6 +110,50 @@ final class AppModel: ObservableObject {
     @Published private(set) var pendingRecoveryExport: PendingRecoveryExport?
     private var lifecycleEpoch: UInt64 = 0
     private var pendingDeliveryGeneration: UInt64 = 0
+    @Published private(set) var retainedEditor: ItemEditorSession?
+    @Published var isRestoredEditorShown = false
+    @Published private(set) var editorRecoveryMessage: String?
+    private var editorNeedsRestoration = false
+
+    func retainEditor(_ draft: ItemEditorSession) {
+        guard status.isSignedIn, draft.account == ItemEditorAccount(status),
+              status.isUnlocked || retainedEditor != nil else { return }
+        retainedEditor = draft
+    }
+
+    func discardEditor() {
+        retainedEditor = nil
+        editorNeedsRestoration = false
+        isRestoredEditorShown = false
+        editorRecoveryMessage = nil
+    }
+
+    private func restoreEditorAfterUnlock() {
+        guard editorNeedsRestoration, let draft = retainedEditor else { return }
+        editorNeedsRestoration = false
+        let source = allVault.first { $0.id == draft.sourceVaultID }
+        let destination = allVault.first { $0.id == draft.chosenVaultID }
+        let current = allItemByVaultID[draft.sourceVaultID]?.first { $0.id == draft.originalItem?.id }
+        if !(source.map(Self.isWritableVault) ?? false) || !(destination.map(Self.isWritableVault) ?? false)
+            || (draft.originalItem != nil && (current?.revision != draft.originalItem?.revision || current?.readIssue != nil)) {
+            editorRecoveryMessage = "The original item or your access changed. Your unsaved changes are still here."
+        } else {
+            isRestoredEditorShown = true
+        }
+    }
+
+    func recoverEditorCopy() {
+        guard var draft = retainedEditor, let vault = Self.chooseCredentialImportVault(allVault.filter(Self.isWritableVault)) else { return }
+        draft.sourceVaultID = vault.id
+        draft.chosenVaultID = vault.id
+        draft.originalItem = nil
+        draft.item.id = ""
+        draft.item.revision = ""
+        draft.item.allPasskey = []
+        retainedEditor = draft
+        editorRecoveryMessage = nil
+        isRestoredEditorShown = true
+    }
 
     var receivedInvitationCount: Int { allReceivedInvitation.count }
     var organizationInvitationCount: Int { allOrganizationInvitation.count }
@@ -208,6 +275,9 @@ final class AppModel: ObservableObject {
     private func applyStatus(_ newStatus: VaultStatus) {
         let wasUnlocked = status.isUnlocked
         let wasSignedIn = status.isSignedIn
+        if !newStatus.isSignedIn || status.email != newStatus.email || status.server != newStatus.server {
+            discardEditor()
+        }
         if status.state != newStatus.state || status.email != newStatus.email || status.server != newStatus.server {
             lifecycleEpoch += 1
             clearPendingRecoveryExport()
@@ -227,6 +297,9 @@ final class AppModel: ObservableObject {
             clearAllApproval()
         }
         if wasUnlocked && !newStatus.isUnlocked {
+            editorNeedsRestoration = retainedEditor != nil
+            isRestoredEditorShown = false
+            editorRecoveryMessage = nil
             allVault = []
             allItemByVaultID = [:]
             allPasskey = []
@@ -552,6 +625,7 @@ final class AppModel: ObservableObject {
             shownRefresh = refresh
             allVault = result.allVault.sorted { Self.sortVault($0, $1) }
             allItemByVaultID = result.allItemByVaultID
+            restoreEditorAfterUnlock()
             if let passkeys = result.allPasskey { allPasskey = passkeys }
             if let shareInvitations = result.shareInvitations {
                 applyShareInvitations(shareInvitations)
@@ -1269,6 +1343,7 @@ final class AppModel: ObservableObject {
         }
         allItemByVaultID[vaultID] = allItem
         await publishAllCredentialIdentity()
+        discardEditor()
         return savedItem
     }
 

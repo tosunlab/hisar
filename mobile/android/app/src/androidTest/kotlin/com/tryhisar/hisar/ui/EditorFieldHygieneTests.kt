@@ -14,6 +14,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ViewRootForTest
+import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.junit4.v2.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -113,6 +115,29 @@ class EditorFieldHygieneTests {
         composeRule.runOnUiThread { request = EditorRequest.New("personal", ItemDetail(category = ItemDetail.CATEGORY_SECURE_NOTE)) }
         composeRule.waitForTag("editor-notes")
         assertSecret("editor-notes")
+    }
+
+    @Test
+    fun testSavedSetupKeyRequiresRevealAndResetsOnReopening() {
+        backend.seedSignedIn()
+        val setupKey = "otpauth://totp/?secret=JBSWY3DPEHPK3PXP"
+        var request by mutableStateOf<EditorRequest>(
+            EditorRequest.New("personal", ItemDetail(password = "main-secret", oneTimePassword = setupKey)),
+        )
+        show { key(request) { ItemEditorScreen(model, request) {} } }
+        for (category in listOf(ItemDetail.CATEGORY_LOGIN, ItemDetail.CATEGORY_SERVER, ItemDetail.CATEGORY_LOGIN)) {
+            composeRule.runOnUiThread {
+                request = EditorRequest.New("personal", ItemDetail(category = category, title = category, password = "main-secret", oneTimePassword = setupKey))
+            }
+            val field = composeRule.onNodeWithTag("editor-one-time-password")
+            field.performScrollTo().assertTextEquals("•".repeat(setupKey.length))
+            composeRule.onNodeWithContentDescription("Reveal setup key").performClick()
+            field.assertTextEquals(setupKey)
+            composeRule.onNodeWithTag("editor-password").assertTextEquals("•".repeat("main-secret".length))
+            composeRule.onNodeWithContentDescription("Hide setup key").performClick()
+            field.assertTextEquals("•".repeat(setupKey.length))
+            composeRule.onNodeWithContentDescription("Reveal setup key").performClick()
+        }
     }
 
     @Test

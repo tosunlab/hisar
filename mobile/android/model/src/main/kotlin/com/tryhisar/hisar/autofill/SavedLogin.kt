@@ -31,8 +31,8 @@ data class SavedLogin(val username: String, val password: String, val place: Pla
      */
     suspend fun openEditor(model: AppModel) {
         val vault = model.unlockedData.first { it.allVault.isNotEmpty() }.allVault.let(::chooseVault) ?: return
-        val onSaved: (suspend (ItemDetail) -> Unit)? = (place as? Place.App)?.let { app ->
-            { item -> model.perform { it.addAndroidApp(vault.id, item.id, app.app.packageName, app.app.certificateSHA256) } }
+        val onSaved: (suspend (String, ItemDetail) -> Unit)? = (place as? Place.App)?.let { app ->
+            { vaultID, item -> model.perform { it.addAndroidApp(vaultID, item.id, app.app.packageName, app.app.certificateSHA256) } }
         }
         model.navigation.requestEditor(EditorRequest.New(vault.id, draft, onSaved))
     }
