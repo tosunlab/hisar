@@ -397,9 +397,9 @@ class AppModel(
     }
 
     suspend fun copySecretReference(vaultID: String, itemID: String, fieldName: String) {
-        perform(isBusyShown = false) { it.copySecretReference(vaultID, itemID, fieldName) } ?: return
+        val reference = perform(isBusyShown = false) { it.copySecretReference(vaultID, itemID, fieldName) } ?: return
         mutableCopyCount.update { it + 1 }
-        showNotice("Secret reference copied.")
+        showNotice("Copied $reference.")
     }
 
     /** Copies a secret the app holds itself, such as a website or a generated password, as Go copies fields. */

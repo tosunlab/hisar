@@ -1318,9 +1318,9 @@ final class AppModel: ObservableObject {
     }
 
     func copySecretReference(vaultID: String, itemID: String, fieldName: String) async {
-        guard await perform(isBusyShown: false, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) != nil else { return }
+        guard let reference = await perform(isBusyShown: false, { try $0.copySecretReference(vaultID: vaultID, itemID: itemID, fieldName: fieldName) }) else { return }
         copyCount += 1
-        showNotice("Secret reference copied.")
+        showNotice("Copied \(reference).")
     }
 
     // Not secret, so it stays on the pasteboard and may reach other devices: support details and diagnostics.

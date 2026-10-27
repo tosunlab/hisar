@@ -23,9 +23,9 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 |---|---|
 | master password | password (when the master password is meant), passphrase |
 | Secret Key | secret key, account key |
-| Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
-| Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock |
-| Sign in, Sign out, Create account | Log in, Register |
+| Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." After replacing the Secret Key: "Save the new one now, and destroy the old one." | "has both places to keep them", sign-in address (use server) |
+| Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock; Use Touch ID (the Mac retry button and tooltip use Unlock with Touch ID) |
+| Sign in, Sign out, Create account; Sign out… then Sign out device (Mac Settings → Devices) | Log in, Register, Revoke (a device session) |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |
 | "Your other devices will be signed out. Sign in on them with the new master password." / "…with your master password and the new Secret Key from the new Emergency Kit." | Logged out, session invalidated |
 | "This device was signed out. If your master password or Secret Key was changed on another device, sign in with the new one." | Session expired, unauthorized |
@@ -37,7 +37,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Use | Meaning |
 |---|---|
 | Invite to Hisar | Creates a Hisar account: the server emails a sign-up link. Settings → People. Never "+ Invite" alone. |
-| Share, Invite by email | Gives someone a vault. The vault's Share panel (Mac) or sheet (iPhone). |
+| Share, Invite by email, Send invitation | Gives someone a vault. Share opens the panel (Mac) or sheet (iPhone and Android). Send invitation submits the email invitation. |
 | invitation | A pending vault share ("Invitations for you", "Invitations you sent"). |
 | Review recipient · Give this person access? · Give access | Confirms the concrete account, security code, vault, and role before delivering a key to an identity not bound by the original invitation. Available on Mac, iPhone, and Android. |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
@@ -80,6 +80,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Item actions (the ⋯ button in the Mac's item header) | Unlabelled ⋯ |
 | Secret (a field hidden until revealed) | Concealed, Hidden |
 | secret reference | secret URI, reference link |
+| "Copied \<reference>." (secret-reference copy notices on all three apps) | "Secret reference copied.", repeated command-line instructions |
 | "\<Field> copied. It clears in 90 seconds." (Mac and iPhone copy notices) | "\<Field> copied, clears in 90 seconds" |
 | Favorites (the list at the top of the sidebar and of Vaults), favorite, star (the icon) | Starred, Pinned, Bookmarks |
 | Add to Favorites, Remove from Favorites (the star's label, the context menu, swipe actions; ⌘D on the Mac) | Favorite, Unfavorite, Star (as a button label) |
@@ -110,6 +111,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | the hisar command-line tool (`hisar`) | the CLI (in app copy), the binary |
 | SSH agent, Use Hisar for SSH | key agent |
 | Approve requests on my smart device (Mac) / Approve requests from my Mac (iPhone, Android) · or approve on your smart device (Mac approval window) · Your smart device can now approve requests | Approve requests on my iPhone, Allow approvals from my iPhone, Allow approving Mac requests |
+| SSH keys, the command-line tool, coding agents and apps | The request kinds listed in Mac approvals settings on all three apps. Notifications use "an SSH key, the command-line tool, a coding agent or an app". |
 | Approve, Deny | Allow, Reject |
 | "Approving lets this one request continue; it does not unlock Hisar on your Mac." (phone approval sheet) · "Approving lets \<app> use Hisar until it locks on your Mac; it does not unlock Hisar there." (iPhone launcher approval that lasts until lock) | Repeating it in cards, the Approvals tab or Settings |
 | Coding agents, Available to agents | AI, MCP (except in the `hisar mcp` command) |

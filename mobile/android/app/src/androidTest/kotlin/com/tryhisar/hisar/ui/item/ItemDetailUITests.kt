@@ -103,7 +103,7 @@ class ItemDetailUITests : HisarUITestCase() {
         dismissNotice()
         tap("copy-secret-reference")
         waitUntil(10_000, "the clipboard holds the password's reference") { clipboardText == "hisar://Personal/GitHub/password" }
-        waitFor(hasText("Secret reference copied."))
+        waitFor(hasText("Copied hisar://Personal/GitHub/password."))
 
         tap("edit-item")
         assertEquals(listOf<EditorRequest>(EditorRequest.Edit(personalID, login.id)), host.allEditorRequest)

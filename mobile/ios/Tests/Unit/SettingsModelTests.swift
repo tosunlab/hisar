@@ -173,7 +173,7 @@ final class SettingsModelTests: XCTestCase {
         await model.copySecretReference(vaultID: "personal", itemID: "github", fieldName: "password")
         XCTAssertEqual(model.copyCount, 2)
         XCTAssertEqual(backend.allCopiedReference, ["hisar://Personal/GitHub/password"])
-        XCTAssertEqual(model.noticeMessage, "Secret reference copied.")
+        XCTAssertEqual(model.noticeMessage, "Copied hisar://Personal/GitHub/password.")
     }
 
     func testTurningOffMacApprovalsHidesTheRequests() async {

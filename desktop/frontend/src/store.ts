@@ -1578,7 +1578,7 @@ export async function copySecretReference(fieldName: string): Promise<void> {
   const itemID = store.selectedItem.id;
   const reference = await runAction(() => api.copySecretReference(store.selectedVaultID, itemID, fieldName));
   if (reference) {
-    showNotice(`Copied ${reference} — use it with hisar run or hisar read`);
+    showNotice(`Copied ${reference}.`);
   } else {
     showCopyFailure();
   }

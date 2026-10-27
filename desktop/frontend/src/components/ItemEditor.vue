@@ -651,15 +651,6 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
       </label>
       <PasswordGenerator v-if="isGeneratorOpen" @use="usePassword" @close="isGeneratorOpen = false" />
       <label v-if="!isDatabase">
-        <span>{{ isServer ? "Admin console URL" : "Websites" }}</span>
-        <textarea
-          v-model="urlText"
-          name="urls"
-          rows="2"
-          :placeholder="isServer ? 'https://console.example.com' : 'https://example.com (one per line)'"
-        ></textarea>
-      </label>
-      <label v-if="!isDatabase" class="last">
         <span>One-time code setup key</span>
         <input
           v-model="draft.oneTimePassword"
@@ -669,6 +660,15 @@ onBeforeUnmount(() => window.removeEventListener("keydown", handleShortcut));
           spellcheck="false"
           placeholder="Setup key or otpauth:// link"
         />
+      </label>
+      <label v-if="!isDatabase" class="last">
+        <span>{{ isServer ? "Admin console URL" : "Websites" }}</span>
+        <textarea
+          v-model="urlText"
+          name="urls"
+          rows="2"
+          :placeholder="isServer ? 'https://console.example.com' : 'https://example.com (one per line)'"
+        ></textarea>
       </label>
     </section>
 

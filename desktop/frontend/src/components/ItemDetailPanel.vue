@@ -637,6 +637,27 @@ function maskSecret(secret: string): string {
 
       <OneTimeCodeField v-if="store.selectedItem.hasOneTimePassword" :vault-i-d="store.selectedVaultID" :item-i-d="store.selectedItem.id" />
 
+      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
+        <div class="field-copy-target" v-bind="bindCopyTarget()">
+        <span class="copy-prefix">Copy </span><span class="field-label">{{ field.name }}</span>
+        <span class="field-value" :class="{ monospace: field.concealed }">
+          {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
+        </span>
+        </div>
+        <span class="field-actions">
+          <button
+            v-if="field.concealed"
+            class="ghost icon-button"
+            :aria-label="`${allRevealedFieldName.includes(field.name) ? 'Hide' : 'Reveal'} ${field.name}`"
+            @click="toggleFieldReveal(field.name)"
+          >
+            <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
+          </button>
+          <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
+          <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
+        </span>
+      </div>
+
       <div v-for="link in store.selectedItem.urls" :key="link" class="field" v-bind="bindCopyRow(() => copyText(link, websiteLabel))">
         <div class="field-copy-target" v-bind="bindCopyTarget()">
         <span class="copy-prefix">Copy </span><span class="field-label">{{ websiteLabel }}</span>
@@ -658,27 +679,6 @@ function maskSecret(secret: string): string {
         <span class="field-value">
           {{ androidApp.packageName }}
           <span class="android-app-certificate monospace muted">SHA-256 {{ androidApp.certificateSha256 }}</span>
-        </span>
-      </div>
-
-      <div v-for="field in store.selectedItem.fields" :key="field.name" class="field" v-bind="bindFieldRow(field.name, field.name)">
-        <div class="field-copy-target" v-bind="bindCopyTarget()">
-        <span class="copy-prefix">Copy </span><span class="field-label">{{ field.name }}</span>
-        <span class="field-value" :class="{ monospace: field.concealed }">
-          {{ field.concealed && !allRevealedFieldName.includes(field.name) ? maskSecret(field.value) : field.value }}
-        </span>
-        </div>
-        <span class="field-actions">
-          <button
-            v-if="field.concealed"
-            class="ghost icon-button"
-            :aria-label="`${allRevealedFieldName.includes(field.name) ? 'Hide' : 'Reveal'} ${field.name}`"
-            @click="toggleFieldReveal(field.name)"
-          >
-            <AppIcon :name="allRevealedFieldName.includes(field.name) ? 'eyeOff' : 'eye'" />
-          </button>
-          <button class="ghost icon-button" :aria-label="`Copy ${field.name}`" title="Copy" @click="copyField(field.name, field.name)"><AppIcon name="copy" /></button>
-          <SecretReferenceButton v-if="field.concealed" :field-name="field.name" :label="field.name" />
         </span>
       </div>
 

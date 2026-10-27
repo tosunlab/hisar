@@ -107,7 +107,8 @@ onBeforeUnmount(() => {
               type="button"
               class="touch-id-button"
               :class="{ waiting: isWaitingForTouchID }"
-              aria-label="Use Touch ID"
+              aria-label="Unlock with Touch ID"
+              title="Unlock with Touch ID"
               data-testid="use-touch-id"
               @click="startTouchID"
             >

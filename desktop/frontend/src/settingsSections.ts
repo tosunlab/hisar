@@ -28,6 +28,7 @@ export const allSettingsSection: SettingsSection[] = [
       { id: "open-at-login", title: "Open Hisar at login", keywords: "startup login items menu bar launch" },
       { id: "version", title: "Check for updates", keywords: "version update release" },
       { id: "automatic-updates", title: "Automatically check for updates", keywords: "update daily" },
+      { id: "password-generator", title: "Password generator", keywords: "generate random password length digits symbols copy" },
     ],
   },
   {
