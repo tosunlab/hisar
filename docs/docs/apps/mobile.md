@@ -103,6 +103,8 @@ Settings choices for appearance, auto-lock, export format and import destination
 radio option. TalkBack reports which option is selected within its choice group.
 Busy primary and secondary actions keep their action name for TalkBack, announce the operation in progress, and
 cannot be activated again until it finishes.
+TalkBack's Headings reading control navigates screen titles and named form sections, without including field labels
+or explanatory footnotes.
 
 Touch and hold an Android app linked to a login, then choose **Copy certificate** to copy its full signing-certificate
 SHA-256. The copy uses uppercase hex bytes separated by colons, as `apksigner` and Digital Asset Links show it.

@@ -39,6 +39,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -105,7 +107,7 @@ fun LargeTitle(title: String, topPadding: Dp = 44.dp) {
         title,
         style = HisarType.largeTitle,
         color = HisarTheme.colors.label,
-        modifier = Modifier.padding(top = topPadding, bottom = 8.dp),
+        modifier = Modifier.padding(top = topPadding, bottom = 8.dp).then(if (title.isNotBlank()) Modifier.semantics { heading() } else Modifier),
     )
 }
 
@@ -118,12 +120,12 @@ fun FormSection(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(modifier.padding(top = 20.dp)) {
-        if (header != null) {
+        if (!header.isNullOrBlank()) {
             Text(
                 header,
                 style = HisarType.sectionHeader,
                 color = HisarTheme.colors.secondaryLabel,
-                modifier = Modifier.padding(start = RowInset, end = RowInset, bottom = 10.dp),
+                modifier = Modifier.padding(start = RowInset, end = RowInset, bottom = 10.dp).semantics { heading() },
             )
         }
         Column(

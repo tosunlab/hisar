@@ -66,6 +66,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -144,7 +145,8 @@ fun InlineTitleForm(
                 maxLines = 1,
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .padding(horizontal = 96.dp),
+                    .padding(horizontal = 96.dp)
+                    .then(if (title.isNotBlank()) Modifier.semantics { heading() } else Modifier),
             )
             Row(Modifier.align(Alignment.CenterEnd), verticalAlignment = Alignment.CenterVertically, content = trailing)
         }
