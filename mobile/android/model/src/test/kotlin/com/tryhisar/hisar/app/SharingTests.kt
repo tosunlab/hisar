@@ -97,6 +97,22 @@ class SharingTests {
     }
 
     @Test
+    fun testMismatchedRecipientCancellationNeverConfirmsAccess() = runTest {
+        val harness = AppModelHarness(this)
+        val model = harness.startUnlockedModel()
+        val invitation = com.tryhisar.hisar.model.SentShareInvitation("accepted", "family", "Family", "new@example.com", "reader", "accepted", "", true, "new-account", "3333 4444", "reviewed-identity")
+        harness.backend.shareInvitations = ShareInvitations(allSent = listOf(invitation))
+        harness.backend.cancelShareInvitationErrorMessage = "Offline"
+        assertFalse(model.sharing.cancelShareInvitation(invitation.id))
+        assertEquals(listOf(invitation), harness.backend.shareInvitations.allSent)
+        assertEquals("Offline", model.errorMessage.value)
+        harness.backend.cancelShareInvitationErrorMessage = null
+        assertTrue(model.sharing.cancelShareInvitation(invitation.id))
+        assertTrue(harness.backend.shareInvitations.allSent.isEmpty())
+        assertFalse(harness.backend.allCallName.contains("confirmShareRecipient"))
+    }
+
+    @Test
     fun testVaultSharingShowsMembersAndOnlyThisVaultsInvitations() = runTest {
         val model = AppModelHarness(this).startUnlockedModel()
         val streaming = assertNotNull(model.vaults.createVault("Streaming"))

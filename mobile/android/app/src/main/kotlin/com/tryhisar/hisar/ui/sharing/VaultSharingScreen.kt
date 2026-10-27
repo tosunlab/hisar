@@ -229,9 +229,9 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
                             onAction = { invitationToCancel = invitation }, actionColor = HisarTheme.colors.destructive,
                         ) {
                             SentInvitationRow(
-                                invitation, isVaultNameShown = false, testTag = "vault-invitation-${invitation.email}",
+                                model, invitation, isVaultNameShown = false, testTag = "vault-invitation-${invitation.email}",
                                 onCancel = { invitationToCancel = invitation },
-                                onConfirm = { snapshot -> scope.launch { if (model.sharing.confirmShareRecipient(snapshot)) load() } },
+                                onChanged = { load() },
                             )
                         }
                     }

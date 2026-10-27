@@ -867,6 +867,22 @@ final class AppModelTests: XCTestCase {
         XCTAssertTrue(backend.shareInvitations.allSent.isEmpty)
     }
 
+    func testMismatchedRecipientCancellationNeverConfirmsAccess() async {
+        let model = await createUnlockedModel()
+        let invitation = SentShareInvitation(id: "accepted", vaultID: "family", vaultName: "Family", email: "new@example.com", role: "reader", state: "accepted", expiresAt: "", requiresConfirmation: true, recipientID: "new-account", securityCode: "3333 4444", reviewToken: "reviewed-identity")
+        backend.shareInvitations = ShareInvitations(allSent: [invitation])
+        backend.cancelShareInvitationErrorMessage = "Offline"
+        let failed = await model.cancelShareInvitation(invitationID: invitation.id)
+        XCTAssertFalse(failed)
+        XCTAssertEqual(backend.shareInvitations.allSent, [invitation])
+        XCTAssertEqual(model.errorMessage, "Offline")
+        backend.cancelShareInvitationErrorMessage = nil
+        let cancelled = await model.cancelShareInvitation(invitationID: invitation.id)
+        XCTAssertTrue(cancelled)
+        XCTAssertTrue(backend.shareInvitations.allSent.isEmpty)
+        XCTAssertFalse(backend.allCallName.contains("confirmShareRecipient"))
+    }
+
     func testReceivedShareInvitationsAreAcceptedOrDeclined() async {
         backend.seedSignedIn()
         backend.shareInvitations = ShareInvitations(allReceived: [

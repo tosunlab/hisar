@@ -5,6 +5,8 @@ import android.content.Intent
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -33,6 +35,7 @@ import androidx.compose.material.icons.outlined.Drafts
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -40,6 +43,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -55,6 +59,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.SentShareInvitation
+import com.tryhisar.hisar.app.AppModel
+import kotlinx.coroutines.launch
 import com.tryhisar.hisar.model.VaultLogic
 import com.tryhisar.hisar.model.backendJson
 import com.tryhisar.hisar.ui.components.ClearSection
@@ -63,7 +69,6 @@ import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.RowDivider
 import com.tryhisar.hisar.ui.components.ScreenMargin
 import com.tryhisar.hisar.ui.theme.HisarTheme
-import com.tryhisar.hisar.ui.settings.ConfirmationDialog
 import com.tryhisar.hisar.ui.theme.HisarType
 import com.tryhisar.hisar.ui.vaults.BarCapsuleButton
 import com.tryhisar.hisar.ui.vaults.HisarMenu
@@ -200,30 +205,80 @@ fun MemberRow(
  * touch and hold offers "Cancel invitation".
  */
 @Composable
-fun SentInvitationRow(invitation: SentShareInvitation, isVaultNameShown: Boolean, testTag: String, onCancel: (() -> Unit)? = null, onConfirm: ((SentShareInvitation) -> Unit)? = null) {
+fun SentInvitationRow(model: AppModel, invitation: SentShareInvitation, isVaultNameShown: Boolean, testTag: String, onCancel: (() -> Unit)? = null, onChanged: suspend () -> Unit = {}) {
     var reviewed by remember { mutableStateOf<SentShareInvitation?>(null) }
     val isAccepted = invitation.state == SentShareInvitation.STATE_ACCEPTED
     val stateText = if (invitation.requiresConfirmation) "Accepted, review recipient identity" else if (isAccepted) "Accepted, Hisar is finishing sharing" else "Waiting for them to accept"
     val detail = if (isVaultNameShown) "${invitation.vaultName.ifEmpty { "A vault you own" }} · $stateText" else stateText
     Column {
-    InvitedRow(
-        invitation.email, detail, VaultLogic.describeVaultRole(invitation.role), if (isAccepted) Icons.Outlined.Drafts else Icons.Outlined.Email, testTag,
-        onCancel = onCancel,
-    )
-    if (invitation.requiresConfirmation && onConfirm != null) {
-        TextButton(onClick = { reviewed = invitation }, modifier = Modifier.testTag("review-share-${invitation.email}")) { Text("Review recipient") }
-    }
+        InvitedRow(
+            invitation.email, detail, VaultLogic.describeVaultRole(invitation.role), if (isAccepted) Icons.Outlined.Drafts else Icons.Outlined.Email, testTag,
+            onCancel = onCancel,
+        )
+        if (invitation.requiresConfirmation) {
+            TextButton(onClick = { reviewed = invitation }, modifier = Modifier.testTag("review-share-${invitation.email}")) { Text("Review recipient") }
+        }
     }
     reviewed?.let { snapshot ->
-        ConfirmationDialog(
-            title = "Give this person access?",
-            message = "${snapshot.email}\nVault ${snapshot.vaultName} · ${VaultLogic.describeVaultRole(snapshot.role)}\nAccount ${snapshot.recipientID}\nSecurity code ${snapshot.securityCode}\nTo compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code.",
-            confirmLabel = "Give access",
-            confirmTestTag = "confirm-share-recipient",
-            onConfirm = { reviewed = null; onConfirm?.invoke(snapshot) },
-            onDismiss = { reviewed = null },
-        )
+        RecipientReviewDialog(model, snapshot, onChanged = onChanged, onDismiss = { reviewed = null })
     }
+}
+
+@Composable
+fun RecipientReviewDialog(model: AppModel, invitation: SentShareInvitation, onChanged: suspend () -> Unit, onDismiss: () -> Unit) {
+    val scope = rememberCoroutineScope()
+    var isWorking by remember { mutableStateOf(false) }
+    var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun complete(isMismatch: Boolean) {
+        if (isWorking) return
+        isWorking = true
+        errorMessage = null
+        scope.launch {
+            val succeeded = if (isMismatch) model.sharing.cancelShareInvitation(invitation.id) else model.sharing.confirmShareRecipient(invitation)
+            if (succeeded) {
+                if (isMismatch) model.showNotice("Cancelled the invitation to ${invitation.email}.")
+                onChanged()
+                onDismiss()
+            } else {
+                errorMessage = model.errorMessage.value
+            }
+            isWorking = false
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = { if (!isWorking) onDismiss() },
+        title = { Text("Review recipient") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                SelectionContainer {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(invitation.recipientName.ifEmpty { invitation.email }, style = HisarType.headline)
+                        Text(invitation.email)
+                        Text("Vault ${invitation.vaultName} · ${VaultLogic.describeVaultRole(invitation.role)}")
+                        Text("Account ID ${invitation.recipientID}")
+                    }
+                }
+                Text("Security code", style = HisarType.footnote)
+                SelectionContainer {
+                    Text(invitation.securityCode, style = HisarType.title3Monospaced, modifier = Modifier.testTag("review-security-code"))
+                }
+                Text("To compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code.")
+                errorMessage?.let { Text(it, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("review-recipient-error")) }
+                TextButton(onClick = { complete(true) }, enabled = !isWorking, modifier = Modifier.testTag("share-recipient-mismatch")) {
+                    Text("Codes don't match", color = HisarTheme.colors.destructive)
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = { complete(false) }, enabled = !isWorking, modifier = Modifier.testTag("confirm-share-recipient")) { Text("Give access", color = HisarTheme.colors.tint) }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss, enabled = !isWorking, modifier = Modifier.testTag("dismiss-recipient-review")) { Text("Cancel") }
+        },
+        containerColor = HisarTheme.colors.cellBackground,
+    )
 }
 
 /**

@@ -150,9 +150,9 @@ fun PeopleScreen(model: AppModel, onBack: () -> Unit) {
                             onAction = { invitationToCancel = invitation }, actionColor = HisarTheme.colors.destructive,
                         ) {
                             SentInvitationRow(
-                                invitation, isVaultNameShown = true, testTag = "sent-invitation-${invitation.email}",
+                                model, invitation, isVaultNameShown = true, testTag = "sent-invitation-${invitation.email}",
                                 onCancel = { invitationToCancel = invitation },
-                                onConfirm = { snapshot -> scope.launch { if (model.sharing.confirmShareRecipient(snapshot)) load() } },
+                                onChanged = { load() },
                             )
                         }
                     }

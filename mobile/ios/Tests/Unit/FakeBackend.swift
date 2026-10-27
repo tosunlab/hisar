@@ -27,6 +27,7 @@ class FakeBackend: VaultBackend {
     var allFavoriteRecordID: Set<String> = []
     var favoriteErrorMessage: String?
     var peopleErrorMessage: String?
+    var cancelShareInvitationErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var verifyPasskey: (String) -> Bool = { _ in true }
@@ -216,6 +217,7 @@ class FakeBackend: VaultBackend {
     func cancelShareInvitation(invitationID: String) throws {
         record("cancelShareInvitation")
         try requireUnlocked()
+        if let cancelShareInvitationErrorMessage { throw BackendError(message: cancelShareInvitationErrorMessage) }
         guard shareInvitations.allSent.contains(where: { $0.id == invitationID }) else { throw BackendError(message: "This invitation no longer exists") }
         shareInvitations.allSent.removeAll { $0.id == invitationID }
     }

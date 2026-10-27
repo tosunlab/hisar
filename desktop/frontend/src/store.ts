@@ -1694,8 +1694,10 @@ export async function confirmShareRecipient(invitation: SentShareInvitation): Pr
     await api.confirmShareRecipient(invitation.id, invitation.reviewToken);
     return true;
   });
+  const confirmationError = store.errorMessage;
   await loadSharing();
   await loadShareInvitationsQuietly();
+  if (!confirmed) store.errorMessage = confirmationError;
   if (confirmed) showNotice(`Shared ${invitation.vaultName} with ${invitation.email}`);
   return confirmed === true;
 }

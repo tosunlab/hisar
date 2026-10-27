@@ -940,6 +940,7 @@ data class SentShareInvitation(
     @SerialName("recipientId") val recipientID: String = "",
     val securityCode: String = "",
     val reviewToken: String = "",
+    val recipientName: String = "",
 ) {
     companion object {
         const val STATE_ACCEPTED = "accepted"

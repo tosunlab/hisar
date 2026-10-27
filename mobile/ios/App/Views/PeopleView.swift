@@ -268,19 +268,85 @@ struct SentInvitationRow: View {
                     .accessibilityIdentifier("review-share-\(invitation.email)")
             }
         }
-        .alert("Give this person access?", isPresented: Binding(get: { reviewed != nil }, set: { if !$0 { reviewed = nil } })) {
-            Button("Cancel", role: .cancel) { reviewed = nil }
-            Button("Give access") {
-                guard let snapshot = reviewed else { return }
-                Task {
-                    if await model.confirmShareRecipient(snapshot) { await onConfirmed() }
+        .sheet(item: $reviewed) { snapshot in
+            ReviewRecipientSheet(invitation: snapshot, onChanged: onConfirmed)
+                .environmentObject(model)
+        }
+    }
+}
+
+struct ReviewRecipientSheet: View {
+    var invitation: SentShareInvitation
+    var onChanged: () async -> Void
+
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var isWorking = false
+    @State private var errorMessage: String?
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    LabeledContent("Name", value: invitation.recipientName.flatMap { $0.isEmpty ? nil : $0 } ?? invitation.email)
+                    LabeledContent("Email", value: invitation.email)
+                    LabeledContent("Vault", value: invitation.vaultName)
+                    LabeledContent("Role", value: describeVaultRole(invitation.role))
+                    LabeledContent("Account ID", value: invitation.recipientID ?? "")
+                }
+                .textSelection(.enabled)
+                Section {
+                    Text(invitation.securityCode ?? "")
+                        .font(.title3.monospaced().weight(.medium))
+                        .frame(maxWidth: .infinity)
+                        .textSelection(.enabled)
+                        .accessibilityIdentifier("review-security-code")
+                } header: {
+                    Text("Security code")
+                } footer: {
+                    Text("To compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code.")
+                }
+                if let errorMessage {
+                    Section { ErrorBanner(message: errorMessage) }
+                }
+                Section {
+                    Button("Give access") { complete(isMismatch: false) }
+                        .accessibilityIdentifier("confirm-share-recipient")
+                    Button("Codes don't match", role: .destructive) { complete(isMismatch: true) }
+                        .accessibilityIdentifier("share-recipient-mismatch")
+                }
+                .disabled(isWorking)
+            }
+            .navigationTitle("Review recipient")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(isWorking)
+                }
+                if isWorking {
+                    ToolbarItem(placement: .confirmationAction) { ProgressView() }
                 }
             }
-            .accessibilityIdentifier("confirm-share-recipient")
-        } message: {
-            if let snapshot = reviewed {
-                Text("\(snapshot.email)\nVault \(snapshot.vaultName) · \(describeVaultRole(snapshot.role))\nAccount \(snapshot.recipientID ?? "")\nSecurity code \(snapshot.securityCode ?? "")\nTo compare codes, ask this person for the security code Hisar shows for their own account in Settings → People, the row marked you. It must match this code.")
+        }
+        .interactiveDismissDisabled(isWorking)
+    }
+
+    private func complete(isMismatch: Bool) {
+        guard !isWorking else { return }
+        isWorking = true
+        errorMessage = nil
+        Task {
+            let succeeded = isMismatch
+                ? await model.cancelShareInvitation(invitationID: invitation.id)
+                : await model.confirmShareRecipient(invitation)
+            if succeeded {
+                if isMismatch { model.showNotice("Cancelled the invitation to \(invitation.email).") }
+                await onChanged()
+                dismiss()
+            } else {
+                errorMessage = model.errorMessage
             }
+            isWorking = false
         }
     }
 }

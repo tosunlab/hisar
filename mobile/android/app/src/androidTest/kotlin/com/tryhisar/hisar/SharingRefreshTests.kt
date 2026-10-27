@@ -1,11 +1,13 @@
 package com.tryhisar.hisar
 
-import androidx.compose.ui.test.assertDoesNotExist
-import androidx.compose.ui.test.assertExists
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsEnabled
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.FakeTextClipboard
@@ -89,5 +91,103 @@ class SharingRefreshTests {
         }
         compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasText("Offline", substring = true)).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("waiting-waiting-1").assertExists()
+    }
+
+    private fun invitation() = com.tryhisar.hisar.model.SentShareInvitation(
+        "reviewed", vaultID, "Streaming", "new@example.com", "reader", "accepted", "", true, "new-account", "3333 4444", "reviewed-identity",
+    )
+
+    @Test
+    fun testReviewMismatchCancelsWithoutConfirming() {
+        val invitation = invitation()
+        backend.shareInvitations = com.tryhisar.hisar.model.ShareInvitations(allSent = listOf(invitation))
+        val isOpen = androidx.compose.runtime.mutableStateOf(true)
+        compose.setContent {
+            HisarTheme {
+                if (isOpen.value) com.tryhisar.hisar.ui.sharing.RecipientReviewDialog(model, invitation, onChanged = {}, onDismiss = { isOpen.value = false })
+            }
+        }
+        compose.onNodeWithTag("share-recipient-mismatch").performScrollTo().performClick()
+        compose.waitUntil(10_000) { !isOpen.value }
+        org.junit.Assert.assertTrue(backend.shareInvitations.allSent.isEmpty())
+        org.junit.Assert.assertFalse(backend.allCallName.contains("confirmShareRecipient"))
+    }
+
+    @Test
+    fun testReviewCancellationFailureStaysInReview() {
+        val invitation = invitation()
+        backend.shareInvitations = com.tryhisar.hisar.model.ShareInvitations(allSent = listOf(invitation))
+        backend.cancelShareInvitationErrorMessage = "Offline"
+        compose.setContent { HisarTheme { com.tryhisar.hisar.ui.sharing.RecipientReviewDialog(model, invitation, onChanged = {}, onDismiss = {}) } }
+        compose.onNodeWithTag("share-recipient-mismatch").performScrollTo().performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("review-recipient-error")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("review-recipient-error").assertTextContains("Offline")
+        org.junit.Assert.assertEquals(listOf(invitation), backend.shareInvitations.allSent)
+        org.junit.Assert.assertFalse(backend.allCallName.contains("confirmShareRecipient"))
+    }
+
+    @Test
+    fun testReviewDismissalDoesNotChangeInvitation() {
+        val invitation = invitation()
+        backend.shareInvitations = com.tryhisar.hisar.model.ShareInvitations(allSent = listOf(invitation))
+        val isOpen = androidx.compose.runtime.mutableStateOf(true)
+        compose.setContent {
+            HisarTheme {
+                if (isOpen.value) com.tryhisar.hisar.ui.sharing.RecipientReviewDialog(model, invitation, onChanged = {}, onDismiss = { isOpen.value = false })
+            }
+        }
+        compose.onNodeWithTag("dismiss-recipient-review").performClick()
+        org.junit.Assert.assertFalse(isOpen.value)
+        org.junit.Assert.assertEquals(listOf(invitation), backend.shareInvitations.allSent)
+        org.junit.Assert.assertFalse(backend.allCallName.contains("confirmShareRecipient"))
+        org.junit.Assert.assertFalse(backend.allCallName.contains("cancelShareInvitation"))
+    }
+
+    @Test
+    fun testReviewStaleTokenRefusalRemainsVisible() {
+        val invitation = invitation()
+        backend.shareInvitations = com.tryhisar.hisar.model.ShareInvitations(allSent = listOf(invitation.copy(reviewToken = "changed-context")))
+        compose.setContent { HisarTheme { com.tryhisar.hisar.ui.sharing.RecipientReviewDialog(model, invitation, onChanged = {}, onDismiss = {}) } }
+        compose.onNodeWithTag("confirm-share-recipient").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("review-recipient-error")).fetchSemanticsNodes().isNotEmpty() }
+        org.junit.Assert.assertEquals(1, backend.shareInvitations.allSent.size)
+        org.junit.Assert.assertFalse(backend.allCallName.contains("cancelShareInvitation"))
+    }
+
+    @Test
+    fun testExistingTeamRoleChangesWithoutTakingBackAccess() {
+        backend.allOrganization = mutableListOf(com.tryhisar.hisar.model.Organization(
+            "acme", "Acme", "admin", isAdmin = true,
+            allTeam = listOf(com.tryhisar.hisar.model.Team("platform", "Platform", allVault = listOf(
+                com.tryhisar.hisar.model.TeamVault(vaultID, "Streaming", Member.VAULT_ROLE_EDITOR, canOpen = true),
+            ))),
+        ))
+        compose.setContent { HisarTheme { com.tryhisar.hisar.ui.organizations.OrganizationVaultSharingScreen(model, vaultID, "acme", onDone = {}) } }
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("vault-team-Platform")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("vault-team-Platform").performClick()
+        compose.onNodeWithTag("change-team-role").performClick()
+        compose.onNodeWithTag("change-team-role-Owner").performClick()
+        compose.onNodeWithTag("save-team-role").performClick()
+        compose.onNodeWithTag("cancel-confirmation").performClick()
+        org.junit.Assert.assertFalse(backend.allCallName.contains("giveVaultToTeam"))
+        compose.onNodeWithTag("change-team-role").performClick()
+        compose.onNodeWithTag("change-team-role-Reader").performClick()
+        compose.onNodeWithTag("save-team-role").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("save-team-role")).fetchSemanticsNodes().isEmpty() }
+        org.junit.Assert.assertEquals(Member.VAULT_ROLE_READER, backend.allOrganization.single().allTeam.single().allVault.single().role)
+        org.junit.Assert.assertFalse(backend.allCallName.contains("takeVaultFromTeam"))
+    }
+
+    @Test
+    fun testNewVaultTeamLoadFailureHasRetryWithoutFallback() {
+        backend.listAllOrganizationErrorMessage = "Offline"
+        compose.setContent { HisarTheme { com.tryhisar.hisar.ui.vaults.NewVaultScreen(model, onCancel = {}, onCreated = {}) } }
+        compose.onNodeWithTag("new-vault-name").performTextInput("Release")
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("new-vault-teams-error")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("new-vault-create").assertIsNotEnabled()
+        compose.runOnIdle { backend.listAllOrganizationErrorMessage = null }
+        compose.onNodeWithTag("new-vault-teams-retry").performClick()
+        compose.waitUntil(10_000) { compose.onAllNodes(androidx.compose.ui.test.hasTestTag("new-vault-where")).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("new-vault-create").assertIsEnabled()
     }
 }
