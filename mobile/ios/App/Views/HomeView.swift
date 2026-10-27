@@ -545,13 +545,7 @@ struct TagListView: View {
                         .accessibilityIdentifier("browse-refresh-retry")
                 }
             }
-            ForEach(allTag) { tag in
-                NavigationLink(value: TagDestination(tag: tag.name)) {
-                    Label(tag.name, systemImage: "tag")
-                        .badge(tag.itemCount)
-                }
-                .accessibilityIdentifier("tag-\(tag.name)")
-            }
+            TagRows(allTag: allTag)
         }
         .applyThemedListStyle()
         .refreshable { await refresh() }
@@ -563,6 +557,37 @@ struct TagListView: View {
         await model.refreshAll { message in
             refreshFailure = message
             model.clearError()
+        }
+    }
+}
+
+struct TagRows: View {
+    var allTag: [TagSummary]
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        ForEach(allTag) { tag in
+            NavigationLink(value: TagDestination(tag: tag.name)) {
+                if dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "tag")
+                            .font(.system(size: 28))
+                            .frame(width: 32, height: 32, alignment: .top)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(tag.name)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(tag.itemCount == 1 ? "1 item" : "\(tag.itemCount) items")
+                                .font(.subheadline)
+                                .foregroundStyle(.themeSecondary)
+                        }
+                    }
+                } else {
+                    Label(tag.name, systemImage: "tag")
+                        .badge(tag.itemCount)
+                }
+            }
+            .accessibilityIdentifier("tag-\(tag.name)")
         }
     }
 }

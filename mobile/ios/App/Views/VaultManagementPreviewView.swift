@@ -10,6 +10,7 @@ struct VaultManagementPreviewView: View {
         case leave
         case notice
         case export
+        case tags
     }
 
     static func readMode() -> Mode? {
@@ -39,45 +40,58 @@ struct VaultManagementPreviewView: View {
 
     var body: some View {
         NavigationStack {
-            List {
-                if mode == .notice {
-                    RemovedVaultNoticeSection(allNotice: [
-                        RemovedVaultNotice(id: "infra", name: "Infra", message: "“Infra” is no longer available: it was deleted, or you no longer have access to it."),
-                    ]) { _ in resultMessage = "Dismissed" }
+            if mode == .tags {
+                List {
+                    TagRows(allTag: [
+                        TagSummary(name: "finance", itemCount: 2),
+                        TagSummary(name: "personal", itemCount: 1),
+                        TagSummary(name: "design-review", itemCount: 3),
+                    ])
                 }
-                if mode == .notice || mode == .export {
-                    Section {
-                        VaultRow(vault: VaultSummary(id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 24), itemCount: 24)
-                        VaultRow(vault: Self.workVault, itemCount: 12)
-                    } header: {
-                        Text("Vaults")
-                            .foregroundStyle(.themeSecondary)
+                .applyThemedListStyle()
+                .navigationTitle("Tags")
+                .navigationDestination(for: TagDestination.self) { ItemTagListView(tag: $0.tag) }
+            } else {
+                List {
+                    if mode == .notice {
+                        RemovedVaultNoticeSection(allNotice: [
+                            RemovedVaultNotice(id: "infra", name: "Infra", message: "“Infra” is no longer available: it was deleted, or you no longer have access to it."),
+                        ]) { _ in resultMessage = "Dismissed" }
                     }
-                } else {
-                    Section {
-                        ForEach(["AWS production", "GitHub", "Stripe"], id: \.self) { title in
-                            ItemRow(item: ItemDetail(id: title, revision: "r1", category: "login", title: title, username: "deploy@example.com"))
+                    if mode == .notice || mode == .export {
+                        Section {
+                            VaultRow(vault: VaultSummary(id: "personal", name: "Personal", type: "personal", role: "owner", itemCount: 24), itemCount: 24)
+                            VaultRow(vault: Self.workVault, itemCount: 12)
+                        } header: {
+                            Text("Vaults")
+                                .foregroundStyle(.themeSecondary)
+                        }
+                    } else {
+                        Section {
+                            ForEach(["AWS production", "GitHub", "Stripe"], id: \.self) { title in
+                                ItemRow(item: ItemDetail(id: title, revision: "r1", category: "login", title: title, username: "deploy@example.com"))
+                            }
+                        }
+                    }
+                    if let resultMessage {
+                        Section {
+                            Text(resultMessage)
+                                .accessibilityIdentifier("vault-management-result")
                         }
                     }
                 }
-                if let resultMessage {
-                    Section {
-                        Text(resultMessage)
-                            .accessibilityIdentifier("vault-management-result")
+                .applyThemedListStyle()
+                .navigationTitle(mode == .notice || mode == .export ? "Vaults" : "Work")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {} label: { Label("Vault actions", systemImage: "ellipsis") }
                     }
                 }
-            }
-            .applyThemedListStyle()
-            .navigationTitle(mode == .notice || mode == .export ? "Vaults" : "Work")
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {} label: { Label("Vault actions", systemImage: "ellipsis") }
+                .confirmationDialog("Leave “Work”?", isPresented: $isLeaveConfirmationShown, titleVisibility: .visible) {
+                    Button("Leave vault", role: .destructive) { resultMessage = "Left Work" }
+                } message: {
+                    Text("You lose access to its items on all your devices. An owner can invite you again.")
                 }
-            }
-            .confirmationDialog("Leave “Work”?", isPresented: $isLeaveConfirmationShown, titleVisibility: .visible) {
-                Button("Leave vault", role: .destructive) { resultMessage = "Left Work" }
-            } message: {
-                Text("You lose access to its items on all your devices. An owner can invite you again.")
             }
         }
         .sheet(isPresented: $isSheetShown) {
@@ -105,6 +119,7 @@ struct VaultManagementPreviewView: View {
             case .delete, .export: isSheetShown = true
             case .leave: isLeaveConfirmationShown = true
             case .notice: break
+            case .tags: break
             }
         }
     }

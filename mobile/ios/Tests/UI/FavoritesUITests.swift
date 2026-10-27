@@ -96,4 +96,25 @@ final class FavoritesUITests: HisarUITestCase {
         XCTAssertTrue(app.buttons["browse-refresh-retry"].waitForNonExistence(timeout: 30))
         XCTAssertTrue(aws.exists)
     }
+
+    func testTagsKeepNamesAndCountsReadableAtAccessibilitySizes() {
+        for size in ["UICTContentSizeCategoryL", "UICTContentSizeCategoryAccessibilityXXXL"] {
+            app.launchArguments = ["-HisarUITest", "-HisarVaultManagementPreview", "tags", "-UIPreferredContentSizeCategoryName", size]
+            app.launch()
+            for name in ["finance", "personal", "design-review"] {
+                let row = app.buttons["tag-\(name)"]
+                waitFor(row)
+                XCTAssertTrue(row.isHittable)
+                if size == "UICTContentSizeCategoryAccessibilityXXXL" {
+                    let count = name == "personal" ? "1 item" : name == "finance" ? "2 items" : "3 items"
+                    XCTAssertTrue(row.label.contains(count), row.label)
+                }
+            }
+            let finance = app.staticTexts["finance"]
+            XCTAssertLessThan(finance.frame.height, 80, "finance stays on one line at the largest size")
+            app.buttons["tag-personal"].tap()
+            waitFor(app.navigationBars["personal"])
+            app.terminate()
+        }
+    }
 }

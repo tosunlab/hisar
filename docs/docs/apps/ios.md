@@ -31,6 +31,8 @@ Security settings hold biometric unlock, auto-lock, and **Lock Hisar now**.
 Vaults and item lists show failed favorite, rename, and invitation actions on the screen where they began.
 A failed refresh keeps the last readable list and offers **Retry**. A failed rename keeps the entered name when
 **Rename** is opened again. Background successes do not dismiss these failures.
+At accessibility text sizes, tag counts move below their names and the tag symbol stays at most 32 points wide.
+Ordinary text sizes keep the native count badge.
 
 Account deletion carries the `planVersion` of the preview the user reviewed into `DeleteAccountWithPlan`.
 A failed deletion clears the password and email confirmation, reloads the preview, and requires another confirmation.
