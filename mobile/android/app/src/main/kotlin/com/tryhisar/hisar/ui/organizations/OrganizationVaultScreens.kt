@@ -25,6 +25,7 @@ import com.tryhisar.hisar.app.Refusal
 import com.tryhisar.hisar.app.takeRefusal
 import com.tryhisar.hisar.model.Member
 import com.tryhisar.hisar.model.Organization
+import com.tryhisar.hisar.model.OrganizationAccessChange
 import com.tryhisar.hisar.model.OrganizationLogic
 import com.tryhisar.hisar.model.Team
 import com.tryhisar.hisar.model.VaultLogic
@@ -124,6 +125,7 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
     var refusal by remember { mutableStateOf<Refusal?>(null) }
     var teamWithMenu by remember { mutableStateOf<String?>(null) }
     var roleEdit by remember { mutableStateOf<TeamVaultRoleEdit?>(null) }
+    var teamToTakeBack by remember { mutableStateOf<Team?>(null) }
     val vaultName = data.findVault(vaultID)?.name ?: "Vault"
     val sharing = organization?.let { OrganizationLogic.describeVaultSharing(it, vaultID) }
 
@@ -140,9 +142,7 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
     }
 
     fun takeBack(team: Team) {
-        scope.launch {
-            if (model.organizations.takeVaultFromTeam(organizationID, team.id, vaultID)) load() else refusal = model.takeRefusal("Take back")
-        }
+        teamToTakeBack = team
     }
 
     LaunchedEffect(remoteChangeCount) { load() }
@@ -172,7 +172,7 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
                                             teamWithMenu = null
                                             roleEdit = TeamVaultRoleEdit(organizationID, team.id, team.name, vaultID, vaultName, access.role)
                                         })
-                                        HisarMenuItem("Take back", "take-back-${team.name}", icon = Icons.AutoMirrored.Outlined.Undo, onClick = {
+                                        HisarMenuItem("Take back…", "take-back-${team.name}", icon = Icons.AutoMirrored.Outlined.Undo, isDestructive = true, onClick = {
                                             teamWithMenu = null
                                             takeBack(team)
                                         })
@@ -185,8 +185,8 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
                         }
                         if (sharing.canChangeTeams) {
                             SwipeActionRow(
-                                "Take back", Icons.AutoMirrored.Outlined.Undo, "vault-team-${team.name}-take-back", isLeading = false,
-                                onAction = { takeBack(team) }, actionColor = HisarTheme.colors.secondaryLabel, content = row,
+                                "Take back…", Icons.AutoMirrored.Outlined.Undo, "vault-team-${team.name}-take-back", isLeading = false,
+                                onAction = { takeBack(team) }, actionColor = HisarTheme.colors.destructive, content = row,
                             )
                         } else {
                             row()
@@ -202,6 +202,18 @@ fun OrganizationVaultSharingScreen(model: AppModel, vaultID: String, organizatio
                     )
                 }
             }
+        }
+    }
+    teamToTakeBack?.let { team ->
+        organization?.let { loaded ->
+            OrganizationAccessConfirmation(
+                title = "Take $vaultName back from ${team.name}?",
+                message = "Review who loses access or has a reduced role through the remaining teams.",
+                consequences = OrganizationLogic.accessConsequences(loaded, OrganizationAccessChange.TakeVault(team.id, vaultID)),
+                confirmLabel = "Take back", confirmTestTag = "confirm-take-back",
+                onConfirm = { scope.launch { if (model.organizations.takeVaultFromTeam(organizationID, team.id, vaultID)) load() else refusal = model.takeRefusal("Take back") } },
+                onDismiss = { teamToTakeBack = null },
+            )
         }
     }
 

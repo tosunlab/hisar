@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Organization, OrganizationMember, OrganizationRole, SentOrganizationInvitation, Team, TeamVault, VaultRole } from "../api";
+import type { Organization, OrganizationMember, OrganizationRole, SentOrganizationInvitation, Team, TeamMember, TeamVault, VaultRole } from "../api";
 import {
   addTeamMember,
   cancelOrganizationInvitation,
@@ -8,10 +8,7 @@ import {
   giveVaultToTeam,
   inviteToOrganization,
   listAllOrganizationVault,
-  removeTeamMember,
-  setOrganizationMemberRole,
   store,
-  takeVaultFromTeam,
 } from "../store";
 import { formatCount, formatRole, vaultRoleDescription } from "../util";
 import AppIcon from "./AppIcon.vue";
@@ -96,9 +93,9 @@ function openMemberMenu(member: OrganizationMember, event: MouseEvent): void {
   if (props.organization.isAdmin) {
     allAction.push(null, {
       id: "organization-role",
-      label: member.role === "admin" ? "Make member" : "Make admin",
+      label: member.role === "admin" ? "Make member…" : "Make admin…",
       icon: "user",
-      run: () => { void setOrganizationMemberRole(props.organization, member, member.role === "admin" ? "member" : "admin"); },
+      run: () => { dialog.value = { kind: "change-member-role", member, role: member.role === "admin" ? "member" : "admin" }; },
     });
     if (!member.isCurrentUser) {
       allAction.push({
@@ -125,6 +122,13 @@ function openTeamMenu(team: Team, event: MouseEvent): void {
   }
   allAction.push(null, { id: "delete-team", label: "Delete team…", icon: "trash", isDanger: true, run: () => { dialog.value = { kind: "delete-team", team }; } });
   openActionMenu(event, `Actions for ${team.name}`, allAction);
+}
+
+function openTeamMemberMenu(team: Team, member: TeamMember, event: MouseEvent): void {
+  openActionMenu(event, `Actions for ${member.name || member.email}`, [{
+    id: "remove-team-member", label: `Remove from ${team.name}…`, icon: "trash", isDanger: true,
+    run: () => { dialog.value = { kind: "remove-team-member", team, member }; },
+  }]);
 }
 
 function selectSegment(segment: OrganizationSegment): void {
@@ -167,8 +171,13 @@ async function submitAddMember(team: Team): Promise<void> {
 
 async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Event): Promise<void> {
   const select = event.target as HTMLSelectElement;
-  if (select.value !== teamVault.role && !(await giveVaultToTeam(props.organization, team, teamVault.vaultId, select.value as VaultRole))) {
+  const role = select.value as VaultRole;
     select.value = teamVault.role;
+  if (role === teamVault.role) return;
+  if (role === "owner" || teamVault.role === "owner") {
+    dialog.value = { kind: "change-team-role", team, teamVault, role };
+  } else {
+    await giveVaultToTeam(props.organization, team, teamVault.vaultId, role);
   }
 }
 </script>
@@ -220,7 +229,7 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
                 </strong>
                 <p class="muted">{{ member.email }}</p>
                 <p v-if="member.isKeyChanged" class="warning-text" data-testid="organization-member-key-changed">
-                  Their key changed since you last shared with them. Compare security codes before you share more.
+                  Key changed. Hisar stopped sharing with them.
                 </p>
               </div>
               <button
@@ -355,12 +364,14 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
           <span class="muted team-row-detail">{{ member.email }}</span>
           <button
             v-if="organization.isAdmin"
-            class="ghost"
+            class="ghost icon-button"
+            aria-haspopup="menu"
+            :aria-label="`Actions for ${member.name || member.email} in ${team.name}`"
             :disabled="store.isBusy"
             :data-testid="`remove-team-member-${team.id}-${member.accountId}`"
-            @click="removeTeamMember(organization, team, member)"
+            @click="openTeamMemberMenu(team, member, $event)"
           >
-            Remove
+            <AppIcon name="more" />
           </button>
         </div>
         <form v-if="addingTeamID === team.id" class="settings-group-form team-add" data-testid="team-add-member-form" @submit.prevent="submitAddMember(team)">
@@ -406,9 +417,9 @@ async function changeTeamVaultRole(team: Team, teamVault: TeamVault, event: Even
               class="ghost"
               :disabled="store.isBusy"
               :data-testid="`take-back-${team.id}-${teamVault.vaultId}`"
-              @click="takeVaultFromTeam(organization, team, teamVault)"
+              @click="dialog = { kind: 'take-vault', team, teamVault }"
             >
-              Take back
+              Take back…
             </button>
           </template>
           <span v-else class="tag">{{ formatRole(teamVault.role) }}</span>

@@ -186,7 +186,7 @@ fun MemberRow(
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         Icon(Icons.Filled.Warning, contentDescription = null, tint = colors.warning, modifier = Modifier.size(14.dp))
                         Text(
-                            "Their key changed since you last shared with them. Check the security code with them before sharing again.",
+                            "Key changed. Hisar stopped sharing with them.",
                             style = HisarType.footnote,
                             color = colors.warning,
                         )

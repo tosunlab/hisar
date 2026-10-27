@@ -100,6 +100,7 @@ final class VaultManagementTests: XCTestCase {
         let isRenamed = await model.renameVault(vaultID: "work", name: "  Work 2026 ")
         XCTAssertTrue(isRenamed)
         XCTAssertEqual(model.findVault(vaultID: "work")?.name, "Work 2026")
+        XCTAssertEqual(model.noticeMessage, "Renamed Work to Work 2026. Secret references that use Work need the new name.")
         let isRenamedByEditor = await model.renameVault(vaultID: "family", name: "Mine")
         XCTAssertFalse(isRenamedByEditor)
         XCTAssertEqual(model.findVault(vaultID: "family")?.name, "Family")

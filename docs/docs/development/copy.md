@@ -48,10 +48,12 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Codes don't match | Cancels the reviewed invitation, without confirming its recipient or resetting a key pin. Keep the review open if cancellation fails. On success, "Cancelled the invitation to \<email>." |
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
 | Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
+| Make Ada an owner of Work? · Change Ada's role from Owner to Editor? | Confirm granting or removing Owner before submitting. Name the vault's management rights, including rename and delete. Team changes preview each person's strongest role through all remaining teams. Cancel leaves the saved role unchanged. |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
 | "Ask \<name> for the security code Hisar shows for their own account (Settings → People, the row marked you), in person or over a channel you trust. It must match this code." | Another person's code. Compare the code for one identity, not the codes each person sees for the other. |
 | "This is your security code. Read it to someone who is checking the code they see for you." | Your own code. Comparison is optional and does not prove the server is honest. |
 | "\<name> is removed from \<vault>, and Hisar encrypts the vault again with a new key for the people who remain. \<name> can still read copies their devices already downloaded. Change any password or secret they should no longer know." | Removal confirmations name the person, falling back to email. Both removal entry points use the same wording. Never imply downloaded copies can be revoked or infer pronouns from a name. |
+| Key changed. Hisar stopped sharing with them. | Compact changed-key warning. The full warning names the person and this Mac, iPhone or device, asks them to make contact over a trusted channel, and says "Comparing security codes does not restore sharing." Never present comparison as recovery. |
 
 ## Organizations
 
@@ -98,7 +100,9 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Use | Not |
 |---|---|
 | Rename…, Delete vault…, Leave vault… (the vault's menu; ⋯ is labelled "Vault actions") | Remove vault, Archive, Exit vault |
+| Secret references that use Work need the new name after you rename this vault. · Renamed Work to Engineering. Secret references that use Work need the new name. | Every vault rename warns about name-based references. Shared and organization vaults also say "Everyone who has this vault sees the new name." Stable-ID references are unchanged. |
 | Delete “Work”? · These people lose access: · Move its N items to [vault] · Delete the vault and its N items · Type Work to confirm · Delete vault | Are you sure?, Destroy, Wipe |
+| Share links are separate copies. Deleting this vault doesn't revoke them. Review them in Shared links. | Mac deletion disclosure, with Review shared links leaving deletion unsubmitted. Phones name the Mac's Shared links and `hisar share-links`, and refer only to links you created. Item deletion uses the same disclosure with "item". |
 | Leave “Work”? · You lose access to its items on all your devices. An owner can invite you again. · Leave vault | Unsubscribe, Quit vault |
 | Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there. | Cannot delete default vault |
 | “Work” is no longer available: it was deleted, or you no longer have access to it. | Vault removed by admin |

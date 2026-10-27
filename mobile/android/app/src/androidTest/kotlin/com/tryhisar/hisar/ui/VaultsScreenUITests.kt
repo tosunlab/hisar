@@ -224,7 +224,7 @@ class VaultsScreenUITests : HisarUITestCase() {
             composeRule.onNodeWithTag("rename-vault-name").performTextReplacement("Work 2026")
             saveScreenshot("vault-rename")
             tap("rename-vault-confirm")
-            waitForNotice("Renamed the vault to Work 2026")
+            waitForNotice("Renamed Work to Work 2026. Secret references that use Work need the new name.")
 
             tap("vault-actions")
             composeRule.onNodeWithTag("delete-vault").performClick()

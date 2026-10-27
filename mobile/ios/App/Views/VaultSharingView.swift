@@ -12,6 +12,7 @@ struct VaultSharingView: View {
     @State private var isSending = false
     @State private var invitationToCancel: SentShareInvitation?
     @State private var memberToRemove: Member?
+    @State private var roleChange: VaultRoleChange?
     @FocusState private var isEmailFocused: Bool
     @State private var presentationDetent = PresentationDetent.large
 
@@ -43,7 +44,7 @@ struct VaultSharingView: View {
                         .accessibilityElement(children: .combine)
                         .accessibilityIdentifier("share-completion-error")
                     } footer: {
-                        Text("Hisar shares the vault key only with the key it pinned for that person. Compare security codes with them before inviting them again.")
+                        Text("Hisar shares the vault key only with the key it pinned for that person. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
                     }
                 }
                 memberSection
@@ -113,6 +114,15 @@ struct VaultSharingView: View {
                 }
             } message: {
                 Text(describeVaultMemberRemoval(member: memberToRemove, vaultName: vaultName))
+            }
+            .confirmationDialog(roleChange?.title(vaultName: vaultName) ?? "", isPresented: Binding(get: { roleChange != nil }, set: { if !$0 { roleChange = nil } }), titleVisibility: .visible) {
+                Button(roleChange?.role == Member.vaultRoleOwner ? "Make owner" : "Change role", role: .destructive) {
+                    if let change = roleChange { submitRole(of: change.member, to: change.role) }
+                }
+                .accessibilityIdentifier("confirm-role-change")
+                Button("Cancel", role: .cancel) {}
+            } message: {
+                Text(roleChange?.message ?? "")
             }
             .task { await load() }
             .onChange(of: model.remoteChangeCount) { _, _ in
@@ -214,6 +224,14 @@ struct VaultSharingView: View {
 
     private func changeRole(of member: Member, to newRole: String) {
         guard newRole != member.role else { return }
+        if newRole == Member.vaultRoleOwner || member.role == Member.vaultRoleOwner {
+            roleChange = VaultRoleChange(member: member, role: newRole)
+        } else {
+            submitRole(of: member, to: newRole)
+        }
+    }
+
+    private func submitRole(of member: Member, to newRole: String) {
         Task {
             if await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole) {
                 await load()
@@ -254,6 +272,7 @@ struct VaultMemberView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var pendingRole: String?
     @State private var isRemoveConfirmationShown = false
+    @State private var roleChange: VaultRoleChange?
 
     private var selectedRole: String { pendingRole ?? member.role }
 
@@ -287,7 +306,7 @@ struct VaultMemberView: View {
             if member.isKeyChanged {
                 Section {
                     Label {
-                        Text("\(member.name)'s key changed since you last shared with them. Hisar refuses to share with them until you compare security codes again.")
+                        Text("\(member.name)'s key changed since this iPhone first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.themeWarning)
@@ -342,6 +361,15 @@ struct VaultMemberView: View {
         .navigationTitle(member.name)
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await reload() }
+        .confirmationDialog(roleChange?.title(vaultName: vaultName) ?? "", isPresented: Binding(get: { roleChange != nil }, set: { if !$0 { roleChange = nil } }), titleVisibility: .visible) {
+            Button(roleChange?.role == Member.vaultRoleOwner ? "Make owner" : "Change role", role: .destructive) {
+                if let change = roleChange { submitRole(change.role) }
+            }
+            .accessibilityIdentifier("confirm-role-change")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(roleChange?.message ?? "")
+        }
         .confirmationDialog("Remove \(member.name.isEmpty ? member.email : member.name) from “\(vaultName)”?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
             Button("Remove", role: .destructive) {
                 Task {
@@ -359,6 +387,15 @@ struct VaultMemberView: View {
 
     private func chooseRole(_ newRole: String) {
         guard newRole != member.role, pendingRole == nil else { return }
+        if newRole == Member.vaultRoleOwner || member.role == Member.vaultRoleOwner {
+            roleChange = VaultRoleChange(member: member, role: newRole)
+        } else {
+            submitRole(newRole)
+        }
+    }
+
+    private func submitRole(_ newRole: String) {
+        guard pendingRole == nil else { return }
         pendingRole = newRole
         Task {
             _ = await model.changeVaultMemberRole(vaultID: vaultID, accountID: member.accountID, role: newRole)
@@ -367,6 +404,21 @@ struct VaultMemberView: View {
             if let error { model.errorMessage = error }
             pendingRole = nil
         }
+    }
+}
+
+struct VaultRoleChange {
+    var member: Member
+    var role: String
+
+    func title(vaultName: String) -> String {
+        role == Member.vaultRoleOwner ? "Make \(member.name) an owner of \(vaultName)?" : "Change \(member.name)'s role from Owner to \(describeVaultRole(role))?"
+    }
+
+    var message: String {
+        role == Member.vaultRoleOwner
+            ? "Owners can share, rename and delete this vault, change roles and remove other owners, including you."
+            : "They lose the ability to share, rename and delete this vault, change roles and remove owners."
     }
 }
 
@@ -405,7 +457,7 @@ struct MemberRow: View {
                     .font(.caption)
                     .foregroundStyle(.themeSecondary)
                 if member.isKeyChanged {
-                    Label("Their key changed since you last shared with them. Check the security code with them before sharing again.", systemImage: "exclamationmark.triangle.fill")
+                    Label("Key changed. Hisar stopped sharing with them.", systemImage: "exclamationmark.triangle.fill")
                         .font(.caption)
                         .foregroundStyle(.themeWarning)
                 }

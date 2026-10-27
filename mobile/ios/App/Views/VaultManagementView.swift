@@ -171,6 +171,7 @@ struct VaultDeletionForm: View {
                         Text("Hisar re-encrypts each item on this iPhone with the other vault's key before it moves. The server never sees them.")
                     } else {
                         Text("Deleted items can't be restored. Export your data first if you may need them.")
+                        Text("Share links contain separate copies of item fields. Deleting this vault doesn't revoke them. Review links you created in Shared links on the Mac, or with hisar share-links.")
                     }
                 }
             } else {

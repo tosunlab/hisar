@@ -65,6 +65,46 @@ final class OrganizationTests: XCTestCase {
         XCTAssertGreaterThan(textView.sizeThatFits(CGSize(width: 240, height: .greatestFiniteMagnitude)).height, textView.font?.lineHeight ?? 0)
     }
 
+    func testDeletingTeamsAndLeavingNameEveryUnopenedVault() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allVault.append(TeamVault(vaultID: "ledger-2", name: "", role: "reader", canOpen: false))
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeam("audit"))
+        XCTAssertEqual(lines, ["Deploy: Carol loses access.", "A vault you can't open (ledger): Carol loses access.", "A vault you can't open (ledger-2): Carol loses access."])
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .removeMember("alice-id")), ["Deploy: You lose access too."])
+        var backup = organization.allTeam[0]
+        backup.id = "backup"
+        organization.allTeam.append(backup)
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .removeTeam("audit")), ["Everyone keeps their vault access through other teams."])
+    }
+
+    func testTakingBackVaultKeepsOtherTeamsAndNamesRoleReductions() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: "platform", vaultID: "deploy")),
+                       ["Deploy: You lose access too.", "Deploy: Bob's role changes from Editor to Reader."])
+        organization.allTeam[0].allVault[0].role = "editor"
+        XCTAssertEqual(OrganizationLogic.accessConsequences(organization: organization, change: .takeVault(teamID: "audit", vaultID: "deploy")),
+                       ["Deploy: Carol loses access."])
+    }
+
+    func testRemovingTeamMembershipPreviewsOnlyThatPersonsLosses() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeamMember(teamID: "platform", accountID: "bob-id"))
+        XCTAssertEqual(lines, ["Deploy: Bob's role changes from Editor to Reader."])
+        let selfLines = OrganizationLogic.accessConsequences(organization: organization, change: .removeTeamMember(teamID: "platform", accountID: "alice-id"))
+        XCTAssertEqual(selfLines, ["Deploy: You lose access too."])
+    }
+
+    func testTeamRoleChangeKeepsTheStrongestOtherGrant() {
+        var organization = Self.buildAcme(isAdmin: true)
+        organization.allTeam[0].allMember.append(TeamMember(accountID: "bob-id", name: "Bob", email: "bob@example.com"))
+        organization.allTeam[0].allVault[0].role = "owner"
+        let lines = OrganizationLogic.accessConsequences(organization: organization, change: .teamRole(teamID: "audit", vaultID: "deploy", role: "reader"))
+        XCTAssertTrue(lines.joined().contains("Bob's role changes from Owner to Editor."))
+        XCTAssertFalse(lines.joined().contains("Alice"))
+    }
+
     func testDecodesWhatCoreSends() throws {
         let organizationJSON = """
         {"id":"acme","name":"Acme","role":"member","isAdmin":false,

@@ -3,6 +3,7 @@ package com.tryhisar.hisar.app
 import com.tryhisar.hisar.model.AccountDeletionPreview
 import com.tryhisar.hisar.model.DeletionOrganization
 import com.tryhisar.hisar.model.Member
+import com.tryhisar.hisar.model.OrganizationAccessChange
 import com.tryhisar.hisar.model.Organization
 import com.tryhisar.hisar.model.OrganizationInvitation
 import com.tryhisar.hisar.model.OrganizationLoad
@@ -49,6 +50,57 @@ class OrganizationTests {
             allMember = listOf(carol, alice.copy(role = role), bob), allTeam = listOf(audit, platform),
             allInvitation = if (isAdmin) listOf(SentOrganizationInvitation("invitation-1", "dave@example.com", OrganizationRole.MEMBER, "", "")) else emptyList(),
         )
+    }
+
+    @Test
+    fun testDeletingTeamsAndLeavingNameEveryUnopenedVault() {
+        val original = buildAcme(isAdmin = true)
+        val audit = original.allTeam[0].copy(allVault = original.allTeam[0].allVault + TeamVault("ledger-2", "", "reader", canOpen = false))
+        val organization = original.copy(allTeam = listOf(audit, original.allTeam[1]))
+        assertEquals(listOf("Deploy: Carol loses access.", "A vault you can't open (ledger): Carol loses access.", "A vault you can't open (ledger-2): Carol loses access."),
+            OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.RemoveTeam("audit")))
+        assertEquals(listOf("Deploy: You lose access too."),
+            OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.RemoveMember("alice-id")))
+        val duplicate = organization.copy(allTeam = organization.allTeam + audit.copy(id = "backup"))
+        assertEquals(listOf("Everyone keeps their vault access through other teams."),
+            OrganizationLogic.accessConsequences(duplicate, OrganizationAccessChange.RemoveTeam("audit")))
+    }
+
+    @Test
+    fun testTakingBackVaultKeepsOtherTeamsAndNamesRoleReductions() {
+        val original = buildAcme(isAdmin = true)
+        val audit = original.allTeam[0].copy(allMember = original.allTeam[0].allMember + TeamMember("bob-id", "Bob", "bob@example.com"))
+        val organization = original.copy(allTeam = listOf(audit, original.allTeam[1]))
+        assertEquals(listOf("Deploy: You lose access too.", "Deploy: Bob's role changes from Editor to Reader."),
+            OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.TakeVault("platform", "deploy")))
+        val equalRoles = organization.copy(allTeam = listOf(audit.copy(allVault = audit.allVault.map { if (it.vaultID == "deploy") it.copy(role = "editor") else it }), original.allTeam[1]))
+        assertEquals(listOf("Deploy: Carol loses access."),
+            OrganizationLogic.accessConsequences(equalRoles, OrganizationAccessChange.TakeVault("audit", "deploy")))
+    }
+
+    @Test
+    fun testRemovingTeamMembershipPreviewsOnlyThatPersonsLosses() {
+        val original = buildAcme(isAdmin = true)
+        val organization = original.copy(allTeam = listOf(original.allTeam[0].copy(
+            allMember = original.allTeam[0].allMember + TeamMember("bob-id", "Bob", "bob@example.com"),
+        ), original.allTeam[1]))
+        assertEquals(listOf("Deploy: Bob's role changes from Editor to Reader."),
+            OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.RemoveTeamMember("platform", "bob-id")))
+        assertEquals(listOf("Deploy: You lose access too."),
+            OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.RemoveTeamMember("platform", "alice-id")))
+    }
+
+    @Test
+    fun testTeamRoleChangeKeepsTheStrongestOtherGrant() {
+        val original = buildAcme(isAdmin = true)
+        val audit = original.allTeam[0]
+        val organization = original.copy(allTeam = listOf(audit.copy(
+            allMember = audit.allMember + TeamMember("bob-id", "Bob", "bob@example.com"),
+            allVault = audit.allVault.map { if (it.vaultID == "deploy") it.copy(role = "owner") else it },
+        ), original.allTeam[1]))
+        val lines = OrganizationLogic.accessConsequences(organization, OrganizationAccessChange.TeamRole("audit", "deploy", "reader"))
+        assertTrue(lines.joinToString().contains("Bob's role changes from Owner to Editor."))
+        assertFalse(lines.joinToString().contains("Alice"))
     }
 
     @Test

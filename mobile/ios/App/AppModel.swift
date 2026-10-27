@@ -811,12 +811,13 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func renameVault(vaultID: String, name: String) async -> Bool {
+        let oldName = findVault(vaultID: vaultID)?.name ?? ""
         guard let renamed = await perform({ try $0.renameVault(vaultID: vaultID, name: name) }) else { return false }
         if let index = allVault.firstIndex(where: { $0.id == vaultID }) {
             allVault[index].name = renamed.name
             allVault.sort { Self.sortVault($0, $1) }
         }
-        showNotice("Renamed the vault to \(renamed.name)")
+        showNotice("Renamed \(oldName) to \(renamed.name). Secret references that use \(oldName) need the new name.")
         return true
     }
 

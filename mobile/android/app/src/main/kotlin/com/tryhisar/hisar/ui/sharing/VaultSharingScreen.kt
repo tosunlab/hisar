@@ -66,6 +66,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
     var invitationToCancel by remember { mutableStateOf<SentShareInvitation?>(null) }
     var memberToRemove by remember { mutableStateOf<Member?>(null) }
     var memberWithMenu by remember { mutableStateOf<Member?>(null) }
+    var roleChange by remember { mutableStateOf<Pair<Member, String>?>(null) }
     var openMemberID by rememberSaveable { mutableStateOf<String?>(null) }
 
     val vault = data.findVault(vaultID)
@@ -114,7 +115,11 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
 
     fun changeRole(member: Member, newRole: String) {
         if (newRole == member.role) return
+        if (newRole == Member.VAULT_ROLE_OWNER || member.role == Member.VAULT_ROLE_OWNER) {
+            roleChange = member to newRole
+        } else {
         scope.launch { if (model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)) load() }
+    }
     }
 
     RefreshablePage(
@@ -154,7 +159,7 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
         }
         sharing?.completionError?.takeIf { it.isNotEmpty() }?.let { completionError ->
             FormSection(footer = {
-                Text("Hisar shares the vault key only with the key it pinned for that person. Compare security codes with them before inviting them again.")
+                Text("Hisar shares the vault key only with the key it pinned for that person. Contact them over a channel you trust. Comparing security codes does not restore sharing.")
             }) {
                 WarningRow("Could not finish sharing: $completionError", testTag = "share-completion-error")
             }
@@ -251,6 +256,11 @@ fun VaultSharingScreen(model: AppModel, vaultID: String, onDone: () -> Unit) {
             dismissLabel = "Keep invitation",
         )
     }
+    roleChange?.let { (member, newRole) ->
+        VaultRoleConfirmation(member, vaultName, newRole,
+            onConfirm = { scope.launch { if (model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)) load() } },
+            onDismiss = { roleChange = null })
+    }
     memberToRemove?.let { member ->
         ConfirmationDialog(
             title = "Remove ${member.name.ifEmpty { member.email }} from “$vaultName”?",
@@ -277,20 +287,30 @@ private fun VaultMemberScreen(
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val isBusy by model.isBusy.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    var pendingRole by remember(member.accountID) { mutableStateOf<String?>(null) }
-    val selectedRole = pendingRole ?: member.role
+    var submittingRole by remember(member.accountID) { mutableStateOf<String?>(null) }
+    val selectedRole = submittingRole ?: member.role
     var isRemoveConfirmationShown by remember { mutableStateOf(false) }
+    var pendingRole by remember { mutableStateOf<String?>(null) }
     val isManageable = isOwner && !member.isCurrentUser
 
-    fun chooseRole(newRole: String) {
-        if (newRole == member.role || pendingRole != null) return
-        pendingRole = newRole
+    fun submitRole(newRole: String) {
+        if (submittingRole != null) return
+        submittingRole = newRole
         scope.launch {
             model.sharing.changeVaultMemberRole(vaultID, member.accountID, newRole)
             val error = model.errorMessage.value
             reload()
             if (error != null) model.errorMessage.value = error
-            pendingRole = null
+            submittingRole = null
+        }
+    }
+
+    fun chooseRole(newRole: String) {
+        if (newRole == member.role || submittingRole != null) return
+        if (newRole == Member.VAULT_ROLE_OWNER || member.role == Member.VAULT_ROLE_OWNER) {
+            pendingRole = newRole
+        } else {
+            submitRole(newRole)
         }
     }
 
@@ -300,7 +320,7 @@ private fun VaultMemberScreen(
         if (member.isKeyChanged) {
             FormSection {
                 WarningRow(
-                    "${member.name}'s key changed since you last shared with them. Hisar refuses to share with them until you compare security codes again.",
+                    "${member.name}'s key changed since this device first shared with them, so Hisar stopped sharing with them. Contact them over a channel you trust. Comparing security codes does not restore sharing.",
                     testTag = "member-key-changed",
                 )
             }
@@ -324,6 +344,11 @@ private fun VaultMemberScreen(
         }
     }
 
+    pendingRole?.let { newRole ->
+        VaultRoleConfirmation(member, vaultName, newRole,
+            onConfirm = { pendingRole = null; submitRole(newRole) }, onDismiss = { pendingRole = null })
+    }
+
     if (isRemoveConfirmationShown) {
         ConfirmationDialog(
             title = "Remove ${member.name.ifEmpty { member.email }} from “$vaultName”?",
@@ -341,4 +366,16 @@ private fun VaultMemberScreen(
             onDismiss = { isRemoveConfirmationShown = false },
         )
     }
+}
+
+@Composable
+private fun VaultRoleConfirmation(member: Member, vaultName: String, role: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val isOwner = role == Member.VAULT_ROLE_OWNER
+    ConfirmationDialog(
+        title = if (isOwner) "Make ${member.name} an owner of $vaultName?" else "Change ${member.name}'s role from Owner to ${VaultLogic.describeVaultRole(role)}?",
+        message = if (isOwner) "Owners can share, rename and delete this vault, change roles and remove other owners, including you."
+            else "They lose the ability to share, rename and delete this vault, change roles and remove owners.",
+        confirmLabel = if (isOwner) "Make owner" else "Change role",
+        confirmTestTag = "confirm-role-change", onConfirm = onConfirm, onDismiss = onDismiss,
+    )
 }

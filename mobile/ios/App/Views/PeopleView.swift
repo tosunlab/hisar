@@ -169,7 +169,7 @@ struct PersonView: View {
             if person.isKeyChanged {
                 Section {
                     Label {
-                        Text("Their key changed since you last shared with them. Check the security code with them before sharing again.")
+                        Text("Key changed. Hisar stopped sharing with them.")
                     } icon: {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundStyle(.themeWarning)

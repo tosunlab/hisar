@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useModalFocus } from "../modalFocus";
-import { closeVaultDialog, deleteVault, leaveVault, openSharing, openVaultDialog, renameVault, selectVault, store, type VaultDialog } from "../store";
+import { closeVaultDialog, deleteVault, leaveVault, openShareLinks, openSharing, openVaultDialog, renameVault, selectVault, store, type VaultDialog } from "../store";
 import { formatRole } from "../util";
 import AppIcon from "./AppIcon.vue";
 import MemberAvatar from "./MemberAvatar.vue";
@@ -96,7 +96,8 @@ useModalFocus(panel, closeVaultDialog);
       <form v-else-if="dialog.mode === 'rename'" @submit.prevent="submitRename">
         <label class="field-label" for="vault-new-name">Name</label>
         <input id="vault-new-name" v-model="newName" name="vaultName" autocomplete="off" autofocus data-testid="vault-rename-input" />
-        <p v-if="vault.type === 'shared'" class="muted hint">Everyone who shares this vault sees the new name.</p>
+        <p class="muted hint">Secret references that use {{ vault.name }} need the new name after you rename this vault.</p>
+        <p v-if="vault.type === 'shared' || vault.organizationId" class="muted hint">Everyone who has this vault sees the new name.</p>
         <div class="actions">
           <button type="button" class="ghost" @click="closeVaultDialog">Cancel</button>
           <button class="primary" type="submit" data-testid="vault-rename-save" :disabled="store.isBusy || !newName.trim() || newName.trim() === vault.name">Save</button>
@@ -147,6 +148,8 @@ useModalFocus(panel, closeVaultDialog);
             <label class="field-label" for="vault-confirm-name">Type {{ vault.name }} to confirm</label>
             <input id="vault-confirm-name" v-model="confirmedName" name="confirmedName" autocomplete="off" spellcheck="false" data-testid="vault-delete-confirm-name" />
             <p class="muted hint">Deleted items can't be restored.</p>
+            <p class="muted hint">Share links are separate copies. Deleting this vault doesn't revoke them. Review them in Shared links.</p>
+            <button type="button" class="ghost" data-testid="vault-review-shared-links" @click="closeVaultDialog(); openShareLinks()">Review shared links</button>
           </div>
         </template>
         <p v-else class="body-text">The vault is empty.</p>

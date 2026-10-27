@@ -150,6 +150,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
     when (val current = dialog) {
         is VaultDialog.Rename -> RenameVaultDialog(
             initialName = current.name,
+            isShared = isShared,
             onDismiss = { dialog = null },
             onRename = { name ->
                 dialog = null
@@ -158,6 +159,7 @@ fun VaultItemsScreen(model: AppModel, stack: NavigationStack, vaultID: String) {
         )
         is VaultDialog.RepairName -> RenameVaultDialog(
             initialName = "",
+            isShared = isShared,
             onDismiss = { dialog = null },
             onRename = { name ->
                 dialog = null
@@ -240,14 +242,15 @@ private fun VaultActionsMenu(
 }
 
 @Composable
-private fun RenameVaultDialog(initialName: String, onDismiss: () -> Unit, onRename: (String) -> Unit) {
+private fun RenameVaultDialog(initialName: String, isShared: Boolean, onDismiss: () -> Unit, onRename: (String) -> Unit) {
     var name by rememberSaveable { mutableStateOf(initialName) }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Rename vault") },
         text = {
             Column {
-                Text("Everyone who shares the vault sees the new name.")
+                Text(if (initialName.isEmpty()) "Secret references that use the previous name may need updating." else "Secret references that use $initialName need the new name after you rename this vault.")
+                if (isShared) Text("Everyone who has this vault sees the new name.")
                 Spacer(Modifier.height(12.dp))
                 Box(Modifier.background(HisarTheme.colors.fill, RoundedCornerShape(10.dp))) {
                     FormTextField(name, { name = it }, placeholder = "Vault name", testTag = "rename-vault-name")

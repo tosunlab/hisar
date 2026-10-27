@@ -213,18 +213,57 @@ describe("Organization screen", () => {
     settings.unmount();
   });
 
+  it("confirms a team member removal from its row menu", async () => {
+    const wrapper = await openOrganizationInSettings();
+    await wrapper.find('[data-testid="organization-segment-teams"]').trigger("click");
+    await wrapper.find('[data-testid="remove-team-member-platform-BOB222"]').trigger("click");
+    expect(api.removeTeamMember).not.toHaveBeenCalled();
+    await wrapper.find('[data-testid="context-menu-remove-team-member"]').trigger("click");
+    expect(wrapper.find('[data-testid="organization-dialog-remove-team-member"]').text()).toContain("Bob Stone loses access.");
+    await wrapper.find('[data-testid="organization-dialog-remove-team-member"] button.ghost').trigger("click");
+    expect(api.removeTeamMember).not.toHaveBeenCalled();
+    await wrapper.find('[data-testid="remove-team-member-platform-BOB222"]').trigger("click");
+    await wrapper.find('[data-testid="context-menu-remove-team-member"]').trigger("click");
+    await wrapper.find('[data-testid="organization-dialog-confirm"]').trigger("click");
+    await flushPromises();
+    expect(api.removeTeamMember).toHaveBeenCalledWith("acme", "platform", "BOB222");
+    wrapper.unmount();
+  });
+
+  it("confirms self-demotion and preserves the last-admin refusal", async () => {
+    const wrapper = await openOrganizationInSettings();
+    await wrapper.find('[data-testid="organization-member-menu-ALICE1"]').trigger("click");
+    await wrapper.find('[data-testid="context-menu-organization-role"]').trigger("click");
+    expect(api.setOrganizationMemberRole).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="organization-dialog-change-member-role"]').text()).toContain("Make yourself a member of Acme?");
+    await wrapper.find('[data-testid="organization-dialog-change-member-role"] button.ghost').trigger("click");
+    expect(api.setOrganizationMemberRole).not.toHaveBeenCalled();
+    await wrapper.find('[data-testid="organization-member-menu-ALICE1"]').trigger("click");
+    await wrapper.find('[data-testid="context-menu-organization-role"]').trigger("click");
+    api.setOrganizationMemberRole.mockRejectedValueOnce(new Error("An organization must keep an admin."));
+    await wrapper.find('[data-testid="organization-dialog-confirm"]').trigger("click");
+    await flushPromises();
+    expect(store.organizationAlert?.message).toBe("An organization must keep an admin.");
+    expect(wrapper.find('[data-testid="organization-dialog-change-member-role"]').exists()).toBe(true);
+    expect(store.organizationByID.acme?.role).toBe("admin");
+    wrapper.unmount();
+  });
+
   it("gives admins the admin actions and hides them from members", async () => {
     const admin = await openOrganizationInSettings();
     for (const testID of ["rename-organization", "delete-organization"]) {
       expect(admin.find(`[data-testid="${testID}"]`).isVisible(), testID).toBe(true);
     }
     await admin.find('[data-testid="organization-member-menu-BOB222"]').trigger("click");
-    expect(admin.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Show security code", "Make admin", "Remove from Acme…"]);
+    expect(admin.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Show security code", "Make admin…", "Remove from Acme…"]);
     await admin.find('[data-testid="context-menu-organization-role"]').trigger("click");
+    expect(api.setOrganizationMemberRole).not.toHaveBeenCalled();
+    expect(admin.find('[data-testid="organization-dialog-change-member-role"]').text()).toContain("Being an admin gives no vault by itself.");
+    await admin.find('[data-testid="organization-dialog-confirm"]').trigger("click");
     await flushPromises();
     expect(api.setOrganizationMemberRole).toHaveBeenCalledWith("acme", "BOB222", "admin");
     await admin.find('[data-testid="organization-member-menu-ALICE1"]').trigger("click");
-    expect(admin.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Show security code", "Make member"]);
+    expect(admin.findAll('[role="menuitem"]').map((action) => action.text())).toEqual(["Show security code", "Make member…"]);
     await admin.find('[data-testid="context-menu-organization-security-code"]').trigger("keydown", { key: "Escape" });
     expect(admin.find('[data-testid="context-menu"]').exists()).toBe(false);
     expect(document.activeElement).toBe(admin.find('[data-testid="organization-member-menu-ALICE1"]').element);
@@ -715,6 +754,9 @@ describe("Organization vault sharing panel", () => {
     api.takeVaultFromTeam.mockRejectedValue(new Error(ownerTakeBackRefusal));
     const wrapper = await openSharingPanel();
     await wrapper.find('[data-testid="take-back-from-platform"]').trigger("click");
+    expect(api.takeVaultFromTeam).not.toHaveBeenCalled();
+    expect(wrapper.find('[data-testid="organization-dialog-take-vault"]').text()).toContain("You lose access too.");
+    await wrapper.find('[data-testid="organization-dialog-confirm"]').trigger("click");
     await flushPromises();
     expect(api.takeVaultFromTeam).toHaveBeenCalledWith("acme", "platform", "deploy");
     expect(wrapper.find('[data-testid="organization-alert"]').text()).toContain("Take back");
