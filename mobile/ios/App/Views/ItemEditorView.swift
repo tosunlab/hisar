@@ -66,6 +66,7 @@ struct ItemEditorView: View {
                                         .foregroundStyle(.themeSecondary, .background)
                                         .offset(x: 4, y: 4)
                                 }
+                                .iconButtonHitArea()
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Change icon")

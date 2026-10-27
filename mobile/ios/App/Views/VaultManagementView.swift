@@ -254,9 +254,10 @@ struct RemovedVaultNoticeSection: View {
                             Image(systemName: "xmark")
                                 .font(.footnote.weight(.semibold))
                                 .foregroundStyle(.themeSecondary)
+                                .iconButtonHitArea()
                         }
                         .buttonStyle(.borderless)
-                        .accessibilityLabel("Dismiss")
+                        .accessibilityLabel("Dismiss notice for \(notice.name)")
                         .accessibilityIdentifier("dismiss-removed-vault-\(notice.id)")
                     }
                     .accessibilityIdentifier("removed-vault-\(notice.id)")

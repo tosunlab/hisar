@@ -40,6 +40,20 @@ final class HisarUITests: HisarUITestCase {
         XCTAssertFalse(app.staticTexts["Website copied. It clears in 90 seconds."].waitForExistence(timeout: 2), "opening a website must not copy")
 
         app.buttons["edit-item"].tap()
+        let changeIcon = app.buttons["editor-icon"]
+        waitFor(changeIcon)
+        XCTAssertGreaterThanOrEqual(changeIcon.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(changeIcon.frame.height, 44)
+        changeIcon.tap()
+        let noColor = app.buttons["icon-color-none"]
+        scrollTo(noColor)
+        let red = app.buttons["icon-color-red"]
+        for swatch in [noColor, red] {
+            XCTAssertGreaterThanOrEqual(swatch.frame.width, 44)
+            XCTAssertGreaterThanOrEqual(swatch.frame.height, 44)
+        }
+        XCTAssertLessThanOrEqual(noColor.frame.maxX, red.frame.minX, "adjacent color targets do not overlap")
+        app.buttons["icon-done"].tap()
         app.buttons["editor-generate-password"].tap()
         saveScreenshot("password-generator")
         app.buttons["generator-use"].tap()
@@ -285,6 +299,19 @@ final class HisarUITests: HisarUITestCase {
         openTab("Vaults")
         app.buttons["vault-Personal"].tap()
         waitFor(app.buttons["item-GitHub"])
+    }
+
+    func testRemovedVaultDismissTargetNamesItsVaultAndMeetsMinimumSize() {
+        app.launchArguments += ["-HisarVaultManagementPreview", "notice"]
+        app.launch()
+        let dismiss = app.buttons["dismiss-removed-vault-infra"]
+        waitFor(dismiss)
+        XCTAssertEqual(dismiss.label, "Dismiss notice for Infra")
+        XCTAssertGreaterThanOrEqual(dismiss.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(dismiss.frame.height, 44)
+        dismiss.tap()
+        waitFor(app.staticTexts["vault-management-result"])
+        XCTAssertEqual(app.staticTexts["vault-management-result"].label, "Dismissed")
     }
 
     func testSignInHidesTheServerUntilAskedFor() throws {

@@ -24,6 +24,8 @@ draws the chosen icon, else a login's website icon, which `AppModel.loadWebsiteI
 Presets map to SF Symbols in `ChosenIcon.symbolByPreset`; `mobile/hisarkit/iconpresets_test.go` keeps the list on core's.
 At accessibility text sizes, item-detail headers stack a capped decorative icon above the full-width title.
 The icon picker's preset grid adapts its column count to the scaled tiles instead of fixing six columns.
+Color swatches, the editor's **Change icon**, and removed-vault dismiss buttons each have at least a 44-point target.
+Dismiss buttons name their vault so VoiceOver distinguishes notices.
 
 New items have a **Vault** picker that lists writable vaults and starts with the vault the editor opened from.
 Saving stores the item in the chosen vault. Canceling or swiping down with unsaved edits asks whether to discard them.

@@ -46,6 +46,8 @@ class IosTestParityTest {
                 "SwiftUI Dynamic Type header layout; Android uses its own Compose header and font scaling",
             "testPresetGridFitsScaledTargetsAtBothPhoneWidths" to
                 "SwiftUI adaptive preset grid at iOS Dynamic Type sizes; Android uses its own Compose icon picker",
+            "testRemovedVaultDismissTargetNamesItsVaultAndMeetsMinimumSize" to
+                "iPhone's shared 44-point icon hit-area helper; Android uses Material minimum interactive targets",
             "testSignOutClearsIdentities" to identityStore,
             "testRefreshPublishesCredentialIdentities" to identityStore,
             "testPasskeyIdentitiesOnlyForListedLogins" to identityStore,

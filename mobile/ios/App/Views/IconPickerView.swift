@@ -101,6 +101,7 @@ struct IconPickerView: View {
                 .overlay {
                     Circle().strokeBorder(color == hue ? Color.accentColor : .clear, lineWidth: 2.5)
                 }
+                .iconButtonHitArea()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(hue.isEmpty ? "No color" : hue.capitalized)
