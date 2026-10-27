@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ItemDetailView: View {
-    var vaultID: String
+    @State var vaultID: String
     var itemID: String
 
     @EnvironmentObject private var model: AppModel
@@ -11,6 +11,7 @@ struct ItemDetailView: View {
     @State private var allRevealedFieldName = Set<String>()
     @State private var isEditorShown = false
     @State private var passkeyToDelete: ItemPasskey?
+    @State private var isMoveShown = false
 
     private var vault: VaultSummary? { model.findVault(vaultID: vaultID) }
 
@@ -54,6 +55,12 @@ struct ItemDetailView: View {
                         .accessibilityIdentifier("edit-item")
                 }
             }
+            if item != nil, !model.moveDestinations(vaultID: vaultID).isEmpty {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Move to vault…") { model.clearError(); isMoveShown = true }
+                        .accessibilityIdentifier("move-item")
+                }
+            }
         }
         .sheet(isPresented: $isEditorShown) {
             if let item {
@@ -63,6 +70,16 @@ struct ItemDetailView: View {
                     } else {
                         dismiss()
                     }
+                }
+                .environmentObject(model)
+            }
+        }
+        .sheet(isPresented: $isMoveShown) {
+            if let item {
+                MoveItemSheet(sourceVaultID: vaultID, item: item) { moved, destinationID in
+                    self.vaultID = destinationID
+                    self.item = moved
+                    isMoveShown = false
                 }
                 .environmentObject(model)
             }
@@ -751,5 +768,73 @@ extension View {
     /// An icon-only button's 44-point hit area, on its label: a borderless button takes taps only on its label.
     func iconButtonHitArea() -> some View {
         frame(minWidth: 44, minHeight: 44).contentShape(.rect)
+    }
+}
+
+private struct MoveItemSheet: View {
+    var sourceVaultID: String
+    var item: ItemDetail
+    var finish: (ItemDetail, String) -> Void
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.dismiss) private var dismiss
+    @State private var targetVaultID = ""
+
+    private var groups: [VaultDestinationGroup] {
+        OrganizationLogic.destinationGroups(model.moveDestinations(vaultID: sourceVaultID), organizations: model.allOrganization)
+    }
+    private var selected: VaultDestination? { groups.flatMap(\.destinations).first { $0.id == targetVaultID } }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    Text("Move “\(item.title)” from \(model.findVault(vaultID: sourceVaultID)?.name ?? "this vault").")
+                }
+                if let error = model.errorMessage {
+                    Section { ErrorBanner(message: error) }
+                }
+                Picker("Move to", selection: $targetVaultID) {
+                    Text("Choose a vault").tag("")
+                    ForEach(groups) { group in
+                        Section(group.name) {
+                            ForEach(group.destinations) { destination in
+                                Text(destination.label).tag(destination.id)
+                            }
+                        }
+                    }
+                }
+                .accessibilityIdentifier("move-item-target")
+                if let selected {
+                    Section("Who has access") {
+                        Text(selected.context)
+                        Text("Everyone with access to the destination gains access to this item. People with source access but no destination access lose it on their next sync. Copies they retained independently cannot be revoked.")
+                        Text("hisar:// secret references that use the source vault's name need the new vault name.")
+                        if item.isServer, item.server?.sshKeyID.isEmpty == false {
+                            Text("The linked SSH key must exist in the destination vault or be selected again after moving.")
+                        }
+                    }
+                    .accessibilityIdentifier("move-item-context")
+                }
+            }
+            .navigationTitle("Move to vault")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }.disabled(model.isBusy)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Move") {
+                        Task {
+                            if let moved = await model.moveItem(vaultID: sourceVaultID, itemID: item.id, targetVaultID: targetVaultID) {
+                                finish(moved, targetVaultID)
+                            }
+                        }
+                    }
+                    .disabled(selected == nil || model.isBusy)
+                    .accessibilityIdentifier("move-item-confirm")
+                }
+            }
+        }
+        .interactiveDismissDisabled(model.isBusy)
     }
 }

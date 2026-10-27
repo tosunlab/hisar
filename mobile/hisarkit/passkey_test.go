@@ -117,6 +117,28 @@ func checkPasskeyFlow(t *testing.T, hisar *Hisar, personalID, itemID string) {
 	if edited.Title != "GitHub renamed" || len(edited.AllPasskey) != 1 || edited.AllPasskey[0].CredentialID != created.CredentialID {
 		t.Fatalf("edit without passkeys dropped them: %+v", edited)
 	}
+	destination := decodeJSON[struct {
+		ID string `json:"id"`
+	}](t)(hisar.CreateVault("Move test"))
+	type movedDetail struct {
+		ID       string `json:"id"`
+		Password string `json:"password"`
+		Passkeys []struct {
+			CredentialID string `json:"credentialId"`
+		} `json:"passkeys"`
+	}
+	beforeMove := decodeJSON[movedDetail](t)(hisar.GetItem(personalID, itemID))
+	moved := decodeJSON[movedDetail](t)(hisar.MoveItem(personalID, itemID, destination.ID))
+	if moved.ID != itemID || moved.Password != beforeMove.Password || len(moved.Passkeys) != 1 || moved.Passkeys[0].CredentialID != created.CredentialID {
+		t.Fatalf("move changed item identity or contents: %+v", moved)
+	}
+	if _, err := hisar.GetItem(personalID, itemID); err == nil {
+		t.Fatal("moved item remained in its source")
+	}
+	decodeJSON[movedDetail](t)(hisar.MoveItem(destination.ID, itemID, personalID))
+	if _, err := hisar.DeleteVault(destination.ID, `{}`); err != nil {
+		t.Fatal(err)
+	}
 	afterDelete := decodeJSON[struct {
 		AllPasskey []struct{} `json:"passkeys"`
 	}](t)(hisar.DeletePasskey(personalID, itemID, created.CredentialID))

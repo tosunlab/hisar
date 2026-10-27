@@ -64,6 +64,32 @@ class ItemDetailScreenTests {
 
     private fun exists(tag: String) = composeRule.onAllNodes(hasTestTag(tag)).fetchSemanticsNodes().isNotEmpty()
 
+    @Test
+    fun testMoveSheetKeepsItsSelectionAfterFailureAndOpensTheMovedItem() {
+        val host = openHost()
+        host.show("personal", "github")
+        composeRule.waitForTag("move-item")
+        composeRule.tap("move-item")
+        composeRule.waitForTag("move-item-sheet")
+        composeRule.tap("move-item-target-family")
+        assertTrue(composeRule.onAllNodes(hasText("Shared vault / Family")).fetchSemanticsNodes().isNotEmpty())
+        assertTrue(composeRule.onAllNodes(hasText("Copies they retained independently cannot be revoked.", substring = true)).fetchSemanticsNodes().isNotEmpty())
+        backend.moveErrorMessage = "The server could not be reached."
+        composeRule.tap("move-item-confirm")
+        composeRule.waitUntil(5_000) { host.model.errorMessage.value == "The server could not be reached." }
+        assertTrue(exists("move-item-sheet"))
+        assertTrue(backend.getItem("personal", "github").allPasskey.isNotEmpty())
+        backend.moveErrorMessage = null
+        composeRule.tap("move-item-confirm")
+        composeRule.waitForTagToGo("move-item-sheet")
+        composeRule.waitForTag("edit-item")
+        composeRule.tap("edit-item")
+        composeRule.waitUntil(5_000) { host.allEditorRequest.isNotEmpty() }
+        assertEquals("family", (host.allEditorRequest.last() as com.tryhisar.hisar.app.EditorRequest.Edit).vaultID)
+        assertTrue(backend.getItem("family", "github").allPasskey.isNotEmpty())
+        assertEquals(0, host.backCount)
+    }
+
     private fun dismissNotice() {
         composeRule.waitForTag("notice")
         composeRule.onNodeWithTag("notice").performTouchInput { swipeLeft() }

@@ -26,6 +26,7 @@ class FakeBackend: VaultBackend {
     /// Starred items as "vaultID/itemID"; the account keeps them apart from the items.
     var allFavoriteRecordID: Set<String> = []
     var favoriteErrorMessage: String?
+    var moveErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var verifyPasskey: (String) -> Bool = { _ in true }
@@ -556,6 +557,27 @@ class FakeBackend: VaultBackend {
         try requireUnlocked()
         allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
         allPasskey.removeAll { $0.vaultID == vaultID && $0.itemID == itemID }
+    }
+
+    func moveItem(vaultID: String, itemID: String, targetVaultID: String) throws -> ItemDetail {
+        record("moveItem")
+        try requireUnlocked()
+        if let moveErrorMessage { throw BackendError(message: moveErrorMessage) }
+        guard vaultID != targetVaultID, let source = allVault.first(where: { $0.id == vaultID }),
+              let target = allVault.first(where: { $0.id == targetVaultID }),
+              source.role != "reader", target.role != "reader" else { throw BackendError(message: "Choose another writable vault.") }
+        let item = try getItem(vaultID: vaultID, itemID: itemID)
+        allItemByVaultID[vaultID]?.removeAll { $0.id == itemID }
+        allItemByVaultID[targetVaultID, default: []].append(item)
+        let oldRecord = "\(vaultID)/\(itemID)"
+        if allFavoriteRecordID.remove(oldRecord) != nil { allFavoriteRecordID.insert("\(targetVaultID)/\(itemID)") }
+        for index in allPasskey.indices where allPasskey[index].vaultID == vaultID && allPasskey[index].itemID == itemID {
+            allPasskey[index].vaultID = targetVaultID
+        }
+        for index in allVault.indices where allVault[index].id == vaultID || allVault[index].id == targetVaultID {
+            allVault[index].itemCount = allItemByVaultID[allVault[index].id]?.count ?? 0
+        }
+        return item
     }
 
     func deleteUnreadableItem(vaultID: String, itemID: String, revision: String) throws {

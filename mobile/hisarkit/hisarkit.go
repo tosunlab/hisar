@@ -326,6 +326,11 @@ func (hisar *Hisar) DeleteItem(vaultID, itemID string) error {
 	return hisar.service.DeleteItem(vaultID, itemID)
 }
 
+// MoveItem moves the existing item without changing its ID and returns its details as JSON.
+func (hisar *Hisar) MoveItem(vaultID, itemID, targetVaultID string) (string, error) {
+	return encodeJSON(hisar.service.MoveItem(vaultID, itemID, targetVaultID))
+}
+
 // ListAllFavoriteItem returns []app.FavoriteItem ({"vaultId", "vaultName", "vaultType", "item"}, the item without secrets)
 // as JSON: the user's starred items in every vault they can open.
 func (hisar *Hisar) ListAllFavoriteItem() (string, error) {

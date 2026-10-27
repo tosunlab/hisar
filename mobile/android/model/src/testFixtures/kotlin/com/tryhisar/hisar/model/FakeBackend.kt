@@ -24,6 +24,7 @@ open class FakeBackend : VaultBackend {
     /** Starred items as "vaultID/itemID"; the account keeps them apart from the items. */
     var allFavoriteRecordID: MutableSet<String> = mutableSetOf()
     var favoriteErrorMessage: String? = null
+    var moveErrorMessage: String? = null
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
     var verifyPasskey: (String) -> Boolean = { true }
@@ -534,6 +535,22 @@ open class FakeBackend : VaultBackend {
         requireUnlocked()
         allItemByVaultID[vaultID]?.removeAll { it.id == itemID }
         allPasskey.removeAll { it.vaultID == vaultID && it.itemID == itemID }
+    }
+
+    override fun moveItem(vaultID: String, itemID: String, targetVaultID: String): ItemDetail {
+        record("moveItem")
+        requireUnlocked()
+        moveErrorMessage?.let { throw BackendError(it) }
+        val source = allVault.firstOrNull { it.id == vaultID }
+        val target = allVault.firstOrNull { it.id == targetVaultID }
+        if (vaultID == targetVaultID || source == null || target == null || !VaultLogic.isWritable(source) || !VaultLogic.isWritable(target)) throw BackendError("Choose another writable vault.")
+        val item = getItem(vaultID, itemID)
+        allItemByVaultID[vaultID]?.removeAll { it.id == itemID }
+        allItemByVaultID.getOrPut(targetVaultID) { mutableListOf() }.add(item)
+        if (allFavoriteRecordID.remove("$vaultID/$itemID")) allFavoriteRecordID.add("$targetVaultID/$itemID")
+        allPasskey = allPasskey.map { if (it.vaultID == vaultID && it.itemID == itemID) it.copy(vaultID = targetVaultID) else it }.toMutableList()
+        allVault = allVault.map { if (it.id == vaultID || it.id == targetVaultID) it.copy(itemCount = allItemByVaultID[it.id]?.size ?: 0) else it }.toMutableList()
+        return item
     }
 
     override fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String) {

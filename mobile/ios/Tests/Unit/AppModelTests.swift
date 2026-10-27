@@ -23,6 +23,35 @@ final class AppModelTests: XCTestCase {
         return await createModel()
     }
 
+    func testMovePreservesIdentityContentsFavoritesAndAutoFill() async {
+        let model = await createUnlockedModel()
+        _ = await model.setItemFavorite(vaultID: "personal", itemID: "github", isFavorite: true)
+        let original = await model.loadItem(vaultID: "personal", itemID: "github")
+        let moved = await model.moveItem(vaultID: "personal", itemID: "github", targetVaultID: "family")
+        XCTAssertEqual(moved, original)
+        XCTAssertFalse(model.listAllItemReference(vaultID: "personal").contains { $0.item.id == "github" })
+        XCTAssertTrue(model.listAllItemReference(vaultID: "family").contains { $0.item.id == "github" && $0.item.isFavorite })
+        XCTAssertTrue(identityStore.allIdentity.contains { $0.recordIdentifier == "family/github" })
+        XCTAssertFalse(identityStore.allIdentity.contains { $0.recordIdentifier == "personal/github" })
+        XCTAssertTrue(backend.allPasskey.contains { $0.itemID == "github" && $0.vaultID == "family" })
+    }
+
+    func testMoveFiltersPermissionsAndKeepsTheSourceOnFailure() async {
+        backend.seedSignedIn()
+        backend.allVault.append(VaultSummary(id: "reader", name: "Read only", type: "shared", role: "reader", itemCount: 0))
+        let model = await createModel()
+        XCTAssertEqual(model.moveDestinations(vaultID: "personal").map(\.id), ["family"])
+        XCTAssertTrue(model.moveDestinations(vaultID: "reader").isEmpty)
+        backend.moveErrorMessage = "The server could not be reached."
+        let moved = await model.moveItem(vaultID: "personal", itemID: "github", targetVaultID: "family")
+        XCTAssertNil(moved)
+        XCTAssertEqual(model.errorMessage, "The server could not be reached.")
+        XCTAssertTrue(model.listAllItemReference(vaultID: "personal").contains { $0.item.id == "github" })
+        backend.moveErrorMessage = nil
+        let retried = await model.moveItem(vaultID: "personal", itemID: "github", targetVaultID: "family")
+        XCTAssertNotNil(retried)
+    }
+
     func testStartsSignedOut() async {
         let model = await createModel()
         XCTAssertEqual(model.screen, .signedOut)

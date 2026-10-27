@@ -29,6 +29,7 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -60,10 +61,18 @@ import com.tryhisar.hisar.ui.theme.HisarTheme
 import com.tryhisar.hisar.ui.theme.HisarType
 import kotlinx.coroutines.launch
 
+@Composable
+fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (EditorRequest) -> Unit, onBack: () -> Unit) {
+    var activeVaultID by remember(vaultID, itemID) { mutableStateOf(vaultID) }
+    key(activeVaultID, itemID) {
+        ItemDetailScreenContent(model, activeVaultID, itemID, onEdit, onBack, onMoved = { activeVaultID = it })
+    }
+}
+
 /** One item's detail screen, pushed by the Vaults and Search tabs. */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (EditorRequest) -> Unit, onBack: () -> Unit) {
+private fun ItemDetailScreenContent(model: AppModel, vaultID: String, itemID: String, onEdit: (EditorRequest) -> Unit, onBack: () -> Unit, onMoved: (String) -> Unit) {
     val scope = rememberCoroutineScope()
     val unlockedData by model.unlockedData.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
@@ -76,6 +85,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     var passkeyToDelete by remember { mutableStateOf<ItemPasskey?>(null) }
     var androidAppToRemove by remember { mutableStateOf<ItemAndroidApp?>(null) }
     var openedSSHKeyID by remember { mutableStateOf<String?>(null) }
+    var isMoveShown by remember { mutableStateOf(false) }
 
     suspend fun loadItem() {
         model.errorMessage.value = null
@@ -89,7 +99,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     }
     // Deleted in the editor or elsewhere: the item is gone from its vault's list, so its screen closes.
     LaunchedEffect(summary == null) {
-        if (summary == null && wasListed) onBack()
+        if (summary == null && wasListed && !isMoveShown) onBack()
     }
 
     val openedKeyID = openedSSHKeyID
@@ -123,6 +133,7 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
                             }
                         },
                         edit = if (isWritable) ({ onEdit(EditorRequest.Edit(vaultID, itemID)) }) else null,
+                        move = if (model.item.moveDestinations(vaultID).isNotEmpty()) ({ model.errorMessage.value = null; isMoveShown = true }) else null,
                     )
                 }
             },
@@ -180,6 +191,9 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
             }
         }
     }
+    if (isMoveShown && shownItem != null) {
+        MoveItemSheet(model, vaultID, shownItem, onDismiss = { isMoveShown = false }, onMoved = onMoved)
+    }
 
     passkeyToDelete?.let { passkey ->
         AlertDialog(
@@ -221,7 +235,7 @@ internal class ItemFieldActions(
 
 /** The star and, for those who may change the item, "Edit", on one glass capsule as the iPhone app groups them. */
 @Composable
-private fun ItemToolbar(isFavorite: Boolean, toggleFavorite: () -> Unit, edit: (() -> Unit)?) {
+private fun ItemToolbar(isFavorite: Boolean, toggleFavorite: () -> Unit, edit: (() -> Unit)?, move: (() -> Unit)?) {
     Row(
         Modifier
             .height(44.dp)
@@ -244,6 +258,9 @@ private fun ItemToolbar(isFavorite: Boolean, toggleFavorite: () -> Unit, edit: (
                 tint = HisarTheme.colors.label,
                 modifier = Modifier.size(22.dp),
             )
+        }
+        if (move != null) {
+            PlainButton("Move to vault…", move, testTag = "move-item")
         }
         if (edit != null) {
             Box(

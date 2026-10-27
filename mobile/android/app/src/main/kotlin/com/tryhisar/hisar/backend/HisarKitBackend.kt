@@ -311,6 +311,9 @@ class HisarKitBackend(
 
     override fun deleteItem(vaultID: String, itemID: String) = call { deleteItem(vaultID, itemID) }
 
+    override fun moveItem(vaultID: String, itemID: String, targetVaultID: String): ItemDetail =
+        decode(ItemDetail.serializer(), call { moveItem(vaultID, itemID, targetVaultID) })
+
     override fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String) = call { deleteUnreadableItem(vaultID, itemID, revision) }
 
     override fun deleteUnreadableVault(vaultID: String, revision: String) = call { deleteUnreadableVault(vaultID, revision) }

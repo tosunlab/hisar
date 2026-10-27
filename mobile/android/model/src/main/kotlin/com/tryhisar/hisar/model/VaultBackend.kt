@@ -105,6 +105,7 @@ interface VaultBackend {
     fun getItem(vaultID: String, itemID: String): ItemDetail
     fun saveItem(vaultID: String, item: ItemDetail): ItemDetail
     fun deleteItem(vaultID: String, itemID: String)
+    fun moveItem(vaultID: String, itemID: String, targetVaultID: String): ItemDetail
     fun deleteUnreadableItem(vaultID: String, itemID: String, revision: String)
     fun deleteUnreadableVault(vaultID: String, revision: String)
     fun repairVaultName(vaultID: String, revision: String, name: String): VaultSummary
