@@ -362,7 +362,7 @@ export function createAgentRunApprovalEvent(overrides: Partial<ApprovalEvent> = 
     allSecretName: ["Work › Stripe › api key", "Work › Postgres staging › password"],
     allGrantDuration: ["once", "hour"],
     grantDuration: "once",
-    grantScope: "A longer choice covers only these secrets.",
+    grantScope: "A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.",
     isConnectionApproval: false,
     ...overrides,
   });

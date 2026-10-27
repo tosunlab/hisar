@@ -637,7 +637,7 @@ describe("SSHApprovalWindow", () => {
     expect(menu.findAll("option").map((option) => option.text())).toEqual(["Only this time", "For 1 hour"]);
     expect((menu.element as HTMLSelectElement).value).toBe("once");
     expect(wrapper.find('[data-testid="approval-grant-note"]').exists()).toBe(false);
-    expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice covers only these secrets.");
+    expect(wrapper.find('[data-testid="approval-grant-scope"]').text()).toBe("A longer choice lets Claude Code run any command with these secrets, in any folder, without asking again.");
     expect(api.respondSSHApproval).toHaveBeenCalledWith("agent-run-1", true, false);
     await menu.setValue("hour");
     expect(api.setSSHApprovalGrantDuration).toHaveBeenCalledWith("agent-run-1", "hour");
@@ -710,6 +710,26 @@ describe("SSHApprovalWindow", () => {
     await wrapper.find('[data-testid="approval-login-1"] input').setValue(true);
     expect(api.setSSHApprovalLogin).toHaveBeenCalledWith("sign-in-1", 1);
     expect(approvalStore.loginIndex).toBe(1);
+    wrapper.unmount();
+  });
+
+  it("scrolls many logins inside the dialog and keeps the password form and Deny outside the scrolling part", async () => {
+    const wrapper = mount(SSHApprovalWindow);
+    const allLogin = Array.from({ length: 12 }, (_, index) => ({ vaultName: "Agents", title: `Tosun Lab ${index + 1}`, username: `user${index + 1}@example.com` }));
+    sendEvent("ssh-approval", createSignInApprovalEvent({ allLogin, isTouchIDApproval: false }));
+    await flushPromises();
+    const body = wrapper.get('[data-testid="approval-body"]').element as HTMLElement;
+    expect(wrapper.findAll('[data-testid^="approval-login-"] input').every((login) => body.contains(login.element))).toBe(true);
+    for (const testID of ["approval-password", "submit-password", "deny-approval"]) {
+      expect(body.contains(wrapper.get(`[data-testid="${testID}"]`).element), testID).toBe(false);
+    }
+
+    Object.defineProperties(body, { scrollHeight: { value: 709 }, clientHeight: { value: 481 } });
+    vi.spyOn(wrapper.get(".approval-content").element, "getBoundingClientRect").mockReturnValue(new DOMRect(0, 0, 480, 700));
+    approvalStore.failureMessage = "Wrong master password.";
+    await flushPromises();
+    expect(api.fitSSHApprovalWindow).toHaveBeenLastCalledWith(false, 928);
+    expect(body.contains(wrapper.get('[role="alert"]').element)).toBe(false);
     wrapper.unmount();
   });
 

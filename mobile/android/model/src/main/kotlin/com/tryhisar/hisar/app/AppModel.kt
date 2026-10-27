@@ -78,9 +78,6 @@ class AppModel(
     val isCheckingMinimumVersion: StateFlow<Boolean> = mutableIsCheckingMinimumVersion.asStateFlow()
     val notice: StateFlow<Notice?> = mutableNotice.asStateFlow()
 
-    /** An editor some other surface asks the app to open, such as AutoFill's save prompt; the Vaults tab shows it. */
-    val requestedEditor = MutableStateFlow<EditorRequest?>(null)
-
     /**
      * A Settings screen something outside the tab asks it to show: AutoFill for the system's Autofill service screen,
      * Devices for a tapped security alert. The Settings tab shows it and clears it.
@@ -108,7 +105,7 @@ class AppModel(
     val item = ItemModel(this)
     val vaults = VaultsModel(this)
     val invitations = InvitationsModel(this)
-    val navigation = VaultsNavigation(this, requestedEditor, selectedTab)
+    val navigation = VaultsNavigation(this, selectedTab)
     val sharing = SharingModel(this, vaults)
     val organizations = OrganizationsModel(this, invitations)
     val approvals = ApprovalsModel(this, now)
