@@ -2018,6 +2018,7 @@ The concatenations are length-prefixed (§4.5). Before it shows a request, the p
 **Android** (`mobile/hisarkit`, `mobile/android`)
 
 - The same behavior as the iPhone through the same HisarKit calls, in `ApprovalsModel`: the list at unlock, on returning to the foreground, on `approval-requested` and every 15 s; the card on Vaults, the Approvals tab with its badge, and the sheet, which opens at once for a request that arrives while Hisar is in front. Approve asks for a strong biometric (**Approve with biometrics**), or the master password when biometrics are unavailable. Settings → Mac approvals → **Approve requests from my Mac** turns it off for this phone.
+- The Android sheet uses the iPhone's compact header, with a 44 dp icon beside the request sentence and the Mac name and countdown beneath it. Details precede the remember switch. Deny and Approve stay below the scrolling body.
 - UI tests drive the card, the tab and the sheet on a fake backend seeded with made-up requests, and assert the answer the backend received. `PhoneApprovalUITests.testApproveAndDenyRealRequestsFromTheMac` answers real requests from `mobile/cmd/hisar-ui-test-mac`, which plays the Mac with `core/app`: it signs up, sends an SSH request and a command-line request, verifies each answer and saves it in the Personal vault, where the test reads it back.
 
 ### 9.10 Themes
