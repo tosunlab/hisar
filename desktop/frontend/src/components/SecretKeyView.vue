@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
-import { confirmSecretKeySaved, copyText, saveNewAccountEmergencyKit, store } from "../store";
+import { ref } from "vue";
+import { confirmSecretKeySaved, saveNewAccountEmergencyKit, store } from "../store";
 import AppIcon from "./AppIcon.vue";
 import HisarLogo from "./HisarLogo.vue";
+import SecretKeyBlock from "./SecretKeyBlock.vue";
 
 const hasSaved = ref(false);
-const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
 </script>
 
 <template>
@@ -23,11 +23,8 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
           <AppIcon name="warning" />
           <span>A forgotten master password can't be recovered by anyone, including Hisar.</span>
         </p>
-        <div class="key" data-testid="secret-key" :aria-label="store.pendingSecretKey">
-          <span v-for="(part, index) in allKeyPart" :key="index" class="key-part monospace">{{ part }}</span>
-        </div>
+        <SecretKeyBlock :secret-key="store.pendingSecretKey" />
         <div class="row actions">
-          <button @click="copyText(store.pendingSecretKey, 'Secret Key')"><AppIcon name="copy" /> Copy</button>
           <button data-testid="save-emergency-kit" @click="saveNewAccountEmergencyKit"><AppIcon name="note" /> Save Emergency Kit…</button>
         </div>
         <label class="row confirmation">
@@ -47,25 +44,6 @@ const allKeyPart = computed(() => store.pendingSecretKey.split("-"));
   width: min(580px, 100%);
 }
 
-.key {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: 4px;
-  padding: 18px 12px;
-  border: 1px dashed var(--color-border-strong);
-  border-radius: var(--radius);
-  background: var(--color-surface);
-  user-select: text;
-  -webkit-user-select: text;
-}
-
-.key-part {
-  padding: 4px 6px;
-  border-radius: var(--radius-small);
-  background: var(--color-surface-raised);
-  font-size: var(--font-size-15);
-}
 
 .actions {
   justify-content: center;

@@ -178,21 +178,10 @@ struct ReplaceSecretKeyView: View {
 
     @ViewBuilder
     private func replacedSections(_ result: CredentialChangeResult) -> some View {
-        Section {
-            Text(result.secretKey)
-                .font(.body.monospaced())
-                .textSelection(.enabled)
-                .accessibilityIdentifier("new-secret-key-value")
-            Button {
-                model.copyText(result.secretKey, label: "Secret Key")
-            } label: {
-                Label("Copy Secret Key", systemImage: "doc.on.doc")
-            }
-        } header: {
-            Text("New Secret Key")
-        } footer: {
-            Text("\(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)) Your old Secret Key and Emergency Kit no longer work.")
-        }
+        SecretKeySection(
+            secretKey: result.secretKey, valueIdentifier: "new-secret-key-value", copyIdentifier: "new-secret-key-copy",
+            footer: "\(AccountLifecycleLogic.describeSignedOutDevices(result.signedOutDeviceCount)) Your old Secret Key and Emergency Kit no longer work."
+        )
         if !result.keychainError.isEmpty {
             Section {
                 ErrorBanner(message: result.keychainError)
@@ -478,16 +467,23 @@ struct PendingRecoveryView: View {
                         }
                         .disabled(password.isEmpty || model.isBusy || recovery.phase == "outcome-unknown")
                         .accessibilityIdentifier("pending-recovery-export")
-                        if let export = model.pendingRecoveryExport {
-                            Text(export.secretKey)
-                                .font(.body.monospaced())
-                                .textSelection(.enabled)
-                                .accessibilityIdentifier("pending-recovery-secret-key")
+                    } header: {
+                        Text(PendingRecoveryCopy.heading(recovery.kind))
+                    } footer: {
+                        Text("Preparing a kit does not confirm that you saved it.")
+                    }
+                    if let export = model.pendingRecoveryExport {
+                        SecretKeySection(secretKey: export.secretKey, valueIdentifier: "pending-recovery-secret-key", copyIdentifier: "pending-recovery-copy-secret-key")
+                        Section {
                             ShareLink(item: URL(fileURLWithPath: export.path), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
                                 Label("Save or print Emergency Kit", systemImage: "square.and.arrow.up")
                             }
                             .accessibilityIdentifier("pending-recovery-share-kit")
+                        } header: {
+                            Text("Emergency Kit")
                         }
+                    }
+                    Section {
                         Button("I saved my Emergency Kit") {
                             let enteredPassword = password
                             Task {
@@ -501,10 +497,6 @@ struct PendingRecoveryView: View {
                                 .disabled(password.isEmpty || model.isBusy)
                                 .accessibilityIdentifier("pending-recovery-discard")
                         }
-                    } header: {
-                        Text(PendingRecoveryCopy.heading(recovery.kind))
-                    } footer: {
-                        Text("Preparing a kit does not confirm that you saved it.")
                     }
                 }
                 if model.isBusy {

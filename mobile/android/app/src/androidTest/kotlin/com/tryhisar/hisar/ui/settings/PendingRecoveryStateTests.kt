@@ -66,6 +66,9 @@ class PendingRecoveryStateTests {
         composeRule.waitUntil(30_000) { model.pendingRecovery.export.value != null }
         composeRule.assertFieldText("pending-recovery-password", FakeBackend.PASSWORD)
         composeRule.onNodeWithTag("pending-recovery-secret-key").assertExists()
+        composeRule.tap("pending-recovery-copy-secret-key")
+        composeRule.onNodeWithTag("pending-recovery-copy-secret-key").assertTextEquals("Copied · clears in about 2 minutes")
+        assertTrue("acknowledgePendingRecovery" !in backend.allCallName)
         val kit = File(model.pendingRecovery.export.value!!.path)
 
         restoration.emulateSavedInstanceStateRestore()

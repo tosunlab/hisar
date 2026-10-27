@@ -155,7 +155,7 @@ private fun SecretKeyRow(secretKey: String, testTag: String) {
         SelectionContainer {
             FlowRow(Modifier.clearAndSetSemantics { text = AnnotatedString(secretKey); this.testTag = testTag }) {
                 for (group in secretKey.split("(?<=-)".toRegex())) {
-                    Text(group, style = HisarType.bodyMonospaced, color = HisarTheme.colors.label)
+                    Text(group, style = HisarType.title3Monospaced, color = HisarTheme.colors.label)
                 }
             }
         }
@@ -187,7 +187,16 @@ private fun EmergencyKitRows(model: AppModel, path: String, saveTestTag: String,
 
 @Composable
 private fun CopySecretKeyRow(model: AppModel, secretKey: String, testTag: String) {
-    FormButtonRow("Copy Secret Key", { model.copyText(secretKey, "Secret Key") }, testTag = testTag, icon = Icons.Outlined.ContentCopy, color = HisarTheme.colors.tint)
+    var isCopied by remember(secretKey) { mutableStateOf(false) }
+    FormButtonRow(
+        if (isCopied) "Copied · clears in about 2 minutes" else "Copy Secret Key",
+        {
+            val previousCopies = model.copyCount.value
+            model.copyText(secretKey, "Secret Key")
+            isCopied = model.copyCount.value > previousCopies
+        },
+        testTag = testTag, icon = Icons.Outlined.ContentCopy, color = HisarTheme.colors.tint,
+    )
 }
 
 /** Settings → Secret Key and Emergency Kit: the master password shows the key and writes a new kit, deleted on leaving. */
@@ -655,10 +664,17 @@ fun PendingRecoveryScreen(model: AppModel) {
                     testTag = "pending-recovery-export",
                     enabled = password.isNotEmpty() && !isBusy && recovery.phase != "outcome-unknown",
                 )
-                export?.let {
+            }
+            export?.let {
+                FormSection(header = "Secret Key") {
                     SecretKeyRow(it.secretKey, "pending-recovery-secret-key")
+                    CopySecretKeyRow(model, it.secretKey, "pending-recovery-copy-secret-key")
+                }
+                FormSection(header = "Emergency Kit") {
                     EmergencyKitRows(model, it.path, "pending-recovery-save-kit", "pending-recovery-print-kit", "pending-recovery-share-kit")
                 }
+            }
+            FormSection {
                 FormButtonRow(
                     "I saved my Emergency Kit",
                     {

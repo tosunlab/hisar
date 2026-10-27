@@ -24,6 +24,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | master password | password (when the master password is meant), passphrase |
 | Secret Key | secret key, account key |
 | Emergency Kit: "The Emergency Kit holds your Secret Key and has a space to write your master password." | "has both places to keep them" |
+| Secret Key (phone section header); Your Secret Key (Mac block) · Copy Secret Key · "Copied · clears in 90 seconds" (iPhone), "Copied · clears in about 2 minutes" (Android) | An unlabelled key; copying the key as proof that the Emergency Kit was saved |
 | Unlock with Touch ID / Unlock with Face ID; Turn on Touch ID, Not now (Mac, iPhone) · Unlock with biometrics; Turn on biometrics, Not now (Android) | Biometrics (on the Mac or iPhone), fingerprint unlock |
 | Sign in, Sign out, Create account | Log in, Register |
 | Change master password…, Replace Secret Key… | Reset password, Rotate key, Regenerate Secret Key |

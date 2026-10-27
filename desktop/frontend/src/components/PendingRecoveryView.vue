@@ -4,6 +4,7 @@ import { acknowledgePendingRecovery, discardPreparedRecovery, resumePendingRecov
 import type { PendingRecoverySummary } from "../api";
 import HisarLogo from "./HisarLogo.vue";
 import { recoveryHeading, recoveryHost, recoveryStatus } from "../pendingRecoveryCopy";
+import SecretKeyBlock from "./SecretKeyBlock.vue";
 
 const password = ref("");
 const secretKey = ref("");
@@ -77,7 +78,7 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
         <h2>{{ recoveryHeading(operation.kind) }}</h2>
         <p class="muted">{{ operation.email }} · {{ recoveryHost(operation.origin) }}</p>
         <p><strong>Server</strong> {{ operation.origin }}</p>
-        <p v-if="store.recoveryFactor?.operationId === operation.operationId" class="monospace" data-testid="recovery-secret-key">{{ store.recoveryFactor.secretKey }}</p>
+        <SecretKeyBlock v-if="store.recoveryFactor?.operationId === operation.operationId" :secret-key="store.recoveryFactor.secretKey" test-id="recovery-secret-key" />
         <p role="status" data-testid="pending-recovery-phase">{{ recoveryStatus(operation.kind, operation.phase) }}</p>
         <p v-if="store.status.state !== 'signed-out' && (store.status.email !== operation.email || store.status.server !== operation.origin)" class="hint">Continuing signs this device in to {{ operation.email }} on {{ recoveryHost(operation.origin) }}.</p>
         <p v-if="!operation.keychainProtected" class="hint">This device does not persist the new Secret Key. After a restart, enter the Secret Key from your saved kit to resume. If you closed the app before saving an uncommitted kit, discard that setup and start again.</p>

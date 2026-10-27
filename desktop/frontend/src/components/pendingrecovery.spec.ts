@@ -21,6 +21,17 @@ beforeEach(() => {
 });
 
 describe("Pending recovery", () => {
+  it("labels the recovery Secret Key and copies it without acknowledging the kit", async () => {
+    model.store.recoveryFactor = { operationId: entry.operationId, secretKey: "H1-ABC123-AAAAA-BBBBB" };
+    const wrapper = mount(PendingRecoveryView);
+    expect(wrapper.get(".secret-key-block h2").text()).toBe("Your Secret Key");
+    expect(wrapper.get('[data-testid="recovery-secret-key"]').attributes("aria-label")).toBe("H1-ABC123-AAAAA-BBBBB");
+    await wrapper.get(".secret-key-block button").trigger("click");
+    await flushPromises();
+    expect(mock.api.copyText).toHaveBeenCalledWith("H1-ABC123-AAAAA-BBBBB");
+    expect(mock.api.acknowledgePendingRecovery).not.toHaveBeenCalled();
+  });
+
   it("shows partial completion without claiming success or exposing factors", () => {
     const wrapper = mount(PendingRecoveryView);
     expect(wrapper.text()).toContain("Your account was created, but setup did not finish on this device.");

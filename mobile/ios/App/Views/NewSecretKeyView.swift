@@ -4,7 +4,6 @@ struct NewSecretKeyView: View {
     @EnvironmentObject private var model: AppModel
     var secretKey: String
 
-    @State private var isCopied = false
     @State private var export: EmergencyKitExport?
     @State private var isKitShared = false
 
@@ -16,23 +15,7 @@ struct NewSecretKeyView: View {
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 }
-                Section {
-                    Text(secretKey)
-                        .font(.title3.monospaced().weight(.medium))
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("new-secret-key")
-                    Button {
-                        _ = PasteboardClipboard().setText(secretKey)
-                        isCopied = true
-                    } label: {
-                        Label(isCopied ? "Copied · clears in 90 seconds" : "Copy Secret Key", systemImage: isCopied ? "checkmark" : "doc.on.doc")
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .sensoryFeedback(.success, trigger: isCopied)
-                    .accessibilityIdentifier("new-secret-key-copy")
-                } header: {
-                    Text("Secret Key")
-                }
+                SecretKeySection(secretKey: secretKey, valueIdentifier: "new-secret-key", copyIdentifier: "new-secret-key-copy")
                 Section {
                     if let export {
                         ShareLink(item: URL(fileURLWithPath: export.emergencyKitPath), preview: SharePreview("Hisar Emergency Kit", image: Image(systemName: "doc.text"))) {
@@ -90,7 +73,7 @@ struct NewSecretKeyView: View {
                     }
                     .applyProminentGlassStyle()
                     .controlSize(.large)
-                    .disabled(export == nil || !(isKitShared || isCopied) || model.isBusy)
+                    .disabled(export == nil || !isKitShared || model.isBusy)
                     .accessibilityIdentifier("new-secret-key-done")
                     Button("Finish later") {
                         Task { await model.postponeNewSecretKey() }
