@@ -109,6 +109,7 @@ class VaultActionsTests {
         val isRenamed = model.vaults.renameVault("work", "  Work 2026 ")
         assertTrue(isRenamed)
         assertEquals("Work 2026", model.unlockedData.value.findVault("work")?.name)
+        assertEquals("Renamed Work to Work 2026. Secret references that use Work need the new name.", model.notice.value?.message)
         val isRenamedByEditor = model.vaults.renameVault("family", "Mine")
         assertFalse(isRenamedByEditor)
         assertEquals("Family", model.unlockedData.value.findVault("family")?.name)

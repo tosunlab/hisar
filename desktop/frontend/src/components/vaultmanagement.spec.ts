@@ -180,12 +180,14 @@ describe("rename and leave", () => {
     await chooseFromMenu(wrapper, "rename");
     const input = wrapper.find('[data-testid="vault-rename-input"]');
     expect((input.element as HTMLInputElement).value).toBe("Work");
+    expect(wrapper.find('[data-testid="vault-dialog-rename"]').text()).toContain("Secret references that use Work need the new name after you rename this vault.");
     expect(wrapper.find('[data-testid="vault-rename-save"]').attributes("disabled")).toBeDefined();
     await input.setValue("  Work 2026 ");
     await wrapper.find('[data-testid="vault-rename-save"]').trigger("click");
     await flushPromises();
     expect(api.renameVault).toHaveBeenCalledWith("work", "Work 2026");
     expect(store.allVault.find((vault) => vault.id === "work")?.name).toBe("Work 2026");
+    expect(store.noticeMessage).toBe("Renamed Work to Work 2026. Secret references that use Work need the new name.");
   });
 
   it("leaves a vault shared with the user", async () => {

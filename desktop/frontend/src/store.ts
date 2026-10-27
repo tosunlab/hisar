@@ -856,13 +856,14 @@ export function closeVaultDialog(): void {
 
 export async function renameVault(name: string): Promise<boolean> {
   const vaultID = store.vaultDialog?.actions.vault.id ?? "";
+  const oldName = store.vaultDialog?.actions.vault.name ?? "";
   const renamed = await runAction(() => api.renameVault(vaultID, name));
   if (!renamed) {
     return false;
   }
   store.vaultDialog = null;
   store.allVault = store.allVault.map((vault) => (vault.id === vaultID ? { ...vault, name: renamed.name } : vault));
-  showNotice(`Renamed the vault to ${renamed.name}`);
+  showNotice(`Renamed ${oldName} to ${renamed.name}. Secret references that use ${oldName} need the new name.`);
   return true;
 }
 

@@ -89,6 +89,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | Use | Not |
 |---|---|
 | Rename…, Delete vault…, Leave vault… (the vault's menu; ⋯ is labelled "Vault actions") | Remove vault, Archive, Exit vault |
+| Secret references that use Work need the new name after you rename this vault. · Renamed Work to Engineering. Secret references that use Work need the new name. | Every vault rename warns about name-based references. Shared and organization vaults also say "Everyone who has this vault sees the new name." Stable-ID references are unchanged. |
 | Delete “Work”? · These people lose access: · Move its N items to [vault] · Delete the vault and its N items · Type Work to confirm · Delete vault | Are you sure?, Destroy, Wipe |
 | Leave “Work”? · You lose access to its items on all your devices. An owner can invite you again. · Leave vault | Unsubscribe, Quit vault |
 | Your Personal vault can't be deleted. It is the vault Hisar keeps for you alone, and logins saved from the browser and your phone go there. | Cannot delete default vault |

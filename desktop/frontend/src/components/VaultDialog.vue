@@ -90,7 +90,8 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
       <form v-else-if="dialog.mode === 'rename'" @submit.prevent="submitRename">
         <label class="field-label" for="vault-new-name">Name</label>
         <input id="vault-new-name" v-model="newName" name="vaultName" autocomplete="off" autofocus data-testid="vault-rename-input" />
-        <p v-if="vault.type === 'shared'" class="muted hint">Everyone who shares this vault sees the new name.</p>
+        <p class="muted hint">Secret references that use {{ vault.name }} need the new name after you rename this vault.</p>
+        <p v-if="vault.type === 'shared' || vault.organizationId" class="muted hint">Everyone who has this vault sees the new name.</p>
         <div class="actions">
           <button type="button" class="ghost" @click="closeVaultDialog">Cancel</button>
           <button class="primary" type="submit" data-testid="vault-rename-save" :disabled="store.isBusy || !newName.trim() || newName.trim() === vault.name">Save</button>

@@ -156,7 +156,10 @@ struct ItemListView: View {
             }
             .accessibilityIdentifier("rename-vault-confirm")
         } message: {
-            Text("Everyone who shares the vault sees the new name.")
+            Text(issueToRepair != nil
+                 ? "Secret references that use the previous name may need updating."
+                 : "Secret references that use \(vault?.name ?? "") need the new name after you rename this vault."
+                   + ((vault?.type == "shared" || vault?.isOrganization == true) ? " Everyone who has this vault sees the new name." : ""))
         }
         .alert("Can't do that", isPresented: Binding(get: { blockedReason != nil }, set: { if !$0 { blockedReason = nil } })) {
             Button("OK", role: .cancel) {}

@@ -59,11 +59,12 @@ class VaultsModel(private val context: ModelContext) {
     suspend fun loadVaultActions(vaultID: String): VaultActions? = context.perform(isBusyShown = false) { it.getVaultActions(vaultID) }
 
     suspend fun renameVault(vaultID: String, name: String): Boolean {
+        val oldName = context.unlockedData.value.findVault(vaultID)?.name.orEmpty()
         val renamed = context.perform { it.renameVault(vaultID, name) } ?: return false
         context.updateUnlockedData { data ->
             data.copy(allVault = data.allVault.map { if (it.id == vaultID) it.copy(name = renamed.name) else it }.sortedWith(AppModel.vaultOrder))
         }
-        context.showNotice("Renamed the vault to ${renamed.name}")
+        context.showNotice("Renamed $oldName to ${renamed.name}. Secret references that use $oldName need the new name.")
         return true
     }
 
