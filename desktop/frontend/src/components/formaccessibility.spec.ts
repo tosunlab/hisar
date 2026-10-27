@@ -46,17 +46,31 @@ describe("form correction accessibility", () => {
   it("keeps password-change names stable and descriptions separate", async () => {
     const wrapper = mount(ChangeMasterPasswordDialog, { attachTo: document.body });
     const password = wrapper.find('input[name="newPassword"]');
-    await password.setValue("short");
+    await password.setValue("hunter2");
+    await flushPromises();
     expect(computeAccessibleName(password.element)).toBe("New master password");
     expect(computeAccessibleDescription(password.element)).not.toBe("");
     expect(password.attributes("aria-invalid")).toBe("true");
     await password.trigger("blur");
     expect(wrapper.find('[role="status"]').text()).toBe(wrapper.find('[data-testid="new-password-feedback"]').text());
     await password.setValue("Long unique master password 92");
+    await flushPromises();
     const repeat = wrapper.find('input[name="repeatedPassword"]');
     await repeat.setValue("different");
     expect(computeAccessibleName(repeat.element)).toBe("Repeat new master password");
     expect(computeAccessibleDescription(repeat.element)).toBe("The passwords don't match.");
+  });
+
+  it("associates the same-password correction with the new password", async () => {
+    const wrapper = mount(ChangeMasterPasswordDialog, { attachTo: document.body });
+    const password = wrapper.find('input[name="newPassword"]');
+    await wrapper.find('input[name="currentPassword"]').setValue("Long unique master password 92");
+    await password.setValue("Long unique master password 92");
+    await flushPromises();
+    expect(password.attributes("aria-invalid")).toBe("true");
+    expect(computeAccessibleDescription(password.element)).toContain("The new master password is the same as the current one.");
+    await password.trigger("blur");
+    expect(wrapper.find('[role="status"]').text()).toBe("The new master password is the same as the current one.");
   });
 
   it("associates export requirements and mismatches with the field to correct", async () => {
