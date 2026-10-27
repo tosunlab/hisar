@@ -4,6 +4,7 @@ import generatedCSS from "./themes.css?raw";
 import generatedAdminCSS from "../../../admin/src/themes.css?raw";
 import generatedSwift from "../../../mobile/ios/Shared/Views/ThemePalettes.swift?raw";
 import generatedKotlin from "../../../mobile/android/model/src/main/kotlin/com/tryhisar/hisar/model/theme/ThemePalettes.kt?raw";
+import androidColors from "../../../mobile/android/app/src/main/kotlin/com/tryhisar/hisar/ui/theme/HisarTheme.kt?raw";
 import { computeContrastRatio, renderThemeCSS, renderThemeKotlin, renderThemeSwift, resolveAllTheme, type ThemeSource } from "../../../scripts/themes/render";
 
 const source = themeSource as ThemeSource;
@@ -61,6 +62,23 @@ describe("themes", () => {
       }
     }
     expect(allFailure).toEqual([]);
+  });
+
+  it.each(allTheme.map((theme) => [theme.color, theme.appearance, theme.tokens] as const))("%s %s keeps Android prompts readable on cells, dialogs and search", (_color, appearance, tokens) => {
+    const colorPair = (role: string): number[] => {
+      const match = androidColors.match(new RegExp(`${role} = pick\\(0x([A-Fa-f0-9]{8}), 0x([A-Fa-f0-9]{8})\\)`));
+      expect(match, role).not.toBeNull();
+      const value = parseInt(match![appearance === "dark" ? 2 : 1], 16);
+      return [(value >>> 16) & 255, (value >>> 8) & 255, value & 255, (value >>> 24) / 255];
+    };
+    const composite = (foreground: number[], background: number[]) => foreground.slice(0, 3).map((channel, index) => channel * foreground[3] + background[index] * (1 - foreground[3]));
+    const cell = colorPair("cellBackground");
+    const fill = colorPair("fill");
+    const grouped = [1, 3, 5].map((start) => parseInt(tokens.iosGroupedBackground.slice(start, start + 2), 16));
+    for (const backdrop of [cell, composite(fill, cell), composite(fill, grouped)]) {
+      const hex = "#" + backdrop.slice(0, 3).map((value) => Math.round(value).toString(16).padStart(2, "0")).join("");
+      expect(computeContrastRatio(tokens.androidPlaceholder, hex)).toBeGreaterThanOrEqual(textMinimum);
+    }
   });
 
   it("computes the WCAG ratio", () => {

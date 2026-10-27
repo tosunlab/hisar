@@ -67,6 +67,7 @@
       "iosSecondaryLabel": "#6c6c70",
       "iosTint": "#1d2025",
       "iosOnTint": "#ffffff",
+      "androidPlaceholder": "#606065",
       "iosWarning": "#8f5b00"
     },
     "dark": {
@@ -134,6 +135,7 @@
       "iosSecondaryLabel": "#98989f",
       "iosTint": "#eceef1",
       "iosOnTint": "#0b0c0e",
+      "androidPlaceholder": "#a0a0a7",
       "iosWarning": "#d9a33c"
     }
   },
