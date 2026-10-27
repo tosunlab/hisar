@@ -1,14 +1,20 @@
 <script setup lang="ts">
-import { onUnmounted, ref, watch } from "vue";
+import { computed, onUnmounted, ref, watch } from "vue";
 import { acknowledgePendingRecovery, discardPreparedRecovery, resumePendingRecovery, savePendingRecoveryKit, store } from "../store";
 import type { PendingRecoverySummary } from "../api";
 import HisarLogo from "./HisarLogo.vue";
+import { recoveryHeading, recoveryHost, recoveryStatus } from "../pendingRecoveryCopy";
 
 const password = ref("");
 const secretKey = ref("");
 const priorSecretKey = ref("");
 const savedOperationID = ref("");
 const isSavedConfirmed = ref<Record<string, boolean>>({});
+const selectedID = ref(store.pendingRecovery[0]?.operationId ?? "");
+const selected = computed(() => store.pendingRecovery.find(operation => operation.operationId === selectedID.value));
+watch(() => store.pendingRecovery.map(operation => operation.operationId), ids => {
+  if (!ids.includes(selectedID.value)) selectedID.value = ids[0] ?? "";
+});
 function clearFactors(): void {
   password.value = "";
   secretKey.value = "";
@@ -47,37 +53,42 @@ async function run(operation: PendingRecoverySummary, action: "resume" | "save" 
   <main class="recovery" data-testid="pending-recovery">
     <div class="recovery-card">
       <HisarLogo />
-      <h1>Finish saving your account recovery</h1>
-      <p>Choose the operation you want to finish. Nothing is resumed automatically.</p>
+      <h1>Finish account setup</h1>
+      <p>Save and confirm your Emergency Kit to finish this setup.</p>
+      <div v-if="store.pendingRecovery.length > 1" class="recovery-chooser">
+        <button v-for="operation in store.pendingRecovery" :key="operation.operationId" @click="selectedID = operation.operationId">
+          <strong>{{ recoveryHeading(operation.kind) }}</strong>
+          <span>{{ operation.email }} · {{ recoveryHost(operation.origin) }} ›</span>
+        </button>
+      </div>
       <p v-if="store.errorMessage" class="error" role="alert">{{ store.errorMessage }}</p>
-      <label><span>Master password for this operation</span><input v-model="password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /></label>
+      <label><span>Master password</span><input v-model="password" name="pendingRecoveryPassword" type="password" autocomplete="current-password" :disabled="store.isBusy" /><span class="hint">Enter your master password to continue.</span></label>
       <label><span>Secret Key from the saved Emergency Kit, if this app restarted</span><input v-model="secretKey" name="pendingRecoverySecretKey" type="password" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
       <label><span>Previous Secret Key, only if requested for an interrupted replacement</span><input v-model="priorSecretKey" name="pendingRecoveryPriorSecretKey" type="password" autocomplete="off" spellcheck="false" :disabled="store.isBusy" /></label>
-      <article v-for="operation in store.pendingRecovery" :key="operation.operationId" data-testid="pending-operation">
-        <h2>{{ operation.kind === 'signup' ? 'Account setup' : 'Secret Key replacement' }} · {{ operation.email }}</h2>
-        <p class="muted">{{ operation.origin }}</p>
+      <article v-for="operation in selected ? [selected] : []" :key="operation.operationId" data-testid="pending-operation">
+        <h2>{{ recoveryHeading(operation.kind) }}</h2>
+        <p class="muted">{{ operation.email }} · {{ recoveryHost(operation.origin) }}</p>
+        <p><strong>Server</strong> {{ operation.origin }}</p>
         <p v-if="store.recoveryFactor?.operationId === operation.operationId" class="monospace" data-testid="recovery-secret-key">{{ store.recoveryFactor.secretKey }}</p>
-        <p v-if="operation.phase === 'awaiting-kit'" role="status">The account change has not been sent. Save the new Emergency Kit and confirm you have it before continuing.</p>
-        <p v-else-if="operation.phase === 'prepared'" role="status">Your kit is confirmed saved. The account change has not been sent. Choose Verify and resume to commit it.</p>
-        <p v-else-if="operation.phase === 'delivery-pending'" role="status">The operation completed. Save and confirm the Emergency Kit before dismissing this recovery record.</p>
-        <p v-else-if="operation.phase === 'needs-finishing'" role="status">The account was changed, but setup still needs finishing. Verify and resume with the same master password.</p>
-        <p v-else-if="operation.phase === 'manual-unlock'" role="status">The keychain is unavailable. Sign in with the Secret Key from your saved Emergency Kit and your master password.</p>
-        <p v-else role="status">The server outcome is not confirmed. Verify and resume before assuming the change succeeded or failed.</p>
-        <p class="hint">Verify and resume signs in to this account. If a different account is open, it will be replaced only when you choose this action.</p>
+        <p role="status" data-testid="pending-recovery-phase">{{ recoveryStatus(operation.kind, operation.phase) }}</p>
+        <p v-if="store.status.state !== 'signed-out' && (store.status.email !== operation.email || store.status.server !== operation.origin)" class="hint">Continuing signs this device in to {{ operation.email }} on {{ recoveryHost(operation.origin) }}.</p>
         <p v-if="!operation.keychainProtected" class="hint">This device does not persist the new Secret Key. After a restart, enter the Secret Key from your saved kit to resume. If you closed the app before saving an uncommitted kit, discard that setup and start again.</p>
         <p v-for="problem in operation.problems" :key="problem" class="error">{{ problem }}</p>
         <div class="row">
-          <button :disabled="store.isBusy || !password || operation.phase === 'awaiting-kit'" @click="run(operation, 'resume')">Verify and resume</button>
-          <button :disabled="store.isBusy || !password || operation.phase === 'outcome-unknown'" @click="run(operation, 'save')">Save recovery Emergency Kit…</button>
+          <button :disabled="store.isBusy || !password || operation.phase === 'awaiting-kit'" @click="run(operation, 'resume')">{{ operation.phase === 'manual-unlock' ? 'Sign in with saved Emergency Kit' : 'Continue' }}</button>
+          <button :disabled="store.isBusy || !password || operation.phase === 'outcome-unknown'" @click="run(operation, 'save')">Save Emergency Kit…</button>
         </div>
         <template v-if="savedOperationID === operation.operationId || operation.kitSaved">
           <label class="check-row"><input v-model="isSavedConfirmed[operation.operationId]" name="pendingRecoveryKitSaved" type="checkbox" /><span>I saved the Emergency Kit somewhere safe</span></label>
           <button class="primary" :disabled="store.isBusy || !password || !isSavedConfirmed[operation.operationId] || (operation.phase !== 'delivery-pending' && operation.phase !== 'awaiting-kit')" @click="run(operation, 'acknowledge')">Confirm saved</button>
         </template>
-        <button v-if="operation.phase === 'awaiting-kit' || operation.phase === 'prepared'" class="ghost" :disabled="store.isBusy || !password" @click="run(operation, 'discard')">Discard uncommitted setup</button>
+        <template v-if="operation.phase === 'awaiting-kit' || operation.phase === 'prepared'">
+          <button class="ghost" :disabled="store.isBusy || !password" @click="run(operation, 'discard')">Cancel this setup</button>
+          <p class="hint">This removes only this uncommitted setup. No server change has been sent.</p>
+        </template>
       </article>
       <button class="ghost" :disabled="store.isBusy" @click="store.isRecoveryOpen = false">Finish later</button>
-      <p class="hint muted">Finishing later keeps the recovery record. You can reopen recovery from this window.</p>
+      <p class="hint muted">You can finish later from the reminder in this window.</p>
     </div>
   </main>
 </template>

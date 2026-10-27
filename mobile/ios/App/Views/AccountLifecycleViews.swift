@@ -406,7 +406,7 @@ struct PendingRecoveryView: View {
         NavigationStack {
             Form {
                 Section {
-                    Text("Account setup needs finishing. These records stay on this phone until you save the new Emergency Kit and confirm it. Your current account stays unchanged unless you explicitly resume another account.")
+                    Text("Save and confirm your Emergency Kit to finish this setup.")
                 }
                 Section("Choose an account") {
                     ForEach(model.allPendingRecovery) { recovery in
@@ -415,11 +415,13 @@ struct PendingRecoveryView: View {
                             model.clearPendingRecoveryExport()
                             selectedID = recovery.operationId
                         } label: {
-                            VStack(alignment: .leading) {
-                                Text(recovery.email)
-                                Text(recovery.origin).font(.caption)
-                                Text(recovery.kind).font(.caption)
-                                Text(recovery.phase).font(.caption)
+                            HStack {
+                                VStack(alignment: .leading) {
+                                    Text(PendingRecoveryCopy.heading(recovery.kind))
+                                    Text("\(recovery.email) · \(PendingRecoveryCopy.host(recovery.origin))").font(.caption)
+                                }
+                                Spacer()
+                                Image(systemName: "chevron.right").accessibilityHidden(true)
                             }
                         }
                         .accessibilityIdentifier("pending-recovery-\(recovery.operationId)")
@@ -427,8 +429,8 @@ struct PendingRecoveryView: View {
                 }
                 if let recovery = selected {
                     Section {
-                        Text(recovery.origin)
-                        Text(recovery.phase)
+                        LabeledContent("Server", value: recovery.origin)
+                        Text(PendingRecoveryCopy.status(kind: recovery.kind, phase: recovery.phase))
                             .accessibilityIdentifier("pending-recovery-phase")
                         if !recovery.keychainProtected {
                             Text("The OS keychain is unavailable. Save the Emergency Kit before continuing. After a restart, enter the Secret Key from that kit. Hisar does not store the Secret Key in this recovery record.")
@@ -445,10 +447,14 @@ struct PendingRecoveryView: View {
                             }
                         }
                         ForEach(recovery.problems, id: \.self) { Text($0) }
-                        SecureField("Master password for this recovery", text: $password)
+                        SecureField("Master password", text: $password)
                             .textContentType(.password)
                             .accessibilityIdentifier("pending-recovery-password")
-                        Button(recovery.phase == "manual-unlock" ? "Sign in with saved Emergency Kit" : "Resume account setup") {
+                        Text("Enter your master password to continue.").font(.footnote)
+                        if model.status.state != VaultStatus.stateSignedOut && (model.status.email != recovery.email || model.status.server != recovery.origin) {
+                            Text("Continuing signs this device in to \(recovery.email) on \(PendingRecoveryCopy.host(recovery.origin)).")
+                        }
+                        Button(recovery.phase == "manual-unlock" ? "Sign in with saved Emergency Kit" : "Continue") {
                             let enteredPassword = password
                             let enteredKey = secretKey
                             let enteredPriorKey = priorSecretKey
@@ -476,7 +482,7 @@ struct PendingRecoveryView: View {
                             }
                             .accessibilityIdentifier("pending-recovery-share-kit")
                         }
-                        Button("I saved the new Emergency Kit") {
+                        Button("I saved my Emergency Kit") {
                             let enteredPassword = password
                             clearCredentials()
                             Task { await model.acknowledgePendingRecovery(operationID: recovery.operationId, password: enteredPassword) }
@@ -484,19 +490,19 @@ struct PendingRecoveryView: View {
                         .disabled(password.isEmpty || model.isBusy || !recovery.kitSaved || (recovery.phase != "delivery-pending" && recovery.phase != "awaiting-kit"))
                         .accessibilityIdentifier("pending-recovery-acknowledge")
                         if recovery.phase == "awaiting-kit" || recovery.phase == "prepared" {
-                            Button("Discard uncommitted setup", role: .destructive) { isDiscardConfirmationShown = true }
+                            Button("Cancel this setup", role: .destructive) { isDiscardConfirmationShown = true }
                                 .disabled(password.isEmpty || model.isBusy)
                                 .accessibilityIdentifier("pending-recovery-discard")
                         }
                     } header: {
-                        Text(recovery.email)
+                        Text(PendingRecoveryCopy.heading(recovery.kind))
                     } footer: {
-                        Text("Use the password you chose for this change. Resume may switch the account open on this phone. Preparing a kit does not confirm that you saved it.")
+                        Text("Preparing a kit does not confirm that you saved it.")
                     }
                 }
                 if model.isBusy {
                     Section {
-                        ProgressView("Finishing account recovery")
+                        ProgressView("Finishing account setup")
                             .accessibilityIdentifier("pending-recovery-progress")
                     }
                 }
@@ -507,10 +513,10 @@ struct PendingRecoveryView: View {
                 }
             }
             .applyThemedListBackground()
-            .navigationTitle("Account recovery")
+            .navigationTitle("Finish account setup")
         }
-        .confirmationDialog("Discard this uncommitted setup?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
-            Button("Discard setup", role: .destructive) {
+        .confirmationDialog("Cancel this setup?", isPresented: $isDiscardConfirmationShown, titleVisibility: .visible) {
+            Button("Cancel this setup", role: .destructive) {
                 guard let recovery = selected else { return }
                 let enteredPassword = password
                 clearCredentials()

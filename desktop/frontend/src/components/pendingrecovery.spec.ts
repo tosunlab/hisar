@@ -22,7 +22,7 @@ beforeEach(() => {
 describe("Pending recovery", () => {
   it("shows partial completion without claiming success or exposing factors", () => {
     const wrapper = mount(PendingRecoveryView);
-    expect(wrapper.text()).toContain("setup still needs finishing");
+    expect(wrapper.text()).toContain("Your account was created, but setup did not finish on this device.");
     expect(wrapper.text()).toContain("This device does not persist the new Secret Key");
     expect(wrapper.text()).not.toContain("The operation completed");
     expect(mock.api.resumePendingRecovery).not.toHaveBeenCalled();
@@ -34,8 +34,8 @@ describe("Pending recovery", () => {
     const wrapper = mount(PendingRecoveryView);
     const password = wrapper.find('input[name="pendingRecoveryPassword"]');
     await password.setValue("password");
-    expect(wrapper.findAll("button").find((button) => button.text() === "Verify and resume")!.attributes("disabled")).toBeDefined();
-    await wrapper.findAll("button").find((button) => button.text() === "Save recovery Emergency Kit…")!.trigger("click");
+    expect(wrapper.findAll("button").find((button) => button.text() === "Continue")!.attributes("disabled")).toBeDefined();
+    await wrapper.findAll("button").find((button) => button.text() === "Save Emergency Kit…")!.trigger("click");
     await flushPromises();
     await wrapper.find('input[name="pendingRecoveryKitSaved"]').setValue(true);
     await password.setValue("password");
@@ -43,7 +43,7 @@ describe("Pending recovery", () => {
     mock.api.listPendingRecovery.mockResolvedValue([{ ...entry, phase: "prepared", kitSaved: true }]);
     await wrapper.findAll("button").find((button) => button.text() === "Confirm saved")!.trigger("click");
     await flushPromises();
-    expect(wrapper.text()).toContain("The account change has not been sent");
+    expect(wrapper.text()).toContain("Your Emergency Kit is confirmed saved. Continue to send this change.");
     expect(mock.api.resumePendingRecovery).not.toHaveBeenCalled();
     expect(model.store.status.state).toBe("signed-out");
   });
@@ -53,7 +53,7 @@ describe("Pending recovery", () => {
     mock.api.savePendingRecoveryEmergencyKit.mockResolvedValue("");
     const wrapper = mount(PendingRecoveryView);
     await wrapper.find('input[name="pendingRecoveryPassword"]').setValue("password");
-    const save = wrapper.findAll("button").find((button) => button.text() === "Save recovery Emergency Kit…")!;
+    const save = wrapper.findAll("button").find((button) => button.text() === "Save Emergency Kit…")!;
     await save.trigger("click");
     await flushPromises();
     expect(wrapper.find('input[name="pendingRecoveryKitSaved"]').exists()).toBe(false);

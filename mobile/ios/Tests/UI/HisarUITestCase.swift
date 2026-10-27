@@ -279,11 +279,11 @@ class HisarUITestCase: XCTestCase {
 
     @discardableResult
     func finishPendingRecovery(email: String, password: String, restartAfterPreparingKit: Bool = false) -> String {
-        let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pending-recovery-' AND label CONTAINS %@ AND NOT label CONTAINS 'manual-unlock'", email)).firstMatch
+        let account = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'pending-recovery-' AND label CONTAINS %@", email)).firstMatch
         waitFor(account, timeout: 60)
         account.tap()
         let phase = app.staticTexts["pending-recovery-phase"]
-        let isPrecommit = phase.label == "awaiting-kit"
+        let isPrecommit = phase.label == "Save and confirm your new Emergency Kit before Hisar sends this change."
         let passwordField = app.secureTextFields["pending-recovery-password"]
         type(password, into: passwordField)
         scrollTo(app.buttons["pending-recovery-export"])
@@ -303,13 +303,13 @@ class HisarUITestCase: XCTestCase {
         scrollTo(app.buttons["pending-recovery-acknowledge"])
         app.buttons["pending-recovery-acknowledge"].tap()
         if isPrecommit {
-            let prepared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'prepared'"), object: phase)
+            let prepared = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Your Emergency Kit is confirmed saved. Continue to send this change."), object: phase)
             wait(for: [prepared], timeout: 60)
             type(secretKey, into: app.secureTextFields["pending-recovery-input-secret-key"])
             type(password, into: passwordField)
             scrollTo(app.buttons["pending-recovery-resume"])
             app.buttons["pending-recovery-resume"].tap()
-            let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == 'delivery-pending'"), object: phase)
+            let committed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", "Your account is ready. Save and confirm your Emergency Kit to finish."), object: phase)
             wait(for: [committed], timeout: 60)
             type(password, into: passwordField)
             scrollTo(app.buttons["pending-recovery-acknowledge"])
@@ -317,7 +317,7 @@ class HisarUITestCase: XCTestCase {
         }
         // Acknowledging runs while the recovery screen covers the app; the screen closes once the record is gone, or shows
         // manual-unlock. Until then the screen beneath is there but covered (job 120454298607 tapped its unlock field).
-        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO OR label == 'manual-unlock'"), object: phase)
+        let finished = XCTNSPredicateExpectation(predicate: NSPredicate(format: "exists == NO OR label == %@", "Sign in with your master password and the Secret Key from your saved Emergency Kit."), object: phase)
         wait(for: [finished], timeout: 60)
         if phase.exists {
             scrollTo(app.buttons["pending-recovery-later"])

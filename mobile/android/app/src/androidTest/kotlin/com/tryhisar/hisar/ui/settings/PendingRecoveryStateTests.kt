@@ -64,7 +64,7 @@ class PendingRecoveryStateTests {
 
         restoration.emulateSavedInstanceStateRestore()
 
-        composeRule.onNodeWithTag("pending-recovery-phase").assertTextEquals("delivery-pending")
+        composeRule.onNodeWithTag("pending-recovery-phase").assertTextEquals("Your account is ready. Save and confirm your Emergency Kit to finish.")
         composeRule.onNodeWithTag("pending-recovery-secret-key").assertExists()
         assertTrue("recreating the screen deleted the prepared kit", kit.exists())
     }

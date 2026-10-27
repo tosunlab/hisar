@@ -636,6 +636,11 @@ Recovery is only through the Emergency Kit (§4.1). With the email, server and S
 
 **Interrupted setup is distinct from forgotten-password recovery.** The operation journal (§5.2) reconciles a particular already-prepared signup or factor replacement; it cannot recover a forgotten password or bypass the independent Secret Key. Native default recovery needs the OS-wrapped operation key and password. Without that OS protection, restart needs the explicitly user-saved Emergency Kit as well as the password because no factor is persisted in the journal. The CLI exposes `hisar account pending list|resume|kit|acknowledge|discard`; discard is restricted to prepared operations for which no finish may have been sent.
 
+The native page is **Finish account setup**. A record names whether account creation or Secret Key replacement needs
+finishing, followed by its email and server host. Kind-by-phase sentences describe what happened and what remains;
+internal phase identifiers are never visible or spoken. **Continue** warns about an account switch only when it replaces
+a different open account. **Cancel this setup** is available only before a remote finish may have been sent.
+
 **Admin recovery was removed.** Earlier versions let one admin hold a recovery keyset that every recoverable vault key was wrapped to, and recover other users' accounts with one-time links. Migration `00004_remove_recovery` deletes all of it: the tables `recovery_keyset`, `vault_recovery`, `recovery_tokens` and `account_recovery` and the column `vaults.recovery_opt_out`. Its down migration recreates only the empty structure; the deleted keyset, wrappings and pending recoveries cannot come back. The recovery endpoints are gone and answer 404. Older clients keep working: a 404 for the recovery keyset means "recovery is not set up" to them, so they stop wrapping vault keys to it.
 
 ## 7. Sync protocol

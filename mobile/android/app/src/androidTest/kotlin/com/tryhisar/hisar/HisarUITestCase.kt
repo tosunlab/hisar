@@ -231,7 +231,7 @@ abstract class HisarUITestCase {
         val record = SemanticsMatcher("a pending recovery record") { node ->
             node.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("pending-recovery-") == true
         }
-        val account = record and hasText(email, substring = true) and !hasText("manual-unlock", substring = true)
+        val account = record and hasText(email, substring = true)
         waitFor(account, ACCOUNT_KEY_TIMEOUT)
         val row = composeRule.onAllNodes(account).onLast()
         val recordTag = row.fetchSemanticsNode().config[SemanticsProperties.TestTag]
@@ -255,17 +255,17 @@ abstract class HisarUITestCase {
         }
         type(password, "pending-recovery-password")
         tapWhenEnabled("pending-recovery-acknowledge")
-        if (kit.phase == "awaiting-kit") {
-            waitFor(hasTestTag("pending-recovery-phase") and hasText("prepared"), ACCOUNT_KEY_TIMEOUT)
+        if (kit.phase == "Save and confirm your new Emergency Kit before Hisar sends this change.") {
+            waitFor(hasTestTag("pending-recovery-phase") and hasText("Your Emergency Kit is confirmed saved. Continue to send this change."), ACCOUNT_KEY_TIMEOUT)
             type(kit.secretKey, "pending-recovery-input-secret-key")
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-resume")
-            waitFor(hasTestTag("pending-recovery-phase") and hasText("delivery-pending"), ACCOUNT_KEY_TIMEOUT)
+            waitFor(hasTestTag("pending-recovery-phase") and hasText("Your account is ready. Save and confirm your Emergency Kit to finish."), ACCOUNT_KEY_TIMEOUT)
             type(password, "pending-recovery-password")
             tapWhenEnabled("pending-recovery-acknowledge")
         }
         composeRule.waitUntil("recovery delivery is acknowledged", ACCOUNT_KEY_TIMEOUT) {
-            !exists(hasTestTag("pending-recovery-phase")) || exists(hasTestTag("pending-recovery-phase") and hasText("manual-unlock"))
+            !exists(hasTestTag("pending-recovery-phase")) || exists(hasTestTag("pending-recovery-phase") and hasText("Sign in with your master password and the Secret Key from your saved Emergency Kit."))
         }
         if (exists(hasTestTag("pending-recovery-phase"))) tap("pending-recovery-later")
         return kit.secretKey

@@ -456,15 +456,15 @@ func (s *Service) AcknowledgePendingRecovery(operationID, password string) error
 
 func (s *Service) acknowledgeRecovery(entry *PendingRecoverySummary) error {
 	if entry.Phase == "awaiting-kit" && entry.KitSaved {
-		entry.Phase, entry.Problems = "prepared", []string{"The Emergency Kit was acknowledged. Explicitly resume to finish the remote operation."}
+		entry.Phase, entry.Problems = "prepared", []string{"Your Emergency Kit is confirmed saved. Continue to send this change."}
 		return s.updatePendingRecovery(entry)
 	}
 	if entry.Phase != "delivery-pending" || !entry.KitSaved {
-		return errors.New("finish setup and save the Emergency Kit before acknowledging delivery")
+		return errors.New("finish setup and save your Emergency Kit before confirming it")
 	}
 	if entry.ManualUnlock {
 		entry.Phase = "manual-unlock"
-		entry.Problems = []string{"The Emergency Kit was delivered. Enter its Secret Key and your master password to sign in without an OS keychain."}
+		entry.Problems = []string{"Sign in with your master password and the Secret Key from your saved Emergency Kit. This device could not save the key in its OS keychain."}
 		return s.updatePendingRecovery(entry)
 	}
 	return s.removePendingRecovery(entry)
@@ -497,7 +497,7 @@ func (s *Service) DiscardPreparedRecovery(operationID, password string) error {
 		return err
 	}
 	if entry.Phase != "awaiting-kit" && entry.Phase != "prepared" {
-		return errors.New("a remote request may have been sent; reconcile this recovery operation instead of discarding its only factor")
+		return errors.New("Hisar may have sent this change. Continue to check its result instead of cancelling this setup")
 	}
 	return s.removePendingRecovery(entry)
 }
