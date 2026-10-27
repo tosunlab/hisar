@@ -17,14 +17,14 @@ final class WideLayoutUITests: HisarUITestCase {
         XCTAssertEqual(app.buttons["vault-Personal"].isHittable, isWide, "the vault list beside the Personal vault's items, \(layout)")
         waitForHittable(app.buttons["item-GitHub"])
         app.buttons["item-GitHub"].tap()
-        waitFor(app.staticTexts["password-value"])
+        waitFor(app.buttons["copy-password"])
         XCTAssertEqual(app.buttons["vault-Personal"].isHittable, isWide, "the vault list beside an item, \(layout)")
         saveScreenshot("\(layout)-item-detail")
         if isWide {
             // Another row of the list replaces the whole detail column.
             app.buttons["category-logins"].tap()
             waitFor(app.navigationBars["Logins"])
-            XCTAssertFalse(app.staticTexts["password-value"].exists, "the item left the detail column for the Logins list")
+            XCTAssertFalse(app.buttons["copy-password"].exists, "the item left the detail column for the Logins list")
             waitForHittable(app.buttons["item-GitHub"])
         } else {
             goBack()
@@ -35,7 +35,7 @@ final class WideLayoutUITests: HisarUITestCase {
         type("git", into: app.searchFields.firstMatch)
         waitForHittable(app.buttons["item-GitHub"])
         app.buttons["item-GitHub"].tap()
-        waitFor(app.staticTexts["password-value"])
+        waitFor(app.buttons["copy-password"])
         XCTAssertEqual(app.searchFields.firstMatch.isHittable, isWide, "the search field beside a result, \(layout)")
         saveScreenshot("\(layout)-search")
         if !isWide {
