@@ -1738,10 +1738,15 @@ export async function removeVaultMember(member: VaultMember): Promise<boolean> {
 // Organizations load quietly for the vault list and its banners; Settings → Organizations says why its list could not
 // load, like the SSH agent section. A refused change shows the server's sentence in an alert named after the action.
 
+export function getOrganizationName(organizationID: string): string {
+  return store.organizations.organizations.find((organization) => organization.id === organizationID)?.name
+    || `Organization ${organizationID.slice(0, 8)}`;
+}
+
 function applyOrganizations(organizations: Organizations): void {
   store.organizations = organizations;
   const allOrganizationID = new Set(organizations.organizations.map((organization) => organization.id));
-  store.organizationByID = Object.fromEntries(Object.entries(store.organizationByID).filter(([organizationID]) => allOrganizationID.has(organizationID)));
+  store.organizationByID = organizations.isCached ? {} : Object.fromEntries(Object.entries(store.organizationByID).filter(([organizationID]) => allOrganizationID.has(organizationID)));
   if (!allOrganizationID.has(store.selectedOrganizationID)) {
     store.selectedOrganizationID = "";
   }
@@ -1808,6 +1813,10 @@ export async function loadAllOrganizationQuietly(): Promise<string> {
     const organizations = await api.listAllOrganization();
     if (store.status.state !== "unlocked") {
       return "Hisar is locked.";
+    }
+    if (organizations.isCached) {
+      applyOrganizations(organizations);
+      return "Connect to the Hisar server to load teams.";
     }
     const allOrganization = await Promise.all(organizations.organizations.map((organization) => api.getOrganization(organization.id)));
     if (store.status.state !== "unlocked") {

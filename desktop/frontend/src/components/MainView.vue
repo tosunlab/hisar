@@ -8,6 +8,7 @@ import {
   createVault,
   duplicateItem,
   hasShareableField,
+  getOrganizationName,
   filterAllFavorite,
   filterAllItem,
   listAllTag,
@@ -166,7 +167,7 @@ const allVaultGroup = computed(() => {
     if (!vault.organizationId) {
       continue;
     }
-    const name = store.organizations.organizations.find((organization) => organization.id === vault.organizationId)?.name ?? "Organization";
+    const name = getOrganizationName(vault.organizationId);
     const group = groupByID.get(vault.organizationId) ?? { organizationID: vault.organizationId, name, allVault: [] };
     group.allVault.push(vault);
     groupByID.set(vault.organizationId, group);

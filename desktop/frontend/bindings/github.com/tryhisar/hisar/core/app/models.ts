@@ -628,6 +628,11 @@ export interface OrganizationSummary {
 export interface Organizations {
     "organizations": OrganizationSummary[] | null;
     "invitations": OrganizationInvitation[] | null;
+
+    /**
+     * IsCached means only saved organization IDs and names are available, not live membership or invitations.
+     */
+    "isCached"?: boolean;
 }
 
 export interface PairedBrowser {

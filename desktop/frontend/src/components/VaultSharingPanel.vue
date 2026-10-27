@@ -8,6 +8,7 @@ import {
   closeSharing,
   getAllSentShareInvitation,
   getFirstName,
+  getOrganizationName,
   getSelectedVault,
   giveVaultToTeam,
   removeVaultMember,
@@ -41,7 +42,7 @@ const ownRole = computed(() => store.allVaultMember.find((vaultMember) => vaultM
 const organizationID = computed(() => vault.value?.organizationId ?? "");
 const organization = computed(() => (organizationID.value ? store.organizationByID[organizationID.value] : undefined));
 const organizationName = computed(
-  () => organization.value?.name ?? store.organizations.organizations.find((candidate) => candidate.id === organizationID.value)?.name ?? "",
+  () => getOrganizationName(organizationID.value),
 );
 const allTeamWithVault = computed(() =>
   (organization.value?.teams ?? []).flatMap((team) => {

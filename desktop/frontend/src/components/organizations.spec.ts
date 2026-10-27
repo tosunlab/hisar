@@ -91,6 +91,7 @@ function resetStore(allVault: VaultSummary[] = [personalVault, familyVault, depl
     noticeMessage: "",
     isBusy: false,
     isSettingsOpen: false,
+    isCreatingVault: false,
     isSharingOpen: false,
     allVaultMember: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
@@ -399,6 +400,7 @@ describe("Organization screen", () => {
     expect(store.errorMessage).toBe("");
 
     const wrapper = mount(MainView, { attachTo: document.body });
+    await flushPromises();
     expect(wrapper.find('[data-testid="organization-alert-message"]').text()).toBe("The organization still has vaults; delete them first");
     await wrapper.find('[data-testid="organization-alert-ok"]').trigger("click");
     expect(store.organizationAlert).toBeNull();
@@ -439,6 +441,22 @@ describe("Organization vaults in the vault list", () => {
     expect(wrapper.find('[data-testid="organization-vaults-globex"] [data-testid="vault-lab"]').exists()).toBe(true);
     const allGroupID = wrapper.findAll(".vault-group").map((group) => group.attributes("data-testid"));
     expect(allGroupID).toEqual(["own-vaults", "organization-vaults-acme", "organization-vaults-globex"]);
+    wrapper.unmount();
+  });
+
+  it("uses cached names and stable unknown labels without restoring live team authority", async () => {
+    api.listAllOrganization.mockResolvedValue({ organizations: [{ id: "acme", name: "Saved Acme", role: "", memberCount: 0 }], invitations: [], isCached: true });
+    store.organizationByID = { acme: createOrganizationDetail() };
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await syncInBackground();
+    await flushPromises();
+    expect(wrapper.get('[data-testid="organization-vaults-acme"]').text()).toContain("Saved Acme");
+    expect(wrapper.get('[data-testid="organization-vaults-globex"]').text()).toContain("Organization globex");
+    expect(store.organizationByID).toEqual({});
+    await wrapper.get('[data-testid="new-vault"]').trigger("click");
+    await flushPromises();
+    expect(wrapper.get('[data-testid="new-vault-teams-error"]').text()).toContain("Couldn't load teams");
+    expect(isCreateDisabled(wrapper)).toBe(true);
     wrapper.unmount();
   });
 
