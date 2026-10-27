@@ -208,7 +208,33 @@ final class AutoFillModelTests: XCTestCase {
         XCTAssertTrue(model.allVisibleMatchingLogin.isEmpty)
         XCTAssertEqual(model.allVisibleOtherLogin.map(\.title), ["Bank"])
         await model.select(model.allVisibleOtherLogin[0])
+        XCTAssertTrue(allCompletedCredential.isEmpty)
+        XCTAssertEqual(model.unmatchedLoginConfirmation?.login.title, "Bank")
+        XCTAssertTrue(model.unmatchedFillTitle.contains("github.com"))
+        XCTAssertFalse(model.unmatchedLoginConfirmation?.allWebsite.isEmpty ?? true)
+        model.dismissUnmatchedLogin()
+        XCTAssertTrue(allCompletedCredential.isEmpty)
+        await model.select(model.allVisibleOtherLogin[0])
+        let savedWebsites = try? backend.getItem(vaultID: "personal", itemID: "bank").allURL
+        await model.fillUnmatchedLogin()
+        XCTAssertEqual(try? backend.getItem(vaultID: "personal", itemID: "bank").allURL, savedWebsites)
         XCTAssertEqual(allCompletedCredential, [LoginCredential(username: "alice@example.com", password: "bank-password")])
+        await model.prepareCredentialList(allServiceIdentifier: [])
+        model.searchText = "bank"
+        await model.loadAllOtherLogin()
+        if let index = backend.allItemByVaultID["personal"]?.firstIndex(where: { $0.id == "bank" }) {
+            backend.allItemByVaultID["personal"]?[index].allURL = []
+        }
+        await model.select(model.allVisibleOtherLogin[0])
+        XCTAssertTrue(model.unmatchedFillTitle.contains("without a website"))
+        XCTAssertTrue(model.unmatchedFillMessage.contains("This request has no website."))
+        XCTAssertTrue(model.unmatchedFillMessage.contains("No website saved"))
+        let staleConfirmation = model.unmatchedLoginConfirmation
+        _ = backend.lock()
+        model.handleLocked()
+        await model.unlock(password: FakeBackend.password)
+        await model.fillUnmatchedLogin(staleConfirmation)
+        XCTAssertEqual(allCompletedCredential.count, 1, "a confirmation cannot release a login across a lock")
     }
 
     func testSearchHidesMatchingLoginsFromOtherSection() async {
@@ -260,6 +286,12 @@ final class AutoFillModelTests: XCTestCase {
         model.searchText = "hub"
         await model.loadAllOtherLogin()
         XCTAssertEqual(model.allVisibleOtherLogin.map(\.title), ["GitHub"])
+        await model.select(model.allVisibleOtherLogin[0])
+        XCTAssertTrue(model.unmatchedFillTitle.contains("one-time code"))
+        XCTAssertTrue(model.unmatchedFillTitle.contains("netflix.com"))
+        await model.fillUnmatchedLogin()
+        XCTAssertEqual(allCompletedCode.count, 2)
+        XCTAssertTrue(allCompletedCredential.isEmpty)
     }
 
     func testOneTimeCodeQuickTypeRequestUnlocksThenCompletes() async {

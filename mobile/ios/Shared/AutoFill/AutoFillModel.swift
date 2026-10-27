@@ -25,6 +25,13 @@ final class AutoFillModel: ObservableObject {
         var kind: RequestKind
     }
 
+    struct UnmatchedLoginConfirmation {
+        var login: LoginMatch
+        var allWebsite: [String]
+        var lockGeneration: Int
+        var requestEpoch: UInt64
+    }
+
     struct PasskeyCompletion {
         var completeAssertion: (PasskeyAssertionCredential) -> Void
         var completeRegistration: (PasskeyRegistrationCredential) -> Void
@@ -38,6 +45,7 @@ final class AutoFillModel: ObservableObject {
     @Published private(set) var allMatchingLogin: [LoginMatch] = []
     @Published private(set) var allOtherLogin: [LoginMatch] = []
     @Published private(set) var isOtherLoginLoaded = false
+    @Published private(set) var unmatchedLoginConfirmation: UnmatchedLoginConfirmation?
     @Published var searchText = "" {
         didSet {
             if !searchText.isEmpty { Task { await loadAllOtherLogin() } }
@@ -194,6 +202,7 @@ final class AutoFillModel: ObservableObject {
         allMatchingLogin = []
         allOtherLogin = []
         isOtherLoginLoaded = false
+        unmatchedLoginConfirmation = nil
         allMatchingPasskey = []
         searchText = ""
         serviceIdentifierByLoginID = [:]
@@ -517,6 +526,43 @@ final class AutoFillModel: ObservableObject {
     }
 
     func select(_ login: LoginMatch) async {
+        guard status.isUnlocked else { return }
+        if serviceIdentifierByLoginID[login.id] == nil {
+            guard let item = await perform({ try $0.getItem(vaultID: login.vaultID, itemID: login.itemID) }) else { return }
+            unmatchedLoginConfirmation = UnmatchedLoginConfirmation(login: login, allWebsite: item.allURL.filter { VaultLogic.extractHost($0) != nil }, lockGeneration: lockCount, requestEpoch: requestEpoch)
+            return
+        }
+        await fill(login)
+    }
+
+    func dismissUnmatchedLogin() {
+        unmatchedLoginConfirmation = nil
+    }
+
+    func fillUnmatchedLogin(_ selected: UnmatchedLoginConfirmation? = nil) async {
+        guard status.isUnlocked, let confirmation = selected ?? unmatchedLoginConfirmation,
+              confirmation.lockGeneration == lockCount, confirmation.requestEpoch == requestEpoch else { return }
+        unmatchedLoginConfirmation = nil
+        await fill(confirmation.login)
+    }
+
+    var unmatchedFillTitle: String {
+        guard let login = unmatchedLoginConfirmation?.login else { return "" }
+        let account = login.username.isEmpty ? login.title : "\(login.title) (\(login.username))"
+        let subject = requestKind == .oneTimeCode ? "a one-time code for \(account)" : account
+        let host = allServiceIdentifier.lazy.compactMap { VaultLogic.extractHost($0) }.first
+        return host.map { "Fill \(subject) into \($0)?" } ?? "Fill \(subject) without a website?"
+    }
+
+    var unmatchedFillMessage: String {
+        guard let confirmation = unmatchedLoginConfirmation else { return "" }
+        let hasWebsite = allServiceIdentifier.contains { VaultLogic.extractHost($0) != nil }
+        let target = hasWebsite ? "Not saved for this site." : "This request has no website."
+        let websites = confirmation.allWebsite.isEmpty ? "No website saved" : "Saved websites:\n" + confirmation.allWebsite.joined(separator: "\n")
+        return "\(target)\n\(confirmation.login.vaultName)\n\n\(websites)"
+    }
+
+    private func fill(_ login: LoginMatch) async {
         guard status.isUnlocked else { return }
         let generation = lockCount
         let epoch = requestEpoch

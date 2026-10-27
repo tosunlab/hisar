@@ -131,7 +131,7 @@ private struct AutoFillListView: View {
                             
                     }
                     ForEach(model.allVisibleOtherLogin) { login in
-                        buildLoginRow(login)
+                        buildLoginRow(login, isMatching: false)
                     }
                 }
             }
@@ -141,6 +141,15 @@ private struct AutoFillListView: View {
         // login, and a disabled field drops what is typed meanwhile.
         .disabled(model.isBusy)
         .searchable(text: $model.searchText, placement: .navigationBarDrawer(displayMode: .always), prompt: "Search all logins")
+        .alert(model.unmatchedFillTitle, isPresented: Binding(
+            get: { model.unmatchedLoginConfirmation != nil },
+            set: { if !$0 { model.dismissUnmatchedLogin() } }
+        ), presenting: model.unmatchedLoginConfirmation) { confirmation in
+            Button("Cancel", role: .cancel) { model.dismissUnmatchedLogin() }
+            Button("Fill once") { Task { await model.fillUnmatchedLogin(confirmation) } }
+        } message: { _ in
+            Text(model.unmatchedFillMessage)
+        }
     }
 
     private var sectionTitle: String {
@@ -181,7 +190,7 @@ private struct AutoFillListView: View {
         .accessibilityIdentifier("autofill-passkey-\(passkey.title)")
     }
 
-    private func buildLoginRow(_ login: LoginMatch) -> some View {
+    private func buildLoginRow(_ login: LoginMatch, isMatching: Bool = true) -> some View {
         Button {
             Task { await model.select(login) }
         } label: {
@@ -193,6 +202,11 @@ private struct AutoFillListView: View {
                     Text(login.username.isEmpty ? login.vaultName : "\(login.username) · \(login.vaultName)")
                         .font(.caption)
                         .foregroundStyle(.themeSecondary)
+                    if !isMatching {
+                        Text("Not saved for this site")
+                            .font(.caption)
+                            .foregroundStyle(.themeSecondary)
+                    }
                 }
                 Spacer()
                 if login.hasOneTimePassword {
