@@ -16,6 +16,9 @@ import com.tryhisar.hisar.model.FakeBackend
 import com.tryhisar.hisar.model.PendingRecovery
 import com.tryhisar.hisar.ui.components.exposeTestTags
 import com.tryhisar.hisar.ui.theme.HisarTheme
+import com.tryhisar.hisar.ui.assertFieldText
+import com.tryhisar.hisar.ui.tap
+import com.tryhisar.hisar.ui.type
 import java.io.File
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -58,14 +61,21 @@ class PendingRecoveryStateTests {
             }
         }
         composeRule.onNodeWithTag("pending-recovery-pending-1").performClick()
-        assertTrue(runBlocking(Dispatchers.Main) { model.pendingRecovery.exportKit("pending-1", FakeBackend.PASSWORD) })
+        composeRule.type("pending-recovery-password", FakeBackend.PASSWORD)
+        composeRule.tap("pending-recovery-export")
+        composeRule.waitUntil(30_000) { model.pendingRecovery.export.value != null }
+        composeRule.assertFieldText("pending-recovery-password", FakeBackend.PASSWORD)
         composeRule.onNodeWithTag("pending-recovery-secret-key").assertExists()
+        composeRule.tap("pending-recovery-copy-secret-key")
+        composeRule.onNodeWithTag("pending-recovery-copy-secret-key").assertTextEquals("Copied · clears in about 2 minutes")
+        assertTrue("acknowledgePendingRecovery" !in backend.allCallName)
         val kit = File(model.pendingRecovery.export.value!!.path)
 
         restoration.emulateSavedInstanceStateRestore()
 
-        composeRule.onNodeWithTag("pending-recovery-phase").assertTextEquals("delivery-pending")
+        composeRule.onNodeWithTag("pending-recovery-phase").assertTextEquals("Your account is ready. Save and confirm your Emergency Kit to finish.")
         composeRule.onNodeWithTag("pending-recovery-secret-key").assertExists()
+        composeRule.assertFieldText("pending-recovery-password", "")
         assertTrue("recreating the screen deleted the prepared kit", kit.exists())
     }
 }

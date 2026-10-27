@@ -11,6 +11,20 @@ const isConfirmingSignOut = ref(false);
 const isWaitingForTouchID = ref(false);
 const promptSlot = ref<HTMLElement | null>(null);
 const passwordInput = ref<HTMLInputElement | null>(null);
+const signOutLink = ref<HTMLButtonElement | null>(null);
+const cancelSignOutButton = ref<HTMLButtonElement | null>(null);
+
+async function confirmSignOut(): Promise<void> {
+  isConfirmingSignOut.value = true;
+  await nextTick();
+  cancelSignOutButton.value?.focus();
+}
+
+async function cancelSignOut(): Promise<void> {
+  isConfirmingSignOut.value = false;
+  await nextTick();
+  signOutLink.value?.focus();
+}
 
 function sendPromptFrame(): void {
   const slot = promptSlot.value;
@@ -31,7 +45,9 @@ async function startTouchID(): Promise<void> {
   await unlockWithBiometric();
   isWaitingForTouchID.value = false;
   api.clearTouchIDPromptFrame().catch(() => undefined);
-  nextTick(() => passwordInput.value?.focus());
+  nextTick(() => {
+    if (!isConfirmingSignOut.value) passwordInput.value?.focus();
+  });
 }
 
 function cancelTouchID(): void {
@@ -53,10 +69,9 @@ onMounted(() => {
   window.addEventListener("focus", loadShareAwaitingUnlockQuietly);
   window.addEventListener("resize", sendPromptFrame);
   layoutObserver?.observe(document.body);
+  passwordInput.value?.focus();
   if (store.status.biometricReady) {
     startTouchID();
-  } else {
-    passwordInput.value?.focus();
   }
 });
 
@@ -123,11 +138,11 @@ onBeforeUnmount(() => {
         </p>
 
         <div class="sign-out">
-          <button v-if="!isConfirmingSignOut" class="link" @click="isConfirmingSignOut = true">Sign out of this device</button>
-          <div v-else class="card confirm">
+          <button v-if="!isConfirmingSignOut" ref="signOutLink" class="link" @click="confirmSignOut">Sign out of this device</button>
+          <div v-else class="card confirm" @keydown.esc.stop.prevent="cancelSignOut">
             <p>You will need your Secret Key to sign in again.</p>
             <div class="row">
-              <button class="ghost" @click="isConfirmingSignOut = false">Cancel</button>
+              <button ref="cancelSignOutButton" class="ghost" @click="cancelSignOut">Cancel</button>
               <button class="danger-solid" data-testid="confirm-sign-out" @click="signOut"><AppIcon name="signOut" /> Sign out</button>
             </div>
           </div>

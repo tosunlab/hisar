@@ -317,7 +317,8 @@ final class AccountLifecycleTests: XCTestCase {
         model.lock()
         backend.onExportPendingRecoveryEmergencyKit = nil
         mayFinish.signal()
-        await export.value
+        let wasExported = await export.value
+        XCTAssertFalse(wasExported)
         XCTAssertNil(model.pendingRecoveryExport)
         XCTAssertEqual(model.errorMessage, "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again.")
         await model.exportPendingRecoveryKit(operationID: "pending-1", password: FakeBackend.password)

@@ -28,9 +28,9 @@ final class HisarKitBackend: VaultBackend {
 
     static func convertError(_ error: Error, biometryName: String) -> BackendError {
         var message = (error as NSError).localizedDescription
-        let prefix = BackendError.passkeyVerificationFailed + ": "
-        let code = message.hasPrefix(prefix) ? BackendError.passkeyVerificationFailed : nil
-        if code != nil { message = String(message.dropFirst(prefix.count)) }
+        let code = [BackendError.passkeyVerificationFailed, BackendError.biometricCancelled, BackendError.biometricNeedsPassword, BackendError.pendingRecoveryPassword]
+            .first { message.hasPrefix($0 + ": ") }
+        if let code { message = String(message.dropFirst(code.count + 2)) }
         message = message.replacingOccurrences(of: "Touch ID", with: biometryName)
         if let first = message.first {
             message = first.uppercased() + message.dropFirst()

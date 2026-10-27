@@ -26,6 +26,7 @@ final class AppModel: ObservableObject {
     @Published private(set) var isBusy = false
     @Published private(set) var isRefreshing = false
     @Published var errorMessage: String?
+    private(set) var lastErrorCode: String?
     @Published var noticeMessage: String?
     @Published private(set) var allVault: [VaultSummary] = []
     @Published private(set) var allItemByVaultID: [String: [ItemDetail]] = [:]
@@ -134,10 +135,17 @@ final class AppModel: ObservableObject {
         self.registerForRemoteNotifications = registerForRemoteNotifications
     }
 
+    func beginStartupRetry() -> Bool {
+        guard case .failed = screen, backend == nil else { return false }
+        screen = .starting
+        return true
+    }
+
     /// Returns the work start() begins, the first refresh and the version check, or nil when the backend failed. The app
     /// lets it run; a test awaits it, so its own changes come after the first lists.
     @discardableResult
     func start(createBackend: () throws -> VaultBackend) -> Task<Void, Never>? {
+        guard backend == nil else { return nil }
         do {
             let backend = try createBackend()
             self.backend = backend
@@ -278,8 +286,9 @@ final class AppModel: ObservableObject {
         }
     }
 
-    private func perform<Value>(isBusyShown: Bool = true, _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
+    private func perform<Value>(isBusyShown: Bool = true, ignoredErrorCodes: Set<String> = [], _ operation: @escaping (VaultBackend) throws -> Value) async -> Value? {
         guard let backend else { return nil }
+        lastErrorCode = nil
         if isBusyShown { isBusy = true }
         defer { if isBusyShown { isBusy = false } }
         do {
@@ -287,7 +296,12 @@ final class AppModel: ObservableObject {
             errorMessage = nil
             return value
         } catch {
+            lastErrorCode = (error as? BackendError)?.code
+            if let code = (error as? BackendError)?.code, ignoredErrorCodes.contains(code) {
+                errorMessage = nil
+            } else {
             errorMessage = describeError(error)
+            }
             return nil
         }
     }
@@ -412,7 +426,7 @@ final class AppModel: ObservableObject {
 
     @discardableResult
     func unlockWithBiometric() async -> Bool {
-        guard status.biometricReady, let newStatus = await perform({ try $0.unlockWithBiometric() }) else {
+        guard status.biometricReady, let newStatus = await perform(ignoredErrorCodes: [BackendError.biometricCancelled, BackendError.biometricNeedsPassword], { try $0.unlockWithBiometric() }) else {
             refreshStatus()
             return false
         }
@@ -1475,7 +1489,8 @@ final class AppModel: ObservableObject {
         isPendingRecoveryShown = false
     }
 
-    func resumePendingRecovery(operationID: String, password: String, secretKey: String = "", priorSecretKey: String = "") async {
+    @discardableResult
+    func resumePendingRecovery(operationID: String, password: String, secretKey: String = "", priorSecretKey: String = "") async -> Bool {
         let epoch = lifecycleEpoch
         let result = await perform {
             if secretKey.isEmpty { return try $0.resumePendingRecovery(operationID: operationID, password: password) }
@@ -1488,21 +1503,25 @@ final class AppModel: ObservableObject {
             let recoveryError = errorMessage
             await refreshPendingRecovery()
             if let recoveryError { errorMessage = recoveryError }
-            return
+            return false
         }
         refreshStatus()
         if status.isUnlocked { await refreshAll() }
         await refreshPendingRecovery()
         if !result.problems.isEmpty { errorMessage = result.problems.joined(separator: "\n") }
+        return result.setupState == "delivery-pending"
     }
 
-    func discardPreparedRecovery(operationID: String, password: String) async {
-        guard await perform({ try $0.discardPreparedRecovery(operationID: operationID, password: password) }) != nil else { return }
+    @discardableResult
+    func discardPreparedRecovery(operationID: String, password: String) async -> Bool {
+        guard await perform({ try $0.discardPreparedRecovery(operationID: operationID, password: password) }) != nil else { return false }
         clearPendingRecoveryExport()
         await refreshPendingRecovery()
+        return true
     }
 
-    func exportPendingRecoveryKit(operationID: String, password: String) async {
+    @discardableResult
+    func exportPendingRecoveryKit(operationID: String, password: String) async -> Bool {
         clearPendingRecoveryExport()
         let epoch = lifecycleEpoch
         let generation = pendingDeliveryGeneration
@@ -1515,17 +1534,19 @@ final class AppModel: ObservableObject {
             if result != nil && epoch != lifecycleEpoch {
                 errorMessage = "Hisar locked, signed out or switched accounts while it prepared the Emergency Kit. Prepare it again."
             }
-            return
+            return false
         }
         pendingRecoveryExport = result
         await refreshPendingRecovery()
+        return true
     }
 
-    func acknowledgePendingRecovery(operationID: String, password: String) async {
+    @discardableResult
+    func acknowledgePendingRecovery(operationID: String, password: String) async -> Bool {
         let epoch = lifecycleEpoch
         let recovery = allPendingRecovery.first { $0.operationId == operationID }
-        guard await perform({ try $0.acknowledgePendingRecovery(operationID: operationID, password: password) }) != nil else { return }
-        guard epoch == lifecycleEpoch else { return }
+        guard await perform({ try $0.acknowledgePendingRecovery(operationID: operationID, password: password) }) != nil else { return false }
+        guard epoch == lifecycleEpoch else { return false }
         clearPendingRecoveryExport()
         await refreshPendingRecovery()
         if epoch == lifecycleEpoch, recovery?.kind == "signup", recovery?.phase == "delivery-pending",
@@ -1534,6 +1555,7 @@ final class AppModel: ObservableObject {
             newSecretKey = ""
             isBiometricOfferShown = true
         }
+        return true
     }
 
     // setTheme shows the theme at once and goes back to the one in use when it cannot be saved.

@@ -202,6 +202,7 @@ class BackendError(override val message: String, val code: String? = null) : Exc
     override fun hashCode(): Int = 31 * message.hashCode() + (code?.hashCode() ?: 0)
     companion object {
         const val PASSKEY_VERIFICATION_FAILED = "passkey-verification-failed"
+        const val PENDING_RECOVERY_PASSWORD = "pending-recovery-password"
     }
 }
 

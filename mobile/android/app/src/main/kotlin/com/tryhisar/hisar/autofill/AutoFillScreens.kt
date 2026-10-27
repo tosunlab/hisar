@@ -36,10 +36,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
@@ -131,20 +128,15 @@ private fun AutoFillLockView(model: AutoFillModel) {
     val target by model.target.collectAsStateWithLifecycle()
     val lifecycleState by LocalLifecycleOwner.current.lifecycle.currentStateAsState()
     val isResumed = lifecycleState.isAtLeast(Lifecycle.State.RESUMED)
-    val scope = rememberCoroutineScope()
-    var promptedLockCount by rememberSaveable { mutableIntStateOf(-1) }
-
-    LaunchedEffect(isResumed, status.biometricReady, lockCount) {
-        if (!isResumed || !status.biometricReady || promptedLockCount == lockCount) return@LaunchedEffect
-        promptedLockCount = lockCount
-        model.unlockWithBiometric()
-    }
 
     val serviceName = model.serviceName
     UnlockPanel(
         email = status.email,
         isBiometricReady = status.biometricReady,
         isBusy = isBusy,
+        lockCount = lockCount,
+        isResumed = isResumed,
+        isCurrentLock = { model.screen.value == AutoFillModel.Screen.Locked && model.lockCount.value == lockCount },
         errorMessage = errorMessage,
         requestDescription = when {
             serviceName.isEmpty() -> ""
@@ -155,7 +147,7 @@ private fun AutoFillLockView(model: AutoFillModel) {
         },
         isOffline = status.isOffline,
         submitPassword = { model.unlock(it) },
-        submitBiometric = { scope.launch { model.unlockWithBiometric() } },
+        submitBiometric = { model.unlockWithBiometric() },
     )
 }
 

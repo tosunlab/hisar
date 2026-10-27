@@ -28,6 +28,7 @@ class FakeBackend: VaultBackend {
     var favoriteErrorMessage: String?
     var isBiometricAvailable = true
     var isBiometricSucceeding = true
+    var biometricUnlockError: BackendError?
     var verifyPasskey: (String) -> Bool = { _ in true }
     func cancelPasskeyCeremonies() {}
     var isOffline = false
@@ -364,7 +365,8 @@ class FakeBackend: VaultBackend {
     func unlockWithBiometric() throws -> VaultStatus {
         record("unlockWithBiometric")
         guard status.biometricReady else { throw BackendError(message: "Unlock with your master password first") }
-        guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.") }
+        if let biometricUnlockError { throw biometricUnlockError }
+        guard isBiometricSucceeding else { throw BackendError(message: "Face ID was cancelled.", code: BackendError.biometricCancelled) }
         status.state = VaultStatus.stateUnlocked
         return status
     }

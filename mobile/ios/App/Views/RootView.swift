@@ -3,6 +3,7 @@ import UIKit
 
 struct RootView: View {
     @EnvironmentObject private var model: AppModel
+    var retryStartup: () -> Void
 
     var body: some View {
         ZStack {
@@ -10,7 +11,7 @@ struct RootView: View {
             case .starting:
                 ProgressView()
             case .failed(let message):
-                StartupFailureView(message: message)
+                StartupFailureView(message: message, retry: retryStartup)
             case .signedOut:
                 SignInView()
             case .locked:
@@ -153,6 +154,7 @@ struct NoticeToast: View {
 
 struct StartupFailureView: View {
     var message: String
+    var retry: () -> Void
 
     var body: some View {
         ContentUnavailableView {
@@ -160,6 +162,14 @@ struct StartupFailureView: View {
         } description: {
             Text(message)
                 .accessibilityIdentifier("error-message")
+                .textSelection(.enabled)
+            Text("If this keeps happening, email support@tryhisar.com.")
+        } actions: {
+            Button("Try again", action: retry)
+                .applyProminentGlassStyle()
+                .accessibilityIdentifier("startup-retry")
+            Button("Copy details") { UIPasteboard.general.string = message }
+                .accessibilityIdentifier("startup-copy-details")
         }
     }
 }

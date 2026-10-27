@@ -369,6 +369,10 @@ For a legitimate server move, the operator explicitly changes `HISAR_PUBLIC_URL`
 
 The device already has the Secret Key in the keychain and a local copy of `encKeyset` (the desktop cache, §9.1). Unlock works offline: derive AUK, decrypt the keyset. Online, the client takes the account record from the server and refreshes the cached copy.
 
+Cancelling biometric unlock or choosing the master password leaves the phones locked without an error banner. The apps
+refresh biometric readiness and focus the password field. Authentication, hardware, lockout and storage failures still
+show an error. The iPhone carries cancellation and password-fallback codes through its message-only Go callback bridge.
+
 **Touch ID on macOS.** The wrapping key is a generic password in the data-protection keychain, under the versioned service suffix `.biometry-current-set.v1`. `SecAccessControl` combines `kSecAccessControlBiometryCurrentSet` with `kSecAttrAccessibleWhenUnlockedThisDeviceOnly`. The local state still holds `Seal(wrappingKey, AUK, "hisar/v1/biometric-unlock:" || accountID)`. The OS, rather than an app-only check, controls each key read. The evaluated context is used once for its prepared account and then invalidated. SSH approval contexts are not retained for wrapping-key reads: the approval window's Touch ID check of an unlocked Hisar, the phone's approval check and the export check wait for a biometric unlock or setup in progress, because the platform gives a prepared key read to the next prompt.
 
 **Migration from the login keychain.** Only a successful password unlock can copy the old wrapping key to the protected service. The sealed state does not change. Hisar reads the new item with a fresh biometric context, checks its exact bytes and that it opens the sealed state, and only then retires the obsolete login-keychain wrapper. Interrupted writes, cancelled proof, and retirement failures preserve recoverable state and can be retried. Password unlock skips the migration when the key is already protected, and never waits for a pending biometric prompt: it leaves the migration pending for the next password unlock instead. Normal biometric unlock never reads the old service. Turning Touch ID off, a Touch ID unlock that turns itself off, and sign-out delete the protected wrapper and any login-keychain wrapper a pending migration has not retired. The user's Secret Key is not part of this migration.
@@ -638,6 +642,15 @@ Recovery is only through the Emergency Kit (§4.1). With the email, server and S
 
 **Interrupted setup is distinct from forgotten-password recovery.** The operation journal (§5.2) reconciles a particular already-prepared signup or factor replacement; it cannot recover a forgotten password or bypass the independent Secret Key. Native default recovery needs the OS-wrapped operation key and password. Without that OS protection, restart needs the explicitly user-saved Emergency Kit as well as the password because no factor is persisted in the journal. The CLI exposes `hisar account pending list|resume|kit|acknowledge|discard`; discard is restricted to prepared operations for which no finish may have been sent.
 
+The native page is **Finish account setup**. A record names whether account creation or Secret Key replacement needs
+finishing, followed by its email and server host. Kind-by-phase sentences describe what happened and what remains;
+internal phase identifiers are never visible or spoken. **Continue** warns about an account switch only when it replaces
+a different open account. **Cancel this setup** is available only before a remote finish may have been sent.
+Entered recovery factors stay only in view memory through preparation, saving and confirmation for the same selected
+record. Metadata refreshes do not clear them. Final acknowledgement, successful cancellation, closing the view, choosing
+another record, lock, sign-out or an account change clears them. Only a coded password rejection clears the password after
+a failed action; the entered Secret Keys stay. Every backend call still verifies the factors and enforces kit lifetimes.
+
 **Admin recovery was removed.** Earlier versions let one admin hold a recovery keyset that every recoverable vault key was wrapped to, and recover other users' accounts with one-time links. Migration `00004_remove_recovery` deletes all of it: the tables `recovery_keyset`, `vault_recovery`, `recovery_tokens` and `account_recovery` and the column `vaults.recovery_opt_out`. Its down migration recreates only the empty structure; the deleted keyset, wrappings and pending recoveries cannot come back. The recovery endpoints are gone and answer 404. Older clients keep working: a 404 for the recovery keyset means "recovery is not set up" to them, so they stop wrapping vault keys to it.
 
 ## 7. Sync protocol
@@ -856,6 +869,9 @@ Entity triggers collect one transaction-private delta per affected scope, not on
 ### 8.6 Privacy policy and Terms
 
 `GET /privacy` and `GET /terms` serve two static pages embedded in `hisar-server` (`privacy.html`, `terms.html`), linked from each other, from the store listings and from the desktop app's create-account screen. They describe the hosted service at `eu.tryhisar.com` exactly as this document does: what the server stores (§2.3, §8.1), what it cannot read, the sub-processors (Hetzner Online GmbH in Helsinki, Finland, for hosting; Google for email) and the retention below. The operator is Alper Berber, the contact is support@tryhisar.com, and the terms are under Dutch law. Both pages get the share link page's headers minus scripts: `Content-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; frame-ancestors 'none'`, cacheable for an hour.
+The desktop create-account screen shows the hosted consent sentence only when the normalized signup target is
+`https://eu.tryhisar.com`. An invite link selects its own origin, a bare code selects the hosted service, and signup without
+an invite uses the selected or remembered server. Self-hosted signup does not link to a third party's consent agreement.
 
 **Retention**, as the pages state it. These are the defaults of the instance settings (§8.3); an operator may change them in the admin dashboard under **Settings → Security**, and the hosted service keeps them, because the privacy page states them:
 

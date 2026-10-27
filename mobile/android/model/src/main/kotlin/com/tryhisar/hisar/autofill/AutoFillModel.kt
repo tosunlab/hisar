@@ -384,15 +384,17 @@ class AutoFillModel(
         } ?: false
     }.await()
 
-    suspend fun unlockWithBiometric() = scope.async {
+    suspend fun unlockWithBiometric(): Boolean = scope.async {
         withinUnlock {
             val newStatus = if (mutableStatus.value.biometricReady) performWithinUnlock { it.unlockWithBiometric() } else null
             if (newStatus == null) {
                 backend?.let { refreshStatus(it) }
+                false
             } else {
                 handleUnlocked(newStatus)
+                newStatus.isUnlocked
             }
-        }
+        } ?: false
     }.await()
 
     private suspend fun handleUnlocked(newStatus: VaultStatus) {

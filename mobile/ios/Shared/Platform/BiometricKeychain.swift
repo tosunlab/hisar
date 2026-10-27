@@ -67,8 +67,8 @@ final class BiometricKeychain: NSObject, HisarkitBiometricProtocol {
 
     private func describeEvaluationError(_ error: Error) -> String {
         switch (error as? LAError)?.code {
-        case .userCancel, .systemCancel, .appCancel: return "\(getBiometryName()) was cancelled."
-        case .userFallback: return "Enter your master password."
+        case .userCancel, .systemCancel, .appCancel: return "\(BackendError.biometricCancelled): \(getBiometryName()) was cancelled."
+        case .userFallback: return "\(BackendError.biometricNeedsPassword): Enter your master password."
         case .biometryLockout: return "\(getBiometryName()) is locked. Unlock with your master password."
         default: return error.localizedDescription
         }

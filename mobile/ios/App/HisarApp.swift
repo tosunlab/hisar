@@ -47,6 +47,7 @@ struct HisarApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var hasEnteredBackground = false
     private let lockEventRelay = LockEventRelay()
+    private let configuration = HisarConfiguration.current
 
     init() {
         AppModel.deleteLeftoverKitFiles()
@@ -59,7 +60,7 @@ struct HisarApp: App {
         WindowGroup {
             mainView
                 .environmentObject(model)
-                .onAppear(perform: startModel)
+                .onAppear { startModel() }
                 .onOpenURL { url in
                     if let link = SignInLink.parse(url.absoluteString) {
                         model.pendingSignInLink = link
@@ -106,14 +107,22 @@ struct HisarApp: App {
         } else if UpdateRequiredPreview.isRequested() {
             UpdateRequiredView(requirement: UpdateRequiredPreview.requirement, isChecking: false) {}
         } else {
-            RootView()
+            RootView(retryStartup: retryStartup)
         }
         #else
-        RootView()
+        RootView(retryStartup: retryStartup)
         #endif
     }
 
-    private func startModel() {
+    private func retryStartup() {
+        guard model.beginStartupRetry() else { return }
+        Task { @MainActor in
+            await Task.yield()
+            startModel(isRetry: true)
+        }
+    }
+
+    private func startModel(isRetry: Bool = false) {
         #if DEBUG
         guard AutoFillPreviewView.readMode() == nil, PhoneApprovalPreviewView.readApproval() == nil, VaultManagementPreviewView.readMode() == nil,
               !PendingApprovalPreviewView.isRequested(), !UpdateRequiredPreview.isRequested() else { return }
@@ -126,7 +135,7 @@ struct HisarApp: App {
         lockEventRelay.setUpdateRequiredHandler { [weak model] in model?.handleUpdateRequired() }
         let relay = lockEventRelay
         model.start {
-            try BackendFactory.createBackend(configuration: .current, isClipboardIncluded: true, eventListener: relay)
+            try BackendFactory.createBackend(configuration: configuration, isClipboardIncluded: true, eventListener: relay, isStateResetAllowed: !isRetry)
         }
     }
 }

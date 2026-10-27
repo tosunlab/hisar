@@ -10,7 +10,6 @@ struct NewSecretKeyView: View {
         case ready(EmergencyKitExport)
     }
 
-    @State private var isCopied = false
     @State private var kitState = KitState.loading
     @State private var isKitShared = false
     @State private var preparationGeneration = 0
@@ -28,23 +27,7 @@ struct NewSecretKeyView: View {
                         .listRowBackground(Color.clear)
                         .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                 }
-                Section {
-                    Text(secretKey)
-                        .font(.title3.monospaced().weight(.medium))
-                        .textSelection(.enabled)
-                        .accessibilityIdentifier("new-secret-key")
-                    Button {
-                        _ = PasteboardClipboard().setText(secretKey)
-                        isCopied = true
-                    } label: {
-                        Label(isCopied ? "Copied · clears in 90 seconds" : "Copy Secret Key", systemImage: isCopied ? "checkmark" : "doc.on.doc")
-                            .contentTransition(.symbolEffect(.replace))
-                    }
-                    .sensoryFeedback(.success, trigger: isCopied)
-                    .accessibilityIdentifier("new-secret-key-copy")
-                } header: {
-                    Text("Secret Key")
-                }
+                SecretKeySection(secretKey: secretKey, valueIdentifier: "new-secret-key", copyIdentifier: "new-secret-key-copy")
                 Section {
                     switch kitState {
                     case .ready(let export):

@@ -42,6 +42,7 @@
 		3215617CE6E265FB93CC351F /* HisarNotificationService.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 83D724DF7FA615B453AF712E /* HisarNotificationService.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		32E0A462D6387F2868226186 /* HisarKitBackend.swift in Sources */ = {isa = PBXBuildFile; fileRef = E9A5C76E2318A2B55CC5F849 /* HisarKitBackend.swift */; };
 		3322F7AF5EC4923637DF5F93 /* FavoritesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D4E0374FBF44BF5778ED2846 /* FavoritesTests.swift */; };
+		33F7B4F14E47CB1D0D4FB0F4 /* PendingRecoveryCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04DFF84B5CF30844AF78FDA /* PendingRecoveryCopy.swift */; };
 		343CD1DE10EC8C27BD57EFD5 /* AutoFillModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DC7E3215A9069C2945F866D /* AutoFillModelTests.swift */; };
 		36DE9AB043E9FDA932377B5F /* KeychainSecretKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */; };
 		37B8625077147FD073CDEB86 /* PhoneApprovalTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 51DDBE193CE96E78C6788441 /* PhoneApprovalTests.swift */; };
@@ -146,6 +147,7 @@
 		B2D87CBBB8635681A36D3B76 /* AutoFillRootView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9FB833F7AE4DD1DCE9AB0EEC /* AutoFillRootView.swift */; };
 		B4936FF8BE8C3E0A2812F15E /* CredentialProviderViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1F31820CE1E2F645F505502A /* CredentialProviderViewController.swift */; };
 		B4F54B86BD901A64012536E5 /* SharingPushTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A7DA85F127A5EB580839A6B /* SharingPushTests.swift */; };
+		B7B6F4D889122435DAB6DD0B /* PendingRecoveryCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04DFF84B5CF30844AF78FDA /* PendingRecoveryCopy.swift */; };
 		BA22AA3DF1A43D357843EA5E /* FaceIDUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = D5829FBCBCC42B40AFEF68F3 /* FaceIDUITests.swift */; };
 		BA6171A70EA73110EBB2B069 /* BackendFactory.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1346D0E3E68C5BDA1B3344E9 /* BackendFactory.swift */; };
 		BAF1C19FBEBFD77B4E6D5B1E /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 477BEA6CA38721F987A7FA77 /* AppModel.swift */; };
@@ -184,6 +186,7 @@
 		EA403583ED6D74A774246CAD /* ItemDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 104F8941A233F623CBF1EB40 /* ItemDetailView.swift */; };
 		EAD1315A96CEAD8897ECE413 /* NewVaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80117468D27E2887C9AFA79B /* NewVaultView.swift */; };
 		ECBA7372AFB77CBCAF2A5AE4 /* PushPayloadKeyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BDD150DB904FF34A7EE81FC /* PushPayloadKeyStore.swift */; };
+		EDC88D06F4D8197CA36D4D41 /* PendingRecoveryCopy.swift in Sources */ = {isa = PBXBuildFile; fileRef = B04DFF84B5CF30844AF78FDA /* PendingRecoveryCopy.swift */; };
 		EEA8204830041BD8E366CE1F /* DeferredSecretKeyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F80A5E5A164DB83A164B223 /* DeferredSecretKeyView.swift */; };
 		EF2E5A93BBA6F019569EF8B9 /* VaultManagementView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 64E051721EA2F755340973BE /* VaultManagementView.swift */; };
 		F0E60FB94814A89C2A03DCB0 /* NewVaultView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 80117468D27E2887C9AFA79B /* NewVaultView.swift */; };
@@ -323,6 +326,7 @@
 		A238D14B92DA27E1CCAE99DA /* LogoMark.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LogoMark.swift; sourceTree = "<group>"; };
 		AA05D6AEDA2B1F45CB3B9F26 /* KeychainSecretKeyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainSecretKeyStore.swift; sourceTree = "<group>"; };
 		B033299FD6E753ABEC665FC2 /* VaultManagementPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VaultManagementPreviewView.swift; sourceTree = "<group>"; };
+		B04DFF84B5CF30844AF78FDA /* PendingRecoveryCopy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PendingRecoveryCopy.swift; sourceTree = "<group>"; };
 		B337DBEFF36317EB806A13C1 /* CardInput.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CardInput.swift; sourceTree = "<group>"; };
 		B51FF15EEA140A6C2E2C7D49 /* DevicesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DevicesView.swift; sourceTree = "<group>"; };
 		B5CAE9257D26523B30362ACC /* AppItemIcon.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppItemIcon.swift; sourceTree = "<group>"; };
@@ -419,6 +423,7 @@
 				B337DBEFF36317EB806A13C1 /* CardInput.swift */,
 				E9A5C76E2318A2B55CC5F849 /* HisarKitBackend.swift */,
 				3766EC2BF71158CD0225F090 /* Models.swift */,
+				B04DFF84B5CF30844AF78FDA /* PendingRecoveryCopy.swift */,
 				A128DD342FC95DBB54C289C6 /* PhoneApproval.swift */,
 				3573A4BEA82AFBD320C27A14 /* VaultBackend.swift */,
 				F9D65DF64FDB4E5B1567D1A3 /* VaultLogic.swift */,
@@ -857,6 +862,7 @@
 				9C438376F2EE0D0B6481F189 /* LogoMark.swift in Sources */,
 				42C127E62FE50AF707B5E685 /* Models.swift in Sources */,
 				2FBA7146D16249529857A81C /* PasteboardClipboard.swift in Sources */,
+				EDC88D06F4D8197CA36D4D41 /* PendingRecoveryCopy.swift in Sources */,
 				A53ECFFE1EB70418DBB8B0DA /* PhoneApproval.swift in Sources */,
 				F561FA6067514C58A1DB06AE /* PushPayloadKeyStore.swift in Sources */,
 				71E643C16C49C1F50E3FA08D /* SecretKeySection.swift in Sources */,
@@ -935,6 +941,7 @@
 				28F7374E5C1FBBD30F6B6E54 /* PasswordGeneratorView.swift in Sources */,
 				A94B4DF0B3BDD0E2EED6122E /* PasteboardClipboard.swift in Sources */,
 				C84A058AFCD826EC5E00DEDA /* PendingApprovalSection.swift in Sources */,
+				33F7B4F14E47CB1D0D4FB0F4 /* PendingRecoveryCopy.swift in Sources */,
 				84D53063940044EFA82C21F3 /* PeopleView.swift in Sources */,
 				67B2BB15FFBD0D47BE1D6F36 /* PhoneApproval.swift in Sources */,
 				4524704887E10E781B02A8BC /* PhoneApprovalPreviewView.swift in Sources */,
@@ -1014,6 +1021,7 @@
 				0519427F1A30123623C1514D /* PasswordGeneratorView.swift in Sources */,
 				4023A7B395E9788AB14768F7 /* PasteboardClipboard.swift in Sources */,
 				BE45311F50B1B88BFE65824A /* PendingApprovalSection.swift in Sources */,
+				B7B6F4D889122435DAB6DD0B /* PendingRecoveryCopy.swift in Sources */,
 				E8C11A58A19298A04B15CA33 /* PeopleView.swift in Sources */,
 				DDBB66882EBDC57EC6E6F9F4 /* PhoneApproval.swift in Sources */,
 				94B0407C5D16051E5B18A33D /* PhoneApprovalPreviewView.swift in Sources */,

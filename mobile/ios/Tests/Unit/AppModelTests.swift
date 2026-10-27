@@ -28,10 +28,19 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(model.screen, .signedOut)
     }
 
-    func testStartFailureShowsMessage() {
+    func testStartFailureShowsMessage() async {
         let model = AppModel(credentialIdentityStore: identityStore)
         model.start { throw BackendError(message: "Disk full") }
         XCTAssertEqual(model.screen, .failed("Disk full"))
+        XCTAssertTrue(model.beginStartupRetry())
+        XCTAssertEqual(model.screen, .starting)
+        XCTAssertFalse(model.beginStartupRetry())
+        await model.start { backend }?.value
+        XCTAssertEqual(model.screen, .signedOut)
+        XCTAssertFalse(model.beginStartupRetry())
+        var createdAgain = false
+        model.start { createdAgain = true; return backend }
+        XCTAssertFalse(createdAgain)
     }
 
     func testSignInLoadsVaultsAndItems() async {
@@ -275,7 +284,20 @@ final class AppModelTests: XCTestCase {
         let isUnlocked = await model.unlockWithBiometric()
         XCTAssertFalse(isUnlocked)
         XCTAssertEqual(model.screen, .locked)
-        XCTAssertEqual(model.errorMessage, "Face ID was cancelled.")
+        XCTAssertNil(model.errorMessage)
+        backend.isBiometricSucceeding = true
+        for code in [BackendError.biometricCancelled, BackendError.biometricNeedsPassword] {
+            let bridged = HisarKitBackend.convertError(BackendError(message: "\(code): Choose the password."), biometryName: "Face ID")
+            XCTAssertEqual(bridged.code, code)
+            backend.biometricUnlockError = bridged
+            let didUnlock = await model.unlockWithBiometric()
+            XCTAssertFalse(didUnlock)
+            XCTAssertEqual(model.screen, .locked)
+            XCTAssertNil(model.errorMessage)
+        }
+        backend.biometricUnlockError = BackendError(message: "Face ID is locked. Unlock with your master password.")
+        _ = await model.unlockWithBiometric()
+        XCTAssertEqual(model.errorMessage, backend.biometricUnlockError?.message)
     }
 
     func testSignOutClearsIdentities() async {
