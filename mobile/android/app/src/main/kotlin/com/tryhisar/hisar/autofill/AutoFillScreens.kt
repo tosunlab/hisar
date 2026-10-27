@@ -250,7 +250,19 @@ private fun AutoFillListView(model: AutoFillModel) {
         AlertDialog(
             onDismissRequest = model::dismissLoginToLink,
             title = { Text("Use ${login.title} in $serviceName?") },
-            text = { Text("Hisar can fill this login in $serviceName from now on, or only this time.") },
+            text = {
+                Column(
+                    Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(Modifier.semantics(mergeDescendants = true) {}, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(login.title, style = HisarType.headline)
+                        if (login.username.isNotEmpty()) Text(login.username, style = HisarType.body)
+                        Text(login.vaultName, style = HisarType.subheadline)
+                    }
+                    Text("Always use for this app makes this login a suggestion in this app. Only this time fills it without linking.")
+                }
+            },
             confirmButton = {
                 Column(Modifier.exposeTestTags(), horizontalAlignment = Alignment.End) {
                     PlainButton("Always use for this app", { scope.launch { model.fillLoginToLink(isLinked = true) } }, testTag = "autofill-link-always")

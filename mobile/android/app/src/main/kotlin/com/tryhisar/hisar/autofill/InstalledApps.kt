@@ -1,6 +1,7 @@
 package com.tryhisar.hisar.autofill
 
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.SigningInfo
 import java.security.MessageDigest
@@ -29,7 +30,12 @@ object InstalledApps {
 
     fun readLabel(context: Context, packageName: String): String = try {
         val packageManager = context.packageManager
-        packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
+        val label = packageManager.getApplicationLabel(packageManager.getApplicationInfo(packageName, 0)).toString()
+        val launcher = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val isAmbiguous = label != packageName && packageManager.queryIntentActivities(launcher, 0).any {
+            it.activityInfo.packageName != packageName && it.loadLabel(packageManager).toString() == label
+        }
+        if (isAmbiguous) "$label ($packageName)" else label
     } catch (_: PackageManager.NameNotFoundException) {
         packageName
     }
