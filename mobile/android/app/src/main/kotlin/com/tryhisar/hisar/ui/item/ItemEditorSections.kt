@@ -77,7 +77,7 @@ fun LoginSections(
         }
     }
     if (!item.isDatabase) {
-        FormSection(header = "One-time password") {
+        FormSection(header = "One-time code") {
             EditorField(
                 item.oneTimePassword,
                 { value -> onChange(draft.withItem { it.copy(oneTimePassword = value) }) },
