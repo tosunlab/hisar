@@ -75,7 +75,7 @@ struct HisarApp: App {
                 }
         }
         .onChange(of: scenePhase) { _, newPhase in
-            PrivacyShield.shared.setVisible(newPhase != .active)
+            PrivacyShield.shared.setVisible(newPhase != .active, theme: model.theme)
             switch newPhase {
             case .background:
                 hasEnteredBackground = true
