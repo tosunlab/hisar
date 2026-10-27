@@ -7,13 +7,18 @@ struct ChangeMasterPasswordView: View {
     @State private var newPassword = ""
     @State private var repeatedPassword = ""
     @State private var isConfirmationShown = false
+    @State private var ratedPassword = ""
+    @State private var newPasswordFeedback: MasterPasswordFeedback?
 
     private var problem: String? {
-        AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: repeatedPassword)
+        AccountLifecycleLogic.describeNewPasswordProblem(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: repeatedPassword, feedback: newPasswordFeedback)
     }
 
     private var canSubmit: Bool {
-        AccountLifecycleLogic.canChangePassword(currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: repeatedPassword) && !model.isBusy
+        AccountLifecycleLogic.canChangePassword(
+            currentPassword: currentPassword, newPassword: newPassword, repeatedPassword: repeatedPassword,
+            feedback: ratedPassword == newPassword ? newPasswordFeedback : nil
+        ) && !model.isBusy
     }
 
     var body: some View {
@@ -40,13 +45,23 @@ struct ChangeMasterPasswordView: View {
                 Text("New master password")
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
+                    PasswordStrengthMeter(strength: newPasswordFeedback?.strength ?? PasswordStrength())
                     if let problem {
                         Text(problem)
                             .foregroundStyle(.red)
                             .accessibilityIdentifier("change-password-problem")
+                    } else if let hint = AccountLifecycleLogic.describeMasterPasswordHint(feedback: newPasswordFeedback) {
+                        Text(hint)
                     }
                     Text("A forgotten master password can't be recovered by anyone, including Hisar.")
                 }
+            }
+            .task(id: newPassword) {
+                let typedPassword = newPassword
+                let feedback = await model.checkMasterPassword(typedPassword)
+                guard !Task.isCancelled else { return }
+                ratedPassword = typedPassword
+                newPasswordFeedback = feedback
             }
             if let errorMessage = model.errorMessage {
                 Section {

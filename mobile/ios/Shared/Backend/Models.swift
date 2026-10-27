@@ -1009,6 +1009,26 @@ struct LoginCredential: Codable, Equatable {
     }
 }
 
+/// core/item's rating of a password for the strength meter: level is "" for an empty password, else "weak", "fair", "good"
+/// or "strong", and label is the word the meter shows.
+struct PasswordStrength: Codable, Equatable {
+    var level = ""
+    var label = ""
+    var bits = 0
+}
+
+/// core/item's rule for a new master password: its rating and the one sentence under it. Create account and Change master
+/// password refuse a password whose feedback is blocking.
+struct MasterPasswordFeedback: Codable, Equatable {
+    var level = ""
+    var label = ""
+    var bits = 0
+    var message = ""
+    var isBlocking = false
+
+    var strength: PasswordStrength { PasswordStrength(level: level, label: label, bits: bits) }
+}
+
 struct OneTimeCode: Codable, Equatable {
     var code: String
     var expiresAt: String

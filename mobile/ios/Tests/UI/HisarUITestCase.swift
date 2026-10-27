@@ -6,7 +6,7 @@ class HisarUITestCase: XCTestCase {
         var name: String
     }
 
-    static let masterPassword = "ui test master password"
+    static let masterPassword = "ui test orange cactus harbor"
     var app: XCUIApplication!
 
     override func setUp() {

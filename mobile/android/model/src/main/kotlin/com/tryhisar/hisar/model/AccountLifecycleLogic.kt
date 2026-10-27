@@ -23,17 +23,34 @@ object AccountLifecycleLogic {
     const val SIGN_OUT_MESSAGE = "Hisar removes this device's saved Secret Key and offline copy of your vaults. To sign in again, you need your master password and the Secret Key from your Emergency Kit or another signed-in device."
     const val LOCKED_SIGN_OUT_MESSAGE = "$SIGN_OUT_MESSAGE If you have not saved an Emergency Kit, cancel, unlock Hisar and save one in Settings, Account."
 
-    fun describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String): String? = when {
-        newPassword.isEmpty() -> null
-        newPassword.characterCount() < MINIMUM_PASSWORD_LENGTH -> "Use at least $MINIMUM_PASSWORD_LENGTH characters."
-        newPassword == currentPassword -> "The new master password is the same as the current one."
-        repeatedPassword.isNotEmpty() && repeatedPassword != newPassword -> "The passwords do not match."
+    /**
+     * The sentence that refuses a new master password: fewer than 10 characters, counted as the user sees them, or core's
+     * rule ([MasterPasswordFeedback]) blocks it. [feedback] is core's rating of this password, null while it is on its way.
+     */
+    fun describeMasterPasswordProblem(password: String, feedback: MasterPasswordFeedback?): String? = when {
+        password.isEmpty() -> null
+        password.characterCount() < MINIMUM_PASSWORD_LENGTH -> "Use at least $MINIMUM_PASSWORD_LENGTH characters."
+        feedback != null && feedback.isBlocking -> feedback.message
         else -> null
     }
 
-    fun canChangePassword(currentPassword: String, newPassword: String, repeatedPassword: String): Boolean =
-        currentPassword.isNotEmpty() && newPassword.isNotEmpty() && newPassword == repeatedPassword &&
-            describeNewPasswordProblem(currentPassword, newPassword, repeatedPassword) == null
+    /** The hint under a Weak master password that core allows. */
+    fun describeMasterPasswordHint(feedback: MasterPasswordFeedback?): String? =
+        feedback?.takeIf { !it.isBlocking && it.level == "weak" }?.message
+
+    fun isMasterPasswordAccepted(password: String, feedback: MasterPasswordFeedback?): Boolean =
+        password.isNotEmpty() && feedback != null && describeMasterPasswordProblem(password, feedback) == null
+
+    fun describeNewPasswordProblem(currentPassword: String, newPassword: String, repeatedPassword: String, feedback: MasterPasswordFeedback?): String? =
+        describeMasterPasswordProblem(newPassword, feedback) ?: when {
+            newPassword.isNotEmpty() && newPassword == currentPassword -> "The new master password is the same as the current one."
+            repeatedPassword.isNotEmpty() && repeatedPassword != newPassword -> "The passwords do not match."
+            else -> null
+        }
+
+    fun canChangePassword(currentPassword: String, newPassword: String, repeatedPassword: String, feedback: MasterPasswordFeedback?): Boolean =
+        currentPassword.isNotEmpty() && newPassword == repeatedPassword && isMasterPasswordAccepted(newPassword, feedback) &&
+            describeNewPasswordProblem(currentPassword, newPassword, repeatedPassword, feedback) == null
 
     fun isEmailMatching(typedEmail: String, accountEmail: String): Boolean {
         val trimmedEmail = typedEmail.trimmingWhitespacesAndNewlines()

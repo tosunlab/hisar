@@ -93,6 +93,8 @@ protocol VaultBackend: AnyObject {
     func getOneTimeCodeForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> OneTimeCode
     func copyField(vaultID: String, itemID: String, fieldName: String) throws
     func generatePassword(length: Int, isDigitIncluded: Bool, isSymbolIncluded: Bool) throws -> String
+    func ratePassword(_ password: String) throws -> PasswordStrength
+    func checkMasterPassword(_ password: String) throws -> MasterPasswordFeedback
     func listAllLoginForService(serviceIdentifier: String) throws -> [LoginMatch]
     func getLoginForService(vaultID: String, itemID: String, serviceIdentifier: String) throws -> LoginCredential
     func listAllPasskey() throws -> [StoredPasskey]

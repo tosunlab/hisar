@@ -176,6 +176,12 @@ func TestNewAndSignedOutStatus(t *testing.T) {
 	if password, err := hisar.GeneratePassword(24, true, true); err != nil || len(password) != 24 {
 		t.Errorf("generate: %q %v", password, err)
 	}
+	if strength, err := hisar.RatePassword("password1234"); err != nil || strength != `{"level":"weak","label":"Weak","bits":8}` {
+		t.Errorf("rate: %s %v", strength, err)
+	}
+	if feedback, err := hisar.CheckMasterPassword("password1234"); err != nil || !strings.Contains(feedback, `"isBlocking":true`) {
+		t.Errorf("check master password: %s %v", feedback, err)
+	}
 }
 
 func TestAdapters(t *testing.T) {

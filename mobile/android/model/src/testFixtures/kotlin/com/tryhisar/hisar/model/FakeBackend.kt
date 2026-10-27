@@ -621,6 +621,27 @@ open class FakeBackend : VaultBackend {
         return (if (isSymbolIncluded) "!" else if (isDigitIncluded) "1" else "a").repeat(length)
     }
 
+    override fun ratePassword(password: String): PasswordStrength {
+        record("ratePassword")
+        return rateMasterPassword(password).strength
+    }
+
+    override fun checkMasterPassword(password: String): MasterPasswordFeedback {
+        record("checkMasterPassword")
+        return rateMasterPassword(password)
+    }
+
+    /** core/item's answers for password1234 and the empty password; any other password rates Good. */
+    private fun rateMasterPassword(password: String): MasterPasswordFeedback {
+        val advice = "A few random words you can remember make a strong master password."
+        return when (password) {
+            "" -> MasterPasswordFeedback(message = advice)
+            "password1234" ->
+                MasterPasswordFeedback("weak", "Weak", 8, "This password is too easy to guess. Add a few more words or characters.", isBlocking = true)
+            else -> MasterPasswordFeedback("good", "Good", 60, advice)
+        }
+    }
+
     override fun listAllLoginForService(serviceIdentifier: String): List<LoginMatch> {
         record("listAllLoginForService")
         requireUnlocked()

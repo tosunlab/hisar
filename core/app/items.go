@@ -713,6 +713,11 @@ func (s *Service) GeneratePassword(config PasswordConfig) (string, error) {
 	return item.GeneratePassword(item.GeneratorConfig{Length: config.Length, Digits: config.Digits, Symbols: config.Symbols})
 }
 
+// RatePassword is the strength meter's rating of a password, the same rule CheckMasterPassword uses.
+func (s *Service) RatePassword(password string) item.PasswordStrength {
+	return item.RatePassword(password)
+}
+
 // fieldNames are the names the apps pass to CopyField for built-in fields.
 var fieldNames = item.FieldNames{
 	"username": item.FieldUsername, "password": item.FieldPassword, "url": item.FieldURL, "notes": item.FieldNotes,

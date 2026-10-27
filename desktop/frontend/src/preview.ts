@@ -25,7 +25,9 @@ import type {
   ItemDetail,
   LauncherApp,
   LoginItemStatus,
+  MasterPasswordFeedback,
   PasswordConfig,
+  PasswordStrength,
   ShareInvitations,
   ShareLink,
   ShareLinkField,
@@ -1527,6 +1529,25 @@ function continuePreviewImport(): Promise<ImportProgress> {
   );
 }
 
+// The preview has no Go backend, so it rates by length and two common patterns; the app rates with core/item.
+function ratePreviewPassword(password: string): PasswordStrength {
+  const bits = /password|1234/i.test(password) ? 8 : password.length * 3;
+  if (password === "") return { level: "", label: "", bits: 0 };
+  if (bits < 40) return { level: "weak", label: "Weak", bits };
+  if (bits < 60) return { level: "fair", label: "Fair", bits };
+  if (bits < 90) return { level: "good", label: "Good", bits };
+  return { level: "strong", label: "Strong", bits };
+}
+
+function checkPreviewMasterPassword(password: string): MasterPasswordFeedback {
+  const strength = ratePreviewPassword(password);
+  const feedback = { ...strength, message: "A few random words you can remember make a strong master password.", isBlocking: false };
+  if (password !== "" && password.length < 10) return { ...feedback, message: "Use at least 10 characters.", isBlocking: true };
+  if (password !== "" && strength.bits < 28) return { ...feedback, message: "This password is too easy to guess. Add a few more words or characters.", isBlocking: true };
+  if (strength.level === "weak") return { ...feedback, message: "You can use it, but another word or a few more characters make it much harder to guess." };
+  return feedback;
+}
+
 export const previewApi = {
   listAllImportFormat: () =>
     resolveAfterDelay([
@@ -1701,6 +1722,7 @@ export const previewApi = {
     vault.readIssues = vault.readIssues?.filter((issue) => issue.itemId);
     return resolveAfterDelay(buildPreviewVaultSummary(vault));
   },
+  ratePassword: (password: string) => Promise.resolve(ratePreviewPassword(password)),
   generatePassword: (config: PasswordConfig) => {
     const alphabet = "abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ" + (config.digits ? "23456789" : "") + (config.symbols ? "!@#$%^&*-_=+?" : "");
     const allRandom = crypto.getRandomValues(new Uint32Array(config.length || 24));
@@ -2147,6 +2169,7 @@ export const previewApi = {
     previewRecovery = [];
     return Promise.resolve();
   },
+  checkMasterPassword: (password: string) => Promise.resolve(checkPreviewMasterPassword(password)),
   changeMasterPassword: (currentPassword: string) =>
     currentPassword.length < 4
       ? Promise.reject(new Error("the master password is not correct"))

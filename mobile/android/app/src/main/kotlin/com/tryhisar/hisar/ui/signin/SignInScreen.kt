@@ -32,6 +32,9 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.tryhisar.hisar.app.AppModel
 import com.tryhisar.hisar.app.SignInModel
+import com.tryhisar.hisar.model.AccountLifecycleLogic
+import com.tryhisar.hisar.model.MasterPasswordFeedback
+import com.tryhisar.hisar.model.PasswordStrength
 import com.tryhisar.hisar.ui.components.ClearSection
 import com.tryhisar.hisar.ui.components.ErrorBanner
 import com.tryhisar.hisar.ui.components.FormButtonRow
@@ -40,6 +43,7 @@ import com.tryhisar.hisar.ui.components.FormSection
 import com.tryhisar.hisar.ui.components.FormTextField
 import com.tryhisar.hisar.ui.components.GroupedForm
 import com.tryhisar.hisar.ui.components.LogoMark
+import com.tryhisar.hisar.ui.components.PasswordStrengthMeter
 import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ProminentButton
 import com.tryhisar.hisar.ui.components.RowDivider
@@ -77,6 +81,8 @@ fun SignInScreen(model: AppModel) {
     var secretKey by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var repeatedPassword by remember { mutableStateOf("") }
+    var ratedPassword by remember { mutableStateOf("") }
+    var passwordFeedback by remember { mutableStateOf<MasterPasswordFeedback?>(null) }
 
     fun changeMode(newMode: SignInMode) {
         if (newMode == mode) return
@@ -101,13 +107,22 @@ fun SignInScreen(model: AppModel) {
         inviteLink = link.invite
     }
 
+    LaunchedEffect(mode, password) {
+        if (mode != SignInMode.CREATE_ACCOUNT) return@LaunchedEffect
+        val typedPassword = password
+        val feedback = model.checkMasterPassword(typedPassword)
+        ratedPassword = typedPassword
+        passwordFeedback = feedback
+    }
+
     val isPasswordMismatch = mode == SignInMode.CREATE_ACCOUNT && repeatedPassword.isNotEmpty() && password != repeatedPassword
     // An invite link names its server, so the create-account form asks for one only without an invite.
     val isSignUpServerAsked = inviteLink.isBlank()
     val canSubmit = when (mode) {
         SignInMode.SIGN_IN -> server.isNotEmpty() && email.isNotEmpty() && secretKey.isNotEmpty() && password.isNotEmpty()
         SignInMode.CREATE_ACCOUNT ->
-            (!isSignUpServerAsked || server.isNotBlank()) && email.isNotEmpty() && name.isNotEmpty() && password.isNotEmpty() && password == repeatedPassword
+            (!isSignUpServerAsked || server.isNotBlank()) && email.isNotEmpty() && name.isNotEmpty() && password == repeatedPassword &&
+                AccountLifecycleLogic.isMasterPasswordAccepted(password, passwordFeedback.takeIf { ratedPassword == password })
     }
 
     fun submit() {
@@ -179,6 +194,7 @@ fun SignInScreen(model: AppModel) {
                 password = password, onPasswordChange = { password = it },
                 repeatedPassword = repeatedPassword, onRepeatedPasswordChange = { repeatedPassword = it },
                 isPasswordMismatch = isPasswordMismatch,
+                passwordFeedback = passwordFeedback,
             )
         }
         ClearSection(
@@ -283,6 +299,7 @@ private fun CreateAccountSections(
     repeatedPassword: String,
     onRepeatedPasswordChange: (String) -> Unit,
     isPasswordMismatch: Boolean,
+    passwordFeedback: MasterPasswordFeedback?,
 ) {
     FormSection(header = "Invite", footer = { Text("Leave it empty if the server lets anyone sign up.") }) {
         FormTextField(
@@ -323,8 +340,15 @@ private fun CreateAccountSections(
     FormSection(
         header = "Master password",
         footer = {
+            PasswordStrengthMeter(passwordFeedback?.strength ?: PasswordStrength())
             if (isPasswordMismatch) Text("The passwords do not match.", color = HisarTheme.colors.destructive)
-            Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
+            val problem = AccountLifecycleLogic.describeMasterPasswordProblem(password, passwordFeedback)
+            val hint = AccountLifecycleLogic.describeMasterPasswordHint(passwordFeedback)
+            when {
+                problem != null -> Text(problem, color = HisarTheme.colors.destructive, modifier = Modifier.testTag("sign-up-password-problem"))
+                hint != null -> Text(hint)
+                else -> Text("Choose a master password you can remember. Hisar never sends it to the server, so nobody can reset it for you.")
+            }
         },
     ) {
         FormTextField(
