@@ -254,6 +254,15 @@ struct AccountView: View {
                     Label("Import a Hisar export…", systemImage: "square.and.arrow.down.on.square")
                 }
                 .accessibilityIdentifier("open-hisar-export-import")
+                DisclosureGroup {
+                    Text("Start the export in the other password manager and choose Hisar. Hisar will open so you can review the items and choose their vaults.")
+                        .accessibilityIdentifier("other-app-import-guidance")
+                    Text("For example, in 1Password, open Settings → Export → Hisar. Keep the source app until you have reviewed the imported items in Hisar.")
+                        .accessibilityIdentifier("other-app-import-example")
+                } label: {
+                    Label("Import from another app", systemImage: "arrow.down.app")
+                }
+                .accessibilityIdentifier("other-app-import-disclosure")
             } footer: {
                 Text("A copy of every vault you can open, encrypted with a passphrase you choose, or as plain JSON. You can import a Hisar export back into your vaults.")
             }
@@ -820,10 +829,24 @@ struct AboutView: View {
     }
 }
 
+@MainActor
+final class SupportContact: ObservableObject {
+    @Published private(set) var isMailUnavailable = false
+
+    func openMessage(using openURL: (URL, @escaping (Bool) -> Void) -> Void) {
+        let url = URL(string: "mailto:\(HelpView.supportEmail)")!
+        openURL(url) { [weak self] accepted in
+            self?.isMailUnavailable = !accepted
+        }
+    }
+}
+
 struct HelpView: View {
     static let supportEmail = "support@tryhisar.com"
 
     @EnvironmentObject private var model: AppModel
+    @Environment(\.openURL) private var openURL
+    @StateObject private var contact = SupportContact()
     @State private var currentDeviceID: String?
 
     static func buildDiagnostics(appVersion: String, systemVersion: String, deviceModel: String, server: String, deviceID: String?) -> String {
@@ -848,6 +871,19 @@ struct HelpView: View {
     var body: some View {
         List {
             Section {
+                Button {
+                    contact.openMessage { url, completion in
+                        openURL(url, completion: completion)
+                    }
+                } label: {
+                    Label("Contact support", systemImage: "envelope")
+                }
+                .accessibilityIdentifier("contact-support")
+                if contact.isMailUnavailable {
+                    Text("No mail app is available. Copy the address and write to us from your mail app or website.")
+                        .foregroundStyle(.themeSecondary)
+                        .accessibilityIdentifier("support-mail-unavailable")
+                }
                 Text(verbatim: Self.supportEmail)
                     .textSelection(.enabled)
                     .accessibilityIdentifier("support-email")
@@ -860,7 +896,7 @@ struct HelpView: View {
             } header: {
                 Text("Contact support")
             } footer: {
-                Text("Write to us about a problem or an idea. Adding the diagnostics below helps us help you.")
+                Text("Write to us about a problem or an idea. Diagnostics are optional. Copy them below if you want to include them in your message.")
             }
             Section {
                 Button {
@@ -870,7 +906,7 @@ struct HelpView: View {
                 }
                 .accessibilityIdentifier("copy-diagnostics")
             } footer: {
-                Text("The app and iOS versions, the server and this device's ID. Never your items, keys or master password.")
+                Text("The app version and build, iOS version and device model, server and this device's ID. Never your items, keys or master password.")
             }
             Section {
                 LabeledContent("Server", value: VaultLogic.describeServer(model.status.server))

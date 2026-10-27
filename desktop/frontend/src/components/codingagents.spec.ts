@@ -46,11 +46,12 @@ beforeEach(() => {
     isBusy: false,
     allVault,
     allAgentVaultID: [],
+    organizations: { organizations: [{ id: "acme", name: "Acme" }, { id: "northwind", name: "Northwind" }], invitations: [] },
     allAgentSession: [],
     allAgentHost: [],
     allAgentGrant: [],
     agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false },
-    agentErrorMessage: "",
+    agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "" },
   });
   api.listAllAgentVaultID.mockResolvedValue([]);
   api.listAllAgentGrant.mockResolvedValue([]);
@@ -60,6 +61,26 @@ beforeEach(() => {
 });
 
 describe("CodingAgentsSection", () => {
+  it("groups same-named vaults by organization and distinguishes duplicates inside a group", async () => {
+    store.allVault = [
+      ...allVault,
+      { id: "acme-vault-1", organizationId: "acme", name: "Production", type: "organization", role: "editor", itemCount: 12 },
+      { id: "acme-vault-2", organizationId: "acme", name: "Production", type: "organization", role: "editor", itemCount: 12 },
+      { id: "northwind-vault", organizationId: "northwind", name: "Production", type: "organization", role: "editor", itemCount: 12 },
+    ];
+    const wrapper = mount(CodingAgentsSection);
+    await flushPromises();
+    const groups = wrapper.findAll('[data-testid="agent-vault-group"]');
+    expect(groups.map((group) => group.get("h3").text())).toEqual(["Vaults", "Acme", "Northwind"]);
+    expect(groups[0].text()).toContain("Personal");
+    expect(groups[1].get('[data-testid="agent-vault-acme-vault-1"] strong').text()).toBe("Production · acme-vault-1");
+    expect(groups[1].get('[data-testid="agent-vault-acme-vault-2"] strong').text()).toBe("Production · acme-vault-2");
+    expect(getSwitch(wrapper, "acme-vault-1").getAttribute("aria-label")).toBe("Available to agents: Acme, Production · acme-vault-1");
+    expect(getSwitch(wrapper, "acme-vault-2").getAttribute("aria-label")).toBe("Available to agents: Acme, Production · acme-vault-2");
+    expect(getSwitch(wrapper, "northwind-vault").getAttribute("aria-label")).toBe("Available to agents: Northwind, Production");
+    expect(getSwitch(wrapper, "personal").getAttribute("aria-label")).toBe("Available to agents: Vaults, Personal");
+  });
+
   it("lists every vault as invisible to agents by default", async () => {
     const wrapper = mount(CodingAgentsSection);
     await flushPromises();
@@ -180,7 +201,7 @@ describe("CodingAgentsSection sessions and hosts", () => {
     api.revokeAgentSession.mockRejectedValue(new Error("the Hisar app could not revoke it"));
     await wrapper.find('[data-testid="revoke-agent-session-1226"]').trigger("click");
     await flushPromises();
-    expect(wrapper.find('[data-testid="coding-agents-error"]').text()).toBe("the Hisar app could not revoke it");
+    expect(wrapper.find('[data-testid="agent-sessions-error"]').text()).toBe("the Hisar app could not revoke it");
     expect(wrapper.find('[data-testid="agent-session"]').exists()).toBe(true);
   });
 });

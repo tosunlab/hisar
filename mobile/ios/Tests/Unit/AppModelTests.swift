@@ -209,6 +209,17 @@ final class AppModelTests: XCTestCase {
         XCTAssertEqual(diagnostics, "Hisar 1.2 (34)\niOS 26.0 on iPhone\nServer https://eu.tryhisar.com\nDevice ID device-1")
         XCTAssertEqual(HelpView.buildDiagnostics(appVersion: "1.2 (34)", systemVersion: "26.0", deviceModel: "iPhone", server: "", deviceID: nil), "Hisar 1.2 (34)\niOS 26.0 on iPhone\nServer not signed in")
         XCTAssertEqual(HelpView.supportEmail, "support@tryhisar.com")
+        let contact = SupportContact()
+        var openedURL: URL?
+        contact.openMessage { url, completion in
+            openedURL = url
+            completion(false)
+        }
+        XCTAssertEqual(openedURL?.absoluteString, "mailto:support@tryhisar.com")
+        XCTAssertNil(openedURL?.query, "diagnostics are never attached without asking")
+        XCTAssertTrue(contact.isMailUnavailable, "offer the copy-address fallback when no handler opens the message")
+        contact.openMessage { _, completion in completion(true) }
+        XCTAssertFalse(contact.isMailUnavailable)
     }
 
     func testLockAndUnlockWithPassword() async {

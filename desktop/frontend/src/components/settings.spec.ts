@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { flushPromises, mount, type VueWrapper } from "@vue/test-utils";
-import { createApiMock, createDevice, createPerson, createReceivedShareInvitation, createSSHAgentStatus, createStatus, createUpdateStatus } from "../testing";
+import { createAgentHost, createAgentSession, createApiMock, createDevice, createPerson, createReceivedShareInvitation, createSSHAgentStatus, createStatus, createUpdateStatus } from "../testing";
 import MainView from "./MainView.vue";
 
 const apiMock = vi.hoisted(() => ({ current: {} as ReturnType<typeof createApiMock> }));
@@ -60,6 +60,10 @@ beforeEach(() => {
     allDevice: [],
     shareInvitations: { received: [], sent: [], completionError: "" },
   });
+  store.agentErrors = { vaults: "", signIn: "", grants: "", sessions: "", hosts: "" };
+  api.listAllAgentGrant.mockResolvedValue([]);
+  api.listAllAgentSession.mockResolvedValue([]);
+  api.listAllAgentHost.mockResolvedValue([]);
   api.getSSHAgentStatus.mockResolvedValue(createSSHAgentStatus());
   api.listAllShareInvitation.mockResolvedValue({ received: [], sent: [], completionError: "" });
   api.listAllPerson.mockResolvedValue([]);
@@ -213,6 +217,62 @@ describe("People empty state", () => {
 });
 
 describe("Settings search", () => {
+  it.each(["Hisar export", ".hisar", "1Password", "1pux", "Bitwarden", "LastPass", "Chrome", "Firefox", "Safari", "Edge"])("finds the import action for %s", async (source) => {
+    const settings = await mountSettings();
+    await search(settings, source);
+    await settings.get('[data-testid="settings-section-export"]').trigger("click");
+    expect(settings.get('[data-testid="import-section"]').isVisible()).toBe(true);
+    expect(settings.get('[data-testid="open-import"]').isVisible()).toBe(true);
+  });
+
+  it.each(["omp", "Claude Code", "Codex", "Hermes", "Cursor", "Tern"])("keeps coding-agent connections visible for %s", async (name) => {
+    const settings = await mountSettings();
+    await search(settings, name);
+    await settings.get('[data-testid="settings-section-developer"]').trigger("click");
+    expect(settings.get('[data-testid="coding-agents-section"]').isVisible()).toBe(true);
+    expect(settings.get('[data-testid="agent-connections"]').isVisible()).toBe(true);
+  });
+
+  it("keeps a failed grant revocation visible when its owning row is filtered", async () => {
+    const grant = { id: "grant", scope: "harness", harnessName: "omp", name: "Deploy", kind: "run", website: "", expiresAt: "" };
+    api.listAllAgentGrant.mockResolvedValue([grant]);
+    const settings = await mountSettings();
+    await search(settings, "Allowed without asking");
+    expect(settings.get('[data-testid="coding-agents-section"]').isVisible()).toBe(false);
+    api.revokeAgentGrant.mockRejectedValue(new Error("Could not revoke this approval. Try again."));
+    await settings.get('[data-testid="revoke-agent-grant-0"]').trigger("click");
+    await flushPromises();
+    const error = settings.get('[data-testid="agent-grants-section"] [role="alert"]');
+    expect(error.isVisible()).toBe(true);
+    expect(error.text()).toBe("Could not revoke this approval. Try again.");
+    expect(settings.findAll('[data-testid="agent-grant"]')).toHaveLength(1);
+  });
+
+  it("keeps independent action and load failures in their own developer-tool sections", async () => {
+    api.listAllAgentHost.mockResolvedValue([createAgentHost()]);
+    api.listAllAgentSession.mockResolvedValue([createAgentSession()]);
+    api.listAllAgentGrant.mockRejectedValue(new Error("Could not load approvals."));
+    const settings = await mountSettings();
+    await settings.get('[data-testid="settings-section-developer"]').trigger("click");
+    api.forgetAgentHost.mockRejectedValue(new Error("Could not forget Tern."));
+    await settings.get('[data-testid="forget-agent-host-Tern"]').trigger("click");
+    await flushPromises();
+    api.revokeAgentSession.mockRejectedValue(new Error("Could not revoke the session."));
+    await settings.get('[data-testid="revoke-agent-session-1226"]').trigger("click");
+    await flushPromises();
+    expect(settings.get('[data-testid="agent-grants-error"]').text()).toBe("Could not load approvals.");
+    expect(settings.get('[data-testid="agent-hosts-error"]').text()).toBe("Could not forget Tern.");
+    expect(settings.get('[data-testid="agent-sessions-error"]').text()).toBe("Could not revoke the session.");
+    api.revokeAgentSession.mockResolvedValue([]);
+    await settings.get('[data-testid="revoke-agent-session-1226"]').trigger("click");
+    await flushPromises();
+    expect(settings.find('[data-testid="agent-sessions-error"]').exists()).toBe(false);
+    expect(settings.get('[data-testid="agent-grants-error"]').text()).toBe("Could not load approvals.");
+    expect(settings.get('[data-testid="agent-hosts-error"]').text()).toBe("Could not forget Tern.");
+    await search(settings, "Agent hosts");
+    expect(settings.get('[data-testid="agent-hosts-error"]').isVisible()).toBe(true);
+  });
+
   it("keeps only the sections and rows that match", async () => {
     const settings = await mountSettings();
     await search(settings, "touch id");

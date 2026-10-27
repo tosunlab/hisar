@@ -211,6 +211,22 @@ describe("Import store", () => {
 });
 
 describe("Import panel", () => {
+  it("shows complete explanations for omissions, duplicates and save failures", async () => {
+    const reason = "Bitwarden asked for the master password again before showing this item. Hisar shows and fills it while unlocked.";
+    const duplicateDetail = "This login has a different password. Keep the source until you have checked which password you want to keep.";
+    const wrapper = await openPreview({
+      allSkipped: [{ title: "Long omission", reason }],
+      allDuplicate: [{ title: "Long duplicate", detail: duplicateDetail }],
+    });
+    expect(wrapper.get('[data-testid="import-skipped"] .entry-list span').text()).toBe(reason);
+    expect(wrapper.get('[data-testid="import-duplicates"] .entry-list span').text()).toBe(duplicateDetail);
+    const failure = "This vault's access changed while importing. Keep the source file and preview it again to review who can read these items.";
+    store.store.importProgress = createImportProgress({ isDone: true, allFailed: [{ title: "Failed item", reason: failure }] });
+    store.store.importStep = "done";
+    await flushPromises();
+    expect(wrapper.get('[data-testid="import-failed"] .entry-list span').text()).toBe(failure);
+  });
+
   it("offers editable vaults and starts with Personal even when a shared vault is selected", async () => {
     store.store.selectedVaultID = "work";
     await store.openImport();
@@ -252,7 +268,7 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').text()).toContain("1");
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').text()).toContain("SSH key");
     expect(wrapper.findAll('[data-testid^="import-count-"]').map((entry) => entry.text())).toEqual(["9 logins", "2 secure notes", "1 SSH key"]);
-    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("9 logins · 2 secure notes · 1 SSH key");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("Before skipping duplicates: 12 items. 9 logins · 2 secure notes · 1 SSH key");
     expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("11 items to import into Personal");
     expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("Already in Personal · 1");
     expect(wrapper.find('[data-testid="import-duplicates"]').text()).toContain("alice · github.com");
@@ -263,6 +279,7 @@ describe("Import panel", () => {
     await wrapper.find('[data-testid="skip-duplicates"]').setValue(false);
     expect(wrapper.find('[data-testid="start-import"]').text()).toBe("Import 12 items");
     expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("12 items to import into Personal");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("Before skipping duplicates: 12 items. 9 logins · 2 secure notes · 1 SSH key");
     api.startImport.mockResolvedValue(createImportProgress({ totalCount: 12 }));
     api.continueImport.mockReturnValue(new Promise(() => undefined));
     await wrapper.find('[data-testid="start-import"]').trigger("click");
@@ -277,12 +294,14 @@ describe("Import panel", () => {
     expect(wrapper.find('[data-testid="import-duplicates"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="import-skipped"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="start-import"]').text()).toBe("Import 12 items");
+    expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("12 items to import into Personal");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("Before skipping duplicates: 12 items. 9 logins · 2 secure notes · 1 SSH key");
   });
 
   it("shows a singular headline and omits empty categories", async () => {
     const wrapper = await openPreview({ itemCount: 1, loginCount: 1, secureNoteCount: 0, sshKeyCount: 0, allDuplicate: [] });
     expect(wrapper.get('[data-testid="import-headline"]').text()).toBe("1 item to import into Personal");
-    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("1 login");
+    expect(wrapper.get('[data-testid="import-category-counts"]').text()).toBe("Before skipping duplicates: 1 item. 1 login");
     expect(wrapper.find('[data-testid="import-count-secure-note"]').exists()).toBe(false);
     expect(wrapper.find('[data-testid="import-count-ssh-key"]').exists()).toBe(false);
   });

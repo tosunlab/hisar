@@ -192,6 +192,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         </section>
         <h3 data-testid="import-headline">{{ formatCount(importCount) }} to import into {{ store.importPreview.vaultName }}</h3>
         <p v-if="allCount.length > 0" class="category-counts muted" data-testid="import-category-counts">
+          Before skipping duplicates: {{ formatCount(store.importPreview.itemCount) }}.
           <template v-for="(countEntry, index) in allCount" :key="countEntry.testID">
             <template v-if="index > 0"> · </template>
             <span :data-testid="`import-count-${countEntry.testID}`">{{ countEntry.count }} {{ countEntry.label }}</span>
@@ -457,8 +458,8 @@ section {
 
 .entry-list li {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
+  flex-direction: column;
+  gap: 3px;
   padding: 7px 12px;
   border-bottom: 1px solid var(--color-border);
   font-size: var(--font-size-12);
@@ -469,19 +470,16 @@ section {
 }
 
 .entry-list strong {
-  flex: none;
-  max-width: 45%;
-  overflow: hidden;
+  min-width: 0;
   font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 
 .entry-list span {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  line-height: normal;
+  overflow-wrap: anywhere;
 }
 
 .checkbox-row {

@@ -105,6 +105,12 @@ The preview backend (`src/preview.ts`) is loaded with a dynamic import behind a 
 
 On macOS, Settings (⌘,) opens in its own window (`settingsWindowOptions` in `windows.go`, `SettingsWindowService`, `src/SettingsWindow.vue`); its page reloads whenever it closes, and it closes when Hisar locks or signs out. `SettingsWindowService` keeps the section Settings was asked to open at until the page takes it, so Settings asked for while Hisar is locked opens after the unlock. The window shows settings only: it never loads items or removed-vault notices. Import, a vault's sharing panel and the pending recovery after replacing the Secret Key open in the main window, which owns them; the website icon setting reaches every window as an event. On Linux and in the preview, Settings is an overlay in the main window; the preview shows the Settings window at `?window=settings&settingsSection=<section>`.
 
+Developer tools keeps vault availability, website sign-in, approval revocation, running-agent revocation, and host-removal errors in the section that owns the action. Settings search keeps each visible action's error visible. A successful action clears only its own section's error.
+
+**Vaults for coding agents** groups organization vaults under their organization, with other vaults under **Vaults**. Switch names include that group. Duplicate vault names inside a group show a stable vault-ID prefix so you can distinguish their availability switches.
+
+Settings search finds import sources by their displayed names, including **LastPass** and **Hisar export**. Searching for **Hermes** keeps its connection card in **Coding agents** visible as well as **Website sign-in**.
+
 The app keeps its session in `~/Library/Application Support/hisar/desktop.json` (override with `HISAR_DESKTOP_STATE`), the encrypted offline cache in `desktop-cache.db` next to it (override with `HISAR_DESKTOP_CACHE`), and the Secret Key in the macOS Keychain under the service `hisar`.
 
 The item editor keeps Cancel and Save visible in a sticky footer. Esc uses the same draft guard as Cancel, ⌘N,
@@ -232,6 +238,8 @@ Settings → Import & Export → **Import…**, or **+** → **Import…** in a 
 
 1. Choose the format, or let Hisar detect it, then pick the file. Hisar reads 1Password `.1pux` and CSV, unencrypted Bitwarden JSON and CSV, LastPass CSV, and browser CSV exports. The initial destination is Personal, even when you opened Import from a shared vault.
 2. The preview counts logins, secure notes, SSH keys, credit cards, identities, API credentials and addresses, lists what is not imported and why (documents, archived items, passphrase-protected SSH keys), and lists items already in the vault, which are skipped unless you untick the box. A login matches on its title, username and website, a card on its title and last four digits, an identity on its title, name, email and first document number, an API credential on its title and key ID (or host, or secret when it has neither), and an address on its title, street, postal code and country. Nothing is saved before **Import**.
+   Omission reasons, duplicate details, and save failures wrap below each item title. Their lists scroll for large imports, without hiding explanations behind a tooltip.
+   The category summary is labelled **Before skipping duplicates** and keeps the parsed file's total. The queued headline and **Import** button exclude existing items while **Skip items that are already in the vault** is checked.
    Each 1Password vault or Bitwarden organization and collection set has its own destination selector. Leave private source groups in Personal unless you intend to share them. To use a shared destination, select it explicitly and review its current members and roles. The import never creates sharing grants or source vaults automatically.
 3. Items are saved in batches of 10 with a progress bar; if the connection drops, **Try again** continues where it stopped. Locking Hisar discards the parsed file.
    If destination membership changes, saving stops before the next item is committed. Choose **Stop and keep the source file**, then preview the source again to review the new access scope. Already saved items remain in their chosen vaults. Later sharing changes can still expose those saved items.
@@ -240,6 +248,8 @@ Settings → Import & Export → **Import…**, or **+** → **Import…** in a 
 ## Browser extension bridge
 
 The Hisar extension (`extension/`) fills and saves logins through the desktop app (design: [Design](../design.md) §9.2).
+
+Settings → Browser lists only successful registrations under **Ready in**. A failed registration shows the browser name, its error, and a selectable manifest location. For permission errors, check that Hisar can write there, then choose **Quit Hisar Completely** in the menu bar and reopen Hisar to retry registration.
 
 - `Hisar.app/Contents/MacOS/hisar-browser-host` is the native messaging host. At launch the app writes `com.tryhisar.hisar.json` into `NativeMessagingHosts` of every Chromium browser it knows (Chrome, Brave, Edge and their beta, dev, canary and nightly channels, Chromium, Arc, Dia, Vivaldi and Vivaldi Snapshot, Opera and Opera GX), whether or not it is installed, so a browser installed later finds the host at its first launch. Dia reads Chrome's folder rather than its own, so its entry points there. It allows only the extension `mmipiffoogblblocokimpemdopmdjghf`. For Firefox it writes the same file with `allowed_extensions: ["extension@tryhisar.com"]` into `~/Library/Application Support/Mozilla/NativeMessagingHosts` (Linux: `~/.mozilla/native-messaging-hosts`); Firefox counts as having run once its `profiles.ini` exists. The host reads Chrome's argument (the extension origin) or Firefox's (the manifest path, then the add-on ID). Settings → Browser lists the browsers that have run. A development build (`wails3 dev`) has no host next to its binary and registers nothing.
 - The host relays to the app on `~/.hisar/browser.sock` (`HISAR_BROWSER_SOCKET` overrides it for both). In the packaged app only that host binary may connect. If the app is not running, the host opens it in the background.

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from "vue";
+import { computed, onBeforeUnmount, onMounted } from "vue";
 import { Events } from "@wailsio/runtime";
 import { api, type AgentGrant, type AgentSession, type RememberedAgentSecret, type VaultSummary } from "../api";
 import {
@@ -19,6 +19,35 @@ import AppIcon, { type IconName } from "./AppIcon.vue";
 import CodingAgentConnections from "./CodingAgentConnections.vue";
 
 const isRowVisible = useSettingsRowVisibility();
+
+const allVaultGroup = computed(() => {
+  const groupByID = new Map<string, { organizationID: string; name: string; allVault: VaultSummary[] }>();
+  for (const vault of store.allVault) {
+    const organizationID = vault.organizationId ?? "";
+    const name = organizationID ? store.organizations.organizations.find((organization) => organization.id === organizationID)?.name ?? "Organization" : "Vaults";
+    const group = groupByID.get(organizationID) ?? { organizationID, name, allVault: [] };
+    group.allVault.push(vault);
+    groupByID.set(organizationID, group);
+  }
+  return [...groupByID.values()].sort((first, second) => {
+    if (!first.organizationID || !second.organizationID) {
+      return first.organizationID ? 1 : -1;
+    }
+    return first.name.localeCompare(second.name, undefined, { sensitivity: "base" });
+  });
+});
+
+function describeVault(vault: VaultSummary, allVault: VaultSummary[]): string {
+  const allOtherID = allVault.filter((other) => other.name === vault.name && other.id !== vault.id).map((other) => other.id);
+  if (allOtherID.length === 0) {
+    return vault.name;
+  }
+  let length = 8;
+  while (length < vault.id.length && allOtherID.some((id) => id.startsWith(vault.id.slice(0, length)))) {
+    length++;
+  }
+  return `${vault.name} · ${vault.id.slice(0, length)}`;
+}
 
 function isAvailableToAgents(vault: VaultSummary): boolean {
   return store.allAgentVaultID.includes(vault.id);
@@ -116,28 +145,31 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
           <p class="muted">Agents pass references to commands after you approve access here. Commands receive real secrets; masking only reduces accidental disclosure.</p>
         </div>
       </div>
-      <label v-for="vault in store.allVault" :key="vault.id" class="setting" :data-testid="`agent-vault-${vault.id}`">
-        <span class="settings-row-icon"><AppIcon name="vault" :size="14" /></span>
-        <div class="setting-text">
-          <strong>{{ vault.name }}</strong>
-          <p class="muted">
-            {{ describeItemCount(vault) }} ·
-            <span :class="{ 'available-text': isAvailableToAgents(vault) }">{{ isAvailableToAgents(vault) ? "Available to agents" : "Invisible to agents" }}</span>
-          </p>
-        </div>
-        <input
-          class="switch"
-          type="checkbox"
-          :name="`agentVault-${vault.id}`"
-          :aria-label="`Available to agents: ${vault.name}`"
-          :checked="isAvailableToAgents(vault)"
-          :disabled="store.isBusy"
-          @change="toggleVault(vault, $event.target as HTMLInputElement)"
-        />
-      </label>
+      <div v-for="group in allVaultGroup" :key="group.organizationID" data-testid="agent-vault-group">
+        <h3 class="vault-group-name">{{ group.name }}</h3>
+        <label v-for="vault in group.allVault" :key="vault.id" class="setting" :data-testid="`agent-vault-${vault.id}`">
+          <span class="settings-row-icon"><AppIcon name="vault" :size="14" /></span>
+          <div class="setting-text">
+            <strong>{{ describeVault(vault, group.allVault) }}</strong>
+            <p class="muted">
+              {{ describeItemCount(vault) }} ·
+              <span :class="{ 'available-text': isAvailableToAgents(vault) }">{{ isAvailableToAgents(vault) ? "Available to agents" : "Invisible to agents" }}</span>
+            </p>
+          </div>
+          <input
+            class="switch"
+            type="checkbox"
+            :name="`agentVault-${vault.id}`"
+            :aria-label="`Available to agents: ${group.name}, ${describeVault(vault, group.allVault)}`"
+            :checked="isAvailableToAgents(vault)"
+            :disabled="store.isBusy"
+            @change="toggleVault(vault, $event.target as HTMLInputElement)"
+          />
+        </label>
+      </div>
       <p v-if="store.allVault.length === 0" class="muted empty-row">No vaults yet.</p>
     </div>
-    <p v-if="store.agentErrorMessage" class="error settings-note" role="alert" data-testid="coding-agents-error">{{ store.agentErrorMessage }}</p>
+    <p v-if="store.agentErrors.vaults" class="error settings-note" role="alert" data-testid="coding-agents-error">{{ store.agentErrors.vaults }}</p>
   </section>
 
   <section v-show="isRowVisible('agent-sign-in')" class="settings-block" data-testid="agent-sign-in-section">
@@ -185,6 +217,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
           : "Only Hisar for Mac signs agents in to websites."
       }}
     </p>
+    <p v-if="store.agentErrors.signIn" class="error settings-note" role="alert" data-testid="agent-sign-in-error">{{ store.agentErrors.signIn }}</p>
   </section>
 
   <section v-show="isRowVisible('agent-grants')" class="settings-block" data-testid="agent-grants-section">
@@ -205,6 +238,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       Otherwise, For 1 hour ends with the session or connection. Each approval ends when it expires, you revoke it here, or you sign out.
       Locking Hisar keeps them.
     </p>
+    <p v-if="store.agentErrors.grants" class="error settings-note" role="alert" data-testid="agent-grants-error">{{ store.agentErrors.grants }}</p>
   </section>
 
   <section v-show="isRowVisible('agent-sessions')" class="settings-block" data-testid="agent-sessions-section">
@@ -245,6 +279,7 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       <p v-if="store.allAgentSession.length === 0" class="muted empty-row" data-testid="agent-sessions-empty">No coding agent that used Hisar is running.</p>
     </div>
     <p class="muted settings-note">Revoking ends the session’s approval and what you allowed only for that session. What you allowed across sessions stays until it expires, you revoke it above, or you sign out.</p>
+    <p v-if="store.agentErrors.sessions" class="error settings-note" role="alert" data-testid="agent-sessions-error">{{ store.agentErrors.sessions }}</p>
   </section>
 
   <section v-show="isRowVisible('agent-hosts')" class="settings-block" data-testid="agent-hosts-section">
@@ -262,10 +297,19 @@ onBeforeUnmount(() => allRemoveListener.forEach((removeListener) => removeListen
       <p v-if="store.allAgentHost.length === 0" class="muted empty-row" data-testid="agent-hosts-empty">No app has run a coding agent.</p>
     </div>
     <p class="muted settings-note" data-testid="agent-hosts-explanation">Apps that ran a coding agent ask for every command-line request without a terminal.</p>
+    <p v-if="store.agentErrors.hosts" class="error settings-note" role="alert" data-testid="agent-hosts-error">{{ store.agentErrors.hosts }}</p>
   </section>
 </template>
 
 <style scoped>
+.vault-group-name {
+  margin: 0;
+  padding: 10px 14px 4px;
+  color: var(--color-text-secondary);
+  font-size: var(--font-size-12);
+  font-weight: 600;
+}
+
 .empty-row {
   margin: 0;
   padding: 10px 14px;

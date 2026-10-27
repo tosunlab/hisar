@@ -163,7 +163,7 @@ export const store = reactive({
   allAgentHost: [] as AgentHost[],
   allAgentGrant: [] as AgentGrant[],
   agentSignIn: { isAvailable: false, isEnabled: false, hasAccessibility: false } as AgentSignIn,
-  agentErrorMessage: "",
+  agentErrors: { vaults: "", signIn: "", grants: "", sessions: "", hosts: "" },
   isImportOpen: false,
   importStep: "choose" as ImportStep,
   allImportFormat: [] as ImportFormat[],
@@ -2237,9 +2237,9 @@ export async function revokeLauncherApp(launcherApp: LauncherApp): Promise<void>
 export async function loadAgentVaults(): Promise<void> {
   try {
     store.allAgentVaultID = await api.listAllAgentVaultID();
-    store.agentErrorMessage = "";
+    store.agentErrors.vaults = "";
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.vaults = getErrorMessage(error);
   }
 }
 
@@ -2247,33 +2247,42 @@ export async function setVaultAvailableToAgents(vault: VaultSummary, isAvailable
   store.isBusy = true;
   try {
     store.allAgentVaultID = await api.setVaultAvailableToAgents(vault.id, isAvailable);
-    store.agentErrorMessage = "";
+    store.agentErrors.vaults = "";
     showNotice(isAvailable ? `Coding agents can use ${vault.name} after you approve` : `${vault.name} is invisible to coding agents now`);
   } catch (error) {
     const message = getErrorMessage(error);
     await loadAgentVaults();
-    store.agentErrorMessage = message;
+    store.agentErrors.vaults = message;
   } finally {
     store.isBusy = false;
   }
 }
 
 export async function loadAgentSessions(): Promise<void> {
-  try {
-    [store.allAgentSession, store.allAgentHost, store.allAgentGrant] = await Promise.all([api.listAllAgentSession(), api.listAllAgentHost(), api.listAllAgentGrant()]);
-  } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
-  }
+  await Promise.all([
+    api.listAllAgentSession().then(
+      (sessions) => { store.allAgentSession = sessions; store.agentErrors.sessions = ""; },
+      (error) => { store.agentErrors.sessions = getErrorMessage(error); },
+    ),
+    api.listAllAgentHost().then(
+      (hosts) => { store.allAgentHost = hosts; store.agentErrors.hosts = ""; },
+      (error) => { store.agentErrors.hosts = getErrorMessage(error); },
+    ),
+    api.listAllAgentGrant().then(
+      (grants) => { store.allAgentGrant = grants; store.agentErrors.grants = ""; },
+      (error) => { store.agentErrors.grants = getErrorMessage(error); },
+    ),
+  ]);
 }
 
 export async function revokeAgentGrant(grant: AgentGrant): Promise<void> {
   store.isBusy = true;
   try {
     store.allAgentGrant = await api.revokeAgentGrant(grant.id);
-    store.agentErrorMessage = "";
+    store.agentErrors.grants = "";
     showNotice(`${grant.harnessName} asks again the next time it needs ${grant.name}`);
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.grants = getErrorMessage(error);
   } finally {
     store.isBusy = false;
   }
@@ -2282,8 +2291,9 @@ export async function revokeAgentGrant(grant: AgentGrant): Promise<void> {
 export async function loadAgentSignIn(): Promise<void> {
   try {
     store.agentSignIn = await api.getAgentSignIn();
+    store.agentErrors.signIn = "";
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.signIn = getErrorMessage(error);
   }
 }
 
@@ -2291,12 +2301,12 @@ export async function setAgentSignInEnabled(isEnabled: boolean): Promise<void> {
   store.isBusy = true;
   try {
     store.agentSignIn = await api.setAgentSignInEnabled(isEnabled);
-    store.agentErrorMessage = "";
+    store.agentErrors.signIn = "";
     showNotice(isEnabled ? "Coding agents can ask Hisar to sign in to websites" : "Coding agents can no longer ask Hisar to sign in");
   } catch (error) {
     const message = getErrorMessage(error);
     await loadAgentSignIn();
-    store.agentErrorMessage = message;
+    store.agentErrors.signIn = message;
   } finally {
     store.isBusy = false;
   }
@@ -2306,10 +2316,10 @@ export async function revokeAgentSession(session: AgentSession): Promise<void> {
   store.isBusy = true;
   try {
     store.allAgentSession = await api.revokeAgentSession(session.pid, session.startTime);
-    store.agentErrorMessage = "";
+    store.agentErrors.sessions = "";
     showNotice(`${describeAgentSession(session)} asks again the next time it uses a secret`);
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.sessions = getErrorMessage(error);
   } finally {
     store.isBusy = false;
   }
@@ -2319,10 +2329,10 @@ export async function forgetAgentHost(host: AgentHost): Promise<void> {
   store.isBusy = true;
   try {
     store.allAgentHost = await api.forgetAgentHost(host.path, host.teamID);
-    store.agentErrorMessage = "";
+    store.agentErrors.hosts = "";
     showNotice(`${host.name} shares one approval for its command-line requests again`);
   } catch (error) {
-    store.agentErrorMessage = getErrorMessage(error);
+    store.agentErrors.hosts = getErrorMessage(error);
   } finally {
     store.isBusy = false;
   }
