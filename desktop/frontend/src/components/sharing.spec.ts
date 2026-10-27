@@ -84,6 +84,17 @@ beforeEach(() => {
 });
 
 describe("Vault sharing panel", () => {
+  it("does not report zero members while loading sharing", async () => {
+    api.listAllVaultMember.mockReturnValue(new Promise(() => undefined));
+    const wrapper = mount(MainView, { attachTo: document.body });
+    await wrapper.find('[data-testid="share-vault"]').trigger("click");
+    const panel = wrapper.find('[data-testid="vault-sharing-panel"]');
+    expect(panel.text()).toContain("Loading members…");
+    expect(panel.find('[data-testid="sharing-member-count"]').exists()).toBe(false);
+    wrapper.unmount();
+    store.isBusy = false;
+  });
+
   it("lists the members with initials, role and a you tag", async () => {
     const wrapper = await openSharingPanel();
     expect(api.listAllVaultMember).toHaveBeenCalledWith("family");

@@ -43,6 +43,7 @@ One name for each thing, the same on the Mac, the iPhone, the Android app, the b
 | share link | An end-to-end encrypted link for anyone, with expiry and view limits. |
 | Owner, Editor, Reader | Vault roles. Never "admin" for a vault role. The Mac's role pickers define them as "Readers view items, editors also change them, owners also share, rename and delete the vault." |
 | security code | The 16-digit code to compare a person's keys. Not fingerprint. |
+| Loading members… | The sharing panel omits its member count until members have loaded. |
 
 ## Organizations
 

@@ -126,7 +126,7 @@ onBeforeUnmount(() => window.removeEventListener("keydown", closeOnEscape));
         <div class="sharing-heading">
           <h2 id="sharing-title">Share “{{ vault?.name }}”</h2>
           <p v-if="organizationID" class="muted" data-testid="sharing-organization">Shared through teams in {{ organizationName }}</p>
-          <p v-else class="muted" data-testid="sharing-member-count">{{ memberCountText }}</p>
+          <p v-else-if="store.allVaultMember.length" class="muted" data-testid="sharing-member-count">{{ memberCountText }}</p>
         </div>
         <button class="ghost icon-button" aria-label="Close sharing" @click="closeSharing"><AppIcon name="close" /></button>
       </header>
