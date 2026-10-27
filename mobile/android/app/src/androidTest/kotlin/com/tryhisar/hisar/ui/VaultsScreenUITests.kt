@@ -318,6 +318,27 @@ class VaultsScreenUITests : HisarUITestCase() {
     }
 
     @Test
+    fun testIncompleteSearchKeepsReadableItemsAndRecoveryRoute() {
+        val backend = buildBackend()
+        val index = backend.allVault.indexOfFirst { it.id == "work" }
+        backend.allVault[index] = backend.allVault[index].copy(readIssues = listOf(ReadIssue("work", kind = "vault-name", canRename = true)))
+        launchApp(backend).use {
+            tap("tab-search")
+            waitFor("incomplete-results")
+            type("GitHub", "search-field")
+            waitFor("item-GitHub")
+            assertTrue(exists(hasTestTag("incomplete-results")))
+            composeRule.onNodeWithTag("search-field").performTextReplacement("no readable match")
+            waitFor(hasText("No readable items match this search. Some saved data could not be searched."))
+            assertTrue(exists(hasTestTag("incomplete-results")))
+            Espresso.closeSoftKeyboard()
+            tap("review-affected-vaults")
+            tap("review-vault-work")
+            waitFor("repair-vault-name")
+        }
+    }
+
+    @Test
     fun testTypingASearchCountsAsActivity() {
         val backend = buildBackend()
         launchApp(backend).use {

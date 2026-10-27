@@ -35,6 +35,9 @@ data class UnlockedData(
 ) {
     fun findVault(vaultID: String): VaultSummary? = allVault.firstOrNull { it.id == vaultID }
 
+    val readIssueSummary: com.tryhisar.hisar.model.ReadIssueSummary
+        get() = com.tryhisar.hisar.model.ReadIssueSummary(allVault.flatMap { it.readIssues })
+
     /** The items of one vault, or of every vault, sorted by title then username. */
     fun listAllItemReference(vaultID: String? = null): List<VaultItemReference> = VaultLogic.sortAllItem(
         allVault.filter { vaultID == null || it.id == vaultID }.flatMap { vault ->

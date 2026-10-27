@@ -200,6 +200,42 @@ struct ItemListView: View {
     }
 }
 
+struct CrossVaultReadWarning: View {
+    @EnvironmentObject private var model: AppModel
+    @State private var isReviewShown = false
+
+    var body: some View {
+        if !model.readIssueSummary.issues.isEmpty {
+            Section {
+                Text("Some saved data could not be opened. Results may be incomplete.")
+                Text(model.readIssueSummary.text).font(.footnote)
+                Button("Retry reads") { Task { await model.refreshAll() } }
+                Button("Review affected vaults") { isReviewShown = true }
+            }
+            .accessibilityIdentifier("incomplete-results")
+            .sheet(isPresented: $isReviewShown) {
+                NavigationStack {
+                    List(model.allVault.filter { !$0.readIssues.isEmpty }) { vault in
+                        NavigationLink(vault.name) { ItemListView(vaultID: vault.id) }
+                    }
+                    .navigationDestination(for: ItemDestination.self) { destination in
+                        ItemDetailView(vaultID: destination.vaultID, itemID: destination.itemID)
+                    }
+                    .navigationTitle("Affected vaults")
+                    .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { isReviewShown = false } } }
+                }
+                .environmentObject(model)
+            }
+        }
+    }
+}
+
+struct IncompleteSearchResults: View {
+    var body: some View {
+        ContentUnavailableView("No readable matches", systemImage: "magnifyingglass", description: Text("No readable items match this search. Some saved data could not be searched."))
+    }
+}
+
 struct ItemCategoryListView: View {
     var category: ItemCategoryDestination
 
@@ -208,6 +244,14 @@ struct ItemCategoryListView: View {
     var body: some View {
         let allReference = model.listAllItemReference().filter { category.includes($0.item) }
         List {
+            CrossVaultReadWarning()
+            if allReference.isEmpty {
+                if model.readIssueSummary.issues.isEmpty {
+                    ContentUnavailableView(category.emptyTitle, systemImage: category.systemImage)
+                } else {
+                    ContentUnavailableView("No readable \(category.title.lowercased())", systemImage: category.systemImage, description: Text("Some saved data could not be searched."))
+                }
+            }
             ForEach(allReference) { reference in
                 NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                     ItemRow(item: reference.item, vaultName: reference.vaultName)
@@ -215,11 +259,6 @@ struct ItemCategoryListView: View {
             }
         }
         .applyThemedListStyle()
-        .overlay {
-            if allReference.isEmpty {
-                ContentUnavailableView(category.emptyTitle, systemImage: category.systemImage)
-            }
-        }
         .refreshable { await model.refreshAll() }
         .navigationTitle(category.title)
     }
@@ -233,6 +272,14 @@ struct ItemTagListView: View {
     var body: some View {
         let allReference = VaultLogic.filterAllItem(model.listAllItemReference(), tag: tag)
         List {
+            CrossVaultReadWarning()
+            if allReference.isEmpty {
+                if model.readIssueSummary.issues.isEmpty {
+                    ContentUnavailableView("No items are tagged \(tag)", systemImage: "tag")
+                } else {
+                    ContentUnavailableView("No readable items are tagged \(tag)", systemImage: "tag", description: Text("Some saved data could not be searched."))
+                }
+            }
             ForEach(allReference) { reference in
                 NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                     ItemRow(item: reference.item, vaultName: reference.vaultName)
@@ -240,11 +287,6 @@ struct ItemTagListView: View {
             }
         }
         .applyThemedListStyle()
-        .overlay {
-            if allReference.isEmpty {
-                ContentUnavailableView("No items are tagged \(tag)", systemImage: "tag")
-            }
-        }
         .refreshable { await model.refreshAll() }
         .navigationTitle(tag)
     }
@@ -260,6 +302,16 @@ struct SearchView: View {
         NavigationSplitView {
             let allMatch = VaultLogic.filterAllItem(model.listAllItemReference(), searchText: searchText)
             List(selection: $selection) {
+                CrossVaultReadWarning()
+                if searchText.isEmpty {
+                    ContentUnavailableView("Search Hisar", systemImage: "magnifyingglass", description: Text("Find logins, SSH keys and notes in every vault."))
+                } else if allMatch.isEmpty {
+                    if model.readIssueSummary.issues.isEmpty {
+                        ContentUnavailableView.search(text: searchText)
+                    } else {
+                        IncompleteSearchResults()
+                    }
+                }
                 ForEach(searchText.isEmpty ? [] : allMatch) { reference in
                     NavigationLink(value: ItemDestination(vaultID: reference.vaultID, itemID: reference.item.id)) {
                         ItemRow(item: reference.item, vaultName: reference.vaultName)
@@ -267,13 +319,6 @@ struct SearchView: View {
                 }
             }
             .applyThemedListStyle()
-            .overlay {
-                if searchText.isEmpty {
-                    ContentUnavailableView("Search Hisar", systemImage: "magnifyingglass", description: Text("Find logins, SSH keys and notes in every vault."))
-                } else if allMatch.isEmpty {
-                    ContentUnavailableView.search(text: searchText)
-                }
-            }
             .navigationTitle("Search")
             .searchable(text: $searchText, prompt: "Logins, keys and notes")
         } detail: {

@@ -189,6 +189,26 @@ final class VaultManagementTests: XCTestCase {
         XCTAssertFalse(model.listAllItemReference(vaultID: "personal").contains { $0.item.id == "bad" })
     }
 
+    func testCrossVaultReadIssuesRemainVisibleWithHealthyAndEmptyResults() async throws {
+        for kind in ["item", "vault-name", "vault-key"] {
+            let model = await createUnlockedModel()
+            let issue = ReadIssue(vaultId: "personal", itemId: kind == "item" ? "bad" : nil, kind: kind, canRename: false, canDelete: false)
+            let index = try XCTUnwrap(backend.allVault.firstIndex { $0.id == "personal" })
+            backend.allVault[index].readIssues = [issue]
+            var unreadable = ItemDetail(id: "bad")
+            unreadable.readIssue = issue
+            if kind == "item" { backend.allItemByVaultID["personal", default: []].append(unreadable) }
+            await model.refreshAll()
+            XCTAssertFalse(model.listAllItemReference().isEmpty)
+            XCTAssertEqual(model.readIssueSummary.affectedVaultCount, 1)
+            XCTAssertEqual(model.readIssueSummary.knownItemCount, kind == "item" ? 1 : 0)
+            for vault in backend.allVault { backend.allItemByVaultID[vault.id] = kind == "item" && vault.id == "personal" ? [unreadable] : [] }
+            await model.refreshAll()
+            XCTAssertTrue(model.listAllItemReference().isEmpty)
+            XCTAssertFalse(model.readIssueSummary.issues.isEmpty)
+        }
+    }
+
     func testUnreadableVaultRecoveryNamesTheReviewedRevision() async throws {
         let model = await createUnlockedModel()
         let reviewed = ReadIssue(vaultId: "work", itemId: nil, revision: "review-1", kind: "vault-name", canRename: true, canDelete: true)

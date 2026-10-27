@@ -625,6 +625,10 @@ final class AppModel: ObservableObject {
         allVault.first { $0.id == vaultID }
     }
 
+    var readIssueSummary: ReadIssueSummary {
+        ReadIssueSummary(issues: allVault.flatMap(\.readIssues))
+    }
+
     func listAllItemReference(vaultID: String? = nil) -> [VaultItemReference] {
         let allSelectedVault = allVault.filter { vaultID == nil || $0.id == vaultID }
         let allReference = allSelectedVault.flatMap { vault in

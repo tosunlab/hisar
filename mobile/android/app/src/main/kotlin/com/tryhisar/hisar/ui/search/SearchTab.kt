@@ -37,6 +37,7 @@ import com.tryhisar.hisar.ui.vaults.NoSearchResults
 import com.tryhisar.hisar.ui.vaults.SearchField
 import com.tryhisar.hisar.ui.vaults.TabStack
 import com.tryhisar.hisar.ui.vaults.crossVaultRows
+import com.tryhisar.hisar.ui.vaults.crossVaultReadWarning
 
 /** The Search tab: every vault's items by any word, and the item screens it pushes on its own stack. */
 @Composable
@@ -74,14 +75,15 @@ private fun SearchScreen(model: AppModel) {
                         modifier = Modifier.focusRequester(focusRequester),
                     )
                 }
+                crossVaultReadWarning(model, model.navigation.search, data.allVault)
+                item(key = "empty") {
+                    when {
+                        searchText.isEmpty() -> ContentUnavailable("Search Hisar", Icons.Outlined.Search, Modifier.testTag("search-empty"))
+                        allMatch.isEmpty() -> NoSearchResults(searchText, data.readIssueSummary.issues.isNotEmpty())
+                    }
+                }
                 crossVaultRows(model, model.navigation.search, allMatch)
                 item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp)) }
-            }
-            Box(Modifier.padding(top = 120.dp, bottom = TabBarHeight)) {
-                when {
-                    searchText.isEmpty() -> ContentUnavailable("Search Hisar", Icons.Outlined.Search, Modifier.testTag("search-empty"))
-                    allMatch.isEmpty() -> NoSearchResults(searchText)
-                }
             }
         }
     }

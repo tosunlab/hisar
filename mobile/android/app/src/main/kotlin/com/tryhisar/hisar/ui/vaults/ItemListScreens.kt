@@ -16,6 +16,7 @@ import androidx.compose.material.icons.outlined.Inbox
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
@@ -37,6 +38,9 @@ import com.tryhisar.hisar.app.VaultsDestination
 import com.tryhisar.hisar.model.ItemCategory
 import com.tryhisar.hisar.model.VaultItemReference
 import com.tryhisar.hisar.model.VaultLogic
+import com.tryhisar.hisar.model.VaultSummary
+import com.tryhisar.hisar.model.ReadIssueSummary
+import com.tryhisar.hisar.ui.components.PlainButton
 import com.tryhisar.hisar.ui.components.ContentUnavailable
 import com.tryhisar.hisar.ui.components.LargeTitle
 import com.tryhisar.hisar.ui.components.PushedTopBar
@@ -84,18 +88,20 @@ fun PushedListScaffold(
                 item(key = "title") { Box(Modifier.padding(horizontal = ScreenMargin)) { LargeTitle(title, topPadding = 0.dp) } }
                 if (searchField != null) item(key = "search") { searchField() }
                 content()
+                if (isEmpty) item(key = "empty") {
+                    Box(Modifier.padding(top = 24.dp, bottom = 24.dp)) { emptyContent() }
+                }
                 item(key = "bottom") { Spacer(Modifier.height(TabBarHeight + 24.dp + bottomClearance)) }
             }
-            if (isEmpty) Box(Modifier.padding(top = 120.dp, bottom = TabBarHeight)) { emptyContent() }
         }
     }
 }
 
 /** The search's empty result, as ContentUnavailableView.search. */
 @Composable
-fun NoSearchResults(searchText: String) {
-    ContentUnavailable("No results for “$searchText”", Icons.Outlined.Search, Modifier.testTag("no-results")) {
-        Text("Check the spelling or try a new search.", style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center)
+fun NoSearchResults(searchText: String, isIncomplete: Boolean = false) {
+    ContentUnavailable(if (isIncomplete) "No readable matches" else "No results for “$searchText”", Icons.Outlined.Search, Modifier.testTag("no-results")) {
+        Text(if (isIncomplete) "No readable items match this search. Some saved data could not be searched." else "Check the spelling or try a new search.", style = HisarType.subheadline, color = HisarTheme.colors.secondaryLabel, textAlign = TextAlign.Center)
     }
 }
 
@@ -105,6 +111,36 @@ fun LazyListScope.crossVaultRows(model: AppModel, stack: NavigationStack, allRef
         ItemRow(model, reference.item, "item-${reference.item.title}", vaultName = reference.vaultName, onClick = {
             stack.push(VaultsDestination.Item(reference.vaultID, reference.item.id))
         })
+    }
+}
+
+fun LazyListScope.crossVaultReadWarning(model: AppModel, stack: NavigationStack, allVault: List<VaultSummary>) {
+    val affected = allVault.filter { it.readIssues.isNotEmpty() }
+    if (affected.isEmpty()) return
+    cardSection("incomplete-results", listOf(Unit), rowKey = { "warning" }) {
+        val scope = rememberCoroutineScope()
+        var isReviewShown by remember { mutableStateOf(false) }
+        Column(Modifier.padding(16.dp).testTag("incomplete-results")) {
+            Text("Some saved data could not be opened. Results may be incomplete.", color = HisarTheme.colors.warning)
+            Text(ReadIssueSummary(affected.flatMap { it.readIssues }).text, style = HisarType.footnote)
+            PlainButton("Retry reads", { scope.launch { model.refreshAll() } }, testTag = "retry-cross-vault-reads")
+            PlainButton("Review affected vaults", { isReviewShown = true }, testTag = "review-affected-vaults")
+        }
+        if (isReviewShown) AlertDialog(
+            onDismissRequest = { isReviewShown = false },
+            title = { Text("Affected vaults") },
+            text = {
+                Column {
+                    affected.forEach { vault ->
+                        PlainButton(vault.name, {
+                            isReviewShown = false
+                            stack.push(VaultsDestination.Vault(vault.id))
+                        }, testTag = "review-vault-${vault.id}")
+                    }
+                }
+            },
+            confirmButton = { PlainButton("Done", { isReviewShown = false }, testTag = "affected-vaults-done") },
+        )
     }
 }
 
@@ -118,8 +154,15 @@ fun CategoryItemsScreen(model: AppModel, stack: NavigationStack, category: ItemC
         onBack = stack::pop,
         onRefresh = model::refreshAll,
         isEmpty = allReference.isEmpty(),
-        emptyContent = { ContentUnavailable(category.emptyTitle, category.icon) },
-    ) { crossVaultRows(model, stack, allReference) }
+        emptyContent = {
+            ContentUnavailable(if (data.readIssueSummary.issues.isEmpty()) category.emptyTitle else "No readable ${category.title.lowercase()}", category.icon) {
+                if (data.readIssueSummary.issues.isNotEmpty()) Text("Some saved data could not be searched.")
+            }
+        },
+    ) {
+        crossVaultReadWarning(model, stack, data.allVault)
+        crossVaultRows(model, stack, allReference)
+    }
 }
 
 /** The items that carry one tag across every vault, from Tags. */
@@ -132,8 +175,15 @@ fun TagItemsScreen(model: AppModel, stack: NavigationStack, tag: String) {
         onBack = stack::pop,
         onRefresh = model::refreshAll,
         isEmpty = allReference.isEmpty(),
-        emptyContent = { ContentUnavailable("No items are tagged $tag", Icons.Outlined.Sell) },
-    ) { crossVaultRows(model, stack, allReference) }
+        emptyContent = {
+            ContentUnavailable(if (data.readIssueSummary.issues.isEmpty()) "No items are tagged $tag" else "No readable items are tagged $tag", Icons.Outlined.Sell) {
+                if (data.readIssueSummary.issues.isNotEmpty()) Text("Some saved data could not be searched.")
+            }
+        },
+    ) {
+        crossVaultReadWarning(model, stack, data.allVault)
+        crossVaultRows(model, stack, allReference)
+    }
 }
 
 /** The empty vault, which says who can add items. */

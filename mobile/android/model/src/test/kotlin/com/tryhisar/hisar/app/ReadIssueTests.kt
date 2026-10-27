@@ -52,6 +52,29 @@ class ReadIssueTests {
     }
 
     @Test
+    fun testCrossVaultReadIssuesRemainVisibleWithHealthyAndEmptyResults() = runTest {
+        for (kind in listOf("item", "vault-name", "vault-key")) {
+            val harness = AppModelHarness(this)
+            val model = harness.startUnlockedModel()
+            val issue = ReadIssue("personal", itemId = if (kind == "item") "bad" else "", kind = kind)
+            val index = harness.backend.allVault.indexOfFirst { it.id == "personal" }
+            harness.backend.allVault[index] = harness.backend.allVault[index].copy(readIssues = listOf(issue))
+            val unreadable = ItemDetail(id = "bad", readIssue = issue)
+            if (kind == "item") harness.backend.allItemByVaultID.getValue("personal") += unreadable
+            model.refreshAll()
+            assertTrue(model.unlockedData.value.listAllItemReference().isNotEmpty())
+            assertEquals(1, model.unlockedData.value.readIssueSummary.affectedVaultCount)
+            assertEquals(if (kind == "item") 1 else 0, model.unlockedData.value.readIssueSummary.knownItemCount)
+            harness.backend.allVault.forEach { vault ->
+                harness.backend.allItemByVaultID[vault.id] = if (kind == "item" && vault.id == "personal") mutableListOf(unreadable) else mutableListOf()
+            }
+            model.refreshAll()
+            assertTrue(model.unlockedData.value.listAllItemReference().isEmpty())
+            assertTrue(model.unlockedData.value.readIssueSummary.issues.isNotEmpty())
+        }
+    }
+
+    @Test
     fun testUnreadableVaultRecoveryNamesTheReviewedRevision() = runTest {
         val harness = AppModelHarness(this)
         val model = harness.startUnlockedModel()
