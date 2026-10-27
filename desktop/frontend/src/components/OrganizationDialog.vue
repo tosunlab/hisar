@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import type { Organization, OrganizationMember, Team, TeamVault, VaultRole } from "../api";
+import type { Organization, OrganizationMember, OrganizationRole, Team, TeamVault, VaultRole } from "../api";
 import {
   createTeam,
   deleteOrganization,
@@ -13,6 +13,7 @@ import {
   renameOrganization,
   renameTeam,
   store,
+  setOrganizationMemberRole,
 } from "../store";
 import { formatRole, vaultRoleDescription } from "../util";
 import { describeOrganizationAccessChange, vaultRoleChangeMessage, vaultRoleChangeTitle } from "../organizationAccess";
@@ -22,6 +23,7 @@ import type { IconName } from "./AppIcon.vue";
 export type OrganizationDialogRequest =
   | { kind: "rename-organization" | "delete-organization" | "leave" | "new-team" }
   | { kind: "remove-member"; member: OrganizationMember }
+  | { kind: "change-member-role"; member: OrganizationMember; role: OrganizationRole }
   | { kind: "rename-team" | "delete-team" | "give-vault"; team: Team }
   | { kind: "change-team-role"; team: Team; teamVault: TeamVault; role: VaultRole };
 
@@ -61,6 +63,18 @@ const text = computed<DialogText>(() => {
   const organizationName = props.organization.name;
   const request = props.request;
   switch (request.kind) {
+    case "change-member-role": {
+      const name = request.member.name || request.member.email;
+      const isSelf = request.member.isCurrentUser;
+      const isPromotion = request.role === "admin";
+      return {
+        title: isPromotion ? `Make ${name} an admin of ${organizationName}?` : isSelf ? `Make yourself a member of ${organizationName}?` : `Make ${name} a member of ${organizationName}?`,
+        subtitle: isPromotion ? "Admins manage members, teams and which teams have which vaults. Being an admin gives no vault by itself."
+          : isSelf ? "You can no longer manage members, teams or which teams have which vaults. Another admin can make you an admin again."
+          : `${name} can no longer manage members, teams or which teams have which vaults. Another admin can make them an admin again.`,
+        icon: "user", isDanger: !isPromotion, confirmLabel: isPromotion ? "Make admin" : isSelf ? "Make me a member" : "Make member",
+      };
+    }
     case "change-team-role":
       return { title: vaultRoleChangeTitle(request.team.name, describeTeamVault(request.teamVault), request.role), subtitle: vaultRoleChangeMessage(request.role), icon: "users", isDanger: true, confirmLabel: request.role === "owner" ? "Make owner" : "Change role" };
     case "rename-organization":
@@ -146,6 +160,8 @@ const canSubmit = computed(() => {
 async function runRequest(): Promise<boolean> {
   const request = props.request;
   switch (request.kind) {
+    case "change-member-role":
+      return setOrganizationMemberRole(props.organization, request.member, request.role);
     case "change-team-role":
       return giveVaultToTeam(props.organization, request.team, request.teamVault.vaultId, request.role);
     case "rename-organization":

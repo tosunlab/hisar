@@ -259,6 +259,7 @@ struct OrganizationView: View {
     @State private var isRenameShown = false
     @State private var isDeleteShown = false
     @State private var isLeaveShown = false
+    @State private var memberRoleChange: Member?
 
     private var name: String {
         organization?.name ?? model.allOrganization.first { $0.id == organizationID }?.name ?? "Organization"
@@ -398,6 +399,15 @@ struct OrganizationView: View {
 
     private var organizationListWithConfirmations: some View {
         organizationListWithAlerts
+        .confirmationDialog(memberRoleChange.map { organizationRoleChangeTitle($0, organizationName: name) } ?? "", isPresented: Binding(get: { memberRoleChange != nil }, set: { if !$0 { memberRoleChange = nil } }), titleVisibility: .visible, presenting: memberRoleChange) { member in
+            Button(member.role == OrganizationRole.admin ? (member.isCurrentUser ? "Make me a member" : "Make member") : "Make admin", role: member.role == OrganizationRole.admin ? .destructive : nil) {
+                Task { await change(member.role == OrganizationRole.admin ? "Make member" : "Make admin") { await model.setOrganizationMemberRole(organizationID: organizationID, accountID: member.accountID, role: member.role == OrganizationRole.admin ? OrganizationRole.member : OrganizationRole.admin) } }
+            }
+            .accessibilityIdentifier("confirm-organization-role")
+            Button("Cancel", role: .cancel) {}
+        } message: { member in
+            Text(organizationRoleChangeMessage(member))
+        }
         .confirmationDialog(
             "Cancel the invitation to \(invitationToCancel?.email ?? "")?",
             isPresented: Binding(get: { invitationToCancel != nil }, set: { if !$0 { invitationToCancel = nil } }),
@@ -535,9 +545,9 @@ struct OrganizationView: View {
                     ForEach(allAction, id: \.self) { action in
                         switch action {
                         case .makeAdmin:
-                            Button("Make admin", systemImage: "person.badge.shield.checkmark") { setRole(of: member, to: OrganizationRole.admin) }
+                            Button("Make admin…", systemImage: "person.badge.shield.checkmark") { setRole(of: member, to: OrganizationRole.admin) }
                         case .makeMember:
-                            Button("Make member", systemImage: "person") { setRole(of: member, to: OrganizationRole.member) }
+                            Button("Make member…", systemImage: "person") { setRole(of: member, to: OrganizationRole.member) }
                         case .remove:
                             Button("Remove from \(organization.name)…", systemImage: "person.badge.minus", role: .destructive) { memberToRemove = member }
                         }
@@ -730,7 +740,7 @@ struct OrganizationView: View {
     }
 
     private func setRole(of member: Member, to role: String) {
-        Task { await change(role == OrganizationRole.admin ? "Make admin" : "Make member") { await model.setOrganizationMemberRole(organizationID: organizationID, accountID: member.accountID, role: role) } }
+        memberRoleChange = member
     }
 
     private func addToTeam(_ member: Member, team: Team) {
@@ -752,6 +762,7 @@ struct OrganizationMemberView: View {
     var member: Member
     var isAdmin: Bool
     var reload: () async -> Void
+    @State private var isRoleConfirmationShown = false
 
     @EnvironmentObject private var model: AppModel
     @Environment(\.dismiss) private var dismiss
@@ -766,6 +777,12 @@ struct OrganizationMemberView: View {
         self.isAdmin = isAdmin
         self.reload = reload
         _role = State(initialValue: member.role)
+    }
+
+    private var roleMember: Member {
+        var current = member
+        current.role = role
+        return current
     }
 
     static func describeRemoval(memberName: String, organizationName: String) -> String {
@@ -828,8 +845,8 @@ struct OrganizationMemberView: View {
                     .accessibilityIdentifier("organization-member-role")
                 if isAdmin {
                     let isAdminRole = role == OrganizationRole.admin
-                    Button(isAdminRole ? "Make member" : "Make admin", systemImage: isAdminRole ? "person" : "person.badge.shield.checkmark") {
-                        setRole(isAdminRole ? OrganizationRole.member : OrganizationRole.admin)
+                    Button(isAdminRole ? "Make member…" : "Make admin…", systemImage: isAdminRole ? "person" : "person.badge.shield.checkmark") {
+                        isRoleConfirmationShown = true
                     }
                     .disabled(model.isBusy)
                     .accessibilityIdentifier("organization-member-toggle-role")
@@ -852,6 +869,15 @@ struct OrganizationMemberView: View {
         .listStyle(.insetGrouped)
         .navigationTitle(member.name)
         .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(organizationRoleChangeTitle(roleMember, organizationName: organizationName), isPresented: $isRoleConfirmationShown, titleVisibility: .visible) {
+            Button(role == OrganizationRole.admin ? (member.isCurrentUser ? "Make me a member" : "Make member") : "Make admin", role: role == OrganizationRole.admin ? .destructive : nil) {
+                setRole(role == OrganizationRole.admin ? OrganizationRole.member : OrganizationRole.admin)
+            }
+            .accessibilityIdentifier("confirm-organization-role")
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(organizationRoleChangeMessage(roleMember))
+        }
         .confirmationDialog("Remove \(member.name) from \(organizationName)?", isPresented: $isRemoveConfirmationShown, titleVisibility: .visible) {
             Button("Remove from \(organizationName)", role: .destructive) {
                 Task {
@@ -880,6 +906,20 @@ struct OrganizationMemberView: View {
             }
         }
     }
+}
+
+private func organizationRoleChangeTitle(_ member: Member, organizationName: String) -> String {
+    if member.role != OrganizationRole.admin { return "Make \(member.name) an admin of \(organizationName)?" }
+    return member.isCurrentUser ? "Make yourself a member of \(organizationName)?" : "Make \(member.name) a member of \(organizationName)?"
+}
+
+private func organizationRoleChangeMessage(_ member: Member) -> String {
+    if member.role != OrganizationRole.admin {
+        return "Admins manage members, teams and which teams have which vaults. Being an admin gives no vault by itself."
+    }
+    return member.isCurrentUser
+        ? "You can no longer manage members, teams or which teams have which vaults. Another admin can make you an admin again."
+        : "\(member.name) can no longer manage members, teams or which teams have which vaults. Another admin can make them an admin again."
 }
 
 /// Gives a team an organization vault with a role: from a team (pick the vault) or from the vault's sheet (pick the team).

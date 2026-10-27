@@ -9,7 +9,6 @@ import {
   inviteToOrganization,
   listAllOrganizationVault,
   removeTeamMember,
-  setOrganizationMemberRole,
   store,
   takeVaultFromTeam,
 } from "../store";
@@ -73,9 +72,9 @@ function openMemberMenu(member: OrganizationMember, event: MouseEvent): void {
   if (props.organization.isAdmin) {
     allAction.push(null, {
       id: "organization-role",
-      label: member.role === "admin" ? "Make member" : "Make admin",
+      label: member.role === "admin" ? "Make member…" : "Make admin…",
       icon: "user",
-      run: () => { void setOrganizationMemberRole(props.organization, member, member.role === "admin" ? "member" : "admin"); },
+      run: () => { dialog.value = { kind: "change-member-role", member, role: member.role === "admin" ? "member" : "admin" }; },
     });
     if (!member.isCurrentUser) {
       allAction.push({

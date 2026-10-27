@@ -264,6 +264,8 @@ private sealed interface OrganizationDialog {
 
     data class RemoveMember(val member: Member) : OrganizationDialog
 
+    data class ChangeRole(val member: Member, val role: String) : OrganizationDialog
+
     data class DeleteTeam(val team: Team) : OrganizationDialog
 
     data object DeleteOrganization : OrganizationDialog
@@ -368,9 +370,7 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     }
 
     fun setRole(member: Member, role: String) {
-        launchChange(if (role == OrganizationRole.ADMIN) "Make admin" else "Make member") {
-            model.organizations.setOrganizationMemberRole(organizationID, member.accountID, role)
-        }
+        dialog = OrganizationDialog.ChangeRole(member, role)
     }
 
     fun removeFromTeam(member: TeamMember, team: Team) {
@@ -458,11 +458,11 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
                         HisarMenu(rowMenu == RowMenu.OfMember(member.accountID), onDismiss = { rowMenu = null }) {
                             for (action in allAction) {
                                 when (action) {
-                                    OrganizationMemberAction.MAKE_ADMIN -> HisarMenuItem("Make admin", "make-admin-${member.email}", icon = Icons.Outlined.VerifiedUser, onClick = {
+                                    OrganizationMemberAction.MAKE_ADMIN -> HisarMenuItem("Make admin…", "make-admin-${member.email}", icon = Icons.Outlined.VerifiedUser, onClick = {
                                         rowMenu = null
                                         setRole(member, OrganizationRole.ADMIN)
                                     })
-                                    OrganizationMemberAction.MAKE_MEMBER -> HisarMenuItem("Make member", "make-member-${member.email}", icon = Icons.Outlined.Person, onClick = {
+                                    OrganizationMemberAction.MAKE_MEMBER -> HisarMenuItem("Make member…", "make-member-${member.email}", icon = Icons.Outlined.Person, onClick = {
                                         rowMenu = null
                                         setRole(member, OrganizationRole.MEMBER)
                                     })
@@ -532,6 +532,9 @@ private fun OrganizationScreen(model: AppModel, organizationID: String, onBack: 
     }
 
     when (val current = dialog) {
+        is OrganizationDialog.ChangeRole -> OrganizationRoleConfirmation(current.member, name,
+            onConfirm = { launchChange(if (current.role == OrganizationRole.ADMIN) "Make admin" else "Make member") { model.organizations.setOrganizationMemberRole(organizationID, current.member.accountID, current.role) } },
+            onDismiss = { dialog = null })
         OrganizationDialog.NewTeam -> NameDialog(
             title = "New team",
             message = "A name of 1 to 100 characters, unique in $name.",
@@ -824,6 +827,7 @@ private fun OrganizationMemberScreen(
     var role by rememberSaveable(member.accountID) { mutableStateOf(member.role) }
     var isRemoveConfirmationShown by remember { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<Refusal?>(null) }
+    var isRoleConfirmationShown by remember { mutableStateOf(false) }
     val isAdminRole = role == OrganizationRole.ADMIN
 
     fun setRole(newRole: String) {
@@ -861,8 +865,8 @@ private fun OrganizationMemberScreen(
             if (isAdmin) {
                 RowDivider()
                 FormButtonRow(
-                    if (isAdminRole) "Make member" else "Make admin",
-                    { setRole(if (isAdminRole) OrganizationRole.MEMBER else OrganizationRole.ADMIN) },
+                    if (isAdminRole) "Make member…" else "Make admin…",
+                    { isRoleConfirmationShown = true },
                     testTag = "organization-member-toggle-role",
                     icon = if (isAdminRole) Icons.Outlined.Person else Icons.Outlined.VerifiedUser,
                     color = HisarTheme.colors.tint,
@@ -875,6 +879,12 @@ private fun OrganizationMemberScreen(
                 DestructiveButtonRow("Remove from $organizationName…", Icons.Outlined.PersonRemove, { isRemoveConfirmationShown = true }, testTag = "remove-organization-member", enabled = !isBusy)
             }
         }
+    }
+
+    if (isRoleConfirmationShown) {
+        OrganizationRoleConfirmation(member.copy(role = role), organizationName,
+            onConfirm = { setRole(if (isAdminRole) OrganizationRole.MEMBER else OrganizationRole.ADMIN) },
+            onDismiss = { isRoleConfirmationShown = false })
     }
 
     if (isRemoveConfirmationShown) {
@@ -897,4 +907,17 @@ private fun OrganizationMemberScreen(
         )
     }
     RefusalAlert(refusal) { refusal = null }
+}
+
+@Composable
+private fun OrganizationRoleConfirmation(member: Member, organizationName: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val isDemotion = member.role == OrganizationRole.ADMIN
+    ConfirmationDialog(
+        title = if (!isDemotion) "Make ${member.name} an admin of $organizationName?" else if (member.isCurrentUser) "Make yourself a member of $organizationName?" else "Make ${member.name} a member of $organizationName?",
+        message = if (!isDemotion) "Admins manage members, teams and which teams have which vaults. Being an admin gives no vault by itself."
+            else if (member.isCurrentUser) "You can no longer manage members, teams or which teams have which vaults. Another admin can make you an admin again."
+            else "${member.name} can no longer manage members, teams or which teams have which vaults. Another admin can make them an admin again.",
+        confirmLabel = if (!isDemotion) "Make admin" else if (member.isCurrentUser) "Make me a member" else "Make member",
+        confirmTestTag = "confirm-organization-role", onConfirm = onConfirm, onDismiss = onDismiss, isDestructive = isDemotion,
+    )
 }
