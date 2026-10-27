@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { nextTick, onMounted, ref, watch } from "vue";
 import AppIcon, { type IconName } from "./AppIcon.vue";
+import { useMenu } from "../menu";
 
 // ContextMenuAction is one item of a right-click menu; null in allAction draws a separator.
 export interface ContextMenuAction {
@@ -8,6 +9,7 @@ export interface ContextMenuAction {
   label: string;
   icon: IconName;
   isDanger?: boolean;
+  disabled?: boolean;
   run: () => void;
 }
 
@@ -16,36 +18,13 @@ const emit = defineEmits<{ close: [] }>();
 const menu = ref<HTMLElement | null>(null);
 // position keeps the menu inside the window: it opens at the pointer and moves back when it would pass an edge.
 const position = ref({ left: props.x, top: props.y });
+useMenu(menu, () => emit("close"));
 
 function choose(action: ContextMenuAction): void {
   emit("close");
   action.run();
 }
 
-function listButtons(): HTMLButtonElement[] {
-  return [...(menu.value?.querySelectorAll<HTMLButtonElement>("button") ?? [])];
-}
-
-function moveFocus(step: number): void {
-  const allButton = listButtons();
-  const index = allButton.indexOf(document.activeElement as HTMLButtonElement);
-  allButton[(index + step + allButton.length) % allButton.length]?.focus();
-}
-
-function handleKey(event: KeyboardEvent): void {
-  if (event.key === "Escape") {
-    emit("close");
-  } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
-    event.preventDefault();
-    moveFocus(event.key === "ArrowDown" ? 1 : -1);
-  }
-}
-
-function closeOnOutside(event: Event): void {
-  if (!menu.value?.contains(event.target as Node)) {
-    emit("close");
-  }
-}
 
 function fitInWindow(): void {
   const bounds = menu.value?.getBoundingClientRect();
@@ -69,14 +48,7 @@ watch(
 );
 
 onMounted(() => {
-  window.addEventListener("pointerdown", closeOnOutside);
-  window.addEventListener("keydown", handleKey);
   fitInWindow();
-  listButtons()[0]?.focus();
-});
-onBeforeUnmount(() => {
-  window.removeEventListener("pointerdown", closeOnOutside);
-  window.removeEventListener("keydown", handleKey);
 });
 </script>
 
@@ -97,6 +69,8 @@ onBeforeUnmount(() => {
         class="ghost"
         :class="{ danger: action.isDanger }"
         role="menuitem"
+        :disabled="action.disabled"
+        tabindex="-1"
         :data-testid="`context-menu-${action.id}`"
         @click="choose(action)"
       >

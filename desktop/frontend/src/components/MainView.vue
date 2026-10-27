@@ -72,6 +72,7 @@ import {
   sshKeyCategory,
 } from "../util";
 import { allColumnBound, detailMinWidth, loadColumnWidths, saveColumnWidths } from "../columnWidths";
+import { useMenu } from "../menu";
 import AppIcon from "./AppIcon.vue";
 import ColumnResizer from "./ColumnResizer.vue";
 import HisarLogo from "./HisarLogo.vue";
@@ -127,7 +128,9 @@ let newVaultTeamLoad = 0;
 const newVaultErrorMessage = ref("");
 const searchInput = ref<HTMLInputElement | null>(null);
 const isNewItemMenuOpen = ref(false);
-const newItemMenu = ref<HTMLElement | null>(null);
+const newItemMenuPanel = ref<HTMLElement | null>(null);
+const newItemTrigger = ref<HTMLElement | null>(null);
+useMenu(newItemMenuPanel, () => { isNewItemMenuOpen.value = false; }, () => newItemTrigger.value);
 const shortcutModifier = isMacPlatform() ? "⌘" : "Ctrl+";
 const shiftModifier = isMacPlatform() ? "⇧" : "Shift+";
 const itemList = ref<HTMLElement | null>(null);
@@ -353,7 +356,7 @@ function openVaultMenuAtPointer(vaultID: string, event: MouseEvent): void {
   vaultMenu.value = { vaultID, x: event.clientX, y: event.clientY };
 }
 
-function openVaultMenuBelow(event: MouseEvent): void {
+function openVaultMenuBelow(event: MouseEvent | KeyboardEvent): void {
   const bounds = (event.currentTarget as HTMLElement).getBoundingClientRect();
   vaultMenu.value = { vaultID: store.selectedVaultID, x: Math.max(8, bounds.right - 168), y: bounds.bottom + 6 };
 }
@@ -395,14 +398,6 @@ function chooseNewItem(create: () => void): void {
   create();
 }
 
-function closeNewItemMenu(event: Event): void {
-  if (!isNewItemMenuOpen.value) {
-    return;
-  }
-  if (event instanceof KeyboardEvent ? event.key === "Escape" : !newItemMenu.value?.contains(event.target as Node)) {
-    isNewItemMenuOpen.value = false;
-  }
-}
 
 // listRows are the rows of the list on screen, in the order of allVisibleItem or allVisibleFavorite.
 function listRows(): HTMLElement[] {
@@ -527,15 +522,11 @@ let syncTimer: ReturnType<typeof setInterval> | undefined;
 
 onMounted(() => {
   window.addEventListener("keydown", handleShortcut);
-  window.addEventListener("keydown", closeNewItemMenu);
-  window.addEventListener("pointerdown", closeNewItemMenu);
   window.addEventListener("focus", syncInBackground);
   syncTimer = setInterval(syncInBackground, syncInterval);
 });
 onBeforeUnmount(() => {
   window.removeEventListener("keydown", handleShortcut);
-  window.removeEventListener("keydown", closeNewItemMenu);
-  window.removeEventListener("pointerdown", closeNewItemMenu);
   window.removeEventListener("focus", syncInBackground);
   clearInterval(syncTimer);
 });
@@ -674,7 +665,7 @@ onBeforeUnmount(() => {
           <h2>{{ selectedVault?.name ?? "" }}</h2>
           <span class="muted">{{ healthyItemCount }} {{ healthyItemCount === 1 ? "item" : "items" }}<template v-if="unreadableItemCount"> · {{ unreadableItemCount }} unreadable</template></span>
         </div>
-        <div ref="newItemMenu" class="new-item">
+        <div class="new-item">
           <button
             v-if="canShareVault"
             class="share-button"
@@ -696,10 +687,14 @@ onBeforeUnmount(() => {
             data-testid="vault-actions"
             @pointerdown.stop
             @click="openVaultMenuBelow"
+            @keydown.down.prevent="openVaultMenuBelow"
+            @keydown.enter.prevent="openVaultMenuBelow"
+            @keydown.space.prevent="openVaultMenuBelow"
           >
             <AppIcon name="more" />
           </button>
           <button
+            ref="newItemTrigger"
             class="primary icon-button"
             :disabled="!canEdit"
             :title="`New item (${shortcutModifier}N for a login)`"
@@ -707,10 +702,13 @@ onBeforeUnmount(() => {
             aria-haspopup="menu"
             :aria-expanded="isNewItemMenuOpen"
             @click="isNewItemMenuOpen = !isNewItemMenuOpen"
+            @keydown.down.prevent="isNewItemMenuOpen = true"
+            @keydown.enter.prevent="isNewItemMenuOpen = true"
+            @keydown.space.prevent="isNewItemMenuOpen = true"
           >
             <AppIcon name="plus" />
           </button>
-          <div v-if="isNewItemMenuOpen" class="card new-item-menu" role="menu" aria-label="New item">
+          <div v-if="isNewItemMenuOpen" ref="newItemMenuPanel" class="card new-item-menu" role="menu" aria-label="New item">
             <button class="ghost" role="menuitem" data-testid="new-login" @click="chooseNewItem(startCreatingItem)">
               <AppIcon name="globe" /> Login <kbd>{{ shortcutModifier }}N</kbd>
             </button>

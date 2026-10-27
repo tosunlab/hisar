@@ -1,33 +1,20 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from "vue";
+import { ref } from "vue";
 import type { VaultSummary } from "../api";
 import { openVaultDialog, type VaultDialogMode } from "../store";
 import AppIcon from "./AppIcon.vue";
+import { useMenu } from "../menu";
 
 const props = defineProps<{ vault: VaultSummary; x: number; y: number }>();
 const emit = defineEmits<{ close: [] }>();
 const menu = ref<HTMLElement | null>(null);
+useMenu(menu, () => emit("close"));
 
 function choose(mode: Exclude<VaultDialogMode, "blocked">): void {
   emit("close");
   openVaultDialog(props.vault.id, mode);
 }
 
-function closeOnOutside(event: Event): void {
-  if (event instanceof KeyboardEvent ? event.key === "Escape" : !menu.value?.contains(event.target as Node)) {
-    emit("close");
-  }
-}
-
-onMounted(() => {
-  window.addEventListener("pointerdown", closeOnOutside);
-  window.addEventListener("keydown", closeOnOutside);
-  menu.value?.querySelector<HTMLButtonElement>("button")?.focus();
-});
-onBeforeUnmount(() => {
-  window.removeEventListener("pointerdown", closeOnOutside);
-  window.removeEventListener("keydown", closeOnOutside);
-});
 </script>
 
 <template>
