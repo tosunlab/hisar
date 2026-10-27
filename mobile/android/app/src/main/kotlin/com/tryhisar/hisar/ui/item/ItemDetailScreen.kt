@@ -66,6 +66,7 @@ import kotlinx.coroutines.launch
 fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (EditorRequest) -> Unit, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val unlockedData by model.unlockedData.collectAsStateWithLifecycle()
+    val status by model.status.collectAsStateWithLifecycle()
     val errorMessage by model.errorMessage.collectAsStateWithLifecycle()
     val vault = unlockedData.findVault(vaultID)
     val summary = unlockedData.allItemByVaultID[vaultID]?.firstOrNull { it.id == itemID }
@@ -91,6 +92,14 @@ fun ItemDetailScreen(model: AppModel, vaultID: String, itemID: String, onEdit: (
     LaunchedEffect(summary == null) {
         if (summary == null && wasListed) onBack()
     }
+    LaunchedEffect(status.isUnlocked) {
+        if (!status.isUnlocked) {
+            item = null
+            allRevealedFieldName = emptySet()
+            passkeyToDelete = null
+        }
+    }
+    if (!status.isUnlocked) return
 
     val openedKeyID = openedSSHKeyID
     BackHandler(enabled = openedKeyID != null) { openedSSHKeyID = null }

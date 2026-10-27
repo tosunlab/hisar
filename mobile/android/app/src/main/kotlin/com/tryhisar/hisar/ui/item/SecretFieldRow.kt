@@ -21,9 +21,14 @@ import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.ripple
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.onClick
@@ -134,11 +140,20 @@ internal fun SecretFieldRow(
 ) {
     val isHidden = isConcealed && !isRevealed
     val tagName = label.lowercase()
+    var hasOverflow by remember(value) { mutableStateOf(false) }
+    var isFullValueShown by remember(value) { mutableStateOf(false) }
+    LaunchedEffect(isRevealed) {
+        if (!isRevealed) isFullValueShown = false
+    }
+    val canViewFullValue = isConcealed && isRevealed && hasOverflow
     val allAction = buildList {
         add(MenuAction("Copy $actionLabel", Icons.Outlined.ContentCopy, copy))
         add(MenuAction("Copy secret reference", Icons.Outlined.Terminal, copyReference))
         if (toggleReveal != null) {
             add(MenuAction(if (isRevealed) "Hide" else "Reveal", if (isRevealed) Icons.Outlined.VisibilityOff else Icons.Outlined.Visibility, toggleReveal))
+        }
+        if (canViewFullValue) {
+            add(MenuAction("View full value", Icons.Outlined.Visibility, { isFullValueShown = true }))
         }
     }
     MenuRow(allAction, onClick = copy, onClickLabel = "Copy $actionLabel") {
@@ -157,6 +172,7 @@ internal fun SecretFieldRow(
                         color = HisarTheme.colors.label,
                         maxLines = if (isConcealed) 3 else 5,
                         overflow = TextOverflow.Ellipsis,
+                        onTextLayout = { hasOverflow = isRevealed && it.hasVisualOverflow },
                         modifier = Modifier
                             .testTag("$tagName-value")
                             .semantics { if (isHidden) contentDescription = "Hidden" },
@@ -173,11 +189,39 @@ internal fun SecretFieldRow(
                 }
                 FieldIconButton(Icons.Outlined.ContentCopy, "Copy $actionLabel", "copy-$tagName", copy, tint = HisarTheme.colors.label)
             }
+            if (canViewFullValue) {
+                TextButton(
+                    onClick = { isFullValueShown = true },
+                    modifier = Modifier.testTag("view-full-$tagName").semantics { contentDescription = "View full value for $actionLabel" },
+                ) { Text("View full value") }
+            }
             if (warning.isNotEmpty()) {
                 Spacer(Modifier.size(4.dp))
                 Text(warning, style = HisarType.footnote, color = HisarTheme.colors.orange, modifier = Modifier.testTag("card-warning-$label"))
             }
         }
+    }
+    if (isFullValueShown && isRevealed) {
+        AlertDialog(
+            onDismissRequest = { isFullValueShown = false },
+            title = { Text(label, modifier = Modifier.semantics { heading() }) },
+            text = {
+                Text(
+                    value,
+                    style = HisarType.bodyMonospaced,
+                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()).testTag("full-value-text"),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { isFullValueShown = false }, modifier = Modifier.testTag("full-value-close")) { Text("Close") }
+            },
+            dismissButton = {
+                Row {
+                    TextButton(onClick = copy, modifier = Modifier.testTag("full-value-copy")) { Text("Copy") }
+                    TextButton(onClick = { isFullValueShown = false; toggleReveal?.invoke() }, modifier = Modifier.testTag("full-value-hide")) { Text("Hide") }
+                }
+            },
+        )
     }
 }
 
