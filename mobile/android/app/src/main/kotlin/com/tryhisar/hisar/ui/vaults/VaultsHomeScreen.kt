@@ -164,11 +164,18 @@ fun VaultsHomeScreen(model: AppModel) {
                     NoteRow(warning, Icons.Filled.Warning, Modifier.testTag("vault-key-warning"), iconTint = HisarTheme.colors.warning)
                 }
                 cardSection<Any>(
-                    "shared-with-you",
-                    data.allReceivedInvitation + data.allWaitingInvitation,
-                    rowKey = { if (it is ReceivedShareInvitation) "received-${it.id}" else "waiting-${(it as WaitingShareInvitation).id}" },
-                    header = "Shared with you",
-                    dividerStart = { if (it is ReceivedShareInvitation) InvitationRowTextStart else NoteRowTextStart },
+                    "invitations-for-you",
+                    data.allReceivedInvitation + data.allOrganizationInvitation + data.allWaitingInvitation,
+                    rowKey = {
+                        when (it) {
+                            is ReceivedShareInvitation -> "received-${it.id}"
+                            is OrganizationInvitation -> "organization-${it.id}"
+                            else -> "waiting-${(it as WaitingShareInvitation).id}"
+                        }
+                    },
+                    header = "Invitations for you",
+                    headerTestTag = "invitations-for-you",
+                    dividerStart = { if (it is WaitingShareInvitation) NoteRowTextStart else InvitationRowTextStart },
                 ) { invitation ->
                     when (invitation) {
                         is ReceivedShareInvitation -> InvitationRow(
@@ -188,19 +195,17 @@ fun VaultsHomeScreen(model: AppModel) {
                                 }
                             },
                         )
+                        is OrganizationInvitation -> InvitationRow(
+                            text = invitation.message,
+                            email = invitation.invitedByEmail,
+                            icon = Icons.Filled.Business,
+                            testTagPrefix = "banner-",
+                            testTagName = "organization-invitation",
+                            onDecline = { answerOrganizationInvitation(invitation, isAccepted = false) },
+                            onAccept = { answerOrganizationInvitation(invitation, isAccepted = true) },
+                        )
                         is WaitingShareInvitation -> NoteRow(invitation.describe(Instant.now()), Icons.Outlined.Schedule, Modifier.testTag("waiting-${invitation.id}"))
                     }
-                }
-                cardSection("invitations-for-you", data.allOrganizationInvitation, rowKey = { it.id }, header = "Invitations for you") { invitation ->
-                    InvitationRow(
-                        text = invitation.message,
-                        email = invitation.invitedByEmail,
-                        icon = Icons.Filled.Business,
-                        testTagPrefix = "banner-",
-                        testTagName = "organization-invitation",
-                        onDecline = { answerOrganizationInvitation(invitation, isAccepted = false) },
-                        onAccept = { answerOrganizationInvitation(invitation, isAccepted = true) },
-                    )
                 }
                 if (data.allVault.isNotEmpty()) {
                     val allFavorite = data.listAllFavoriteReference()

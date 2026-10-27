@@ -91,7 +91,11 @@ class VaultsScreenUITests : HisarUITestCase() {
     fun testVaultsHomeShowsTheIPhonesSections() {
         launchApp(buildBackend()).use {
             waitFor("vaults-list")
+            scrollTo("invitations-for-you")
+            composeRule.onNodeWithTag("invitations-for-you").assertTextEquals("Invitations for you")
+            assertFalse(exists(hasText("Shared with you")))
             for (tag in listOf("removed-vault-old", "vault-key-warning", "banner-invitation-text", "waiting-from-dave", "banner-organization-invitation-text")) {
+                scrollTo(tag)
                 assertTrue("$tag is shown", exists(hasTestTag(tag)))
             }
             saveScreenshot("vaults-home-top")
